@@ -23,8 +23,8 @@ export async function stopTransactionIncumbent(
   if (orcadStopFreedTheHost(stopped)) {
     return null
   }
-  // Only a delivered SIGTERM can still change the host; otherwise nothing happened.
-  if (stopped === 'still-running') {
+  // Only a stop that may have been delivered can still change the host; otherwise nothing happened.
+  if (stopped === 'still-running' || stopped === 'unconfirmed') {
     lock.retain()
   }
   return (
@@ -60,6 +60,7 @@ export async function putTransactionIncumbentBack(
     launchedVersion: string | null
     incumbent: OrcadSlotIdentity | null
     restoreState: OrcadSnapshotVerdict | null
+    launchedFromState?: OrcadSnapshotVerdict | null
   }
 ): Promise<string | null> {
   try {
@@ -89,6 +90,7 @@ export async function restoreAfterRejectedCandidate(
     transactionStartedAt: string
     incumbent: OrcadSlotIdentity | null
     restoreState: OrcadSnapshotVerdict | null
+    launchedFromState?: OrcadSnapshotVerdict | null
   }
 ): Promise<string> {
   const { launchedDir, ...restore } = input

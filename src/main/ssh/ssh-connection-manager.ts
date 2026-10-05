@@ -1,11 +1,6 @@
 import type { SshTarget, SshConnectionState } from '../../shared/ssh-types'
 import { SshConnection, type SshConnectionCallbacks } from './ssh-connection'
 
-// ── Connection Manager ──────────────────────────────────────────────
-// Why: extracted from ssh-connection.ts to keep each file under the
-// 300-line oxlint max-lines threshold while preserving a clear
-// single-responsibility boundary (connection lifecycle vs. pool management).
-
 export class SshConnectionManager {
   private connections = new Map<string, SshConnection>()
   private callbacks: SshConnectionCallbacks
@@ -48,9 +43,10 @@ export class SshConnectionManager {
       try {
         await conn.connect()
       } catch (err) {
-        // Why: a failed startup can still hold sockets, so it is disconnected, not just forgotten.
+        // Why: a failed startup can still hold sockets, so it is disconnected, not just forgotten;
+        // quietly, so its published error is not replaced by a plain disconnect.
         try {
-          await this.disconnectConnection(target.id, conn)
+          await this.disconnectConnection(target.id, conn, { quiet: true })
         } catch (cleanupError) {
           throw new AggregateError([err, cleanupError], 'ssh_connection_startup_cleanup_failed')
         }
@@ -80,8 +76,12 @@ export class SshConnectionManager {
    * Why: a cancelled connect whose transport opened late owns that exact connection — disconnecting
    * by target id would tear down the replacement's live transport instead.
    */
-  async disconnectConnection(targetId: string, conn: SshConnection): Promise<void> {
-    await conn.disconnect()
+  async disconnectConnection(
+    targetId: string,
+    conn: SshConnection,
+    options?: { quiet?: boolean }
+  ): Promise<void> {
+    await conn.disconnect(options)
     if (this.connections.get(targetId) === conn) {
       this.connections.delete(targetId)
     }

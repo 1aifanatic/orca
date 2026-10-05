@@ -37,16 +37,20 @@ export async function wakeStoppedManagedOrcad(
   if (await orcadActivationFenceExists(options)) {
     return { outcome: 'fenced' }
   }
-  return withOrcadActivationLock(options, async () => {
-    // Re-read under the fence: another client may have activated or started a slot meanwhile.
-    const active = (await readOrcadActivationRecord(options)).active
-    if (!active) {
-      return { outcome: 'not-activated' }
-    }
-    const identity = await resolveOrcadSlotIdentity(options, active)
-    onStarting()
-    return { outcome: 'started', readiness: await ensureOrcadSlotServing(options, identity) }
-  })
+  return withOrcadActivationLock(
+    options,
+    async (): Promise<OrcadManagedWake> => {
+      // Re-read under the fence: another client may have activated or started a slot meanwhile.
+      const active = (await readOrcadActivationRecord(options)).active
+      if (!active) {
+        return { outcome: 'not-activated' }
+      }
+      const identity = await resolveOrcadSlotIdentity(options, active)
+      onStarting()
+      return { outcome: 'started', readiness: await ensureOrcadSlotServing(options, identity) }
+    },
+    () => ({ outcome: 'fenced' })
+  )
 }
 
 async function slotLiveness(

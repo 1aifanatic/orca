@@ -134,6 +134,9 @@ describe('Windows stop script', () => {
   const requestFile = () => join(dir, ORCAD_STOP_REQUEST_FILENAME)
   const stop = async (justLaunched: boolean, waitSeconds = 5) =>
     (await runOp('stop', [dir, String(waitSeconds), justLaunched ? '1' : '0'])).stdout
+      .trim()
+      .split(/\r?\n/u)
+      .at(-1)
 
   /** Stands in for orcad's stop-request listener: exits once the request file appears. */
   function fakeOrcad(): number {
@@ -270,6 +273,25 @@ describe('Windows record scripts', () => {
       false
     )
     expect(result.code).not.toBe(0)
+  })
+})
+
+describe('Windows host script staging', () => {
+  it('answers present from a whole script, and installs itself from its partial upload', async () => {
+    expect((await runOp('script-present', [], false)).stdout.trim()).toBe(
+      'ORCAD_HOST_SCRIPT_PRESENT'
+    )
+    const partial = join(dir, 'staged.partial')
+    const target = join(dir, 'installed.js')
+    writeFileSync(partial, ORCAD_WINDOWS_HOST_SCRIPT)
+    const installed = await runProcess({
+      program: process.execPath,
+      args: [partial, 'script-install', target],
+      timeoutMs: 15_000
+    })
+    expect(installed.stdout.trim()).toBe('ORCAD_HOST_SCRIPT_PRESENT')
+    expect(existsSync(partial)).toBe(false)
+    expect(readFileSync(target, 'utf8')).toBe(ORCAD_WINDOWS_HOST_SCRIPT)
   })
 })
 

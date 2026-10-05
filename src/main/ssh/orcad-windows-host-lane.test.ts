@@ -18,8 +18,8 @@ import {
   installHostileHostAppEnvironment
 } from './ssh-hostile-host-test-harness'
 import { resolveOrcadRemoteContext } from './orcad-remote-context'
-import { proveWindowsRelayTerminalGate } from './orcad-windows-relay-terminal-gate-cell'
-import { proveWindowsStdioBridge } from './orcad-windows-stdio-bridge-cell'
+import { proveWindowsRelayTerminalGate } from './orcad-windows-relay-terminal-gate-test-cell'
+import { proveWindowsStdioBridge } from './orcad-windows-stdio-bridge-test-cell'
 import { deployOrcad } from './orcad-remote-deploy'
 import { orcadLivenessProbeCommand, parseOrcadLiveness } from './orcad-remote-launch'
 import { orcadSlotDir, type OrcadSlotOptions } from './orcad-recovery-slot'

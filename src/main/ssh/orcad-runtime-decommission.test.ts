@@ -154,6 +154,31 @@ describe('stopManagedOrcadEnvironment', () => {
     expect(mocks.decommission).not.toHaveBeenCalled()
   })
 
+  it('starts over, never reading live, when another run settled the journal first', async () => {
+    mocks.state.transaction = { operation: 'decommission', activeVersion: MANAGED_VERSION }
+    mocks.recover.mockImplementationOnce(async () => {
+      mocks.state.transaction = null
+      return { outcome: 'none' }
+    })
+    mocks.decommission.mockResolvedValueOnce({
+      outcome: 'decommissioned',
+      version: MANAGED_VERSION,
+      retirement: null
+    })
+    await expect(stop()).resolves.toMatchObject({ outcome: 'unlinked', verdict: 'exited' })
+
+    rmSync(harness.userDataPath, { recursive: true, force: true })
+    harness = createManagedLifecycleHarness()
+    mocks.state.store = harness.targetStore
+    mocks.state.transaction = { operation: 'decommission', activeVersion: MANAGED_VERSION }
+    mocks.recover.mockResolvedValue({ outcome: 'none' })
+    await expect(stop()).resolves.toMatchObject({
+      outcome: 'refused',
+      verdict: 'unverifiable',
+      code: 'orcad_stop_journal_changed'
+    })
+  })
+
   it('refuses while another interrupted operation holds the journal', async () => {
     mocks.state.transaction = { operation: 'activate' }
     await expect(stop()).resolves.toMatchObject({ code: 'orcad_activation_recovery_required' })

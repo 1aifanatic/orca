@@ -374,6 +374,21 @@ describe('deployOrcad', () => {
     )
   })
 
+  it('refuses at once, before uploading, while the activation fence is held', async () => {
+    mockExec.mockImplementation(async (_conn, command) => {
+      const text = String(command)
+      if (text.includes('echo LOCKED || echo OPEN')) {
+        return 'LOCKED\n'
+      }
+      return text.includes('__ORCAD_RECORD_ABSENT__') ? '__ORCAD_RECORD_ABSENT__\n' : ''
+    })
+    await expect(deployOrcad(options())).resolves.toMatchObject({
+      outcome: 'installed-not-activated',
+      code: 'orcad_activation_recovery_required'
+    })
+    expect(uploadRelayDirectory).not.toHaveBeenCalled()
+  })
+
   it('leaves an upload incomplete when the remote cannot make search executable', async () => {
     mockExec.mockImplementation(async (_conn, command) => {
       if (String(command).startsWith('chmod 755 ')) {

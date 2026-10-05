@@ -272,6 +272,18 @@ describe('rollbackOrcad', () => {
     ).toBe(false)
   })
 
+  it('puts the newer build back unasked when a failed target left the restored state untouched', async () => {
+    const log: string[] = []
+    scriptHost(log, { targetReady: false, comparison: 'UNCHANGED' })
+    const result = await rollbackOrcad(options())
+    expect(result.outcome === 'failed' && result.reason).toContain('is serving again')
+    expect(log.slice(-3)).toEqual(['compare', 'restore-rescue', `launch:${ACTIVE}`])
+    const compare = mockExec.mock.calls
+      .map((call) => String(call[1]))
+      .find((command) => command.includes('verdict=UNCHANGED'))
+    expect(compare).not.toContain('rollback-rescue-')
+  })
+
   it('records the rollback only after the target answers healthy', async () => {
     const log: string[] = []
     scriptHost(log)

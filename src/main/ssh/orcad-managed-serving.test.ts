@@ -21,7 +21,7 @@ import {
 const listener = { starting: vi.fn(), settled: vi.fn() }
 let generation = 1
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the transport generation is read; the remote context is mocked.
-const connection = { getTransportGeneration: () => generation } as never
+const connection = { getConnectGeneration: () => generation } as never
 
 function input(probe: () => Promise<boolean>): OrcadManagedServingInput {
   return {

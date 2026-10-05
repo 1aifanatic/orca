@@ -267,7 +267,7 @@ describe('SshConnection', () => {
         })
       )
       await connectWithFakeTimers(conn)
-      const connectedGeneration = conn.getTransportGeneration()
+      const connectedGeneration = conn.getConnectGeneration()
       const dnsFailure = Object.assign(
         new Error('getaddrinfo EAI_AGAIN temporary failure in name resolution'),
         { code: 'EAI_AGAIN' }
@@ -284,7 +284,7 @@ describe('SshConnection', () => {
       await advanceToNextSshClient(RECONNECT_BACKOFF_MS[1])
 
       expect(conn.getState().status).toBe('connected')
-      expect(conn.getTransportGeneration()).toBeGreaterThan(connectedGeneration)
+      expect(conn.getConnectGeneration()).toBeGreaterThan(connectedGeneration)
       expect(clientInstances).toHaveLength(3)
     } finally {
       vi.useRealTimers()

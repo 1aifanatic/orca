@@ -68,6 +68,8 @@ export function stopOrcadCommand(
     'if [ "$stop_mode" = request ]; then',
     `( umask 077; : > ${requestFile} ) 2>/dev/null || { echo SIGNAL_FAILED; exit 0; };`,
     'else kill -TERM "$pid" 2>/dev/null || { echo SIGNAL_FAILED; exit 0; }; fi;',
+    // Past here the stop may be under way, so a lost or unknown answer must keep the fence.
+    'echo SIGNALED;',
     `i=0; while [ "$i" -lt ${options.waitSeconds} ]; do`,
     'orcad_alive "$pid" || { echo STOPPED; exit 0; };',
     'sleep 1; i=$((i + 1)); done;',
@@ -83,10 +85,21 @@ export type OrcadStopOutcome =
   | 'signal-failed'
   /** Windows only: the build cannot be asked to stop, and terminating it would skip shutdown. */
   | 'unsupported'
+  /** Explicitly unknown before any stop was sent: nothing happened. */
   | 'unknown'
+  /** Unknown or unparseable once a stop may have been sent: the host may still be changing. */
+  | 'unconfirmed'
 
 export function parseOrcadStopOutcome(output: string): OrcadStopOutcome {
-  switch (output.trim().split('\n').pop()?.trim() ?? '') {
+  const lines = output
+    .trim()
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+  const last = lines.at(-1) ?? ''
+  if (last === 'UNKNOWN' && !lines.includes('SIGNALED')) {
+    return 'unknown'
+  }
+  switch (last) {
     case 'STOPPED':
       return 'stopped'
     case 'ALREADY_EXITED':
@@ -100,7 +113,7 @@ export function parseOrcadStopOutcome(output: string): OrcadStopOutcome {
     case 'UNSUPPORTED':
       return 'unsupported'
     default:
-      return 'unknown'
+      return 'unconfirmed'
   }
 }
 

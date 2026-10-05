@@ -23,6 +23,8 @@ export type OrcadStdioBridge = {
 
 export const ORCAD_STDIO_BRIDGE_CHECK_TIMEOUT_MS = 20_000
 const MAX_STDERR_TAIL_CHARS = 2_000
+// POSIX shells and cmd.exe report a command they cannot find with these.
+const COMMAND_NOT_FOUND_EXITS: ReadonlySet<number | null> = new Set([127, 9009])
 
 export async function resolveOrcadStdioBridge(
   conn: SshConnection,
@@ -116,11 +118,12 @@ export async function checkOrcadStdioBridge(
       exitCode = typeof code === 'number' ? code : null
     })
     channel.on('close', () => {
-      // Why only a reported exit: a channel lost with the transport proves nothing about the host.
+      // Why only command-not-found: a lost channel, or a script cut short (a concurrent host-script
+      // write, a killed node.exe), proves nothing permanent about the host.
       settle(
-        exitCode === null
-          ? 'unverifiable'
-          : unavailable(`exit ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ''}`)
+        COMMAND_NOT_FOUND_EXITS.has(exitCode)
+          ? unavailable(`exit ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ''}`)
+          : 'unverifiable'
       )
     })
     channel.on('error', () => settle('unverifiable'))

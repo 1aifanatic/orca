@@ -7,6 +7,7 @@ vi.mock('../ssh/runtime-ssh-access', () => ({
   unlinkRuntimeSshAccess: mocks.unlink
 }))
 import { registerRuntimeSshAccessHandlers } from './runtime-ssh-access-handlers'
+import { EventEmitter } from 'node:events'
 
 describe('existing paired server SSH access IPC', () => {
   const invalidateTransport = vi.fn()
@@ -23,7 +24,11 @@ describe('existing paired server SSH access IPC', () => {
       invalidateTransport
     })
   })
-  function handler(channel: string): (_event: null, input: unknown) => Promise<unknown> {
+  const sender = new EventEmitter()
+  const event = { sender }
+  function handler(
+    channel: string
+  ): (_event: typeof event | null, input: unknown) => Promise<unknown> {
     const registered = mocks.handle.mock.calls.find(([name]) => name === channel)
     if (!registered) {
       throw new Error('Handler missing')
@@ -41,10 +46,12 @@ describe('existing paired server SSH access IPC', () => {
       endpoints: [{ id: 'ssh-endpoint', endpoint: 'ws://127.0.0.1:41000' }]
     }
     mocks.link.mockResolvedValue(result)
-    expect(await handler('runtimeEnvironments:linkSshAccess')(null, request)).toBe(result)
+    expect(await handler('runtimeEnvironments:linkSshAccess')(event, request)).toBe(result)
     expect(mocks.link).toHaveBeenCalledExactlyOnceWith('/test-profile', request, {
+      signal: expect.any(AbortSignal),
       invalidateTransport
     })
+    expect(sender.listenerCount('destroyed')).toBe(0)
     await handler('runtimeEnvironments:unlinkSshAccess')(null, {
       selector: 'host',
       requestId: 'unlink-1'
@@ -70,6 +77,17 @@ describe('existing paired server SSH access IPC', () => {
     expect(mocks.link).not.toHaveBeenCalled()
   })
 
+  it('cancels a pending link when its window closes', async () => {
+    let signal: AbortSignal | undefined
+    mocks.link.mockImplementation(async (_path, _args, options: { signal: AbortSignal }) => {
+      signal = options.signal
+      sender.emit('destroyed')
+      return null
+    })
+    await handler('runtimeEnvironments:linkSshAccess')(event, request)
+    expect(signal?.aborted).toBe(true)
+  })
+
   it('refuses renderer-supplied unlink snapshots', async () => {
     await expect(
       handler('runtimeEnvironments:unlinkSshAccess')(null, {
@@ -84,6 +102,6 @@ describe('existing paired server SSH access IPC', () => {
   it('propagates pending failures instead of reporting a successful link', async () => {
     const error = new Error('SSH endpoint identity was not verified')
     mocks.link.mockRejectedValue(error)
-    await expect(handler('runtimeEnvironments:linkSshAccess')(null, request)).rejects.toBe(error)
+    await expect(handler('runtimeEnvironments:linkSshAccess')(event, request)).rejects.toBe(error)
   })
 })

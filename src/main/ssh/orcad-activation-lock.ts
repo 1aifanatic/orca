@@ -11,7 +11,11 @@ import {
   type OrcadRemoteExecTarget
 } from './orcad-remote-runtime-control'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
-import { acquireInstallLock, RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
+import {
+  acquireInstallLock,
+  RELAY_INSTALL_LOCK_NAME,
+  RemoteInstallLockBusyError
+} from './ssh-relay-install-lock'
 import { probeInstallLockExistsCommand } from './ssh-relay-install-lock-commands'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { removeRemoteFileCommand, removeRemoteTreeCommand } from './ssh-remote-commands'
@@ -60,17 +64,36 @@ export function resolveOrcadActivationReadinessTimeout(
   return timeout
 }
 
+export const ORCAD_ACTIVATION_FENCE_HELD_CODE = 'orcad_activation_recovery_required'
+
+export function orcadActivationFenceHeldReason(attempt: string): string {
+  return (
+    `Another run holds this host's activation fence, or an interrupted one needs Recover, so ` +
+    `the ${attempt} did not start.`
+  )
+}
+
+/** A held fence answers `held()` at once: a retained one never clears by waiting. */
 export async function withOrcadActivationLock<T>(
   options: OrcadActivationLockOptions,
-  run: (control: OrcadActivationLockControl) => Promise<T>
+  run: (control: OrcadActivationLockControl) => Promise<T>,
+  held: () => T
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
-  await acquireInstallLock(options.conn, lockRoot, options.host, {
-    signal: options.signal,
-    relayGcClaim: false,
-    // A retained fence means state ownership is unresolved. Age cannot make it safe.
-    allowStaleTakeover: false
-  })
+  try {
+    await acquireInstallLock(options.conn, lockRoot, options.host, {
+      signal: options.signal,
+      relayGcClaim: false,
+      // A retained fence means state ownership is unresolved. Age cannot make it safe.
+      allowStaleTakeover: false,
+      waitTimeoutMs: 0
+    })
+  } catch (error) {
+    if (error instanceof RemoteInstallLockBusyError) {
+      return held()
+    }
+    throw error
+  }
   let retainOnError = false
   let retain = false
   try {

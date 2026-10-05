@@ -163,7 +163,7 @@ export class OrcadManagedTunnelResumeRecovery {
       connectionManager !== this.dependencies.getConnectionManager() ||
       connectionManager.getConnection(active.targetId) !== active.connection ||
       connectionManager.getState(active.targetId)?.status !== 'connected' ||
-      active.connection.getTransportGeneration() <= active.transportGeneration
+      active.connection.getConnectGeneration() <= active.transportGeneration
     ) {
       return
     }
@@ -196,7 +196,7 @@ export class OrcadManagedTunnelResumeRecovery {
     if (!target) {
       return
     }
-    const transportGeneration = active.connection.getTransportGeneration()
+    const transportGeneration = active.connection.getConnectGeneration()
     const checks = await environmentForwardChecks(this.dependencies.targeting, {
       environment: current.environment,
       target,
@@ -210,7 +210,7 @@ export class OrcadManagedTunnelResumeRecovery {
       label: `Managed Orca server: ${current.environment.name}`,
       ...checks,
       stillCurrent: () =>
-        active.connection.getTransportGeneration() === transportGeneration &&
+        active.connection.getConnectGeneration() === transportGeneration &&
         this.stillOwned(environment.id, active, ownershipGeneration, managerGeneration) &&
         this.resolveEnvironment(environment.id, active, options) !== null
     })

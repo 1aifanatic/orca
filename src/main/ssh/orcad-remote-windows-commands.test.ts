@@ -255,11 +255,26 @@ describe('Windows build hash and host script', () => {
     )
   })
 
-  it('stages the host script by file write, content-addressed beside the slots', async () => {
+  it('stages a missing host script through a partial file that installs itself, once per connection', async () => {
     const { conn, writes } = windowsConn()
+    mockExec
+      .mockRejectedValueOnce(new Error('Cannot find module'))
+      .mockResolvedValueOnce('ORCAD_HOST_SCRIPT_PRESENT\r\n')
     await installOrcadWindowsHostScript({ conn, host }, base)
-    expect(writes).toEqual([[SCRIPT, ORCAD_WINDOWS_HOST_SCRIPT]])
-    expect(mockExec).not.toHaveBeenCalled()
+    await installOrcadWindowsHostScript({ conn, host }, base)
+    expect(writes).toHaveLength(1)
+    const [partial, contents] = writes[0] ?? []
+    expect(contents).toBe(ORCAD_WINDOWS_HOST_SCRIPT)
+    expect(String(mockExec.mock.calls[0]?.[1])).toBe(`${NODE} ${SCRIPT} script-present`)
+    expect(String(mockExec.mock.calls[1]?.[1])).toBe(`${NODE} ${partial} script-install ${SCRIPT}`)
+    expect(mockExec).toHaveBeenCalledTimes(2)
+  })
+
+  it('never rewrites a host script that is already present', async () => {
+    const { conn, writes } = windowsConn()
+    mockExec.mockResolvedValueOnce('ORCAD_HOST_SCRIPT_PRESENT\r\n')
+    await installOrcadWindowsHostScript({ conn, host }, base)
+    expect(writes).toEqual([])
   })
 })
 

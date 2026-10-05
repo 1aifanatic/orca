@@ -57,7 +57,7 @@ function setup(overrides: Partial<SshTarget> = {}, targeting?: OrcadManagedTunne
   let transportGeneration = 3
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a test double for the members the tunnel manager calls.
   const connection = {
-    getTransportGeneration: vi.fn(() => transportGeneration)
+    getConnectGeneration: vi.fn(() => transportGeneration)
   } as unknown as SshConnection
   const connect = vi.fn().mockResolvedValue(connection)
   const reconnect = vi.fn().mockImplementation(async () => {
@@ -247,7 +247,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
         })
         await (operation === 'resume'
           ? state.manager.recoverAfterHostResume(resumeOptions())
-          : state.manager.ensure(environment()))
+          : expect(state.manager.ensure(environment())).rejects.toThrow('superseded'))
         expect(state.removeForwardAndWait).toHaveBeenCalledWith('stale-forward')
         state.probeTunnel.mockClear()
         await state.manager.recoverAfterHostResume(resumeOptions())
@@ -297,7 +297,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
         return state.connection
       })
 
-      await state.manager.ensure(environment())
+      await expect(state.manager.ensure(environment())).rejects.toThrow('superseded')
 
       expect(state.addForward).not.toHaveBeenCalled()
     })
@@ -309,9 +309,40 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
         return state.connection
       })
 
-      await state.manager.ensure(environment())
+      await expect(state.manager.ensure(environment())).rejects.toThrow('superseded')
 
       expect(state.addForward).not.toHaveBeenCalled()
+    })
+
+    it('builds a fresh tunnel for a caller that joins a run a close() superseded', async () => {
+      const state = setup()
+      let finishConnect!: () => void
+      state.connect.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishConnect = () => resolve(state.connection)
+          })
+      )
+      const first = state.manager.ensure(environment())
+      await state.manager.close('environment-1')
+      const joined = state.manager.ensure(environment())
+      finishConnect()
+      await expect(first).rejects.toThrow('superseded')
+      await expect(joined).resolves.toBeUndefined()
+      expect(state.addForward).toHaveBeenCalledOnce()
+    })
+
+    it('lets a caller that joined a run a transport change overtook build its own', async () => {
+      const state = setup()
+      state.addForward.mockImplementationOnce(async () => {
+        state.setTransportGeneration(9)
+        return { id: 'stale-forward', localPort: 46_768, remotePort: 6_768 }
+      })
+      const first = state.manager.ensure(environment())
+      const joined = state.manager.ensure(environment())
+      await expect(first).rejects.toThrow('superseded')
+      await expect(joined).resolves.toBeUndefined()
+      expect(state.addForward).toHaveBeenCalledTimes(2)
     })
 
     it('re-reads the saved environment after connection rather than trusting its initial snapshot', async () => {
@@ -326,7 +357,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
         return state.connection
       })
 
-      await state.manager.ensure(original, () => current)
+      await expect(state.manager.ensure(original, () => current)).rejects.toThrow('superseded')
 
       expect(state.addForward).not.toHaveBeenCalled()
     })
@@ -340,7 +371,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
         return { id: 'late-forward', localPort: 46_768, remotePort: 6_768 }
       })
 
-      await state.manager.ensure(original, () => current)
+      await expect(state.manager.ensure(original, () => current)).rejects.toThrow('superseded')
 
       expect(state.removeForwardAndWait).toHaveBeenCalledWith('late-forward')
     })
@@ -352,7 +383,7 @@ describe.each(['orcadDeployment', 'sshAccess'] as const)(
         return { id: 'late-forward', localPort: 46_768, remotePort: 6_768 }
       })
 
-      await state.manager.ensure(environment())
+      await expect(state.manager.ensure(environment())).rejects.toThrow('superseded')
 
       expect(state.removeForwardAndWait).toHaveBeenCalledWith('late-forward')
       await state.manager.recoverAfterHostResume(resumeOptions())

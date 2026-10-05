@@ -25,6 +25,7 @@ import {
   type OrcadIncumbentRecoveryOptions
 } from './orcad-incumbent-recovery'
 import type { OrcadManagedRefusal } from '../../shared/orcad-managed-runtime'
+import { errorMessage } from '../../shared/error-message'
 
 export type OrcadActivationRecoveryResult =
   | { outcome: 'none' }
@@ -120,7 +121,8 @@ export async function reconcileOrcadTransaction(
     incumbent: plan.activeVersion
       ? await resolveOrcadSlotIdentity(options, plan.activeVersion)
       : null,
-    restoreState: plan.restoreState
+    restoreState: plan.restoreState,
+    launchedFromState: plan.launchedFromState
   })
   return recovery.outcome === 'refused'
     ? recovery
@@ -130,8 +132,4 @@ export async function reconcileOrcadTransaction(
         activeVersion: plan.activeVersion,
         readiness: recovery.readiness
       }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

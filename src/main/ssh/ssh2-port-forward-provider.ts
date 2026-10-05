@@ -99,6 +99,10 @@ export function listenForPortForward(server: Server, host: string, port: number)
     }
     const onListening = (): void => {
       server.removeListener('error', onError)
+      // An accept-time error (EMFILE) on a server with no listener would crash the main process.
+      server.on('error', (error) => {
+        console.warn(`[ssh] Port forward listener on ${host}:${port} failed: ${error.message}`)
+      })
       resolve()
     }
     server.once('error', onError)

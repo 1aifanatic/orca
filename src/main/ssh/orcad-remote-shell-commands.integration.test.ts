@@ -441,7 +441,8 @@ describe('liveness and stop commands, run for real', () => {
         })}`
       )
     )
-    expect(outcome).toBe('unknown')
+    // After a delivered SIGTERM the host may still be changing, so it is not "nothing happened".
+    expect(outcome).toBe(phase === 'before' ? 'unknown' : 'unconfirmed')
     expect(orcadStopFreedTheHost(outcome)).toBe(false)
     expect(() => process.kill(runtimePid, 0)).not.toThrow()
     expect(existsSync(terminatedFile)).toBe(false)

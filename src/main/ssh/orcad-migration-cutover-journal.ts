@@ -17,6 +17,7 @@ import {
   type OrcadMigrationSourceCutover
 } from '../../shared/orcad-migration-source-cutover'
 import { syncDirectoryDurablySync } from '../durable-file-write'
+import { errorMessage } from '../../shared/error-message'
 
 const JOURNAL_DIRECTORY = 'orcad-migration-cutovers'
 const JOURNAL_FILE = /^[A-Za-z0-9_-]{1,128}\.json$/
@@ -187,8 +188,4 @@ function readJournalFile(path: string, migrationId: string): OrcadMigrationSourc
   } catch (error) {
     throw new OrcadMigrationCutoverJournalUnreadableError(errorMessage(error))
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
