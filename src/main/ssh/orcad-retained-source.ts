@@ -27,6 +27,11 @@ import {
   repoBelongsToOrcadSource
 } from '../persistence/migrating-orcad-catalog/orcad-source-ownership'
 import { findOrcadMigrationSourceCutoverForTarget } from './orcad-migration-cutover-journal'
+import {
+  currentOrcadSourceStateFingerprint,
+  ORCAD_SOURCE_STATE_FINGERPRINT_VERSION,
+  type OrcadSourceStateStore
+} from './orcad-retained-source-state'
 
 const appUserDataPath = (): string => getAppEnvironment().getPath('userData')
 
@@ -161,14 +166,27 @@ export function retainedOrcadSourceBaseline(head: OrcadMigrationSourceCutover): 
   return head.sourceBaselineFingerprint ?? orcadCatalogFingerprint(head.manifest.payload)
 }
 
-export type RetainedSourceVerdict = 'unchanged' | 'changed'
+/**
+ * `unverified`: identity matches, but the journal predates the state baseline, so nothing proves the
+ * retained rows' drafts and settings still equal the server's. Such a source stays hidden as before
+ * and is never retired automatically.
+ */
+export type RetainedSourceVerdict = 'unchanged' | 'changed' | 'unverified'
 
 export function compareRetainedOrcadSource(
-  store: CatalogStore,
-  target: Pick<SshTarget, 'id'>,
+  store: OrcadSourceStateStore,
+  target: Pick<SshTarget, 'id' | 'generation' | 'label'>,
   head: OrcadMigrationSourceCutover
 ): RetainedSourceVerdict {
-  return currentOrcadSourceFingerprint(store, target) === retainedOrcadSourceBaseline(head)
+  if (currentOrcadSourceFingerprint(store, target) !== retainedOrcadSourceBaseline(head)) {
+    return 'changed'
+  }
+  // A journal from before the baseline, or one a build with a different field list wrote.
+  if (!head.sourceStateFingerprint?.startsWith(`${ORCAD_SOURCE_STATE_FINGERPRINT_VERSION}:`)) {
+    return 'unverified'
+  }
+  return currentOrcadSourceStateFingerprint(store, target, head.destinationEnvironmentId) ===
+    head.sourceStateFingerprint
     ? 'unchanged'
     : 'changed'
 }
@@ -179,7 +197,7 @@ export function compareRetainedOrcadSource(
  */
 export function reconcileManagedOrcadSshTargets(
   userDataPath: string,
-  store: CatalogStore & TargetStore,
+  store: OrcadSourceStateStore & TargetStore,
   now: () => Date = () => new Date()
 ): void {
   try {
@@ -208,7 +226,7 @@ function restoreFencesFromManagedServers(userDataPath: string, store: TargetStor
 
 function markChangedRetainedSources(
   userDataPath: string,
-  store: CatalogStore & TargetStore,
+  store: OrcadSourceStateStore & TargetStore,
   now: () => Date
 ): void {
   for (const target of store.getSshTargets()) {
