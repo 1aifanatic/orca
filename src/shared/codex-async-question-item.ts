@@ -1,7 +1,7 @@
 // Reads the questions a Codex `request_user_input_async` message carries
 // (`delivery: "async"` + `questions`), bounded the way Codex's own editor bounds them.
 
-import type { NativeChatBlock } from './native-chat-types'
+import type { NativeChatBlock, NativeChatMessageAsyncQuestions } from './native-chat-types'
 
 export type CodexAsyncQuestion = { title: string; options?: string[] }
 
@@ -124,6 +124,24 @@ export function codexAsyncQuestionListsEqual(
       )
     })
   )
+}
+
+/** A persisted block's async questions, or null when a journal holds a shape this build
+ *  can't read (a newer build's, or damage); the field never gates the row itself. */
+export function readNativeChatMessageAsyncQuestions(
+  value: unknown
+): NativeChatMessageAsyncQuestions | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !('questions' in value)) {
+    return null
+  }
+  const questions = readCodexAsyncQuestionList(value.questions)
+  if (!questions) {
+    return null
+  }
+  const providerItemId = 'providerItemId' in value ? value.providerItemId : undefined
+  return typeof providerItemId === 'string' && providerItemId.length > 0
+    ? { providerItemId, questions }
+    : { questions }
 }
 
 /** Records an async message's questions on its first text block, where hosts read them. */

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemIdentity,
@@ -90,7 +90,7 @@ async function accept(journal: AgentSessionJournal, clientMessageId: string): Pr
 
 function titles(journal: AgentSessionJournal): string[] {
   const field = readStructuredAgentSessionAsyncQuestions(journal)
-  return field.state === 'ready' ? field.questions.map((question) => question.title) : []
+  return field?.state === 'ready' ? field.questions.map((question) => question.title) : []
 }
 
 describe('structured async questions retire at the transport canonical order', () => {
@@ -155,6 +155,16 @@ describe('structured async questions retire at the transport canonical order', (
     )
     expect(readStructuredAgentSessionAsyncQuestions(journal)).toBe(first)
   })
+
+  it('publishes nothing for a read-only journal, which cannot derive the set', async () => {
+    const journal = await open()
+    await ask(journal, 'A?')
+    expect(titles(journal)).toEqual(['A?'])
+    const readOnly = vi.spyOn(journal, 'isReadOnly', 'get').mockReturnValue(true)
+    expect(readStructuredAgentSessionAsyncQuestions(journal)).toBeUndefined()
+    readOnly.mockRestore()
+    expect(titles(journal)).toEqual(['A?'])
+  })
 })
 
 describe('structured async question identity across resume', () => {
@@ -186,17 +196,20 @@ describe('structured async question identity across resume', () => {
     const liveKeys = readStructuredAgentSessionAsyncQuestions(journal)
     await write(resumed, resumedOrdinals)
     const resumedKeys = readStructuredAgentSessionAsyncQuestions(journal)
-    expect(liveKeys.state === 'ready' && liveKeys.questions.map((q) => q.key)).toEqual(
-      resumedKeys.state === 'ready' && resumedKeys.questions.map((q) => q.key)
+    expect(liveKeys?.state).toBe('ready')
+    expect(liveKeys?.state === 'ready' && liveKeys.questions.map((q) => q.key)).toEqual(
+      resumedKeys?.state === 'ready' && resumedKeys.questions.map((q) => q.key)
     )
     // The raw provider id is carried separately and never used as client state.
-    expect(resumedKeys.state === 'ready' && resumedKeys.questions[0]?.providerItemId).toBe('item-2')
+    expect(resumedKeys?.state === 'ready' && resumedKeys.questions[0]?.providerItemId).toBe(
+      'item-2'
+    )
 
     // A genuine re-ask is a new item, so a new key.
     const reAsk = { ...live, id: 'call_again' }
     await write(reAsk, resumedOrdinals)
     const after = readStructuredAgentSessionAsyncQuestions(journal)
-    expect(after.state === 'ready' ? new Set(after.questions.map((q) => q.key)).size : 0).toBe(2)
+    expect(after?.state === 'ready' ? new Set(after.questions.map((q) => q.key)).size : 0).toBe(2)
   })
 })
 

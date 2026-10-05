@@ -160,6 +160,18 @@ describe('deriveJournalAsyncQuestions', () => {
     expect(deriveJournalAsyncQuestions([steer, ask], [submission('s', 'accepted')])).toHaveLength(1)
   })
 
+  it('skips persisted metadata this build cannot read instead of failing the derivation', () => {
+    const unreadable = item('a0', 'assistant')
+    const block = unreadable.body.kind === 'message' ? unreadable.body.blocks[0] : undefined
+    if (block?.type === 'text') {
+      Object.assign(block, { asyncQuestions: { questions: [{ title: 'x', options: [{}] }] } })
+    }
+    const ask = item('a1', 'assistant', { questions: ['Color?'] })
+    expect(deriveJournalAsyncQuestions([unreadable, ask], []).map((q) => q.title)).toEqual([
+      'Color?'
+    ])
+  })
+
   it('ignores child questions and child user messages', () => {
     const ask = item('a1', 'assistant', { questions: ['Root?'] })
     const childUser = item('c-user', 'user', { agentId: 'child-1' })

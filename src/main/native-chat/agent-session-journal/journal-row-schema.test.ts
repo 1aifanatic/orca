@@ -482,4 +482,21 @@ describe('async question metadata through the row guard', () => {
       row: { body: { blocks: [{ asyncQuestions }] } }
     })
   })
+
+  it('keeps a row whose async questions this build cannot read (no journal truncation)', () => {
+    const parsed = parseJournalRow(
+      JSON.stringify({
+        ...BASE,
+        kind: 'item',
+        itemId: 'i-2',
+        revision: 1,
+        body: {
+          kind: 'message',
+          role: 'assistant',
+          blocks: [{ type: 'text', text: 'Color?', asyncQuestions: { questions: [{ id: 1 }] } }]
+        }
+      })
+    )
+    expect(parsed).toMatchObject({ ok: true, row: { body: { blocks: [{ text: 'Color?' }] } } })
+  })
 })

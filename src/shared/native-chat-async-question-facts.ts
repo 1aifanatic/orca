@@ -5,7 +5,10 @@ import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-ses
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { compareAgentJournalItems } from './agent-session-journal-position'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
-import { readCodexAsyncQuestionCallArguments } from './codex-async-question-item'
+import {
+  readCodexAsyncQuestionCallArguments,
+  readNativeChatMessageAsyncQuestions
+} from './codex-async-question-item'
 import { isCodexAsyncQuestionTool } from './native-chat-ask'
 import {
   createNativeChatAsyncQuestionFoldState,
@@ -23,10 +26,12 @@ function askedFacts(
   itemId: (providerItemId: string | undefined) => string | undefined
 ): NativeChatAsyncQuestionFact[] {
   return blocks.flatMap((block): NativeChatAsyncQuestionFact[] => {
-    if (block.type !== 'text' || !block.asyncQuestions) {
+    const asked =
+      block.type === 'text' ? readNativeChatMessageAsyncQuestions(block.asyncQuestions) : null
+    if (!asked) {
       return []
     }
-    const { providerItemId, questions } = block.asyncQuestions
+    const { providerItemId, questions } = asked
     const identity = itemId(providerItemId)
     return [
       {

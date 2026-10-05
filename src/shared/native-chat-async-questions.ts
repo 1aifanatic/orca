@@ -135,7 +135,7 @@ export function nativeChatAsyncQuestionsFromFold(
   )
 }
 
-/** Serialized budget for the side field; reserved from each frame's own budget. */
+/** Serialized cap for the side field; structured history pages reserve it from their budget. */
 export const NATIVE_CHAT_ASYNC_QUESTIONS_PUBLICATION_BYTES = 256 * 1024
 
 const encoder = new TextEncoder()

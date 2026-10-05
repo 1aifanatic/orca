@@ -536,13 +536,13 @@ describe('async question metadata on a text block', () => {
     )
   })
 
-  it('rejects malformed metadata', () => {
+  it('admits a row whose metadata this build cannot read, so the row is never dropped', () => {
     expect(
       isAdmissibleAgentJournalItemBody({
         kind: 'message',
         role: 'assistant',
         blocks: [{ type: 'text', text: 'x', asyncQuestions: { questions: 'nope' } }]
       })
-    ).toBe(false)
+    ).toBe(true)
   })
 })

@@ -13,12 +13,6 @@ export const ProviderFrame = z.object({
   payload: BoundedPayload
 })
 
-/** What a Codex async message asked; persisted so the host can re-derive pending questions. */
-const AsyncQuestions = z.object({
-  providerItemId: z.string().optional(),
-  questions: z.array(z.object({ title: z.string(), options: z.array(z.string()).optional() }))
-})
-
 /** The journal's prose block. Unknown keys pass (see agent-session-journal-schemas.ts). */
 export const TextBlock = z.object({
   type: z.literal('text'),
@@ -26,5 +20,7 @@ export const TextBlock = z.object({
   presentation: z.string().optional(),
   tone: z.string().optional(),
   providerFrame: ProviderFrame.optional(),
-  asyncQuestions: AsyncQuestions.optional()
+  // Not validated here: rejecting a row for an annotation truncates the journal from it.
+  // The host reads it through readNativeChatMessageAsyncQuestions when deriving.
+  asyncQuestions: z.unknown().optional()
 })

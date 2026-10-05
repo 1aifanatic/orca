@@ -78,7 +78,7 @@ type AsyncQuestionsProjection = {
   epoch: string
   sequence: number
   readOnly: boolean
-  field: NativeChatAsyncQuestionsField
+  field: NativeChatAsyncQuestionsField | undefined
 }
 
 // One derivation per journal commit, shared by every subscriber of the session.
@@ -95,10 +95,11 @@ function journalHasAsyncQuestions(journal: AgentSessionJournal): boolean {
 }
 
 /** The pending Codex async questions the whole journal records, as published. Identity is
- *  stable while the set is unchanged, so subscribers can deduplicate it by reference. */
+ *  stable while the set is unchanged, so subscribers can deduplicate it by reference.
+ *  Undefined for a read-only journal: it can't derive, so it publishes nothing (old host). */
 export function readStructuredAgentSessionAsyncQuestions(
   journal: AgentSessionJournal
-): NativeChatAsyncQuestionsField {
+): NativeChatAsyncQuestionsField | undefined {
   const cursor = journal.cursor()
   const readOnly = journal.isReadOnly
   const cached = asyncQuestionsByJournal.get(journal)
@@ -110,7 +111,7 @@ export function readStructuredAgentSessionAsyncQuestions(
   ) {
     return cached.field
   }
-  let field = NO_ASYNC_QUESTIONS
+  let field: NativeChatAsyncQuestionsField | undefined = readOnly ? undefined : NO_ASYNC_QUESTIONS
   // Most journals never asked one; skip the sorted snapshot for them.
   if (!readOnly && journalHasAsyncQuestions(journal)) {
     const snapshot = journal.snapshot()

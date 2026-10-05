@@ -25,7 +25,7 @@ export type SubscriberFieldHooks = {
   readCommands?: (sessionId: string) => AgentSessionSlashCommand[] | undefined
   readQueuePublication?: (sessionId: string) => QueuePublication | undefined
   /** Host-derived from the whole journal, so it never depends on the page a client holds. */
-  readAsyncQuestions?: (journal: AgentSessionJournal) => NativeChatAsyncQuestionsField
+  readAsyncQuestions?: (journal: AgentSessionJournal) => NativeChatAsyncQuestionsField | undefined
 }
 
 export type SubscriberFrame = {
