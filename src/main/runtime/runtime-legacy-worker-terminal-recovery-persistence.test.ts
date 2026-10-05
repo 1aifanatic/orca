@@ -132,7 +132,7 @@ describe('legacy worker recovery persistence snapshot budget', () => {
     const fixture = makeFixture(hosts, 12)
     const clone = vi.spyOn(globalThis, 'structuredClone')
 
-    expect(await fixture.persistence.persist(fixture.resolutions)).toHaveLength(12)
+    expect((await fixture.persistence.persist(fixture.resolutions)).size).toBe(12)
 
     expect(clone).toHaveBeenCalledTimes(hosts.length * 2)
     for (const host of hosts) {
@@ -190,7 +190,7 @@ describe('legacy worker recovery persistence snapshot budget', () => {
       resolution.resolution = 'adopted'
     }
 
-    expect(await fixture.persistence.persist(fixture.resolutions)).toHaveLength(10)
+    expect((await fixture.persistence.persist(fixture.resolutions)).size).toBe(10)
 
     expect(fixture.setWorkspaceSession).not.toHaveBeenCalled()
     expect(fixture.flushPendingOrThrowAsync).toHaveBeenCalledTimes(1)
