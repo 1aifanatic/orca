@@ -53,7 +53,11 @@ export function applyWebSessionTabsSnapshotWithContext(
   if (rawSnapshot.chatViewHostOwned && rawSnapshot.chatViewAgentExitHostOwned) {
     for (const tab of rawSnapshot.tabs) {
       if (tab.type === 'terminal') {
-        noteHostPresentationToken(worktreeId, tab.parentTabId, tab.presentationToken, now)
+        noteHostPresentationToken(
+          { worktreeId, hostTabId: tab.parentTabId, leafId: tab.leafId },
+          tab.presentationToken,
+          now
+        )
       }
     }
   }

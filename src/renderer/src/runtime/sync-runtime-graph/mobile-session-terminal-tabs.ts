@@ -139,7 +139,11 @@ export function buildMobileTerminalSurfaceTabs(
         : {}),
       parentLayout: publishedParentLayout,
       ...(chatPair.viewMode ? { viewMode: chatPair.viewMode } : {}),
-      presentationToken: readTerminalPresentationToken(terminal.id),
+      // Why the store's binding, not the live capture: the host checks the token against it.
+      presentationToken: readTerminalPresentationToken(
+        terminal.id,
+        savedPtyIdsByLeafId[leafId] ?? (leafIds.length <= 1 ? terminal.ptyId : undefined)
+      ),
       isActive: isDesktopTabActive && leafId === activeLeafId
     }
   })

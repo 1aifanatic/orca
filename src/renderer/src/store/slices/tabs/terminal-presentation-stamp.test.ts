@@ -1,84 +1,36 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createStore } from 'zustand/vanilla'
-import type { AppState } from '../../types'
 import {
-  installTerminalPresentationStampTracking,
   noteTerminalPresentationIntent,
-  noteTerminalPresentationLaunch,
+  readTerminalPresentationIntentRevision,
   readTerminalPresentationStamp,
   readTerminalPresentationToken,
   resetTerminalPresentationStampsForTest
 } from './terminal-presentation-stamp'
-
-const WT = 'wt'
-
-type Slice = Pick<AppState, 'tabsByWorktree' | 'unifiedTabsByWorktree' | 'terminalLayoutsByTabId'>
-
-/** Minimal rows: the tracker reads only ids, view, owner, hint and bindings. */
-function asSlice(value: unknown): Partial<Slice> {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test rows carry every field the tracker reads.
-  return value as Partial<Slice>
-}
-
-function makeStore() {
-  const store = createStore<Slice>(() => ({
-    tabsByWorktree: {},
-    unifiedTabsByWorktree: {},
-    terminalLayoutsByTabId: {}
-  }))
-  installTerminalPresentationStampTracking(store)
-  const put = (patch: Partial<Slice>): void => store.setState(patch)
-  const row = (launchAgent?: 'claude' | 'codex') => ({
-    tabsByWorktree: {
-      [WT]: [{ id: 't1', ptyId: 'p1', ...(launchAgent ? { launchAgent } : {}) }]
-    }
-  })
-  return { store, put, row }
-}
 
 afterEach(() => {
   resetTerminalPresentationStampsForTest()
   vi.useRealTimers()
 })
 
-describe('terminal presentation stamp', () => {
-  it('advances on every presentation change and keeps its token stable otherwise', () => {
-    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
-    const { put, row } = makeStore()
-    put(asSlice(row('codex')))
-    const first = readTerminalPresentationToken('t1')
-    put(
-      asSlice({
-        tabsByWorktree: { [WT]: [{ id: 't1', ptyId: 'p1', launchAgent: 'codex', title: 'x' }] }
-      })
-    )
-    expect(readTerminalPresentationToken('t1')).toBe(first)
-    vi.setSystemTime(2_000)
-    put(
-      asSlice({
-        unifiedTabsByWorktree: {
-          [WT]: [{ id: 'u1', entityId: 't1', contentType: 'terminal', viewMode: 'chat' }]
-        }
-      })
-    )
-    expect(readTerminalPresentationToken('t1')).not.toBe(first)
-    expect(readTerminalPresentationStamp('t1').changedAtMs).toBe(2_000)
-  })
-
-  it('orders a same-value intent after earlier exits', () => {
-    makeStore()
-    const before = readTerminalPresentationStamp('t1').revision
+describe('terminal presentation intents', () => {
+  it('advances only on an intent, same value included, and orders it by its wall clock', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 2_000 })
+    const first = readTerminalPresentationToken('t1', 'p1')
+    expect(readTerminalPresentationToken('t1', 'p1')).toBe(first)
+    const globalBefore = readTerminalPresentationIntentRevision()
     noteTerminalPresentationIntent('t1')
-    expect(readTerminalPresentationStamp('t1').revision).toBe(before + 1)
-    expect(readTerminalPresentationStamp('t1').launchRevision).toBe(0)
+    expect(readTerminalPresentationToken('t1', 'p1')).not.toBe(first)
+    expect(readTerminalPresentationStamp('t1')).toEqual({ revision: 1, changedAtMs: 2_000 })
+    expect(readTerminalPresentationIntentRevision()).toBe(globalBefore + 1)
+    // Another tab's intent leaves this one's token alone.
+    const settled = readTerminalPresentationToken('t1', 'p1')
+    noteTerminalPresentationIntent('t2')
+    expect(readTerminalPresentationToken('t1', 'p1')).toBe(settled)
   })
 
-  it('advances the launch revision when the hint changes or a relaunch is noted', () => {
-    const { put, row } = makeStore()
-    put(asSlice(row('claude')))
-    put(asSlice(row()))
-    expect(readTerminalPresentationStamp('t1').launchRevision).toBe(1)
-    noteTerminalPresentationLaunch('t1')
-    expect(readTerminalPresentationStamp('t1').launchRevision).toBe(2)
+  it("scopes the token to the pane's binding: a rebind changes it, a sibling's does not", () => {
+    const paneA = readTerminalPresentationToken('t1', 'p-agent')
+    expect(readTerminalPresentationToken('t1', 'p-agent')).toBe(paneA)
+    expect(readTerminalPresentationToken('t1', 'p-agent-respawned')).not.toBe(paneA)
   })
 })

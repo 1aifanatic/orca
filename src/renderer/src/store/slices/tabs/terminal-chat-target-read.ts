@@ -40,7 +40,7 @@ export function readNativeChatTargetFromStore(
         leafId: boundLeaf
       })
       return allowed
-        ? { kind: 'chat-target', presentationToken: readTerminalPresentationToken(row.id) }
+        ? { kind: 'chat-target', presentationToken: readTerminalPresentationToken(row.id, ptyId) }
         : { kind: 'not-chat-target' }
     }
   }

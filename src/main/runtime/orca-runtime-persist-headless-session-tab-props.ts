@@ -42,13 +42,6 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     }
     const nextSession = buildHeadlessSessionTabPropsPatch(session, worktreeId, tabId, props)
     if (nextSession) {
-      if (
-        props.viewMode !== undefined ||
-        props.chatLeafId !== undefined ||
-        props.launchAgent !== undefined
-      ) {
-        this.headlessPresentationStamps.bump(worktreeId, tabId)
-      }
       this.setWorkspaceSessionForWorktree(worktreeId, nextSession)
     }
   }
@@ -89,7 +82,9 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     parentTabId: string,
     leafId: string | null,
     viewMode: 'terminal' | 'chat',
-    props: Pick<HeadlessSessionTabProps, 'color' | 'isPinned' | 'launchAgent'>
+    props: Pick<HeadlessSessionTabProps, 'color' | 'isPinned' | 'launchAgent'>,
+    /** A client's switch: when accepted, even to the shown value, it orders after older exits. */
+    options: { intent?: boolean } = {}
   ): void {
     const state = readHeadlessChatPairState(
       this.getWorkspaceSessionForWorktree(worktreeId),
@@ -108,6 +103,12 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
       leafId: state.hasLayout ? leafId : null,
       ...(state.hasLayout ? { pickOwner: () => this.pickChatOwnerLeafForLayout(state.layout) } : {})
     })
+    const intentAccepted =
+      options.intent === true && (next?.viewMode ?? state.pair.viewMode ?? 'terminal') === viewMode
+    if (intentAccepted) {
+      // Why before publishing: the snapshot below must carry the new token.
+      this.headlessPresentationStamps.bump(worktreeId, parentTabId)
+    }
     if (!next) {
       if (
         props.color !== undefined ||
@@ -116,6 +117,9 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
       ) {
         this.persistHeadlessSessionTabProps(worktreeId, parentTabId, props)
         this.applyHeadlessSessionTabPropsToSnapshot(worktreeId, parentTabId, props)
+      } else if (intentAccepted) {
+        // Why: a same-value switch publishes nothing, yet paired clients need its new token.
+        this.touchMobileSessionTabsForWorktree(worktreeId)
       }
       return
     }
@@ -247,7 +251,6 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
         }
       }
     }
-    this.headlessPresentationStamps.bump(worktreeId, args.tabId)
     this.setWorkspaceSessionForWorktree(worktreeId, candidate)
     // Why: persistence may reject stale membership while accepting its metadata; publish only that rebased layout.
     return (

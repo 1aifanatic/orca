@@ -87,6 +87,8 @@ export function createTabsLabelActions(
       }
       // Why every accepted write: a client's switch, even to the shown value, orders after older exits.
       noteTerminalPresentationIntent(terminalTabId)
+      // Why: a same-value switch changes no state, yet its new token must reach paired clients.
+      scheduleRuntimeGraphSync()
       const toggle: { committed: { from: 'terminal' | 'chat'; to: 'terminal' | 'chat' } | null } = {
         committed: null
       }

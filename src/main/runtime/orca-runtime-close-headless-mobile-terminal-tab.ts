@@ -313,12 +313,17 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
         return refused
       }
     }
-    // Why even when nothing changes: a client's switch orders after any older exit observation.
-    this.headlessPresentationStamps.bump(worktreeId, target.parentTabId)
-    this.applyHeadlessChatPairWrite(worktreeId, target.parentTabId, target.leafId, args.viewMode, {
-      ...(args.color !== undefined ? { color: args.color } : {}),
-      ...(args.isPinned !== undefined ? { isPinned: args.isPinned } : {})
-    })
+    this.applyHeadlessChatPairWrite(
+      worktreeId,
+      target.parentTabId,
+      target.leafId,
+      args.viewMode,
+      {
+        ...(args.color !== undefined ? { color: args.color } : {}),
+        ...(args.isPinned !== undefined ? { isPinned: args.isPinned } : {})
+      },
+      { intent: true }
+    )
     if (args.chatViewWrite) {
       const { writerId, seq } = args.chatViewWrite
       this.chatViewWriteFence.confirm(worktreeId, target.parentTabId, writerId, seq)

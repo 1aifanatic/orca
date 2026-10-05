@@ -55,7 +55,6 @@ import {
 } from '@/lib/http-link-routing'
 import { installStoreListenerCensus } from './store-listener-census'
 import { installSettledSortEpoch } from './settled-sort-epoch'
-import { installTerminalPresentationStampTracking } from './slices/tabs/terminal-presentation-stamp'
 import { withReactCommitCascadeWriteProbe } from './react-commit-cascade-write-probe'
 import { withStoreIdentityChurnProbe } from './store-identity-churn-probe'
 import {
@@ -79,7 +78,6 @@ export const useAppStore = create<AppState>()(
       installSettledSortEpoch(a[2])
       // Why: the inner api is only reachable here, before create() copies subscribe onto the hook.
       installStoreListenerCensus(a[2])
-      installTerminalPresentationStampTracking(a[2])
       return {
         ...createRepoSlice(...a),
         ...createSparsePresetsSlice(...a),

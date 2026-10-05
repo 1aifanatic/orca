@@ -6,7 +6,7 @@ import {
 import { useAppStore } from '../../store'
 import type * as AuthorityModule from '../../store/slices/tabs/terminal-chat-pair-authority'
 import { registerTerminalUiRoutingIpcBridge } from './terminal-ui-routing-ipc-bridge'
-import { installTerminalPresentationStampTracking } from '../../store/slices/tabs/terminal-presentation-stamp'
+import { resetTerminalPresentationStampsForTest } from '../../store/slices/tabs/terminal-presentation-stamp'
 import type {
   NativeChatTargetReadRequest,
   NativeChatTargetReadResponse
@@ -33,13 +33,13 @@ vi.mock('../../store', async () => {
 const WT = 'repo1::/tmp/local'
 const A = '11111111-1111-4111-8111-111111111111'
 const B = '22222222-2222-4222-8222-222222222222'
+const C = '33333333-3333-4333-8333-333333333333'
 
 describe('renderer side of the desktop chat-view relay', () => {
   let onRequest: ((request: TerminalChatViewRequest) => void) | null
   let onTargetRead: ((request: NativeChatTargetReadRequest) => void) | null = null
   const respond = vi.fn()
   const respondTargetRead = vi.fn<(response: NativeChatTargetReadResponse) => void>()
-  installTerminalPresentationStampTracking(useAppStore)
 
   beforeEach(() => {
     onRequest = null
@@ -284,6 +284,101 @@ describe('renderer side of the desktop chat-view relay', () => {
       const row = useAppStore.getState().tabsByWorktree[WT]?.find((t) => t.id === tab.id)
       expect(row?.launchAgent).toBeUndefined()
       expect(respond.mock.calls.at(-1)?.[0]?.chatView?.viewMode).toBeNull()
+      expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('applied')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("is not superseded by the exit's own hint clear (R2-1)", () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tab = useAppStore
+        .getState()
+        .createTab(WT, undefined, undefined, { launchAgent: 'claude' })
+      useAppStore.getState().setTabLayout(tab.id, {
+        root: { type: 'leaf', leafId: A },
+        activeLeafId: A,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [A]: 'pty-a' }
+      })
+      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
+      // Seen at 5 s; the tab bar's useTabAgent clears the hint from the same evidence first.
+      vi.setSystemTime(5_020)
+      useAppStore.getState().clearTabLaunchAgent(tab.id)
+      vi.setSystemTime(5_080)
+      exit(tab.id, 'r-own-hint', 5_000)
+      expect(respond.mock.calls.at(-1)?.[0]).toMatchObject({
+        requestId: 'r-own-hint',
+        chatView: { viewMode: 'terminal' },
+        agentExitDisposition: 'applied'
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('applies a retry after a renderer reload hydrated the tab again (R2-2)', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tab = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(tab.id, split({ [A]: 'pty-a', [B]: 'pty-b' }))
+      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
+      // Exit seen at 2 s; the reload at 3 s starts with no intents and hydrates the same rows.
+      vi.setSystemTime(3_000)
+      resetTerminalPresentationStampsForTest()
+      useAppStore.setState((state) => ({
+        tabsByWorktree: { ...state.tabsByWorktree, [WT]: [...(state.tabsByWorktree[WT] ?? [])] },
+        terminalLayoutsByTabId: { ...state.terminalLayoutsByTabId }
+      }))
+      vi.setSystemTime(3_500)
+      exit(tab.id, 'r-reload', 2_000)
+      expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('applied')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps a pane's token and its exit through a sibling's rebind or split (R2-9)", () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    try {
+      const tab = useAppStore.getState().createTab(WT, undefined, undefined, {})
+      useAppStore.getState().setTabLayout(tab.id, split({ [A]: 'pty-r29-a', [B]: 'pty-b' }))
+      useAppStore.getState().applyTerminalChatPair(tab.id, A, 'chat')
+      const tokenOfA = (): string | undefined => {
+        onTargetRead!({ requestId: 'read-a', ptyId: 'pty-r29-a' })
+        const read = respondTargetRead.mock.calls.at(-1)?.[0]?.read
+        return read?.kind === 'chat-target' ? read.presentationToken : undefined
+      }
+      const admitted = tokenOfA()
+      expect(admitted).toBeDefined()
+      // Exit of A seen at 2 s; sibling B respawns, then B is split, before the retirement lands.
+      vi.setSystemTime(2_500)
+      useAppStore.getState().setTabLayout(tab.id, split({ [A]: 'pty-r29-a', [B]: 'pty-b2' }))
+      expect(tokenOfA()).toBe(admitted)
+      useAppStore.getState().setTabLayout(tab.id, {
+        ...split({ [A]: 'pty-r29-a', [B]: 'pty-b2' }),
+        root: {
+          type: 'split',
+          direction: 'vertical',
+          first: { type: 'leaf', leafId: A },
+          second: {
+            type: 'split',
+            direction: 'horizontal',
+            first: { type: 'leaf', leafId: B },
+            second: { type: 'leaf', leafId: C }
+          }
+        }
+      })
+      expect(tokenOfA()).toBe(admitted)
+      onRequest!({
+        requestId: 'r-sibling',
+        worktreeId: WT,
+        tabId: tab.id,
+        leafId: A,
+        viewMode: 'terminal',
+        agentExit: { ptyId: 'pty-r29-a', observedAtMs: 2_000 }
+      })
       expect(respond.mock.calls.at(-1)?.[0]?.agentExitDisposition).toBe('applied')
     } finally {
       vi.useRealTimers()

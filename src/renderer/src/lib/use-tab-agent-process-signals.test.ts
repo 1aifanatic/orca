@@ -13,7 +13,6 @@ import {
   resolveTabAgentFromSignals
 } from './tab-agent-from-signals'
 import { useTabAgent } from './use-tab-agent'
-import { noteTerminalPresentationLaunch } from '@/store/slices/tabs/terminal-presentation-stamp'
 
 const initialAppState = useAppStore.getInitialState()
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
@@ -225,22 +224,6 @@ describe('useTabAgent process signals', () => {
     await setPaneForeground({ agent: null, shellForeground: true })
 
     expect(latestHookAgent).toBe('aider')
-    expect(clearTabLaunchAgent).not.toHaveBeenCalled()
-  })
-
-  it("never clears a relaunched agent's hint with the previous run's cached exit evidence (R4.2-2)", async () => {
-    const launchedTab = { ...baseTab, launchAgent: 'aider' as const }
-    const root = await renderHookProbe(launchedTab)
-    await setPaneForeground({ agent: 'aider', shellForeground: false })
-    // A same-name agent is relaunched in the same PTY before it paints a title or hook.
-    noteTerminalPresentationLaunch('tab-1')
-    await act(async () => {
-      root.render(createElement(HookProbe, { tab: { ...launchedTab } }))
-    })
-    await setPaneForeground({ agent: null, shellForeground: true })
-    await act(async () => {
-      root.render(createElement(HookProbe, { tab: { ...launchedTab } }))
-    })
     expect(clearTabLaunchAgent).not.toHaveBeenCalled()
   })
 

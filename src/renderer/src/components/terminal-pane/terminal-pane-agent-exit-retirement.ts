@@ -45,8 +45,7 @@ export function retirePaneChatForObservedAgentExit(args: {
       })
       // Why: without the token held when the exit was seen, the host could not order it.
       const presentationToken = readHostPresentationTokenAt(
-        args.worktreeId,
-        hostTabId,
+        { worktreeId: args.worktreeId, hostTabId, leafId: args.leafId },
         observedAtMs
       )
       if (!presentationToken) {

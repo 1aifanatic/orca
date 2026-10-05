@@ -278,8 +278,8 @@ describe('a paired desktop pane on a host-owned pair', () => {
     const { onAgentExitedRef } = renderPane()
     await settle()
     // The exit is seen under h.1; the user's switch back to chat(A) publishes h.2 before it drains.
-    noteHostPresentationToken(WT, PARENT, 'h.1', 1_000)
-    noteHostPresentationToken(WT, PARENT, 'h.2', 3_000)
+    noteHostPresentationToken({ worktreeId: WT, hostTabId: PARENT, leafId: A }, 'h.1', 1_000)
+    noteHostPresentationToken({ worktreeId: WT, hostTabId: PARENT, leafId: A }, 'h.2', 3_000)
     act(() => onAgentExitedRef.current(A, { ptyId: null, observedAtMs: 2_000 }))
     await settle()
     expect(host.pairWrites().map((write) => write.params.agentExit)).toEqual([

@@ -20,9 +20,9 @@ type ExitRetirementPatch = Partial<ExitRetirementState>
 
 /**
  * A pane's agent exit, decided and patched in one store turn: the pane's chat turns terminal and
- * a sole pane's launch hint is cleared, never moving chat to another pane. Anything that reordered
- * the presentation after the exit was observed (a user switch even back to the same pane, a
- * rebind, a relaunch) supersedes it; an unknown tab or pane is `missing`.
+ * a sole pane's launch hint is cleared, never moving chat to another pane. Only an intent after
+ * the exit was observed (a user/client switch even back to the same pane, a relaunch) or a rebind
+ * of this pane supersedes it; an unknown tab or pane is `missing`.
  */
 export function resolveAgentExitRetirement(
   state: ExitRetirementState,
@@ -49,7 +49,7 @@ export function resolveAgentExitRetirement(
   if (
     (condition.observedAtMs !== undefined && stamp.changedAtMs >= condition.observedAtMs) ||
     (condition.presentationToken !== undefined &&
-      condition.presentationToken !== readTerminalPresentationToken(terminalTabId))
+      condition.presentationToken !== readTerminalPresentationToken(terminalTabId, boundPtyId))
   ) {
     return { disposition: 'superseded' }
   }

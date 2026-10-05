@@ -39,7 +39,13 @@ export class OrcaRuntimeWithAgentExitChatView extends OrcaRuntimeWithAgentExitPr
       parentTabId,
       condition,
       stamp: this.headlessPresentationStamps.read(worktreeId, parentTabId),
-      token: this.headlessPresentationStamps.token(worktreeId, parentTabId)
+      // Why the published row's PTY: a client's token was minted from that same row.
+      tokenFor: () =>
+        this.headlessPresentationStamps.token(
+          worktreeId,
+          parentTabId,
+          this.readPublishedPaneBinding(worktreeId, parentTabId, condition.leafId)
+        )
     })
     if (resolved.props) {
       this.persistHeadlessSessionTabProps(worktreeId, parentTabId, resolved.props)
@@ -124,11 +130,28 @@ export class OrcaRuntimeWithAgentExitChatView extends OrcaRuntimeWithAgentExitPr
         tab.type === 'terminal'
           ? {
               ...tab,
-              presentationToken: this.headlessPresentationStamps.token(worktreeId, tab.parentTabId)
+              presentationToken: this.headlessPresentationStamps.token(
+                worktreeId,
+                tab.parentTabId,
+                tab.ptyId
+              )
             }
           : tab
       )
     }
+  }
+
+  private readPublishedPaneBinding(
+    worktreeId: string,
+    parentTabId: string,
+    leafId: string
+  ): string | null | undefined {
+    const row = this.mobileSessionTabsByWorktree
+      .get(worktreeId)
+      ?.tabs.find(
+        (tab) => tab.type === 'terminal' && tab.parentTabId === parentTabId && tab.leafId === leafId
+      )
+    return row?.type === 'terminal' ? row.ptyId : undefined
   }
 
   protected isAgentExitChatCandidate(ptyId: string): boolean {

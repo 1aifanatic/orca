@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { A, B, PTY, WT, flush, makeAgentExitHost } from './agent-exit-host.test-fixture'
+import { makeHeadlessTerminalLayout } from './orca-runtime-test-fixtures.spec'
 
 const CLAUDE = { pid: 4242, platform: 'darwin' as const, startTime: 'utc:claude-start' }
 
@@ -207,5 +208,77 @@ describe('F2: composer admission follows the committed presentation (headless)',
       accepted: false,
       bytesWritten: 0
     })
+  })
+})
+
+describe('R2: only an intent, a launch or this pane rebinding orders after an exit (headless)', () => {
+  const layoutPush = (host: ReturnType<typeof makeAgentExitHost>, title: string) =>
+    host.runtime.updateMobileSessionPaneLayout(`id:${WT}`, {
+      tabId: 'host-tab',
+      root: makeHeadlessTerminalLayout({ [A]: PTY[A], [B]: PTY[B] }).root,
+      expandedLeafId: null,
+      titlesByLeafId: { [A]: title, [B]: 'zsh' }
+    })
+
+  it('retires after a title-only layout push between the end hook and the confirming look (R2-1)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 2, chatLeafId: A })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    // SessionEnd lands before the process leaves the pane: the end is reopened, not proven.
+    vi.setSystemTime(2_000)
+    host.foreground.set(PTY[A]!, { name: 'claude', pid: CLAUDE.pid, startTime: 'raw' })
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
+    await flush()
+    vi.setSystemTime(3_000)
+    await layoutPush(host, 'zsh')
+    host.foreground.set(PTY[A]!, null)
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await vi.waitFor(() =>
+      expect(host.hostPair()).toEqual({ viewMode: 'terminal', owner: undefined })
+    )
+  })
+
+  it("keeps an in-flight composer action through a layout push or a sibling's change (R2-9)", async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 2, chatLeafId: A })
+    await host.published()
+    await expect(host.chatSend(A, 'action-1', 'hello')).resolves.toMatchObject({ accepted: true })
+    vi.setSystemTime(2_000)
+    await layoutPush(host, 'claude working')
+    // The same action's next step (its Enter after a paste delay) still lands on the live agent.
+    await expect(host.chatSend(A, 'action-1', '')).resolves.toMatchObject({ accepted: true })
+  })
+
+  it("republishes a client's same-value switch so paired clients fence with its token", async () => {
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    const stored = () => {
+      const tab = host.runtime['mobileSessionTabsByWorktree'].get(WT)?.tabs[0]
+      return tab?.type === 'terminal' ? tab.presentationToken : undefined
+    }
+    const before = stored()
+    await host.runtime.setMobileSessionTabProps(`id:${WT}`, { tabId: 'host-tab', viewMode: 'chat' })
+    const after = stored()
+    expect(before).toBeDefined()
+    expect(after).not.toBe(before)
+  })
+
+  it('still lets a client switch back to chat after the exit win over it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: 1_000 })
+    const host = makeAgentExitHost({ viewMode: 'chat', leaves: 1 })
+    await host.published()
+    host.owner(A, { agent: 'claude', process: CLAUDE })
+    vi.setSystemTime(2_000)
+    host.foreground.set(PTY[A]!, { name: 'claude', pid: CLAUDE.pid, startTime: 'raw' })
+    host.owner(A, { agent: 'claude', process: CLAUDE, ended: true })
+    await flush()
+    vi.setSystemTime(3_000)
+    await host.runtime.setMobileSessionTabProps(`id:${WT}`, { tabId: 'host-tab', viewMode: 'chat' })
+    host.foreground.set(PTY[A]!, null)
+    host.runtime['confirmPtyAgentExit'](PTY[A]!)
+    await flush()
+    await flush()
+    expect(host.hostPair().viewMode).toBe('chat')
   })
 })

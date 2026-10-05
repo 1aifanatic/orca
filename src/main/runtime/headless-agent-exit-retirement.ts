@@ -11,7 +11,7 @@ import { readHeadlessChatPairState } from './session-tab-chat-pair'
 /**
  * What a headless host's agent-exit retirement may write, decided on persistence only (never a
  * published row): the pane's chat turns terminal and a sole pane's hint clears, unless the pane
- * was rebound or the tab's presentation changed after the exit was observed.
+ * was rebound or a client switched the tab after the exit was observed.
  */
 export function resolveHeadlessAgentExitRetirement(args: {
   session: WorkspaceSessionState | null | undefined
@@ -19,7 +19,8 @@ export function resolveHeadlessAgentExitRetirement(args: {
   parentTabId: string
   condition: AgentExitRetirementCondition
   stamp: { changedAtMs: number }
-  token: string
+  /** This pane's current presentation token. */
+  tokenFor: () => string
 }): { disposition: AgentExitRetirementDisposition; props?: HeadlessSessionTabProps } {
   const { session, worktreeId, parentTabId, condition } = args
   const row = session?.tabsByWorktree[worktreeId]?.find((tab) => tab.id === parentTabId)
@@ -37,7 +38,7 @@ export function resolveHeadlessAgentExitRetirement(args: {
   if (
     (condition.ptyId && boundPtyId && boundPtyId !== condition.ptyId) ||
     (condition.observedAtMs !== undefined && args.stamp.changedAtMs >= condition.observedAtMs) ||
-    (condition.presentationToken !== undefined && condition.presentationToken !== args.token)
+    (condition.presentationToken !== undefined && condition.presentationToken !== args.tokenFor())
   ) {
     return { disposition: 'superseded' }
   }

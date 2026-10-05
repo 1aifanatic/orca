@@ -18,8 +18,8 @@ export type TerminalSideEffectFact =
   | { kind: 'bell' }
   | { kind: 'agent-working' }
   | { kind: 'agent-idle'; title: string; staleWorkingTitleClear?: boolean }
-  /** `observedAtMs`: when the exit was first seen, before its confirmation; a presentation
-   *  change at or after it supersedes the exit (same machine clock as the renderer). */
+  /** `observedAtMs`: when the exit was first seen, before its confirmation; an intent at or after
+   *  it supersedes the exit (this machine's clock; a paired client restamps it on receipt). */
   | { kind: 'agent-exited'; observedAtMs?: number }
   /** OSC 133;D — foreground shell command exited (exit code best-effort). */
   | { kind: 'command-finished'; exitCode: number | null }
@@ -59,4 +59,17 @@ export type TerminalSideEffectBatch = {
   tabId?: string
   paneKey?: string
   connectionId?: string | null
+}
+
+/**
+ * Facts from another host as this client received them: an exit's `observedAtMs` is replaced by
+ * the receipt time, since the host's clock does not order against this client's token sightings.
+ */
+export function withAgentExitReceiptTime(
+  facts: readonly TerminalSideEffectFact[],
+  receivedAtMs: number
+): TerminalSideEffectFact[] {
+  return facts.map((fact) =>
+    fact.kind === 'agent-exited' ? { ...fact, observedAtMs: receivedAtMs } : fact
+  )
 }

@@ -46,7 +46,7 @@ export class OrcaRuntimeWithNativeChatInput extends OrcaRuntimeWithAgentExitChat
           this.getWorkspaceSessionForWorktree(worktreeId),
           worktreeId,
           ptyId,
-          (tabId) => this.headlessPresentationStamps.token(worktreeId, tabId)
+          (tabId) => this.headlessPresentationStamps.token(worktreeId, tabId, ptyId)
         )
       : { kind: 'unknown-target' }
   }
