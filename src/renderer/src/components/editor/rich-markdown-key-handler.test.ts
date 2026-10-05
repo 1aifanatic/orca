@@ -659,6 +659,38 @@ describe('heading Enter guards and transactions', () => {
     }
   )
 
+  it('keeps the prefix formatting for typing at an inline mark boundary', () => {
+    const editor = createEditor({
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [
+            { type: 'text', text: 'Section', marks: [{ type: 'bold' }] },
+            { type: 'text', text: 'Two' }
+          ]
+        }
+      ]
+    })
+    try {
+      editor.commands.setTextSelection(8)
+      expect(
+        createRichMarkdownKeyHandler(createContext(editor, false))(null, keyEvent('Enter'))
+      ).toBe(true)
+      editor.view.dispatch(editor.state.tr.insertText('New'))
+      expect(editor.getJSON().content?.[1]).toEqual({
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'New', marks: [{ type: 'bold' }] },
+          { type: 'text', text: 'Two' }
+        ]
+      })
+    } finally {
+      editor.destroy()
+    }
+  })
+
   it('restores the heading and split with one undo and redo', () => {
     const editor = headingEditor()
     try {
@@ -679,6 +711,30 @@ describe('heading Enter guards and transactions', () => {
       editor.destroy()
     }
   })
+
+  it.each(['bold', 'italic', 'code', 'link'])(
+    'keeps the default %s mark policy for text typed after Enter',
+    (type) => {
+      const editor = headingEditor()
+      try {
+        editor.commands.setTextSelection(9)
+        editor.commands.setMark(type, type === 'link' ? { href: 'https://example.com' } : undefined)
+        expect(editor.state.storedMarks?.map((mark) => mark.type.name)).toContain(type)
+        expect(
+          createRichMarkdownKeyHandler(createContext(editor, false))(null, keyEvent('Enter'))
+        ).toBe(true)
+        editor.view.dispatch(editor.state.tr.insertText('New'))
+        const text = editor.getJSON().content?.[1].content?.[0]
+        if (!text || !('text' in text)) {
+          throw new Error('Missing text inserted after Enter')
+        }
+        expect(text.text).toBe(type === 'link' ? 'NewTwo' : 'New')
+        expect(text?.marks?.map((mark) => mark.type)).toEqual(type === 'link' ? undefined : [type])
+      } finally {
+        editor.destroy()
+      }
+    }
+  )
 
   it.each(['slash', 'document'] as const)(
     'lets the %s menu commit without splitting the heading',

@@ -22,7 +22,17 @@ export function exitHeadingOnEnter(editor: Editor, event: KeyboardEvent): boolea
   if (!paragraph) {
     return false
   }
-  return editor.commands.command(({ state, dispatch }) =>
-    splitBlockAs(() => ({ type: paragraph }))(state, dispatch)
-  )
+  return editor.commands.command(({ state, dispatch }) => {
+    const marks = state.storedMarks ?? selection.$from.marks()
+    return splitBlockAs(() => ({ type: paragraph }))(
+      state,
+      dispatch &&
+        ((tr) => {
+          tr.ensureMarks(
+            marks.filter((mark) => editor.extensionManager.splittableMarks.includes(mark.type.name))
+          )
+          dispatch(tr)
+        })
+    )
+  })
 }
