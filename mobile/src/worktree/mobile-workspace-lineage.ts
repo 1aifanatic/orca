@@ -26,7 +26,6 @@ function hasValidLineageParent(worktree: Worktree, parent: Worktree): boolean {
 export function getMobileWorkspaceLineageChildren(
   worktrees: readonly Worktree[]
 ): Map<string, Worktree[]> {
-  const visibleIds = new Set(worktrees.map((worktree) => getWorktreeRowIdentity(worktree)))
   const worktreeById = new Map(
     worktrees.map((worktree) => [getWorktreeRowIdentity(worktree), worktree])
   )
@@ -42,7 +41,6 @@ export function getMobileWorkspaceLineageChildren(
     if (
       !parentIdentity ||
       parentIdentity === worktreeId ||
-      !visibleIds.has(parentIdentity) ||
       !parent ||
       !hasValidLineageParent(worktree, parent)
     ) {

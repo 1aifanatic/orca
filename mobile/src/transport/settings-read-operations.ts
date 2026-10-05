@@ -1,6 +1,5 @@
 import { bindDeferredRpcOperation, defineRpcOperation } from './rpc-operation'
 import type { RpcCompatibleReader } from './rpc-operation-contract'
-import type { PinnedDisplayPolicy } from '../worktree/workspace-list-types'
 
 function settingsMember(raw: unknown): unknown {
   const boxed: { readonly settings?: unknown } | null | undefined = raw == null ? raw : Object(raw)
@@ -113,30 +112,28 @@ export const terminalCopyTrimsGutterRead = bindDeferredRpcOperation(
   })
 )
 
-const pinnedDisplayPolicyReader: RpcCompatibleReader<
-  unknown,
-  'pinned-display-policy',
-  PinnedDisplayPolicy
-> = (raw) => {
+const showPinnedInGroupsReader: RpcCompatibleReader<unknown, 'show-pinned-in-groups', boolean> = (
+  raw
+) => {
   const settings = raw == null ? undefined : settingsMember(raw)
-  const showInGroups: unknown =
+  const show: unknown =
     settings == null ? undefined : settingsField(settings, 'showPinnedWorktreesInGroups')
   return {
     compatible: true,
-    variant: 'pinned-display-policy',
-    // Why `=== true`: absence (an older host) reads as the desktop default, single-location.
-    value: showInGroups === true ? 'duplicate-in-groups' : 'single-location',
+    variant: 'show-pinned-in-groups',
+    // Why `=== true`: a host predating the setting sends no key; desktop's default is off.
+    value: show === true,
     salvage: { droppedPaths: [], droppedCount: 0 }
   }
 }
 
-export const pinnedDisplayPolicyRead = bindDeferredRpcOperation(
+export const showPinnedWorktreesInGroupsRead = bindDeferredRpcOperation(
   defineRpcOperation({
-    name: 'settings.pinned-display-policy-or-skip',
+    name: 'settings.show-pinned-worktrees-in-groups-or-skip',
     method: 'settings.get',
     acceptance: 'success-result-or-skip',
     barrier: 'after-caller-barrier',
-    read: pinnedDisplayPolicyReader
+    read: showPinnedInGroupsReader
   })
 )
 

@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { PinnedDisplayPolicy, Worktree } from './workspace-list-sections'
+import type { Worktree } from './workspace-list-sections'
 import {
   CREATE_GRACE_MS,
   buildSections,
@@ -700,7 +700,7 @@ describe('buildSections', () => {
       })
       const localPinned = worktree({ worktreeId: 'local-pinned', workspaceStatus: 'in-progress' })
 
-      function placement(policy: PinnedDisplayPolicy) {
+      function placement(showPinnedInGroups: boolean) {
         const sections = buildSections(
           [sibling, hostPinned, localPinned],
           'name',
@@ -711,7 +711,7 @@ describe('buildSections', () => {
           new Map(),
           DEFAULT_MOBILE_WORKSPACE_STATUSES,
           new Set(),
-          policy
+          showPinnedInGroups
         )
         const ids = (keep: (key: string) => boolean) =>
           sections
@@ -721,15 +721,15 @@ describe('buildSections', () => {
         return { pinned: ids((key) => key === 'pinned'), groups: ids((key) => key !== 'pinned') }
       }
 
-      it('shows host and local pins only in Pinned under single-location', () => {
-        expect(placement('single-location')).toEqual({
+      it('shows host and local pins only in Pinned by default', () => {
+        expect(placement(false)).toEqual({
           pinned: ['host-pinned', 'local-pinned'],
           groups: ['sibling']
         })
       })
 
-      it('also keeps them in their groups under duplicate-in-groups', () => {
-        expect(placement('duplicate-in-groups')).toEqual({
+      it('also keeps them in their groups when the desktop setting is on', () => {
+        expect(placement(true)).toEqual({
           pinned: ['host-pinned', 'local-pinned'],
           groups: ['host-pinned', 'local-pinned', 'sibling']
         })
@@ -737,7 +737,7 @@ describe('buildSections', () => {
     }
   )
 
-  it('drops a repo group whose only worktree is pinned under single-location, like desktop', () => {
+  it('drops a repo group whose only worktree is pinned, like desktop', () => {
     const pinned = worktree({ worktreeId: 'pinned', isPinned: true })
 
     const sections = buildSections(
@@ -747,10 +747,7 @@ describe('buildSections', () => {
       '',
       'repo',
       new Set(),
-      new Map([['orca', 'repo-1']]),
-      DEFAULT_MOBILE_WORKSPACE_STATUSES,
-      new Set(),
-      'single-location'
+      new Map([['orca', 'repo-1']])
     )
 
     expect(sections.map((section) => section.key)).toEqual(['pinned'])

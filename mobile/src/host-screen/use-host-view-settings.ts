@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
-import { pinnedDisplayPolicyRead } from '../transport/settings-read-operations'
 import type { ConnectionState } from '../transport/types'
 import { getMobileWorkspaceLineageGroupKey } from '../worktree/mobile-workspace-lineage'
 import { WORKSPACE_SORT_OPTIONS as SORT_OPTIONS } from '../worktree/workspace-list-picker-options'
@@ -19,9 +18,10 @@ import type { HostScreenState } from './use-host-screen-state'
 export function useHostViewSettings(args: {
   client: RpcClient | null
   connState: ConnectionState
+  hostId: string | undefined
   state: HostScreenState
 }) {
-  const { client, connState, state } = args
+  const { client, connState, hostId, state } = args
   const {
     clientRef,
     collapsedGroups,
@@ -30,7 +30,6 @@ export function useHostViewSettings(args: {
     setCollapsedGroups,
     setFilters,
     setGroupMode,
-    setPinnedDisplayPolicy,
     setSortMode,
     setWorkspaceStatuses,
     sortMode,
@@ -89,27 +88,15 @@ export function useHostViewSettings(args: {
   )
 
   // Merge the desktop's shared view settings (PersistedUIState) onto local state so desktop changes appear here.
-  // Pinned placement rides along from settings.get, unawaited so a slow read never holds the merge.
   const syncViewSettingsFromDesktop = useCallback(async () => {
     if (!client || connState !== 'connected') {
       return
     }
     const requestClient = client
-    const viewReply = hostViewSettingsRead.request(requestClient)
-    void pinnedDisplayPolicyRead
-      .request(requestClient)
-      .then((policyReply) => {
-        const policy = pinnedDisplayPolicyRead.interpret(policyReply)
-        if (clientRef.current === requestClient && policy.accepted) {
-          setPinnedDisplayPolicy(policy.value)
-        }
-      })
-      .catch(() => {
-        // Best-effort: placement keeps its current value until the next sync.
-      })
+    const requestHostId = hostId
     try {
-      const reply = await viewReply
-      if (clientRef.current !== requestClient) {
+      const reply = await hostViewSettingsRead.request(requestClient)
+      if (clientRef.current !== requestClient || hostId !== requestHostId) {
         return
       }
       const settings = hostViewSettingsRead.interpret(reply)
@@ -125,7 +112,7 @@ export function useHostViewSettings(args: {
     } catch {
       // Transient transport failure; retry on the next focus/connect.
     }
-  }, [client, connState, applyViewState])
+  }, [client, connState, hostId, applyViewState])
 
   const handleSortChange = useCallback(
     (value: MobileSortMode) => {

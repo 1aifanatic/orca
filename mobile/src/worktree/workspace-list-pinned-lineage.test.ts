@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { PinnedDisplayPolicy, Worktree } from './workspace-list-sections'
+import type { Worktree } from './workspace-list-sections'
 import { buildSections } from './workspace-list-sections'
 import { DEFAULT_MOBILE_WORKSPACE_STATUSES } from './mobile-workspace-statuses'
 
@@ -34,7 +34,7 @@ describe('a pinned parent with an unpinned child', () => {
     parentWorktreeId: 'parent'
   })
 
-  function nesting(policy: PinnedDisplayPolicy) {
+  function nesting(showPinnedInGroups: boolean) {
     const sections = buildSections(
       [child, parent],
       'name',
@@ -45,7 +45,7 @@ describe('a pinned parent with an unpinned child', () => {
       new Map(),
       DEFAULT_MOBILE_WORKSPACE_STATUSES,
       new Set(),
-      policy
+      showPinnedInGroups
     )
     return sections.map((section) => ({
       key: section.key,
@@ -58,12 +58,12 @@ describe('a pinned parent with an unpinned child', () => {
     ['child', 1]
   ]
 
-  it('moves the child into Pinned under its parent under single-location', () => {
-    expect(nesting('single-location')).toEqual([{ key: 'pinned', rows: nested }])
+  it('moves the child into Pinned under its parent by default', () => {
+    expect(nesting(false)).toEqual([{ key: 'pinned', rows: nested }])
   })
 
-  it('nests the child under its parent in both sections under duplicate-in-groups', () => {
-    expect(nesting('duplicate-in-groups')).toEqual([
+  it('nests the child under its parent in both sections when the desktop setting is on', () => {
+    expect(nesting(true)).toEqual([
       { key: 'pinned', rows: nested },
       { key: 'repo:orca', rows: nested }
     ])

@@ -20,6 +20,7 @@ import { useWorkspaceSections } from '../worktree/use-workspace-sections'
 import { useHostRepoMetadata } from './use-host-repo-metadata'
 import { useHostScreenIdentity } from './use-host-screen-identity'
 import { useHostScreenState } from './use-host-screen-state'
+import { useHostShowPinnedInGroups } from './use-host-show-pinned-in-groups'
 import { useHostViewSettings } from './use-host-view-settings'
 import { useHostWorktreeActions } from './use-host-worktree-actions'
 import { useHostWorktreeCatalog } from './use-host-worktree-catalog'
@@ -65,7 +66,12 @@ export function useHostScreenController({
   const now = useNow(30_000)
   const { hostCapabilities, floatingWorkspaceEnabled } = useHostProtocolGates()
   const state = useHostScreenState(hostId, action)
-  const settings = useHostViewSettings({ client, connState, state })
+  const settings = useHostViewSettings({ client, connState, hostId, state })
+  const pinnedPlacement = useHostShowPinnedInGroups({
+    client,
+    connState,
+    clientRef: state.clientRef
+  })
   const hostDisplay = useHostDisplay(
     hostId && state.hostName
       ? { id: hostId, name: state.hostName, ...state.hostStoredDescriptor }
@@ -81,7 +87,8 @@ export function useHostScreenController({
     fetchRepoMetadata,
     hostId,
     state,
-    syncViewSettingsFromDesktop: settings.syncViewSettingsFromDesktop
+    syncViewSettingsFromDesktop: settings.syncViewSettingsFromDesktop,
+    syncShowPinnedInGroups: pinnedPlacement.syncShowPinnedInGroups
   })
   const actions = useHostWorktreeActions({
     client,
@@ -131,7 +138,7 @@ export function useHostScreenController({
     search: state.search,
     groupMode: state.groupMode,
     pinnedIds: state.pinnedIds,
-    pinnedDisplayPolicy: state.pinnedDisplayPolicy,
+    showPinnedInGroups: pinnedPlacement.showPinnedInGroups,
     repoIdsByName: state.repoIdsByName,
     repoColorsByName: state.repoColorsByName,
     collapsedGroups: state.collapsedGroups,

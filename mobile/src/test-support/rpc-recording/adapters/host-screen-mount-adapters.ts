@@ -47,6 +47,7 @@ export function hostScreenMountAdapters(
         actions = useViewSettings({
           client: context.client,
           connState: 'connected',
+          hostId: HOST,
           // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the recorder supplies only the members the hook reads.
           state: state as unknown as Parameters<typeof useViewSettings>[0]['state']
         })

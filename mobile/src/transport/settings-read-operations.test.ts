@@ -10,7 +10,7 @@ import {
   botOverridesRead,
   newTabSettingsRead,
   terminalCopyTrimsGutterRead,
-  pinnedDisplayPolicyRead
+  showPinnedWorktreesInGroupsRead
 } from './settings-read-operations'
 import type { RpcResponse } from './types'
 
@@ -112,27 +112,27 @@ describe('settings historical acceptance', () => {
   })
 
   it('reads pinned placement, treating an absent or malformed key as the desktop default', async () => {
-    const policyFor = async (settings: unknown) =>
-      pinnedDisplayPolicyRead.interpret(
-        await pinnedDisplayPolicyRead.request(replyWith(success(settings)))
+    const showFor = async (settings: unknown) =>
+      showPinnedWorktreesInGroupsRead.interpret(
+        await showPinnedWorktreesInGroupsRead.request(replyWith(success(settings)))
       )
-    expect(await policyFor({ settings: { showPinnedWorktreesInGroups: true } })).toEqual({
+    expect(await showFor({ settings: { showPinnedWorktreesInGroups: true } })).toEqual({
       accepted: true,
-      value: 'duplicate-in-groups'
+      value: true
     })
-    expect(await policyFor({ settings: { showPinnedWorktreesInGroups: false } })).toEqual({
+    expect(await showFor({ settings: { showPinnedWorktreesInGroups: false } })).toEqual({
       accepted: true,
-      value: 'single-location'
+      value: false
     })
-    // A host predating the setting sends no key; the desktop default is single-location.
-    expect(await policyFor({ settings: {} })).toEqual({ accepted: true, value: 'single-location' })
-    expect(await policyFor({ settings: { showPinnedWorktreesInGroups: 'true' } })).toEqual({
+    // A host predating the setting sends no key; the desktop default is off.
+    expect(await showFor({ settings: {} })).toEqual({ accepted: true, value: false })
+    expect(await showFor({ settings: { showPinnedWorktreesInGroups: 'true' } })).toEqual({
       accepted: true,
-      value: 'single-location'
+      value: false
     })
-    expect(await policyFor(null)).toEqual({ accepted: true, value: 'single-location' })
-    const refused = await pinnedDisplayPolicyRead.request(replyWith(refusal()))
-    expect(pinnedDisplayPolicyRead.interpret(refused)).toEqual({ accepted: false })
+    expect(await showFor(null)).toEqual({ accepted: true, value: false })
+    const refused = await showPinnedWorktreesInGroupsRead.request(replyWith(refusal()))
+    expect(showPinnedWorktreesInGroupsRead.interpret(refused)).toEqual({ accepted: false })
   })
 
   it('does not read a stale payload until its caller permits interpretation', async () => {

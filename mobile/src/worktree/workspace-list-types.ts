@@ -2,9 +2,6 @@ import type { ExecutionHostId } from '../../../src/shared/execution-host'
 import type { AgentWorkingMode } from '../../../src/shared/agent-status-types'
 import type { RuntimeWorktreeAgentRow } from '../../../src/shared/runtime-types'
 
-/** Desktop's showPinnedWorktreesInGroups: whether pinned rows also stay in their groups. */
-export type PinnedDisplayPolicy = 'single-location' | 'duplicate-in-groups'
-
 export type Worktree = {
   sectionListKey?: string
   workspaceKind?: 'git' | 'folder-workspace'

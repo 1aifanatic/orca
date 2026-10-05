@@ -4,7 +4,6 @@ import type { MobileGroupMode, MobileSortMode } from './workspace-view-settings'
 import {
   buildSections,
   type FilterState,
-  type PinnedDisplayPolicy,
   type Section,
   type Worktree
 } from './workspace-list-sections'
@@ -23,7 +22,7 @@ export function useWorkspaceSections(args: {
   search: string
   groupMode: MobileGroupMode
   pinnedIds: Set<string>
-  pinnedDisplayPolicy: PinnedDisplayPolicy
+  showPinnedInGroups: boolean
   repoIdsByName: Map<string, string>
   repoColorsByName: Map<string, string>
   collapsedGroups: Set<string>
@@ -41,7 +40,7 @@ export function useWorkspaceSections(args: {
     search,
     groupMode,
     pinnedIds,
-    pinnedDisplayPolicy,
+    showPinnedInGroups,
     repoIdsByName,
     repoColorsByName,
     collapsedGroups,
@@ -78,7 +77,7 @@ export function useWorkspaceSections(args: {
         repoIdsByName,
         workspaceStatuses,
         collapsedGroups,
-        pinnedDisplayPolicy
+        showPinnedInGroups
       ),
     [
       displayWorktrees,
@@ -90,7 +89,7 @@ export function useWorkspaceSections(args: {
       repoIdsByName,
       workspaceStatuses,
       collapsedGroups,
-      pinnedDisplayPolicy
+      showPinnedInGroups
     ]
   )
 

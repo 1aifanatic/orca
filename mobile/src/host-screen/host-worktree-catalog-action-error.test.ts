@@ -46,7 +46,8 @@ function catalogHook(fetched: unknown, actionErrors: string[], catalogErrors: (s
     fetchRepoMetadata: async () => {},
     hostId: 'host-1',
     state,
-    syncViewSettingsFromDesktop: async () => {}
+    syncViewSettingsFromDesktop: async () => {},
+    syncShowPinnedInGroups: async () => {}
   }
 }
 
