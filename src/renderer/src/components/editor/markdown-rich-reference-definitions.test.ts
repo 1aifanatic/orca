@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { getMarkdownRichModeUnsupportedReason } from './markdown-rich-mode'
 
 describe('reference definition eligibility at actual parser boundaries', () => {
+  it.each([
+    ['small', '\ufeff[id]: /x\n'],
+    ['large', `\ufeff[id]: /x\n\n${'x'.repeat(50_001)}`]
+  ])(
+    'keeps a real definition blocked after a UTF-8 byte order mark in a %s document',
+    (_size, content) => {
+      expect(getMarkdownRichModeUnsupportedReason(content)).toBe('reference-links')
+    }
+  )
+
   it.each(['[id]: `/x`\n', '[`id`]: /x\n', '[a\\]b]: /x\n', '[a\nb]: /x\n'])(
     'keeps a real definition blocked without stripping its label or destination: %s',
     (content) => {

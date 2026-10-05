@@ -41,7 +41,7 @@ export type MarkdownRichModeEligibilityDecision = {
 
 const KNOWN_MARKDOWN_HTML_TAG_NAMES = new Set(defaultSchema.tagNames ?? [])
 const MAX_RICH_MARKDOWN_PROBE_CHARS = 50_000
-const REFERENCE_LINK_CANDIDATE = /^[ \t>*+\-\d.)]*\[/m
+const REFERENCE_LINK_CANDIDATE = /^\uFEFF?[ \t>*+\-\d.)]*\[/m
 
 const UNSUPPORTED_PATTERNS: UnsupportedMatch[] = [
   {
@@ -66,7 +66,7 @@ const UNSUPPORTED_PATTERNS: UnsupportedMatch[] = [
       )
     },
     // Large documents retain conservative colon matching.
-    pattern: /^[ \t>*+\-\d.)]*\[[^\]]+\]:/m
+    pattern: /^\uFEFF?[ \t>*+\-\d.)]*\[[^\]]+\]:/m
   },
   {
     reason: 'footnotes',
