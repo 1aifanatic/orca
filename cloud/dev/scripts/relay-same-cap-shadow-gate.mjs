@@ -18,16 +18,22 @@ import {
   SHADOW_GATE_THRESHOLDS,
   combineVerdict,
   countByMinute,
+  drainReturnByMinute,
   formatTimestamp,
   judgeCellServing,
   judgeCloudSqlFatal,
   judgeDirector503,
+  judgeDrainDeferrals,
+  judgeNonDrain503Budget,
   judgePool,
+  parseTimestamp,
   renderStepSummary,
   resolveWindow,
   shiftWindow,
-  splitWindow
+  splitWindow,
+  withoutDrainDeferrals
 } from './relay-same-cap-shadow-gate-verdict.mjs'
+import { SAME_CAP_DRAIN_PACE_WINDOWS_MS } from './relay-production-same-cap-wave.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -35,6 +41,7 @@ const CELL_ID = /^production-gce-c[1-9][0-9]*$/
 const CELL_HOST = /^c[1-9][0-9]*\.relay\.onorca\.dev$/
 const PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/
 const SERVICE_NAME = /^[a-z][a-z0-9-]{0,62}$/
+const COUNT = /^(0|[1-9][0-9]*)$/
 
 export const READ_ATTEMPTS = 3
 const READ_RETRY_DELAY_MS = 5000
@@ -54,6 +61,7 @@ export function parseShadowGateArguments(argv) {
     if (!pattern.test(value)) throw new Error(`--${name} is not acceptable: ${value}`)
     return value
   }
+  const optionalCount = (name) => (values.get(name) ? Number(required(name, COUNT)) : null)
   const config = {
     cellId: required('cell-id', CELL_ID),
     cellHost: required('cell-host', CELL_HOST),
@@ -66,8 +74,17 @@ export function parseShadowGateArguments(argv) {
     applyCompletedAt: values.get('apply-completed-at') || '',
     verifyEndedAt: values.get('verify-ended-at') || '',
     outputFile: values.get('output-file') || '',
-    summaryFile: values.get('summary-file') || ''
+    summaryFile: values.get('summary-file') || '',
+    drainPaceWindowMs: Number(required('drain-pace-window-ms', COUNT)),
+    // Empty on a resumed rollback, which never drains.
+    drainAppliedPaceWindowMs: optionalCount('drain-applied-pace-window-ms'),
+    drainSettledAt: values.get('drain-settled-at') || '',
+    targetHosts: optionalCount('target-hosts')
   }
+  if (!SAME_CAP_DRAIN_PACE_WINDOWS_MS.includes(config.drainPaceWindowMs)) {
+    throw new Error(`--drain-pace-window-ms is not acceptable: ${config.drainPaceWindowMs}`)
+  }
+  if (config.drainSettledAt) parseTimestamp(config.drainSettledAt, '--drain-settled-at')
   if (!config.cellHost.startsWith(`${config.cellId.replace('production-gce-', '')}.`)) {
     throw new Error(`--cell-host ${config.cellHost} is not the host of ${config.cellId}`)
   }
@@ -138,18 +155,57 @@ function directorFilter({ directorService }) {
 // textPayload filter matches nothing here and returns zero without saying so.
 const CELL_LOG_SCOPE = 'resource.type="gce_instance" AND logName:"cos_containers"'
 
+const DIRECTOR_DRAIN_FIELDS = [
+  'drainReturnDeferralsDelta',
+  'drainReturnAssignmentsDelta',
+  'drainReturnRetryAfterSecondsMax'
+]
+
+// Five instances at one sample per 30 s is ~100 per 10-min sub-window; this many is truncation.
+const DIRECTOR_METRICS_LIMIT = 1000
+
+async function readDirectorDrainReturn(reader, { config, window }) {
+  const projection = `json(timestamp,${DIRECTOR_DRAIN_FIELDS
+    .map((field) => `jsonPayload.${field}`)
+    .join(',')})`
+  const reads = []
+  for (const subWindow of splitWindow(window)) {
+    const read = await readLogEntries(reader, {
+      filter: `resource.type="cloud_run_revision"`
+        + ` AND resource.labels.service_name="${config.directorService}"`
+        + ` AND jsonPayload.event="orca_relay_runtime_metrics"`
+        + ` AND ${timestampBounds(subWindow)}`,
+      projection,
+      limit: DIRECTOR_METRICS_LIMIT
+    })
+    reads.push({
+      failed: read.failed,
+      samples: read.entries.map((entry) => ({ timestamp: entry.timestamp, ...entry.jsonPayload }))
+    })
+  }
+  return drainReturnByMinute(reads, DIRECTOR_METRICS_LIMIT)
+}
+
+// Every 503 against its baselines, with drain-return deferrals taken out of both sides: a
+// baseline that held another roll's drain would otherwise loosen the gate.
 async function readDirector503(reader, { config, window }) {
   const filter = directorFilter(config)
-  const observed = await readTimestampsOverWindow(reader, { filter, window })
+  const read = async (span) => {
+    const counts = await readTimestampsOverWindow(reader, { filter, window: span })
+    const drain = await readDirectorDrainReturn(reader, { config, window: span })
+    return { nonDrain: withoutDrainDeferrals(counts, drain), drain }
+  }
+  const { nonDrain: observed, drain } = await read(window)
   const baselines = []
   for (const hours of BASELINE_OFFSET_HOURS) {
-    const counts = await readTimestampsOverWindow(reader, {
-      filter,
-      window: shiftWindow(window, hours)
-    })
-    baselines.push({ label: `${hours}h-earlier`, ...counts })
+    const { nonDrain } = await read(shiftWindow(window, hours))
+    baselines.push({ label: `${hours}h-earlier`, ...nonDrain })
   }
-  return judgeDirector503({ observed, baselines })
+  return {
+    director503: judgeDirector503({ observed, baselines }),
+    nonDrain503Budget: judgeNonDrain503Budget({ observed, baselines, window }),
+    drainDeferrals: judgeDrainDeferrals(drain)
+  }
 }
 
 /**
@@ -259,7 +315,7 @@ export async function evaluateShadowGate(config, {
     : window.startedAt
   // Serialised on purpose: a burst of concurrent reads is what earns a Logging 429, and a 429 is
   // the one failure that comes back as a short answer rather than an error.
-  const director503 = await readDirector503(reader, { config, window })
+  const director = await readDirector503(reader, { config, window })
   // A fallback window start means neither the drain nor the apply ran, which is the resumed
   // rollback that restarts nothing; there is then no boot to find.
   const cell = await readCellServing(reader, {
@@ -271,7 +327,7 @@ export async function evaluateShadowGate(config, {
   const cloudSql = await readCloudSqlFatal(reader, { window })
   const cellMetrics = await readRuntimeMetrics(reader, { cellId: config.cellId, window })
   const checks = {
-    director503,
+    ...director,
     cellServing: cell.serving,
     cellPool: judgePool({ label: config.cellId, ...cellMetrics }),
     cloudSqlFatal: cloudSql
@@ -293,6 +349,18 @@ export async function evaluateShadowGate(config, {
       // Recorded, not judged: an operator comparing verdicts needs to see how long the apply took
       // next to when the cell actually came back.
       applyCompletedAt: config.applyCompletedAt || null
+    },
+    // The ladder rung this roll ran at, and what it measured against, for the step's record.
+    drain: {
+      paceWindowMs: config.drainPaceWindowMs,
+      appliedPaceWindowMs: config.drainAppliedPaceWindowMs,
+      targetHosts: config.targetHosts,
+      settledAt: config.drainSettledAt || null,
+      // Isolate to restart-safe, which includes the quiet the restart wait holds after the cell
+      // empties: (ceil(pace / 5 s) + 1) samples of 5 s.
+      settledAfterSeconds: config.drainStartedAt && config.drainSettledAt
+        ? Math.round((Date.parse(config.drainSettledAt) - Date.parse(config.drainStartedAt)) / 1000)
+        : null
     },
     verdict: combineVerdict(checks),
     checks

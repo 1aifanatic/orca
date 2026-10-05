@@ -13,16 +13,20 @@ import {
   SUB_WINDOW_MINUTES,
   combineVerdict,
   countByMinute,
+  drainReturnByMinute,
   formatTimestamp,
   judgeCellServing,
   judgeCloudSqlFatal,
   judgeDirector503,
+  judgeDrainDeferrals,
+  judgeNonDrain503Budget,
   judgePool,
   longestRunAtOrAbove,
   renderStepSummary,
   resolveWindow,
   shiftWindow,
-  splitWindow
+  splitWindow,
+  withoutDrainDeferrals
 } from './relay-same-cap-shadow-gate-verdict.mjs'
 
 const ARGV = [
@@ -34,7 +38,11 @@ const ARGV = [
   '--apply-started-at', '2026-09-20T20:15:00Z',
   '--apply-completed-at', '2026-09-20T20:19:30Z',
   '--verify-ended-at', '2026-09-20T20:30:00Z',
-  '--output-file', '/tmp/shadow.json'
+  '--output-file', '/tmp/shadow.json',
+  '--drain-pace-window-ms', '300000',
+  '--drain-applied-pace-window-ms', '300000',
+  '--drain-settled-at', '2026-09-20T20:11:00Z',
+  '--target-hosts', '857'
 ]
 
 function minuteOfTimestamps(minute, count) {
@@ -54,7 +62,20 @@ test('binds every gcloud input to a pinned pattern and to one cell', () => {
   // Host and cell id must name the same cell, or the serving check reads a neighbour.
   assert.throws(() => parseShadowGateArguments(ARGV.with(3, 'c29.relay.onorca.dev')))
   // A run with nowhere to write its verdict is not a report-only run, it is a silent one.
-  assert.throws(() => parseShadowGateArguments(ARGV.slice(0, 16)))
+  assert.throws(
+    () => parseShadowGateArguments(ARGV.filter((_, index) => index !== 16 && index !== 17)),
+    /--output-file is required/
+  )
+  // The pace is the rung this roll is evidence for, so it has to be one the wave could run.
+  for (const pace of ['', '120000', '30000 OR x']) {
+    assert.throws(() => parseShadowGateArguments(ARGV.with(19, pace)), /drain-pace-window-ms/)
+  }
+  assert.throws(() => parseShadowGateArguments(ARGV.with(21, '-1')), /drain-applied/)
+  assert.throws(() => parseShadowGateArguments(ARGV.with(23, 'soon')), /drain-settled-at/)
+  // A resumed rollback never drains, so it has no applied pace, settle time, or host count.
+  const resumed = parseShadowGateArguments(ARGV.with(21, '').with(23, '').with(25, ''))
+  assert.equal(resumed.drainAppliedPaceWindowMs, null)
+  assert.equal(resumed.targetHosts, null)
 })
 
 test('the window runs from drain start to verify end, with named fallbacks', () => {
@@ -331,11 +352,20 @@ test('a healthy roll reads as PASS and names the instance it proved serving', as
     'cellServing',
     'cloudSqlFatal',
     'director503',
+    'drainDeferrals',
     'fleetPool:production-gce-c27',
     'fleetPool:production-gce-c29',
     'fleetPool:production-gce-c30',
-    'fleetPool:production-gce-c31'
+    'fleetPool:production-gce-c31',
+    'nonDrain503Budget'
   ])
+  assert.deepEqual(report.drain, {
+    paceWindowMs: 300_000,
+    appliedPaceWindowMs: 300_000,
+    targetHosts: 857,
+    settledAt: '2026-09-20T20:11:00Z',
+    settledAfterSeconds: 660
+  })
   // Every read carries explicit bounds: --freshness does not bind on these logs.
   for (const { filter } of seam.calls) {
     assert.match(filter, /timestamp>="[^"]+" AND timestamp<"[^"]+"/)
@@ -343,6 +373,7 @@ test('a healthy roll reads as PASS and names the instance it proved serving', as
   // Cell text lives in jsonPayload.message; a textPayload filter matches nothing and says so.
   assert.equal(seam.calls.some(({ filter }) => filter.includes('textPayload')), false)
   assert.match(renderStepSummary(report), /Shadow health gate \(report only\): PASS/)
+  assert.match(renderStepSummary(report), /Drain pace 300000 ms \(cell applied: 300000\), 857 hosts/)
 })
 
 // The listener lands while the MIG is still converging, so a boot search opening at the apply's
@@ -513,6 +544,7 @@ test('the job runs the gate report-only, after verification, and uploads its art
   // stamps reach the script through the environment rather than being expanded into its shell.
   for (const [step, output] of [
     ['drain', 'drain-started-at'],
+    ['drain', 'drain-settled-at'],
     ['apply', 'apply-started-at'],
     ['apply', 'apply-completed-at'],
     ['verify-target', 'verify-ended-at']
@@ -526,6 +558,17 @@ test('the job runs the gate report-only, after verification, and uploads its art
     )
     assert.match(gate, new RegExp(`\\$\\{\\{ steps\\.${step}\\.outputs\\.${output} \\}\\}`))
     assert.match(gate, new RegExp(`--${output} "\\$\\{[A-Z_]+\\}"`))
+  }
+  // Settled means restart-safe was proven, so the stamp follows that wait, not the drain call.
+  const drainStep = stepBody(workflow, STAMP_STEPS.drain)
+  assert.notEqual(drainStep.indexOf('--activity restart-safe'), -1)
+  assert.ok(
+    drainStep.indexOf('drain-settled-at=') > drainStep.indexOf('--activity restart-safe'),
+    'drain-settled-at must be stamped after the restart-safe wait'
+  )
+  assert.match(drainStep, /drain-applied-pace-window-ms=\$\(jq -er '\.paceWindowMs' <<< "\$\{DRAIN_RESULT\}"\)/)
+  for (const flag of ['drain-pace-window-ms', 'drain-applied-pace-window-ms', 'target-hosts']) {
+    assert.match(gate, new RegExp(`--${flag} "\\$\\{[A-Z_]+(:-)?\\}"`), flag)
   }
   // The apply-start stamp has to precede the operation that can restart the instance, or the
   // listener it bounds the search by has already happened. Presence is asserted before order,
@@ -547,4 +590,155 @@ test('the job runs the gate report-only, after verification, and uploads its art
       earlier
     )
   }
+})
+
+// Director runtime-metrics samples: one per 30 s per instance, each counting the 30 s before it.
+function directorSamples({ from, count, payload }) {
+  return Array.from({ length: count }, (_, index) => ({
+    matches: ['orca_relay_runtime_metrics', 'resource.type="cloud_run_revision"'],
+    timestamp: new Date(Date.parse(from) + index * 30_000).toISOString(),
+    payload
+  }))
+}
+
+function director503s(minute, count) {
+  return minuteOfTimestamps(minute, count).map((timestamp) => ({
+    matches: ['httpRequest.status=503'],
+    timestamp
+  }))
+}
+
+test('drain-return deferrals come out of the 503 count, minute by minute', () => {
+  const drain = drainReturnByMinute([{
+    failed: false,
+    samples: [
+      // Counts 20:00:30-20:01:00, so it belongs to 20:00, not to the minute it was written in.
+      { timestamp: '2026-10-05T20:01:00Z', drainReturnDeferralsDelta: 40, drainReturnAssignmentsDelta: 70 },
+      { timestamp: '2026-10-05T20:01:20Z', drainReturnDeferralsDelta: 15, drainReturnAssignmentsDelta: 80, drainReturnRetryAfterSecondsMax: 12 },
+      { timestamp: '2026-10-05T20:01:50Z', drainReturnAssignmentsDelta: 60 }
+    ]
+  }], 1000)
+  assert.deepEqual(drain.deferralsPerMinute, { '2026-10-05T20:00': 40, '2026-10-05T20:01': 15 })
+  assert.equal(drain.assignmentsPeakPerMinute, 140)
+  assert.equal(drain.retryAfterSecondsMax, 12)
+  const split = withoutDrainDeferrals({
+    perMinute: { '2026-10-05T20:00': 70, '2026-10-05T20:01': 10, '2026-10-05T20:02': 25 },
+    total: 105,
+    peak: 70,
+    truncated: false
+  }, drain)
+  // A minute cannot go negative when a boundary moved deferrals into it.
+  assert.deepEqual(split.perMinute, {
+    '2026-10-05T20:00': 30, '2026-10-05T20:01': 0, '2026-10-05T20:02': 25
+  })
+  assert.equal(split.peak, 30)
+  assert.equal(split.allPeak, 70)
+  assert.equal(split.drainDeferralsTotal, 55)
+  // A metrics read that failed or hit its limit leaves the subtraction, and the count, unverified.
+  assert.equal(drainReturnByMinute([{ failed: true, samples: [] }], 1000).truncated, true)
+  assert.equal(withoutDrainDeferrals(
+    { perMinute: {}, total: 0, peak: 0, truncated: false },
+    { deferralsPerMinute: {}, deferralsTotal: 0, truncated: true }
+  ).truncated, true)
+})
+
+test('the rung budget is a margin over the busier non-drain baseline, per five minutes', () => {
+  const window = resolveWindow({
+    drainStartedAt: '2026-10-05T20:00:00Z',
+    verifyEndedAt: '2026-10-05T20:10:00Z'
+  })
+  const perMinute = (counts) => Object.fromEntries(
+    counts.map((count, index) => [`2026-10-05T20:0${index}`, count])
+  )
+  // 300 and 200 non-drain 503s over ten baseline minutes: 30/min, so 150 per bucket.
+  const baselines = [
+    { label: '24h-earlier', total: 300, truncated: false },
+    { label: '48h-earlier', total: 200, truncated: false }
+  ]
+  const judge = (counts) => judgeNonDrain503Budget({
+    observed: { perMinute: perMinute(counts), truncated: false },
+    baselines,
+    window
+  })
+  const calm = judge([30, 30, 30, 30, 30, 30, 30, 30, 30, 30])
+  assert.equal(calm.status, 'pass')
+  assert.equal(calm.backgroundPerBucket, 150)
+  assert.equal(calm.warnAbove, 225)
+  assert.equal(calm.blockPerMinuteAbove, 60)
+  // One busy minute inside the bucket budget is a pass; a bucket past 225 is a warning.
+  assert.equal(judge([30, 30, 59, 30, 30, 30, 30, 30, 30, 30]).status, 'pass')
+  assert.equal(judge([30, 30, 61, 30, 80, 30, 30, 30, 30, 30]).status, 'warn')
+  // Two straight minutes past 2x is the abort, wherever they fall.
+  assert.equal(judge([30, 30, 30, 30, 61, 61, 30, 30, 30, 30]).status, 'would-block')
+  // A quiet night still gets the absolute margins rather than a multiple of almost nothing.
+  const quiet = judgeNonDrain503Budget({
+    observed: { perMinute: perMinute([5, 5, 5, 5, 5, 0, 0, 0, 0, 0]), truncated: false },
+    baselines: [{ label: '24h-earlier', total: 10, truncated: false }],
+    window
+  })
+  assert.equal(quiet.status, 'pass')
+  assert.equal(quiet.warnAbove, 35)
+  assert.equal(quiet.blockPerMinuteAbove, 7)
+  assert.equal(judgeNonDrain503Budget({
+    observed: { perMinute: {}, truncated: true }, baselines, window
+  }).status, 'unverified')
+})
+
+test('a drain is judged on how long it tells hosts to wait, not on how many it defers', () => {
+  const drain = (retryAfterSecondsMax, truncated = false) => ({
+    deferralsTotal: 400,
+    deferralsPeakPerMinute: 300,
+    assignmentsTotal: 530,
+    assignmentsPeakPerMinute: 260,
+    retryAfterSecondsMax,
+    truncated
+  })
+  assert.equal(judgeDrainDeferrals(drain(30)).status, 'pass')
+  assert.equal(judgeDrainDeferrals(drain(31)).status, 'warn')
+  assert.equal(judgeDrainDeferrals(drain(61)).status, 'would-block')
+  assert.equal(judgeDrainDeferrals(drain(2, true)).status, 'unverified')
+  assert.equal(judgeDrainDeferrals(drain(2)).replacementsPeakPerMinute, 260)
+})
+
+// A 30 s rung on a 530-host cell: hundreds of scheduled deferrals in two minutes, over a baseline
+// whose own 503s were all ordinary. Counting the deferrals as failures would block every fast drain.
+test('a fast drain\'s deferrals do not read as a brownout', async () => {
+  const entries = [
+    ...productionLikeEntries(),
+    ...director503s('2026-09-20T20:00', 400),
+    ...director503s('2026-09-20T20:01', 330),
+    ...director503s('2026-09-20T20:05', 30),
+    ...directorSamples({
+      from: '2026-09-20T20:00:30Z',
+      count: 4,
+      payload: {
+        drainReturnDeferralsDelta: 190,
+        drainReturnAssignmentsDelta: 130,
+        drainReturnRetryAfterSecondsMax: 14
+      }
+    }),
+    ...director503s('2026-09-19T20:05', 40),
+    ...director503s('2026-09-18T20:05', 30)
+  ]
+  const report = await evaluateShadowGate(
+    parseShadowGateArguments(ARGV.with(19, '30000').with(21, '30000')),
+    gcloudSeam(entries)
+  )
+  assert.equal(report.checks.director503.allPeakPerMinute, 400)
+  assert.equal(report.checks.director503.drainDeferralsTotal, 760)
+  assert.equal(report.checks.director503.peakPerMinute, 30)
+  assert.equal(report.checks.director503.status, 'pass')
+  assert.equal(report.checks.nonDrain503Budget.status, 'pass')
+  assert.equal(report.checks.drainDeferrals.status, 'pass')
+  assert.equal(report.checks.drainDeferrals.replacementsTotal, 520)
+  assert.equal(report.drain.paceWindowMs, 30_000)
+  assert.equal(report.verdict, 'PASS')
+  // The same 503s with no deferrals behind them are exactly what the gate exists to catch.
+  const brownout = await evaluateShadowGate(
+    parseShadowGateArguments(ARGV),
+    gcloudSeam(entries.filter((entry) => !entry.matches.includes('resource.type="cloud_run_revision"')))
+  )
+  assert.equal(brownout.checks.director503.status, 'warn')
+  assert.equal(brownout.checks.nonDrain503Budget.status, 'would-block')
+  assert.equal(brownout.verdict, 'WOULD_BLOCK')
 })

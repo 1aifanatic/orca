@@ -439,8 +439,8 @@ targeted Terraform plan, and per-cell heartbeat/admission oracle are unchanged.
 `Deploy Relay Production Same-Cap` rolls only the reviewed US 1,000/60 and Asia 3,000/60 serving
 sets and the two migration-only US 600/60 cells, C17 and C18, without changing a cell's connection
 shape. Use `canary-apply` for exactly one cell. A successful canary
-seals its commit, target and rollback digests, selector generation, and durable rehome generation;
-`batch-apply` accepts only that same authority and rolls two to ten cells sequentially. Both apply
+seals its commit, target and rollback digests, selector generation, durable rehome generation, and
+drain pace window; `batch-apply` accepts only that same authority and rolls two to ten cells sequentially. Both apply
 modes and `rollback` first refuse a cell whose hosts (controls) exceed 80% of the free slots on the
 other fresh general cells, since drained hosts with nowhere to go keep redialling and pin the cell.
 `verify` runs the same read-only check, so it reports the headroom answer before an apply is
@@ -499,7 +499,8 @@ drained. Then read the cell's live runtime image from
 2. **Dispatch `rollback`,** with the same `target-image-digest` and `rollback-image-digest`
    the failed wave used, the live selector generation, and the live tri-state membership
    with the failed cell listed under migration-only. The confirmation is
-   `ROLL_BACK_RELAY_SAME_CAP <rollback-digest> <cell-id>`.
+   `ROLL_BACK_RELAY_SAME_CAP <rollback-digest> <cell-id>` at the default drain pace (see
+   below for any other).
 3. The job classifies the cell itself and needs no extra input:
    - serving the **rollback** image and draining, it is `stranded`. The wave stopped before
      or during its template apply. The job re-isolates, re-drains, applies the reviewed
@@ -522,6 +523,76 @@ drained. Then read the cell's live runtime image from
 6. A `stranded` dispatch that fails at plan review means the template already carries the
    target image while the old instance is still up. Wait for the MIG to finish replacing it,
    then dispatch again; it will classify as `roll`.
+
+### Drain pace ladder
+
+The `drain-pace-window-ms` input sets the window the cell spreads its drain sends over. Each
+drained host re-dials the director as soon as it reads `drain`, so the window sets the re-placement
+arrival rate: hosts / window, about 1.8-2.7 hosts/s for a US cell at the default. The window also
+sets two waits: restart-safe needs an empty runtime for (ceil(window / 5 s) + 1) consecutive
+5-second samples, and the drain step's overall timeout is the 15-minute migration lease plus the
+window (20 minutes at the default).
+
+- Allowed values are `300000` (the default, and every wave before this input), `60000`, and
+  `30000`. The wave validator refuses anything else, and each cell job checks again.
+- Below `300000` is for US general cells only (C7-C10, C13-C16, C19-C26, C32, C33). Asia drains
+  are bound by the target cells' own accept rate (about 4-6 hosts/s per Asia cell), not by the
+  window. Migration-only cells hold no hosts. Both stay at `300000`.
+- A non-default window must be named at the end of the confirmation, for example
+  `ROLL_RELAY_SAME_CAP <target-digest> <cells> drain-pace-window-ms=60000`. A confirmation that
+  names no window confirms `300000`, so a form left at another value fails closed.
+- A canary's authority records its window. A batch may use that window or a slower one, never a
+  faster one. Stepping back to `300000` mid-ladder therefore needs no new canary.
+- A cell on an image without paced drains ignores the window and drains at once. The job records
+  what the cell accepted.
+
+**What judges a paced drain.** The shadow health gate (report only, after each cell) reads the
+director's own drain-return counters (`drainReturnDeferralsDelta`, `drainReturnAssignmentsDelta`
+and `drainReturnRetryAfterSecondsMax` in `orca_relay_runtime_metrics`). It takes the deferrals out
+of the director 503 count, in the window and in both baselines. A deferral is a scheduled 503 that
+carries its own Retry-After, and a faster window multiplies them without anything going wrong.
+Its checks are:
+
+| check | rule |
+|---|---|
+| `director503` | Unchanged thresholds, now on non-drain 503s; `allPeakPerMinute` and `drainDeferralsTotal` keep the raw numbers |
+| `nonDrain503Budget` | Warn if any 5-minute bucket exceeds max(1.5x background, background + 30). Would-block if two consecutive minutes exceed max(2x, +6) of the per-minute background. Background is the busier of the 24 h and 48 h baselines' mean |
+| `drainDeferrals` | Warn if the largest Retry-After exceeds 30 s; would-block above 60 s. Reports deferrals and re-placements per minute |
+
+The report's `drain` block records the window, the window the cell applied, the host count, and
+the seconds from isolation to restart-safe.
+
+Two other 503 rules exist, and neither needs this split. The pre-drain sample's 500/min rule reads
+the 10 minutes *before* a drain, and a previous cell's drain has ended by then. The incident
+monitor already excludes 503s from its director 5xx rule.
+
+**Procedure.** One rung at a time, on routine US same-cap rolls:
+
+1. Before the first rung, rehearse on staging and run a fresh canary. This input is evidence code,
+   so merging it invalidates any sealed monitor or canary authority.
+2. Roll a canary at the next rung. Use `60000` after a clean `300000` roll, and `30000` after a
+   clean `60000` roll.
+3. Step down only after a clean roll at the current window:
+   - the job succeeded;
+   - the shadow verdict is PASS, or WARN only from unverified reads;
+   - time to empty is within window + hosts / 50 s + 10 s. Take `settledAfterSeconds` minus the
+     restart-safe quiet; this is an upper bound, since it includes the isolate.
+4. Record each rung, and keep the shadow gate JSON artifact with the row:
+
+   | Field | Source |
+   |---|---|
+   | Cell, hosts, window | The report's `drain` block |
+   | Measured drain rate | `drainDeferrals.replacementsPeakPerMinute`, and hosts / time to empty |
+   | Non-drain 503s | `nonDrain503Budget.bucketMax` against `warnAbove` |
+   | Lane deferrals | `drainDeferrals.deferralsTotal` and `retryAfterSecondsMax` |
+   | Roll time | The cell job's duration |
+
+   This job does not report four of the rung's bars: drain-to-reconnected p95 (20 s), the
+   drain-return lane's service time, over-cap cells (0), and selector compare-and-swap retries
+   (at most 2). Read them by hand where a source exists, or record them as unmeasured until the
+   director observability work lands.
+5. If any bar fails, set the input back to `300000` for the rest of the wave and stop the ladder.
+   The `300000` batch needs no new canary.
 
 ### Pre-drain fleet-health sample
 

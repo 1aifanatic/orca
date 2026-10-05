@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import {
+  DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS,
   SAME_CAP_CELLS,
+  SAME_CAP_DRAIN_PACE_WINDOWS_MS,
+  SAME_CAP_FAST_DRAIN_PACE_CELLS,
   SAME_CAP_MIGRATION_ONLY_CELLS,
   canaryAuthority,
   entryAdmission,
@@ -25,6 +28,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c7',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7`
   }).cells, ['production-gce-c7'])
   assert.throws(() => validateSameCapWave({
@@ -32,6 +36,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c7,production-gce-c8',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: 'wrong'
   }), /canary/)
   assert.deepEqual(validateSameCapWave({
@@ -39,6 +44,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c8,production-gce-c9',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c8,production-gce-c9`,
     canaryRunId: '42'
   }).cells, ['production-gce-c8', 'production-gce-c9'])
@@ -47,6 +53,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c28',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c28`
   }).cells, ['production-gce-c28'])
   assert.deepEqual(validateSameCapWave({
@@ -54,6 +61,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c30',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c30`
   }).cells, ['production-gce-c30'])
   assert.deepEqual(validateSameCapWave({
@@ -61,6 +69,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c31',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c31`
   }).cells, ['production-gce-c31'])
   for (const cellId of ['production-gce-c32', 'production-gce-c33', 'production-gce-c34']) {
@@ -69,6 +78,7 @@ test('requires one canary or a bounded reviewed batch', () => {
       cellIds: cellId,
       targetDigest,
       rollbackDigest,
+      drainPaceWindowMs: '300000',
       confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${cellId}`
     }).cells, [cellId])
   }
@@ -77,6 +87,7 @@ test('requires one canary or a bounded reviewed batch', () => {
     cellIds: 'production-gce-c35',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c35`
   }), /cells/)
 })
@@ -92,6 +103,7 @@ test('a batch fills the serial cell chain and never overflows it', () => {
       cellIds,
       targetDigest,
       rollbackDigest,
+      drainPaceWindowMs: '300000',
       confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${cellIds}`,
       canaryRunId: '42'
     })
@@ -144,6 +156,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
       cellIds: cellId,
       targetDigest,
       rollbackDigest,
+      drainPaceWindowMs: '300000',
       confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${cellId}`
     }).cells, [cellId])
   }
@@ -153,6 +166,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${cellIds}`,
     canaryRunId: '42'
   }).cells, ['production-gce-c17', 'production-gce-c18'])
@@ -165,6 +179,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: asiaGeneral,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${asiaGeneral}`,
     canaryRunId: '42'
   }).cells, ['production-gce-c29', 'production-gce-c30'])
@@ -174,6 +189,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: asiaMixed,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${asiaMixed}`,
     canaryRunId: '42'
   }), /all general or all migration-only/)
@@ -186,6 +202,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: asiaPromoted,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${asiaPromoted}`,
     canaryRunId: '42'
   }).cells, ['production-gce-c30', 'production-gce-c31'])
@@ -195,6 +212,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: c31Mixed,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${c31Mixed}`,
     canaryRunId: '42'
   }), /all general or all migration-only/)
@@ -210,6 +228,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: usPromoted,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usPromoted}`,
     canaryRunId: '42'
   }).cells, ['production-gce-c26', 'production-gce-c32', 'production-gce-c33'])
@@ -219,6 +238,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: usMixed,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usMixed}`,
     canaryRunId: '42'
   }), /all general or all migration-only/)
@@ -229,6 +249,7 @@ test('rolls the migration-only cells but never mixes the two classes in one wave
     cellIds: mixed,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${mixed}`,
     canaryRunId: '42'
   }), /all general or all migration-only/)
@@ -239,6 +260,7 @@ test('seals a migration-only canary at the generation its wave leaves behind', (
     cellIds: cellId,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${cellId}`,
     commitSha: 'c'.repeat(40),
     runId: '42',
@@ -255,6 +277,7 @@ test('seals a migration-only canary at the generation its wave leaves behind', (
     cellIds: 'production-gce-c17,production-gce-c18',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     selectorGeneration: '11',
     rehomeGeneration: '4'
   }).cellId, 'production-gce-c17')
@@ -265,16 +288,23 @@ test('reports each approved cell\'s class and selector delta', () => {
   const write = process.stdout.write.bind(process.stdout)
   process.stdout.write = (chunk) => printed.push(String(chunk))
   try {
-    main(['cell-class', '--cell-id', 'production-gce-c17'])
-    main(['cell-class', '--cell-id', 'production-gce-c7'])
+    main(['cell-class', '--cell-id', 'production-gce-c17', '--drain-pace-window-ms', '300000'])
+    main(['cell-class', '--cell-id', 'production-gce-c7', '--drain-pace-window-ms', '60000'])
   } finally {
     process.stdout.write = write
   }
   assert.deepEqual(printed.map((line) => JSON.parse(line)), [
-    { entryAdmission: 'migration-only', selectorWaveDelta: 0 },
-    { entryAdmission: 'general', selectorWaveDelta: 2 }
+    { entryAdmission: 'migration-only', selectorWaveDelta: 0, drainPaceWindowMs: 300000 },
+    { entryAdmission: 'general', selectorWaveDelta: 2, drainPaceWindowMs: 60000 }
   ])
-  assert.throws(() => main(['cell-class', '--cell-id', 'production-gce-c12']), /cells are invalid/)
+  assert.throws(() => main([
+    'cell-class', '--cell-id', 'production-gce-c12', '--drain-pace-window-ms', '300000'
+  ]), /cells are invalid/)
+  // The job re-checks the pace per cell, so a cell outside the fast list cannot drain fast.
+  assert.throws(() => main([
+    'cell-class', '--cell-id', 'production-gce-c28', '--drain-pace-window-ms', '30000'
+  ]), /US general cells only, not production-gce-c28/)
+  assert.throws(() => main(['cell-class', '--cell-id', 'production-gce-c7']), /drain pace window/)
 })
 
 test('binds rollback confirmation to the exact digest and ordered cells', () => {
@@ -283,6 +313,7 @@ test('binds rollback confirmation to the exact digest and ordered cells', () => 
     cellIds: 'production-gce-c7',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_BACK_RELAY_SAME_CAP ${targetDigest} production-gce-c7`
   }), /confirmation/)
 })
@@ -294,6 +325,7 @@ test('rollback rolls exactly one cell so later waves stay unreachable', () => {
     cellIds,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_BACK_RELAY_SAME_CAP ${rollbackDigest} ${cellIds}`
   }), /rollback mode requires exactly one cell/)
   assert.deepEqual(validateSameCapWave({
@@ -301,6 +333,7 @@ test('rollback rolls exactly one cell so later waves stay unreachable', () => {
     cellIds: 'production-gce-c7',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_BACK_RELAY_SAME_CAP ${rollbackDigest} production-gce-c7`
   }).cells, ['production-gce-c7'])
 })
@@ -310,6 +343,7 @@ test('seals and verifies canary authority for later batches', () => {
     cellIds: 'production-gce-c7',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7`,
     commitSha: 'c'.repeat(40),
     runId: '42',
@@ -322,6 +356,7 @@ test('seals and verifies canary authority for later batches', () => {
     cellIds: 'production-gce-c8,production-gce-c9',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     selectorGeneration: '13',
     rehomeGeneration: '4'
   }).cellId, 'production-gce-c7')
@@ -331,6 +366,7 @@ test('seals and verifies canary authority for later batches', () => {
     cellIds: 'production-gce-c8,production-gce-c9',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     selectorGeneration: '11',
     rehomeGeneration: '4'
   }), /does not match/)
@@ -338,13 +374,13 @@ test('seals and verifies canary authority for later batches', () => {
 
 test('reuses a canary across selector advances only within the same control epoch', () => {
   const authority = canaryAuthority({
-    cellIds: 'production-gce-c7', targetDigest, rollbackDigest,
+    cellIds: 'production-gce-c7', targetDigest, rollbackDigest, drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7`,
     commitSha: 'c'.repeat(40), runId: '42', selectorGeneration: '11', rehomeGeneration: '4'
   })
   const expected = {
     commitSha: 'c'.repeat(40), runId: '42', cellIds: 'production-gce-c8,production-gce-c9',
-    targetDigest, rollbackDigest, selectorGeneration: '21', rehomeGeneration: '4'
+    targetDigest, rollbackDigest, drainPaceWindowMs: '300000', selectorGeneration: '21', rehomeGeneration: '4'
   }
   for (const generation of ['13', '14', '21', '29']) {
     assert.equal(verifyCanaryAuthority(authority, {
@@ -409,6 +445,7 @@ test('a batch trusts a canary sealed by identical code at an ancestor commit', a
       cellIds: 'production-gce-c7',
       targetDigest,
       rollbackDigest,
+      drainPaceWindowMs: '300000',
       confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7`,
       commitSha: repository.sealed,
       runId: '42',
@@ -421,6 +458,7 @@ test('a batch trusts a canary sealed by identical code at an ancestor commit', a
       cellIds: 'production-gce-c8,production-gce-c9',
       targetDigest,
       rollbackDigest,
+      drainPaceWindowMs: '300000',
       selectorGeneration: '21',
       rehomeGeneration: '4'
     }, repositoryRoot)
@@ -441,6 +479,7 @@ function sealedCanary(cellId) {
     cellIds: cellId,
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${cellId}`,
     commitSha: 'c'.repeat(40),
     runId: '42',
@@ -458,6 +497,7 @@ test('refuses a canary sealed on a cell of the other admission class', () => {
     runId: '42',
     targetDigest,
     rollbackDigest,
+    drainPaceWindowMs: '300000',
     selectorGeneration: '99',
     rehomeGeneration: '4'
   }
@@ -507,7 +547,7 @@ function verifyCanaryStepScript() {
   return dispatch.slice(start, end + last.length).replace(/^ {10}/gm, '')
 }
 
-async function runVerifyCanaryStep(authority, cellIds) {
+async function runVerifyCanaryStep(authority, cellIds, drainPaceWindowMs = '300000') {
   const temporary = await mkdtemp(join(tmpdir(), 'relay-same-cap-verify-'))
   try {
     await mkdir(join(temporary, 'relay-same-cap-canary'), { recursive: true })
@@ -526,7 +566,8 @@ async function runVerifyCanaryStep(authority, cellIds) {
         TARGET_DIGEST: targetDigest,
         ROLLBACK_DIGEST: rollbackDigest,
         SELECTOR_GENERATION: '99',
-        REHOME_GENERATION: '4'
+        REHOME_GENERATION: '4',
+        DRAIN_PACE_WINDOW_MS: drainPaceWindowMs
       },
       encoding: 'utf8'
     })
@@ -555,4 +596,166 @@ test('the batch gate hands its own cells to the canary check', async () => {
     SAME_CAP_MIGRATION_ONLY_CELLS.join(',')
   )
   assert.equal(migrationOnly.status, 0, migrationOnly.stderr)
+  // The batch's own pace reaches the check, so a 300 s canary cannot authorize a faster batch.
+  const faster = await runVerifyCanaryStep(
+    sealedCanary('production-gce-c7'),
+    'production-gce-c8,production-gce-c9',
+    '60000'
+  )
+  assert.equal(faster.status, 1, faster.stdout)
+  assert.match(faster.stderr, /drained over 300000 ms, so it cannot authorize a batch draining over 60000 ms/)
+})
+
+const usGeneral = 'production-gce-c8,production-gce-c32'
+
+function fastWave(overrides = {}) {
+  return {
+    mode: 'batch-apply',
+    cellIds: usGeneral,
+    targetDigest,
+    rollbackDigest,
+    drainPaceWindowMs: '60000',
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usGeneral} drain-pace-window-ms=60000`,
+    canaryRunId: '42',
+    ...overrides
+  }
+}
+
+test('admits only the reviewed drain pace windows', () => {
+  assert.deepEqual(SAME_CAP_DRAIN_PACE_WINDOWS_MS, [300_000, 60_000, 30_000])
+  assert.equal(validateSameCapWave(fastWave()).drainPaceWindowMs, 60_000)
+  assert.equal(validateSameCapWave(fastWave({
+    drainPaceWindowMs: '30000',
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usGeneral} drain-pace-window-ms=30000`
+  })).drainPaceWindowMs, 30_000)
+  for (const pace of [undefined, '', '0', '120000', '299999', '600000', '60000.0', '060000', ' 60000']) {
+    assert.throws(
+      () => validateSameCapWave(fastWave({ drainPaceWindowMs: pace })),
+      /drain pace window must be one of 300000, 60000, 30000 ms/,
+      String(pace)
+    )
+  }
+  // Verify reads production, never drains, but still states the pace it would roll at.
+  assert.equal(validateSameCapWave(fastWave({
+    mode: 'verify', confirmation: '', canaryRunId: ''
+  })).drainPaceWindowMs, 60_000)
+})
+
+test('keeps Asia and migration-only cells on the default pace', () => {
+  assert.deepEqual(
+    SAME_CAP_FAST_DRAIN_PACE_CELLS.filter((cell) => !SAME_CAP_CELLS.includes(cell)),
+    []
+  )
+  for (const cellId of SAME_CAP_CELLS) {
+    const fast = SAME_CAP_FAST_DRAIN_PACE_CELLS.includes(cellId)
+    const asia = ['c27', 'c28', 'c29', 'c30', 'c31', 'c34'].some(
+      (cell) => cellId === `production-gce-${cell}`
+    )
+    assert.equal(fast, entryAdmission(cellId) === 'general' && !asia, cellId)
+  }
+  const asia = 'production-gce-c30,production-gce-c31'
+  assert.throws(() => validateSameCapWave(fastWave({
+    cellIds: asia,
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${asia} drain-pace-window-ms=60000`
+  })), /US general cells only, not production-gce-c30,production-gce-c31/)
+  // One Asia cell in an otherwise US batch is enough to refuse the whole batch.
+  const mixed = 'production-gce-c8,production-gce-c29'
+  assert.throws(() => validateSameCapWave(fastWave({
+    cellIds: mixed,
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${mixed} drain-pace-window-ms=60000`
+  })), /not production-gce-c29$/)
+  assert.throws(() => validateSameCapWave(fastWave({
+    mode: 'canary-apply',
+    cellIds: 'production-gce-c17',
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c17 drain-pace-window-ms=60000`,
+    canaryRunId: ''
+  })), /not production-gce-c17/)
+})
+
+test('binds a non-default pace into the confirmation, in both directions', () => {
+  // A confirmation that does not name the pace is a confirmation of the default.
+  assert.throws(() => validateSameCapWave(fastWave({
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usGeneral}`
+  })), /confirmation does not match/)
+  assert.throws(() => validateSameCapWave(fastWave({
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usGeneral} drain-pace-window-ms=30000`
+  })), /confirmation does not match/)
+  assert.throws(() => validateSameCapWave(fastWave({
+    drainPaceWindowMs: '300000'
+  })), /confirmation does not match/)
+  assert.throws(() => validateSameCapWave(fastWave({
+    drainPaceWindowMs: '300000',
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} ${usGeneral} drain-pace-window-ms=300000`
+  })), /confirmation does not match/)
+  assert.deepEqual(validateSameCapWave(fastWave({
+    mode: 'rollback',
+    cellIds: 'production-gce-c8',
+    confirmation: `ROLL_BACK_RELAY_SAME_CAP ${rollbackDigest} production-gce-c8 drain-pace-window-ms=60000`,
+    canaryRunId: ''
+  })).cells, ['production-gce-c8'])
+})
+
+test('a canary authorizes batches at its own pace or slower, never faster', () => {
+  const seal = (pace) => canaryAuthority({
+    cellIds: 'production-gce-c7',
+    targetDigest,
+    rollbackDigest,
+    drainPaceWindowMs: pace,
+    confirmation: `ROLL_RELAY_SAME_CAP ${targetDigest} production-gce-c7` +
+      (pace === '300000' ? '' : ` drain-pace-window-ms=${pace}`),
+    commitSha: 'c'.repeat(40),
+    runId: '42',
+    selectorGeneration: '11',
+    rehomeGeneration: '4'
+  })
+  assert.equal(seal('60000').v, 2)
+  assert.equal(seal('60000').drainPaceWindowMs, 60_000)
+  const verify = (authority, pace) => verifyCanaryAuthority(authority, {
+    commitSha: 'c'.repeat(40),
+    runId: '42',
+    cellIds: usGeneral,
+    targetDigest,
+    rollbackDigest,
+    drainPaceWindowMs: pace,
+    selectorGeneration: '13',
+    rehomeGeneration: '4'
+  })
+  // Stepping back to the default after a bad rung needs no new canary.
+  for (const pace of ['60000', '300000']) assert.equal(verify(seal('60000'), pace).cellId, 'production-gce-c7')
+  assert.throws(() => verify(seal('60000'), '30000'), /drained over 60000 ms/)
+  assert.throws(() => verify(seal('300000'), '60000'), /drained over 300000 ms/)
+  // An authority sealed before the pace was recorded proves nothing about it.
+  const { drainPaceWindowMs: _dropped, ...unpaced } = seal('300000')
+  assert.throws(() => verify({ ...unpaced, v: 1 }, '300000'), /does not match/)
+  assert.throws(() => verify({ ...seal('300000'), drainPaceWindowMs: 0 }, '300000'), /does not match/)
+})
+
+// The dispatch choice list, the validator's closed set, and the job's transition wait have to
+// agree, or the form offers a pace the gate refuses or the wait outlives the 20-min token.
+test('the workflows offer exactly the closed set and scale the drain wait with it', () => {
+  const dispatch = readRelayWorkflow('deploy-relay-production-same-cap.yml')
+  const input = dispatch.slice(dispatch.indexOf('      drain-pace-window-ms:\n'))
+  assert.match(input, /default: '300000'\n/)
+  assert.deepEqual(
+    JSON.parse(/options: (\[[^\]]+\])/.exec(input)[1].replaceAll("'", '"')).map(Number),
+    SAME_CAP_DRAIN_PACE_WINDOWS_MS
+  )
+  for (const command of ['validate', 'verify-canary', 'create-canary']) {
+    const at = dispatch.indexOf(`relay-production-same-cap-wave.mjs ${command}`)
+    assert.notEqual(at, -1, command)
+    const end = dispatch.indexOf('\n\n', at)
+    assert.match(dispatch.slice(at, end), /--drain-pace-window-ms "\$\{/, command)
+  }
+  assert.equal(
+    dispatch.match(/\n      drain-pace-window-ms: \$\{\{ inputs\.drain-pace-window-ms \}\}\n/g).length,
+    10
+  )
+  const job = readRelayWorkflow('deploy-relay-production-same-cap-job.yml')
+  assert.match(job, /\n      DRAIN_PACE_WINDOW_MS: \$\{\{ inputs\.drain-pace-window-ms \}\}\n/)
+  assert.doesNotMatch(job, /DRAIN_PACE_WINDOW_MS: '/)
+  assert.match(job, /cell-class \\\n\s+--cell-id "\$\{TARGET_CELL_ID\}" --drain-pace-window-ms "\$\{DRAIN_PACE_WINDOW_MS\}"/)
+  // The 15-min migration lease plus the window: exactly today's 20 min at the default.
+  assert.match(job, /--timeout-ms "\$\(\(900000 \+ DRAIN_PACE_WINDOW_MS\)\)"/)
+  assert.equal(900_000 + SAME_CAP_DRAIN_PACE_WINDOWS_MS[0], 1_200_000)
+  assert.ok(Math.max(...SAME_CAP_DRAIN_PACE_WINDOWS_MS) === DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS)
 })

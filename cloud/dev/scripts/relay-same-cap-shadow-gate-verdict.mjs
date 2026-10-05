@@ -35,6 +35,20 @@ export const SHADOW_GATE_THRESHOLDS = {
   director503: { blockMultiple: 10, blockFloor: 200, warnMultiple: 3, warnFloor: 100 },
   // One sample at 71 waiters is a burst that drains; three in a row is a pool that does not.
   pool: { waitersMax: 50, waitersConsecutiveSamples: 3, sqlFailuresDelta: 200 },
+  // Pace-ladder rung budget (cloud/docs/relay-workflows.md), on non-drain 503s only: each 5-min
+  // bucket within max(1.5x, +30) of the busier baseline, and two straight minutes past
+  // max(2x, +6) of its per-minute rate is the abort.
+  nonDrain503Budget: {
+    bucketMinutes: 5,
+    warnMultiple: 1.5,
+    warnMargin: 30,
+    blockMultiple: 2,
+    blockMarginPerMinute: 6,
+    blockConsecutiveMinutes: 2
+  },
+  // A drain-return deferral tells the host when to come back; past a minute the drain is no
+  // longer paced by the window but queued behind the director's lane.
+  drainDeferral: { warnRetryAfterSecondsAbove: 30, blockRetryAfterSecondsAbove: 60 },
   cloudSqlFatal: { warnAbove: 0, blockAbove: 20 },
   // With no drain timestamp (a resumed rollback skips the drain) the window still has to start
   // somewhere; this is how far back of the verify end it reaches instead.
@@ -139,6 +153,154 @@ export function longestRunAtOrAbove(values, threshold) {
   return longest
 }
 
+// Director runtime metrics land every 30 s per instance and count the interval before the sample.
+export const DIRECTOR_METRICS_INTERVAL_MS = 30_000
+
+function minuteKey(at) {
+  return new Date(at).toISOString().slice(0, 16)
+}
+
+function minutesOf({ startedAt, endedAt }) {
+  const minutes = []
+  const first = Math.floor(startedAt.getTime() / MINUTE_MS) * MINUTE_MS
+  for (let cursor = first; cursor < endedAt.getTime(); cursor += MINUTE_MS) {
+    minutes.push(minuteKey(cursor))
+  }
+  return minutes
+}
+
+/**
+ * Drain-return deferrals and re-placements per clock minute, from director runtime-metrics
+ * samples. A sample is charged to the minute holding the midpoint of the interval it counts, so a
+ * minute boundary can still move up to half a sample's count into its neighbour.
+ */
+export function drainReturnByMinute(reads, limit) {
+  const deferrals = new Map()
+  const assignments = new Map()
+  let retryAfterSecondsMax = 0
+  let truncated = false
+  for (const read of reads) {
+    if (read.failed || read.samples.length >= limit) truncated = true
+    for (const sample of read.samples) {
+      const minute = minuteKey(Date.parse(sample.timestamp) - DIRECTOR_METRICS_INTERVAL_MS / 2)
+      deferrals.set(minute, (deferrals.get(minute) ?? 0) + (sample.drainReturnDeferralsDelta ?? 0))
+      assignments.set(
+        minute,
+        (assignments.get(minute) ?? 0) + (sample.drainReturnAssignmentsDelta ?? 0)
+      )
+      retryAfterSecondsMax = Math.max(
+        retryAfterSecondsMax,
+        sample.drainReturnRetryAfterSecondsMax ?? 0
+      )
+    }
+  }
+  const sum = (map) => [...map.values()].reduce((total, count) => total + count, 0)
+  return {
+    deferralsPerMinute: Object.fromEntries(deferrals),
+    deferralsTotal: sum(deferrals),
+    deferralsPeakPerMinute: Math.max(0, ...deferrals.values()),
+    assignmentsTotal: sum(assignments),
+    assignmentsPeakPerMinute: Math.max(0, ...assignments.values()),
+    retryAfterSecondsMax,
+    truncated
+  }
+}
+
+/**
+ * Director 503s with the drain-return deferrals taken out. A deferral is a scheduled answer that
+ * carries its own Retry-After, so a faster drain multiplies them without anything being wrong.
+ */
+export function withoutDrainDeferrals(counts, drain) {
+  const perMinute = {}
+  let total = 0
+  let peak = 0
+  let peakMinute = null
+  for (const [minute, count] of Object.entries(counts.perMinute)) {
+    const remaining = Math.max(0, count - (drain.deferralsPerMinute[minute] ?? 0))
+    perMinute[minute] = remaining
+    total += remaining
+    if (remaining > peak) {
+      peak = remaining
+      peakMinute = minute
+    }
+  }
+  return {
+    perMinute,
+    total,
+    peak,
+    peakMinute,
+    truncated: counts.truncated || drain.truncated,
+    allPeak: counts.peak,
+    drainDeferralsTotal: drain.deferralsTotal
+  }
+}
+
+export function judgeNonDrain503Budget({ observed, baselines, window }) {
+  const {
+    bucketMinutes,
+    warnMultiple,
+    warnMargin,
+    blockMultiple,
+    blockMarginPerMinute,
+    blockConsecutiveMinutes
+  } = SHADOW_GATE_THRESHOLDS.nonDrain503Budget
+  const minutes = minutesOf(window)
+  // The busier baseline's mean rate over the same wall-clock span.
+  const backgroundPerMinute = Math.max(
+    0,
+    ...baselines.map((baseline) => baseline.total / Math.max(1, minutes.length))
+  )
+  const background = backgroundPerMinute * bucketMinutes
+  const series = minutes.map((minute) => observed.perMinute[minute] ?? 0)
+  const buckets = []
+  for (let index = 0; index < series.length; index += bucketMinutes) {
+    buckets.push(series.slice(index, index + bucketMinutes).reduce((sum, count) => sum + count, 0))
+  }
+  const blockPerMinute = Math.max(
+    backgroundPerMinute * blockMultiple,
+    backgroundPerMinute + blockMarginPerMinute
+  )
+  const detail = {
+    backgroundPerBucket: Math.round(background * 10) / 10,
+    bucketMinutes,
+    bucketMax: Math.max(0, ...buckets),
+    warnAbove: Math.round(Math.max(background * warnMultiple, background + warnMargin) * 10) / 10,
+    blockPerMinuteAbove: Math.round(blockPerMinute * 10) / 10,
+    consecutiveMinutesOverBlock: longestRunAtOrAbove(series, blockPerMinute)
+  }
+  if (observed.truncated || baselines.some((baseline) => baseline.truncated)) {
+    return { status: 'unverified', ...detail }
+  }
+  if (detail.consecutiveMinutesOverBlock >= blockConsecutiveMinutes) {
+    return { status: 'would-block', ...detail }
+  }
+  if (detail.bucketMax > detail.warnAbove) return { status: 'warn', ...detail }
+  return { status: 'pass', ...detail }
+}
+
+export function judgeDrainDeferrals(drain) {
+  const { warnRetryAfterSecondsAbove, blockRetryAfterSecondsAbove } =
+    SHADOW_GATE_THRESHOLDS.drainDeferral
+  const detail = {
+    deferralsTotal: drain.deferralsTotal,
+    deferralsPeakPerMinute: drain.deferralsPeakPerMinute,
+    // The measured drain rate: re-placements the director's drain-return lane admitted.
+    replacementsTotal: drain.assignmentsTotal,
+    replacementsPeakPerMinute: drain.assignmentsPeakPerMinute,
+    retryAfterSecondsMax: drain.retryAfterSecondsMax,
+    warnAbove: warnRetryAfterSecondsAbove,
+    blockAbove: blockRetryAfterSecondsAbove
+  }
+  if (drain.truncated) return { status: 'unverified', ...detail }
+  if (drain.retryAfterSecondsMax > blockRetryAfterSecondsAbove) {
+    return { status: 'would-block', ...detail }
+  }
+  if (drain.retryAfterSecondsMax > warnRetryAfterSecondsAbove) {
+    return { status: 'warn', ...detail }
+  }
+  return { status: 'pass', ...detail }
+}
+
 export function judgeDirector503({ observed, baselines }) {
   const { blockMultiple, blockFloor, warnMultiple, warnFloor } = SHADOW_GATE_THRESHOLDS.director503
   const baselinePeak = Math.max(0, ...baselines.map((baseline) => baseline.peak))
@@ -147,6 +309,10 @@ export function judgeDirector503({ observed, baselines }) {
     peakPerMinute: observed.peak,
     peakMinute: observed.peakMinute,
     total: observed.total,
+    ...(observed.drainDeferralsTotal === undefined ? {} : {
+      allPeakPerMinute: observed.allPeak,
+      drainDeferralsTotal: observed.drainDeferralsTotal
+    }),
     baselinePeakPerMinute: baselinePeak,
     baselines: baselines.map(({ label, peak, total, truncated }) => ({
       label,
@@ -247,6 +413,9 @@ export function renderStepSummary(report) {
     '',
     `Cell \`${report.cellId}\`, window ${report.window.startedAt} to ${report.window.endedAt}`,
     `(start taken from: ${report.window.startedFrom}).`,
+    `Drain pace ${report.drain.paceWindowMs} ms (cell applied: ` +
+      `${report.drain.appliedPaceWindowMs ?? 'not drained'}), ` +
+      `${report.drain.targetHosts ?? 'unknown'} hosts, settled ${report.drain.settledAt ?? 'never'}.`,
     'This gate never fails the job. Compare its verdict with the operator call for this cell.',
     '',
     '| check | status | numbers |',

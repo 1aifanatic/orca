@@ -25,6 +25,49 @@ export function selectorWaveDelta(cellId) {
   return SAME_CAP_MIGRATION_ONLY_CELLS.includes(cellId) ? 0 : 2
 }
 
+// The cell spreads its drain sends evenly over this window (host-session-registry.ts drain), so
+// it sets the re-placement arrival rate: hosts / window. A closed set, stepped down one rung at a
+// time per cloud/docs/relay-workflows.md; the first entry is the default every wave used before.
+export const SAME_CAP_DRAIN_PACE_WINDOWS_MS = [300_000, 60_000, 30_000]
+export const DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS = SAME_CAP_DRAIN_PACE_WINDOWS_MS[0]
+
+// Only US general cells may drain faster than the default. An Asia drain is bounded by its
+// targets' own accept rate (~4-6 hosts/s per cell over 176 ms round trips), and a migration-only
+// cell carries no hosts, so neither has anything to gain from a shorter window.
+export const SAME_CAP_FAST_DRAIN_PACE_CELLS = [
+  'production-gce-c7', 'production-gce-c8', 'production-gce-c9', 'production-gce-c10',
+  'production-gce-c13', 'production-gce-c14', 'production-gce-c15', 'production-gce-c16',
+  'production-gce-c19', 'production-gce-c20', 'production-gce-c21', 'production-gce-c22',
+  'production-gce-c23', 'production-gce-c24', 'production-gce-c25', 'production-gce-c26',
+  'production-gce-c32', 'production-gce-c33'
+]
+
+export function drainPaceWindowMs(value, cellIds) {
+  const parsed = /^[1-9][0-9]*$/.test(value ?? '') ? Number(value) : Number.NaN
+  if (!SAME_CAP_DRAIN_PACE_WINDOWS_MS.includes(parsed)) {
+    throw new Error(
+      `drain pace window must be one of ${SAME_CAP_DRAIN_PACE_WINDOWS_MS.join(', ')} ms`
+    )
+  }
+  if (parsed !== DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS) {
+    const slow = cellIds.filter((cell) => !SAME_CAP_FAST_DRAIN_PACE_CELLS.includes(cell))
+    if (slow.length > 0) {
+      throw new Error(
+        `drain pace window ${parsed} ms is for US general cells only, not ${slow.join(',')}`
+      )
+    }
+  }
+  return parsed
+}
+
+// The default keeps the confirmation every earlier wave typed; any other window must be named
+// in it, so a dispatch cannot run a pace its confirmation did not state.
+function confirmationPaceSuffix(paceWindowMs) {
+  return paceWindowMs === DEFAULT_SAME_CAP_DRAIN_PACE_WINDOW_MS
+    ? ''
+    : ` drain-pace-window-ms=${paceWindowMs}`
+}
+
 export function entryAdmission(cellId) {
   return SAME_CAP_MIGRATION_ONLY_CELLS.includes(cellId) ? 'migration-only' : 'general'
 }
@@ -70,10 +113,12 @@ export function validateSameCapWave(input) {
   if (input.mode === 'rollback' && selected.length !== 1) {
     throw new Error('rollback mode requires exactly one cell')
   }
+  const paceWindowMs = drainPaceWindowMs(input.drainPaceWindowMs, selected)
   const mutation = input.mode !== 'verify'
-  const expectedConfirmation = input.mode === 'rollback'
+  const expectedConfirmation = (input.mode === 'rollback'
     ? `ROLL_BACK_RELAY_SAME_CAP ${rollbackDigest} ${selected.join(',')}`
-    : `ROLL_RELAY_SAME_CAP ${targetDigest} ${selected.join(',')}`
+    : `ROLL_RELAY_SAME_CAP ${targetDigest} ${selected.join(',')}`) +
+    confirmationPaceSuffix(paceWindowMs)
   if (mutation && input.confirmation !== expectedConfirmation) {
     throw new Error('same-cap confirmation does not match the exact digest and cells')
   }
@@ -84,7 +129,7 @@ export function validateSameCapWave(input) {
   if (input.mode !== 'batch-apply' && input.canaryRunId) {
     throw new Error('only batch mode accepts a canary run ID')
   }
-  return { cells: selected, targetDigest, rollbackDigest }
+  return { cells: selected, targetDigest, rollbackDigest, drainPaceWindowMs: paceWindowMs }
 }
 
 export function canaryAuthority(input) {
@@ -100,12 +145,13 @@ export function canaryAuthority(input) {
     throw new Error('rehome generation is invalid')
   }
   return {
-    v: 1,
+    v: 2,
     commitSha: input.commitSha,
     runId: input.runId,
     cellId: wave.cells[0],
     targetDigest: wave.targetDigest,
     rollbackDigest: wave.rollbackDigest,
+    drainPaceWindowMs: wave.drainPaceWindowMs,
     selectorGeneration: selectorGeneration + selectorWaveDelta(wave.cells[0]),
     rehomeGeneration
   }
@@ -114,9 +160,11 @@ export function canaryAuthority(input) {
 export function verifyCanaryAuthority(authority, expected, repositoryRoot) {
   const selectorGeneration = Number(expected.selectorGeneration)
   // A mixed wave is already rejected, so the batch's first cell names the whole batch's class.
-  const batchAdmission = entryAdmission(cells(expected.cellIds ?? '')[0])
+  const batchCells = cells(expected.cellIds ?? '')
+  const batchAdmission = entryAdmission(batchCells[0])
+  const batchPaceWindowMs = drainPaceWindowMs(expected.drainPaceWindowMs, batchCells)
   if (
-    authority?.v !== 1 ||
+    authority?.v !== 2 ||
     !/^[0-9a-f]{40}$/.test(authority.commitSha ?? '') ||
     authority.runId !== expected.runId ||
     authority.targetDigest !== expected.targetDigest ||
@@ -126,8 +174,17 @@ export function verifyCanaryAuthority(authority, expected, repositoryRoot) {
     !Number.isSafeInteger(selectorGeneration) ||
     selectorGeneration < authority.selectorGeneration ||
     authority.rehomeGeneration !== Number(expected.rehomeGeneration) ||
-    !SAME_CAP_CELLS.includes(authority.cellId)
+    !SAME_CAP_CELLS.includes(authority.cellId) ||
+    !SAME_CAP_DRAIN_PACE_WINDOWS_MS.includes(authority.drainPaceWindowMs)
   ) throw new Error('canary authority does not match this batch')
+  // A canary proves its own pace and every slower one; a faster batch needs its own canary, and
+  // falling back to a slower pace mid-ladder never does.
+  if (batchPaceWindowMs < authority.drainPaceWindowMs) {
+    throw new Error(
+      `canary authority drained over ${authority.drainPaceWindowMs} ms, ` +
+      `so it cannot authorize a batch draining over ${batchPaceWindowMs} ms`
+    )
+  }
   // A migration-only cell carries no hosts and a different cap, so rolling it proves nothing
   // about a general batch, and its wave advances a different selector delta.
   if (entryAdmission(authority.cellId) !== batchAdmission) {
@@ -167,7 +224,8 @@ export function main(argv = process.argv.slice(2)) {
       targetDigest: input['target-digest'],
       rollbackDigest: input['rollback-digest'],
       confirmation: input.confirmation,
-      canaryRunId: input['canary-run-id']
+      canaryRunId: input['canary-run-id'],
+      drainPaceWindowMs: input['drain-pace-window-ms']
     })
     process.stdout.write(`${JSON.stringify(wave.cells)}\n`)
     return
@@ -179,6 +237,7 @@ export function main(argv = process.argv.slice(2)) {
       targetDigest: input['target-digest'],
       rollbackDigest: input['rollback-digest'],
       confirmation: input.confirmation,
+      drainPaceWindowMs: input['drain-pace-window-ms'],
       commitSha: input['commit-sha'],
       runId: input['run-id'],
       selectorGeneration: input['selector-generation'],
@@ -191,7 +250,8 @@ export function main(argv = process.argv.slice(2)) {
     if (!SAME_CAP_CELLS.includes(cellId)) throw new Error('same-cap wave cells are invalid')
     process.stdout.write(`${JSON.stringify({
       entryAdmission: entryAdmission(cellId),
-      selectorWaveDelta: selectorWaveDelta(cellId)
+      selectorWaveDelta: selectorWaveDelta(cellId),
+      drainPaceWindowMs: drainPaceWindowMs(input['drain-pace-window-ms'], [cellId])
     })}\n`)
     return
   }
@@ -203,7 +263,8 @@ export function main(argv = process.argv.slice(2)) {
       targetDigest: input['target-digest'],
       rollbackDigest: input['rollback-digest'],
       selectorGeneration: input['selector-generation'],
-      rehomeGeneration: input['rehome-generation']
+      rehomeGeneration: input['rehome-generation'],
+      drainPaceWindowMs: input['drain-pace-window-ms']
     })
     return
   }
