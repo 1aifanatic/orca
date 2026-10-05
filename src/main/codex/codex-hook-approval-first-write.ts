@@ -14,7 +14,11 @@ export function findMissingCodexHookApprovals(
 ): CodexTrustEntry[] {
   return approvals.filter((entry) => {
     const state = trustStates.get(computeTrustKey(entry))
-    return state?.trustedHash !== entry.trustedHash || state.enabled !== entry.enabled
+    return (
+      state === undefined ||
+      state.trustedHash !== entry.trustedHash ||
+      state.enabled !== entry.enabled
+    )
   })
 }
 
