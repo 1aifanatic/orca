@@ -124,6 +124,12 @@ describe('a resumed session', () => {
     })
     const late = { type: 'item.update', item: 'call-a', body: runningTool('read') } as const
     assembler.apply({ ...late, join: { turn: 'old' } })
+    assembler.apply({
+      type: 'item.open',
+      item: 'call-b',
+      body: runningTool('grep'),
+      join: { turn: 'old' }
+    })
     assembler.apply({ type: 'turn.open', turn: 'new', at: 3_000 })
     assembler.apply({ type: 'request.open', request: '0', body: pendingApproval })
     // The sweep for the dead child lands before the drain.
@@ -141,6 +147,8 @@ describe('a resumed session', () => {
     expect((await rig.row(providerItemId('item', 'call-a')))?.body).toMatchObject({
       state: 'failed'
     })
+    // Nor does new running work land in a turn the sweep ended: nothing would ever settle it.
+    expect(await rig.row(providerItemId('item', 'call-b'))).toBeUndefined()
     expect((await rig.row(providerItemId('request', '0')))?.body).toMatchObject({
       resolution: { state: 'cancelled' }
     })
