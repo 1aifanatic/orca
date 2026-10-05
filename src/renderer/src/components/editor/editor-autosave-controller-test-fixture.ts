@@ -105,6 +105,8 @@ export function createUntitledNoteStore(fileName: string): StoreApi<AppState> {
     },
     browserTabsByWorktree: {},
     tabsByWorktree: {},
+    activeTabId: null,
+    activeTabIdByWorktree: {},
     activeBrowserTabIdByWorktree: {},
     unifiedTabsByWorktree: {}
   })
