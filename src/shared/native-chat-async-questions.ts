@@ -264,3 +264,10 @@ export function reduceNativeChatAsyncQuestionsView(
   }
   return field ?? NATIVE_CHAT_ASYNC_QUESTIONS_ABSENT
 }
+
+/** The side field of an unvalidated stream frame, or undefined (older host / bad shape). */
+export function readNativeChatAsyncQuestionsFrameField(
+  frame: unknown
+): NativeChatAsyncQuestionsField | undefined {
+  return isRecord(frame) ? readNativeChatAsyncQuestionsField(frame.asyncQuestions) : undefined
+}

@@ -5,6 +5,7 @@ import type {
 } from '../../../../shared/native-chat-types'
 import type { RpcContext } from '../core'
 import type { NativeChatAsyncQuestionsField } from '../../../../shared/native-chat-async-questions'
+import type { SubscribeNativeChatTranscriptArgs } from '../../../native-chat/transcript-watch-contract'
 
 // Stub the bounded tail reader so the handler returns a deterministic transcript with
 // one oversized tool-result block; the test then asserts clip behavior per client.
@@ -37,8 +38,7 @@ const watcher = vi.hoisted(() => ({
         state: 'working' | 'completed' | 'interrupted'
         turnId: string
         timestamp: number | null
-      },
-      asyncQuestions?: NativeChatAsyncQuestionsField
+      }
     ) => void
     onReplace?: (
       messages: NativeChatMessage[],
@@ -48,8 +48,7 @@ const watcher = vi.hoisted(() => ({
         state: 'working' | 'completed' | 'interrupted'
         turnId: string
         timestamp: number | null
-      },
-      asyncQuestions?: NativeChatAsyncQuestionsField
+      }
     ) => void
     onAppend: (
       messages: NativeChatMessage[],
@@ -57,8 +56,7 @@ const watcher = vi.hoisted(() => ({
         state: 'working' | 'completed' | 'interrupted'
         turnId: string
         timestamp: number | null
-      },
-      asyncQuestions?: NativeChatAsyncQuestionsField
+      }
     ) => void
     onTranscriptPending?: () => void
   },
@@ -708,7 +706,11 @@ describe('nativeChat.subscribe initial snapshot', () => {
       state: 'ready',
       questions: [{ key: 'k', index: 0, title: 'Color?', options: ['Red'] }]
     }
-    const callbacks = activeWatcherArgs()
+    // The handler's real callbacks, called with the field this build's watcher passes.
+    const callbacks: Pick<
+      SubscribeNativeChatTranscriptArgs,
+      'onInitialSnapshot' | 'onReplace' | 'onAppend'
+    > = activeWatcherArgs()
     callbacks.onInitialSnapshot?.([], false, 0, undefined, undefined, pending)
     callbacks.onAppend([], undefined, ready)
     callbacks.onAppend([makeTextMessage('more')])

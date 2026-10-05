@@ -43,11 +43,20 @@ describe('useMobileNativeChatSession async questions', () => {
   }
 
   function client(): RpcClient {
-    const subscribe: RpcClient['subscribe'] = vi.fn((_method, _params, onData) => {
-      emit = onData
-      return () => {}
-    })
-    return { sendRequest: vi.fn(), subscribe } as unknown as RpcClient
+    return {
+      sendRequest: vi.fn(),
+      subscribe: (_method, _params, onData) => {
+        emit = onData
+        return () => {}
+      },
+      updateTerminalSubscriptionViewport: () => {},
+      getState: () => 'connected',
+      getReconnectAttempt: () => 0,
+      getLastConnectedAt: () => 1,
+      onStateChange: () => () => {},
+      notifyForeground: () => {},
+      close: () => {}
+    }
   }
 
   it('takes the host set from the snapshot, whatever page of history is loaded', async () => {

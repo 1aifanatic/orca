@@ -1,5 +1,5 @@
 import type { NativeChatApi, NativeChatAppendedMessages } from '../../../../preload/api-types'
-import { readNativeChatAsyncQuestionsField } from '../../../../shared/native-chat-async-questions'
+import { readNativeChatAsyncQuestionsFrameField } from '../../../../shared/native-chat-async-questions'
 import { buildNativeChatUnsubscribe } from '../../../../shared/native-chat-stream-unsubscribe'
 import {
   parseRuntimeNativeChatReadSessionResult,
@@ -72,11 +72,10 @@ export function createWebNativeChatApi(): NativeChatApi {
                 hasMore?: boolean
                 error?: string
                 lifecycle?: unknown
-                asyncQuestions?: unknown
                 pending?: boolean
               }
               const lifecycle = parseRuntimeNativeChatTurnLifecycle(result?.lifecycle)
-              const asyncQuestions = readNativeChatAsyncQuestionsField(result?.asyncQuestions)
+              const asyncQuestions = readNativeChatAsyncQuestionsFrameField(response.result)
               const asyncField = asyncQuestions ? { asyncQuestions } : {}
               // No transcript behind this window yet — forwarded so the view can stop spinning, but it is not the settled initial read.
               const pending = result?.pending === true

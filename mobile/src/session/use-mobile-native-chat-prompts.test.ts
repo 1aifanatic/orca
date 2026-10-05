@@ -101,11 +101,11 @@ describe('useMobileNativeChatPrompts approval-envelope state gate', () => {
   })
 
   it('puts the shared envelope ahead of the numbered-prose guess while paused', () => {
-    const permission = permissionFor({
+    const { permission } = promptsFor({
       state: 'waiting',
       interactivePrompt: APPROVAL,
       lastAssistantMessage: 'Allow this Bash command?\n1. Yes\n2. No'
-    }) as { title: string; options: Array<{ label: string }> } | null
+    })
     expect(permission?.title).toBe('Allow Bash?')
     expect(permission?.options.map((o) => o.label)).toEqual(['Allow', 'Deny'])
   })

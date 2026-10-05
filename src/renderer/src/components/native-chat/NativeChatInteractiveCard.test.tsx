@@ -18,13 +18,17 @@ const INITIAL_PROMPT = JSON.stringify({
   ]
 })
 
+// Live asks are published while the agent waits; the card is gated on it (STA-3144).
+function waitingState(): string | undefined {
+  return 'waiting'
+}
+
 const storeState = {
   agentStatusByPaneKey: {
     'tab-1:leaf-1': {
       interactivePrompt: INITIAL_PROMPT as string | undefined,
       toolName: 'AskUserQuestion' as string | undefined,
-      // Live asks are published while the agent waits; the card is gated on it (STA-3144).
-      state: 'waiting' as string | undefined
+      state: waitingState()
     }
   }
 }
