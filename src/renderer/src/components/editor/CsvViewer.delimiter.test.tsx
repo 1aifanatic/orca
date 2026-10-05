@@ -4,14 +4,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import CsvViewer from './CsvViewer'
 
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
+  useVirtualizer: ({
+    count,
+    estimateSize,
+    paddingStart = 0
+  }: {
+    count: number
+    estimateSize: (index: number) => number
+    paddingStart?: number
+  }) => ({
     getVirtualItems: () =>
       Array.from({ length: Math.min(count, 3) }, (_, index) => ({
         index,
         key: index,
-        start: index * 28
+        start: paddingStart + index * estimateSize(index),
+        size: estimateSize(index),
+        end: paddingStart + (index + 1) * estimateSize(index)
       })),
-    getTotalSize: () => count * 28
+    getTotalSize: () => paddingStart + count * estimateSize(0),
+    resizeItem: vi.fn(),
+    measure: vi.fn()
   })
 }))
 
