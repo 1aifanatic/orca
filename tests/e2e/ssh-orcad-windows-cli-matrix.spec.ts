@@ -33,7 +33,11 @@ import { seedRelayEraProfile, seedRelayEraTarget } from './helpers/orcad-upgrade
 import { ORCAD_CONVERT_HOST_ENV, startOrcadConvertHost } from './helpers/orcad-convert-host'
 import { mutateStoppedProfileState } from './helpers/persisted-profile-state'
 import { orcaCliResult, runCompiledOrcaCli } from './helpers/compiled-orca-cli'
-import { killHostOrcad, listHostOrcadProcesses } from './helpers/windows-host-orcad-processes'
+import {
+  killHostOrcad,
+  listHostOrcadProcesses,
+  listHostOrcadServerProcesses
+} from './helpers/windows-host-orcad-processes'
 import { readWindowsHostCellDescriptor } from '../../src/main/ssh/ssh-windows-host-cells'
 import { runtimeHostContactFromSnapshot } from '../../src/shared/runtime-host-contact'
 import type {
@@ -88,6 +92,25 @@ async function disposeQuietly(session: { dispose: () => Promise<void> }): Promis
     await session.dispose()
   } catch (error) {
     console.warn('[e2e] Restart profile cleanup failed:', error)
+  }
+}
+
+/** Windows can keep the just-closed app's SQLite file busy for a moment ("disk I/O error"). */
+async function mutateStoppedProfileStateWhenReleased(
+  userDataDir: string,
+  mutate: (state: Record<string, unknown>) => void
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      mutateStoppedProfileState(userDataDir, mutate)
+      return
+    } catch (error) {
+      if (attempt >= 10) {
+        throw error
+      }
+      console.log(`[cli-matrix] stopped profile busy (attempt ${attempt}): ${String(error)}`)
+      await new Promise((resolve) => setTimeout(resolve, 1_000))
+    }
   }
 }
 
@@ -413,6 +436,7 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
     expect(await hostVerdict(page, redeployed)).toBe('live')
     const killed = await killHostOrcad(descriptor.home)
     expect(killed, 'an orcad process to restart').not.toHaveLength(0)
+    console.log(`[cli-matrix] killed orcad: ${JSON.stringify(killed)}`)
     const verdicts: string[] = []
     const sample = async (): Promise<string> => {
       const verdict = await hostVerdict(page, redeployed)
@@ -433,7 +457,7 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
       })
       await expect.poll(sample, { timeout: 4 * 60_000 }).toBe('live')
     }
-    const relaunched = await listHostOrcadProcesses(descriptor.home)
+    const relaunched = await listHostOrcadServerProcesses(descriptor.home)
     console.log(
       `[cli-matrix] orcad restart ${recoveredBy}: ${verdicts.join(' -> ')}; killed ${killed.map((entry) => entry.pid).join(',')}, now ${relaunched.map((entry) => entry.pid).join(',')}`
     )
@@ -453,7 +477,7 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
     expect(reconnected).toContain('"managed"')
     expect(await waitForManaged(page, targetId)).toBe(redeployed)
     await expect.poll(() => hostVerdict(page, redeployed), { timeout: 4 * 60_000 }).toBe('live')
-    const afterConnect = await listHostOrcadProcesses(descriptor.home)
+    const afterConnect = await listHostOrcadServerProcesses(descriptor.home)
     expect(
       afterConnect.some((entry) => killedAgain.some((victim) => victim.pid === entry.pid))
     ).toBe(false)
@@ -571,7 +595,7 @@ test('@orcad-cli-relay-kept an open relay terminal keeps a Windows host on the r
     expect(localTerminals.terminals.length, 'the CLI lists the relay terminal').toBeGreaterThan(0)
     await session.close(app)
     app = null
-    mutateStoppedProfileState(session.userDataDir, (state) => {
+    await mutateStoppedProfileStateWhenReleased(session.userDataDir, (state) => {
       const targets = Array.isArray(state.sshTargets) ? state.sshTargets : []
       for (const target of targets) {
         if (target?.id === targetId) {

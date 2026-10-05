@@ -51,9 +51,16 @@ export async function listHostOrcadProcesses(home: string): Promise<HostProcess[
   return (await listHostAccountProcesses(home)).filter((entry) => /orcad/iu.test(entry.commandLine))
 }
 
-/** Hard-kills the account's orcad, as a crash or an OS-level restart would. */
+/** The orcad server itself, without the terminal daemon and workers it forks from the same slot. */
+export async function listHostOrcadServerProcesses(home: string): Promise<HostProcess[]> {
+  return (await listHostOrcadProcesses(home)).filter((entry) =>
+    /[\\/]orcad\.js(?=["\s]|$)/iu.test(entry.commandLine)
+  )
+}
+
+/** Hard-kills the account's orcad server, as a crash would; its terminal daemon keeps running. */
 export async function killHostOrcad(home: string): Promise<HostProcess[]> {
-  const victims = await listHostOrcadProcesses(home)
+  const victims = await listHostOrcadServerProcesses(home)
   if (victims.length > 0) {
     await powershell(
       `Stop-Process -Force -ErrorAction SilentlyContinue -Id ${victims.map((entry) => entry.pid).join(',')}`,
