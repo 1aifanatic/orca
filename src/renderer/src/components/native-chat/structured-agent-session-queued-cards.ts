@@ -9,7 +9,10 @@ import {
   structuredAgentSessionEntryAsksToQueue,
   type StructuredAgentSessionQueueDelivery
 } from '../../../../shared/structured-agent-session-outbox-delivery'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import {
+  structuredAgentSessionEntryRejectedByHost,
+  type StructuredAgentSessionOutboxEntry
+} from '../../../../shared/structured-agent-session-outbox'
 import {
   admitStructuredAgentSessionOutboxEntry,
   structuredAgentSessionEntryAwaitsSettlement
@@ -122,6 +125,8 @@ export function outboxOutsideQueuedCards(
       (stalledFrom === -1 || index < stalledFrom) &&
       (entry.state === 'queued' || entry.state === 'dispatching') &&
       !structuredAgentSessionEntryAwaitsSettlement(entry) &&
+      // The host rejected it: no card will take its place, so it stays a bubble.
+      !structuredAgentSessionEntryRejectedByHost(entry) &&
       structuredAgentSessionEntryAsksToQueue(entry, host)
     return !held.has(entry.clientMessageId) && !onItsWay
   })

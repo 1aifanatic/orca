@@ -1,7 +1,7 @@
 // An outbox copy of a message the host recorded and then rejected draws it only while the host's row
 // is not loaded, and leaves, with no user action, on the batch or page that loads that row. It never
-// offers a control: sending it again is a new message. Nothing is stored to say it was rejected:
-// the held submission says so.
+// offers a control: sending it again is a new message. When its row is not loaded the entry keeps
+// the host's rejection itself, since nothing else on the page says so.
 
 import { expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'

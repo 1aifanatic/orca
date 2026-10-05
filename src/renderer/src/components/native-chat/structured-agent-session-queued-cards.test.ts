@@ -196,6 +196,16 @@ describe('queued message cards', () => {
     expect(ids(outboxOutsideQueuedCards(stopped, [], true, QUEUEING))).toEqual(['a'])
     const legacy = [entry('a', { legacyUnsettled: true }), entry('b')]
     expect(ids(outboxOutsideQueuedCards(legacy, [], true, QUEUEING))).toEqual(['a'])
+    // A queue send the host rejected gets no card, so it stays a bubble while the agent works.
+    const rejected = [
+      entry('a', {
+        state: 'dispatching',
+        lastAttemptAt: 2,
+        sentDelivery: 'queue-if-active',
+        recordedRejection: { reason: 'Orca restarted before this message was sent.' }
+      })
+    ]
+    expect(ids(outboxOutsideQueuedCards(rejected, [], true, QUEUEING))).toEqual(['a'])
     const unconfirmed = [entry('a', { state: 'unconfirmed' }), entry('b')]
     expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, QUEUEING))).toEqual(['a', 'b'])
     // Once the host visibly holds it, it is a card whatever this queue last heard.
