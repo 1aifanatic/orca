@@ -17,6 +17,7 @@ import { useThrottledLatestValue } from './use-throttled-latest-value'
 import type { MobileNativeChatController } from './mobile-native-chat-controller-contract'
 import { useMobileBridgeChatPromptWrites } from './use-mobile-bridge-chat-prompt-writes'
 import { useMobileNativeChatActiveResolution } from './use-mobile-native-chat-active-resolution'
+import type { MobileNativeChatActiveView } from './use-mobile-native-chat-active-resolution'
 
 export type { MobileNativeChatController } from './mobile-native-chat-controller-contract'
 
@@ -33,6 +34,8 @@ export function useMobileNativeChatController(args: {
   activeHandleRef: MutableRefObject<string | null>
   deviceTokenRef: MutableRefObject<string | null>
   nativeChatTranscriptIsLocalReadable: boolean
+  /** Which view the active tab shows, from the shared chat pair or the legacy overrides. */
+  view: MobileNativeChatActiveView
   nativeChatInputLeaseReady: boolean
   /** Live socket state; the lease collapses on disconnect but one render later. */
   connState: ConnectionState
@@ -79,7 +82,8 @@ export function useMobileNativeChatController(args: {
     activeSessionTab,
     activeSessionTabId,
     activeHandleRef,
-    nativeChatTranscriptIsLocalReadable
+    nativeChatTranscriptIsLocalReadable,
+    view: args.view
   })
 
   // The lane runs before the drafts hook (fixed hook order); Edit's composer
@@ -96,7 +100,8 @@ export function useMobileNativeChatController(args: {
       sessionId: activeChatSessionId,
       sourceIdentity,
       callerIdentity: deviceTokenRef.current ?? '',
-      enabled: showNativeChat,
+      // Why the identity too: the gate's identity-less chat must not open a transcript lane.
+      enabled: showNativeChat && activeChatResolution != null,
       connState,
       hostSupport: agentSessionHostSupport,
       appendComposerTextRef,

@@ -63,7 +63,7 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     quickCommandsSupported,
     showToast,
     nativeChatTranscriptIsLocalReadable,
-    nativeChatController,
+    chatView,
     toggleTabChatView,
     toggleDisplayMode,
     readFileTab,
@@ -192,7 +192,7 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
         actions={getMobileTerminalActionSheetActions({
           target: actionTarget,
           tabs: sessionTabs.filter((tab) => tab.type === 'terminal'),
-          isTabChatView: nativeChatController.isTabChatView,
+          tabLeafView: chatView.tabLeafView,
           nativeChatTranscriptIsLocalReadable,
           onDismiss: () => setActionTarget(null),
           onToggleChat: toggleTabChatView,

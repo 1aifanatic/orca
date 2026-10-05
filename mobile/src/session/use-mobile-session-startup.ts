@@ -16,6 +16,7 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
     setTerminals,
     terminalsRef,
     setSessionTabs,
+    setChatViewHostOwned,
     appliedSnapshotMarkerRef,
     closedTabTombstonesRef,
     setTerminalsLoaded,
@@ -72,6 +73,7 @@ export function useMobileSessionStartup(scope: MobileSessionKeyboardStateModel) 
     setTerminals([])
     terminalsRef.current = []
     setSessionTabs([])
+    setChatViewHostOwned(false)
     setActiveSessionTabId(null)
     clearPendingLiveInputCommit()
     setMarkdownDocs(new Map())

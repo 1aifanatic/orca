@@ -3,7 +3,11 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 import { FLOATING_WORKSPACE_WORKTREE_ID } from './floating-workspace'
-import { useMobileNativeChatReadability } from './use-mobile-native-chat-readability'
+import {
+  useMobileNativeChatReadability,
+  useMobileNativeChatReadabilityState
+} from './use-mobile-native-chat-readability'
+import type { MobileNativeChatReadability } from './mobile-session-chat-view'
 
 describe('useMobileNativeChatReadability', () => {
   let renderer: ReactTestRenderer | null = null
@@ -93,5 +97,67 @@ describe('useMobileNativeChatReadability', () => {
       await Promise.resolve()
     })
     expect(readable).toBe(false)
+  })
+})
+
+describe('useMobileNativeChatReadabilityState (A1c-8)', () => {
+  let renderer: ReactTestRenderer | null = null
+  let readability: MobileNativeChatReadability | null = null
+
+  afterEach(() => {
+    act(() => renderer?.unmount())
+    renderer = null
+    readability = null
+  })
+
+  function Harness({ client, hostId }: { client: RpcClient; hostId: string }): null {
+    readability = useMobileNativeChatReadabilityState(client, hostId, 'repo::/worktree')
+    return null
+  }
+
+  function clientWith(sendRequest: ReturnType<typeof vi.fn>): RpcClient {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: readability reaches the client only through sendRequest.
+    return { sendRequest } as unknown as RpcClient
+  }
+
+  it('is unknown while the read is pending and settles from the reply', async () => {
+    let answer: (response: unknown) => void = () => {}
+    const client = clientWith(vi.fn(() => new Promise((resolve) => (answer = resolve))))
+    await act(async () => {
+      renderer = create(createElement(Harness, { client, hostId: 'host-pending' }))
+    })
+    expect(readability).toBe('unknown')
+    await act(async () => {
+      answer({ ok: true, result: { repos: [{ id: 'repo', connectionId: 'model-a-ssh' }] } })
+      await Promise.resolve()
+    })
+    expect(readability).toBe('unreadable')
+  })
+
+  it('settles to failed when the read rejects', async () => {
+    const client = clientWith(vi.fn().mockRejectedValue(new Error('timeout')))
+    await act(async () => {
+      renderer = create(createElement(Harness, { client, hostId: 'host-failed' }))
+      await Promise.resolve()
+    })
+    expect(readability).toBe('failed')
+  })
+
+  it('keeps the settled answer for the same host while a swapped client re-reads', async () => {
+    const first = clientWith(
+      vi
+        .fn()
+        .mockResolvedValue({ ok: true, result: { repos: [{ id: 'repo', connectionId: null }] } })
+    )
+    await act(async () => {
+      renderer = create(createElement(Harness, { client: first, hostId: 'host-swap' }))
+      await Promise.resolve()
+    })
+    expect(readability).toBe('readable')
+    const second = clientWith(vi.fn(() => new Promise(() => {})))
+    act(() => renderer?.update(createElement(Harness, { client: second, hostId: 'host-swap' })))
+    expect(readability).toBe('readable')
+    act(() => renderer?.update(createElement(Harness, { client: second, hostId: 'other-host' })))
+    expect(readability).toBe('unknown')
   })
 })

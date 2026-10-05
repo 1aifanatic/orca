@@ -40,3 +40,18 @@ export const sessionCreatedTerminalTabSchema = z
     })
   })
   .transform((reply) => reply.tab)
+
+/**
+ * A fenced chat-pair write's reply. `chatView` is the pair the host now holds; a reply without it
+ * comes from a host that does not own the pair, which the pending writer treats as a failure.
+ * A malformed `chatView` refuses the whole reply rather than adopting a guessed pair.
+ */
+export const sessionTabChatViewReplySchema = z.looseObject({
+  chatView: z
+    .object({
+      viewMode: z.enum(['terminal', 'chat']).nullable(),
+      chatLeafId: z.string().nullable()
+    })
+    .optional(),
+  superseded: z.literal(true).optional()
+})

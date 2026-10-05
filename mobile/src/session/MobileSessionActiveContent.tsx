@@ -38,6 +38,7 @@ export function MobileSessionActiveContent({
     nativeChatSendError,
     nativeChatOverlayInputLockReason,
     nativeChatController,
+    nativeChatGate,
     dictation,
     handleDictationToggle,
     handleDictationPressIn,
@@ -72,6 +73,8 @@ export function MobileSessionActiveContent({
     activeFileTab,
     activeBrowserTab,
     activePendingTerminalTab,
+    activeChatSurface,
+    activeViewUndecided,
     isPendingTerminalRecoveryParked,
     retryPendingTerminalRecovery,
     showLoadingState,
@@ -81,7 +84,14 @@ export function MobileSessionActiveContent({
     toastAnimatedStyle,
     createTabBusy
   } = controller
-  const content = showLoadingState ? (
+  const toast = toastMessage ? (
+    <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
+      <Text style={styles.toastText}>{toastMessage}</Text>
+    </Animated.View>
+  ) : null
+  // Why undecided waits: the device default or transcript readability is still settling.
+  const showSpinner = showLoadingState || activeViewUndecided
+  const content = showSpinner ? (
     <View style={styles.emptyState}>
       <ActivityIndicator size="small" color={colors.textSecondary} />
     </View>
@@ -171,7 +181,7 @@ export function MobileSessionActiveContent({
         </Animated.View>
       )}
     </View>
-  ) : activePendingTerminalTab ? (
+  ) : activePendingTerminalTab && !activeChatSurface ? (
     <View style={styles.emptyState}>
       {!isPendingTerminalRecoveryParked && (
         <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -191,6 +201,7 @@ export function MobileSessionActiveContent({
           <Text style={styles.createButtonText}>Retry</Text>
         </Pressable>
       )}
+      {toast}
     </View>
   ) : (
     <View style={styles.terminalFrame}>
@@ -238,6 +249,7 @@ export function MobileSessionActiveContent({
         sendSurfaceId={controller.nativeChatScopeKey ?? ''}
         getSendCompletionGeneration={controller.getSendCompletionGeneration}
         keyboardInset={keyboardLift}
+        gate={nativeChatGate}
       />
       {toastMessage && (
         <Animated.View pointerEvents="none" style={[styles.toast, toastAnimatedStyle]}>
