@@ -188,7 +188,8 @@ export function rehomeInspectInputs(context) {
 }
 
 // Pause keeps every durable field as inspected; only `enabled` and the generation change.
-export function rehomePauseInputs({ director, selector, control }) {
+// Every `confirmation` is the phrase the operator typed, never filled in here.
+export function rehomePauseInputs({ director, selector, control, confirmation }) {
   return {
     ...rehomeInputs('pause', { director, selector, controlGeneration: control.generation }),
     'not-before': String(control.notBefore),
@@ -196,7 +197,7 @@ export function rehomePauseInputs({ director, selector, control }) {
     'preference-max-age-ms': String(control.preferenceMaxAgeMs),
     'host-cooldown-ms': String(control.hostCooldownMs ?? 604_800_000),
     'drain-grace-ms': String(control.drainGraceMs),
-    confirmation: 'PAUSE_REGIONAL_REHOMING'
+    confirmation
   }
 }
 
@@ -206,13 +207,9 @@ export function rehomeEnableInputs({
   control,
   controlGeneration,
   notBefore,
-  monitor
+  monitor,
+  confirmation
 }) {
-  if (control.hostCooldownMs === undefined) {
-    throw new Error(
-      'the inspected control has no host cooldown; enable needs a director that reports it'
-    )
-  }
   return {
     ...rehomeInputs('enable', { director, selector, controlGeneration }),
     'not-before': String(notBefore),
@@ -223,7 +220,7 @@ export function rehomeEnableInputs({
     'drain-grace-ms': String(control.drainGraceMs),
     'monitor-run-id': String(monitor.runId),
     'monitor-run-attempt': String(monitor.attempt),
-    confirmation: 'ENABLE_REGIONAL_REHOMING'
+    confirmation
   }
 }
 
@@ -244,7 +241,13 @@ export function directorDeployInputs({ imageDigest, predecessorDigest, rehomeGen
   }
 }
 
-export function configureInputs({ cells, cellImageDigest, directorDigest, selectorGeneration }) {
+export function configureInputs({
+  cells,
+  cellImageDigest,
+  directorDigest,
+  selectorGeneration,
+  confirmation
+}) {
   return {
     environment: 'production',
     mode: 'configure',
@@ -252,7 +255,7 @@ export function configureInputs({ cells, cellImageDigest, directorDigest, select
     'selector-generation': String(selectorGeneration),
     'image-digest': cellImageDigest,
     'director-image-digest': directorDigest,
-    confirmation: 'CONFIGURE_ASIA_DIRECTOR'
+    confirmation
   }
 }
 
@@ -340,33 +343,4 @@ export function rehomeControlFromLog(log, mode) {
 export function admissionInspectResult(result) {
   if (result?.mode !== 'inspect') throw new Error('admission result is not an inspect')
   return parseSelector(result, 'admission selector')
-}
-
-/**
- * Reads the monitor's own verdict from its sealed state, the only place a freeze reason lives.
- * `ageMs` is measured against the caller's clock; the enable job allows 5 minutes in total.
- */
-export function monitorVerdict(state, { runId, nowMs }) {
-  const failures = Array.isArray(state?.failures) ? state.failures : null
-  const completedAt = Date.parse(state?.completedAt ?? '')
-  const reasons = []
-  if (state?.schemaVersion !== 4) reasons.push('unknown state schema')
-  if (state?.incidentId !== `relay-${runId}-dry-run`) reasons.push('state belongs to another run')
-  if (state?.preDrainDryRun !== true || state?.migrationPolicy !== 'strict')
-    reasons.push('not a strict dry-run')
-  if (state?.frozenAt !== null) reasons.push(`frozen at ${state?.frozenAt}`)
-  if (!failures || failures.length > 0) reasons.push('failures recorded')
-  if (!(state?.sampleCount >= 16)) reasons.push(`only ${state?.sampleCount ?? 0} samples`)
-  if (!Number.isFinite(completedAt)) reasons.push('not completed')
-  return {
-    green: reasons.length === 0,
-    reasons,
-    failures: (failures ?? []).map((failure) =>
-      [failure.source, failure.code, failure.signal, failure.observed, failure.threshold]
-        .filter((part) => part !== undefined && part !== null)
-        .join(' ')
-    ),
-    completedAt: Number.isFinite(completedAt) ? new Date(completedAt).toISOString() : null,
-    ageMs: Number.isFinite(completedAt) ? nowMs - completedAt : null
-  }
 }

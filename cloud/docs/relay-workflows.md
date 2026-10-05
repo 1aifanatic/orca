@@ -585,7 +585,8 @@ aggregate active, receipt, registration, completion, and abort counts.
 
 `dev/scripts/drive-relay-director-deploy.mjs` runs a whole director deploy from an operator machine
 with `gh` and `gcloud` logged in. It only dispatches the workflows above and reads their results; it
-holds no credentials and changes no workflow, so every guard stays in the audited jobs.
+holds no credentials and changes no workflow. It does not fill in any workflow's typed
+confirmation: the operator types each one when the driver reaches it.
 
 ```bash
 cd cloud
@@ -596,36 +597,50 @@ node dev/scripts/drive-relay-director-deploy.mjs --commit <reviewed main SHA> \
 
 The sequence:
 
-1. Preflight, read-only: no `cloud-*` workflow in flight (the hourly clock-skew monitor and
-   `cloud-verify` excepted); `main` is the reviewed commit; the serving and `selector-rollback`
-   digests from `gcloud run services describe`; the selector from an `Operate Relay Asia Admission`
-   `inspect` artifact; the rehome control from an `inspect` run. The control generation it inspects
-   at comes from the newest rehome run's log, or `--rehome-generation`.
-2. A typed `DEPLOY <commit prefix>` confirmation before the first mutation.
-3. `pause`, only if rehome is enabled.
-4. `Publish Relay Production Image`. The digest is the registry digest of `relay:sha-<commit>`, and
+1. Preflight, read-only: no `cloud-*` workflow queued or running (all pages; the hourly clock-skew
+   monitor and `cloud-verify` excepted); `main` is the reviewed commit; the serving and
+   `selector-rollback` digests from `gcloud run services describe`; the selector from an `Operate
+   Relay Asia Admission` `inspect` artifact; the rehome control from an `inspect` run, at the
+   generation the newest rehome run printed or `--rehome-generation`.
+2. The operator types `DEPLOY <commit prefix>`, then `PAUSE_REGIONAL_REHOMING` for the `pause`. The
+   pause happens only if rehome is enabled.
+3. `Publish Relay Production Image`. The digest is the registry digest of `relay:sha-<commit>`, and
    the run's own push line must name the same digest. A run built from another commit stops.
-5. `Deploy Relay Production Director` with that digest, the paused generation, `preserve` for both
+4. `Deploy Relay Production Director` with that digest, the paused generation, `preserve` for both
    regional inputs, no prune, and the old serving digest as predecessor.
-6. One `configure` dispatch per `--configure` wave, on the published director digest.
-7. A rehome `inspect` bound to the serving and rollback digests now read from `gcloud`. A wrong
+5. With `--configure` only: a 5-minute soak, which stops if director 5xx over it exceed twice the
+   same span before the deploy plus 25. Then the operator types `CONFIGURE_ASIA_DIRECTOR`, and one
+   `configure` runs per wave on the published director digest.
+6. A rehome `inspect` bound to the serving and rollback digests now read from `gcloud`. A wrong
    digest fails here, read-only, before 15 minutes of monitor evidence is spent on it.
-8. The monitor dry-run, dispatched at once. The verdict comes from the run's sealed
-   `*.state.json` (`frozenAt`, `failures`, sample count), not from its log.
-9. `enable` with the verified digests, within 2 minutes of the monitor completing (the job allows
-   5, minus its setup). Only when step 3 paused it: rehome found disabled stays disabled.
+7. The operator types `ENABLE_REGIONAL_REHOMING` to arm the enable, and the monitor dry-run starts
+   at once. Its artifact passes the same `relay-monitor-evidence.mjs verify-authority` check the
+   enable job runs.
+8. `enable` with the verified digests, within 150 s of the monitor completing (the job allows 5
+   minutes, minus its setup), only on a green monitor and only when step 2 paused it. Rehome found
+   disabled stays disabled.
 
-A dispatched run is identified by the URL `gh workflow run` prints or, failing that, as the only new
-`workflow_dispatch` run by the same user since the request; two candidates stop the driver.
+A run is identified only by the URL `gh workflow run` prints, so other dispatches by the same
+account cannot be mistaken for it. If the driver dies between the dispatch and the URL, resume
+adopts a run only if it is the single new one on two polls 15 s apart.
 
-Each invocation writes `state.json` and `driver.log` under `~/.orca/relay-director-deploy/<UTC
-timestamp>-<commit>/` (`--state-directory` overrides it). On any failure it prints what it changed:
-the rehome generation and whether it is paused, the serving digest, the published digest, the
-rollback point, and each run. Then `--resume <state.json>` settles a run that was in flight, re-reads
-every live state, asks for confirmation again, and continues. A failed or unusable step is dispatched
-again with fresh inputs. A monitor read by an earlier invocation is too old for an enable, so resume
-dispatches a fresh one. Rollback stays the director workflow with the recorded rollback digest, run
-while rehome is disabled.
+Each run writes `state.json` and `driver.log` under `~/.orca/relay-director-deploy/<UTC
+timestamp>-<commit>/` (`--state-directory` overrides it); a dry run writes only the log, so it cannot
+be resumed. On a failure, Ctrl-C or SIGTERM it prints what changed. That covers whether rehome is
+PAUSED by the driver, read back from the pause or enable run even when that run failed, or
+UNCONFIRMED when the run printed nothing. It also covers the serving director re-read, the published
+digest, the rollback point, and each run.
+
+`--resume <state.json>`:
+
+- settles a run that was in flight;
+- re-reads every live state and asks for the phrases again;
+- dispatches failed steps again with fresh inputs;
+- runs a fresh monitor before any enable.
+
+It re-enables only the pause it recorded (generation and run). A pause it did not make, such as a
+director safety pause, stops it for good. Rollback stays the director workflow with the recorded
+rollback digest, run while rehome is disabled.
 
 ## Mobile push gateway
 
