@@ -21,6 +21,8 @@ import {
   evaluateAgentSessionMutationOperation,
   admitAgentSessionOperationInto,
   claimAgentSessionOperationInto,
+  admitAndClaimAgentSessionOperationInto,
+  type ClaimAfterAdmission,
   settleAgentSessionOperationInto,
   type AgentSessionMutationOperationAdmission,
   type AgentSessionOperationAdmission
@@ -93,11 +95,9 @@ export class AgentSessionRecordStore {
     hostId: string
     agents: AgentSessionStoredAgents
   }): AgentSessionRecordStore {
-    const loaded = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId, args.agents)
-    return new AgentSessionRecordStore(
-      new AgentSessionStoreTransactions(args.journalDatabase, loaded, args.agents),
-      args.hostId
-    )
+    const rows = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId, args.agents)
+    const transactions = new AgentSessionStoreTransactions(args.journalDatabase, rows, args.agents)
+    return new AgentSessionRecordStore(transactions, args.hostId)
   }
 
   private get state(): AgentSessionStoreState {
@@ -300,6 +300,12 @@ export class AgentSessionRecordStore {
     operationId: string
   }): Promise<AgentSessionOperationClaim> =>
     this.transact((draft) => claimAgentSessionOperationInto(draft, args))
+
+  /** Admission and, when `claimAfter` allows, the claim: one durable write before the effect. */
+  admitAndClaimOperation = (
+    args: AgentSessionOperationAdmission,
+    claimAfter: ClaimAfterAdmission
+  ) => this.transact((draft) => admitAndClaimAgentSessionOperationInto(draft, args, claimAfter))
 
   async recordOperationOutcome(args: AgentSessionOperationSettlement): Promise<void> {
     await this.transact((draft) => settleAgentSessionOperationInto(draft, args))

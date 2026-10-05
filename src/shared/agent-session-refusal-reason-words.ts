@@ -1,4 +1,5 @@
-// What each refusal reason means for the person: the words it gets and what they can do about it.
+// The words and next step each refusal reason gets, for every code: a reason the host adds does not
+// compile until it has words here.
 
 import type { AgentSessionFailureKind } from './agent-session-failure'
 import type { AgentSessionRefusalReason } from './agent-session-refusal-details'
@@ -31,6 +32,8 @@ export type AgentSessionRefusalReasonWords =
       cause: AgentSessionWriteNoticeSentence
       step?: AgentSessionWriteNoticeSentence
       action: AgentSessionRefusalAction
+      /** Its words when what failed is reading the chat's history. */
+      history?: { cause: AgentSessionWriteNoticeSentence; step: AgentSessionWriteNoticeSentence }
     }
   /** A start that failed: the sentence that failure has everywhere, whose next step is a send. */
   | { fact: AgentSessionFailureKind; action: AgentSessionRefusalAction }
@@ -154,7 +157,12 @@ const REASON_WORDS = {
     journalCorrupt: causeWords('historyUnusable', 'hostFinding'),
     // Says its step despite 'retry' unless a Retry stands beside it: the phone often has none.
     journalUnavailable: causeWords('historyUnavailable', 'retry', 'tryAgain'),
-    journalWrittenByNewerOrca: causeWords('savedByNewerOrca', 'updateOrca', 'updateOrcaToKeepUsing')
+    // A write meets it on a newer Orca's database, or from an older host keeping the chat
+    // read-only; a read meets it on this one chat, which only an update opens.
+    journalWrittenByNewerOrca: {
+      ...causeWords('savedByNewerOrca', 'updateOrca', 'updateOrcaToKeepUsing'),
+      history: { cause: 'chatSavedByNewerOrca', step: 'updateOrcaToOpenChat' }
+    }
   },
   // Thrown, so a client meets these only as an RPC error. The code's own words ask for an update,
   // which only a method the host doesn't know proves; no reason here means an older Orca. An

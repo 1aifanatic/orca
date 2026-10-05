@@ -51,6 +51,7 @@ import {
   isInProgressStructuredAgentSessionItem,
   type DeadGenerationJournal
 } from './structured-agent-session-unfinished-work'
+import { withdrawCodexSendsNoTurnOpenedFor } from './structured-agent-session-unopened-send-withdrawal'
 
 /** Bounds the exit reason the lease keeps as log evidence; a provider diagnostic is held to the
  *  same cap. */
@@ -93,6 +94,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const startupFailure = input.exitedDuringStartup
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
       : null
+    if (!startupFailure) {
+      await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
+    }
     await (startupFailure
       ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))

@@ -129,7 +129,7 @@ describe('AgentSessionSubscribers', () => {
     )
     subscribers.publish(SESSION, journal)
     subscribers.backgroundTasks(SESSION, null, 1)
-    subscribers.reset(SESSION, journal, 'epoch_changed', 1)
+    subscribers.snapshot(SESSION, journal, 1)
 
     expect(events.map((event) => ('hostNow' in event ? event.hostNow : null))).toEqual([
       1_001, 1_002,
@@ -143,8 +143,8 @@ describe('AgentSessionSubscribers', () => {
       'batch',
       'batch',
       'batch',
-      'reset',
-      'reset'
+      'snapshot',
+      'snapshot'
     ])
   })
 
@@ -211,10 +211,9 @@ describe('AgentSessionSubscribers', () => {
     })
 
     subscribers.publish(SESSION, journal)
-    subscribers.reset(SESSION, journal, 'epoch_changed', 1)
     subscribers.snapshot(SESSION, journal, 1)
 
-    expect(published).toEqual([SESSION, SESSION, SESSION])
+    expect(published).toEqual([SESSION, SESSION])
   })
 
   it('settles a session nobody is reading, from running to idle', async () => {
