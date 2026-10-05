@@ -261,6 +261,20 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     expect(alive(grandchild)).toBe(false)
   })
 
+  it('kills the rest of the group at once when the provider exits on a stop', async () => {
+    const { supervisor, exit } = launchSupervisor({})
+    const { provider, grandchild } = await readPids(supervisor, ['provider', 'grandchild'])
+
+    const signalledAt = Date.now()
+    supervisor.kill('SIGTERM')
+
+    await expect(exit).resolves.toEqual({ code: null, signal: 'SIGTERM' })
+    // The grandchild ignores SIGTERM; waiting out the 3 s grace for it would be the old cost.
+    expect(Date.now() - signalledAt).toBeLessThan(PROVIDER_SIGTERM_GRACE_MS / 3)
+    expect(alive(provider)).toBe(false)
+    expect(alive(grandchild)).toBe(false)
+  })
+
   it('escalates a SIGTERM-ignoring provider to SIGKILL after the grace from the spec', async () => {
     const graceMs = 200
     const { supervisor, exit } = launchSupervisor(
@@ -323,8 +337,8 @@ describe.runIf(process.platform !== 'win32')('POSIX provider supervisor processe
     owner.kill('SIGKILL')
 
     expect(await waitFor(() => !alive(-pids.provider), 3_000)).toBe(true)
-    // The grandchild ignores SIGTERM, so the group lasts until the grace ends in SIGKILL.
-    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(graceMs)
+    // The provider ignores its stdin end, so its group lasts through the stdin-end grace.
+    expect(Date.now() - killedAt).toBeGreaterThanOrEqual(PROVIDER_STDIN_END_GRACE_MS - 20)
     expect(await waitFor(() => !alive(pids.supervisor), 3_000)).toBe(true)
     expect(alive(pids.grandchild)).toBe(false)
   })

@@ -58,6 +58,7 @@ try {
 let timer
 let ownerShutdownTimer
 let settling = false
+let providerExited = false
 const providerGroupExists = () => {
   if (!child.pid) return false
   try {
@@ -67,10 +68,10 @@ const providerGroupExists = () => {
     return Boolean(error && error.code !== 'ESRCH')
   }
 }
-const waitForProviderGroupExit = async (timeoutMs) => {
+const waitForProviderGroupExit = async (timeoutMs, untilProviderExits = false) => {
   const deadline = Date.now() + timeoutMs
   while (providerGroupExists()) {
-    if (Date.now() >= deadline) return false
+    if (Date.now() >= deadline || (untilProviderExits && providerExited)) return false
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
   return true
@@ -96,7 +97,8 @@ const stopProviderGroup = (receivedSignal) => {
   clearInterval(timer)
   if (ownerShutdownTimer) clearTimeout(ownerShutdownTimer)
   try { process.kill(-child.pid, 'SIGTERM') } catch {}
-  void waitForProviderGroupExit(spec.sigtermGraceMs)
+  // Once the provider itself has exited, the rest of its group dies at once, as on its own exit.
+  void waitForProviderGroupExit(spec.sigtermGraceMs, true)
     .then((exited) => exited || reapOwnedProviderGroup())
     .then((reaped) => {
       if (!reaped) return process.exit(1)
@@ -160,6 +162,7 @@ child.once('error', (error) => {
   exitWithSpawnFailure(error, false)
 })
 child.once('exit', (code, signal) => {
+  providerExited = true
   void reapProviderExit(code, signal)
 })
 `
