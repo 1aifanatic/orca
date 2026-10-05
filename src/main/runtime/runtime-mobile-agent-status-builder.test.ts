@@ -5,7 +5,8 @@ import type {
   RuntimeMobileSessionTerminalTab
 } from '../../shared/runtime-types'
 import type { TuiAgent } from '../../shared/tui-agent'
-import { readMobileConversationIdentityCarrier } from './mobile-conversation-identity-carrier'
+import type { StoredAgentConversationRead } from '../agent-hooks/server/server-types'
+import { TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY } from '../../shared/protocol-version'
 import type { RuntimeAgentRowSnapshot } from './runtime-hook-agent-row-selection'
 import { buildRuntimeMobileAgentStatus } from './runtime-mobile-agent-status-builder'
 import { projectRuntimeMobileSessionTabs } from './runtime-mobile-session-projection'
@@ -155,7 +156,8 @@ function build(args: {
   )
 }
 
-function expectedCarrier(observedAt: number, agentType: string = 'codex'): Record<string, unknown> {
+/** The shape #25358's private carrier had; shipped phones still receive exactly this. */
+function expectedFold(observedAt: number, agentType: string = 'codex'): Record<string, unknown> {
   return {
     state: 'done',
     sessionBoundary: true,
@@ -198,81 +200,32 @@ describe('mobile agent status builder', () => {
   })
 })
 
-describe('idle neutral-title conversation identity (STA-7370)', () => {
+describe('idle neutral-title offer (STA-7370)', () => {
   it.each<RowCase>(['fresh retained', 'aged', 'providerSessionOnly remnant'])(
-    'relays a %s Codex session as a completion-neutral carrier, not as agentStatus',
+    'offers a %s Codex conversation without status and computes no identity itself',
     (kind) => {
       const input = rowCase(kind)
-      const first = build(input)
-      const second = build(input)
-
-      expect(first).not.toHaveProperty('agentStatus')
-      const carrier = readMobileConversationIdentityCarrier(first)
-      expect(carrier).toEqual(expectedCarrier(input.observedAt))
-      for (const field of [
-        'toolName',
-        'toolInput',
-        'interactivePrompt',
-        'interrupted',
-        'turnCompletedAt',
-        'mainAgent',
-        'lastAssistantMessage'
-      ]) {
-        expect(carrier).not.toHaveProperty(field)
-      }
-      expect(readMobileConversationIdentityCarrier(second)).toEqual(carrier)
+      expect(build(input)).toEqual({ offersConversationWithoutStatus: true })
     }
   )
 
   it.each(['zsh', 'bash', 'claude agents'])(
-    'keeps returning nothing under the shell or management title %s',
+    'offers nothing under the shell or management title %s',
     (title) => {
       const result = build({
         ...rowCase('fresh retained'),
         pty: ptyRecord({ lastOscTitle: title })
       })
       expect(result).toEqual({})
-      expect(readMobileConversationIdentityCarrier(result)).toBeNull()
     }
   )
 
-  it('returns nothing under a neutral title when the pane holds no conversation identity', () => {
+  it('keeps offering under a neutral title even when the pane holds no identity', () => {
     const row = codexRow({ providerSession: undefined })
-    const result = build({ rows: [row], retained: retainedFrom(row) })
-    expect(result).toEqual({})
-    expect(readMobileConversationIdentityCarrier(result)).toBeNull()
-  })
-
-  it('carries the model reported on the hook row that holds the session', () => {
-    const row = codexRow({ model: 'gpt-5.5', modelSwitchCommand: 'orca-model' })
-    const carrier = readMobileConversationIdentityCarrier(build({ rows: [row], retained: null }))
-    expect(carrier).toMatchObject({ model: 'gpt-5.5', modelSwitchCommand: 'orca-model' })
-  })
-
-  it('carries the model reported on the retained row when it holds the session', () => {
-    const row = codexRow({ model: 'gpt-5.5' })
-    const retained = {
-      ...retainedFrom(row),
-      payload: { ...retainedFrom(row).payload, model: 'gpt-5.5' }
-    }
-    const carrier = readMobileConversationIdentityCarrier(build({ rows: [], retained }))
-    expect(carrier).toMatchObject({ model: 'gpt-5.5', providerSession: CODEX_SESSION })
-    expect(carrier).not.toHaveProperty('modelSwitchCommand')
-  })
-
-  it('omits the model when the session row reports none, even if another row does', () => {
-    const sessionRow = codexRow()
-    const newerModelRow = codexRow({
-      providerSession: undefined,
-      model: 'gpt-5.5',
-      receivedAt: sessionRow.receivedAt + 1
+    // Why: eligibility is the builder's; the projection publishes the offer only beside an identity.
+    expect(build({ rows: [row], retained: retainedFrom(row) })).toEqual({
+      offersConversationWithoutStatus: true
     })
-    const carrier = readMobileConversationIdentityCarrier(
-      build({ rows: [sessionRow, newerModelRow], retained: null })
-    )
-    expect(carrier?.providerSession).toEqual(CODEX_SESSION)
-    expect(carrier).not.toHaveProperty('model')
-    expect(carrier).not.toHaveProperty('modelSwitchCommand')
   })
 
   it('keeps a live tool under a neutral title as rich status, exactly as before', () => {
@@ -283,7 +236,6 @@ describe('idle neutral-title conversation identity (STA-7370)', () => {
     }
     const pty = ptyRecord()
     const result = build({ rows: [row], retained, pty })
-    expect(readMobileConversationIdentityCarrier(result)).toBeNull()
     expect(result).toEqual({
       agentStatus: {
         state: 'done',
@@ -311,7 +263,7 @@ describe('idle neutral-title conversation identity (STA-7370)', () => {
       interactivePrompt
     })
     const result = build({ rows: [row], retained: null })
-    expect(readMobileConversationIdentityCarrier(result)).toBeNull()
+    expect(result).not.toHaveProperty('offersConversationWithoutStatus')
     expect(result).toMatchObject({
       agentStatus: { state: 'waiting', interactivePrompt, providerSession: CODEX_SESSION }
     })
@@ -325,74 +277,20 @@ describe('idle neutral-title conversation identity (STA-7370)', () => {
       pty: ptyRecord({ lastOscTitle: '✳ Claude Code', launchAgent: 'claude' }),
       tab: { ...TAB, launchAgent: 'claude' }
     })
-    expect(readMobileConversationIdentityCarrier(result)).toBeNull()
+    expect(result).not.toHaveProperty('offersConversationWithoutStatus')
     expect(result).toMatchObject({
       agentStatus: { state: 'done', agentType: 'claude', providerSession: PROVIDER_SESSION }
     })
     expect(result).not.toHaveProperty('agentStatus.sessionBoundary')
   })
-
-  describe('owner and compatibility', () => {
-    const rowCases: RowCase[] = ['fresh retained', 'aged', 'providerSessionOnly remnant']
-    const ownerCases: {
-      name: string
-      launchAgent: TuiAgent | undefined
-      expected: string | null
-    }[] = [
-      { name: 'no launch or foreground owner', launchAgent: undefined, expected: 'codex' },
-      { name: 'a compatible launch', launchAgent: 'codex', expected: 'codex' },
-      { name: 'an incompatible Claude launch', launchAgent: 'claude', expected: null }
-    ]
-    for (const kind of rowCases) {
-      it.each(ownerCases)(`${kind} row with $name`, ({ launchAgent, expected }) => {
-        const input = rowCase(kind)
-        const result = build({
-          ...input,
-          pty: ptyRecord({ launchAgent: launchAgent ?? null }),
-          tab: { ...TAB, ...(launchAgent ? { launchAgent } : {}) }
-        })
-        const carrier = readMobileConversationIdentityCarrier(result)
-        if (expected === null) {
-          expect(result).toEqual({})
-          expect(carrier).toBeNull()
-          return
-        }
-        expect(carrier?.agentType).toBe(expected)
-        expect(carrier?.providerSession).toEqual(CODEX_SESSION)
-      })
-    }
-
-    it('names the launch owner when the session came from a compatible wrapped agent', () => {
-      const row = codexRow({ agentType: 'pi' })
-      const result = build({
-        rows: [row],
-        retained: null,
-        pty: ptyRecord({ launchAgent: 'omp' }),
-        tab: { ...TAB, launchAgent: 'omp' }
-      })
-      expect(readMobileConversationIdentityCarrier(result)).toMatchObject({
-        agentType: 'omp',
-        providerSession: CODEX_SESSION
-      })
-    })
-
-    it('rejects a session from another provider than the foreground agent', () => {
-      const input = rowCase('aged')
-      const result = build({
-        ...input,
-        pty: ptyRecord({ launchAgent: null, foregroundAgent: 'claude' }),
-        tab: TAB
-      })
-      expect(result).toEqual({})
-    })
-  })
 })
 
-describe('conversation identity handoff through the real session projection', () => {
+describe('conversation identity through the real session projection', () => {
   function projectionHost(
     pty: RuntimePtyWorktreeRecord,
     rows: AgentStatusIpcPayload[],
-    retained: RuntimeAgentRowSnapshot | null
+    retained: RuntimeAgentRowSnapshot | null,
+    stored?: StoredAgentConversationRead
   ): RuntimeMobileSessionProjectionHost {
     return {
       tabs: new Map(),
@@ -402,6 +300,7 @@ describe('conversation identity handoff through the real session projection', ()
       getProviderSessionRows: () => rows,
       getProviderSessionSnapshot: () => rows,
       getStatusSnapshot: () => rows,
+      getConversationIdentity: () => stored,
       getLeafKey: (tabId, leafId) => `${tabId}::${leafId}`,
       findPty: () => pty,
       getRetainedStatus: () => retained,
@@ -417,55 +316,203 @@ describe('conversation identity handoff through the real session projection', ()
     }
   }
 
-  it('hands the builder carrier to the final tab and only the phone audience publishes it', () => {
-    const input = rowCase('fresh retained')
-    const snapshotTab: RuntimeMobileSessionTerminalTab = { ...TAB, launchAgent: 'codex' }
-    const snapshot: RuntimeMobileSessionTabsSnapshot = {
+  function snapshotFor(tab: RuntimeMobileSessionTerminalTab): RuntimeMobileSessionTabsSnapshot {
+    return {
       worktree: 'wt-1',
       publicationEpoch: 'headless:1',
       snapshotVersion: 1,
       activeGroupId: null,
-      activeTabId: snapshotTab.id,
+      activeTabId: tab.id,
       activeTabType: 'terminal',
-      tabs: [snapshotTab]
+      tabs: [tab]
     }
-    const before = structuredClone(snapshot)
+  }
 
-    const projected = projectRuntimeMobileSessionTabs(
-      snapshot,
-      projectionHost(ptyRecord(), input.rows, input.retained)
+  function project(args: {
+    rows: AgentStatusIpcPayload[]
+    retained: RuntimeAgentRowSnapshot | null
+    pty?: RuntimePtyWorktreeRecord
+    tab?: RuntimeMobileSessionTerminalTab
+    stored?: StoredAgentConversationRead
+  }) {
+    return projectRuntimeMobileSessionTabs(
+      snapshotFor(args.tab ?? { ...TAB, launchAgent: 'codex' }),
+      projectionHost(args.pty ?? ptyRecord(), args.rows, args.retained, args.stored)
     )
-    const projectedTab = projected.tabs[0]
-    const carrier = readMobileConversationIdentityCarrier(projectedTab)
-    expect(carrier).toEqual(expectedCarrier(input.observedAt))
-    expect(projectedTab).not.toHaveProperty('agentStatus')
+  }
 
-    const mobile = projectSessionTabsForClient(projected, 'mobile', undefined)
-    expect(mobile.tabs[0]).toMatchObject({ agentStatus: carrier })
-    expect(Object.getOwnPropertySymbols(mobile.tabs[0])).toEqual([])
+  it.each<RowCase>(['fresh retained', 'aged', 'providerSessionOnly remnant'])(
+    'publishes a %s row identity and offer; only a capability-less phone gets the fold',
+    (kind) => {
+      const input = rowCase(kind)
+      const snapshot = snapshotFor({ ...TAB, launchAgent: 'codex' })
+      const before = structuredClone(snapshot)
+      const projected = projectRuntimeMobileSessionTabs(
+        snapshot,
+        projectionHost(ptyRecord(), input.rows, input.retained)
+      )
+      const projectedTab = projected.tabs[0]
+      expect(projectedTab).not.toHaveProperty('agentStatus')
+      expect(projectedTab).toMatchObject({
+        conversationIdentity: {
+          agentType: 'codex',
+          providerSession: CODEX_SESSION,
+          capturedAt: input.observedAt,
+          source: 'legacy-row'
+        },
+        conversationOfferedWithoutStatus: true
+      })
 
-    const runtime = projectSessionTabsForClient(projected, 'runtime', undefined)
-    expect(runtime.tabs[0]).not.toHaveProperty('agentStatus')
-    expect(Object.getOwnPropertySymbols(runtime.tabs[0])).toEqual([])
+      const oldPhone = projectSessionTabsForClient(projected, 'mobile', undefined)
+      expect(oldPhone.tabs[0]).toMatchObject({ agentStatus: expectedFold(input.observedAt) })
+      for (const field of [
+        'toolName',
+        'toolInput',
+        'interactivePrompt',
+        'interrupted',
+        'turnCompletedAt',
+        'mainAgent',
+        'lastAssistantMessage'
+      ]) {
+        expect(oldPhone.tabs[0]).not.toHaveProperty(`agentStatus.${field}`)
+      }
+      const capablePhone = projectSessionTabsForClient(projected, 'mobile', [
+        TERMINAL_CONVERSATION_IDENTITY_CLIENT_CAPABILITY
+      ])
+      expect(capablePhone.tabs[0]).not.toHaveProperty('agentStatus')
+      expect(capablePhone.tabs[0]).toMatchObject({ conversationOfferedWithoutStatus: true })
+      const runtime = projectSessionTabsForClient(projected, 'runtime', undefined)
+      expect(runtime.tabs[0]).not.toHaveProperty('agentStatus')
+      expect(runtime.tabs[0]).toMatchObject({ conversationOfferedWithoutStatus: true })
+      expect(snapshot).toEqual(before)
+    }
+  )
 
-    expect(snapshot).toEqual(before)
-    expect(Object.getOwnPropertySymbols(snapshot.tabs[0])).toEqual([])
+  it('publishes the identity but no offer under a shell title', () => {
+    const projected = project({
+      ...rowCase('aged'),
+      pty: ptyRecord({ lastOscTitle: 'zsh' })
+    })
+    expect(projected.tabs[0]).not.toHaveProperty('agentStatus')
+    expect(projected.tabs[0]).not.toHaveProperty('conversationOfferedWithoutStatus')
+    expect(projected.tabs[0]).toMatchObject({
+      conversationIdentity: { providerSession: CODEX_SESSION }
+    })
+    const oldPhone = projectSessionTabsForClient(projected, 'mobile', undefined)
+    expect(oldPhone.tabs[0]).not.toHaveProperty('agentStatus')
   })
 
-  it('hands no carrier on under a shell title', () => {
-    const projected = projectRuntimeMobileSessionTabs(
-      {
-        worktree: 'wt-1',
-        publicationEpoch: 'headless:1',
-        snapshotVersion: 1,
-        activeGroupId: null,
-        activeTabId: TAB.id,
-        activeTabType: 'terminal',
-        tabs: [{ ...TAB, launchAgent: 'codex' }]
-      },
-      projectionHost(ptyRecord({ lastOscTitle: 'zsh' }), rowCase('aged').rows, null)
-    )
-    expect(readMobileConversationIdentityCarrier(projected.tabs[0])).toBeNull()
-    expect(projected.tabs[0]).not.toHaveProperty('agentStatus')
+  it('publishes no offer when the pane holds no identity', () => {
+    const row = codexRow({ providerSession: undefined })
+    const projected = project({ rows: [row], retained: retainedFrom(row) })
+    expect(projected.tabs[0]).not.toHaveProperty('conversationIdentity')
+    expect(projected.tabs[0]).not.toHaveProperty('conversationOfferedWithoutStatus')
+  })
+
+  it('takes the model from the same row as the session', () => {
+    const row = codexRow({ model: 'gpt-5.5', modelSwitchCommand: 'orca-model' })
+    expect(project({ rows: [row], retained: null }).tabs[0]).toMatchObject({
+      conversationIdentity: { model: 'gpt-5.5', modelSwitchCommand: 'orca-model' }
+    })
+    const sessionRow = codexRow()
+    const newerModelRow = codexRow({
+      providerSession: undefined,
+      model: 'gpt-5.5',
+      receivedAt: sessionRow.receivedAt + 1
+    })
+    const identity = project({ rows: [sessionRow, newerModelRow], retained: null }).tabs[0]
+    expect(identity).toHaveProperty('conversationIdentity.providerSession', CODEX_SESSION)
+    expect(identity).not.toHaveProperty('conversationIdentity.model')
+  })
+
+  it('prefers the stored facet to any legacy row, and its remnant flag sets the source', () => {
+    const facet = {
+      agentType: 'codex',
+      providerSession: { key: 'session_id' as const, id: 'facet-S' },
+      model: 'gpt-5.5',
+      capturedAt: 1234
+    }
+    for (const rowIsRemnant of [false, true]) {
+      const tab = project({
+        ...rowCase('aged'),
+        stored: { facet, rowIsRemnant }
+      }).tabs[0]
+      expect(tab).toMatchObject({
+        conversationIdentity: { ...facet, source: rowIsRemnant ? 'retained' : 'live' },
+        conversationOfferedWithoutStatus: true
+      })
+    }
+  })
+
+  it('publishes null, and no offer, for a facet the host holds but cannot use', () => {
+    const codexFacet = {
+      agentType: 'codex',
+      providerSession: CODEX_SESSION,
+      capturedAt: 1234
+    }
+    for (const stored of [
+      { facet: null, rowIsRemnant: false },
+      { facet: codexFacet, rowIsRemnant: false }
+    ]) {
+      const tab = project({
+        ...rowCase('aged'),
+        pty: ptyRecord({ launchAgent: 'claude' }),
+        tab: { ...TAB, launchAgent: 'claude' },
+        stored
+      }).tabs[0]
+      expect(tab).toHaveProperty('conversationIdentity', null)
+      expect(tab).not.toHaveProperty('conversationOfferedWithoutStatus')
+    }
+  })
+
+  describe('owner and compatibility', () => {
+    const rowCases: RowCase[] = ['fresh retained', 'aged', 'providerSessionOnly remnant']
+    const ownerCases: {
+      name: string
+      launchAgent: TuiAgent | undefined
+      expected: string | null
+    }[] = [
+      { name: 'no launch or foreground owner', launchAgent: undefined, expected: 'codex' },
+      { name: 'a compatible launch', launchAgent: 'codex', expected: 'codex' },
+      { name: 'an incompatible Claude launch', launchAgent: 'claude', expected: null }
+    ]
+    for (const kind of rowCases) {
+      it.each(ownerCases)(`${kind} row with $name`, ({ launchAgent, expected }) => {
+        const tab = project({
+          ...rowCase(kind),
+          pty: ptyRecord({ launchAgent: launchAgent ?? null }),
+          tab: { ...TAB, ...(launchAgent ? { launchAgent } : {}) }
+        }).tabs[0]
+        if (expected === null) {
+          expect(tab).not.toHaveProperty('conversationIdentity')
+          expect(tab).not.toHaveProperty('conversationOfferedWithoutStatus')
+          return
+        }
+        expect(tab).toMatchObject({
+          conversationIdentity: { agentType: expected, providerSession: CODEX_SESSION }
+        })
+      })
+    }
+
+    it('names the launch owner when the session came from a compatible wrapped agent', () => {
+      const tab = project({
+        rows: [codexRow({ agentType: 'pi' })],
+        retained: null,
+        pty: ptyRecord({ launchAgent: 'omp' }),
+        tab: { ...TAB, launchAgent: 'omp' }
+      }).tabs[0]
+      expect(tab).toMatchObject({
+        conversationIdentity: { agentType: 'omp', providerSession: CODEX_SESSION }
+      })
+    })
+
+    it('rejects a session from another provider than the foreground agent', () => {
+      const tab = project({
+        ...rowCase('aged'),
+        pty: ptyRecord({ launchAgent: null, foregroundAgent: 'claude' }),
+        tab: TAB
+      }).tabs[0]
+      expect(tab).not.toHaveProperty('conversationIdentity')
+    })
   })
 })
