@@ -198,7 +198,7 @@ describe('draft rows', () => {
     const first = await open()
     await first.queuedMessages.insert({
       messageId: 'agent-card',
-      body: message('[message from structworker_1]'),
+      body: message('You have 1 orchestration message. Run `orca orchestration check --run r1`.'),
       fingerprint: 'fp-agent-card',
       hostInstance: 'proc-1',
       source: agent

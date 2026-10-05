@@ -260,8 +260,9 @@ beforeEach(async () => {
     resolveEnvironment: async () => ({ PATH: '/usr/bin' }),
     openCodexConnection: codex.openConnection,
     readProcessStartTime: async () => 1_700_000_000_000,
-    // The same call the runtime's own host install makes on every status change.
-    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary)
+    // The same calls the runtime's own host install makes.
+    onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
+    onAgentCardSettled: (sessionId) => runtime.notifyStructuredSessionJournalActivity(sessionId)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })

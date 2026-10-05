@@ -2,7 +2,8 @@
 // turn ends, as it holds a message the person sends then. End to end on the coordinator-mail rig.
 
 import { describe, expect, it, vi } from 'vitest'
-import type { FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
+import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
+import { operationId, type FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
 import {
   COORDINATOR,
@@ -48,6 +49,20 @@ async function idleEdgesSettled(): Promise<void> {
   for (let edge = 0; edge < 3; edge += 1) {
     runtime.onStructuredSessionStatusForMail({ sessionId: COORDINATOR, status: 'idle' })
     await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+}
+
+/** The chat surface's own mutation envelope for `method`. */
+function surfaceEnvelope(method: string, fields: Record<string, unknown>) {
+  return {
+    sessionId: COORDINATOR,
+    clientOperationId: operationId(),
+    expectedRuntimeFence: host.deps.store.getRecord(COORDINATOR)!.lease.runtimeFence,
+    payloadFingerprint: computeAgentSessionPayloadFingerprint({
+      method,
+      sessionId: COORDINATOR,
+      fields
+    })
   }
 }
 
@@ -131,4 +146,39 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     expect(await queuedCardTexts()).toEqual([ptyPointer(`run:${runId}`)])
     await endTurn()
   })
+
+  it('points mail that came while a card waited once the person deletes that card, with the chat idle', async () => {
+    const chat = await openChat(COORDINATOR)
+    const { runId, taskId } = await coordinatorRunAndTask()
+    const second = await secondTask()
+    await runningUserTurn(chat)
+    await finishWorker(taskId)
+    await vi.waitFor(async () => expect(await queuedCardTexts()).toHaveLength(1), WAIT)
+    // Stop holds the card; the chat is idle.
+    const stop = { turnId: 'turn-1' }
+    const stopped = await host.cancel(
+      { callerKey: 'test-surface' },
+      { envelope: surfaceEnvelope('agentSession.cancel', stop), ...stop }
+    )
+    expect(stopped).toMatchObject({ ok: true })
+    chat.handlers.onNotification?.('turn/completed', {
+      turn: { id: 'turn-1', status: 'interrupted' }
+    })
+    await host.flushStreamedEvents(COORDINATOR)
+    await finishWorker(second, { handle: 'term_worker_2', paneKey: WORKER_2_PANE })
+    // Past the arrival repoint, which finds the card still waiting.
+    await new Promise((resolve) => setTimeout(resolve, 2_500))
+    expect(chat.turns).toHaveLength(1)
+
+    const [card] = await host.queuedMessageRows(COORDINATOR)
+    const remove = { messageId: card!.messageId }
+    const deleted = await host.queuedMessageDelete(
+      { callerKey: 'test-surface' },
+      { envelope: surfaceEnvelope('agentSession.queuedMessageDelete', remove), ...remove }
+    )
+    expect(deleted).toMatchObject({ ok: true, value: { deleted: true } })
+    // No status change follows a delete; the card leaving the queue is what points the chat.
+    await vi.waitFor(() => expect(chat.turns).toHaveLength(2), { timeout: 2_000 })
+    expect(turnText(chat.turns[1]!)).toBe(ptyPointer(`run:${runId}`))
+  }, 15_000)
 })

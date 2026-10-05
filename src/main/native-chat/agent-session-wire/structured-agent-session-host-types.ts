@@ -136,6 +136,9 @@ export type StructuredAgentSessionHostDeps = {
     summary: AgentSessionStatusSummary,
     options: { replay: boolean }
   ) => void
+  /** An agent's card left the chat's queue unsent or was sent: its sender re-derives what it owes,
+   *  since no status change need follow (a delete while the chat is idle). */
+  onAgentCardSettled?: (sessionId: string) => void
   /** The agent-status store every held session's projection is written to and, on close,
    *  removed from. Both production hosts pass one — the desktop and headless `orcad`; absent,
    *  every reader of that store simply lists no structured session. */

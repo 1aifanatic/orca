@@ -7,7 +7,7 @@
 //     Resume has happened here since.
 //   - 'restarted': a person's waiting card was written by another host process, and no person's
 //     turn has started since this conversation opened. It holds only the person's cards: an agent's
-//     orchestration mail is safe to resend, since the mailbox is the record and reading is marked.
+//     card is a pointer to unread mail, harmless to send, since `check` returns only what is unread.
 // A person's turn is an accepted submission of origin `client`. Orchestration mail, a restart
 // continuation, a launch prompt and the queue's own drain are `host` and never lift it.
 
