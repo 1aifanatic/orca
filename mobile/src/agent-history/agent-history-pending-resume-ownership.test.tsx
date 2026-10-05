@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import React from 'react'
 import type { AiVaultSession } from '../../../src/shared/ai-vault-types'
+import { CreateTerminalTab } from '../../../src/shared/rpc-contract/session-tabs-schemas-params'
 import type { RpcClient } from '../transport/rpc-client'
 import type { ConnectionState, RpcResponse } from '../transport/types'
 import { createFakeRpcClient } from '../mobile-web-shell/bridge-host-test-fakes'
@@ -318,17 +319,11 @@ it.each([
         })
         const creates = calls.filter((call) => call.method === 'session.tabs.createTerminal')
         expect(creates).toHaveLength(2)
-        expect(createCall?.params).toEqual(
-          expect.objectContaining({ clientMutationId: expect.any(String) })
-        )
-        expect(creates[1].params).toEqual(
-          expect.objectContaining({ clientMutationId: expect.any(String) })
-        )
-        expect(creates[1].params).not.toEqual(
-          expect.objectContaining({
-            clientMutationId: Reflect.get(Object(createCall?.params), 'clientMutationId')
-          })
-        )
+        const originalCreate = CreateTerminalTab.parse(createCall?.params)
+        const retryCreate = CreateTerminalTab.parse(creates[1].params)
+        expect(originalCreate.clientMutationId).toEqual(expect.any(String))
+        expect(retryCreate.clientMutationId).toEqual(expect.any(String))
+        expect(retryCreate.clientMutationId).not.toBe(originalCreate.clientMutationId)
       }
       expect(completion).toEqual({ errors: 0, successes: 1, navigations: cutover ? 0 : 1 })
     } else if (cutover) {
