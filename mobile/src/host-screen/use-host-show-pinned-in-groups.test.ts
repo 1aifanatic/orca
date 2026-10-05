@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { act, create } from 'react-test-renderer'
+import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 import { FakeSession } from '../transport/mobile-endpoint-supervisor-test-fakes'
@@ -17,39 +17,68 @@ function settingsReply(settings: unknown): RpcResponse {
   return { id: 'reply', ok: true, result: { settings }, _meta: { runtimeId: 'runtime' } }
 }
 
-async function syncedSetting(reply: RpcResponse, swapClientMidRead = false): Promise<boolean> {
-  const client = new FakeSession('connected')
-  const clientRef: { current: RpcClient | null } = { current: client }
-  client.sendRequest.mockImplementation(async () => {
-    if (swapClientMidRead) {
-      clientRef.current = new FakeSession('connected')
-    }
-    return reply
-  })
-  const held: { current: ReturnType<typeof useHostShowPinnedInGroups> | null } = { current: null }
-  function Probe(): null {
-    held.current = useHostShowPinnedInGroups({ client, connState: 'connected', clientRef })
+type Hook = ReturnType<typeof useHostShowPinnedInGroups>
+
+async function mountHook(client: RpcClient) {
+  const held: { current: Hook | null } = { current: null }
+  function Probe({ client }: { client: RpcClient }): null {
+    held.current = useHostShowPinnedInGroups({ client, connState: 'connected' })
     return null
   }
+  let renderer: ReactTestRenderer | null = null
   await act(async () => {
-    create(createElement(Probe))
+    renderer = create(createElement(Probe, { client }))
   })
-  await act(async () => {
-    await held.current?.syncShowPinnedInGroups()
-  })
-  expect(client.sendRequest.mock.calls.map(([method]) => method)).toEqual(['settings.get'])
-  return held.current?.showPinnedInGroups ?? false
+  return {
+    hook: () => held.current!,
+    switchTo: (next: RpcClient) =>
+      act(async () => {
+        renderer?.update(createElement(Probe, { client: next }))
+      })
+  }
 }
 
+function sessionReplying(reply: RpcResponse): FakeSession {
+  const client = new FakeSession('connected')
+  client.sendRequest.mockResolvedValue(reply)
+  return client
+}
+
+async function syncedSetting(reply: RpcResponse): Promise<boolean> {
+  const client = sessionReplying(reply)
+  const { hook } = await mountHook(client)
+  await act(() => hook().syncShowPinnedInGroups())
+  expect(client.sendRequest.mock.calls.map(([method]) => method)).toEqual(['settings.get'])
+  return hook().showPinnedInGroups
+}
+
+const showInGroups = settingsReply({ showPinnedWorktreesInGroups: true })
+
 describe('the host list mirrors the desktop pinned-placement setting', () => {
-  it('applies the setting the host reports', async () => {
-    expect(await syncedSetting(settingsReply({ showPinnedWorktreesInGroups: true }))).toBe(true)
+  it('applies the setting the host reports, defaulting to off', async () => {
+    expect(await syncedSetting(showInGroups)).toBe(true)
     expect(await syncedSetting(settingsReply({}))).toBe(false)
+    expect(await syncedSetting(refusal)).toBe(false)
   })
 
-  it('keeps the default on a refusal or a reply for a replaced client', async () => {
-    expect(await syncedSetting(refusal)).toBe(false)
-    const late = settingsReply({ showPinnedWorktreesInGroups: true })
-    expect(await syncedSetting(late, true)).toBe(false)
+  it("drops the previous host's setting when the client changes", async () => {
+    const { hook, switchTo } = await mountHook(sessionReplying(showInGroups))
+    await act(() => hook().syncShowPinnedInGroups())
+    await switchTo(sessionReplying(refusal))
+    expect(hook().showPinnedInGroups).toBe(false)
+  })
+
+  it('ignores a reply that lands after the client changed', async () => {
+    const previous = new FakeSession('connected')
+    let answer: (reply: RpcResponse) => void = () => {}
+    previous.sendRequest.mockReturnValue(new Promise((resolve) => (answer = resolve)))
+    const { hook, switchTo } = await mountHook(previous)
+    const pending = hook().syncShowPinnedInGroups()
+    await switchTo(sessionReplying(refusal))
+    await act(async () => {
+      answer(showInGroups)
+      await pending
+    })
+    expect(hook().showPinnedInGroups).toBe(false)
   })
 })

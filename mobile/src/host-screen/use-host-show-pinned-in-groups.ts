@@ -1,4 +1,4 @@
-import { useCallback, useState, type RefObject } from 'react'
+import { useCallback, useState } from 'react'
 import type { RpcClient } from '../transport/rpc-client'
 import { showPinnedWorktreesInGroupsRead } from '../transport/settings-read-operations'
 import type { ConnectionState } from '../transport/types'
@@ -7,28 +7,26 @@ import type { ConnectionState } from '../transport/types'
 export function useHostShowPinnedInGroups(args: {
   client: RpcClient | null
   connState: ConnectionState
-  clientRef: RefObject<RpcClient | null>
 }) {
-  const { client, connState, clientRef } = args
-  const [showPinnedInGroups, setShowPinnedInGroups] = useState(false)
+  const { client, connState } = args
+  // Why keyed by client: the screen is reused across hosts, so a value only counts for the client that reported it.
+  const [setting, setSetting] = useState<{ client: RpcClient; show: boolean } | null>(null)
 
   const syncShowPinnedInGroups = useCallback(async () => {
     if (!client || connState !== 'connected') {
       return
     }
     try {
-      const reply = await showPinnedWorktreesInGroupsRead.request(client)
-      if (clientRef.current !== client) {
-        return
-      }
-      const setting = showPinnedWorktreesInGroupsRead.interpret(reply)
-      if (setting.accepted) {
-        setShowPinnedInGroups(setting.value)
+      const reply = showPinnedWorktreesInGroupsRead.interpret(
+        await showPinnedWorktreesInGroupsRead.request(client)
+      )
+      if (reply.accepted) {
+        setSetting({ client, show: reply.value })
       }
     } catch {
       // Best-effort: keep the current placement until the next focus/connect.
     }
   }, [client, connState])
 
-  return { showPinnedInGroups, syncShowPinnedInGroups }
+  return { showPinnedInGroups: setting?.client === client && setting.show, syncShowPinnedInGroups }
 }
