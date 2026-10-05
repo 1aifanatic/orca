@@ -171,6 +171,19 @@ describe('a turn another writer settled stops its text and prompts; its tools wa
     expect(rig.assembler.openTurnId).toBe(providerTurnId('t2'))
   })
 
+  it("counts a stopped turn's running tools against the budget until the provider ends it", async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    for (let n = 1; n <= MAX_PROVIDER_TIMELINE_OPEN_ENTRIES; n += 1) {
+      rig.assembler.apply({ type: 'item.open', item: `call-${n}`, body: runningTool('read') })
+    }
+    await stop(rig, 't1')
+    const extra = { type: 'item.open', item: 'extra', body: runningTool('read') } as const
+    expect(rig.assembler.apply(extra).admission).toEqual({ accepted: false, reason: 'failed' })
+    rig.assembler.apply({ type: 'turn.end', turn: 't1', at: 2_100, state: 'interrupted' })
+    expect(rig.assembler.apply(extra).admission).toEqual({ accepted: true })
+  })
+
   it('never fills the open budget with the streams of turns a person stopped', async () => {
     const rig = await openProviderTimelineRig()
     for (let n = 1; n <= MAX_PROVIDER_TIMELINE_OPEN_ENTRIES + 12; n += 1) {
