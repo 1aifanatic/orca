@@ -24,11 +24,16 @@ afterEach(() =>
 describe('ACP session update compatibility', () => {
   it.each([
     ['known', { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } }],
+    // Unfamiliar enum values stay typed: the generated enums are open.
+    ['known', { sessionUpdate: 'tool_call', toolCallId: 't', title: 'Search', kind: 'web_search' }],
+    ['known', { sessionUpdate: 'tool_call_update', toolCallId: 't', status: 'cancelled' }],
     [
-      'unrecognized',
-      { sessionUpdate: 'tool_call', toolCallId: 't', title: 'Search', kind: 'web_search' }
+      'known',
+      {
+        sessionUpdate: 'plan',
+        entries: [{ content: 'Ship', priority: 'urgent', status: 'blocked' }]
+      }
     ],
-    ['unrecognized', { sessionUpdate: 'tool_call_update', toolCallId: 't', status: 'cancelled' }],
     ['unrecognized', { sessionUpdate: 'vendor_usage', tokens: 1 }],
     [
       'unrecognized',
