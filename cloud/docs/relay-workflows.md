@@ -608,8 +608,9 @@ The sequence:
    the run's own push line must name the same digest. A run built from another commit stops.
 4. `Deploy Relay Production Director` with that digest, the paused generation, `preserve` for both
    regional inputs, no prune, and the old serving digest as predecessor.
-5. With `--configure` only: a 5-minute soak, which stops if director 5xx over it exceed twice the
-   same span before the deploy plus 25. Then the operator types `CONFIGURE_ASIA_DIRECTOR`, and one
+5. With `--configure` only: a 5-minute soak. It starts a minute before the deploy run completed,
+   when traffic moved, and is read a minute after it ends, to allow for log ingestion lag. It stops if
+   director 5xx over it exceed twice the same span before the deploy, plus 25. Then the operator types `CONFIGURE_ASIA_DIRECTOR`, and one
    `configure` runs per wave on the published director digest.
 6. A rehome `inspect` bound to the serving and rollback digests now read from `gcloud`. A wrong
    digest fails here, read-only, before 15 minutes of monitor evidence is spent on it.
@@ -627,8 +628,11 @@ adopts a run only if it is the single new one on two polls 15 s apart.
 Each run writes `state.json` and `driver.log` under `~/.orca/relay-director-deploy/<UTC
 timestamp>-<commit>/` (`--state-directory` overrides it); a dry run writes only the log, so it cannot
 be resumed. On a failure, Ctrl-C or SIGTERM it prints what changed. That covers whether rehome is
-PAUSED by the driver, read back from the pause or enable run even when that run failed, or
-UNCONFIRMED when the run printed nothing. It also covers the serving director re-read, the published
+PAUSED by the driver, or UNCONFIRMED. The PAUSED state is read back from the pause or enable run,
+even when that run failed. Only the control line that the step's own mode prints is accepted, and
+only at the generation its own dispatch expected, so a foreign run is never taken for the driver's
+pause. UNCONFIRMED means
+the run printed nothing. It also covers the serving director re-read, the published
 digest, the rollback point, and each run.
 
 `--resume <state.json>`:

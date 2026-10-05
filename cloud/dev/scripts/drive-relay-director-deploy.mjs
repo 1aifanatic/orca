@@ -48,6 +48,10 @@ const ACTIVE_RUN_STATUSES = ['queued', 'in_progress', 'waiting', 'requested', 'p
 export const MONITOR_MAX_AGE_AT_ENABLE_MS = 150_000
 // The manual procedure watched the new director for 5+ minutes before configuring cells.
 export const SOAK_MS = 5 * 60_000
+// Traffic moves about a minute before the deploy run completes (ops-log 05:00:33Z vs 05:01:34Z).
+const TRAFFIC_SWITCH_LEAD_MS = 60_000
+// Request logs land up to a minute late; reading at the window's end would undercount it.
+const LOG_INGESTION_LAG_MS = 60_000
 const DIRECTOR_5XX_FILTER = [
   'resource.type="cloud_run_revision"',
   `resource.labels.service_name="${DIRECTOR_SERVICE}"`,
@@ -60,6 +64,13 @@ const DISCOVERY_CLOCK_SKEW_MS = 10_000
 const LOG_ATTEMPTS = 6
 const LOG_INTERVAL_MS = 10_000
 const REHOME_HISTORY_RUNS = 5
+
+// Per step, the control lines its own run prints and how far each moves the generation the dispatch
+// expected, so a foreign run (say, one adopted after a crash) is never taken for this driver's pause.
+const OWN_RUN_STEPS = {
+  pause: { pause: [1] },
+  enable: { enable: [1], 'recover-enable': [0, 2] }
+}
 
 export class DriverStop extends Error {}
 
@@ -436,10 +447,14 @@ export function createDriver(config, deps) {
 
   // Reads the control from a rehome run whatever its conclusion: pause applies first, and a failed
   // enable runs its fail-closed recovery, so a red run can still have changed the switch.
-  async function settleRehome(entry) {
+  async function settleRehome(entry, name) {
+    const steps = OWN_RUN_STEPS[name]
     let control
     try {
-      control = rehomeControlFromLog(await runLog(entry.runId), null).control
+      const result = rehomeControlFromLog(await runLog(entry.runId), Object.keys(steps))
+      const step = result.control.generation - Number(entry.inputs['expected-control-generation'])
+      if (!steps[result.mode].includes(step)) throw new Error('not this run')
+      control = result.control
     } catch {
       state.rehome = { ...state.rehome, unconfirmedBy: entry.url }
       save()
@@ -479,16 +494,23 @@ export function createDriver(config, deps) {
   // Director 5xx over the first SOAK_MS on the new image against the same span before the deploy.
   async function soak() {
     const deploy = state.steps.deploy
-    const end = Date.parse(deploy.completedAt) + SOAK_MS
-    if (deps.now() < end) {
-      log(`soak: watching the new director until ${timestamp(end)}`)
-      await deps.sleep(end - deps.now())
+    const start = Math.max(
+      Date.parse(deploy.completedAt) - TRAFFIC_SWITCH_LEAD_MS,
+      Date.parse(deploy.dispatchedAt)
+    )
+    const end = start + SOAK_MS
+    const readAt = end + LOG_INGESTION_LAG_MS
+    if (deps.now() < readAt) {
+      log(
+        `soak: watching the new director until ${timestamp(end)}, reading at ${timestamp(readAt)}`
+      )
+      await deps.sleep(readAt - deps.now())
     }
     const before = count5xx(
       Date.parse(deploy.dispatchedAt) - SOAK_MS,
       Date.parse(deploy.dispatchedAt)
     )
-    const after = count5xx(end - SOAK_MS, end)
+    const after = count5xx(start, end)
     log(
       `soak: director 5xx ${after} in ${SOAK_MS / 60_000} min after the deploy, ${before} before it`
     )
@@ -516,7 +538,7 @@ export function createDriver(config, deps) {
                   control: { ...v.control, generation: v.generation },
                   confirmation: v.confirmation('PAUSE_REGIONAL_REHOMING')
                 }),
-              settle: settleRehome,
+              settle: (entry) => settleRehome(entry, 'pause'),
               result: () => {
                 if (state.rehome.enabled || state.rehome.unconfirmedBy)
                   throw new DriverStop('the pause run did not report a paused control')
@@ -636,7 +658,7 @@ export function createDriver(config, deps) {
                   controlGeneration: v.generation,
                   confirmation: v.confirmation('ENABLE_REGIONAL_REHOMING')
                 }),
-              settle: settleRehome,
+              settle: (entry) => settleRehome(entry, 'enable'),
               result: () => {
                 if (!state.rehome.enabled)
                   throw new DriverStop('the enable run did not report an enabled control')
@@ -942,9 +964,10 @@ export function createDriver(config, deps) {
         if (
           ['pause', 'enable'].includes(name) &&
           state.steps[name]?.runId &&
-          !stepSucceeded(name)
+          state.steps[name].status !== 'succeeded'
         ) {
-          await settleRehome(state.steps[name])
+          // Includes a green run adopted above, whose result was never read.
+          await settleRehome(state.steps[name], name)
         }
       }
       const reads = await preflight()

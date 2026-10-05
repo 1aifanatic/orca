@@ -317,7 +317,7 @@ export function logConfirmsPublishedDigest(log, commit, digest) {
     .some((line) => line.includes(`sha-${commit}: digest: ${digest} size:`))
 }
 
-/** The last `relay_regional_rehome_control` JSON line the rehome job printed in `mode` (null: any). */
+/** The last `relay_regional_rehome_control` JSON line printed in `mode`, one of `mode`, or any (null). */
 export function rehomeControlFromLog(log, mode) {
   let found
   for (const line of String(log).split('\n')) {
@@ -325,7 +325,7 @@ export function rehomeControlFromLog(log, mode) {
     if (start < 0) continue
     try {
       const parsed = JSON.parse(line.slice(start).trim())
-      if (mode === null || parsed.mode === mode) found = parsed
+      if (mode === null || [mode].flat().includes(parsed.mode)) found = parsed
     } catch {
       // A truncated or echoed line is not the result.
     }
@@ -333,7 +333,8 @@ export function rehomeControlFromLog(log, mode) {
   if (!found)
     throw new Error(`the rehome run printed no ${mode ?? 'regional rehome'} control result`)
   return {
-    control: parseControl(found.control, `rehome ${mode} control`),
+    mode: found.mode,
+    control: parseControl(found.control, `rehome ${found.mode} control`),
     ...(found.selector
       ? { selector: parseSelector(found.selector, `rehome ${mode} selector`) }
       : {})

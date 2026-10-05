@@ -194,6 +194,8 @@ function simulate(world, run) {
       return
     }
     promote(world, inputs['image-digest'])
+    // Blue/green takes minutes; traffic moves about one before the run completes.
+    world.now += 4 * 60_000
   } else if (run.file === WORKFLOWS.monitor.file) {
     world.now += 16 * 60_000
     run.artifacts[`relay-monitor-dry-run-${run.id}-1`] = monitorFiles(
@@ -303,6 +305,10 @@ function gcloud(world, args) {
   if (args[0] === 'artifacts') return ok(`${world.registry[args[4]] ?? ''}\n`)
   if (args[0] === 'logging') {
     const [, from, to] = args[2].match(/timestamp>="([^"]+)" AND timestamp<"([^"]+)"/)
+    world.reads = [
+      ...(world.reads ?? []),
+      { from: Date.parse(from), to: Date.parse(to), readAt: world.now }
+    ]
     return ok('t\n'.repeat(world.director5xx(Date.parse(from), Date.parse(to))))
   }
   throw new Error(`unexpected gcloud ${args.join(' ')}`)
@@ -524,6 +530,55 @@ test('a pause run that reports nothing is UNCONFIRMED, and a pause it did not ma
   assert.equal(dispatched(world, REHOME('enable')).length, 0)
 })
 
+test('its own pause adopted after a crash mid-dispatch is recognised, and resume finishes', async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  const run = deps.run
+  let crashed = false
+  deps.run = (program, args, input) => {
+    const result = run(program, args, input)
+    if (!crashed && args[0] === 'workflow' && JSON.parse(input).mode === 'pause') {
+      crashed = true
+      return { status: 1, stdout: '', stderr: 'killed after GitHub accepted the dispatch' }
+    }
+    return result
+  }
+  const error = await stopped(start(world, [], deps))
+  assert.equal((await resume(world, error.statePath, deps)).done, true)
+  assert.equal(dispatched(world, REHOME('pause')).length, 1)
+  assert.deepEqual([world.control.generation, world.control.enabled], [41, true])
+})
+
+test("a foreign rehome run adopted after a crash is never taken for this driver's pause", async () => {
+  const world = fakeWorld()
+  const deps = dependencies(world)
+  const run = deps.run
+  let crashed = false
+  deps.run = (program, args, input) => {
+    if (!crashed && args[0] === 'workflow' && JSON.parse(input).mode === 'pause') {
+      crashed = true
+      // The operator pauses by hand and inspects while the driver is down.
+      world.control = { ...world.control, generation: 40, enabled: false }
+      world.runs.push({
+        id: world.nextRunId++,
+        file: WORKFLOWS.rehome.file,
+        name: WORKFLOWS.rehome.name,
+        createdAt: new Date(world.now).toISOString(),
+        headSha: COMMIT,
+        conclusion: 'success',
+        log: controlLine('inspect', world.control, world.selector)
+      })
+      return { status: 1, stdout: '', stderr: 'killed' }
+    }
+    return run(program, args, input)
+  }
+  const error = await stopped(start(world, [], deps))
+  const refusal = await stopped(resume(world, error.statePath, deps))
+  assert.match(refusal.message, /which this driver did not pause/)
+  assert.equal(JSON.parse(readFileSync(error.statePath, 'utf8')).pausedByDriver, undefined)
+  assert.equal(dispatched(world, REHOME('enable')).length, 0)
+})
+
 test('a failed deploy reports the pause and resume finishes without pausing or publishing again', async () => {
   const world = fakeWorld({ fail: { [DEPLOY]: 'before-apply' } })
   const error = await stopped(start(world))
@@ -585,7 +640,7 @@ test('the ops-log 05:41Z case: a failed enable recovers closed and resume enable
 
 test('configure waits out a soak, gates on director 5xx, and takes a typed phrase', async () => {
   const world = fakeWorld()
-  await start(world, ['--configure', `production-gce-c34=${CELL}`])
+  world.statePath = (await start(world, ['--configure', `production-gce-c34=${CELL}`])).statePath
   const [configure] = dispatched(world, `${WORKFLOWS.admission.file}:configure`)
   assert.deepEqual(
     [
@@ -598,6 +653,14 @@ test('configure waits out a soak, gates on director 5xx, and takes a typed phras
   )
   assert.ok(world.prompts.includes('CONFIGURE_ASIA_DIRECTOR'))
   assert.match(report(world), /soak: director 5xx 10 in 5 min after the deploy, 10 before it/)
+  // The window opens a minute before the deploy run completed, when traffic moved, and is read
+  // only after a minute of log ingestion lag.
+  const [before, after] = world.reads
+  assert.equal(after.to - after.from, 5 * 60_000)
+  const deploy = JSON.parse(readFileSync(world.statePath, 'utf8')).steps.deploy
+  assert.equal(after.from, Date.parse(deploy.completedAt) - 60_000)
+  assert.ok(after.readAt >= after.to + 60_000)
+  assert.ok(before.to <= after.from)
 
   const spiking = fakeWorld({ director5xx: (from) => (from >= START ? 200 : 10) })
   assert.match(
