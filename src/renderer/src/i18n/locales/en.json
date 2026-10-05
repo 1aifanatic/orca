@@ -17796,6 +17796,8 @@
         "historyUnavailable": "Orca couldn't open this chat's history right now.",
         "savedByNewerOrca": "Chats were saved by a newer Orca.",
         "updateOrcaToKeepUsing": "Update Orca to keep using them.",
+        "chatSavedByNewerOrca": "This chat was saved by a newer Orca.",
+        "updateOrcaToOpenChat": "Update Orca to open it.",
         "unsupported": "This needs a newer Orca on the computer running this chat. Update Orca there, then try again.",
         "notAvailable": "This isn't available in this chat.",
         "unreachable": "Orca couldn't reach the agent.",
@@ -18115,6 +18117,7 @@
         "reason": "Reason",
         "blockedPath": "Blocked path",
         "askRule": "Ask rule",
+        "needsNewerOrca": "This request needs a newer version of Orca.",
         "plan": {
           "file": "Plan file"
         }

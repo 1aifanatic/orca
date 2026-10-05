@@ -51,6 +51,9 @@ export type CodexDispatchEchoes = {
   blockPrompt: (threadId: string, turnId: string, block: CodexPromptBlock) => void
   /** The block reported in this turn, which its end takes; null when none was. */
   takePromptBlock: (threadId: string, turnId: string) => CodexPromptBlock | null
+  /** The latest armed send's answered turn a wait left unopened, neither open nor ended: Codex may
+   *  still open it, though no wait is spent on it again. */
+  answeredTurnLeftUnopened: (threadId: string, openTurnIds: ReadonlySet<string>) => string | null
   /**
    * Records a turn's end and returns the sends bound to it that it settles: all of them unless it
    * completed, which echoes its pending input first, so one it never echoed waits for recovery,
@@ -78,6 +81,19 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
   const turnKey = (threadId: string, turnId: string): string => JSON.stringify([threadId, turnId])
   const settles = (end: CodexTurnEnd): boolean =>
     end.status !== 'completed' || end.blocked !== undefined
+  const answeredTurn = (
+    threadId: string,
+    openTurnIds: ReadonlySet<string>,
+    admits: (key: string) => boolean
+  ): string | null => {
+    const answered = [...armed.values()].flatMap(({ turn }) => {
+      const key = turn?.threadId === threadId ? turnKey(threadId, turn.turnId) : null
+      return turn && key && !openTurnIds.has(turn.turnId) && !endedTurns.has(key) && admits(key)
+        ? [turn.turnId]
+        : []
+    })
+    return answered.at(-1) ?? null
+  }
   return {
     arm(clientMessageId, requestedAt) {
       const existing = armed.get(clientMessageId)
@@ -107,17 +123,10 @@ export function createCodexDispatchEchoes(): CodexDispatchEchoes {
       }
       return end
     },
-    answeredUnopenedTurn: (threadId, openTurnIds) => {
-      const answered = [...armed.values()].flatMap(({ turn }) =>
-        turn?.threadId === threadId &&
-        !openTurnIds.has(turn.turnId) &&
-        !endedTurns.has(turnKey(threadId, turn.turnId)) &&
-        !unopenedTurns.has(turnKey(threadId, turn.turnId))
-          ? [turn.turnId]
-          : []
-      )
-      return answered.at(-1) ?? null
-    },
+    answeredUnopenedTurn: (threadId, openTurnIds) =>
+      answeredTurn(threadId, openTurnIds, (key) => !unopenedTurns.has(key)),
+    answeredTurnLeftUnopened: (threadId, openTurnIds) =>
+      answeredTurn(threadId, openTurnIds, (key) => unopenedTurns.has(key)),
     leftUnopened: (threadId, turnId) => {
       unopenedTurns.add(turnKey(threadId, turnId))
       for (const oldest of unopenedTurns) {

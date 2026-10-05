@@ -88,10 +88,11 @@ function reasonParts(
       ? [NOT_DONE[write], { failure: { kind: words.fact }, surface: 'rejection', context }]
       : undefined
   }
-  const said = causeParts(words.cause, write)
+  const { cause, step } = write === 'read-history' && words.history ? words.history : words
+  const said = causeParts(cause, write)
   // A Retry beside the words is the step for a reason whose action is to retry.
   const retried = context.retryControl && words.action === 'retry'
-  return words.step && !retried ? [...said, words.step] : said
+  return step && !retried ? [...said, step] : said
 }
 
 /** What stopped a refused start, for a line that already says the chat did not start and shows its
