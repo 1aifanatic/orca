@@ -24,10 +24,7 @@ vi.mock('os', async (importOriginal) => {
 })
 
 import { CodexHookService, getCodexManagedHookInstallMaterial } from './hook-service'
-import {
-  _internals as realHomeInternals,
-  ensureRealHomeCodexHookState
-} from './codex-real-home-hook-install'
+import { reconcileCodexHooks, startCodexHookReconcile } from './codex-hook-reconcile'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
 import {
   resolveStartupManagedHookAction,
@@ -113,18 +110,16 @@ describe('the shared real-home Codex entry', () => {
     expect(snapshotRealCodexHome()).toEqual(before)
   })
 
-  it('survives launch prep on the real-home lane with hooks off', async () => {
+  it('survives a reconcile on the real-home lane with hooks off', async () => {
     seedSharedEntry()
-    realHomeInternals.resetForTesting('installed')
     const before = snapshotRealCodexHome()
+    const stop = startCodexHookReconcile({ isEnabled: () => false, usesRealHome: () => true })
 
-    expect(
-      await ensureRealHomeCodexHookState({
-        hooksEnabled: false,
-        userDataPath: homes.userDataDir,
-        writePolicy: 'add-missing-only'
-      })
-    ).toBe('removed')
+    try {
+      await reconcileCodexHooks()
+    } finally {
+      stop()
+    }
 
     expect(snapshotRealCodexHome()).toEqual(before)
   })
@@ -138,11 +133,12 @@ describe('the shared real-home Codex entry', () => {
     expect(resolveStartupManagedHookAction(settings)).toBe('skip')
     expect(shouldInstallStartupManagedAgentHook(settings, 'codex')).toBe(false)
     // First pane: both lanes run with hooks off.
-    await ensureRealHomeCodexHookState({
-      hooksEnabled: false,
-      userDataPath: homes.userDataDir,
-      writePolicy: 'add-missing-only'
-    })
+    const stop = startCodexHookReconcile({ isEnabled: () => false, usesRealHome: () => true })
+    try {
+      await reconcileCodexHooks()
+    } finally {
+      stop()
+    }
     await new CodexHookService().prepareRuntimeHomeForLaunch(
       getOrcaManagedCodexHomePath(),
       undefined,

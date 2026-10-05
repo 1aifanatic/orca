@@ -20,6 +20,7 @@ import {
   removeCodexTrustGrantLedgerHome,
   type CodexTrustGrantLedgerHome
 } from './codex-trust-grant-ledger'
+import type { CodexHookHashes } from './codex-hook-trust-derivation'
 
 export function readCodexTrustGrantLedgerHomeForReconciliation(
   runtimeHomePath: string
@@ -64,6 +65,8 @@ type CodexManagedHookTrustOwnershipOptions = {
   timeoutSec: number
   /** Explicit native homes resolve their parent before hook discovery. */
   sourceUsesExplicitCodexHome?: boolean
+  /** Codex's own hashes Orca approved its entry with, when they are known. */
+  codexHashes?: CodexHookHashes | null
 }
 
 function getCodexManagedHookTrustEntryKeys(
@@ -97,6 +100,10 @@ function getCodexManagedHookTrustEntryKeys(
       computeTrustedHash({ ...expectedEntry, timeoutSec: undefined })
     ])
     addLedgerRecognizedHashes(recognizedHashes, [ledgerHome], key, expectedEntry)
+    const codexHash = options.codexHashes?.[parts.eventLabel]
+    if (codexHash) {
+      recognizedHashes.add(codexHash)
+    }
     if (state.trustedHash && recognizedHashes.has(state.trustedHash)) {
       ownedKeys.push(key)
     }

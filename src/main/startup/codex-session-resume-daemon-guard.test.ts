@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   sharedHomePath: '',
   installForLaunchPrep: vi.fn(),
   refreshRuntimeUserHooksForLaunchPrep: vi.fn(),
-  ensureRealHomeCodexHookState: vi.fn(async () => {}),
+  reconcileCodexHooksWithin: vi.fn(async () => {}),
   prepareCodexSessionResume: vi.fn(),
   prepareLegacySharedCodexSessionResume: vi.fn()
 }))
@@ -26,8 +26,9 @@ vi.mock('../codex/hook-service', () => ({
     refreshRuntimeUserHooksForLaunchPrep: mocks.refreshRuntimeUserHooksForLaunchPrep
   }
 }))
-vi.mock('../codex/codex-real-home-hook-install', () => ({
-  ensureRealHomeCodexHookState: mocks.ensureRealHomeCodexHookState
+vi.mock('../codex/codex-hook-reconcile', () => ({
+  CODEX_HOOK_LAUNCH_WAIT_MS: 3_000,
+  reconcileCodexHooksWithin: mocks.reconcileCodexHooksWithin
 }))
 vi.mock('../agent-hooks/managed-agent-hook-controls', () => ({
   isAgentStatusHooksEnabledForAgent: () => mocks.hooksEnabled
@@ -133,11 +134,12 @@ describe('Codex session resume daemon socket guard', () => {
   it('never writes the guard into the real Codex home a migrated resume runs in', async () => {
     expect(codexDaemonSocketPathExceedsLimit(mocks.systemHomePath)).toBe(true)
     mocks.prepareLegacySharedCodexSessionResume.mockResolvedValue({ useRealCodexHome: true })
+    mocks.hooksEnabled = true
 
     const preparation = await resume()
 
     expect(preparation).toMatchObject({ codexHomePath: mocks.systemHomePath })
-    expect(mocks.ensureRealHomeCodexHookState).toHaveBeenCalledTimes(1)
+    expect(mocks.reconcileCodexHooksWithin).toHaveBeenCalledTimes(1)
     expect(existsSync(join(mocks.systemHomePath, 'config.toml'))).toBe(false)
   })
 })

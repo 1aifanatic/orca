@@ -17,9 +17,12 @@ import { removeCodexManagedHookTrustEntries } from './codex-managed-trust-reconc
 import { getCodexManagedHookInstallMaterial } from './codex-hook-definition'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
+import type { CodexHookHashes } from './codex-hook-trust-derivation'
 
 /** The opt-out's removal of every Orca entry from the real ~/.codex/hooks.json, with its trust. */
-export async function sweepRealHomeCodexHook(): Promise<'removed' | 'unavailable'> {
+export async function sweepRealHomeCodexHook(
+  codexHashes: CodexHookHashes | null = null
+): Promise<'removed' | 'unavailable'> {
   const hooksJsonPath = getRealHomeHooksJsonPath()
   // Why: single read — the pre-write generation guard must compare against
   // the exact bytes this sweep's parse came from.
@@ -76,7 +79,8 @@ export async function sweepRealHomeCodexHook(): Promise<'removed' | 'unavailable
         sourcePath: hooksJsonPath,
         command: material.command,
         managedEventLabels: new Set(Object.values(material.eventLabel)),
-        timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
+        timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS,
+        codexHashes
       })
     } catch (error) {
       console.warn('[codex-real-home-hooks] failed to drop Orca trust entries:', error)

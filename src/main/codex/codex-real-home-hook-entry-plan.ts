@@ -7,29 +7,10 @@ import { CODEX_HOOK_COMMAND_FORM, readCodexHookCommandForm } from './codex-hook-
 import { createCodexHookTrustEntry } from './codex-hook-identity'
 import type { CodexTrustEntry } from './config-toml-trust'
 
-/**
- * - 'add-missing-only' (every launch): adds Orca's entry to an event that has
- *   none, and leaves every Orca entry it finds as it is.
- * - 'convert-older-forms' (app start): also rewrites an older Orca form to the
- *   frozen command once, in its own slot, and drops duplicates whose removal
- *   moves no user hook.
- */
-export type RealHomeCodexHookWritePolicy = 'add-missing-only' | 'convert-older-forms'
-
-export type RealHomeCodexHookSlotWrite = {
-  eventName: string
-  /** Where this call's handler landed, so a withdrawal acts on that copy only. */
-  groupIndex: number
-  handlerIndex: number
-  /** The handler this call replaced in its slot, or null when it appended a group. */
-  replaced: HookCommandConfig | null
-}
-
 export type RealHomeCodexHookEntryPlan = {
   hooks: Record<string, HookDefinition[]>
   changed: boolean
-  writes: RealHomeCodexHookSlotWrite[]
-  /** The frozen entries whose trust this build needs. */
+  /** The frozen entries whose approval this build needs. */
   managedEntries: CodexTrustEntry[]
 }
 
@@ -126,32 +107,17 @@ function movesUserHandler(
   )
 }
 
-function locateHandler(
-  definitions: HookDefinition[],
-  hook: HookCommandConfig
-): { groupIndex: number; handlerIndex: number } {
-  for (const [groupIndex, definition] of definitions.entries()) {
-    const handlerIndex = definition.hooks?.indexOf(hook) ?? -1
-    if (handlerIndex !== -1) {
-      return { groupIndex, handlerIndex }
-    }
-  }
-  throw new Error('written Codex hook handler is missing from its plan')
-}
-
 export function planRealHomeCodexHookEntries(args: {
   hooks: Record<string, HookDefinition[]>
   sourcePath: string
   material: CodexManagedHookInstallMaterial
   isOrcaCommand: (command: string | undefined) => boolean
-  policy: RealHomeCodexHookWritePolicy
 }): RealHomeCodexHookEntryPlan {
   const { material, isOrcaCommand, sourcePath } = args
   const command = material.command
   // Why: events this build does not subscribe to keep their Orca entries; a
   // newer build may subscribe to them.
   const hooks: Record<string, HookDefinition[]> = { ...args.hooks }
-  const writes: RealHomeCodexHookSlotWrite[] = []
   const managedEntries: CodexTrustEntry[] = []
   let changed = false
   // Why every copy: a duplicate kept in place must not be listed for review.
@@ -190,59 +156,36 @@ export function planRealHomeCodexHookEntries(args: {
       continue
     }
     let definitions = current
-    let written: { hook: HookCommandConfig; replaced: HookCommandConfig | null } | null = null
-    // Why: an older build's entry still runs the shared script; converting it
-    // is app start's job, so launches never fight a running older build.
-    if (args.policy === 'convert-older-forms') {
-      const keeper = handlers.find((handler) => isConvertibleSlot(current[handler.groupIndex]!))
-      if (keeper && keeper.hook.command !== command) {
-        // Why in place: the slot keeps its position, so no user trust key moves.
-        const slot = current[keeper.groupIndex]!
-        const slotHooks = [...slot.hooks!]
-        const hook = buildCodexManagedHook(command, eventName)
-        slotHooks[keeper.handlerIndex] = hook
-        definitions = [...current]
-        definitions[keeper.groupIndex] = { ...slot, hooks: slotHooks }
-        written = { hook, replaced: keeper.hook }
-      }
-      const others: OrcaUnit[] = [
-        ...handlers.filter((handler) => handler !== keeper),
-        ...directOrcaUnits
-      ]
-      others.sort((a, b) =>
-        a.groupIndex !== b.groupIndex
-          ? b.groupIndex - a.groupIndex
-          : ('handlerIndex' in b ? b.handlerIndex : -1) -
-            ('handlerIndex' in a ? a.handlerIndex : -1)
-      )
-      for (const unit of others) {
-        const next = withoutOrcaUnit(definitions, unit)
-        // Why: a duplicate before a user hook stays; removing it would move that hook's trust key.
-        if (!movesUserHandler(definitions, next, isOrcaCommand)) {
-          definitions = next
-        }
+    const keeper = handlers.find((handler) => isConvertibleSlot(current[handler.groupIndex]!))
+    if (keeper && keeper.hook.command !== command) {
+      // Why in place: the slot keeps its position, so no user trust key moves.
+      const slot = current[keeper.groupIndex]!
+      const slotHooks = [...slot.hooks!]
+      slotHooks[keeper.handlerIndex] = buildCodexManagedHook(command, eventName)
+      definitions = [...current]
+      definitions[keeper.groupIndex] = { ...slot, hooks: slotHooks }
+    }
+    const others: OrcaUnit[] = [
+      ...handlers.filter((handler) => handler !== keeper),
+      ...directOrcaUnits
+    ]
+    others.sort((a, b) =>
+      a.groupIndex !== b.groupIndex
+        ? b.groupIndex - a.groupIndex
+        : ('handlerIndex' in b ? b.handlerIndex : -1) - ('handlerIndex' in a ? a.handlerIndex : -1)
+    )
+    for (const unit of others) {
+      const next = withoutOrcaUnit(definitions, unit)
+      // Why: a duplicate before a user hook stays; removing it would move that hook's trust key.
+      if (!movesUserHandler(definitions, next, isOrcaCommand)) {
+        definitions = next
       }
     }
-    const hasFrozen = definitions.some((definition) =>
-      definition.hooks?.some((hook) => hook.command === command)
-    )
     if (
-      !hasFrozen &&
-      (args.policy === 'convert-older-forms' ||
-        (handlers.length === 0 && directOrcaUnits.length === 0))
+      !definitions.some((definition) => definition.hooks?.some((hook) => hook.command === command))
     ) {
       // Why last: no user hook's positional trust key moves.
-      const hook = buildCodexManagedHook(command, eventName)
-      definitions = [...definitions, { hooks: [hook] }]
-      written = { hook, replaced: null }
-    }
-    if (written) {
-      // Why after the duplicate drops: they can shift the written slot.
-      writes.push({
-        eventName,
-        ...locateHandler(definitions, written.hook),
-        replaced: written.replaced
-      })
+      definitions = [...definitions, { hooks: [buildCodexManagedHook(command, eventName)] }]
     }
     if (definitions !== current) {
       hooks[eventName] = definitions
@@ -253,5 +196,5 @@ export function planRealHomeCodexHookEntries(args: {
     }
   }
 
-  return { hooks, changed, writes, managedEntries }
+  return { hooks, changed, managedEntries }
 }

@@ -4,16 +4,37 @@ import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { dedupeInFlightRun } from '../in-flight-run-dedupe'
 import { refreshManagedScriptIfPresent } from '../agent-hooks/managed-hook-script-refresh'
+import { writeManagedScript } from '../agent-hooks/installer-utils'
+import { resolveCodexCommand } from '../codex-cli/command'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
-import { getManagedScriptPath } from './codex-hook-definition'
+import {
+  getCodexConfigTomlPath,
+  getConfigPath,
+  getManagedCommand,
+  getManagedScriptPath
+} from './codex-hook-definition'
 import { installCodexHooksExclusively } from './codex-hook-local-install'
 import {
   refreshCodexRuntimeUserHooksExclusively,
   removeCodexHooksExclusively
 } from './codex-hook-local-maintenance'
+import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
-import { getCodexHookStatusAfterInstall } from './codex-hook-status'
+import { getCodexHookStatus } from './codex-hook-status'
+import {
+  getCodexHookReconcileVerdict,
+  reconcileCodexHooks,
+  resolveCodexHookAnswerForLaunch
+} from './codex-hook-reconcile'
+import {
+  forgetCodexHookTrust,
+  readMemoizedCodexHookTrust,
+  type CodexHookTrustAnswer
+} from './codex-hook-trust-memo'
+import { getRealHomeConfigTomlPath, getRealHomeHooksJsonPath } from './codex-real-home-hooks-json'
+import { getRealHomeHookKeySourcePath } from './codex-real-home-hook-install'
+import { getCodexExplicitHomeHookSourcePath } from './config-toml-trust'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -27,7 +48,6 @@ import {
   type CodexWslRuntimeHookTarget,
   type WslCanonicalPathSettlement
 } from './codex-wsl-hook-install-plan'
-import type { CodexTrustEntry } from './config-toml-trust'
 
 /** Lane-scoped so the hooks-on install never joins the hooks-off refresh. */
 function launchPrepKey(lane: 'install' | 'refresh', runtimeHomePath: string): string {
@@ -181,26 +201,78 @@ export class CodexHookService {
     return wslPlan ? refreshWslRuntimeUserHooks(wslPlan) : null
   }
 
-  getStatus(runtimeHomePath: string = getOrcaManagedCodexHomePath()): AgentHookInstallStatus {
-    return this.getStatusAfterInstall(null, runtimeHomePath)
+  /**
+   * Status read from a home's files: ~/.codex when no home is named, else that
+   * managed home. Codex's hashes come from the last reconcile, or the memo.
+   */
+  getStatus(runtimeHomePath?: string): AgentHookInstallStatus {
+    const command = getManagedCommand(getManagedScriptPath())
+    const reconciled = getCodexHookReconcileVerdict()
+    return this.readStatus(
+      runtimeHomePath,
+      reconciled?.answer ?? readMemoizedCodexHookTrust(resolveCodexCommand(), command),
+      reconciled?.verified === 'rejected'
+    )
   }
 
-  private getStatusAfterInstall(
-    recentGrantEntries: readonly CodexTrustEntry[] | null,
-    runtimeHomePath: string = getOrcaManagedCodexHomePath()
+  private readStatus(
+    runtimeHomePath: string | undefined,
+    answer: CodexHookTrustAnswer | null,
+    rejected = false
   ): AgentHookInstallStatus {
-    return getCodexHookStatusAfterInstall(recentGrantEntries, runtimeHomePath)
+    const command = getManagedCommand(getManagedScriptPath())
+    if (runtimeHomePath === undefined) {
+      return getCodexHookStatus({
+        hooksJsonPath: getRealHomeHooksJsonPath(),
+        tomlPath: getRealHomeConfigTomlPath(),
+        keySourcePath: getRealHomeHookKeySourcePath(),
+        command,
+        answer,
+        rejected
+      })
+    }
+    const hooksJsonPath = getConfigPath(runtimeHomePath)
+    return getCodexHookStatus({
+      hooksJsonPath,
+      tomlPath: getCodexConfigTomlPath(runtimeHomePath),
+      keySourcePath: getCodexExplicitHomeHookSourcePath(hooksJsonPath),
+      command,
+      answer
+    })
+  }
+
+  /**
+   * App start and the setting turning on: reconciles Orca's entry in ~/.codex,
+   * then sweeps retired forms, which it finds through the entries it converts.
+   */
+  async reconcileHooks(): Promise<AgentHookInstallStatus> {
+    try {
+      // Why here too: like every managed agent's installer, it deploys its shared script.
+      writeManagedScript(getManagedScriptPath(), getManagedScript())
+    } catch (error) {
+      console.warn('[codex-hook-service] could not write the Codex hook script:', error)
+    }
+    await reconcileCodexHooks()
+    await cleanupLegacyManagedHookRepresentations()
+    return this.getStatus()
   }
 
   // Why: runtimeHomePath defaults to the shared managed mirror, but a managed
   // account launching against its own self-contained CODEX_HOME passes that
   // per-account home so hooks.json/config.toml/trust land where codex reads.
-  install(
+  async install(
     runtimeHomePath: string = getOrcaManagedCodexHomePath()
   ): Promise<AgentHookInstallStatus> {
-    // Why: same lane as the grant it performs — see installManagedHooksIntoWslRuntime.
+    const answer = await resolveCodexHookAnswerForLaunch()
+    const hashes = answer?.hashes
+    if (!hashes) {
+      // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
+      return this.refreshRuntimeUserHooks(runtimeHomePath)
+    }
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () =>
-      this.installExclusively(runtimeHomePath)
+      installCodexHooksExclusively(runtimeHomePath, hashes, (homePath) =>
+        this.readStatus(homePath, answer)
+      )
     )
   }
 
@@ -228,12 +300,6 @@ export class CodexHookService {
     const homePath = runtimeHomePath ?? getOrcaManagedCodexHomePath()
     return dedupeInFlightRun(this.launchPrepInFlight, launchPrepKey('refresh', homePath), () =>
       this.refreshRuntimeUserHooks(homePath)
-    )
-  }
-
-  private installExclusively(runtimeHomePath: string): Promise<AgentHookInstallStatus> {
-    return installCodexHooksExclusively(runtimeHomePath, (recentGrantEntries, homePath) =>
-      this.getStatusAfterInstall(recentGrantEntries, homePath)
     )
   }
 
@@ -267,7 +333,12 @@ export class CodexHookService {
     )
   }
 
-  private removeExclusively(): Promise<AgentHookInstallStatus> {
-    return removeCodexHooksExclusively(() => this.getStatus())
+  private async removeExclusively(): Promise<AgentHookInstallStatus> {
+    const codexPath = resolveCodexCommand()
+    const command = getManagedCommand(getManagedScriptPath())
+    const hashes = readMemoizedCodexHookTrust(codexPath, command)?.hashes ?? null
+    // Why: turning hooks back on asks this Codex again, even after it refused Orca's approval.
+    forgetCodexHookTrust(codexPath)
+    return removeCodexHooksExclusively(hashes, () => this.getStatus())
   }
 }

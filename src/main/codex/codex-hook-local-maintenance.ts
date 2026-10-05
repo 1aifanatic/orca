@@ -11,6 +11,7 @@ import { getCodexConfigTomlPath, getConfigPath, writeCodexHooksJson } from './co
 import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { removeRealHomeCodexHookForOptOut } from './codex-real-home-hook-install'
+import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import {
   removeRuntimeManagedHookTrustEntries,
   removeStaleRuntimeHookTrustEntries
@@ -35,8 +36,6 @@ export async function refreshCodexRuntimeUserHooksExclusively(
   promoteCodexRuntimeHookApprovalsToSystem(runtimeHomePath)
   const config = readHooksJson(configPath)
   if (!config) {
-    // Why: disabled launch prep once called remove(); preserve that legacy cleanup even when runtime hooks.json is malformed.
-    await cleanupLegacyManagedHookRepresentations()
     return {
       agent: 'codex',
       state: 'error',
@@ -67,8 +66,8 @@ export async function refreshCodexRuntimeUserHooksExclusively(
       runtimeHomePath,
       systemHomePath: getSystemCodexHomePath()
     })
-    // Why: this path is used when Orca status hooks are disabled. The
-    // runtime CODEX_HOME should keep user hooks, but not Orca-managed trust.
+    // Why: this path is used when Orca status hooks are off or Codex's hash is
+    // unknown. The runtime CODEX_HOME keeps user hooks, but not Orca-managed trust.
     // Write current mirrored user trust first so stale cleanup compares
     // against current hashes while deleting old managed hook keys.
     upsertHookTrustEntries(tomlPath, trustEntries)
@@ -84,12 +83,11 @@ export async function refreshCodexRuntimeUserHooksExclusively(
     }
   }
   snapshotCodexRuntimeHookTrustProvenance(runtimeHomePath)
-
-  await cleanupLegacyManagedHookRepresentations()
   return getStatus(runtimeHomePath)
 }
 
 export async function removeCodexHooksExclusively(
+  codexHashes: CodexHookHashes | null,
   getStatus: () => AgentHookInstallStatus
 ): Promise<AgentHookInstallStatus> {
   const configPath = getConfigPath()
@@ -97,7 +95,7 @@ export async function removeCodexHooksExclusively(
   const config = readHooksJson(configPath)
   if (!config) {
     // Why: a malformed hooks.json shouldn't strand old hooks in ~/.codex or the legacy profile after disabling.
-    await removeRealHomeCodexHookForOptOut()
+    await removeRealHomeCodexHookForOptOut(codexHashes)
     await cleanupLegacyManagedHookRepresentations()
     return {
       agent: 'codex',
@@ -133,7 +131,7 @@ export async function removeCodexHooksExclusively(
 
   // Why here and nowhere automatic: the real-home entry is shared by every Orca
   // on this HOME, so only the user's explicit opt-out may strip it.
-  await removeRealHomeCodexHookForOptOut()
+  await removeRealHomeCodexHookForOptOut(codexHashes)
   await cleanupLegacyManagedHookRepresentations()
 
   return getStatus()

@@ -2,6 +2,7 @@
 // Orca's script while the presence gate skips install() forever. These tests pin the
 // repair — existing scripts come current, missing ones are never created.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as CodexHookReconcile from '../codex/codex-hook-reconcile'
 import {
   existsSync,
   chmodSync,
@@ -40,8 +41,11 @@ const { homedirMock } = vi.hoisted(() => ({
   homedirMock: vi.fn<() => string>()
 }))
 
-vi.mock('../codex/codex-hook-trust-grant', () => ({
-  grantManagedCodexHookTrust: async () => ({ lane: 'fallback', reason: 'unsupported' })
+// Why: stands in for asking a real Codex for its hook hashes, as the grant stub once did.
+vi.mock('../codex/codex-hook-reconcile', async (importOriginal) => ({
+  ...(await importOriginal<typeof CodexHookReconcile>()),
+  resolveCodexHookAnswerForLaunch: async () =>
+    (await import('../codex/hook-service-test-harness')).codexHookAnswerForTests()
 }))
 
 vi.mock('electron', () => ({
