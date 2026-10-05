@@ -53,6 +53,9 @@ export class ProviderTimelineState {
   open: ProviderTimelineOpenTurn | null = null
   /** The turn that ended last, for context facts that arrive after it. */
   latest: ProviderTimelineTurnRef | null = null
+  /** The turn another writer settled (a person's Stop) that the provider has not ended yet: its
+   *  running work is the provider's until then. */
+  stopped: ProviderTimelineTurnRef | null = null
   inputs: ProviderTimelinePendingInput[] = []
   /** Keyed by row id (an item) or `request:<key>` (a request, whatever its incarnation). */
   items = new Map<string, ProviderTimelineOpenItem>()
@@ -126,16 +129,38 @@ export class ProviderTimelineState {
       this.open = null
       this.latest = turn
     }
-    for (const [key, entry] of this.items) {
-      if (entry.turnItemId === turn.itemId) {
-        this.items.delete(key)
-      }
+    if (this.stopped?.itemId === turn.itemId) {
+      this.stopped = null
     }
+    this.forget(turn, () => true)
+  }
+
+  /** Another writer settled the open turn: it is over here and its prompts were cancelled with it,
+   *  but its running work stays open until the provider ends the turn. */
+  stopTurn(turn: ProviderTimelineTurnRef): void {
+    if (this.open?.itemId === turn.itemId) {
+      this.open = null
+      this.latest = turn
+      this.stopped = turn
+    }
+    this.forget(turn, (entry) => entry.kind === 'request')
   }
 
   endSession(): void {
     this.ended = true
     this.open = null
+    this.stopped = null
     this.items.clear()
+  }
+
+  private forget(
+    turn: ProviderTimelineTurnRef,
+    which: (entry: ProviderTimelineOpenItem) => boolean
+  ): void {
+    for (const [key, entry] of this.items) {
+      if (entry.turnItemId === turn.itemId && which(entry)) {
+        this.items.delete(key)
+      }
+    }
   }
 }

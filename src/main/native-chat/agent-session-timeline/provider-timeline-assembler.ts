@@ -124,25 +124,26 @@ export function createProviderTimelineAssembler(
       return { admission: PROVIDER_TIMELINE_OVER_BUDGET }
     }
     const plan = new ProviderTimelinePlan()
-    planProviderTimelineBarrier({ streams, state, context }, plan, event, decision)
+    planProviderTimelineBarrier({ streams, state }, plan, event, decision)
     planProviderTimelineWrites(context, plan, decision, serials.next)
     plan.onAdmitted(() => {
       decision.commit?.(state)
       serials.commit()
     })
+    // An earlier turn's end leaves the open turn's activity line alone.
     if (
       event.type === 'turn.open' ||
-      event.type === 'turn.end' ||
-      event.type === 'turn.settled' ||
-      event.type === 'session.ended'
+      event.type === 'session.ended' ||
+      decision.ends?.current === true
     ) {
       plan.onAdmitted(() => deps.sink.setActivity?.(null))
     }
     return { admission: plan.submit(deps.sink) }
   }
 
-  /** The open turn another writer settled (a person's Stop) ends here first, as one transition;
-   *  refused, the event that found it is refused with it and its retry finds it again. */
+  /** The open turn another writer settled (a person's Stop) ends here first, as one transition
+   *  that stops its text and cancels its prompts; refused, the event that found it is refused with
+   *  it and its retry finds it again. */
   const endSettledTurn = (
     journal: NonNullable<ProviderTimelineTextHost['journal']>
   ): ProviderTimelineApplyResult | null => {

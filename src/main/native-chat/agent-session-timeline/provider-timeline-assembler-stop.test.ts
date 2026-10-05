@@ -9,6 +9,7 @@ import {
   openUnboundProviderTimelineAssembler,
   pendingApproval,
   providerItemId,
+  providerTurnId,
   providerTurnItemId,
   runningTool,
   type ProviderTimelineRig
@@ -30,6 +31,8 @@ async function stop(rig: ProviderTimelineRig, turnKey: string, at = 2_000): Prom
   )
 }
 
+const completed = { ...runningTool('read'), state: 'completed' as const }
+
 async function texts(rig: ProviderTimelineRig): Promise<unknown[]> {
   return (await rig.rows()).flatMap((row) => {
     const text = messageText(row.body)
@@ -39,8 +42,8 @@ async function texts(rig: ProviderTimelineRig): Promise<unknown[]> {
   })
 }
 
-describe('a turn another writer settled ends as the provider end would end it', () => {
-  it("settles the turn's running tool and pending prompt, then takes the provider's own end", async () => {
+describe('a turn another writer settled stops its text and prompts; its tools wait for the provider', () => {
+  it("cancels the turn's prompt at once and settles its running tool at the provider's own end", async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
@@ -80,15 +83,92 @@ describe('a turn another writer settled ends as the provider end would end it', 
     expect(await rig.turn('t1')).toMatchObject({ state: 'interrupted', completedAt: 2_100 })
   })
 
-  it('settles the work even when the next event is one that writes nothing', async () => {
+  it('cancels the prompt even when the next event writes nothing, and leaves the tool running', async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
+    rig.assembler.apply({ type: 'request.open', request: '7', body: pendingApproval })
+    await stop(rig, 't1')
+    expect(rig.assembler.apply({ type: 'activity', text: 'Thinking' }).dropped).toBe('no-turn')
+    expect(rig.assembler.openTurnId).toBeNull()
+    expect((await rig.row(providerItemId('request', '7')))?.body).toMatchObject({
+      resolution: { state: 'cancelled' }
+    })
+    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({
+      state: 'running'
+    })
+  })
+
+  it('lands a tool the provider completes after the Stop as completed', async () => {
     const rig = await openProviderTimelineRig()
     rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
     rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
     await stop(rig, 't1')
-    expect(rig.assembler.apply({ type: 'activity', text: 'Thinking' }).dropped).toBe('no-turn')
+    // Its progress, then its completion, both reported between the cancel and the turn's end.
+    const progress = { ...runningTool('read'), output: 'half' }
+    expect(
+      rig.assembler.apply({
+        type: 'item.update',
+        item: 'call',
+        body: progress,
+        join: { turn: 't1' }
+      })
+    ).toEqual({ admission: { accepted: true } })
+    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({ output: 'half' })
+    expect(
+      rig.assembler.apply({
+        type: 'item.close',
+        item: 'call',
+        body: completed,
+        join: { turn: 't1' }
+      })
+    ).toEqual({ admission: { accepted: true } })
+    rig.assembler.apply({ type: 'turn.end', turn: 't1', at: 2_100, state: 'interrupted' })
+    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({
+      state: 'completed'
+    })
+  })
+
+  it('lands the completion the same way when it arrives before the Stop', async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
+    rig.assembler.apply({ type: 'item.close', item: 'call', body: completed, join: { turn: 't1' } })
+    await stop(rig, 't1')
+    rig.assembler.apply({ type: 'turn.end', turn: 't1', at: 2_100, state: 'interrupted' })
+    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({
+      state: 'completed'
+    })
+  })
+
+  it("ends the stopped turn on the provider's unnamed end", async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
+    await stop(rig, 't1')
+    expect(rig.assembler.apply({ type: 'turn.end', at: 2_100, state: 'interrupted' })).toEqual({
+      admission: { accepted: true }
+    })
     expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({
       state: 'failed'
     })
+    // Ended once: a second unnamed end names no turn.
+    expect(rig.assembler.apply({ type: 'turn.end', at: 2_200, state: 'interrupted' }).dropped).toBe(
+      'no-turn'
+    )
+  })
+
+  it('settles the running tools of a stopped turn the provider never ended when the next opens', async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    rig.assembler.apply({ type: 'item.open', item: 'call', body: runningTool('read') })
+    await stop(rig, 't1')
+    rig.assembler.apply({ type: 'turn.open', turn: 't2', at: 3_000 })
+    expect((await rig.row(providerItemId('item', 'call')))?.body).toMatchObject({
+      state: 'failed'
+    })
+    expect(await rig.turn('t1')).toMatchObject({ state: 'interrupted', completedAt: 2_000 })
+    expect(rig.assembler.openTurnId).toBe(providerTurnId('t2'))
   })
 
   it('never fills the open budget with the streams of turns a person stopped', async () => {
@@ -154,6 +234,22 @@ describe('text after a person stopped its turn never lands outside that turn', (
     expect(rig.assembler.apply({ ...delta, text: ' world' }).dropped).toBe('turn-settled')
     expect(await texts(rig)).toEqual([
       [{ kind: 'turn', turnItemId: providerTurnItemId('t1') }, 'Hel']
+    ])
+  })
+
+  it("keeps dropping an anonymous stream after the provider's unnamed end until the next turn", async () => {
+    const rig = await openProviderTimelineRig()
+    rig.assembler.apply({ type: 'turn.open', turn: 't1', at: 1_000 })
+    const delta = { type: 'text.delta', item: { stream: 'a' }, channel: 'assistant' } as const
+    rig.assembler.apply({ ...delta, text: 'Hel' })
+    await stop(rig, 't1')
+    expect(rig.assembler.apply({ ...delta, text: 'lo' }).dropped).toBe('turn-settled')
+    rig.assembler.apply({ type: 'turn.end', at: 2_100, state: 'interrupted' })
+    // The provider's end of the stopped turn is that turn's boundary: its marker is gone.
+    expect(rig.assembler.apply({ ...delta, text: 'B' }).dropped).toBeUndefined()
+    expect(await texts(rig)).toEqual([
+      [{ kind: 'turn', turnItemId: providerTurnItemId('t1') }, 'Hel'],
+      [{ kind: 'thread' }, 'B']
     ])
   })
 
