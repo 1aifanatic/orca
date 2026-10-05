@@ -44,6 +44,7 @@ describe('probeAgentProcessPresenceBatch', () => {
     const verdicts = await probeAgentProcessPresenceBatch(identities, deps)
     expect(readDarwinBatch).toHaveBeenCalledTimes(2)
     expect(readDarwinBatch.mock.calls[0]![0]).toHaveLength(AGENT_PRESENCE_BATCH_LIMIT)
+    expect(readDarwinBatch.mock.calls[1]![0]).toHaveLength(3)
     expect(verdicts.slice(0, 6)).toEqual([
       'live',
       'exited',
@@ -55,14 +56,28 @@ describe('probeAgentProcessPresenceBatch', () => {
     expect(deps.probeOne).not.toHaveBeenCalled()
   })
 
+  it('macOS: a few PIDs are probed one at a time, never with a whole-table ps', async () => {
+    const readDarwinBatch = vi.fn()
+    const probeOne = vi.fn(async () => 'live' as const)
+    await probeAgentProcessPresenceBatch([id(1), id(2), id(3)], {
+      platform: 'darwin',
+      readDarwinBatch,
+      probeOne,
+      isMissing: () => false
+    })
+    expect(probeOne).toHaveBeenCalledTimes(3)
+    expect(readDarwinBatch).not.toHaveBeenCalled()
+  })
+
   it('an unreadable batch proves nothing', async () => {
-    const verdicts = await probeAgentProcessPresenceBatch([id(1)], {
+    const identities = Array.from({ length: 9 }, (_, index) => id(index + 1))
+    const verdicts = await probeAgentProcessPresenceBatch(identities, {
       platform: 'darwin',
       readDarwinBatch: async () => null,
       probeOne: vi.fn(),
       isMissing: () => true
     })
-    expect(verdicts).toEqual(['unverifiable'])
+    expect(verdicts).toEqual(identities.map(() => 'unverifiable'))
   })
 
   it('Linux: targeted /proc reads per PID, no ps', async () => {

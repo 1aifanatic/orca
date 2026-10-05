@@ -7,6 +7,9 @@ import type { AgentProcessIdentity, AgentProcessVerdict } from '../../shared/age
 
 // Why 32: one bounded `ps` argv and output per tick, however many agents a host runs.
 export const AGENT_PRESENCE_BATCH_LIMIT = 32
+// Why 8: measured on macOS, `ps -p` with several PIDs scans the whole table (~80 ms) while one
+// PID costs ~2-4 ms, so a few agents are cheaper probed one at a time.
+export const AGENT_PRESENCE_SINGLE_PROBE_LIMIT = 8
 const BATCH_TIMEOUT_MS = 1000
 
 export type AgentPresenceBatchDeps = {
@@ -82,8 +85,8 @@ function verdictFor(
 }
 
 /**
- * Targeted presence of known agent processes on this host: macOS batches up to 32 PIDs into one
- * bounded `ps`; Linux reads `/proc` per PID. Never a whole-table capture.
+ * Targeted presence of known agent processes on this host: macOS reads up to 8 PIDs one at a time
+ * and batches larger sets 32 per bounded `ps`; Linux reads `/proc` per PID. Never a table capture.
  */
 export async function probeAgentProcessPresenceBatch(
   identities: readonly AgentProcessIdentity[],
@@ -95,6 +98,13 @@ export async function probeAgentProcessPresenceBatch(
     )
   }
   const verdicts: AgentProcessVerdict[] = []
+  if (identities.length <= AGENT_PRESENCE_SINGLE_PROBE_LIMIT) {
+    // Why one at a time: never more than one probe subprocess in flight per host.
+    for (const identity of identities) {
+      verdicts.push(await deps.probeOne(identity).catch(() => 'unverifiable' as const))
+    }
+    return verdicts
+  }
   for (let start = 0; start < identities.length; start += AGENT_PRESENCE_BATCH_LIMIT) {
     const chunk = identities.slice(start, start + AGENT_PRESENCE_BATCH_LIMIT)
     const observed = await deps

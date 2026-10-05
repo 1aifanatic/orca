@@ -376,6 +376,22 @@ describe('owner presence signal for the execution host (F2)', () => {
     expect(ended).toHaveBeenCalledWith(4001)
   })
 
+  it('signals a probed end even when no resumable remnant row survives it', async () => {
+    const server = await createServer()
+    // No session id: nothing to resume, so the ended owner keeps no row.
+    await hook(server, 'UserPromptSubmit', '')
+    const ended = vi.fn()
+    server.subscribeAgentPresenceChanges((change) => {
+      if (change.presence?.ended) {
+        ended(change.presence.process?.pid)
+      }
+    })
+    probe.mockResolvedValueOnce('exited')
+    await expect(server.checkAgentPresence(PANE)).resolves.toBe('exited')
+    expect(visible(server)).toBe(false)
+    expect(ended).toHaveBeenCalledWith(4001)
+  })
+
   it('does not treat /clear or /resume as an end', async () => {
     const server = await createServer()
     const changes: string[] = []

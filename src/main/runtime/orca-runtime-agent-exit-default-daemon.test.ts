@@ -328,16 +328,31 @@ describeOnPosix('F2 on the default local daemon (real node-pty, production inspe
     const pid = Number(readFileSync(join(host.dir, 'codex.started'), 'utf8'))
     const start = { hook_event_name: 'SessionStart', session_id: 'cx-1' }
     expect((await host.post('/hook/codex', start)).status).toBe(204)
+    // Let the host measure the running agent (observable as its own fenced capture of the PID).
     await waitUntil(
-      () => host.runtime['agentExitRuns'].current(host.ptyId)?.identity?.pid === pid,
+      () =>
+        host.inspections.some(
+          (inspection) =>
+            JSON.stringify(inspection).includes(`"pid":${pid},`) ||
+            JSON.stringify(inspection).includes(`"pid":${pid}}`)
+        ),
       10_000,
-      'the measured codex identity'
-    )
-
+      'a fenced capture of the codex stand-in'
+    ).catch(() => {})
     host.adapter.write(host.ptyId, 'q\r')
     await waitUntil(() => host.tabRow()?.launchAgent === undefined, 25_000, 'hint retirement')
     // Unswitched stays unswitched; the cleared hint is what turns the phone to terminal.
     expect(host.viewMode()).toBeUndefined()
+    // The proof used the production daemon's fenced capture of the stand-in itself.
+    expect(host.inspections).toContainEqual(
+      expect.objectContaining({
+        foregroundProcessEvidence: expect.objectContaining({
+          verdict: 'live',
+          processName: 'codex',
+          fence: expect.objectContaining({ process: expect.objectContaining({ pid }) })
+        })
+      })
+    )
     await expectShellAliveAndCanaryRefused(host)
   }, 60_000)
 })
