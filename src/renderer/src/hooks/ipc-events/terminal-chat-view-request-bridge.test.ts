@@ -1,9 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TerminalChatViewRequest } from '../../../../shared/terminal-chat-view-request'
 import { useAppStore } from '../../store'
+import type * as AuthorityModule from '../../store/slices/tabs/terminal-chat-pair-authority'
 import { registerTerminalUiRoutingIpcBridge } from './terminal-ui-routing-ipc-bridge'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
+const authority = vi.hoisted(() => {
+  const state: { override: 'legacy' | null } = { override: null }
+  return state
+})
+vi.mock('../../store/slices/tabs/terminal-chat-pair-authority', async (importOriginal) => {
+  const actual = await importOriginal<typeof AuthorityModule>()
+  return {
+    ...actual,
+    resolveChatPairAuthority: (...args: Parameters<typeof actual.resolveChatPairAuthority>) =>
+      authority.override ?? actual.resolveChatPairAuthority(...args)
+  }
+})
 vi.mock('../../store', async () => {
   const { createTestStore } = await import('../../store/slices/store-test-helpers')
   return { useAppStore: createTestStore() }
@@ -19,6 +32,7 @@ describe('renderer side of the desktop chat-view relay', () => {
 
   beforeEach(() => {
     onRequest = null
+    authority.override = null
     respond.mockClear()
     const subscribe = () => () => {}
     globalThis.window = {
@@ -72,5 +86,17 @@ describe('renderer side of the desktop chat-view relay', () => {
       viewMode: 'chat'
     })
     expect(respond).toHaveBeenCalledWith({ requestId: 'r-2', error: 'tab_not_found' })
+  })
+
+  it('refuses a worktree another host owns without touching the mirrored tab', () => {
+    const tab = useAppStore.getState().createTab(WT, undefined, undefined, {})
+    authority.override = 'legacy'
+
+    onRequest!({ requestId: 'r-3', worktreeId: WT, tabId: tab.id, leafId: null, viewMode: 'chat' })
+
+    expect(respond).toHaveBeenCalledWith({ requestId: 'r-3', error: 'tab_not_found' })
+    expect(
+      useAppStore.getState().unifiedTabsByWorktree[WT]?.find((t) => t.entityId === tab.id)?.viewMode
+    ).not.toBe('chat')
   })
 })
