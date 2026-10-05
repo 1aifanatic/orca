@@ -17,13 +17,11 @@ import {
 } from './structured-agent-session-outbox-storage'
 import {
   sayStructuredAgentSessionSettlement,
-  structuredAgentSessionSettlementEnding
+  structuredAgentSessionSettlementEndingNow
 } from './structured-agent-session-outbox-dispatch'
 import { endStructuredAgentSessionEntry } from './structured-agent-session-entry-endings'
-import {
-  returnStructuredAgentSessionMessage,
-  setStructuredAgentSessionChatLine
-} from './structured-agent-session-returned-send'
+import { setStructuredAgentSessionChatLine } from './structured-agent-session-returned-send'
+import { handBackStructuredAgentSessionEntry } from './structured-agent-session-outbox-returning'
 
 /** Settles every entry the reading settles and commits the outbox, which it returns. */
 export function settleStructuredAgentSessionOutboxFromJournal(
@@ -55,21 +53,21 @@ export function settleStructuredAgentSessionOutboxFromJournal(
   if (entries === current) {
     return entries
   }
-  // Each returned message goes to the draft before its entry ends (clearing the notes it carried)
-  // and before the outbox that drops it is saved.
-  for (const back of returned) {
-    returnStructuredAgentSessionMessage(back.entry)
-    if (back.words) {
-      setStructuredAgentSessionChatLine(sessionId, back.words)
-    }
-  }
   for (const { entry, settlement } of settled) {
-    const ending = structuredAgentSessionSettlementEnding(settlement)
+    const ending = structuredAgentSessionSettlementEndingNow(settlement)
     if (ending) {
       endStructuredAgentSessionEntry(entry, ending)
     }
   }
+  // A returned message is committed marked returning before its text goes to the draft, and
+  // leaves once the draft is saved (structured-agent-session-outbox-returning).
   commitStructuredAgentSessionOutbox(sessionId, entries)
+  for (const back of returned) {
+    handBackStructuredAgentSessionEntry(back.entry)
+    if (back.words) {
+      setStructuredAgentSessionChatLine(sessionId, back.words)
+    }
+  }
   for (const { entry, settlement } of settled) {
     sayStructuredAgentSessionSettlement(sessionId, entry.clientMessageId, settlement)
   }

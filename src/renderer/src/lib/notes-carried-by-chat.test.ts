@@ -426,16 +426,18 @@ describe('notes sent to a chat already open', () => {
     view.result.current.stop('stop-1')
     await Promise.resolve()
 
-    expect(readOutbox(target.sessionId)).toEqual([])
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(
       NOTES
     )
-    // Until storage confirms the draft, a crash could lose the text: the notes stay, held.
+    // Until storage confirms the draft, a crash could lose the text: the message stays, returning,
+    // and its notes stay held.
+    expect(readOutbox(target.sessionId)).toMatchObject([{ returning: { ending: 'returned' } }])
     expect(isNoteInFlight(KEY_A)).toBe(true)
     expect(mocks.clearDeliveredDiffComments).not.toHaveBeenCalled()
     await nativeChatComposerDraftWritesSettled()
     await Promise.resolve()
     await Promise.resolve()
+    expect(readOutbox(target.sessionId)).toEqual([])
     expect(isNoteInFlight(KEY_A)).toBe(false)
     expect(mocks.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith(WORKTREE_ID, [NOTE_A])
     expect(cleared).toEqual([NOTES])

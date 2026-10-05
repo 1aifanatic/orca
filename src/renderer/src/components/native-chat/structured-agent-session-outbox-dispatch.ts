@@ -43,9 +43,9 @@ import {
 } from './structured-agent-session-entry-endings'
 import {
   clearStructuredAgentSessionChatLineHeldBy,
-  returnStructuredAgentSessionMessage,
   setStructuredAgentSessionChatLine
 } from './structured-agent-session-returned-send'
+import { handBackStructuredAgentSessionEntry } from './structured-agent-session-outbox-returning'
 
 type MutableRef<T> = { current: T }
 
@@ -84,7 +84,7 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
   fence: number | null
 ): StructuredAgentSessionOutboxEntry[] {
   return entries.map((entry) =>
-    entry.state === 'dispatching' && entry.stoppedBy === undefined
+    entry.state === 'dispatching' && entry.stoppedBy === undefined && !entry.returning
       ? hasInFlightLaunchDispatch(entry, fence)
         ? entry
         : { ...entry, state: 'queued' as const }
@@ -93,23 +93,23 @@ export function requeueInterruptedStructuredAgentSessionDispatches(
 }
 
 /**
- * Commits a settlement: a message coming back goes to its conversation's draft before its entry
- * ends (which clears the notes it carried) and before it leaves the outbox, so a failure between
- * them repeats the text and never loses it.
+ * Commits a settlement. A message coming back is committed marked returning before its text goes
+ * to the draft, and leaves (ending, which clears its notes) only once the draft is saved, so a
+ * crash at any point repeats the hand-back and never loses the text or sends it again.
  */
 export function commitStructuredAgentSessionSettledOutbox(
   sessionId: string,
   settled: StructuredAgentSessionSettledOutbox,
   endEntry: () => void = () => {}
 ): void {
+  endEntry()
+  commitStructuredAgentSessionOutbox(sessionId, settled.entries)
   if (settled.returned) {
-    returnStructuredAgentSessionMessage(settled.returned.entry)
+    handBackStructuredAgentSessionEntry(settled.returned.entry)
     if (settled.returned.words) {
       setStructuredAgentSessionChatLine(sessionId, settled.returned.words)
     }
   }
-  endEntry()
-  commitStructuredAgentSessionOutbox(sessionId, settled.entries)
 }
 
 /** What the chat line says once a settlement is committed: why a message is still being sent, said
@@ -146,6 +146,15 @@ export function structuredAgentSessionSettlementEnding(
   }
 }
 
+/** The ending a settlement fires as it commits: a returned entry ends only once its draft is
+ *  saved (structured-agent-session-outbox-returning). */
+export function structuredAgentSessionSettlementEndingNow(
+  settlement: StructuredAgentSessionOutboxSettlement
+): StructuredAgentSessionEntryEnding | null {
+  const ending = structuredAgentSessionSettlementEnding(settlement)
+  return ending === 'returned' ? null : ending
+}
+
 /** Settles one entry against the current outbox and commits it. */
 export function settleStructuredAgentSessionOutboxEntry(
   sessionId: string,
@@ -154,10 +163,11 @@ export function settleStructuredAgentSessionOutboxEntry(
 ): void {
   const current = getStructuredAgentSessionOutbox(sessionId)
   const entry = current.find((candidate) => candidate.clientMessageId === clientMessageId)
-  if (!entry) {
+  // A returning one is settled already: no later answer changes it.
+  if (!entry || entry.returning) {
     return
   }
-  const ending = structuredAgentSessionSettlementEnding(settlement)
+  const ending = structuredAgentSessionSettlementEndingNow(settlement)
   // A send a Stop outran never goes again: no answer leaves it waiting for the Stop's.
   const kept =
     entry.stoppedBy !== undefined && settlement.kind === 'unanswered'

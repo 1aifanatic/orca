@@ -9,6 +9,7 @@ import { useAppStore } from '../store'
 import { StructuredAgentSessionAttentionBridge } from '../components/native-chat/StructuredAgentSessionAttentionBridge'
 import { StructuredAgentSessionStatusBridge } from '../components/native-chat/StructuredAgentSessionStatusBridge'
 import { installNotesSentByChat } from '../lib/notes-sent-by-chat'
+import { resumeReturningStructuredAgentSessionEntries } from '../components/native-chat/structured-agent-session-outbox-returning'
 
 const DashboardPopoutBridge = lazy(() => import('../components/dashboard/DashboardPopoutBridge'))
 
@@ -23,6 +24,8 @@ export function AppBackgroundServices(): React.JSX.Element {
   )
   // Here, not in main.tsx: the desktop app and the web client both render it.
   useEffect(() => installNotesSentByChat(), [])
+  // After the notes listener, which a finished hand-back's ending clears the notes through.
+  useEffect(() => resumeReturningStructuredAgentSessionEntries(), [])
 
   return (
     <>

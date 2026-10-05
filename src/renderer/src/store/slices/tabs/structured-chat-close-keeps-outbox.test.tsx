@@ -5,7 +5,7 @@
 // that never went out comes back to the conversation's draft; only a cancelled launch's own prompt
 // goes with the launch, its notes back on the shelf.
 
-import { cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStructuredAgentSessionOutboxEntry } from '../../../../../shared/structured-agent-session-outbox'
 import { createStructuredAgentSessionOperationId } from '../../../../../shared/structured-agent-session-mutation'
@@ -42,6 +42,7 @@ import type * as RuntimeRpcClient from '@/runtime/runtime-rpc-client'
 import type * as StructuredAgentSessionClient from '@/runtime/structured-agent-session-client'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
+  nativeChatComposerDraftWritesSettled,
   readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey
 } from '@/components/native-chat/native-chat-composer-draft-store'
@@ -143,6 +144,14 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
+/** Lets each hand-back finish: its draft saved, it leaves the outbox and ends. */
+async function handBacksSettled(): Promise<void> {
+  await act(async () => {
+    await nativeChatComposerDraftWritesSettled()
+    await Promise.resolve()
+  })
+}
+
 describe('closing a chat tab while the host is out of reach', () => {
   it('keeps a message that went out, and sends it again once the chat is reopened', async () => {
     const { store, chat } = seed()
@@ -174,29 +183,33 @@ describe('closing a chat tab while the host is out of reach', () => {
     expect(sends.every((call) => JSON.stringify(call[2]).includes(sent.clientMessageId))).toBe(true)
   })
 
-  it("hands a message that never went out back to the conversation's draft", () => {
+  it("hands a message that never went out back to the conversation's draft", async () => {
     const { store, chat } = seed()
     writeOutbox(SID, [entry('QUEUED-TEXT', { state: 'queued' })])
 
     store.getState().closeUnifiedTab(chat.id)
+    // Kept, marked, until the draft is saved; never sent again meanwhile.
+    expect(readOutbox(SID)).toMatchObject([{ returning: { ending: 'returned' } }])
+    await handBacksSettled()
     expect(readOutbox(SID)).toEqual([])
     expect(draft()).toBe('QUEUED-TEXT')
   })
 
-  it("discards a cancelled launch's own prompt, putting its notes back", () => {
+  it("discards a cancelled launch's own prompt, putting its notes back", async () => {
     const { store, chat } = seed()
     markStructuredAgentSessionLaunchCancelled(WT, SID, 'local')
     writeOutbox(SID, [entry('LAUNCH-TEXT', { source: 'launch', carriedNoteKeys: ['note-a'] })])
     expect(isNoteInFlight('note-a')).toBe(true)
 
     store.getState().closeUnifiedTab(chat.id)
+    await handBacksSettled()
     expect(readOutbox(SID)).toEqual([])
     expect(draft()).toBe('')
     expect(isNoteInFlight('note-a')).toBe(false)
   })
 
   // No chat shows a cancelled launch's draft, so a message typed into it gives its notes back.
-  it("ends a cancelled launch's other unsent messages as discarded, so their notes come back", () => {
+  it("ends a cancelled launch's other unsent messages as discarded, so their notes come back", async () => {
     const { store, chat } = seed()
     markStructuredAgentSessionLaunchCancelled(WT, SID, 'local')
     const typed = entry('TYPED-TEXT', { carriedNoteKeys: ['note-b'] })
@@ -209,6 +222,9 @@ describe('closing a chat tab while the host is out of reach', () => {
     })
 
     store.getState().closeUnifiedTab(chat.id)
+    // It ends once its draft is saved.
+    expect(endings).toEqual([])
+    await handBacksSettled()
     unsubscribe()
     expect(endings).toEqual(['discarded'])
     expect(readOutbox(SID)).toEqual([])

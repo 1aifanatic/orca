@@ -177,11 +177,14 @@ export function commitStructuredAgentSessionOutbox(
     }
   }
   noteStructuredAgentSessionOutboxCommitted(sessionId, entries)
-  recordStructuredAgentSessionCarriedNotes(sessionId, entries, savedOutboxes)
+  recordStructuredAgentSessionCarriedNotes(sessionId, entries, savedStructuredAgentSessionOutboxes)
   return saved
 }
 
-function* savedOutboxes(): Generator<readonly [string, StructuredAgentSessionOutboxEntry[]]> {
+/** Every outbox this app has saved, by session. */
+export function* savedStructuredAgentSessionOutboxes(): Generator<
+  readonly [string, StructuredAgentSessionOutboxEntry[]]
+> {
   // Storage-less hosts (tests, a blocked profile) have no saved outboxes.
   if (typeof localStorage === 'undefined') {
     return
@@ -201,7 +204,7 @@ function* savedOutboxes(): Generator<readonly [string, StructuredAgentSessionOut
 /** Whether a message this client holds still carries the note: it stays out of another send
  *  until that message ends, or the host's window for it closes. */
 export function structuredAgentSessionOutboxHoldsNote(key: string): boolean {
-  return structuredAgentSessionOutboxCarriesNote(key, savedOutboxes)
+  return structuredAgentSessionOutboxCarriesNote(key, savedStructuredAgentSessionOutboxes)
 }
 
 /** Queues a user message on the session's outbox: the one enqueue the composer, a launch prompt,

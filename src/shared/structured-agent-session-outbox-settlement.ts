@@ -287,6 +287,10 @@ export function settleStructuredAgentSessionEntryFromJournal(
   entry: StructuredAgentSessionOutboxEntry,
   reading: StructuredAgentSessionJournalReading
 ): StructuredAgentSessionOutboxSettlement | null {
+  // Already settled: its text is on its way back to the draft.
+  if (entry.returning) {
+    return null
+  }
   // The host handed it off as a queued draft, in whatever state: the card carries it.
   if (
     reading.submissions.some((candidate) => candidate.queuedMessageId === entry.clientMessageId)
@@ -339,7 +343,8 @@ export function settleStructuredAgentSessionEntryFromJournal(
   return null
 }
 
-/** The outbox after a settlement, and the entry whose text goes back to the draft, if any. */
+/** The outbox after a settlement, and the entry whose text goes back to the draft, if any: that one
+ *  stays, marked returning, until the draft is saved. */
 export type StructuredAgentSessionSettledOutbox = {
   entries: StructuredAgentSessionOutboxEntry[]
   returned: {
@@ -363,9 +368,17 @@ export function applyStructuredAgentSessionOutboxSettlement(
     case 'recorded':
       return { entries: others, returned: null }
     case 'withdrawn':
-      return { entries: others, returned: { entry, words: null } }
-    case 'returned':
-      return { entries: others, returned: { entry, words: settlement.words } }
+    case 'returned': {
+      // Kept, marked, until storage confirms the draft holds its text (R2: never lost).
+      const returning = { ...entry, returning: { ending: 'returned' as const } }
+      return {
+        entries: entries.map((candidate) => (candidate === entry ? returning : candidate)),
+        returned: {
+          entry: returning,
+          words: settlement.kind === 'returned' ? settlement.words : null
+        }
+      }
+    }
     case 'pending':
     case 'unanswered': {
       const state = settlement.kind === 'pending' ? 'dispatching' : 'unconfirmed'

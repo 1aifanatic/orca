@@ -55,6 +55,18 @@ export type StructuredAgentSessionOutboxEntry = {
    *  of this id asks the same (structured-agent-session-outbox-delivery). On a request's own copy,
    *  what that request carries. */
   sentDelivery?: 'queue-if-active' | null
+  /** Handed back to its conversation's draft, which storage has not confirmed yet: it stays, never
+   *  sent again and drawing nothing, until the draft is saved, then leaves with this ending
+   *  (structured-agent-session-outbox-returning). */
+  returning?: { ending: 'returned' | 'discarded' }
+}
+
+/** Whether the entry's text is on its way back to the draft: it never goes out again (its id
+ *  proved no record, so a resend would be a new first send), holds nothing up and draws nothing. */
+export function structuredAgentSessionEntryReturning(
+  entry: Pick<StructuredAgentSessionOutboxEntry, 'returning'>
+): boolean {
+  return entry.returning !== undefined
 }
 
 /** A host's rejection fact as a message keeps it: never its provider detail, whose log text is not
@@ -183,7 +195,9 @@ export function structuredAgentSessionOutboxOwesDelivery(
       .filter((submission) => submission.dispatchState === 'rejected')
       .map((submission) => submission.clientMessageId)
   )
-  return entries.some((entry) => !rejected.has(entry.clientMessageId))
+  return entries.some(
+    (entry) => !rejected.has(entry.clientMessageId) && !structuredAgentSessionEntryReturning(entry)
+  )
 }
 
 /**
@@ -253,6 +267,7 @@ export function parseStructuredAgentSessionOutboxEntry(
     (state === 'queued' && saved.lastFailure !== undefined) ||
     saved.outlivedStop === true
   const stoppedBy = parseStructuredAgentSessionOutboxStop(saved.stoppedBy)
+  const returning = parseStructuredAgentSessionOutboxReturning(saved.returning)
   return {
     clientMessageId: entry.clientMessageId,
     sessionId,
@@ -268,6 +283,7 @@ export function parseStructuredAgentSessionOutboxEntry(
     ...(entry.source === 'launch' ? { source: 'launch' as const } : {}),
     ...parseStructuredAgentSessionOutboxQueueFields(entry),
     ...(stoppedBy ? { stoppedBy } : {}),
+    ...(returning ? { returning } : {}),
     ...(legacyUnsettled ? { legacyUnsettled: true as const } : {}),
     ...(Array.isArray(saved.carriedNoteKeys) &&
     saved.carriedNoteKeys.length > 0 &&
@@ -275,6 +291,17 @@ export function parseStructuredAgentSessionOutboxEntry(
       ? { carriedNoteKeys: saved.carriedNoteKeys }
       : {})
   }
+}
+
+function parseStructuredAgentSessionOutboxReturning(
+  value: unknown
+): StructuredAgentSessionOutboxEntry['returning'] {
+  if (typeof value !== 'object' || value === null) {
+    return undefined
+  }
+  const returning: Record<string, unknown> = { ...value }
+  // An ending this build doesn't know still hands the text back, which is what keeps it.
+  return { ending: returning.ending === 'discarded' ? 'discarded' : 'returned' }
 }
 
 function parseStructuredAgentSessionOutboxStop(

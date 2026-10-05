@@ -158,7 +158,9 @@ describe('outbox queue delivery', () => {
     const stopped = stopStructuredAgentSessionOutbox([staged], [], 'client-1', 'stop-1').entries
     for (const entries of [stopped, [staged]]) {
       const settled = applyStructuredAgentSessionOutboxSettlement(entries, 'client-1', settlement)
-      expect(settled.entries).toEqual([])
+      expect(settled.entries).toMatchObject([
+        { clientMessageId: 'client-1', returning: { ending: 'returned' } }
+      ])
       expect(settled.returned?.entry.clientMessageId).toBe('client-1')
     }
   })

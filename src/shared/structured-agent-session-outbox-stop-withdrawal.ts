@@ -1,5 +1,8 @@
 import type { AgentJournalSubmission } from './agent-session-journal-types'
-import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
+import {
+  structuredAgentSessionEntryReturning,
+  type StructuredAgentSessionOutboxEntry
+} from './structured-agent-session-outbox'
 import { structuredAgentSessionEntryAwaitsSettlement } from './structured-agent-session-outbox-admission'
 import { handedOffQueuedMessageIds } from './structured-agent-session-draft-hand-off'
 
@@ -11,13 +14,15 @@ function hostHeldIds(submissions: readonly AgentJournalSubmission[]): Set<string
   return held
 }
 
-/** Whether this entry would still go out on its own: the host holds no row for it and nothing
- *  already owed settles it. */
+/** Whether this entry would still go out on its own: the host holds no row for it, nothing
+ *  already owed settles it, and its text is not on its way back to the draft. */
 function goesOutOnItsOwn(
   held: ReadonlySet<string>
 ): (entry: StructuredAgentSessionOutboxEntry) => boolean {
   return (entry) =>
-    !held.has(entry.clientMessageId) && !structuredAgentSessionEntryAwaitsSettlement(entry)
+    !held.has(entry.clientMessageId) &&
+    !structuredAgentSessionEntryAwaitsSettlement(entry) &&
+    !structuredAgentSessionEntryReturning(entry)
 }
 
 /**

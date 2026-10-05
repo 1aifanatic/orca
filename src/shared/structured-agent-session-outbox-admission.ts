@@ -1,6 +1,9 @@
 // Which outbox entry goes out next.
 
-import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
+import {
+  structuredAgentSessionEntryReturning,
+  type StructuredAgentSessionOutboxEntry
+} from './structured-agent-session-outbox'
 
 /** Whether nothing but an answer already owed settles this entry, so it never goes out again: a
  *  send a Stop outran, or one an older build held for a Retry. */
@@ -21,13 +24,17 @@ export type StructuredAgentSessionOutboxAdmission =
  * A `dispatching` entry is not a barrier: the host appended its journal row inside the
  * per-session serialize chain before dispatching, so nothing behind it can overtake it. An
  * `unconfirmed` entry is, while it is sent again: sending past it would reorder around a message
- * that may yet land, and its resend settles it. One that never goes out again holds nothing up.
+ * that may yet land, and its resend settles it. One that never goes out again holds nothing up,
+ * nor does one whose text is on its way back to the draft.
  */
 export function admitStructuredAgentSessionOutboxEntry(
   entries: readonly StructuredAgentSessionOutboxEntry[]
 ): StructuredAgentSessionOutboxAdmission {
   for (const entry of entries) {
-    if (structuredAgentSessionEntryAwaitsSettlement(entry)) {
+    if (
+      structuredAgentSessionEntryAwaitsSettlement(entry) ||
+      structuredAgentSessionEntryReturning(entry)
+    ) {
       continue
     }
     if (entry.state === 'unconfirmed') {

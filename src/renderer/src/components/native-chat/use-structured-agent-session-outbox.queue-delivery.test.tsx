@@ -210,10 +210,13 @@ describe('outbox queue delivery selection', () => {
     })
     // The unissued entry came back to the composer; the issued one stayed put.
     expect(readNativeChatDraftCache(STOP_SCOPE)).toBe('never left')
-    // The issued one waits for its answer, stamped with the Stop: nothing sends it again.
-    expect(
-      view.result.current.outbox.map((entry) => [entry.state, entry.stoppedBy?.operationId])
-    ).toEqual([['dispatching', 'stop-1']])
+    // The issued one waits for its answer, stamped with the Stop: nothing sends it again. The
+    // withdrawn one leaves once its draft is saved.
+    await waitFor(() =>
+      expect(
+        view.result.current.outbox.map((entry) => [entry.state, entry.stoppedBy?.operationId])
+      ).toEqual([['dispatching', 'stop-1']])
+    )
     // The host publishes the issued send as a card: retired, still nothing restored.
     const entryId = mocks.call.mock.calls[0]?.[2]?.envelope.clientOperationId
     view.rerender({ queuedMessageIds: [entryId ?? ''] })

@@ -27,7 +27,10 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { readOutbox, writeOutbox } from './structured-agent-session-outbox-storage'
-import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
+import {
+  nativeChatComposerDraftWritesSettled,
+  structuredAgentSessionDraftScopeKey
+} from './native-chat-composer-draft-store'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
@@ -112,6 +115,14 @@ afterEach(() => {
   localStorage.clear()
 })
 
+/** Lets each hand-back finish: its draft saved, it leaves the outbox and ends. */
+async function handBacksSettled(): Promise<void> {
+  await act(async () => {
+    await nativeChatComposerDraftWritesSettled()
+    await Promise.resolve()
+  })
+}
+
 describe('a send a Stop outran', () => {
   it('is never sent again, then comes back silently once the journal is read through the Stop', async () => {
     // Lost answer; the resend flipped it back to queued; the Stop lands before the drain sends it.
@@ -142,6 +153,7 @@ describe('a send a Stop outran', () => {
       journalCursor: { epoch: 'e', sequence: 7 },
       queuedMessageIds: []
     })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     // The user stopped it: nothing failed, so nothing is said.
@@ -186,6 +198,7 @@ describe('a send a Stop outran', () => {
       submissions: [accepted(id)],
       journalCursor: { epoch: 'e', sequence: 5 }
     })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     // The host has it: the row shows it, and nothing is handed back.
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
@@ -209,6 +222,7 @@ describe('a send a Stop outran', () => {
       })
     )
     view.rerender({ fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 5 } })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBeNull()
@@ -223,6 +237,7 @@ describe('a send a Stop outran', () => {
     // Not loaded: nothing can say yet.
     expect(view.result.current.outbox).toHaveLength(1)
     view.rerender({ fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 2 } })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBe(CHECK_THE_CHAT)
@@ -244,6 +259,7 @@ describe('a Stop answered while the journal is already read through it', () => {
       })
     )
     view.rerender(props)
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBeNull()
@@ -257,6 +273,7 @@ describe('a Stop answered while the journal is already read through it', () => {
     act(() => view.result.current.stop('stop-1'))
     act(() => view.result.current.recordStopAnswer('stop-1', { kind: 'unanswerable' }))
     view.rerender(props)
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBe(CHECK_THE_CHAT)
@@ -276,6 +293,7 @@ describe("the host's window for a send a Stop outran", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(6_000)
     })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBe(CHECK_THE_CHAT)
@@ -324,6 +342,7 @@ describe('a message an older build held for a Retry', () => {
 
     // No row: the person was told it did not go, so it comes back, with words to check the chat.
     view.rerender({ fence: 1, submissions: [], journalCursor: { epoch: 'e', sequence: 2 } })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('follow-up')
     expect(view.result.current.error).toBe(CHECK_THE_CHAT)
@@ -338,6 +357,7 @@ describe('a message an older build held for a Retry', () => {
       submissions: [{ ...accepted('out'), dispatchState: 'rejected', reason: 'not_delivered' }],
       journalCursor: { epoch: 'e', sequence: 2 }
     })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
     expect(view.result.current.error).toBeNull()

@@ -643,24 +643,42 @@ describe('entries an older build saved are migrated, never sent again', () => {
 })
 
 describe('applying a settlement', () => {
-  it('records and returns leave the outbox; only a return hands the entry back, with its words', () => {
+  // A return keeps the entry, marked, in its place until its draft is saved (R2: never lost).
+  it('a record leaves the outbox; a return stays marked returning and hands back, with its words', () => {
     const outbox = [entry(), entry({ clientMessageId: 'next' })]
     expect(applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'recorded' })).toEqual({
       entries: [outbox[1]],
       returned: null
     })
+    const returning = { ...outbox[0], returning: { ending: 'returned' } }
     expect(
       applyStructuredAgentSessionOutboxSettlement(outbox, ID, {
         kind: 'returned',
         words: ['tryAgain']
       })
-    ).toEqual({ entries: [outbox[1]], returned: { entry: outbox[0], words: ['tryAgain'] } })
+    ).toEqual({
+      entries: [returning, outbox[1]],
+      returned: { entry: returning, words: ['tryAgain'] }
+    })
     expect(
       applyStructuredAgentSessionOutboxSettlement(outbox, ID, { kind: 'withdrawn' }).returned
-    ).toEqual({
-      entry: outbox[0],
-      words: null
-    })
+    ).toEqual({ entry: returning, words: null })
+  })
+
+  it('never settles a returning entry again from the journal', () => {
+    expect(
+      settleStructuredAgentSessionEntryFromJournal(
+        entry({ state: 'unconfirmed', returning: { ending: 'returned' } }),
+        {
+          submissions: [row({ dispatchState: 'accepted' })],
+          cursor: { epoch: 'e', sequence: 10 },
+          inFlightClientMessageId: null,
+          queuedMessageIds: null,
+          loadedItemIds: LOADED,
+          now: NOW
+        }
+      )
+    ).toBeNull()
   })
 
   it('no answer keeps it under the same id, in doubt; pending keeps it dispatching', () => {

@@ -4,7 +4,7 @@
 // client is sending: its surface is the host's row, if the journal has one, or the composer it
 // comes back to. So nothing reads "Sending…" for it, not even until the journal loads.
 
-import { cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalCursor,
@@ -24,7 +24,10 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
 import { writeOutbox } from './structured-agent-session-outbox-storage'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
-import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
+import {
+  nativeChatComposerDraftWritesSettled,
+  structuredAgentSessionDraftScopeKey
+} from './native-chat-composer-draft-store'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
@@ -100,6 +103,14 @@ const ROW_ITEM: AgentJournalRenderItem = {
   body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'saved behind a Retry' }] }
 }
 
+/** Lets each hand-back finish: its draft saved, it leaves the outbox and ends. */
+async function handBacksSettled(): Promise<void> {
+  await act(async () => {
+    await nativeChatComposerDraftWritesSettled()
+    await Promise.resolve()
+  })
+}
+
 describe('a message an older build saved behind its Retry', () => {
   it('is drawn nowhere and says nothing before the journal loads', () => {
     const view = mount({ submissions: [], journalCursor: null })
@@ -112,14 +123,15 @@ describe('a message an older build saved behind its Retry', () => {
     expect(structuredAgentSessionDeliveryNotices(outbox, 'Claude', [], [])).toEqual(new Map())
   })
 
-  it('comes back to the composer once the journal loads with no row for it', () => {
+  it('comes back to the composer once the journal loads with no row for it', async () => {
     const view = mount({ submissions: [], journalCursor: null })
     view.rerender({ submissions: [], journalCursor: { epoch: 'e', sequence: 2 } })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('saved behind a Retry')
   })
 
-  it("is the host's row once the journal shows one, and no second bubble", () => {
+  it("is the host's row once the journal shows one, and no second bubble", async () => {
     const view = mount({ submissions: [], journalCursor: null })
     const before = view.result.current.outbox
     // Even drawn against the row before the outbox drops it, the row is the only bubble.
@@ -130,6 +142,7 @@ describe('a message an older build saved behind its Retry', () => {
     ).toEqual([agentJournalSubmissionKey(ID)])
 
     view.rerender({ submissions: [row()], journalCursor: { epoch: 'e', sequence: 2 } })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
   })
@@ -156,7 +169,7 @@ describe('a message an older build kept as the host rejected it', () => {
     ])
   })
 
-  it("leaves for the host's row, even one not loaded, without a resend or a hand-back", () => {
+  it("leaves for the host's row, even one not loaded, without a resend or a hand-back", async () => {
     const view = mount({ submissions: [], journalCursor: null })
     expect(view.result.current.outbox).toMatchObject([
       { clientMessageId: ID, legacyUnsettled: true }
@@ -171,6 +184,7 @@ describe('a message an older build kept as the host rejected it', () => {
       ],
       journalCursor: { epoch: 'e', sequence: 2 }
     })
+    await handBacksSettled()
     expect(view.result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
     expect(mocks.call).not.toHaveBeenCalled()

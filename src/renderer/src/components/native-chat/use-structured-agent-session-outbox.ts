@@ -30,7 +30,7 @@ import {
   readMountedStructuredAgentSessionOutbox,
   requeueInterruptedStructuredAgentSessionDispatches
 } from './structured-agent-session-outbox-dispatch'
-import { endStructuredAgentSessionEntry } from './structured-agent-session-entry-endings'
+import { commitStructuredAgentSessionWithdrawals } from './structured-agent-session-outbox-returning'
 import {
   nextStructuredAgentSessionHostWindowEnd,
   settleStructuredAgentSessionOutboxFromJournal
@@ -42,7 +42,6 @@ import { useStructuredAgentSessionLoadedUserRows } from './use-structured-agent-
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import {
   clearStructuredAgentSessionChatLineHeldBy,
-  returnStructuredAgentSessionMessage,
   setStructuredAgentSessionChatLine,
   useStructuredAgentSessionChatLine
 } from './structured-agent-session-returned-send'
@@ -307,14 +306,10 @@ export function useStructuredAgentSessionOutbox(args: {
       if (next.withdrawn.length === 0 && next.entries.every((entry, i) => entry === current[i])) {
         return
       }
-      for (const entry of next.withdrawn) {
-        // The draft holds the text before the notes it carried are cleared.
-        returnStructuredAgentSessionMessage(entry)
-        endStructuredAgentSessionEntry(entry, 'returned')
+      for (const entry of commitStructuredAgentSessionWithdrawals(sessionId, current, next)) {
         // Back in the composer, it is no longer being sent, so what the line said about it goes.
         clearStructuredAgentSessionChatLineHeldBy(sessionId, entry.clientMessageId)
       }
-      commitStructuredAgentSessionOutbox(sessionId, next.entries)
     },
     [sessionId]
   )

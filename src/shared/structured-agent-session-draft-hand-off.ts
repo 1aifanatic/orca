@@ -26,7 +26,8 @@ export function handedOffQueuedMessageIds(
  * The outbox entries a chat draws as its own sends, read against the journal: an entry the host
  * handed off as a queued draft belongs to the host, whatever that hand-off's state, so it leaves
  * with no restore. One an older build saved behind its Retry is never drawn either: it is not being
- * sent, and the host's row or the composer it comes back to shows it. Every reading of the outbox
+ * sent, and the host's row or the composer it comes back to shows it. Nor is one on its way back
+ * to the draft, which holds its text. Every reading of the outbox
  * against the journal goes through this.
  */
 export function reconcileStructuredAgentSessionOutboxWithQueue(
@@ -36,7 +37,10 @@ export function reconcileStructuredAgentSessionOutboxWithQueue(
 ): readonly StructuredAgentSessionOutboxEntry[] {
   const handedOff = handedOffQueuedMessageIds(submissions)
   const drawn = entries.filter(
-    (entry) => entry.legacyUnsettled !== true && !handedOff.has(entry.clientMessageId)
+    (entry) =>
+      entry.legacyUnsettled !== true &&
+      entry.returning === undefined &&
+      !handedOff.has(entry.clientMessageId)
   )
   return reconcileStructuredAgentSessionOutbox(
     drawn.length === entries.length ? entries : drawn,

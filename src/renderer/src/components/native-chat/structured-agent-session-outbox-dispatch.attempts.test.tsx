@@ -35,7 +35,10 @@ import {
   readOutbox,
   writeOutbox
 } from './structured-agent-session-outbox-storage'
-import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
+import {
+  nativeChatComposerDraftWritesSettled,
+  structuredAgentSessionDraftScopeKey
+} from './native-chat-composer-draft-store'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
@@ -124,6 +127,14 @@ function send(next: StructuredAgentSessionOutboxEntry) {
   })
 }
 
+/** Lets each hand-back finish: its draft saved, it leaves the outbox and ends. */
+async function handBacksSettled(): Promise<void> {
+  await act(async () => {
+    await nativeChatComposerDraftWritesSettled()
+    await Promise.resolve()
+  })
+}
+
 describe('a stage that cannot be saved', () => {
   it('keeps the message in doubt for the probe to try again, saying it was not saved and is retried', async () => {
     expect(writeOutbox('session-1', [entry('resent', 'resent text', { lastAttemptAt: 5 })])).toBe(
@@ -176,6 +187,7 @@ describe('a Stop that withdraws a message the chat line is about', () => {
     full = false
 
     act(() => result.current.stop('stop-1'))
+    await handBacksSettled()
     expect(result.current.outbox).toEqual([])
     expect(readNativeChatDraftCache(SCOPE)).toBe('never went out')
     expect(result.current.error).toBeNull()
