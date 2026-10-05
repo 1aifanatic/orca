@@ -5,6 +5,7 @@ import {
   ORCA_EDITOR_SAVE_AND_CLOSE_EVENT,
   ORCA_EDITOR_SAVE_FILE_EVENT,
   type EditorSaveFileDetail,
+  type EditorSaveAndCloseResult,
   type EditorSaveQuiesceDetail
 } from './editor-autosave'
 import { flushPendingEditorChange } from './editor-pending-flush'
@@ -38,36 +39,51 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
   })
 
   const handleSaveAndClose = (event: Event): void => {
-    const { fileId } = (event as CustomEvent<{ fileId: string }>).detail
-    const file = store.getState().openFiles.find((openFile) => openFile.id === fileId)
-    if (!file) {
+    if (!(event instanceof CustomEvent) || typeof event.detail?.fileId !== 'string') {
       return
     }
-
+    const { fileId, claim, resolve } = event.detail
+    if (typeof claim === 'function') {
+      claim()
+    }
+    const complete = (result: EditorSaveAndCloseResult): void => {
+      if (typeof resolve === 'function') {
+        resolve(result)
+      }
+    }
+    const file = store.getState().openFiles.find((openFile) => openFile.id === fileId)
+    if (!file) {
+      complete('closed')
+      return
+    }
     const closeAfterSave = (): void => {
       try {
         flushPendingEditorChange(fileId)
+        const state = store.getState()
+        const currentFile = state.openFiles.find((openFile) => openFile.id === fileId)
+        if (currentFile && (currentFile.isDirty || state.editorDrafts[fileId] !== undefined)) {
+          complete('retained')
+          return
+        }
+        if (currentFile) {
+          state.closeFile(fileId)
+        }
+        complete('closed')
       } catch {
-        return
+        complete('failed')
       }
-      const state = store.getState()
-      const currentFile = state.openFiles.find((openFile) => openFile.id === fileId)
-      if (!currentFile || currentFile.isDirty || state.editorDrafts[fileId] !== undefined) {
-        return
-      }
-      state.closeFile(fileId)
     }
 
     try {
       flushPendingEditorChange(fileId)
       const draft = store.getState().editorDrafts[fileId]
       if (draft !== undefined) {
-        void queueSave(file, draft).then(closeAfterSave, () => {})
-        return
+        void queueSave(file, draft).then(closeAfterSave, () => complete('failed'))
+      } else {
+        closeAfterSave()
       }
-      closeAfterSave()
     } catch {
-      return
+      complete('failed')
     }
   }
 
