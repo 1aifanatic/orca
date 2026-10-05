@@ -1,6 +1,9 @@
+import { toast } from 'sonner'
 import type { AppState } from '../store/types'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { translate } from '@/i18n/i18n'
 import {
+  ChatPairReplyMissingError,
   chatPairFromChatView,
   chatPairsEqual,
   createChatPairPendingWrites,
@@ -67,6 +70,16 @@ export function isChatPairDeliveryUnknown(error: unknown): boolean {
   )
 }
 
+/** The user's own switch snapped back to the host's view; the write may still have landed when unconfirmed. */
+function chatPairFailureMessage(error: unknown): string {
+  return isChatPairDeliveryUnknown(error) || error instanceof ChatPairReplyMissingError
+    ? translate(
+        'auto.runtime.terminalChatPairOutbound.switchUnconfirmed',
+        "Couldn't confirm the view switch"
+      )
+    : translate('auto.runtime.terminalChatPairOutbound.switchFailed', "Couldn't switch view")
+}
+
 function getPendingWrites(): ChatPairPendingWrites<ChatPairKey> {
   pendingWrites ??= createChatPairPendingWrites<ChatPairKey>({
     writerId: createBrowserUuid(),
@@ -89,6 +102,7 @@ function getPendingWrites(): ChatPairPendingWrites<ChatPairKey> {
         '[web-runtime-session] failed to set chat view:',
         error instanceof Error ? error.message : String(error)
       )
+      toast.error(chatPairFailureMessage(error))
     },
     setTimer: (callback, ms) => setTimeout(callback, ms),
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: every handle comes from setTimeout above.

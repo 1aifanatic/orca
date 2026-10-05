@@ -18,7 +18,7 @@ type Sent = {
 
 class DeliveryUnknown extends Error {}
 
-function createRig() {
+function createRig(onShow?: (pair: TerminalChatPair | null) => void) {
   let hostPair: TerminalChatPair | null = { viewMode: 'terminal' }
   const sent: Sent[] = []
   const shown: (TerminalChatPair | null)[] = []
@@ -32,7 +32,10 @@ function createRig() {
         sent.push({ request, write, resolve, reject })
       }),
     isDeliveryUnknown: (error) => error instanceof DeliveryUnknown,
-    showPending: (_key, pair) => shown.push(pair),
+    showPending: (_key, pair) => {
+      shown.push(pair)
+      onShow?.(pair)
+    },
     reportFailure: (_key, error) => failures.push(error),
     setTimer: (callback, ms) => setTimeout(callback, ms),
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: handles come from setTimeout above.
@@ -219,6 +222,32 @@ describe('createChatPairPendingWrites', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(rig.failures).toEqual([expect.any(ChatPairReplyMissingError)])
     expect(rig.machine.pendingPair('tab')).toBeNull()
+  })
+
+  it('ends the entry and reports when the reply is not an object', async () => {
+    const rig = createRig()
+    rig.machine.submit('tab', { viewMode: 'chat', leafId: 'A' }, CHAT_A)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: simulates a host breaking the reply contract.
+    rig.sent[0].resolve(null as unknown as ChatPairWriteReply)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(rig.failures).toEqual([expect.any(TypeError)])
+    expect(rig.machine.pendingPair('tab')).toBeNull()
+    expect(rig.shown.at(-1)).toBeNull()
+  })
+
+  it('ends the entry and reports when showing the adopted reply throws', async () => {
+    const rig = createRig((pair) => {
+      if (pair?.chatLeafId === 'B') {
+        throw new Error('subscriber failed')
+      }
+    })
+    rig.machine.submit('tab', { viewMode: 'chat', leafId: null }, { viewMode: 'chat' })
+    rig.sent[0].resolve({ chatView: { viewMode: 'chat', chatLeafId: 'B' } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(rig.failures).toEqual([new Error('subscriber failed')])
+    expect(rig.machine.pendingKeys()).toEqual([])
+    expect(rig.shown.at(-1)).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('adopts the current pair from a superseded reply', async () => {

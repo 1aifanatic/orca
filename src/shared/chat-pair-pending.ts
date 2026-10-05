@@ -152,25 +152,36 @@ export function createChatPairPendingWrites<Key>(
     }, CHAT_PAIR_PENDING_CONFIRM_MS)
   }
 
+  const fail = (id: string, seq: number, error: unknown): void => {
+    const failing = current(id, seq)
+    if (failing) {
+      remove(id, failing)
+      deps.reportFailure(failing.key, error)
+    }
+  }
+
   const dispatch = (id: string, entry: Entry<Key>): void => {
     const { seq } = entry
     new Promise<ChatPairWriteReply>((resolve) => {
       resolve(deps.send(entry.key, entry.request, { writerId: deps.writerId, seq }))
     }).then(
-      (reply) => complete(id, seq, reply),
+      (reply) => {
+        // Why catch: a throw here (a non-object reply, a throwing subscriber) would leave the entry with no deadline.
+        try {
+          complete(id, seq, reply)
+        } catch (error) {
+          fail(id, seq, error)
+        }
+      },
       (error: unknown) => {
         const failing = current(id, seq)
-        if (!failing) {
-          return
-        }
         // Why the same seq: it is still this key's latest write, so the host fence makes a resend idempotent.
-        if (deps.isDeliveryUnknown(error) && !failing.retried) {
+        if (failing && deps.isDeliveryUnknown(error) && !failing.retried) {
           failing.retried = true
           dispatch(id, failing)
           return
         }
-        remove(id, failing)
-        deps.reportFailure(failing.key, error)
+        fail(id, seq, error)
       }
     )
   }
