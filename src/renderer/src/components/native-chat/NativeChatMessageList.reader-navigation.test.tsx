@@ -163,149 +163,65 @@ describe('reader navigation', () => {
     expect(screen.queryByRole('button', { name: 'Jump to latest' })).toBeNull()
   })
 
-  it('drops a reveal held for a slow send once the reader scrolls away again', () => {
-    const handle = createRef<NativeChatMessageListHandle>()
-    const { container } = render(
-      <NativeChatMessageList
-        ref={handle}
-        session={session(transcript)}
-        isWorking
-        expandSignal={false}
-      />
-    )
+  it('stops following when the reader pages up from the focused transcript', () => {
+    const { container, rerender } = render(liveList(transcript))
+    paint(container)
+    const scroller = scrollRoot(container)
+    scroller.focus()
+    fireEvent.keyDown(scroller, { key: 'PageUp' })
+    // The browser pages the focused scroller; the key is all that says a reader moved it.
+    scroller.scrollTop -= scroller.clientHeight
+    fireEvent.scroll(scroller)
+    const pagedTo = scroller.scrollTop
+    rerender(liveList([...transcript, marker(TRANSCRIPT_LENGTH)]))
+    paint(container)
+
+    expect(scroller.scrollTop).toBe(pagedTo)
+    expect(offersJumpToLatest()).toBe(true)
+  })
+
+  it('leaves a reader who scrolled up in place when a message arrives from another device', () => {
+    const { container, rerender } = render(liveList(transcript))
     paint(container)
     scrollTranscript(container, 1000)
     paint(container)
-    const lapsed = handle.current?.holdRevealLatest()
-    scrollTranscript(container, 600)
-    paint(container)
-    const scrollTop = scrollRoot(container).scrollTop
-    act(() => lapsed?.())
-    paint(container)
-    expect(scrollRoot(container).scrollTop).toBe(scrollTop)
+    const readingAt = scrollRoot(container).scrollTop
 
-    // Anti-vacuous: one the reader leaves alone still lands on the end.
-    const kept = handle.current?.holdRevealLatest()
-    act(() => kept?.())
+    const delivered = [...transcript, userMessage(TRANSCRIPT_LENGTH, 'sent from the phone')]
+    rerender(liveList(delivered))
     paint(container)
-    expect(distanceFromBottom(container)).toBe(0)
+    rerender(liveList([...delivered, marker(TRANSCRIPT_LENGTH + 1)]))
+    paint(container)
+
+    expect(scrollRoot(container).scrollTop).toBe(readingAt)
+    expect(offersJumpToLatest()).toBe(true)
   })
 
-  it('leaves a tool run the reader opens where it is while the turn streams on', () => {
+  it('keeps following when the reader opens a tool run at the live end', () => {
     const toolIndex = TRANSCRIPT_LENGTH
-    const withTool: NativeChatMessage[] = [
-      ...transcript,
-      {
-        id: `message-${toolIndex}`,
-        role: 'assistant',
-        blocks: [
-          { type: 'tool-call', name: 'shell', input: { command: 'pwd' }, state: 'completed' },
-          { type: 'tool-result', output: '/repo' }
-        ],
-        timestamp: toolIndex + 1,
-        source: 'transcript'
-      }
-    ]
-    const view = (messages: NativeChatMessage[]) => (
-      <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
-    )
-    const { container, rerender } = render(view(withTool))
+    const withTool = [...transcript, toolMessage(toolIndex)]
+    const { container, rerender } = render(liveList(withTool))
     paint(container)
     // Anti-vacuous: following the end, so the run sits at the bottom of the view.
     expect(distanceFromBottom(container)).toBe(0)
     const scrollTopBeforeOpen = scrollRoot(container).scrollTop
 
-    const toggle = screen.getAllByRole('button', { expanded: false }).at(-1)
-    const toolRow = toggle?.closest<HTMLElement>('[data-index]')
-    if (!toggle || !toolRow) {
-      throw new Error('the tool run has no mounted toggle')
-    }
-    fireEvent.click(toggle)
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    // The run opens taller, and the turn keeps streaming below it.
-    const heights = Array.from({ length: Number(toolRow.dataset.index) + 1 }, () => ROW_PX)
-    heights[Number(toolRow.dataset.index)] = ROW_PX * 6
-    layout.measuredRowHeights = heights
-    paint(container)
-    rerender(view([...withTool, marker(toolIndex + 1), marker(toolIndex + 2)]))
+    const [run] = closedRuns(1)
+    toggleRun(container, run.toggle, [run.rowIndex])
+    expect(run.toggle).toHaveAttribute('aria-expanded', 'true')
+    rerender(liveList([...withTool, marker(toolIndex + 1), marker(toolIndex + 2)]))
     paint(container)
 
-    expect(scrollRoot(container).scrollTop).toBe(scrollTopBeforeOpen)
-    expect(distanceFromBottom(container)).toBeGreaterThan(0)
-  })
-
-  it('follows the end again once the reader closes what they opened there', () => {
-    const toolIndex = TRANSCRIPT_LENGTH
-    const withTool: NativeChatMessage[] = [
-      ...transcript,
-      {
-        id: `message-${toolIndex}`,
-        role: 'assistant',
-        blocks: [
-          { type: 'tool-call', name: 'shell', input: { command: 'pwd' }, state: 'completed' },
-          { type: 'tool-result', output: '/repo' }
-        ],
-        timestamp: toolIndex + 1,
-        source: 'transcript'
-      }
-    ]
-    const view = (messages: NativeChatMessage[]) => (
-      <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
-    )
-    const { container, rerender } = render(view(withTool))
-    paint(container)
-    const toggle = screen.getAllByRole('button', { expanded: false }).at(-1)
-    const toolRow = toggle?.closest<HTMLElement>('[data-index]')
-    if (!toggle || !toolRow) {
-      throw new Error('the tool run has no mounted toggle')
-    }
-    fireEvent.click(toggle)
-    const heights = Array.from({ length: Number(toolRow.dataset.index) + 1 }, () => ROW_PX)
-    heights[Number(toolRow.dataset.index)] = ROW_PX * 6
-    layout.measuredRowHeights = heights
-    paint(container)
-    // Anti-vacuous: the open run pushed the end away, and the reader was left where they were.
-    expect(distanceFromBottom(container)).toBeGreaterThan(0)
-
-    // Closing lands exactly on the end: no offset moves, so no scroll event reports it.
-    fireEvent.click(toggle)
-    layout.measuredRowHeights = []
-    paint(container)
+    // The opened output and the streamed rows both pushed the end down, and the view went with it.
+    expect(scrollRoot(container).scrollTop).toBeGreaterThan(scrollTopBeforeOpen)
     expect(distanceFromBottom(container)).toBe(0)
-    rerender(view([...withTool, marker(toolIndex + 1), marker(toolIndex + 2)]))
-    paint(container)
-
-    expect(distanceFromBottom(container)).toBe(0)
-    expect(screen.getByText(`marker-${toolIndex + 2}`)).toBeInTheDocument()
+    expect(offersJumpToLatest()).toBe(false)
   })
 
   describe('closing what the reader opened', () => {
     const toolIndex = TRANSCRIPT_LENGTH
     const withTool = [...transcript, toolMessage(toolIndex)]
     const streamedOn = [...withTool, marker(toolIndex + 1), marker(toolIndex + 2)]
-
-    it('closing the last open run preserves history when the tail is still distant', () => {
-      const { container, rerender } = render(liveList(withTool))
-      paint(container)
-      const [run] = closedRuns(1)
-      toggleRun(container, run.toggle, [run.rowIndex])
-      rerender(liveList(streamedOn))
-      paint(container)
-      // Anti-vacuous: left behind, well outside the band a scroll would re-arm in.
-      expect(distanceFromBottom(container)).toBeGreaterThan(ROW_PX * 5)
-      expect(offersJumpToLatest()).toBe(true)
-
-      const beforeClose = scrollRoot(container).scrollTop
-      toggleRun(container, run.toggle, [])
-      expect(scrollRoot(container).scrollTop).toBe(beforeClose)
-      expect(distanceFromBottom(container)).toBeGreaterThan(0)
-      expect(offersJumpToLatest()).toBe(true)
-      rerender(liveList([...streamedOn, marker(toolIndex + 3)]))
-      paint(container)
-
-      expect(scrollRoot(container).scrollTop).toBe(beforeClose)
-      expect(distanceFromBottom(container)).toBeGreaterThan(0)
-    })
 
     it('stays where the reader scrolled to while it was open', () => {
       const { container, rerender } = render(liveList(withTool))
@@ -322,27 +238,6 @@ describe('reader navigation', () => {
 
       expect(scrollRoot(container).scrollTop).toBe(scrolledTo)
       expect(offersJumpToLatest()).toBe(true)
-    })
-
-    it('derives following from geometry rather than counting two open runs', () => {
-      const twoTools = [...withTool, marker(toolIndex + 1), toolMessage(toolIndex + 2)]
-      const { container, rerender } = render(liveList(twoTools))
-      paint(container)
-      const [first, second] = closedRuns(2)
-      // Anti-vacuous: two different rows.
-      expect(first.rowIndex).not.toBe(second.rowIndex)
-      toggleRun(container, first.toggle, [first.rowIndex])
-      toggleRun(container, second.toggle, [first.rowIndex, second.rowIndex])
-      const scrollTopWhileOpen = scrollRoot(container).scrollTop
-
-      toggleRun(container, first.toggle, [second.rowIndex])
-      rerender(liveList([...twoTools, marker(toolIndex + 3)]))
-      paint(container)
-      expect(scrollRoot(container).scrollTop).toBe(scrollTopWhileOpen)
-      expect(distanceFromBottom(container)).toBeGreaterThan(0)
-
-      toggleRun(container, second.toggle, [])
-      expect(distanceFromBottom(container)).toBeGreaterThan(0)
     })
 
     it('leaves a reader who had already scrolled away where they are', () => {
@@ -363,50 +258,7 @@ describe('reader navigation', () => {
     })
   })
 
-  it('keeps a run the reader left open in place when its output settles shorter', () => {
-    const toolIndex = TRANSCRIPT_LENGTH
-    const withTool: NativeChatMessage[] = [
-      ...transcript,
-      {
-        id: `message-${toolIndex}`,
-        role: 'assistant',
-        blocks: [
-          { type: 'tool-call', name: 'shell', input: { command: 'pwd' }, state: 'completed' },
-          { type: 'tool-result', output: '/repo' }
-        ],
-        timestamp: toolIndex + 1,
-        source: 'transcript'
-      }
-    ]
-    const view = (messages: NativeChatMessage[]) => (
-      <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
-    )
-    const { container, rerender } = render(view(withTool))
-    paint(container)
-    const scrollTopBeforeOpen = scrollRoot(container).scrollTop
-    const toggle = screen.getAllByRole('button', { expanded: false }).at(-1)
-    const toolRow = toggle?.closest<HTMLElement>('[data-index]')
-    if (!toggle || !toolRow) {
-      throw new Error('the tool run has no mounted toggle')
-    }
-    fireEvent.click(toggle)
-    const heights = Array.from({ length: Number(toolRow.dataset.index) + 1 }, () => ROW_PX)
-    heights[Number(toolRow.dataset.index)] = ROW_PX * 6
-    layout.measuredRowHeights = heights
-    paint(container)
-
-    // Still open, but now within rounding distance of the end, with no offset moved.
-    layout.measuredRowHeights = heights.with(Number(toolRow.dataset.index), ROW_PX + 2)
-    paint(container)
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(distanceFromBottom(container)).toBe(2)
-    rerender(view([...withTool, marker(toolIndex + 1), marker(toolIndex + 2)]))
-    paint(container)
-
-    expect(scrollRoot(container).scrollTop).toBe(scrollTopBeforeOpen)
-  })
-
-  it('replaces a pending numeric tail pin before a disclosure inserts earlier rows', () => {
+  it('keeps following when an earlier turn expands under a pending tail pin', () => {
     const messages = [
       userMessage(0, 'Earlier turn'),
       ...Array.from({ length: 8 }, (_, i) => toolMessage(i + 1)),
@@ -432,23 +284,21 @@ describe('reader navigation', () => {
     )
     paint(container)
     const scroller = scrollRoot(container)
-    const toggle = screen.getByRole('button', { name: 'Toggle turn details' })
     const window = container.querySelector<HTMLElement>('[data-native-chat-window]')
     const beforeSlots = window?.querySelectorAll('[data-index]').length ?? 0
-    toggle.getBoundingClientRect = () => new DOMRect(0, -scroller.scrollTop, 100, 20)
     // A pin created outside the painted frames is still waiting to reconcile by numeric index.
     layout.belowTranscriptPx += 20
     deliverResizes()
-    const before = scroller.scrollTop
-    expect(before).toBeGreaterThan(0)
-    fireEvent.click(toggle)
-    const expandedSlots = window?.querySelectorAll('[data-index]').length ?? 0
-    expect(expandedSlots).toBeGreaterThan(beforeSlots)
+    expect(scroller.scrollTop).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle turn details' }))
+    // Anti-vacuous: the expansion inserted rows before the tail the pin named.
+    expect(window?.querySelectorAll('[data-index]').length ?? 0).toBeGreaterThan(beforeSlots)
     paint(container)
-    expect(scroller.scrollTop).toBe(before)
-    expect(distanceFromBottom(container)).toBeGreaterThan(0)
     act(() => vi.advanceTimersByTime(160))
-    expect(scroller.scrollTop).toBe(before)
+    paint(container)
+
+    expect(distanceFromBottom(container)).toBe(0)
+    expect(screen.getByText('marker-11')).toBeInTheDocument()
   })
 
   it.each([false, true])(

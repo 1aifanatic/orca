@@ -237,7 +237,6 @@ export function createStructuredSessionMocks() {
             failedHere: outbox.failedHere,
             submissions: mocks.submissions,
             send: outbox.send,
-            sendFromComposer: outbox.send,
             retry: outbox.retry,
             isWorking: mocks.isWorking,
             backgroundTasks: {
@@ -323,10 +322,7 @@ export function createStructuredSessionMocks() {
     nativeChatMessageList: () => ({
       NativeChatMessageList: (props: typeof mocks.messageListProps) => {
         mocks.messageListProps = props
-        useImperativeHandle(props?.ref, () => ({
-          revealLatest: mocks.revealLatest,
-          holdRevealLatest: () => mocks.revealLatest
-        }))
+        useImperativeHandle(props?.ref, () => ({ revealLatest: mocks.revealLatest }))
         return <DeliveryNoticesMock notices={props?.deliveryNotices} />
       }
     }),

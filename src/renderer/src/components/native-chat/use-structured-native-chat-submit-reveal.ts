@@ -1,5 +1,5 @@
-// Local actions reveal this pane. Answers and Resume wait for host acceptance,
-// preserving any newer reader navigation; passive host delivery never reveals it.
+// Local actions reveal this pane at the press. Resume reveals once the host lifts the pause;
+// host delivery, queued drafts and Stop never move the reader.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
@@ -17,15 +17,14 @@ export function useStructuredNativeChatSubmitReveal(
   retryLaunch: () => void
 ): {
   messageListRef: React.RefObject<NativeChatMessageListHandle | null>
-  /** For the composer's transport, which knows when a send was accepted. */
+  /** For the composer, which reveals as it sends. */
   revealLatest: () => void
-  holdRevealLatest: () => () => void
   retryDelivery: (clientMessageId: string) => void
   retryLaunch: () => void
   respond: StructuredController['respond']
   queuedMessages: StructuredAgentSessionQueuedMessagesController
 } {
-  const { messageListRef, revealLatest, holdRevealLatest } = useNativeChatRevealLatest()
+  const { messageListRef, revealLatest } = useNativeChatRevealLatest()
   const { respond, queuedMessages } = controller
   // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
   const retryRef = useRef(controller.retry)
@@ -44,17 +43,11 @@ export function useStructuredNativeChatSubmitReveal(
     retryLaunch()
   }, [retryLaunch, revealLatest])
   const revealingRespond = useCallback<StructuredController['respond']>(
-    async (...args) => {
-      // Held from the click: a reader who scrolls away while the host decides stays there.
-      const reveal = holdRevealLatest()
-      const result = await respond(...args)
-      // Null is a refused or failed answer: nothing was sent, so the reader stays put.
-      if (result !== null) {
-        reveal()
-      }
-      return result
+    (...args) => {
+      revealLatest()
+      return respond(...args)
     },
-    [holdRevealLatest, respond]
+    [respond, revealLatest]
   )
   const revealingQueue = useMemo<StructuredAgentSessionQueuedMessagesController>(
     () => ({
@@ -63,11 +56,11 @@ export function useStructuredNativeChatSubmitReveal(
         revealLatest()
         return queuedMessages.steer(messageId)
       },
+      // Resume can be refused or find nothing paused, so it reveals only once the host lifts it.
       resume: async () => {
-        const reveal = holdRevealLatest()
         const resumed = await queuedMessages.resume()
         if (resumed) {
-          reveal()
+          revealLatest()
         }
         return resumed
       },
@@ -79,12 +72,11 @@ export function useStructuredNativeChatSubmitReveal(
         return steered
       }
     }),
-    [holdRevealLatest, queuedMessages, revealLatest]
+    [queuedMessages, revealLatest]
   )
   return {
     messageListRef,
     revealLatest,
-    holdRevealLatest,
     retryDelivery,
     retryLaunch: revealingRetryLaunch,
     respond: revealingRespond,

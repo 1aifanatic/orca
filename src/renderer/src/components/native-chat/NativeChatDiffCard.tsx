@@ -131,7 +131,7 @@ export function NativeChatDiffCard({
   const cardRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (revealSignal && cardRef.current) {
-      setExpanded(true, false)
+      setExpanded(true)
       // Reported from the card, not the row: a turn that touched four files must
       // land on the one that was asked for, and only the card knows where it is.
       onReveal?.(cardRef.current)

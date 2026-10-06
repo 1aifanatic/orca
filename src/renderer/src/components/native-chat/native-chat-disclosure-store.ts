@@ -7,13 +7,11 @@
 // the reader's back. Rows read through this store when the transcript provides
 // one, and fall back to their own state when they are rendered standalone.
 
-import { createContext, useCallback, useContext, useId, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 
 export type NativeChatDisclosureStore = {
   read: (key: string) => boolean | undefined
   write: (key: string, open: boolean) => void
-  /** Told whenever the reader opens or closes a row, keyed or not, and which one. */
-  onToggle?: (row: string, open: boolean) => void
 }
 
 export const NativeChatDisclosureContext = createContext<NativeChatDisclosureStore | null>(null)
@@ -46,7 +44,7 @@ export function useNativeChatDisclosures(): NativeChatDisclosureStore {
 export type NativeChatDisclosure = {
   open: boolean
   /** A reader's choice: remembered past this row's lifetime when keyed. */
-  setOpen: (next: boolean, readerInitiated?: boolean) => void
+  setOpen: (next: boolean) => void
 }
 
 export function useNativeChatDisclosure(
@@ -56,24 +54,18 @@ export function useNativeChatDisclosure(
   const store = useContext(NativeChatDisclosureContext)
   const [local, setLocal] = useState({ key, initialOpen, open: initialOpen })
   const write = store?.write
-  const onToggle = store?.onToggle
-  const unkeyedRow = useId()
-  const row = key ?? unkeyedRow
   const isStored = key !== undefined && store !== null
   const localOpen =
     local.key === key && local.initialOpen === initialOpen ? local.open : initialOpen
   const open = isStored ? (store.read(key) ?? localOpen) : localOpen
   const setOpen = useCallback(
-    (next: boolean, readerInitiated = true) => {
+    (next: boolean) => {
       setLocal({ key, initialOpen, open: next })
       if (key !== undefined && write) {
         write(key, next)
       }
-      if (readerInitiated) {
-        onToggle?.(row, next)
-      }
     },
-    [initialOpen, key, onToggle, row, write]
+    [initialOpen, key, write]
   )
   return { open, setOpen }
 }

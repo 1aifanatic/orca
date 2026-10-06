@@ -100,13 +100,14 @@ describe('attachment guard follows what the host claims', () => {
   })
 })
 
-// The pane brings the latest into view on this: a command the chat ran itself counts, a refusal does not.
-describe('reports only an accepted send as submitted', () => {
-  it('reports a host-run command, then not a message the transport refused', async () => {
+// The pane brings the latest into view on this: a conversation command at the press, a message
+// once admitted, and neither for a refusal or a command the chat does not run.
+describe('reports the sends that bring the latest into view', () => {
+  it('reports a conversation command at the press, then not a message the transport refused', async () => {
     const onSubmitted = vi.fn()
     const { send, structuredTransport } = harness('claude', undefined, onSubmitted)
     send('/compact', [])
-    await vi.waitFor(() => expect(onSubmitted).toHaveBeenCalledOnce())
+    expect(onSubmitted).toHaveBeenCalledOnce()
 
     vi.mocked(structuredTransport.send).mockReturnValue(false)
     send('hello', [])

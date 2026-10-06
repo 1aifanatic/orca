@@ -173,11 +173,7 @@ function renderRevealingController(sessionId = 'session-1', fence: number | null
         consumeProgrammaticScroll: () => false,
         reconcileReaderScroll: vi.fn()
       })
-      useNativeChatMessageListHandle(
-        submits.messageListRef,
-        scroll.scrollToBottom,
-        scroll.untilReaderActs
-      )
+      useNativeChatMessageListHandle(submits.messageListRef, scroll.scrollToBottom)
       return { submits, scroll, scrollToEnd }
     },
     { initialProps: { isVisible: true } }
@@ -223,7 +219,7 @@ describe('Resume transcript navigation through the real mutation and queue contr
     }
   )
 
-  it('reveals only the originating reader after success and ignores a duplicate press', async () => {
+  it('reveals only the pane that pressed Resume, after success, and ignores a duplicate press', async () => {
     const answer = Promise.withResolvers<unknown>()
     mocks.call.mockReturnValueOnce(answer.promise)
     const origin = renderRevealingController()
@@ -235,9 +231,6 @@ describe('Resume transcript navigation through the real mutation and queue contr
     })
     expect(origin.result.current.scrollToEnd).not.toHaveBeenCalled()
     expect(mocks.call).toHaveBeenCalledTimes(1)
-    // A different current handle must not retarget the completion captured at press.
-    origin.result.current.submits.messageListRef.current =
-      other.result.current.submits.messageListRef.current
     await act(async () => {
       answer.resolve(resumedResult())
       expect(await pending).toBe(true)
@@ -246,32 +239,29 @@ describe('Resume transcript navigation through the real mutation and queue contr
     expect(other.result.current.scrollToEnd).not.toHaveBeenCalled()
   })
 
-  it.each(['scroll', 'hide', 'session', 'unmount'] as const)(
-    'a newer %s invalidates an acknowledged Resume reveal',
+  // Lifting the pause is slow and the reader can switch away meanwhile; that pane stays put.
+  it.each(['hide', 'unmount'] as const)(
+    'does not reveal a pane that is %s when Resume succeeds',
     async (action) => {
       const answer = Promise.withResolvers<unknown>()
       mocks.call.mockReturnValueOnce(answer.promise)
       const origin = renderRevealingController()
       const scrollToEnd = origin.result.current.scrollToEnd
       const pending = startResume(origin)
-      if (action === 'scroll') {
-        act(() => origin.result.current.scroll.readerLeavesEnd())
-      } else if (action === 'hide') {
+      if (action === 'hide') {
         origin.rerender({ isVisible: false })
-        origin.rerender({ isVisible: true })
       } else {
         origin.unmount()
       }
-      const replacement = action === 'session' ? renderRevealingController('session-2') : null
-      replacement?.result.current.scrollToEnd.mockClear()
       await act(async () => {
         answer.resolve(resumedResult())
         await pending
       })
-      expect(scrollToEnd).not.toHaveBeenCalled()
-      if (replacement) {
-        expect(replacement.result.current.scrollToEnd).not.toHaveBeenCalled()
+      if (action === 'hide') {
+        // Shown again, it is where the reader left it.
+        origin.rerender({ isVisible: true })
       }
+      expect(scrollToEnd).not.toHaveBeenCalled()
     }
   )
 })

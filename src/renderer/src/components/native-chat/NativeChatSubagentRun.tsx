@@ -1,5 +1,4 @@
-import { useMemo } from 'react'
-import { useNativeChatDisclosure } from './native-chat-disclosure-store'
+import { useMemo, useState } from 'react'
 import { Bot, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
@@ -245,10 +244,9 @@ export function NativeChatSubagentRun({
   sections?: ReadonlyMap<string, boolean>
   onSetSectionOpen?: (agentId: string, open: boolean) => void
 }): React.JSX.Element | null {
-  // Unkeyed, but still a reader's open the transcript hears about.
-  const local = useNativeChatDisclosure(undefined, false)
-  const open = heldOpen ?? local.open
-  const setOpen = onSetOpen ?? local.setOpen
+  const [localOpen, setLocalOpen] = useState(false)
+  const open = heldOpen ?? localOpen
+  const setOpen = onSetOpen ?? setLocalOpen
   const agents = block.agents
   const summary = useMemo(() => summarizeSubagentGroup(agents), [agents])
   if (summary.total === 0) {

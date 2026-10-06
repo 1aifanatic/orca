@@ -35,20 +35,17 @@ function TranscriptHarness({
     reconcileReaderScroll
   })
   const input = useNativeChatReaderScrollInput(scrollRef, {
-    onReaderScroll: transcript.readerActs,
+    onReaderScroll: () => {},
     onLeaveEnd: transcript.readerLeavesEnd
   })
   return (
     <div
       {...input.scrollerProps}
-      onClickCapture={transcript.captureDisclosureTarget}
       ref={scrollRef}
       data-testid="scroll"
       onScroll={transcript.onScroll}
     >
       <div ref={contentRef} />
-      <button onClick={() => transcript.holdDisclosurePosition()}>open</button>
-      <button onClick={() => transcript.holdDisclosurePosition()}>close</button>
     </div>
   )
 }
@@ -225,33 +222,27 @@ describe('native chat transcript follow', () => {
     expect(scrollToEnd).toHaveBeenCalled()
   })
 
-  it('does not force a distant reader to the tail on the last close', () => {
+  // A shrink clamps the offset; its scroll event can land after more output has grown the end.
+  it('keeps following when content shrinks under a reader at the end', () => {
     let scrollTop = 900
+    let scrollHeight = 1_000
     const scrollToEnd = vi.fn()
-    const view = render(
-      <TranscriptHarness isVisible restoreScrollOffset={vi.fn()} scrollToEnd={scrollToEnd} />
-    )
-    Object.defineProperties(view.getByTestId('scroll'), {
+    const props = { isVisible: true, restoreScrollOffset: vi.fn(), scrollToEnd }
+    const view = render(<TranscriptHarness {...props} />)
+    const scrollElement = view.getByTestId('scroll')
+    Object.defineProperties(scrollElement, {
       clientHeight: { configurable: true, get: () => 100 },
-      scrollHeight: { configurable: true, get: () => 1_400 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
       scrollTop: { configurable: true, get: () => scrollTop, set: (value) => (scrollTop = value) }
     })
 
-    fireEvent.click(view.getByText('open'))
+    scrollHeight = 700
+    scrollTop = 600
+    scrollHeight = 900
+    fireEvent.scroll(scrollElement)
     scrollToEnd.mockClear()
-    view.rerender(
-      <TranscriptHarness
-        isVisible
-        restoreScrollOffset={vi.fn()}
-        scrollToEnd={scrollToEnd}
-        itemCount={101}
-      />
-    )
-    // Anti-vacuous: opening stopped the following, 400px from the end.
-    expect(scrollToEnd).not.toHaveBeenCalled()
+    view.rerender(<TranscriptHarness {...props} itemCount={101} />)
 
-    fireEvent.click(view.getByText('close'))
-
-    expect(scrollToEnd).not.toHaveBeenCalled()
+    expect(scrollToEnd).toHaveBeenCalled()
   })
 })

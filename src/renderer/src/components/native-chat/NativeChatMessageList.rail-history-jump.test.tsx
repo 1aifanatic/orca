@@ -3,7 +3,7 @@
 import '@testing-library/jest-dom/vitest'
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { createRef, useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentJournalItemBody,
@@ -11,7 +11,6 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import { projectStructuredItemsToNativeChat } from '../../../../shared/structured-agent-session-projection'
-import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import type { NativeChatRailOutlineEntry } from './native-chat-message-rail-items'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
@@ -71,12 +70,10 @@ const ROW_HEIGHT_BY_TEXT = new Map(
 /** A lane that pages older history in the way the structured lane does: the page
  *  lands, then the returned promise settles. The outline is the unloaded prompts. */
 function PagedTranscript({
-  holdPage,
-  handle
+  holdPage
 }: {
   /** Awaited before a page lands, to keep it in flight. */
   holdPage?: () => Promise<void>
-  handle?: React.RefObject<NativeChatMessageListHandle | null>
 }): React.JSX.Element {
   const [loaded, setLoaded] = useState(PAGE)
   const loadEarlier = useCallback(async (): Promise<NativeChatOlderPageResult> => {
@@ -98,7 +95,6 @@ function PagedTranscript({
   )
   return (
     <NativeChatMessageList
-      ref={handle}
       session={{ ...session(messages), hasMore: loaded < TOTAL, loadEarlier }}
       railOutline={railOutline}
       isWorking={false}
@@ -350,21 +346,6 @@ describe('jumping from the rail while following the end', () => {
     fireEvent.click(screen.getByRole('button', { name: prompt }))
     await frame()
   }
-
-  it('a delayed accepted answer cannot cancel a newer unloaded rail selection', async () => {
-    const pages = holdFirstPage()
-    const handle = createRef<NativeChatMessageListHandle>()
-    render(<PagedTranscript holdPage={pages.holdPage} handle={handle} />)
-    await settle(10)
-    const acceptance = handle.current?.holdRevealLatest()
-    await pickUnloadedWhilePaging('prompt-5')
-    expect(pages.asked()).toBe(1)
-    act(() => acceptance?.())
-    expect(screen.getByRole('button', { name: 'prompt-5' }).getAttribute('aria-busy')).toBe('true')
-    pages.release()
-    await settle(60)
-    expect(Math.abs(rowOffsetFromViewportTop('prompt-5'))).toBeLessThanOrEqual(2)
-  })
 
   it('keeps the list open with the pick marked busy until its history lands', async () => {
     const pages = holdFirstPage()

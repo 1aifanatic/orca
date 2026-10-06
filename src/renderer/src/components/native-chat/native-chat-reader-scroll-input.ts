@@ -72,7 +72,7 @@ type ReaderScrollCallbacks = {
 
 export type NativeChatReaderScrollInputHandlers = Pick<
   React.HTMLAttributes<HTMLDivElement>,
-  'onWheel' | 'onTouchStart' | 'onTouchMove' | 'onKeyDown' | 'onPointerDown' | 'tabIndex' | 'role'
+  'onWheel' | 'onTouchMove' | 'onKeyDown' | 'onPointerDown' | 'tabIndex' | 'role'
 >
 
 /** Invalidate pending navigation on input, and detach only when the transcript can move away. */
@@ -80,7 +80,6 @@ export function nativeChatReaderScrollInputHandlers({
   onReaderScroll,
   onLeaveEnd
 }: ReaderScrollCallbacks): NativeChatReaderScrollInputHandlers {
-  let touchY: number | null = null
   const report = (gesture: ReaderGesture, event: React.SyntheticEvent<HTMLDivElement>): void => {
     const transcript = event.currentTarget
     if (
@@ -100,18 +99,9 @@ export function nativeChatReaderScrollInputHandlers({
       onReaderScroll()
       report({ kind: 'wheel', deltaY: event.deltaY, zoom: event.ctrlKey }, event)
     },
-    onTouchStart: (event) => {
-      touchY = event.touches[0]?.clientY ?? null
-    },
     onTouchMove: (event) => {
-      const nextY = event.touches[0]?.clientY ?? null
-      const deltaY = touchY !== null && nextY !== null ? touchY - nextY : undefined
-      touchY = nextY
-      if (deltaY === 0) {
-        return
-      }
       onReaderScroll()
-      report({ kind: 'touch-drag', deltaY }, event)
+      report({ kind: 'touch-drag' }, event)
     },
     onKeyDown: (event) => {
       if (!READER_SCROLL_KEYS.has(event.key) || isEditableTarget(event.target)) {

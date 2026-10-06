@@ -136,7 +136,8 @@ describe('composer goal mode', () => {
     await act(async () => hook.result.current.send())
 
     expect(setObjective).toHaveBeenCalledOnce()
-    expect(onSubmitted).not.toHaveBeenCalled()
+    // Revealed at the press, before the host answered.
+    expect(onSubmitted).toHaveBeenCalledOnce()
     expect(calls.setDraft).not.toHaveBeenCalled()
     expect(hook.result.current.goalMode.active).toBe(true)
   })

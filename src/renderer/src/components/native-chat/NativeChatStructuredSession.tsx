@@ -123,7 +123,7 @@ export function NativeChatStructuredSession(
     [controller, historyPhase, props.agent, props.sessionId]
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
-  const { retryDelivery, revealLatest, holdRevealLatest } = submits
+  const { retryDelivery, revealLatest } = submits
   const agentLabel = structuredAgentLabel(props.agent)
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
@@ -190,7 +190,7 @@ export function NativeChatStructuredSession(
       ): boolean | 'queued' => {
         let admission: boolean | 'queued' = false
         const accepted = sendThroughRelaunch(() => {
-          admission = controller.sendFromComposer(
+          admission = controller.send(
             text,
             attachments.map((attachment) => ({
               path: attachment.path,
@@ -224,7 +224,6 @@ export function NativeChatStructuredSession(
       worktreeId: ownerWorktreeId ?? undefined,
       onError: setComposerError,
       onSubmitted: revealLatest,
-      holdRevealLatest,
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
@@ -238,7 +237,6 @@ export function NativeChatStructuredSession(
     props.sessionId,
     props.target,
     revealLatest,
-    holdRevealLatest,
     sendThroughRelaunch
   ])
 

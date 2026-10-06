@@ -19,19 +19,10 @@ export function useNativeChatSessionOptionCommand(args: {
   disabled: boolean
   onSlashCommand?: (command: string) => void
   onSubmitted?: () => void
-  holdRevealLatest?: () => () => void
   resolveTarget: () => NativeChatResolvedTarget | null
   setHistory: Dispatch<SetStateAction<HistoryState>>
 }): { dispatch: NativeChatSessionOptionDispatchCommand; isDispatching: boolean } {
-  const {
-    agent,
-    disabled,
-    onSlashCommand,
-    onSubmitted,
-    holdRevealLatest,
-    resolveTarget,
-    setHistory
-  } = args
+  const { agent, disabled, onSlashCommand, onSubmitted, resolveTarget, setHistory } = args
   const mountedRef = useRef(true)
   const activeObserversRef = useRef(new Set<ClaudeModelSwitchConfirmationObserver>())
   const activeSendsRef = useRef(new Set<AbortController>())
@@ -64,7 +55,7 @@ export function useNativeChatSessionOptionCommand(args: {
       if (!target || disabled) {
         throw new Error('No live terminal is available.')
       }
-      const reveal = holdRevealLatest?.() ?? onSubmitted
+      onSubmitted?.()
       const sendController = new AbortController()
       activeSendsRef.current.add(sendController)
       // Why: block composer chat sends for the whole drain+observe+verify window.
@@ -123,7 +114,6 @@ export function useNativeChatSessionOptionCommand(args: {
           agent,
           runtime: nativeChatComposerTargetIsRemote(target.ptyId) ? 'remote' : 'local'
         })
-        reveal?.()
         setHistory((previous) => pushHistory(previous, command))
         const outcome = observer ? await observer.result : undefined
         return { outcome }
@@ -136,7 +126,7 @@ export function useNativeChatSessionOptionCommand(args: {
         }
       }
     },
-    [agent, disabled, onSlashCommand, onSubmitted, holdRevealLatest, resolveTarget, setHistory]
+    [agent, disabled, onSlashCommand, onSubmitted, resolveTarget, setHistory]
   )
 
   return { dispatch, isDispatching }

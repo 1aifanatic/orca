@@ -55,9 +55,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
     return {
       outbox: outboxEntries,
       error: null,
-      send: (text: string, attachments: readonly { path: string; previewUri: string }[] = []) =>
-        Boolean(text.trim() || attachments.length) &&
-        appendStructuredAgentSessionOutboxMessage('session-1', text, attachments) !== null,
+      send: vi.fn(),
       retry: vi.fn(),
       withdrawUnsent: vi.fn()
     }
@@ -75,7 +73,6 @@ import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
 } from './native-chat-draft-cache'
-import { appendStructuredAgentSessionOutboxMessage } from './structured-agent-session-outbox-storage'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 const RUNNING_TURN: AgentJournalRenderItem = {
@@ -385,32 +382,4 @@ describe('against a host without the capability', () => {
       )
     ).toHaveLength(0)
   })
-})
-
-it.each([
-  ['queued text', true, true, true, [], 'queued'],
-  ['setting off', true, false, true, [], true],
-  ['idle turn', true, true, false, [], true],
-  ['older host', false, true, true, [], true],
-  ['image send', true, true, true, [{ path: '/tmp/image.png', previewUri: '/tmp/image.png' }], true]
-] as const)(
-  'composer admission derives navigation from its visible projection: %s',
-  (_name, capable, enabled, working, attachments, expected) => {
-    setLocalRuntimeCapabilitiesForTests(
-      capable ? [AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY] : []
-    )
-    items = working ? [RUNNING_TURN] : []
-    const hook = render(enabled)
-    let admission: unknown
-    act(() => {
-      admission = hook.result.current.sendFromComposer('follow up', attachments)
-    })
-    expect(admission).toBe(expected)
-  }
-)
-
-it('does not report a visible composer send when admission is refused', () => {
-  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY])
-  const hook = render()
-  expect(hook.result.current.sendFromComposer('')).toBe(false)
 })

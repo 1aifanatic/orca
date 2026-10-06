@@ -66,7 +66,7 @@ export function nextFollowingEnd(intent: FollowIntent): boolean {
 /** A reader input that can move the transcript, reduced to what decides following. */
 export type ReaderGesture =
   | { kind: 'wheel'; deltaY: number; zoom: boolean }
-  | { kind: 'touch-drag'; deltaY?: number }
+  | { kind: 'touch-drag' }
   | { kind: 'scrollbar-press' }
   | { kind: 'content-press' }
   | { kind: 'key'; key: string; shift?: boolean }
@@ -78,9 +78,6 @@ const KEYS_TOWARD_END = new Set(['PageDown', 'End', 'ArrowDown'])
 export function readerGestureDirection(gesture: ReaderGesture): -1 | 0 | 1 {
   if (gesture.kind === 'wheel') {
     return gesture.zoom || gesture.deltaY === 0 ? 0 : gesture.deltaY < 0 ? -1 : 1
-  }
-  if (gesture.kind === 'touch-drag' && gesture.deltaY !== undefined) {
-    return gesture.deltaY === 0 ? 0 : gesture.deltaY < 0 ? -1 : 1
   }
   if (gesture.kind === 'key') {
     if (gesture.key === ' ') {
@@ -100,10 +97,8 @@ export function readerGestureLeavesEnd(gesture: ReaderGesture, geometry: ScrollG
       return readerGestureDirection(gesture) < 0 && contentAbove
     case 'scrollbar-press':
       return contentAbove
+    // A touch's direction is not observable; it leaves once its drag has carried the view away.
     case 'touch-drag':
-      return gesture.deltaY === undefined
-        ? awayFromEnd
-        : readerGestureDirection(gesture) < 0 && contentAbove
     case 'content-press':
       return awayFromEnd
     case 'key': {

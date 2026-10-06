@@ -724,7 +724,7 @@ describe('NativeChatStructuredSession', () => {
   })
 
   // The reader may have scrolled far up; what they just did has to come into view.
-  it('brings the latest into view for the submits this pane makes, and not for refused ones', async () => {
+  it('brings the latest into view at the press for the submits this pane makes', async () => {
     mocks.promptItems = legacySingleQuestionPromptItems
     const { rerender } = render(
       <NativeChatStructuredSession
@@ -736,16 +736,11 @@ describe('NativeChatStructuredSession', () => {
         agent="claude"
       />
     )
-    // Refused by the host: nothing was answered, so the reader is left where they are.
-    mocks.respond.mockResolvedValueOnce(null)
+    // An answer reveals as it is pressed, before the host decides on it.
+    mocks.respond.mockReturnValueOnce(new Promise(() => {}))
     mocks.questionCardProps?.onAnswer([{ indices: [1], other: '' }])
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
     expect(mocks.respond).toHaveBeenCalledOnce()
-    expect(mocks.revealLatest).not.toHaveBeenCalled()
-
-    mocks.respond.mockResolvedValueOnce({ itemId: 'question-1', revision: 2 })
-    mocks.questionCardProps?.onAnswer([{ indices: [1], other: '' }])
-    await waitFor(() => expect(mocks.revealLatest).toHaveBeenCalledOnce())
+    expect(mocks.revealLatest).toHaveBeenCalledOnce()
 
     mocks.promptItems = []
     rerender(
@@ -769,7 +764,7 @@ describe('NativeChatStructuredSession', () => {
     expect(steerQueued()).toBe(false)
     expect(mocks.revealLatest).not.toHaveBeenCalled()
 
-    // The composer reports only sends its transport accepted.
+    // The composer's sends reveal through its transport.
     onSubmitted()
     expect(mocks.revealLatest).toHaveBeenCalledOnce()
     mocks.queuedSteerNewest.mockReturnValue(true)

@@ -35,10 +35,8 @@ export type NativeChatStructuredComposerTransport = {
   /** Present only where the host can set this session's goal. */
   threadGoal?: { setObjective: (objective: string) => Promise<boolean> }
   onError: (message: string | null) => void
-  /** The host accepted a message, a command it runs itself, or a goal. */
+  /** A local send: brings the latest into view at the press, not when the host answers. */
   onSubmitted?: () => void
-  /** Capture this pane and reader position before waiting for acceptance. */
-  holdRevealLatest?: () => () => void
   runtime: 'local' | 'remote'
   /** The session behind this composer; a real user send relinquishes orchestration ownership. */
   sessionId: string
@@ -83,10 +81,8 @@ export type NativeChatComposerProps = {
   onSlashCommand?: (command: string, output?: string) => void
   /** The host's own answer to a command the agent must not see, or null to send it. */
   answerCommandLocally?: NativeChatLocalCommandAnswer
-  /** Anything delivered to the terminal: a message, a command or a session option. */
+  /** Anything sent to the terminal: a message, a command or a session option. */
   onSubmitted?: () => void
-  /** Capture this pane and reader position before waiting for acceptance. */
-  holdRevealLatest?: () => () => void
   /** Picker-only agent commands continue in the hosted TUI after dispatch. */
   onSwitchToTerminal?: () => void
   /** Reads the hosted TUI's current rendered screen when chat is entered. */

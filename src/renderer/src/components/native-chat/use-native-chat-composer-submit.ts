@@ -85,14 +85,13 @@ export function useNativeChatComposerSubmit(args: {
       )
       return
     }
-    const reveal = structuredTransport.holdRevealLatest?.() ?? structuredTransport.onSubmitted
+    structuredTransport.onSubmitted?.()
     const submitted = readNativeChatComposerDraft(draftScopeKey)
     void threadGoal.setObjective(objective).then((accepted) => {
       if (!accepted) {
         return
       }
       structuredTransport.onError(null)
-      reveal?.()
       setHistory((previous) => pushHistory(previous, draft))
       if (!clearNativeChatComposerDraftIfUnchanged(draftScopeKey, submitted)) {
         return

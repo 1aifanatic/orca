@@ -65,7 +65,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       onOptimisticSendCanceled,
       onSlashCommand,
       onSubmitted,
-      holdRevealLatest,
       answerCommandLocally,
       onSwitchToTerminal,
       readTerminalScreen,
@@ -226,7 +225,6 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         disabled,
         onSlashCommand,
         onSubmitted,
-        holdRevealLatest,
         resolveTarget,
         setHistory
       })

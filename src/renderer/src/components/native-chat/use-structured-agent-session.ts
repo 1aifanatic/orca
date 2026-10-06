@@ -35,7 +35,6 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
-import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
@@ -139,7 +138,8 @@ export function useStructuredAgentSession(args: {
     journalItems: transportState.journalItems,
     composerScopeKey,
     queueDelivery,
-    queuedMessageIds
+    queuedMessageIds,
+    isWorking: transportState.isWorking
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
@@ -215,12 +215,6 @@ export function useStructuredAgentSession(args: {
     composerScopeKey,
     mutate
   })
-  // A message typed during a command queues behind it on the host.
-  const send = (...input: Parameters<typeof outboxController.send>): boolean =>
-    // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
-    (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
-    rewind.admitsSend() &&
-    outboxController.send(...input)
   return {
     epoch: state.epoch,
     rewind,
@@ -259,23 +253,12 @@ export function useStructuredAgentSession(args: {
     failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
-    /** The host's queued cards, which hold their own rejected hand-offs. */
-    queuedMessageIds,
-    send,
-    /** Navigation follows the same projection that decides between a bubble and a queued card. */
-    sendFromComposer: (...input: Parameters<typeof outboxController.send>): boolean | 'queued' => {
-      if (!send(...input)) {
-        return false
-      }
-      const current = getStructuredAgentSessionOutbox(sessionId)
-      const admitted = current.at(-1)
-      return admitted &&
-        !outboxOutsideQueuedCards(current, queuedMessageIds, isWorking, queueDelivery).includes(
-          admitted
-        )
-        ? 'queued'
-        : true
-    },
+    // A message typed during a command queues behind it on the host.
+    send: (...input: Parameters<typeof outboxController.send>) =>
+      // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
+      (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
+      rewind.admitsSend() &&
+      outboxController.send(...input),
     retry: rewind.unlessBlocked(outboxController.retry),
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,

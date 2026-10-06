@@ -51,6 +51,7 @@ import {
 import { retryStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-retry'
 import { useStructuredAgentSessionOutboxFailedHere } from './use-structured-agent-session-outbox-failed-here'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
+import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
 
 const NO_QUEUE_DELIVERY: StructuredAgentSessionQueueDelivery = {
   capability: 'unsupported',
@@ -77,10 +78,13 @@ export function useStructuredAgentSessionOutbox(args: {
    *  its entry here under the draft's own id; once the host visibly holds the draft, the
    *  entry retires so the same text can never come back twice. */
   queuedMessageIds?: readonly string[]
+  /** With the queue delivery, whether a new send waits as a queued card. */
+  isWorking?: boolean
 }) {
   const {
     composerScopeKey,
     fence,
+    isWorking = false,
     journalItems,
     queueDelivery = NO_QUEUE_DELIVERY,
     queuedMessageIds,
@@ -265,8 +269,12 @@ export function useStructuredAgentSessionOutbox(args: {
     owner
   })
 
+  /** Whether the message was admitted; 'queued' when it waits as a queued card, not a bubble. */
   const send = useCallback(
-    (text: string, attachments: readonly { path: string; previewUri: string }[] = []): boolean => {
+    (
+      text: string,
+      attachments: readonly { path: string; previewUri: string }[] = []
+    ): boolean | 'queued' => {
       if (!text.trim() && attachments.length === 0) {
         return false
       }
@@ -276,9 +284,18 @@ export function useStructuredAgentSessionOutbox(args: {
         return false
       }
       setError(null)
-      return true
+      // The same projection that draws the transcript decides it.
+      const current = getStructuredAgentSessionOutbox(sessionId)
+      const admitted = current.at(-1)
+      const shown = outboxOutsideQueuedCards(
+        current,
+        queuedMessageIds ?? [],
+        isWorking,
+        queueDelivery
+      )
+      return admitted && !shown.includes(admitted) ? 'queued' : true
     },
-    [sessionId]
+    [isWorking, queueDelivery, queuedMessageIds, sessionId]
   )
 
   const { withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({

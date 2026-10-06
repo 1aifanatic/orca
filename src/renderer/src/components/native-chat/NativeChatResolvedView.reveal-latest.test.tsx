@@ -24,10 +24,7 @@ vi.mock('./use-native-chat-retained-session', () => ({
 }))
 vi.mock('./NativeChatMessageList', () => ({
   NativeChatMessageList: (props: { ref?: React.Ref<NativeChatMessageListHandle> }) => {
-    useImperativeHandle(props.ref, () => ({
-      revealLatest: stubs.revealLatest,
-      holdRevealLatest: () => stubs.revealLatest
-    }))
+    useImperativeHandle(props.ref, () => ({ revealLatest: stubs.revealLatest }))
     return null
   }
 }))
@@ -35,10 +32,15 @@ vi.mock('./use-native-chat-interactive-send', () => ({
   useNativeChatInteractiveSend: (): NativeChatInteractiveSend => ({
     sendAnswer: () => ({ settleAfterMs: 0, waitsForVerifiedDelivery: false }),
     sendRaw: () => {},
+    sendRawVerified: async () => true,
     cancelPending: () => {},
-    cancelAsk: () => {},
+    cancelAsk: async () => true,
     cancel: () => {}
   })
+}))
+// A pending question, so the pane mounts its card with the send it hands it.
+vi.mock('./use-native-chat-interactive-prompt-card', () => ({
+  useNativeChatInteractivePromptCard: () => ({ kind: 'question', prompt })
 }))
 vi.mock('./NativeChatInteractiveCard', () => ({
   NativeChatInteractiveCard: (props: { send: NativeChatInteractiveSend }) => {
@@ -53,6 +55,10 @@ vi.mock('./NativeChatComposer', () => ({
   }
 }))
 
+const prompt: AskPrompt = {
+  questions: [{ question: 'Indent with?', multiSelect: false, options: [{ label: 'Tabs' }] }]
+}
+
 const { NativeChatResolvedView } = await import('./NativeChatResolvedView')
 
 afterEach(() => {
@@ -61,10 +67,6 @@ afterEach(() => {
   stubs.composer = null
   stubs.cardSend = null
 })
-
-const prompt: AskPrompt = {
-  questions: [{ question: 'Indent with?', multiSelect: false, options: [{ label: 'Tabs' }] }]
-}
 
 describe('NativeChatResolvedView sends', () => {
   it('brings the latest into view for a composer send and a prompt answer, not a Stop', () => {
@@ -105,15 +107,16 @@ describe('NativeChatResolvedView sends', () => {
 
     stubs.composer?.onSubmitted?.()
     expect(stubs.revealLatest).toHaveBeenCalledOnce()
-    // A question answer and an approval option, then Stop: only the answers are sends.
+    // A question answer and an approval option, then Stop and a dismissal: only the answers are sends.
     stubs.cardSend?.sendAnswer(prompt, [{ indices: [0] }])
     expect(stubs.revealLatest).toHaveBeenCalledTimes(2)
     // An empty answer writes nothing, so it moves nobody.
     stubs.cardSend?.sendAnswer(prompt, [{ indices: [] }])
     expect(stubs.revealLatest).toHaveBeenCalledTimes(2)
-    stubs.cardSend?.sendRaw('1')
+    void stubs.cardSend?.sendRawVerified('1')
     expect(stubs.revealLatest).toHaveBeenCalledTimes(3)
     stubs.cardSend?.cancel()
+    void stubs.cardSend?.cancelAsk()
     expect(stubs.revealLatest).toHaveBeenCalledTimes(3)
   })
 
@@ -132,7 +135,7 @@ describe('NativeChatResolvedView sends', () => {
       />
     )
     stubs.cardSend?.sendAnswer(prompt, [{ indices: [0] }])
-    stubs.cardSend?.sendRaw('1')
+    void stubs.cardSend?.sendRawVerified('1')
     expect(stubs.cardSend).not.toBeNull()
     expect(stubs.revealLatest).not.toHaveBeenCalled()
   })

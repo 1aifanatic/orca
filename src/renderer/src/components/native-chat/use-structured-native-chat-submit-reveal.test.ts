@@ -9,6 +9,7 @@ it('reveals before Retry, but waits for a successful queue Resume', async () => 
     respond: vi.fn(async () => null),
     retry: vi.fn(() => order.push('retry')),
     queuedMessages: {
+      queueCapable: true,
       cards: [],
       pause: null,
       resuming: false,
@@ -24,10 +25,7 @@ it('reveals before Retry, but waits for a successful queue Resume', async () => 
   }
   const retryLaunch = (): number => order.push('launch')
   const { result } = renderHook(() => useStructuredNativeChatSubmitReveal(controller, retryLaunch))
-  result.current.messageListRef.current = {
-    revealLatest: () => order.push('reveal'),
-    holdRevealLatest: () => () => order.push('reveal')
-  }
+  result.current.messageListRef.current = { revealLatest: () => order.push('reveal') }
 
   act(() => result.current.retryDelivery('client-1'))
   act(() => result.current.retryLaunch())

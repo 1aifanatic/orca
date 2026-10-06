@@ -3,7 +3,8 @@ import { emitNativeChatMessageSent } from '@/lib/native-chat-telemetry'
 import { reportStructuredSessionUserInput } from '@/lib/worker-terminal-takeover-report'
 import {
   isStructuredAgentSessionComposerCommand,
-  isStructuredAgentSessionGoalCommand
+  isStructuredAgentSessionGoalCommand,
+  structuredAgentSessionCommandChangesConversation
 } from '../../../../shared/structured-agent-session-composer'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import { dispatchNativeChatStructuredComposerText } from './native-chat-structured-composer-dispatch'
@@ -63,7 +64,10 @@ export function useNativeChatStructuredComposerSend({
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return
       }
-      const reveal = structuredTransport.holdRevealLatest?.() ?? structuredTransport.onSubmitted
+      // A conversation command reveals at the press, not after its round trip; options move nothing.
+      if (hostCommand && structuredAgentSessionCommandChangesConversation(text)) {
+        structuredTransport.onSubmitted?.()
+      }
       const submitted = readNativeChatComposerDraft(draftScopeKey)
       void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
         .then(({ accepted, error, revealsTranscript }) => {
@@ -73,7 +77,7 @@ export function useNativeChatStructuredComposerSend({
           }
           emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
           if (revealsTranscript) {
-            reveal?.()
+            structuredTransport.onSubmitted?.()
           }
           // A real user send is a takeover, exactly as typing into a worker's pane is. Only past
           // `accepted`, and only from this hook: the outbox dispatcher retries and would re-fire,

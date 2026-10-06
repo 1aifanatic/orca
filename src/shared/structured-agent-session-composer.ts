@@ -43,8 +43,6 @@ export type StructuredAgentSessionComposerOptions = {
 }
 
 export type StructuredAgentSessionCommandOutcome = {
-  /** Picker actions produce no transcript content. This is local dispatch policy, never wire state. */
-  revealsTranscript?: boolean
   handled: boolean
   accepted: boolean
   error: string | null
@@ -110,6 +108,16 @@ export function isStructuredAgentSessionComposerCommand(
 /** `/goal …`, which the host answers only where it can set this session's goal. */
 export function isStructuredAgentSessionGoalCommand(text: string): boolean {
   return commandParts(text)?.name === 'goal'
+}
+
+/** `/clear`, `/compact` and `/goal …` change the conversation; option and picker commands do not. */
+export function structuredAgentSessionCommandChangesConversation(text: string): boolean {
+  const command = commandParts(text)
+  return (
+    command?.name === 'clear' ||
+    command?.name === 'compact' ||
+    (command?.name === 'goal' && command.argument !== '')
+  )
 }
 
 /** `/goal` with nothing after it: an entrance to goal mode, not an objective. */
@@ -184,7 +192,6 @@ export async function dispatchStructuredAgentSessionComposerCommand(
     return {
       handled: true,
       accepted: opened,
-      revealsTranscript: false,
       error: opened ? null : `Could not open the ${command.name} picker.`
     }
   }
