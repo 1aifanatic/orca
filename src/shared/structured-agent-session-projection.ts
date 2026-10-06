@@ -182,6 +182,7 @@ export function projectStructuredItemToNativeChat(
   const projected = itemBlocks(item)
   const sentAs = item.body.kind === 'message' ? item.body.sentAs : undefined
   const lifecycle = item.body.kind === 'message' ? messageLifecycle(item.body) : {}
+  const command = item.body.kind === 'message' ? item.body.command : undefined
   const message: NativeChatMessage | null = projected
     ? {
         ...agentJournalItemRowOrigin(item),
@@ -190,7 +191,8 @@ export function projectStructuredItemToNativeChat(
         blocks: projected.blocks,
         // A send mode this build cannot name renders as an ordinary message.
         ...(sentAs !== undefined && isAgentJournalMessageSendMode(sentAs) ? { sentAs } : {}),
-        ...lifecycle
+        ...lifecycle,
+        ...(command ? { command } : {})
       }
     : null
   projectedItems.set(item, message)
