@@ -1,0 +1,390 @@
+/**
+ * Repro probe: after a paired desktop host quits and relaunches (daemon survives), launching Claude
+ * from the client's "New tab" menu must start exactly one agent on the host AND show that tab on the
+ * client. Uses a fake `claude` on a sanitized PATH; the real CLI is never reachable.
+ *
+ * Run:
+ *   ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test \
+ *     tests/e2e/paired-remote-terminal-host-restart-agent-create.spec.ts \
+ *     --config tests/playwright.config.ts --project electron-headless --workers=1
+ */
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import type { ElectronApplication, Page } from '@stablyai/playwright-test'
+import { expect, test } from './helpers/orca-app'
+import { TEST_REPO_PATH_FILE } from './global-setup'
+import {
+  createRuntimeDesktopPairingOffer,
+  launchPairedElectronClient,
+  type PairedElectronClient
+} from './helpers/paired-electron-client'
+import { attachRepoAndOpenTerminal, createRestartSession } from './helpers/orca-restart'
+import {
+  holdWindowGraphPublication,
+  releaseWindowGraphPublication
+} from './helpers/hold-window-graph-publication'
+
+const scratch = mkdtempSync(path.join(os.tmpdir(), 'orca-paired-agent-create-'))
+const fakeBin = path.join(scratch, 'bin')
+const launchLog = path.join(scratch, 'fake-claude-launches.log')
+mkdirSync(fakeBin)
+writeFileSync(
+  path.join(fakeBin, 'claude'),
+  [
+    '#!/bin/sh',
+    'case "$1" in --version|-v) echo "2.1.0 (Claude Code)"; exit 0;; esac',
+    `echo "launch $$" >> '${launchLog}'`,
+    "printf 'FAKE CLAUDE READY\\r\\n'",
+    'exec cat'
+  ].join('\n')
+)
+chmodSync(path.join(fakeBin, 'claude'), 0o755)
+// Why: the inherited PATH can reach a developer's real `claude`; the host only sees the fake.
+const SANITIZED_PATH = [
+  fakeBin,
+  path.dirname(process.execPath),
+  '/usr/bin',
+  '/bin',
+  '/usr/sbin',
+  '/sbin'
+].join(path.delimiter)
+
+test.afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true })
+})
+
+function seededRepoPathOrSkip(): string {
+  const repoPath = existsSync(TEST_REPO_PATH_FILE)
+    ? readFileSync(TEST_REPO_PATH_FILE, 'utf8').trim()
+    : ''
+  test.skip(!repoPath || !existsSync(repoPath), 'Global setup did not produce a seeded test repo')
+  return repoPath
+}
+
+function fakeClaudeLaunchCount(): number {
+  try {
+    return readFileSync(launchLog, 'utf8').split('\n').filter(Boolean).length
+  } catch {
+    return 0
+  }
+}
+
+type Census = {
+  hostInventoryTabs: number
+  hostWindowTabs: number
+  clientTabs: number
+  clientVisibleTabs: number
+  launches: number
+}
+
+type InventoryTab = { type: string; parentTabId?: string; terminal?: string | null; title?: string }
+
+async function hostInventory(
+  client: PairedElectronClient,
+  worktreeId: string
+): Promise<InventoryTab[]> {
+  return client.page.evaluate(
+    async ({ environmentId, worktreeId }) => {
+      const response = await window.api.runtimeEnvironments.call({
+        selector: environmentId,
+        method: 'session.tabs.list',
+        params: { worktree: `id:${worktreeId}` }
+      })
+      if (!response.ok) {
+        throw new Error(`${response.error.code}: ${response.error.message}`)
+      }
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test-only read of the RPC shape.
+      return (response.result as { tabs: InventoryTab[] }).tabs
+    },
+    { environmentId: client.environmentId, worktreeId }
+  )
+}
+
+async function census(
+  host: Page,
+  client: PairedElectronClient,
+  worktreeId: string
+): Promise<Census> {
+  const inventory = await hostInventory(client, worktreeId)
+  const hostWindowTabs = await host.evaluate(
+    (id) => window.__store?.getState().tabsByWorktree[id]?.length ?? 0,
+    worktreeId
+  )
+  const mirror = await client.page.evaluate(
+    (id) => ({
+      clientTabs: window.__store?.getState().tabsByWorktree[id]?.length ?? 0,
+      clientVisibleTabs: document.querySelectorAll('[data-testid="sortable-tab"]').length
+    }),
+    worktreeId
+  )
+  return {
+    hostInventoryTabs: new Set(
+      inventory.filter((tab) => tab.type === 'terminal').map((tab) => tab.parentTabId)
+    ).size,
+    hostWindowTabs,
+    ...mirror,
+    launches: fakeClaudeLaunchCount()
+  }
+}
+
+async function readTerminalTail(client: PairedElectronClient, terminal: string): Promise<string> {
+  return client.page.evaluate(
+    async ({ environmentId, terminal }) => {
+      const response = await window.api.runtimeEnvironments.call({
+        selector: environmentId,
+        method: 'terminal.read',
+        params: { terminal }
+      })
+      return JSON.stringify(response.ok ? response.result : response.error).slice(-1200)
+    },
+    { environmentId: client.environmentId, terminal }
+  )
+}
+
+const resolvedClaudePath = path.join(scratch, 'resolved-claude.txt')
+
+// Why: refuse to launch anything unless the host's own shell resolves `claude` to the fake.
+async function assertHostResolvesFakeClaude(
+  client: PairedElectronClient,
+  worktreeId: string
+): Promise<void> {
+  await client.page.evaluate(
+    async ({ environmentId, worktreeId, command }) => {
+      const response = await window.api.runtimeEnvironments.call({
+        selector: environmentId,
+        method: 'session.tabs.createTerminal',
+        params: {
+          worktree: `id:${worktreeId}`,
+          command,
+          activate: false,
+          select: false,
+          navigation: 'caller'
+        }
+      })
+      if (!response.ok) {
+        throw new Error(`${response.error.code}: ${response.error.message}`)
+      }
+    },
+    {
+      environmentId: client.environmentId,
+      worktreeId,
+      command: `command -v claude > '${resolvedClaudePath}'`
+    }
+  )
+  await expect
+    .poll(
+      () => (existsSync(resolvedClaudePath) ? readFileSync(resolvedClaudePath, 'utf8').trim() : ''),
+      {
+        timeout: 30_000,
+        message: 'Host shell never reported where claude resolves'
+      }
+    )
+    .not.toBe('')
+  const resolved = readFileSync(resolvedClaudePath, 'utf8').trim()
+  if (resolved !== path.join(fakeBin, 'claude')) {
+    throw new Error(`Refusing to launch: host shell resolves claude to ${resolved}, not the fake`)
+  }
+}
+
+async function showWorktree(page: Page, worktreeId: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (id) =>
+            window.__store
+              ?.getState()
+              .allWorktrees()
+              .some((worktree) => worktree.id === id) ?? false,
+          worktreeId
+        ),
+      { timeout: 60_000, message: 'Paired client never saw the host worktree' }
+    )
+    .toBe(true)
+  await page.evaluate((id) => {
+    const state = window.__store?.getState()
+    state?.setActiveView('terminal')
+    state?.setActiveWorktree(id)
+  }, worktreeId)
+}
+
+async function launchClaudeFromNewTabMenu(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'New tab' }).first().click()
+  const claude = page.getByRole('menuitem', { name: /^Claude$/ }).first()
+  try {
+    await claude.waitFor({ timeout: 15_000 })
+  } catch (error) {
+    const options = await page.getByRole('option').allTextContents()
+    const menu = await page
+      .locator('[role="menu"], [role="dialog"], [role="listbox"]')
+      .allTextContents()
+    throw new Error(
+      `No Claude option. options=${JSON.stringify(options)} menus=${JSON.stringify(menu).slice(0, 1500)}`,
+      { cause: error }
+    )
+  }
+  await claude.click()
+}
+
+async function expectLaunchMirrored(
+  host: Page,
+  client: PairedElectronClient,
+  worktreeId: string,
+  before: Census,
+  label: string
+): Promise<Census> {
+  let last = before
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await census(host, client, worktreeId)
+          return (
+            last.launches === before.launches + 1 &&
+            last.hostInventoryTabs === before.hostInventoryTabs + 1 &&
+            last.clientTabs === before.clientTabs + 1 &&
+            last.clientVisibleTabs === before.clientVisibleTabs + 1
+          )
+        },
+        { timeout: 30_000 }
+      )
+      .toBe(true)
+  } catch {
+    const inventory = await hostInventory(client, worktreeId)
+    const tails: string[] = []
+    for (const tab of inventory) {
+      if (tab.type === 'terminal' && tab.terminal) {
+        tails.push(`${tab.title}: ${await readTerminalTail(client, tab.terminal)}`)
+      }
+    }
+    const clientTabs = await client.page.evaluate(
+      (id) =>
+        (window.__store?.getState().tabsByWorktree[id] ?? []).map((tab) => ({
+          id: tab.id,
+          title: tab.title
+        })),
+      worktreeId
+    )
+    throw new Error(
+      `${label}: Claude launch was not mirrored.\nbefore=${JSON.stringify(before)}\nafter=${JSON.stringify(last)}\nclientTabs=${JSON.stringify(clientTabs)}\nhostInventory=${JSON.stringify(inventory)}\ntails=${tails.join('\n---\n')}`
+    )
+  }
+  return last
+}
+
+test('a Claude tab launched from the client after a host relaunch appears on the client', async (// oxlint-disable-next-line no-empty-pattern -- This lifecycle test owns both host launches.
+{}, testInfo) => {
+  test.setTimeout(360_000)
+  const repoPath = seededRepoPathOrSkip()
+  // Why: macOS terminals launch through `login -f`, which restores the real HOME and shell rc (and
+  // with them the real PATH); disabling it keeps the isolated HOME and sanitized PATH in the shell.
+  const session = createRestartSession(testInfo, {
+    PATH: SANITIZED_PATH,
+    ORCA_DISABLE_MACOS_LOGIN_SHELL: '1'
+  })
+  let firstHost: ElectronApplication | null = null
+  let secondHost: ElectronApplication | null = null
+  let client: PairedElectronClient | null = null
+  try {
+    const first = await session.launch()
+    firstHost = first.app
+    const worktreeId = await attachRepoAndOpenTerminal(first.page, repoPath)
+    client = await launchPairedElectronClient(
+      await createRuntimeDesktopPairingOffer(first.page),
+      testInfo,
+      'host-restart-agent-create'
+    )
+    await showWorktree(client.page, worktreeId)
+    await expect(client.page.locator('[data-testid="sortable-tab"]').first()).toBeVisible({
+      timeout: 60_000
+    })
+
+    await assertHostResolvesFakeClaude(client, worktreeId)
+    // Control: the same launch mirrors before any restart.
+    const beforeControl = await census(first.page, client, worktreeId)
+    await launchClaudeFromNewTabMenu(client.page)
+    await expectLaunchMirrored(first.page, client, worktreeId, beforeControl, 'before restart')
+
+    await session.close(firstHost)
+    firstHost = null
+    const held = process.env.ORCA_E2E_AGENT_CREATE_NO_HOLD !== '1'
+    const second = await session.launch(
+      held ? { beforeFirstWindow: holdWindowGraphPublication } : {}
+    )
+    secondHost = second.app
+    if (held) {
+      await expect
+        .poll(
+          () =>
+            client!.page.evaluate(
+              () =>
+                document
+                  .querySelector('[data-pty-recovery-state]')
+                  ?.getAttribute('data-pty-recovery-state') ?? null
+            ),
+          { timeout: 20_000 }
+        )
+        .toMatch(/ended|connected|disconnected/)
+        .catch(() => undefined)
+      expect(await releaseWindowGraphPublication(second.app)).toBe(0)
+    }
+    await second.page.waitForFunction(
+      () => window.__store?.getState().workspaceSessionReady === true,
+      undefined,
+      { timeout: 30_000 }
+    )
+    await expect(
+      client.page.locator('[data-terminal-remote-runtime-reconnect-banner]')
+    ).toHaveCount(0, { timeout: 90_000 })
+    // Optional sleep simulation: suspend the host and/or client process trees, then resume.
+    const pause = process.env.ORCA_E2E_AGENT_CREATE_PAUSE
+    if (pause) {
+      const seconds = Number(process.env.ORCA_E2E_AGENT_CREATE_PAUSE_SECONDS ?? '90')
+      const pids = [
+        ...(pause.includes('host') ? [second.app.process().pid!] : []),
+        ...(pause.includes('client') ? [client.app.process().pid!] : [])
+      ]
+      for (const pid of pids) {
+        process.kill(pid, 'SIGSTOP')
+      }
+      await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+      for (const pid of pids) {
+        process.kill(pid, 'SIGCONT')
+      }
+    }
+    await showWorktree(client.page, worktreeId)
+    // Settle: host and client agree on the existing tabs before the new launch.
+    let settled = await census(second.page, client, worktreeId)
+    await expect
+      .poll(
+        async () => {
+          settled = await census(second.page, client!, worktreeId)
+          return settled.hostInventoryTabs > 0 && settled.hostInventoryTabs === settled.clientTabs
+        },
+        { timeout: 30_000, message: 'Client never re-converged with the relaunched host' }
+      )
+      .toBe(true)
+    await launchClaudeFromNewTabMenu(client.page)
+    await expectLaunchMirrored(second.page, client, worktreeId, settled, 'after restart')
+  } finally {
+    if (client) {
+      await client.dispose()
+    }
+    if (secondHost) {
+      await session.close(secondHost)
+    }
+    if (firstHost) {
+      await session.close(firstHost)
+    }
+    await session.dispose()
+  }
+})
