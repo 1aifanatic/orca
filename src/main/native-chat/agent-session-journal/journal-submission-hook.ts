@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3'
+import type Database from '../../sqlite/sync-database'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type { JournalQueuedMessages } from './journal-queued-messages'
 import type { JournalRowTransactionHook } from './journal-row-writer'
