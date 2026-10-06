@@ -36,6 +36,8 @@ function build(headless: boolean) {
     setAutomationService: vi.fn(),
     notifyAutomationsChanged: vi.fn(),
     getTerminalHandleForPaneKey: vi.fn((paneKey: string) => `handle:${paneKey}`),
+    // Each run's pane still holds its own PTY unless a test restarts it.
+    getTerminalPtyIdForHandle: vi.fn((handle: string) => `pty-${handle.split('tab-')[1]?.[0]}`),
     // pty-1's terminal has a client on it: typed into or being viewed.
     readTerminalClientUse: vi.fn((ptyId: string) => (ptyId === 'pty-1' ? 'used' : 'unused')),
     closeTerminal: vi.fn(async (_handle: string) => ({})),
@@ -75,6 +77,23 @@ describe('headless automation service run terminal retention', () => {
     runtime.closeTerminal.mockClear()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS * 2)
     expect(runtime.closeTerminal).not.toHaveBeenCalled()
+  })
+
+  it('closes nothing in a pane a restart gave a new PTY, and still forgets the old one', async () => {
+    vi.useFakeTimers()
+    const { runtime, service } = build(true)
+    // The oldest run's pane was restarted (exited pane, account switch): a user's PTY lives there.
+    runtime.getTerminalPtyIdForHandle.mockImplementation((handle: string) =>
+      handle === 'handle:tab-0:1' ? 'pty-user' : `pty-${handle.split('tab-')[1]?.[0]}`
+    )
+    service.start()
+    await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS + 2 * 60_000)
+
+    expect(runtime.closeTerminal).not.toHaveBeenCalled()
+    expect(service.markDispatchResult).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'r0', terminalPaneKey: null, terminalPtyId: null })
+    )
+    service.stop()
   })
 
   it('leaves run terminals to the renderer on the desktop', async () => {

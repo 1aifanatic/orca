@@ -123,9 +123,16 @@ function bindHeadlessRunTerminalRetention(
     listRuns: () => store.listAutomationRuns(),
     terminalClientUse: (run) =>
       run.terminalPtyId ? runtime.readTerminalClientUse(run.terminalPtyId) : 'unknown',
-    closeRunTerminal: async (paneKey) => {
-      const handle = runtime.getTerminalHandleForPaneKey(paneKey)
-      if (!handle) {
+    closeRunTerminal: async (run) => {
+      const handle = run.terminalPaneKey
+        ? runtime.getTerminalHandleForPaneKey(run.terminalPaneKey)
+        : null
+      // Only the run's own process: a restarted pane holds a new PTY a user may be working in.
+      if (
+        !handle ||
+        !run.terminalPtyId ||
+        runtime.getTerminalPtyIdForHandle(handle) !== run.terminalPtyId
+      ) {
         return false
       }
       // The run's pane only: a pane a user split into the same tab is theirs.

@@ -19,8 +19,11 @@ export type HeadlessRunTerminalRetentionDeps = {
    * a used terminal is the user's now; `unknown` keeps it too.
    */
   terminalClientUse: (run: AutomationRun) => 'used' | 'unused' | 'unknown'
-  /** Closes the run's own pane, leaving any pane a user split into that tab; false when gone. */
-  closeRunTerminal: (paneKey: string) => Promise<boolean>
+  /**
+   * Closes the run's own pane, leaving any pane a user split into that tab. False, closing
+   * nothing, when the pane is gone or now holds another PTY (a restart put a new one there).
+   */
+  closeRunTerminal: (run: AutomationRun) => Promise<boolean>
   /** Drops the closed terminal from the run, keeping its status, error and output. */
   forgetRunTerminal: (run: AutomationRun) => Promise<void>
   now?: () => number
@@ -63,7 +66,7 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
           continue
         }
         try {
-          await deps.closeRunTerminal(run.terminalPaneKey!)
+          await deps.closeRunTerminal(run)
           await deps.forgetRunTerminal(run)
           finishedSeenAt.delete(run.id)
         } catch (error) {

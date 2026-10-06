@@ -32,8 +32,8 @@ function harness(runs: AutomationRun[]) {
   const retention = createHeadlessRunTerminalRetention({
     listRuns: () => runs.filter((run) => !forgotten.some((gone) => gone.id === run.id)),
     terminalClientUse: (run) => use.get(run.id) ?? 'unused',
-    closeRunTerminal: async (paneKey) => {
-      closed.push(paneKey)
+    closeRunTerminal: async (run) => {
+      closed.push(run.terminalPaneKey ?? '')
       return true
     },
     forgetRunTerminal: async (run) => {

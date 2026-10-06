@@ -95,6 +95,11 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     return facts.freshSpawn ? 'unused' : 'unknown'
   }
 
+  /** The PTY a terminal handle drives now; a restarted pane answers with its new PTY. */
+  getTerminalPtyIdForHandle(handle: string): string | null {
+    return this.getLivePtyForHandle(handle)?.pty.ptyId ?? null
+  }
+
   /** Agent status rows this host holds for a pane, from hooks, OSC and titles alike. */
   getAgentStatusRowsForPane(paneKey: string): AgentStatusIpcPayload[] {
     return this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []
