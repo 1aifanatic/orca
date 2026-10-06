@@ -75,7 +75,6 @@ export class OrcaRuntimeWithSerializeHeadlessTerminalBuffer extends OrcaRuntimeW
 
   protected disposeHeadlessTerminal(ptyId: string): void {
     this.headlessHydrationState.delete(ptyId)
-    this.rendererSeedsByPtyId.delete(ptyId)
     const state = this.headlessTerminals.get(ptyId)
     if (!state) {
       return

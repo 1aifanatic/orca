@@ -110,19 +110,32 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
         }
       }
     })
-    const seed = state.writeChain.then(() => seeded)
-    this.rendererSeedsByPtyId.set(ptyId, seed)
-    return seed
+    return state.writeChain.then(() => seeded)
   }
 
   /** Public: a phone fit resizes the PTY, but an idle TUI sends no byte to hydrate on. Resolves
    *  true once the model holds the pane's screen reflowed onto the PTY's current grid. */
   hydrateHeadlessTerminalFromRenderer(ptyId: string): Promise<boolean> {
-    // Why join: a resize repaint can run the on-data seed first; its result answers this caller too.
+    const priorHydration = this.headlessHydrationState.get(ptyId)
+    const seed = this.maybeHydrateHeadlessFromRenderer(ptyId)
+    if (seed) {
+      return seed
+    }
+    // Why: a resize repaint can run the on-data seed before this call; join its outcome instead.
+    return priorHydration ? this.readRendererSeedOutcome(ptyId) : Promise.resolve(false)
+  }
+
+  private async readRendererSeedOutcome(ptyId: string): Promise<boolean> {
+    const state = this.headlessTerminals.get(ptyId)
+    if (!state) {
+      return false
+    }
+    await state.writeChain
+    // Why: a failed seed also ends 'done'; treated as seeded, since that model is on the PTY grid.
     return (
-      this.maybeHydrateHeadlessFromRenderer(ptyId) ??
-      this.rendererSeedsByPtyId.get(ptyId) ??
-      Promise.resolve(false)
+      this.headlessHydrationState.get(ptyId) === 'done' &&
+      this.headlessTerminals.get(ptyId) === state &&
+      !this.providerSnapshotPreferredPtys.has(ptyId)
     )
   }
 

@@ -41,10 +41,6 @@ const CLEARED_BY_REAPER_HELPER: Record<string, { helper: string; module: string 
   agentPromptPermissionSequenceByPtyId: {
     helper: 'advancePtyLifecycleGeneration',
     module: 'src/main/runtime/orca-runtime-record-agent-prompt-lifecycle-state.ts'
-  },
-  rendererSeedsByPtyId: {
-    helper: 'disposeHeadlessTerminal',
-    module: 'src/main/runtime/orca-runtime-serialize-headless-terminal-buffer.ts'
   }
 }
 

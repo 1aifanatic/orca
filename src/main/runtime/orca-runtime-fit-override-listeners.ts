@@ -130,8 +130,6 @@ export class OrcaRuntimeWithFitOverrideListeners extends OrcaRuntimeWithStopRequ
   // Absent  → hydration has not been considered yet for this PTY.
   // See docs/mobile-prefer-renderer-scrollback.md.
   protected headlessHydrationState = new Map<string, 'pending' | 'done'>()
-  /** The model's renderer seed, resolving true once written; lives as long as the model. */
-  protected rendererSeedsByPtyId = new Map<string, Promise<boolean>>()
 
   // Why: mobile-fit overrides are keyed by ptyId (not terminal handle) because
   // handles can be reissued while the PTY identity is stable. In-memory only —
