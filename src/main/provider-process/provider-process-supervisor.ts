@@ -1,5 +1,3 @@
-import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
-import { waitForProcessExitUntil } from './provider-process-exit-deadline'
 import { resolveProviderChildEnv, type ProviderProcessLaunch } from './provider-process-launch'
 import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
 
@@ -175,66 +173,12 @@ child.once('exit', (code, signal) => {
  */
 export type ProviderSupervisorLifetime = 'session' | 'one-shot'
 
-export type ProviderStopInput = {
-  /** Asks the child to stop: a SIGTERM, or the stdin end that closes a session. */
-  request: () => void
-  exitPromise: Promise<void>
-  exited: () => boolean
-  /** Runs only if the child outlives its wait. */
-  force: () => Promise<unknown>
-  /** The child is the supervisor; a direct (Windows) child is waited on for `directWaitMs`. */
-  supervised: boolean
-  directWaitMs?: number
-  slackMs?: number
-}
-
-/**
- * Stops a provider child, forcing it only after its wait. A supervisor gets its full stop time:
- * forcing it any sooner kills it mid-ladder and orphans the provider group. True when it forced.
- */
-export async function stopSupervisedProvider(input: ProviderStopInput): Promise<boolean> {
-  input.request()
-  if (input.exited()) {
-    return false
-  }
-  await waitForProcessExitUntil(
-    input.exitPromise,
-    input.supervised
-      ? PROVIDER_SUPERVISOR_MAX_STOP_MS + (input.slackMs ?? 0)
-      : (input.directWaitMs ?? 0)
-  )
-  if (input.exited()) {
-    return false
-  }
-  await input.force()
-  return true
-}
-
 /**
  * How a provider's owner closes it: by ending its stdin, after which a session gets its grace (a
- * drain), or by ending stdin and sending SIGTERM at once. A gone owner gets the same request.
+ * drain), or by ending stdin and sending SIGTERM at once (`signalSupervisorOnClose` in its close
+ * policy). A gone owner gets the same request.
  */
 export type ProviderCloseRequest = 'stdin-end' | 'stdin-end-and-sigterm'
-
-/**
- * Makes a provider's close request. Only a supervisor turns SIGTERM into its ladder; a direct
- * (Windows) child gets the stdin end alone, since a SIGTERM there is TerminateProcess.
- */
-export function requestProviderClose(input: {
-  child: Pick<ChildProcessHandle, 'stdin' | 'kill'>
-  closeRequest: ProviderCloseRequest
-  supervised: boolean
-  exited: () => boolean
-}): void {
-  try {
-    input.child.stdin?.end()
-  } catch {
-    // Already destroyed; the caller's wait and force still run.
-  }
-  if (input.closeRequest === 'stdin-end-and-sigterm' && input.supervised && !input.exited()) {
-    input.child.kill('SIGTERM')
-  }
-}
 
 export type ProviderSupervisorOptions = {
   cwd?: string

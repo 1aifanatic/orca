@@ -1,32 +1,41 @@
 import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
-import { stopSupervisedProvider } from './provider-process-supervisor'
+import {
+  closeProviderProcess,
+  rootOnlyProviderClosePolicy,
+  type ProviderProcessCloseResult
+} from './provider-process-close'
+import type { ProviderCloseRequest } from './provider-process-supervisor'
 import { terminateProviderProcessTree } from './provider-process-teardown'
 
-type SupervisedChild = Pick<ChildProcessHandle, 'pid' | 'kill' | 'exitCode' | 'signalCode' | 'once'>
+type SupervisedChild = Pick<
+  ChildProcessHandle,
+  'pid' | 'kill' | 'stdin' | 'exitCode' | 'signalCode' | 'once'
+>
 
 /**
- * Stops a provider supervisor child: `request` asks it to stop (SIGTERM unless given), and its
- * tree is forced, filed under `site`, only after the supervisor's full stop time. True when forced.
+ * Closes a supervised child that is not a managed provider process: the shared close, with the
+ * root-only policy, its tree forced (filed under `site`) only after the supervisor's full stop.
  */
 export async function stopSupervisedChildProcess(
   child: SupervisedChild,
-  { site, request = () => child.kill('SIGTERM') }: { site: string; request?: () => void }
-): Promise<boolean> {
+  {
+    site,
+    closeRequest = 'stdin-end-and-sigterm'
+  }: { site: string; closeRequest?: ProviderCloseRequest }
+): Promise<ProviderProcessCloseResult> {
   const exited = (): boolean => child.exitCode !== null || child.signalCode !== null
   if (exited()) {
-    return false
+    return { root: 'exited', tree: null }
   }
-  return stopSupervisedProvider({
-    request: () => {
-      try {
-        request()
-      } catch {
-        // The process may exit between the exit check and the request.
-      }
-    },
+  return closeProviderProcess({
+    child,
     exitPromise: new Promise<void>((resolve) => child.once('exit', () => resolve())),
-    exited,
-    force: () => terminateProviderProcessTree(child, { site }),
-    supervised: true
+    rootVerdict: () => (exited() ? 'exited' : 'live'),
+    supervised: true,
+    policy: {
+      ...rootOnlyProviderClosePolicy(true),
+      signalSupervisorOnClose: closeRequest === 'stdin-end-and-sigterm'
+    },
+    terminateTree: () => terminateProviderProcessTree(child, { site })
   })
 }
