@@ -5,8 +5,7 @@ import type {
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
 import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
-import { isRecoverableBrowserHostLeaseError } from './browser-host-admission-recovery'
-import { isBrowserHostLeaseContactLost } from './browser-host-lease-contact-loss'
+import { browserHostAnswer, isBrowserHostRefusal } from './browser-host-admission-recovery'
 import {
   asCompositionError,
   closeBrowserClientHostComposition,
@@ -169,7 +168,8 @@ export class PairedRuntimeBrowserClientHostComposition<
             publishedInventory?.length &&
             authority.pageReconciliationProtocolVersion !== 1
           ) {
-            throw new Error('browser_client_page_reconciliation_unsupported')
+            // Read from the runtime's own ready answer, so it is as final as a refusal.
+            throw browserHostAnswer(new Error('browser_client_page_reconciliation_unsupported'))
           }
           this.routeSets.activate(input, authority)
           this.lastAuthority = authority
@@ -235,14 +235,12 @@ export class PairedRuntimeBrowserClientHostComposition<
     }
   }
 
-  /** No answer, lost contact or a replaced runtime is waited out; a refusal is final. */
+  /** Only the runtime's own refusal is final; anything else may be lost contact and is waited out. */
   private parkOrFail(error: Error): void {
     if (
       !this.closed &&
       this.lastAuthority !== null &&
-      (isBrowserHostLeaseContactLost(error) ||
-        isBrowserClientHostAuthorityReplaced(error) ||
-        isRecoverableBrowserHostLeaseError(error))
+      (!isBrowserHostRefusal(error) || isBrowserClientHostAuthorityReplaced(error))
     ) {
       this.park(error)
       return

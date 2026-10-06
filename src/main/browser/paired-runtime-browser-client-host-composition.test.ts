@@ -5,6 +5,8 @@ import type {
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
 import { BrowserHostLeaseContactLostError } from './browser-host-lease-contact-loss'
+import { browserHostAnswer } from './browser-host-admission-recovery'
+import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
 import { BROWSER_CLIENT_HOST_AUTHORITY_MISMATCH_CODE } from '../../shared/browser-client-host-protocol'
 import { PairedRuntimeBrowserClientHostComposition } from './paired-runtime-browser-client-host-composition'
 
@@ -267,7 +269,7 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
   it('fences navigation and routes before terminal host cleanup can wait', async () => {
     const rig = createRig()
     const composition = rig.createComposition()
-    const error = new Error('terminal authority loss')
+    const error = hostRefusal()
     await composition.start()
 
     rig.hostOptions.onError?.(error)
@@ -319,17 +321,40 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     }
   })
 
-  it('still tears down immediately for a host error that is not lost contact', async () => {
+  it('tears down immediately for a refusal the runtime itself answered with', async () => {
     const rig = createRig()
     const composition = rig.createComposition()
     await composition.start()
-    const fatal = new Error('Stale browser host page command')
+    const fatal = hostRefusal()
 
     rig.hostOptions.onError?.(fatal)
 
     expect(composition.isParked).toBe(false)
     expect(rig.onError).toHaveBeenCalledWith(fatal)
     await composition.whenClosed()
+  })
+
+  it.each([
+    ['an unknown local error', () => new Error('Stale browser host page command')],
+    [
+      'a host-sent recoverable code',
+      () => browserHostAnswer(new RemoteRuntimeClientError('runtime_unavailable', 'restarting'))
+    ],
+    [
+      'a host-sent capacity code',
+      () => browserHostAnswer(new RemoteRuntimeClientError('runtime_busy', 'lease capacity'))
+    ]
+  ])('parks on %s instead of treating it as gone', async (_label, error) => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+
+    rig.hostOptions.onError?.(error())
+
+    expect(composition.isParked).toBe(true)
+    expect(rig.onError).not.toHaveBeenCalled()
+    expect(rig.executor.close).not.toHaveBeenCalled()
+    await composition.close()
   })
 
   it('re-attaches a parked composition in place when the runtime can rekey kept guests', async () => {
@@ -451,7 +476,7 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     const composition = rig.createComposition()
     await composition.start()
     rig.hostOptions.onError?.(contactLostError())
-    const refusal = Object.assign(new Error('pairing revoked'), { code: 'unauthorized' })
+    const refusal = hostRefusal()
     rig.failNextStart(refusal)
 
     await expect(composition.resume()).rejects.toThrow('pairing revoked')
@@ -783,6 +808,10 @@ function contactLostError(): Error {
   return new BrowserHostLeaseContactLostError(
     new Error('Browser host lease reconnect grace expired.')
   )
+}
+
+function hostRefusal(): Error {
+  return browserHostAnswer(new RemoteRuntimeClientError('unauthorized', 'pairing revoked'))
 }
 
 function unreachableError(): Error {
