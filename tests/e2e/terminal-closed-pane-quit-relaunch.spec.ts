@@ -55,7 +55,7 @@ async function waitForBoundPanes(page: Page, count: number): Promise<BoundPane[]
 /** Closes the focused pane through the user's chord, confirming the stop prompt if one appears. */
 async function closeFocusedPaneWithChord(page: Page, panesBefore: number): Promise<void> {
   await focusActiveTerminalInput(page)
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+Shift+w')
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+w')
   const confirm = page.getByRole('button', { name: 'Stop and Close' })
   await expect
     .poll(
