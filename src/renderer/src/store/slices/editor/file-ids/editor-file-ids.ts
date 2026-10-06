@@ -5,6 +5,7 @@ import { toSshExecutionHostId } from '../../../../../../shared/execution-host'
 import { areLocalWindowsWslPathAliases } from '../../../../../../shared/cross-platform-path'
 import { editorDocumentIdentityKey, runtimeOwnerKey } from './editor-document-identity'
 import { getConnectionIdForFileFromState } from '@/lib/connection-owner-resolution'
+import { getPersistedEditorOwnerFields } from '@/lib/editor-file-operation-owner'
 import { getEditorModelOwnerKey } from '@/components/editor/editor-model-owner'
 import type { WorktreeOperationRouteState } from '@/lib/worktree-operation-route'
 import { isLocalWindowsDesktopClient } from '@/lib/desktop-window-chrome'
@@ -145,7 +146,7 @@ export function collectSameDocumentOpenFileIds(
   }
   const closeIdentity = (candidate: OpenFile): string =>
     JSON.stringify([
-      editorDocumentIdentityKey(candidate),
+      editorDocumentIdentityKey({ ...candidate, ...getPersistedEditorOwnerFields(candidate) }),
       state ? getEditorModelOwnerKey(candidate, state) : null
     ])
   const identity = closeIdentity(file)

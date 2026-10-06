@@ -1,3 +1,4 @@
+import { getPersistedEditorOwnerFields } from './editor-file-operation-owner'
 import type { PersistedOpenFile } from '../../../shared/workspace-session-state-types'
 import type { OpenFile } from '../store/slices/editor'
 import { editorDocumentIdentityKey } from '../store/slices/editor/file-ids/editor-document-identity'
@@ -23,8 +24,7 @@ function toPersistedOpenFile(
     worktreeId: file.worktreeId,
     language: file.language,
     isPreview: file.isPreview || undefined,
-    runtimeEnvironmentId: file.runtimeEnvironmentId,
-    externalSshTargetId: file.externalSshTargetId,
+    ...getPersistedEditorOwnerFields(file),
     // Why: persist readOnly only when true; absence is the writable default on restore.
     ...(file.readOnly === true ? { readOnly: true } : {}),
     ...(file.readOnly === true && file.liveTail === true ? { liveTail: true } : {}),
@@ -120,7 +120,7 @@ export function buildPersistedEditorFileRecords(
     const fileIds =
       editFileIdsByWorktree[file.worktreeId] ?? (editFileIdsByWorktree[file.worktreeId] = new Set())
     const record = toPersistedOpenFile(file, editorDrafts)
-    const identity = editorDocumentIdentityKey(file)
+    const identity = editorDocumentIdentityKey(record)
     const variants = keptVariantsByIdentity.get(identity) ?? []
     if (variants.length === 0) {
       keptVariantsByIdentity.set(identity, variants)
