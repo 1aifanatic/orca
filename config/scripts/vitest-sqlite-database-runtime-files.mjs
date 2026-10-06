@@ -1,8 +1,5 @@
 // Database opening and lifecycle fixtures exercise Node SQLite behavior.
 export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
-  'src/main/ipc/runtime-environment-session-retirement.test.ts',
-  'src/main/runtime-environment-host-session-self-heal.test.ts',
-  'src/main/runtime/runtime-workspace-session-namespace-custody.test.ts',
   'src/main/runtime/orchestration/orchestration-party-location.test.ts',
   'src/main/runtime/runtime-orchestration-sender-names.test.ts',
   'src/main/ai-vault-search/session-search-file-write.test.ts',
@@ -19,6 +16,7 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/codex/codex-account-session-bridge.test.ts',
   'src/main/codex/codex-index-heal-binary-contract.test.ts',
   'src/main/codex/codex-state-db.test.ts',
+  'src/main/ipc/runtime-environment-session-retirement.test.ts',
   'src/main/native-chat/agent-session-wire/structured-agent-session-queued-stop-row.test.ts',
   'src/main/native-chat/transcript-opencode-semantic-fidelity.test.ts',
   'src/main/native-chat/transcript-opencode-sqlite-query.test.ts',
@@ -30,6 +28,7 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/opencode-usage/scanner.test.ts',
   'src/main/rate-limits/opencode-go-api-key-source.test.ts',
   'src/main/rate-limits/opencode-go-managed-account-source.test.ts',
+  'src/main/runtime-environment-host-session-self-heal.test.ts',
   'src/main/runtime/agent-session-record-store-slot.test.ts',
   'src/main/runtime/claude-structured-exit-mid-response.test.ts',
   'src/main/runtime/claude-structured-failed-start-resume.test.ts',
@@ -190,6 +189,7 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/runtime/structured-agent-session-runtime-exit.test.ts',
   'src/main/runtime/structured-agent-session-runtime-provider-started.test.ts',
   'src/main/runtime/structured-agent-session-runtime.test.ts',
+  'src/main/runtime/runtime-workspace-session-namespace-custody.test.ts',
   'src/main/runtime/structured-child-records-switch.test.ts',
   'src/main/runtime/structured-claude-auth-policy-wiring.test.ts',
   'src/main/runtime/structured-codex-child-work-runtime.test.ts',
