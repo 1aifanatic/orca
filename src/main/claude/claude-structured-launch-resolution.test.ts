@@ -14,6 +14,7 @@ import {
   CLAUDE_STRUCTURED_BASE_OPTIONS,
   claudeSessionIdForOrcaSession,
   createClaudeStructuredLaunchResolver,
+  resolveClaudeStructuredInvocation,
   type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
@@ -615,6 +616,31 @@ describe('readable Claude thinking', () => {
       await expect(launch).rejects.toMatchObject({ reason: 'accountSwitchInProgress' })
     } finally {
       endClaudeAuthSwitch()
+    }
+  })
+})
+
+describe('the PATH a configured Claude program is found on', () => {
+  it('is the one PATH a Windows child gets when Settings env and the shell spell it differently', async () => {
+    const original = process.platform
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    try {
+      const resolveCommand = vi.fn(() => 'C:\\tools\\my-claude.exe')
+      const { env } = await resolveClaudeStructuredInvocation({
+        resolveCommand,
+        resolveInheritedEnv: async () => ({ Path: 'C:\\inherited', USERPROFILE: 'C:\\Users\\me' }),
+        resolveEnv: () => ({ PATH: 'C:\\overlay;C:\\inherited' }),
+        resolveAuthPolicy: () => ({ stripAuthEnv: false })
+      })
+      expect(resolveCommand).toHaveBeenCalledWith({
+        pathEnv: 'C:\\overlay;C:\\inherited',
+        homePath: 'C:\\Users\\me'
+      })
+      // No twin left for Node to choose between: the child reads the PATH the lookup used.
+      expect(Object.keys(env).filter((name) => name.toUpperCase() === 'PATH')).toEqual(['PATH'])
+      expect(env.PATH).toBe('C:\\overlay;C:\\inherited')
+    } finally {
+      Object.defineProperty(process, 'platform', { configurable: true, value: original })
     }
   })
 })

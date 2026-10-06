@@ -17,22 +17,32 @@ function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return defined
 }
 
-/** Overlays shell variables on Orca's env; win32 names are case-insensitive, so drop the base spelling. */
-function overlayShellVariables(
+/** `base` without what `overlay` replaces: win32 names are case-insensitive, so a differently
+ *  cased twin goes too, rather than sitting beside the overlay's spelling for Node to pick between. */
+export function withoutOverlaidVariables(
   base: Record<string, string>,
-  shellVariables: Record<string, string>,
+  overlay: Record<string, string>,
   platform: NodeJS.Platform
 ): Record<string, string> {
   const merged = { ...base }
   if (platform === 'win32') {
-    const overlaid = new Set(Object.keys(shellVariables).map((key) => key.toUpperCase()))
+    const overlaid = new Set(Object.keys(overlay).map((key) => key.toUpperCase()))
     for (const key of Object.keys(merged)) {
       if (overlaid.has(key.toUpperCase())) {
         delete merged[key]
       }
     }
   }
-  return { ...merged, ...shellVariables }
+  return merged
+}
+
+/** Overlays shell variables on Orca's env, dropping the base spelling of each. */
+function overlayShellVariables(
+  base: Record<string, string>,
+  shellVariables: Record<string, string>,
+  platform: NodeJS.Platform
+): Record<string, string> {
+  return { ...withoutOverlaidVariables(base, shellVariables, platform), ...shellVariables }
 }
 
 function pickShellVariables(

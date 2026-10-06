@@ -10,6 +10,7 @@ import type { AgentSessionJournalIdentity } from '../../shared/agent-session-jou
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { resolveCodexCommand } from '../codex-cli/command'
+import { pathEnvOf } from '../../shared/node-cli-command-resolution'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
@@ -48,7 +49,7 @@ export async function resolveCodexStructuredInvocation(
   deps: Pick<CodexStructuredLaunchResolverDeps, 'resolveCommand' | 'resolveEnvironment'>
 ): Promise<CodexStructuredInvocation> {
   const environment = await deps.resolveEnvironment?.()
-  const pathEnv = environment?.PATH ?? environment?.Path ?? null
+  const pathEnv = environment ? pathEnvOf(environment) : null
   const homePath = environment?.HOME ?? environment?.USERPROFILE
   const command = (deps.resolveCommand ?? resolveCodexCommand)({
     pathEnv,

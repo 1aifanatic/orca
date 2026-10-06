@@ -336,12 +336,15 @@ function firstWindowsPathEnvKey(env: NodeJS.ProcessEnv): string {
   return 'Path'
 }
 
-/** The PATH a child launched with `env` reads: on Windows, the first case-insensitive entry. */
+/** The PATH a `child_process` child launched with `env` reads. On Windows Node keeps only the
+ *  lexicographically first of case-insensitive twins (`PATH` before `Path`), not the first inserted. */
 export function pathEnvOf(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform
 ): string | null {
-  return env[platform === 'win32' ? firstWindowsPathEnvKey(env) : 'PATH'] ?? null
+  const twins =
+    platform === 'win32' ? Object.keys(env).filter((name) => name.toUpperCase() === 'PATH') : []
+  return env[twins.sort()[0] ?? 'PATH'] ?? null
 }
 
 /**

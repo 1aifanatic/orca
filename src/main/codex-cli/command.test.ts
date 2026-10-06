@@ -393,9 +393,16 @@ describe('withCliRuntimeOnPath', () => {
 })
 
 describe('pathEnvOf', () => {
-  it('reads the first case-insensitive PATH entry on Windows, as the child does', () => {
-    expect(pathEnvOf({ Path: 'C:\\first', PATH: 'C:\\second' }, 'win32')).toBe('C:\\first')
-    expect(pathEnvOf({ PATH: '/usr/bin', Path: '/ignored' }, 'linux')).toBe('/usr/bin')
+  // Node's child_process on win32 sorts env keys and keeps the first of each case-insensitive twin.
+  it('reads the PATH twin a Windows child keeps, whatever the insertion order', () => {
+    expect(pathEnvOf({ Path: 'C:\\inherited', PATH: 'C:\\overlay' }, 'win32')).toBe('C:\\overlay')
+    expect(pathEnvOf({ path: 'C:\\lower', Path: 'C:\\mixed' }, 'win32')).toBe('C:\\mixed')
+    expect(pathEnvOf({ Path: 'C:\\only' }, 'win32')).toBe('C:\\only')
     expect(pathEnvOf({}, 'win32')).toBeNull()
+  })
+
+  it('reads only PATH elsewhere', () => {
+    expect(pathEnvOf({ Path: '/ignored', PATH: '/usr/bin' }, 'linux')).toBe('/usr/bin')
+    expect(pathEnvOf({ Path: '/ignored' }, 'linux')).toBeNull()
   })
 })

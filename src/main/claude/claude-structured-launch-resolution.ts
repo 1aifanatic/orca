@@ -31,6 +31,7 @@ import {
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
 import { resolveClaudeCommand } from '../codex-cli/command'
+import { withoutOverlaidVariables } from '../runtime/structured-agent-shell-environment'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
 import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-support'
@@ -173,10 +174,11 @@ export async function resolveClaudeChildEnvSources(
   deps: ClaudeEnvDeps
 ): Promise<ClaudeChildEnvSources> {
   const overlay = await deps.resolveEnv?.()
-  const inheritedEnv = deps.resolveInheritedEnv
+  const inherited = deps.resolveInheritedEnv
     ? await deps.resolveInheritedEnv()
     : cloneDefinedEnv(process.env)
-  // Resolved against the env the child launches with, as the overlay spreads last in claudeChildEnv.
+  // Twin-free, so the lookup below and the child (overlay spread last in claudeChildEnv) read one PATH.
+  const inheritedEnv = withoutOverlaidVariables(inherited, overlay ?? {}, process.platform)
   const launchEnv = { ...inheritedEnv, ...overlay }
   const homePath = launchEnv.HOME ?? launchEnv.USERPROFILE
   const command = deps.resolveCommand
