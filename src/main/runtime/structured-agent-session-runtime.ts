@@ -129,6 +129,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
   hasOpenDispatch?: StructuredAgentSessionHostDeps['hasOpenDispatch']
   resolveCodexAccountKind?: (home: string) => AgentSessionAccountKind | undefined
+  /** Launch prep's sync for a probed home; see `CodexModelCatalogProbeDeps.prepareHome`. */
+  prepareCodexCatalogProbeHome?: (homePath: string) => void
   /** The account home a structured launch would pin right now, for catalog
    *  reads with no session record. Absent disables the catalog surface. */
   resolveAgentAccountHome?: RuntimeAgentAccountHomeResolver

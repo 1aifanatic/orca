@@ -1,4 +1,6 @@
-import { getSystemCodexHomePath } from './codex-home-paths'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { describe, expect, it, vi } from 'vitest'
 import { createCodexModelCatalogProbe } from './codex-model-catalog-probe'
@@ -110,7 +112,8 @@ describe('Codex catalog availability', () => {
     return createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({}),
       resolveCommand: () => 'codex',
-      resolveAccountKind: (home) => (home === getSystemCodexHomePath() ? 'system' : 'managed'),
+      // A stand-in system home, so no test reads the real ~/.codex/auth.json.
+      resolveAccountKind: (home) => (home === '/homes/system' ? 'system' : 'managed'),
       runSession: async (_invocation, body) =>
         body({
           request: async (method, params, options) => {
@@ -143,7 +146,7 @@ describe('Codex catalog availability', () => {
   })
   it.each([
     ['/homes/a', 'managed'],
-    [getSystemCodexHomePath(), 'system']
+    ['/homes/system', 'system']
   ] as const)('reports explicit signed-out account for %s', async (home, account) => {
     await expect(
       withAccount({ account: null, requiresOpenaiAuth: true })(home)
@@ -219,5 +222,78 @@ describe('Codex catalog availability', () => {
     })
     const failure = await probe('/homes/a').catch((error: unknown) => error)
     expect(failure instanceof AgentModelCatalogUnavailableError).toBe(code === 'ENOENT')
+  })
+})
+
+describe('Codex catalog probe reads the home a launch would', () => {
+  const homes: string[] = []
+  const tempHome = (): string => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-codex-probe-home-'))
+    homes.push(home)
+    return home
+  }
+  const signedOutUnlessLoggedIn = (home: string) =>
+    createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({}),
+      resolveCommand: () => 'codex',
+      runSession: async (_invocation, body) =>
+        body({
+          request: async (method) =>
+            method === 'account/read'
+              ? { account: null, requiresOpenaiAuth: true }
+              : { data: [MODEL_ROW], nextCursor: null },
+          notify: () => {}
+        })
+    })(home)
+
+  it('syncs the home before its app-server reads it', async () => {
+    const home = tempHome()
+    const order: string[] = []
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({}),
+      resolveCommand: () => 'codex',
+      // Launch prep copies the login the user made in ~/.codex into the mirror.
+      prepareHome: (prepared) => {
+        order.push(`prepare ${prepared}`)
+        writeFileSync(join(prepared, 'auth.json'), JSON.stringify({ OPENAI_API_KEY: 'sk-test' }))
+      },
+      runSession: async (_invocation, body) => {
+        order.push('spawn')
+        return body({
+          request: async (method) =>
+            method === 'account/read'
+              ? { account: { type: 'apiKey' }, requiresOpenaiAuth: true }
+              : { data: [MODEL_ROW], nextCursor: null },
+          notify: () => {}
+        })
+      }
+    })
+    expect((await probe(home)).models).toHaveLength(1)
+    expect(order).toEqual([`prepare ${home}`, 'spawn'])
+  })
+
+  it.each([
+    ['caught mid-write (empty)', '', false],
+    ['caught mid-write (partial)', '{"tokens": {"access_tok', false],
+    ['settled with a credential', JSON.stringify({ OPENAI_API_KEY: 'sk-test' }), false],
+    ['settled with no credential', '{}', true]
+  ])('treats an auth.json %s as signed out only when it is', async (_case, contents, blocks) => {
+    const home = tempHome()
+    writeFileSync(join(home, 'auth.json'), contents)
+    const answer = signedOutUnlessLoggedIn(home)
+    if (blocks) {
+      await expect(answer).rejects.toMatchObject({ unavailable: { reason: 'notSignedIn' } })
+    } else {
+      expect((await answer).models).toHaveLength(1)
+    }
+  })
+
+  it('keeps a home with no auth.json signed out', async () => {
+    await expect(signedOutUnlessLoggedIn(tempHome())).rejects.toMatchObject({
+      unavailable: { reason: 'notSignedIn' }
+    })
+    for (const home of homes.splice(0)) {
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 })

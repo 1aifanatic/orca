@@ -2,7 +2,8 @@ import type { AgentSessionAccountKind } from '../../shared/agent-session-availab
 import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { isMissingProviderExecutable } from '../provider-process/provider-executable-missing'
 import { getSystemCodexHomePath } from './codex-home-paths'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
+import { readStoredCodexCredentialState } from '../codex-accounts/managed-codex-auth-readiness'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import { runCodexAppServerSession } from './codex-app-server-session'
 import { fetchCodexModelCatalogListing } from './codex-structured-model-catalog'
@@ -24,6 +25,8 @@ export type CodexModelCatalogProbeDeps = Pick<
   'resolveCommand' | 'resolveEnvironment'
 > & {
   resolveAccountKind?: (home: string) => AgentSessionAccountKind | undefined
+  /** The sync a launch runs on this home first, so the probe reads the login a launch would. */
+  prepareHome?: (home: string) => void
   /** Test seam; production runs the shared short-lived app-server session. */
   runSession?: typeof runCodexAppServerSession
 }
@@ -38,6 +41,13 @@ function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> 
   return next
 }
 
+/** Codex answers "no account" for a missing auth.json and for one caught mid-write (it truncates
+ *  and rewrites in place). Only no file, or a settled file with no credential, is signed out. */
+function storedLoginIsAbsent(home: string): boolean {
+  const state = readStoredCodexCredentialState(join(home, 'auth.json'))
+  return state === 'missing' || state === 'no-credential'
+}
+
 /**
  * Lists models without a live session: one short-lived read-only app-server
  * under the given account home, spawned through the SAME invocation resolver
@@ -49,6 +59,7 @@ export function createCodexModelCatalogProbe(
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
+    deps.prepareHome?.(accountHomePath)
     const run = deps.runSession ?? runCodexAppServerSession
     const listing = await run(
       {
@@ -73,7 +84,8 @@ export function createCodexModelCatalogProbe(
           'requiresOpenaiAuth' in response &&
           response.requiresOpenaiAuth === true &&
           'account' in response &&
-          response.account === null
+          response.account === null &&
+          storedLoginIsAbsent(accountHomePath)
         ) {
           const account = deps.resolveAccountKind
             ? deps.resolveAccountKind(accountHomePath)
