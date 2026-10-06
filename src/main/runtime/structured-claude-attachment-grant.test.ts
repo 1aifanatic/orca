@@ -71,6 +71,7 @@ describe("structured Claude's read grant for chat attachments", () => {
       claimKeyId: 'key-1',
       resolveWorkspacePath: async () => directory,
       resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
+      resolveLaunchArgs: () => [],
       resolveEnvironment: async () => ({})
     })
 
