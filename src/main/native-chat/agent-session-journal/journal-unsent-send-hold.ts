@@ -46,8 +46,7 @@ export function unsentSendKeptAsCard(
     return null
   }
   const { source } = submission
-  // Exactly 'user': never `readAgentSessionMessageSource`, whose fallback for what it cannot read
-  // is the person.
+  // Exactly 'user': never a fallback that reads a kind it does not know as the person's.
   const persons =
     source?.kind === USER_MESSAGE_SOURCE.kind ||
     // A build before `source` was recorded: `client` was only ever a person's send.

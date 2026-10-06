@@ -7,6 +7,7 @@ import type { AgentType } from '../../../shared/agent-status-types'
 import { formatAgentTypeLabel } from '../../../shared/agent-type-label'
 import type { Tab } from '../../../shared/tab-types'
 import type { OrchestrationDb } from './db'
+import type { DispatchContextRow } from './types'
 import { lineageLiveSession, type AgentSessionRecordReader } from './structured-session-lineage'
 
 export type TerminalSenderNaming = {
@@ -27,11 +28,16 @@ export type SenderNamingSources = {
 
 type Party = AgentMessageSender['party']
 
-export function orchestrationSenderName(party: Party, sources: SenderNamingSources): string | null {
+/** `reportedDispatchId`: the dispatch the sender's own `worker_done` in the batch names. */
+export function orchestrationSenderName(
+  party: Party,
+  sources: SenderNamingSources,
+  reportedDispatchId?: string
+): string | null {
   const federated = party.address.startsWith('dispatch:')
   const terminal =
     !federated && party.terminalHandle ? sources.terminal(party.terminalHandle) : null
-  const task = dispatchTaskName(party, federated, terminal, sources.db)
+  const task = dispatchTaskName(party, federated, terminal, sources.db, reportedDispatchId)
   if (task) {
     return task
   }
@@ -50,24 +56,42 @@ export function orchestrationSenderName(party: Party, sources: SenderNamingSourc
 }
 
 /** The task its dispatch was given: the federated `dispatch:<id>` address, or the dispatch a local
- *  worker holds, else the one it last held, since its own `worker_done` settles that dispatch
- *  before the report is delivered. A handle is issued per run, so its latest is this run's. */
+ *  worker holds, else the one its own `worker_done` reports, since that report settles its dispatch
+ *  before it is delivered. Never a dispatch the worker merely held once: one may have failed
+ *  before it ran, and an old one names work long done. */
 function dispatchTaskName(
   party: Party,
   federated: boolean,
   terminal: TerminalSenderNaming | null,
-  db: OrchestrationDb | null
+  db: OrchestrationDb | null,
+  reportedDispatchId: string | undefined
 ): string | null {
   if (!db) {
     return null
   }
   const handle = party.terminalHandle
+  const paneKey = terminal?.paneKey ?? undefined
   const dispatch = federated
     ? db.getDispatchContextById(party.address.slice('dispatch:'.length))
     : handle
-      ? (db.getActiveDispatchForTerminal(handle, terminal?.paneKey ?? undefined) ??
-        db.getLatestDispatchForTerminal(handle))
+      ? (db.getActiveDispatchForTerminal(handle, paneKey) ??
+        reportedDispatch(db, reportedDispatchId, handle, paneKey))
       : undefined
   const task = dispatch ? db.getTask(dispatch.task_id) : undefined
   return task?.display_name || task?.task_title || null
+}
+
+/** Only the sender's own dispatch: a report's payload is the sender's to write. */
+function reportedDispatch(
+  db: OrchestrationDb,
+  dispatchId: string | undefined,
+  handle: string,
+  paneKey: string | undefined
+): DispatchContextRow | undefined {
+  const dispatch = dispatchId ? db.getDispatchContextById(dispatchId) : undefined
+  return dispatch &&
+    (dispatch.assignee_handle === handle ||
+      (paneKey !== undefined && dispatch.assignee_pane_key === paneKey))
+    ? dispatch
+    : undefined
 }

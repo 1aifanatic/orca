@@ -13,6 +13,8 @@ import { OrchestrationDb } from './orchestration/db'
 import { createRootDispatch } from './orchestration/db/root-dispatch-test-fixture'
 import { reconcileLifecycleMessage } from './orchestration/lifecycle-reconciliation'
 import { RuntimeOrchestrationSenderNames } from './runtime-orchestration-sender-names'
+import { structuredMailSource } from './orchestration/structured-mail-source'
+import type { MessageRow } from './orchestration/types'
 
 const hostRef = vi.hoisted((): { current: unknown } => ({ current: null }))
 vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', () => ({
@@ -43,6 +45,64 @@ function names() {
     getTerminalPaneKey: (handle) => `tab_${handle}:leaf`,
     getWorkspaceSession: (worktreeId) => (worktreeId === WORKTREE ? session : undefined)
   })
+}
+
+/** A worker dispatched `spec` on its own terminal, as `worker-start` leaves it. */
+function finishedWorker(spec: string, handle = 'term_worker') {
+  const run = db.createRun({
+    objective: 'o',
+    coordinatorHandle: 'term_coord',
+    coordinatorPaneKey: null
+  })
+  const task = db.createTask({ runId: run.id, spec })
+  const started = db.createStartingWorkerDispatch({
+    creator: { kind: 'system' },
+    maxDepth: Number.MAX_SAFE_INTEGER,
+    taskId: task.id,
+    startOptions: {}
+  })
+  db.prepareStartingWorkerAuthority({
+    dispatchId: started.dispatch.id,
+    handle,
+    paneKey: `tab_${handle}:leaf`,
+    processIncarnation: 'p:1',
+    worktreeId: WORKTREE,
+    effects: [],
+    setupState: 'not_applicable'
+  })
+  db.markWorkerDispatchReady(started.dispatch.id)
+  return { runId: run.id, taskId: task.id, dispatchId: started.dispatch.id }
+}
+
+/** Mail from `term_worker`, from its pane; a report names its task and dispatch. */
+function workerMessage(
+  runId: string,
+  type: 'worker_done' | 'status',
+  report?: { taskId: string; dispatchId: string }
+) {
+  return db.insertMessage({
+    from: 'term_worker',
+    to: `run:${runId}`,
+    subject: type,
+    type,
+    senderPaneKey: 'tab_term_worker:leaf',
+    runId,
+    ...(report ? { payload: JSON.stringify({ ...report, outcome: 'succeeded' }) } : {})
+  })
+}
+
+/** The name the mail lane records for `term_worker` when it announces these messages. */
+function announcedName(batch: MessageRow[]): string | null {
+  const sources = names()
+  return (
+    structuredMailSource({
+      db,
+      mailboxHandle: 'run:r',
+      dispatchId: null,
+      batch,
+      senderName: (party, reported) => sources.nameOf(party, reported)
+    }).senders[0]?.name ?? null
+  )
 }
 
 function chatTab(customLabel: string | null, label: string) {
@@ -90,45 +150,30 @@ describe("a sender's name, from what Orca shows for it", () => {
   })
 
   it('names a worker by its task after its own accepted worker_done settled that dispatch', () => {
-    const run = db.createRun({
-      objective: 'o',
-      coordinatorHandle: 'term_coord',
-      coordinatorPaneKey: null
-    })
-    const task = db.createTask({ runId: run.id, spec: 'build it' })
-    const started = db.createStartingWorkerDispatch({
-      creator: { kind: 'system' },
-      maxDepth: Number.MAX_SAFE_INTEGER,
-      taskId: task.id,
-      startOptions: {}
-    })
-    db.prepareStartingWorkerAuthority({
-      dispatchId: started.dispatch.id,
-      handle: 'term_worker',
-      paneKey: 'tab_term_worker:leaf',
-      processIncarnation: 'p:1',
-      worktreeId: WORKTREE,
-      effects: [],
-      setupState: 'not_applicable'
-    })
-    db.markWorkerDispatchReady(started.dispatch.id)
-    const report = db.insertMessage({
-      from: 'term_worker',
-      to: `run:${run.id}`,
-      subject: 'Done',
-      type: 'worker_done',
-      senderPaneKey: 'tab_term_worker:leaf',
-      runId: run.id,
-      payload: JSON.stringify({
-        taskId: task.id,
-        dispatchId: started.dispatch.id,
-        outcome: 'succeeded'
-      })
-    })
+    const { runId, taskId, dispatchId } = finishedWorker('build it')
+    const report = workerMessage(runId, 'worker_done', { taskId, dispatchId })
     // Settled synchronously at send, before the mail lane names who it is from.
     expect(reconcileLifecycleMessage(db, report).action).toBe('completed')
-    expect(db.getDispatchContextById(started.dispatch.id)?.status).toBe('completed')
-    expect(names().nameOf(terminalParty('term_worker'))).toBe('build it')
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('completed')
+    expect(announcedName([report])).toBe('build it')
+  })
+
+  it('never names a worker by a task it never ran, nor by work it finished long ago', () => {
+    const { runId, taskId, dispatchId } = finishedWorker('task A')
+    const report = workerMessage(runId, 'worker_done', { taskId, dispatchId })
+    expect(reconcileLifecycleMessage(db, report).action).toBe('completed')
+    // Its next message, unrelated to that finished task: no task names it.
+    expect(announcedName([workerMessage(runId, 'status')])).toBe('Codex')
+    // A second task dispatched to the same terminal fails before the worker runs it.
+    const taskB = db.createTask({ runId, spec: 'task B' })
+    const failed = createRootDispatch(db, taskB.id, 'term_worker')
+    db.failDispatch(failed.id, 'delivery failed')
+    expect(announcedName([workerMessage(runId, 'status')])).toBe('Codex')
+  })
+
+  it('never names a worker by a dispatch its report names that is not its own', () => {
+    const other = finishedWorker('someone else', 'term_other')
+    expect(announcedName([workerMessage(other.runId, 'worker_done', other)])).toBe('Codex')
   })
 
   it("names a chat by the label its tab shows, the person's rename first", () => {

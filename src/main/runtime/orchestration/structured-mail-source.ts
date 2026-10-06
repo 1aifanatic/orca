@@ -13,20 +13,28 @@ import {
 import type { MessageRow, OrchestrationDb } from './db'
 import { resolveOrchestrationParty } from './orchestration-party'
 
-export type MailSourceMessage = Pick<MessageRow, 'id' | 'from_handle' | 'run_id'>
+export type MailSourceMessage = Pick<
+  MessageRow,
+  'id' | 'from_handle' | 'run_id' | 'type' | 'payload'
+>
 
-/** A name from Orca's records for a party (never an agent-painted title); null when it has none. */
-export type SenderNameResolver = (party: AgentMessageSender['party']) => string | null
+/** A name from Orca's records for a party (never an agent-painted title); null when it has none.
+ *  `reportedDispatchId`: the dispatch the sender's own `worker_done` among these messages names. */
+export type SenderNameResolver = (
+  party: AgentMessageSender['party'],
+  reportedDispatchId?: string
+) => string | null
 
 /** The one way a sender is recorded on a message: its party as orchestration resolves the
  *  address, and a bounded snapshot of its name for when it is gone. */
 export function agentMessageSender(
   address: string,
   db: OrchestrationDb | null,
-  senderName: SenderNameResolver
+  senderName: SenderNameResolver,
+  reportedDispatchId?: string
 ): AgentMessageSender {
   const party = senderParty(address, db)
-  return { party, name: snapshotName(senderName, party) }
+  return { party, name: snapshotName(senderName, party, reportedDispatchId) }
 }
 
 export function structuredMailSource(input: {
@@ -39,7 +47,15 @@ export function structuredMailSource(input: {
   const senders = new Map<string, AgentMessageSender>()
   for (const { from_handle: address } of input.batch) {
     if (!senders.has(address)) {
-      senders.set(address, agentMessageSender(address, input.db, input.senderName))
+      senders.set(
+        address,
+        agentMessageSender(
+          address,
+          input.db,
+          input.senderName,
+          reportedDispatchId(input.batch, address)
+        )
+      )
     }
   }
   return {
@@ -68,12 +84,39 @@ function senderParty(address: string, db: OrchestrationDb | null): AgentMessageS
   }
 }
 
+/** The dispatch a sender's own `worker_done` here reports: the task it just finished, whose
+ *  dispatch that report already settled. */
+function reportedDispatchId(
+  batch: readonly MailSourceMessage[],
+  address: string
+): string | undefined {
+  for (const message of batch) {
+    if (message.from_handle !== address || message.type !== 'worker_done' || !message.payload) {
+      continue
+    }
+    try {
+      const payload: unknown = JSON.parse(message.payload)
+      const dispatchId =
+        typeof payload === 'object' && payload !== null && 'dispatchId' in payload
+          ? payload.dispatchId
+          : undefined
+      if (typeof dispatchId === 'string' && dispatchId.length > 0) {
+        return dispatchId
+      }
+    } catch {
+      // A payload that does not parse names no dispatch.
+    }
+  }
+  return undefined
+}
+
 function snapshotName(
   senderName: SenderNameResolver,
-  party: AgentMessageSender['party']
+  party: AgentMessageSender['party'],
+  reportedDispatchId: string | undefined
 ): string | null {
   try {
-    return agentMessageSenderName(senderName(party))
+    return agentMessageSenderName(senderName(party, reportedDispatchId))
   } catch {
     // A name is a label, never a reason the mail is not delivered.
     return null

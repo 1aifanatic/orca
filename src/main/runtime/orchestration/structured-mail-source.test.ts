@@ -11,9 +11,15 @@ describe('who delivered mail is from', () => {
       mailboxHandle: 'run:r1',
       dispatchId: null,
       batch: [
-        { id: 'm1', from_handle: 'term_a', run_id: 'r1' },
-        { id: 'm2', from_handle: `orca_session_id:${SESSION}`, run_id: 'r2' },
-        { id: 'm3', from_handle: 'term_a', run_id: 'r1' }
+        { id: 'm1', from_handle: 'term_a', run_id: 'r1', type: 'status', payload: null },
+        {
+          id: 'm2',
+          from_handle: `orca_session_id:${SESSION}`,
+          run_id: 'r2',
+          type: 'status',
+          payload: null
+        },
+        { id: 'm3', from_handle: 'term_a', run_id: 'r1', type: 'status', payload: null }
       ],
       senderName: (party) => (party.terminalHandle === 'term_a' ? 'Build tab' : null)
     })
@@ -52,7 +58,7 @@ describe('who delivered mail is from', () => {
         db: null,
         mailboxHandle: 'run:r1',
         dispatchId: null,
-        batch: [{ id: 'm1', from_handle: 'term_a', run_id: 'r1' }],
+        batch: [{ id: 'm1', from_handle: 'term_a', run_id: 'r1', type: 'status', payload: null }],
         senderName
       }).senders[0]?.name
     expect(named(() => `  Build\n${'x'.repeat(400)}`)).toHaveLength(200)

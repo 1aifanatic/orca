@@ -36,23 +36,33 @@ type MirroredTabs = {
 export class RuntimeOrchestrationSenderNames {
   constructor(private readonly deps: RuntimeSenderNameDeps) {}
 
-  /** A sender recorded on a message, named now. */
-  sender(address: string): AgentMessageSender {
-    return agentMessageSender(address, this.deps.getDb(), (party) => this.nameOf(party))
+  /** A sender recorded on a message, named now. `reportedDispatchId`: the dispatch the sender's
+   *  own `worker_done` in that message names. */
+  sender(address: string, reportedDispatchId?: string): AgentMessageSender {
+    return agentMessageSender(
+      address,
+      this.deps.getDb(),
+      (party, reported) => this.nameOf(party, reported),
+      reportedDispatchId
+    )
   }
 
-  nameOf(party: AgentMessageSender['party']): string | null {
-    return orchestrationSenderName(party, {
-      db: this.deps.getDb(),
-      records: readAgentSessionRecordStore(),
-      chatTab: (worktreeId, sessionId) =>
-        this.deps
-          .getWorkspaceSession(worktreeId)
-          ?.unifiedTabs?.[worktreeId]?.find(
-            (tab) => tab.contentType === 'agent-session' && tab.entityId === sessionId
-          ) ?? null,
-      terminal: (handle) => this.terminalNaming(handle)
-    })
+  nameOf(party: AgentMessageSender['party'], reportedDispatchId?: string): string | null {
+    return orchestrationSenderName(
+      party,
+      {
+        db: this.deps.getDb(),
+        records: readAgentSessionRecordStore(),
+        chatTab: (worktreeId, sessionId) =>
+          this.deps
+            .getWorkspaceSession(worktreeId)
+            ?.unifiedTabs?.[worktreeId]?.find(
+              (tab) => tab.contentType === 'agent-session' && tab.entityId === sessionId
+            ) ?? null,
+        terminal: (handle) => this.terminalNaming(handle)
+      },
+      reportedDispatchId
+    )
   }
 
   private terminalNaming(handle: string): TerminalSenderNaming | null {
