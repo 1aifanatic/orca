@@ -15,9 +15,10 @@ import {
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
   orcadMigrationOwnsRepoId,
-  unqualifyOrcadMigrationOwnerKey,
-  type OrcadMigrationSourceScope
+  type OrcadMigrationSourceScope,
+  unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
+import { compareKeys } from './orcad-source-key-order'
 
 export type OrcadMigrationSourceAutomationInspection = {
   automations: Automation[]
@@ -186,8 +187,4 @@ function projectContextToDestination<T extends WorkspaceRunContext | TaskSourceC
 
 function projectOwnerToDestination(value: string | null): string | null {
   return value === null ? null : unqualifyOrcadMigrationOwnerKey(value)
-}
-
-function compareKeys(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0
 }
