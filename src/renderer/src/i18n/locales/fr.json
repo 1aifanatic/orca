@@ -18146,6 +18146,10 @@
         "used": "Contexte : {{used}} tokens utilisés, estimation basée sur la dernière réponse.",
         "unreported": "L'utilisation du contexte n'est pas disponible pour cette session."
       },
+      "agentMessage": {
+        "messageFrom": "Message de",
+        "unnamedSender": "un agent"
+      },
       "goal": {
         "placeholder": "Décrivez votre objectif, définissez des résultats mesurables pour de meilleurs résultats",
         "clear": "Objectif clair",
@@ -18198,7 +18202,8 @@
         "queuePausedRestarted": "File d'attente en pause, car Orca a redémarré",
         "queuePausedCleared": "File d'attente en pause après l'effacement de la conversation",
         "queuePaused": "File d'attente en pause",
-        "resume": "Reprendre"
+        "resume": "Reprendre",
+        "from": "De {{names}}"
       },
       "thought": "A réfléchi",
       "thoughtForDuration": "A réfléchi pendant {{duration}}",
