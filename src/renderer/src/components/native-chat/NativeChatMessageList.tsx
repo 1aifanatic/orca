@@ -28,7 +28,10 @@ import {
 } from './NativeChatTranscriptItems'
 import type { NativeChatTranscriptRowContext } from './NativeChatTranscriptRow'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
-import { nativeChatSlotIndexOf } from './native-chat-transcript-slots'
+import {
+  splitNativeChatSlotsWaitingBehindLiveTurn,
+  nativeChatSlotIndexOf
+} from './native-chat-transcript-slots'
 import { useNativeChatTranscriptSlots } from './use-native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
 import { nativeChatRowsInTranscriptOrder } from './native-chat-subagent-sections'
@@ -187,7 +190,7 @@ export function NativeChatMessageList({
         : null
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
   const { measureContent, typography } = useNativeChatRowTypography(contentRef)
-  const { slots, waitingSlots } = useNativeChatTranscriptSlots({
+  const { slots: allSlots, liveLine } = useNativeChatTranscriptSlots({
     typography,
     messages: rows,
     turnKeys,
@@ -200,10 +203,24 @@ export function NativeChatMessageList({
     lifecycleWorking,
     subagentSections,
     subagentChoices,
-    journalItems,
-    journalSubmissions,
-    stopping
+    line: {
+      draws: tailRow === 'activity',
+      thinking: turnStatuses.active?.thinking === true,
+      stopping,
+      activityText: turnActivity?.text
+    }
   })
+  // A message waiting behind the live turn draws after that turn's live activity, not inside it.
+  const { slots, waitingSlots } = useMemo(
+    () =>
+      splitNativeChatSlotsWaitingBehindLiveTurn(
+        allSlots,
+        journalItems,
+        stopping,
+        journalSubmissions
+      ),
+    [allSlots, journalItems, stopping, journalSubmissions]
+  )
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
     slots,
@@ -377,11 +394,11 @@ export function NativeChatMessageList({
                   context={rowContext}
                   window={transcriptWindow}
                 />
-                {tailRow === 'activity' ? (
+                {liveLine ? (
                   <NativeChatTurnActivityLine
-                    activity={turnActivity}
-                    thinking={turnStatuses.active?.thinking === true}
-                    stopping={stopping}
+                    line={liveLine}
+                    onLinkClick={onLinkClick}
+                    allowFileUriLinks={allowFileUriLinks}
                   />
                 ) : tailRow === 'awaiting-input' ? (
                   <NativeChatAwaitingInputRow subject={null} pending />

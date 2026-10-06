@@ -1,24 +1,23 @@
 import { useMemo } from 'react'
-import type {
-  AgentJournalRenderItem,
-  AgentJournalSubmission
-} from '../../../../shared/agent-session-journal-types'
+import {
+  nativeChatLiveLine,
+  type NativeChatLiveLine
+} from '../../../../shared/native-chat-live-line'
+import { isNativeChatRowInLiveWorkingTurn } from '../../../../shared/native-chat-turn-membership'
 import {
   buildNativeChatTranscriptSlots,
-  splitNativeChatSlotsWaitingBehindLiveTurn,
   type NativeChatTranscriptSlot,
   type NativeChatTranscriptSlotsInput
 } from './native-chat-transcript-slots'
 
-/** The list's slots, and those of messages waiting behind the live turn, drawn after its live
- *  activity (`splitNativeChatSlotsWaitingBehindLiveTurn`). */
-export function useNativeChatTranscriptSlots(
-  input: NativeChatTranscriptSlotsInput & {
-    journalItems: readonly AgentJournalRenderItem[] | undefined
-    journalSubmissions: readonly AgentJournalSubmission[] | undefined
-    stopping: boolean
-  }
-): { slots: NativeChatTranscriptSlot[]; waitingSlots: NativeChatTranscriptSlot[] } {
+/** The transcript's slots and its live activity line, decided together: the open reasoning block
+ *  the line discloses takes no slot, so a row is hidden exactly while the line shows it. */
+export function useNativeChatTranscriptSlots({
+  line,
+  ...input
+}: Omit<NativeChatTranscriptSlotsInput, 'liveReasoningId'> & {
+  line: { draws: boolean; thinking: boolean; stopping?: boolean; activityText?: string | null }
+}): { slots: NativeChatTranscriptSlot[]; liveLine: NativeChatLiveLine | null } {
   const {
     messages,
     typography,
@@ -31,12 +30,38 @@ export function useNativeChatTranscriptSlots(
     isWorking,
     lifecycleWorking,
     subagentSections,
-    subagentChoices,
-    journalItems,
-    journalSubmissions,
-    stopping
+    subagentChoices
   } = input
-  const allSlots = useMemo(
+  const { draws, thinking, stopping = false, activityText } = line
+  const liveLine = useMemo(
+    () =>
+      nativeChatLiveLine({
+        draws,
+        thinking,
+        stopping,
+        activityText,
+        messages,
+        inLiveWorkingTurn: (index) =>
+          isNativeChatRowInLiveWorkingTurn(
+            turnKeys[index],
+            liveTurnKey,
+            isWorking || lifecycleWorking
+          )
+      }),
+    [
+      activityText,
+      draws,
+      isWorking,
+      lifecycleWorking,
+      liveTurnKey,
+      messages,
+      stopping,
+      thinking,
+      turnKeys
+    ]
+  )
+  const liveReasoningId = liveLine?.reasoning?.message.id ?? null
+  const slots = useMemo(
     () =>
       buildNativeChatTranscriptSlots({
         messages,
@@ -50,31 +75,24 @@ export function useNativeChatTranscriptSlots(
         isWorking,
         lifecycleWorking,
         subagentSections,
-        subagentChoices
+        subagentChoices,
+        liveReasoningId
       }),
     [
-      messages,
-      typography,
-      turnKeys,
-      liveTurnKey,
-      receipts,
-      turnStatuses,
-      turnDiffs,
       expandedTurnKeys,
       isWorking,
       lifecycleWorking,
+      liveReasoningId,
+      liveTurnKey,
+      messages,
+      receipts,
+      subagentChoices,
       subagentSections,
-      subagentChoices
+      turnDiffs,
+      turnKeys,
+      turnStatuses,
+      typography
     ]
   )
-  return useMemo(
-    () =>
-      splitNativeChatSlotsWaitingBehindLiveTurn(
-        allSlots,
-        journalItems,
-        stopping,
-        journalSubmissions
-      ),
-    [allSlots, journalItems, stopping, journalSubmissions]
-  )
+  return { slots, liveLine }
 }
