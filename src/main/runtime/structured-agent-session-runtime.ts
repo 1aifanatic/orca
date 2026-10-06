@@ -95,7 +95,7 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** The program sessions and catalog probes run: this host's configured Command, else the stock
    *  CLI. Absent is the stock lookup. */
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
-  resolveClaudeCommand?: () => string
+  resolveClaudeCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
   claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
   /** Provider transports are overridden only to drive the runtime against scripted children. */

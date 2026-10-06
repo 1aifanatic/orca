@@ -68,7 +68,7 @@ describe('structuredAgentSessionStartFailure', () => {
     ],
     [
       'agentCommandNotRunnable',
-      "The Command set for Claude in Settings → Agents isn't a program Orca can run. Set it to a program path or name, or clear it."
+      "Claude's Command in Settings → Agents must be a program path or name Orca can find, with no arguments or variables. Change it or reset it."
     ]
   ] as const)('words a start refused for %s by that situation', (reason, sentence) => {
     const code = 'agent_session_operation_invalid'

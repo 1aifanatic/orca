@@ -1,7 +1,6 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
-import { resolveClaudeCommand } from '../codex-cli/command'
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { createClaudeStructuredLaunchResolver } from '../claude/claude-structured-launch-resolution'
 import {
@@ -24,7 +23,7 @@ import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-dis
 export type StructuredClaudeRuntimeAdapterDeps = {
   store: AgentSessionRecordStore
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
-  resolveClaudeCommand?: () => string
+  resolveClaudeCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
   claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
   resolveClaudeLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
@@ -87,7 +86,7 @@ export function createStructuredClaudeRuntimeAdapter(
     resolveLaunch: createClaudeStructuredLaunchResolver({
       store,
       resolveWorkspacePath: deps.resolveWorkspacePath,
-      resolveCommand: deps.resolveClaudeCommand ?? resolveClaudeCommand,
+      ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
       ...(deps.resolveClaudeLaunchEnv ? { resolveEnv: deps.resolveClaudeLaunchEnv } : {}),
       ...(deps.resolveClaudeInheritedEnv
         ? { resolveInheritedEnv: deps.resolveClaudeInheritedEnv }

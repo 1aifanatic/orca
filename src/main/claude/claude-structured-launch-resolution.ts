@@ -11,7 +11,7 @@ import {
 } from '../../shared/agent-session-provider-handle'
 import { claudeProviderHandleLeafUuid } from '../../shared/agent-session-provider-handle-encoding'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
+import { pathEnvOf, withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
 import {
   CLAUDE_AUTH_ENV_CONFLICT_MESSAGE,
@@ -115,7 +115,8 @@ export type ClaudeStructuredLaunch = {
 export type ClaudeStructuredLaunchResolverDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinLaunchDirectory'>
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
-  resolveCommand?: () => string
+  /** Given the PATH and home the child launches with; absent is the stock lookup on Orca's PATH. */
+  resolveCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveEnv?: () =>
     | Promise<Record<string, string> | undefined>
     | Record<string, string>
@@ -171,11 +172,16 @@ export type ClaudeChildEnvSources = {
 export async function resolveClaudeChildEnvSources(
   deps: ClaudeEnvDeps
 ): Promise<ClaudeChildEnvSources> {
-  const command = (deps.resolveCommand ?? resolveClaudeCommand)()
   const overlay = await deps.resolveEnv?.()
   const inheritedEnv = deps.resolveInheritedEnv
     ? await deps.resolveInheritedEnv()
     : cloneDefinedEnv(process.env)
+  // Resolved against the env the child launches with, as the overlay spreads last in claudeChildEnv.
+  const launchEnv = { ...inheritedEnv, ...overlay }
+  const homePath = launchEnv.HOME ?? launchEnv.USERPROFILE
+  const command = deps.resolveCommand
+    ? deps.resolveCommand({ pathEnv: pathEnvOf(launchEnv), ...(homePath ? { homePath } : {}) })
+    : resolveClaudeCommand()
   return { command, overlay: overlay ? cloneDefinedEnv(overlay) : undefined, inheritedEnv }
 }
 

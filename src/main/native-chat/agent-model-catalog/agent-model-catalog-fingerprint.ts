@@ -10,7 +10,9 @@ import type { AgentSessionStoredAgent } from '../../../shared/agent-session-stor
  * Everything that changes which models a listing can answer with: the agent,
  * the account home the CLI reads credentials/config from, and the execution
  * host that runs the binary. Login-state or CLI-version drift under the same
- * key is corrected by the next refresh, never by the fingerprint.
+ * key is corrected by the next refresh, never by the fingerprint. The program
+ * is not keyed either: after a Command change, a chat still running the old
+ * program keeps refreshing this entry with its list until it ends.
  */
 export type AgentModelCatalogIdentity = {
   agent: string

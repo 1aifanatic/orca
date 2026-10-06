@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
+import { sayAgentSessionFailureEnglish } from '../../../../shared/agent-session-failure-copy'
+import { agentSessionFailureSentence } from '../../../../shared/agent-session-failure-words'
 import { agentSessionRefusalFailure } from '../../../../shared/agent-session-write-failure'
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 
@@ -21,8 +23,21 @@ it('names the Command setting when it is not a program Orca can run', () => {
   )
   expect(
     screen.getByText(
-      "Chat could not be started. The Command set for Claude in Settings → Agents isn't a program Orca can run. Set it to a program path or name, or clear it."
+      "Chat could not be started. Claude's Command in Settings → Agents must be a program path or name Orca can find, with no arguments or variables. Change it or reset it."
     )
   ).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+})
+
+it('reads naturally where no agent name is known', () => {
+  expect(
+    agentSessionFailureSentence(
+      { kind: 'agentCommandNotRunnable' },
+      'row',
+      {},
+      sayAgentSessionFailureEnglish
+    )
+  ).toBe(
+    "The agent's Command in Settings → Agents must be a program path or name Orca can find, with no arguments or variables. Change it or reset it."
+  )
 })

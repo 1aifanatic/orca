@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
+import { resolveClaudeChildEnvSources } from '../claude/claude-structured-launch-resolution'
+import { resolveClaudeCommand } from '../codex-cli/command'
 
 const installed = vi.hoisted(() => {
   const holder: { deps: Partial<StructuredAgentSessionRuntimeDeps> | null } = { deps: null }
@@ -84,5 +86,33 @@ describe.skipIf(process.platform === 'win32')('structured agent program wiring',
     const deps = await installedDeps()
     const stock = stub('codex')
     expect(deps.resolveCodexCommand?.({ pathEnv: join(root, 'bin'), homePath: root })).toBe(stock)
+    stub('claude')
+    // Stock Claude still resolves on Orca's own PATH, not the launch PATH it is handed.
+    expect(deps.resolveClaudeCommand?.({ pathEnv: join(root, 'bin'), homePath: root })).toBe(
+      resolveClaudeCommand()
+    )
+  })
+
+  it.each([
+    ['a name only the Claude agent env puts on PATH', 'my-claude', undefined],
+    ['exactly `claude`, found on the launch PATH', 'claude', join('bin')]
+  ])('finds a configured Claude Command given as %s', async (_, name, inheritedBin) => {
+    const deps = await installedDeps()
+    const resolveCommand = deps.resolveClaudeCommand
+    if (!resolveCommand) {
+      throw new Error('the runtime installed no Claude program resolver')
+    }
+    const program = stub(name)
+    settings.agentCmdOverrides = { claude: name }
+    const sources = await resolveClaudeChildEnvSources({
+      resolveCommand,
+      resolveInheritedEnv: async () => ({
+        PATH: inheritedBin ? join(root, inheritedBin) : join(root, 'empty'),
+        HOME: root
+      }),
+      // Settings → Agents environment for Claude, which spreads over the inherited env.
+      resolveEnv: (): Record<string, string> => (inheritedBin ? {} : { PATH: join(root, 'bin') })
+    })
+    expect(sources.command).toBe(program)
   })
 })

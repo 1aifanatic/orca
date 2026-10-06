@@ -336,6 +336,14 @@ function firstWindowsPathEnvKey(env: NodeJS.ProcessEnv): string {
   return 'Path'
 }
 
+/** The PATH a child launched with `env` reads: on Windows, the first case-insensitive entry. */
+export function pathEnvOf(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  return env[platform === 'win32' ? firstWindowsPathEnvKey(env) : 'PATH'] ?? null
+}
+
 /**
  * Put a resolved CLI's own directory ahead of PATH when that directory ships a
  * sibling `node`.

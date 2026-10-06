@@ -4,6 +4,7 @@ import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   getVersionManagerBinPaths,
+  pathEnvOf,
   withCliRuntimeOnPath,
   resolveClaudeCommand,
   resolveCliCommands,
@@ -388,5 +389,13 @@ describe('withCliRuntimeOnPath', () => {
     // Why the whole string: splitting on the host delimiter while joining on ';'
     // shredded every drive letter into `C;\\Windows`.
     expect(paired.Path).toBe([v20, 'C:\\Windows', 'C:\\Windows\\System32'].join(';'))
+  })
+})
+
+describe('pathEnvOf', () => {
+  it('reads the first case-insensitive PATH entry on Windows, as the child does', () => {
+    expect(pathEnvOf({ Path: 'C:\\first', PATH: 'C:\\second' }, 'win32')).toBe('C:\\first')
+    expect(pathEnvOf({ PATH: '/usr/bin', Path: '/ignored' }, 'linux')).toBe('/usr/bin')
+    expect(pathEnvOf({}, 'win32')).toBeNull()
   })
 })

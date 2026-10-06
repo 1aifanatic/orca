@@ -163,11 +163,15 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           this.requireStore().getSettings().agentCmdOverrides?.codex,
           options
         ),
-      resolveClaudeCommand: () =>
-        resolveStructuredAgentProgram(
+      resolveClaudeCommand: (options) => {
+        const configured = this.requireStore().getSettings().agentCmdOverrides?.claude
+        // Stock Claude keeps its lookup on Orca's own PATH; a configured name uses the launch PATH.
+        return resolveStructuredAgentProgram(
           'claude',
-          this.requireStore().getSettings().agentCmdOverrides?.claude
-        ),
+          configured,
+          configured?.trim() ? options : {}
+        )
+      },
       // Wired only here, so a test runtime never runs a real `claude --version`.
       claudeThinkingDisplay: claudeThinkingDisplaySupport,
       resolveShellEnvironmentPolicy: () =>
