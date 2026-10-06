@@ -96,22 +96,20 @@ describe('CodexAccountService reauthenticate activation intent', () => {
     const runtimeHome = createRuntimeHome()
     const rateLimits = createRateLimits()
     const { CodexAccountService } = await import('./service')
+    const recheck = vi.fn()
     const service = new CodexAccountService(
       store as never,
       rateLimits as never,
-      runtimeHome as never
+      runtimeHome as never,
+      { onSignInChanged: recheck }
     )
-
-    const { agentModelCatalogStore } =
-      await import('../native-chat/agent-model-catalog/agent-model-catalog-store')
-    const recheck = vi.spyOn(agentModelCatalogStore.statuses, 'recheck')
 
     const result = await service.reauthenticateAccount('account-2', {
       activateIfSelectionWasEmpty: true
     })
 
     // Marked before the settings change a chat's read follows.
-    expect(recheck).toHaveBeenCalledWith('codex')
+    expect(recheck).toHaveBeenCalledOnce()
     const signedIn = store.updateSettings.mock.calls.findIndex(([updates]) =>
       JSON.stringify(updates.codexManagedAccounts ?? []).includes('reauthenticated@example.com')
     )

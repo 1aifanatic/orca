@@ -17,14 +17,19 @@ import {
   setSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
-import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+
+export type ClaudeAccountServiceLifecycle = {
+  /** The sign-in a Claude launch would use changed; called before the settings change. */
+  onSignInChanged?: () => void
+}
 
 export class ClaudeAccountSelection {
   constructor(
     private readonly store: Store,
     private readonly rateLimits: RateLimitService,
     private readonly runtimeAuth: ClaudeRuntimeAuthService,
-    private readonly removeManagedAuth: (accountId: string, path: string) => Promise<void>
+    private readonly removeManagedAuth: (accountId: string, path: string) => Promise<void>,
+    private readonly lifecycle: ClaudeAccountServiceLifecycle = {}
   ) {}
 
   list(): ClaudeRateLimitAccountsState {
@@ -44,6 +49,8 @@ export class ClaudeAccountSelection {
       settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host
     const target = getClaudeSelectionTargetForAccount(account)
     const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
+    // Removing the selected account swaps another sign-in into the same config dir.
+    this.lifecycle.onSignInChanged?.()
     try {
       if (wasSelected) {
         this.store.updateSettings({
@@ -102,7 +109,7 @@ export class ClaudeAccountSelection {
     )
     // Before the settings change a chat reads from: its read re-probes, and the probe waits out
     // the switch, so the answer it serves meanwhile is the one held, never a stale fresh one.
-    agentModelCatalogStore.statuses.recheck('claude')
+    this.lifecycle.onSignInChanged?.()
     this.store.updateSettings({
       activeClaudeManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,

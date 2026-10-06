@@ -116,7 +116,7 @@ export function useHostModelCatalogUpgrade(args: {
 }): {
   awaitingListing: boolean
   unavailable: AgentSessionUnavailable | null
-  /** The host re-checked the account after a start failure and found it fine. */
+  /** The host's last answer for the account is that a chat can start; it may predate the failure. */
   accountVerified: boolean
 } {
   const {
@@ -208,26 +208,27 @@ export function useHostModelCatalogUpgrade(args: {
       wait: 'waitForListing' | 'waitForAvailability',
       requestGeneration: number
     ): void => {
-      leaves.add(
-        joinHostModelListingWait(
-          wait === 'waitForListing' ? waitKey : `${waitKey}\u0000availability`,
-          () => read(wait),
-          (catalog) => {
-            if (stale || generation !== requestGeneration) {
-              return
-            }
-            apply(catalog)
-            // The catalog landed before the probe's verdict; one more read waits for that.
-            if (wait === 'waitForListing' && catalog?.listingInProgress === true) {
-              queueMicrotask(() => {
-                if (!stale && generation === requestGeneration) {
-                  waitFor('waitForAvailability', requestGeneration)
-                }
-              })
-            }
+      // A settled wait leaves the set, so a chat held blocked for hours keeps none.
+      const leaveWait = joinHostModelListingWait(
+        wait === 'waitForListing' ? waitKey : `${waitKey}\u0000availability`,
+        () => read(wait),
+        (catalog) => {
+          leaves.delete(leaveWait)
+          if (stale || generation !== requestGeneration) {
+            return
           }
-        )
+          apply(catalog)
+          // The catalog landed before the probe's verdict; one more read waits for that.
+          if (wait === 'waitForListing' && catalog?.listingInProgress === true) {
+            queueMicrotask(() => {
+              if (!stale && generation === requestGeneration) {
+                waitFor('waitForAvailability', requestGeneration)
+              }
+            })
+          }
+        }
       )
+      leaves.add(leaveWait)
     }
     const refresh = (): void => {
       if (stale || document.visibilityState === 'hidden') {

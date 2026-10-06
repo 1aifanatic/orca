@@ -576,6 +576,45 @@ describe('catalog availability evidence', () => {
     expect(probe).toHaveBeenCalledTimes(1)
   })
 
+  it('an account change during a running probe gets one fresh probe, which answers the read', async () => {
+    let at = 1000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const fingerprint = selectedHomeFingerprint('/homes/a')
+    store.recordSuccess(fingerprint, 'codex', listing('gpt-a'))
+    await store.refresh(fingerprint, 'codex', signedOut, () => signedOut('/homes/a'))
+    const runs: {
+      resolve: (value: AgentModelCatalogSuccess) => void
+      reject: (e: unknown) => void
+    }[] = []
+    const probe = vi.fn(
+      () =>
+        new Promise<AgentModelCatalogSuccess>((resolve, reject) => runs.push({ resolve, reject }))
+    )
+    const service = availabilityService(store, probe)
+    at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    // The aged blocked answer makes this read start a probe under the old account.
+    await service.read({ agent: 'codex' })
+    expect(probe).toHaveBeenCalledTimes(1)
+    store.statuses.recheck('codex')
+    const during = await service.read({ agent: 'codex' })
+    expect(during).toMatchObject({
+      availability: { state: 'notSignedIn' },
+      listingInProgress: true
+    })
+    const answered = service.read({ agent: 'codex', waitForAvailability: true })
+    await Promise.resolve()
+    // The old account's answer can't settle the change; the fresh probe's does.
+    runs[0]!.reject(
+      new AgentModelCatalogUnavailableError({ reason: 'notSignedIn', account: 'managed' })
+    )
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2))
+    runs[1]!.resolve(listing('gpt-a'))
+    expect((await answered).availability).toEqual({ state: 'ready' })
+    // Exactly one: the answer now stands and later reads start no probe.
+    await service.read({ agent: 'codex' })
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+
   it('an untyped probe failure makes the answer unknown and keeps the cached models', async () => {
     let at = 1
     const store = new AgentModelCatalogStore({ now: () => at })

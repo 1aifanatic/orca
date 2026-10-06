@@ -97,8 +97,9 @@ export class AgentModelCatalogStore {
 
   constructor(options?: { now?: () => number }) {
     this.now = options?.now ?? Date.now
+    // Ordered by sequence and aged on a monotonic clock: a wall-clock step can't freeze an answer.
     this.statuses = new AgentAccountStatuses(
-      this.now,
+      options?.now ?? (() => performance.now()),
       AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
       AGENT_MODEL_CATALOG_MAX_ENTRIES
     )
@@ -236,7 +237,7 @@ export class AgentModelCatalogStore {
     }
     const order = ++this.nextListingOrder
     // Only the session-less probe checks the account; a chat's own listing never answers for it.
-    const probedAt = typeof lister === 'function' ? this.now() : null
+    const probed = typeof lister === 'function' ? this.statuses.beginProbe(fingerprint) : null
     let listing: Promise<AgentModelCatalogSuccess>
     try {
       listing = listModels()
@@ -245,8 +246,8 @@ export class AgentModelCatalogStore {
     }
     const run = listing.then(
       (success) => {
-        if (probedAt !== null) {
-          this.statuses.record(fingerprint, agent, { state: 'ready' }, probedAt)
+        if (probed) {
+          this.statuses.recordProbe(fingerprint, agent, { state: 'ready' }, probed)
         }
         // An older session still receives its own result, but cannot replace a newer catalog.
         const entry =
@@ -257,8 +258,8 @@ export class AgentModelCatalogStore {
         return entry
       },
       (error: unknown) => {
-        if (probedAt !== null) {
-          this.statuses.recordProbeFailure(fingerprint, agent, error, probedAt)
+        if (probed) {
+          this.statuses.recordProbeFailure(fingerprint, agent, error, probed)
         }
         settle()
         this.recordFailure(fingerprint, error instanceof Error ? error.message : String(error))

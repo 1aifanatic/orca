@@ -1,4 +1,3 @@
-import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 // Where the structured agent-session wire becomes a live host on this runtime.
 //
 // Built on the first `agentSession.*` call rather than at startup: the record
@@ -11,6 +10,7 @@ import type { AgentSessionAccountKind } from '../../shared/agent-session-availab
 // A process whose journal will not open installs none and answers every
 // structured request with the refusal that says why.
 
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'

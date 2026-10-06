@@ -30,9 +30,9 @@ describe('positive agent availability evidence', () => {
     ).toEqual({ state: 'notSignedIn', account, recheckInMs: 50 })
   })
   it("clamps a longer host hint to this client's hold instead of dropping it", () => {
-    expect(readAgentSessionAvailability({ state: 'cliMissing', recheckInMs: 90_000 })).toEqual({
+    expect(readAgentSessionAvailability({ state: 'cliMissing', recheckInMs: 900_000 })).toEqual({
       state: 'cliMissing',
-      recheckInMs: 30_000
+      recheckInMs: 300_000
     })
   })
   it('retains signed-out evidence without optional account context', () => {

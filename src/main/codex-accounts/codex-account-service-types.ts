@@ -22,6 +22,8 @@ export type CodexAccountReauthenticateOptions = {
 
 export type CodexAccountServiceLifecycle = {
   onHostSystemDefaultSelected?: () => void
+  /** The sign-in a Codex launch would use changed; called before the settings change. */
+  onSignInChanged?: () => void
 }
 
 export type ManagedCodexHomeLocation = {

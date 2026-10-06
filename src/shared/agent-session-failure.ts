@@ -1,4 +1,3 @@
-import type { AgentSessionAccountKind } from './agent-session-availability'
 // What went wrong in a chat, typed where the host decides it, beside the sentence a person reads.
 //
 // The host writes both at once: `text`/`reason` stays a complete sentence because released clients
@@ -7,6 +6,7 @@ import type { AgentSessionAccountKind } from './agent-session-availability'
 // value the provider wrote — never recovered from a string afterwards, since by then nothing can
 // tell a provider's sentence from Orca's.
 
+import type { AgentSessionAccountKind } from './agent-session-availability'
 import {
   readAgentSessionArgumentProblem,
   type AgentSessionArgumentProblem

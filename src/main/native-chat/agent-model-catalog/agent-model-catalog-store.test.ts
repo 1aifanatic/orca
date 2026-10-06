@@ -499,6 +499,65 @@ describe("the account's status beside the catalog", () => {
     expect(store.statuses.needsProbe('fp-1')).toBe(true)
   })
 
+  it('orders evidence by sequence, so a clock that steps back neither freezes nor keeps it', async () => {
+    const at = { now: 100_000 }
+    const { store, block } = blockedStore(at)
+    await block()
+    at.now = 1_000
+    // Due now, rather than frozen until the clock catches up.
+    expect(store.statuses.needsProbe('fp-1')).toBe(true)
+    const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
+    await store.refresh('fp-1', 'codex', listed, () => listed('/homes/a'))
+    expect(status(store)).toEqual({ state: 'ready' })
+    // A refused start, then an account change, still settle in the order they happened.
+    at.now = 500
+    store.statuses.record('fp-1', 'codex', { state: 'cliMissing' })
+    expect(status(store)).toMatchObject({ state: 'cliMissing' })
+    store.statuses.recheck('codex')
+    at.now = 100
+    await store.refresh('fp-1', 'codex', listed, () => listed('/homes/a'))
+    expect(status(store)).toEqual({ state: 'ready' })
+  })
+
+  it('spaces out probes that keep finding the same block, up to its cap', async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    const holds: number[] = []
+    for (let probe = 0; probe < 6; probe += 1) {
+      await block()
+      const hold = store.statuses.get('fp-1', true)
+      holds.push(hold && hold.state !== 'ready' ? hold.recheckInMs : 0)
+      // Every read before the hold is up serves the held answer and starts no probe.
+      at.now += holds.at(-1)! - 1
+      expect(store.statuses.needsProbe('fp-1')).toBe(false)
+      at.now += 1
+      expect(store.statuses.needsProbe('fp-1')).toBe(true)
+    }
+    expect(holds).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000])
+  })
+
+  it('starts the hold over after an account change or a different refusal', async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    const hold = () => {
+      const answer = store.statuses.get('fp-1', true)
+      return answer && answer.state !== 'ready' ? answer.recheckInMs : 0
+    }
+    await block()
+    await block()
+    expect(hold()).toBe(60_000)
+    store.statuses.recheck('codex')
+    await block()
+    expect(hold()).toBe(30_000)
+    await block()
+    expect(hold()).toBe(60_000)
+    // The same refusal from a start keeps the pace; a different one starts over.
+    store.statuses.record('fp-1', 'codex', { state: 'notSignedIn', account: 'system' })
+    expect(hold()).toBe(60_000)
+    store.statuses.record('fp-1', 'codex', { state: 'cliMissing' })
+    expect(hold()).toBe(30_000)
+  })
+
   it('a synchronous probe fault never rejects the catalog read', async () => {
     const store = new AgentModelCatalogStore()
     const faulty: AgentModelCatalogProbe = () => {

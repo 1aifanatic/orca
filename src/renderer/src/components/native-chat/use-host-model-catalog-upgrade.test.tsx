@@ -4,13 +4,28 @@ import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn() }))
+const mocks = vi.hoisted(() => ({ call: vi.fn(), leftWaits: 0 }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call
 }))
+
+// Counts each wait a chat still has to leave, passing every call through.
+vi.mock('./host-model-listing-waits', async (importActual) => {
+  const actual = await importActual<typeof ListingWaits>()
+  return {
+    ...actual,
+    joinHostModelListingWait: (...args: Parameters<typeof actual.joinHostModelListingWait>) => {
+      const leave = actual.joinHostModelListingWait(...args)
+      return () => {
+        mocks.leftWaits += 1
+        leave()
+      }
+    }
+  }
+})
 
 vi.mock('./native-chat-session-option-settings-write', () => ({
   enqueueSessionOptionSettingsWrite: vi.fn()
@@ -22,6 +37,7 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
 }))
 
 import { useAppStore } from '@/store'
+import type * as ListingWaits from './host-model-listing-waits'
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
@@ -487,6 +503,35 @@ describe('Send availability follows the current catalog', () => {
     reread.resolve(UNKNOWN)
     await flush()
     expect(result.current.unavailable).toBeNull()
+  })
+  it('drops each settled wait, so a chat held blocked keeps none to leave', async () => {
+    const beside = { ...HOST_CATALOG, listingInProgress: true }
+    const answered = { ...HOST_CATALOG, availability: blocked.availability }
+    answerCatalog([
+      () => Promise.resolve(beside),
+      () => Promise.resolve(answered),
+      () => Promise.resolve(beside),
+      () => Promise.resolve(answered),
+      () => Promise.resolve(beside),
+      () => Promise.resolve(answered)
+    ])
+    renderOptions()
+    await flush()
+    for (let cycle = 0; cycle < 2; cycle += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30000)
+      })
+      await flush()
+    }
+    expect(catalogReads()).toHaveLength(6)
+    mocks.leftWaits = 0
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    try {
+      act(() => document.dispatchEvent(new Event('visibilitychange')))
+      expect(mocks.leftWaits).toBe(0)
+    } finally {
+      hidden.mockRestore()
+    }
   })
   it('clears the blocker when the paired host becomes unreachable', async () => {
     const previous = useAppStore.getState().runtimeStatusByEnvironmentId

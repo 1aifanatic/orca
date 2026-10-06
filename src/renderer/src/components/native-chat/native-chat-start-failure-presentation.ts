@@ -4,7 +4,7 @@ import type { AgentJournalRenderItem } from '../../../../shared/agent-session-jo
 import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
 
 /** What the host says now about this chat's sign-in and CLI: the reason the disabled Send states,
- *  `accountVerified` once its probe found both fine after the failure, or null for no answer. */
+ *  `accountVerified` while its last answer is that a chat can start, or null for no answer. */
 export type NativeChatGateReason = AgentSessionUnavailable['reason'] | 'accountVerified' | null
 
 export function nativeChatGateReason(
@@ -14,8 +14,8 @@ export function nativeChatGateReason(
   return unavailable?.reason ?? (accountVerified ? 'accountVerified' : null)
 }
 
-/** The disabled Send states this failure, or the host re-checked and it no longer holds; either
- *  way the start's own line is not current. With no answer, the line shows. */
+/** The disabled Send states this failure, or the host's answer now is that it does not hold;
+ *  either way the start's own line is not current. With no answer, the line shows. */
 export function isNativeChatFailureShownByGate(
   failure: UnreadAgentSessionFailureFact,
   gateReason: NativeChatGateReason

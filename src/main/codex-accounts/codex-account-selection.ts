@@ -19,7 +19,6 @@ import {
   setSelectedCodexAccountIdForTarget,
   type CodexAccountSelectionTarget
 } from './runtime-selection'
-import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 type CodexAccountSelectionDependencies = {
   store: Store
@@ -128,7 +127,7 @@ export class CodexAccountSelection {
       effectiveTarget
     )
     // Before the settings change a chat reads from, so its read re-probes the account now in use.
-    agentModelCatalogStore.statuses.recheck('codex')
+    this.dependencies.lifecycle.onSignInChanged?.()
     this.dependencies.store.updateSettings({
       activeCodexManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,

@@ -10,6 +10,7 @@ import type { ResolvedCodexIdentity } from './codex-account-identity'
 import type {
   CodexAccountAddTarget,
   CodexAccountReauthenticateOptions,
+  CodexAccountServiceLifecycle,
   ManagedCodexHomeLocation
 } from './codex-account-service-types'
 import type { CodexAccountSelection } from './codex-account-selection'
@@ -23,7 +24,6 @@ import {
   setSelectedCodexAccountIdForTarget,
   type CodexAccountSelectionTarget
 } from './runtime-selection'
-import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 type CodexAccountRegistrationDependencies = {
   store: Store
@@ -35,6 +35,7 @@ type CodexAccountRegistrationDependencies = {
   ) => ResolvedCodexIdentity
   selection: CodexAccountSelection
   configMirror: CodexConfigMirror
+  lifecycle: CodexAccountServiceLifecycle
   managedHomePaths: CodexManagedHomePath
   managedHomes: CodexManagedHomeLifecycle
   login: (managedHomePath: string) => Promise<void>
@@ -121,7 +122,7 @@ export class CodexAccountRegistration {
     )
 
     // The account signed in again: before the settings change a chat reads from, mark it.
-    agentModelCatalogStore.statuses.recheck('codex')
+    this.dependencies.lifecycle.onSignInChanged?.()
     // Why: login can transiently clear this runtime's selection; unrelated runtime validation must remain authoritative.
     this.dependencies.store.updateSettings({
       codexManagedAccounts: updatedAccounts,

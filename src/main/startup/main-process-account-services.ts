@@ -4,6 +4,7 @@ import { CodexRuntimeHomeService } from '../codex-accounts/runtime-home-service'
 import { CodexAccountService } from '../codex-accounts/service'
 import { ClaudeRuntimeAuthService } from '../claude-accounts/runtime-auth-service'
 import { ClaudeAccountService } from '../claude-accounts/service'
+import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { KeybindingService } from '../keybindings/keybinding-service'
 import { createCodexSessionMigrationScheduler } from '../codex/codex-session-migration-scheduler'
 import { startCodexSessionBackfillInBackground } from '../codex/codex-session-backfill'
@@ -56,13 +57,22 @@ export function initializeMainProcessAccountServices(): void {
     startIndexHeal: startCodexSessionIndexHealInBackground
   })
   state.codexAccounts = new CodexAccountService(store, state.rateLimits, state.codexRuntimeHome, {
-    onHostSystemDefaultSelected: state.codexSessionMigration.requestRun
+    onHostSystemDefaultSelected: state.codexSessionMigration.requestRun,
+    // A chat's sign-in answer for the account is re-derived by its next read.
+    onSignInChanged: () => agentModelCatalogStore.statuses.recheck('codex')
   })
   // Why: migrate historical shared-home sessions after startup; compatibility
   // launches re-arm the non-destructive pass for new rollouts (#4444, #8612, #12480).
   state.codexSessionMigration.scheduleInitialRun()
   state.claudeRuntimeAuth = new ClaudeRuntimeAuthService(store)
-  state.claudeAccounts = new ClaudeAccountService(store, state.rateLimits, state.claudeRuntimeAuth)
+  state.claudeAccounts = new ClaudeAccountService(
+    store,
+    state.rateLimits,
+    state.claudeRuntimeAuth,
+    {
+      onSignInChanged: () => agentModelCatalogStore.statuses.recheck('claude')
+    }
+  )
   state.rateLimits.setCodexHomePathResolver((target) =>
     state.codexRuntimeHome!.prepareForRateLimitFetch(target)
   )

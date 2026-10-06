@@ -2,7 +2,10 @@ import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-
 import type { Store } from '../persistence'
 import type { RateLimitService } from '../rate-limits/service'
 import { ClaudeAccountRegistration } from './claude-account-registration'
-import { ClaudeAccountSelection } from './claude-account-selection'
+import {
+  ClaudeAccountSelection,
+  type ClaudeAccountServiceLifecycle
+} from './claude-account-selection'
 import {
   captureClaudeAuthFromConfigDir,
   captureClaudeAuthFromExistingConfigDir,
@@ -41,16 +44,22 @@ export class ClaudeAccountService {
   constructor(
     store: Store,
     rateLimits: RateLimitService,
-    private readonly runtimeAuth: ClaudeRuntimeAuthService
+    private readonly runtimeAuth: ClaudeRuntimeAuthService,
+    lifecycle: ClaudeAccountServiceLifecycle = {}
   ) {
-    this.selection = new ClaudeAccountSelection(store, rateLimits, runtimeAuth, (accountId, path) =>
-      this.safeRemoveManagedAuth(accountId, path)
+    this.selection = new ClaudeAccountSelection(
+      store,
+      rateLimits,
+      runtimeAuth,
+      (accountId, path) => this.safeRemoveManagedAuth(accountId, path),
+      lifecycle
     )
     this.registration = new ClaudeAccountRegistration({
       store,
       rateLimits,
       runtimeAuth,
       selection: this.selection,
+      lifecycle,
       createManagedAuth: (accountId, target) => this.storage.create(accountId, target),
       assertManagedAuth: (path, accountId) => this.storage.assertOwned(path, accountId),
       removeManagedAuth: (accountId, path) => this.safeRemoveManagedAuth(accountId, path),

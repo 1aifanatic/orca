@@ -56,18 +56,15 @@ describe('CodexAccountService config sync', () => {
     const rateLimits = createRateLimits()
     const runtimeHome = createRuntimeHome()
     const onHostSystemDefaultSelected = vi.fn()
+    const recheck = vi.fn()
 
     const { CodexAccountService } = await import('./service')
     const service = new CodexAccountService(
       store as never,
       rateLimits as never,
       runtimeHome as never,
-      { onHostSystemDefaultSelected }
+      { onHostSystemDefaultSelected, onSignInChanged: recheck }
     )
-
-    const { agentModelCatalogStore } =
-      await import('../native-chat/agent-model-catalog/agent-model-catalog-store')
-    const recheck = vi.spyOn(agentModelCatalogStore.statuses, 'recheck')
 
     const result = await service.selectAccount(null)
 
@@ -75,7 +72,7 @@ describe('CodexAccountService config sync', () => {
     expect(runtimeHome.syncForCurrentSelection).toHaveBeenCalled()
     // The chat's sign-in answer is re-derived for the account now in use, marked before the
     // settings change a chat's read follows.
-    expect(recheck).toHaveBeenCalledWith('codex')
+    expect(recheck).toHaveBeenCalledOnce()
     expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
       store.updateSettings.mock.invocationCallOrder[0]!
     )

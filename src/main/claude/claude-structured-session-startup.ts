@@ -1,9 +1,9 @@
-import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
-import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 // What Claude reports at initialize, read after the session is already published. None of it
 // gates the create: a slow start is still a start, and every way it can fail (exit, auth,
 // a foreign session id) faults the published session through its exit path.
 
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
+import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type {
   StructuredAgentSessionAcquireInput,
   StructuredAgentSessionStartedEvent

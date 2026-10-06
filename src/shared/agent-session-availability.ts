@@ -31,9 +31,9 @@ export function agentSessionAvailabilityState(
     : { state: 'cliMissing' }
 }
 
-/** The longest this client holds a blocked answer before reading again; a longer host hint is
- *  clamped to it, never treated as unknown. */
-export const AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS = 30_000
+/** The longest a blocked answer is held before it is read again: the host's backoff cap, and the
+ *  clamp on a longer host hint, which is never treated as unknown. */
+export const AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS = 5 * 60_000
 
 export function readAgentSessionAvailability(value: unknown): AgentSessionAvailability | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value) || !('state' in value)) {

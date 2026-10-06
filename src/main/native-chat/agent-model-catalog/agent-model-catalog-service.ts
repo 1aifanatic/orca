@@ -126,12 +126,22 @@ export function createAgentModelCatalogService(
       const home = accountHomePath
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
+      const reprobe = (): Promise<AgentModelCatalogEntry | null> | null => {
+        if (!probe || !home) {
+          return null
+        }
+        const run = deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+        // A probe that began before an account change can't answer for it: one fresh probe follows.
+        return deps.store.statuses.probeStartedBeforeRecheck(fingerprint)
+          ? run.then(() => deps.store.refresh(fingerprint, params.agent, probe, () => probe(home)))
+          : run
+      }
       if (probe && home) {
-        // A blocked answer past its TTL, or one an account change marked, is re-derived here by
+        // A blocked answer past its hold, or one an account change marked, is re-derived here by
         // the probe whatever else is listing; no chat's own listing can answer for the account.
         if (deps.store.statuses.needsProbe(fingerprint)) {
-          void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
-          listing = !entry ? deps.store.pendingListing(fingerprint) : null
+          void reprobe()
+          listing = !entry ? (listing ?? deps.store.pendingListing(fingerprint)) : null
         } else if (entry && deps.store.shouldRefresh(fingerprint)) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
@@ -144,8 +154,8 @@ export function createAgentModelCatalogService(
       // A picker waits only for a first catalog; a read for the verdict joins the running probe.
       const pending = params.waitForListing
         ? listing
-        : params.waitForAvailability && probe && home && probeRunning()
-          ? deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+        : params.waitForAvailability && probeRunning()
+          ? reprobe()
           : null
       if (pending) {
         const listed = await pending

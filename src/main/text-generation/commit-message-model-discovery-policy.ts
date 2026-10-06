@@ -26,6 +26,15 @@ export function staticModelDiscoveryResult(
   }
 }
 
+/** A probe's control replies name the account (initialize carries its email and org), so a failure
+ *  never logs or quotes them. */
+function withoutControlResponses(output: string): string {
+  return output
+    .split(/\r?\n/)
+    .filter((line) => !(line.trimStart().startsWith('{') && line.includes('control_response')))
+    .join('\n')
+}
+
 export function finalizeModelDiscoveryOutput(
   spec: AgentModelProbeSpec,
   stdout: string,
@@ -33,15 +42,16 @@ export function finalizeModelDiscoveryOutput(
   code: number | null
 ): DiscoverCommitMessageModelsResult {
   if (code !== 0) {
+    const shown = withoutControlResponses(stdout)
     console.error('[commit-message] Model discovery failed:', {
       label: spec.label,
       exitCode: code,
-      stdout,
+      stdout: shown,
       stderr
     })
     return {
       success: false,
-      error: formatAgentCliFailureMessage(spec.label, stdout, stderr, code)
+      error: formatAgentCliFailureMessage(spec.label, shown, stderr, code)
     }
   }
   let models = spec.modelDiscovery?.parse(stdout) ?? []
