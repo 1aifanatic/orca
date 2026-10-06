@@ -49,7 +49,7 @@ export async function publishLegacyBinaryInitialSnapshot(
   // Why after the fit: the seed reflows the pane's screen onto the grid the phone now owns.
   const hydratedFromRenderer =
     missingHeadlessStateBeforeMobileFit &&
-    (await runtime.hydrateHeadlessTerminalFromRenderer?.(ptyId)) === true
+    (await runtime.maybeHydrateHeadlessFromRenderer?.(ptyId)) === true
   if (state.closed) {
     return
   }

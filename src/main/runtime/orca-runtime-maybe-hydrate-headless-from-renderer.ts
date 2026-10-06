@@ -13,7 +13,8 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
   // is populated synchronously so concurrent live writes from
   // trackHeadlessTerminalData chain after the seed via the same writeChain.
   // See docs/mobile-prefer-renderer-scrollback.md.
-  protected maybeHydrateHeadlessFromRenderer(ptyId: string): Promise<boolean> | null {
+  // Public: a phone subscribe calls it after the fit; the promise resolves true once seeded.
+  maybeHydrateHeadlessFromRenderer(ptyId: string): Promise<boolean> | null {
     if (this.headlessHydrationState.has(ptyId)) {
       return null
     }
@@ -111,12 +112,6 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
       }
     })
     return state.writeChain.then(() => seeded)
-  }
-
-  /** Public: a phone fit resizes the PTY, but an idle TUI sends no byte to hydrate on. Resolves
-   *  true once the model holds the pane's screen reflowed onto the PTY's current grid. */
-  hydrateHeadlessTerminalFromRenderer(ptyId: string): Promise<boolean> {
-    return this.maybeHydrateHeadlessFromRenderer(ptyId) ?? Promise.resolve(false)
   }
 
   // Why: seed-derived agent status reflects historical state. Orchestration
