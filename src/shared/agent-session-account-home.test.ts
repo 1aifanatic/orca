@@ -29,7 +29,7 @@ describe('agent session account home', () => {
     }
   })
 
-  it('validates tagged OpenCode locators without saving a duplicate managed path', () => {
+  it('validates tagged OpenCode locators, keeping ones a newer build added fields to', () => {
     const record = encodeAgentSessionRecord(agentSessionRecordFixture())
     const managed = {
       kind: 'opencode',
@@ -53,13 +53,13 @@ describe('agent session account home', () => {
         ...record,
         accountHome: { ...managed, path: '/fake/home' }
       })
-    ).toBe(false)
+    ).toBe(true)
     expect(
       isPersistedAgentSessionRecord({
         ...record,
-        accountHome: { ...unmanaged, locator: { ...unmanaged.locator, secret: 'key' } }
+        accountHome: { ...unmanaged, locator: { ...unmanaged.locator, channel: 'beta' } }
       })
-    ).toBe(false)
+    ).toBe(true)
     expect(
       isPersistedAgentSessionRecord({
         ...record,

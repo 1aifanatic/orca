@@ -1,4 +1,4 @@
-// The adapter against OpenCode's recorded `opencode acp` traffic (1.18.31 and 2.0.14): each
+// The adapter against OpenCode's recorded `opencode acp` traffic (1.18.31): each
 // recording plays back as the agent, and the assertions read the journal a client would see.
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -27,10 +27,10 @@ const ask: AgentJournalMessageItem = {
   blocks: [{ type: 'text', text: 'Fixture prompt' }]
 }
 
-async function replaying(name: string, agent: 'opencode' | 'opencode2' = 'opencode') {
+async function replaying(name: string) {
   const replay = new GrokFixtureReplay(await readAcpFixture(name))
   const rig = await openAcpAdapterRig({
-    spec: acpLaunchSpecFor(agent)!,
+    spec: acpLaunchSpecFor('opencode')!,
     script: (scripted) => replay.attach(scripted)
   })
   await rig.acquire()
@@ -66,14 +66,14 @@ async function answer(rig: AcpAdapterRig, replay: GrokFixtureReplay, optionId: s
 }
 
 describe('OpenCode recordings through the adapter', () => {
-  it('1.x: an approved shell command lands with its exit code, and "always" says it is project-wide', async () => {
+  it('an approved shell command lands with its exit code, and "always" says it lasts for this chat', async () => {
     const { rig, replay } = await replaying('opencode-v1-tool')
     const approval = await answer(rig, replay, 'once')
     expect(approval.body).toMatchObject({
       kind: 'approval',
       options: [
         { id: 'once', label: 'Allow once' },
-        { id: 'always', label: 'Always allow in this project' },
+        { id: 'always', label: 'Allow for this chat' },
         { id: 'reject', label: 'Reject' }
       ]
     })
@@ -87,7 +87,7 @@ describe('OpenCode recordings through the adapter', () => {
     expect(shell?.body).toMatchObject({ state: 'completed', exitCode: 0 })
   })
 
-  it('1.x: a rejected permission fails its tool and the turn still ends', async () => {
+  it('a rejected permission fails its tool and the turn still ends', async () => {
     const { rig, replay } = await replaying('opencode-v1-deny')
     await answer(rig, replay, 'reject')
     await waitFor(() => expect(replay.awaiting).toBeNull())
@@ -95,16 +95,7 @@ describe('OpenCode recordings through the adapter', () => {
     expect((await rowsOf(rig, 'tool-call')).at(-1)?.body).toMatchObject({ state: 'failed' })
   })
 
-  it('2.x: a rejected permission ends the turn as OpenCode 2 reports it, cancelled', async () => {
-    const { rig, replay } = await replaying('opencode-v2-deny', 'opencode2')
-    await answer(rig, replay, 'reject')
-    await waitFor(() => expect(replay.awaiting).toBeNull())
-    await waitFor(async () =>
-      expect(await turns(rig)).toMatchObject([{ state: 'interrupted', outcome: 'cancellation' }])
-    )
-  })
-
-  it("1.x: a subagent's approval never arrives (a known OpenCode bug); Stop still ends the turn", async () => {
+  it("a subagent's approval never arrives (a known OpenCode bug); Stop still ends the turn", async () => {
     const { rig, replay } = await replaying('opencode-v1-subagent-hang')
     await waitFor(() => expect(replay.awaiting).toBe('session/cancel'))
     expect(await rowsOf(rig, 'approval')).toEqual([])
@@ -116,24 +107,19 @@ describe('OpenCode recordings through the adapter', () => {
     )
   })
 
-  it("2.x: a subagent's approval arrives on the chat's own session and is answered there", async () => {
-    const { rig, replay } = await replaying('opencode-v2-subagent-permission', 'opencode2')
-    await answer(rig, replay, 'once')
-    await waitFor(() => expect(replay.awaiting).toBeNull())
-    await waitFor(async () =>
-      expect(await turns(rig)).toMatchObject([{ state: 'completed', outcome: 'success' }])
-    )
-  })
-
-  it("1.x: OpenCode's stray file write after an approved edit is refused without breaking the turn", async () => {
+  it("OpenCode's stray file write after an approved edit is refused without breaking the turn", async () => {
     const { rig, replay } = await replaying('opencode-v1-stray-write')
     await answer(rig, replay, 'once', 0)
     await answer(rig, replay, 'reject', 1)
     await waitFor(() => expect(replay.awaiting).toBeNull())
     await waitFor(async () => expect(await turns(rig)).toMatchObject([{ state: 'completed' }]))
+    // The write OpenCode repeats to a client that took no file system leaves no row.
+    expect(JSON.stringify((await rig.rig.rows()).map((row) => row.body))).not.toContain(
+      'fs/write_text_file'
+    )
   })
 
-  it("1.x: a provider error fails the turn in OpenCode's own words", async () => {
+  it("a provider error fails the turn in OpenCode's own words", async () => {
     const { rig, replay } = await replaying('opencode-v1-provider-error')
     await waitFor(() => expect(replay.awaiting).toBeNull())
     await waitFor(async () => expect(await turns(rig)).toMatchObject([{ outcome: 'failure' }]))

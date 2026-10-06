@@ -22,8 +22,10 @@ function normalizeToolUpdate(update: ToolCallUpdate): ToolCallUpdate {
   const rawOutput = parsed.data
   const output =
     typeof rawOutput.output === 'string' ? rawOutput.output : rawOutput.metadata?.output
-  const hasSharedOutput = ['stdout', 'stderr'].some((key) => rawOutput[key] !== undefined)
-  const hasSharedExitCode = rawOutput.exitCode !== undefined
+  const hasSharedOutput = ['stdout', 'stderr', 'output_for_prompt'].some(
+    (key) => rawOutput[key] !== undefined
+  )
+  const hasSharedExitCode = rawOutput.exitCode !== undefined || rawOutput.exit_code !== undefined
   const exitCode = rawOutput.metadata?.exit ?? undefined
   if ((output === undefined || hasSharedOutput) && (exitCode === undefined || hasSharedExitCode)) {
     return update
@@ -40,7 +42,8 @@ function normalizeToolUpdate(update: ToolCallUpdate): ToolCallUpdate {
 
 export const OPENCODE_ACP_DIALECT: AcpDialect = {
   normalizeToolUpdate,
-  // OpenCode keeps an "always" grant for every session of the project, not just this chat.
+  // OpenCode 1.x keeps an "always" grant in its own process, which is this chat's alone and ends
+  // when the chat's agent restarts (a Stop, or Orca quitting): not "always".
   permissionOptionLabel: (option) =>
-    option.kind === 'allow_always' ? 'Always allow in this project' : undefined
+    option.kind === 'allow_always' ? 'Allow for this chat' : undefined
 }

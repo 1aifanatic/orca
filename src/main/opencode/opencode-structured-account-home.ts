@@ -57,28 +57,24 @@ export function resolveStructuredOpenCodeAccountHome(input: {
     ...restoredEnvironment(input.baseEnvironment ?? {}, input.managedAccounts),
     ...restoredEnvironment(input.launchEnv, input.managedAccounts)
   }
+  // Inline credentials cannot be pinned without storing them, and a relative directory names no
+  // account: the chat is refused, so the launch opens in the terminal instead.
   if (environment.OPENCODE_AUTH_CONTENT) {
-    throw new Error('OpenCode inline authentication cannot be pinned to a structured chat.')
+    throw unpinnableAccount()
   }
   for (const key of ['XDG_DATA_HOME', 'XDG_STATE_HOME'] as const) {
     const value = environment[key]?.trim()
     if (value && !isAbsolute(value)) {
-      throw new Error(`${key} must be an absolute path for structured OpenCode.`)
+      throw unpinnableAccount()
     }
   }
-  const configuredHome =
-    process.platform === 'win32'
-      ? environment.USERPROFILE ||
-        (environment.HOMEDRIVE && environment.HOMEPATH
-          ? `${environment.HOMEDRIVE}${environment.HOMEPATH}`
-          : undefined)
-      : environment.HOME
+  const configuredHome = childHomeDirectory(environment)
   if (configuredHome && !isAbsolute(configuredHome)) {
-    throw new Error('OpenCode home directory must be an absolute path.')
+    throw unpinnableAccount()
   }
-  const home = input.homeDirectory ?? configuredHome ?? homedir()
-  const dataHome = environment.XDG_DATA_HOME?.trim() || join(home, '.local', 'share')
-  const stateHome = environment.XDG_STATE_HOME?.trim() || join(home, '.local', 'state')
+  const defaults = defaultDirectories(input.homeDirectory ?? configuredHome ?? homedir())
+  const dataHome = environment.XDG_DATA_HOME?.trim() || defaults.dataHome
+  const stateHome = environment.XDG_STATE_HOME?.trim() || defaults.stateHome
   const database = environment.OPENCODE_DB?.trim()
   return {
     kind: 'opencode',
@@ -100,6 +96,9 @@ export function environmentForStructuredOpenCodeAccountHome(
   }
 ): Record<string, string> {
   const environment = restoredEnvironment(input.baseEnvironment, input.managedAccounts)
+  const userSet = new Set(
+    ['XDG_DATA_HOME', 'XDG_STATE_HOME'].filter((key) => environment[key] !== undefined)
+  )
   delete environment.XDG_DATA_HOME
   delete environment.XDG_STATE_HOME
   delete environment.OPENCODE_DB
@@ -111,53 +110,67 @@ export function environmentForStructuredOpenCodeAccountHome(
       ...input.managedAccounts.environmentForAccount('opencode', locator.managedProfileId)
     }
   }
+  // A pinned directory that is OpenCode's default for the child's home, which the user never set, is
+  // left unset: tools the agent runs then see the environment the user has.
+  const home = childHomeDirectory(environment)
+  const defaults = home ? defaultDirectories(home) : null
+  const pins = (key: string, path: string, fallback: string | undefined): boolean =>
+    path !== fallback || userSet.has(key)
   return {
     ...definedEnvironment(environment),
-    XDG_DATA_HOME: locator.dataHome,
-    XDG_STATE_HOME: locator.stateHome,
+    ...(pins('XDG_DATA_HOME', locator.dataHome, defaults?.dataHome)
+      ? { XDG_DATA_HOME: locator.dataHome }
+      : {}),
+    ...(pins('XDG_STATE_HOME', locator.stateHome, defaults?.stateHome)
+      ? { XDG_STATE_HOME: locator.stateHome }
+      : {}),
     ...(locator.databaseSelection.kind === 'override'
       ? { OPENCODE_DB: locator.databaseSelection.value }
       : {})
   }
 }
 
-/**
- * OpenCode's account over ACP: a managed profile or the data and state directories it reads.
- * `managedProfiles: false` is for a binary whose ACP command runs inside the user's own
- * background service, which the chat's environment never reaches: only its default account can be
- * honoured, so a managed selection is refused and a new chat opens in the terminal instead.
- */
+/** The home directory the child's environment names, as OpenCode reads it on this platform. */
+function childHomeDirectory(environment: Record<string, string | undefined>): string | undefined {
+  return process.platform === 'win32'
+    ? environment.USERPROFILE ||
+        (environment.HOMEDRIVE && environment.HOMEPATH
+          ? `${environment.HOMEDRIVE}${environment.HOMEPATH}`
+          : undefined)
+    : environment.HOME
+}
+
+/** Where OpenCode keeps its data and state under `home` when no XDG directory is set. */
+function defaultDirectories(home: string): { dataHome: string; stateHome: string } {
+  return { dataHome: join(home, '.local', 'share'), stateHome: join(home, '.local', 'state') }
+}
+
+function unpinnableAccount(): Error {
+  return agentSessionRefusalError('structured_agent_session_unsupported', {
+    reason: 'hostUnsupported'
+  })
+}
+
+/** OpenCode's account over ACP: a managed profile or the data and state directories it reads. */
 export function openCodeAcpAccountBinding(
-  options: { managedProfiles: boolean },
   managedAccounts: () => AccountReader = getManagedDataAccountService
 ): AcpAccountBinding {
-  const managedSelected = (): boolean => Boolean(managedAccounts().list('opencode').activeAccountId)
   return {
     pin: { accountLocatorKind: 'opencode' },
-    resolve: async ({ launchEnv, baseEnvironment }) => {
-      if (!options.managedProfiles && managedSelected()) {
-        throw agentSessionRefusalError('structured_agent_session_unsupported', {
-          reason: 'hostUnsupported'
-        })
-      }
-      return resolveStructuredOpenCodeAccountHome({
+    resolve: async ({ launchEnv, baseEnvironment }) =>
+      resolveStructuredOpenCodeAccountHome({
         launchEnv,
         baseEnvironment: await baseEnvironment(),
         managedAccounts: managedAccounts()
-      })
-    },
+      }),
     environment: (home, env) => {
       if (isLegacyAgentSessionAccountHome(home)) {
         throw new Error('OpenCode chat requires a pinned data account')
-      }
-      if (!options.managedProfiles && home.locator.kind === 'managed') {
-        throw new Error('This OpenCode runs under its own service account, not a managed profile')
       }
       return environmentForStructuredOpenCodeAccountHome(home, {
         managedAccounts: managedAccounts(),
         baseEnvironment: env
       })
-    },
-    ...(options.managedProfiles ? {} : { supportsCurrentSelection: () => !managedSelected() })
+    }
   }
 }

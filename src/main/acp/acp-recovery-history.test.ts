@@ -123,13 +123,45 @@ describe('ACP restart recovery from the agent store', () => {
     ).toMatchObject([{ clientMessageId: 'held', outcome: 'unknown' }])
   })
 
-  it('excludes a message an earlier send delivered late, after the doubted one was written', async () => {
+  it('lets an accepted send claim its own copy even when the agent stored it after the next send', async () => {
+    // Accepted at dispatch (r=500) and stored at 505; the identical send behind it was lost.
     const load = journal(
-      submission('first', 'continue', 'accepted', 100, 300),
-      submission('held', 'continue', 'unknown', 200)
+      submission('first', 'continue', 'accepted', 100, 500),
+      submission('held', 'continue', 'unknown', 110)
     )
-    const { window } = await windowFor(load, [stored('msg_1', 'continue', 250)])
+    const { window } = await windowFor(load, [stored('msg_1', 'continue', 505)])
     expect(window?.items).toEqual([])
+  })
+
+  it('keeps an older unconfirmed send from widening the window over a delivered copy', async () => {
+    const load = journal(
+      submission('old', 'yes', 'unknown', 50),
+      submission('first', 'yes', 'accepted', 300, 300),
+      submission('held', 'yes', 'unknown', 400)
+    )
+    const { window } = await windowFor(load, [stored('msg_1', 'yes', 303)])
+    expect(window?.items).toEqual([])
+  })
+
+  it('confirms the doubted send when both identical copies are stored', async () => {
+    const load = journal(
+      submission('first', 'yes', 'accepted', 300, 300),
+      submission('held', 'yes', 'unknown', 400)
+    )
+    const { window } = await windowFor(load, [
+      stored('msg_1', 'yes', 303),
+      stored('msg_2', 'yes', 405)
+    ])
+    expect(
+      reconcileSubmissions({ submissions: [...load.state.submissions.values()], history: window! })
+    ).toMatchObject([{ clientMessageId: 'held', outcome: 'accepted', providerItemId: 'msg_2' }])
+  })
+
+  it('reads nothing for a queued card the agent was never handed', async () => {
+    const queued = { ...submission('queued', 'x', 'pending', 1), handoverRecorded: true as const }
+    const { window, readStoredUserMessages } = await windowFor(journal(queued), [])
+    expect(window).toBeNull()
+    expect(readStoredUserMessages).not.toHaveBeenCalled()
   })
 
   it('reads nothing with no message in doubt, a damaged journal, or no resumable session', async () => {

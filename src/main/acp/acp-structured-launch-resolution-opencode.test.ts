@@ -5,16 +5,16 @@ import type { ManagedDataAccountsState } from '../../shared/managed-account-type
 import { restoreManagedDataAccountEnvironment } from '../../shared/managed-data-account-environment'
 import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
 import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-account-home'
+import { scrubOpenCodeAcpEnvironment } from '../opencode/opencode-acp-environment'
 import { ACP_CHILD_ENV_TO_DELETE, acpLaunchSpecFor } from './acp-launch-specs'
 import { createAcpStructuredLaunchResolver } from './acp-structured-launch-resolution'
 
 const PROFILE = '123e4567-e89b-42d3-a456-426614174000'
 
-let activeAccountId: string | null = PROFILE
 const managedAccounts = {
   list: (): ManagedDataAccountsState => ({
     accounts: [{ id: PROFILE, label: 'work', integrations: [], createdAt: 0 }],
-    activeAccountId
+    activeAccountId: PROFILE
   }),
   restoreOriginalEnvironment: (environment: Record<string, string | undefined>) =>
     restoreManagedDataAccountEnvironment(environment),
@@ -28,12 +28,8 @@ const managedAccounts = {
 
 const OPENCODE = {
   ...acpLaunchSpecFor('opencode')!,
-  account: openCodeAcpAccountBinding({ managedProfiles: true }, () => managedAccounts)
+  account: openCodeAcpAccountBinding(() => managedAccounts)
 }
-const OPENCODE2_ACCOUNT = openCodeAcpAccountBinding(
-  { managedProfiles: false },
-  () => managedAccounts
-)
 const identity = {
   sessionId: 'session-alpha-1',
   workspaceId: 'workspace-1',
@@ -97,10 +93,10 @@ describe('OpenCode ACP launch resolution', () => {
       base: { XDG_DATA_HOME: '/elsewhere', OPENCODE_DB: '/elsewhere/other.db' },
       inheritedEnv: { OPENCODE_DB: '/elsewhere/other.db', OPENCODE_AUTH_CONTENT: '{"secret":1}' }
     })({ identity })
-    expect(launch.env).toMatchObject({
-      XDG_DATA_HOME: '/home/user/.local/share',
-      XDG_STATE_HOME: '/home/user/.local/state'
-    })
+    // The user set a data directory, so the pinned one replaces it; the default state directory
+    // they never set stays unset.
+    expect(launch.env.XDG_DATA_HOME).toBe('/home/user/.local/share')
+    expect(launch.env.XDG_STATE_HOME).toBeUndefined()
     expect(launch.env.OPENCODE_DB).toBeUndefined()
     const child = createProviderSpawnSpec(
       {
@@ -114,6 +110,25 @@ describe('OpenCode ACP launch resolution', () => {
     ).env
     expect(child.OPENCODE_DB).toBeUndefined()
     expect(child.OPENCODE_AUTH_CONTENT).toBeUndefined()
+  })
+
+  it('pins a directory away from the default the user no longer uses', async () => {
+    const launch = await resolver(
+      openCodeRecord({
+        kind: 'opencode',
+        locator: {
+          kind: 'unmanaged',
+          dataHome: '/data/opencode-work',
+          stateHome: '/home/user/.local/state',
+          databaseSelection: { kind: 'override', value: 'work.db' }
+        }
+      })
+    )({ identity })
+    expect(launch.env).toMatchObject({
+      XDG_DATA_HOME: '/data/opencode-work',
+      OPENCODE_DB: 'work.db'
+    })
+    expect(launch.env.XDG_STATE_HOME).toBeUndefined()
   })
 
   it('points a managed profile at its own directories', async () => {
@@ -171,6 +186,18 @@ describe('OpenCode ACP launch resolution', () => {
     expect(child.ORCA_OPENCODE_CONFIG_DIR).toBeUndefined()
   })
 
+  it("drops Orca's retired shared plugin directory an old shell still exports", () => {
+    const env: Record<string, string> = {
+      OPENCODE_CONFIG_DIR: '/orca-data/opencode-hooks/shared',
+      ORCA_DATA_ACCOUNT_PROVIDER: 'opencode'
+    }
+    const removed = scrubOpenCodeAcpEnvironment(env, {}, '/orca-data')
+    expect(env.OPENCODE_CONFIG_DIR).toBeUndefined()
+    expect(removed).toEqual(
+      expect.arrayContaining(['OPENCODE_CONFIG_DIR', 'ORCA_DATA_ACCOUNT_PROVIDER'])
+    )
+  })
+
   it("keeps a config directory the user set for OpenCode's launches", async () => {
     const launch = await resolver(openCodeRecord(UNMANAGED), {
       launchEnv: { OPENCODE_CONFIG_DIR: '/home/user/team-config' },
@@ -187,39 +214,5 @@ describe('OpenCode ACP launch resolution', () => {
     await expect(
       resolver(openCodeRecord({ variable: 'XDG_DATA_HOME', path: '/data' }))({ identity })
     ).rejects.toThrow(/pinned data account/)
-  })
-})
-
-describe('OpenCode 2 over ACP: the chat runs under its own service account', () => {
-  const baseEnvironment = async () => ({ HOME: '/home/user' })
-
-  it('opens structured chats only while no managed profile is selected', async () => {
-    activeAccountId = PROFILE
-    expect(OPENCODE2_ACCOUNT.supportsCurrentSelection?.()).toBe(false)
-    await expect(OPENCODE2_ACCOUNT.resolve({ launchEnv: {}, baseEnvironment })).rejects.toThrow(
-      'structured_agent_session_unsupported'
-    )
-    activeAccountId = null
-    expect(OPENCODE2_ACCOUNT.supportsCurrentSelection?.()).toBe(true)
-    await expect(
-      OPENCODE2_ACCOUNT.resolve({ launchEnv: {}, baseEnvironment })
-    ).resolves.toMatchObject({
-      kind: 'opencode',
-      locator: { kind: 'unmanaged' }
-    })
-    activeAccountId = PROFILE
-  })
-
-  it('never launches a chat pinned to a managed profile', () => {
-    expect(() =>
-      OPENCODE2_ACCOUNT.environment(
-        { kind: 'opencode', locator: { kind: 'managed', managedProfileId: PROFILE } },
-        {}
-      )
-    ).toThrow(/service account/)
-  })
-
-  it('keeps managed profiles for OpenCode 1, whose ACP command runs the agent itself', () => {
-    expect(OPENCODE.account.supportsCurrentSelection).toBeUndefined()
   })
 })

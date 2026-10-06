@@ -9,7 +9,7 @@ describe('ACP agents in the runtime registrations', () => {
   it('registers Grok beside Claude and Codex with its declared capabilities', () => {
     expect(
       STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map(({ definition }) => definition.agent)
-    ).toEqual(['codex', 'claude', 'grok', 'opencode', 'opencode2'])
+    ).toEqual(['codex', 'claude', 'grok', 'opencode'])
     expect(structuredAgentRuntimeRegistration('grok')?.definition).toMatchObject({
       handleTransport: 'acp',
       accountHomeVariable: 'GROK_HOME',
@@ -25,19 +25,20 @@ describe('ACP agents in the runtime registrations', () => {
     })
   })
 
-  it.each(['opencode', 'opencode2'])(
-    'registers %s on the ACP lane pinning its tagged account, with image prompts',
-    (agent) => {
-      const definition = structuredAgentRuntimeRegistration(agent)?.definition
-      expect(definition).toMatchObject({
-        agent,
-        handleTransport: 'acp',
-        accountLocatorKind: 'opencode',
-        capabilities: { imagePrompts: true, steering: 'queue', approvalEnforcement: 'orca' }
-      })
-      expect(definition?.accountHomeVariable).toBeUndefined()
-    }
-  )
+  it('registers OpenCode on the ACP lane pinning its tagged account, with image prompts', () => {
+    const definition = structuredAgentRuntimeRegistration('opencode')?.definition
+    expect(definition).toMatchObject({
+      agent: 'opencode',
+      handleTransport: 'acp',
+      accountLocatorKind: 'opencode',
+      capabilities: { imagePrompts: true, steering: 'queue', approvalEnforcement: 'orca' }
+    })
+    expect(definition?.accountHomeVariable).toBeUndefined()
+  })
+
+  it('leaves OpenCode 2 on its terminal-backed chat', () => {
+    expect(structuredAgentRuntimeRegistration('opencode2')).toBeNull()
+  })
 
   it('takes model and effort picks at rest, and keeps no model list of its own', () => {
     const resting = structuredAgentRuntimeRegistration('grok')!.definition.restingOptions

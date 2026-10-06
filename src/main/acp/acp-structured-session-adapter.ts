@@ -151,6 +151,10 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (!Array.isArray(prompt)) {
       return { state: 'rejected', ...prompt }
     }
+    if (this.sessions.get(input.sessionId) !== session || session.journalClosed !== null) {
+      // The child ended while its attachments were read: nothing left Orca.
+      return this.rejected(session, 'providerExited')
+    }
     await input.beforeDispatch?.()
     session.turns.dispatch({
       clientMessageId: input.clientMessageId,

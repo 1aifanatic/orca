@@ -183,6 +183,6 @@ describe('structured OpenCode account binding', () => {
         launchEnv: { OPENCODE_AUTH_CONTENT: 'inline-secret' },
         managedAccounts: accounts
       })
-    ).toThrow('cannot be pinned')
+    ).toThrow('structured_agent_session_unsupported')
   })
 })

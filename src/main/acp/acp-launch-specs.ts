@@ -65,32 +65,27 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
 }
 
-/** OpenCode 1.x (`opencode`) and 2.x (`opencode2`) both serve ACP through `acp`. 2.x's runs inside
- *  the user's own background service, which the launch environment does not reach. */
-function openCodeLaunchSpec(agent: 'opencode' | 'opencode2'): AcpLaunchSpec {
-  return {
-    agent,
-    command: agent,
-    // OpenCode has no bypass flag: full access answers each permission request yes.
-    args: () => ['acp'],
-    // Applied last: the client name ACP sessions report, and no question tool, which ACP cannot
-    // answer (it would wait forever).
-    env: { OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
-    scrubEnvironment: scrubOpenCodeAcpEnvironment,
-    dialect: OPENCODE_ACP_DIALECT,
-    loginCommand: [agent, 'auth', 'login'],
-    account: openCodeAcpAccountBinding({ managedProfiles: agent === 'opencode' }),
-    installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
-    imagePrompts: true,
-    readStoredUserMessages: openCodeStoredUserMessagesReader()
-  }
+// OpenCode 1.x serves ACP in-process through `opencode acp`. OpenCode 2 (`opencode2`) is not here:
+// its `acp` runs inside the user's own background service, which a chat's environment and account
+// pin do not reach, so it keeps its terminal-backed chat.
+const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
+  agent: 'opencode',
+  command: 'opencode',
+  // OpenCode has no bypass flag: full access answers each permission request yes.
+  args: () => ['acp'],
+  // Applied last: the client name ACP sessions report, and no question tool, which ACP cannot
+  // answer (it would wait forever).
+  env: { OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
+  scrubEnvironment: scrubOpenCodeAcpEnvironment,
+  dialect: OPENCODE_ACP_DIALECT,
+  loginCommand: ['opencode', 'auth', 'login'],
+  account: openCodeAcpAccountBinding(),
+  installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
+  imagePrompts: true,
+  readStoredUserMessages: openCodeStoredUserMessagesReader()
 }
 
-export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
-  GROK_LAUNCH_SPEC,
-  openCodeLaunchSpec('opencode'),
-  openCodeLaunchSpec('opencode2')
-]
+export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [GROK_LAUNCH_SPEC, OPENCODE_LAUNCH_SPEC]
 
 export function acpLaunchSpecFor(agent: string): AcpLaunchSpec | null {
   return ACP_LAUNCH_SPECS.find((spec) => spec.agent === agent) ?? null

@@ -111,7 +111,8 @@ const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/
 const PROFILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 /** Shape only: whether the variable is the one the record's agent pins is a launch-time question
- *  (`agentDrivesSession`), so an agent that renames its variable never hides its chats. */
+ *  (`agentDrivesSession`), so an agent that renames its variable never hides its chats. Fields a
+ *  newer build adds are ignored, so its records stay readable here. */
 export function isAgentSessionAccountHome(value: unknown): value is AgentSessionAccountHome {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false
@@ -140,9 +141,7 @@ export function isAgentSessionAccountHome(value: unknown): value is AgentSession
     return (
       'managedProfileId' in locator &&
       typeof locator.managedProfileId === 'string' &&
-      PROFILE_ID.test(locator.managedProfileId) &&
-      Object.keys(locator).length === 2 &&
-      Object.keys(value).length === 2
+      PROFILE_ID.test(locator.managedProfileId)
     )
   }
   if (
@@ -161,12 +160,9 @@ export function isAgentSessionAccountHome(value: unknown): value is AgentSession
   }
   const databaseSelection = locator.databaseSelection
   return (
-    ((databaseSelection.kind === 'default' && Object.keys(databaseSelection).length === 1) ||
-      (databaseSelection.kind === 'override' &&
-        'value' in databaseSelection &&
-        isBoundedAccountString(databaseSelection.value, 4096) &&
-        Object.keys(databaseSelection).length === 2)) &&
-    Object.keys(locator).length === 4 &&
-    Object.keys(value).length === 2
+    databaseSelection.kind === 'default' ||
+    (databaseSelection.kind === 'override' &&
+      'value' in databaseSelection &&
+      isBoundedAccountString(databaseSelection.value, 4096))
   )
 }

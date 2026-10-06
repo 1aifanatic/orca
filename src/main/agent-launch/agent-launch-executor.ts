@@ -82,7 +82,7 @@ export async function executeAgentLaunch(
   execution: AgentLaunchExecution
 ): Promise<AgentLaunchResult> {
   const { intent, runtime } = execution
-  if (intent.reuseTerminal) {
+  if (intent.reuseTerminal || intent.target.kind === 'create-worktree') {
     assertOpenCodeModelLaunchPreferencesAbsent(intent.agent, intent.sessionOptions)
   }
   const vocabulary = execution.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
@@ -101,10 +101,6 @@ export async function executeAgentLaunch(
     settings,
     vocabulary
   })
-  // A structured chat takes a model pick; OpenCode's terminal launch into a new worktree cannot.
-  if (preflight.mode === 'terminal' && intent.target.kind === 'create-worktree') {
-    assertOpenCodeModelLaunchPreferencesAbsent(intent.agent, intent.sessionOptions)
-  }
 
   // A reused terminal already downgraded in the pre-flight; there is nothing to create. Its agent
   // was running before this launch existed, so argv is unreachable and the PTY is the only way in.

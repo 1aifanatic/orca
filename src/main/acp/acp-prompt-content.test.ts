@@ -75,6 +75,15 @@ describe('ACP prompt content', () => {
     ).toMatchObject({ attachment: { reason: 'unsupportedType' } })
   })
 
+  it('keeps the encoded prompt within one protocol line', async () => {
+    // Under the raw image limit, but the base64 prompt would pass the line the agent can read.
+    const text = 'x'.repeat(ACP_PROMPT_IMAGE_MAX_BYTES)
+    expect(await refusal(message({ type: 'text', text }, { type: 'text', text }))).toMatchObject({
+      attachment: { reason: 'totalTooLarge' }
+    })
+    expect(ACP_PROMPT_IMAGE_MAX_BYTES * (4 / 3)).toBeLessThan(16 * 1024 * 1024)
+  })
+
   it("bounds one message's images together", async () => {
     const big = Buffer.alloc(ACP_PROMPT_IMAGE_MAX_BYTES / 2 + 1).toString('base64')
     const image = { type: 'image-ref' as const, url: `data:image/png;base64,${big}` }

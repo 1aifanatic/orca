@@ -5,10 +5,17 @@
 
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
-import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import type {
+  AgentJournalSubmission,
+  AgentSessionJournalIdentity
+} from '../../shared/agent-session-journal-types'
 import type { NativeChatBlock } from '../../shared/native-chat-types'
 import type { JournalLoad } from '../native-chat/agent-session-journal/journal-open'
-import type { ProviderHistoryWindow } from '../native-chat/agent-session-journal/journal-submission-reconciler'
+import type {
+  ProviderHistoryItem,
+  ProviderHistoryWindow
+} from '../native-chat/agent-session-journal/journal-submission-reconciler'
+import { isQueuedAgentJournalSubmission } from '../../shared/agent-session-queued-submission'
 import type { AcpLaunchSpec } from './acp-launch-specs'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
 
@@ -30,26 +37,61 @@ export type AcpStoredUserMessagesReader = (input: {
   signal: AbortSignal
 }) => Promise<AcpStoredUserMessage[] | null>
 
+/** Sends a crash may have left unconfirmed; a queued card was never handed over, so the agent
+ *  cannot hold it. */
+function sendsInDoubt(load: JournalLoad): AgentJournalSubmission[] {
+  return [...load.state.submissions.values()].filter(
+    (submission) =>
+      (submission.dispatchState === 'pending' || submission.dispatchState === 'unknown') &&
+      !isQueuedAgentJournalSubmission(submission)
+  )
+}
+
+function fingerprintOf(sessionId: string, message: AcpStoredUserMessage): string {
+  return computeAgentSessionPayloadFingerprint({
+    method: 'agentSession.send',
+    sessionId,
+    fields: { body: { kind: 'message', role: 'user', blocks: message.blocks } }
+  })
+}
+
 /**
- * The agent's store keeps no id of Orca's, so a stored message can only match a send by its
- * content. The window holds only messages recorded after every send the journal already
- * accepted and no earlier than the first unconfirmed one, so it never offers an older identical
- * message as the one in doubt.
+ * The agent's store keeps no id of Orca's, so a stored message can only match a send by content.
+ * Each send the journal already accepted first claims the earliest stored copy of its text written
+ * no earlier than it was sent, so an identical message that did reach the agent is never offered as
+ * the one in doubt; what is left, from the first send in doubt on, is the window. Claiming more than
+ * a send's own copy only leaves a send in doubt unconfirmed, never wrongly confirmed.
  */
-function recoveryBounds(load: JournalLoad): { after: number; atOrAfter: number } | null {
-  let lastAccepted = Number.NEGATIVE_INFINITY
-  let firstUnsettled = Number.POSITIVE_INFINITY
-  for (const submission of load.state.submissions.values()) {
-    if (submission.dispatchState === 'accepted') {
-      if (submission.resolvedAt === null) {
-        return null
-      }
-      lastAccepted = Math.max(lastAccepted, submission.resolvedAt)
-    } else if (submission.dispatchState === 'pending' || submission.dispatchState === 'unknown') {
-      firstUnsettled = Math.min(firstUnsettled, submission.submittedAt)
+function recoveryWindow(
+  load: JournalLoad,
+  inDoubt: readonly AgentJournalSubmission[],
+  messages: readonly AcpStoredUserMessage[]
+): ProviderHistoryItem[] {
+  const submissions = [...load.state.submissions.values()]
+  const from = Math.min(...inDoubt.map((submission) => submission.submittedAt))
+  const stored = messages
+    .map((message) => ({ message, fingerprint: fingerprintOf(load.state.sessionId, message) }))
+    .toSorted((left, right) => left.message.createdAt - right.message.createdAt)
+  const claimed = new Set<number>()
+  const accepted = submissions
+    .filter((submission) => submission.dispatchState === 'accepted')
+    .toSorted((left, right) => left.submittedAt - right.submittedAt)
+  for (const submission of accepted) {
+    const index = stored.findIndex(
+      ({ message, fingerprint }, at) =>
+        !claimed.has(at) &&
+        fingerprint === submission.payloadFingerprint &&
+        message.createdAt >= submission.submittedAt
+    )
+    if (index !== -1) {
+      claimed.add(index)
     }
   }
-  return Number.isFinite(firstUnsettled) ? { after: lastAccepted, atOrAfter: firstUnsettled } : null
+  return stored.flatMap(({ message, fingerprint }, at) =>
+    claimed.has(at) || message.createdAt < from
+      ? []
+      : [{ providerItemId: message.id, clientMessageId: null, payloadFingerprint: fingerprint }]
+  )
 }
 
 /** The window for one chat; null for an agent whose store Orca does not read. */
@@ -67,8 +109,8 @@ export async function readAcpRecoveryHistory(
   const signal = AbortSignal.timeout(RECOVERY_READ_MS)
   try {
     const load = input.readJournal(sessionId)
-    const bounds = load && !load.damage && !load.newer ? recoveryBounds(load) : null
-    if (!bounds) {
+    const inDoubt = load && !load.damage && !load.newer ? sendsInDoubt(load) : []
+    if (!load || inDoubt.length === 0) {
       return null
     }
     const launch = await waitForPromiseWithSignal(input.resolveLaunch({ identity }), signal)
@@ -90,17 +132,7 @@ export async function readAcpRecoveryHistory(
       // Absence proves nothing: neither the start of the read nor the end of the agent's work is known.
       boundaryConsistent: false,
       turnInFlight: true,
-      items: messages
-        .filter(({ createdAt }) => createdAt > bounds.after && createdAt >= bounds.atOrAfter)
-        .map((message) => ({
-          providerItemId: message.id,
-          clientMessageId: null,
-          payloadFingerprint: computeAgentSessionPayloadFingerprint({
-            method: 'agentSession.send',
-            sessionId,
-            fields: { body: { kind: 'message', role: 'user', blocks: message.blocks } }
-          })
-        }))
+      items: recoveryWindow(load, inDoubt, messages)
     }
   } catch (error) {
     input.logger?.warn('ACP recovery history could not be read', {

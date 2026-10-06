@@ -20,13 +20,16 @@ import {
   readNodeFileWithinLimit
 } from '../../shared/node-bounded-file-reader'
 import type { AcpLaunchSpec } from './acp-launch-specs'
+import { resolveAcpPeerOptions } from './acp-peer-limits'
 import { acpAgentName } from './acp-structured-acquire'
 import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { ContentBlock } from './generated/acp-protocol.generated'
 
 const ACP_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
-/** One message's images together: a prompt is one JSON-RPC line the agent holds in memory. */
-export const ACP_PROMPT_IMAGE_MAX_BYTES = 20 * 1024 * 1024
+/** A prompt is one JSON-RPC line; this leaves room for the request around its blocks. */
+const ACP_PROMPT_LINE_BUDGET = resolveAcpPeerOptions().maxLineBytes - 64 * 1024
+/** One message's images together, raw: base64 makes each 4 bytes of them 3 more. */
+export const ACP_PROMPT_IMAGE_MAX_BYTES = Math.floor((ACP_PROMPT_LINE_BUDGET * 3) / 4) - 1024 * 1024
 const MAX_IMAGE_COUNT = 20
 const READ_TIMEOUT_MS = 15_000
 
@@ -124,6 +127,9 @@ export async function acpPromptBlocks(
     const image = await imageBlock(block, ACP_PROMPT_IMAGE_MAX_BYTES - imageBytes, signal)
     imageBytes += image.bytes
     blocks.push(image.block)
+  }
+  if (Buffer.byteLength(JSON.stringify(blocks)) > ACP_PROMPT_LINE_BUDGET) {
+    throw attachmentProblem({ reason: 'totalTooLarge', limit: ACP_PROMPT_IMAGE_MAX_BYTES })
   }
   return blocks
 }

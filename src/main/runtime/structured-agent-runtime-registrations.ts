@@ -86,8 +86,6 @@ export type StructuredAgentRuntimeRegistration = {
   createAdapter: (context: StructuredAgentAdapterContext) => StructuredAgentRuntimeAdapter
   /** Whether this agent's chats can run at `location`; answered without building the host. */
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
-  /** False while the current account selection is one a new chat of this agent cannot run under. */
-  supportsCurrentAccount?: () => boolean
   /** The account a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
   resolveAccountHome: (
     request: StructuredAgentAccountHomeRequest,
@@ -161,9 +159,6 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
   return {
     definition: acpStructuredAgentDefinition(spec),
     supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
-    ...(spec.account.supportsCurrentSelection
-      ? { supportsCurrentAccount: spec.account.supportsCurrentSelection }
-      : {}),
     resolveAccountHome: ({ launchEnv }, services) =>
       spec.account.resolve({ launchEnv, baseEnvironment: services.resolveBaseEnvironment }),
     createAdapter: (context) => {
