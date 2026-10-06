@@ -5,8 +5,8 @@
  *    repository, a folder workspace, an editor tab, and a relay terminal that has exited.
  * 2. With the template in place and no relay terminal running, the next connect converts it, and
  *    the new server lists that repository and folder and the editor tab.
- * 3. The source rows stay retained (downgrade safety) until `orcad-source-retirement` is on; the
- *    connect after that retires them while the server keeps serving the host.
+ * 3. The source rows stay retained and hidden (downgrade safety), across a later connect too:
+ *    nothing deletes them automatically.
  *
  * A managed host also updates to a relaunched app's bundled orcad on its next idle connect, and
  * reaches its server when another runtime already holds orcad's preferred port.
@@ -14,7 +14,7 @@
  * Host: `ORCA_E2E_ORCAD_CONVERT_HOST=docker` (Linux fixture) or a Windows host-cell descriptor.
  * Template: `ORCA_E2E_ORCAD_CONVERT_TEMPLATE`, built for that host's target.
  */
-import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { ElectronApplication, Page, TestInfo } from '@stablyai/playwright-test'
@@ -29,7 +29,7 @@ import { execInTerminal, waitForActivePanePtyId, waitForTerminalOutput } from '.
 import { connectSshTestTarget } from './helpers/ssh-test-target-connection'
 import { createRestartSession } from './helpers/orca-restart'
 import {
-  convertThenRetire,
+  convertAndRetain,
   managedServer,
   reconnect,
   serverCall,
@@ -53,7 +53,6 @@ const TEMPLATE_SOURCE = process.env.ORCA_E2E_ORCAD_CONVERT_TEMPLATE
 // Fixed per worker so the app's launch env can name them before the test runs.
 const SCRATCH = path.join(os.tmpdir(), `orca-orcad-convert-${process.pid}`)
 const TEMPLATE_DIR = path.join(SCRATCH, 'orcad-template')
-const FLAGS_FILE = path.join(SCRATCH, 'rollout-flags.json')
 
 // Whole file: every test needs a real host and a template built for it.
 test.skip(
@@ -70,7 +69,6 @@ function startHost(testInfo: TestInfo): OrcadConvertHost {
 test.beforeEach(() => {
   rmSync(SCRATCH, { recursive: true, force: true })
   mkdirSync(SCRATCH, { recursive: true })
-  writeFileSync(FLAGS_FILE, '{}')
 })
 
 test.afterEach(() => {
@@ -81,12 +79,11 @@ test.afterEach(() => {
 
 test.use({
   orcaAppExtraEnv: {
-    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_DIR,
-    ORCA_E2E_ROLLOUT_FLAGS_FILE: FLAGS_FILE
+    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_DIR
   }
 })
 
-test('a relay host converts to managed orcad on connect, keeps its source, then retires it', async ({
+test('a relay host converts to managed orcad on connect and keeps its source', async ({
   orcaPage: page,
   electronApp
 }, testInfo) => {
@@ -207,18 +204,13 @@ test('a relay host converts to managed orcad on connect, keeps its source, then 
     ).toBe(JSON.stringify({ sessions: [], leases: [] }))
     await new Promise((settle) => setTimeout(settle, 500))
   }
-  await convertThenRetire(
-    page,
-    userData,
-    {
-      targetId: remote.targetId,
-      worktreeId: remote.worktreeId,
-      repoPath: host.remoteRepoPath,
-      folderPath,
-      sessionFilePath
-    },
-    FLAGS_FILE
-  )
+  await convertAndRetain(page, userData, {
+    targetId: remote.targetId,
+    worktreeId: remote.worktreeId,
+    repoPath: host.remoteRepoPath,
+    folderPath,
+    sessionFilePath
+  })
 })
 
 test('a relay-era profile converts its SSH host on the first connect after upgrading', async (// oxlint-disable-next-line no-empty-pattern -- Playwright's second fixture arg is testInfo; the first must be an object destructure to opt out of the default fixture set.
@@ -226,8 +218,7 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
   test.setTimeout(20 * 60_000)
   const host = startHost(testInfo)
   const session = createRestartSession(testInfo, {
-    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_SOURCE!,
-    ORCA_E2E_ROLLOUT_FLAGS_FILE: FLAGS_FILE
+    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_SOURCE!
   })
   let app: ElectronApplication | null = null
   try {
@@ -252,7 +243,7 @@ test('a relay-era profile converts its SSH host on the first connect after upgra
     })
     app = upgraded.app
     await waitForSessionReady(upgraded.page)
-    await convertThenRetire(upgraded.page, session.userDataDir, seeded, FLAGS_FILE)
+    await convertAndRetain(upgraded.page, session.userDataDir, seeded)
   } finally {
     if (app) {
       await session.close(app)
@@ -349,8 +340,7 @@ test('a managed host updates to the bundled orcad on the first connect after an 
   cpSync(TEMPLATE_SOURCE!, TEMPLATE_DIR, { recursive: true })
   const host = startHost(testInfo)
   const session = createRestartSession(testInfo, {
-    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_DIR,
-    ORCA_E2E_ROLLOUT_FLAGS_FILE: FLAGS_FILE
+    ORCA_ORCAD_TEMPLATE_PATH: TEMPLATE_DIR
   })
   let app: ElectronApplication | null = null
   try {

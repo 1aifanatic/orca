@@ -8,9 +8,9 @@ import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { Repo } from '../../../shared/repo-types'
 import type { WorktreeMeta } from '../../../shared/worktree/meta-types'
 import { DORMANT_AUTOMATION } from '../../persistence-orcad-migration-catalog-fixture'
-import { retireOrcadMigrationClientState } from './orcad-source-client-retirement'
+import { subtractOrcadMigrationClientState } from './orcad-source-client-subtraction'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
-import { retireOrcadMigrationSourceDormantState } from './orcad-source-dormant-retirement'
+import { subtractOrcadMigrationSourceDormantState } from './orcad-source-dormant-subtraction'
 import { createOrcadMigrationSourceScope } from './orcad-source-scope'
 import { inspectOrcadSourceWorktreeMetadata } from './orcad-source-worktree-metadata'
 
@@ -129,8 +129,8 @@ describe('legacy unqualified keys for a repo id two hosts share', () => {
       ).every((count) => count === 0)
     ).toBe(true)
 
-    retireOrcadMigrationSourceDormantState(state, moved)
-    retireOrcadMigrationClientState(state, moved)
+    subtractOrcadMigrationSourceDormantState(state, moved)
+    subtractOrcadMigrationClientState(state, moved)
 
     expect(state.worktreeMeta).toEqual(before.worktreeMeta)
     expect(state.automations).toEqual(before.automations)
@@ -163,7 +163,7 @@ describe('an identity alias whose metadata is gone (the B4 profile shape)', () =
     // A dangling alias with no legacy row beside it is dropped too.
     state.worktreeIdentityAliases[`ssh:host-a|${REPO_A.id}::/srv/gone`] = ['wt2:ssh%3Ahost-a:x']
     expect(inspectOrcadSourceWorktreeMetadata(state, scope).blockedCount).toBe(0)
-    retireOrcadMigrationSourceDormantState(state, manifest(state))
+    subtractOrcadMigrationSourceDormantState(state, manifest(state))
     expect(state.worktreeIdentityAliases).toEqual({})
     expect(state.worktreeMeta).toEqual({})
   })

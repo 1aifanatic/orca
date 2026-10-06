@@ -1,7 +1,7 @@
 /**
  * The delta move: a fresh, journaled conversion of only what an older build added to a converted
  * host, committed to the same managed server. Its journal supersedes the previous head of the
- * host's chain; both stay until source retirement, which retires every manifest in the chain.
+ * host's chain; both stay, and the source rows of every manifest in the chain are kept.
  *
  * A row the server already holds under another identity fails the whole move at stage, before
  * anything is committed: the journal goes, and the host keeps its "changed" mark and the relay.
@@ -43,7 +43,6 @@ import {
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
-import { currentOrcadSourceStateFingerprint } from './orcad-retained-source-state'
 import type { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
 import { orcadMigrationRefusalReason } from './orcad-migration-refusal-reason'
 import { errorMessage } from '../../shared/error-message'
@@ -71,7 +70,7 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
   const now = args.now ?? (() => new Date())
   const plan = planOrcadDeltaMove(userDataPath, store, target, { now })
   // Taken with the manifest, before any await: the baseline must describe what the server receives.
-  const planned = sourceBaseline(store, target)
+  const planned = currentOrcadSourceFingerprint(store, target)
   if (!plan.resumes && plan.added.length === 0) {
     return refuse('orcad_delta_nothing_new', 'An older build added nothing new to move.')
   }
@@ -101,7 +100,7 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
     }
     // The source stays writable until the fence below: a draft typed while the terminals were
     // checked is newer than the manifest, so it must not become the baseline the server is held to.
-    if (!plan.resumes && !sameSourceBaseline(planned, sourceBaseline(store, target))) {
+    if (!plan.resumes && planned !== currentOrcadSourceFingerprint(store, target)) {
       return refuse(
         'orcad_delta_source_changed',
         'This host changed while the move was starting. Try the move again.'
@@ -112,24 +111,10 @@ export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<Orcad
   })
 }
 
-type SourceBaseline = { identity: string; state: string | null }
-
-function sourceBaseline(store: Store, target: SshTarget): SourceBaseline {
-  return {
-    identity: currentOrcadSourceFingerprint(store, target),
-    state: currentOrcadSourceStateFingerprint(store, target)
-  }
-}
-
-/** An unreadable source (null) matches only itself, and stays unverified once journaled. */
-function sameSourceBaseline(left: SourceBaseline, right: SourceBaseline): boolean {
-  return left.identity === right.identity && left.state === right.state
-}
-
 function journalDelta(
   args: OrcadDeltaMoveArgs,
   plan: OrcadDeltaMovePlan,
-  planned: SourceBaseline,
+  planned: string,
   provenPtyIds: string[],
   now: () => Date
 ): OrcadMigrationSourceCutover {
@@ -148,8 +133,7 @@ function journalDelta(
     provenPtyIds,
     supersedesMigrationId: plan.head.migrationId,
     // The whole source as the manifest saw it: what the retained rows must keep matching.
-    sourceBaselineFingerprint: planned.identity,
-    sourceStateFingerprint: planned.state ?? undefined,
+    sourceBaselineFingerprint: planned,
     manifest: plan.manifest
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
@@ -244,9 +228,8 @@ export async function keepOrcadServerVersion(args: {
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, {
     ...head,
-    sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target),
     // Keeping the server's version is the explicit reconcile: the source as it is now is the baseline.
-    sourceStateFingerprint: currentOrcadSourceStateFingerprint(args.store, args.target) ?? undefined
+    sourceBaselineFingerprint: currentOrcadSourceFingerprint(args.store, args.target)
   })
   args.store.updateSshTarget(args.target.id, { orcadFence: { environmentId } })
   await args.claims.flush()

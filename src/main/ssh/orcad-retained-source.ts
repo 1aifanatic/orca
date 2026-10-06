@@ -1,6 +1,7 @@
 /**
- * A converted host's source rows while source retirement is off: hidden from this build's lists,
- * which show the managed server instead, and kept for a downgraded build that still reads them.
+ * A converted host's source rows: hidden from this build's lists, which show the managed server
+ * instead, and kept for a downgraded build that still reads them. Nothing here ever deletes them;
+ * only stopping the server, removing the host or uninstalling does.
  *
  * On every start the rows are compared with what the migration committed. If an older build
  * changed them, the host is marked `sourceChangedAt`: its rows show again, it stays on the relay,
@@ -27,11 +28,6 @@ import {
   repoBelongsToOrcadSource
 } from '../persistence/migrating-orcad-catalog/orcad-source-ownership'
 import { findOrcadMigrationSourceCutoverForTarget } from './orcad-migration-cutover-journal'
-import {
-  currentOrcadSourceStateFingerprint,
-  ORCAD_SOURCE_STATE_FINGERPRINT_VERSION,
-  type OrcadSourceStateStore
-} from './orcad-retained-source-state'
 
 const appUserDataPath = (): string => getAppEnvironment().getPath('userData')
 
@@ -166,31 +162,17 @@ export function retainedOrcadSourceBaseline(head: OrcadMigrationSourceCutover): 
   return head.sourceBaselineFingerprint ?? orcadCatalogFingerprint(head.manifest.payload)
 }
 
-/**
- * `unverified`: identity matches, but the journal predates the state baseline, so nothing proves the
- * retained rows' drafts and settings still equal the server's. Such a source stays hidden as before
- * and is never retired automatically.
- */
-export type RetainedSourceVerdict = 'unchanged' | 'changed' | 'unverified'
+type RetainedSourceVerdict = 'unchanged' | 'changed'
 
-export function compareRetainedOrcadSource(
-  store: OrcadSourceStateStore,
-  target: Pick<SshTarget, 'id' | 'generation' | 'label'>,
+/** Identity only: an older build's edits inside moved projects stay in the retained rows. */
+function compareRetainedOrcadSource(
+  store: CatalogStore,
+  target: Pick<SshTarget, 'id'>,
   head: OrcadMigrationSourceCutover
 ): RetainedSourceVerdict {
-  if (currentOrcadSourceFingerprint(store, target) !== retainedOrcadSourceBaseline(head)) {
-    return 'changed'
-  }
-  // A journal from before the baseline, or one a build with a different field list wrote.
-  if (!head.sourceStateFingerprint?.startsWith(`${ORCAD_SOURCE_STATE_FINGERPRINT_VERSION}:`)) {
-    return 'unverified'
-  }
-  // Null: a session could not be read, so nothing proves the drafts it holds are unchanged.
-  const current = currentOrcadSourceStateFingerprint(store, target)
-  if (current === null) {
-    return 'unverified'
-  }
-  return current === head.sourceStateFingerprint ? 'unchanged' : 'changed'
+  return currentOrcadSourceFingerprint(store, target) === retainedOrcadSourceBaseline(head)
+    ? 'unchanged'
+    : 'changed'
 }
 
 /**
@@ -199,7 +181,7 @@ export function compareRetainedOrcadSource(
  */
 export function reconcileManagedOrcadSshTargets(
   userDataPath: string,
-  store: OrcadSourceStateStore & TargetStore,
+  store: CatalogStore & TargetStore,
   now: () => Date = () => new Date()
 ): void {
   try {
@@ -228,7 +210,7 @@ function restoreFencesFromManagedServers(userDataPath: string, store: TargetStor
 
 function markChangedRetainedSources(
   userDataPath: string,
-  store: OrcadSourceStateStore & TargetStore,
+  store: CatalogStore & TargetStore,
   now: () => Date
 ): void {
   for (const target of store.getSshTargets()) {
@@ -249,7 +231,6 @@ function markChangedRetainedSources(
     if (
       interruptedDelta ||
       (isRetainedOrcadMigrationSourceCutover(head) &&
-        !head.sourceRetiringAt &&
         compareRetainedOrcadSource(store, target, head) === 'changed')
     ) {
       store.updateSshTarget(target.id, {

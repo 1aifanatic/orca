@@ -62,7 +62,7 @@ export function countUnsupportedSessionState(
     !scope.repoIds.has(session.activeRepoId)
       ? 1
       : 0
-  // Focus outside the source partition is client focus, not host state: retirement retargets it.
+  // Focus outside the source partition is client focus, not host state, so it never moves.
   // activeConnectionIdsAtShutdown is not counted: it is the renderer's live "connected now" hint, and
   // the remote work it can stand for (tab PTYs, remote session ids, leases) is the terminal gate's.
   for (const [ownerKey, files] of Object.entries(session.openFilesByWorktree ?? {})) {

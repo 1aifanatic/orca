@@ -10,13 +10,8 @@ import type { Repo } from '../../../shared/repo-types'
 import type { SshTarget } from '../../../shared/ssh-types'
 import type { Tab } from '../../../shared/tab-types'
 import { worktreeWorkspaceKey } from '../../../shared/workspace-scope'
-import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
 import { collectOrcadMigrationUntransferredDependencyCensus } from './orcad-source-dependency-census'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
-import {
-  assertOrcadMigrationSourceWorkspaceSessionRetired,
-  retireOrcadMigrationSourceWorkspaceSession
-} from './orcad-source-workspace-session-retirement'
 
 const TARGET: SshTarget = { id: 'ssh-prod', label: 'Prod', host: 'prod', port: 22, username: 'u' }
 const SSH_HOST = `ssh:${TARGET.id}` as const
@@ -121,69 +116,6 @@ describe('orcad migration census and client focus', () => {
     expect(session?.unifiedTabs?.[WORKTREE]).toHaveLength(1)
     expect(session?.activeWorktreeId ?? null).toBeNull()
     expect(session?.activeWorkspaceKey ?? null).toBeNull()
-  })
-
-  it('remaps client focus to the same worktree in the managed environment', () => {
-    const state = sourceState()
-    focusLocalOnSourceWorktree(state)
-
-    const partitionKeys = Object.keys(state.workspaceSessionsByHostId ?? {})
-    retargetOrcadSourceClientFocus(state, manifest('env-1'))
-
-    expect(state.workspaceSession).toMatchObject({
-      activeRepoId: REPO.id,
-      activeWorktreeId: WORKTREE,
-      activeWorkspaceKey: worktreeWorkspaceKey(WORKTREE),
-      activeWorkspaceExecutionHostId: 'runtime:env-1',
-      activeTabId: 'tab-1'
-    })
-    // Startup drops runtime:<id> sessions whose server is unregistered, so retirement must only
-    // re-aim focus and never create the destination's session itself.
-    expect(Object.keys(state.workspaceSessionsByHostId ?? {})).toEqual(partitionKeys)
-  })
-
-  it('clears client focus the managed environment cannot resolve', () => {
-    const state = sourceState()
-    focusLocalOnSourceWorktree(state)
-    const unmoved = sourceState()
-    focusLocalOnSourceWorktree(unmoved)
-    unmoved.workspaceSession.activeWorktreeId = 'other-repo::/srv/other'
-    unmoved.workspaceSession.activeWorkspaceKey = worktreeWorkspaceKey('other-repo::/srv/other')
-
-    retargetOrcadSourceClientFocus(state, manifest())
-    retargetOrcadSourceClientFocus(unmoved, manifest('env-1'))
-
-    for (const session of [state.workspaceSession, unmoved.workspaceSession]) {
-      expect(session).toMatchObject({
-        activeRepoId: null,
-        activeWorktreeId: null,
-        activeWorkspaceKey: null,
-        activeWorkspaceExecutionHostId: null,
-        activeTabId: null
-      })
-    }
-  })
-
-  it('keeps remapped focus through session retirement, which then verifies clean', () => {
-    const state = sourceState()
-    focusLocalOnSourceWorktree(state)
-    state.workspaceSession.unifiedTabs = { [WORKTREE]: [editorTab(SSH_HOST)] }
-    const moved = manifest('env-1')
-    moved.payload.dormantState = collectOrcadMigrationSourceDormantState(
-      state,
-      moved.source,
-      moved.payload
-    ).payload
-
-    retargetOrcadSourceClientFocus(state, moved)
-    retireOrcadMigrationSourceWorkspaceSession(state, moved)
-
-    expect(state.workspaceSession.unifiedTabs?.[WORKTREE]).toBeUndefined()
-    expect(state.workspaceSession).toMatchObject({
-      activeWorktreeId: WORKTREE,
-      activeWorkspaceExecutionHostId: 'runtime:env-1'
-    })
-    expect(() => assertOrcadMigrationSourceWorkspaceSessionRetired(state, moved)).not.toThrow()
   })
 
   it("counts a 'local'-stamped tab in a migrating SSH worktree as the SSH host's", () => {

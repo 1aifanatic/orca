@@ -99,7 +99,7 @@ function collectWorkspaceSession(
           : null
     })
     if (!sourceHostPartition) {
-      // Client focus is not host state; retirement retargets it instead of the destination carrying it.
+      // Client focus is not host state, so the destination never carries it.
       fragment.activeWorktreeId = null
       delete fragment.activeWorkspaceKey
     }

@@ -1,12 +1,13 @@
 /**
- * Removes a migrated target's catalog rows from the source profile. Only rows the manifest names
- * and the target still owns go; a group stays while anything outside the migration references it.
+ * Subtracts a migrated target's catalog rows from a copy of the source profile (the delta view).
+ * Only rows the manifest names and the target still owns go; a group stays while anything outside
+ * the migration references it. The live profile is never passed here.
  */
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import { orcadSourceFolderWorkspaceIds, repoBelongsToOrcadSource } from './orcad-source-ownership'
 
-export function retireOrcadSourceCatalogState(
+export function subtractOrcadSourceCatalogState(
   state: StoreRuntimeState['state'],
   manifest: OrcadMigrationManifest
 ): void {

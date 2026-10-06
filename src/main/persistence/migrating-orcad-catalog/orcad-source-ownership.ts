@@ -4,7 +4,7 @@
  * A repo names its host by the legacy `connectionId` or by `executionHostId: 'ssh:<target>'`; a
  * folder workspace by its own or its group's connection, or by the repos inside its folder, which
  * main matches with `isPathInsideOrEqual` (drive letters and case folded on Windows paths). Export
- * and retirement must use one rule, or a row exported by one is left behind by the other.
+ * and subtraction must use one rule, or a row exported by one is left behind by the other.
  */
 import { getRepoExecutionHostId, parseExecutionHostId } from '../../../shared/execution-host'
 import {
