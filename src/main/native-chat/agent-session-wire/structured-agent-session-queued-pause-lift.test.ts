@@ -121,14 +121,17 @@ describe("a Stop's queue pause", () => {
     await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
   })
 
-  it('a draft typed while the stopped turn winds down runs after it; the card the Stop holds waits', async () => {
+  it("a draft typed while the stopped turn winds down waits with the rest: the pause is the queue's", async () => {
     const working = await rig.workingSend()
     const olderId = await queuedDraft('paused by the stop')
     await rig.stop()
     const typedId = await queuedDraft('typed while stopping')
     await rig.settleAccepted(working, 'stopped')
-    await handedOver(typedId)
-    await expectPaused(olderId)
+    await expectPaused(olderId, typedId)
+    expect(await rig.drafts()).toEqual([
+      { messageId: olderId, state: 'waiting' },
+      { messageId: typedId, state: 'waiting' }
+    ])
   })
 
   it('Send-now sends only its own card; the rest stay paused until that turn starts, then drain after it', async () => {
@@ -223,12 +226,15 @@ describe('the pause read', () => {
   })
 })
 
-describe('a card queued after a Stop is a new instruction', () => {
-  it('a correction typed after a Stop over an empty queue sends when the stopped turn ends', async () => {
+describe('a card queued after a Stop', () => {
+  // Sent while the stopped turn winds down, it waits with the rest: the Stop's pause holds it.
+  it('waits for Resume even over an empty queue: the stopped turn ending sends nothing', async () => {
     const working = await rig.workingSend()
     await rig.stop()
     const correction = await queuedDraft('typed right after the stop')
     await rig.settleAccepted(working, 'stopped')
+    await expectPaused(correction)
+    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
     await eventually(async () => expect(await rig.handoff(correction)).toBeDefined())
   })
 
