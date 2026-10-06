@@ -5,6 +5,7 @@ import type { spawnProcess } from '../../shared/child-process/run-process'
 import { spawnManagedProviderProcess } from './managed-provider-process'
 import { ROOT_ONLY_GRACEFUL_EXIT_MS } from './provider-process-close'
 import type { ProviderProcessTeardownVerdict } from './provider-process-teardown'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './provider-process-supervisor'
 
 const teardown = vi.hoisted(() => ({
   terminate: vi.fn(async (): Promise<ProviderProcessTeardownVerdict> => ({
@@ -85,6 +86,22 @@ describe('root-only managed provider close', () => {
     const closing = managed.close()
     await vi.advanceTimersByTimeAsync(ROOT_ONLY_GRACEFUL_EXIT_MS + 1_000)
     await expect(closing).resolves.toEqual({ root: 'live', tree: null, providerKilled: true })
+  })
+
+  // Forcing a supervisor at its own worst case races its exit on a loaded host, and the forced
+  // step then pauses a supervisor that was about to report its provider gone.
+  it("gives a supervised root the supervisor's whole stop plus half a second before forcing", async () => {
+    vi.useFakeTimers()
+    const fixture = fakeChild()
+    const managed = spawnManagedProviderProcess(
+      { command: 'fixture-provider', args: [] },
+      { spawnImpl: fixture.spawn, platform: 'linux', site: 'fixture-provider-teardown' }
+    )
+    void managed.close()
+    await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS + 499)
+    expect(teardown.terminate).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(teardown.terminate).toHaveBeenCalledOnce()
   })
 
   it('waits the default root-only grace before forcing', async () => {
