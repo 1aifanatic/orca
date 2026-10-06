@@ -75,8 +75,10 @@ export function beginStructuredAgentSessionTabClose(args: {
       args.sessionId,
       executionHostIdForStructuredTarget(args.target)
     )
+    discardStructuredAgentSessionChatSends(args.sessionId)
   }
-  discardStructuredAgentSessionChatSends(args.sessionId)
+  // A send already on its way still settles: what the host never took goes back to the
+  // conversation's draft.
   retireStructuredAgentSessionTab(args)
 }
 

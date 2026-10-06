@@ -94,6 +94,17 @@ describe('structured agent session tab retirement', () => {
     expect(mocks.closeSession).toHaveBeenCalledWith(target, 'session-1')
   })
 
+  it("lets a published chat's sends on their way settle when its tab closes", async () => {
+    beginStructuredAgentSessionTabClose({
+      target,
+      worktreeId: 'wt-1',
+      sessionId: 'session-1',
+      provisional: false
+    })
+    expect(mocks.discardOutbox).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(mocks.closeSession).toHaveBeenCalledWith(target, 'session-1'))
+  })
+
   it('suppresses and retires a late cancelled publication', async () => {
     mocks.hasTombstone.mockReturnValue(true)
     const result = suppressCancelledStructuredSessionTabs(snapshot(), target)

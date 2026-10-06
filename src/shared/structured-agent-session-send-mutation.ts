@@ -37,6 +37,8 @@ export function structuredAgentSessionMessageSendMutation(message: {
 export type StructuredAgentSessionAttachment = {
   path: string
   previewUri: string
+  /** The SSH connection a remote image lives on; kept by the client, never sent. */
+  connectionId?: string
 }
 
 /** The journal body for a message a person sends: its text, then its images. */

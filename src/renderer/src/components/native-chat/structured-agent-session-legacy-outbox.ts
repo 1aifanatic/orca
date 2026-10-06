@@ -50,7 +50,16 @@ export function readLegacyStructuredAgentSessionOutbox(sessionId: string): Legac
     return Array.isArray(value)
       ? value.flatMap((entry: unknown) => {
           const body = isRecord(entry) ? readLegacyBody(entry.body) : null
-          return body && isRecord(entry) && typeof entry.clientMessageId === 'string'
+          // One the host recorded and then rejected is drawn by its own row as not sent.
+          const hostRejected =
+            isRecord(entry) &&
+            entry.state === 'rejected' &&
+            isRecord(entry.lastFailure) &&
+            entry.lastFailure.kind === 'rejected'
+          return body &&
+            !hostRejected &&
+            isRecord(entry) &&
+            typeof entry.clientMessageId === 'string'
             ? [{ clientMessageId: entry.clientMessageId, body }]
             : []
         })

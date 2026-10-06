@@ -53,6 +53,8 @@ type SendRuntime = {
   attempts: number
   /** Bumped when the journal settles the send, so an answer still on its way changes nothing. */
   generation: number
+  /** A Stop came after it went out: its own answer still settles it, but it is never sent again. */
+  stopped?: true
   resolve: (outcome: StructuredAgentSessionSendOutcome) => void
 }
 
@@ -83,7 +85,12 @@ function handBack(
   notice: readonly AgentSessionWriteNoticePart[] | null
 ): void {
   if (!entry.callerKeepsText) {
-    handBackStructuredAgentSessionMessage(entry.sessionId, entry.clientMessageId, entry.body)
+    handBackStructuredAgentSessionMessage(
+      entry.sessionId,
+      entry.clientMessageId,
+      entry.body,
+      entry.imageConnectionIds
+    )
   }
   if (notice && !entry.callerKeepsText) {
     publishStructuredAgentSessionSends(entry.sessionId, {
@@ -163,7 +170,7 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
     handBack(current, agentSessionWriteNoticeParts(evidence.failure, 'composer-send'))
     return
   }
-  if (evidence.kind === 'uncertain') {
+  if (evidence.kind === 'uncertain' || runtime.stopped) {
     handBack(current, ['sendOutcomeLost'])
     return
   }
@@ -218,6 +225,9 @@ export function sendStructuredAgentSessionMessage(input: {
     queuedAt: input.now ?? Date.now(),
     ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.callerKeepsText ? { callerKeepsText: true as const } : {}),
+    ...(attachments.some((attachment) => attachment.connectionId)
+      ? { imageConnectionIds: attachments.map((attachment) => attachment.connectionId ?? null) }
+      : {}),
     phase: 'waiting',
     issued: false
   }
@@ -276,14 +286,23 @@ export function settleStructuredAgentSessionSendsFromJournal(
   }
 }
 
-/** A Stop: what has not gone out yet goes back to the composer instead of starting a turn. */
+/** A Stop: what has not gone out yet goes back to the composer instead of starting a turn, and
+ *  what has is never sent again under its id; one waiting to be resent goes back now. */
 export function withdrawUnsentStructuredAgentSessionSends(sessionId: string): boolean {
-  const unsent = getStructuredAgentSessionPendingSends(sessionId).filter((entry) => !entry.issued)
-  for (const entry of unsent) {
-    runtimes.get(entry.clientMessageId)?.abort.abort()
-    handBack(entry, null)
+  const entries = getStructuredAgentSessionPendingSends(sessionId)
+  for (const entry of entries) {
+    const runtime = runtimes.get(entry.clientMessageId)
+    if (!entry.issued) {
+      runtime?.abort.abort()
+      handBack(entry, null)
+    } else if (runtime && entry.phase === 'sending') {
+      runtime.stopped = true
+      if (runtime.resend) {
+        handBack(entry, ['sendOutcomeLost'])
+      }
+    }
   }
-  return unsent.length > 0
+  return entries.some((entry) => !entry.issued)
 }
 
 /** The chat closed: its sends are dropped with it, and their callers told so. */

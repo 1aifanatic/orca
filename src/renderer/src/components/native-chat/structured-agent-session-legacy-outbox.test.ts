@@ -95,6 +95,23 @@ describe('a chat an older build left messages for', () => {
     expect(localStorage.getItem(KEY)).toBeNull()
   })
 
+  it('never hands back one the host recorded and then rejected: its row shows it', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        {
+          ...saved('rejected', 'host said no'),
+          state: 'rejected',
+          lastFailure: { kind: 'rejected', reason: null }
+        }
+      ])
+    )
+    mocks.outline.mockResolvedValue(outline([]))
+    await recover({})
+    expect(mocks.handBack).not.toHaveBeenCalled()
+    expect(localStorage.getItem(KEY)).toBeNull()
+  })
+
   it('says it could not confirm when the host cannot list the whole chat', async () => {
     localStorage.setItem(KEY, JSON.stringify([saved('maybe', 'maybe sent')]))
     mocks.outline.mockResolvedValue(outline([], 3))

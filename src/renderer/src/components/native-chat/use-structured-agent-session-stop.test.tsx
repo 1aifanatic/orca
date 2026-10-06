@@ -531,6 +531,7 @@ describe.each([
       await result.current.stop()
     })
     expect(cancels()).toEqual([expect.objectContaining({ turnId: 'provider-turn' })])
-    expect(mocks.withdrawUnsent).not.toHaveBeenCalled()
+    // Every Stop takes back what has not gone out and keeps what has from being sent again.
+    expect(mocks.withdrawUnsent).toHaveBeenCalledOnce()
   })
 })

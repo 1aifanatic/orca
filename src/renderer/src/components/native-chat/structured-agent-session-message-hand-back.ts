@@ -14,19 +14,32 @@ export function returnMessageToComposer(
   composerScopeKey: string,
   /** Unique to this message, so its images never collide with ones already attached. */
   attachmentIdPrefix: string,
-  blocks: AgentJournalMessageItem['blocks']
+  blocks: AgentJournalMessageItem['blocks'],
+  /** Each image's SSH connection, in block order. */
+  imageConnectionIds?: readonly (string | null)[]
 ): boolean {
   const durable = appendNativeChatDraftCache(
     composerScopeKey,
     structuredAgentSessionMessageText({ kind: 'message', role: 'user', blocks })
   )
+  let image = 0
   appendNativeChatAttachmentCache(
     composerScopeKey,
-    blocks.flatMap((block, index) =>
-      block.type === 'image-ref' && block.path
-        ? [{ id: `${attachmentIdPrefix}-${index}`, path: block.path }]
+    blocks.flatMap((block, index) => {
+      if (block.type !== 'image-ref') {
+        return []
+      }
+      const connectionId = imageConnectionIds?.[image++]
+      return block.path
+        ? [
+            {
+              id: `${attachmentIdPrefix}-${index}`,
+              path: block.path,
+              ...(connectionId ? { connectionId } : {})
+            }
+          ]
         : []
-    )
+    })
   )
   return durable
 }
@@ -39,11 +52,13 @@ export function returnMessageToComposer(
 export function handBackStructuredAgentSessionMessage(
   sessionId: string,
   clientMessageId: string,
-  body: AgentJournalMessageItem
+  body: AgentJournalMessageItem,
+  imageConnectionIds?: readonly (string | null)[]
 ): boolean {
   return returnMessageToComposer(
     structuredAgentSessionDraftScopeKey(sessionId),
     `returned-${clientMessageId}`,
-    body.blocks
+    body.blocks,
+    imageConnectionIds
   )
 }

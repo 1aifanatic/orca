@@ -265,16 +265,18 @@ export function useStructuredAgentSession(args: {
     turnId: transportState.turnId,
     canStop,
     stop: () => {
+      // A message that has not gone out goes back to its composer instead of starting a turn, and
+      // one that has is never sent again. Host-held cards are never withdrawn by a Stop: the host
+      // pauses them and they stay visible, on every device, until the user acts on one.
       if (stopsConversation) {
-        // A message that has not gone out goes back to its composer instead of starting a turn.
-        // Host-held cards are never withdrawn by a Stop: the host pauses them and they stay
-        // visible, on every device, until the user acts on one.
         sends.withdrawUnsent()
         return mutate('agentSession.cancel', 'agentSession.cancel', {})
       }
-      return transportState.turnId
-        ? mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
-        : Promise.resolve(null)
+      if (!transportState.turnId) {
+        return Promise.resolve(null)
+      }
+      sends.withdrawUnsent()
+      return mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
     },
     queuedMessages: queuedController,
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
