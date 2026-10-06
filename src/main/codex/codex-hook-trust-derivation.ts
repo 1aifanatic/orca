@@ -28,7 +28,7 @@ export type CodexHookAnswer =
   | { kind: 'hashes'; codexVersion: string; hashes: CodexHookHashes }
   /** Codex answered, and its answer cannot approve Orca's entry: too old, unrecognized, inconsistent. */
   | { kind: 'refused'; codexVersion: string; failure: string }
-  /** No answer yet (not asked, timed out, not found); asking again may get one. */
+  /** No answer yet (not asked, not found, or Codex failed before answering); asking again may get one. */
   | { kind: 'pending'; failure: string }
 
 // Why this long off the launch path: macOS assesses a new codex on its first run, measured at 10-12 s.
@@ -82,18 +82,9 @@ export async function deriveCodexHookHashes(
       )
     }
     console.warn('[codex-hook-trust] could not derive Codex hook hashes:', error)
-    const failure = error instanceof Error ? error.message : String(error)
-    return isTransient(error) ? { kind: 'pending', failure } : refused(failure)
+    // Why pending: a crash, timeout or RPC error says nothing about the version, so it must not be saved for it.
+    return { kind: 'pending', failure: error instanceof Error ? error.message : String(error) }
   }
-}
-
-// Why only these: a codex without the app-server, or one that exits early, would fail the same way every time.
-function isTransient(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.name === 'CodexAppServerTimeoutError' ||
-      ('syscall' in error && typeof error.syscall === 'string'))
-  )
 }
 
 /** Orca's entry in every event: alone in group 0 and, with `positionCopy`, again after a dummy group. */
