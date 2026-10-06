@@ -44,7 +44,17 @@ export function ClaudeSignInDialog({
     }
     let cancelled = false
     window.api.claudeAccounts.beginSignIn(request).then(
-      (next) => !cancelled && setSignIn(next),
+      (next) => {
+        if (!cancelled) {
+          setSignIn(next)
+          return
+        }
+        // Closed before begin resolved: cancel the new folder, as the dialog's Cancel would have.
+        const { accountId, runtime, wslDistro } = next
+        void window.api.claudeAccounts
+          .cancelSignIn({ accountId, runtime, wslDistro })
+          .catch(() => {})
+      },
       (beginError: unknown) => !cancelled && setError(getClaudeAccountErrorDescription(beginError))
     )
     return () => {

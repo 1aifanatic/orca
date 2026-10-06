@@ -8,10 +8,8 @@ import type {
 } from '../../../../shared/managed-account-types'
 import { i18n } from '../../i18n/i18n'
 import { useAppStore } from '../../store'
-import {
-  renderClaudeAccountsSection,
-  type ClaudeAccountsSectionModel
-} from './accounts-pane-claude-section'
+import { renderClaudeAccountsSection } from './accounts-pane-claude-section'
+import type { AccountsPaneSectionModel } from './accounts-pane-types'
 
 function account(
   id: string,
@@ -39,8 +37,49 @@ function render(state: Partial<ClaudeRateLimitAccountsState> = {}): string {
     activeAccountId: null,
     ...state
   }
-  const model: ClaudeAccountsSectionModel = {
-    accountRuntime: { runtime: 'host', wslDistro: null, label: 'This device' },
+  const accountRuntime = { runtime: 'host' as const, wslDistro: null, label: 'This device' }
+  const model: AccountsPaneSectionModel = {
+    // Unused by the Claude section; present only so the model is the real type.
+    updateSettings: vi.fn(),
+    searchQuery: '',
+    recordFeatureInteraction: vi.fn(),
+    wslSupportedPlatform: false,
+    wslAvailable: false,
+    wslDistros: [],
+    localAccountRuntime: accountRuntime,
+    localAccountRuntimeSentenceLabel: 'this device',
+    remoteServerName: null,
+    codexAccounts: { accounts: [], activeAccountId: null },
+    codexAction: 'idle',
+    visibleCodexAccounts: [],
+    systemCodexActive: true,
+    systemCodexNeedsSignIn: false,
+    systemCodexMissingSignIn: false,
+    systemCodexIdentity: undefined,
+    activeCodexAuthWarning: null,
+    activeCodexAccountId: null,
+    codexConfigSync: null,
+    codexConfigSyncWarning: null,
+    codexRateLimits: null,
+    codexRateLimitTarget: { runtime: 'host', wslDistro: null },
+    setRemoveCodexTarget: vi.fn(),
+    runCodexAccountAction: vi.fn(async () => {}),
+    recordOpenCodeSettingEdit: vi.fn(),
+    miniMaxRateLimits: null,
+    miniMaxApiKeyDraft: '',
+    setMiniMaxApiKeyDraft: vi.fn(),
+    miniMaxApiKeyConfigured: false,
+    miniMaxApiKeyProtection: null,
+    saveMiniMaxApiKey: vi.fn(async () => {}),
+    clearMiniMaxApiKey: vi.fn(async () => {}),
+    miniMaxCookieDraft: '',
+    setMiniMaxCookieDraft: vi.fn(),
+    miniMaxConfigured: false,
+    miniMaxCookieProtection: null,
+    miniMaxCredentialBusy: false,
+    saveMiniMaxCookie: vi.fn(async () => {}),
+    clearMiniMaxCookie: vi.fn(async () => {}),
+    accountRuntime,
     accountRuntimeSentenceLabel: 'this device',
     accountRuntimeUnavailable: false,
     accountVisibilityOptions: { remoteOwner: false, ownerPlatform: 'darwin' },

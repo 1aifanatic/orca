@@ -130,7 +130,11 @@ function unlinkLinks(dir: string): void {
   }
   for (const name of names) {
     const path = join(dir, name)
-    const stat = lstatSync(path)
+    // Why no throw: an entry may vanish between the listing and the stat.
+    const stat = lstatSync(path, { throwIfNoEntry: false })
+    if (!stat) {
+      continue
+    }
     if (stat.isSymbolicLink()) {
       try {
         unlinkSync(path)

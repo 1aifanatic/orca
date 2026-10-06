@@ -13,26 +13,7 @@ import {
 import { formatAccountTimestamp, getClaudeAccountRuntimeLabel } from './accounts-pane-runtime'
 import type { AccountsPaneSectionModel } from './accounts-pane-types'
 
-export type ClaudeAccountsSectionModel = Pick<
-  AccountsPaneSectionModel,
-  | 'accountRuntime'
-  | 'accountRuntimeSentenceLabel'
-  | 'accountRuntimeUnavailable'
-  | 'accountVisibilityOptions'
-  | 'claudeAccounts'
-  | 'claudeAction'
-  | 'isRemoteAccountScope'
-  | 'remoteAccountScopeNotice'
-  | 'runClaudeAccountAction'
-  | 'setClaudeSignIn'
-  | 'setRemoveClaudeTarget'
-  | 'settings'
-  | 'systemClaudeActive'
-  | 'visibleClaudeAccounts'
-  | 'wslCapabilitiesLoading'
->
-
-export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): React.JSX.Element {
+export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): React.JSX.Element {
   const {
     accountRuntime,
     accountRuntimeSentenceLabel,
