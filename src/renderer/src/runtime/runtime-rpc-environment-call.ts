@@ -1,6 +1,18 @@
 import { callAbortableRuntimeEnvironment } from './abortable-runtime-environment-call'
+import { refreshRuntimeEnvironmentsAfterPairingChange } from './runtime-environment-pairing-refresh'
 
-export async function callRuntimeEnvironmentWithRevision(args: {
+export async function callRuntimeEnvironmentWithRevision(
+  args: Parameters<typeof callRuntimeEnvironmentOnce>[0]
+): Promise<unknown> {
+  try {
+    return await callRuntimeEnvironmentOnce(args)
+  } catch (error) {
+    void refreshRuntimeEnvironmentsAfterPairingChange(error)
+    throw error
+  }
+}
+
+async function callRuntimeEnvironmentOnce(args: {
   environmentId: string
   method: string
   params: unknown

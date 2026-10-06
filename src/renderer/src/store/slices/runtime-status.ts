@@ -25,6 +25,7 @@ import {
   ensureBrowserClientHostsForRestoredPages
 } from '@/runtime/restored-client-hosted-browser-host-attach'
 import { applyRuntimeHostStatusSnapshot } from './runtime-status-snapshot'
+import { peerReplacedEnvironmentIds } from './runtime-environment-peer-replacement'
 
 export const clearRuntimeEnvironmentConnectionGenerationsForTests = (): void => {
   runtimeStatusConnectionGeneration.clearRuntimeEnvironmentConnectionGenerations()
@@ -55,8 +56,9 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
   },
 
   setRuntimeEnvironments: (environments) => {
+    const previousEnvironments = get().runtimeEnvironments
     const previousRevisionById = new Map(
-      get().runtimeEnvironments.map((environment) => [
+      previousEnvironments.map((environment) => [
         environment.id,
         environment.pairingRevision ?? environment.createdAt
       ])
@@ -148,8 +150,13 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
       clearRuntimeCompatibilityCache(id)
       get().markEnvironmentSshStateStale?.(id)
     }
-    // Why: same-id re-pair publications belong to the retired peer just as surely as removed ids.
-    const retiredEnvironmentIds = [...new Set([...removedIds, ...replacedEnvironmentIds])]
+    // Why: a same-id re-pair to another peer retires it as surely as a removal.
+    const retiredEnvironmentIds = [
+      ...new Set([
+        ...removedIds,
+        ...peerReplacedEnvironmentIds(previousEnvironments, environments, replacedEnvironmentIds)
+      ])
+    ]
     if (retiredEnvironmentIds.length > 0) {
       evictInstalledAgentSkillDiscoveryForRuntimeEnvironments(retiredEnvironmentIds)
       get().purgeStaleRuntimeHostState?.(retiredEnvironmentIds)
