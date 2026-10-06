@@ -40,7 +40,8 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { recordingProductionStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
-import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 
 /** What `interruptedRestart('queued-cards')` queues behind the running turn, in order. */
@@ -66,7 +67,9 @@ export async function interruptedRestart(
   /** What the restarted host proves about the recorded owner; gone unless a test says otherwise. */
   probeOwner: NonNullable<StructuredAgentSessionHostDeps['probeOwner']> = async () => ({
     outcome: 'pid-absent'
-  })
+  }),
+  /** What the relaunched host registers; restart actions scope by it. */
+  agents: StructuredAgentRegistry = claudeAndCodexDeclared()
 ) {
   const previous = hostTestState()
   let children: AgentChildWorkView[] = []
@@ -153,7 +156,7 @@ export async function interruptedRestart(
   const clock = { now: NOW + 1 }
   const log = recordingProductionStructuredAgentSessionLogger()
   const host = new StructuredAgentSessionHost({
-    agents: NO_STRUCTURED_AGENTS,
+    agents,
     logger: log.logger,
     store,
     adapter: {

@@ -1,4 +1,5 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -212,6 +213,17 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
+  /** Every agent this runtime registered: what `agentSession.agents` publishes. */
+  agentDefinitions = (): readonly StructuredAgentDefinition[] => this.deps.agents.definitions()
+
+  /** Saved chats can outlive their registration; both vocabularies bound a client's audience. */
+  knownAgentIds = (): readonly string[] => [
+    ...new Set([
+      ...this.deps.agents.definitions().map(({ agent }) => agent),
+      ...this.deps.store.listRecords().map(({ provider }) => provider)
+    ])
+  ]
+
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,
     this.sessions,
@@ -254,10 +266,8 @@ export class StructuredAgentSessionHost {
   // type, and this file has no line budget left for the import.
   /** Quit: no exit or recovery settled after this starts a child or hands a message over, and the
    *  queue hands no card off (a refused one would read as the chat moving past its restart offer). */
-  stopDelivery = (): void => {
-    this.conversationDelivery.dispose()
-    this.queued.drain.dispose()
-  }
+  stopDelivery = (): void =>
+    [this.conversationDelivery, this.queued.drain].forEach((delivery) => delivery.dispose())
 
   async flushAllStreamedEvents(options?: { trigger?: 'quit' | 'update' }): Promise<void> {
     this.stopDelivery()
