@@ -28,6 +28,7 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { structuredAgentSessionCommandHostRefusalCause } from '../../../../shared/structured-agent-session-command-refusal-cause'
 import type {
   StructuredAgentSessionCommandOutcome,
   StructuredAgentSessionCommandRefusalCause
@@ -103,14 +104,6 @@ const CAUSE_OF_HOLD: Record<
   background: 'background',
   retry: 'outbox',
   sending: 'outbox'
-}
-
-/** The host's refusal reasons whose words name something the chat shows. */
-const CAUSE_OF_HOST_REFUSAL: Partial<Record<string, StructuredAgentSessionCommandRefusalCause>> = {
-  turnActive: 'working',
-  messagesUnsettled: 'working',
-  promptPending: 'prompt',
-  backgroundTasksRunning: 'background'
 }
 
 /** The line a command refused here gets: what the person sees and can do, as the host says it. */
@@ -199,20 +192,10 @@ export async function sendStructuredConversationCommand(input: {
     if (value.state === 'completed' && !error) {
       return { accepted: true, error: null }
     }
-    const reason = hostRefusalReason(value)
-    return refused(error, reason === undefined ? undefined : CAUSE_OF_HOST_REFUSAL[reason])
+    return refused(error, structuredAgentSessionCommandHostRefusalCause(value))
   } finally {
     input.pending.current = false
   }
-}
-
-function hostRefusalReason(result: AgentSessionConversationCommandResult): string | undefined {
-  const details = isAgentSessionConversationCommand(result.command)
-    ? readWholeAgentSessionFailureFact(result.failure)?.refusal?.details
-    : undefined
-  return details && 'reason' in details && typeof details.reason === 'string'
-    ? details.reason
-    : undefined
 }
 
 /** The composer's /clear or /compact, with what this pane knows about work in flight; and which

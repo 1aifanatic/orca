@@ -37,6 +37,10 @@ import {
   useMobileStructuredSendWithOutcome,
   type StructuredMobileSendAttachment
 } from './use-mobile-structured-send-with-outcome'
+import type {
+  MobileNativeChatCommandRefusalCauses,
+  MobileNativeChatSendErrorReporter
+} from './use-mobile-native-chat-send-error'
 import {
   useMobileStructuredQueuedMessageControls,
   type MobileStructuredQueuedMessageControls
@@ -63,6 +67,7 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) => Promise<boolean>
     /** The queued-draft cards and their actions, from any host that publishes them. */
     queued: MobileStructuredQueuedMessageControls
+    commandRefusalCauses: MobileNativeChatCommandRefusalCauses
   }
 
 export function useMobileStructuredAgentSession(args: {
@@ -80,7 +85,7 @@ export function useMobileStructuredAgentSession(args: {
   agent: string | null
   /** The active pane's live composer; Edit copies a card's text through it. */
   appendComposerText?: (text: string) => boolean
-  onSendError: (message: string) => void
+  onSendError: MobileNativeChatSendErrorReporter
   /** Called on any accepted queued-card action; retires the route's failure banner. */
   onActionResolved?: () => void
 }): StructuredMobileSession {
@@ -198,6 +203,14 @@ export function useMobileStructuredAgentSession(args: {
     () => state.items.find(pendingStructuredQuestion) ?? null,
     [state.items]
   )
+  // What a refused command's line on the phone stands on; it has no background-task state.
+  const commandRefusalCauses = useMemo(
+    () => ({
+      working: turnId !== null,
+      prompt: approvalPrompt !== null || questionPrompt !== null
+    }),
+    [approvalPrompt, questionPrompt, turnId]
+  )
   const queued = useMobileStructuredQueuedMessageControls({
     sessionKey,
     queuedMessages,
@@ -262,6 +275,7 @@ export function useMobileStructuredAgentSession(args: {
     question: projectStructuredQuestion(questionPrompt, groupedDraft),
     respondPermission,
     respondQuestion,
-    queued
+    queued,
+    commandRefusalCauses
   }
 }

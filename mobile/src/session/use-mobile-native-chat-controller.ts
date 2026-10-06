@@ -15,6 +15,7 @@ import { useMobileNativeChatPrompts } from './use-mobile-native-chat-prompts'
 import { useNativeChatAcceptedAction } from './use-native-chat-action-outcomes'
 import { useThrottledLatestValue } from './use-throttled-latest-value'
 import type { MobileNativeChatController } from './mobile-native-chat-controller-contract'
+import type { MobileNativeChatSendErrorReporter } from './use-mobile-native-chat-send-error'
 import { useMobileBridgeChatPromptWrites } from './use-mobile-bridge-chat-prompt-writes'
 import { useMobileNativeChatActiveResolution } from './use-mobile-native-chat-active-resolution'
 
@@ -38,7 +39,7 @@ export function useMobileNativeChatController(args: {
   connState: ConnectionState
   /** Host capability fact from the shared runtime status probe. */
   agentSessionHostSupport?: StructuredAgentSessionHostSupport | null
-  onSendError: (message: string) => void
+  onSendError: MobileNativeChatSendErrorReporter
   /** Retires a held failure banner. Any accepted chat write clears it — a delivered
    *  answer or permission reply must not sit under a stale "not sent". */
   onSendResolved: () => void
@@ -298,6 +299,8 @@ export function useMobileNativeChatController(args: {
     nativeChatWorkingStartedAt: activeChatStructured ? structuredNativeChat.workingStartedAt : null,
     nativeChatSettledTurns: activeChatStructured ? structuredNativeChat.settledTurns : null,
     nativeChatTurnJournal: activeChatStructured ? structuredNativeChat.turnJournal : null,
+    // Only the structured lane names a refusal's cause; the bridge lane's starved ones drop none.
+    nativeChatCommandRefusalCauses: structuredNativeChat.commandRefusalCauses,
     nativeChatCanStop: activeChatStructured
       ? structuredNativeChat.turnId !== null
       : nativeChatAgentWorking,

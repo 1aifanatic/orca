@@ -15,6 +15,7 @@ import type { StructuredAgentSessionState } from '../../../src/shared/structured
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
+import type { MobileNativeChatSendErrorReporter } from './use-mobile-native-chat-send-error'
 import { sendMobileStructuredAgentSessionMessage } from './mobile-structured-agent-session-send'
 import { timeoutForDeadline } from './mobile-structured-agent-session-rpc'
 import {
@@ -43,7 +44,7 @@ export function useMobileStructuredSendWithOutcome(args: {
     StructuredAgentSessionComposerOptions,
     'snapshot' | 'setOption' | 'invokeAction' | 'conversationCommands'
   >
-  onSendError: (message: string) => void
+  onSendError: MobileNativeChatSendErrorReporter
 }): (
   text: string,
   images?: string[],

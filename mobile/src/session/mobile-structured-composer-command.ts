@@ -5,8 +5,10 @@ import type {
 import {
   dispatchStructuredAgentSessionComposerCommand,
   isStructuredAgentSessionComposerCommand,
+  type StructuredAgentSessionCommandRefusalCause,
   type StructuredAgentSessionComposerOptions
 } from '../../../src/shared/structured-agent-session-composer'
+import { structuredAgentSessionCommandHostRefusalCause } from '../../../src/shared/structured-agent-session-command-refusal-cause'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
@@ -37,7 +39,8 @@ export async function dispatchMobileStructuredCommand(input: {
   busy: () => 'working' | 'prompt' | null
   /** The host holds this command as a card behind work in flight, so nothing here holds it. */
   waitsInLine: (command: AgentSessionConversationCommand) => boolean
-  onError: (message: string) => void
+  /** `refusedWhile`: what the phone showed the refused command waiting on. */
+  onError: (message: string, refusedWhile?: StructuredAgentSessionCommandRefusalCause) => void
   timeoutMs: number
 }): Promise<MobileNativeChatSendOutcome | null> {
   if (input.pending.current) {
@@ -54,10 +57,11 @@ export async function dispatchMobileStructuredCommand(input: {
   const outcome = await dispatchStructuredAgentSessionComposerCommand(input.text, {
     ...input.controller,
     runConversationCommand: async (command) => {
+      const shown = input.busy()
       const waitsInLine = input.waitsInLine(command)
-      const busy = waitsInLine ? null : input.busy()
+      const busy = waitsInLine ? null : shown
       if (busy) {
-        return { accepted: false, error: busyCommandText(command, busy) }
+        return { accepted: false, error: busyCommandText(command, busy), refusedWhile: busy }
       }
       input.pending.current = true
       try {
@@ -81,16 +85,25 @@ export async function dispatchMobileStructuredCommand(input: {
             error: 'Conversation operation was not confirmed.'
           }
         }
-        return result.status === 'accepted'
-          ? { accepted: !result.value.error, error: result.value.error ?? null }
-          : { accepted: false, error: result.message }
+        if (result.status !== 'accepted') {
+          return { accepted: false, error: result.message }
+        }
+        // A refusal names its cause only when the phone showed it, as on desktop.
+        const cause = structuredAgentSessionCommandHostRefusalCause(result.value)
+        return {
+          accepted: !result.value.error,
+          error: result.value.error ?? null,
+          ...(result.value.error && cause !== undefined && cause === shown
+            ? { refusedWhile: cause }
+            : {})
+        }
       } finally {
         input.pending.current = false
       }
     }
   })
   if (outcome.error) {
-    input.onError(outcome.error)
+    input.onError(outcome.error, outcome.refusedWhile)
   }
   return unknown ? 'unknown' : outcome.accepted ? 'accepted' : 'rejected'
 }
