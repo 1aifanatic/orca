@@ -1,3 +1,4 @@
+import { getDefaultSettings } from '../../../../shared/constants'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { create } from 'zustand'
 import { createGitHubSlice } from './github'
@@ -124,6 +125,33 @@ describe('GitHub PR refresh owner-host routing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetRuntimeMocks()
+  })
+
+  it('stops background PR and hosted-review requests while retaining foreground refresh', async () => {
+    const store = createTestStore()
+    const repo = makeRepo({ id: 'repo-1', path: '/repo' })
+    const worktree = makeWorktree(repo.id, 'feature/test', 'wt-1')
+    seed(store, {
+      repos: [repo],
+      worktreesByRepo: { [repo.id]: [worktree] },
+      settings: { ...getDefaultSettings('/test'), automaticReviewRefresh: false }
+    })
+    store.getState().enqueueGitHubPRRefresh(worktree.id, 'swr')
+    store.getState().refreshAllGitHub()
+    store.getState().reportVisibleGitHubPRRefreshCandidates([worktree.id], 1)
+    await store
+      .getState()
+      .fetchPRForBranch(repo.path, worktree.branch, { repoId: repo.id, reason: 'visible' })
+    await store.getState().fetchHostedReviewForBranch(repo.path, worktree.branch, {
+      repoId: repo.id,
+      staleWhileRevalidate: true
+    })
+    expect(enqueuePRRefresh).not.toHaveBeenCalled()
+    expect(mockApi.gh.refreshPRNow).not.toHaveBeenCalled()
+    expect(mockApi.hostedReview.forBranch).not.toHaveBeenCalled()
+    expect(reportVisiblePRRefreshCandidates).toHaveBeenCalledWith({ candidates: [], generation: 1 })
+    store.getState().enqueueGitHubPRRefresh(worktree.id, 'active')
+    expect(enqueuePRRefresh).toHaveBeenCalledOnce()
   })
 
   it.each([

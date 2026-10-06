@@ -1,3 +1,4 @@
+import { finishedReviewRefreshIntervalMs } from '../../../../../shared/review-refresh-policy'
 import { useCallback, useEffect, useRef } from 'react'
 import { installWindowVisibilityTimeoutPoller } from '@/lib/window-visibility-timeout-poller'
 import { gitLabPipelineJobsToPRChecks } from '../../../../../shared/gitlab-pipeline-checks'
@@ -56,6 +57,7 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
     setCommentsLoading,
     gitLabProjectRefRef
   } = model
+  const automaticReviewRefresh = settings?.automaticReviewRefresh !== false
   const gitLabDetailsLoadingGenerationRef = useRef(0)
   // Fetch checks via cached store method
   const fetchChecks = useCallback(
@@ -240,15 +242,23 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
       return
     }
 
+    if (!automaticReviewRefresh) {
+      void fetchChecks()
+      return
+    }
     // Reset backoff state on PR change
     pollIntervalRef.current = 30_000
     prevChecksRef.current = ''
     // Why: check status is user-visible; keep visible unfocused windows fresh but stop timers/API work while hidden.
     return installWindowVisibilityTimeoutPoller({
       run: () => fetchChecks(),
-      getDelayMs: () => pollIntervalRef.current
+      getDelayMs: () =>
+        finishedReviewRefreshIntervalMs(pr?.state, pr?.checksStatus) ?? pollIntervalRef.current
     })
   }, [
+    automaticReviewRefresh,
+    pr?.state,
+    pr?.checksStatus,
     activeGitLabReview,
     fetchChecks,
     isPanelVisible,
@@ -263,13 +273,26 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
       return
     }
 
+    if (!automaticReviewRefresh) {
+      void fetchGitLabDetails()
+      return
+    }
     pollIntervalRef.current = 30_000
     prevChecksRef.current = ''
     return installWindowVisibilityTimeoutPoller({
       run: () => fetchGitLabDetails(),
-      getDelayMs: () => pollIntervalRef.current
+      getDelayMs: () =>
+        finishedReviewRefreshIntervalMs(activeGitLabReview.state, activeGitLabReview.status) ??
+        pollIntervalRef.current
     })
-  }, [activeGitLabReview, fetchGitLabDetails, isPanelVisible, pollIntervalRef, prevChecksRef])
+  }, [
+    automaticReviewRefresh,
+    activeGitLabReview,
+    fetchGitLabDetails,
+    isPanelVisible,
+    pollIntervalRef,
+    prevChecksRef
+  ])
   return { fetchChecks, fetchGitLabDetails }
 }
 

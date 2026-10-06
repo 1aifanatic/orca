@@ -1,3 +1,4 @@
+import { finishedReviewRefreshIntervalMs } from '../../shared/review-refresh-policy'
 import type {
   GitHubPRRefreshAlias,
   GitHubPRRefreshCandidate,
@@ -153,8 +154,12 @@ export function visibleCandidateAfterOutcome(
 }
 
 function refreshIntervalForCandidate(candidate: GitHubPRRefreshCandidate): number {
-  if (candidate.cachedPRState === 'closed' || candidate.cachedPRState === 'merged') {
-    return 30 * 60_000
+  const finishedInterval = finishedReviewRefreshIntervalMs(
+    candidate.cachedPRState,
+    candidate.cachedChecksStatus
+  )
+  if (finishedInterval !== null) {
+    return finishedInterval
   }
   if (candidate.cachedHasPR === false) {
     return NO_REVIEW_REFRESH_INTERVAL_MS

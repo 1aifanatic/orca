@@ -40,6 +40,13 @@ export const createPullRequestActions = (
       repo !== undefined
     )
     const cached = get().prCache[cacheKey]
+    if (
+      get().settings?.automaticReviewRefresh === false &&
+      !options?.force &&
+      (options?.reason === 'visible' || options?.reason === 'swr')
+    ) {
+      return cached?.data ?? null
+    }
     const hostedReviewCacheKey = getHostedReviewCacheKey(
       repoPath,
       branch,

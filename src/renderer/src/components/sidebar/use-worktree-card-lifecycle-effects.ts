@@ -1,3 +1,4 @@
+import { useAppStore } from '@/store'
 import { useEffect } from 'react'
 
 import { isMacAppDataPath } from '@/lib/passive-macos-app-data-access'
@@ -55,6 +56,7 @@ export function useWorktreeCardLifecycleEffects({
     showIssue: boolean
     showLinearIssue: boolean
   }): void {
+  const automaticReviewRefresh = useAppStore((s) => s.settings?.automaticReviewRefresh !== false)
   // Why: card surfaces are presentational, so skip hosted-review fetches when hidden to save rate-limit budget.
   useEffect(() => {
     // Why: paired web must not fan out per-card decoration RPCs during startup; host session/tab parity is critical.
@@ -67,6 +69,7 @@ export function useWorktreeCardLifecycleEffects({
       worktree.isBare ||
       !hostedReviewCacheKey ||
       !shouldRefreshHostedReview ||
+      !automaticReviewRefresh ||
       isMacAppDataPath(repo.path)
     ) {
       return
@@ -94,6 +97,7 @@ export function useWorktreeCardLifecycleEffects({
       intervalMs: HOSTED_REVIEW_CARD_REFRESH_INTERVAL_MS
     })
   }, [
+    automaticReviewRefresh,
     repo,
     isFolder,
     worktree.isBare,
@@ -136,7 +140,7 @@ export function useWorktreeCardLifecycleEffects({
       linkedBitbucketPR,
       linkedAzureDevOpsPR,
       linkedGiteaPR,
-      staleWhileRevalidate: true
+      staleWhileRevalidate: false
     })
   }, [
     hoverDetailsOpen,

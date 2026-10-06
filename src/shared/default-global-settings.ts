@@ -34,6 +34,7 @@ export function buildDefaultSettings(args: {
     worktreeVisibilityDefaults: { external: 'hide' },
     nestWorkspaces: true,
     workspaceDirHistory: [],
+    automaticReviewRefresh: true,
     refreshLocalBaseRefOnWorktreeCreate: false,
     localBaseRefSuggestionDismissed: false,
     autoRenameBranchFromWork: true,

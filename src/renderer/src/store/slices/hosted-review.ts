@@ -19,6 +19,7 @@ import {
   findHostedReviewRepoForFetch,
   hasNewerHostedReviewCacheEntry,
   hostedReviewOwnerIpcArgs,
+  hostedReviewBranchLookupArgs,
   isFreshHostedReview,
   isStaleMergedGitHubReviewForHead,
   settingsForHostedReviewActionOwner,
@@ -170,6 +171,14 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
       repo !== undefined
     )
     const cached = get().hostedReviewCache[cacheKey]
+    if (
+      get().settings?.automaticReviewRefresh === false &&
+      options?.staleWhileRevalidate &&
+      !options.force &&
+      !options.active
+    ) {
+      return cached?.data ?? null
+    }
     const hintKey = linkedReviewHintKey(options)
     const requestKey = hostedReviewRequestKey(cacheKey, hintKey)
     const linkedRefetch = shouldRefetchForLinkedHint(cached, hintKey)
@@ -193,21 +202,7 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
       requestGenerations.set(cacheKey, generation)
       const request = (async () => {
         try {
-          const fallbackGitHubPR =
-            options?.linkedGitHubPR == null ? (options?.fallbackGitHubPR ?? null) : null
-          const args = {
-            branch,
-            ...(options?.admissionTier ? { admissionTier: options.admissionTier } : {}),
-            ...(options?.repoId !== undefined ? { repoId: options.repoId } : {}),
-            currentHeadOid: options?.currentHeadOid ?? null,
-            ...(options?.active === true ? { active: true } : {}),
-            linkedGitHubPR: options?.linkedGitHubPR ?? null,
-            ...(fallbackGitHubPR !== null ? { fallbackGitHubPR } : {}),
-            linkedGitLabMR: options?.linkedGitLabMR ?? null,
-            linkedBitbucketPR: options?.linkedBitbucketPR ?? null,
-            linkedAzureDevOpsPR: options?.linkedAzureDevOpsPR ?? null,
-            linkedGiteaPR: options?.linkedGiteaPR ?? null
-          }
+          const args = hostedReviewBranchLookupArgs(branch, options)
           const review =
             target.kind === 'environment'
               ? await callRuntimeRpc<HostedReviewInfo | null>(

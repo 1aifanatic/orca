@@ -21,6 +21,12 @@ export const createRefreshRoutingActions = (
 > => ({
   enqueueGitHubPRRefresh: (worktreeId, reason, priority = 0) => {
     const state = get()
+    if (
+      state.settings?.automaticReviewRefresh === false &&
+      (reason === 'visible' || reason === 'swr')
+    ) {
+      return
+    }
     const worktree = findWorktreeById(state, worktreeId)
     const candidate = worktree ? buildPRRefreshCandidate(state, worktree) : null
     if (!candidate) {
@@ -56,7 +62,7 @@ export const createRefreshRoutingActions = (
 
   reportVisibleGitHubPRRefreshCandidates: (worktreeIds, generation) => {
     const state = get()
-    const candidates = worktreeIds
+    const candidates = (state.settings?.automaticReviewRefresh === false ? [] : worktreeIds)
       .map((id) => {
         const worktree = findWorktreeById(state, id)
         return worktree ? buildPRRefreshCandidate(state, worktree) : null

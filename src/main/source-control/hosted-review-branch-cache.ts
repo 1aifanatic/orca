@@ -1,3 +1,4 @@
+import { finishedReviewRefreshIntervalMs } from '../../shared/review-refresh-policy'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { HostedReviewInfo } from '../../shared/hosted-review'
 import {
@@ -91,6 +92,7 @@ export type HostedReviewBranchCacheOptions = {
   headOid: string | null
   /** Set by surfaces that only ever render the selected worktree. */
   active?: boolean
+  force?: boolean
 }
 
 /** Repo-scoped prefix so a single repo's entries can be dropped without a full flush.
@@ -125,7 +127,10 @@ function isHeadSensitive(entry: CacheEntry): boolean {
 
 function refreshIntervalMs(entry: CacheEntry, active: boolean): number {
   if (entry.review !== null) {
-    return FOUND_REVIEW_TTL_MS
+    return (
+      finishedReviewRefreshIntervalMs(entry.review.state, entry.review.status) ??
+      FOUND_REVIEW_TTL_MS
+    )
   }
   return active ? ACTIVE_REFRESH_INTERVAL_MS : NO_REVIEW_REFRESH_INTERVAL_MS
 }
@@ -360,7 +365,7 @@ export async function withHostedReviewBranchCache(
   const active = isActiveBranch(key)
 
   const cached = entries.get(key)
-  if (cached && isFresh(cached, headOid, active)) {
+  if (!options.force && cached && isFresh(cached, headOid, active)) {
     return cached.review
   }
 
