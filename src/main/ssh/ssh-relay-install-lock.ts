@@ -7,7 +7,8 @@ import {
   acquireInstallLockParentCommand,
   lockAgeSecondsCommand,
   tryCreateInstallLockCommand,
-  tryStealInstallLockCommand
+  tryStealInstallLockCommand,
+  type InstallLockOwnerFile
 } from './ssh-relay-install-lock-commands'
 import {
   getRemoteHostPlatform,
@@ -91,6 +92,8 @@ export async function acquireInstallLock(
     /** False when a held lock is a fence whose age cannot prove its owner's work is finished. */
     allowStaleTakeover?: boolean
     waitTimeoutMs?: number
+    /** Written in the command that creates the lock, so a holder can prove the lock its own. */
+    owner?: InstallLockOwnerFile
   }
 ): Promise<void> {
   const lockDir = joinRemotePath(host, remoteRelayDir, options?.lockName ?? RELAY_INSTALL_LOCK_NAME)
@@ -121,7 +124,8 @@ export async function acquireInstallLock(
       signal: options?.signal
     })
     try {
-      const result = await execHostCommand(conn, host, tryCreateInstallLockCommand(host, lockDir), {
+      const createCommand = tryCreateInstallLockCommand(host, lockDir, options?.owner)
+      const result = await execHostCommand(conn, host, createCommand, {
         signal: options?.signal
       })
       if (!result.trim().endsWith('OK')) {
