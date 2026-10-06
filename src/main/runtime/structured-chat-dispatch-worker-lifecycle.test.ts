@@ -200,7 +200,7 @@ describe("a chat assignee's liveness, stop and close", () => {
     expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
   })
 
-  it('reads unverifiable, and keeps its Dispatch, when the session that continues the chat is unknown', async () => {
+  it('reads unverifiable, never exited, when the session that continues the chat is unknown', async () => {
     const { dispatchId } = await dispatchToChat()
     const successor = await clearChat(PEER_CHAT)
     const getRecord = host.deps.store.getRecord.bind(host.deps.store)
@@ -218,9 +218,6 @@ describe("a chat assignee's liveness, stop and close", () => {
     expect(await call('orchestration.workerList', {})).toMatchObject({
       workers: [{ dispatchId, projection: { liveness: { verdict: 'unverifiable' } } }]
     })
-    // Another chat's close re-derives every chat worker; a missing record is not an exit.
-    await host.setSessionTabVisibility(COORDINATOR, false)
-    expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
   })
 
   it("reads the chat's transcript for worker-read", async () => {

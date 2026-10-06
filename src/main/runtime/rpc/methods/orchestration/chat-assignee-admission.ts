@@ -77,7 +77,7 @@ export function chatWorkerMode(
   return chat
     ? {
         ...mode,
-        detail: `Gave the task to the chat ${formatOrcaSessionAddress(chat)}.`
+        detail: `--terminal names the chat ${formatOrcaSessionAddress(chat)}; its task goes to that chat and no agent is launched.`
       }
     : mode
 }

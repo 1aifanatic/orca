@@ -85,7 +85,7 @@ export async function sendChatTask(args: {
     callerKey: structuredPointerCallerKey(args.dispatch.id),
     turn: {
       body,
-      // As a person's message is: a busy chat queues it as a card, sent when the turn ends.
+      // As a person's message is: a busy chat queues it as a card, sent when the queue reaches it.
       delivery: 'queue',
       source: chatTaskSource(args),
       operationId: chatTaskOperationId(args.dispatch),

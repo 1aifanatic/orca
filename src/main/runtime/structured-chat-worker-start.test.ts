@@ -91,7 +91,9 @@ describe('worker-start --terminal names a chat', () => {
     expect(receipt).toMatchObject({
       state: 'ready',
       turnStart: 'observed',
-      mode: { detail: `Gave the task to the chat ${WORKER}.` }
+      mode: {
+        detail: `--terminal names the chat ${WORKER}; its task goes to that chat and no agent is launched.`
+      }
     })
     const dispatchId = String(receipt.dispatchId)
     expect(turnText(worker.turns[0]!)).toContain(`Your Orca session ID is: ${WORKER}`)
