@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-/**
- * Delay for tab-strip tooltips. Much longer than the app-wide default so grazing
- * or scrolling across the strip never pops a label on a tab that merely passes
- * under the pointer; you have to genuinely rest on a tab to see its title.
- */
+// Why: longer than the app-wide 400ms so a pointer merely passing over the strip never pops a title.
 export const TAB_TOOLTIP_DELAY_MS = 500
 
 export function TabStripTooltipProvider({ children }: { children: ReactNode }): React.JSX.Element {
