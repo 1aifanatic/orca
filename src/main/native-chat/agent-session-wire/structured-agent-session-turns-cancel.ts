@@ -101,9 +101,9 @@ export type StructuredAgentSessionStopWindDown = {
 
 /**
  * A session-ending Stop's second step, queued behind its first in the same tick so nothing sent
- * meanwhile reaches the child it ends. The Stop has answered: a failure here is reported. The next
- * operation that reaches the agent retries the wind-down it leaves owed, and so does the idle
- * sweep's next tick.
+ * meanwhile reaches the child it ends. The Stop has answered: a failure here is reported. A close
+ * it could not prove keeps the child on record, and the next operation that reaches the agent
+ * joins that close.
  */
 export async function endStoppedStructuredAgentSession(
   ctx: Pick<AgentSessionTurnContext, 'sessionId' | 'adapter'>,
@@ -360,11 +360,17 @@ async function cancelAndNote(
   if (input.scope || note === null) {
     return { ok: true, value }
   }
+  // The turn the provider says the interrupt took, even one that opened while the cancel waited for
+  // it: the note is that turn's, never a conversation row read before the wait.
+  const noteScope =
+    (stoppedTurn !== undefined
+      ? structuredAgentSessionNamedTurnScope(ctx.journal, stoppedTurn)
+      : null) ?? turnScope
   // Keyed by the turn it stopped, so another Stop of that turn rewrites this row, never adds one.
   await ctx.journal.appendItem(
-    structuredAgentSessionStopNoteIdentity(stoppedTurnId ?? input.clientOperationId),
+    structuredAgentSessionStopNoteIdentity(stoppedTurn ?? stoppedTurnId ?? input.clientOperationId),
     note,
-    { fence: ctx.fence, turnScope }
+    { fence: ctx.fence, turnScope: noteScope }
   )
   return { ok: true, value }
 }
