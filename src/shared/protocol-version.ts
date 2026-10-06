@@ -1,3 +1,9 @@
+import { AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES } from './agent-session-attention-capabilities'
+export {
+  AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
+  AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY,
+  AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY
+} from './agent-session-attention-capabilities'
 import { AGENT_SESSION_RESUME_RUNTIME_CAPABILITIES } from './agent-session-resume-runtime-capabilities'
 import { QODER_OWNED_TERMINAL_CREATE_CAPABILITY } from './qoder-terminal-create-capability'
 export {
@@ -248,19 +254,6 @@ export const STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY =
 // adopted the conversation or quietly started a blank one. Negotiate before offering the action.
 export const STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY =
   'agent-session.structured.resume-history.v1' as const
-// Why: agentSession.subscribeStatus is additive to a surface that already shipped, so a host
-// advertising agent-session.structured.v1 may still answer it with method_not_found. Clients must
-// probe before subscribing or they reconnect forever and never show any status at all.
-export const AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY = 'agent-session.status-feed.v1' as const
-// Why separate from the status feed: a host can carry the status feed and not this stream, and a
-// decoder drops an unknown stream opcode in silence. A client that subscribed without probing
-// would wait forever for completions the host never sends and report nothing wrong.
-export const AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY =
-  'agent-session.turn-completion.v1' as const
-// Why: agentSession.acknowledgeAttention is additive; a client probes it before routing a read
-// chat to the host that pushed its phone alerts, so an older host is never sent a method it lacks.
-export const AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY =
-  'agent-session.attention-ack.v2' as const
 // Why: agentSession.conversationOutline is additive; a client probes this before calling so an
 // older host leaves the message rail on loaded messages instead of answering method_not_found.
 export const AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY =
@@ -409,9 +402,7 @@ export const RUNTIME_CAPABILITIES = [
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
-  AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
-  AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY,
-  AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY,
+  ...AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
