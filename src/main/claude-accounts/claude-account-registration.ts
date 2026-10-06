@@ -15,8 +15,7 @@ import type {
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import {
   getClaudeSelectionTargetForAccount,
-  normalizeClaudeRuntimeSelection,
-  type ClaudeAccountSelectionTarget
+  normalizeClaudeRuntimeSelection
 } from './runtime-selection'
 import type { ClaudeAccountSelection } from './claude-account-selection'
 
@@ -65,7 +64,7 @@ export class ClaudeAccountRegistration {
       const captured = await this.dependencies.login(location)
       return await this.persist(accountId, location, previousSettings, captured)
     } catch (error) {
-      await this.cleanupFailedAdd(accountId, location, previousSettings, error)
+      await this.cleanupFailedAdd(accountId, location.managedAuthPath, previousSettings, error)
       throw error
     }
   }
@@ -84,7 +83,7 @@ export class ClaudeAccountRegistration {
       )
       return await this.persist(accountId, location, previousSettings, captured)
     } catch (error) {
-      await this.cleanupFailedAdd(accountId, location, previousSettings, error)
+      await this.cleanupFailedAdd(accountId, location.managedAuthPath, previousSettings, error)
       throw error
     }
   }
@@ -136,7 +135,6 @@ export class ClaudeAccountRegistration {
     } catch (error) {
       await this.rollbackReauthentication(
         accountId,
-        getClaudeSelectionTargetForAccount(account),
         managedAuthPath,
         previousAuth,
         previousSettings,
@@ -195,28 +193,25 @@ export class ClaudeAccountRegistration {
 
   private async cleanupFailedAdd(
     accountId: string,
-    location: ClaudeManagedAuthLocation,
+    managedAuthPath: string,
     previousSettings: ReturnType<Store['getSettings']>,
     error: unknown
   ): Promise<void> {
     if (error instanceof DuplicateClaudeAccountError) {
-      await this.dependencies.removeManagedAuth(accountId, location.managedAuthPath)
+      await this.dependencies.removeManagedAuth(accountId, managedAuthPath)
       return
     }
     this.dependencies.selection.restoreSettings(previousSettings)
     try {
-      await this.dependencies.runtimeAuth.forceMaterializeCurrentSelectionForRollback(
-        getClaudeSelectionTargetForAccount(location)
-      )
+      await this.dependencies.runtimeAuth.forceMaterializeCurrentSelectionForRollback()
     } catch (rollbackError) {
       console.warn('[claude-accounts] Rollback rematerialization failed:', rollbackError)
     }
-    await this.dependencies.removeManagedAuth(accountId, location.managedAuthPath)
+    await this.dependencies.removeManagedAuth(accountId, managedAuthPath)
   }
 
   private async rollbackReauthentication(
     accountId: string,
-    target: ClaudeAccountSelectionTarget,
     path: string,
     snapshot: ClaudeManagedAuthSnapshot,
     previousSettings: ReturnType<Store['getSettings']>,
@@ -245,7 +240,7 @@ export class ClaudeAccountRegistration {
     }
     if (restoredCredentials) {
       this.dependencies.selection.restoreSettings(previousSettings)
-      await this.dependencies.selection.rollBackRuntimeAuth(target)
+      await this.dependencies.runtimeAuth.forceMaterializeCurrentSelectionForRollback()
     } else if (wroteCredentials) {
       this.dependencies.store.updateSettings({ claudeManagedAccounts: nextAccounts })
     } else {

@@ -18,7 +18,11 @@ import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import { runClaudeProfileSetupInWorker } from './claude-profile-setup-worker'
 import type { ClaudeEnvPatch } from './environment'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
-import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
+import {
+  getSelectedClaudeAccountIdForTarget,
+  type ClaudeAccountSelectionTarget
+} from './runtime-selection'
+import { wslClaudeProfilePointer } from './claude-profile-wsl-paths'
 import { isDirectory, listClaudeProfileHomes } from './claude-profile-installed-router'
 
 export type ClaudeProfileRouterSettings = Pick<
@@ -157,7 +161,11 @@ export class ClaudeProfileRouter {
   }
 
   /** A pane's spawn env. Never throws, so a broken selection cannot stop a terminal opening. */
-  terminalEnv(): ClaudeEnvPatch {
+  terminalEnv(target?: ClaudeAccountSelectionTarget): ClaudeEnvPatch {
+    // Why only the pointer: the guest's `claude` reads it, so a pane never waits on the guest.
+    if (target?.runtime === 'wsl') {
+      return { [CLAUDE_PROFILE_POINTER_ENV]: wslClaudeProfilePointer(this.args.dataRoot) }
+    }
     try {
       return this.launchEnv()
     } catch {

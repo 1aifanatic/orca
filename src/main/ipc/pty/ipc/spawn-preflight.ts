@@ -228,8 +228,8 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.cwd,
     ctx.expectedWslDistro
   )
-  if (!args.connectionId && initialSelectionTarget.runtime !== 'wsl') {
-    const profileEnv = getClaudeProfileRouter()?.terminalEnv()
+  if (!args.connectionId) {
+    const profileEnv = getClaudeProfileRouter()?.terminalEnv(initialSelectionTarget)
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
     }

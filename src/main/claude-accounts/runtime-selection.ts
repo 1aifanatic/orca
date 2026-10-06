@@ -129,7 +129,7 @@ export function pruneInvalidClaudeRuntimeSelection(
 }
 
 export function getClaudeSelectionTargetForAccount(
-  account: Pick<ClaudeManagedAccount, 'managedAuthRuntime' | 'wslDistro'>
+  account: ClaudeManagedAccount
 ): ClaudeAccountSelectionTarget {
   if (account.managedAuthRuntime === 'wsl') {
     return { runtime: 'wsl', wslDistro: account.wslDistro ?? null }

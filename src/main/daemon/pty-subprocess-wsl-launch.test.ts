@@ -78,7 +78,6 @@ vi.mock('../providers/windows-pty-job-membership', () => ({
 }))
 
 import { createPtySubprocess } from './pty-subprocess'
-import { WSL_CLAUDE_PROFILE_POINTER } from '../../shared/claude-profile-routing'
 import {
   mockPtyProcess,
   POWERLEVEL10K_WIZARD_DISABLE_ENV,
@@ -430,7 +429,7 @@ describe('createPtySubprocess', () => {
         env: {
           CLAUDE_CONFIG_DIR: home,
           ORCA_CLAUDE_INJECTED_CONFIG_DIR: home,
-          ORCA_CLAUDE_PROFILE_POINTER: WSL_CLAUDE_PROFILE_POINTER
+          ORCA_CLAUDE_PROFILE_POINTER: '~/.local/share/orca/claude-profiles/selected-wsl-orca'
         }
       })
     } finally {
@@ -447,7 +446,9 @@ describe('createPtySubprocess', () => {
         'ORCA_CLAUDE_INJECTED_CONFIG_DIR'
       ])
     )
-    expect(env.ORCA_CLAUDE_PROFILE_POINTER).toBe(WSL_CLAUDE_PROFILE_POINTER)
+    expect(env.ORCA_CLAUDE_PROFILE_POINTER).toBe(
+      '~/.local/share/orca/claude-profiles/selected-wsl-orca'
+    )
   })
 
   it('does not mark deleted Powerlevel10k wizard env for daemon WSL import', async () => {

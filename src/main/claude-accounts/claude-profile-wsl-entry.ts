@@ -1,19 +1,23 @@
-import { ClaudeWslProfileRequest, runClaudeWslProfileRequest } from './claude-profile-wsl-guest'
+import { provisionClaudeAccountProfile } from './claude-profile-setup'
+import { wslClaudeProfile } from './claude-profile-wsl-paths'
 
+// Runs inside a WSL distro on Orca's pinned Node: `<guest home> <distro> <account id>`.
+// Hooks are not installed here: they reach the account through the settings merge from ~/.claude.
 async function main(): Promise<void> {
-  // Why buffers: decoding per chunk corrupts a UTF-8 character split across reads.
-  const chunks: Buffer[] = []
-  let size = 0
-  for await (const chunk of process.stdin) {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
-    size += bytes.length
-    if (size > 16_384) {
-      throw new Error('Claude profile request is too large')
-    }
-    chunks.push(bytes)
+  const [userHome = '', distro = '', accountId = ''] = process.argv.slice(2)
+  const { dataRoot, profile } = wslClaudeProfile(userHome, distro, accountId)
+  const report = await provisionClaudeAccountProfile({
+    dataRoot,
+    profile,
+    userHome,
+    installHooks: null
+  })
+  if (report.outcome !== 'prepared') {
+    console.error(JSON.stringify(report))
+    process.exitCode = 2
+  } else if (report.warnings.length > 0) {
+    process.stdout.write(JSON.stringify(report))
   }
-  const request = ClaudeWslProfileRequest.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-  process.stdout.write(JSON.stringify(await runClaudeWslProfileRequest(request)))
 }
 void main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error))

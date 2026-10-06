@@ -30,23 +30,6 @@ vi.mock('node:os', async () => {
 
 vi.mock('./keychain', () => createKeychainMock())
 
-const profiles = vi.hoisted(() => {
-  const state: {
-    authority?: {
-      routes: (target?: { runtime?: string; wslDistro?: string | null }) => boolean
-      prepare: ReturnType<typeof vi.fn>
-      publish: ReturnType<typeof vi.fn>
-      retire: ReturnType<typeof vi.fn>
-      startup: ReturnType<typeof vi.fn>
-    }
-  } = {}
-  return state
-})
-vi.mock('./claude-profile-routing-authority', () => ({
-  getClaudeProfileRoutingAuthority: () => profiles.authority,
-  installClaudeProfileRoutingAuthority: () => {}
-}))
-
 describe('ClaudeRuntimeAuthService', () => {
   beforeEach(() => {
     resetRuntimeAuthTestState()
@@ -290,57 +273,39 @@ describe('ClaudeRuntimeAuthService', () => {
     }
   })
 
-  it('launches a WSL distro with no Orca account as System Default, with no guest call', async () => {
+  it('routes a WSL distro through its guest router, and a failed guest publish never fails a select', async () => {
     setPlatform('win32')
-    vi.doMock('../wsl', () => ({
-      getDefaultWslDistro: () => 'Ubuntu',
-      getWslHome: () => null,
-      toWindowsWslPath: (value: string) => value
-    }))
-    profiles.authority = {
-      routes: (target) => target?.runtime !== 'wsl' || target.wslDistro === 'Ubuntu',
-      prepare: vi.fn(async () => {
-        throw new Error(
-          'WSL distro Arch is not running. Start it before choosing a Claude account.'
-        )
+    const wslRouter = {
+      prepareLaunch: vi.fn(async (distro: string) => ({ runtime: 'wsl', wslDistro: distro })),
+      publish: vi.fn(async () => {
+        throw new Error('distro is gone')
       }),
-      publish: vi.fn(async () => {}),
-      retire: vi.fn(async () => {}),
-      startup: vi.fn(async () => {})
+      runningDistros: vi.fn(async () => [])
     }
-    const store = createStore(createSettings({ claudeManagedAccounts: [] }))
+    vi.doMock('../../shared/claude-profile-routing', async (original) => ({
+      ...(await original<typeof import('../../shared/claude-profile-routing')>()), // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.doMock's original() needs inline import()
+      claudeProfileRoutingEnabled: () => true
+    }))
+    vi.doMock('./claude-profile-wsl-router', () => ({
+      ClaudeWslProfileRouter: function ClaudeWslProfileRouter() {
+        return wslRouter
+      }
+    }))
     try {
       const { ClaudeRuntimeAuthService } = await import('./runtime-auth-service')
+      const store = createStore(createSettings())
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only getSettings/updateSettings, which the harness store implements.
       const service = new ClaudeRuntimeAuthService(store as never)
-      const arch = { runtime: 'wsl' as const, wslDistro: 'Arch' }
-      await expect(service.prepareForClaudeLaunch(arch)).resolves.toMatchObject({
-        runtime: 'wsl',
-        envPatch: {},
-        provenance: 'wsl:Arch:system'
-      })
-      await service.syncForCurrentSelection(arch)
-      expect(profiles.authority.prepare).not.toHaveBeenCalled()
-      expect(profiles.authority.publish).not.toHaveBeenCalled()
-      expect(profiles.authority.retire).toHaveBeenCalledWith(arch, 'if-running')
       await expect(
         service.prepareForClaudeLaunch({ runtime: 'wsl', wslDistro: 'Ubuntu' })
-      ).rejects.toThrow('not running')
-      // Why: retire is only for a WSL distro that lost its accounts, never for the host.
-      await service.syncForCurrentSelection({ runtime: 'host' })
-      expect(profiles.authority.publish).toHaveBeenCalledWith(
-        { runtime: 'host' },
-        'always',
-        'if-running'
-      )
-      expect(profiles.authority.retire).toHaveBeenCalledTimes(1)
-      // Gate off: no authority, so selection takes the legacy path and never retires.
-      const routing = profiles.authority
-      profiles.authority = undefined
-      await service.syncForCurrentSelection(arch)
-      await service.forceMaterializeCurrentSelectionForRollback(arch)
-      expect(routing.retire).toHaveBeenCalledTimes(1)
+      ).resolves.toMatchObject({ wslDistro: 'Ubuntu' })
+      await expect(
+        service.syncForCurrentSelection({ runtime: 'wsl', wslDistro: 'Ubuntu' })
+      ).resolves.toBeUndefined()
+      expect(wslRouter.publish).toHaveBeenCalledWith('Ubuntu')
     } finally {
-      profiles.authority = undefined
+      vi.doUnmock('../../shared/claude-profile-routing')
+      vi.doUnmock('./claude-profile-wsl-router')
     }
   })
 })
