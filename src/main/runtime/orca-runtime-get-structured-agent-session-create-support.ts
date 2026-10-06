@@ -46,9 +46,13 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   }
 
   /** The agent's own location rule, from its registration: answered without installing the host,
-   *  and false for an agent this runtime does not register. */
+   *  and false for an agent this runtime does not register. An account selection the agent cannot
+   *  run a new chat under reads the same way: the launch opens in the terminal. */
   protected async structuredAgentSupportsLocation(agent: StructuredAgentId, location) {
-    return structuredAgentRuntimeRegistration(agent)?.supportsLocation(location) ?? false
+    const registration = structuredAgentRuntimeRegistration(agent)
+    return Boolean(
+      registration?.supportsLocation(location) && registration.supportsCurrentAccount?.() !== false
+    )
   }
 
   /** Where a launch of `agent` finds its account, resolved on this host by the agent's own

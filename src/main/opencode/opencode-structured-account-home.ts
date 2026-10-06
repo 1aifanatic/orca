@@ -9,6 +9,7 @@ import {
   type ManagedDataAccountService
 } from '../managed-data-accounts/service'
 import type { AcpAccountBinding } from '../acp/acp-account-binding'
+import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 
 type AccountReader = Pick<
   ManagedDataAccountService,
@@ -120,26 +121,43 @@ export function environmentForStructuredOpenCodeAccountHome(
   }
 }
 
-/** OpenCode's account over ACP: a managed profile or the data and state directories it reads. */
+/**
+ * OpenCode's account over ACP: a managed profile or the data and state directories it reads.
+ * `managedProfiles: false` is for a binary whose ACP command runs inside the user's own
+ * background service, which the chat's environment never reaches: only its default account can be
+ * honoured, so a managed selection is refused and a new chat opens in the terminal instead.
+ */
 export function openCodeAcpAccountBinding(
+  options: { managedProfiles: boolean },
   managedAccounts: () => AccountReader = getManagedDataAccountService
 ): AcpAccountBinding {
+  const managedSelected = (): boolean => Boolean(managedAccounts().list('opencode').activeAccountId)
   return {
     pin: { accountLocatorKind: 'opencode' },
-    resolve: async ({ launchEnv, baseEnvironment }) =>
-      resolveStructuredOpenCodeAccountHome({
+    resolve: async ({ launchEnv, baseEnvironment }) => {
+      if (!options.managedProfiles && managedSelected()) {
+        throw agentSessionRefusalError('structured_agent_session_unsupported', {
+          reason: 'hostUnsupported'
+        })
+      }
+      return resolveStructuredOpenCodeAccountHome({
         launchEnv,
         baseEnvironment: await baseEnvironment(),
         managedAccounts: managedAccounts()
-      }),
+      })
+    },
     environment: (home, env) => {
       if (isLegacyAgentSessionAccountHome(home)) {
         throw new Error('OpenCode chat requires a pinned data account')
+      }
+      if (!options.managedProfiles && home.locator.kind === 'managed') {
+        throw new Error('This OpenCode runs under its own service account, not a managed profile')
       }
       return environmentForStructuredOpenCodeAccountHome(home, {
         managedAccounts: managedAccounts(),
         baseEnvironment: env
       })
-    }
+    },
+    ...(options.managedProfiles ? {} : { supportsCurrentSelection: () => !managedSelected() })
   }
 }

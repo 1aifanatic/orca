@@ -10,10 +10,11 @@ import { createAcpStructuredLaunchResolver } from './acp-structured-launch-resol
 
 const PROFILE = '123e4567-e89b-42d3-a456-426614174000'
 
+let activeAccountId: string | null = PROFILE
 const managedAccounts = {
   list: (): ManagedDataAccountsState => ({
     accounts: [{ id: PROFILE, label: 'work', integrations: [], createdAt: 0 }],
-    activeAccountId: PROFILE
+    activeAccountId
   }),
   restoreOriginalEnvironment: (environment: Record<string, string | undefined>) =>
     restoreManagedDataAccountEnvironment(environment),
@@ -27,8 +28,12 @@ const managedAccounts = {
 
 const OPENCODE = {
   ...acpLaunchSpecFor('opencode')!,
-  account: openCodeAcpAccountBinding(() => managedAccounts)
+  account: openCodeAcpAccountBinding({ managedProfiles: true }, () => managedAccounts)
 }
+const OPENCODE2_ACCOUNT = openCodeAcpAccountBinding(
+  { managedProfiles: false },
+  () => managedAccounts
+)
 const identity = {
   sessionId: 'session-alpha-1',
   workspaceId: 'workspace-1',
@@ -182,5 +187,39 @@ describe('OpenCode ACP launch resolution', () => {
     await expect(
       resolver(openCodeRecord({ variable: 'XDG_DATA_HOME', path: '/data' }))({ identity })
     ).rejects.toThrow(/pinned data account/)
+  })
+})
+
+describe('OpenCode 2 over ACP: the chat runs under its own service account', () => {
+  const baseEnvironment = async () => ({ HOME: '/home/user' })
+
+  it('opens structured chats only while no managed profile is selected', async () => {
+    activeAccountId = PROFILE
+    expect(OPENCODE2_ACCOUNT.supportsCurrentSelection?.()).toBe(false)
+    await expect(OPENCODE2_ACCOUNT.resolve({ launchEnv: {}, baseEnvironment })).rejects.toThrow(
+      'structured_agent_session_unsupported'
+    )
+    activeAccountId = null
+    expect(OPENCODE2_ACCOUNT.supportsCurrentSelection?.()).toBe(true)
+    await expect(
+      OPENCODE2_ACCOUNT.resolve({ launchEnv: {}, baseEnvironment })
+    ).resolves.toMatchObject({
+      kind: 'opencode',
+      locator: { kind: 'unmanaged' }
+    })
+    activeAccountId = PROFILE
+  })
+
+  it('never launches a chat pinned to a managed profile', () => {
+    expect(() =>
+      OPENCODE2_ACCOUNT.environment(
+        { kind: 'opencode', locator: { kind: 'managed', managedProfileId: PROFILE } },
+        {}
+      )
+    ).toThrow(/service account/)
+  })
+
+  it('keeps managed profiles for OpenCode 1, whose ACP command runs the agent itself', () => {
+    expect(OPENCODE.account.supportsCurrentSelection).toBeUndefined()
   })
 })

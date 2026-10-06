@@ -20,6 +20,9 @@ export type AcpAccountBinding = {
   }): Promise<AgentSessionAccountHome>
   /** `env` pointed at the pinned account; throws for an account of another kind. */
   environment(home: AgentSessionAccountHome, env: Record<string, string>): Record<string, string>
+  /** False while the current selection is one a structured chat of this agent cannot run under,
+   *  so a new chat opens in the terminal instead; absent means every selection can. */
+  supportsCurrentSelection?(): boolean
 }
 
 /** An agent whose account is one config directory named by `variable`, with a default under the

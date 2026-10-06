@@ -65,7 +65,8 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
 }
 
-/** OpenCode 1.x (`opencode`) and 2.x (`opencode2`) both serve ACP through `acp`. */
+/** OpenCode 1.x (`opencode`) and 2.x (`opencode2`) both serve ACP through `acp`. 2.x's runs inside
+ *  the user's own background service, which the launch environment does not reach. */
 function openCodeLaunchSpec(agent: 'opencode' | 'opencode2'): AcpLaunchSpec {
   return {
     agent,
@@ -78,7 +79,7 @@ function openCodeLaunchSpec(agent: 'opencode' | 'opencode2'): AcpLaunchSpec {
     scrubEnvironment: scrubOpenCodeAcpEnvironment,
     dialect: OPENCODE_ACP_DIALECT,
     loginCommand: [agent, 'auth', 'login'],
-    account: openCodeAcpAccountBinding(),
+    account: openCodeAcpAccountBinding({ managedProfiles: agent === 'opencode' }),
     installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
     imagePrompts: true,
     readStoredUserMessages: openCodeStoredUserMessagesReader()
