@@ -17,9 +17,10 @@ export function useNativeChatStructuredComposerTransport(args: {
   optionPickerRequest: NativeChatOptionPickerRequest | null
   setOptionPickerRequest: Dispatch<SetStateAction<NativeChatOptionPickerRequest | null>>
   onError: (message: string | null) => void
+  onSubmitted: () => void
 }): NativeChatStructuredComposerTransport {
   const { props, controller, sendThroughRelaunch, worktreeId, optionPickerRequest } = args
-  const { setOptionPickerRequest, onError } = args
+  const { setOptionPickerRequest, onError, onSubmitted } = args
   const acceptsImages = useStructuredAgentAcceptsImages(props.target, props.agent)
   return useMemo((): NativeChatStructuredComposerTransport => {
     const threadGoal = controller.threadGoal
@@ -27,16 +28,20 @@ export function useNativeChatStructuredComposerTransport(args: {
       ? (objective: string) => threadGoal.change({ kind: 'set', objective })
       : null
     return {
-      send: (text, attachments) =>
-        sendThroughRelaunch(() =>
-          controller.send(
+      send: (text, attachments) => {
+        let admission: boolean | 'queued' = false
+        const accepted = sendThroughRelaunch(() => {
+          admission = controller.send(
             text,
             attachments.map((attachment) => ({
               path: attachment.path,
               previewUri: attachment.path
             }))
           )
-        ),
+          return admission !== false
+        })
+        return accepted ? admission : false
+      },
       dispatchCommand: (text: string) =>
         dispatchStructuredAgentSessionComposerCommand(text, {
           agent: props.agent,
@@ -60,6 +65,7 @@ export function useNativeChatStructuredComposerTransport(args: {
       contextUsage: controller.contextUsage,
       worktreeId,
       onError,
+      onSubmitted,
       runtime: props.target.kind === 'local' ? 'local' : 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
@@ -70,6 +76,7 @@ export function useNativeChatStructuredComposerTransport(args: {
     controller,
     worktreeId,
     onError,
+    onSubmitted,
     optionPickerRequest,
     props.agent,
     props.sessionId,
