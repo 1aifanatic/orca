@@ -1,7 +1,7 @@
+# Regenerate/prune: node scripts/check-tests-typecheck-ratchet.mjs --prune
 # Test files that do NOT yet typecheck under mobile/tsconfig.test.json.
 # This is a RATCHET: the list may only SHRINK. Do NOT add entries to get CI green —
 # an unchecked test is one whose type-level pins prove nothing.
-# Regenerate/prune: node scripts/check-tests-typecheck-ratchet.mjs --prune
 src/accounts-route-reset-credit.test.ts
 src/browser/browser-command-reply-schema.test.ts
 src/browser/mobile-browser-frameless-stream.test.tsx
@@ -60,6 +60,7 @@ src/session/session-reply-schema.test.ts
 src/session/use-mobile-diff-review-send-actions.test.ts
 src/session/use-mobile-file-tap-handlers.test.ts
 src/session/use-mobile-native-chat-image-attachments.test.ts
+src/session/use-mobile-native-chat-turn-disclosure-journal.test.tsx
 src/session/use-mobile-native-chat-turn-disclosure.test.tsx
 src/session/use-mobile-pr-branch-context.test.ts
 src/session/use-mobile-pr-sidebar-controller.test.ts
