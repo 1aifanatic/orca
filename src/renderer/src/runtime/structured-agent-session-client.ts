@@ -12,7 +12,6 @@ import {
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY,
-  AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import {
@@ -56,16 +55,6 @@ export function supportsStructuredAgentSessionQuietRepeatedStop(
   return structuredAgentSessionHostSupports(target, AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY)
 }
 
-/** Whether a refusal the host returns for a resent message id proves it holds no such message. */
-export function supportsStructuredAgentSessionSendAnswersProof(
-  target: RuntimeClientTarget
-): Promise<boolean> {
-  return structuredAgentSessionHostSupports(
-    target,
-    AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY
-  )
-}
-
 export function supportsStructuredAgentSessionQuestionAnswers(
   target: RuntimeClientTarget
 ): Promise<boolean> {
@@ -106,7 +95,9 @@ const STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS: ReadonlyMap<string, number> = 
 export async function callStructuredAgentSession<TResult>(
   target: RuntimeClientTarget,
   method: string,
-  params?: unknown
+  params?: unknown,
+  /** For a caller that checked the remote host's compatibility itself, just before. */
+  options: { skipCompatibilityCheck?: true } = {}
 ): Promise<TResult> {
   if (
     method === 'agentSession.rewind' &&
@@ -119,9 +110,12 @@ export async function callStructuredAgentSession<TResult>(
     throw new Error('Rewinding requires a newer Orca server. Update the server and try again.')
   }
   const timeoutMs = STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS.get(method)
-  return timeoutMs === undefined
+  return timeoutMs === undefined && !options.skipCompatibilityCheck
     ? callRuntimeRpc<TResult>(target, method, params)
-    : callRuntimeRpc<TResult>(target, method, params, { timeoutMs })
+    : callRuntimeRpc<TResult>(target, method, params, {
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        ...options
+      })
 }
 
 async function subscribeStructuredAgentSessionMethod<TEvent>(

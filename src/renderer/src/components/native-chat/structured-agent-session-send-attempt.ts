@@ -13,13 +13,18 @@ import {
   type StructuredAgentSessionSendAnswer,
   type StructuredAgentSessionSendEvidence
 } from '../../../../shared/structured-agent-session-send-evidence'
+import { AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import {
-  callRuntimeRpc,
   ensureRuntimeEnvironmentCompatible,
+  runtimeEnvironmentSupportsCapability,
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
-import { supportsStructuredAgentSessionSendAnswersProof } from '@/runtime/structured-agent-session-client'
+import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import {
+  ensureLocalRuntimeCapabilities,
+  readLocalRuntimeCapabilitiesOrUnknown
+} from '@/runtime/local-runtime-capabilities'
 import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const fences = new Map<string, number>()
@@ -39,17 +44,35 @@ export function resetStructuredAgentSessionFencesForTests(): void {
   fences.clear()
 }
 
+/** Whether a refusal the host returns for a resent id proves it holds no such message. A failed
+ *  probe reads as an older host, whose refusals prove nothing after a first attempt. */
+async function hostAnswersWithProof(target: RuntimeClientTarget): Promise<boolean> {
+  try {
+    if (target.kind === 'environment') {
+      return await runtimeEnvironmentSupportsCapability(
+        target.environmentId,
+        AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY
+      )
+    }
+    const capabilities =
+      readLocalRuntimeCapabilitiesOrUnknown() ?? (await ensureLocalRuntimeCapabilities())
+    return capabilities?.includes(AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY) === true
+  } catch {
+    return false
+  }
+}
+
 async function knownFence(target: RuntimeClientTarget, sessionId: string): Promise<number> {
   const known = fences.get(sessionId)
   if (known !== undefined) {
     return known
   }
   // Current hosts ignore it; an older host checks it, so read the one it serves now.
-  const history = await callRuntimeRpc<AgentSessionHistoryResult>(target, 'agentSession.history', {
-    sessionId,
-    direction: 'tail',
-    limit: 1
-  })
+  const history = await callStructuredAgentSession<AgentSessionHistoryResult>(
+    target,
+    'agentSession.history',
+    { sessionId, direction: 'tail', limit: 1 }
+  )
   const fence = history.page.fence ?? (!history.ok ? history.fence : undefined)
   if (typeof fence !== 'number') {
     throw new Error('structured session fence unavailable')
@@ -82,24 +105,27 @@ export async function attemptStructuredAgentSessionSend(args: {
       await ensureRuntimeEnvironmentCompatible(target.environmentId)
     }
     const fence = await knownFence(target, entry.sessionId)
-    answersWithProof = await supportsStructuredAgentSessionSendAnswersProof(target)
+    answersWithProof = await hostAnswersWithProof(target)
     const issue = args.abandoned() ? null : args.beforeIssue()
     if (!issue) {
       return null
     }
     firstAttempt = issue.firstAttempt
-    const result = await callRuntimeRpc<AgentSessionMutationResult<AgentSessionSendResult>>(
-      target,
-      'agentSession.send',
-      structuredAgentSessionMessageSendMutation({
-        sessionId: entry.sessionId,
-        clientOperationId: entry.clientMessageId,
-        expectedRuntimeFence: fence,
-        body: entry.body,
-        ...(entry.delivery ? { delivery: entry.delivery } : {})
-      }),
-      { skipCompatibilityCheck: true }
-    )
+    const params = structuredAgentSessionMessageSendMutation({
+      sessionId: entry.sessionId,
+      clientOperationId: entry.clientMessageId,
+      expectedRuntimeFence: fence,
+      body: entry.body,
+      ...(entry.delivery ? { delivery: entry.delivery } : {})
+    })
+    type SendAnswer = AgentSessionMutationResult<AgentSessionSendResult>
+    // Checked above, so the request goes out now or not at all.
+    const result =
+      target.kind === 'environment'
+        ? await callStructuredAgentSession<SendAnswer>(target, 'agentSession.send', params, {
+            skipCompatibilityCheck: true
+          })
+        : await callStructuredAgentSession<SendAnswer>(target, 'agentSession.send', params)
     answer = { kind: 'result', result }
   } catch (error) {
     answer = {

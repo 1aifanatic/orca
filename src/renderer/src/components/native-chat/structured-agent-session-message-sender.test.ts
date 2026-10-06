@@ -3,16 +3,21 @@ import type { AgentJournalSubmission } from '../../../../shared/agent-session-jo
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  proof: vi.fn(async () => true),
+  proof: vi.fn((): boolean => true),
   handBack: vi.fn((): boolean => true)
 }))
 
-vi.mock('@/runtime/runtime-rpc-client', () => ({
-  callRuntimeRpc: mocks.call,
-  ensureRuntimeEnvironmentCompatible: vi.fn(async () => undefined)
-}))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  supportsStructuredAgentSessionSendAnswersProof: mocks.proof
+  callStructuredAgentSession: mocks.call
+}))
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  ensureRuntimeEnvironmentCompatible: vi.fn(async () => undefined),
+  runtimeEnvironmentSupportsCapability: vi.fn(async () => mocks.proof())
+}))
+vi.mock('@/runtime/local-runtime-capabilities', () => ({
+  readLocalRuntimeCapabilitiesOrUnknown: () =>
+    mocks.proof() ? ['agent-session.send-answers-proof.v1'] : [],
+  ensureLocalRuntimeCapabilities: vi.fn(async () => [])
 }))
 vi.mock('./structured-agent-session-message-hand-back', () => ({
   handBackStructuredAgentSessionMessage: mocks.handBack
@@ -202,14 +207,14 @@ describe('structured agent session message sender', () => {
   })
 
   it('reads a refusal of a resent id as proof only from a host that answers with proof', async () => {
-    mocks.proof.mockResolvedValue(false)
+    mocks.proof.mockReturnValue(false)
     mocks.call.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce(refusedFirst)
     const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
     await flush()
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await a.outcome).toBe('in-doubt')
     expect(mocks.handBack).not.toHaveBeenCalled()
-    mocks.proof.mockResolvedValue(true)
+    mocks.proof.mockReturnValue(true)
   })
 
   it('gives back on Stop only what has not gone out', async () => {
