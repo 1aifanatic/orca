@@ -148,11 +148,19 @@ describe.runIf(process.platform !== 'win32')('supervised Codex app-server sessio
 
     const readPids = rig.readPids
     const reported: { pids?: { provider: number; grandchild: number } } = {}
-    // The deadline must find the stand-in armed, however slowly a loaded host starts it.
+    // The deadline starts at spawn, so it outlasts the stand-in's whole start budget: a slow host
+    // fails the pid read inside that budget instead of stopping a stand-in that never armed.
+    const startBudgetMs = 8_000
     const session = runCodexAppServerSession(
-      { command: standIn, cliPath: null, args: ['app-server'], env: rig.env, timeoutMs: 4_000 },
+      {
+        command: standIn,
+        cliPath: null,
+        args: ['app-server'],
+        env: rig.env,
+        timeoutMs: startBudgetMs + 2_000
+      },
       async () => {
-        reported.pids = await readPids()
+        reported.pids = await readPids(startBudgetMs)
         return new Promise<never>(() => {})
       }
     )
