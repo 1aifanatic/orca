@@ -127,7 +127,7 @@ describe('CodexHookService', () => {
   })
 
   it.skipIf(process.platform !== 'win32')(
-    'treats legacy forward-slash runtime trust keys as installed before canonicalizing on reinstall',
+    'reports legacy forward-slash runtime trust keys as not approved, and canonicalizes them on reinstall',
     async () => {
       const service = new CodexHookService()
       expect((await service.install()).state).toBe('installed')
@@ -152,7 +152,8 @@ describe('CodexHookService', () => {
 
       const legacyToml = readFileSync(runtimeTomlPath, 'utf-8')
       expect(legacyToml).toContain(legacyPermissionHeader)
-      expect(service.getStatus().state).toBe('installed')
+      // Why partial: Codex on Windows reads only the backslash key, so it would ask to review this hook.
+      expect(service.getStatus().state).toBe('partial')
 
       expect((await service.install()).state).toBe('installed')
 

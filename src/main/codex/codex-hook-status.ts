@@ -1,6 +1,10 @@
 import type { AgentHookInstallState, AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { readHooksJson } from '../agent-hooks/installer-utils'
-import { readHookTrustEntries, type CodexHookTrustState } from './config-toml-trust'
+import {
+  readHookTrustEntries,
+  readHookTrustKeySpellings,
+  type CodexHookTrustState
+} from './config-toml-trust'
 import {
   CODEX_EVENTS,
   CODEX_EVENT_LABEL,
@@ -40,14 +44,21 @@ export function readCodexHookHomeStatus(
   const slots = findOrcaEntrySlots(config.hooks, command)
   // Why: an unreadable config.toml is distinct from an absent one (an empty map).
   let trustStates: ReadonlyMap<string, CodexHookTrustState>
+  let spelled: (key: string) => boolean = () => false
   let trustReadError: string | null = null
   try {
     trustStates = readHookTrustEntries(home.tomlPath)
+    spelled = readHookTrustKeySpellings(home.tomlPath)
   } catch (error) {
     trustStates = new Map()
     trustReadError = error instanceof Error ? error.message : String(error)
   }
-  const approvals = approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)
+  // Why every spelling: Codex on Windows ignores an approval kept only under the forward-slash key.
+  const approvals = new Map(
+    [...approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)].map(
+      ([eventLabel, held]) => [eventLabel, held.filter((approval) => spelled(approval.key))]
+    )
+  )
   if (answer?.kind !== 'hashes') {
     const reason = answer?.failure ?? 'Orca has not asked Codex yet'
     if (slots.size === 0) {

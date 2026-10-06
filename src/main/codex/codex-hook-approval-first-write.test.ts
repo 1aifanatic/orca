@@ -8,6 +8,7 @@ import {
 } from './codex-hook-approval-first-write'
 import {
   computeTrustKey,
+  escapeTomlString,
   readHookTrustEntries,
   upsertHookTrustEntries,
   type CodexTrustEntry
@@ -78,7 +79,8 @@ describe('writeCodexHookApprovalsBeforeEntries', () => {
   })
 
   it("takes its approval back when the entry write fails, restoring a switched-off key verbatim, never another writer's", () => {
-    const disabledOnly = `[hooks.state."${computeTrustKey(approval('stop', ''))}"]\nenabled = false\n`
+    // Why escaped: a Windows key's backslashes are escapes in a TOML basic string.
+    const disabledOnly = `[hooks.state."${escapeTomlString(computeTrustKey(approval('stop', '')))}"]\nenabled = false\n`
     writeFileSync(tomlPath(), disabledOnly)
 
     expect(() =>

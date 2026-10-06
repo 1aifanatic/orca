@@ -4,20 +4,24 @@ import {
   computeTrustKey,
   readHookTrustBlocks,
   readHookTrustEntries,
+  readHookTrustKeySpellings,
   restoreHookTrustBlocks,
   upsertHookTrustEntries,
-  type CodexHookTrustState,
   type CodexTrustEntry
 } from './config-toml-trust'
 
-/** The approvals among `approvals` that config.toml does not already hold as given. */
+/** The approvals among `approvals` that config.toml does not already hold as given, under every key spelling. */
 export function findMissingCodexHookApprovals(
   approvals: readonly CodexTrustEntry[],
-  trustStates: ReadonlyMap<string, CodexHookTrustState>
+  tomlPath: string
 ): CodexTrustEntry[] {
+  const trustStates = readHookTrustEntries(tomlPath)
+  const spelled = readHookTrustKeySpellings(tomlPath)
   return approvals.filter((entry) => {
-    const state = trustStates.get(computeTrustKey(entry))
+    const key = computeTrustKey(entry)
+    const state = trustStates.get(key)
     return (
+      !spelled(key) ||
       state === undefined ||
       state.trustedHash !== entry.trustedHash ||
       state.enabled !== entry.enabled
@@ -38,7 +42,7 @@ export function writeCodexHookApprovalsBeforeEntries(
   writeEntries: () => void,
   holdsEntry: (approval: CodexTrustEntry) => boolean
 ): void {
-  const changed = findMissingCodexHookApprovals(approvals, readHookTrustEntries(tomlPath))
+  const changed = findMissingCodexHookApprovals(approvals, tomlPath)
   const before = readHookTrustBlocks(
     tomlPath,
     changed.map((entry) => computeTrustKey(entry))

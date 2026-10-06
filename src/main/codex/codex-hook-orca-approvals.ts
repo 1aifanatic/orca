@@ -41,7 +41,7 @@ export function getManagedCodexHookHome(runtimeHomePath: string): CodexHookHome 
 
 type CodexEventName = (typeof CODEX_EVENTS)[number]
 type OrcaEntrySlot = { groupIndex: number; handlerIndex: number }
-type OrcaEntryApproval = CodexHookTrustState & { trustedHash: string }
+type OrcaEntryApproval = CodexHookTrustState & { key: string; trustedHash: string }
 
 /** Where each event holds Orca's entry first. */
 export function findOrcaEntrySlots(
@@ -72,8 +72,9 @@ export function approvalsAtOrcaEntries(
     [...slots].map(([eventName, slot]) => {
       const eventLabel = CODEX_EVENT_LABEL[eventName]
       const approvals = keySourcePaths.flatMap((sourcePath) => {
-        const state = trustStates.get(computeTrustKey({ sourcePath, eventLabel, command, ...slot }))
-        return state?.trustedHash ? [{ ...state, trustedHash: state.trustedHash }] : []
+        const key = computeTrustKey({ sourcePath, eventLabel, command, ...slot })
+        const state = trustStates.get(key)
+        return state?.trustedHash ? [{ ...state, key, trustedHash: state.trustedHash }] : []
       })
       return [eventLabel, approvals]
     })

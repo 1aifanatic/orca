@@ -178,7 +178,8 @@ function formatHookStateTableKey(key: string): string {
   return `"${escapeTomlBasicString(key)}"`
 }
 
-function getTrustKeyWriteVariants(key: string): string[] {
+/** Every spelling Orca writes `key` under: both separators for a Windows path, else the key itself. */
+export function getTrustKeyWriteVariants(key: string): string[] {
   const parsed = parseCodexTrustKey(key)
   if (!parsed || !usesWindowsCodexPathSeparators(parsed.sourcePath)) {
     return [key]

@@ -12,7 +12,9 @@ import {
   parseCodexTrustKey
 } from './codex-trust-identity'
 import { writeTomlConfigAtomically } from './config-toml-atomic-write'
+import { findAllHookTrustBlocks } from './config-toml-hook-trust-blocks'
 import {
+  getTrustKeyWriteVariants,
   moveHookTrustContent,
   readHookTrustBlockTexts,
   removeHookTrustContent,
@@ -279,6 +281,20 @@ export function readHookTrustEntries(configPath: string): Map<string, CodexHookT
   return existsSync(configPath)
     ? readHookTrustEntriesFromContent(readTomlFile(configPath))
     : new CodexHookTrustEntryMap()
+}
+
+/**
+ * Whether config.toml holds an approval key under every spelling Orca writes,
+ * as written: Codex on Windows reads only the backslash one, so a lookup that
+ * folds separators would count a forward-slash table alone as approved.
+ */
+export function readHookTrustKeySpellings(configPath: string): (key: string) => boolean {
+  const written = new Set(
+    existsSync(configPath)
+      ? findAllHookTrustBlocks(readTomlFile(configPath)).map(({ key }) => key)
+      : []
+  )
+  return (key) => getTrustKeyWriteVariants(key).every((spelling) => written.has(spelling))
 }
 
 export function readHookTrustEntriesFromContent(content: string): Map<string, CodexHookTrustState> {
