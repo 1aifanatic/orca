@@ -43,13 +43,13 @@ export async function scanClaudeUsageFiles(
   worktrees: ClaudeUsageWorktreeRef[],
   previousProcessedFiles: ClaudeUsagePersistedFile[] = [],
   onFilesScanned?: (count: number) => void,
-  transcriptRoots?: string[]
+  profileDirs?: string[]
 ): Promise<{
   processedFiles: ClaudeUsagePersistedFile[]
   sessions: ClaudeUsageSession[]
   dailyAggregates: ClaudeUsageDailyAggregate[]
 }> {
-  const files = await listClaudeTranscriptFiles(transcriptRoots)
+  const files = await listClaudeTranscriptFiles(profileDirs)
   const previousByPath = new Map(previousProcessedFiles.map((file) => [file.path, file]))
   const worktreeLookup = await buildWorktreeLookup(worktrees)
 

@@ -8,14 +8,15 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getPath: () => '/unused-test-path' } }))
 import {
   assertOutsideDefaultClaudeHomes,
   describeClaudeProfile,
   prepareClaudeProfileDirectory,
-  readClaudeProfileObject
+  readClaudeProfileObject,
+  readUserClaudeConfigDir
 } from './claude-profile-paths'
 
 // Case-only aliases exist only on a case-insensitive filesystem (default APFS, NTFS).
@@ -70,6 +71,8 @@ describe('Claude profile namespace', () => {
         userHome
       )
     ).toThrow()
+    // One spelling everywhere: Claude names the profile's Keychain entry from the exact text.
+    expect(describeClaudeProfile(`${dir}/./x/../`, 'account-a', target).home).toBe(profile.home)
     expect(() => describeClaudeProfile(dir, '../escape', target)).toThrow()
     expect(() => describeClaudeProfile('C:\\orca', 'a', target)).toThrow()
   })
@@ -120,6 +123,36 @@ describe('Claude profile namespace', () => {
     expect(() =>
       assertOutsideDefaultClaudeHomes(join(userHome, '.CLAUDE', 'nested'), userHome)
     ).toThrow('separate directories')
+  })
+  it("reads the user's own CLAUDE_CONFIG_DIR but never Orca's injected one", () => {
+    expect(readUserClaudeConfigDir({})).toBeUndefined()
+    expect(readUserClaudeConfigDir({ CLAUDE_CONFIG_DIR: '  ' })).toBeUndefined()
+    expect(readUserClaudeConfigDir({ CLAUDE_CONFIG_DIR: '/cfg/claude/' })).toBe(
+      resolve('/cfg/claude')
+    )
+    expect(
+      readUserClaudeConfigDir({
+        CLAUDE_CONFIG_DIR: '/data/claude-profiles/a/home',
+        ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/data/claude-profiles/a/home'
+      })
+    ).toBeUndefined()
+    expect(
+      readUserClaudeConfigDir({
+        CLAUDE_CONFIG_DIR: '/cfg/claude',
+        ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/data/claude-profiles/a/home'
+      })
+    ).toBe(resolve('/cfg/claude'))
+  })
+  it("refuses a profile at or around the user's own CLAUDE_CONFIG_DIR", () => {
+    const userHome = root()
+    const dataRoot = root()
+    const profile = describeClaudeProfile(dataRoot, 'a', local)
+    for (const userConfigDir of [profile.home, dataRoot]) {
+      expect(() =>
+        prepareClaudeProfileDirectory(dataRoot, profile, userHome, userConfigDir)
+      ).toThrow('separate directories')
+    }
+    expect(existsSync(profile.home)).toBe(false)
   })
   it('distinguishes missing from empty, malformed, nonobject and inaccessible JSON', () => {
     const file = join(root(), 'state.json')

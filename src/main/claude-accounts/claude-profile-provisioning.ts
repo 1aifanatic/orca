@@ -1,6 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
+import { existsSync, mkdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
   applyClaudeFolderTrust,
@@ -8,12 +7,11 @@ import {
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
 import {
-  CLAUDE_HOOK_SETTINGS,
-  getStatusLineInstallMarkerPath,
-  isManagedStatusLine,
-  splitManagedHooks
-} from '../claude/hook-settings'
-import { assertOutsideDefaultClaudeHomes, readClaudeProfileObject } from './claude-profile-paths'
+  assertOutsideDefaultClaudeHomes,
+  readClaudeProfileObject,
+  resolveClaudeDefaultHome
+} from './claude-profile-paths'
+import { lstatIfPresent } from './claude-profile-prompt-history'
 import {
   ClaudeProfileSurfaceError,
   createClaudeProfileReport,
@@ -43,8 +41,6 @@ export const CLAUDE_PROFILE_RESOURCE_DIRS = [
 ] as const
 // Copied, not linked: a rename-replace save (Claude's own, or an editor's) would cut a link.
 export const CLAUDE_PROFILE_RESOURCE_FILES = ['CLAUDE.md', 'keybindings.json'] as const
-// Why an import, not a copy: Claude also loads ~/.claude/CLAUDE.md as a parent folder's memory
-// for any project under home, and only collapses the two when they are the same real file.
 export const CLAUDE_PROFILE_MEMORY_IMPORT = '@~/.claude/CLAUDE.md\n'
 const PRIVATE_KEYS = new Set([
   'apiKeyHelper',
@@ -60,39 +56,10 @@ const PRIVATE_ENV = new Set([
 ])
 const SHARED_STATE_KEYS = ['mcpServers', 'theme']
 
-/**
- * Orca's hook entries and managed statusLine belong to the profile's installer. Stripped on both sides
- * of the ledger comparison, they never travel through the merge or make a key look user-owned.
- */
-function withoutOrcaEntries(settings: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...settings }
-  if ('hooks' in next) {
-    // Why: Orca-only hooks stay a present `{}`, so removing the user's last hook is a change, not an absence.
-    const { user } = splitManagedHooks(next.hooks)
-    next.hooks = user === undefined ? {} : user
-  }
-  if (isManagedStatusLine(next.statusLine)) {
-    delete next.statusLine
-  }
-  return next
-}
-
-/** The user's shared hooks plus Orca's entries already in the profile, so hooks keep firing until install. */
-function withProfileOrcaHooks(user: unknown, profileHooks: unknown): unknown {
-  const { managed } = splitManagedHooks(profileHooks)
-  if (!user || typeof user !== 'object' || Array.isArray(user)) {
-    return user
-  }
-  const next: Record<string, unknown> = { ...user }
-  for (const [event, definitions] of Object.entries(managed)) {
-    const own = next[event]
-    next[event] = [...(Array.isArray(own) ? own : []), ...definitions]
-  }
-  return next
-}
-
+// Why `hooks` is shared: Orca writes identical entries into every folder, so the installer that
+// runs after the merge finds them present and the user's own hooks keep running in every account.
 function pickSettings(source: Record<string, unknown>): Record<string, unknown> {
-  const picked = Object.fromEntries(
+  return Object.fromEntries(
     Object.entries(source)
       .filter(([key]) => !PRIVATE_KEYS.has(key))
       .map(([key, value]) => {
@@ -105,18 +72,6 @@ function pickSettings(source: Record<string, unknown>): Record<string, unknown> 
         return [key, value]
       })
   )
-  return withoutOrcaEntries(picked)
-}
-
-function isLink(file: string): boolean {
-  try {
-    return lstatSync(file).isSymbolicLink()
-  } catch (error) {
-    if (isDefinitiveAbsence(error)) {
-      return false
-    }
-    throw error
-  }
 }
 
 function mergeSettings(
@@ -124,7 +79,7 @@ function mergeSettings(
   target: string,
   ledger: ClaudeProfileLedger
 ): ClaudeProfileSurfaceOutcome {
-  if (isLink(target)) {
+  if (lstatIfPresent(target)?.isSymbolicLink()) {
     return 'user-owned'
   }
   const existing = readClaudeProfileObject(target)
@@ -133,44 +88,17 @@ function mergeSettings(
     throw new ClaudeProfileSurfaceError('unreadable', 'Claude settings.json is unreadable')
   }
   const config: Record<string, unknown> = existing.kind === 'present' ? { ...existing.value } : {}
-  const current = withoutOrcaEntries(config)
   const desired = pickSettings(input.kind === 'present' ? input.value : {})
   const written = { ...ledger.keys['settings.json'] }
-  if (written.hooks === undefined && JSON.stringify(current.hooks) === '{}') {
-    // Why: Orca-only hooks that sharing never recorded are the installer's, not a user edit.
-    delete current.hooks
-  }
-  const changed = [
-    ...mergeClaudeProfileKeys(current, desired, written),
-    ...dropClaudeProfileKeys(current, desired, written)
-  ]
-  const overOrcaLine = changed.includes('statusLine') && isManagedStatusLine(config.statusLine)
-  for (const key of changed) {
-    if (key === 'hooks') {
-      // Why: Orca's own entries belong to the installer and outlive the user's shared hooks.
-      const hooks = withProfileOrcaHooks(current.hooks ?? {}, config.hooks)
-      const empty = typeof hooks === 'object' && hooks !== null && Object.keys(hooks).length === 0
-      if (empty && !('hooks' in current)) {
-        delete config.hooks
-      } else {
-        config.hooks = hooks
-      }
-    } else if (key in current) {
-      config[key] = current[key]
-    } else {
-      delete config[key]
-    }
-  }
-  if (changed.length > 0) {
+  const changed =
+    mergeClaudeProfileKeys(config, desired, written).length +
+    dropClaudeProfileKeys(config, desired, written).length
+  if (changed > 0) {
     writeFileAtomically(target, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
-  }
-  if (overOrcaLine) {
-    // Why: that marker meant "Orca installed its line here", not a profile opt-out.
-    rmSync(getStatusLineInstallMarkerPath(CLAUDE_HOOK_SETTINGS, dirname(target)), { force: true })
   }
   // Committed only after the write, so a failed write never marks an unwritten value as shared.
   ledger.keys['settings.json'] = written
-  return changed.length > 0 ? 'merged' : existing.kind === 'absent' ? 'absent' : 'unchanged'
+  return changed > 0 ? 'merged' : existing.kind === 'absent' ? 'absent' : 'unchanged'
 }
 
 async function mergeState(args: {
@@ -180,7 +108,7 @@ async function mergeState(args: {
   trustKeys: readonly string[]
   report: ClaudeProfileReport
 }): Promise<ClaudeProfileSurfaceOutcome> {
-  if (isLink(args.target)) {
+  if (lstatIfPresent(args.target)?.isSymbolicLink()) {
     return 'user-owned'
   }
   const input = readClaudeProfileObject(args.source)
@@ -194,7 +122,6 @@ async function mergeState(args: {
     SHARED_STATE_KEYS.filter((key) => key in source).map((key) => [key, source[key]])
   )
   let written: Record<string, string> = {}
-  let trustRefused = false
   const outcome = await updateClaudeGlobalConfig(args.target, (current) => {
     const config = { ...current }
     written = { ...args.ledger.keys['.claude.json'] }
@@ -210,9 +137,8 @@ async function mergeState(args: {
       config.hasCompletedOnboarding = true
       changed = true
     }
+    // Why: a malformed `projects` refuses only trust; onboarding and shared keys still apply.
     const trust = args.trustKeys.length > 0 ? applyClaudeFolderTrust(config, args.trustKeys) : null
-    // Why: a malformed `projects` blocks only trust; onboarding and shared keys still apply.
-    trustRefused = trust?.kind === 'refuse'
     if (trust?.kind === 'changed') {
       return trust
     }
@@ -226,43 +152,35 @@ async function mergeState(args: {
     throw new ClaudeProfileSurfaceError(outcome, `Profile Claude state is ${outcome}`)
   }
   args.ledger.keys['.claude.json'] = written
-  if (trustRefused) {
-    const error = new ClaudeProfileSurfaceError(
-      'trust-refused',
-      'Profile `projects` is not an object'
-    )
-    warnClaudeProfile(args.report, '.claude.json', error)
-  }
   return outcome === 'updated' ? 'merged' : 'unchanged'
 }
 
-/** Shares the personal ~/.claude config into a profile. Execution-host paths; never touches credentials. */
+/** Shares the default home's config into a profile. Execution-host paths; never touches credentials. */
 export async function provisionClaudeProfile(args: {
   profileHome: string
   userHome: string
+  /** The user's own CLAUDE_CONFIG_DIR; `~/.claude` when unset. */
+  userConfigDir?: string
   platform?: NodeJS.Platform
   trustKeys?: readonly string[]
 }): Promise<ClaudeProfileReport> {
-  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome)
+  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome, args.userConfigDir)
   mkdirSync(args.profileHome, { recursive: true, mode: 0o700 })
   const platform = args.platform ?? process.platform
-  const defaultHome = join(args.userHome, '.claude')
+  const defaultHome = resolveClaudeDefaultHome(args.userHome, args.userConfigDir)
   const report = createClaudeProfileReport()
   const ledgerPath = join(args.profileHome, '.orca-profile.json')
-  const { ledger, readable } = readClaudeProfileLedger(ledgerPath)
+  const ledger = readClaudeProfileLedger(ledgerPath)
   const recorded = JSON.stringify(ledger)
-  if (!readable) {
-    const error = new ClaudeProfileSurfaceError(
-      'unreadable',
-      'Profile ledger was unreadable; reset'
-    )
-    warnClaudeProfile(report, 'ledger', error)
-  }
   for (const name of CLAUDE_PROFILE_RESOURCE_DIRS) {
     await runClaudeProfileSurface(report, name, () =>
       linkClaudeProfileDirectory(join(defaultHome, name), join(args.profileHome, name), platform)
     )
   }
+  // Why only for ~/.claude: Claude also loads it as a parent folder's memory for projects under
+  // home, so a copy would load twice; a custom CLAUDE_CONFIG_DIR is copied, as superset does.
+  const imported = resolve(defaultHome) === resolve(args.userHome, '.claude')
+  const memory = imported ? () => CLAUDE_PROFILE_MEMORY_IMPORT : undefined
   for (const name of CLAUDE_PROFILE_RESOURCE_FILES) {
     await runClaudeProfileSurface(report, name, () =>
       syncClaudeProfileFile(
@@ -270,7 +188,7 @@ export async function provisionClaudeProfile(args: {
         join(args.profileHome, name),
         name,
         ledger,
-        name === 'CLAUDE.md' ? () => CLAUDE_PROFILE_MEMORY_IMPORT : undefined
+        name === 'CLAUDE.md' ? memory : undefined
       )
     )
   }
@@ -290,7 +208,7 @@ export async function provisionClaudeProfile(args: {
     })
   await runClaudeProfileSurface(report, '.claude.json', () =>
     mergeState({
-      source: statePath(undefined),
+      source: statePath(args.userConfigDir),
       target: statePath(args.profileHome),
       ledger,
       trustKeys: args.trustKeys ?? [],
@@ -298,7 +216,7 @@ export async function provisionClaudeProfile(args: {
     })
   )
   await runClaudeProfileSurface(report, 'ledger', () => {
-    if (readable && JSON.stringify(ledger) === recorded) {
+    if (JSON.stringify(ledger) === recorded) {
       return 'unchanged'
     }
     writeFileAtomically(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 })

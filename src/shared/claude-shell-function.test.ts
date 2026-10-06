@@ -9,7 +9,6 @@ vi.mock('./claude-profile-routing', async (original) => ({
   ...(await original<typeof ProfileRouting>()),
   claudeProfileRoutingEnabled: () => gate.enabled
 }))
-import { WSL_CLAUDE_PROFILE_POINTER } from './claude-profile-routing'
 import {
   getPosixClaudeShellFunction,
   getFishClaudeShellFunction,
@@ -17,10 +16,8 @@ import {
 } from './claude-shell-function'
 // Why filtered: CI images lack zsh and fish; a missing shell skips rather than exits 127.
 const POSIX_SHELLS = ['/bin/bash', '/bin/zsh'].filter((shell) => existsSync(shell))
-const FISH =
-  ['/opt/homebrew/bin/fish', '/usr/local/bin/fish', '/usr/bin/fish'].find(existsSync) ?? ''
-const NO_ACCOUNT_READY =
-  'No Claude account is ready for this terminal. Open Orca Settings > Accounts to sign in again or choose System default.'
+const FISH = ['/opt/homebrew/bin/fish', '/usr/local/bin/fish', '/usr/bin/fish'].find(existsSync)
+const SHELLS = [...POSIX_SHELLS, ...(FISH ? [FISH] : [])]
 const roots: string[] = []
 afterEach(() => {
   gate.enabled = true
@@ -35,16 +32,16 @@ function fixture() {
   for (const dir of [a, b, bin]) {
     mkdirSync(dir)
   }
-  writeFileSync(
-    join(bin, 'claude'),
-    '#!/bin/sh\n[ "$1" != hold ] || { : > "$HOME/hold-started"; sleep 0.1; }\nprintf "HOME=%s KEY=%s ARG=%s TWIN=%s\\n" "${CLAUDE_CONFIG_DIR-default}" "${ANTHROPIC_API_KEY-none}" "$1" "${ORCA_CLAUDE_INJECTED_CONFIG_DIR-none}"\nexit 23\n'
-  )
-  chmodSync(join(bin, 'claude'), 0o700)
-  const pointer = join(root, 'selected')
-  writeFileSync(pointer, a)
   const fake = join(bin, 'claude')
-  const run = (shell: string, text: string, env: string[] = []) => {
+  writeFileSync(
+    fake,
+    '#!/bin/sh\nprintf "HOME=%s KEY=%s TWIN=%s\\n" "${CLAUDE_CONFIG_DIR-default}" "${ANTHROPIC_API_KEY-none}" "${ORCA_CLAUDE_INJECTED_CONFIG_DIR-none}"\nexit 23\n'
+  )
+  chmodSync(fake, 0o700)
+  const pointer = join(root, 'selected')
+  const run = (shell: string, env: string[] = []) => {
     const fish = shell.endsWith('fish')
+    const fn = fish ? getFishClaudeShellFunction() : getPosixClaudeShellFunction()
     // Why: a shell that reads system config can put a real claude ahead of the fake; abort first.
     const guard = fish
       ? `test (command -s claude) = '${fake}'; or exit 97`
@@ -59,176 +56,82 @@ function fixture() {
         'ANTHROPIC_API_KEY=fake',
         ...env,
         shell,
-        ...(fish ? ['--no-config'] : shell.endsWith('zsh') ? ['-f'] : ['--noprofile', '--norc']),
+        ...(fish ? ['--no-config'] : shell.endsWith('zsh') ? ['-f'] : ['--norc', '--noprofile']),
         '-c',
-        `${guard}\n${text}`
+        `${guard}\n${fn}\nclaude`
       ],
       { encoding: 'utf8', cwd: root }
     )
-    if (result.status === 97) {
-      throw new Error(`${shell} did not resolve claude to the fake binary`)
-    }
+    expect(result.status).not.toBe(97)
     return result
   }
-  return { root, a, b, pointer, run }
+  return { a, b, pointer, run }
 }
-describe('Claude invocation account selection', () => {
-  it.each(POSIX_SHELLS)(
-    'switches the next invocation in the same %s while a running child keeps its home',
-    (shell) => {
-      const f = fixture()
-      const result = f.run(
-        shell,
-        // Why wait for the child: a fixed sleep raced the child's pointer read on a loaded machine.
-        `${getPosixClaudeShellFunction()}\nclaude hold & child=$!\ni=0; until [ -e "$HOME/hold-started" ] || [ $i -ge 500 ]; do sleep 0.01; i=$((i+1)); done\nprintf '%s' '${f.b}' > "$ORCA_CLAUDE_PROFILE_POINTER"\nclaude 'two words'\nwait "$child"`
-      )
-      expect(result.stdout).toContain(`HOME=${f.a} KEY=none ARG=hold TWIN=${f.a}`)
-      expect(result.stdout).toContain(`HOME=${f.b} KEY=none ARG=two words TWIN=${f.b}`)
-      expect(result.status).toBe(23)
-    }
-  )
-  it.each(POSIX_SHELLS)(
-    'refuses unreadable/missing and malformed selections and keeps explicit default auth in %s',
-    (shell) => {
-      const f = fixture()
-      for (const value of ['\n', `${f.a}\n`, '/missing-profile', 'relative', `${f.a}\0`]) {
-        writeFileSync(f.pointer, value)
-        const result = f.run(shell, `${getPosixClaudeShellFunction()}\nclaude test`)
-        expect(result.status).toBe(1)
-        expect(result.stdout).toBe('')
-        expect(result.stderr).not.toBe('')
-      }
-      rmSync(f.pointer)
-      const missing = f.run(shell, `${getPosixClaudeShellFunction()}\nclaude test`)
-      expect(missing.status).toBe(1)
-      expect(missing.stderr).toContain(NO_ACCOUNT_READY)
-      writeFileSync(f.pointer, '')
-      expect(f.run(shell, `${getPosixClaudeShellFunction()}\nclaude default`).stdout).toContain(
-        'HOME=default KEY=fake'
-      )
-    }
-  )
-  it.each(POSIX_SHELLS)(
-    'in %s a hand-exported CLAUDE_CONFIG_DIR wins; Orca’s own spawn value re-resolves',
-    (shell) => {
-      const f = fixture()
-      const fn = getPosixClaudeShellFunction()
-      const user = f.run(shell, `${fn}\nclaude x`, ['CLAUDE_CONFIG_DIR=/user/own'])
-      expect(user.stdout).toBe('HOME=/user/own KEY=fake ARG=x TWIN=none\n')
-      writeFileSync(f.pointer, '')
-      const injected = [`CLAUDE_CONFIG_DIR=${f.b}`, `ORCA_CLAUDE_INJECTED_CONFIG_DIR=${f.b}`]
-      expect(f.run(shell, `${fn}\nclaude x`, injected).stdout).toBe(
-        'HOME=default KEY=fake ARG=x TWIN=none\n'
-      )
-      writeFileSync(f.pointer, f.a)
-      expect(f.run(shell, `${fn}\nclaude x`, injected).stdout).toContain(`HOME=${f.a} KEY=none`)
-    }
-  )
-  it.each(POSIX_SHELLS)(
-    'in %s leaves claude alone without a routed pane or with the user’s own wrapper',
-    (shell) => {
-      const f = fixture()
-      const fn = getPosixClaudeShellFunction()
-      const unrouted = `unset ORCA_CLAUDE_PROFILE_POINTER\n${fn}\nclaude remote`
-      expect(f.run(shell, unrouted).stdout).toBe('HOME=default KEY=fake ARG=remote TWIN=none\n')
-      const wrapper = `function claude { echo USER-WRAPPER; command claude "$@"; }\n${fn}\nclaude x`
-      expect(f.run(shell, wrapper).stdout).toContain('USER-WRAPPER')
-    }
-  )
-  it.each(POSIX_SHELLS)('in %s accepts Git Bash drive-form pointers', (shell) => {
+const injected = (home: string) => [
+  `CLAUDE_CONFIG_DIR=${home}`,
+  `ORCA_CLAUDE_INJECTED_CONFIG_DIR=${home}`
+]
+
+describe.each(SHELLS)('the claude function in %s', (shell) => {
+  it('re-reads the selection on every launch and strips ambient auth for an account', () => {
     const f = fixture()
-    for (const value of ['C:\\profile', 'C:/profile']) {
-      // The cwd-relative stand-in lets the drive form pass `test -d` on this POSIX host.
-      mkdirSync(join(f.root, value), { recursive: true })
-      writeFileSync(f.pointer, value)
-      expect(f.run(shell, `${getPosixClaudeShellFunction()}\nclaude x`).stdout).toContain(
-        `HOME=${value} KEY=none`
-      )
-    }
+    writeFileSync(f.pointer, f.a)
+    expect(f.run(shell, injected(f.b)).stdout).toBe(`HOME=${f.a} KEY=none TWIN=${f.a}\n`)
+    writeFileSync(f.pointer, f.b)
+    const next = f.run(shell, injected(f.a))
+    expect(next.stdout).toBe(`HOME=${f.b} KEY=none TWIN=${f.b}\n`)
+    expect(next.status).toBe(23)
   })
-  it.each([...POSIX_SHELLS, ...(FISH ? [FISH] : [])])(
-    'in %s expands a WSL pane’s guest-relative pointer against $HOME at each invocation',
-    (shell) => {
-      const f = fixture()
-      const fn = shell.endsWith('fish')
-        ? getFishClaudeShellFunction()
-        : getPosixClaudeShellFunction()
-      const relative = [`ORCA_CLAUDE_PROFILE_POINTER=${WSL_CLAUDE_PROFILE_POINTER}`]
-      const guestPointer = join(f.root, '.local/share/orca/claude-profiles/selected-wsl')
-      const unread = f.run(shell, `${fn}\nclaude x`, relative)
-      expect([unread.status, unread.stdout]).toEqual([1, ''])
-      expect(unread.stderr).toContain(NO_ACCOUNT_READY)
-      mkdirSync(join(f.root, '.local/share/orca/claude-profiles'), { recursive: true })
-      writeFileSync(guestPointer, f.b)
-      expect(f.run(shell, `${fn}\nclaude x`, relative).stdout).toBe(
-        `HOME=${f.b} KEY=none ARG=x TWIN=${f.b}\n`
-      )
-      writeFileSync(guestPointer, join(f.root, 'missing'))
-      const missing = f.run(shell, `${fn}\nclaude x`, relative)
-      expect([missing.status, missing.stdout]).toEqual([1, ''])
-    }
-  )
-  it.each(POSIX_SHELLS)(
-    'in %s refuses a guest-relative pointer cleanly under set -u with HOME unset',
-    (shell) => {
-      const f = fixture()
-      const relative = [`ORCA_CLAUDE_PROFILE_POINTER=${WSL_CLAUDE_PROFILE_POINTER}`]
-      const fn = getPosixClaudeShellFunction()
-      const result = f.run(shell, `${fn}\nunset HOME\nset -u\nclaude x`, relative)
-      expect([result.status, result.stdout]).toEqual([1, ''])
-      expect(result.stderr).toContain(NO_ACCOUNT_READY)
-    }
-  )
-  it('preserves dormant generated scripts byte for byte', () => {
-    gate.enabled = false
-    expect([
-      getPosixClaudeShellFunction(),
-      getFishClaudeShellFunction(),
-      getPowerShellClaudeShellFunction()
-    ]).toEqual(['', '', ''])
-  })
-  it.skipIf(!FISH)('uses the same pointer and override rule in fish', () => {
+
+  it('runs System default for an empty or missing selection, dropping only Orca’s own value', () => {
     const f = fixture()
-    const fn = getFishClaudeShellFunction()
-    const result = f.run(FISH, `${fn}\nclaude 'two words'`)
-    expect(result.stdout).toContain(`HOME=${f.a} KEY=none ARG=two words TWIN=${f.a}`)
-    expect(result.status).toBe(23)
-    expect(f.run(FISH, `${fn}\nclaude x`, ['CLAUDE_CONFIG_DIR=/user/own']).stdout).toBe(
-      'HOME=/user/own KEY=fake ARG=x TWIN=none\n'
-    )
-    mkdirSync(join(f.root, 'C:\\profile'))
-    writeFileSync(f.pointer, 'C:\\profile')
-    expect(f.run(FISH, `${fn}\nclaude x`).stdout).toContain('HOME=C:\\profile KEY=none')
+    expect(f.run(shell).stdout).toBe('HOME=default KEY=fake TWIN=none\n')
+    expect(f.run(shell, injected(f.a)).stdout).toBe('HOME=default KEY=fake TWIN=none\n')
     writeFileSync(f.pointer, '')
-    expect(f.run(FISH, `${fn}\nclaude x`).stdout).toBe('HOME=default KEY=fake ARG=x TWIN=none\n')
-    for (const value of ['\n', `${f.a}\n`]) {
-      writeFileSync(f.pointer, value)
-      expect(f.run(FISH, `${fn}\nclaude test`).stdout).toBe('')
-    }
-    expect(f.run(FISH, `set -e ORCA_CLAUDE_PROFILE_POINTER\n${fn}\nclaude x`).stdout).toContain(
-      'HOME=default KEY=fake'
-    )
+    expect(f.run(shell, injected(f.a)).stdout).toBe('HOME=default KEY=fake TWIN=none\n')
   })
-  it('uses no fish syntax newer than the 3.x releases Orca supports', () => {
-    // `string collect --allow-empty` arrived in fish 3.4; older fish refused every launch.
-    expect(getFishClaudeShellFunction()).not.toMatch(/string collect|--allow-empty/)
+
+  it('reads a WSL pane’s home-relative pointer against $HOME', () => {
+    const f = fixture()
+    writeFileSync(f.pointer, f.a)
+    const relative = f.run(shell, ['ORCA_CLAUDE_PROFILE_POINTER=~/selected'])
+    expect(relative.stdout).toBe(`HOME=${f.a} KEY=none TWIN=${f.a}\n`)
   })
-  it('emits a guarded PowerShell per-invocation read, override rule and finally restoration', () => {
-    const script = getPowerShellClaudeShellFunction()
-    expect(script.startsWith('\n$orcaClaudeCommand = Get-Command claude')).toBe(true)
-    expect(script).toContain('[IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER)')
-    // A missing pointer says what to do instead of surfacing a .NET FileNotFoundException.
-    expect(script).toContain(
-      `if (-not [IO.File]::Exists($env:ORCA_CLAUDE_PROFILE_POINTER)) { throw '${NO_ACCOUNT_READY}' }`
-    )
-    expect(script).toContain('$env:CLAUDE_CONFIG_DIR -eq $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR')
-    expect(script).toContain("throw 'Selected Claude profile")
-    expect(script).toContain('finally {')
-    // .NET 9+ turns a $null/'' SetEnvironmentVariable into an empty variable, not a removal.
-    expect(script).not.toMatch(/SetEnvironmentVariable\([^)]*,\s*(\$null|''|"")\s*,/)
-    expect(script).toContain(
-      'if ($null -eq $saved[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }'
-    )
-    expect(script).toContain('$input | & $binary.Source @args')
+
+  it('refuses a selected account whose folder is missing', () => {
+    const f = fixture()
+    writeFileSync(f.pointer, join(f.a, 'gone'))
+    const result = f.run(shell)
+    expect(result.status).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('folder is missing')
   })
+
+  it('lets the user’s own CLAUDE_CONFIG_DIR win and says so when an account is selected', () => {
+    const f = fixture()
+    const own = f.run(shell, ['CLAUDE_CONFIG_DIR=/user/own'])
+    expect(own.stdout).toBe('HOME=/user/own KEY=fake TWIN=none\n')
+    expect(own.stderr).toBe('')
+    writeFileSync(f.pointer, f.a)
+    const overridden = f.run(shell, ['CLAUDE_CONFIG_DIR=/user/own'])
+    expect(overridden.stdout).toBe('HOME=/user/own KEY=fake TWIN=none\n')
+    expect(overridden.stderr).toContain('not used here')
+  })
+})
+
+it('emits nothing while routing is off', () => {
+  gate.enabled = false
+  expect([
+    getPosixClaudeShellFunction(),
+    getFishClaudeShellFunction(),
+    getPowerShellClaudeShellFunction()
+  ]).toEqual(['', '', ''])
+})
+
+it('restores PowerShell process env without creating empty variables', () => {
+  const script = getPowerShellClaudeShellFunction()
+  expect(script.startsWith('\n$orcaClaudeCommand = Get-Command claude')).toBe(true)
+  expect(script).toContain('finally {')
+  // .NET 9+ turns a $null/'' SetEnvironmentVariable into an empty variable, not a removal.
+  expect(script).not.toMatch(/SetEnvironmentVariable\([^)]*,\s*(\$null|''|"")\s*,/)
 })

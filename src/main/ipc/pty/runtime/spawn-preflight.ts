@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../../../claude-accounts/claude-profile-routing-authority'
+import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import type { PtySpawnResult } from '../../../providers/types'
@@ -142,8 +142,7 @@ export async function prepareRuntimePtySpawn(
   // notifyResumeUnavailable — runtime/relay panes start fresh without the notice.
   ctx.launchCommand = codexResumeLaunch.command
   if (!args.connectionId) {
-    // Why: a WSL pane opens even when its distro is stopped; terminalEnv never waits on a guest.
-    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv(ctx.codexSelectionTarget)
+    const profileEnv = getClaudeProfileRouter()?.terminalEnv(ctx.codexSelectionTarget)
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
     }

@@ -45,7 +45,8 @@ function fixture() {
       dataRoot,
       profile: describeClaudeProfile(dataRoot, 'a', local),
       userHome: state.home,
-      installHooks
+      installHooks,
+      platform: 'linux'
     })
   return { root, defaultHome, dataRoot, service, setup }
 }
@@ -78,26 +79,6 @@ describe('Claude account profile setup', () => {
     expect(realpathSync(join(home, 'projects'))).toBe(realpathSync(join(f.defaultHome, 'projects')))
     expect(existsSync(join(home, '.credentials.json'))).toBe(false)
     expect((await f.setup()).warnings).toEqual([])
-  })
-  it('follows the userHome it was given for the profile statusline, not the process home', async () => {
-    const f = fixture()
-    f.service.install({ claudeVersion: '2.1.261' })
-    const userHome = state.home
-    state.home = join(f.root, 'process-home')
-    mkdirSync(state.home)
-    const report = await provisionClaudeAccountProfile({
-      dataRoot: f.dataRoot,
-      profile: describeClaudeProfile(f.dataRoot, 'a', local),
-      userHome,
-      installHooks: (target) => f.service.install({ claudeVersion: '2.1.261', ...target })
-    })
-    expect(report.surfaces.hooks).toBe('merged')
-    const settings = JSON.parse(
-      readFileSync(join(f.dataRoot, 'claude-profiles/a/home/settings.json'), 'utf8')
-    )
-    expect(settings.statusLine).toEqual(
-      JSON.parse(readFileSync(join(f.defaultHome, 'settings.json'), 'utf8')).statusLine
-    )
   })
   it('refuses another account in the same slot without creating anything', async () => {
     const f = fixture()
@@ -145,7 +126,8 @@ describe('Claude account profile setup', () => {
       dataRoot: f.dataRoot,
       profile: describeClaudeProfile(f.dataRoot, 'a', local),
       userHome: state.home,
-      installHooks: null
+      installHooks: null,
+      platform: 'linux'
     })
     expect(skipped.surfaces.hooks).toBe('absent')
     writeFileSync(join(f.dataRoot, 'claude-profiles/a/home/settings.json'), '{bad')

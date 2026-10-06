@@ -50,9 +50,6 @@ export type AgentSessionAccountHome = {
   path: string
 }
 
-/** The account a session's newest process launched under; null accountId is the system default. */
-export type AgentSessionLaunchAccountHome = AgentSessionAccountHome & { accountId: string | null }
-
 /** Provider launch environment captured by the host when the session is created. */
 export type AgentSessionLaunchEnv = Record<string, string>
 
@@ -140,8 +137,6 @@ export type AgentSessionRecord = {
   provider: AgentSessionHandleProvider
   providerHandleChain: AgentSessionProviderHandleLink[]
   accountHome: AgentSessionAccountHome
-  /** Written by each profile-routed launch; accountHome stays the history origin. */
-  launchAccountHome?: AgentSessionLaunchAccountHome
   /** Provider options the user chose, replayed whenever a new owner starts the session. */
   options?: Record<string, string>
   rewind?: AgentSessionRewindRecord
@@ -239,14 +234,6 @@ function isAgentSessionAccountHome(value: unknown): value is AgentSessionAccount
   return (
     (home.variable === 'CLAUDE_CONFIG_DIR' || home.variable === 'CODEX_HOME') &&
     isBoundedString(home.path, MAX_PATH_LENGTH)
-  )
-}
-
-function isAgentSessionLaunchAccountHome(value: unknown): value is AgentSessionLaunchAccountHome {
-  return (
-    isAgentSessionAccountHome(value) &&
-    'accountId' in value &&
-    (value.accountId === null || isBoundedString(value.accountId, MAX_ID_LENGTH))
   )
 }
 
@@ -362,8 +349,6 @@ export function isPersistedAgentSessionRecord(
     (record.provider === 'claude' || record.provider === 'codex') &&
     isAgentSessionProviderHandleChain(record.providerHandleChain) &&
     isAgentSessionAccountHome(record.accountHome) &&
-    (record.launchAccountHome === undefined ||
-      isAgentSessionLaunchAccountHome(record.launchAccountHome)) &&
     (record.options === undefined || isAgentSessionOptions(record.options)) &&
     (record.rewind === undefined || isAgentSessionRewindRecord(record.rewind)) &&
     (record.conversationCommand === undefined ||

@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../../../claude-accounts/claude-profile-routing-authority'
+import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
 import {
   isWslShellName,
   resolveLocalWindowsTerminalRuntimeOptions
@@ -224,8 +224,7 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.expectedWslDistro
   )
   if (!args.connectionId) {
-    // Why: a WSL pane opens even when its distro is stopped; terminalEnv never waits on a guest.
-    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv(initialSelectionTarget)
+    const profileEnv = getClaudeProfileRouter()?.terminalEnv(initialSelectionTarget)
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
     }
