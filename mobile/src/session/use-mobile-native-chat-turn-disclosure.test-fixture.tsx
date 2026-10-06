@@ -14,6 +14,13 @@ export function userMessage(id: string): NativeChatMessage {
   }
 }
 
+// A component, not a host string: React Native's ElementType has no string members.
+export function Result(_props: {
+  disclosure: ReturnType<typeof useMobileNativeChatTurnDisclosure>
+}): null {
+  return null
+}
+
 export function Harness({
   messages,
   enabled,
@@ -46,5 +53,5 @@ export function Harness({
     lineYields,
     scopeKey
   })
-  return createElement('result', { disclosure })
+  return createElement(Result, { disclosure })
 }

@@ -11,7 +11,7 @@ import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 
-import { Harness, userMessage } from './use-mobile-native-chat-turn-disclosure.test-fixture'
+import { Harness, Result, userMessage } from './use-mobile-native-chat-turn-disclosure.test-fixture'
 
 describe('useMobileNativeChatTurnDisclosure', () => {
   let renderer: ReactTestRenderer | null = null
@@ -66,7 +66,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
       act(() => {
         renderer?.update(createElement(Harness, { messages, enabled: true, isWorking: false }))
       })
-      const first = renderer!.root.findByType('result').props.disclosure.resolveRow(0, messages[0])
+      const first = renderer!.root.findByType(Result).props.disclosure.resolveRow(0, messages[0])
 
       const refreshed = [...messages]
       act(() => {
@@ -74,22 +74,20 @@ describe('useMobileNativeChatTurnDisclosure', () => {
           createElement(Harness, { messages: refreshed, enabled: true, isWorking: false })
         )
       })
-      const second = renderer!.root
-        .findByType('result')
-        .props.disclosure.resolveRow(0, refreshed[0])
+      const second = renderer!.root.findByType(Result).props.disclosure.resolveRow(0, refreshed[0])
 
       // The row carries the key; the handler itself lives on the hook and stays
       // stable for the scope, so a re-render never disturbs a row's memo.
       expect(first.turnKey).toBe('u1')
       expect(second.turnKey).toBe('u1')
-      const firstHandler = renderer!.root.findByType('result').props.disclosure.onToggleTurn
+      const firstHandler = renderer!.root.findByType(Result).props.disclosure.onToggleTurn
       expect(firstHandler).toBeTypeOf('function')
       act(() => {
         renderer?.update(
           createElement(Harness, { messages: [...refreshed], enabled: true, isWorking: false })
         )
       })
-      expect(renderer!.root.findByType('result').props.disclosure.onToggleTurn).toBe(firstHandler)
+      expect(renderer!.root.findByType(Result).props.disclosure.onToggleTurn).toBe(firstHandler)
     } finally {
       vi.useRealTimers()
     }
@@ -111,7 +109,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
           createElement(Harness, { messages, enabled: true, isWorking: false, settledTurns })
         )
       })
-      const row = renderer!.root.findByType('result').props.disclosure.resolveRow(0, messages[0])
+      const row = renderer!.root.findByType(Result).props.disclosure.resolveRow(0, messages[0])
       expect(row.turnStatus).toEqual({ startedAt: 500, thinking: false, workedSeconds: 197 })
       expect(row.turnKey).toBe('u1')
     } finally {
@@ -170,7 +168,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
           })
         )
       })
-      const row = renderer!.root.findByType('result').props.disclosure.resolveRow(0, messages[0])
+      const row = renderer!.root.findByType(Result).props.disclosure.resolveRow(0, messages[0])
       expect(row.turnStatus).toBeNull()
     } finally {
       vi.useRealTimers()
@@ -231,7 +229,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
       ...(turnScope ? { turnScope } : {})
     })
     const rows = () => {
-      const disclosure = renderer!.root.findByType('result').props.disclosure
+      const disclosure = renderer!.root.findByType(Result).props.disclosure
       return messages.map((message, index) => disclosure.resolveRow(index, message))
     }
     const render = (props: Parameters<typeof Harness>[0]) =>
@@ -329,7 +327,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
           ]
         }
       })
-      const disclosure = renderer!.root.findByType('result').props.disclosure
+      const disclosure = renderer!.root.findByType(Result).props.disclosure
       const [rowA, , rowSteer] = steered.map((message, index) =>
         disclosure.resolveRow(index, message)
       )
@@ -397,12 +395,12 @@ describe('useMobileNativeChatTurnDisclosure', () => {
         act(() => {
           renderer?.update(createElement(Harness, { messages, enabled: true, isWorking: false }))
         })
-        const disclosureNow = renderer!.root.findByType('result').props.disclosure
+        const disclosureNow = renderer!.root.findByType(Result).props.disclosure
         const row = disclosureNow.resolveRow(index, messages[index])
         act(() => disclosureNow.onToggleTurn(row.turnKey))
       }
 
-      const disclosure = renderer!.root.findByType('result').props.disclosure
+      const disclosure = renderer!.root.findByType(Result).props.disclosure
       const expanded = messages.filter(
         (message, index) => disclosure.resolveRow(index, message).turnExpanded
       )
@@ -451,7 +449,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
         })
       )
     })
-    const disclosure = renderer!.root.findByType('result').props.disclosure
+    const disclosure = renderer!.root.findByType(Result).props.disclosure
     const rows = messages.map((message, index) => disclosure.resolveRow(index, message))
     expect(rows.map((row) => row.activeTurnIsWorking)).toEqual([false, false, true])
     expect(rows[0].turnStatus?.workedSeconds).toBe(4)
@@ -482,7 +480,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
           })
         )
       })
-      const disclosure = renderer!.root.findByType('result').props.disclosure
+      const disclosure = renderer!.root.findByType(Result).props.disclosure
       const rows = messages.map((message, index) => disclosure.resolveRow(index, message))
       act(() => renderer?.unmount())
       return rows
@@ -529,7 +527,7 @@ describe('the open reasoning block the live line discloses', () => {
         renderer = create(element)
       }
     })
-  const latest = () => renderer!.root.findByType('result').props.disclosure
+  const latest = () => renderer!.root.findByType(Result).props.disclosure
 
   it('hides only that block, and lands it open once it ends if the reader opened it live', () => {
     const prompt = userMessage('u1')

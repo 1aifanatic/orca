@@ -5,7 +5,7 @@ import type { AgentJournalItemBody } from '../../../src/shared/agent-session-jou
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 
-import { Harness, userMessage } from './use-mobile-native-chat-turn-disclosure.test-fixture'
+import { Harness, Result, userMessage } from './use-mobile-native-chat-turn-disclosure.test-fixture'
 
 describe('useMobileNativeChatTurnDisclosure with a turn journal', () => {
   let renderer: ReactTestRenderer | null = null
@@ -91,7 +91,7 @@ describe('useMobileNativeChatTurnDisclosure with a turn journal', () => {
             })
           )
         })
-        const disclosure = renderer!.root.findByType('result').props.disclosure
+        const disclosure = renderer!.root.findByType(Result).props.disclosure
         const [rowA, rowT1, rowB, rowT2] = messages.map((message, index) =>
           disclosure.resolveRow(index, message)
         )
@@ -139,7 +139,7 @@ describe('useMobileNativeChatTurnDisclosure with a turn journal', () => {
             })
           )
         })
-        const disclosure = renderer!.root.findByType('result').props.disclosure
+        const disclosure = renderer!.root.findByType(Result).props.disclosure
         const [rowU1, rowWoke] = messages.map((message, index) =>
           disclosure.resolveRow(index, message)
         )
@@ -202,7 +202,7 @@ describe('useMobileNativeChatTurnDisclosure with a turn journal', () => {
             })
           )
         })
-        const disclosure = renderer!.root.findByType('result').props.disclosure
+        const disclosure = renderer!.root.findByType(Result).props.disclosure
         const [rowW1, rowB] = messages.map((message, index) =>
           disclosure.resolveRow(index, message)
         )
@@ -262,7 +262,7 @@ describe('useMobileNativeChatTurnDisclosure with a turn journal', () => {
             })
           )
         })
-        const disclosure = renderer!.root.findByType('result').props.disclosure
+        const disclosure = renderer!.root.findByType(Result).props.disclosure
         const list: NativeChatMessage[] = disclosure.listMessages
         const drawn = list.map((entry, index) => {
           const row = disclosure.resolveRow(index, entry)
