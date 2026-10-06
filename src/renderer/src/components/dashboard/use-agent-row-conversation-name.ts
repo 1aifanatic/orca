@@ -3,6 +3,7 @@ import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import { structuredChatRowName } from '../../../../shared/structured-chat-row-name'
 import { resolveAgentRowPaneLiveTitle } from './agent-row-pane-live-title'
 import { useAppStore } from '@/store'
+import { structuredChatTabById } from '@/lib/structured-chat-tab-index'
 import type { AppState } from '@/store/types'
 import type { DashboardAgentRow } from './useDashboardData'
 
@@ -45,9 +46,7 @@ export function useAgentRowConversationName(agent: DashboardAgentRow): string | 
     cannotOwnTabName
       ? null
       : structuredChatRowName(
-          s.unifiedTabsByWorktree?.[agent.tab.worktreeId]?.find(
-            (tab) => tab.contentType === 'agent-session' && tab.id === agent.tab.id
-          )
+          structuredChatTabById(s.unifiedTabsByWorktree?.[agent.tab.worktreeId], agent.tab.id)
         )
   )
   // Why: parsed per render rather than inside the selector, which runs on every

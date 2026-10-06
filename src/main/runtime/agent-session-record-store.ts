@@ -72,11 +72,14 @@ import type { JournalOperationReceipt } from '../native-chat/agent-session-journ
 import { loadAgentSessionStoreRows } from './agent-session-record-rows'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 import {
-  compareAndSetAgentSessionRecordName,
   getAgentSessionVisibleTabIndex,
   listVisibleAgentSessionIds
-} from './agent-session-record-store-conversation'
-import { setAgentSessionRecordConversationName } from './agent-session-record-conversation-name'
+} from './agent-session-tab-visibility'
+import {
+  compareAndSetAgentSessionRecordName,
+  type CompareAndSetConversationName,
+  setAgentSessionRecordConversationName
+} from './agent-session-record-conversation-name'
 
 type AgentSessionOperationSettlement = Parameters<typeof settleAgentSessionOperationInto>[1]
 
@@ -128,7 +131,8 @@ export class AgentSessionRecordStore {
     getAgentSessionVisibleTabIndex(this.state)
 
   /** The id of the chat tab showing this conversation, if one does. */
-  getSessionTabId = (id: string): string | null => this.state.sessionTabs?.tabIdFor(id) ?? null
+  getSessionTabId = (sessionId: string): string | null =>
+    this.state.sessionTabs?.tabIdFor(sessionId) ?? null
 
   /**
    * Persist the user-visible tab reference separately from the rollback-sensitive profile tabs.
@@ -149,12 +153,15 @@ export class AgentSessionRecordStore {
     return this.listRecords().filter((record) => agentSessionScopeKey(record.location) === scope)
   }
 
-  setConversationCommand = (
+  setConversationCommand(
     sessionId: string,
     fence: number,
     command: NonNullable<AgentSessionRecord['conversationCommand']>
-  ): Promise<void> =>
-    this.transact((draft) => commitConversationCommandRecord(draft, sessionId, fence, command))
+  ): Promise<void> {
+    return this.transact((draft) =>
+      commitConversationCommandRecord(draft, sessionId, fence, command)
+    )
+  }
 
   /** A committed /clear and the at-rest conversation it continues in, in one write. */
   commitConversationClear = (clear: AgentSessionConversationClear): Promise<void> =>
@@ -162,24 +169,18 @@ export class AgentSessionRecordStore {
 
   /** Unfenced on purpose: the name is a durable note, so writing it never contends with the
    *  writer lease. `null` clears it. */
-  setConversationName = (
-    sessionId: string,
-    name: string | null,
-    options?: { expected?: string | null }
-  ): Promise<AgentSessionRecord> =>
+  setConversationName = (sessionId: string, name: string | null): Promise<AgentSessionRecord> =>
     this.mutate(sessionId, (record) =>
-      setAgentSessionRecordConversationName(record, name, Date.now(), options)
+      setAgentSessionRecordConversationName(record, name, Date.now())
     )
 
-  compareAndSetConversationName = (
-    sessionId: string,
-    name: string | null,
-    expected: string | null
-  ): Promise<AgentSessionRecord | null> =>
+  compareAndSetConversationName: CompareAndSetConversationName = (sessionId, name, expected) =>
     compareAndSetAgentSessionRecordName((apply) => this.mutate(sessionId, apply), name, expected)
 
   /** A record this build cannot validate: readable as present, never grantable as a writer. */
-  isSessionUnreadable = (sessionId: string): boolean => this.state.unreadableRecords.has(sessionId)
+  isSessionUnreadable(sessionId: string): boolean {
+    return this.state.unreadableRecords.has(sessionId)
+  }
 
   listOperationRows = (): AgentSessionOperationRow[] => [...this.state.operations.values()]
 

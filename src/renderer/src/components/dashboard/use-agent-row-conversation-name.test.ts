@@ -3,15 +3,16 @@ import type { AppState } from '@/store/types'
 import { useAgentRowConversationName } from './use-agent-row-conversation-name'
 import type { DashboardAgentRow } from './useDashboardData'
 
-const storeState = vi.hoisted(() => ({
-  current: { settings: {}, tabsByWorktree: {} } as {
+const storeState = vi.hoisted(() => {
+  const current: {
     settings: Record<string, unknown>
     tabsByWorktree: Record<string, unknown[]>
     unifiedTabsByWorktree?: Record<string, unknown[]>
     terminalLayoutsByTabId?: Record<string, unknown>
     runtimePaneTitlesByTabId?: Record<string, unknown>
-  }
-}))
+  } = { settings: {}, tabsByWorktree: {} }
+  return { current }
+})
 
 // Why: the mocked selector makes the hook a pure function, so tests can call it
 // directly without mounting a component. The pane maps default to empty so each
@@ -66,29 +67,35 @@ describe('useAgentRowConversationName', () => {
       }
     }
     expect(useAgentRowConversationName(agent)).toBe('auth/login')
-    storeState.current.unifiedTabsByWorktree!['wt-1'][0] = {
-      id: 'tab-1',
-      contentType: 'agent-session',
-      agentSessionAgent: 'claude',
-      label: 'auth/login',
-      customLabel: 'Manual name'
-    }
+    storeState.current.unifiedTabsByWorktree!['wt-1'] = [
+      {
+        id: 'tab-1',
+        contentType: 'agent-session',
+        agentSessionAgent: 'claude',
+        label: 'auth/login',
+        customLabel: 'Manual name'
+      }
+    ]
     expect(useAgentRowConversationName(agent)).toBe('Manual name')
-    storeState.current.unifiedTabsByWorktree!['wt-1'][0] = {
-      id: 'tab-1',
-      contentType: 'agent-session',
-      agentSessionAgent: 'claude',
-      label: 'auth/login',
-      customLabel: null
-    }
+    storeState.current.unifiedTabsByWorktree!['wt-1'] = [
+      {
+        id: 'tab-1',
+        contentType: 'agent-session',
+        agentSessionAgent: 'claude',
+        label: 'auth/login',
+        customLabel: null
+      }
+    ]
     expect(useAgentRowConversationName(agent)).toBe('auth/login')
-    storeState.current.unifiedTabsByWorktree!['wt-1'][0] = {
-      id: 'tab-1',
-      contentType: 'agent-session',
-      agentSessionAgent: 'claude',
-      label: 'Claude Chat',
-      customLabel: null
-    }
+    storeState.current.unifiedTabsByWorktree!['wt-1'] = [
+      {
+        id: 'tab-1',
+        contentType: 'agent-session',
+        agentSessionAgent: 'claude',
+        label: 'Claude Chat',
+        customLabel: null
+      }
+    ]
     expect(useAgentRowConversationName(agent)).toBeNull()
   })
 

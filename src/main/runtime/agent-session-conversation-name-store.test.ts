@@ -89,19 +89,23 @@ describe('AgentSessionRecordStore.setConversationName', () => {
 
   it('compares against the committed name before applying a generated title', async () => {
     const store = await reservedStore()
-    await store.setConversationName(SESSION, 'First prompt', { expected: null })
-    const named = await store.setConversationName(SESSION, 'Manual name')
-    const stale = await store.setConversationName(SESSION, 'Late generated name', {
-      expected: 'First prompt'
-    })
-    expect(stale).toBe(named)
+    await store.compareAndSetConversationName(SESSION, 'First prompt', null)
+    await store.setConversationName(SESSION, 'Manual name')
+    const stale = await store.compareAndSetConversationName(
+      SESSION,
+      'Late generated name',
+      'First prompt'
+    )
+    expect(stale).toBeNull()
     expect(store.getRecord(SESSION)?.conversationName).toBe('Manual name')
-    await store.setConversationName(SESSION, 'Generated name', { expected: 'Manual name' })
+    await store.compareAndSetConversationName(SESSION, 'Generated name', 'Manual name')
     expect(store.getRecord(SESSION)?.conversationName).toBe('Generated name')
-    const stillNamed = await store.setConversationName(SESSION, 'Another placeholder', {
-      expected: null
-    })
-    expect(stillNamed.conversationName).toBe('Generated name')
+    const stillNamed = await store.compareAndSetConversationName(
+      SESSION,
+      'Another placeholder',
+      null
+    )
+    expect(stillNamed).toBeNull()
   })
 
   it('reports a failed seed even when another writer stored the same placeholder', async () => {

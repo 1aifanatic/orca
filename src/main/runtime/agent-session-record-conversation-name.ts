@@ -11,12 +11,8 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 export function setAgentSessionRecordConversationName(
   record: AgentSessionRecord,
   name: string | null,
-  now: number,
-  options?: { expected?: string | null }
+  now: number
 ): AgentSessionRecord {
-  if (options && 'expected' in options && (record.conversationName ?? null) !== options.expected) {
-    return record
-  }
   const normalized = name === null ? null : normalizeAgentSessionConversationName(name)
   if ((record.conversationName ?? null) === normalized) {
     return record
@@ -29,3 +25,24 @@ export function setAgentSessionRecordConversationName(
   next.conversationName = normalized
   return next
 }
+
+export async function compareAndSetAgentSessionRecordName(
+  mutate: (
+    apply: (record: AgentSessionRecord) => AgentSessionRecord
+  ) => Promise<AgentSessionRecord>,
+  name: string | null,
+  expected: string | null
+): Promise<AgentSessionRecord | null> {
+  let matched = false
+  const record = await mutate((current) => {
+    matched = (current.conversationName ?? null) === expected
+    return matched ? setAgentSessionRecordConversationName(current, name, Date.now()) : current
+  })
+  return matched ? record : null
+}
+
+export type CompareAndSetConversationName = (
+  sessionId: string,
+  name: string | null,
+  expected: string | null
+) => Promise<AgentSessionRecord | null>

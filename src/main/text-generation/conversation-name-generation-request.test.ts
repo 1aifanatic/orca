@@ -66,7 +66,7 @@ describe('generateConversationName', () => {
     const child = createMockDiscoveryChild()
     const spawnAgent = vi.fn(() => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The test child implements every process member the generation lane reads.
-      return child as SpawnedSourceControlAgentProcess
+      return child as unknown as SpawnedSourceControlAgentProcess
     })
     const pending = generateConversationName({
       context: { firstPrompt: 'Fix login' },
@@ -83,7 +83,7 @@ describe('generateConversationName', () => {
     const child = createMockDiscoveryChild()
     const spawnAgent = vi.fn(() => {
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The test child implements every process member the generation lane reads.
-      return child as SpawnedSourceControlAgentProcess
+      return child as unknown as SpawnedSourceControlAgentProcess
     })
     const pending = generateConversationName({
       context: { firstPrompt: 'Fix login' },

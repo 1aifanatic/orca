@@ -28,6 +28,7 @@ import type { AgentStatusState } from '../../../../shared/agent-status-types'
 import type { AiVaultSearchHit } from '../../../../shared/ai-vault-search-types'
 import { AiVaultSearchEvidence } from './AiVaultSearchEvidence'
 import { useAppStore } from '@/store'
+import { structuredChatTabBySessionId } from '@/lib/structured-chat-tab-index'
 
 export function VaultSessionRow({
   session,
@@ -97,8 +98,9 @@ export function VaultSessionRow({
   const customLabel = useAppStore((state) => {
     const owner = session.structuredSession
     return owner
-      ? state.unifiedTabsByWorktree[owner.workspaceId]?.find(
-          (tab) => tab.contentType === 'agent-session' && tab.entityId === owner.sessionId
+      ? structuredChatTabBySessionId(
+          state.unifiedTabsByWorktree[owner.workspaceId],
+          owner.sessionId
         )?.customLabel
       : null
   })
