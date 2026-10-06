@@ -556,6 +556,22 @@ describe("a reopen's pause", () => {
     expect(held(journal)).toEqual([['in-flight', true]])
   })
 
+  // Written after a later send was accepted, the mark starts where the chat stopped, so that
+  // send still lifts it; it never narrows a wider mark before it.
+  it('a mark written late starts where the chat stopped, and narrows no earlier mark', async () => {
+    const journal = await open()
+    await queueDraft(journal, 'kept')
+    const stopped = journal.cursor().sequence + 1
+    await turn(journal, 'later')
+    await journal.markQueueReopen(0, stopped)
+    expect(reason(journal)).toBeNull()
+
+    const reopened = await reopen(journal)
+    expect(reason(reopened)).toBe('restarted')
+    await reopened.markQueueReopen(0, stopped)
+    expect(reason(reopened)).toBe('restarted')
+  })
+
   it('a reopen with no waiting card writes nothing', async () => {
     let journal = await open()
     await turn(journal, 'earlier')

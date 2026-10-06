@@ -61,13 +61,13 @@ export function unsentSendKeptAsCard(
  * both. This batch's cards, and the card of a Send the person asked for, go to the head of the
  * queue in the order they were accepted, behind the cards an earlier settlement kept; the queue's
  * own hand-off returns its card where it stood. Throws once every row was
- * tried when one of them could not be written at all: that row stays queued. Resolves whether it
- * settled any send.
+ * tried when one of them could not be written at all: that row stays queued. Resolves where the
+ * newest send it settled was accepted, or null when it settled none.
  */
 export async function holdUnsentSends(
   journal: AgentSessionJournal,
   input: { fence: number; hostInstance: string; hold: UnsentSendHold }
-): Promise<boolean> {
+): Promise<number | null> {
   const { hold } = input
   const unsent = journal
     .submissions()
@@ -80,7 +80,7 @@ export async function holdUnsentSends(
     )
     .sort((a, b) => (a.acceptedSequence ?? 0) - (b.acceptedSequence ?? 0))
   if (unsent.length === 0) {
-    return false
+    return null
   }
   const { epoch } = journal.cursor()
   const kept = unsent.map((submission) => ({
@@ -166,7 +166,7 @@ export async function holdUnsentSends(
   if (failures.length > 0) {
     throw new AggregateError(failures, 'settling unsent sends failed')
   }
-  return true
+  return unsent.at(-1)?.acceptedSequence ?? 0
 }
 
 /** Where each card of the batch goes: right before every other card, the cards an earlier

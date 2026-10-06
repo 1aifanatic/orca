@@ -278,7 +278,6 @@ describe('the idle sweep with no child running (P2-22 ii)', () => {
     const journal = {
       submissions: () => [],
       pendingSubmissions: () => [],
-      queuedMessages: { list: () => [] },
       snapshot: () => ({
         items: [
           {

@@ -45,12 +45,15 @@ export function buildJournalQueueResumeRow(input: RowPlace): JournalTombstoneRow
   }
 }
 
-export function buildJournalQueueReopenRow(input: RowPlace): JournalTombstoneRow {
+export function buildJournalQueueReopenRow(
+  input: RowPlace & { since?: number }
+): JournalTombstoneRow {
   return {
     kind: 'tombstone',
     itemId: JOURNAL_QUEUE_REOPEN_ITEM_ID,
     revision: 1,
     queueReopen: true,
+    ...(input.since !== undefined ? { queueReopenSince: input.since } : {}),
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts)
   }
 }
@@ -74,7 +77,9 @@ export function journalQueueResumeRowBuilder(
 
 export function journalQueueReopenRowBuilder(
   state: () => JournalReducerState,
-  fence: number
+  fence: number,
+  since?: number
 ): (seq: number, ts: number) => JournalTombstoneRow {
-  return (seq, ts) => buildJournalQueueReopenRow({ state: state(), seq, fence, ts })
+  return (seq, ts) =>
+    buildJournalQueueReopenRow({ state: state(), seq, fence, ts, ...(since ? { since } : {}) })
 }

@@ -318,16 +318,18 @@ export class AgentSessionJournal {
   }
 
   /** This open found waiting cards an earlier handle wrote (`queued-message-pause.ts`). */
-  appendQueueReopen(fence: number): Promise<AgentJournalCursor> {
-    return this.rowWriter.append(journalQueueReopenRowBuilder(() => this.state, fence))
+  appendQueueReopen(fence: number, since?: number): Promise<AgentJournalCursor> {
+    return this.rowWriter.append(journalQueueReopenRowBuilder(() => this.state, fence, since))
   }
 
-  /** Marks the reopen when a card waits or is mid-hand-off (it may come back to waiting); a failed
-   *  write leaves where the mark would have gone as the pause's start (`reopenFloor`), and throws. */
-  async markQueueReopen(fence: number): Promise<void> {
+  /** Marks the reopen when a card waits or is mid-hand-off (it may come back to waiting), from
+   *  `since` when the chat stopped before now; a failed write leaves where the mark would have gone
+   *  as the pause's start (`reopenFloor`), and throws. */
+  async markQueueReopen(fence: number, since?: number): Promise<void> {
     if (this.queuedMessages.awaitReopenMark()) {
-      this.reopenUnmarked = { epoch: this.state.epoch, sequence: this.state.lastSequence + 1 }
-      await this.appendQueueReopen(fence)
+      const sequence = since ?? this.state.lastSequence + 1
+      this.reopenUnmarked = { epoch: this.state.epoch, sequence }
+      await this.appendQueueReopen(fence, since)
       this.reopenUnmarked = null
     }
   }

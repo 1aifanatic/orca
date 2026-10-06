@@ -32,16 +32,18 @@ export function structuredQueuePauses(journal: PauseJournal): DerivedQueuePause[
 /** The mark of a chat that stopped running with cards waiting — Orca quit or crashed, or the chat
  *  was closed — so they wait for its next turn (`queued-message-pause.ts`). Every open marks, and
  *  so does a person's close: the idle sweep never closes a chat with cards waiting, so its
- *  eviction never reopens one. Bookkeeping, so a failure is reported and never thrown; the pause
- *  then starts where the mark would have gone, holding no less. */
+ *  eviction never reopens one. `since`: where the chat stopped, for a mark written after a send
+ *  that came later, which must still lift it. Bookkeeping, so a failure is reported and never
+ *  thrown; the pause then starts where the mark would have gone, holding no less. */
 export async function markStructuredQueueReopen(
   sessionId: string,
   journal: Pick<AgentSessionJournal, 'markQueueReopen'>,
   fence: number,
-  logger: StructuredAgentSessionLogger
+  logger: StructuredAgentSessionLogger,
+  since?: number
 ): Promise<void> {
   try {
-    await journal.markQueueReopen(fence)
+    await journal.markQueueReopen(fence, since)
   } catch (error) {
     logger.warn('marking a reopened queue failed', {
       scope: 'queue-reopen-mark',

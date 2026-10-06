@@ -57,7 +57,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
   const stopAgent = (sessionId: string, ending: StructuredAgentSessionStopEnding) =>
     stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, ending)
 
-  const closeConversation = async (sessionId: string): Promise<boolean> => {
+  const closeConversation = async (sessionId: string, atRest = false): Promise<boolean> => {
     // The handle carries the proof that releases a lease its child's wind-down could not.
     if (await releaseLeaseOfEndedStructuredAgentSessionChild(host.context(), sessionId)) {
       return false
@@ -71,7 +71,8 @@ export function createStructuredAgentSessionConversationLifetime(host: {
           host.closeStatus(id, { listed: !tabs.present || tabs.sessionIds.includes(id) })
         }
       },
-      sessionId
+      sessionId,
+      atRest
     )
   }
 
@@ -95,7 +96,7 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, {
         cause: 'host-stop'
       }),
-    closeConversation,
+    closeConversation: (sessionId) => closeConversation(sessionId, true),
     logger: deps().logger,
     ...deps().idleSweep
   })

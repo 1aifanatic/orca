@@ -98,6 +98,9 @@ export type JournalTombstoneRow = JournalRowBase & {
   /** Present: not a removal but a reopen that found waiting cards (`queued-message-pause.ts`), on
    *  an id no item ever takes. */
   queueReopen?: true
+  /** On a reopen mark written after the chat stopped: where it stopped, so a send accepted since
+   *  lifts it. Absent: the mark's own row. */
+  queueReopenSince?: number
 }
 
 /** One Stop that took effect. Temporary carrier: a tombstone's extra key, which every host ignores,

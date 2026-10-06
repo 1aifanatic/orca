@@ -82,18 +82,24 @@ export async function holdClosedStructuredAgentSessionSends(
     fence,
     hostInstance: structuredAgentSessionHostInstance(),
     hold: { cause: 'chatClosed', ...(which ? { which } : {}) }
-  }).catch((error: unknown) => {
-    deps.logger.warn('settling queued messages of a closed chat failed', {
-      scope: 'queued-abandon',
-      sessionId,
-      error
-    })
-    return null
-  })
-  if (close.mark === 'always' || settled) {
+  }).then(
+    (newest) => ({ ok: true, newest }),
+    (error: unknown) => {
+      deps.logger.warn('settling queued messages of a closed chat failed', {
+        scope: 'queued-abandon',
+        sessionId,
+        error
+      })
+      return { ok: false, newest: null }
+    }
+  )
+  if (close.mark === 'always') {
     await markStructuredQueueReopen(sessionId, journal, fence, deps.logger)
+  } else if (settled.newest !== null) {
+    // A send that woke this re-check came after the ones it settled: the mark starts at them.
+    await markStructuredQueueReopen(sessionId, journal, fence, deps.logger, settled.newest + 1)
   }
-  return settled !== null
+  return settled.ok
 }
 
 /**
@@ -166,14 +172,18 @@ export type StructuredAgentSessionCloseCause = Extract<
 >
 
 /** Whether the conversation's handle is only a cache now: no child, and nothing queued or waiting
- *  on the provider. */
+ *  on the provider. `atRest`: the idle sweep's own close, which also keeps a chat with a card
+ *  waiting, since a reopen marks it to wait for a turn (`markStructuredQueueReopen`), and an
+ *  eviction the person never saw must not; a person's close has marked them already. */
 export function structuredAgentSessionConversationClosable(
-  session: StructuredAgentSessionHostSession
+  session: StructuredAgentSessionHostSession,
+  atRest = false
 ): boolean {
   return (
     session.child === null &&
     !session.journal.submissions().some(isQueuedAgentJournalSubmission) &&
-    session.journal.pendingSubmissions().length === 0
+    session.journal.pendingSubmissions().length === 0 &&
+    !(atRest && session.journal.queuedMessages.awaitReopenMark())
   )
 }
 
@@ -188,10 +198,11 @@ export async function closeStructuredAgentSessionConversationUnderSerialize(
     /** The status row outlives the handle; see `StructuredAgentSessionClientDelivery`. */
     closeStatus: (sessionId: string) => void
   },
-  sessionId: string
+  sessionId: string,
+  atRest = false
 ): Promise<boolean> {
   const session = context.sessions.get(sessionId)
-  if (!session || !structuredAgentSessionConversationClosable(session)) {
+  if (!session || !structuredAgentSessionConversationClosable(session, atRest)) {
     return false
   }
   context.sessions.delete(sessionId)

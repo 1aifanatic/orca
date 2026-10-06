@@ -76,7 +76,10 @@ export function foldJournalQueuePauseMark(
   } else if (row.queueResume === true) {
     marks.resumedSequence = row.seq
   } else if (row.queueReopen === true) {
-    marks.reopenedSequence = row.seq
+    // Never earlier than a mark before it: a late mark of one send narrows no wider one.
+    const since = row.queueReopenSince
+    const start = typeof since === 'number' && since > 0 && since <= row.seq ? since : row.seq
+    marks.reopenedSequence = Math.max(marks.reopenedSequence, start)
   }
 }
 
