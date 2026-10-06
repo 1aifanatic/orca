@@ -254,6 +254,11 @@ export type AgentSessionStatusSummary = {
    *  UNKNOWN, never success. Optional for mixed-version hosts; an older client reads an arm it
    *  does not know as no verdict. The agent-status row publishes it as `mainAgent.outcome`. */
   turnOutcome?: AgentTurnOutcome
+  /** Present only while `status` is 'working' and a person's Stop is still ending that work: while
+   *  the Stop settles, then until the turn it stopped or failed to stop ends. A Stop that settles
+   *  having stopped nothing clears it. Derived by the host, never stored. Absent from older hosts;
+   *  an older client ignores it. */
+  stopping?: true
   /** Live provider-owned background tasks, so session lists can render
    *  subagent children without holding a journal reader open. Optional for
    *  mixed-version hosts. Derived from `children` on hosts that publish it. */
@@ -265,6 +270,9 @@ export type AgentSessionStatusSummary = {
    *  the background-task channel. */
   children?: AgentChildWorkView[]
   providerSession?: AgentProviderSessionMetadata
+  /** Host-path directory the session is held to regardless of its workspace's current directory
+   *  (a floating chat's pinned folder). Absent means resolve the workspace id; older hosts omit it. */
+  launchDirectory?: string
   updatedAt: number
   /** When the session's own agent entered `status`, dated by its own lifecycle edges and never by
    *  row activity: `updatedAt` also moves for a subagent's rows. Absent from older hosts, and when
