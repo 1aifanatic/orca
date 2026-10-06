@@ -21,12 +21,14 @@ export function sendNativeChatObservedWrites(
       clearConfirmDurationMs(options),
     ({ isCancelled, delay, markSubmitted }) => {
       let reportedUnconfirmed = false
+      let acknowledged = true
       const writeAt = (index: number): void => {
         if (isCancelled()) {
           return
         }
         const write = writes[index]
         if (!write) {
+          options.onDeliverySettled?.(acknowledged)
           markSubmitted()
           return
         }
@@ -41,6 +43,7 @@ export function sendNativeChatObservedWrites(
               }
               if (!accepted) {
                 options.onWriteRejected?.()
+                options.onDeliverySettled?.(false)
                 markSubmitted()
                 return
               }
@@ -49,6 +52,10 @@ export function sendNativeChatObservedWrites(
             // A lost acknowledgment is not a refusal: never re-send these bytes, but still submit
             // a body that may have landed, as the unobserved path does.
             .catch(() => {
+              if (isCancelled()) {
+                return
+              }
+              acknowledged = false
               if (!reportedUnconfirmed) {
                 reportedUnconfirmed = true
                 options.onWriteUnconfirmed?.()

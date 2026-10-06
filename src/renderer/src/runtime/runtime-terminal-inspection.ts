@@ -276,6 +276,7 @@ function sendRuntimePtyInputWithinLimit(
   return true
 }
 
+/** True means acknowledged acceptance, false means refusal; a lost acknowledgment rejects. */
 export async function sendRuntimePtyInputVerified(
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
   ptyId: string,
@@ -293,14 +294,9 @@ export async function sendRuntimePtyInputVerified(
   const terminal = getRemoteRuntimeTerminalHandle(ptyId)
   if (target.kind !== 'environment' || !terminal) {
     const accepted = await window.api.pty.writeAccepted(ptyId, data, inputKind)
-    if (!accepted) {
-      window.api.pty.write(ptyId, data, inputKind)
-      // Why: SSH/local fallback writes are fire-and-forget. Callers use this
-      // boolean to continue UX flow, while hook telemetry confirms real turns.
+    if (accepted) {
       recordRuntimeTerminalInputForPtyId(ptyId)
-      return true
     }
-    recordRuntimeTerminalInputForPtyId(ptyId)
     return accepted
   }
 

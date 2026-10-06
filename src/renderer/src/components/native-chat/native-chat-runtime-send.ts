@@ -61,7 +61,7 @@ export function sendNativeChatMessage(
   text: string,
   options?: NativeChatSendOptions
 ): NativeChatSendHandle {
-  if (options?.onWriteRejected) {
+  if (options?.onWriteRejected || options?.onDeliverySettled) {
     return sendNativeChatObservedWrites(
       settings,
       ptyId,

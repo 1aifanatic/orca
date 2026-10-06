@@ -9,6 +9,7 @@ export type NativeChatQuestionCardProps = {
   prompt: AskPrompt
   /** Whether the snapshotted answer is still being delivered to the agent. */
   isSubmitting?: boolean
+  isCancelling?: boolean
   /** Deliver the chosen answer (per-question option indices + free text). */
   onAnswer: (selections: AskAnswerSelection[]) => void
   allowOther?: boolean | readonly boolean[]
@@ -34,6 +35,7 @@ const TYPED_ANSWER = -1
 export function NativeChatQuestionCard({
   prompt,
   isSubmitting = false,
+  isCancelling = false,
   onAnswer,
   allowOther = true,
   onCancel,
@@ -200,6 +202,7 @@ export function NativeChatQuestionCard({
             <button
               type="button"
               onClick={onCancel}
+              disabled={isCancelling}
               aria-label={translate('components.native-chat.question.cancel', 'Cancel')}
               className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >

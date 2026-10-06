@@ -75,11 +75,13 @@ const SEND: NativeChatInteractiveSend = {
 function CardHarness({
   canSend,
   messages,
-  transcriptSettled
+  transcriptSettled,
+  targetPtyId = 'pty-1'
 }: {
   canSend: boolean
   messages?: readonly NativeChatMessage[]
   transcriptSettled: boolean
+  targetPtyId?: string
 }): React.JSX.Element {
   const card = useNativeChatInteractivePromptCard({
     paneKey: 'tab-1:leaf-1',
@@ -88,6 +90,7 @@ function CardHarness({
   })
   const presentation = useNativeChatPromptCardPresentation({
     paneKey: 'tab-1:leaf-1',
+    targetPtyId,
     card,
     canSend
   })
@@ -175,6 +178,40 @@ describe('NativeChatInteractiveCard approvals', () => {
       }
     }
   }
+
+  it('ignores approval A settling after answered replacement B', async () => {
+    let finishA: (accepted: boolean) => void = () => {}
+    mocks.sendRawVerified
+      .mockReturnValueOnce(
+        new Promise<boolean>((resolve) => {
+          finishA = resolve
+        })
+      )
+      .mockResolvedValueOnce(true)
+    const view = render(cardElement())
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    status.stateStartedAt = 20
+    view.rerender(cardElement())
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Allow' })))
+    expect(composerShown()).toBe(true)
+    await act(async () => finishA(true))
+    expect(composerShown()).toBe(true)
+  })
+
+  it('ignores a raw acknowledgment from a rebound PTY', async () => {
+    let finishOld: (accepted: boolean) => void = () => {}
+    mocks.sendRawVerified.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        finishOld = resolve
+      })
+    )
+    const view = render(<CardHarness canSend transcriptSettled targetPtyId="pty-old" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    view.rerender(<CardHarness canSend transcriptSettled targetPtyId="pty-new" />)
+    await act(async () => finishOld(true))
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled()
+    expect(composerShown()).toBe(false)
+  })
 
   // Why: a composer message typed under an approval lands in the agent's selector.
   it('replaces the composer and hides only once the choice was delivered', async () => {
@@ -269,7 +306,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
   })
 
   it('keeps the card retryable when no PTY answer was sent', () => {
-    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 0, waitsForVerifiedDelivery: false })
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 0 })
     renderCard()
 
     chooseSpacesAndSubmit()
@@ -280,7 +317,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
   })
 
   it('cancels delayed PTY writes when the owning card unmounts', () => {
-    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000, waitsForVerifiedDelivery: false })
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000 })
     const rendered = renderCard()
 
     chooseSpacesAndSubmit()
@@ -291,7 +328,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
   })
 
   it('cancels delayed PTY writes when desktop send authority is lost', () => {
-    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000, waitsForVerifiedDelivery: false })
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000 })
     const rendered = renderCard()
 
     chooseSpacesAndSubmit()
@@ -301,7 +338,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
   })
 
   it('shows the paced send as busy and freezes the snapshotted answer', () => {
-    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000, waitsForVerifiedDelivery: false })
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000 })
     renderCard()
 
     chooseSpacesAndSubmit()
@@ -313,7 +350,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
   })
 
   it('cancels the old answer sequence when a replacement prompt arrives', () => {
-    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000, waitsForVerifiedDelivery: false })
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000 })
     const rendered = renderCard()
     chooseSpacesAndSubmit()
 
@@ -332,11 +369,43 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
     expect(screen.getByText('Choose a shell?')).toBeInTheDocument()
   })
 
+  it('sends only one cancellation, can cancel an answer, and permits retry after unknown', async () => {
+    let finishCancel: (accepted: boolean) => void = () => {}
+    let finishAnswer: ((accepted: boolean) => void) | undefined
+    mocks.sendAnswer.mockImplementation((_prompt, _selections, settled) => {
+      finishAnswer = settled
+      return { settleAfterMs: 500 }
+    })
+    mocks.cancelAsk
+      .mockReturnValueOnce(
+        new Promise<boolean>((resolve) => {
+          finishCancel = resolve
+        })
+      )
+      .mockResolvedValueOnce(true)
+    renderCard()
+    chooseSpacesAndSubmit()
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    expect(cancel).toBeEnabled()
+    fireEvent.click(cancel)
+    expect(cancel).toBeDisabled()
+    fireEvent.click(cancel)
+    expect(mocks.cancelAsk).toHaveBeenCalledOnce()
+    act(() => finishAnswer?.(true))
+    expect(composerShown()).toBe(false)
+    await act(async () => finishCancel(false))
+    expect(cancel).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
+    await act(async () => fireEvent.click(cancel))
+    expect(mocks.cancelAsk).toHaveBeenCalledTimes(2)
+    expect(composerShown()).toBe(true)
+  })
+
   it('keeps a verified send visible until delivery succeeds', () => {
     let settleDelivery: ((delivered: boolean) => void) | undefined
     mocks.sendAnswer.mockImplementation((_prompt, _selections, onDeliverySettled) => {
       settleDelivery = onDeliverySettled
-      return { settleAfterMs: 500, waitsForVerifiedDelivery: true }
+      return { settleAfterMs: 500 }
     })
     renderCard()
 
@@ -351,7 +420,7 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
     let settleDelivery: ((delivered: boolean) => void) | undefined
     mocks.sendAnswer.mockImplementation((_prompt, _selections, onDeliverySettled) => {
       settleDelivery = onDeliverySettled
-      return { settleAfterMs: 500, waitsForVerifiedDelivery: true }
+      return { settleAfterMs: 500 }
     })
     renderCard()
 
@@ -409,14 +478,14 @@ describe('NativeChatInteractiveCard transcript fallback', () => {
   })
 
   it('stays dismissed after answering while the transcript call is still pending', () => {
-    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 500, waitsForVerifiedDelivery: true })
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 500 })
     const messages = [askCallMessage('Tabs or spaces?')]
     const rendered = render(cardElement(true, messages))
 
     let settleDelivery: ((delivered: boolean) => void) | undefined
     mocks.sendAnswer.mockImplementation((_prompt, _selections, onDeliverySettled) => {
       settleDelivery = onDeliverySettled
-      return { settleAfterMs: 500, waitsForVerifiedDelivery: true }
+      return { settleAfterMs: 500 }
     })
     chooseSpacesAndSubmit()
     act(() => settleDelivery?.(true))

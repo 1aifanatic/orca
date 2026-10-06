@@ -36,7 +36,7 @@ export type NativeChatInteractiveSend = {
     prompt: AskPrompt,
     selections: AskAnswerSelection[],
     onDeliverySettled?: (delivered: boolean) => void
-  ) => { settleAfterMs: number; waitsForVerifiedDelivery: boolean }
+  ) => { settleAfterMs: number }
   /** Send a raw control string (e.g. an approval option number or ESC) as-is. */
   sendRaw: (raw: string) => void
   /** `sendRaw` that resolves to whether the write was acknowledged; unknown delivery is false. */
@@ -112,9 +112,9 @@ export function useNativeChatInteractiveSend(
       prompt: AskPrompt,
       selections: AskAnswerSelection[],
       onDeliverySettled?: (delivered: boolean) => void
-    ): { settleAfterMs: number; waitsForVerifiedDelivery: boolean } => {
+    ): { settleAfterMs: number } => {
       if (!targetPtyId || !hasAskAnswer(prompt, selections)) {
-        return { settleAfterMs: 0, waitsForVerifiedDelivery: false }
+        return { settleAfterMs: 0 }
       }
       // Cancel any prior in-flight answer before starting a new one.
       cancelInFlight()
@@ -132,27 +132,25 @@ export function useNativeChatInteractiveSend(
         ? useAppStore.getState().agentStatusByPaneKey[paneKey]
         : undefined
       let settledHandle: NativeChatSendHandle | null = null
-      const onSettled = stepsAnswer
-        ? (delivered: boolean): void => {
-            if (settledHandle && inFlightRef.current === settledHandle) {
-              // Why: a completed verified send otherwise retains its timers,
-              // promises, and prompt callback until the next send or unmount.
-              inFlightRef.current = null
-            }
-            if (delivered) {
-              inferQuestionAnsweredFromCurrentStatus({
-                paneKey,
-                getStatusEntry: () => questionStatusBaseline,
-                inferQuestionAnswered: (request) =>
-                  window.api.agentStatus.inferQuestionAnswered(request).catch((err) => {
-                    console.warn('[agent-question] native-chat inference failed:', err)
-                    return false
-                  })
+      const onSettled = (delivered: boolean): void => {
+        if (settledHandle && inFlightRef.current === settledHandle) {
+          // Why: a completed verified send otherwise retains its timers,
+          // promises, and prompt callback until the next send or unmount.
+          inFlightRef.current = null
+        }
+        if (delivered && stepsAnswer) {
+          inferQuestionAnsweredFromCurrentStatus({
+            paneKey,
+            getStatusEntry: () => questionStatusBaseline,
+            inferQuestionAnswered: (request) =>
+              window.api.agentStatus.inferQuestionAnswered(request).catch((err) => {
+                console.warn('[agent-question] native-chat inference failed:', err)
+                return false
               })
-            }
-            onDeliverySettled?.(delivered)
-          }
-        : undefined
+          })
+        }
+        onDeliverySettled?.(delivered)
+      }
       const handle: NativeChatSendHandle = stepsAnswer
         ? sendNativeChatAskAnswer(
             settings,
@@ -162,15 +160,16 @@ export function useNativeChatInteractiveSend(
               : buildAskAnswerKeys(prompt, selections),
             onSettled
           )
-        : sendNativeChatMessage(settings, targetPtyId, formatAskAnswer(prompt, selections))
+        : sendNativeChatMessage(settings, targetPtyId, formatAskAnswer(prompt, selections), {
+            onDeliverySettled: onSettled
+          })
       // Why: native-chat answer writes bypass xterm.onData. Infer only after
       // every paced selector write has fired, so an early digit in a multi-step
       // answer cannot dismiss the wait or cancel the remaining writes.
       settledHandle = handle
       inFlightRef.current = handle
       return {
-        settleAfterMs: handle.settleAfterMs,
-        waitsForVerifiedDelivery: onSettled !== undefined
+        settleAfterMs: handle.settleAfterMs
       }
     },
     [terminalTabId, paneKey, targetPtyId, agent, cancelInFlight]

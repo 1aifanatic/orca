@@ -48,6 +48,8 @@ export type MobileNativeChatController = {
   /** Host/workspace/tab/session scope for stateful streaming suppression. */
   nativeChatStreamScopeKey: string
   nativeChatPermission: ReturnType<typeof detectAgentPermission>
+  /** Terminal prompt occurrence; a replacement resets only the card's local submission state. */
+  nativeChatPromptKey: string | null
   nativeChatQuestion: ReturnType<typeof parseAgentQuestion>
   /** The pending ask, already null while dismissed (dismissal lives here so it
    *  survives the chat-view subtree unmounting on a view toggle). */

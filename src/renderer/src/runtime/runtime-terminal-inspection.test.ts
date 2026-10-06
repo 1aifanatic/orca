@@ -845,14 +845,27 @@ describe('runtime terminal owner routing', () => {
     expect(useAppStore.getState().lastTerminalInputAtByPaneKey).toEqual({})
   })
 
-  it('reports success after fallback fire-and-forget writes when local acceptance cannot be verified', async () => {
+  it('returns refusal without re-sending rejected verified writes', async () => {
     localWriteAccepted.mockResolvedValue(false)
 
     await expect(
       sendRuntimePtyInputVerified({ activeRuntimeEnvironmentId: null }, 'local-pty', 'x', 'driving')
-    ).resolves.toBe(true)
+    ).resolves.toBe(false)
 
     expect(localWriteAccepted).toHaveBeenCalledWith('local-pty', 'x', 'driving')
-    expect(localWrite).toHaveBeenCalledWith('local-pty', 'x', 'driving')
+    expect(localWrite).not.toHaveBeenCalled()
+  })
+
+  it('uses the same acknowledgment contract for SSH input and never retries an unknown write', async () => {
+    localWriteAccepted.mockResolvedValueOnce(true)
+    await expect(
+      sendRuntimePtyInputVerified(null, 'ssh:conn-1@@pty-1', 'answer', 'driving')
+    ).resolves.toBe(true)
+    localWriteAccepted.mockRejectedValueOnce(new Error('acknowledgment unavailable'))
+    await expect(
+      sendRuntimePtyInputVerified(null, 'ssh:conn-1@@pty-1', '\r', 'driving')
+    ).rejects.toThrow('acknowledgment unavailable')
+    expect(localWriteAccepted).toHaveBeenCalledTimes(2)
+    expect(localWrite).not.toHaveBeenCalled()
   })
 })

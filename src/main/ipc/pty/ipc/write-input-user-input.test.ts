@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TerminalRunFactsRegister } from '../../../runtime/terminal-run-facts'
 import { ptyOwnership } from '../provider/ownership-state'
+import { settledWriteStub } from '../../../providers/settled-pty-write-stub'
 import { createPtyWriteInput } from './write-input'
 
 const PTY_ID = 'pty-user-input'
 
 const { provider } = vi.hoisted(() => ({
-  provider: { write: vi.fn(), hasPty: vi.fn(() => true) }
+  provider: { write: vi.fn(), writeWithSettlement: vi.fn(), hasPty: vi.fn(() => true) }
 }))
 
 vi.mock('../provider/registry', () => ({
@@ -23,6 +24,7 @@ function createWriteInput(facts: TerminalRunFactsRegister) {
 beforeEach(() => {
   ptyOwnership.set(PTY_ID, null)
   provider.write.mockReset()
+  provider.writeWithSettlement.mockImplementation(settledWriteStub(provider.write))
 })
 
 afterEach(() => {

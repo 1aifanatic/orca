@@ -11,6 +11,7 @@ import { ptyOwnership } from '../provider/ownership-state'
 import { tryGetProviderForPty } from '../provider/registry'
 import type { TerminalInputKind } from '../../../../shared/terminal-input-kind'
 import { interactiveOutputCharsByPty, lastInputAtByPty } from '../delivery/visibility-state'
+import { isSettledWrite, type WriteSettlement } from '../../../../shared/pty-write-settlement'
 
 export function isMainWindowPtyIpcEvent(
   event: IpcMainEvent | IpcMainInvokeEvent,
@@ -57,46 +58,76 @@ export function createPtyWriteInput(deps: {
   const writePtyProviderInputWithinLimit = (
     provider: IPtyProvider,
     id: string,
-    data: string
+    data: string,
+    verify = false
   ): boolean | Promise<boolean> => {
     const chunks = iterateTerminalInputChunks(data)
     const first = chunks.next()
     if (first.done) {
-      provider.write(id, data)
-      return true
+      return writeChunk(provider, id, data, verify)
     }
     const second = chunks.next()
     if (second.done) {
-      provider.write(id, first.value)
+      return writeChunk(provider, id, first.value, verify)
+    }
+    return writePtyProviderInputChunks(provider, id, chunks, first.value, second.value, verify)
+  }
+
+  const acceptedSettlement = (settlement: WriteSettlement): boolean => {
+    if (settlement.outcome === 'unverifiable') {
+      // A lost acknowledgment must not trigger a fallback write of the same bytes.
+      throw new Error(`PTY write acknowledgment unavailable: ${settlement.reason}`)
+    }
+    return settlement.outcome === 'accepted'
+  }
+
+  const writeChunk = (
+    provider: IPtyProvider,
+    id: string,
+    data: string,
+    verify: boolean
+  ): boolean | Promise<boolean> => {
+    if (!verify) {
+      provider.write(id, data)
       return true
     }
-    return writePtyProviderInputChunks(provider, id, chunks, first.value, second.value)
+    const settlement = provider.writeWithSettlement(id, data)
+    return isSettledWrite(settlement)
+      ? acceptedSettlement(settlement)
+      : settlement.then(acceptedSettlement)
+  }
+
+  const failedWrite = (id: string, error: unknown, verify: boolean): false => {
+    reportUnavailablePtyWrite(id, error)
+    if (verify && !isPtyWriteUnavailableError(error)) {
+      throw error
+    }
+    return false
   }
 
   const writePtyProviderInput = (
     provider: IPtyProvider,
     id: string,
-    data: string
+    data: string,
+    verify = false
   ): boolean | Promise<boolean> => {
     try {
       const tooLarge = isTerminalInputTooLargeWithDeferredMeasurement(data)
       if (typeof tooLarge === 'boolean') {
-        return tooLarge ? false : writePtyProviderInputWithinLimit(provider, id, data)
+        return tooLarge ? false : writePtyProviderInputWithinLimit(provider, id, data, verify)
       }
       return tooLarge
         .then((result) => {
           if (result) {
             return false
           }
-          return writePtyProviderInputWithinLimit(provider, id, data)
+          return writePtyProviderInputWithinLimit(provider, id, data, verify)
         })
         .catch((error) => {
-          reportUnavailablePtyWrite(id, error)
-          return false
+          return failedWrite(id, error, verify)
         })
     } catch (error) {
-      reportUnavailablePtyWrite(id, error)
-      return false
+      return failedWrite(id, error, verify)
     }
   }
 
@@ -105,13 +136,17 @@ export function createPtyWriteInput(deps: {
     id: string,
     chunks: Iterator<string>,
     firstChunk: string,
-    secondChunk: string
+    secondChunk: string,
+    verify: boolean
   ): Promise<boolean> => {
     try {
       let chunk: IteratorResult<string> = { done: false, value: firstChunk }
       let nextChunk: IteratorResult<string> = { done: false, value: secondChunk }
       while (!chunk.done) {
-        provider.write(id, chunk.value)
+        const accepted = writeChunk(provider, id, chunk.value, verify)
+        if (!(typeof accepted === 'boolean' ? accepted : await accepted)) {
+          return false
+        }
         if (!nextChunk.done) {
           // setImmediate, not setTimeout(0): the yield exists to let abort/data callbacks run
           // between chunks, and a clamped timer tick per 16 KiB is pure latency.
@@ -122,8 +157,7 @@ export function createPtyWriteInput(deps: {
       }
       return true
     } catch (error) {
-      reportUnavailablePtyWrite(id, error)
-      return false
+      return failedWrite(id, error, verify)
     }
   }
 
@@ -176,20 +210,15 @@ export function createPtyWriteInput(deps: {
     if (runtime?.getDriver(args.id).kind === 'mobile') {
       return false
     }
-    // Why: the ack infers Ctrl+C/Escape reached the local PTY; SSH providers are fire-and-forget relay notifications and can't truthfully acknowledge yet.
-    if (ptyOwnership.get(args.id) !== null) {
+    if (!ptyOwnership.has(args.id)) {
       return false
     }
     const provider = tryGetProviderForPty(args.id)
     if (!provider?.hasPty?.(args.id)) {
       return false
     }
-    try {
-      noteRendererPtyInput(args)
-      return writePtyProviderInput(provider, args.id, args.data)
-    } catch {
-      return false
-    }
+    noteRendererPtyInput(args)
+    return writePtyProviderInput(provider, args.id, args.data, true)
   }
 
   return {

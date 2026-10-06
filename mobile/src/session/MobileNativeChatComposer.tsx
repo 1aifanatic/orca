@@ -303,7 +303,7 @@ export function MobileNativeChatComposer({
                 onPressIn={dictationMode === 'hold' ? onMicPressIn : undefined}
                 onPressOut={dictationMode === 'hold' ? onMicPressOut : undefined}
                 onLongPress={dictationMode === 'hold' ? keepHeldPressThroughLongPress : undefined}
-                disabled={disabled}
+                disabled={disabled && !micActive}
               >
                 {/* The icon swaps on press; as the page's touch target, its removal would send
                     touchend to a detached node and lose the release. */}

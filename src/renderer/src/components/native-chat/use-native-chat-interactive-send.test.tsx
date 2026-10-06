@@ -77,7 +77,8 @@ describe('useNativeChatInteractiveSend', () => {
     expect(mocks.sendNativeChatMessage).toHaveBeenCalledWith(
       { terminalTabId: 'tab-1' },
       'pty-1',
-      'B'
+      'B',
+      { onDeliverySettled: expect.any(Function) }
     )
     expect(mocks.sendNativeChatAskAnswer).not.toHaveBeenCalled()
   })
@@ -140,7 +141,7 @@ describe('useNativeChatInteractiveSend', () => {
       resultValue = result.current.sendAnswer(PROMPT, [{ indices: [] }])
     })
 
-    expect(resultValue).toEqual({ settleAfterMs: 0, waitsForVerifiedDelivery: false })
+    expect(resultValue).toEqual({ settleAfterMs: 0 })
     expect(mocks.sendNativeChatAskAnswer).not.toHaveBeenCalled()
     expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
   })
@@ -326,7 +327,7 @@ describe('useNativeChatInteractiveSend', () => {
     act(() => {
       sendResult = result.current.sendAnswer(PROMPT, [{ indices: [1] }], onDeliverySettled)
     })
-    expect(sendResult).toEqual({ settleAfterMs: 500, waitsForVerifiedDelivery: true })
+    expect(sendResult).toEqual({ settleAfterMs: 500 })
 
     const onSettled = mocks.sendNativeChatAskAnswer.mock.calls[0]?.[3]
     onSettled?.(false)

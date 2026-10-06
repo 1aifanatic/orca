@@ -219,6 +219,7 @@ export function NativeChatResolvedView({
   // agent's selector; card and composer never share a commit.
   const promptCardPresentation = useNativeChatPromptCardPresentation({
     paneKey,
+    targetPtyId,
     card: promptCard,
     canSend
   })

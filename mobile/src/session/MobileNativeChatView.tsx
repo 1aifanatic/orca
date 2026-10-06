@@ -137,6 +137,7 @@ type Props = MobileQueuedSlotProps & {
   question?: MobileChatQuestion | null
   onAnswerQuestion?: (text: string) => Promise<boolean>
   permission?: MobileChatPermission | null
+  promptKey?: string | null
   onRespondPermission?: (send: string) => Promise<boolean>
   /** Open a worktree file tapped in agent markdown. */
   onOpenFile?: (relativePath: string) => void
@@ -196,6 +197,7 @@ export function MobileNativeChatView({
   question,
   onAnswerQuestion,
   permission,
+  promptKey,
   onRespondPermission,
   queuedSlot: { cards: queuedCards, composerInputRef: inputRef } = NO_QUEUED_SLOT,
   onOpenFile,
@@ -393,6 +395,7 @@ export function MobileNativeChatView({
       )}
       {queuedCards}
       <MobileNativeChatPromptCard
+        key={promptKey ?? undefined}
         ask={ask}
         askKey={askKey}
         onDismissAsk={onDismissAsk}
