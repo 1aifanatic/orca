@@ -174,7 +174,10 @@ function ownRetries(sample) {
       (count, reason) => count + (sample[field]?.[reason] ?? 0),
       0
     ),
-    0
+    // The host's own release on the draining cell still holds its row; the answer schedules the
+    // redial (Retry-After). One per drained host whose redial beats its release, so it scales with
+    // the drain, not with director health.
+    sample.assign503sByCauseDelta?.relay_assignment_row_busy ?? 0
   )
 }
 

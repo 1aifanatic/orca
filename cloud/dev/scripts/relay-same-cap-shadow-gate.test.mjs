@@ -611,6 +611,24 @@ function director503s(minute, count) {
   return [{ minute503: minute, count }]
 }
 
+test('a host refused because its own release still holds its row is a scheduled 503', () => {
+  const drain = drainReturnByMinute([{
+    failed: false,
+    samples: [{
+      timestamp: '2026-10-05T20:01:00Z',
+      assign503sByCauseDelta: { relay_assignment_row_busy: 12, 'placement-lane': 5 }
+    }]
+  }], 1000)
+  assert.deepEqual(drain.ownRetriesPerMinute, { '2026-10-05T20:00': 12 })
+  const split = withoutDrainDeferrals(
+    { perMinute: { '2026-10-05T20:00': 17 } },
+    drain,
+    ['2026-10-05T20:00']
+  )
+  // The placement-lane refusals stay: only the row-busy ones were scheduled.
+  assert.deepEqual(split.series, [5])
+})
+
 test('scheduled 503s come out of the count, split across the minutes they cover', () => {
   const drain = drainReturnByMinute([{
     failed: false,

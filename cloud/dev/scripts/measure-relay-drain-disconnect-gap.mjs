@@ -36,7 +36,8 @@ export function readDrainCloses(entries) {
       at: entryTime(entry)
     })
   }
-  return closes
+  // gcloud exports newest first; the measurement needs each host's earliest close.
+  return closes.sort((left, right) => left.at - right.at)
 }
 
 export function readReconnectGrants(entries) {
@@ -73,6 +74,7 @@ export function measureDrainDisconnectGap({
   grants,
   cellRegions = {}
 }) {
+  if (!Number.isFinite(drainStartedAt)) throw new Error('drain start time is invalid')
   const sourceRegion = cellRegions[sourceCellId]
   // First close per host after the drain began; later closes are the host's new sessions.
   const firstClose = new Map()

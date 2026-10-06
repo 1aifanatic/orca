@@ -83,6 +83,37 @@ describe('drain disconnect gap', () => {
     assert.equal(result.timeUntilBack.maxMs, 3_600_000)
   })
 
+  it('keeps each host earliest close when the export is newest first', () => {
+    const result = measureDrainDisconnectGap({
+      sourceCellId: 'c1',
+      drainStartedAt: start,
+      controlsAtDrainStart: 1,
+      closes: readDrainCloses([
+        close('h', 300, 'resolve configured director'),
+        close('h', 60, 'resolve configured director', 3)
+      ]),
+      grants: readReconnectGrants([grant('h', 120, 'c2')])
+    })
+    assert.equal(result.movedFirst, 0)
+    assert.equal(result.cutOff, 1)
+    assert.deepEqual(result.cutOffGap, { count: 1, p50Ms: 60000, p95Ms: 60000, maxMs: 60000 })
+    assert.equal(result.phoneSessionsDropped, 3)
+  })
+
+  it('refuses an invalid drain start time', () => {
+    assert.throws(
+      () =>
+        measureDrainDisconnectGap({
+          sourceCellId: 'c1',
+          drainStartedAt: Date.parse('not a time'),
+          controlsAtDrainStart: 1,
+          closes: [],
+          grants: []
+        }),
+      /drain start time is invalid/
+    )
+  })
+
   it('ignores lines that are not the two it reads', () => {
     assert.deepEqual(readDrainCloses([{ timestamp: at(0), textPayload: 'unrelated' }]), [])
     assert.deepEqual(
