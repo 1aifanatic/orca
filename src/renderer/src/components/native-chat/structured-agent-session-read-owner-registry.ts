@@ -23,6 +23,15 @@ export function getOrCreateStructuredReadOwner(
   owners.set(key, owner)
   return owner
 }
+/** A held owner names its key again once its last holders released it, never over a live one. */
+export function adoptStructuredReadOwner(
+  key: string,
+  owner: StructuredAgentSessionReadOwner
+): void {
+  if (!owners.has(key)) {
+    owners.set(key, owner)
+  }
+}
 export function forgetStructuredReadOwner(
   key: string,
   owner: StructuredAgentSessionReadOwner

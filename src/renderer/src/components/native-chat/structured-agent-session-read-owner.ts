@@ -34,6 +34,7 @@ export type StructuredAgentSessionReadOwner = {
 }
 
 import {
+  adoptStructuredReadOwner,
   getOrCreateStructuredReadOwner,
   forgetStructuredReadOwner,
   structuredReadOwnerKey
@@ -249,6 +250,8 @@ function createReadOwner(
   }
   owner = {
     activate: () => {
+      // Remounts and StrictMode re-run setup on an owner whose cleanup just forgot it.
+      adoptStructuredReadOwner(key, owner)
       const token = Symbol(sessionId)
       activations.add(token)
       if (activations.size === 1) {
@@ -296,6 +299,7 @@ function createReadOwner(
       return page.promise
     },
     subscribe: (listener) => {
+      adoptStructuredReadOwner(key, owner)
       listeners.add(listener)
       return () => {
         listeners.delete(listener)
