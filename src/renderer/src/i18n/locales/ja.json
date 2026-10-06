@@ -15,10 +15,10 @@
       "description": "チャットの外観と名前の付け方を選びます。",
       "names": {
         "title": "チャット名",
-        "description": "エージェントが最初のメッセージから新しいチャットの名前を生成します。名前が生成されない場合は、Claude Chat または Codex Chat のままです。",
+        "description": "選択したツールが最初のメッセージから新規チャットの名前を生成します。名前が生成されない場合は、Claude Chat または Codex Chat のままです。",
         "enable": "チャットに自動で名前を付ける",
         "recipe": "チャット名",
-        "recipeDescription": "新しいチャットの最初のメッセージから短い名前を生成します。",
+        "recipeDescription": "新規チャットの最初のメッセージから短い名前を生成します。",
         "customCommandDescription": "「カスタムコマンド」を選ぶレシピで共有するコマンドです。{prompt} を使うと入力を引数として渡し、使わない場合は標準入力で渡します。",
         "saveFailed": "チャット名の設定を保存できませんでした。",
         "searchAgent": "Agent",
