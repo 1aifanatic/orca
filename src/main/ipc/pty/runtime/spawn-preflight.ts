@@ -1,4 +1,4 @@
-import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
+import { withClaudeProfileTerminalEnv } from '../../../claude-accounts/claude-profile-installed-router'
 import { inheritOmpLaunchEnvironment } from '../host-env/omp-launch-environment'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import type { PtySpawnResult } from '../../../providers/types'
@@ -146,12 +146,7 @@ export async function prepareRuntimePtySpawn(
   // Why: the drop still applies here, but this controller's result has no field for
   // notifyResumeUnavailable — runtime/relay panes start fresh without the notice.
   ctx.launchCommand = codexResumeLaunch.command
-  if (!args.connectionId) {
-    const profileEnv = getClaudeProfileRouter()?.terminalEnv(ctx.codexSelectionTarget)
-    if (profileEnv) {
-      args.env = { ...args.env, ...profileEnv }
-    }
-  }
+  args.env = withClaudeProfileTerminalEnv(args.env, args.connectionId, ctx.codexSelectionTarget)
   ctx.claudeAuth =
     ctx.isClaudeLaunch && ctx.deps.prepareClaudeAuth
       ? await ctx.deps.prepareClaudeAuth(ctx.codexSelectionTarget)
@@ -192,8 +187,11 @@ export async function prepareRuntimePtySpawn(
   if (args.preAllocatedHandle) {
     ctx.env = { ...ctx.env, ORCA_TERMINAL_HANDLE: args.preAllocatedHandle }
   }
+  const launchesCodex = args.launchAgent === 'codex'
   const selectLaunchCodexHome = async (): Promise<string | null> =>
-    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env)) ?? null
+    (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env, {
+      launchesCodex
+    })) ?? null
   ctx.selectedCodexHomePath =
     !ctx.preAdoptedStablePane && !args.connectionId
       ? getCompatibleSelectedCodexHomePath(
@@ -221,13 +219,16 @@ export async function prepareRuntimePtySpawn(
       resolveCurrent: async () =>
         getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
-          (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env)) ?? null
+          (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env, {
+            launchesCodex
+          })) ?? null
         ),
       resolveAfterUnavailable: async (unavailableManagedHomePath) =>
         getCompatibleSelectedCodexHomePath(
           ctx.codexSelectionTarget,
           (await ctx.deps.getSelectedCodexHomePath?.(ctx.codexSelectionTarget, ctx.env, {
-            unavailableManagedHomePath
+            unavailableManagedHomePath,
+            launchesCodex
           })) ?? null
         )
     })
@@ -279,6 +280,7 @@ export async function prepareRuntimePtySpawn(
         stripInheritedOrcaCodexHome: ctx.stripInheritedOrcaCodexHome,
         launchCommand: ctx.launchCommand,
         launchAgent: isTuiAgent(args.launchAgent) ? args.launchAgent : undefined,
+        shellPath: ctx.daemonShellOverride,
         isWsl: shouldSkipCodexHomeEnvForWindowsShell(ctx.daemonShellOverride, ctx.cwd),
         wslDistro: ctx.codexSelectionTarget.runtime === 'wsl' ? ctx.expectedWslDistro : null,
         agentStatusHooksEnabled: isAgentStatusHooksEnabled(ptySettings),

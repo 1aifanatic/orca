@@ -2,6 +2,7 @@ import type {
   RuntimeMobileSessionTabsRemovedResult,
   RuntimeMobileSessionTabsResult
 } from '../../../../shared/runtime-types'
+import { markStructuredAgentSessionLaunchesPublished } from '../../lib/structured-agent-session-launch-publication'
 import type { WorktreeRuntimeOwnerState } from '../../lib/worktree-runtime-owner'
 import { getExecutionHostIdForWorktree } from '../../lib/worktree-runtime-owner'
 import {
@@ -26,11 +27,8 @@ import {
   hostSnapshotAffirmsAgentSessions,
   hostSnapshotAffirmsWorktreeContents
 } from '../host-session-snapshot-authority'
-import {
-  hasStructuredAgentSessionLaunchCancellationTombstone,
-  markStructuredAgentSessionLaunchPublished,
-  retireAbsentStructuredAgentSessionLaunchCancellationTombstones
-} from '../../lib/structured-agent-session-launch-registry'
+import { retireAbsentStructuredAgentSessionLaunchCancellationTombstones } from '../../lib/structured-agent-session-launch-registry'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import {
   beginStructuredAgentSessionAuthoritativeInventory,
   startStructuredAgentLaunchCancellationCleanup
@@ -38,6 +36,7 @@ import {
 import { suppressCancelledStructuredSessionTabs } from '../structured-agent-session-tab-retirement'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '../local-structured-session-owner'
 import { closeStructuredAgentSession } from '../structured-agent-session-close'
+import { publishAiVaultSavedTitle } from '@/components/right-sidebar/ai-vault-session-result-cache'
 
 /** The host saying it no longer publishes this worktree at all, rather than publishing an empty one. */
 function isWorktreeRetraction(
@@ -60,6 +59,7 @@ export type StructuredSessionSnapshotApplyOptions = {
   onRetiredEpochDrop?: (worktreeId: string, publicationEpoch: string) => void
   /** Collects accepted publications so lifecycle listeners run after the store patch settles. */
   onAcceptedAgentSession?: (worktreeId: string, sessionId: string) => void
+  onAcceptedSnapshot?: (snapshot: RuntimeMobileSessionTabsResult) => void
 }
 
 export function applyStructuredSessionTabSnapshots(
@@ -67,26 +67,30 @@ export function applyStructuredSessionTabSnapshots(
   owner = LOCAL_STRUCTURED_SESSION_OWNER,
   options: StructuredSessionSnapshotApplyOptions = {}
 ): void {
-  const acceptedAgentSessions = new Map<string, string>()
+  const acceptedAgentSessions: { worktreeId: string; sessionId: string }[] = []
+  const acceptedSnapshots: RuntimeMobileSessionTabsResult[] = []
   const settleStructuredSessionMirror = applyWebSessionTabsStorePatch(
     (state) =>
       applyLocalStructuredSessionTabSnapshots(state, snapshots, owner, undefined, {
         ...options,
+        onAcceptedSnapshot: (snapshot) => {
+          acceptedSnapshots.push(snapshot)
+          options.onAcceptedSnapshot?.(snapshot)
+        },
         onAcceptedAgentSession: (worktreeId, sessionId) => {
-          acceptedAgentSessions.set(sessionId, worktreeId)
+          acceptedAgentSessions.push({ worktreeId, sessionId })
           options.onAcceptedAgentSession?.(worktreeId, sessionId)
         }
       }),
     { frames: [] }
   )
   settleStructuredSessionMirror()
-  for (const [sessionId, worktreeId] of acceptedAgentSessions) {
-    if (!hasStructuredAgentSessionLaunchCancellationTombstone(worktreeId, sessionId)) {
-      markStructuredAgentSessionLaunchPublished(worktreeId, sessionId)
-    }
+  for (const snapshot of acceptedSnapshots) {
+    publishAiVaultSavedTitle(snapshot, LOCAL_EXECUTION_HOST_ID)
   }
+  markStructuredAgentSessionLaunchesPublished(LOCAL_EXECUTION_HOST_ID, acceptedAgentSessions)
   if (options.authoritative) {
-    startStructuredAgentLaunchCancellationCleanup((sessionId) =>
+    startStructuredAgentLaunchCancellationCleanup(LOCAL_EXECUTION_HOST_ID, (sessionId) =>
       closeStructuredAgentSession({ kind: 'local' }, sessionId)
     )
   }
@@ -98,7 +102,8 @@ export function applyStructuredSessionTabSnapshots(
           snapshot.tabs.filter((tab) => tab.type === 'agent-session').map((tab) => tab.sessionId)
         )
       ),
-      options.authoritativeInventory ?? beginStructuredAgentSessionAuthoritativeInventory()
+      options.authoritativeInventory ?? beginStructuredAgentSessionAuthoritativeInventory(),
+      LOCAL_EXECUTION_HOST_ID
     )
   }
 }
@@ -119,7 +124,7 @@ export function applyLocalStructuredSessionTabSnapshots<
       continue
     }
     // "Ask me later", not an answer: a worktree the host holds no entry for still answers a forced
-    // inventory, with `none` at version 0. Absence there proves nothing, so it neither applies nor
+    // inventory, with the `none` placeholder epoch. Absence there proves nothing, so it neither applies nor
     // records — recording it would retire the epoch below. Its cursor is left alone, so a genuinely
     // stale frame arriving late is still fenced.
     if (!hostSnapshotAffirmsWorktreeContents(snapshot)) {
@@ -163,6 +168,7 @@ export function applyLocalStructuredSessionTabSnapshots<
       }
     )
     next = patch === next ? next : ({ ...next, ...patch } as State)
+    options.onAcceptedSnapshot?.(effectiveSnapshot)
     if (isWorktreeRetraction(effectiveSnapshot)) {
       // A retraction was applied above — the mirrored rows must go — but it is not a publication
       // to fence later frames against. Recording it would retire the renderer's own epoch, which

@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
+import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
   ClaudeProfileRouter,
@@ -40,7 +41,8 @@ it('launches each acquisition under the current selection, not the account it wa
     accountHome: { variable: 'CLAUDE_CONFIG_DIR' as const, path: '/created/under/b' }
   }
   const resolve = createClaudeStructuredLaunchResolver({
-    store: { getRecord: () => record },
+    store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
+    resolveLaunchArgs: () => [],
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveInheritedEnv: async () => ({ PATH: '/usr/bin' }),
@@ -51,7 +53,7 @@ it('launches each acquisition under the current selection, not the account it wa
     workspaceId: 'workspace-1',
     hostId: 'local',
     agent: 'claude' as const,
-    providerHandle: { kind: 'claude' as const, sessionId: 'unused', leafUuid: null }
+    providerHandle: claudeProviderHandle('unused', null)
   }
 
   await expect(resolve({ identity })).rejects.toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)

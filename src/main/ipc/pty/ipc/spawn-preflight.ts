@@ -1,4 +1,4 @@
-import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
+import { withClaudeProfileTerminalEnv } from '../../../claude-accounts/claude-profile-installed-router'
 import {
   isWslShellName,
   resolveLocalWindowsTerminalRuntimeOptions
@@ -228,12 +228,7 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.cwd,
     ctx.expectedWslDistro
   )
-  if (!args.connectionId) {
-    const profileEnv = getClaudeProfileRouter()?.terminalEnv(initialSelectionTarget)
-    if (profileEnv) {
-      args.env = { ...args.env, ...profileEnv }
-    }
-  }
+  args.env = withClaudeProfileTerminalEnv(args.env, args.connectionId, initialSelectionTarget)
   ctx.claudeAuth =
     ctx.isClaudeLaunch && ctx.deps.prepareClaudeAuth
       ? await ctx.deps.prepareClaudeAuth(initialSelectionTarget)

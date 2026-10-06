@@ -273,6 +273,15 @@ describe('structured worker dispatch preamble', () => {
   const send = (host: PreambleHost) =>
     sendStructuredWorkerPreamble({ host, sessionId: 's1', dispatchId: 'd1', preamble: 'spec' })
 
+  // No source and no person: a restart or a close rejects it, and orchestration re-derives it.
+  it('sends the preamble as no person’s', async () => {
+    const host = hostWithSubmission({ dispatchState: 'accepted', reason: null })
+    const sent = vi.spyOn(host, 'send')
+    await send(host)
+    expect(sent.mock.calls[0]?.[1]).not.toHaveProperty('source')
+    expect(sent.mock.calls[0]?.[1]).not.toHaveProperty('userSend')
+  })
+
   it('reports the preamble delivered only on an accepted submission', async () => {
     await expect(
       send(hostWithSubmission({ dispatchState: 'accepted', reason: null }))
@@ -310,6 +319,24 @@ describe('structured worker dispatch preamble', () => {
     // The wiring, not just the throw: this is the code that makes the start receipt
     // `outcome_unknown` with the worker-show / worker-abandon recovery commands.
     expect(isUnknownWorkerStartOutcome(error, 'dispatch_input')).toBe(true)
+  })
+
+  it('reads a queued answer as unacknowledged', async () => {
+    const host: PreambleHost = {
+      ...hostWithSubmission({ dispatchState: 'accepted', reason: null }),
+      send: async () => ({
+        ok: true,
+        replayed: false,
+        fence: 7,
+        cursor: { epoch: 'epoch-1', sequence: 1 },
+        value: { clientMessageId: 'c1', queued: { messageId: 'c1', position: 0, state: 'waiting' } }
+      })
+    }
+    await expect(send(host)).rejects.toMatchObject({
+      code: 'operation_unknown',
+      message:
+        'The dispatch preamble was submitted but not acknowledged (unknown): no reason given.'
+    })
   })
 
   it('keeps a rejected preamble a proven failure under a code of its own', async () => {
