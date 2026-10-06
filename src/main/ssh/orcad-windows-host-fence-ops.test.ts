@@ -23,7 +23,7 @@ function hostWithFence(token: string) {
   mkdirSync(lock, { recursive: true })
   writeFileSync(join(lock, '.orca-fence-owner'), token)
   const journal = join(root, 'transaction.json')
-  writeFileSync(journal, '{}')
+  writeFileSync(journal, JSON.stringify({ fenceToken: token }, null, 2))
   const op = (...args: string[]) =>
     runProcess({ program: process.execPath, args: [script, ...args], timeoutMs: 15_000 })
   return { lock, journal, op }

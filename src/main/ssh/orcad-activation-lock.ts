@@ -157,7 +157,10 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
   let retain = false
   let result: T
   try {
-    result = await runWithOrcadFence(fence, () => run({ retain: () => (retain = true) }))
+    result = await runWithOrcadFence(fence, async () => {
+      await adoptInterruptedJournal(options)
+      return run({ retain: () => (retain = true) })
+    })
   } catch (error) {
     // Any throw keeps the fence: recovery failed to prove one serving slot.
     if (!isUnconfirmedSshCommandTermination(error)) {
@@ -167,6 +170,16 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
   }
   await (retain ? orphanRetainedFence(options, fence) : releaseActivationFence(options, fence))
   return result
+}
+
+/** Re-stamps a taken-over run's journal with this generation, so this run's release removes it. */
+async function adoptInterruptedJournal(options: OrcadActivationLockOptions): Promise<void> {
+  // Dynamic: the journal store imports this module for the transaction root.
+  const store = await import('./orcad-activation-transaction-store')
+  const journal = await store.readOrcadActivationTransaction(options).catch(() => null)
+  if (journal) {
+    await store.writeOrcadActivationTransaction(options, journal)
+  }
 }
 
 function activationFence(options: OrcadActivationLockOptions, token: string): OrcadFence {
@@ -251,12 +264,28 @@ async function releaseActivationFence(
   }
 }
 
+/**
+ * Each piece is renamed aside first and kept only if it is ours, else put straight back: a release
+ * that stalls after its token check can then never delete a successor's journal or lock.
+ */
 function posixReleaseFenceCommand(fence: OrcadFence, journal: string, lockRoot: string): string {
   const lock = shellEscape(fence.lockDir)
+  const journalPath = shellEscape(journal)
+  const stamp = shellEscape(journalFenceStamp(fence.token))
   return [
     `${posixOrcadFenceOwnedTest(fence)} || { echo SUPERSEDED; exit 0; };`,
-    `rm -f ${shellEscape(journal)} &&`,
-    `aside=${lock}.released.$$ && mv ${lock} "$aside" && rm -rf "$aside";`,
+    `ja=${journalPath}.release.$$;`,
+    `if mv ${journalPath} "$ja" 2>/dev/null; then`,
+    `grep -qF ${stamp} "$ja" || mv -n "$ja" ${journalPath} 2>/dev/null; rm -f "$ja"; fi;`,
+    `la=${lock}.released.$$;`,
+    `if mv ${lock} "$la" 2>/dev/null; then`,
+    `if [ "$(cat "$la"/${ORCAD_FENCE_OWNER_FILENAME} 2>/dev/null)" = ${shellEscape(fence.token)} ]; then rm -rf "$la";`,
+    `else mv -n "$la" ${lock} 2>/dev/null; fi; fi;`,
     `rmdir ${shellEscape(lockRoot)} 2>/dev/null; echo RELEASED`
   ].join(' ')
+}
+
+/** How a journal this generation wrote names it (see writeOrcadActivationTransaction). */
+export function journalFenceStamp(token: string): string {
+  return `"fenceToken": ${JSON.stringify(token)}`
 }

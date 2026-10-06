@@ -38,13 +38,22 @@ Object.assign(ops, {
   'fence-check'() {
     answer('OK')
   },
-  // Journal first, then the lock aside, so a successor's fresh lock is never what gets removed.
+  // Each piece is renamed aside and kept only if it is ours, else put straight back, so a release
+  // that stalls after its token check never deletes a successor's journal or lock.
   'fence-release'(lockDir, journal, token) {
     if (fenceOwner(lockDir) !== token) return answer('SUPERSEDED')
-    try { fs.unlinkSync(journal) } catch (error) { if (error.code !== 'ENOENT') throw error }
-    const aside = lockDir + '.released.' + process.pid
-    fs.renameSync(lockDir, aside)
-    fs.rmSync(aside, { recursive: true, force: true, maxRetries: 5 })
+    const journalAside = journal + '.release.' + process.pid
+    let moved = false
+    try { fs.renameSync(journal, journalAside); moved = true } catch (error) { if (error.code !== 'ENOENT') throw error }
+    if (moved) {
+      const ours = fs.readFileSync(journalAside, 'utf8').includes(${text(`"fenceToken": `)} + JSON.stringify(token))
+      if (!ours && !fs.existsSync(journal)) fs.renameSync(journalAside, journal)
+      fs.rmSync(journalAside, { force: true })
+    }
+    const lockAside = lockDir + '.released.' + process.pid
+    fs.renameSync(lockDir, lockAside)
+    if (fenceOwner(lockAside) === token) fs.rmSync(lockAside, { recursive: true, force: true, maxRetries: 5 })
+    else if (!fs.existsSync(lockDir)) fs.renameSync(lockAside, lockDir)
     try { fs.rmdirSync(path.dirname(lockDir)) } catch {}
     answer('RELEASED')
   }
