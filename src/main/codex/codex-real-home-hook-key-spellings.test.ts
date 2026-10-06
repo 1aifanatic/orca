@@ -45,6 +45,7 @@ import {
   _internals
 } from './codex-real-home-hook-install'
 import { getRealHomeHookKeySourcePaths } from './codex-real-home-hooks-json'
+import { cleanupLegacyManagedHookRepresentations } from './codex-hook-legacy-cleanup'
 import { getCodexHookTrustSignature } from './codex-hook-identity'
 import { getCodexManagedHookInstallMaterial } from './hook-service'
 import { writeCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
@@ -220,6 +221,29 @@ describe('both spellings of a symlinked ~/.codex', () => {
       'sha256:user-resolved'
     )
     expect(trust.get(computeTrustKey(afterAt(resolvedHooks, 1)))).toBeUndefined()
+  })
+
+  it("sweeps a retired hook's approval under both keys", async () => {
+    const resolvedHooks = linkCodexHomeToDotfiles()
+    const retired = `/bin/sh "${join(home, 'old-user-data', 'agent-hooks', 'codex-hook.sh')}"`
+    writeFileSync(
+      hooksPath(),
+      `${JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: retired }] }] } })}\n`
+    )
+    const retiredAt = (sourcePath: string): CodexTrustEntry => ({
+      sourcePath,
+      eventLabel: 'stop',
+      groupIndex: 0,
+      handlerIndex: 0,
+      command: retired
+    })
+    upsertHookTrustEntries(tomlPath(), [retiredAt(hooksPath()), retiredAt(resolvedHooks)])
+
+    await cleanupLegacyManagedHookRepresentations()
+
+    const trust = readHookTrustEntries(tomlPath())
+    expect(trust.get(computeTrustKey(retiredAt(hooksPath())))).toBeUndefined()
+    expect(trust.get(computeTrustKey(retiredAt(resolvedHooks)))).toBeUndefined()
   })
 
   it('keeps the lane and the file when the copy would break config.toml', async () => {

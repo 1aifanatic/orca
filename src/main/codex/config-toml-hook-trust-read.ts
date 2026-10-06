@@ -109,11 +109,15 @@ function readHookTrustBlockState(block: string): {
     const lineEnd = newlineIndex === -1 ? block.length : newlineIndex
     const line = block.slice(cursor, lineEnd).replace(/\r$/, '')
     if (isTomlStructuralLine(scanState)) {
-      const hashMatch = /^[ \t]*trusted_hash[ \t]*=[ \t]*"((?:[^"\\]|\\.)*)"[ \t]*(?:#.*)?$/.exec(
-        line
-      )
+      // Why both forms: a literal-string hash must not read as "no approval".
+      const hashMatch =
+        /^[ \t]*trusted_hash[ \t]*=[ \t]*(?:"((?:[^"\\]|\\.)*)"|'([^'\r\n]*)')[ \t]*(?:#.*)?$/.exec(
+          line
+        )
       if (hashMatch) {
-        trustedHashes.add(unescapeTomlBasicString(hashMatch[1]!))
+        trustedHashes.add(
+          hashMatch[1] !== undefined ? unescapeTomlBasicString(hashMatch[1]) : hashMatch[2]!
+        )
       }
       const enabledMatch = /^[ \t]*enabled[ \t]*=[ \t]*(true|false)[ \t]*(?:#.*)?$/.exec(line)
       if (enabledMatch) {

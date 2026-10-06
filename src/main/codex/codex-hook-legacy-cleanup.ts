@@ -62,6 +62,9 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     return
   }
 
+  // Why every spelling: with a symlinked home, Codex may have approved the
+  // retired hook under its resolved key too.
+  const sourcePaths = getRealHomeHookKeySourcePaths()
   const nextHooks = { ...config.hooks }
   const trustEntries: CodexTrustEntry[] = []
   let removedManagedHook = false
@@ -69,15 +72,16 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     if (!Array.isArray(definitions)) {
       continue
     }
-    const eventTrustEntries = collectManagedTrustEntries(
-      legacyConfigPath,
-      eventName,
-      definitions,
-      isRetiredCodexHookCommand
-    )
-    // Why: user hook configs can be large; avoid the argument limit from push(...entries).
-    for (const entry of eventTrustEntries) {
-      trustEntries.push(entry)
+    for (const sourcePath of sourcePaths) {
+      // Why: user hook configs can be large; avoid the argument limit from push(...entries).
+      for (const entry of collectManagedTrustEntries(
+        sourcePath,
+        eventName,
+        definitions,
+        isRetiredCodexHookCommand
+      )) {
+        trustEntries.push(entry)
+      }
     }
     const cleaned = removeManagedCommands(definitions, isRetiredCodexHookCommand)
     removedManagedHook ||= definitions.some((definition) =>
@@ -96,7 +100,7 @@ async function sweepLegacySystemManagedHooks(): Promise<void> {
     // Remove only retired Orca hook entries and preserve other managers' metadata.
     const hooksWritePath = resolveHooksJsonWritePath(legacyConfigPath)
     mutateRealHomeHooksPreservingUserTrust({
-      sourcePaths: getRealHomeHookKeySourcePaths(),
+      sourcePaths,
       tomlPath: getSystemCodexConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,
