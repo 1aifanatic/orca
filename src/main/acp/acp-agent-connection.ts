@@ -109,9 +109,14 @@ export class AcpAgentConnection extends AcpSessionRuntime {
     return this.managed.rootVerdict
   }
 
+  /** Retained evidence from the last close attempt; a null tree means no observation. */
+  get lastCloseResult(): Readonly<ManagedProviderProcess['lastCloseResult']> {
+    return this.managed.lastCloseResult
+  }
+
   /** Reports retained cleanup uncertainty; false does not prove descendant exit. */
   get processTreeUnproven(): boolean {
-    const result = this.managed.lastCloseResult
+    const result = this.lastCloseResult
     return this.exited && (result?.tree === 'unverifiable' || result?.tree === 'live')
   }
 

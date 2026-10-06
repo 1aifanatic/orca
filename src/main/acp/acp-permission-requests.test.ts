@@ -146,7 +146,7 @@ describe('ACP permission requests', () => {
   })
 
   it('keeps an autonomous permission with its owner after session/cancel', async () => {
-    const decision = deferred<unknown>()
+    const decision = deferred<{ outcome: { outcome: 'cancelled' } }>()
     const asked = deferred<AbortSignal>()
     const { agent, runtime } = fixture({
       onPermission: (_request, context) => {

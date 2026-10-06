@@ -76,6 +76,7 @@ describe('ACP process-owning connection', () => {
     await connection.spawned
     expect(connection.pid).toBe(child.pid)
     expect(connection.rootVerdict).toBe('live')
+    expect(connection.lastCloseResult).toBeNull()
     expect(spawn).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         cwd: start.cwd,
@@ -92,6 +93,7 @@ describe('ACP process-owning connection', () => {
     connection.resumeReading()
     expect(child.stdout.isPaused()).toBe(false)
     expect(await connection.close()).toBe(true)
+    expect(connection.lastCloseResult).toEqual({ root: 'exited', tree: null })
   })
 
   it('settles prompts and permission signals on proven exit with stdout still open', async () => {
@@ -209,6 +211,7 @@ describe('ACP process-owning connection', () => {
       expect(connection.processTreeUnproven).toBe(true)
       expect(await connection.close()).toBe(true)
       expect(connection.processTreeUnproven).toBe(true)
+      expect(connection.lastCloseResult).toEqual({ root: 'live', tree })
       expect(teardown).toHaveBeenCalledOnce()
     }
   )
