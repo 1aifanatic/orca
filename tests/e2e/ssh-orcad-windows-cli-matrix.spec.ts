@@ -209,6 +209,8 @@ async function sendLine(
 
 /** Host Node is hidden on the lane, so the listener is Windows PowerShell's own TcpListener. */
 // Why no `$`: the managed terminal's shell may be PowerShell, which would expand it before the child sees it.
+// Why the trailing comment: Windows exposes no process cwd, so the scanner attributes by the
+// worktree path in the listener's command line, as it does for `node <repo>\...\vite.js`.
 const DETECTED_PORT = 4317
 
 async function expectWorkspacePortDetected(
@@ -216,8 +218,9 @@ async function expectWorkspacePortDetected(
   userData: string,
   environmentId: string,
   repoId: string,
-  worktreeId: string
+  worktree: { id: string; path: string }
 ): Promise<void> {
+  const worktreeId = worktree.id
   const listener = await orcaCliResult<{ terminal: { handle: string } }>(userData, [
     'terminal',
     'create',
@@ -232,7 +235,7 @@ async function expectWorkspacePortDetected(
     userData,
     environmentId,
     listener.terminal.handle,
-    `powershell -NoProfile -Command "[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,${DETECTED_PORT}) | Tee-Object -Variable keep | ForEach-Object Start; Write-Output ORCA_PORT_LISTENING; Start-Sleep 900"`
+    `powershell -NoProfile -Command "[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,${DETECTED_PORT}) | Tee-Object -Variable keep | ForEach-Object Start; Write-Output ORCA_PORT_LISTENING; Start-Sleep 900 # ${worktree.path}"`
   )
   await waitForEchoedLine(userData, environmentId, listener.terminal.handle, 'ORCA_PORT_LISTENING')
   let last = ''
@@ -252,11 +255,16 @@ async function expectWorkspacePortDetected(
             : null
         const ports = result && 'ports' in result && Array.isArray(result.ports) ? result.ports : []
         const entry = ports.find((port: { port?: unknown }) => port?.port === DETECTED_PORT)
-        return entry ? `${entry.kind}:${entry.owner?.worktreeId ?? ''}` : 'absent'
+        if (entry) {
+          last = JSON.stringify(entry)
+        }
+        return entry
+          ? `${entry.kind}:${entry.owner?.worktreeId ?? ''}:${entry.owner?.confidence ?? ''}:${typeof entry.pid}`
+          : 'absent'
       },
       { timeout: 90_000 }
     )
-    .toBe(`workspace:${worktreeId}`)
+    .toBe(`workspace:${worktreeId}:command:number`)
     .catch((error: unknown) => {
       throw new Error(
         `workspacePorts.scan never attributed ${DETECTED_PORT}: ${last.slice(0, 3_000)}`,
@@ -400,7 +408,7 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
     await waitForEchoedLine(userData, environmentId, handle, before)
 
     // Port detection: a listener started in a workspace terminal is reported as that workspace's port.
-    await expectWorkspacePortDetected(page, userData, environmentId, added.repo.id, worktree!.id)
+    await expectWorkspacePortDetected(page, userData, environmentId, added.repo.id, worktree!)
 
     // Disconnect and reconnect: the server, and the terminal it runs, outlive the SSH session.
     expect(await reconnect(page, targetId)).toContain('"managed"')
@@ -631,7 +639,10 @@ test('@orcad-cli-relay-kept an open relay terminal keeps a Windows host on the r
     const first = await session.launch()
     app = first.app
     await waitForSessionReady(first.page)
-    const appVersion = await app.evaluate(({ app: electronApp }) => electronApp.getVersion())
+    // Why retried: Playwright can drop the first main-process evaluate on a cold Windows launch.
+    const readVersion = (): Promise<string> =>
+      first.app.evaluate(({ app: electronApp }) => electronApp.getVersion())
+    const appVersion = await readVersion().catch(readVersion)
     await session.close(app)
     app = null
     // Why a recorded "can't run": the Windows relay needs the template that would otherwise convert.
