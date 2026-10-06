@@ -94,8 +94,10 @@ vi.mock('@/store', () => ({
 
 const ERROR_TEXT = 'Failed to load PDF preview'
 
-function loadingTask(doc: object | 'fail'): {
-  promise: Promise<unknown>
+type PdfDocumentFixture = { name: string } | { index: number }
+
+function loadingTask(doc: PdfDocumentFixture | 'fail'): {
+  promise: Promise<PdfDocumentFixture>
   destroy: ReturnType<typeof vi.fn<() => Promise<void>>>
 } {
   return {
@@ -106,18 +108,21 @@ function loadingTask(doc: object | 'fail'): {
 }
 
 function pendingTask(): {
-  promise: Promise<unknown>
-  resolve: (doc: object) => void
+  promise: Promise<PdfDocumentFixture>
+  resolve: (doc: PdfDocumentFixture) => void
   destroy: ReturnType<typeof vi.fn<() => Promise<void>>>
 } {
-  let resolve: (doc: object) => void = () => {}
-  const promise = new Promise<unknown>((done) => {
+  let resolve: (doc: PdfDocumentFixture) => void = () => {}
+  const promise = new Promise<PdfDocumentFixture>((done) => {
     resolve = done
   })
   return { promise, resolve, destroy: vi.fn(() => Promise.resolve()) }
 }
 
-async function finishTask(task: ReturnType<typeof pendingTask>, doc: object): Promise<void> {
+async function finishTask(
+  task: ReturnType<typeof pendingTask>,
+  doc: PdfDocumentFixture
+): Promise<void> {
   await act(async () => {
     task.resolve(doc)
     await task.promise
