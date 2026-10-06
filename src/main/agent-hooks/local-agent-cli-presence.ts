@@ -3,6 +3,7 @@ import { access, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import type { AgentHookTarget } from '../../shared/agent-hook-types'
+import { expandHomePathToken } from '../../shared/configured-cli-program'
 import {
   extractExecutableToken,
   hasPathSeparatorToken,
@@ -98,16 +99,6 @@ function overrideTokenForAgent(
   platform: NodeJS.Platform
 ): string | null {
   return extractExecutableToken(settings?.agentCmdOverrides?.[target.tuiAgent], { platform })
-}
-
-function expandHomePathToken(token: string, platform: NodeJS.Platform, homeDir: string): string {
-  if (token === '~') {
-    return homeDir
-  }
-  if (token.startsWith('~/') || (platform === 'win32' && token.startsWith('~\\'))) {
-    return pathApiForPlatform(platform).join(homeDir, token.slice(2))
-  }
-  return token
 }
 
 async function probePathCandidate(

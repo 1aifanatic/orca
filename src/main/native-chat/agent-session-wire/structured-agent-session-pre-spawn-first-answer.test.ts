@@ -137,6 +137,12 @@ describe('a create that fails before any process spawns', () => {
       'The folder this chat ran in no longer exists. Restore it to continue this chat.'
     ],
     [
+      'a Command setting that names no runnable program',
+      'the claude Command setting is not a runnable program: claude-missing',
+      'agentCommandNotRunnable',
+      "The Command set for Claude in Settings → Agents isn't a program Orca can run. Set it to a program path or name, or clear it."
+    ],
+    [
       "Orca's own reason",
       'claude sessions pin CLAUDE_CONFIG_DIR, not CODEX_HOME',
       undefined,

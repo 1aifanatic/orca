@@ -65,6 +65,10 @@ describe('structuredAgentSessionStartFailure', () => {
     [
       'managedAccountUnsupported',
       'While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings, then send your message again.'
+    ],
+    [
+      'agentCommandNotRunnable',
+      "The Command set for Claude in Settings → Agents isn't a program Orca can run. Set it to a program path or name, or clear it."
     ]
   ] as const)('words a start refused for %s by that situation', (reason, sentence) => {
     const code = 'agent_session_operation_invalid'

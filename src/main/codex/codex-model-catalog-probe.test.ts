@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createCodexModelCatalogProbe } from './codex-model-catalog-probe'
 import { resolveCodexStructuredInvocation } from './codex-structured-launch-resolution'
 import { runCodexAppServerSession, type CodexAppServerInvocation } from './codex-app-server-session'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 
 const MODEL_ROW = {
   model: 'gpt-live',
@@ -100,5 +101,18 @@ describe('codex model catalog probe', () => {
         body({ request: async () => ({ data: [], nextCursor: null }), notify: () => {} })
     })
     await expect(probe('/homes/a')).rejects.toThrow(/listed no models/)
+  })
+
+  it('lists nothing, and spawns nothing, when the configured program is not runnable', async () => {
+    const runSession = vi.fn()
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({ PATH: '/bin' }),
+      resolveCommand: () => {
+        throw new AgentSessionPreSpawnError('not runnable', { reason: 'agentCommandNotRunnable' })
+      },
+      runSession
+    })
+    await expect(probe('/homes/a')).rejects.toMatchObject({ reason: 'agentCommandNotRunnable' })
+    expect(runSession).not.toHaveBeenCalled()
   })
 })

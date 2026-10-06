@@ -27,6 +27,7 @@ import { claudeStructuredPermissionModeForSettings } from '../claude/claude-stru
 import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-structured-permission-policy'
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import { claudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import { resolveStructuredAgentProgram } from '../native-chat/structured-agent-program'
 
 export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVisibleReadProbe {
   async getWorktreePs(
@@ -155,6 +156,18 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         resolveTuiAgentLaunchEnv('codex', this.requireStore().getSettings().agentDefaultEnv),
       resolveClaudeLaunchEnv: () =>
         resolveTuiAgentLaunchEnv('claude', this.requireStore().getSettings().agentDefaultEnv),
+      // Settings → Agents → Command is the program, re-read per acquisition and per catalog probe.
+      resolveCodexCommand: (options) =>
+        resolveStructuredAgentProgram(
+          'codex',
+          this.requireStore().getSettings().agentCmdOverrides?.codex,
+          options
+        ),
+      resolveClaudeCommand: () =>
+        resolveStructuredAgentProgram(
+          'claude',
+          this.requireStore().getSettings().agentCmdOverrides?.claude
+        ),
       // Wired only here, so a test runtime never runs a real `claude --version`.
       claudeThinkingDisplay: claudeThinkingDisplaySupport,
       resolveShellEnvironmentPolicy: () =>

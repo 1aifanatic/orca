@@ -32,6 +32,8 @@ export const AGENT_SESSION_FAILURE_COPY = {
     'While a Claude account is added in WSL, Claude chats need a Windows Claude account.',
   launchFolderMissing:
     'The folder this chat ran in no longer exists. Restore it to continue this chat.',
+  agentCommandNotRunnable:
+    "The Command set for {{agent}} in Settings → Agents isn't a program Orca can run. Set it to a program path or name, or clear it.",
   chooseClaudeAccount: 'Choose or add one in Claude Accounts settings.',
   chooseClaudeAccountThenRunCommand:
     'Choose or add one in Claude Accounts settings, then run /{{command}} again.',

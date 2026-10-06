@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { PROVIDER_STDIN_END_GRACE_MS } from '../provider-process/provider-process-supervisor'
 import { createClaudeModelCatalogProbe } from './claude-model-catalog-probe'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { resolveClaudeStructuredInvocation } from './claude-structured-launch-resolution'
 import type { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'
 import type {
@@ -125,6 +126,19 @@ describe('claude model catalog probe', () => {
       discover: async () => ({ ...listedResult(), catalogOrigin: 'spec' })
     })
     await expect(probe('/homes/a')).rejects.toThrow(/listed no models/)
+  })
+
+  it('lists nothing, and spawns nothing, when the configured program is not runnable', async () => {
+    const discover = vi.fn()
+    const probe = createClaudeModelCatalogProbe({
+      ...probeDeps(),
+      resolveCommand: () => {
+        throw new AgentSessionPreSpawnError('not runnable', { reason: 'agentCommandNotRunnable' })
+      },
+      discover
+    })
+    await expect(probe('/homes/a')).rejects.toMatchObject({ reason: 'agentCommandNotRunnable' })
+    expect(discover).not.toHaveBeenCalled()
   })
 
   it.runIf(process.platform !== 'win32')(

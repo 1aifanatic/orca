@@ -297,7 +297,7 @@ async function createSurface(
  *
  * Reported rather than routed around: the arguments field is a TUI concern by an explicit decision
  * (the Agent SDK and app-server version their option sets independently of the interactive CLI's,
- * and the launch command names the CLI binary, so both apply to terminal launches only), so
+ * so the arguments apply to terminal launches only), so
  * downgrading here would override a stated user preference on the strength of a field that is not
  * evidence about the surface. `null` warns too: "no arguments" is also unapplied, and the structured
  * path still reads the bypass-permissions bit out of the user's *settings* default, so a caller that

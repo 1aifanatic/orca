@@ -2,11 +2,11 @@ import type { GlobalSettings } from './global-settings-types'
 import type { TuiAgent } from './tui-agent'
 
 /**
- * Whether the user replaced this agent's launch command for terminal launches.
+ * Whether the user replaced this agent's launch command.
  *
- * The command applies only where the CLI runs in a terminal; structured native chat ignores it and
- * never routes on it. Terminal-backed chat reads it to skip the structured model catalog, which
- * lists the stock binary rather than the one this terminal runs.
+ * Never a route input: a terminal types it as a command line, and structured native chat runs it as
+ * the program. Terminal-backed chat reads it to skip the structured model catalog, which models
+ * only that program, not the whole command line this terminal runs.
  */
 export function hasExplicitTuiLaunchCommand(
   settings: Partial<Pick<GlobalSettings, 'agentCmdOverrides'>> | null | undefined,

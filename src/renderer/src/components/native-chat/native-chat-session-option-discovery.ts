@@ -127,7 +127,8 @@ export async function discoverNativeChatCatalogModels(
   const hostCatalogAgent =
     agent === 'claude' ? ('claude' as const) : agent === 'codex' ? ('codex' as const) : null
   // Only `local` proves a native pane: a paired runtime's key also covers its SSH/WSL worktrees.
-  // A custom launch command runs a binary the structured catalog never lists; the CLI listing honors it.
+  // The host catalog models a custom launch command as a program only; the CLI listing honors the
+  // whole command line a terminal runs.
   if (
     hostCatalogAgent &&
     hostKey === LOCAL_COMMIT_MESSAGE_HOST_KEY &&

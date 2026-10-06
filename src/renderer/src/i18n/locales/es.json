@@ -17558,6 +17558,7 @@
         "accountSwitchInProgress": "Hay un cambio de cuenta de Claude en curso. Vuelva a intentarlo cuando termine.",
         "managedAccountUnsupported": "Mientras haya una cuenta de Claude agregada en WSL, los chats de Claude necesitan una cuenta de Claude de Windows.",
         "launchFolderMissing": "La carpeta en la que se ejecutaba este chat ya no existe. Restáurela para continuar este chat.",
+        "agentCommandNotRunnable": "El comando configurado para {{agent}} en Ajustes → Agentes no es un programa que Orca pueda ejecutar. Indique la ruta o el nombre de un programa, o bórrelo.",
         "chooseClaudeAccount": "Elija o agregue una en la configuración de Cuentas de Claude.",
         "chooseClaudeAccountThenRunCommand": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a ejecutar /{{command}}.",
         "chooseClaudeAccountThenSend": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a enviar su mensaje.",

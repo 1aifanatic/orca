@@ -504,7 +504,7 @@ describe('caller-supplied launch inputs', () => {
     expect(h.createStructuredSession).not.toHaveBeenCalled()
   })
 
-  // A custom launch command applies to terminal launches only; native chat ignores it.
+  // A custom launch command never routes a launch; native chat runs it as the program.
   it.each([
     ['claude', 'claude-wrapper'],
     ['codex', 'codex-nightly']

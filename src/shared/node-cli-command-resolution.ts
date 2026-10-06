@@ -3,14 +3,20 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { getSystemCliInstallDirectories } from './system-cli-install-dirs'
 
-type ResolveCommandOptions = {
+export type ResolveCommandOptions = {
   pathEnv?: string | null
   platform?: NodeJS.Platform
   homePath?: string
 }
 
-function getExecutableNames(platform: NodeJS.Platform, commandName: string): string[] {
+/** What Orca's spawn can start on Windows: `.exe`/`.com` directly, `.cmd`/`.bat` as shims. */
+export const WINDOWS_SPAWNABLE_EXTENSION = /\.(exe|com|cmd|bat)$/i
+
+export function getExecutableNames(platform: NodeJS.Platform, commandName: string): string[] {
   if (platform === 'win32') {
+    if (WINDOWS_SPAWNABLE_EXTENSION.test(commandName)) {
+      return [commandName]
+    }
     return [`${commandName}.cmd`, `${commandName}.exe`, `${commandName}.bat`, commandName]
   }
 
@@ -71,7 +77,7 @@ function findFirstExecutable(
   return null
 }
 
-function isRunnableCommand(platform: NodeJS.Platform, candidate: string): boolean {
+export function isRunnableCommand(platform: NodeJS.Platform, candidate: string): boolean {
   try {
     const stats = statSync(candidate)
     if (!stats.isFile()) {
@@ -257,12 +263,12 @@ function getCliInstallDirectories(platform: NodeJS.Platform, homePath: string): 
   ]
 }
 
-export function resolveCliCommand(
-  commandName: string,
+/** The first runnable of `executableNames` on PATH, then in the install directories; null if none. */
+export function findCliExecutable(
+  executableNames: string[],
   options: ResolveCommandOptions = {}
-): string {
+): string | null {
   const platform = options.platform ?? process.platform
-  const executableNames = getExecutableNames(platform, commandName)
   const pathEnv = options.pathEnv ?? process.env.PATH ?? process.env.Path ?? null
   const pathCandidate = findFirstExecutable(platform, splitPath(pathEnv), executableNames)
   if (pathCandidate) {
@@ -270,12 +276,19 @@ export function resolveCliCommand(
   }
 
   const homePath = options.homePath ?? homedir()
-  const installCandidate = findFirstExecutable(
+  return findFirstExecutable(
     platform,
     getCliInstallDirectories(platform, homePath),
     executableNames
   )
-  return installCandidate ?? commandName
+}
+
+export function resolveCliCommand(
+  commandName: string,
+  options: ResolveCommandOptions = {}
+): string {
+  const platform = options.platform ?? process.platform
+  return findCliExecutable(getExecutableNames(platform, commandName), options) ?? commandName
 }
 
 export function resolveCliCommands(
