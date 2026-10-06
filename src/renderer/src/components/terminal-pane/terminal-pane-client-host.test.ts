@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import type { WorktreeRuntimeOwnerState } from '@/lib/worktree-runtime-owner-state'
 import { isTerminalPaneOnClient } from './terminal-pane-client-host'
 
-const repo = (id: string, owner: { connectionId?: string; executionHostId?: string }) => ({
-  id,
-  ...owner
-})
-
-const state = {
+const state: WorktreeRuntimeOwnerState = {
   repos: [
-    repo('local-repo', { executionHostId: 'local' }),
-    repo('ssh-repo', { connectionId: 'box', executionHostId: 'ssh:box' }),
-    repo('managed-repo', { executionHostId: 'runtime:env-1' })
+    { id: 'local-repo', executionHostId: 'local' },
+    { id: 'ssh-repo', connectionId: 'box', executionHostId: 'ssh:box' },
+    { id: 'managed-repo', executionHostId: 'runtime:env-1' }
   ],
   worktreesByRepo: {}
 }
