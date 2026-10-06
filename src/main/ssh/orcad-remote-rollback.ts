@@ -82,10 +82,10 @@ export async function rollbackOrcad(input: OrcadRollbackOptions): Promise<OrcadR
           }
           return rollbackOrcadLocked(options, lock)
         },
-        async () => ({
-          outcome: 'refused',
-          ...(await orcadActivationFenceRefusal(options, 'rollback'))
-        })
+        async () => {
+          const { code, reason } = await orcadActivationFenceRefusal(options, 'rollback')
+          return { outcome: 'refused', code, reason }
+        }
       ),
     ['rolled-back']
   )
