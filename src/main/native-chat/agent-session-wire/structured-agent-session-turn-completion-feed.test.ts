@@ -557,6 +557,107 @@ describe('a request the agent or its start refused', () => {
     ])
   })
 
+  const failedStart = (clientMessageId: string) =>
+    sent(clientMessageId, {
+      dispatchState: 'rejected',
+      reason: "Codex couldn't start.",
+      rejection: { kind: 'startFailed' }
+    })
+
+  it('notifies a failed start once, the moment it is final, though a later send is still owed', () => {
+    const h = harness()
+    h.listen()
+    h.observe()
+    const queued = [userEntry('m1', 1), userEntry('m2', 2)]
+    h.setJournal(queued, [pending('m1'), pending('m2')])
+    h.observe()
+    h.setJournal(queued, [failedStart('m1'), pending('m2')])
+    h.observe()
+    const accepted = sent('m2', { dispatchState: 'accepted' })
+    h.setJournal([...queued, turnItem(turn('t2', 'running'), 3)], [failedStart('m1'), accepted])
+    h.observe()
+    h.setJournal(
+      [...queued, turnItem(turn('t2', 'completed', 'success'), 3)],
+      [failedStart('m1'), accepted]
+    )
+    h.observe()
+    h.observe()
+    expect(h.outcomes()).toEqual([
+      [M1, 'failure'],
+      ['t2', 'success']
+    ])
+  })
+
+  it('notifies a lone failed start exactly once', () => {
+    const h = harness()
+    h.listen()
+    h.observe()
+    h.setJournal([userEntry('m1', 1)], [pending('m1')])
+    h.observe()
+    h.setJournal([userEntry('m1', 1)], [failedStart('m1')])
+    h.observe()
+    h.observe()
+    expect(h.outcomes()).toEqual([[M1, 'failure']])
+  })
+
+  // A conversation command is not a request: the session's verdict passes it over, and so does this.
+  it('notifies nothing for a /compact whose start failed', () => {
+    const h = afterSuccessfulTurn()
+    const compact: AgentJournalRenderItem = {
+      ...userEntry('m2', 3),
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    }
+    const items = [userEntry('m1', 1), settledTurn, compact]
+    const accepted = sent('m1', { dispatchState: 'accepted' })
+    h.setJournal(items, [accepted, pending('m2')])
+    h.observe()
+    h.setJournal(items, [accepted, failedStart('m2')])
+    h.observe()
+    h.observe()
+
+    expect(h.outcomes()).toEqual([['t1', 'success']])
+  })
+
+  // Each queued message makes its own start; when the agent's CLI is missing they all fail alike.
+  it('notifies a run of failed starts once, and the next failure after a turn ran again', () => {
+    const h = harness()
+    h.listen()
+    h.observe()
+    const items = [userEntry('m1', 1), userEntry('m2', 2), userEntry('m3', 3)]
+    h.setJournal(items, [pending('m1'), pending('m2'), pending('m3')])
+    h.observe()
+    h.setJournal(items, [failedStart('m1'), pending('m2'), pending('m3')])
+    h.observe()
+    h.setJournal(items, [failedStart('m1'), failedStart('m2'), pending('m3')])
+    h.observe()
+    h.setJournal(items, [failedStart('m1'), failedStart('m2'), failedStart('m3')])
+    h.observe()
+    expect(h.outcomes()).toEqual([[M1, 'failure']])
+
+    const later = [...items, userEntry('m4', 4), turnItem(turn('t4', 'running'), 5)]
+    const failed = [failedStart('m1'), failedStart('m2'), failedStart('m3')]
+    h.setJournal(later, [...failed, sent('m4', { dispatchState: 'accepted' })])
+    h.observe()
+    const settled = [...items, userEntry('m4', 4), turnItem(turn('t4', 'completed', 'success'), 5)]
+    h.setJournal(settled, [...failed, sent('m4', { dispatchState: 'accepted' })])
+    h.observe()
+    h.setJournal(
+      [...settled, userEntry('m5', 6)],
+      [...failed, sent('m4', { dispatchState: 'accepted' }), failedStart('m5')]
+    )
+    h.observe()
+    expect(h.outcomes()).toEqual([
+      [M1, 'failure'],
+      ['t4', 'success'],
+      [agentJournalSubmissionKey('m5'), 'failure']
+    ])
+  })
+
   it('does not wait on a send left pending at an older fence', () => {
     const h = harness()
     h.listen()

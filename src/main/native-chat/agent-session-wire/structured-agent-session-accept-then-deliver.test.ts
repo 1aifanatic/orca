@@ -337,22 +337,31 @@ describe('a start the chat needed and did not get', () => {
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })
 
-  it('notifies failed once for the queued messages one start failure refused', async () => {
+  it('notifies once for queued messages whose starts all fail alike, each rejected on its own', async () => {
     await host.close(SESSION, 'evict')
     acquire.mockRejectedValue(new Error('spawn codex ENOENT'))
     const completions: AgentSessionTurnCompletionEvent[] = []
     host.subscribeTurnCompletions({ id: 'dot-1', emit: (event) => completions.push(event) })
-    await accept('first')
+    const first = await accept('first')
     const second = await accept('second')
+    const third = await accept('third')
 
-    await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
+    await eventually(async () => expect((await submission(third))?.dispatchState).toBe('rejected'))
+    // Each message made its own start.
+    for (const id of [first, second, third]) {
+      expect(await submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: { kind: 'restartFailed' }
+      })
+    }
+    expect(acquire.mock.calls.length).toBeGreaterThanOrEqual(4)
     await host.flushAllStreamedEvents()
     expect(completions).toEqual([
       {
         type: 'completion',
         completion: expect.objectContaining({
           sessionId: SESSION,
-          turnId: agentJournalSubmissionKey(second),
+          turnId: agentJournalSubmissionKey(first),
           outcome: 'failure'
         })
       }

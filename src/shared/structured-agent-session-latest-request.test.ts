@@ -260,6 +260,30 @@ describe('the latest request and its verdict', () => {
       statusStartedAt: 20
     })
   })
+
+  // A failed start is placed where its rejection was written: after a turn a Stop could not yet
+  // prove ended, whose interrupted end lands in place later.
+  it('reports a failed start written while an older turn was still running, after that turn ends', () => {
+    const items = [
+      userEntry('m1', 1),
+      turn('t1', 2, { state: 'interrupted', completedAt: 40 }),
+      userEntry('m2', 3)
+    ]
+    const submissions = [
+      sent('m1', { dispatchState: 'accepted' }),
+      sent('m2', {
+        dispatchState: 'rejected',
+        reason: "Couldn't stop Codex from before. Send your message again to try once more.",
+        rejection: { kind: 'restartFailed' },
+        resolvedAt: 30
+      })
+    ]
+    expect(latestStructuredAgentSessionRequest(items, submissions)).toMatchObject({
+      kind: 'refused-send',
+      id: agentJournalSubmissionKey('m2'),
+      outcome: 'failure'
+    })
+  })
 })
 
 describe('the sidebar verdict agrees with the rejection classifier', () => {
