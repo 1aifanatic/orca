@@ -52,6 +52,23 @@
           "statusItem": "elemento de estado",
           "activity": "actividad"
         }
+      },
+      "chat": {
+        "title": "Chat",
+        "textSize": "Tamaño del texto",
+        "textSizeDescription": "Mensajes, actividad de herramientas y cuadro de mensaje. {{increase}} / {{decrease}} en un chat también cambian este valor.",
+        "codeTextSize": "Tamaño del texto del código",
+        "codeTextSizeDescription": "Bloques de código, código en línea, comandos y salida de herramientas.",
+        "width": "Ancho",
+        "widthDescription": "Cuánto pueden ampliarse los mensajes y el cuadro de mensaje en un panel ancho.",
+        "resetAppearance": "Restablecer apariencia del chat",
+        "resetDescription": "Restaurar los valores predeterminados anteriores.",
+        "comfortable": "Cómodo",
+        "wide": "Amplio",
+        "full": "Completo",
+        "pixels": "px",
+        "reset": "Restablecer",
+        "summary": "{{fontSize}}px · Ancho {{width}}"
       }
     },
     "browser": {
@@ -894,7 +911,8 @@
             "dimensionsTooLarge": "{{fileName}} has dimensions that are too large to preview safely.",
             "invalidImage": "{{fileName}} is not a valid supported image.",
             "additionalErrors": "{{count}} additional images could not be attached.",
-            "totalTooLarge": "{{fileName}} superaría el total de {{maxSize}} de archivos adjuntos."
+            "totalTooLarge": "{{fileName}} superaría el total de {{maxSize}} de archivos adjuntos.",
+            "compressed": "{{fileName}} se comprimió de {{originalSize}} a {{size}} para ajustarse al límite de archivos adjuntos."
           }
         }
       },
@@ -933,6 +951,16 @@
       },
       "clipboardWriteFailure": {
         "tooLarge": "El texto es demasiado grande para copiarlo."
+      },
+      "reveal": {
+        "in": {
+          "file": {
+            "manager": {
+              "notFound": "No se encontró el archivo. Puede que se haya movido o eliminado.",
+              "launchFailed": "No se pudo mostrar el archivo."
+            }
+          }
+        }
       }
     },
     "hooks": {
@@ -3342,10 +3370,7 @@
             "1d04b1630b": "Dividir hacia abajo",
             "6b3efb106e": "Dividir hacia arriba",
             "fdd29eb669": "Fijar pestaña",
-            "8e9d603a09": "Desanclar pestaña",
-            "revealInFinder": "Revelar en Finder",
-            "openContainingFolder": "Abrir carpeta contenedora",
-            "revealInFileExplorer": "Revelar en el Explorador de archivos"
+            "8e9d603a09": "Desanclar pestaña"
           },
           "QuickLaunchButton": {
             "348a04c1ad": "Ajustes de Agents…",
@@ -5711,7 +5736,7 @@
           "3921d3d9a5": "No se encontró la carpeta del espacio de trabajo.",
           "f387af445b": "La ruta del espacio de trabajo no es una ruta local válida.",
           "3ec372b664": "gestor de archivos",
-          "localOnly": "Local only",
+          "localOnly": "Solo local",
           "remoteSsh": "Remote SSH",
           "remoteRuntimeUnsupported": "Opening this path in a local app is not available.",
           "remoteRuntimeUnsupportedDetail": "Switch to a local or SSH workspace, then try again.",
@@ -6234,6 +6259,7 @@
           "parkTerminal": "Park terminal"
         },
         "SidebarFeedbackImageAttachments": {
+          "preparing": "Preparando archivos adjuntos…",
           "attachImages": "Attach",
           "removeImage": "Remove {{fileName}}",
           "screenshotsHint": "Adjunta hasta {{count}} capturas de pantalla, {{maxSize}} en total"
@@ -15072,10 +15098,7 @@
           "f0fd4174b5": "Abre la pestaña de archivo para usar la edición enriquecida de Markdown",
           "a10d9b8337": "Abrir archivo",
           "2076ecfc9c": "Cambio anterior",
-          "631dab0df3": "Cambio siguiente",
-          "revealInFinder": "Revelar en Finder",
-          "openContainingFolder": "Abrir carpeta contenedora",
-          "revealInFileExplorer": "Revelar en el Explorador de archivos"
+          "631dab0df3": "Cambio siguiente"
         },
         "EditorPanelMarkdownActionsMenu": {
           "3e0ce48c24": "Exportar como PDF",
@@ -17714,6 +17737,8 @@
         "moreCalls": "+{{value0}} más",
         "failedCount": "{{value0}} fallidas",
         "failedCallsLabel": "Llamadas a herramientas fallidas: {{value0}}",
+        "interruptedCount": "{{value0}} interrumpidas",
+        "interruptedCallsLabel": "Llamadas a herramientas interrumpidas: {{value0}}",
         "runningPreview": "Ejecutando {{preview}}",
         "runningCommand": "Ejecutando comando",
         "runningNamedPreview": "Ejecutando {{toolName}} {{preview}}",
@@ -17724,13 +17749,35 @@
         "ranCommandsManyToolsSummary": "Se ejecutaron {{commandCount}} comandos y se usaron {{toolCount}} herramientas",
         "usedOneSummary": "Se usó 1 herramienta",
         "usedManySummary": "Se usaron {{toolCount}} herramientas",
-        "editedFile": "Archivo editado",
-        "addedFile": "Archivo añadido",
-        "deletedFile": "Archivo eliminado",
-        "renamedFile": "Archivo renombrado",
         "copyDiff": "Copiar diff",
         "diffGap": "Líneas no mostradas",
         "diffTruncated": "Diff truncado",
+        "row": {
+          "running": "Ejecutando",
+          "reading": "Leyendo",
+          "editing": "Editando",
+          "searching": "Buscando",
+          "searchingWeb": "Buscando en la web",
+          "fetching": "Obteniendo",
+          "listed": "Listó",
+          "listing": "Listando",
+          "ran": "Ejecutó",
+          "read": "Leyó",
+          "edited": "Editó",
+          "searched": "Buscó",
+          "searchedWeb": "Buscó en la web",
+          "fetched": "Obtuvo",
+          "added": "Añadió",
+          "deleted": "Eliminó",
+          "renamed": "Renombró",
+          "subagent": "Subagente",
+          "triedRead": "Intentó leer",
+          "triedEdit": "Intentó editar",
+          "triedSearch": "Intentó buscar",
+          "triedList": "Intentó listar",
+          "triedFetch": "Intentó obtener",
+          "triedSearchWeb": "Intentó buscar en la web"
+        },
         "runReadOne": "Se leyó 1 archivo",
         "runReadMany": "Se leyeron {{value0}} archivos",
         "runSearchOne": "Se buscó 1 vez",
