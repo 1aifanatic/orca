@@ -45,7 +45,7 @@ import {
   readOutbox,
   subscribeToStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
-import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
+import { returnMessageToComposer } from './structured-agent-session-withdrawn-message-restore'
 
 const NO_ENTRIES: readonly StructuredAgentSessionOutboxEntry[] = []
 
@@ -73,6 +73,30 @@ function carryDraft(fromSessionId: string, composerScopeKey: string): void {
     appendToNativeChatComposerDraft(composerScopeKey, { text: draft.text, images: draft.images })
   ) {
     deleteNativeChatComposerDraft(from)
+  }
+}
+
+/** Gives back what never reached the replaced chat, after whatever the composer holds. What its
+ *  outbox no longer holds was already given back by whichever view dropped it first. */
+function handBack(
+  fromSessionId: string,
+  composerScopeKey: string | undefined,
+  entries: readonly StructuredAgentSessionOutboxEntry[]
+): void {
+  if (!composerScopeKey || entries.length === 0) {
+    return
+  }
+  const held = new Set(
+    getStructuredAgentSessionOutbox(fromSessionId).map((entry) => entry.clientMessageId)
+  )
+  for (const entry of entries) {
+    if (held.has(entry.clientMessageId)) {
+      returnMessageToComposer(
+        composerScopeKey,
+        `withdrawn-${entry.clientMessageId}`,
+        entry.body.blocks
+      )
+    }
   }
 }
 
@@ -121,7 +145,6 @@ export function useStructuredAgentSessionReplacementCarry(args: {
   const fromDraft = useSyncExternalStore(subscribeDraft, () =>
     readNativeChatComposerDraft(fromDraftScope)
   )
-  const restore = useStructuredAgentSessionWithdrawnRestore(fromSessionId, composerScopeKey)
 
   const [loads, setLoads] = useState(0)
   useEffect(() => {
@@ -171,7 +194,11 @@ export function useStructuredAgentSessionReplacementCarry(args: {
         return
       }
       const handedBack = settled.filter((item) => item.cause !== undefined)
-      restore.byStop(handedBack.map((item) => item.entry))
+      handBack(
+        fromSessionId,
+        composerScopeKey,
+        handedBack.map((item) => item.entry)
+      )
       const ids = new Set(settled.map((item) => item.entry.clientMessageId))
       commitStructuredAgentSessionOutbox(
         fromSessionId,
@@ -186,7 +213,7 @@ export function useStructuredAgentSessionReplacementCarry(args: {
         say(agentSessionWriteNoticeText(notice))
       }
     },
-    [fromSessionId, restore, say]
+    [composerScopeKey, fromSessionId, say]
   )
 
   useEffect(() => {

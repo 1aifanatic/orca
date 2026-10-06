@@ -36,6 +36,7 @@ function card(
     paused: false,
     needsAttention: false,
     caption: null,
+    attribution: null,
     ...overrides
   }
 }
@@ -206,6 +207,25 @@ describe('MobileNativeChatQueuedMessages', () => {
       mounted.root.findByProps({ accessibilityLabel: 'Delete this queued message' }).props.onPress()
     })
     expect(onDelete).toHaveBeenCalledWith('compact')
+  })
+
+  it("holds Steer while a person's Stop ends the turn; Delete still works", async () => {
+    const onSend = vi.fn(async () => true)
+    const onDelete = vi.fn(async () => true)
+    const mounted = await mount({
+      cards: [card({ messageId: 'w' })],
+      onSend,
+      onDelete,
+      steerHeld: true
+    })
+    const steer = mounted.root.findByProps({
+      accessibilityLabel: 'Submit without interrupting the model'
+    })
+    expect(steer.props.disabled).toBe(true)
+    expect(steer.props.accessibilityState).toEqual({ disabled: true })
+    const trash = mounted.root.findByProps({ accessibilityLabel: 'Delete this queued message' })
+    await act(async () => trash.props.onPress())
+    expect(onDelete).toHaveBeenCalledWith('w')
   })
 
   it('deletes a card from its trash button', async () => {

@@ -43,12 +43,13 @@ export type StructuredAgentSessionComposerOptions = {
 }
 
 /** What the chat shows a refused command waiting on: the agent working, a pending prompt, its
- *  background tasks, or a message of this window's not yet gone. */
+ *  background tasks, a message of this window's still being sent, or one showing its Retry. */
 export type StructuredAgentSessionCommandRefusalCause =
   | 'working'
   | 'prompt'
   | 'background'
-  | 'outbox'
+  | 'sending'
+  | 'retry'
 
 export type StructuredAgentSessionCommandOutcome = {
   handled: boolean

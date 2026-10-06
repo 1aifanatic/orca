@@ -18,6 +18,7 @@ export const CAPABLE: StructuredAgentSessionHostSupport = {
   queuedMessages: true,
   queuedCommands: false,
   queuedClear: false,
+  statusFeed: false,
   quietRepeatedStop: false
 }
 export const LEGACY: StructuredAgentSessionHostSupport = { ...CAPABLE, queuedMessages: false }

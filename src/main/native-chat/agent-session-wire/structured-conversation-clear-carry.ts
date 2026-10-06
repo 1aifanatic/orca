@@ -9,7 +9,7 @@ import {
   isUnsettledQueuedMessage,
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
-import { queuedMessageFingerprint } from './structured-agent-session-queued-messages'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 
@@ -105,11 +105,10 @@ export async function carryQueuedMessagesToClearReplacement(
         await replacement.queuedMessages.insert({
           messageId: row.messageId,
           body: row.body,
-          fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
+          fingerprint: agentSessionSendBodyFingerprint(input.replacementSessionId, row.body),
           // Its own: a card a process that has since died wrote keeps that restart's pause.
           hostInstance: row.hostInstance,
           ...(row.position > behind ? {} : { carriedFrom: ctx.sessionId }),
-          source: row.source,
           // A kept send stays held there too, before or behind the clear: only its person's Send
           // sends it, never the queue.
           ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT

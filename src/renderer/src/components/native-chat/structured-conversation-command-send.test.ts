@@ -15,7 +15,8 @@ const NO_CAUSES: StructuredConversationCommandCauses = {
   working: false,
   prompt: false,
   background: false,
-  outbox: false
+  sending: false,
+  retry: false
 }
 
 const START_FAILED: AgentSessionFailureFact = { kind: 'startFailed' }
@@ -378,9 +379,7 @@ describe('a refusal names what it waits on only while the chat shows it', () => 
       (await held('compact', 'background', pending, shown('background')).result).refusedWhile
     ).toBe('background')
     for (const hold of ['retry', 'sending'] as const) {
-      expect((await held('clear', hold, pending, shown('outbox')).result).refusedWhile).toBe(
-        'outbox'
-      )
+      expect((await held('clear', hold, pending, shown(hold)).result).refusedWhile).toBe(hold)
     }
   })
 

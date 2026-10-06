@@ -98,17 +98,6 @@ export type StructuredConversationCommandCauses = Readonly<
   Record<StructuredAgentSessionCommandRefusalCause, boolean>
 >
 
-const CAUSE_OF_HOLD: Record<
-  Exclude<StructuredConversationCommandHold, 'ahead'>,
-  StructuredAgentSessionCommandRefusalCause
-> = {
-  working: 'working',
-  prompt: 'prompt',
-  background: 'background',
-  retry: 'outbox',
-  sending: 'outbox'
-}
-
 /** The line a command refused here gets: what the person sees and can do, as the host says it. */
 function heldCommandText(
   command: AgentSessionConversationCommand,
@@ -143,7 +132,8 @@ export async function sendStructuredConversationCommand(input: {
   pending: { current: boolean }
   hold: StructuredConversationCommandHold | null
   /** What the chat showed at the press. A refusal names its cause only when the chat showed it,
-   *  so the line can't vanish before it is read; else it is said as any other failure. */
+   *  so a host ahead of the chat can't make the line go the moment it lands; else it is said as
+   *  any other failure. */
   causes: StructuredConversationCommandCauses
   /** What the chat's loaded start-failure rows state, read when the reply lands. */
   startFailures: () => readonly AgentSessionFailureFact[]
@@ -168,7 +158,8 @@ export async function sendStructuredConversationCommand(input: {
     return { accepted: false, error: null }
   }
   if (input.hold !== null) {
-    return refused(heldCommandText(input.command, input.hold), CAUSE_OF_HOLD[input.hold])
+    // Each hold here is named for the cause it waits on.
+    return refused(heldCommandText(input.command, input.hold), input.hold)
   }
   input.pending.current = true
   try {
@@ -227,8 +218,9 @@ export function structuredConversationCommandRunner(args: {
   items: () => readonly AgentJournalRenderItem[]
   write: StructuredAgentSessionWrite
 }): {
-  run: (command: AgentSessionConversationCommand) => Promise<CommandOutcome>
-  causes: StructuredConversationCommandCauses
+  runConversationCommand: (command: AgentSessionConversationCommand) => Promise<CommandOutcome>
+  /** What a refusal's line stands on, as the chat shows it now. */
+  commandRefusalCauses: StructuredConversationCommandCauses
 } {
   const promptPending = args.prompts.length > 0
   const agentWorking = args.chat.turnId !== null || args.chat.isWorking
@@ -242,7 +234,9 @@ export function structuredConversationCommandRunner(args: {
     prompt: promptPending,
     // The strip, mid-turn included: what a host refusing on background tasks points at.
     background: args.chat.backgroundTasks.show || args.chat.backgroundTasks.isMonitoring,
-    outbox: rows.outboxRetry || rows.outboxSending || outboxUnsent
+    // Apart: a send that fails stops being sent, and a resend stops offering Retry.
+    sending: rows.outboxSending || outboxUnsent,
+    retry: rows.outboxRetry
   }
   const run = (command: AgentSessionConversationCommand) => {
     const hostHoldsIt = command === 'compact' ? args.commandsWait : args.clearWaits === true
@@ -274,7 +268,7 @@ export function structuredConversationCommandRunner(args: {
         )
     })
   }
-  return { run, causes }
+  return { runConversationCommand: run, commandRefusalCauses: causes }
 }
 
 /** What this window's own messages offer on their rows: a Retry, or nothing while still on
