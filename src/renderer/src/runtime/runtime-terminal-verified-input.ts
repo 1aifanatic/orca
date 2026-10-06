@@ -14,8 +14,8 @@ import { recordRuntimeTerminalInputForPtyId } from './runtime-terminal-input-rec
 const DESKTOP_RUNTIME_CLIENT = { id: 'orca-desktop', type: 'desktop' } as const
 
 /**
- * True means accepted, false means refusal. `requireWriteSettlement` asks a current host for
- * the provider's acknowledgment; a lost one rejects.
+ * True means accepted, false means refusal. `requireWriteSettlement` asks the local provider or a
+ * current host for its acknowledgment; a lost one rejects.
  */
 export async function sendRuntimePtyInputVerified(
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
@@ -34,10 +34,23 @@ export async function sendRuntimePtyInputVerified(
     : getActiveRuntimeTarget(settings)
   const terminal = getRemoteRuntimeTerminalHandle(ptyId)
   if (target.kind !== 'environment' || !terminal) {
-    const accepted = await window.api.pty.writeAccepted(ptyId, data, inputKind)
-    if (accepted) {
-      recordRuntimeTerminalInputForPtyId(ptyId)
+    if (options?.requireWriteSettlement) {
+      // Why: an answer that dismisses its card must not fall back to an unacknowledged write.
+      const accepted = await window.api.pty.writeAccepted(ptyId, data, inputKind, options)
+      if (accepted) {
+        recordRuntimeTerminalInputForPtyId(ptyId)
+      }
+      return accepted
     }
+    const accepted = await window.api.pty.writeAccepted(ptyId, data, inputKind)
+    if (!accepted) {
+      window.api.pty.write(ptyId, data, inputKind)
+      // Why: SSH/local fallback writes are fire-and-forget. Callers use this
+      // boolean to continue UX flow, while hook telemetry confirms real turns.
+      recordRuntimeTerminalInputForPtyId(ptyId)
+      return true
+    }
+    recordRuntimeTerminalInputForPtyId(ptyId)
     return accepted
   }
 

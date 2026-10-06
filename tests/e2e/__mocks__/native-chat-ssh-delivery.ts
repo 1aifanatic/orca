@@ -89,8 +89,12 @@ export function createSshDelivery(mode: 'accepted' | 'lost' | 'slow' = 'accepted
       pty: {
         write: (ptyId: string, data: string, inputKind: 'driving') =>
           input.writePtyInput({ id: ptyId, data, inputKind }),
-        writeAccepted: (ptyId: string, data: string, inputKind: 'driving') =>
-          input.writePtyInputAccepted({ id: ptyId, data, inputKind })
+        writeAccepted: (
+          ptyId: string,
+          data: string,
+          inputKind: 'driving',
+          options?: { requireWriteSettlement?: true }
+        ) => input.writePtyInputAccepted({ id: ptyId, data, inputKind, ...options })
       }
     }
   })

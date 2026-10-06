@@ -27,7 +27,13 @@ export function isMainWindowPtyIpcEvent(
   )
 }
 
-export type PtyWritePayload = { id: string; data: string; inputKind: TerminalInputKind }
+export type PtyWritePayload = {
+  id: string
+  data: string
+  inputKind: TerminalInputKind
+  /** Accepted-write callers only: wait for the provider's settlement, on any provider. */
+  requireWriteSettlement?: true
+}
 export type PtyViewportClaimPayload = { id: string; cols: number; rows: number }
 
 export function createPtyWriteInput(deps: {
@@ -42,9 +48,8 @@ export function createPtyWriteInput(deps: {
 } {
   const { mainWindow, runtime } = deps
 
-  const reportUnavailablePtyWrite = (id: string, error: unknown): void => {
+  const sendPtyWriteUnavailable = (id: string): void => {
     if (
-      !isPtyWriteUnavailableError(error) ||
       !mainWindow ||
       mainWindow.isDestroyed() ||
       (typeof mainWindow.webContents.isDestroyed === 'function' &&
@@ -53,6 +58,12 @@ export function createPtyWriteInput(deps: {
       return
     }
     mainWindow.webContents.send('pty:writeUnavailable', { id })
+  }
+
+  const reportUnavailablePtyWrite = (id: string, error: unknown): void => {
+    if (isPtyWriteUnavailableError(error)) {
+      sendPtyWriteUnavailable(id)
+    }
   }
 
   const writePtyProviderInputWithinLimit = (
@@ -73,10 +84,14 @@ export function createPtyWriteInput(deps: {
     return writePtyProviderInputChunks(provider, id, chunks, first.value, second.value, verify)
   }
 
-  const acceptedSettlement = (settlement: WriteSettlement): boolean => {
+  const acceptedSettlement = (id: string, settlement: WriteSettlement): boolean => {
     if (settlement.outcome === 'unverifiable') {
       // A lost acknowledgment must not trigger a fallback write of the same bytes.
       throw new Error(`PTY write acknowledgment unavailable: ${settlement.reason}`)
+    }
+    if (settlement.outcome === 'refused' && settlement.reason === 'endpoint_awaiting_recovery') {
+      // Settlement reports what a plain write would have thrown; the pane still needs to remount.
+      sendPtyWriteUnavailable(id)
     }
     return settlement.outcome === 'accepted'
   }
@@ -93,8 +108,8 @@ export function createPtyWriteInput(deps: {
     }
     const settlement = provider.writeWithSettlement(id, data)
     return isSettledWrite(settlement)
-      ? acceptedSettlement(settlement)
-      : settlement.then(acceptedSettlement)
+      ? acceptedSettlement(id, settlement)
+      : settlement.then((settled) => acceptedSettlement(id, settled))
   }
 
   const failedWrite = (id: string, error: unknown, verify: boolean): false => {
@@ -206,10 +221,7 @@ export function createPtyWriteInput(deps: {
     }
   }
 
-  const writePtyInputAccepted = (args: PtyWritePayload): boolean | Promise<boolean> => {
-    if (runtime?.getDriver(args.id).kind === 'mobile') {
-      return false
-    }
+  const writePtyInputSettled = (args: PtyWritePayload): boolean | Promise<boolean> => {
     if (!ptyOwnership.has(args.id)) {
       return false
     }
@@ -219,6 +231,29 @@ export function createPtyWriteInput(deps: {
     }
     noteRendererPtyInput(args)
     return writePtyProviderInput(provider, args.id, args.data, true)
+  }
+
+  const writePtyInputAccepted = (args: PtyWritePayload): boolean | Promise<boolean> => {
+    if (runtime?.getDriver(args.id).kind === 'mobile') {
+      return false
+    }
+    if (args.requireWriteSettlement === true) {
+      return writePtyInputSettled(args)
+    }
+    // Why: the ack infers Ctrl+C/Escape reached the local PTY; SSH providers are fire-and-forget relay notifications and can't truthfully acknowledge yet.
+    if (ptyOwnership.get(args.id) !== null) {
+      return false
+    }
+    const provider = tryGetProviderForPty(args.id)
+    if (!provider?.hasPty?.(args.id)) {
+      return false
+    }
+    try {
+      noteRendererPtyInput(args)
+      return writePtyProviderInput(provider, args.id, args.data)
+    } catch {
+      return false
+    }
   }
 
   return {

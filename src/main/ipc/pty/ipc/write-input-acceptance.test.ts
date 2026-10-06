@@ -6,7 +6,9 @@ import {
   type WriteSettlement
 } from '../../../../shared/pty-write-settlement'
 import { TERMINAL_INPUT_CHUNK_MAX_BYTES } from '../../../../shared/terminal-input'
+import { PtyWriteUnavailableError } from '../../../providers/pty-write-unavailable-error'
 import { ptyOwnership } from '../provider/ownership-state'
+import type { PtyRendererDelivery } from '../session'
 import { createPtyWriteInput } from './write-input'
 
 const { provider } = vi.hoisted(() => ({
@@ -20,8 +22,19 @@ const { provider } = vi.hoisted(() => ({
 vi.mock('../provider/registry', () => ({ tryGetProviderForPty: () => provider }))
 
 const id = 'pty-acceptance'
+const send = vi.fn()
+const mainWindow: PtyRendererDelivery = {
+  isDestroyed: () => false,
+  isFocused: () => true,
+  isVisible: () => true,
+  isMinimized: () => false,
+  webContents: { id: 1, isDestroyed: () => false, send, on: vi.fn(), removeListener: vi.fn() }
+}
+const input = () => createPtyWriteInput({ mainWindow })
 const write = (data: string) =>
-  createPtyWriteInput({}).writePtyInputAccepted({ id, data, inputKind: 'driving' })
+  input().writePtyInputAccepted({ id, data, inputKind: 'driving', requireWriteSettlement: true })
+const paneWrite = (data: string) =>
+  input().writePtyInputAccepted({ id, data, inputKind: 'driving' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -84,5 +97,28 @@ describe('verified renderer writes reuse provider settlement', () => {
     await expect(write('x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2 + 1))).resolves.toBe(false)
     expect(provider.writeWithSettlement).toHaveBeenCalledTimes(2)
     expect(provider.write).not.toHaveBeenCalled()
+  })
+})
+
+describe('pane Escape/Ctrl+C keep the plain accepted write', () => {
+  it('writes local input without waiting for settlement and refuses SSH', () => {
+    ptyOwnership.set(id, null)
+    expect(paneWrite('\x1b')).toBe(true)
+    expect(provider.write).toHaveBeenCalledExactlyOnceWith(id, '\x1b')
+    ptyOwnership.set(id, 'connection-1')
+    expect(paneWrite('\x03')).toBe(false)
+    expect(provider.writeWithSettlement).not.toHaveBeenCalled()
+  })
+
+  it('asks a pane awaiting daemon recovery to remount on either route', () => {
+    ptyOwnership.set(id, null)
+    provider.write.mockImplementationOnce(() => {
+      throw new PtyWriteUnavailableError('awaiting recovery')
+    })
+    expect(paneWrite('\x1b')).toBe(false)
+    provider.writeWithSettlement.mockReturnValueOnce(writeRefused('endpoint_awaiting_recovery'))
+    expect(write('1')).toBe(false)
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(send).toHaveBeenCalledWith('pty:writeUnavailable', { id })
   })
 })

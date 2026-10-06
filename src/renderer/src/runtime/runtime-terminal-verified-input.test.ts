@@ -75,3 +75,32 @@ describe('verified input that requires provider settlement', () => {
     expect(runtimeSend).toHaveBeenCalledOnce()
   })
 })
+
+describe('local verified input', () => {
+  it('keeps the fire-and-forget fallback for ordinary input the provider cannot accept', async () => {
+    localWriteAccepted.mockResolvedValue(false)
+    await expect(
+      sendRuntimePtyInputVerified(null, 'ssh:conn-1@@pty-1', 'x', 'driving')
+    ).resolves.toBe(true)
+    expect(localWriteAccepted).toHaveBeenCalledWith('ssh:conn-1@@pty-1', 'x', 'driving')
+    expect(localWrite).toHaveBeenCalledWith('ssh:conn-1@@pty-1', 'x', 'driving')
+  })
+
+  it('never falls back to an unacknowledged write when settlement is required', async () => {
+    const settled = { requireWriteSettlement: true } as const
+    localWriteAccepted.mockResolvedValueOnce(true)
+    await expect(
+      sendRuntimePtyInputVerified(null, 'ssh:conn-1@@pty-1', 'answer', 'driving', settled)
+    ).resolves.toBe(true)
+    localWriteAccepted.mockResolvedValueOnce(false)
+    await expect(
+      sendRuntimePtyInputVerified(null, 'ssh:conn-1@@pty-1', '1', 'driving', settled)
+    ).resolves.toBe(false)
+    localWriteAccepted.mockRejectedValueOnce(new Error('acknowledgment unavailable'))
+    await expect(
+      sendRuntimePtyInputVerified(null, 'ssh:conn-1@@pty-1', '\r', 'driving', settled)
+    ).rejects.toThrow('acknowledgment unavailable')
+    expect(localWriteAccepted).toHaveBeenCalledWith('ssh:conn-1@@pty-1', '\r', 'driving', settled)
+    expect(localWrite).not.toHaveBeenCalled()
+  })
+})
