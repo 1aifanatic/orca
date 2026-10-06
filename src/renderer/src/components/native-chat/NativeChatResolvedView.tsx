@@ -1,3 +1,8 @@
+import { cn } from '@/lib/utils'
+import {
+  NATIVE_CHAT_APPEARANCE_ROOT_CLASS,
+  useNativeChatAppearanceStyle
+} from './native-chat-appearance-style'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useAppStore } from '../../store'
@@ -9,7 +14,7 @@ import { NativeChatMessageList } from './NativeChatMessageList'
 import { useNativeChatRevealLatest } from './use-native-chat-reveal-latest'
 import { useNativeChatLaunchPromptDeliveryNotice } from './use-native-chat-launch-prompt-delivery-notice'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
-import { useNativeChatFontScale } from './use-native-chat-font-scale'
+import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { useNativeChatCanSend } from './use-native-chat-can-send'
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
@@ -341,9 +346,10 @@ export function NativeChatResolvedView({
     { sessionId, isVisible }
   )
 
-  // Chat-only font zoom via Cmd/Ctrl +/-/0, gated to the live conversation so
-  // the chord is inert on the loading/empty/error states and elsewhere.
-  const fontScale = useNativeChatFontScale(isConversation)
+  // Only the focused conversation accepts chat text-size shortcuts.
+  useNativeChatFontSize(isConversation && isVisible && isFocusedGroup, rootRef)
+  const appearanceSettings = useAppStore((state) => state.settings?.nativeChatAppearance)
+  const appearanceStyle = useNativeChatAppearanceStyle({ nativeChatAppearance: appearanceSettings })
 
   return (
     <div
@@ -381,7 +387,11 @@ export function NativeChatResolvedView({
       onMouseUpCapture={contextMenu.onSelectionCapture}
       onKeyUpCapture={contextMenu.onSelectionCapture}
       onContextMenuCapture={contextMenu.onContextMenuCapture}
-      className="flex h-full min-h-0 w-full flex-col bg-chat-canvas focus:outline-none"
+      className={cn(
+        NATIVE_CHAT_APPEARANCE_ROOT_CLASS,
+        'flex h-full min-h-0 w-full flex-col focus:outline-none'
+      )}
+      style={appearanceStyle}
     >
       <div className="flex min-h-0 flex-1 flex-col">
         {viewState.kind === 'loading' ? (
@@ -398,7 +408,6 @@ export function NativeChatResolvedView({
             isVisible={isVisible}
             isWorking={turnActive}
             expandSignal={false}
-            fontScale={fontScale.scale}
             {...turnTiming}
             awaitingInput={awaitingInput}
             onLinkClick={onLinkClick}

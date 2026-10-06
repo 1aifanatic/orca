@@ -19,25 +19,35 @@ import {
 import { readRuntimeFilePathExistence } from './runtime-file-path-existence'
 import { stat } from 'node:fs/promises'
 import { resolveAuthorizedPath } from '../ipc/filesystem-auth'
+import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 
 export class RuntimeFileCommandsWithSearchRuntimeFiles extends RuntimeFileCommandsWithCreateFileExplorerDirNoClobber {
   async searchRuntimeFiles(
     worktreeSelector: string,
-    options: Omit<SearchOptions, 'rootPath'>
+    options: Omit<SearchOptions, 'rootPath'>,
+    requestOptions: { signal?: AbortSignal } = {}
   ): Promise<SearchResult> {
-    const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
+    throwIfSignalAborted(requestOptions.signal)
+    const target = await waitForPromiseWithSignal(
+      this.host.resolveRuntimeFileTarget(worktreeSelector),
+      requestOptions.signal
+    )
+    throwIfSignalAborted(requestOptions.signal)
     const provider = requireRuntimeFileProvider(target)
     const rootPath = target.worktree.path
     const searchOptions = { ...options, rootPath }
     if (provider) {
-      return provider.search(searchOptions)
+      return provider.search(searchOptions, requestOptions)
     }
-    return this.searchLocalRuntimeFiles(rootPath, searchOptions)
+    return this.searchLocalRuntimeFiles(rootPath, searchOptions, requestOptions.signal)
   }
 
   async listRuntimeFiles(
     worktreeSelector: string,
     options: {
+      candidatePaths?: string[]
+      includeIgnored?: boolean
+      followSymlinks?: boolean
       excludePaths?: string[]
       maxContentBytes?: number
       maxResults?: number
@@ -55,8 +65,26 @@ export class RuntimeFileCommandsWithSearchRuntimeFiles extends RuntimeFileComman
       const maxResults =
         options.maxResults ??
         (options.maxContentBytes === undefined ? undefined : QUICK_OPEN_LISTING_MAX_RESULTS)
+      if (
+        (options.candidatePaths !== undefined ||
+          options.includeIgnored === false ||
+          options.followSymlinks) &&
+        !(await provider.supportsQuickOpenSearch?.({
+          signal: options.signal,
+          minimumVersion: options.candidatePaths !== undefined ? 3 : 2
+        }))
+      ) {
+        throw new Error(
+          options.candidatePaths !== undefined
+            ? 'Update the remote host to validate Quick Open recent files.'
+            : 'Update the remote host to use Quick Open listing options.'
+        )
+      }
       const files = await provider.listFiles(target.worktree.path, {
         excludePaths: options.excludePaths,
+        ...(options.candidatePaths === undefined ? {} : { candidatePaths: options.candidatePaths }),
+        includeIgnored: options.includeIgnored,
+        followSymlinks: options.followSymlinks,
         maxResults,
         signal: options.signal
       })
@@ -70,7 +98,9 @@ export class RuntimeFileCommandsWithSearchRuntimeFiles extends RuntimeFileComman
       options.excludePaths,
       options.signal,
       options.maxResults,
-      options.maxContentBytes
+      options.maxContentBytes,
+      undefined,
+      options
     )
   }
 

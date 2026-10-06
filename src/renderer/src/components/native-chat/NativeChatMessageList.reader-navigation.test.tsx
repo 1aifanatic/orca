@@ -86,14 +86,7 @@ function toolMessage(index: number): NativeChatMessage {
 }
 
 function liveList(messages: NativeChatMessage[]): React.JSX.Element {
-  return (
-    <NativeChatMessageList
-      session={session(messages)}
-      isWorking
-      expandSignal={false}
-      fontScale={1}
-    />
-  )
+  return <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
 }
 
 /** The last `count` closed tool runs, with the row each sits in. */
@@ -149,7 +142,6 @@ describe('reader navigation', () => {
         session={session(messages)}
         isWorking={isWorking}
         expandSignal={false}
-        fontScale={1}
       />
     )
     const { container, rerender } = render(view(transcript, false))
@@ -179,7 +171,6 @@ describe('reader navigation', () => {
         session={session(transcript)}
         isWorking
         expandSignal={false}
-        fontScale={1}
       />
     )
     paint(container)
@@ -216,12 +207,7 @@ describe('reader navigation', () => {
       }
     ]
     const view = (messages: NativeChatMessage[]) => (
-      <NativeChatMessageList
-        session={session(messages)}
-        isWorking
-        expandSignal={false}
-        fontScale={1}
-      />
+      <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
     )
     const { container, rerender } = render(view(withTool))
     paint(container)
@@ -264,12 +250,7 @@ describe('reader navigation', () => {
       }
     ]
     const view = (messages: NativeChatMessage[]) => (
-      <NativeChatMessageList
-        session={session(messages)}
-        isWorking
-        expandSignal={false}
-        fontScale={1}
-      />
+      <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
     )
     const { container, rerender } = render(view(withTool))
     paint(container)
@@ -398,12 +379,7 @@ describe('reader navigation', () => {
       }
     ]
     const view = (messages: NativeChatMessage[]) => (
-      <NativeChatMessageList
-        session={session(messages)}
-        isWorking
-        expandSignal={false}
-        fontScale={1}
-      />
+      <NativeChatMessageList session={session(messages)} isWorking expandSignal={false} />
     )
     const { container, rerender } = render(view(withTool))
     paint(container)
@@ -443,7 +419,6 @@ describe('reader navigation', () => {
         session={session(messages)}
         isWorking
         expandSignal={false}
-        fontScale={1}
         settledTurns={new Map([['message-0', { startedAt: 1, workedSeconds: 1 }]])}
       />
     )
@@ -546,7 +521,6 @@ describe('disclosure following across retained pane visibility', () => {
         isVisible={visible}
         isWorking
         expandSignal={false}
-        fontScale={1}
       />
     )
   }
