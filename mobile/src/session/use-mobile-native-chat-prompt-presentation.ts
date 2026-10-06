@@ -6,11 +6,12 @@ import type { useMobileStructuredAgentSession } from './use-mobile-structured-ag
 import { useNativeChatAcceptedAction } from './use-native-chat-action-outcomes'
 import { useMobileNativeChatPromptDismiss } from './use-mobile-native-chat-prompt-dismiss'
 
-/** Acknowledged answers, or the user's Hide, hide a terminal card without changing host status. */
+/** Acknowledged answers hide, and the user's Collapse folds, a terminal card without changing
+ *  host status. */
 export function useMobileNativeChatPromptPresentation({
   permission,
   question,
-  approvalStartedAt,
+  waitStartedAt,
   scopeKey,
   sessionKey,
   observing,
@@ -19,7 +20,8 @@ export function useMobileNativeChatPromptPresentation({
 }: {
   permission: MobileChatPermission | null
   question: MobileChatQuestion | null
-  approvalStartedAt: number | null
+  /** The host wait's start: identical prompts in separate waits are separate occurrences. */
+  waitStartedAt: number | null
   scopeKey: string | null
   sessionKey: string | null
   observing: boolean
@@ -29,20 +31,21 @@ export function useMobileNativeChatPromptPresentation({
   const promptKey = useMemo(
     () =>
       permission
-        ? JSON.stringify(['approval', permission, approvalStartedAt])
+        ? JSON.stringify(['approval', permission, waitStartedAt])
         : question
-          ? JSON.stringify(['question', question])
+          ? JSON.stringify(['question', question, waitStartedAt])
           : null,
-    [permission, question, approvalStartedAt]
+    [permission, question, waitStartedAt]
   )
-  const { showPrompt, dismissPrompt } = useMobileNativeChatPromptDismiss({
-    kind: 'prompt',
-    promptKey,
-    detectedPromptKey: promptKey,
-    scopeKey,
-    sessionKey,
-    observing
-  })
+  const { showPrompt, collapsed, dismissPrompt, collapsePrompt, expandPrompt } =
+    useMobileNativeChatPromptDismiss({
+      kind: 'prompt',
+      promptKey,
+      detectedPromptKey: promptKey,
+      scopeKey,
+      sessionKey,
+      observing
+    })
   const respond = useCallback(
     async (send: string): Promise<boolean> => {
       const accepted = await respondPermission(send)
@@ -67,7 +70,11 @@ export function useMobileNativeChatPromptPresentation({
     occurrenceKey: promptKey === null ? null : JSON.stringify([scopeKey, sessionKey, promptKey]),
     permission: showPrompt ? permission : null,
     question: showPrompt ? question : null,
-    hidePrompt: dismissPrompt,
+    collapsePrompt,
+    collapsed:
+      collapsed && (permission ?? question)
+        ? { title: permission?.title ?? question?.question ?? '', expand: expandPrompt }
+        : null,
     respondPermission: respond,
     answerQuestion: answer
   }
@@ -93,7 +100,8 @@ export function useMobileNativeChatPromptCards({
   | 'handleNativeChatRespondPermission'
   | 'handleNativeChatQuestionAnswer'
   | 'handleNativeChatCancelPrompt'
-  | 'hideNativeChatPrompt'
+  | 'collapseNativeChatPrompt'
+  | 'nativeChatCollapsedPrompt'
 > {
   const respond = useNativeChatAcceptedAction(
     structured?.respondPermission ?? terminal.respondPermission,
@@ -116,6 +124,7 @@ export function useMobileNativeChatPromptCards({
       ? structured.respondQuestion
       : presentation.answerQuestion,
     handleNativeChatCancelPrompt: structured ? cancel : undefined,
-    hideNativeChatPrompt: structured ? undefined : presentation.hidePrompt
+    collapseNativeChatPrompt: structured ? undefined : presentation.collapsePrompt,
+    nativeChatCollapsedPrompt: structured ? null : presentation.collapsed
   }
 }

@@ -1,7 +1,12 @@
-// Answered prompt occurrences per chat tab, kept outside the controller so leaving the session
+// Dismissed prompt occurrences per chat tab, kept outside the controller so leaving the session
 // and coming back cannot reshow one. Entries die when an observation supersedes them, or by the bound.
 
-export type MobileNativeChatPromptDismissal = { sessionKey: string | null; promptKey: string }
+export type MobileNativeChatPromptDismissal = {
+  sessionKey: string | null
+  promptKey: string
+  /** Answered: the card is gone. Collapsed: the user folded it to a strip above the composer. */
+  state: 'answered' | 'collapsed'
+}
 
 const MAX_DISMISSALS = 64
 const dismissals = new Map<string, MobileNativeChatPromptDismissal>()

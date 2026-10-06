@@ -51,6 +51,7 @@ vi.mock('lucide-react-native', () =>
       'ArrowDown',
       'ArrowUp',
       'ChevronDown',
+      'ChevronUp',
       'ChevronsDownUp',
       'ChevronsUpDown',
       'ShieldQuestion',
@@ -288,8 +289,8 @@ export function getController(): MobileNativeChatController {
 export function askCancel(): Promise<boolean> {
   return getTree().root.findByType(MobileNativeChatAsk).props.onCancel()
 }
-export function askHide(): void {
-  getTree().root.findByType(MobileNativeChatAsk).props.onHide()
+export function askCollapse(): void {
+  getTree().root.findByType(MobileNativeChatAsk).props.onCollapse()
 }
 export function askAnswer(selections: AskAnswerSelection[]): Promise<boolean> {
   return getTree().root.findByType(MobileNativeChatAsk).props.onAnswer(selections)

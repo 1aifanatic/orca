@@ -63,8 +63,11 @@ export type MobileNativeChatController = {
     selections: AskAnswerSelection[]
   ) => Promise<boolean>
   handleNativeChatCancelAsk: () => Promise<boolean>
-  /** Terminal lane: hide the permission/question occurrence and free Send, writing nothing. */
-  hideNativeChatPrompt?: () => void
+  /** Terminal lane: fold the occurrence to a strip and free Send, writing nothing. */
+  collapseNativeChatAsk: () => void
+  collapseNativeChatPrompt?: () => void
+  /** The collapsed terminal occurrence, shown as a strip above the composer. */
+  nativeChatCollapsedPrompt: { title: string; expand: () => void } | null
   handleNativeChatCancelPrompt?: (prompt?: {
     itemId: string
     expectedRevision: number

@@ -17901,12 +17901,15 @@
       "loadingEarlier": "로드 중…",
       "loadEarlier": "이전 메시지 로드",
       "loadingEarlierMessages": "이전 메시지 로드 중…",
+      "prompt": {
+        "collapse": "접기",
+        "expand": "펼치기"
+      },
       "question": {
         "step": "{{value0}} 단계",
         "other": "다른…",
         "otherPlaceholder": "답변을 입력하세요",
         "cancel": "취소",
-        "hide": "숨기기",
         "send": "제출",
         "next": "다음",
         "skip": "건너뛰기",
@@ -17918,7 +17921,6 @@
         "allow": "허용",
         "deny": "거부",
         "cancel": "취소",
-        "hide": "숨기기",
         "reason": "이유",
         "blockedPath": "차단된 경로",
         "askRule": "규칙을 묻다",

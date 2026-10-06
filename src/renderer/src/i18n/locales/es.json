@@ -17866,12 +17866,15 @@
       "loadingEarlier": "Cargando…",
       "loadEarlier": "Cargar mensajes anteriores",
       "loadingEarlierMessages": "Cargando mensajes anteriores…",
+      "prompt": {
+        "collapse": "Contraer",
+        "expand": "Expandir"
+      },
       "question": {
         "step": "Paso {{value0}}",
         "other": "Otro…",
         "otherPlaceholder": "Escribe tu respuesta",
         "cancel": "Cancelar",
-        "hide": "Ocultar",
         "send": "Enviar",
         "next": "Siguiente",
         "skip": "Omitir",
@@ -17883,7 +17886,6 @@
         "allow": "Permitir",
         "deny": "Denegar",
         "cancel": "Cancelar",
-        "hide": "Ocultar",
         "reason": "Motivo",
         "blockedPath": "Ruta bloqueada",
         "askRule": "Regla de solicitud",

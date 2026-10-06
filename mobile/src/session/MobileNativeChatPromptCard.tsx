@@ -4,6 +4,7 @@ import { MobileNativeChatPermission } from './MobileNativeChatPermission'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import { MobileNativeChatQuestion } from './MobileNativeChatQuestion'
 import { mobileChatQuestionKey, type MobileChatQuestion } from './mobile-native-chat-question'
+import { MobileNativeChatPromptStrip } from './MobileNativeChatPromptCollapse'
 
 /** The one pending agent prompt shown above the composer: a structured
  *  AskUserQuestion wins, then a heuristic permission, then a heuristic question.
@@ -16,7 +17,9 @@ export function MobileNativeChatPromptCard({
   onAnswerAsk,
   onCancelAsk,
   onCancelPrompt,
-  onHidePrompt,
+  onCollapseAsk,
+  onCollapsePrompt,
+  collapsedPrompt,
   permission,
   onRespondPermission,
   question,
@@ -28,8 +31,11 @@ export function MobileNativeChatPromptCard({
   onAnswerAsk?: (prompt: AskPrompt, selections: AskAnswerSelection[]) => Promise<boolean>
   onCancelAsk?: () => Promise<boolean>
   onCancelPrompt?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
-  /** Hide the permission/question occurrence and free Send, writing nothing. */
-  onHidePrompt?: () => void
+  onCollapseAsk?: () => void
+  /** Fold the permission/question occurrence to a strip and free Send, writing nothing. */
+  onCollapsePrompt?: () => void
+  /** The occurrence the user collapsed, shown as a strip when no card is expanded. */
+  collapsedPrompt?: { title: string; expand: () => void } | null
   permission?: MobileChatPermission | null
   onRespondPermission?: (send: string) => Promise<boolean>
   question?: MobileChatQuestion | null
@@ -54,7 +60,7 @@ export function MobileNativeChatPromptCard({
           }
           return accepted
         }}
-        onHide={onDismissAsk}
+        onCollapse={onCollapseAsk}
       />
     )
   }
@@ -65,7 +71,7 @@ export function MobileNativeChatPromptCard({
         permission={permission}
         onRespond={async (send) => (await onRespondPermission?.(send)) ?? false}
         onCancel={onCancelPrompt}
-        onHide={onHidePrompt}
+        onCollapse={onCollapsePrompt}
       />
     )
   }
@@ -76,9 +82,11 @@ export function MobileNativeChatPromptCard({
         question={question}
         onAnswer={async (text) => (await onAnswerQuestion?.(text)) ?? false}
         onCancel={onCancelPrompt}
-        onHide={onHidePrompt}
+        onCollapse={onCollapsePrompt}
       />
     )
   }
-  return null
+  return collapsedPrompt ? (
+    <MobileNativeChatPromptStrip title={collapsedPrompt.title} onExpand={collapsedPrompt.expand} />
+  ) : null
 }

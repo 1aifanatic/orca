@@ -4,6 +4,7 @@ import { Check } from 'lucide-react-native'
 import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
+import { MobileNativeChatCardHeaderAction } from './MobileNativeChatPromptCollapse'
 
 type Props = {
   prompt: AskPrompt
@@ -12,8 +13,8 @@ type Props = {
    *  option's stable number instead of pasted label text (STA-1860). */
   onAnswer: (selections: AskAnswerSelection[]) => Promise<boolean>
   onCancel?: () => Promise<boolean>
-  /** Hide the card and free Send, writing nothing. */
-  onHide?: () => void
+  /** Fold the card to a strip and free Send, writing nothing. */
+  onCollapse?: () => void
 }
 
 // Sentinel index for the free-text "Other…" row (never a real option index).
@@ -27,7 +28,7 @@ export function MobileNativeChatAsk({
   prompt,
   onAnswer,
   onCancel,
-  onHide
+  onCollapse
 }: Props): React.JSX.Element {
   const [index, setIndex] = useState(0)
   const [selections, setSelections] = useState<number[][]>(() => prompt.questions.map(() => []))
@@ -134,7 +135,10 @@ export function MobileNativeChatAsk({
       ) : null}
 
       <ScrollView style={styles.scroll} keyboardShouldPersistTaps="always">
-        <Text style={styles.questionText}>{q.question}</Text>
+        <View style={styles.questionRow}>
+          <Text style={styles.questionText}>{q.question}</Text>
+          <MobileNativeChatCardHeaderAction onCollapse={onCollapse} disabled={submitting} />
+        </View>
         {q.options.map((opt, optIndex) => (
           <OptionRow
             key={`${optIndex}:${opt.label}`}
@@ -184,17 +188,6 @@ export function MobileNativeChatAsk({
         >
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
-        {onHide ? (
-          <Pressable
-            accessibilityLabel="Hide"
-            style={styles.cancel}
-            onPress={onHide}
-            disabled={submitting}
-            hitSlop={8}
-          >
-            <Text style={styles.cancelText}>Hide</Text>
-          </Pressable>
-        ) : null}
         {total > 1 ? (
           <Text style={styles.progress}>
             {index + 1}/{total}
@@ -293,7 +286,9 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.md
   },
+  questionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   questionText: {
+    flex: 1,
     color: colors.textPrimary,
     fontSize: typography.bodySize + 1,
     fontWeight: '600',

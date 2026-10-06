@@ -1,7 +1,6 @@
-import { useEffect, useRef } from 'react'
-import { ChevronDown, ShieldQuestion, X } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
+import { ShieldQuestion, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { isEditableTarget } from '@/lib/editable-target'
 import { translate } from '@/i18n/i18n'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { NativeChatMarkdown } from './NativeChatMarkdown'
@@ -11,6 +10,7 @@ import {
 } from '../../../../shared/agent-session-approval-subject'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import type { ChatApproval } from './native-chat-interactive-prompt'
+import { NativeChatPromptCollapseToggle } from './NativeChatPromptCollapse'
 
 export type NativeChatApprovalCardProps = {
   approval: ChatApproval
@@ -18,8 +18,8 @@ export type NativeChatApprovalCardProps = {
   onChoose: (option: string) => void
   /** Cancel the active provider turn while this card owns the composer region. */
   onCancel?: () => void
-  /** Without `onCancel`: hide the card and give the input back, writing nothing; Escape does too. */
-  onHide?: () => void
+  /** Without `onCancel`: fold the card to a strip and give the input back, writing nothing. */
+  onCollapse?: () => void
   /** A choice is being delivered: the options wait for its answer. */
   isSubmitting?: boolean
   shouldFocus?: boolean
@@ -37,7 +37,7 @@ export function NativeChatApprovalCard({
   approval,
   onChoose,
   onCancel,
-  onHide,
+  onCollapse,
   isSubmitting = false,
   shouldFocus = false,
   onLinkClick,
@@ -54,25 +54,13 @@ export function NativeChatApprovalCard({
     approval.subject ||
     approval.detail
   )
-  useEffect(() => {
-    // Why: a card arriving mid-typing must not take the keyboard from the composer.
-    if (shouldFocus && !isEditableTarget(document.activeElement)) {
+  // Layout effect: focus leaves this pane's hidden composer in the commit that hides it.
+  useLayoutEffect(() => {
+    if (shouldFocus) {
       cardRef.current?.focus()
     }
   }, [shouldFocus])
-  const headerAction = onCancel
-    ? {
-        run: onCancel,
-        Icon: X,
-        label: translate('components.native-chat.approval.cancel', 'Cancel')
-      }
-    : onHide
-      ? {
-          run: onHide,
-          Icon: ChevronDown,
-          label: translate('components.native-chat.approval.hide', 'Hide')
-        }
-      : null
+  const escape = onCancel ?? (isSubmitting ? undefined : onCollapse)
 
   return (
     <div className="min-h-0 shrink overflow-hidden bg-chat-canvas">
@@ -84,10 +72,10 @@ export function NativeChatApprovalCard({
           aria-label={approval.title}
           tabIndex={-1}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing && headerAction) {
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing && escape) {
               event.preventDefault()
               event.stopPropagation()
-              headerAction.run()
+              escape()
             }
           }}
           className="flex min-h-0 w-full flex-1 flex-col gap-2 overflow-hidden rounded-lg border border-input bg-card px-4 py-3 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -99,15 +87,21 @@ export function NativeChatApprovalCard({
                 {approval.title}
               </p>
             </div>
-            {headerAction ? (
+            {onCancel ? (
               <button
                 type="button"
-                onClick={headerAction.run}
-                aria-label={headerAction.label}
+                onClick={onCancel}
+                aria-label={translate('components.native-chat.approval.cancel', 'Cancel')}
                 className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <headerAction.Icon className="size-4" />
+                <X className="size-4" />
               </button>
+            ) : onCollapse ? (
+              <NativeChatPromptCollapseToggle
+                expanded
+                disabled={isSubmitting}
+                onToggle={onCollapse}
+              />
             ) : null}
           </div>
           {hasContext ? (

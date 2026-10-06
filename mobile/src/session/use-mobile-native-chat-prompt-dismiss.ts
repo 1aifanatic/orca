@@ -3,12 +3,14 @@ import {
   forgetMobileNativeChatPromptDismissal,
   readMobileNativeChatPromptDismissal,
   subscribeMobileNativeChatPromptDismissals,
-  writeMobileNativeChatPromptDismissal
+  writeMobileNativeChatPromptDismissal,
+  type MobileNativeChatPromptDismissal
 } from './mobile-native-chat-prompt-dismissals'
 
 type DetectedPrompt = { sessionKey: string | null; promptKey: string | null }
 
-/** Presentation only: retain one answered occurrence per tab until observations supersede it. */
+/** Presentation only: retain one answered or collapsed occurrence per tab until observations
+ *  supersede it. */
 export function useMobileNativeChatPromptDismiss({
   kind,
   promptKey,
@@ -24,7 +26,13 @@ export function useMobileNativeChatPromptDismiss({
   scopeKey: string | null
   sessionKey: string | null
   observing: boolean
-}): { showPrompt: boolean; dismissPrompt: () => void } {
+}): {
+  showPrompt: boolean
+  collapsed: boolean
+  dismissPrompt: () => void
+  collapsePrompt: () => void
+  expandPrompt: () => void
+} {
   const storeKey = JSON.stringify([kind, scopeKey])
   const detectedByScopeRef = useRef(new Map<string | null, DetectedPrompt>())
   const observation = useMemo(() => {
@@ -51,10 +59,9 @@ export function useMobileNativeChatPromptDismiss({
       forgetMobileNativeChatPromptDismissal(storeKey)
     }
   }, [observing, dismissed, detectedPromptKey, storeKey, sessionKey])
-  const showPrompt =
-    promptKey !== null &&
-    !(dismissed?.sessionKey === sessionKey && dismissed.promptKey === promptKey)
-  const dismissPrompt = (): void => {
+  const matches =
+    promptKey !== null && dismissed?.sessionKey === sessionKey && dismissed.promptKey === promptKey
+  const record = (state: MobileNativeChatPromptDismissal['state']): void => {
     const detected = detectedByScopeRef.current.get(scopeKey)
     if (
       promptKey !== null &&
@@ -62,9 +69,15 @@ export function useMobileNativeChatPromptDismiss({
       detected.sessionKey === sessionKey &&
       detected.promptKey === promptKey
     ) {
-      writeMobileNativeChatPromptDismissal(storeKey, { sessionKey, promptKey })
+      writeMobileNativeChatPromptDismissal(storeKey, { sessionKey, promptKey, state })
     }
   }
 
-  return { showPrompt, dismissPrompt }
+  return {
+    showPrompt: promptKey !== null && !matches,
+    collapsed: matches && dismissed?.state === 'collapsed',
+    dismissPrompt: () => record('answered'),
+    collapsePrompt: () => record('collapsed'),
+    expandPrompt: () => forgetMobileNativeChatPromptDismissal(storeKey)
+  }
 }

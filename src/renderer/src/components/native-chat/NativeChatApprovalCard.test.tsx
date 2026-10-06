@@ -131,7 +131,7 @@ describe('NativeChatApprovalCard', () => {
     outside.remove()
   })
 
-  it('does not take focus from text being typed when it appears', () => {
+  it('takes focus from a focused text field in the commit that shows it', () => {
     const draft = document.createElement('textarea')
     document.body.appendChild(draft)
     draft.focus()
@@ -139,11 +139,10 @@ describe('NativeChatApprovalCard', () => {
       <NativeChatApprovalCard
         approval={{ title: 'Allow command?', options: [{ label: 'Allow', send: 'allow' }] }}
         onChoose={() => {}}
-        onHide={() => {}}
         shouldFocus
       />
     )
-    expect(document.activeElement).toBe(draft)
+    expect(document.activeElement).toBe(screen.getByRole('group', { name: 'Allow command?' }))
     draft.remove()
   })
 

@@ -19,7 +19,7 @@ import {
   getController,
   askCancel,
   askAnswer,
-  askHide,
+  askCollapse,
   sendError,
   getTree
 } from './__mocks__/mobile-prompt-controller'
@@ -226,28 +226,58 @@ describe('prompt cards through the production controller, send contract and view
     }
   )
 
-  it('hides a permission without writing and shows the next occurrence again', async () => {
+  it('collapses a permission to a strip without writing, and expands it back', async () => {
     await render({ tab: permissionTab })
     act(() => {
-      getTree().root.findByProps({ accessibilityLabel: 'Hide' }).props.onPress()
+      getTree().root.findByProps({ accessibilityLabel: 'Collapse' }).props.onPress()
     })
     expect(getController().nativeChatPermission).toBe(null)
+    expect(getController().nativeChatCollapsedPrompt?.title).toBeTruthy()
+    expect(getTree().root.findAllByProps({ testID: 'native-chat-prompt-strip' })).toHaveLength(1)
     expect(sendButton().props.disabled).toBe(false)
+    act(() => {
+      getTree().root.findByProps({ accessibilityLabel: 'Expand' }).props.onPress()
+    })
+    expect(getController().nativeChatPermission).not.toBe(null)
+    expect(sendButton().props.disabled).toBe(true)
     expect(client.sendRequest).not.toHaveBeenCalled()
+  })
+
+  it('shows an identical heuristic question again after a new wait in terminal view', async () => {
+    await render({ tab: baseTab })
+    act(() => {
+      getTree().root.findByProps({ accessibilityLabel: 'Collapse' }).props.onPress()
+    })
+    visible.value = false
+    await render({ tab: { ...baseTab, agentStatus: { ...baseTab.agentStatus, state: 'working' } } })
+    await render({
+      tab: { ...baseTab, agentStatus: { ...baseTab.agentStatus, stateStartedAt: 40 } }
+    })
+    visible.value = true
+    await render()
+    expect(getController().nativeChatQuestion).not.toBe(null)
+    expect(sendButton().props.disabled).toBe(true)
+  })
+
+  it('shows a collapsed prompt again as a new wait', async () => {
+    await render({ tab: permissionTab })
+    act(() => {
+      getTree().root.findByProps({ accessibilityLabel: 'Collapse' }).props.onPress()
+    })
     await render({
       tab: { ...permissionTab, agentStatus: { ...permissionTab.agentStatus, stateStartedAt: 20 } }
     })
     expect(getController().nativeChatPermission).not.toBe(null)
-    expect(sendButton().props.disabled).toBe(true)
+    expect(getController().nativeChatCollapsedPrompt).toBe(null)
   })
 
-  it('hides an ask without writing', async () => {
+  it('collapses an ask without writing and hides the heuristic card read from the same wait', async () => {
     await render({
       tab: {
         ...baseTab,
         agentStatus: {
           ...baseTab.agentStatus,
-          lastAssistantMessage: '',
+          lastAssistantMessage: 'Before I proceed I want to confirm a choice.',
           toolName: 'AskUserQuestion',
           interactivePrompt: JSON.stringify({
             questions: [{ question: 'Pick?', options: [{ label: 'East' }] }]
@@ -256,9 +286,13 @@ describe('prompt cards through the production controller, send contract and view
       }
     })
     act(() => {
-      askHide()
+      askCollapse()
     })
     expect(getController().nativeChatAsk).toBe(null)
+    expect(getController().nativeChatPermission).toBe(null)
+    expect(getController().nativeChatQuestion).toBe(null)
+    expect(getController().nativeChatCollapsedPrompt?.title).toBe('Pick?')
+    expect(sendButton().props.disabled).toBe(false)
     expect(client.sendRequest).not.toHaveBeenCalled()
   })
 

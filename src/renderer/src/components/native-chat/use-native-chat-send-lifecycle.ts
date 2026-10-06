@@ -23,19 +23,22 @@ export function useNativeChatSendLifecycle(
       { cleanupTimer: ReturnType<typeof setTimeout> | null; pendingId?: string }
     >()
   )
-  const settlePendingSends = useCallback((onSettled?: (pendingId: string) => void) => {
-    for (const [handle, entry] of pendingSendHandlesRef.current) {
-      const { cleanupTimer, pendingId } = entry
-      if (cleanupTimer !== null) {
-        clearTimeout(cleanupTimer)
+  const settlePendingSends = useCallback(
+    (onSettled?: (pendingId: string) => void, keepInput = false) => {
+      for (const [handle, entry] of pendingSendHandlesRef.current) {
+        const { cleanupTimer, pendingId } = entry
+        if (cleanupTimer !== null) {
+          clearTimeout(cleanupTimer)
+        }
+        handle.cancel(keepInput)
+        if (pendingId) {
+          onSettled?.(pendingId)
+        }
       }
-      handle.cancel()
-      if (pendingId) {
-        onSettled?.(pendingId)
-      }
-    }
-    pendingSendHandlesRef.current.clear()
-  }, [])
+      pendingSendHandlesRef.current.clear()
+    },
+    []
+  )
   const cancelPendingSends = useCallback(
     () => settlePendingSends(onPendingSendCanceled),
     [settlePendingSends, onPendingSendCanceled]
@@ -65,10 +68,11 @@ export function useNativeChatSendLifecycle(
 
   const inputOwnedByCard = cardOwnership?.inputOwnedByCard === true
   const onPendingSendRetired = cardOwnership?.onPendingSendRetired ?? onPendingSendCanceled
-  // Why: once a card owns the agent's input, an unsubmitted Enter would answer it.
+  // Why: once a card owns the agent's input, an unsubmitted Enter would answer it. No line clear
+  // either: it would type under the dialog, and the next send clears the line first.
   useLayoutEffect(() => {
     if (inputOwnedByCard) {
-      settlePendingSends(onPendingSendRetired)
+      settlePendingSends(onPendingSendRetired, true)
     }
   }, [inputOwnedByCard, onPendingSendRetired, settlePendingSends])
 

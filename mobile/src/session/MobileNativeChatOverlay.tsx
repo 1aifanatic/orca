@@ -98,7 +98,9 @@ export function MobileNativeChatOverlay({
         onAnswerAsk={controller.handleNativeChatAnswerAsk}
         onCancelAsk={controller.handleNativeChatCancelAsk}
         onCancelPrompt={controller.handleNativeChatCancelPrompt}
-        onHidePrompt={controller.hideNativeChatPrompt}
+        onCollapseAsk={controller.collapseNativeChatAsk}
+        onCollapsePrompt={controller.collapseNativeChatPrompt}
+        collapsedPrompt={controller.nativeChatCollapsedPrompt}
         question={controller.nativeChatQuestion}
         onAnswerQuestion={controller.handleNativeChatQuestionAnswer}
         permission={controller.nativeChatPermission}

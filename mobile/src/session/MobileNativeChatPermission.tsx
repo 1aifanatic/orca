@@ -1,7 +1,7 @@
 import { memo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { ShieldQuestion } from 'lucide-react-native'
-import { MobileNativeChatCardHeaderAction } from './MobileNativeChatCardHeaderAction'
+import { MobileNativeChatCardHeaderAction } from './MobileNativeChatPromptCollapse'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import {
@@ -17,13 +17,13 @@ function MobileNativeChatPermissionImpl({
   permission,
   onRespond,
   onCancel,
-  onHide
+  onCollapse
 }: {
   permission: MobileChatPermission
   onRespond: (send: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
-  /** Hide the card and free Send, writing nothing. */
-  onHide?: () => void
+  /** Fold the card to a strip and free Send, writing nothing. */
+  onCollapse?: () => void
 }): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
@@ -64,7 +64,7 @@ function MobileNativeChatPermissionImpl({
         <MobileNativeChatCardHeaderAction
           prompt={permission.prompt}
           onCancel={onCancel}
-          onHide={onHide}
+          onCollapse={onCollapse}
           disabled={submitting}
         />
       </View>

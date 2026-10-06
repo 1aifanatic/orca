@@ -18172,12 +18172,15 @@
       "railLabel": "Your messages",
       "railImageMessage": "Image attachment",
       "railEmptyMessage": "Message",
+      "prompt": {
+        "collapse": "Collapse",
+        "expand": "Expand"
+      },
       "question": {
         "step": "Step {{value0}}",
         "other": "Other…",
         "otherPlaceholder": "Type your answer",
         "cancel": "Cancel",
-        "hide": "Hide",
         "send": "Submit",
         "next": "Next",
         "skip": "Skip",
@@ -18194,7 +18197,6 @@
         "allow": "Allow",
         "deny": "Deny",
         "cancel": "Cancel",
-        "hide": "Hide",
         "reason": "Reason",
         "blockedPath": "Blocked path",
         "askRule": "Ask rule",

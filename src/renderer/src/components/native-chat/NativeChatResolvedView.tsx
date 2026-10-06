@@ -18,6 +18,7 @@ import { useNativeChatCanSend } from './use-native-chat-can-send'
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
 import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
+import { NativeChatPromptStrip } from './NativeChatPromptCollapse'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { useNativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import { shouldClearNativeChatWorkingSuppression } from './native-chat-working-suppression'
@@ -226,7 +227,8 @@ export function NativeChatResolvedView({
     paneKey,
     targetPtyId,
     card: promptCard,
-    canSend
+    canSend,
+    transcriptSettled: session.readPhase === 'ready'
   })
   const shownPromptCard = promptCardPresentation.card
   useNativeChatComposerRevealFocus({
@@ -395,8 +397,14 @@ export function NativeChatResolvedView({
           card={shownPromptCard}
           send={interactiveSend}
           onDismiss={promptCardPresentation.dismiss}
+          onCollapse={promptCardPresentation.collapse}
           shouldFocus={isVisible && isFocusedGroup}
           answerInputRef={questionAnswerInputRef}
+        />
+      ) : promptCardPresentation.collapsedCard ? (
+        <NativeChatPromptStrip
+          card={promptCardPresentation.collapsedCard}
+          onExpand={promptCardPresentation.expand}
         />
       ) : null}
       {/* canSend reflects the mobile presence-lock: when a mobile client holds

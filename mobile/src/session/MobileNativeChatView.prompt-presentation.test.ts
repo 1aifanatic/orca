@@ -45,6 +45,7 @@ vi.mock('lucide-react-native', () =>
       'ArrowDown',
       'ArrowUp',
       'ChevronDown',
+      'ChevronUp',
       'ChevronsDownUp',
       'ChevronsUpDown',
       'ShieldQuestion',
@@ -89,14 +90,14 @@ const permission: MobileChatPermission = {
   options: [{ label: 'Deny', send: String.fromCharCode(27) }]
 }
 type Overrides = Partial<ComponentProps<typeof MobileNativeChatView>> & {
-  approvalStartedAt?: number
+  waitStartedAt?: number
   sessionKey?: string
 }
 function Harness(overrides: Overrides) {
   const shown = useMobileNativeChatPromptPresentation({
     permission: overrides.permission ?? null,
     question: overrides.question ?? null,
-    approvalStartedAt: overrides.approvalStartedAt ?? 10,
+    waitStartedAt: overrides.waitStartedAt ?? 10,
     scopeKey: 'tab-1',
     sessionKey: overrides.sessionKey ?? 'session-1',
     observing: true,
@@ -146,7 +147,7 @@ describe('terminal prompt presentation with the production view, card and compos
     await render({ permission, onRespondPermission, inputLockReason: 'disconnected' })
     await render({ permission, onRespondPermission, inputLockReason: null })
     expect(sendButton().props.disabled).toBe(false)
-    await render({ permission, onRespondPermission, approvalStartedAt: 20 })
+    await render({ permission, onRespondPermission, waitStartedAt: 20 })
     expect(sendButton().props.disabled).toBe(true)
     expect(approvalAction().props.disabled).toBe(false)
   })
@@ -175,7 +176,7 @@ describe('terminal prompt presentation with the production view, card and compos
     act(() => {
       void approvalAction().props.onPress()
     })
-    await render({ permission, onRespondPermission, approvalStartedAt: 20 })
+    await render({ permission, onRespondPermission, waitStartedAt: 20 })
     await act(async () => {
       await approvalAction().props.onPress()
     })

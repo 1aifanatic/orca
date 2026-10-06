@@ -1,9 +1,10 @@
 import { ImeInput } from '@/lib/ime-text-field'
-import { useState, type RefObject } from 'react'
-import { Check, ChevronDown, Pencil, X } from 'lucide-react'
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { Check, Pencil, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { AskAnswerSelection, AskPrompt } from './native-chat-interactive-prompt'
+import { NativeChatPromptCollapseToggle } from './NativeChatPromptCollapse'
 
 export type NativeChatQuestionCardProps = {
   prompt: AskPrompt
@@ -15,8 +16,10 @@ export type NativeChatQuestionCardProps = {
   allowOther?: boolean | readonly boolean[]
   /** Dismiss the prompt (sends Escape to the agent). */
   onCancel: () => void
-  /** Hide the card and give the input back, writing nothing; Escape does too. */
-  onHide?: () => void
+  /** Fold the card to a strip and give the input back, writing nothing; Escape does too. */
+  onCollapse?: () => void
+  /** Take focus when the card takes the input region. */
+  shouldFocus?: boolean
   /** Exposes the free-text row so pane-level Paste can target it while the
    *  card replaces the composer. */
   answerInputRef?: RefObject<HTMLInputElement | null>
@@ -41,9 +44,17 @@ export function NativeChatQuestionCard({
   onAnswer,
   allowOther = true,
   onCancel,
-  onHide,
+  onCollapse,
+  shouldFocus = false,
   answerInputRef
 }: NativeChatQuestionCardProps): React.JSX.Element {
+  const cardRef = useRef<HTMLDivElement>(null)
+  // Layout effect: focus leaves this pane's hidden composer in the commit that hides it.
+  useLayoutEffect(() => {
+    if (shouldFocus) {
+      cardRef.current?.focus()
+    }
+  }, [shouldFocus])
   const [index, setIndex] = useState(0)
   // Keep option identity by index: labels are display text and are not guaranteed
   // unique, while Claude's selector commits the numbered row (STA-1860).
@@ -164,13 +175,22 @@ export function NativeChatQuestionCard({
     // composer's width and padding, rendered as the "ask" dialog card directly
     // above the text input. Its free-text row is the answer input.
     <div
-      className="shrink-0 bg-chat-canvas"
+      ref={cardRef}
+      role="group"
+      aria-label={q.question}
+      tabIndex={-1}
+      className="shrink-0 bg-chat-canvas focus:outline-none"
       aria-busy={isSubmitting}
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && !event.nativeEvent.isComposing && onHide) {
+        if (
+          event.key === 'Escape' &&
+          !event.nativeEvent.isComposing &&
+          onCollapse &&
+          !isSubmitting
+        ) {
           event.preventDefault()
           event.stopPropagation()
-          onHide()
+          onCollapse()
         }
       }}
     >
@@ -212,15 +232,12 @@ export function NativeChatQuestionCard({
             >
               {q.question}
             </p>
-            {onHide ? (
-              <button
-                type="button"
-                onClick={onHide}
-                aria-label={translate('components.native-chat.question.hide', 'Hide')}
-                className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ChevronDown className="size-4" />
-              </button>
+            {onCollapse ? (
+              <NativeChatPromptCollapseToggle
+                expanded
+                disabled={isSubmitting}
+                onToggle={onCollapse}
+              />
             ) : null}
             <button
               type="button"

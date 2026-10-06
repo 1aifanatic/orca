@@ -35,7 +35,8 @@ vi.mock('@/runtime/runtime-terminal-inspection', async (importOriginal) => ({
 }))
 
 const { NativeChatResolvedView } = await import('./NativeChatResolvedView')
-const { clearAnsweredNativeChatPromptsForTests } = await import('./native-chat-answered-prompts')
+const { TooltipProvider } = await import('@/components/ui/tooltip')
+const { clearNativeChatPromptDismissalsForTests } = await import('./native-chat-prompt-dismissals')
 const { useAppStore } = await import('../../store')
 const { installNativeChatMessageListTestViewport } =
   await import('./native-chat-message-list-test-viewport')
@@ -49,6 +50,25 @@ const userTurn: NativeChatMessage = {
   blocks: [{ type: 'text', text: 'Clean the build' }],
   timestamp: 1,
   source: 'transcript'
+}
+
+const APPROVAL = JSON.stringify({ approval: { tool: 'Bash', summary: 'npm test' } })
+const ASK_CALL: NativeChatMessage = {
+  id: 'call-ask',
+  role: 'assistant',
+  timestamp: 2,
+  source: 'transcript',
+  blocks: [
+    {
+      type: 'tool-call',
+      name: 'AskUserQuestion',
+      input: {
+        questions: [
+          { question: 'Tabs or spaces?', multiSelect: false, options: [{ label: 'Tabs' }] }
+        ]
+      }
+    }
+  ]
 }
 
 function transcript(): NativeChatLiveSession {
@@ -66,32 +86,46 @@ function transcript(): NativeChatLiveSession {
   }
 }
 
-function setStatus(payload: Omit<AgentStatusPayload, 'prompt' | 'agentType'>): void {
+function setStatus(
+  payload: Omit<AgentStatusPayload, 'prompt' | 'agentType'>,
+  stateStartedAt?: number
+): void {
   useAppStore
     .getState()
-    .setAgentStatus(paneKey, { prompt: 'Clean the build', agentType: 'claude', ...payload })
+    .setAgentStatus(
+      paneKey,
+      { prompt: 'Clean the build', agentType: 'claude', ...payload },
+      undefined,
+      stateStartedAt === undefined ? undefined : { stateStartedAt }
+    )
 }
 
 function renderPane(targetPtyId = 'pty-card'): ReturnType<typeof render> {
-  return render(
-    <NativeChatResolvedView
-      paneKey={paneKey}
-      agent="claude"
-      sessionId="session-card"
-      transcriptPath={null}
-      isVisible
-      isFocusedGroup
-      targetPtyId={targetPtyId}
-      terminalTabId="tab-card"
-      ownsTabWideLaunchDraft={false}
-    />
+  return render(paneElement(targetPtyId))
+}
+
+function paneElement(targetPtyId = 'pty-card'): React.JSX.Element {
+  return (
+    <TooltipProvider>
+      <NativeChatResolvedView
+        paneKey={paneKey}
+        agent="claude"
+        sessionId="session-card"
+        transcriptPath={null}
+        isVisible
+        isFocusedGroup
+        targetPtyId={targetPtyId}
+        terminalTabId="tab-card"
+        ownsTabWideLaunchDraft={false}
+      />
+    </TooltipProvider>
   )
 }
 
 beforeEach(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
   composer.mounts = 0
-  clearAnsweredNativeChatPromptsForTests()
+  clearNativeChatPromptDismissalsForTests()
   ptyInput.verified.mockReset()
   useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
   retained.session = transcript()
@@ -195,5 +229,56 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     renderPane('pty-card-reconnected')
     expect(document.querySelector('[data-native-chat-approval-card="true"]')).toBeNull()
     expect(ptyInput.verified).toHaveBeenCalledOnce()
+  })
+
+  it('collapses to a strip that frees the composer, and expanding gives the card the input back', () => {
+    setStatus({ state: 'waiting', interactivePrompt: APPROVAL })
+    renderPane()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+
+    expect(document.querySelector('[data-native-chat-approval-card="true"]')).toBeNull()
+    expect(document.querySelector('[data-native-chat-prompt-strip="true"]')).toHaveTextContent(
+      'Allow Bash?'
+    )
+    expect(screen.queryAllByText(/Awaiting user input/)).toHaveLength(0)
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(document.activeElement).toBe(
+      document.querySelector('[data-native-chat-approval-card="true"]')
+    )
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).not.toBeNull()
+    expect(ptyInput.verified).not.toHaveBeenCalled()
+  })
+
+  it('shows an identical question again in a new wait that arrived while the view was unmounted', () => {
+    const question = JSON.stringify({
+      questions: [{ question: 'Continue?', multiSelect: false, options: [{ label: 'Yes' }] }]
+    })
+    const ask = {
+      state: 'waiting',
+      toolName: 'AskUserQuestion',
+      interactivePrompt: question
+    } as const
+    setStatus(ask, 100)
+    const first = renderPane()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+    first.unmount()
+    setStatus({ state: 'working' }, 200)
+    setStatus(ask, 300)
+    renderPane()
+    expect(screen.getByTestId('native-chat-question-card-title')).toHaveTextContent('Continue?')
+  })
+
+  it('keeps a collapsed transcript question collapsed while the transcript re-reads', () => {
+    const withAsk = { ...transcript(), messages: [userTurn, ASK_CALL] }
+    retained.session = withAsk
+    setStatus({ state: 'waiting' })
+    const view = renderPane()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+    retained.session = { ...withAsk, messages: [], readPhase: 'loading' }
+    view.rerender(paneElement())
+    retained.session = withAsk
+    view.rerender(paneElement())
+    expect(document.querySelector('[data-native-chat-prompt-strip="true"]')).not.toBeNull()
   })
 })

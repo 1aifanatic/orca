@@ -5,7 +5,7 @@ import { forgetForegroundTerminalTabs } from '@/lib/foreground-terminal-tabs'
 import { forgetAgentStartupDeliveriesForTabs } from '@/lib/agent-startup-delivery-guards'
 // Why: the store-free registry (not terminal-parked-tab-watchers, which imports @/store) so a slice can import this module during its own evaluation.
 import { retireParkedTerminalTab } from '@/components/terminal-pane/terminal-parked-watcher-registry'
-import { forgetAnsweredNativeChatPromptsForTab } from '@/components/native-chat/native-chat-answered-prompts'
+import { forgetNativeChatPromptDismissalsForTab } from '@/components/native-chat/native-chat-prompt-dismissals'
 import { retireAgentPaneAuthorityAliasesByOwnerTab } from './agent-pane-authority'
 import {
   buildAgentStatusTabPrefixDropPatch,
@@ -47,7 +47,7 @@ export function sweepRetiredTerminalTabState(
   actions.clearPaneForegroundAgentByTabPrefix(tabId)
   // Why: retirement permanently retires the tab's panes (a reopen mints a fresh leafId), so drop hibernation output epochs to keep the module map from growing forever.
   forgetAgentHibernationTabOutput(tabId)
-  forgetAnsweredNativeChatPromptsForTab(tabId)
+  forgetNativeChatPromptDismissalsForTab(tabId)
   // Why: same rationale — retired tab ids never recur, so drop the foreground last-seen and consumed agent-startup delivery guards.
   forgetForegroundTerminalTabs([tabId])
   forgetAgentStartupDeliveriesForTabs([tabId])
@@ -98,7 +98,7 @@ export function buildRetiredTerminalTabStateSweepPatch(
     swept = { ...swept, ...patch, ...foreground }
     if (!opts?.paneKeys) {
       forgetAgentHibernationTabOutput(tabId)
-      forgetAnsweredNativeChatPromptsForTab(tabId)
+      forgetNativeChatPromptDismissalsForTab(tabId)
     }
   }
   if (!opts?.paneKeys) {

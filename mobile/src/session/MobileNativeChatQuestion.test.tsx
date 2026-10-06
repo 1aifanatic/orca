@@ -15,6 +15,7 @@ vi.mock('lucide-react-native', () => ({
   ArrowUp: 'ArrowUp',
   Check: 'Check',
   ChevronDown: 'ChevronDown',
+  ChevronUp: 'ChevronUp',
   CircleHelp: 'CircleHelp',
   X: 'X'
 }))

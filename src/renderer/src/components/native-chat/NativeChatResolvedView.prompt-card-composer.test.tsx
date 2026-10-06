@@ -81,11 +81,12 @@ vi.mock('./NativeChatComposer', async () => {
 })
 
 const { NativeChatResolvedView } = await import('./NativeChatResolvedView')
+const { TooltipProvider } = await import('@/components/ui/tooltip')
 const { useAppStore } = await import('../../store')
 const { installNativeChatMessageListTestViewport } =
   await import('./native-chat-message-list-test-viewport')
 const { resetNativeChatPtySendQueuesForTests } = await import('./native-chat-runtime-send')
-const { clearAnsweredNativeChatPromptsForTests } = await import('./native-chat-answered-prompts')
+const { clearNativeChatPromptDismissalsForTests } = await import('./native-chat-prompt-dismissals')
 
 const paneKey = 'tab-hidden:leaf-hidden'
 const approval = JSON.stringify({ approval: { tool: 'Bash', summary: 'npm test' } })
@@ -107,17 +108,19 @@ function setStatus(payload: Omit<AgentStatusPayload, 'prompt' | 'agentType'>): v
 
 function renderPane(): void {
   render(
-    <NativeChatResolvedView
-      paneKey={paneKey}
-      agent="claude"
-      sessionId="session-hidden"
-      transcriptPath={null}
-      isVisible
-      isFocusedGroup
-      targetPtyId="pty-hidden"
-      terminalTabId="tab-hidden"
-      ownsTabWideLaunchDraft={false}
-    />
+    <TooltipProvider>
+      <NativeChatResolvedView
+        paneKey={paneKey}
+        agent="claude"
+        sessionId="session-hidden"
+        transcriptPath={null}
+        isVisible
+        isFocusedGroup
+        targetPtyId="pty-hidden"
+        terminalTabId="tab-hidden"
+        ownsTabWideLaunchDraft={false}
+      />
+    </TooltipProvider>
   )
 }
 
@@ -132,7 +135,7 @@ function rootElement(): Element {
 beforeEach(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
   resetNativeChatPtySendQueuesForTests()
-  clearAnsweredNativeChatPromptsForTests()
+  clearNativeChatPromptDismissalsForTests()
   composer.mounts = 0
   composer.typed.mockReset().mockReturnValue(true)
   pty.verified.mockReset().mockResolvedValue(true)
@@ -179,6 +182,8 @@ describe('a prompt card hides the composer without unmounting it', () => {
 
     expect(document.querySelector('[data-native-chat-approval-card="true"]')).not.toBeNull()
     expect(pty.verified.mock.calls.map((call) => call[2])).not.toContain('\r')
+    // Only the pre-body clear: retiring the send types nothing under the card.
+    expect(pty.raw.mock.calls.map((call) => call[2])).toEqual(['\x15'])
     expect(screen.getByTestId('composer-send').closest('[hidden]')).not.toBeNull()
     expect(screen.getAllByText(MESSAGE).length).toBeGreaterThan(0)
     expect(screen.getByText('Message not sent')).toBeInTheDocument()

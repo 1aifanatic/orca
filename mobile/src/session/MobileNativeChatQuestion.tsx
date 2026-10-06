@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { ArrowUp, Check, CircleHelp } from 'lucide-react-native'
-import { MobileNativeChatCardHeaderAction } from './MobileNativeChatCardHeaderAction'
+import { MobileNativeChatCardHeaderAction } from './MobileNativeChatPromptCollapse'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import { mobileNativeChatInputStyles } from './mobile-native-chat-input-styles'
 import {
@@ -15,8 +15,8 @@ type Props = {
   question: MobileChatQuestion
   onAnswer: (text: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatQuestion['prompt']>) => Promise<boolean>
-  /** Hide the card and free Send, writing nothing. */
-  onHide?: () => void
+  /** Fold the card to a strip and free Send, writing nothing. */
+  onCollapse?: () => void
 }
 
 /** Renders an agent's choice prompt as a tappable card. Single-select answers
@@ -27,7 +27,7 @@ export function MobileNativeChatQuestion({
   question,
   onAnswer,
   onCancel,
-  onHide
+  onCollapse
 }: Props): React.JSX.Element {
   const [selectedOptionIndexes, setSelectedOptionIndexes] = useState<number[]>([])
   const [freeText, setFreeText] = useState('')
@@ -115,7 +115,7 @@ export function MobileNativeChatQuestion({
         <MobileNativeChatCardHeaderAction
           prompt={question.prompt}
           onCancel={onCancel}
-          onHide={onHide}
+          onCollapse={onCollapse}
           disabled={sending}
         />
       </View>

@@ -36,12 +36,13 @@ vi.mock('../../store', () => ({
 }))
 
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
 import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
-import { clearAnsweredNativeChatPromptsForTests } from './native-chat-answered-prompts'
+import { clearNativeChatPromptDismissalsForTests } from './native-chat-prompt-dismissals'
 
 // Answered occurrences outlive a view by design; each test starts with none.
-beforeEach(clearAnsweredNativeChatPromptsForTests)
+beforeEach(clearNativeChatPromptDismissalsForTests)
 
 const mocks = {
   sendAnswer: vi.fn<NativeChatInteractiveSend['sendAnswer']>(),
@@ -98,15 +99,20 @@ function CardHarness({
     card,
     canSend
   })
-  return presentation.card ? (
-    <NativeChatInteractiveCard
-      key={presentation.occurrenceKey ?? 'prompt'}
-      card={presentation.card}
-      onDismiss={presentation.dismiss}
-      send={SEND}
-    />
-  ) : (
-    <div data-testid="composer" />
+  return (
+    <TooltipProvider>
+      {presentation.card ? (
+        <NativeChatInteractiveCard
+          key={presentation.occurrenceKey ?? 'prompt'}
+          card={presentation.card}
+          onDismiss={presentation.dismiss}
+          onCollapse={presentation.collapse}
+          send={SEND}
+        />
+      ) : (
+        <div data-testid="composer" />
+      )}
+    </TooltipProvider>
   )
 }
 
@@ -246,14 +252,14 @@ describe('NativeChatInteractiveCard approvals', () => {
     expect(composerShown()).toBe(false)
   })
 
-  it.each(['Escape', 'Hide'])(
-    'hides the approval on %s without writing, until a new wait shows it again',
+  it.each(['Escape', 'Collapse'])(
+    'collapses the approval on %s without writing, until a new wait shows it again',
     (gesture) => {
       const rendered = render(cardElement())
       if (gesture === 'Escape') {
         fireEvent.keyDown(screen.getByRole('group'), { key: 'Escape' })
       } else {
-        fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
       }
       expect(composerShown()).toBe(true)
       expect(mocks.sendRawVerified).not.toHaveBeenCalled()
@@ -302,16 +308,26 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
     expect(composerShown()).toBe(true)
   })
 
-  it.each(['Escape', 'Hide'])('hides the question on %s without writing', (gesture) => {
+  it.each(['Escape', 'Collapse'])('collapses the question on %s without writing', (gesture) => {
     render(cardElement())
     if (gesture === 'Escape') {
       fireEvent.keyDown(screen.getByTestId('native-chat-question-card-title'), { key: 'Escape' })
     } else {
-      fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
     }
     expect(composerShown()).toBe(true)
     expect(mocks.cancelAsk).not.toHaveBeenCalled()
     expect(mocks.sendAnswer).not.toHaveBeenCalled()
+  })
+
+  it('cannot collapse a question while its answer is still being written', () => {
+    mocks.sendAnswer.mockReturnValue({ settleAfterMs: 5_000 })
+    render(cardElement())
+    chooseSpacesAndSubmit()
+    expect(screen.getByRole('button', { name: 'Collapse' })).toBeDisabled()
+    fireEvent.keyDown(screen.getByTestId('native-chat-question-card-title'), { key: 'Escape' })
+    expect(composerShown()).toBe(false)
+    expect(mocks.cancelPending).not.toHaveBeenCalled()
   })
 
   it('keeps the question when its Cancel was not delivered', async () => {

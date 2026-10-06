@@ -11,21 +11,24 @@ import type { NativeChatInteractiveSend } from './use-native-chat-interactive-se
  * cancel/deny as ESC. Unmount cancels scheduled writes and ignores late results; writes already
  * issued to the transport cannot be recalled.
  *
- * The card hides (`onDismiss`) once its answer was delivered, or when the user hides it (writing
- * nothing): a refused or unconfirmed answer keeps the choices up to answer again.
+ * The card hides (`onDismiss`) only once its answer was delivered: a refused or unconfirmed
+ * answer keeps the choices up, so the user can answer again here or in the terminal.
  */
 export function NativeChatInteractiveCard({
   card,
   send,
   onDismiss,
+  onCollapse,
   shouldFocus = false,
   answerInputRef
 }: {
   card: NonNullable<InteractivePromptCard>
   send: NativeChatInteractiveSend
-  /** Hide this occurrence: after its answer was acknowledged, or when the user hides it. */
+  /** Hide this occurrence after its answer write was acknowledged. */
   onDismiss: () => void
-  /** Move focus to an approval card, which has no text input of its own. */
+  /** Fold this occurrence to a strip above the composer, writing nothing. */
+  onCollapse?: () => void
+  /** Take focus when the card takes the input region from the composer. */
   shouldFocus?: boolean
   /** Forwarded to the question card's free-text row so pane-level Paste keeps
    *  a target while the composer is unmounted. */
@@ -87,7 +90,8 @@ export function NativeChatInteractiveCard({
           }
           setSubmitting(true)
         }}
-        onHide={onDismiss}
+        onCollapse={onCollapse}
+        shouldFocus={shouldFocus}
         onCancel={() => {
           if (cancellingRef.current) {
             return
@@ -138,7 +142,7 @@ export function NativeChatInteractiveCard({
       shouldFocus={shouldFocus}
       isSubmitting={submitting}
       onChoose={choose}
-      onHide={onDismiss}
+      onCollapse={onCollapse}
     />
   )
 }
