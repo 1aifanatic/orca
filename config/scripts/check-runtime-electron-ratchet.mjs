@@ -56,9 +56,6 @@ export function collectStructuredChatEntryPoints(root = ROOT) {
   return STRUCTURED_CHAT_LANES.flatMap((lane) => {
     const directory = path.join(root, ...lane.directory)
     if (!existsSync(directory)) {
-      if (lane.mayBeAbsent) {
-        return []
-      }
       throw new Error(
         `[runtime-electron-ratchet] ${lane.directory.join('/')} is missing. If it moved, update STRUCTURED_CHAT_LANES; otherwise the gate would silently check nothing there.`
       )
