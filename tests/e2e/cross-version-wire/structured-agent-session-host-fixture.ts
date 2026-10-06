@@ -95,7 +95,8 @@ export function structuredHostStub(
     // opens empty and a subscriber that was away has missed what passed.
     subscribeTurnCompletions: vi.fn(() => () => undefined),
     unsubscribe: vi.fn(),
-    agentDefinitions: vi.fn(() => [CODEX_STRUCTURED_AGENT])
+    agentDefinitions: vi.fn(() => [CODEX_STRUCTURED_AGENT]),
+    knownAgentIds: vi.fn(() => [CODEX_STRUCTURED_AGENT.agent])
   }
 }
 
