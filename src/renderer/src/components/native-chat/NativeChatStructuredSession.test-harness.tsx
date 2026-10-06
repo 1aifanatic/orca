@@ -146,7 +146,6 @@ export function createStructuredSessionMocks() {
       afterStop?: 'queue' | 'send'
       steerQueued?: () => boolean
       onStop?: () => void
-      steerQueued?: () => boolean
     }>(),
     approvalCardProps: initialApprovalCardProps,
     questionCardProps: null as NativeChatQuestionCardProps | null,
