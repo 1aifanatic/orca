@@ -11,6 +11,7 @@ import {
   resolveBrowserHostReconnectDelay
 } from './browser-host-lease-reconnect-delay'
 import { reconnectBrowserHostLeaseUntil } from './browser-host-lease-reconnect-attempts'
+import { browserHostLeaseContactLost } from './browser-host-lease-contact-loss'
 import { requireBrowserHostLeaseSendRequest } from './browser-host-lease-request-sender'
 import { submitBrowserHostCommandResult } from './browser-host-command-result-submission'
 import {
@@ -176,7 +177,7 @@ export class PairedRuntimeBrowserHostLease {
     const reconnecting = this.reconnectUntil(Date.now() + this.reconnectGraceMs)
     this.reconnectPromise = reconnecting
     void reconnecting
-      .catch((reconnectError) => this.failTerminal(asError(reconnectError)))
+      .catch((reconnectError) => this.failTerminal(browserHostLeaseContactLost(reconnectError)))
       .finally(() => {
         if (this.reconnectPromise === reconnecting) {
           this.reconnectPromise = null

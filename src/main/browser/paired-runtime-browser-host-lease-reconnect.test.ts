@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { isBrowserHostLeaseContactLost } from './browser-host-lease-contact-loss'
 import type { PairingOffer } from '../../shared/pairing'
 import type {
   RemoteRuntimeSubscription,
@@ -405,6 +406,8 @@ describe('PairedRuntimeBrowserHostLease reconnect', () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining('reconnect grace expired') })
     )
+    // Marked as lost contact, which the owner parks on instead of tearing the pages down.
+    expect(isBrowserHostLeaseContactLost(onError.mock.calls[0]![0])).toBe(true)
     expect(attempts.every((attempt) => attempt.close.mock.calls.length === 1)).toBe(true)
     expect(vi.getTimerCount()).toBe(0)
   })

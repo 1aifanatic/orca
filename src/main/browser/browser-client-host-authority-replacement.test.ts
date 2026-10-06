@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { BROWSER_CLIENT_HOST_AUTHORITY_MISMATCH_CODE } from '../../shared/browser-client-host-protocol'
 import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
-import { BrowserClientHostAuthorityReplacementWait } from './browser-client-host-authority-replacement-wait'
 
 function errorWithCode(message: string, code: unknown): Error {
   return Object.assign(new Error(message), { code })
@@ -70,79 +69,5 @@ describe('browser client host authority replacement', () => {
     expect(BROWSER_CLIENT_HOST_AUTHORITY_MISMATCH_CODE).toBe(
       'browser_client_host_authority_mismatch'
     )
-  })
-})
-
-describe('BrowserClientHostAuthorityReplacementWait', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('expires exactly once, at the grace deadline', () => {
-    const wait = new BrowserClientHostAuthorityReplacementWait(1_000)
-    const expire = vi.fn()
-
-    wait.arm(expire)
-
-    expect(wait.armed).toBe(true)
-    vi.advanceTimersByTime(999)
-    expect(expire).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(expire).toHaveBeenCalledOnce()
-    expect(wait.armed).toBe(false)
-    vi.advanceTimersByTime(10_000)
-    expect(expire).toHaveBeenCalledOnce()
-  })
-
-  // A replaced runtime typically produces a burst of mismatch errors, one per in-flight attach.
-  // Re-arming per error would push the deadline out indefinitely, which is the unbounded hold the
-  // class exists to prevent.
-  it('keeps the first deadline when armed again while already armed', () => {
-    const wait = new BrowserClientHostAuthorityReplacementWait(1_000)
-    const first = vi.fn()
-    const second = vi.fn()
-
-    wait.arm(first)
-    vi.advanceTimersByTime(900)
-    wait.arm(second)
-    vi.advanceTimersByTime(100)
-
-    expect(first).toHaveBeenCalledOnce()
-    expect(second).not.toHaveBeenCalled()
-  })
-
-  it('never expires after a cancel', () => {
-    const wait = new BrowserClientHostAuthorityReplacementWait(1_000)
-    const expire = vi.fn()
-    wait.arm(expire)
-
-    wait.cancel()
-
-    expect(wait.armed).toBe(false)
-    vi.advanceTimersByTime(10_000)
-    expect(expire).not.toHaveBeenCalled()
-  })
-
-  it('is re-armable after a cancel and after an expiry', () => {
-    const wait = new BrowserClientHostAuthorityReplacementWait(1_000)
-    const cancelled = vi.fn()
-    const rearmed = vi.fn()
-    wait.arm(cancelled)
-    wait.cancel()
-
-    wait.arm(rearmed)
-    vi.advanceTimersByTime(1_000)
-
-    expect(cancelled).not.toHaveBeenCalled()
-    expect(rearmed).toHaveBeenCalledOnce()
-
-    const afterExpiry = vi.fn()
-    wait.arm(afterExpiry)
-    vi.advanceTimersByTime(1_000)
-    expect(afterExpiry).toHaveBeenCalledOnce()
   })
 })

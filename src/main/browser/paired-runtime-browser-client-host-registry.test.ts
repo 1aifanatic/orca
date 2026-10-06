@@ -80,6 +80,60 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
     expect(replacement.start).toHaveBeenCalledOnce()
   })
 
+  it('asks a parked environment to re-attach when a start names its current runtime', async () => {
+    const composition = createComposition()
+    const registry = new PairedRuntimeBrowserClientHostRegistry({
+      createComposition: vi.fn(() => composition)
+    })
+    await registry.start(input(11))
+    composition.parked = true
+
+    await expect(registry.start(input(11))).resolves.toEqual(authority)
+
+    expect(composition.resume).toHaveBeenCalledOnce()
+    expect(composition.start).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a parked environment registered when its re-attach fails', async () => {
+    const composition = createComposition()
+    composition.replaceAuthority.mockImplementationOnce(async () => {
+      composition.parked = true
+      throw new Error('remote runtime unavailable')
+    })
+    const registry = new PairedRuntimeBrowserClientHostRegistry({
+      createComposition: vi.fn(() => composition)
+    })
+    await registry.start(input(11))
+
+    await expect(registry.start(input(11, 'runtime-b'))).rejects.toThrow(
+      'remote runtime unavailable'
+    )
+
+    // Unreachable is not gone: the pages stay with the composition for the runtime's return.
+    expect(composition.close).not.toHaveBeenCalled()
+    composition.resume.mockResolvedValueOnce({ ...authority, authorityRuntimeId: 'runtime-b' })
+    await expect(registry.start(input(11, 'runtime-b'))).resolves.toEqual(
+      expect.objectContaining({ authorityRuntimeId: 'runtime-b' })
+    )
+  })
+
+  it('resumes only parked environments when a trigger fires', async () => {
+    const parked = createComposition()
+    const live = createComposition()
+    const registry = new PairedRuntimeBrowserClientHostRegistry({
+      createComposition: vi.fn().mockReturnValueOnce(parked).mockReturnValueOnce(live)
+    })
+    await registry.start(input(11))
+    await registry.start({ ...input(11), environmentId: 'environment-b' })
+    parked.parked = true
+
+    await registry.resumeParked()
+    await registry.resumeParked('environment-b')
+
+    expect(parked.resume).toHaveBeenCalledOnce()
+    expect(live.resume).not.toHaveBeenCalled()
+  })
+
   it('blocks replacement when the old host cannot prove handler settlement', async () => {
     const cleanup = deferred<void>()
     const first = createComposition(undefined, undefined, undefined, false, cleanup.promise)
@@ -169,12 +223,15 @@ function createComposition(
   closed = Promise.resolve()
 ) {
   return {
+    parked: false,
     start: vi.fn(async () => {
       if (order && startLabel) {
         order.push(startLabel)
       }
       return authority
     }),
+    resume: vi.fn(async () => authority),
+    park: vi.fn(),
     replaceAuthority: vi.fn(async () => ({ ...authority, authorityRuntimeId: 'runtime-b' })),
     retirePage: vi.fn(async () => true),
     close: vi.fn(async () => {

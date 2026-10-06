@@ -4,7 +4,7 @@ import type {
   BrowserClientHostCommandEvent,
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
-import { BrowserClientHostAuthorityReplacementWait } from './browser-client-host-authority-replacement-wait'
+import { BrowserHostLeaseContactLostError } from './browser-host-lease-contact-loss'
 import { BROWSER_CLIENT_HOST_AUTHORITY_MISMATCH_CODE } from '../../shared/browser-client-host-protocol'
 import { PairedRuntimeBrowserClientHostComposition } from './paired-runtime-browser-client-host-composition'
 
@@ -284,7 +284,23 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     await composition.whenClosed()
   })
 
-  it('waits out the grace instead of tearing down when the authority was replaced', async () => {
+  it('parks instead of tearing down when the lease loses contact', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+
+    rig.hostOptions.onError?.(contactLostError())
+
+    // Losing contact says nothing about the pages: they stay live and their routes stay suspended.
+    expect(composition.parked).toBe(true)
+    expect(rig.onError).not.toHaveBeenCalled()
+    expect(rig.executor.close).not.toHaveBeenCalled()
+    expect(rig.routes.close).not.toHaveBeenCalled()
+    expect(rig.order).toEqual(['activate-routes', 'suspend-routes', 'close-host'])
+    await composition.close()
+  })
+
+  it('parks when the runtime it named was replaced, with no deadline of its own', async () => {
     vi.useFakeTimers()
     try {
       const rig = createRig()
@@ -292,112 +308,175 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
       await composition.start()
 
       rig.hostOptions.onError?.(authorityReplacedError())
+      vi.advanceTimersByTime(10 * 60_000)
 
-      // The guests are alive and still ours; the replacement runtime is on its way to reclaim them.
-      expect(rig.authorityReplacementWait.armed).toBe(true)
+      expect(composition.parked).toBe(true)
       expect(rig.onError).not.toHaveBeenCalled()
-      expect(rig.order).toEqual(['activate-routes'])
+      expect(rig.order).not.toContain('closing')
+      await composition.close()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('tears the composition down once the grace expires with no replacement', async () => {
+  it('still tears down immediately for a host error that is not lost contact', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+    const fatal = new Error('Stale browser host page command')
+
+    rig.hostOptions.onError?.(fatal)
+
+    expect(composition.parked).toBe(false)
+    expect(rig.onError).toHaveBeenCalledWith(fatal)
+    await composition.whenClosed()
+  })
+
+  it('re-attaches a parked composition once per trigger, sharing concurrent triggers', async () => {
+    const rig = createRig({
+      initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
+    })
+    const composition = rig.createComposition()
+    await composition.start()
+    rig.hostOptions.onError?.(contactLostError())
+
+    const first = composition.resume()
+    const second = composition.resume()
+
+    expect(second).toBe(first)
+    await first
+    expect(rig.hosts).toHaveLength(2)
+    expect(composition.parked).toBe(false)
+    // A runtime that can rekey kept guests gets them back in place: nothing is released or closed.
+    expect(rig.executor.retirePage).not.toHaveBeenCalled()
+    expect(rig.executor.close).not.toHaveBeenCalled()
+    expect(rig.order.slice(3)).toEqual([
+      'retire-routes',
+      'fence-authority-transition',
+      'close-host',
+      'complete-authority-transition',
+      'activate-routes'
+    ])
+  })
+
+  it('leaves a live composition alone when a trigger fires', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+
+    await composition.resume()
+
+    expect(rig.hosts).toHaveLength(1)
+  })
+
+  it('frees kept guests before re-attaching to a runtime that cannot rekey them', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+    rig.hostOptions.onError?.(contactLostError())
+
+    await composition.resume()
+
+    // The older runtime recreates each page at its last URL; a kept guest would be placed nowhere.
+    expect(rig.order.indexOf('retire-executor-page')).toBeLessThan(
+      rig.order.indexOf('complete-authority-transition')
+    )
+    expect(rig.executor.close).not.toHaveBeenCalled()
+  })
+
+  it('stays parked when a re-attach fails, and the next trigger tries again', async () => {
+    const rig = createRig({
+      initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
+    })
+    const composition = rig.createComposition()
+    await composition.start()
+    rig.hostOptions.onError?.(contactLostError())
+    rig.failNextStart(new Error('remote runtime unavailable'))
+
+    await expect(composition.resume()).rejects.toThrow('remote runtime unavailable')
+
+    expect(composition.parked).toBe(true)
+    expect(rig.onError).not.toHaveBeenCalled()
+    expect(rig.executor.close).not.toHaveBeenCalled()
+    await expect(composition.resume()).resolves.toEqual(
+      expect.objectContaining({ authorityRuntimeId: 'runtime-a' })
+    )
+    expect(composition.parked).toBe(false)
+    expect(rig.hosts).toHaveLength(3)
+  })
+
+  it('frees parked guests after a long absence but keeps the composition for the return', async () => {
     vi.useFakeTimers()
     try {
-      const rig = createRig()
+      const rig = createRig({ parkedGuestDiscardMs: 60_000 })
       const composition = rig.createComposition()
       await composition.start()
-      const replaced = authorityReplacedError()
+      rig.hostOptions.onError?.(contactLostError())
 
-      rig.hostOptions.onError?.(replaced)
-      vi.advanceTimersByTime(1_000)
+      vi.advanceTimersByTime(59_999)
+      expect(rig.executor.retirePage).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
 
-      expect(rig.onError).toHaveBeenCalledWith(replaced)
-      expect(rig.order).toContain('closing')
-      await vi.runAllTimersAsync()
-      await composition.whenClosed()
+      expect(rig.executor.retirePage).toHaveBeenCalledWith('page-a', 7)
+      expect(composition.parked).toBe(true)
+      expect(rig.executor.close).not.toHaveBeenCalled()
+      await composition.close()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('cancels the grace when the replacement authority actually arrives', async () => {
+  it('stops the discard timer once the runtime is back', async () => {
     vi.useFakeTimers()
     try {
-      const rig = createRig()
+      const rig = createRig({
+        parkedGuestDiscardMs: 60_000,
+        initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
+      })
       const composition = rig.createComposition()
       await composition.start()
-      rig.hostOptions.onError?.(authorityReplacedError())
+      rig.hostOptions.onError?.(contactLostError())
 
-      await composition.replaceAuthority(replacementInput)
+      await composition.resume()
+      vi.advanceTimersByTime(120_000)
 
-      // Released at the transition, not merely ignored when it fires: a deadline left running holds
-      // a timer for the whole grace and fires against a composition that has already moved on.
-      expect(rig.authorityReplacementWait.armed).toBe(false)
-      vi.advanceTimersByTime(10_000)
-      expect(rig.onError).not.toHaveBeenCalled()
+      expect(rig.executor.retirePage).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('cancels the grace when the composition closes for another reason', async () => {
+  it('releases a parked composition and its timer on close', async () => {
     vi.useFakeTimers()
     try {
-      const rig = createRig()
+      const rig = createRig({ parkedGuestDiscardMs: 60_000 })
       const composition = rig.createComposition()
       await composition.start()
-      rig.hostOptions.onError?.(authorityReplacedError())
+      rig.hostOptions.onError?.(contactLostError())
 
       await composition.close()
+      vi.advanceTimersByTime(120_000)
 
-      expect(rig.authorityReplacementWait.armed).toBe(false)
-      vi.advanceTimersByTime(10_000)
-      // A grace that fired after close would report a second, bogus failure for a dead composition.
-      expect(rig.onError).not.toHaveBeenCalled()
+      expect(composition.parked).toBe(false)
+      expect(rig.executor.close).toHaveBeenCalledOnce()
+      expect(rig.executor.retirePage).not.toHaveBeenCalled()
+      await expect(composition.resume()).rejects.toThrow('composition_closed')
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('arms one deadline for a burst of mismatch errors', async () => {
-    vi.useFakeTimers()
-    try {
-      const rig = createRig()
-      const composition = rig.createComposition()
-      await composition.start()
+  it('does not refresh inventory through a parked lease', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+    rig.hostOptions.onError?.(contactLostError())
 
-      rig.hostOptions.onError?.(authorityReplacedError())
-      vi.advanceTimersByTime(900)
-      rig.hostOptions.onError?.(authorityReplacedError())
-      vi.advanceTimersByTime(100)
+    rig.reportPageUnavailable()
 
-      expect(rig.onError).toHaveBeenCalledTimes(1)
-      await vi.runAllTimersAsync()
-      await composition.whenClosed()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('still tears down immediately for a host error that is not a replacement', async () => {
-    vi.useFakeTimers()
-    try {
-      const rig = createRig()
-      const composition = rig.createComposition()
-      await composition.start()
-      const fatal = new Error('browser host process exited')
-
-      rig.hostOptions.onError?.(fatal)
-
-      expect(rig.authorityReplacementWait.armed).toBe(false)
-      expect(rig.onError).toHaveBeenCalledWith(fatal)
-      await vi.runAllTimersAsync()
-      await composition.whenClosed()
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(rig.host.refreshPageInventory).not.toHaveBeenCalled()
+    expect(rig.onError).not.toHaveBeenCalled()
+    await composition.close()
   })
 
   it('fails closed without racing page cleanup when handlers do not settle', async () => {
@@ -478,12 +557,12 @@ function createRig(
     pageInventory?: readonly BrowserClientHostedPageInventory[]
     replacementAuthority?: BrowserClientHostLeaseAuthority
     routeRetireError?: Error
-    authorityReplacementGraceMs?: number
+    initialAuthority?: BrowserClientHostLeaseAuthority
+    parkedGuestDiscardMs?: number
   } = {}
 ) {
-  const authorityReplacementWait = new BrowserClientHostAuthorityReplacementWait(
-    options.authorityReplacementGraceMs ?? 1_000
-  )
+  const initialAuthority = options.initialAuthority ?? authority
+  const startFailures: Error[] = []
   const order: string[] = []
   let onPageUnavailable = (_browserPageId: string, _pageHostGeneration: number): void => {}
   let settleHandlers = (): void => {}
@@ -558,9 +637,13 @@ function createRig(
   let replacementInventory: readonly unknown[] = []
   const makeHost = (callbacks: HostOptions, replacement: boolean) => ({
     start: vi.fn(async () => {
+      const failure = startFailures.shift()
+      if (failure) {
+        throw failure
+      }
       const nextAuthority = replacement
         ? (options.replacementAuthority ?? replacementAuthority)
-        : authority
+        : initialAuthority
       if (replacement) {
         replacementInventory = callbacks.getPageInventory?.() ?? []
         order.push('attach-replacement-inventory')
@@ -586,7 +669,7 @@ function createRig(
   const onError = vi.fn()
   return {
     order,
-    authorityReplacementWait,
+    failNextStart: (error: Error) => startFailures.push(error),
     routes,
     replacementRoutes,
     executor,
@@ -610,7 +693,7 @@ function createRig(
         createRoutes: (input, nextAuthority) => {
           const replacement = input === replacementInput
           expect(nextAuthority).toEqual(
-            replacement ? (options.replacementAuthority ?? replacementAuthority) : authority
+            replacement ? (options.replacementAuthority ?? replacementAuthority) : initialAuthority
           )
           order.push(replacement ? 'activate-replacement-routes' : 'activate-routes')
           return replacement ? replacementRoutes : routes
@@ -629,10 +712,18 @@ function createRig(
         onClosing: () => {
           order.push('closing')
         },
-        createAuthorityReplacementWait: () => authorityReplacementWait,
+        ...(options.parkedGuestDiscardMs
+          ? { parkedGuestDiscardMs: options.parkedGuestDiscardMs }
+          : {}),
         onError
       })
   }
+}
+
+function contactLostError(): Error {
+  return new BrowserHostLeaseContactLostError(
+    new Error('Browser host lease reconnect grace expired.')
+  )
 }
 
 function authorityReplacedError(): Error {

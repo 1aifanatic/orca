@@ -92,6 +92,9 @@ export function createHarness(options: { maxPages?: number } = {}) {
       preparePage: vi.fn(async () => {
         order.push('prepare-page')
         return routeSession
+      }),
+      retargetPartitionProxy: vi.fn(async () => {
+        order.push('retarget-partition-proxy')
       })
     },
     executeAutomation: vi.fn(async () => ({ clicked: true })),

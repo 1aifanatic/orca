@@ -5,78 +5,23 @@ import type {
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
 import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
-import { BrowserClientHostAuthorityReplacementWait } from './browser-client-host-authority-replacement-wait'
+import {
+  BrowserClientHostParking,
+  releaseBrowserClientGuests,
+  warnParkedCleanup
+} from './browser-client-host-parking'
+import { isBrowserHostLeaseContactLost } from './browser-host-lease-contact-loss'
 import {
   asCompositionError,
   closeBrowserClientHostComposition
 } from './paired-runtime-browser-client-host-teardown'
-import type { BrowserClientPageNetworkRoute } from './browser-client-page-cleanup'
-import type { BrowserClientPageAuthorityIdentity as BrowserClientHostAuthorityTransitionInput } from './browser-client-page-command-executor-dependencies'
-import {
-  type ComposedBrowserClientNetworkRoutes,
-  PairedRuntimeBrowserClientHostRouteSets
-} from './paired-runtime-browser-client-host-route-sets'
-
-type ComposedPageExecutor = {
-  handle(
-    event: BrowserClientHostCommandEvent,
-    signal: AbortSignal
-  ): Promise<BrowserClientHostCommandResult>
-  retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean>
-  hasUnresolvedPage(browserPageId: string, pageHostGeneration: number): boolean
-  snapshotPageInventory(): readonly BrowserClientHostedPageInventory[]
-  beginAuthorityTransition(): void
-  completeAuthorityTransition(input: BrowserClientHostAuthorityTransitionInput): void
-  fenceNavigation(): void
-  close(): Promise<void>
-}
-
-type ComposedClientHost = {
-  start(): Promise<BrowserClientHostLeaseAuthority>
-  retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean>
-  forgetPage(browserPageId: string, pageHostGeneration: number): boolean
-  whenHandlersSettled(): Promise<void>
-  refreshPageInventory(): Promise<void>
-  close(error?: Error): Promise<boolean>
-}
-
-type ClientHostCallbacks = {
-  handler(
-    event: BrowserClientHostCommandEvent,
-    signal: AbortSignal
-  ): Promise<BrowserClientHostCommandResult>
-  onAuthority(authority: BrowserClientHostLeaseAuthority): void
-  getPageInventory(): readonly BrowserClientHostedPageInventory[]
-  onError(error: Error): void
-  onTransportLost(error: Error): void
-  onReconnected(authority: BrowserClientHostLeaseAuthority): void
-}
-
-type PairedRuntimeBrowserClientHostCompositionOptions<
-  Start extends BrowserClientHostAuthorityTransitionInput
-> = {
-  initialInput: Start
-  createRoutes(
-    input: Start,
-    authority: BrowserClientHostLeaseAuthority
-  ): ComposedBrowserClientNetworkRoutes
-  createExecutor(
-    input: Start,
-    options: {
-      retainNetworkRoute(
-        executionHostKey: string,
-        signal: AbortSignal
-      ): Promise<BrowserClientPageNetworkRoute>
-      onPageUnavailable(browserPageId: string, pageHostGeneration: number): void
-    }
-  ): ComposedPageExecutor
-  createHost(input: Start, callbacks: ClientHostCallbacks): ComposedClientHost
-  onError?: (error: Error) => void
-  /** Runs as closing begins, before teardown: the point after which this composition owns nothing. */
-  onClosing?: () => void
-  /** Injected so the grace a restart depends on is drivable; production supplies the real deadline. */
-  createAuthorityReplacementWait?: () => BrowserClientHostAuthorityReplacementWait
-}
+import { PairedRuntimeBrowserClientHostRouteSets } from './paired-runtime-browser-client-host-route-sets'
+import type {
+  BrowserClientHostAuthorityTransitionInput,
+  ComposedClientHost,
+  ComposedPageExecutor,
+  PairedRuntimeBrowserClientHostCompositionOptions
+} from './paired-runtime-browser-client-host-composition-contract'
 
 export class PairedRuntimeBrowserClientHostComposition<
   Start extends BrowserClientHostAuthorityTransitionInput
@@ -91,11 +36,27 @@ export class PairedRuntimeBrowserClientHostComposition<
   private closed = false
   private errorReported = false
   private inventoryRefreshPromise: Promise<void> | null = null
-  private readonly authorityReplacementWait: BrowserClientHostAuthorityReplacementWait
+  private readonly parking: BrowserClientHostParking<Start>
 
   constructor(private readonly options: PairedRuntimeBrowserClientHostCompositionOptions<Start>) {
-    this.authorityReplacementWait =
-      options.createAuthorityReplacementWait?.() ?? new BrowserClientHostAuthorityReplacementWait()
+    this.parking = new BrowserClientHostParking(
+      options.initialInput,
+      {
+        isClosed: () => this.closed,
+        retireLease: (input, error, releaseGuests) => this.retireLease(input, error, releaseGuests),
+        attach: (input) => {
+          this.host = this.createHost(input, true)
+          return this.host.start()
+        },
+        suspend: (error) => {
+          this.routeSets.fence(error)
+          // Why not reportCleanupError: the owner treats any report as fatal and retires.
+          void this.host.close(error).catch(warnParkedCleanup)
+        },
+        releaseGuests: () => releaseBrowserClientGuests(this.executor)
+      },
+      options.parkedGuestDiscardMs
+    )
     this.routeSets = new PairedRuntimeBrowserClientHostRouteSets({
       createRoutes: options.createRoutes,
       onRecoveryError: (error) => this.handleHostError(error),
@@ -116,21 +77,30 @@ export class PairedRuntimeBrowserClientHostComposition<
     return this.startPromise
   }
 
+  get parked(): boolean {
+    return this.parking.isParked
+  }
+
   replaceAuthority(input: Start): Promise<BrowserClientHostLeaseAuthority> {
     if (this.closed) {
       return Promise.reject(new Error('paired_runtime_browser_client_host_composition_closed'))
     }
-    const error = new Error('Browser client host runtime authority was replaced')
-    this.authorityReplacementWait.cancel()
-    this.hostGeneration += 1
-    try {
-      this.routeSets.retireCurrent(error)
-      this.executor.beginAuthorityTransition()
-    } catch (transitionError) {
-      return Promise.reject(transitionError)
-    }
-    this.startPromise = this.finishAuthorityReplacement(input, error)
+    this.startPromise = this.parking.replace(input)
     return this.startPromise
+  }
+
+  /** One re-attach attempt for a parked composition; a live one answers with its current lease. */
+  resume(): Promise<BrowserClientHostLeaseAuthority> {
+    const resumed = this.closed ? null : this.parking.resume()
+    if (resumed) {
+      this.startPromise = resumed
+    }
+    return resumed ?? this.start()
+  }
+
+  /** Holds the pages for the runtime's return; only `close` gives them up. */
+  park(error: Error): void {
+    this.parking.park(error)
   }
 
   async retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean> {
@@ -155,7 +125,7 @@ export class PairedRuntimeBrowserClientHostComposition<
   close(error = new Error('Browser client host composition is closed')): Promise<boolean> {
     if (!this.closed) {
       this.closed = true
-      this.authorityReplacementWait.cancel()
+      this.parking.dispose()
       this.hostGeneration += 1
       try {
         this.options.onClosing?.()
@@ -198,6 +168,7 @@ export class PairedRuntimeBrowserClientHostComposition<
             throw new Error('browser_client_page_reconciliation_unsupported')
           }
           this.routeSets.activate(input, authority)
+          this.parking.noteAuthority(authority)
         }
       },
       onTransportLost: (error) => {
@@ -210,42 +181,40 @@ export class PairedRuntimeBrowserClientHostComposition<
           this.routeSets.reconnect(authority)
         }
       },
-      // A replaced authority is armed rather than handled: handleHostError would close the
-      // composition and latch `errorReported`, swallowing the next genuinely fatal error.
       onError: (error) => {
-        const fatal = (): void => {
-          if (!this.closed && this.hostGeneration === generation) {
-            this.handleHostError(error)
-          }
-        }
         if (this.hostGeneration !== generation) {
           return
         }
-        if (this.closed || !isBrowserClientHostAuthorityReplaced(error)) {
-          this.handleHostError(error)
+        if (
+          !this.closed &&
+          (this.parking.isParked ||
+            isBrowserHostLeaseContactLost(error) ||
+            isBrowserClientHostAuthorityReplaced(error))
+        ) {
+          this.park(error)
           return
         }
-        this.authorityReplacementWait.arm(fatal)
+        this.handleHostError(error)
       }
     })
   }
 
-  private async finishAuthorityReplacement(
-    input: Start,
-    error: Error
-  ): Promise<BrowserClientHostLeaseAuthority> {
-    const previousHost = this.host
-    const settled = await previousHost.close(error)
-    if (!settled) {
-      await previousHost.whenHandlersSettled()
+  /** Drops the current lease and its routes but keeps the executor, so its guests survive. */
+  private async retireLease(input: Start, error: Error, releaseGuests: boolean): Promise<void> {
+    this.hostGeneration += 1
+    this.routeSets.retireCurrent(error)
+    this.executor.beginAuthorityTransition()
+    try {
+      const previousHost = this.host
+      if (!(await previousHost.close(error).catch(() => false))) {
+        await previousHost.whenHandlersSettled()
+      }
+      if (releaseGuests) {
+        await releaseBrowserClientGuests(this.executor)
+      }
+    } finally {
+      this.executor.completeAuthorityTransition(input)
     }
-    if (this.closed) {
-      throw new Error('paired_runtime_browser_client_host_composition_closed')
-    }
-    this.executor.completeAuthorityTransition(input)
-    const replacementHost = this.createHost(input, true)
-    this.host = replacementHost
-    return replacementHost.start()
   }
 
   private async handleCommand(
@@ -264,7 +233,8 @@ export class PairedRuntimeBrowserClientHostComposition<
   }
 
   private requestPageInventoryRefresh(): void {
-    if (this.closed || this.inventoryRefreshPromise) {
+    // A parked composition has no lease to refresh; its next attach carries a fresh inventory.
+    if (this.closed || this.parking.isParked || this.inventoryRefreshPromise) {
       return
     }
     const refresh = this.host.refreshPageInventory()

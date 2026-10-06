@@ -40,6 +40,7 @@ function stubExecutor(onClose: () => void) {
     completeAuthorityTransition: vi.fn(),
     fenceNavigation: vi.fn(),
     snapshotPageInventory: vi.fn(() => []),
+    releaseGuests: vi.fn(async () => {}),
     close: vi.fn(async () => {
       onClose()
     })

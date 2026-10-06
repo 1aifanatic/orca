@@ -43,10 +43,7 @@ export async function prepareBrowserRouteSessionPolicy(input: {
     })
     await proxySetup
     await session.closeAllConnections()
-    const resolved = await session.resolveProxy(PROXY_PROBE_URL)
-    if (resolved.trim() !== `SOCKS5 ${input.proxyEndpoint.host}:${input.proxyEndpoint.port}`) {
-      throw new Error('browser_route_partition_proxy_verification_failed')
-    }
+    await verifyBrowserRouteSessionProxy(session, input.proxyEndpoint)
   } catch (error) {
     await proxySetup?.catch(() => {})
     try {
@@ -62,6 +59,35 @@ export async function prepareBrowserRouteSessionPolicy(input: {
     throw error
   }
   return session
+}
+
+/**
+ * Moves a prepared partition to a replacement proxy for the same execution host: a guest kept
+ * through a lease change keeps its DOM, but its old tunnel died with the old lease. Either way it
+ * stays on a loopback SOCKS proxy, so a failure leaves requests failing, never on the local network.
+ */
+export async function retargetBrowserRouteSessionProxy(
+  session: BrowserRouteElectronSession,
+  proxyEndpoint: BrowserRouteProxyEndpoint
+): Promise<void> {
+  assertBrowserRouteProxyEndpoint(proxyEndpoint)
+  await session.setProxy({
+    mode: 'fixed_servers',
+    proxyRules: `socks5://${proxyEndpoint.host}:${proxyEndpoint.port}`,
+    proxyBypassRules: '<-loopback>'
+  })
+  await session.closeAllConnections()
+  await verifyBrowserRouteSessionProxy(session, proxyEndpoint)
+}
+
+async function verifyBrowserRouteSessionProxy(
+  session: BrowserRouteElectronSession,
+  proxyEndpoint: BrowserRouteProxyEndpoint
+): Promise<void> {
+  const resolved = await session.resolveProxy(PROXY_PROBE_URL)
+  if (resolved.trim() !== `SOCKS5 ${proxyEndpoint.host}:${proxyEndpoint.port}`) {
+    throw new Error('browser_route_partition_proxy_verification_failed')
+  }
 }
 
 export function assertBrowserRouteProxyEndpoint(

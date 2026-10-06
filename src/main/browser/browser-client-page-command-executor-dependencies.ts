@@ -32,7 +32,7 @@ export type BrowserClientPageCommandExecutorDependencies = BrowserClientPageAuth
     signal: AbortSignal
   ): Promise<BrowserClientPageNetworkRoute>
   selectRenderer(): BrowserClientPageRenderer
-  routeSessions: Pick<BrowserRouteSessionRegistry, 'preparePage'>
+  routeSessions: Pick<BrowserRouteSessionRegistry, 'preparePage' | 'retargetPartitionProxy'>
   routeWebContents: BrowserClientPageLifecycleRegistry
   guestBinding: BrowserClientPageGuestBinding
   executeAutomation(

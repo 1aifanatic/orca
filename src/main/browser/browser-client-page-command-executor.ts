@@ -107,9 +107,10 @@ export class BrowserClientPageCommandExecutor {
       case 'restorePage':
         return executeBrowserClientPageReconciliationCommand(
           {
+            // routeWebContents, routeSessions and retainNetworkRoute come straight from here.
+            ...this.dependencies,
             pages: this.pages,
             failedPages: this.failedPages,
-            routeWebContents: this.dependencies.routeWebContents,
             assertAvailable: () =>
               this.navigationFence.assertAvailable(this.closed || this.authorityTransitioning),
             createPage: (command, commandSignal) => this.createPage(command, commandSignal),

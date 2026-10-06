@@ -3,9 +3,8 @@ import { BROWSER_CLIENT_HOST_AUTHORITY_MISMATCH_CODE } from '../../shared/browse
 /**
  * True when a lease failed because the runtime it named has been replaced by a newer one.
  *
- * This is the restart signal, and it is the one host error that must not retire the environment:
- * the webview guests are still alive and still ours, and the replacement authority arrives moments
- * later to reclaim them. Every other host error means the host itself is unusable.
+ * This is the restart signal: the webview guests are still alive and still ours, and the
+ * replacement authority arrives later to reclaim them, so the composition parks for it.
  */
 export function isBrowserClientHostAuthorityReplaced(error: unknown): boolean {
   if (!(error instanceof Error)) {

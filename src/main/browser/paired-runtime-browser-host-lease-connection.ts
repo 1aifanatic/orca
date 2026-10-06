@@ -206,6 +206,12 @@ export class PairedRuntimeBrowserHostLeaseConnection {
         ready.fileChannelProtocolVersion,
         request.fileChannelProtocolVersion
       ) ||
+      !matchesOptionalProtocol(
+        ready.returningHostReclaimProtocolVersion,
+        request.returningHostReclaimProtocolVersion
+      ) ||
+      (ready.returningHostReclaimProtocolVersion === 1 &&
+        ready.pageReconciliationProtocolVersion !== 1) ||
       (ready.fileChannelProtocolVersion === 1 && ready.pageCommandProtocolVersion !== 1) ||
       (ready.leaseReconnectProtocolVersion === 1 && ready.pageInventoryProtocolVersion !== 1) ||
       (ready.pageReconciliationProtocolVersion === 1 &&
@@ -285,6 +291,9 @@ function browserHostLeaseAuthority(
       : {}),
     ...(ready.fileChannelProtocolVersion
       ? { fileChannelProtocolVersion: ready.fileChannelProtocolVersion }
+      : {}),
+    ...(ready.returningHostReclaimProtocolVersion
+      ? { returningHostReclaimProtocolVersion: ready.returningHostReclaimProtocolVersion }
       : {})
   })
 }

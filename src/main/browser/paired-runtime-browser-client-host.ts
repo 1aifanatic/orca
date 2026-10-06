@@ -22,6 +22,7 @@ export type PairedRuntimeBrowserClientHostOptions = {
   handler: CommandHandler
   getPageInventory?: () => readonly BrowserClientHostedPageInventory[]
   pageReconciliationProtocolVersion?: 1
+  returningHostReclaimProtocolVersion?: 1
   fileChannelProtocolVersion?: 1
   dispatcher?: DispatcherLimits
   timeoutMs?: number
@@ -59,6 +60,10 @@ export class PairedRuntimeBrowserClientHost {
             leaseReconnectProtocolVersion: 1,
             ...(options.pageReconciliationProtocolVersion
               ? { pageReconciliationProtocolVersion: options.pageReconciliationProtocolVersion }
+              : {}),
+            ...(options.pageReconciliationProtocolVersion &&
+            options.returningHostReclaimProtocolVersion
+              ? { returningHostReclaimProtocolVersion: options.returningHostReclaimProtocolVersion }
               : {}),
             getPageInventory: options.getPageInventory
           }

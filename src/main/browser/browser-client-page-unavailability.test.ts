@@ -80,7 +80,8 @@ function harness() {
     })),
     selectRenderer: () => renderer,
     routeSessions: {
-      preparePage: vi.fn(async () => ({ partition, release: vi.fn() }))
+      preparePage: vi.fn(async () => ({ partition, release: vi.fn() })),
+      retargetPartitionProxy: vi.fn(async () => {})
     },
     routeWebContents: {
       claimGuestLifecycle: vi.fn((page: BrowserRoutePageGuestIdentity) => ({

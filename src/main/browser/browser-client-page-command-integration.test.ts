@@ -114,7 +114,8 @@ describe('BrowserClientPageCommandExecutor integration', () => {
     await expect(executor.retirePage('page-a', 8)).resolves.toBe(true)
     expect(guest.webContents.close).not.toHaveBeenCalled()
     expect(rendererRetire).toHaveBeenCalledOnce()
-    expect(routeRelease).toHaveBeenCalledOnce()
+    // Once for the route the reclaim moved the page off, once for the route it retired with.
+    expect(routeRelease).toHaveBeenCalledTimes(2)
     expect(clearPolicies).toHaveBeenCalledOnce()
     expect(sessionRegistry.isAllowedPartition(partition)).toBe(false)
   })

@@ -119,7 +119,10 @@ function createHarness() {
     storageScope: 'a'.repeat(64),
     retainNetworkRoute: vi.fn(async () => route),
     selectRenderer: vi.fn(() => renderer),
-    routeSessions: { preparePage: vi.fn(async () => routeSession) },
+    routeSessions: {
+      preparePage: vi.fn(async () => routeSession),
+      retargetPartitionProxy: vi.fn(async () => {})
+    },
     executeAutomation: vi.fn(async () => undefined),
     retireAutomation: vi.fn(async () => {}),
     guestBinding: { bind: vi.fn(), release: vi.fn() },
@@ -163,6 +166,53 @@ describe('browser client page reconciliation adapters', () => {
         state: 'active'
       })
     ])
+  })
+
+  it('moves a reclaimed guest onto the current lease route and lets the old one go', async () => {
+    const { dependencies, executor } = createHarness()
+    await executor.handle(command('createPage'), new AbortController().signal)
+    const previousRoute = await dependencies.retainNetworkRoute.mock.results[0]!.value
+    const currentRoute = {
+      ...previousRoute,
+      proxyEndpoint: { host: '127.0.0.1' as const, port: 43124 },
+      release: vi.fn()
+    }
+    dependencies.retainNetworkRoute.mockResolvedValueOnce(currentRoute)
+
+    await expect(
+      executor.handle(command('reclaimPage'), new AbortController().signal)
+    ).resolves.toEqual({ status: 'completed' })
+
+    // The old route died with the replaced lease; without the retarget the kept page never loads.
+    expect(dependencies.routeSessions.retargetPartitionProxy).toHaveBeenCalledWith(
+      partition,
+      currentRoute.proxyEndpoint
+    )
+    expect(previousRoute.release).toHaveBeenCalledOnce()
+    expect(currentRoute.release).not.toHaveBeenCalled()
+    expect(executor.hasPage('page-a', 8)).toBe(true)
+  })
+
+  it('closes a reclaimed guest that cannot be moved onto the current route', async () => {
+    const { dependencies, executor } = createHarness()
+    await executor.handle(command('createPage'), new AbortController().signal)
+    const currentRoute = {
+      ...(await dependencies.retainNetworkRoute.mock.results[0]!.value),
+      proxyEndpoint: { host: '127.0.0.1' as const, port: 43124 },
+      release: vi.fn()
+    }
+    dependencies.retainNetworkRoute.mockResolvedValueOnce(currentRoute)
+    dependencies.routeSessions.retargetPartitionProxy.mockRejectedValueOnce(
+      new Error('browser_route_partition_proxy_verification_failed')
+    )
+
+    await expect(
+      executor.handle(command('reclaimPage'), new AbortController().signal)
+    ).resolves.toEqual(expect.objectContaining({ status: 'failed' }))
+
+    expect(currentRoute.release).toHaveBeenCalledOnce()
+    expect(executor.hasPage('page-a', 7)).toBe(false)
+    expect(executor.hasPage('page-a', 8)).toBe(false)
   })
 
   it('rejects DOM-preserving reclaim across runtime authorities', async () => {

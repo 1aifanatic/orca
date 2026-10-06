@@ -17,7 +17,11 @@ import type {
   BrowserClientPageLifecycleRegistry,
   BrowserClientRetainedPage
 } from './browser-client-page-retained-state'
-import type { BrowserClientPageRendererIdentity } from './browser-client-page-cleanup'
+import type {
+  BrowserClientPageNetworkRoute,
+  BrowserClientPageRendererIdentity
+} from './browser-client-page-cleanup'
+import type { BrowserRouteSessionRegistry } from './browser-route-session-registry'
 
 type BrowserClientPageReconciliationContext = {
   pages: Map<string, BrowserClientRetainedPage>
@@ -25,6 +29,11 @@ type BrowserClientPageReconciliationContext = {
   routeWebContents: BrowserClientPageLifecycleRegistry
   assertAvailable: () => void
   createPage: (event: BrowserClientHostCommandEvent, signal: AbortSignal) => Promise<void>
+  retainNetworkRoute(
+    executionHostKey: string,
+    signal: AbortSignal
+  ): Promise<BrowserClientPageNetworkRoute>
+  routeSessions: Pick<BrowserRouteSessionRegistry, 'retargetPartitionProxy'>
   navigate: (event: BrowserClientHostCommandEvent, signal: AbortSignal) => Promise<void>
   retirePage: (browserPageId: string, pageHostGeneration: number) => Promise<boolean>
   cleanupPage: (
@@ -125,6 +134,7 @@ async function reclaimPage(
   page.routeSession = rekeyed.routeSession
   page.inventory = createReconciliationInventory(event, 'outcomeUnknown', page.inventory.currentUrl)
   try {
+    await rebindReclaimedPageRoute(context, page, event.command.executionHostKey, signal)
     await rekeyRendererPage.call(page.renderer, previousRendererPage, nextRendererPage, signal)
     assertBrowserClientPageCommandNotAborted(signal)
     context.assertAvailable()
@@ -136,6 +146,45 @@ async function reclaimPage(
     page.reconciling = false
   } catch (error) {
     await failClosedRekeyedPage(context, page, error, previousRendererPage)
+  }
+}
+
+/**
+ * Moves a reclaimed guest onto the current lease's route. The old route belonged to the lease being
+ * replaced and its tunnel is gone, so without this the kept page could render but never load.
+ */
+async function rebindReclaimedPageRoute(
+  context: BrowserClientPageReconciliationContext,
+  page: BrowserClientRetainedPage,
+  executionHostKey: string,
+  signal: AbortSignal
+): Promise<void> {
+  const route = await context.retainNetworkRoute(executionHostKey, signal)
+  if (route === page.route) {
+    return
+  }
+  try {
+    if (
+      route.key !== executionHostKey ||
+      route.executionHostIdentity !== page.route.executionHostIdentity
+    ) {
+      throw new BrowserClientPageCommandError('browser_client_page_execution_host_stale')
+    }
+    assertBrowserClientPageCommandNotAborted(signal)
+    await context.routeSessions.retargetPartitionProxy(
+      page.routeSession.partition,
+      route.proxyEndpoint
+    )
+  } catch (error) {
+    await route.release()
+    throw error
+  }
+  const previousRoute = page.route
+  page.route = route
+  try {
+    await previousRoute.release()
+  } catch {
+    // The replaced lease retired its routes already; this reference only had to let go.
   }
 }
 

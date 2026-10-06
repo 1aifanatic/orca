@@ -9,6 +9,10 @@ export type PairedRuntimeBrowserClientHostStart = {
 type RegisteredBrowserClientHost<Start> = {
   start(): Promise<BrowserClientHostLeaseAuthority>
   replaceAuthority(input: Start): Promise<BrowserClientHostLeaseAuthority>
+  /** True while the runtime is unreachable and the composition is holding its pages for it. */
+  readonly parked: boolean
+  resume(): Promise<BrowserClientHostLeaseAuthority>
+  park(error: Error): void
   retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean>
   close(error?: Error): Promise<boolean>
   whenClosed(): Promise<void>
@@ -54,6 +58,9 @@ export class PairedRuntimeBrowserClientHostRegistry<
         existing?.pairingRevision === input.pairingRevision &&
         existing.authorityRuntimeId === input.authorityRuntimeId
       ) {
+        if (existing.composition.parked) {
+          existing.authority = existing.composition.resume()
+        }
         return existing.authority
       }
       if (existing?.pairingRevision === input.pairingRevision) {
@@ -62,7 +69,10 @@ export class PairedRuntimeBrowserClientHostRegistry<
         try {
           return await existing.authority
         } catch (error) {
-          await this.cleanupFailedStart(input.environmentId, existing, error)
+          // A parked composition still holds the pages for the runtime's return.
+          if (!existing.composition.parked) {
+            await this.cleanupFailedStart(input.environmentId, existing, error)
+          }
           throw error
         }
       }
@@ -114,6 +124,27 @@ export class PairedRuntimeBrowserClientHostRegistry<
       await record.authority
       return record.composition.retirePage(browserPageId, pageHostGeneration)
     })
+  }
+
+  /** One re-attach attempt for each parked environment; live ones are untouched. */
+  resumeParked(environmentId?: string): Promise<void> {
+    const environmentIds = environmentId === undefined ? [...this.hosts.keys()] : [environmentId]
+    return Promise.all(
+      environmentIds.map((id) =>
+        this.enqueue(id, async () => {
+          const record = this.hosts.get(id)
+          if (this.closed || !record?.composition.parked || record.cleanupPending) {
+            return
+          }
+          record.authority = record.composition.resume()
+          await record.authority.catch(() => undefined)
+        })
+      )
+    ).then(() => undefined)
+  }
+
+  parkEnvironment(environmentId: string, error: Error): void {
+    this.hosts.get(environmentId)?.composition.park(error)
   }
 
   closeEnvironment(environmentId: string, error?: Error): Promise<boolean> {

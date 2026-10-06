@@ -21,6 +21,7 @@ import {
 import {
   assertBrowserRouteProxyEndpoint,
   prepareBrowserRouteSessionPolicy,
+  retargetBrowserRouteSessionProxy,
   sameBrowserRouteProxyEndpoint,
   type BrowserRouteElectronSession,
   type BrowserRouteProxyEndpoint as ProxyEndpoint
@@ -92,6 +93,18 @@ export class BrowserRouteSessionRegistry {
       next,
       this.retirePreparedPage.bind(this)
     )
+  }
+
+  /** See retargetBrowserRouteSessionProxy; a no-op when the partition already uses `proxyEndpoint`. */
+  async retargetPartitionProxy(partition: string, proxyEndpoint: ProxyEndpoint): Promise<void> {
+    const state = this.live.get(partition)
+    if (!state) {
+      throw new Error('browser_route_partition_unavailable')
+    }
+    if (!sameBrowserRouteProxyEndpoint(state.proxyEndpoint, proxyEndpoint)) {
+      await retargetBrowserRouteSessionProxy(state.session, proxyEndpoint)
+      state.proxyEndpoint = proxyEndpoint
+    }
   }
 
   retirePreparedPage(input: BrowserRoutePageAuthority): boolean {

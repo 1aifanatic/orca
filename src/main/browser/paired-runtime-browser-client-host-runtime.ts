@@ -85,6 +85,7 @@ const browserClientHosts =
       )
       return new PairedRuntimeBrowserClientHostComposition({
         onClosing: routes.release,
+        parkedGuestDiscardMs: e2eParkedGuestDiscardMs(),
         initialInput: input,
         createRoutes: (next, authority) =>
           createNetworkRoutes(next.pairing, authority, next.storageScope, input.environmentId),
@@ -123,6 +124,7 @@ const browserClientHosts =
             handler,
             getPageInventory,
             pageReconciliationProtocolVersion: 1,
+            returningHostReclaimProtocolVersion: 1,
             fileChannelProtocolVersion: 1,
             onAuthority,
             onTransportLost,
@@ -229,6 +231,14 @@ export function retirePairedRuntimeBrowserClientHostEnvironment(
   return browserClientHosts.retireEnvironment(environmentId, error)
 }
 
+/**
+ * Asks every parked environment (or just one) for a single re-attach. Callers are real events:
+ * the environment's connection coming back, wake, network online, or the user opening the tab.
+ */
+export function resumeParkedPairedRuntimeBrowserClientHosts(environmentId?: string): Promise<void> {
+  return browserClientHosts.resumeParked(environmentId)
+}
+
 export function shutdownPairedRuntimeBrowserClientHosts(): Promise<void> {
   clientHostRouteIdentities.clear()
   return browserClientHosts.close()
@@ -250,9 +260,12 @@ function createNetworkRoutes(
         executionHost,
         executionHostRevision: executionHost.kind === 'native' ? executionHost.revision : 0,
         onError: reportBrowserClientHostError,
-        // Why: a route that stayed dark after bounded rebuilds leaves every page in the
-        // environment black-holing requests, so retire the host instead of warning forever.
-        onUnavailable: (error) => retireFailedEnvironmentHost(environmentId, error)
+        // Why park, not retire: a route that stayed dark is lost contact, not lost pages. Parking
+        // drops the lease so the next real trigger re-attaches with fresh routes.
+        onUnavailable: (error) => {
+          reportBrowserClientHostError(error)
+          browserClientHosts.parkEnvironment(environmentId, error)
+        }
       })
   })
 }
@@ -308,6 +321,12 @@ function connectionIdentityDigest(components: readonly unknown[]): string {
 function browserClientFileStagingRoot(environmentId: string): string {
   const scope = createHash('sha256').update(environmentId).digest('hex').slice(0, 16)
   return path.join(app.getPath('temp'), 'orca-browser-file-channel', scope)
+}
+
+/** Lets e2e reach the memory-bound path without waiting out the production hour. */
+function e2eParkedGuestDiscardMs(): number | undefined {
+  const configured = Number(process.env.ORCA_E2E_BROWSER_CLIENT_HOST_PARKED_DISCARD_MS)
+  return Number.isInteger(configured) && configured > 0 ? configured : undefined
 }
 
 function reportBrowserClientHostError(error: Error): void {
