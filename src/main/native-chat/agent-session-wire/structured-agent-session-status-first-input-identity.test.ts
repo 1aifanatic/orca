@@ -10,6 +10,7 @@ import { createStructuredAgentSessionLogger } from './structured-agent-session-l
 import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 
 const journals = createTrackedJournalOpener()
 let directory: string
@@ -56,7 +57,7 @@ it('visits only new insertion-ordered submissions, even when the host clock step
     await journal.appendItem(
       { provider: 'codex', threadId: 'provider', turnId: 'compact', ordinal: index },
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: `Output ${index}` }] },
-      { fence: 7 }
+      { fence: 7, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
     item.mockClear()
     expect(projections.read(journal, null).firstInputSubmissionKey).toBeNull()
