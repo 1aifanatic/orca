@@ -4,6 +4,8 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import type { StructuredNotificationRead } from '../../../../shared/notification-settings-types'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionHistoryPage } from '../../../../shared/agent-session-wire'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
@@ -37,10 +39,16 @@ import {
   TEST_REPO
 } from '@/store/slices/store-test-helpers'
 
-const transport = vi.hoisted(() => ({ call: vi.fn(), away: vi.fn() }))
+const transport = vi.hoisted(() => ({
+  call: vi.fn(),
+  away: vi.fn(),
+  supports: vi.fn(),
+  dismiss: vi.fn()
+}))
 vi.mock('@/runtime/runtime-rpc-client', async (original) => ({
   ...(await original()),
-  callRuntimeRpc: transport.call
+  callRuntimeRpc: transport.call,
+  runtimeEnvironmentSupportsCapability: transport.supports
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
   readLocalRuntimeCapabilitiesOrUnknown: () => RUNTIME_CAPABILITIES,
@@ -121,10 +129,16 @@ function publishView(): void {
     result: { type: 'snapshot', sessionId: SESSION, page: history(), fence: 1 }
   })
 }
-function ReadSurface({ viewed }: { viewed: boolean }): null {
+function ReadSurface({
+  viewed,
+  target = TARGET
+}: {
+  viewed: boolean
+  target?: RuntimeClientTarget
+}): null {
   useStructuredAgentSessionRead({
     sessionId: SESSION,
-    target: TARGET,
+    target,
     isVisible: true,
     isViewed: viewed
   })
@@ -219,24 +233,31 @@ beforeEach(() => {
   })
   hostFeed.observe(SESSION)
   transport.away.mockResolvedValue(false)
+  transport.supports.mockResolvedValue(true)
+  transport.dismiss.mockResolvedValue({ dismissed: 0 })
+  const subscribe = async (
+    request: { method: string },
+    emit: (response: RuntimeRpcResponse<unknown>) => void
+  ) => {
+    if (request.method === 'agentSession.subscribeTurnCompletions') {
+      completion = emit
+    } else {
+      journal = emit
+    }
+    return { unsubscribe: () => {} }
+  }
   vi.stubGlobal('api', {
     gh: {},
-    runtime: {
-      subscribe: async (
+    runtime: { subscribe },
+    runtimeEnvironments: {
+      subscribe: (
         request: { method: string },
-        emit: (response: RuntimeRpcResponse<unknown>) => void
-      ) => {
-        if (request.method === 'agentSession.subscribeTurnCompletions') {
-          completion = emit
-        } else {
-          journal = emit
-        }
-        return { unsubscribe: () => {} }
-      }
+        callbacks: { onResponse: (response: RuntimeRpcResponse<unknown>) => void }
+      ) => subscribe(request, callbacks.onResponse)
     },
     notifications: {
       dispatch: async () => ({ delivered: true }),
-      dismiss: async () => ({ dismissed: 0 }),
+      dismiss: transport.dismiss,
       getDesktopAwayState: transport.away
     }
   })
@@ -423,4 +444,161 @@ it('keeps hydration unread while away and retries the read on presence return', 
   transport.away.mockResolvedValue(false)
   await act(async () => window.dispatchEvent(new Event('focus')))
   await waitFor(() => expect(dismissIds()).toHaveLength(1))
+})
+
+it.each(['transport-error', 'false-result'] as const)(
+  'retries a remote %s on a later read with the existing presence gate',
+  async (failure) => {
+    const target = { kind: 'environment', environmentId: 'retry-host' } as const
+    const tab = useAppStore.getState().unifiedTabsByWorktree[WORKSPACE]?.[0]
+    if (!tab) {
+      throw new Error('chat tab missing')
+    }
+    useAppStore.setState({
+      unifiedTabsByWorktree: { [WORKSPACE]: [{ ...tab, executionHostId: 'runtime:retry-host' }] }
+    })
+    addPrompt('A')
+    const original = transport.call.getMockImplementation()
+    let failed = false
+    transport.call.mockImplementation(async (...args) => {
+      if (args[1] === 'agentSession.acknowledgeAttention' && !failed) {
+        failed = true
+        if (failure === 'transport-error') {
+          throw new Error('scripted transient transport failure')
+        }
+        return { acknowledged: false }
+      }
+      return original?.(...args)
+    })
+    render(
+      <>
+        <StructuredAgentSessionAttentionBridge />
+        <AttentionPolicy />
+        <ReadSurface viewed target={target} />
+      </>
+    )
+    await waitFor(() => expect(hydrate).toBeTypeOf('function'))
+    await act(async () => hydrate?.())
+    expect(readCalls()).toBe(1)
+    expect(dismissIds()).toEqual([])
+    await act(async () => {})
+    expect(readCalls()).toBe(1)
+    if (failure === 'transport-error') {
+      await act(async () => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+    } else {
+      transport.away.mockResolvedValue(true)
+      await act(async () => window.dispatchEvent(new Event('focus')))
+      expect(readCalls()).toBe(1)
+      transport.away.mockResolvedValue(false)
+      await act(async () => window.dispatchEvent(new Event('focus')))
+    }
+    await waitFor(() =>
+      expect(dismissIds()).toEqual([agentSessionPromptAttentionKey(SCOPE, SESSION, 'A')])
+    )
+    expect(readCalls()).toBe(2)
+    expect(
+      transport.call.mock.calls
+        .filter(([, method]) => method === 'agentSession.acknowledgeAttention')
+        .map(([owner]) => owner)
+    ).toEqual([target, target])
+  }
+)
+
+it('retries a failed local desktop relay withdrawal on a later explicit read', async () => {
+  const relayDirectory = mkdtempSync(join(tmpdir(), 'orca-relay-read-retry-'))
+  try {
+    addPrompt('A')
+    const sent = events.find((event) => event.type === 'notification')
+    if (!sent?.notificationId || sent.type !== 'notification') {
+      throw new Error('prompt not sent')
+    }
+    const relay = new RuntimeMobileNotificationController()
+    relay.configureDismissalStore(relayDirectory)
+    relay.dispatch(sent)
+    const withdrawals: string[] = []
+    relay.onDispatched((event) => {
+      if (event.type === 'dismiss') {
+        withdrawals.push(event.notificationId)
+      }
+    })
+    transport.dismiss
+      .mockImplementation(async (_ids, _panes, reads?: StructuredNotificationRead[]) => {
+        for (const read of reads ?? []) {
+          relay.retireStructuredAttention(read)
+        }
+        return { dismissed: 0 }
+      })
+      .mockRejectedValueOnce(new Error('scripted local retirement failure'))
+    render(
+      <>
+        <StructuredAgentSessionAttentionBridge />
+        <AttentionPolicy />
+        <ReadSurface viewed />
+      </>
+    )
+    await waitFor(() => expect(hydrate).toBeTypeOf('function'))
+    await act(async () => hydrate?.())
+    expect(dismissIds()).toHaveLength(1)
+    expect(withdrawals).toEqual([])
+    await act(async () => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+    await waitFor(() => expect(withdrawals).toEqual([sent.notificationId]))
+    expect(transport.dismiss.mock.calls.filter(([, , reads]) => Array.isArray(reads))).toHaveLength(
+      2
+    )
+  } finally {
+    rmSync(relayDirectory, { recursive: true, force: true })
+  }
+})
+
+it('an older failed attempt cannot erase a newer success when the observation returns to A', async () => {
+  addPrompt('A')
+  const original = transport.call.getMockImplementation()
+  let release: (() => void) | undefined
+  let first = true
+  transport.call.mockImplementation(async (...args) => {
+    if (args[1] === 'agentSession.acknowledgeAttention' && first) {
+      first = false
+      return await new Promise((resolve) => {
+        release = () => resolve({ acknowledged: false })
+      })
+    }
+    return original?.(...args)
+  })
+  render(
+    <>
+      <StructuredAgentSessionAttentionBridge />
+      <AttentionPolicy />
+      <ReadSurface viewed />
+    </>
+  )
+  await waitFor(() => expect(hydrate).toBeTypeOf('function'))
+  await act(async () => hydrate?.())
+  expect(readCalls()).toBe(1)
+  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+  expect(readCalls()).toBe(1)
+  act(() => {
+    addPrompt('B')
+    publishView()
+  })
+  await waitFor(() => expect(readCalls()).toBe(2))
+  await act(async () => {})
+  act(() => {
+    items = items.map((item): AgentJournalRenderItem =>
+      item.itemId === 'B' && item.body.kind === 'approval'
+        ? {
+            ...item,
+            revision: item.revision + 1,
+            body: { ...item.body, resolution: { ...item.body.resolution, state: 'resolved' } }
+          }
+        : item
+    )
+    sequence += 1
+    hostFeed.observe(SESSION)
+    publishView()
+  })
+  await waitFor(() => expect(readCalls()).toBe(3))
+  await act(async () => release?.())
+  await act(async () => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+  expect(readCalls()).toBe(3)
+  expect(dismissIds()).toHaveLength(2)
 })

@@ -53,7 +53,7 @@ function StructuredAgentSessionOwnedAttention({
   useEffect(() => feed.activate(), [feed])
   const paneKey = structuredAgentSessionPaneKey(tab.id, tab.entityId)
   useEffect(() => {
-    let lastObservation: string | undefined
+    let lastAttempt: { observationKey: string } | undefined
     const stopCapture = registerAgentSubjectReadCapture(paneKey, () => {
       const state = findStructuredAgentSessionReadOwner(tab.entityId, target)?.getSnapshot().state
       if (!state?.cursor) {
@@ -72,21 +72,34 @@ function StructuredAgentSessionOwnedAttention({
         !read ||
         read.sessionId !== tab.entityId ||
         !sameStructuredReadTarget(read.target, target) ||
-        read.observationKey === lastObservation
+        read.observationKey === lastAttempt?.observationKey
       ) {
         return
       }
-      lastObservation = read.observationKey
-      void window.api?.notifications
-        ?.dismiss?.(
-          [],
-          [paneKey],
-          [{ paneKey, sessionId: read.sessionId, observedCursor: read.observedCursor }]
-        )
-        .catch((error) => {
+      const attempt = { observationKey: read.observationKey }
+      lastAttempt = attempt
+      const localRetirement = (async (): Promise<boolean> => {
+        try {
+          await window.api?.notifications?.dismiss?.(
+            [],
+            [paneKey],
+            [{ paneKey, sessionId: read.sessionId, observedCursor: read.observedCursor }]
+          )
+          return true
+        } catch (error) {
           console.warn('[structured-session-attention] local retirement failed', error)
-        })
-      void acknowledgeStructuredAgentSessionAttention(target, read.sessionId, read.observedCursor)
+          return false
+        }
+      })()
+      void Promise.all([
+        localRetirement,
+        acknowledgeStructuredAgentSessionAttention(target, read.sessionId, read.observedCursor)
+      ]).then((results) => {
+        // An older result cannot release a newer read when the prompt set repeats.
+        if (lastAttempt === attempt && results.some((succeeded) => !succeeded)) {
+          lastAttempt = undefined
+        }
+      })
     })
     return () => {
       stopRead()
