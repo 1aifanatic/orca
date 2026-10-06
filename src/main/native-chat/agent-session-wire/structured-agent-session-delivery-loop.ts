@@ -20,11 +20,6 @@ import {
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
-import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
-import {
-  markStructuredQueueReopen,
-  structuredAgentSessionHostInstance
-} from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import {
@@ -46,6 +41,7 @@ import { failedProviderChildStart } from './structured-agent-session-provider-ch
 import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { holdRestartedStructuredAgentSessionSends } from './structured-agent-session-host-lifetime'
 
 export type StructuredAgentSessionDeliveryLoopDeps = {
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
@@ -168,19 +164,12 @@ export class StructuredAgentSessionDeliveryLoop {
     // The open already did, unless its write failed: a row an earlier handle wrote is never handed
     // over, whether it outlived a quit or a crash. A failure here throws, so none is: this run then
     // fails, which rejects every queued send, this process's own too.
-    const { journal } = session
-    const fence = this.deps.conversationFence(sessionId)
-    const hostInstance = structuredAgentSessionHostInstance()
-    const settled = await holdUnsentSends(journal, {
-      fence,
-      hostInstance,
-      hold: { cause: 'hostRestarted' }
-    })
-    if (settled !== null) {
-      // The open's settle failed, so it marked nothing for the cards this made; a send that woke
-      // this loop came after them, so the mark starts where they did.
-      await markStructuredQueueReopen(sessionId, journal, fence, this.deps.logger, settled + 1)
-    }
+    await holdRestartedStructuredAgentSessionSends(
+      this.deps.logger,
+      sessionId,
+      session.journal,
+      this.deps.conversationFence(sessionId)
+    )
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)
