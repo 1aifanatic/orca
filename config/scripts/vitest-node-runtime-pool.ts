@@ -39,6 +39,18 @@ class NodeRuntimeWorker implements PoolWorker {
       destination.setMaxListeners(destination.getMaxListeners() + 1)
       source.pipe(destination)
     }
+    await new Promise<void>((resolve, reject) => {
+      const spawned = (): void => {
+        child.off('error', failed)
+        resolve()
+      }
+      const failed = (error: Error): void => {
+        child.off('spawn', spawned)
+        reject(error)
+      }
+      child.once('spawn', spawned)
+      child.once('error', failed)
+    })
   }
 
   on(event: string, callback: (arg: unknown) => void): void {
@@ -65,25 +77,45 @@ class NodeRuntimeWorker implements PoolWorker {
     if (!child) {
       return
     }
-    const exited = new Promise<void>((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        resolve()
-      } else {
-        child.once('exit', () => resolve())
+    try {
+      if (child.pid && child.exitCode === null && child.signalCode === null) {
+        await new Promise<void>((resolve, reject) => {
+          const cleanup = (): void => {
+            clearTimeout(force)
+            clearTimeout(deadline)
+            child.off('exit', finished)
+          }
+          const finished = (): void => {
+            cleanup()
+            resolve()
+          }
+          const terminate = (signal: NodeJS.Signals): void => {
+            try {
+              child.kill(signal)
+            } catch (error) {
+              cleanup()
+              reject(error)
+            }
+          }
+          const force = setTimeout(() => terminate('SIGKILL'), 500)
+          const deadline = setTimeout(() => {
+            cleanup()
+            reject(new Error(`Node Vitest worker ${child.pid} did not exit after SIGKILL`))
+          }, 2_000)
+          child.once('exit', finished)
+          terminate('SIGTERM')
+        })
       }
-    })
-    const force = setTimeout(() => child.kill('SIGKILL'), 500)
-    child.kill('SIGTERM')
-    await exited
-    clearTimeout(force)
-    for (const [source, destination] of [
-      [child.stdout, this.options.project.vitest.logger.outputStream],
-      [child.stderr, this.options.project.vitest.logger.errorStream]
-    ] as const) {
-      source?.unpipe(destination)
-      destination.setMaxListeners(destination.getMaxListeners() - 1)
+    } finally {
+      for (const [source, destination] of [
+        [child.stdout, this.options.project.vitest.logger.outputStream],
+        [child.stderr, this.options.project.vitest.logger.errorStream]
+      ] as const) {
+        source?.unpipe(destination)
+        destination.setMaxListeners(destination.getMaxListeners() - 1)
+      }
+      this.child = undefined
     }
-    this.child = undefined
   }
 
   private get worker(): ChildProcessHandle {

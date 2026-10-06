@@ -101,8 +101,8 @@ describe('writeTerminalRenderDesyncEvidence', () => {
         phase: 'corrupt',
         pngDataUrl: 'data:image/png;base64,eA=='
       })
-      // Give each capture a distinct age independent of filesystem timestamp precision.
-      const capturedAt = new Date(oldestCaptureTime + capture * 1000)
+      // Space capture times beyond FAT's two-second mtime resolution.
+      const capturedAt = new Date(oldestCaptureTime + capture * 5000)
       await utimes(result.directory, capturedAt, capturedAt)
     }
 

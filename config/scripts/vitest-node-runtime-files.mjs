@@ -64,5 +64,6 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/renderer/src/components/emulator-pane/emulator-device-frame-visibility.test.tsx',
   'src/main/claude/claude-agent-sdk-contract-pins.test.ts',
   'config/scripts/profile-state-worker-smoke.test.mjs',
-  'config/scripts/vitest-node-runtime-boundary.test.ts'
+  'config/scripts/vitest-node-runtime-boundary.test.ts',
+  'config/scripts/vitest-node-runtime-pool.test.ts'
 ]

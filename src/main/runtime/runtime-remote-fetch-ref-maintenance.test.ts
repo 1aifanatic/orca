@@ -71,9 +71,10 @@ describe('fetch-armed ref maintenance', () => {
     })
 
     await vi.waitFor(() =>
-      expect(new Set(armedTargets().map((target) => target.key))).toEqual(
-        new Set(['local::/repo/.git'])
-      )
+      expect(armedTargets().map((target) => target.key)).toEqual([
+        'local::/repo/.git',
+        'local::/repo/.git'
+      ])
     )
   })
 
