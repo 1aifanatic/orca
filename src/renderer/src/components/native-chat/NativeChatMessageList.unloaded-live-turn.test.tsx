@@ -40,11 +40,35 @@ const loaded: AgentJournalRenderItem[] = [300, 301, 302].map((sequence) => ({
   turnScope: IN_TURN
 }))
 
-function list(latestTurn: AgentSessionLatestTurn | null | undefined): React.JSX.Element {
+const patch = '@@ -1 +1 @@\n-before\n+after'
+/** An edit among the loaded rows; the turn's earlier edits are above them. */
+const edit: AgentJournalRenderItem = {
+  itemId: 'row-303',
+  revision: 0,
+  sequence: 303,
+  observedAt: 303,
+  body: {
+    kind: 'diff',
+    path: 'src/a.ts',
+    patch: { head: patch, truncated: false, digest: 'fixture', byteLength: patch.length }
+  },
+  turnScope: IN_TURN
+}
+
+const running: AgentSessionLatestTurn = {
+  itemId: TURN_RECORD,
+  observedAt: 1,
+  turn: { turnId: 'turn-1', state: 'running', startedAt: 1_000, userItemId: 'user-1' }
+}
+
+function list(
+  latestTurn: AgentSessionLatestTurn | null | undefined,
+  items: AgentJournalRenderItem[] = loaded
+): React.JSX.Element {
   return (
     <NativeChatMessageList
       session={{
-        messages: projectStructuredAgentSessionMessages(loaded, [], [], { rejectedInPlace: true }),
+        messages: projectStructuredAgentSessionMessages(items, [], [], { rejectedInPlace: true }),
         status: 'ready',
         sessionId: 'session-1',
         agent: 'codex',
@@ -54,7 +78,7 @@ function list(latestTurn: AgentSessionLatestTurn | null | undefined): React.JSX.
         loadEarlier: vi.fn(),
         readPhase: 'ready'
       }}
-      journalItems={loaded}
+      journalItems={items}
       journalSubmissions={[]}
       journalLatestTurn={latestTurn}
       isWorking
@@ -69,18 +93,18 @@ describe('a live turn whose record and opening message are not loaded', () => {
   it('draws its Working bar with the running clock', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(64_000)
     try {
-      render(
-        list({
-          itemId: TURN_RECORD,
-          observedAt: 1,
-          turn: { turnId: 'turn-1', state: 'running', startedAt: 1_000, userItemId: 'user-1' }
-        })
-      )
+      render(list(running))
       expect(screen.getByText('Step 302')).toBeInTheDocument()
       expect(screen.getByText(/Working for 1m 3s/)).toBeInTheDocument()
     } finally {
       now.mockRestore()
     }
+  })
+
+  it('totals no edits, since only the end of the turn is loaded', () => {
+    render(list(running, [...loaded, edit]))
+    expect(screen.getByText(/Working for/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /changed file/ })).toBeNull()
   })
 
   it('had no bar to draw from the loaded rows alone', () => {

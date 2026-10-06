@@ -67,7 +67,7 @@ export type AgentSessionTurnActivity = {
 export type AgentSessionLatestTurn = {
   /** The record's journal key, which rows of the turn name as their scope. */
   itemId: string
-  /** Host clock of the record's newest revision. */
+  /** Host clock at the record's creation, as on its own row; a revision does not move it. */
   observedAt: number
   turn: AgentJournalTurnLifecycle
 }
@@ -202,7 +202,8 @@ export type AgentSessionSubscribeEvent =
       commands?: AgentSessionSlashCommand[] | null
       /** Additive ephemeral state; it never creates or advances journal rows. */
       activity?: AgentSessionTurnActivity | null
-      /** Rides every batch that carries rows; absent on one that carries none. */
+      /** Rides every batch that carries rows, removals or submissions, so absent there means an
+       *  older host; absent on one that carries none, which changes no turn. */
       latestTurn?: AgentSessionLatestTurn | null
     } & AgentSessionHostClockField)
   | ({

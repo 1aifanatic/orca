@@ -25,6 +25,7 @@ import {
 } from './structured-agent-session-item-retention'
 import { compareAgentJournalItems } from './agent-session-journal-position'
 import { readAgentJournalTurn } from './agent-session-turn-record'
+import { latestTurnAfterStructuredAgentSessionBatch } from './structured-agent-session-live-turn'
 import {
   foldStructuredAgentSubagentRoster,
   foldStructuredAgentSubagentRosterPage,
@@ -312,7 +313,7 @@ export function reduceStructuredAgentSession(
     error: undefined,
     readRefusal: undefined,
     commands: event.commands !== undefined ? event.commands : state.commands,
-    ...(event.latestTurn !== undefined ? { latestTurn: event.latestTurn } : {}),
+    latestTurn: latestTurnAfterStructuredAgentSessionBatch(state.latestTurn, event),
     ...queuePublicationField(event, state),
     ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
     ...(activity !== undefined ? { activity } : {}),

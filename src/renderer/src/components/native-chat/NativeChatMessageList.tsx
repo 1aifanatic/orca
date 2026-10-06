@@ -71,7 +71,7 @@ export function NativeChatMessageList({
   session,
   journalItems,
   journalSubmissions,
-  journalLatestTurn,
+  journalLatestTurn: latestTurn,
   subagentRoster,
   railOutline = null,
   isVisible = true,
@@ -142,7 +142,7 @@ export function NativeChatMessageList({
     session,
     journalItems,
     journalSubmissions,
-    journalLatestTurn
+    latestTurn
   )
   const {
     sections: subagentSections,
@@ -157,20 +157,22 @@ export function NativeChatMessageList({
   const {
     messages: rows,
     turnKeys,
-    liveTurnKey
-  } = useNativeChatTurnMembership(messages, journalItems, journalSubmissions, journalLatestTurn)
+    liveTurnKey,
+    partialTurnKey
+  } = useNativeChatTurnMembership(messages, journalItems, journalSubmissions, latestTurn)
   const turnDiffs = useMemo(() => {
     if (!journalItems) {
       return new Map<string, NativeChatTurnDiff>()
     }
     const merged = nativeChatRowsInTranscriptOrder(rows, turnKeys, subagentRowsInOrder)
-    return nativeChatTurnDiffs(merged.messages, merged.turnKeys, subagentSections.pathOf)
-  }, [journalItems, rows, subagentRowsInOrder, subagentSections.pathOf, turnKeys])
+    const { pathOf } = subagentSections
+    return nativeChatTurnDiffs(merged.messages, merged.turnKeys, pathOf, partialTurnKey)
+  }, [journalItems, partialTurnKey, rows, subagentRowsInOrder, subagentSections, turnKeys])
   // "Thinking" is real reasoning content at the tail of the turn, not the absence
   // of output — the latter reports thinking while the request is merely in flight.
   const thinking = useMemo(
-    () => (journalItems ? isStructuredAgentSessionThinking(journalItems) : false),
-    [journalItems]
+    () => isStructuredAgentSessionThinking({ items: journalItems ?? [], latestTurn }),
+    [journalItems, latestTurn]
   )
   const turnStatuses = useNativeChatTurnStatus({
     turnKeys,

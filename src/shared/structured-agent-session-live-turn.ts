@@ -24,7 +24,7 @@ import {
   type AgentJournalTurnScope
 } from './agent-session-journal-types'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
-import type { AgentSessionLatestTurn } from './agent-session-wire'
+import type { AgentSessionLatestTurn, AgentSessionSubscribeEvent } from './agent-session-wire'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 import type { NativeChatToolCallBlock } from './native-chat-types'
 import {
@@ -146,6 +146,17 @@ type HostTurnSource = {
   latestTurn?: AgentSessionLatestTurn | null
 }
 
+/** The host's answer once `event` applies. A batch carrying rows restates it, so one without it
+ *  came from an older host and falls back to the rows rather than keep a claim nothing renews. */
+export function latestTurnAfterStructuredAgentSessionBatch(
+  previous: AgentSessionLatestTurn | null | undefined,
+  event: Extract<AgentSessionSubscribeEvent, { type: 'batch' }>
+): AgentSessionLatestTurn | null | undefined {
+  const { items, removedItemIds, submissions } = event.batch
+  const carriesRows = items.length > 0 || removedItemIds.length > 0 || submissions.length > 0
+  return carriesRows || event.latestTurn !== undefined ? event.latestTurn : previous
+}
+
 /**
  * Whether the newest thing the active turn produced is the model's own reasoning.
  *
@@ -154,16 +165,16 @@ type HostTurnSource = {
  * thinking while the request is merely in flight, and stops reporting it the moment a tool call
  * lands, which is usually when reasoning actually starts.
  */
-export function isStructuredAgentSessionThinking(
-  items: readonly AgentJournalRenderItem[]
-): boolean {
+export function isStructuredAgentSessionThinking({ items, latestTurn }: HostTurnSource): boolean {
+  // The host's answer outranks a loaded record, whose newest revision may be off the window.
+  const hostRunning = latestTurn === undefined ? null : latestTurn?.turn.state === 'running'
   let newestContentIsReasoning: boolean | null = null
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]
     const body = item?.body
     const turn = readAgentJournalTurn(body)
     if (turn) {
-      return turn.state === 'running' && newestContentIsReasoning === true
+      return (hostRunning ?? turn.state === 'running') && newestContentIsReasoning === true
     }
     if (newestContentIsReasoning !== null || !isRootAgentJournalItem(item)) {
       continue
@@ -180,7 +191,8 @@ export function isStructuredAgentSessionThinking(
     }
     // A status row is a notice, not newer transcript content.
   }
-  return false
+  // The record is above the loaded rows, so every loaded root row is newer than it.
+  return hostRunning === true && newestContentIsReasoning === true
 }
 
 /** The tool the status row names for the SESSION'S OWN agent, as the chat draws it: the running

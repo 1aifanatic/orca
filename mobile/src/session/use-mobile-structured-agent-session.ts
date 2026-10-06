@@ -184,7 +184,7 @@ export function useMobileStructuredAgentSession(args: {
   )
   const activityText =
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
-  const thinking = isStructuredAgentSessionThinking(state.items)
+  const thinking = isStructuredAgentSessionThinking(state)
   const turnIndicator = useMemo(() => ({ thinking, activityText }), [thinking, activityText])
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(

@@ -14,6 +14,8 @@ export type NativeChatTurnRows = {
   /** Each drawn row's turn, by index into `messages`. */
   turnKeys: readonly (string | undefined)[]
   liveTurnKey: string | undefined
+  /** The live turn, when only its tail is loaded (`NativeChatTurnMembership.partialTurnKey`). */
+  partialTurnKey?: string
 }
 
 /** Each row's turn, which turn is live, and the order the rows draw in, resolved once: from the
@@ -25,7 +27,7 @@ export function useNativeChatTurnMembership(
   latestTurn?: AgentSessionLatestTurn | null
 ): NativeChatTurnRows {
   return useMemo(() => {
-    const { turnKeys, liveTurnKey, drawOrder } = nativeChatTurnMembership(
+    const { turnKeys, liveTurnKey, drawOrder, partialTurnKey } = nativeChatTurnMembership(
       messages,
       journalItems
         ? { items: journalItems, submissions: journalSubmissions ?? [], latestTurn }
@@ -34,7 +36,8 @@ export function useNativeChatTurnMembership(
     return {
       messages: nativeChatRowsInDrawOrder(messages, drawOrder),
       turnKeys: nativeChatRowsInDrawOrder(turnKeys, drawOrder),
-      liveTurnKey
+      liveTurnKey,
+      ...(partialTurnKey !== undefined ? { partialTurnKey } : {})
     }
   }, [journalItems, journalSubmissions, latestTurn, messages])
 }
