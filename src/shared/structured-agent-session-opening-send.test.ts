@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { agentSessionFailureFact } from './agent-session-failure'
+import { agentSessionFailureWords } from './agent-session-failure-words'
 import { agentJournalItemKey, agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import {
   structuredAgentSessionSendOpeningTurn,
@@ -55,8 +57,9 @@ describe('a send still opening its turn', () => {
           ...refused,
           body: {
             kind: 'status',
-            text: 'Cancellation was not confirmed.',
-            failure: { kind: 'cancelUnconfirmed' }
+            ...agentSessionFailureWords(agentSessionFailureFact('cancelUnconfirmed'), {
+              surface: 'row'
+            })
           }
         }
       ])

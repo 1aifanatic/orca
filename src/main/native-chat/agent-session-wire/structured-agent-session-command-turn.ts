@@ -35,6 +35,10 @@ import {
   readAgentJournalTurn
 } from '../../../shared/agent-session-turn-record'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import {
+  isStructuredAgentSessionStopNote,
+  structuredAgentSessionStopNoteIdentity
+} from '../../../shared/structured-agent-session-stop-note-key'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type {
   AgentSessionCommandAdmission,
@@ -118,10 +122,7 @@ export function isStructuredAgentSessionCommandTurnId(turnId: string): boolean {
   return turnId.startsWith('compact:')
 }
 
-export {
-  isStructuredAgentSessionStopNote,
-  structuredAgentSessionStopNoteIdentity
-} from '../../../shared/structured-agent-session-stop-note-key'
+export { isStructuredAgentSessionStopNote, structuredAgentSessionStopNoteIdentity }
 
 /** Whether an earlier Stop already asked the running command `turnId` names to end. Read from the
  *  journal, so nothing is held that could outlive the command. */
