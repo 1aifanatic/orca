@@ -23,8 +23,8 @@ export const CODEX_HOOK_LAUNCH_WAIT_MS = 3_000
 const PENDING_RETRY_MS = 60_000
 
 type KnownAnswer = {
-  /** The binary the answer is for; null when none was found. */
-  fingerprint: string | null
+  /** The binary the answer is for. */
+  fingerprint: string
   command: string
   answer: CodexHookAnswer
   /** When a pending answer may be asked again. */
@@ -34,7 +34,8 @@ type KnownAnswer = {
 // Why in-process: a saved record from an earlier process is only trusted after this one re-probed the version.
 const answers = new Map<string, KnownAnswer>()
 const derivations = new Map<string, Promise<CodexHookAnswer>>()
-// Why null until the app starts the lookup: only the app's main process may spawn Codex; the CLI's reads the memo.
+// Why null until the app starts the lookup: only the app's main process may spawn Codex, once PATH
+// is hydrated; a lookup before that, or in another process such as the CLI, reads the memo.
 let appPathReady: Promise<unknown> | null = null
 
 /**
@@ -48,7 +49,7 @@ export function startCodexHookHashLookup(options: {
 }): void {
   const pathReady = options.pathReady.catch(() => {})
   appPathReady = pathReady
-  void pathReady.then(() => (options.isEnabled() ? resolveCodexHookHashes() : undefined))
+  void pathReady.then(() => (options.isEnabled() ? resolveCodexHookAnswer() : undefined))
 }
 
 /**
@@ -56,20 +57,14 @@ export function startCodexHookHashLookup(options: {
  * already knows, else asked of Codex in the app (its version first, then a
  * throwaway `hooks/list` for a new version). Never throws; one question per binary at a time.
  */
-export function lookupCodexHookHashes(
+export function lookupCodexHookAnswer(
   codexPath: string,
   command: string
 ): Promise<CodexHookAnswer> {
   const fingerprint = fingerprintCodex(codexPath)
   if (fingerprint === null) {
     // Why not held back: a PATH still hydrating, or an install in progress, fixes it.
-    return Promise.resolve(
-      remember(codexPath, {
-        fingerprint,
-        command,
-        answer: { kind: 'pending', failure: `Orca could not find Codex at ${codexPath}` }
-      })
-    )
+    return Promise.resolve(codexNotFound(codexPath))
   }
   const known = answers.get(codexBinaryKey(codexPath))
   if (
@@ -128,34 +123,36 @@ function remember(codexPath: string, known: KnownAnswer): CodexHookAnswer {
 }
 
 /** Codex's answer about Orca's entry from the codex on PATH; asks Codex only in the app. Never throws. */
-export async function resolveCodexHookHashes(): Promise<CodexHookAnswer> {
+export async function resolveCodexHookAnswer(): Promise<CodexHookAnswer> {
   // Why wait for PATH: before it is hydrated, the codex a pane runs may not be found yet.
   await appPathReady
-  return lookupCodexHookHashes(resolveCodexCommand(), getManagedCommand(getManagedScriptPath()))
+  return lookupCodexHookAnswer(resolveCodexCommand(), getManagedCommand(getManagedScriptPath()))
 }
 
-/** For status, without asking: this process's answer when it has hashes, else what the memo holds. */
+/** For status, without asking: this process's answer for the binary on PATH when it has hashes, else what the memo holds. */
 export function readKnownCodexHookAnswer(): CodexHookAnswer | null {
   const codexPath = resolveCodexCommand()
-  const known = answers.get(codexBinaryKey(codexPath))?.answer
-  if (known?.kind === 'hashes') {
-    return known
-  }
   const fingerprint = fingerprintCodex(codexPath)
-  const saved =
-    fingerprint === null
-      ? null
-      : readMemoizedCodexHookAnswer(
-          codexPath,
-          getManagedCommand(getManagedScriptPath()),
-          fingerprint
-        )
-  return saved ?? known ?? null
+  if (fingerprint === null) {
+    return codexNotFound(codexPath)
+  }
+  const command = getManagedCommand(getManagedScriptPath())
+  const known = answers.get(codexBinaryKey(codexPath))
+  const current =
+    known?.fingerprint === fingerprint && known.command === command ? known.answer : null
+  if (current?.kind === 'hashes') {
+    return current
+  }
+  return readMemoizedCodexHookAnswer(codexPath, command, fingerprint) ?? current
+}
+
+function codexNotFound(codexPath: string): CodexHookAnswer {
+  return { kind: 'pending', failure: `Orca could not find Codex at ${codexPath}` }
 }
 
 /** The answer for a launch, waiting at most `waitMs` for one not known yet; null when none came in time. */
 export function resolveCodexHookAnswerForLaunch(waitMs: number): Promise<CodexHookAnswer | null> {
-  return withTimeout<CodexHookAnswer | null>(resolveCodexHookHashes(), waitMs, null)
+  return withTimeout<CodexHookAnswer | null>(resolveCodexHookAnswer(), waitMs, null)
 }
 
 /** Every hash set this process or the memo holds, for any version: what Orca may have approved its entry with. */

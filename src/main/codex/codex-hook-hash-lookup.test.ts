@@ -24,10 +24,10 @@ vi.mock('./codex-hook-trust-derivation', async (importOriginal) => ({
 
 import {
   _internals,
-  lookupCodexHookHashes,
+  lookupCodexHookAnswer,
   readKnownCodexHookAnswer,
   resolveCodexHookAnswerForLaunch,
-  resolveCodexHookHashes,
+  resolveCodexHookAnswer,
   startCodexHookHashLookup
 } from './codex-hook-hash-lookup'
 import { getCodexHookTrustMemoPath } from './codex-hook-trust-memo'
@@ -70,16 +70,16 @@ afterEach(() => {
 
 describe('what a lookup may spawn', () => {
   it('never asks Codex outside the app, reading only what the app learned', async () => {
-    const answer = await resolveCodexHookHashes()
+    const answer = await resolveCodexHookAnswer()
 
     expect(answer).toEqual({ kind: 'pending', failure: 'Orca has not asked Codex yet' })
     expect(mocks.probeCodexVersion).not.toHaveBeenCalled()
 
     allowAsking()
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
     // Why: a new process, as the CLI's is: it reads the file the app wrote.
     _internals.resetForTesting()
-    expect(hashesOf(await resolveCodexHookHashes())).toEqual(HASHES)
+    expect(hashesOf(await resolveCodexHookAnswer())).toEqual(HASHES)
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
   })
 
@@ -87,8 +87,8 @@ describe('what a lookup may spawn', () => {
     allowAsking()
     mocks.probeCodexVersion.mockResolvedValue(null)
 
-    await Promise.all([resolveCodexHookHashes(), resolveCodexHookHashes()])
-    const held = await resolveCodexHookHashes()
+    await Promise.all([resolveCodexHookAnswer(), resolveCodexHookAnswer()])
+    const held = await resolveCodexHookAnswer()
 
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
     expect(held.kind).toBe('pending')
@@ -99,7 +99,7 @@ describe('what a lookup may spawn', () => {
     mocks.probeCodexVersion.mockRejectedValue(new Error('spawn codex EACCES'))
 
     for (let lookup = 0; lookup < 5; lookup += 1) {
-      await resolveCodexHookHashes()
+      await resolveCodexHookAnswer()
     }
 
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
@@ -107,9 +107,9 @@ describe('what a lookup may spawn', () => {
 
   it("asks again for another hook command, since Codex's hash depends on it", async () => {
     allowAsking()
-    await lookupCodexHookHashes(mocks.codexPath, command())
+    await lookupCodexHookAnswer(mocks.codexPath, command())
 
-    await lookupCodexHookHashes(mocks.codexPath, '/other/codex-hook.sh')
+    await lookupCodexHookAnswer(mocks.codexPath, '/other/codex-hook.sh')
 
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(2)
   })
@@ -117,25 +117,25 @@ describe('what a lookup may spawn', () => {
   it('asks again once the hold-back window has passed', async () => {
     allowAsking()
     mocks.probeCodexVersion.mockResolvedValueOnce(null)
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
     const now = Date.now()
     vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
 
-    expect(hashesOf(await resolveCodexHookHashes())).toEqual(HASHES)
+    expect(hashesOf(await resolveCodexHookAnswer())).toEqual(HASHES)
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(2)
   })
 
   it('re-probes a persisted binary once per process, so a shim retarget gets the new version', async () => {
     allowAsking()
-    await resolveCodexHookHashes()
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
+    await resolveCodexHookAnswer()
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
     // Why: a new process, the same shim bytes, a different codex behind them.
     _internals.resetForTesting()
     allowAsking()
     mocks.probeCodexVersion.mockResolvedValue('codex-cli 0.160.0')
 
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
 
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(2)
     expect(mocks.deriveCodexHookHashes).toHaveBeenLastCalledWith(
@@ -147,10 +147,10 @@ describe('what a lookup may spawn', () => {
 
   it("reuses a saved version's hashes for a new binary of that version, with no hooks/list", async () => {
     allowAsking()
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
     writeFileSync(mocks.codexPath, 'codex 0.150.1, reinstalled')
 
-    expect(hashesOf(await resolveCodexHookHashes())).toEqual(HASHES)
+    expect(hashesOf(await resolveCodexHookAnswer())).toEqual(HASHES)
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(2)
     expect(mocks.deriveCodexHookHashes).toHaveBeenCalledTimes(1)
   })
@@ -160,8 +160,8 @@ describe('what a lookup may spawn', () => {
     chmodSync(userData, 0o500)
     try {
       allowAsking()
-      await resolveCodexHookHashes()
-      await resolveCodexHookHashes()
+      await resolveCodexHookAnswer()
+      await resolveCodexHookAnswer()
     } finally {
       chmodSync(userData, 0o700)
     }
@@ -173,14 +173,14 @@ describe('what a lookup may spawn', () => {
     allowAsking()
     rmSync(mocks.codexPath)
 
-    const missing = await resolveCodexHookHashes()
+    const missing = await resolveCodexHookAnswer()
 
     expect(missing).toEqual({
       kind: 'pending',
       failure: `Orca could not find Codex at ${mocks.codexPath}`
     })
     writeFileSync(mocks.codexPath, 'codex 0.150.1')
-    expect(hashesOf(await resolveCodexHookHashes())).toEqual(HASHES)
+    expect(hashesOf(await resolveCodexHookAnswer())).toEqual(HASHES)
     expect(mocks.probeCodexVersion).toHaveBeenCalledTimes(1)
   })
 
@@ -191,28 +191,49 @@ describe('what a lookup may spawn', () => {
       codexVersion: 'codex-cli 0.150.1',
       failure: 'Codex 0.150.1 did not recognize Orca status hook'
     })
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
     // Why: a new process, as after a restart; the version's answer is saved.
     _internals.resetForTesting()
     allowAsking()
 
-    expect((await resolveCodexHookHashes()).kind).toBe('refused')
+    expect((await resolveCodexHookAnswer()).kind).toBe('refused')
     expect(mocks.deriveCodexHookHashes).toHaveBeenCalledTimes(1)
     mocks.probeCodexVersion.mockResolvedValue('codex-cli 0.160.0')
     _internals.resetForTesting()
     allowAsking()
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
     expect(mocks.deriveCodexHookHashes).toHaveBeenCalledTimes(2)
   })
 
   it('reports the answer for the codex on PATH, not one another binary gave', async () => {
     allowAsking()
-    await resolveCodexHookHashes()
+    await resolveCodexHookAnswer()
     expect(hashesOf(readKnownCodexHookAnswer())).toEqual(HASHES)
 
     mocks.codexPath = join(userData, 'other-codex')
+    writeFileSync(mocks.codexPath, 'codex 0.150.1')
 
     expect(readKnownCodexHookAnswer()).toBeNull()
+  })
+})
+
+describe('the answer status reads', () => {
+  it("does not report a replaced Codex's answer as its own", async () => {
+    allowAsking()
+    await resolveCodexHookAnswer()
+    // Why new bytes: a codex the lookup has not asked about yet.
+    writeFileSync(mocks.codexPath, 'codex 0.161.0')
+
+    expect(readKnownCodexHookAnswer()).toBeNull()
+  })
+
+  it('says Codex was not found, in a process that may not ask too', () => {
+    rmSync(mocks.codexPath)
+
+    expect(readKnownCodexHookAnswer()).toEqual({
+      kind: 'pending',
+      failure: `Orca could not find Codex at ${mocks.codexPath}`
+    })
   })
 })
 
