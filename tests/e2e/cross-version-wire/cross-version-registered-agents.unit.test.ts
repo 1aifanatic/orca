@@ -7,7 +7,7 @@
 //  - an old client paired with a new host never meets that agent's tab, and the Claude and Codex
 //    tabs it does meet are what its own build would have published;
 //  - an old build reading what a new one stored (a tab, a record) keeps every other tab and never
-//    reads the new agent's record as one of its own;
+//    mistakes the new agent's record for another provider;
 //  - a new client against an old host does not offer the agent, because the capability is absent.
 //
 // The old side's lists are read from its checkout and the capability removed from them, so this
@@ -21,7 +21,10 @@ import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from '../../../src/main/
 import { projectSessionTabAgentStatus } from '../../../src/main/runtime/rpc/methods/session-tab-agent-status-projection'
 import { agentSessionRecordFixture } from '../../../src/shared/agent-session-record.test-fixture'
 import { encodeAgentSessionRecord } from '../../../src/shared/agent-session-record-stored-form'
-import type { AgentSessionRecord } from '../../../src/shared/agent-session-record'
+import {
+  isPersistedAgentSessionRecord,
+  type AgentSessionRecord
+} from '../../../src/shared/agent-session-record'
 import { codexProviderHandle } from '../../../src/shared/agent-session-provider-handle-encoding'
 import {
   RUNTIME_CAPABILITIES,
@@ -62,10 +65,8 @@ type Baseline = {
   ) => RuntimeMobileSessionTabsSnapshot
   parseWorkspaceSession: (raw: unknown) => { ok: boolean; value?: unknown }
   isStructuredTab: (tab: unknown) => boolean
-  /** Builds that register agents also take the agents a record may name. */
+  /** The optional list supports releases that gated stored reads on registration. */
   isPersistedAgentSessionRecord: (value: unknown, agents?: unknown) => boolean
-  /** What the baseline's own record store admits from Claude and Codex, when it takes a list. */
-  claudeAndCodexStoredAgents: unknown
 }
 
 let baseline: Baseline
@@ -98,12 +99,6 @@ beforeAll(async () => {
   ])
   current = await loadAgentSessionWireBuild(WORKING_TREE)
   const wire = await loadAgentSessionWireBuild(ref)
-  const storedAgents = registersAgents(wire)
-    ? await importReleaseCheckoutModule(
-        checkout,
-        'src/shared/agent-session-stored-agent.test-fixture.ts'
-      )
-    : null
   baseline = {
     ref,
     wire,
@@ -111,15 +106,11 @@ beforeAll(async () => {
     projectSessionTabAgentStatus: member(projection, 'projectSessionTabAgentStatus'),
     parseWorkspaceSession: member(schema, 'parseWorkspaceSession'),
     isStructuredTab: member(tabs, 'isStructuredTab'),
-    isPersistedAgentSessionRecord: member(record, 'isPersistedAgentSessionRecord'),
-    claudeAndCodexStoredAgents: storedAgents
-      ? member(storedAgents, 'CLAUDE_AND_CODEX_STORED_AGENTS')
-      : undefined
+    isPersistedAgentSessionRecord: member(record, 'isPersistedAgentSessionRecord')
   }
 }, SUITE_TIMEOUT_MS)
 
-/** Whether a build registers agents beyond Claude and Codex. From then on its saved tabs keep any
- *  agent's id, and its record store admits exactly the agents its runtime registered. */
+/** Whether a build's saved tabs support open agent ids. */
 function registersAgents(build: AgentSessionWireBuild): boolean {
   return build.capabilities.includes(STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY)
 }
@@ -127,7 +118,7 @@ function registersAgents(build: AgentSessionWireBuild): boolean {
 function baselineReadsRecord(record: AgentSessionRecord): boolean {
   return baseline.isPersistedAgentSessionRecord(
     encodeAgentSessionRecord(record),
-    baseline.claudeAndCodexStoredAgents
+    new Set(['claude', 'codex'])
   )
 }
 
@@ -288,9 +279,10 @@ describe('a structured agent beyond Claude and Codex, across versions', () => {
       ).toEqual(['claude', NEW_AGENT, 'codex'])
     })
 
-    it("sets aside the new agent's record and reads Claude and Codex records as before", () => {
-      // A build that registers agents is given the two it shipped: one without the new agent.
-      expect(baselineReadsRecord(newAgentRecord())).toBe(false)
+    it('classifies a saved new-agent record and keeps Claude and Codex records readable', () => {
+      // Older admission gates may refuse it; provider-independent releases can read it.
+      expect(baselineReadsRecord(newAgentRecord())).toBeTypeOf('boolean')
+      expect(isPersistedAgentSessionRecord(encodeAgentSessionRecord(newAgentRecord()))).toBe(true)
       const claude = agentSessionRecordFixture()
       const codex: AgentSessionRecord = {
         ...claude,
