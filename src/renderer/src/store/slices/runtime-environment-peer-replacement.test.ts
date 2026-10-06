@@ -5,13 +5,13 @@ import {
 } from './runtime-environment-peer-replacement'
 
 function managed(
-  overrides: { generation?: number; pairingRevision?: number; runtimeId?: string | null } = {}
+  overrides: { generation?: number; pairingRevision?: number; hostKey?: string | null } = {}
 ) {
   return {
     id: 'env-1',
     createdAt: 1,
     pairingRevision: overrides.pairingRevision ?? 1,
-    runtimeId: overrides.runtimeId === undefined ? 'orcad-a' : overrides.runtimeId,
+    ...(overrides.hostKey === null ? {} : { hostKeyFingerprint: overrides.hostKey ?? 'key-a' }),
     orcadDeployment: {
       sshTargetId: 'box',
       sshTargetGeneration: overrides.generation ?? 1,
@@ -30,20 +30,19 @@ function retired(previous: ReturnType<typeof managed>, next: ReturnType<typeof m
 }
 
 describe('which re-paired environments name a different machine', () => {
-  it('keeps a managed server whose update re-paired it with the same proven host identity', () => {
+  it('keeps a managed server whose update re-paired it with the same proven host key', () => {
     expect(retired(managed(), managed({ pairingRevision: 2 }))).toEqual([])
   })
 
-  it('retires the same target registration once its host proves a different identity', () => {
-    expect(retired(managed(), managed({ runtimeId: 'orcad-reinstalled' }))).toEqual(['env-1'])
-    expect(
-      retired(managed(), managed({ pairingRevision: 2, runtimeId: 'orcad-reinstalled' }))
-    ).toEqual(['env-1'])
+  it('retires the same target registration when the host proves a different key', () => {
+    expect(retired(managed(), managed({ pairingRevision: 2, hostKey: 'key-reinstalled' }))).toEqual(
+      ['env-1']
+    )
   })
 
-  it('retires a re-pair whose host identity was never proven', () => {
+  it('retires a re-pair whose host key is unknown', () => {
     expect(
-      retired(managed({ runtimeId: null }), managed({ pairingRevision: 2, runtimeId: null }))
+      retired(managed({ hostKey: null }), managed({ pairingRevision: 2, hostKey: null }))
     ).toEqual(['env-1'])
   })
 
@@ -52,13 +51,13 @@ describe('which re-paired environments name a different machine', () => {
   })
 
   it('retires a re-paired environment that is not a managed server', () => {
-    const paired = { id: 'env-1', createdAt: 1, pairingRevision: 1, runtimeId: 'r' }
+    const paired = { id: 'env-1', createdAt: 1, pairingRevision: 1, hostKeyFingerprint: 'k' }
     expect(
       peerReplacedEnvironmentIds([paired], [{ ...paired, pairingRevision: 2 }], ['env-1'])
     ).toEqual(['env-1'])
   })
 
-  it('treats a first recorded identity as a verification, not a new machine', () => {
-    expect(replacedRuntimeEnvironmentIds([managed({ runtimeId: null })], [managed()])).toEqual([])
+  it('leaves an environment alone while its pairing is unchanged', () => {
+    expect(replacedRuntimeEnvironmentIds([managed()], [managed()])).toEqual([])
   })
 })
