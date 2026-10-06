@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { PaneManagerOptions } from './pane-manager-types'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 import { serializePaneTree } from '@/components/terminal-pane/layout-serialization'
+import { applyExpandedLayoutTo } from '@/components/terminal-pane/expand-collapse'
 
 // Why: happy-dom has no canvas, so xterm cannot open; geometry never touches the terminal.
 vi.mock('./pane-lifecycle', async (importOriginal) => {
@@ -19,7 +20,7 @@ const LEAF_C = '33333333-3333-4333-8333-333333333333'
 const leaf = (leafId: string): TerminalPaneLayoutNode => ({ type: 'leaf', leafId })
 
 describe('PaneManager.applyLayoutGeometry', () => {
-  let root: HTMLElement
+  let root: HTMLDivElement
   let onLayoutChanged: Mock<NonNullable<PaneManagerOptions['onLayoutChanged']>>
   let onPaneCreated: Mock<NonNullable<PaneManagerOptions['onPaneCreated']>>
   let onPaneClosed: Mock<NonNullable<PaneManagerOptions['onPaneClosed']>>
@@ -191,6 +192,47 @@ describe('PaneManager.applyLayoutGeometry', () => {
 
     expect(swapped).toBe(false)
     expect(extraLeaf).toBe(false)
+    expect(takeRecords()).toEqual([])
+  })
+
+  it('leaves a zoomed pane tree untouched', () => {
+    mountThreePanes()
+    const zoomed = manager.getPanes().find((pane) => pane.leafId === LEAF_C)
+    expect(zoomed).toBeDefined()
+    const expanded = applyExpandedLayoutTo(zoomed!.id, {
+      managerRef: { current: manager },
+      containerRef: { current: root },
+      expandedStyleSnapshotRef: { current: new Map() }
+    })
+    expect(expanded).toBe(true)
+    const takeRecords = recordMutations()
+
+    const applied = manager.applyLayoutGeometry({
+      type: 'split',
+      direction: 'horizontal',
+      first: leaf(LEAF_A),
+      second: { type: 'split', direction: 'vertical', first: leaf(LEAF_B), second: leaf(LEAF_C) },
+      ratio: 0.3
+    })
+
+    expect(applied).toBe(false)
+    expect(takeRecords()).toEqual([])
+    expect(onLayoutChanged).not.toHaveBeenCalled()
+  })
+
+  it('treats a split without a divider as a different tree', () => {
+    mountTwoPanes('vertical')
+    root.querySelector('.pane-divider')?.remove()
+    const takeRecords = recordMutations()
+
+    const applied = manager.applyLayoutGeometry({
+      type: 'split',
+      direction: 'horizontal',
+      first: leaf(LEAF_A),
+      second: leaf(LEAF_B)
+    })
+
+    expect(applied).toBe(false)
     expect(takeRecords()).toEqual([])
   })
 })

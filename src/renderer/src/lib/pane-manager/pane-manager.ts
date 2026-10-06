@@ -57,7 +57,7 @@ import {
   refreshAllPaneTerminals
 } from './pane-manager-layout-sweeps'
 import { collectPaneRenderingDiagnostics } from './pane-rendering-diagnostics'
-import { applyManagedPaneLayoutGeometry } from './pane-layout-geometry-apply'
+import { applyPaneLayoutGeometry, type TerminalPaneLayoutNode } from './pane-layout-geometry-apply'
 import { FIRST_PANE_ID } from '../../../../shared/pane-key'
 
 export type {
@@ -187,8 +187,8 @@ export class PaneManager {
 
   /** Applies a host layout's split orientation and ratios to mounted panes in place.
    *  Why no onLayoutChanged: an applied host geometry must never persist or push back. */
-  applyLayoutGeometry(layout: Parameters<typeof applyManagedPaneLayoutGeometry>[1]): boolean {
-    return applyManagedPaneLayoutGeometry(this.host, layout)
+  applyLayoutGeometry(layout: TerminalPaneLayoutNode): boolean {
+    return applyPaneLayoutGeometry(this.host, layout)
   }
 
   getActivePane(): ManagedPane | null {
