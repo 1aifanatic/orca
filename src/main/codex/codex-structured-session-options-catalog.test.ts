@@ -94,10 +94,10 @@ describe('Codex session options through the host catalog store', () => {
     const request = vi.fn(async () => listAnswer('gpt-live'))
     const result = await readLiveCodexSessionOptions(storeSession(request, store), undefined)
     expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
-    expect(store.unavailable(FINGERPRINT)).toEqual({
-      reason: 'notSignedIn',
+    expect(store.statuses.get(FINGERPRINT, true)).toEqual({
+      state: 'notSignedIn',
       account: 'system',
-      expiresInMs: 30000
+      recheckInMs: 30000
     })
   })
 

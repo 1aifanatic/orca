@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  readAgentSessionUnavailable,
+  readAgentSessionAvailability,
   claudeInitializationSignedOut,
   agentSessionSignInCopyId
 } from './agent-session-availability'
@@ -12,29 +12,33 @@ describe('positive agent availability evidence', () => {
     undefined,
     null,
     {},
-    { reason: 'future', expiresInMs: 100 },
-    { reason: 'cliMissing', expiresInMs: 0 },
-    { reason: 'cliMissing', expiresInMs: Infinity },
-    { reason: 'cliMissing', expiresInMs: '10' },
-    { reason: 'notSignedIn', account: 'future', expiresInMs: 100 }
-  ])('ignores unknown or expired evidence %j', (value) => {
-    expect(readAgentSessionUnavailable(value)).toBeNull()
+    { state: 'future', recheckInMs: 100 },
+    { state: 'cliMissing', recheckInMs: 0 },
+    { state: 'cliMissing', recheckInMs: Infinity },
+    { state: 'cliMissing', recheckInMs: '10' },
+    { state: 'cliMissing' },
+    { state: 'notSignedIn', account: 'future', recheckInMs: 100 }
+  ])('ignores unknown or malformed answers %j', (value) => {
+    expect(readAgentSessionAvailability(value)).toBeNull()
+  })
+  it('reads a ready account, which needs no re-read hint', () => {
+    expect(readAgentSessionAvailability({ state: 'ready' })).toEqual({ state: 'ready' })
   })
   it.each(['managed', 'system'] as const)('retains %s account context', (account) => {
     expect(
-      readAgentSessionUnavailable({ reason: 'notSignedIn', account, expiresInMs: 50 })
-    ).toEqual({ reason: 'notSignedIn', account, expiresInMs: 50 })
+      readAgentSessionAvailability({ state: 'notSignedIn', account, recheckInMs: 50 })
+    ).toEqual({ state: 'notSignedIn', account, recheckInMs: 50 })
   })
-  it("clamps a longer host lifetime to this client's hold instead of dropping it", () => {
-    expect(readAgentSessionUnavailable({ reason: 'cliMissing', expiresInMs: 90_000 })).toEqual({
-      reason: 'cliMissing',
-      expiresInMs: 30_000
+  it("clamps a longer host hint to this client's hold instead of dropping it", () => {
+    expect(readAgentSessionAvailability({ state: 'cliMissing', recheckInMs: 90_000 })).toEqual({
+      state: 'cliMissing',
+      recheckInMs: 30_000
     })
   })
   it('retains signed-out evidence without optional account context', () => {
-    expect(readAgentSessionUnavailable({ reason: 'notSignedIn', expiresInMs: 50 })).toEqual({
-      reason: 'notSignedIn',
-      expiresInMs: 50
+    expect(readAgentSessionAvailability({ state: 'notSignedIn', recheckInMs: 50 })).toEqual({
+      state: 'notSignedIn',
+      recheckInMs: 50
     })
   })
   it.each([

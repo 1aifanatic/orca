@@ -127,6 +127,8 @@ export class CodexAccountSelection {
       accountId,
       effectiveTarget
     )
+    // Before the settings change a chat reads from, so its read re-probes the account now in use.
+    agentModelCatalogStore.statuses.recheck('codex')
     this.dependencies.store.updateSettings({
       activeCodexManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,
@@ -134,8 +136,6 @@ export class CodexAccountSelection {
     })
     this.dependencies.configMirror.safeSyncToManagedHomes()
     this.dependencies.runtimeHome.syncForCurrentSelection(effectiveTarget)
-    // A sign-in verdict the catalog holds is re-derived for the account now in use.
-    agentModelCatalogStore.failures.recheck('codex')
     if (
       accountId === null &&
       normalizeCodexAccountSelectionTarget(effectiveTarget).runtime === 'host'

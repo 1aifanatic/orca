@@ -409,8 +409,20 @@ describe('ClaudeAccountService credential capture', () => {
       identity: { email: 'new@example.com', organizationUuid: null, organizationName: null }
     }))
 
+    const { agentModelCatalogStore } =
+      await import('../native-chat/agent-model-catalog/agent-model-catalog-store')
+    const recheck = vi.spyOn(agentModelCatalogStore.statuses, 'recheck')
+
     await service.reauthenticateAccount('account-1')
 
+    // Marked before the settings change a chat's read follows.
+    expect(recheck).toHaveBeenCalledWith('claude')
+    const signedIn = store.updateSettings.mock.calls.findIndex(([updates]) =>
+      JSON.stringify(updates.claudeManagedAccounts ?? []).includes('new@example.com')
+    )
+    expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
+      store.updateSettings.mock.invocationCallOrder[signedIn]!
+    )
     expect(rateLimits.evictInactiveClaudeCache).toHaveBeenCalledWith('account-1')
     expect(rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith(undefined, {
       runtime: 'host'

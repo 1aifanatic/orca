@@ -100,6 +100,9 @@ export class ClaudeAccountSelection {
       accountId,
       effectiveTarget
     )
+    // Before the settings change a chat reads from: its read re-probes, and the probe waits out
+    // the switch, so the answer it serves meanwhile is the one held, never a stale fresh one.
+    agentModelCatalogStore.statuses.recheck('claude')
     this.store.updateSettings({
       activeClaudeManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,
@@ -107,8 +110,6 @@ export class ClaudeAccountSelection {
     })
     try {
       await this.syncRuntimeAuth(effectiveTarget)
-      // A sign-in verdict the catalog holds is re-derived for the account now in use.
-      agentModelCatalogStore.failures.recheck('claude')
       await this.rateLimits.refreshForClaudeAccountChange(outgoingAccountId, effectiveTarget)
       return this.snapshot()
     } catch (error) {

@@ -20,7 +20,7 @@ describe('a Codex start whose CLI the spawn never found', () => {
       { codexHome: HOME },
       withMissingProviderExecutable(new Error('codex app-server connection ended'))
     )
-    expect(store.unavailable(FINGERPRINT)).toMatchObject({ reason: 'cliMissing' })
+    expect(store.statuses.get(FINGERPRINT, true)).toMatchObject({ state: 'cliMissing' })
   })
 
   it('records nothing for any other failed start', () => {
@@ -30,6 +30,6 @@ describe('a Codex start whose CLI the spawn never found', () => {
       { codexHome: HOME },
       new Error('exited (code 1)')
     )
-    expect(store.unavailable(FINGERPRINT)).toBeUndefined()
+    expect(store.statuses.get(FINGERPRINT, true)).toBeUndefined()
   })
 })

@@ -61,13 +61,13 @@ describe('agentSession.modelCatalog', () => {
   it.each(['unknown', 'probe'] as const)(
     'carries optional availability beside a %s catalog over the existing RPC',
     async (origin) => {
-      const unavailable = { reason: 'notSignedIn', account: 'managed', expiresInMs: 12000 } as const
+      const availability = { state: 'notSignedIn', account: 'managed', recheckInMs: 12000 } as const
       const catalog: AgentSessionModelCatalogResult =
         origin === 'unknown'
-          ? { origin, unavailable }
+          ? { origin, availability }
           : {
               origin,
-              unavailable,
+              availability,
               models: [{ id: 'gpt-host', label: 'GPT Host', isDefault: true, efforts: [] }],
               fetchedAt: 1
             }
@@ -88,7 +88,7 @@ describe('agentSession.modelCatalog', () => {
       STRUCTURED_CLIENT
     )
     expect(reply).toMatchObject({ ok: true, result: { origin: 'unknown' } })
-    expect(reply).not.toHaveProperty('result.unavailable')
+    expect(reply).not.toHaveProperty('result.availability')
   })
 
   it('reads the catalog for the directory the named worktree runs in on this host', async () => {

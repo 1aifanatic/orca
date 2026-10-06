@@ -4,41 +4,57 @@ export type AgentSessionUnavailable =
   | { reason: 'notSignedIn'; account?: AgentSessionAccountKind }
   | { reason: 'cliMissing' }
 
-export type AgentSessionUnavailableObservation = AgentSessionUnavailable & { expiresInMs: number }
+/** Whether a new child can start under the account home a chat runs with. */
+export type AgentSessionAvailabilityState =
+  | { state: 'ready' }
+  | { state: 'notSignedIn'; account?: AgentSessionAccountKind }
+  | { state: 'cliMissing' }
+
+/** The host's answer on the catalog reply. A blocked answer says when to read again; absent (an
+ *  older host, or no check yet) is unknown, which never blocks. */
+export type AgentSessionAvailability =
+  | { state: 'ready' }
+  | { state: 'notSignedIn'; account?: AgentSessionAccountKind; recheckInMs: number }
+  | { state: 'cliMissing'; recheckInMs: number }
 
 export type AgentSessionModelCatalogObservation = {
-  unavailable?: AgentSessionUnavailableObservation
+  availability?: AgentSessionAvailability
   /** A waiting catalog read joins the host's current listing. Optional for older hosts. */
   listingInProgress?: true
-  /** The host's last probe found this account signed in with its CLI present, so an earlier
-   *  sign-in or missing-CLI start failure is superseded. Absent: no such check (unknown). */
-  accountVerified?: true
 }
 
-/** The longest this client holds a host's verdict before reading again; a longer host lifetime
- *  is clamped to it, never treated as unknown. */
+export function agentSessionAvailabilityState(
+  unavailable: AgentSessionUnavailable
+): AgentSessionAvailabilityState {
+  return unavailable.reason === 'notSignedIn'
+    ? { state: 'notSignedIn', ...(unavailable.account ? { account: unavailable.account } : {}) }
+    : { state: 'cliMissing' }
+}
+
+/** The longest this client holds a blocked answer before reading again; a longer host hint is
+ *  clamped to it, never treated as unknown. */
 export const AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS = 30_000
 
-export function readAgentSessionUnavailable(
-  value: unknown
-): AgentSessionUnavailableObservation | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+export function readAgentSessionAvailability(value: unknown): AgentSessionAvailability | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || !('state' in value)) {
     return null
   }
+  if (value.state === 'ready') {
+    return { state: 'ready' }
+  }
   if (
-    !('expiresInMs' in value) ||
-    typeof value.expiresInMs !== 'number' ||
-    !Number.isFinite(value.expiresInMs) ||
-    value.expiresInMs <= 0 ||
-    !('reason' in value)
+    !('recheckInMs' in value) ||
+    typeof value.recheckInMs !== 'number' ||
+    !Number.isFinite(value.recheckInMs) ||
+    value.recheckInMs <= 0
   ) {
     return null
   }
-  const expiresInMs = Math.min(value.expiresInMs, AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS)
-  if (value.reason === 'cliMissing') {
-    return { reason: 'cliMissing', expiresInMs }
+  const recheckInMs = Math.min(value.recheckInMs, AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS)
+  if (value.state === 'cliMissing') {
+    return { state: 'cliMissing', recheckInMs }
   }
-  if (value.reason !== 'notSignedIn') {
+  if (value.state !== 'notSignedIn') {
     return null
   }
   const account = 'account' in value ? value.account : undefined
@@ -46,8 +62,8 @@ export function readAgentSessionUnavailable(
     return null
   }
   return {
-    reason: 'notSignedIn',
-    expiresInMs,
+    state: 'notSignedIn',
+    recheckInMs,
     ...(account === 'managed' || account === 'system' ? { account } : {})
   }
 }

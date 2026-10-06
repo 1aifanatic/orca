@@ -1,5 +1,6 @@
 import {
-  readAgentSessionUnavailable,
+  readAgentSessionAvailability,
+  type AgentSessionAvailabilityState,
   type AgentSessionUnavailable
 } from '../../../../shared/agent-session-availability'
 import { useAppStore } from '@/store'
@@ -25,19 +26,31 @@ import {
 
 type AccountSettings = ReturnType<typeof useAppStore.getState>['settings']
 
-/** The account inputs a launch resolves its home from, by value: a re-fetched settings copy with
- *  equal values keeps the key, and a switch or a fresh sign-in changes it. Hashed, since the agent
- *  env can hold secrets. */
-function accountKeyOf(settings: AccountSettings): string {
-  const text = JSON.stringify([
-    settings?.activeClaudeManagedAccountId,
-    settings?.activeCodexManagedAccountId,
-    settings?.activeClaudeManagedAccountIdsByRuntime,
-    settings?.activeCodexManagedAccountIdsByRuntime,
-    settings?.agentDefaultEnv,
-    settings?.claudeManagedAccounts?.map((account) => [account.id, account.lastAuthenticatedAt]),
-    settings?.codexManagedAccounts?.map((account) => [account.id, account.lastAuthenticatedAt])
-  ])
+/** The inputs this agent's launch resolves its home from, by value: a re-fetched settings copy
+ *  with equal values keeps the key, and a switch or a fresh sign-in for THIS agent changes it.
+ *  Hashed, since the agent env can hold secrets. */
+function accountKeyOf(settings: AccountSettings, agent: AgentType): string {
+  const accounts =
+    agent === 'claude'
+      ? [
+          settings?.activeClaudeManagedAccountId,
+          settings?.activeClaudeManagedAccountIdsByRuntime,
+          settings?.claudeManagedAccounts?.map((account) => [
+            account.id,
+            account.lastAuthenticatedAt
+          ])
+        ]
+      : agent === 'codex'
+        ? [
+            settings?.activeCodexManagedAccountId,
+            settings?.activeCodexManagedAccountIdsByRuntime,
+            settings?.codexManagedAccounts?.map((account) => [
+              account.id,
+              account.lastAuthenticatedAt
+            ])
+          ]
+        : []
+  const text = JSON.stringify([...accounts, settings?.agentDefaultEnv?.[agent]])
   let hash = 0x811c9dc5
   for (let index = 0; index < text.length; index += 1) {
     hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193)
@@ -45,10 +58,30 @@ function accountKeyOf(settings: AccountSettings): string {
   return (hash >>> 0).toString(36)
 }
 
+/** The host's last answer for one chat. Partitioned by host, agent and session, not by account:
+ *  an account change re-reads, and the answer held stands until the re-read replaces it. */
 type CatalogObservation = {
   key: string
-  unavailable: AgentSessionUnavailable | null
-  accountVerified: boolean
+  availability: AgentSessionAvailabilityState
+}
+
+function unavailableFrom(answer: AgentSessionAvailabilityState): AgentSessionUnavailable | null {
+  return answer.state === 'ready'
+    ? null
+    : answer.state === 'notSignedIn'
+      ? { reason: 'notSignedIn', ...(answer.account ? { account: answer.account } : {}) }
+      : { reason: 'cliMissing' }
+}
+
+function sameAvailability(
+  left: AgentSessionAvailabilityState,
+  right: AgentSessionAvailabilityState
+): boolean {
+  return (
+    left.state === right.state &&
+    (left.state !== 'notSignedIn' ||
+      (right.state === 'notSignedIn' && left.account === right.account))
+  )
 }
 
 /**
@@ -99,7 +132,7 @@ export function useHostModelCatalogUpgrade(args: {
     updateOptionState,
     worktree
   } = args
-  const accountKey = useAppStore((state) => accountKeyOf(state.settings))
+  const accountKey = useAppStore((state) => accountKeyOf(state.settings, agent))
   // A paired host known out of contact answers nothing; its evidence is unknown until it is back.
   const hostLive = useAppStore((state) => {
     const entry =
@@ -108,7 +141,9 @@ export function useHostModelCatalogUpgrade(args: {
         : state.runtimeStatusByEnvironmentId.get(target.environmentId)
     return !entry || runtimeHostContactForEntry(entry).verdict === 'live'
   })
-  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}\u0000${accountKey}`
+  const chatKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}`
+  // A listing wait is the account's own: a switch never joins the old account's read.
+  const waitKey = `${chatKey}\u0000${accountKey}`
   const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
     isHostModelListingWaitInFlight(waitKey)
   )
@@ -138,25 +173,20 @@ export function useHostModelCatalogUpgrade(args: {
     // An answer replaces the last one; nothing clears it before the next answer arrives.
     const apply = (catalog: AgentSessionModelCatalogResult | null): void => {
       clearTimeout(expiry)
-      const unavailable = catalog ? readAgentSessionUnavailable(catalog.unavailable) : null
-      const accountVerified = !unavailable && catalog?.accountVerified === true
+      const answer = catalog ? readAgentSessionAvailability(catalog.availability) : null
       setObservation((previous) =>
-        previous?.key === waitKey &&
-        previous.accountVerified === accountVerified &&
-        previous.unavailable?.reason === unavailable?.reason &&
-        (previous.unavailable?.reason !== 'notSignedIn' ||
-          (unavailable?.reason === 'notSignedIn' &&
-            previous.unavailable.account === unavailable.account))
+        answer && previous?.key === chatKey && sameAvailability(previous.availability, answer)
           ? previous
-          : unavailable || accountVerified
-            ? { key: waitKey, unavailable, accountVerified }
+          : answer
+            ? { key: chatKey, availability: answer }
             : null
       )
       if (!catalog) {
         return
       }
-      if (unavailable) {
-        expiry = setTimeout(refresh, unavailable.expiresInMs)
+      // Only a blocked answer needs re-deriving on its own; the host says when.
+      if (answer && answer.state !== 'ready') {
+        expiry = setTimeout(refresh, answer.recheckInMs)
       }
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
@@ -249,6 +279,7 @@ export function useHostModelCatalogUpgrade(args: {
   }, [
     activeOptionRecordRef,
     agent,
+    chatKey,
     enabled,
     fence,
     hostLive,
@@ -261,10 +292,11 @@ export function useHostModelCatalogUpgrade(args: {
     waitKey,
     worktree
   ])
-  const current = enabled && hostLive && observation?.key === waitKey ? observation : null
+  const answer =
+    enabled && hostLive && observation?.key === chatKey ? observation.availability : null
   return {
     awaitingListing,
-    unavailable: current?.unavailable ?? null,
-    accountVerified: current?.accountVerified ?? false
+    unavailable: answer ? unavailableFrom(answer) : null,
+    accountVerified: answer?.state === 'ready'
   }
 }

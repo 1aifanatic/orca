@@ -174,7 +174,7 @@ describe('ClaudeAccountService credential capture', () => {
 
     const { agentModelCatalogStore } =
       await import('../native-chat/agent-model-catalog/agent-model-catalog-store')
-    const recheck = vi.spyOn(agentModelCatalogStore.failures, 'recheck')
+    const recheck = vi.spyOn(agentModelCatalogStore.statuses, 'recheck')
     markClaudePtySpawned('live-claude-pty')
     try {
       await service.selectAccount('account-2')
@@ -188,8 +188,12 @@ describe('ClaudeAccountService credential capture', () => {
       wsl: {}
     })
     expect(runtimeAuth.syncForCurrentSelection).toHaveBeenCalledWith({ runtime: 'host' })
-    // Every host account shares one config dir, so the chat's sign-in verdict is re-derived.
+    // Every host account shares one config dir, so the chat's sign-in answer is re-derived; marked
+    // before the settings change a chat's read follows, so that read never sees an unmarked one.
     expect(recheck).toHaveBeenCalledWith('claude')
+    expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
+      store.updateSettings.mock.invocationCallOrder[0]!
+    )
     expect(rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith('account-1', {
       runtime: 'host'
     })

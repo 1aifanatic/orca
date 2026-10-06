@@ -90,7 +90,7 @@ async function workspaceKeepsListedDefault(
  * probe so the next read is warm. With no entry, the answer says that listing
  * is running, and only a read that asks waits for it. Failures suppress a new
  * probe for 30s, but never hide another listing already running for the account.
- * A probe failure typed as signed out or CLI missing rides along as `unavailable`.
+ * Whether a new child can start under the account rides along as `availability`.
  */
 export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
@@ -127,11 +127,12 @@ export function createAgentModelCatalogService(
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
       if (probe && home) {
-        // An aged-out verdict is re-derived only here, by the probe; no chat's own listing can.
-        if (
-          entry &&
-          (deps.store.shouldRefresh(fingerprint) || deps.store.failures.awaitsProbe(fingerprint))
-        ) {
+        // A blocked answer past its TTL, or one an account change marked, is re-derived here by
+        // the probe whatever else is listing; no chat's own listing can answer for the account.
+        if (deps.store.statuses.needsProbe(fingerprint)) {
+          void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+          listing = !entry ? deps.store.pendingListing(fingerprint) : null
+        } else if (entry && deps.store.shouldRefresh(fingerprint)) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
@@ -150,16 +151,14 @@ export function createAgentModelCatalogService(
         const listed = await pending
         entry = deps.store.get(fingerprint) ?? listed
       }
-      const unavailable = home ? deps.store.unavailable(fingerprint) : undefined
-      // A catalog or a held verdict can land before the probe's answer, which one more read waits for.
+      // The last answer stands until a newer one replaces it.
+      const availability = home ? deps.store.statuses.get(fingerprint, Boolean(probe)) : undefined
+      // A catalog or a held answer can land before the probe's, which one more read waits for.
       const inProgress = params.waitForAvailability
         ? false
         : (!params.waitForListing && listing !== null) || probeRunning()
       const observation = {
-        ...(unavailable ? { unavailable } : {}),
-        ...(!unavailable && home && deps.store.failures.accountVerified(fingerprint)
-          ? { accountVerified: true as const }
-          : {}),
+        ...(availability ? { availability } : {}),
         ...(inProgress ? { listingInProgress: true as const } : {})
       }
       if (!entry) {

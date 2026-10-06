@@ -94,9 +94,7 @@ export function settleClaudeUnexpectedExit(
     if (exit.session.startup.state !== 'proven' && exit.session.connection.executableMissing) {
       // The CLI that would run the chat is not installed: the same verdict a probe would type.
       const access = exit.session.catalogAccess
-      access?.store.failures.recordStartRefusal(access.fingerprint, 'claude', {
-        reason: 'cliMissing'
-      })
+      access?.store.statuses.record(access.fingerprint, 'claude', { state: 'cliMissing' })
     }
     const ended: ClaudeStructuredSessionEvent = {
       type: 'ended',

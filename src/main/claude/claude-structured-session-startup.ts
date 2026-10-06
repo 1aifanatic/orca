@@ -78,11 +78,10 @@ export async function readClaudeStartupFacts(input: {
     input.connection.initializationResult().then((result) => {
       const authError = claudeInitializationAuthError(result, input.account)
       if (authError) {
-        input.catalogAccess?.store.failures.recordStartRefusal(
-          input.catalogAccess.fingerprint,
-          'claude',
-          { reason: 'notSignedIn', ...(input.account ? { account: input.account } : {}) }
-        )
+        input.catalogAccess?.store.statuses.record(input.catalogAccess.fingerprint, 'claude', {
+          state: 'notSignedIn',
+          ...(input.account ? { account: input.account } : {})
+        })
         throw authError
       }
       return result

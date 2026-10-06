@@ -126,13 +126,13 @@ export class ClaudeAccountRegistration {
       await this.dependencies.writeOauth(accountId, managedAuthPath, captured.oauthAccount)
       await this.dependencies.writeCredentials(accountId, managedAuthPath, captured.credentialsJson)
       wroteCredentials = true
+      // The account signed in again: before the settings change a chat reads from, mark it.
+      agentModelCatalogStore.statuses.recheck('claude')
       this.dependencies.store.updateSettings({ claudeManagedAccounts: nextAccounts })
       this.dependencies.runtimeAuth.clearLastWrittenCredentialsJson(accountId)
       this.dependencies.rateLimits.evictInactiveClaudeCache(accountId)
       const target = getClaudeSelectionTargetForAccount(account)
       await this.dependencies.selection.syncRuntimeAuth(target)
-      // The account just signed in again: re-derive the catalog's sign-in verdict for it.
-      agentModelCatalogStore.failures.recheck('claude')
       await this.dependencies.rateLimits.refreshForClaudeAccountChange(undefined, target)
       return this.dependencies.selection.snapshot()
     } catch (error) {

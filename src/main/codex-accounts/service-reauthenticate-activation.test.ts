@@ -102,10 +102,22 @@ describe('CodexAccountService reauthenticate activation intent', () => {
       runtimeHome as never
     )
 
+    const { agentModelCatalogStore } =
+      await import('../native-chat/agent-model-catalog/agent-model-catalog-store')
+    const recheck = vi.spyOn(agentModelCatalogStore.statuses, 'recheck')
+
     const result = await service.reauthenticateAccount('account-2', {
       activateIfSelectionWasEmpty: true
     })
 
+    // Marked before the settings change a chat's read follows.
+    expect(recheck).toHaveBeenCalledWith('codex')
+    const signedIn = store.updateSettings.mock.calls.findIndex(([updates]) =>
+      JSON.stringify(updates.codexManagedAccounts ?? []).includes('reauthenticated@example.com')
+    )
+    expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
+      store.updateSettings.mock.invocationCallOrder[signedIn]!
+    )
     // Healthy anchor: the login really ran and its identity landed.
     expect(spawnMock).toHaveBeenCalledTimes(1)
     expect(result.accounts.find((account) => account.id === 'account-2')).toMatchObject({

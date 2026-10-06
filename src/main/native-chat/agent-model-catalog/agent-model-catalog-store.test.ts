@@ -394,7 +394,7 @@ describe('agent model catalog store', () => {
   })
 })
 
-describe('probe verdict on the failure record', () => {
+describe("the account's status beside the catalog", () => {
   function blockedStore(at: { now: number }) {
     const store = new AgentModelCatalogStore({ now: () => at.now })
     const signedOut: AgentModelCatalogProbe = async () => {
@@ -403,8 +403,9 @@ describe('probe verdict on the failure record', () => {
     const block = () => store.refresh('fp-1', 'codex', signedOut, () => signedOut('/homes/a'))
     return { store, block }
   }
+  const status = (store: AgentModelCatalogStore) => store.statuses.get('fp-1', true)
 
-  it("keeps the verdict and its lifetime through a chat's own listings", async () => {
+  it("is the probe's alone: a chat's own listings neither change nor renew it", async () => {
     const at = { now: 1_000 }
     const { store, block } = blockedStore(at)
     await block()
@@ -412,63 +413,44 @@ describe('probe verdict on the failure record', () => {
     store.recordSuccess('fp-1', 'codex', success('gpt-a'))
     await store.refresh('fp-1', 'codex', liveLister(store), async () => success('gpt-b'))
     store.recordFailure('fp-1', 'model/list timed out')
-    await store.refresh('fp-1', 'codex', liveLister(store), async () => {
-      throw new Error('model/list timed out')
-    })
     expect(store.get('fp-1')!.models.map((model) => model.id)).toEqual(['gpt-b'])
-    expect(store.unavailable('fp-1')).toEqual({
-      reason: 'notSignedIn',
+    expect(status(store)).toEqual({
+      state: 'notSignedIn',
       account: 'system',
-      expiresInMs: AGENT_MODEL_CATALOG_FAILURE_TTL_MS - 10_000
+      recheckInMs: AGENT_MODEL_CATALOG_FAILURE_TTL_MS - 10_000
     })
   })
 
-  it('clears the verdict on a probe success or an untyped probe failure', async () => {
+  it('a probe success says ready; an untyped probe failure says nothing', async () => {
     const at = { now: 1_000 }
     const { store, block } = blockedStore(at)
     await block()
     const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
     await store.refresh('fp-1', 'codex', listed, () => listed('/homes/a'))
-    expect(store.unavailable('fp-1')).toBeUndefined()
-    await block()
+    expect(status(store)).toEqual({ state: 'ready' })
     const timedOut: AgentModelCatalogProbe = async () => {
       throw new Error('timeout')
     }
     await store.refresh('fp-1', 'codex', timedOut, () => timedOut('/homes/a'))
-    expect(store.unavailable('fp-1')).toBeUndefined()
+    expect(status(store)).toBeUndefined()
   })
 
-  it('marks an aged-out verdict for the probe alone, however fresh the catalog', async () => {
+  it('stands past its TTL until re-derived, and only a blocked one asks for the probe', async () => {
     const at = { now: 1_000 }
     const { store, block } = blockedStore(at)
     store.recordSuccess('fp-1', 'codex', success('gpt-a'))
     await block()
-    expect(store.failures.awaitsProbe('fp-1')).toBe(false)
+    expect(store.statuses.needsProbe('fp-1')).toBe(false)
     at.now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
-    expect(store.unavailable('fp-1')).toBeUndefined()
-    expect(store.failures.awaitsProbe('fp-1')).toBe(true)
-    // A chat's own picker never re-lists for the mark: only the service's probe answers it.
+    expect(status(store)).toMatchObject({
+      state: 'notSignedIn',
+      recheckInMs: AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    })
+    expect(store.statuses.needsProbe('fp-1')).toBe(true)
+    // A chat's own picker never re-lists for it; only the catalog read's probe answers it.
     expect(store.shouldRefresh('fp-1')).toBe(false)
-    // A chat's listing after expiry does not stand in for the re-probe.
-    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
-    expect(store.failures.awaitsProbe('fp-1')).toBe(true)
-  })
-
-  it('serves an aged-out verdict until the probe re-deriving it answers', async () => {
-    const at = { now: 1_000 }
-    const { store, block } = blockedStore(at)
-    await block()
-    at.now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
-    let answer!: (value: AgentModelCatalogSuccess) => void
-    const reprobe: AgentModelCatalogProbe = () =>
-      new Promise<AgentModelCatalogSuccess>((resolve) => (answer = resolve))
-    const running = store.refresh('fp-1', 'codex', reprobe, () => reprobe('/homes/a'))
-    expect(store.unavailable('fp-1')).toMatchObject({ reason: 'notSignedIn' })
-    expect(store.failures.accountVerified('fp-1')).toBe(false)
-    answer({ ...success('gpt-a'), origin: 'probe' })
-    await running
-    expect(store.unavailable('fp-1')).toBeUndefined()
-    expect(store.failures.accountVerified('fp-1')).toBe(true)
+    // With nothing able to re-derive it, an aged blocked answer is not served.
+    expect(store.statuses.get('fp-1', false)).toBeUndefined()
   })
 
   it('never re-probes a healthy fresh catalog inside the fresh window', async () => {
@@ -478,31 +460,43 @@ describe('probe verdict on the failure record', () => {
     await store.refresh('fp-1', 'codex', listed, () => listed('/homes/a'))
     at += AGENT_MODEL_CATALOG_FRESH_MS - 1
     expect(store.shouldRefresh('fp-1')).toBe(false)
+    expect(store.statuses.needsProbe('fp-1')).toBe(false)
   })
 
-  it("takes a refused start as the verdict, which a chat's listing cannot undo", async () => {
+  it('a probe that started before newer evidence cannot replace it', async () => {
     const at = { now: 1_000 }
     const store = new AgentModelCatalogStore({ now: () => at.now })
-    const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
-    await store.refresh('fp-1', 'claude', listed, () => listed('/homes/a'))
-    expect(store.failures.accountVerified('fp-1')).toBe(true)
-    store.failures.recordStartRefusal('fp-1', 'claude', {
-      reason: 'notSignedIn',
-      account: 'system'
-    })
-    store.recordSuccess('fp-1', 'claude', success('gpt-a'))
-    expect(store.unavailable('fp-1')).toMatchObject({ reason: 'notSignedIn', account: 'system' })
-    expect(store.failures.accountVerified('fp-1')).toBe(false)
+    let answer!: (value: AgentModelCatalogSuccess) => void
+    const slow: AgentModelCatalogProbe = () =>
+      new Promise<AgentModelCatalogSuccess>((resolve) => (answer = resolve))
+    const running = store.refresh('fp-1', 'claude', slow, () => slow('/homes/a'))
+    at.now += 1_000
+    // The same CLI refused a start under this home after the probe began.
+    store.statuses.record('fp-1', 'claude', { state: 'notSignedIn' })
+    answer({ ...success('gpt-a'), origin: 'probe' })
+    await running
+    expect(status(store)).toMatchObject({ state: 'notSignedIn' })
   })
 
-  it('a sign-in change for the agent re-derives its verdicts at the next read', async () => {
+  it("an account change marks only that agent's answers, which stand until re-probed", async () => {
     const at = { now: 1_000 }
     const { store, block } = blockedStore(at)
     await block()
-    store.failures.recheck('claude')
-    expect(store.failures.awaitsProbe('fp-1')).toBe(false)
-    store.failures.recheck('codex')
-    expect(store.failures.awaitsProbe('fp-1')).toBe(true)
+    store.statuses.recheck('claude')
+    expect(store.statuses.needsProbe('fp-1')).toBe(false)
+    let answer!: (value: AgentModelCatalogSuccess) => void
+    const slow: AgentModelCatalogProbe = () =>
+      new Promise<AgentModelCatalogSuccess>((resolve) => (answer = resolve))
+    const startedBefore = store.refresh('fp-1', 'codex', slow, () => slow('/homes/a'))
+    at.now += 1_000
+    store.statuses.recheck('codex')
+    expect(store.statuses.needsProbe('fp-1')).toBe(true)
+    expect(status(store)).toMatchObject({ state: 'notSignedIn' })
+    // A probe already running read the old account: its answer does not settle the change.
+    answer({ ...success('gpt-a'), origin: 'probe' })
+    await startedBefore
+    expect(status(store)).toMatchObject({ state: 'notSignedIn' })
+    expect(store.statuses.needsProbe('fp-1')).toBe(true)
   })
 
   it('a synchronous probe fault never rejects the catalog read', async () => {
@@ -511,6 +505,6 @@ describe('probe verdict on the failure record', () => {
       throw new AgentModelCatalogUnavailableError({ reason: 'cliMissing' })
     }
     await expect(store.refresh('a', 'codex', faulty, () => faulty('/homes/a'))).resolves.toBeNull()
-    expect(store.unavailable('a')?.reason).toBe('cliMissing')
+    expect(store.statuses.get('a', true)).toMatchObject({ state: 'cliMissing' })
   })
 })

@@ -27,7 +27,7 @@ export function recordCodexMissingCli(
   error: unknown
 ): void {
   const access = providerExecutableMissing(error) ? codexAcquireCatalogAccess(deps, launch) : null
-  access?.store.failures.recordStartRefusal(access.fingerprint, 'codex', { reason: 'cliMissing' })
+  access?.store.statuses.record(access.fingerprint, 'codex', { state: 'cliMissing' })
 }
 
 /** Use saved catalog knowledge for Fast restore without waiting on discovery. */

@@ -381,14 +381,14 @@ describe('Send availability follows the current catalog', () => {
   })
   const blocked = {
     origin: 'unknown',
-    unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 30000 }
+    availability: { state: 'notSignedIn', account: 'system', recheckInMs: 30000 }
   }
   it.each(['claude', 'codex'] as const)(
     'gates a live %s session on account evidence and enables it after sign-in',
     async (agent) => {
       const catalog = { ...HOST_CATALOG, origin: 'live-session' }
       answerCatalog([
-        () => Promise.resolve({ ...catalog, unavailable: blocked.unavailable }),
+        () => Promise.resolve({ ...catalog, availability: blocked.availability }),
         () => Promise.resolve(catalog)
       ])
       const { result } = renderOptions({ agent, attached: true })
@@ -452,7 +452,7 @@ describe('Send availability follows the current catalog', () => {
     const { result } = renderOptions()
     await flush()
     expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
-    waited.resolve({ ...HOST_CATALOG, unavailable: blocked.unavailable })
+    waited.resolve({ ...HOST_CATALOG, availability: blocked.availability })
     await flush()
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
   })
@@ -460,7 +460,7 @@ describe('Send availability follows the current catalog', () => {
     answerCatalog([
       () => Promise.resolve(LISTING),
       () => Promise.resolve({ ...HOST_CATALOG, listingInProgress: true }),
-      () => Promise.resolve({ ...HOST_CATALOG, unavailable: blocked.unavailable })
+      () => Promise.resolve({ ...HOST_CATALOG, availability: blocked.availability })
     ])
     const { result } = renderOptions()
     await flush()
@@ -505,22 +505,58 @@ describe('Send availability follows the current catalog', () => {
     unmount()
     useAppStore.setState({ runtimeStatusByEnvironmentId: previous })
   })
-  it('re-reads under the new account and drops the old blocker on an account switch', async () => {
+  it('after an account switch keeps the held words until the re-read answers, then flips once', async () => {
     const previous = useAppStore.getState().settings
-    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
+    const reread = deferred()
+    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
     const { result, unmount } = renderOptions()
     await flush()
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    const seen: (string | null)[] = []
     act(() =>
       useAppStore.setState({
         settings: { ...previous!, activeCodexManagedAccountId: 'switched-account' }
       })
     )
+    seen.push(result.current.unavailable?.reason ?? null)
     await flush()
-    expect(result.current.unavailable).toBeNull()
+    seen.push(result.current.unavailable?.reason ?? null)
     expect(catalogReads()).toHaveLength(2)
+    reread.resolve({ ...HOST_CATALOG, availability: { state: 'ready' } })
+    await flush()
+    seen.push(result.current.unavailable?.reason ?? null)
+    // Disabled with the previous words until the answer, then enabled: never enabled first.
+    expect(seen).toEqual(['notSignedIn', 'notSignedIn', null])
+    expect(result.current.accountVerified).toBe(true)
     // An unrelated store write neither re-reads nor re-keys.
     act(() => useAppStore.setState({ runtimeStatusByEnvironmentId: new Map() }))
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    unmount()
+    useAppStore.setState({ settings: previous })
+  })
+  it("re-reads a chat only for its own agent's account change", async () => {
+    const previous = useAppStore.getState().settings
+    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
+    const { result, unmount } = renderOptions({ agent: 'claude' })
+    await flush()
+    act(() =>
+      useAppStore.setState({
+        settings: {
+          ...previous!,
+          activeCodexManagedAccountId: 'another-codex-account',
+          agentDefaultEnv: { codex: { OPENAI_BASE_URL: 'https://gateway.example' } }
+        }
+      })
+    )
+    await flush()
+    expect(catalogReads()).toHaveLength(1)
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    act(() =>
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings!, activeClaudeManagedAccountId: 'claude-2' }
+      })
+    )
     await flush()
     expect(catalogReads()).toHaveLength(2)
     unmount()
@@ -607,10 +643,10 @@ describe('Send availability follows the current catalog', () => {
   })
   it.each([
     undefined,
-    { reason: 'future', expiresInMs: 30000 },
-    { reason: 'cliMissing', expiresInMs: 0 }
-  ])('ignores old-host or unfamiliar availability %j', async (unavailable) => {
-    answerCatalog([() => Promise.resolve({ ...HOST_CATALOG, unavailable })])
+    { state: 'future', recheckInMs: 30000 },
+    { state: 'cliMissing', recheckInMs: 0 }
+  ])('ignores old-host or unfamiliar availability %j', async (availability) => {
+    answerCatalog([() => Promise.resolve({ ...HOST_CATALOG, availability })])
     const { result } = renderOptions()
     await flush()
     expect(result.current.unavailable).toBeNull()

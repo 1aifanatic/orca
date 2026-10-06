@@ -120,6 +120,8 @@ export class CodexAccountRegistration {
       accountTarget
     )
 
+    // The account signed in again: before the settings change a chat reads from, mark it.
+    agentModelCatalogStore.statuses.recheck('codex')
     // Why: login can transiently clear this runtime's selection; unrelated runtime validation must remain authoritative.
     this.dependencies.store.updateSettings({
       codexManagedAccounts: updatedAccounts,
@@ -129,8 +131,6 @@ export class CodexAccountRegistration {
     this.dependencies.configMirror.safeSyncToManagedHomes()
     this.dependencies.runtimeHome.clearLastWrittenAuthJson(accountId)
     this.dependencies.runtimeHome.syncForCurrentSelection(accountTarget)
-    // The account just signed in again: re-derive the catalog's sign-in verdict for it.
-    agentModelCatalogStore.failures.recheck('codex')
     // Why: re-auth can change the underlying Codex identity, so force a fresh read to avoid showing stale quota.
     this.startQuotaRefresh(undefined, accountTarget)
     return this.dependencies.selection.snapshot()

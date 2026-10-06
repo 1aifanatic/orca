@@ -222,7 +222,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
       fastModeTierByModel: new Map(),
       origin: 'probe'
     })
-    expect(store.unavailable(fingerprint)).toBeUndefined()
+    expect(store.statuses.get(fingerprint, true)).toBeUndefined()
     const claude = fakeClaude({ initAccount: { apiProvider: 'firstParty', tokenSource: 'none' } })
     const events: ClaudeStructuredSessionEvent[] = []
     const adapter = adapterAtPublishFor(
@@ -239,7 +239,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     await adapter.acquire(ACQUIRE)
     await adapter.awaitStarted('session-1')
     await adapter.drainObservedExits()
-    expect(store.unavailable(fingerprint)).toMatchObject({ reason: 'notSignedIn' })
+    expect(store.statuses.get(fingerprint, true)).toMatchObject({ state: 'notSignedIn' })
   })
 
   // Accounts as Claude 2.1.280 reports them at initialize; the /login key row is from its source.

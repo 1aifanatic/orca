@@ -97,7 +97,7 @@ describe('the send gate the session hands its composer', () => {
         : method === 'agentSession.modelCatalog'
           ? Promise.resolve({
               origin: 'unknown',
-              unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 20_000 }
+              availability: { state: 'notSignedIn', account: 'system', recheckInMs: 20_000 }
             })
           : Promise.resolve(null)
     )

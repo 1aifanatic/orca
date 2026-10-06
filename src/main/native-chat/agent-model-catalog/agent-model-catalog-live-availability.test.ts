@@ -120,7 +120,7 @@ describe('availability beside a live model listing', () => {
     expect(result).toMatchObject({
       origin: 'live-session',
       models: [{ id: MODEL.model }],
-      unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 30000 }
+      availability: { state: 'notSignedIn', account: 'system', recheckInMs: 30000 }
     })
     expect(
       fixture.requests.mock.calls.filter(([method]) => method === 'account/read')
@@ -143,7 +143,7 @@ describe('availability beside a live model listing', () => {
     const fixture = codexFixture(account)
     await fixture.read()
     await fixture.start()
-    expect((await fixture.read()).unavailable).toBeUndefined()
+    expect((await fixture.read()).availability).toEqual({ state: 'ready' })
     expect(fixture.requests.mock.calls.some(([method]) => method === 'account/read')).toBe(true)
   })
 
@@ -181,17 +181,17 @@ describe('availability beside a live model listing', () => {
       await store.refresh(fingerprint, agent, live, async () => {
         throw new Error('model/list timeout')
       })
-      expect((await service.read(params)).unavailable?.expiresInMs).toBe(20000)
+      expect((await service.read(params)).availability).toMatchObject({ recheckInMs: 20000 })
       expect(probe).toHaveBeenCalledTimes(1)
       at += 20000
-      expect(store.unavailable(fingerprint)).toBeUndefined()
+      expect(store.statuses.needsProbe(fingerprint)).toBe(true)
       signedIn = true
       // The aged verdict stands while its re-probe runs; the probe's answer then clears it.
       await service.read(params)
       expect(
         (await service.read({ agent, sessionId: record.sessionId, waitForAvailability: true }))
-          .unavailable
-      ).toBeUndefined()
+          .availability
+      ).toEqual({ state: 'ready' })
       expect(probe).toHaveBeenCalledTimes(2)
     }
   )
