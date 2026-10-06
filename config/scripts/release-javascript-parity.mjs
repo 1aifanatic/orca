@@ -3,8 +3,18 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-const ASSET_PATH = /^(?:renderer|web)\/assets\/(.+)-[\w-]{8}\.(js|css)$/
-const P3_COLOR = /color\(display-p3 ([^)]+)\)/g
+const ASSET_PATH = /^(?:renderer|web)\/assets\/(.+)-[\w-]{8}\.(js|css|svg)$/
+const TEXT_FILE = /\.(?:js|css|html|json|svg)$/
+const NATIVE_COLOR = /color\(display-p3 ([^)]+)\)|(?<![\w-])lab\(([^)]+)\)/g
+
+function createAssetReferenceNormalizer(replacements) {
+  const references = new RegExp(
+    [...replacements.keys()].map((name) => name.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&')).join('|') ||
+      '(?!)',
+    'g'
+  )
+  return (content) => content.replace(references, (name) => replacements.get(name) ?? name)
+}
 
 export function annotateJavascriptParityFiles(root, files) {
   const names = new Map()
@@ -22,23 +32,40 @@ export function annotateJavascriptParityFiles(root, files) {
       .filter(([, entries]) => entries.size === 1)
       .map(([stem, entries]) => [[...entries][0], stem])
   )
-  const references = new RegExp(
-    [...replacements.keys()].map((name) => name.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&')).join('|') ||
-      '(?!)',
-    'g'
+  const contents = new Map(
+    files
+      .filter((file) => TEXT_FILE.test(file.path))
+      .map((file) => [
+        file.path,
+        readFileSync(join(root, file.path), 'utf8').replaceAll('\r\n', '\n')
+      ])
   )
+  const normalizeUnique = createAssetReferenceNormalizer(replacements)
+  const ambiguous = []
+  for (const [stem, entries] of names) {
+    if (entries.size < 2) {
+      continue
+    }
+    for (const name of entries) {
+      const file = files.find((file) => ASSET_PATH.test(file.path) && basename(file.path) === name)
+      const signature = createHash('sha256')
+        .update(normalizeUnique(contents.get(file.path)))
+        .digest('hex')
+      const extension = stem.slice(stem.lastIndexOf('.'))
+      ambiguous.push([name, `${stem.slice(0, -extension.length)}-${signature}${extension}`])
+    }
+  }
+  const aliases = new Map([...replacements, ...ambiguous])
+  const normalizeReferences = createAssetReferenceNormalizer(aliases)
   return files.map((file) => {
     const name = basename(file.path)
-    const comparablePath = replacements.has(name)
-      ? file.path.slice(0, -name.length) + replacements.get(name)
+    const comparablePath = aliases.has(name)
+      ? file.path.slice(0, -name.length) + aliases.get(name)
       : file.path
-    if (!/\.(?:js|css|html|json)$/.test(file.path)) {
+    if (!contents.has(file.path)) {
       return { ...file, comparablePath, comparableSha256: file.sha256 }
     }
-    let content = readFileSync(join(root, file.path), 'utf8').replace(
-      references,
-      (name) => replacements.get(name) ?? name
-    )
+    let content = normalizeReferences(contents.get(file.path))
     const manifest = file.path === 'renderer/.vite/manifest.json'
     if (manifest) {
       content = JSON.stringify(JSON.parse(content), (_, value) =>
@@ -62,17 +89,19 @@ export function annotateJavascriptParityFiles(root, files) {
 }
 
 export function equivalentStylesheets(before, after) {
-  const beforeColors = [...before.matchAll(P3_COLOR)]
-  const afterColors = [...after.matchAll(P3_COLOR)]
-  if (before.replace(P3_COLOR, 'P3_COLOR') !== after.replace(P3_COLOR, 'P3_COLOR')) {
+  const beforeColors = [...before.matchAll(NATIVE_COLOR)]
+  const afterColors = [...after.matchAll(NATIVE_COLOR)]
+  const marker = (color) => (color.startsWith('lab(') ? 'NATIVE_LAB' : 'NATIVE_P3')
+  if (before.replace(NATIVE_COLOR, marker) !== after.replace(NATIVE_COLOR, marker)) {
     return false
   }
   if (beforeColors.length !== afterColors.length) {
     return false
   }
   return beforeColors.every((color, index) => {
-    const left = color[1].split(/\s+/)
-    const right = afterColors[index][1].split(/\s+/)
+    const left = (color[1] ?? color[2]).split(/\s+/)
+    const right = (afterColors[index][1] ?? afterColors[index][2]).split(/\s+/)
+    const tolerance = color[1] ? 0.00000101 : 0.00010001
     return (
       left.length === right.length &&
       left.every((value, channel) => {
@@ -81,9 +110,10 @@ export function equivalentStylesheets(before, after) {
         }
         // Native CSS color conversion differs by one printed decimal unit across hosts.
         return (
-          /^-?(?:\d*\.)?\d+$/.test(value) &&
-          /^-?(?:\d*\.)?\d+$/.test(right[channel]) &&
-          Math.abs(Number(value) - Number(right[channel])) <= 0.00000101
+          /^-?(?:\d*\.)?\d+%?$/.test(value) &&
+          /^-?(?:\d*\.)?\d+%?$/.test(right[channel]) &&
+          value.endsWith('%') === right[channel].endsWith('%') &&
+          Math.abs(Number.parseFloat(value) - Number.parseFloat(right[channel])) <= tolerance
         )
       })
     )

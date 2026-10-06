@@ -121,7 +121,7 @@ function summarize() {
     '',
     `Shared producer job: ${producerSeconds.toFixed(1)}s including setup, compilation, archiving and upload.`,
     `Net runner time saved across four hosts after charging the producer job: ${(savedMs / 1000 - producerSeconds).toFixed(1)}s.`,
-    'Build measurements exclude consumer checkout/install and signing. Downloads and restoration are charged to shared builds. Runtime parity excludes source maps and permits native Display P3 color rounding up to 0.00000101 with corresponding asset hash references; all other content must match. Artifact restoration always verifies exact producer hashes. The producer starts alongside release gates; any unfinished producer work still delays packaging.'
+    'Build measurements exclude consumer checkout/install and signing. Downloads and restoration are charged to shared builds. Runtime parity normalizes text line endings, asset references and manifest key order, excludes source maps, and permits native color rounding up to 0.00000101 in Display P3 or 0.00010001 in Lab. Other content must match. Artifact restoration always verifies exact producer hashes. The producer starts alongside release gates; any unfinished producer work still delays packaging.'
   )
   writeFileSync(join(reportDir, 'comparison.md'), `${lines.join('\n')}\n`)
   console.log(lines.join('\n'))

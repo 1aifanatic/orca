@@ -76,13 +76,13 @@ it('rejects code changes, missing files and incorrect asset references', () => {
   ).toEqual(['renderer/index.html'])
 })
 
-it('keeps ambiguous asset names and portable binary files exact', () => {
+it('keeps ambiguous modules distinct and portable binary files exact', () => {
   const before = inventory({
     'renderer/assets/App-AAAAAAAA.js': 'run()',
     'renderer/assets/App-BBBBBBBB.js': 'other()',
     'renderer/viewer.wasm': 'one'
   })
-  expect(before.map((file) => file.comparablePath)).toEqual(before.map((file) => file.path))
+  expect(new Set(before.map((file) => file.comparablePath)).size).toBe(before.length)
   expect(
     compareJavascriptParityFiles(
       before,
@@ -93,6 +93,65 @@ it('keeps ambiguous asset names and portable binary files exact', () => {
       })
     )
   ).toEqual(['renderer/viewer.wasm'])
+})
+
+it('matches duplicate asset stems by content while rejecting a reference to the wrong module', () => {
+  const before = inventory({
+    'renderer/assets/App-AAAAAAAA.js': 'desktop()',
+    'renderer/assets/App-BBBBBBBB.js': 'web()',
+    'renderer/index.html': '<script src="assets/App-AAAAAAAA.js"></script>'
+  })
+  const after = inventory({
+    'renderer/assets/App-CCCCCCCC.js': 'web()',
+    'renderer/assets/App-DDDDDDDD.js': 'desktop()',
+    'renderer/index.html': '<script src="assets/App-DDDDDDDD.js"></script>'
+  })
+  expect(compareJavascriptParityFiles(before, after)).toEqual([])
+  const wrong = inventory({
+    'renderer/assets/App-CCCCCCCC.js': 'web()',
+    'renderer/assets/App-DDDDDDDD.js': 'desktop()',
+    'renderer/index.html': '<script src="assets/App-CCCCCCCC.js"></script>'
+  })
+  expect(compareJavascriptParityFiles(before, wrong)).toEqual(['renderer/index.html'])
+})
+
+it('normalizes generated text and SVG line endings without changing escaped string values', () => {
+  const before = inventory({
+    'renderer/assets/icon-AAAAAAAA.svg': '<svg>\r\n</svg>',
+    'renderer/assets/index-BBBBBBBB.js': 'import "./icon-AAAAAAAA.svg";\r\nrun()'
+  })
+  const after = inventory({
+    'renderer/assets/icon-CCCCCCCC.svg': '<svg>\n</svg>',
+    'renderer/assets/index-DDDDDDDD.js': 'import "./icon-CCCCCCCC.svg";\nrun()'
+  })
+  expect(compareJavascriptParityFiles(before, after)).toEqual([])
+  expect(
+    compareJavascriptParityFiles(
+      inventory({ 'shared/template.js': 'const text = "\\r\\n"' }),
+      inventory({ 'shared/template.js': 'const text = "\\n"' })
+    )
+  ).toEqual(['shared/template.js'])
+})
+
+it('permits one printed decimal unit of native Lab rounding and rejects larger or unit changes', () => {
+  expect(
+    equivalentStylesheets(
+      'a{color:lab(76.5514% 36.4219 15.5335)}',
+      'a{color:lab(76.5514% 36.422 15.5335)}'
+    )
+  ).toBe(true)
+  expect(
+    equivalentStylesheets(
+      'a{color:lab(76.5514% 36.4219 15.5335)}',
+      'a{color:lab(76.5514% 36.4221 15.5335)}'
+    )
+  ).toBe(false)
+  expect(
+    equivalentStylesheets(
+      'a{color:lab(76.5514% 36.4219 15.5335)}',
+      'a{color:lab(76.5514 36.4219 15.5335)}'
+    )
+  ).toBe(false)
 })
 
 it('compares manifest keys without ordering differences while preserving import array order', () => {
