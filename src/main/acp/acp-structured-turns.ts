@@ -155,8 +155,11 @@ export class AcpStructuredTurns {
     this.active = send
     const opened = lane.translator.openPrompt(send.clientMessageId, send.requestedAt)
     lane.apply(opened.events)
-    // The agent echoes this id on every event of the turn, so its rows join the turn Orca opened.
-    const meta = { promptId: opened.promptId, requestId: opened.promptId }
+    // An agent whose dialect echoes this id on every event of the turn gets it, so its rows join the
+    // turn Orca opened; no other agent is sent the extension.
+    const meta = lane.translator.injectsPromptIdentity
+      ? { promptId: opened.promptId, requestId: opened.promptId }
+      : undefined
     const answered = this.deps.connection.prompt(send.prompt, meta)
     if (this.steers.length > 0) {
       this.cancelForSteer()

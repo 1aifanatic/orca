@@ -9,6 +9,7 @@ import {
   AgentSessionAcquisitionRefusal,
   AgentSessionAcquisitionRootExitObservedError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import { GENERIC_ACP_DIALECT } from './acp-dialects/acp-dialect'
 import { ACP_CHILD_ENV_TO_DELETE } from './acp-launch-specs'
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
 import {
@@ -131,6 +132,16 @@ it('reads those last words when the agent ends its stdout before its exit is see
 })
 
 describe('ACP structured session adapter: turns', () => {
+  it("sends Grok's prompt identity only to an agent whose dialect echoes it", async () => {
+    const rig = await openAcpAdapterRig({
+      deps: { spec: { ...GROK, dialect: GENERIC_ACP_DIALECT } }
+    })
+    await rig.acquire()
+    await send(rig, 'send-1')
+    const prompt = await rig.frame('session/prompt')
+    expect(prompt.params).not.toHaveProperty('_meta')
+  })
+
   it('sends a prompt under an injected id and settles it on the agent first event', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()

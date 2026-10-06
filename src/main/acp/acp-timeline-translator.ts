@@ -57,6 +57,11 @@ export class AcpTimelineTranslator {
     )
   }
 
+  /** Whether the agent's dialect echoes an injected prompt identity on the turn's events. */
+  get injectsPromptIdentity(): boolean {
+    return this.dialect.injectedPromptIdentity === true
+  }
+
   /** The host injects promptId as session/prompt._meta.promptId (and requestId). */
   openPrompt(
     clientMessageId: string,
