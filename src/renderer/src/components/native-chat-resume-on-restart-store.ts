@@ -21,7 +21,6 @@ import {
   withUnsentResumes
 } from './native-chat-resume-unsent-requests'
 import {
-  _resetNativeChatResumeOnRestartDialog,
   consumeNativeChatResumeOnRestartDialogRequest,
   markNativeChatResumeLaunchDecided,
   requestNativeChatResumeOnRestartDialog
@@ -390,9 +389,8 @@ async function loadLaunchOffer(): Promise<void> {
     requestNativeChatResumeOnRestartDialog('launch')
     return
   }
-  // Nothing will ask, so other launch prompts need not wait for the resume to settle.
-  markNativeChatResumeLaunchDecided()
-  await continueNativeChatRestartOffer(undefined, allResumeSessionIds(offered))
+  // Not awaited: nothing will ask, so other launch prompts need not wait for the resume to settle.
+  void continueNativeChatRestartOffer(undefined, allResumeSessionIds(offered))
 }
 
 /**
@@ -428,5 +426,4 @@ export function _resetNativeChatRestartOffer(): void {
   actionsSettled = 0
   launch = undefined
   listeners.clear()
-  _resetNativeChatResumeOnRestartDialog()
 }

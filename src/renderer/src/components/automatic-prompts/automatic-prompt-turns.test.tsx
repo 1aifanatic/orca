@@ -13,7 +13,10 @@ import { SshPassphraseDialog } from '../settings/SshPassphraseDialog'
 import { TooltipProvider } from '../ui/tooltip'
 import type { ResumeCandidate } from '../native-chat-resume-on-restart-grouping'
 import { _resetNativeChatRestartOffer } from '../native-chat-resume-on-restart-store'
-import { requestNativeChatResumeOnRestartDialog } from '../native-chat-resume-on-restart-dialog'
+import {
+  _resetNativeChatResumeOnRestartDialog,
+  requestNativeChatResumeOnRestartDialog
+} from '../native-chat-resume-on-restart-dialog'
 import { useOnboardingAndFeatureTips } from '../../app-shell/use-onboarding-and-feature-tips'
 import { AUTOMATIC_PROMPT_MODAL_KEY } from '@/store/slices/ui/automatic-prompt-turns'
 import { resetLocalStructuredChatsForTests } from '@/runtime/local-structured-chats'
@@ -191,6 +194,7 @@ beforeEach(() => {
   crashReports.getLatestReport.mockReset().mockResolvedValue(null)
   crashReports.dismiss.mockReset().mockResolvedValue(undefined)
   _resetNativeChatRestartOffer()
+  _resetNativeChatResumeOnRestartDialog()
   resetLocalStructuredChatsForTests()
   surface.suspended = false
   surface.mounts = 0
@@ -225,6 +229,7 @@ afterEach(() => {
   useAppStore.getState().settleLaunchPromptDiscovery()
   useAppStore.setState(useAppStore.getInitialState(), true)
   _resetNativeChatRestartOffer()
+  _resetNativeChatResumeOnRestartDialog()
 })
 
 it('a fast crash report waits for a slow local resume read, which goes first', async () => {
@@ -252,6 +257,31 @@ it('a fast crash report waits for a slow local resume read, which goes first', a
   expect(resumeOnScreen()).toBe(false)
   expect(crashOnScreen()).toBe(true)
   expect(crashReports.dismiss).toHaveBeenCalledWith({ reportId: 'crash-1' })
+})
+
+it('an opted-in launch resume holds nothing back while it runs', async () => {
+  useAppStore.setState({
+    settings: {
+      ...getDefaultSettings(''),
+      experimentalStructuredNativeChat: true,
+      nativeChatResumeWorkOnRestart: true
+    }
+  })
+  rpc.mockImplementation(async (_target: unknown, method: string) =>
+    method === 'agentSession.restartResumable' ? { sessions: offered } : new Promise(() => {})
+  )
+  crashReports.getLatestPending.mockResolvedValue(pendingCrash)
+
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <CrashReportDialog />
+    </>
+  )
+  expect(rpc.mock.calls.map((call) => call[1])).toContain('agentSession.restartContinue')
+  expect(useAppStore.getState().launchPromptDiscoveryPending).toBe(false)
+  expect(resumeOnScreen()).toBe(false)
+  expect(crashOnScreen()).toBe(true)
 })
 
 it('shows the crash report at once when the resume read finds nothing', async () => {
