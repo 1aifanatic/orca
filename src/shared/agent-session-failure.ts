@@ -24,6 +24,7 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
   'managedAccountUnsupported',
+  'launchFolderMissing',
   'providerExited',
   'restartFailed',
   'providerRejected',

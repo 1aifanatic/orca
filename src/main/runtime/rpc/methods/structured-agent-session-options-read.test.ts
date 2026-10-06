@@ -3,6 +3,9 @@
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
+import type { AgentSessionRecord } from '../../../../shared/agent-session-record'
+import { agentSessionRecordFixture } from '../../../../shared/agent-session-record.test-fixture'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import {
   call,
   clearStructuredHostStub,
@@ -19,11 +22,40 @@ describe('agentSession.modelCatalog', () => {
   const read = vi.fn<() => Promise<AgentSessionModelCatalogResult>>(async () => ({
     origin: 'unknown'
   }))
+  let record: AgentSessionRecord | null = null
 
   beforeEach(() => {
     read.mockReset()
     read.mockResolvedValue({ origin: 'unknown' })
-    setStructuredAgentSessionHost(Object.assign(hostStub(), { deps: { modelCatalog: { read } } }))
+    record = null
+    setStructuredAgentSessionHost(
+      Object.assign(hostStub(), {
+        deps: { modelCatalog: { read }, store: { getRecord: () => record } }
+      })
+    )
+  })
+
+  it("reads a floating chat's catalog in the folder it was created in", async () => {
+    const fixture = agentSessionRecordFixture()
+    record = {
+      ...fixture,
+      location: { ...fixture.location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID },
+      launchDirectory: '/home/me/floating-a'
+    }
+    // The floating setting has since moved to another folder.
+    const resolveStructuredAgentSessionLocalWorkspacePath = vi.fn(async () => '/home/me/floating-b')
+    await call(
+      'agentSession.modelCatalog',
+      { agent: 'codex', sessionId: SESSION, worktree: `id:${FLOATING_TERMINAL_WORKTREE_ID}` },
+      STRUCTURED_CLIENT,
+      { resolveStructuredAgentSessionLocalWorkspacePath }
+    )
+    expect(resolveStructuredAgentSessionLocalWorkspacePath).not.toHaveBeenCalled()
+    expect(read).toHaveBeenCalledWith({
+      agent: 'codex',
+      sessionId: SESSION,
+      workspacePath: '/home/me/floating-a'
+    })
   })
 
   it.each(['unknown', 'probe'] as const)(
@@ -111,7 +143,11 @@ describe('agentSession.modelCatalog before anything built the host', () => {
     fetchedAt: 1
   }))
   const installHost = vi.fn(async () => {
-    setStructuredAgentSessionHost(Object.assign(hostStub(), { deps: { modelCatalog: { read } } }))
+    setStructuredAgentSessionHost(
+      Object.assign(hostStub(), {
+        deps: { modelCatalog: { read }, store: { getRecord: () => null } }
+      })
+    )
   })
 
   beforeEach(() => {

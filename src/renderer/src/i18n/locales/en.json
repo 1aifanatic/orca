@@ -174,6 +174,9 @@
     "retrying": "Retrying…"
   },
   "settings": {
+    "chat": {
+      "description": "Choose how chats look."
+    },
     "terminal": {
       "optionLayoutAlt": "ABC or U.S. — Option sends Alt/Esc sequences",
       "optionLayoutCompose": "layout uses Option to compose characters like @, €, [, ]",
@@ -215,6 +218,30 @@
           "statusItem": "status item",
           "activity": "activity"
         }
+      },
+      "chat": {
+        "title": "Chat",
+        "textSize": "Text size",
+        "textSizeDescription": "Messages, tool activity and the message box. {{increase}} / {{decrease}} in a chat change this too.",
+        "codeTextSize": "Code text size",
+        "codeTextSizeDescription": "Code blocks, inline code, commands and tool output.",
+        "width": "Width",
+        "widthDescription": "How wide messages and the message box can grow in a wide pane.",
+        "resetAppearance": "Reset chat appearance",
+        "resetDescription": "Restore the defaults above.",
+        "comfortable": "Comfortable",
+        "wide": "Wide",
+        "full": "Full",
+        "pixels": "px",
+        "reset": "Reset",
+        "matchTerminalInterface": "Match terminal interface",
+        "matchTerminalInterfaceDescription": "Use your terminal interface's font and colors for the whole chat. Stays in sync if you change your terminal theme later.",
+        "contrast": "Contrast",
+        "contrastDescription": "How bright chat text is against the background. The right end matches the older, brighter look.",
+        "softer": "Softer",
+        "sharper": "Sharper",
+        "terminalControlledHint": "Set by terminal interface.",
+        "terminalControlledTooltip": "Matching your terminal interface. Turn off Match terminal interface to change this."
       }
     },
     "browser": {
@@ -271,7 +298,15 @@
         "title": "Warn when a Codex tab shares a server",
         "description": "Shows a notice on a Codex you started yourself when it shares a server with other tabs, because its agent status may be wrong."
       }
-    }
+    },
+    "followSymlinkedDirectoriesKeywords": {
+      "symlink": "symlink",
+      "linkedFolder": "linked folder",
+      "quickOpen": "quick open",
+      "fileExplorer": "file explorer"
+    },
+    "followSymlinkedDirectories": "Follow symlinked directories",
+    "followSymlinkedDirectoriesDescription": "Search linked folders in Quick Open and expand local linked folders in File Explorer."
   },
   "menu": {
     "checkForUpdates": "Check for Updates...",
@@ -1097,6 +1132,16 @@
         "tooLarge": "Too large to copy, so Orca couldn't hand it to the agent.",
         "storageFull": "Orca's storage for dropped files is full, so Orca couldn't hand it to the agent.",
         "generic": "Try the drop again."
+      },
+      "reveal": {
+        "in": {
+          "file": {
+            "manager": {
+              "notFound": "File not found. It may have been moved or deleted.",
+              "launchFailed": "Could not reveal the file."
+            }
+          }
+        }
       }
     },
     "hooks": {
@@ -3546,10 +3591,7 @@
             "1d04b1630b": "Split Down",
             "6b3efb106e": "Split Up",
             "fdd29eb669": "Pin Tab",
-            "8e9d603a09": "Unpin Tab",
-            "revealInFinder": "Reveal in Finder",
-            "openContainingFolder": "Open Containing Folder",
-            "revealInFileExplorer": "Reveal in File Explorer"
+            "8e9d603a09": "Unpin Tab"
           },
           "QuickLaunchButton": {
             "348a04c1ad": "Agent settings…",
@@ -7351,7 +7393,7 @@
             "defaultViewNative": "Chat UI",
             "structuredTitle": "Use updated structured native chat",
             "structuredCopy": "Open new Codex and Claude agents as structured chats. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.",
-            "structuredScope": "Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.",
+            "structuredScope": "Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat.",
             "structuredToggleLabel": "Toggle updated structured native chat",
             "resumeTitle": "Resume working chats automatically after a restart",
             "resumeCopy": "When Orca quits or installs an update, chats that were working are automatically resumed when Orca is reopened.",
@@ -14537,18 +14579,11 @@
             "88ffb502e5": "Open Markdown Note",
             "629528690b": "New Markdown Note",
             "3215fc73e9": "New Terminal",
-            "da508bd7f5": "Save",
-            "918c2139f3": "Don't Save",
-            "e7bf09d4d4": "Cancel",
-            "690b6fb98a": "Unsaved Changes",
             "bbc177f98f": "Enable",
             "adc281394d": "Dismiss",
             "8cf80db43b": "Set up the Orca CLI and agent skill so agents can coordinate through Orca.",
             "2a3c5ddf5e": "Enable orchestration",
-            "d6b563ae24": "Loading editor...",
             "8b14ba6c17": "New Browser Tab",
-            "b085fb58b5": "This file has unsaved changes.",
-            "5ddc688c52": "\"{{value0}}\" has unsaved changes. Do you want to save before closing?",
             "25d7817f79": "terminal"
           },
           "FloatingTerminalToggleButton": {
@@ -15288,10 +15323,7 @@
           "f0fd4174b5": "Open file tab to use rich markdown editing",
           "a10d9b8337": "Open file",
           "2076ecfc9c": "Previous change",
-          "631dab0df3": "Next change",
-          "revealInFinder": "Reveal in Finder",
-          "openContainingFolder": "Open Containing Folder",
-          "revealInFileExplorer": "Reveal in File Explorer"
+          "631dab0df3": "Next change"
         },
         "EditorPanelMarkdownActionsMenu": {
           "3e0ce48c24": "Export as PDF",
@@ -15872,6 +15904,9 @@
         "richMarkdownImageInsertionFeedback": {
           "importedFileKept": "Image insertion canceled because the destination changed. The imported file was kept.",
           "destinationChanged": "Image insertion canceled because the destination changed. Try again."
+        },
+        "useMarkdownDocuments": {
+          "listFailed": "Failed to list Markdown documents."
         }
       },
       "diff": {
@@ -17729,6 +17764,7 @@
       "empty": "No users found"
     },
     "native-chat": {
+      "reasoning": "Reasoning",
       "failureWords": {
         "theAgent": "The agent",
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
@@ -17750,6 +17786,7 @@
         "managedAccountEnvOverride": "This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.",
         "accountSwitchInProgress": "A Claude account switch is in progress. Try again after it finishes.",
         "managedAccountUnsupported": "While a Claude account is added in WSL, Claude chats need a Windows Claude account.",
+        "launchFolderMissing": "The folder this chat ran in no longer exists. Restore it to continue this chat.",
         "chooseClaudeAccount": "Choose or add one in Claude Accounts settings.",
         "chooseClaudeAccountThenRunCommand": "Choose or add one in Claude Accounts settings, then run /{{command}} again.",
         "chooseClaudeAccountThenSend": "Choose or add one in Claude Accounts settings, then send your message again.",
@@ -17821,6 +17858,7 @@
         "updateOrcaToOpenChat": "Update Orca to open it.",
         "unsupported": "This needs a newer Orca on the computer running this chat. Update Orca there, then try again.",
         "notAvailable": "This isn't available in this chat.",
+        "cannotRunHere": "Orca can't run this agent in a chat here.",
         "unreachable": "Orca couldn't reach the agent.",
         "recordFailed": "Orca couldn't save this to the chat's history.",
         "conversationCleared": "This conversation has been cleared.",
@@ -17905,7 +17943,7 @@
         "skills": "Skills",
         "loadingSkills": "Loading skills...",
         "skillsLoaded": "Skills loaded",
-        "skillsUnavailableHost": "Skills aren't available in SSH chats",
+        "skillsUnavailableHost": "Skills can't be listed in SSH chats",
         "skillsLoadFailed": "Couldn't load skills",
         "retrySkills": "Retry",
         "skillCommandCollision": "Also a skill name - agent decides",
@@ -17970,6 +18008,8 @@
         "moreCalls": "+{{value0}} more",
         "failedCount": "{{value0}} failed",
         "failedCallsLabel": "Failed tool calls: {{value0}}",
+        "interruptedCount": "{{value0}} interrupted",
+        "interruptedCallsLabel": "Interrupted tool calls: {{value0}}",
         "runningPreview": "Running {{preview}}",
         "runningCommand": "Running command",
         "runningNamedPreview": "Running {{toolName}} {{preview}}",
@@ -17980,13 +18020,35 @@
         "ranCommandsManyToolsSummary": "Ran {{commandCount}} commands and used {{toolCount}} tools",
         "usedOneSummary": "Used 1 tool",
         "usedManySummary": "Used {{toolCount}} tools",
-        "editedFile": "Edited file",
-        "addedFile": "Added file",
-        "deletedFile": "Deleted file",
-        "renamedFile": "Renamed file",
         "copyDiff": "Copy diff",
         "diffGap": "Lines not shown",
         "diffTruncated": "Diff truncated",
+        "row": {
+          "running": "Running",
+          "reading": "Reading",
+          "editing": "Editing",
+          "searching": "Searching",
+          "searchingWeb": "Searching the web",
+          "fetching": "Fetching",
+          "listed": "Listed",
+          "listing": "Listing",
+          "ran": "Ran",
+          "read": "Read",
+          "edited": "Edited",
+          "searched": "Searched",
+          "searchedWeb": "Searched the web",
+          "fetched": "Fetched",
+          "added": "Added",
+          "deleted": "Deleted",
+          "renamed": "Renamed",
+          "subagent": "Subagent",
+          "triedRead": "Tried to read",
+          "triedEdit": "Tried to edit",
+          "triedSearch": "Tried to search",
+          "triedList": "Tried to list",
+          "triedFetch": "Tried to fetch",
+          "triedSearchWeb": "Tried to search the web"
+        },
         "runReadOne": "Read 1 file",
         "runReadMany": "Read {{value0}} files",
         "runSearchOne": "Searched 1 time",
@@ -18036,6 +18098,9 @@
       "status": {
         "responding": "Agent is responding",
         "working": "Working…",
+        "stopping": "Stopping…",
+        "queueAfterStop": "Queue a message to run after the stop",
+        "sendAfterStop": "Send a message to run after the stop",
         "thinking": "Thinking",
         "workingFor": "Working for {{value0}}",
         "workedFor": "Worked for {{value0}}",
@@ -18068,13 +18133,19 @@
         "countTasksMany": "{{value0}} tasks",
         "headerTotal": "{{value0}} background tasks",
         "stateWorking": "working",
+        "stateWorkingCount": "{{value0}} working",
         "stateMonitoring": "monitoring",
+        "stateMonitoringCount": "{{value0}} monitoring",
         "stateWaiting": "waiting",
+        "stateWaitingCount": "{{value0}} waiting",
         "stateBlocked": "blocked",
+        "stateBlockedCount": "{{value0}} blocked",
         "stateDone": "done",
+        "stateDoneCount": "{{value0}} done",
         "stateIdle": "stopped",
-        "stateUnverifiable": "no recent update",
-        "stateUnverifiableCount": "{{value0}} with no recent update",
+        "stateIdleCount": "{{value0}} stopped",
+        "stateUnverifiable": "status unavailable",
+        "stateUnverifiableCount": "{{value0}} with status unavailable",
         "reasonWaiting": "needs approval",
         "reasonBlocked": "failed",
         "groupAgents": "Agents",
@@ -18121,6 +18192,10 @@
       "railLabel": "Your messages",
       "railImageMessage": "Image attachment",
       "railEmptyMessage": "Message",
+      "prompt": {
+        "collapse": "Collapse",
+        "expand": "Expand"
+      },
       "question": {
         "step": "Step {{value0}}",
         "other": "Other…",
@@ -18158,12 +18233,12 @@
           "idle": "idle",
           "failed": "failed",
           "stopped": "stopped",
-          "unverifiable": "no recent update",
+          "unverifiable": "status unavailable",
           "workingCount": "{{value0}} working",
           "idleCount": "{{value0}} idle",
           "failedCount": "{{value0}} failed",
           "stoppedCount": "{{value0}} stopped",
-          "unverifiableCount": "{{value0}} with no recent update"
+          "unverifiableCount": "{{value0}} with status unavailable"
         },
         "startedOne": "Kicked off 1 subagent",
         "startedN": "Kicked off {{value0}} subagents",
@@ -18174,6 +18249,27 @@
       },
       "conversationCommand": {
         "pendingWork": "Wait for pending work and messages to finish before using this command."
+      },
+      "rewind": {
+        "unsupported": "This chat can't go back to an earlier message.",
+        "historyNotPaginated": "This older Codex chat can't go back to an earlier message. Start a new chat to use Rewind to here.",
+        "busy": "Available once the agent is idle and nothing in this chat is waiting on you.",
+        "staleEpoch": "The conversation changed. Review the latest messages and try again.",
+        "invalidTarget": "The conversation can't go back to this message. Nothing was changed.",
+        "historyLimit": "This conversation is too long to go back in. Nothing was changed.",
+        "providerRefused": "The agent couldn't go back to this message.",
+        "proofMismatch": "The agent's history didn't match this chat. Check the conversation before continuing.",
+        "outcomeUnknown": "Orca couldn't confirm whether the conversation went back to an earlier message. It checks before your next message is sent.",
+        "outcomeUnknownReturned": "Orca couldn't confirm whether the conversation went back to this message. Your message is back in the composer, and Orca checks the conversation before your next message is sent.",
+        "timeout": "The chat didn't update after going back to this message. Reopen it to see the latest.",
+        "refused": "Orca couldn't go back to this message. Check the conversation before continuing.",
+        "unavailable": "Wait for the chat to finish connecting.",
+        "pending": "Wait for the conversation to go back to the earlier message.",
+        "title": "Rewind to here?",
+        "confirmation": "Discard this message and everything after it? The message returns to the composer so you can edit and resend it. File changes on disk are kept.",
+        "confirm": "Rewind",
+        "cancel": "Cancel",
+        "action": "Rewind to here"
       },
       "drop": {
         "title": "Drop to attach to this chat",
@@ -18238,6 +18334,7 @@
         "editAlreadySent": "Already sent — your text is still in the composer.",
         "withdrawnHold": "Stopped before it was sent",
         "pausedSendFailed": "Couldn't send — press Send to retry.",
+        "pausedKept": "Not sent yet — press Send to send it.",
         "paused": "Paused",
         "queuePausedStopped": "Queue paused because you interrupted",
         "queuePausedRestarted": "Queue paused because Orca restarted",
@@ -18245,6 +18342,8 @@
         "queuePaused": "Queue paused",
         "resume": "Resume"
       },
+      "thought": "Thought",
+      "thoughtForDuration": "Thought for {{duration}}",
       "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
       "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",
       "structuredSessionHostUnreachable": "Could not reach {{value0}}",
@@ -18763,7 +18862,8 @@
     }
   },
   "quickOpen": {
-    "moreMatchesAvailable": "More matches may be available. Refine your search to narrow the results."
+    "moreMatchesAvailable": "More matches may be available. Refine your search to narrow the results.",
+    "recentValidationFailed": "Recent files could not be checked: {{error}}"
   },
   "checksPanel": {
     "unlinked": {
@@ -19088,5 +19188,26 @@
       "confirm": "Delete all listed worktrees",
       "preservedBranches": "Some nested worktree branches were kept"
     }
-  }
+  },
+  "projectBoard": {
+    "noColumnField": "This board view has no single-select or iteration field to group by, so Orca is listing items instead.",
+    "noField": "No {{field}}"
+  },
+  "projectBoardCard": {
+    "restrictedItem": "Restricted item",
+    "itemLabel": "{{number}} — {{title}}"
+  },
+  "projectViews": {
+    "layout": {
+      "board": "Board"
+    },
+    "unsupported": {
+      "switchLayout": "Switch to a Table, Board, or Roadmap view to work with this project in Orca.",
+      "description": "Orca renders table, board, and roadmap project views. This view uses a layout it cannot render yet."
+    }
+  },
+  "projectField": {
+    "updateFailed": "Failed to update project field"
+  },
+  "settings.appearance.chat.title": "Chat"
 }

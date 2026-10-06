@@ -444,6 +444,23 @@ describe('Send availability follows the current catalog', () => {
     await flush()
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
   })
+  it('waits once more when a catalog lands before the account check answers', async () => {
+    answerCatalog([
+      () => Promise.resolve(LISTING),
+      () => Promise.resolve({ ...HOST_CATALOG, listingInProgress: true }),
+      () => Promise.resolve({ ...HOST_CATALOG, unavailable: blocked.unavailable })
+    ])
+    const { result } = renderOptions()
+    await flush()
+    await flush()
+    expect(catalogReads()).toEqual([
+      { agent: 'codex', sessionId },
+      { agent: 'codex', sessionId, waitForListing: true },
+      { agent: 'codex', sessionId, waitForListing: true }
+    ])
+    expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+  })
   it('hiding and revealing the pane cannot resurrect its old blocker', async () => {
     answerCatalog([() => Promise.resolve(blocked), () => new Promise(() => {})])
     const { result, rerender } = renderOptions()

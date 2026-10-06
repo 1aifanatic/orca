@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { createCodexModelCatalogProbe } from '../../codex/codex-model-catalog-probe'
-import { codexAcquireCatalogListing } from '../../codex/codex-structured-session-options'
+import { fetchCodexModelCatalogListing } from '../../codex/codex-structured-model-catalog'
 import { agentModelCatalogFingerprintForRecord } from './agent-model-catalog-fingerprint'
 import { createAgentModelCatalogService } from './agent-model-catalog-service'
+import { AgentModelCatalogUnavailableError } from './agent-model-catalog-availability'
 import {
   AgentModelCatalogStore,
-  AgentModelCatalogUnavailableError,
+  type AgentModelCatalogProbe,
+  type AgentModelCatalogSessionAccess,
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
 
@@ -86,20 +88,28 @@ function codexFixture(account: unknown) {
   const service = createAgentModelCatalogService({
     store,
     getRecord: () => record,
+    drivesRecord: () => true,
     resolveAccountHome: async () => ({ variable: 'CODEX_HOME', path: '/fixture/other-account' }),
     probes: { codex: probe }
   })
   const read = () =>
     service.read({ agent: 'codex', sessionId: record.sessionId, waitForListing: true })
+  const access: AgentModelCatalogSessionAccess = {
+    store,
+    fingerprint,
+    accountHomePath: record.accountHome.path
+  }
+  // The live session's own listing after start, as its background catalog refresh records it.
   const start = async () => {
     await requests('thread/start')
-    await codexAcquireCatalogListing(
-      { request: requests },
-      { store, fingerprint, accountHomePath: record.accountHome.path },
-      undefined
-    )
+    const listing = await fetchCodexModelCatalogListing({ connection: { request: requests } })
+    store.recordSuccess(fingerprint, 'codex', {
+      models: listing.models,
+      fastModeTierByModel: listing.fastModeTierByModel,
+      origin: 'live-session'
+    })
   }
-  return { store, fingerprint, requests, read, start }
+  return { store, fingerprint, access, requests, read, start }
 }
 
 describe('availability beside a live model listing', () => {
@@ -151,26 +161,27 @@ describe('availability beside a live model listing', () => {
       const service = createAgentModelCatalogService({
         store,
         getRecord: () => record,
+        drivesRecord: () => true,
         resolveAccountHome: async () => record.accountHome,
         probes: { [agent]: probe }
       })
       const params = { agent, sessionId: record.sessionId, waitForListing: true }
       await service.read(params)
       at += 10000
-      store.recordSuccess(fingerprint, agent, liveListing())
-      await store.refresh(fingerprint, agent, async () => liveListing(), 'live-session')
-      await store.refresh(
+      const live: AgentModelCatalogSessionAccess = {
+        store,
         fingerprint,
-        agent,
-        async () => {
-          throw new Error('model/list timeout')
-        },
-        'live-session'
-      )
+        accountHomePath: record.accountHome.path
+      }
+      store.recordSuccess(fingerprint, agent, liveListing())
+      await store.refresh(fingerprint, agent, live, async () => liveListing())
+      await store.refresh(fingerprint, agent, live, async () => {
+        throw new Error('model/list timeout')
+      })
       expect((await service.read(params)).unavailable?.expiresInMs).toBe(20000)
       expect(probe).toHaveBeenCalledTimes(1)
       at += 20000
-      expect(store.unavailable(fingerprint)).toBeUndefined()
+      expect(store.availability.unavailable(fingerprint)).toBeUndefined()
       signedIn = true
       expect((await service.read(params)).unavailable).toBeUndefined()
       expect(probe).toHaveBeenCalledTimes(2)
@@ -183,11 +194,11 @@ describe('availability beside a live model listing', () => {
     const live = fixture.store.refresh(
       fixture.fingerprint,
       'codex',
+      fixture.access,
       () =>
         new Promise<AgentModelCatalogSuccess>((done) => {
           resolve = done
-        }),
-      'live-session'
+        })
     )
     expect((await fixture.read()).unavailable?.reason).toBe('notSignedIn')
     resolve(liveListing())
@@ -198,11 +209,17 @@ describe('availability beside a live model listing', () => {
   it('a live refresh cannot postpone the next account check after a successful probe', async () => {
     let at = 1000
     const store = new AgentModelCatalogStore({ now: () => at })
-    await store.refresh('account', 'codex', async () => ({ ...liveListing(), origin: 'probe' }))
+    const probe: AgentModelCatalogProbe = async () => ({ ...liveListing(), origin: 'probe' })
+    await store.refresh('account', 'codex', probe, () => probe('/homes/account'))
     at += 20000
-    await store.refresh('account', 'codex', async () => liveListing(), 'live-session')
-    expect(store.shouldProbeAvailability('account')).toBe(false)
+    const live: AgentModelCatalogSessionAccess = {
+      store,
+      fingerprint: 'account',
+      accountHomePath: '/homes/account'
+    }
+    await store.refresh('account', 'codex', live, async () => liveListing())
+    expect(store.availability.shouldProbe('account')).toBe(false)
     at += 10000
-    expect(store.shouldProbeAvailability('account')).toBe(true)
+    expect(store.availability.shouldProbe('account')).toBe(true)
   })
 })

@@ -44,6 +44,16 @@ describe('positive agent availability evidence', () => {
   it('accepts only the explicit Claude token source none', () => {
     expect(claudeInitializationSignedOut({ account: { tokenSource: 'none' } })).toBe(true)
   })
+  it('an API key source is a sign-in beside tokenSource none', () => {
+    expect(
+      claudeInitializationSignedOut({
+        account: { tokenSource: 'none', apiKeySource: 'ANTHROPIC_API_KEY' }
+      })
+    ).toBe(false)
+    expect(
+      claudeInitializationSignedOut({ account: { tokenSource: 'none', apiKeySource: 'none' } })
+    ).toBe(true)
+  })
   it.each([
     ['claude', 'system', 'claudeSystemNotSignedIn'],
     ['claude', 'managed', 'claudeManagedNotSignedIn'],

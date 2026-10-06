@@ -16,6 +16,7 @@ import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import { structuredAgentSessionHostKey } from '@/runtime/structured-agent-session-host-capability'
 import type { NativeChatSessionOptionRecord } from '../../../../shared/native-chat-session-option-state'
+import { isAgentSessionHandleProvider } from '../../../../shared/agent-session-provider-handle'
 import {
   isHostModelListingWaitInFlight,
   joinHostModelListingWait,
@@ -73,7 +74,7 @@ export function useHostModelCatalogUpgrade(args: {
   } | null>(null)
   // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- The replaceable expiry handle is cleared before rearming and by the returned cleanup.
   useEffect(() => {
-    if (!enabled || !optionCatalog || (agent !== 'claude' && agent !== 'codex')) {
+    if (!enabled || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
       return
     }
     let stale = false
@@ -118,8 +119,17 @@ export function useHostModelCatalogUpgrade(args: {
         waitKey,
         () => read(true),
         (catalog) => {
-          if (!stale && generation === requestGeneration) {
-            apply(catalog)
+          if (stale || generation !== requestGeneration) {
+            return
+          }
+          apply(catalog)
+          // The catalog landed before the host's account check; wait once more for that answer.
+          if (catalog?.listingInProgress === true) {
+            queueMicrotask(() => {
+              if (!stale && generation === requestGeneration) {
+                waitForListing(requestGeneration)
+              }
+            })
           }
         }
       )

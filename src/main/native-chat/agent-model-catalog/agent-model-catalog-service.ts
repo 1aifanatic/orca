@@ -1,5 +1,8 @@
 import type { AgentSessionModelCatalogResult } from '../../../shared/agent-session-wire'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type {
+  AgentSessionAccountHome,
+  AgentSessionRecord
+} from '../../../shared/agent-session-record'
 import {
   agentModelCatalogFingerprint,
   agentModelCatalogFingerprintForRecord
@@ -13,17 +16,18 @@ import type {
 export type AgentModelCatalogServiceDeps = {
   store: AgentModelCatalogStore
   getRecord: (sessionId: string) => AgentSessionRecord | undefined
+  /** Whether this build can start the record's agent as the record pins it; a record it cannot
+   *  names no account a probe may start that agent's CLI under. */
+  drivesRecord: (record: AgentSessionRecord) => boolean
   /** The account home a structured launch for this agent would pin right now —
    *  the SAME resolver the create path fills `record.accountHome` with, so a
    *  record-less read can never answer from another account's listing. */
-  resolveAccountHome: (
-    agent: 'claude' | 'codex'
-  ) => Promise<{ variable: 'CLAUDE_CONFIG_DIR' | 'CODEX_HOME'; path: string }>
+  resolveAccountHome: (agent: string) => Promise<AgentSessionAccountHome>
   /** Session-less listers, one per agent that has one on this host. */
-  probes?: Partial<Record<'claude' | 'codex', AgentModelCatalogProbe>>
+  probes?: Readonly<Partial<Record<string, AgentModelCatalogProbe>>>
   /** Whether the workspace's own config could pick a model other than the listed default. */
   workspaceMayOverrideDefaultModel?: (input: {
-    agent: 'claude' | 'codex'
+    agent: string
     workspacePath: string
     accountHomePath: string
   }) => Promise<boolean>
@@ -31,7 +35,7 @@ export type AgentModelCatalogServiceDeps = {
 
 export type AgentModelCatalogService = {
   read: (params: {
-    agent: 'claude' | 'codex'
+    agent: string
     sessionId?: string
     /** Where a new chat would run; null when one was named but is not a local directory. */
     workspacePath?: string | null
@@ -58,7 +62,7 @@ function resultFromEntry(
 /** A named workspace keeps the listed default only when none of its own config can replace it. */
 async function workspaceKeepsListedDefault(
   deps: AgentModelCatalogServiceDeps,
-  agent: 'claude' | 'codex',
+  agent: string,
   workspacePath: string | null | undefined,
   accountHomePath: string | null
 ): Promise<boolean> {
@@ -82,8 +86,8 @@ async function workspaceKeepsListedDefault(
  * never "whichever account listed last". `unknown` tells the client to keep
  * its static seed, and a missing or aged entry kicks one joined background
  * probe so the next read is warm. With no entry, the answer says that listing
- * is running, and only a read that asks waits for it. Failures are the store's
- * 30s TTL, never an answer: inside it a read answers `unknown` at once.
+ * is running, and only a read that asks waits for it. Failures suppress a new
+ * probe for 30s, but never hide another listing already running for the account.
  */
 export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
@@ -91,7 +95,8 @@ export function createAgentModelCatalogService(
   return {
     async read(params) {
       const record = params.sessionId ? deps.getRecord(params.sessionId) : undefined
-      const scoped = record && record.provider === params.agent ? record : undefined
+      const scoped =
+        record && record.provider === params.agent && deps.drivesRecord(record) ? record : undefined
       let fingerprint: string
       let accountHomePath: string | null
       if (scoped) {
@@ -99,7 +104,7 @@ export function createAgentModelCatalogService(
         // Probes spawn natively; a WSL-pinned record has no host-side lister.
         accountHomePath = scoped.location.wslDistro === null ? scoped.accountHome.path : null
       } else {
-        let resolved: { variable: 'CLAUDE_CONFIG_DIR' | 'CODEX_HOME'; path: string }
+        let resolved: AgentSessionAccountHome
         try {
           resolved = await deps.resolveAccountHome(params.agent)
         } catch {
@@ -116,20 +121,30 @@ export function createAgentModelCatalogService(
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
       const home = accountHomePath
-      const listing =
+      // The probe also runs the account check a live session's listing cannot answer.
+      const probing =
         probe &&
         home &&
-        (deps.store.shouldProbeAvailability(fingerprint) || deps.store.shouldRefresh(fingerprint))
-          ? deps.store.refresh(fingerprint, params.agent, () => probe(home))
+        (deps.store.availability.shouldProbe(fingerprint) ||
+          deps.store.shouldRefresh(fingerprint) ||
+          deps.store.isListing(fingerprint, probe))
+          ? deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
           : null
-      if (listing && params.waitForListing) {
-        await listing
-        entry = deps.store.get(fingerprint)
+      // Without an entry, answer from any running listing instead of starting a second one.
+      const listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
+      if ((listing || probing) && params.waitForListing) {
+        // With no catalog, the first catalog or account blocker answers; with one, the probe does.
+        const listed = await (listing ?? probing)
+        entry = deps.store.get(fingerprint) ?? listed
       }
-      const unavailable = home ? deps.store.unavailable(fingerprint) : undefined
+      const unavailable = home ? deps.store.availability.unavailable(fingerprint) : undefined
+      // A catalog can land before the probe's account check, which then still owes its answer.
+      const inProgress = params.waitForListing
+        ? !unavailable && Boolean(probe && deps.store.isListing(fingerprint, probe))
+        : Boolean(probing || listing)
       const observation = {
         ...(unavailable ? { unavailable } : {}),
-        ...(listing && !params.waitForListing ? { listingInProgress: true as const } : {})
+        ...(inProgress ? { listingInProgress: true as const } : {})
       }
       if (!entry) {
         return { origin: 'unknown', ...observation }

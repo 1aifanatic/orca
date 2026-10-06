@@ -69,10 +69,14 @@ export function claudeInitializationSignedOut(initialization: unknown): boolean 
     return false
   }
   const account = initialization.account
+  if (typeof account !== 'object' || account === null) {
+    return false
+  }
+  // An API key (ANTHROPIC_API_KEY or a Console /login key) reports tokenSource "none".
+  const apiKeySource = 'apiKeySource' in account ? account.apiKeySource : undefined
   return (
-    typeof account === 'object' &&
-    account !== null &&
     'tokenSource' in account &&
-    account.tokenSource === 'none'
+    account.tokenSource === 'none' &&
+    (typeof apiKeySource !== 'string' || apiKeySource === '' || apiKeySource === 'none')
   )
 }

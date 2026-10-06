@@ -21,6 +21,8 @@ export type NativeChatComposerActionsProps = {
   /** Storage refused this draft; it is held in memory only. */
   draftNotSaved?: boolean
   isWorking: boolean
+  /** This client's Stop request is in flight: the Stop control is disabled and says so. */
+  isStopping?: boolean
   isDictating: boolean
   isDictationHoldMode: boolean
   onAttach: () => void
@@ -45,6 +47,7 @@ export function NativeChatComposerActions({
   sendBlockedReason,
   draftNotSaved,
   isWorking,
+  isStopping = false,
   isDictating,
   isDictationHoldMode,
   onAttach,
@@ -81,10 +84,12 @@ export function NativeChatComposerActions({
       data-native-chat-critical-action={isWorking ? 'stop' : undefined}
       aria-label={
         isWorking
-          ? translate('components.native-chat.stop', 'Stop the agent')
+          ? isStopping
+            ? translate('components.native-chat.status.stopping', 'Stopping…')
+            : translate('components.native-chat.stop', 'Stop the agent')
           : translate('components.native-chat.composer.send', 'Send')
       }
-      disabled={sendDisabled}
+      disabled={sendDisabled || (isWorking && isStopping)}
       onClick={handleCriticalAction}
       variant={isWorking ? 'secondary' : 'default'}
       size="icon"
@@ -95,7 +100,7 @@ export function NativeChatComposerActions({
   )
 
   return (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full items-center justify-between gap-2 text-chat-foreground-faint">
       <div className="flex min-w-0 items-center gap-0.5">
         <Tooltip>
           <TooltipTrigger asChild>

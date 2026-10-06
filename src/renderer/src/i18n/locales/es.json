@@ -11,6 +11,9 @@
     "retrying": "Reintentando…"
   },
   "settings": {
+    "chat": {
+      "description": "Elige el aspecto de los chats."
+    },
     "terminal": {
       "optionLayoutAlt": "ABC o EE. UU. — Option envía secuencias Alt/Esc",
       "optionLayoutCompose": "la distribución usa Option para escribir caracteres como @, €, [, ]",
@@ -52,6 +55,30 @@
           "statusItem": "elemento de estado",
           "activity": "actividad"
         }
+      },
+      "chat": {
+        "title": "Chat",
+        "textSize": "Tamaño del texto",
+        "textSizeDescription": "Mensajes, actividad de herramientas y cuadro de mensaje. {{increase}} / {{decrease}} en un chat también cambian este valor.",
+        "codeTextSize": "Tamaño del texto del código",
+        "codeTextSizeDescription": "Bloques de código, código en línea, comandos y salida de herramientas.",
+        "width": "Ancho",
+        "widthDescription": "Cuánto pueden ampliarse los mensajes y el cuadro de mensaje en un panel ancho.",
+        "resetAppearance": "Restablecer apariencia del chat",
+        "resetDescription": "Restaurar los valores predeterminados anteriores.",
+        "comfortable": "Cómodo",
+        "wide": "Amplio",
+        "full": "Completo",
+        "pixels": "px",
+        "reset": "Restablecer",
+        "matchTerminalInterface": "Usar la interfaz del terminal",
+        "matchTerminalInterfaceDescription": "Usa la fuente y los colores de la interfaz del terminal para todo el chat. Se mantiene sincronizado si cambias el tema del terminal.",
+        "contrast": "Contraste",
+        "contrastDescription": "Ajusta el brillo del texto del chat sobre el fondo. El extremo derecho recupera el aspecto anterior, más brillante.",
+        "softer": "Más suave",
+        "sharper": "Más nítido",
+        "terminalControlledHint": "Lo controla la interfaz del terminal.",
+        "terminalControlledTooltip": "Coincide con la interfaz del terminal. Desactiva Usar la interfaz del terminal para cambiarlo."
       }
     },
     "browser": {
@@ -934,6 +961,16 @@
       },
       "clipboardWriteFailure": {
         "tooLarge": "El texto es demasiado grande para copiarlo."
+      },
+      "reveal": {
+        "in": {
+          "file": {
+            "manager": {
+              "notFound": "No se encontró el archivo. Puede que se haya movido o eliminado.",
+              "launchFailed": "No se pudo mostrar el archivo."
+            }
+          }
+        }
       }
     },
     "hooks": {
@@ -3343,10 +3380,7 @@
             "1d04b1630b": "Dividir hacia abajo",
             "6b3efb106e": "Dividir hacia arriba",
             "fdd29eb669": "Fijar pestaña",
-            "8e9d603a09": "Desanclar pestaña",
-            "revealInFinder": "Revelar en Finder",
-            "openContainingFolder": "Abrir carpeta contenedora",
-            "revealInFileExplorer": "Revelar en el Explorador de archivos"
+            "8e9d603a09": "Desanclar pestaña"
           },
           "QuickLaunchButton": {
             "348a04c1ad": "Ajustes de Agents…",
@@ -5712,7 +5746,7 @@
           "3921d3d9a5": "No se encontró la carpeta del espacio de trabajo.",
           "f387af445b": "La ruta del espacio de trabajo no es una ruta local válida.",
           "3ec372b664": "gestor de archivos",
-          "localOnly": "Local only",
+          "localOnly": "Solo local",
           "remoteSsh": "Remote SSH",
           "remoteRuntimeUnsupported": "Opening this path in a local app is not available.",
           "remoteRuntimeUnsupportedDetail": "Switch to a local or SSH workspace, then try again.",
@@ -7147,7 +7181,7 @@
             "resumeCopy": "Cuando Orca se cierra o instala una actualización, los chats que estaban trabajando se reanudan automáticamente al volver a abrir Orca.",
             "structuredTitle": "Utilice el chat nativo estructurado actualizado",
             "structuredCopy": "Abra nuevos agentes de Codex y Claude como chats estructurados. Si está desactivado, los abre en el chat respaldado por la terminal. Los chats que ya existen permanecen como están.",
-            "structuredScope": "Se ejecuta en esta máquina y en servidores Orca emparejados que ejecutan una versión que lo admita; los servidores más antiguos mantienen el chat de terminal. Los hosts WSL y SSH continúan usando el chat de terminal y Windows recurre a él a menos que Orca pueda leer las horas de inicio del proceso.",
+            "structuredScope": "Se ejecuta en esta máquina y en servidores Orca emparejados que ejecutan una versión que lo admita; los servidores más antiguos mantienen el chat de terminal. Los hosts WSL y SSH continúan usando el chat de terminal.",
             "structuredToggleLabel": "Alternar chat nativo estructurado actualizado",
             "resumeTitle": "Reanudar los chats de trabajo automáticamente después de reiniciar",
             "resumeToggleLabel": "Alternar reanudación automática después de un reinicio"
@@ -14323,18 +14357,11 @@
             "88ffb502e5": "Abrir nota Markdown",
             "629528690b": "Nueva nota Markdown",
             "3215fc73e9": "Nueva terminal",
-            "da508bd7f5": "Guardar",
-            "918c2139f3": "No guardar",
-            "e7bf09d4d4": "Cancelar",
-            "690b6fb98a": "Cambios no guardados",
             "bbc177f98f": "Habilitar",
             "adc281394d": "Descartar",
             "8cf80db43b": "Configura la CLI de Orca y el skill de agente para que los agentes puedan coordinarse a través de Orca.",
             "2a3c5ddf5e": "Habilitar orquestación",
-            "d6b563ae24": "Cargando editor...",
             "8b14ba6c17": "Nueva pestaña del navegador",
-            "b085fb58b5": "Este archivo tiene cambios no guardados.",
-            "5ddc688c52": "\"{{value0}}\" tiene cambios no guardados. ¿Quieres guardar antes de cerrar?",
             "25d7817f79": "terminal"
           },
           "FloatingTerminalToggleButton": {
@@ -15074,10 +15101,7 @@
           "f0fd4174b5": "Abre la pestaña de archivo para usar la edición enriquecida de Markdown",
           "a10d9b8337": "Abrir archivo",
           "2076ecfc9c": "Cambio anterior",
-          "631dab0df3": "Cambio siguiente",
-          "revealInFinder": "Revelar en Finder",
-          "openContainingFolder": "Abrir carpeta contenedora",
-          "revealInFileExplorer": "Revelar en el Explorador de archivos"
+          "631dab0df3": "Cambio siguiente"
         },
         "EditorPanelMarkdownActionsMenu": {
           "3e0ce48c24": "Exportar como PDF",
@@ -17510,6 +17534,7 @@
   },
   "components": {
     "native-chat": {
+      "reasoning": "Razonamiento",
       "contextMenu": {
         "copyOrcaSessionId": "Copiar ID de sesión de Orca",
         "orcaSessionIdCopied": "ID de sesión de Orca copiado",
@@ -17537,6 +17562,7 @@
         "managedAccountEnvOverride": "Este inicio de Claude define sus propias variables de inicio de sesión de Anthropic. Quítelas para usar una cuenta de Claude administrada.",
         "accountSwitchInProgress": "Hay un cambio de cuenta de Claude en curso. Vuelva a intentarlo cuando termine.",
         "managedAccountUnsupported": "Mientras haya una cuenta de Claude agregada en WSL, los chats de Claude necesitan una cuenta de Claude de Windows.",
+        "launchFolderMissing": "La carpeta en la que se ejecutaba este chat ya no existe. Restáurela para continuar este chat.",
         "chooseClaudeAccount": "Elija o agregue una en la configuración de Cuentas de Claude.",
         "chooseClaudeAccountThenRunCommand": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a ejecutar /{{command}}.",
         "chooseClaudeAccountThenSend": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a enviar su mensaje.",
@@ -17608,6 +17634,7 @@
         "updateOrcaToOpenChat": "Actualice Orca para abrirlo.",
         "unsupported": "Esto requiere una versión más reciente de Orca en el equipo que ejecuta este chat. Actualice Orca allí y vuelva a intentarlo.",
         "notAvailable": "Esto no está disponible en este chat.",
+        "cannotRunHere": "Orca no puede ejecutar este agente en un chat aquí.",
         "unreachable": "Orca no pudo comunicarse con el agente.",
         "recordFailed": "Orca no pudo guardar esto en el historial del chat.",
         "conversationCleared": "Esta conversación se borró.",
@@ -17691,7 +17718,7 @@
         "commands": "Comandos",
         "skills": "Habilidades",
         "loadingSkills": "Cargando habilidades…",
-        "skillsUnavailableHost": "Las habilidades no están disponibles en los chats SSH",
+        "skillsUnavailableHost": "Las habilidades no se pueden listar en los chats SSH",
         "skillsLoadFailed": "No se pudieron cargar las habilidades",
         "retrySkills": "Reintentar",
         "skillCommandCollision": "También es un nombre de habilidad - el agente decide",
@@ -17721,6 +17748,8 @@
         "moreCalls": "+{{value0}} más",
         "failedCount": "{{value0}} fallidas",
         "failedCallsLabel": "Llamadas a herramientas fallidas: {{value0}}",
+        "interruptedCount": "{{value0}} interrumpidas",
+        "interruptedCallsLabel": "Llamadas a herramientas interrumpidas: {{value0}}",
         "runningPreview": "Ejecutando {{preview}}",
         "runningCommand": "Ejecutando comando",
         "runningNamedPreview": "Ejecutando {{toolName}} {{preview}}",
@@ -17731,13 +17760,35 @@
         "ranCommandsManyToolsSummary": "Se ejecutaron {{commandCount}} comandos y se usaron {{toolCount}} herramientas",
         "usedOneSummary": "Se usó 1 herramienta",
         "usedManySummary": "Se usaron {{toolCount}} herramientas",
-        "editedFile": "Archivo editado",
-        "addedFile": "Archivo añadido",
-        "deletedFile": "Archivo eliminado",
-        "renamedFile": "Archivo renombrado",
         "copyDiff": "Copiar diff",
         "diffGap": "Líneas no mostradas",
         "diffTruncated": "Diff truncado",
+        "row": {
+          "running": "Ejecutando",
+          "reading": "Leyendo",
+          "editing": "Editando",
+          "searching": "Buscando",
+          "searchingWeb": "Buscando en la web",
+          "fetching": "Obteniendo",
+          "listed": "Listó",
+          "listing": "Listando",
+          "ran": "Ejecutó",
+          "read": "Leyó",
+          "edited": "Editó",
+          "searched": "Buscó",
+          "searchedWeb": "Buscó en la web",
+          "fetched": "Obtuvo",
+          "added": "Añadió",
+          "deleted": "Eliminó",
+          "renamed": "Renombró",
+          "subagent": "Subagente",
+          "triedRead": "Intentó leer",
+          "triedEdit": "Intentó editar",
+          "triedSearch": "Intentó buscar",
+          "triedList": "Intentó listar",
+          "triedFetch": "Intentó obtener",
+          "triedSearchWeb": "Intentó buscar en la web"
+        },
         "runReadOne": "Se leyó 1 archivo",
         "runReadMany": "Se leyeron {{value0}} archivos",
         "runSearchOne": "Se buscó 1 vez",
@@ -17783,6 +17834,9 @@
       },
       "status": {
         "responding": "El agente está respondiendo",
+        "stopping": "Deteniendo…",
+        "queueAfterStop": "Pon en cola un mensaje para que se ejecute después de detenerse",
+        "sendAfterStop": "Envía un mensaje para que se ejecute después de detenerse",
         "interruptedAfter": "Interrumpido tras {{value0}}",
         "failedAfter": "Falló tras {{value0}}",
         "working": "Trabajando…",
@@ -17826,6 +17880,10 @@
       "loadingEarlier": "Cargando…",
       "loadEarlier": "Cargar mensajes anteriores",
       "loadingEarlierMessages": "Cargando mensajes anteriores…",
+      "prompt": {
+        "collapse": "Contraer",
+        "expand": "Expandir"
+      },
       "question": {
         "step": "Paso {{value0}}",
         "other": "Otro…",
@@ -17867,17 +17925,17 @@
       "subagents": {
         "unnamed": "Subagente",
         "state": {
-          "failedCount": "{{value0}} fallidas",
+          "failedCount": "{{value0}} con error",
           "working": "trabajando",
           "failed": "falló",
           "stopped": "detenido",
-          "unverifiable": "sin actualización reciente",
-          "unverifiableCount": "{{value0}} sin actualización reciente",
+          "unverifiable": "estado no disponible",
+          "unverifiableCount": "{{value0}} con estado no disponible",
           "completed": "completado",
-          "idle": "idle",
+          "idle": "inactivo",
           "workingCount": "{{value0}} trabajando",
-          "idleCount": "{{value0}} inactivo",
-          "stoppedCount": "{{value0}} detenido"
+          "idleCount": "{{value0}} inactivo(s)",
+          "stoppedCount": "{{value0}} detenido(s)"
         },
         "startedOne": "Inició 1 subagente",
         "startedN": "Inició {{value0}} subagentes",
@@ -17901,6 +17959,7 @@
         "turnOffQueueing": "Desactivar la cola",
         "withdrawnHold": "Detenido antes de enviarse",
         "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
+        "pausedKept": "Aún no se ha enviado. Pulsa Enviar para enviarlo.",
         "paused": "En pausa",
         "queuePausedStopped": "Cola en pausa porque interrumpiste",
         "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
@@ -17908,6 +17967,8 @@
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar"
       },
+      "thought": "Pensó",
+      "thoughtForDuration": "Pensó durante {{duration}}",
       "receipt": {
         "cancelled": "Cancelado",
         "unavailable": "Respuesta seleccionada no disponible",
@@ -17942,15 +18003,21 @@
         "countTasksMany": "{{value0}} tareas",
         "headerTotal": "{{value0}} tareas en segundo plano",
         "stateWorking": "trabajando",
+        "stateWorkingCount": "{{value0}} trabajando",
         "stateMonitoring": "supervisando",
+        "stateMonitoringCount": "{{value0}} supervisando",
         "stateWaiting": "esperando",
+        "stateWaitingCount": "{{value0}} esperando",
         "stateBlocked": "bloqueado",
-        "stateDone": "listo",
+        "stateBlockedCount": "{{value0}} en estado bloqueado",
+        "stateDone": "terminado",
+        "stateDoneCount": "{{value0}} en estado terminado",
         "stateIdle": "detenido",
-        "stateUnverifiable": "sin actualización reciente",
-        "stateUnverifiableCount": "{{value0}} sin actualización reciente",
-        "reasonWaiting": "necesita aprobación",
-        "reasonBlocked": "falló",
+        "stateIdleCount": "{{value0}} en estado detenido",
+        "stateUnverifiable": "estado no disponible",
+        "stateUnverifiableCount": "{{value0}} con estado no disponible",
+        "reasonWaiting": "aprobación pendiente",
+        "reasonBlocked": "con error",
         "groupShell": "Shell",
         "groupMonitors": "Monitores",
         "groupWorkflows": "Flujos de trabajo"

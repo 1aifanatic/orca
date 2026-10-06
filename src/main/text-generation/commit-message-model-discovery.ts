@@ -6,6 +6,7 @@ import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import { getAgentModelProbeSpec } from '../../shared/agent-model-probe-spec'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveCodexHomeProcessLockKeyForSpawnEnv } from '../codex-cli/codex-home-process-lock'
+import { supervisedProviderSpawnFailure } from '../provider-process/provider-spawn-failure-report'
 import { isSshRequestOutcomeUnverifiable } from '../ssh/ssh-channel-multiplexer'
 import { WINDOWS_BATCH_UNSAFE_ARGUMENTS_ERROR } from '../win32-utils'
 import {
@@ -64,6 +65,14 @@ export async function discoverModelsLocal(input: {
 
   const binary = input.binary ?? planned.plan.binary
   const stdinPayload = input.stdinPayload ?? planned.plan.stdinPayload
+  const couldNotStart = `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
+  const startFailure = (error: unknown): DiscoverCommitMessageModelsResult => ({
+    success: false,
+    ...(isMissingCatalogExecutable(error, binary)
+      ? { unavailable: { reason: 'cliMissing' as const } }
+      : {}),
+    error: couldNotStart
+  })
   const startDiscovery = (): LocalProcessExecution<DiscoverCommitMessageModelsResult> => {
     let markProcessClosed!: () => void
     const processClosed = new Promise<void>((resolve) => {
@@ -89,13 +98,7 @@ export async function discoverModelsLocal(input: {
       } catch (error) {
         markProcessClosed()
         console.error('[commit-message] Failed to spawn model discovery:', error)
-        resolve({
-          success: false,
-          ...(isMissingCatalogExecutable(error, binary)
-            ? { unavailable: { reason: 'cliMissing' as const } }
-            : {}),
-          error: `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
-        })
+        resolve(startFailure(error))
         return
       }
 
@@ -166,6 +169,19 @@ export async function discoverModelsLocal(input: {
       }
       const onClose = (code: number | null): void => {
         markClosedAfterTermination()
+        // A supervised spawn failure reads as the same failure a direct spawn reports.
+        const spawnFailure = outputLimitExceeded
+          ? null
+          : supervisedProviderSpawnFailure(code, stderr)
+        if (spawnFailure?.thrown) {
+          console.error('[commit-message] Failed to spawn model discovery:', spawnFailure.error)
+          finish(startFailure(spawnFailure.error))
+          return
+        }
+        if (spawnFailure) {
+          onError(spawnFailure.error)
+          return
+        }
         const unavailable = input.inspectOutput?.(stdout)
         if (unavailable) {
           finish({ success: false, error: unavailable.reason, unavailable })
