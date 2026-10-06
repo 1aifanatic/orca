@@ -207,7 +207,13 @@ export async function acquireAcpStructuredSession(input: {
   await identity.onSpawned(pid)
   const agentName = acpAgentName(spec.agent)
   try {
-    await connection.initialize()
+    const initialized = await connection.initialize()
+    // Chosen here, on the machine Grok runs on, from the environment it was launched with.
+    const authMethodId = spec.authMethod?.({
+      advertised: (initialized.authMethods ?? []).map((method) => method.id),
+      env: launch.env
+    })
+    const auth = authMethodId === undefined ? {} : { authMethodId }
     const resume = launch.resume
     let started: Awaited<ReturnType<AcpStructuredConnection['start']>> | null = null
     let liveLane: AcpStructuredLane | null = null
@@ -219,7 +225,8 @@ export async function acquireAcpStructuredSession(input: {
         started = await connection.start({
           cwd: launch.cwd,
           mcpServers: [],
-          sessionId: resume.sessionId
+          sessionId: resume.sessionId,
+          ...auth
         })
         slot.reattaching = false
         attaching.translator.finishLoad()
@@ -236,7 +243,7 @@ export async function acquireAcpStructuredSession(input: {
     if (!started || !liveLane) {
       liveLane?.dispose()
       slot.lane = null
-      started = await connection.start({ cwd: launch.cwd, mcpServers: [] })
+      started = await connection.start({ cwd: launch.cwd, mcpServers: [], ...auth })
       liveLane = makeLane(started.sessionId)
     }
     options.adoptSession(started.response)

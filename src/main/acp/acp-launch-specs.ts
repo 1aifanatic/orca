@@ -21,6 +21,12 @@ export type AcpLaunchSpec = {
   dialect: AcpDialect
   /** The agent's own sign-in command, for a person to run when it reports auth required. */
   loginCommand: readonly string[]
+  /** Which advertised sign-in method to use when the agent reports auth required, read from the
+   *  environment it was launched with (on its own machine); none leaves it not signed in. */
+  authMethod?(input: {
+    advertised: readonly string[]
+    env: Readonly<Record<string, string>>
+  }): string | undefined
   /** Variable naming the agent's config directory, pinned as each record's account home. */
   accountHomeVariable: string
   /** The config directory the agent uses when the variable is unset, under the user's home. */
@@ -37,6 +43,13 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   env: {},
   dialect: GROK_ACP_DIALECT,
   loginCommand: ['grok', 'login'],
+  // An API key in Grok's own environment, else the sign-in Grok already cached; never interactive.
+  authMethod: ({ advertised, env }) =>
+    env.XAI_API_KEY?.trim() && advertised.includes('xai.api_key')
+      ? 'xai.api_key'
+      : advertised.includes('cached_token')
+        ? 'cached_token'
+        : undefined,
   accountHomeVariable: 'GROK_HOME',
   defaultAccountHome: (homePath) => join(homePath, '.grok'),
   installDirectories: (accountHomePath) => [join(accountHomePath, 'bin')]
