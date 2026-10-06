@@ -33,11 +33,8 @@ function refused(refusal: AgentSessionWireRefusal, resend = false) {
 const NON_PROVING: AgentSessionWireRefusal[] = [
   { code: 'agent_session_operation_unknown', message: 'x' },
   { code: 'agent_session_operation_expired', message: 'x' },
-  {
-    code: 'agent_session_operation_conflict',
-    details: { reason: 'messageIdReused' },
-    message: 'x'
-  },
+  { code: 'agent_session_operation_invalid', details: { reason: 'messageIdReused' }, message: 'x' },
+  { code: 'agent_session_operation_conflict', message: 'x' },
   {
     code: 'agent_session_ownership_unknown',
     details: { reason: 'sessionNotAttached' },
