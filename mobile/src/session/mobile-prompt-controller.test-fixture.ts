@@ -146,17 +146,8 @@ let lastProps: HarnessProps | null = null
 export const handleRef = { current: 'term-1' }
 const error = vi.fn()
 const resolved = vi.fn()
-export const client: RpcClient = {
-  sendRequest: vi.fn<RpcClient['sendRequest']>(),
-  subscribe: () => () => {},
-  updateTerminalSubscriptionViewport: () => {},
-  getState: () => 'connected',
-  getReconnectAttempt: () => 0,
-  getLastConnectedAt: () => null,
-  onStateChange: () => () => {},
-  notifyForeground: () => {},
-  close: () => {}
-}
+let client: RpcClient
+
 export function response(
   accepted = true,
   outcome: 'accepted' | 'refused' | 'unverifiable' | 'legacy' = accepted ? 'accepted' : 'refused'
@@ -266,11 +257,11 @@ export async function unmount() {
   await act(async () => tree?.unmount())
   tree = null
 }
-export function reset() {
+export function reset(rpcClient: RpcClient) {
+  client = rpcClient
   visible.value = true
   handleRef.current = 'term-1'
   lastProps = null
-  vi.mocked(client.sendRequest).mockReset().mockResolvedValue(response())
   error.mockReset()
   resolved.mockReset()
   vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) =>

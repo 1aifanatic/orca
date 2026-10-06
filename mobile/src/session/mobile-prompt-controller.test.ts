@@ -2,9 +2,9 @@ import { act } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import type { RpcResponse } from '../transport/types'
+import type { RpcClient } from '../transport/rpc-client'
 import { buildAskAnswerKeys, type AskPrompt } from '../../../src/shared/native-chat-ask'
 import {
-  client,
   visible,
   handleRef,
   baseTab,
@@ -20,7 +20,22 @@ import {
   askCancel
 } from './mobile-prompt-controller.test-fixture'
 
-beforeEach(reset)
+const client: RpcClient = {
+  sendRequest: vi.fn<RpcClient['sendRequest']>(),
+  subscribe: () => () => {},
+  updateTerminalSubscriptionViewport: () => {},
+  getState: () => 'connected',
+  getReconnectAttempt: () => 0,
+  getLastConnectedAt: () => null,
+  onStateChange: () => () => {},
+  notifyForeground: () => {},
+  close: () => {}
+}
+
+beforeEach(() => {
+  vi.mocked(client.sendRequest).mockReset().mockResolvedValue(response())
+  reset(client)
+})
 afterEach(async () => {
   await unmount()
   vi.useRealTimers()
