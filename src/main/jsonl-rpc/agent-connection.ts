@@ -1,0 +1,113 @@
+import { spawnProcess } from '../../shared/child-process/run-process'
+import {
+  spawnManagedProviderProcess,
+  type ManagedProviderProcess,
+  type ProviderProcessExit
+} from '../provider-process/managed-provider-process'
+import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
+import type { ProviderProcessCloseResult } from '../provider-process/provider-process-close'
+import { JsonlRpcPeer, type JsonlRpcPeerHandlers, type JsonlRpcRecord } from './peer'
+import { resolveJsonlRpcPeerOptions, type JsonlRpcPeerOptions } from './peer-limits'
+
+export type JsonlRpcAgentConnectionOptions = JsonlRpcPeerHandlers & {
+  peer?: JsonlRpcPeerOptions
+  onExit?: (error: Error, context: { expected: boolean; exit: ProviderProcessExit }) => void
+}
+
+/** The owning runtime keeps process exit evidence separate from transport closure. */
+export class JsonlRpcAgentConnection {
+  private readonly managed: ManagedProviderProcess
+  private readonly peer: JsonlRpcPeer
+  private closing = false
+
+  constructor(
+    launch: ProviderProcessLaunch,
+    private readonly options: JsonlRpcAgentConnectionOptions = {},
+    spawnImpl: typeof spawnProcess = spawnProcess
+  ) {
+    const peerOptions = resolveJsonlRpcPeerOptions(options.peer)
+    this.managed = spawnManagedProviderProcess(launch, {
+      spawnImpl,
+      site: 'jsonl-rpc-agent-teardown'
+    })
+    const managed = this.managed
+    this.peer = new JsonlRpcPeer(
+      managed.child.stdout,
+      managed.child.stdin,
+      {
+        ...options,
+        onClose: (error) => {
+          if (!this.closing && managed.rootVerdict !== 'exited') {
+            void managed.close().then(
+              (result) => {
+                if (result.root !== 'exited') {
+                  this.diagnose('Agent exit was not proven after RPC failure')
+                }
+              },
+              () => this.diagnose('Agent cleanup failed after RPC failure')
+            )
+            options.onClose?.(error)
+          }
+        }
+      },
+      peerOptions
+    )
+    managed.child.on('error', this.onError)
+    managed.child.stderr.on('error', this.onError)
+    managed.onExit((exit) => {
+      const error = new Error(
+        exit.processless
+          ? 'Agent process could not start'
+          : `Agent process exited (code ${exit.code ?? 'none'}, signal ${exit.signal ?? 'none'})`
+      )
+      this.peer.close(error)
+      managed.child.removeListener('error', this.onError)
+      try {
+        options.onExit?.(error, { expected: this.closing, exit })
+      } catch {
+        this.diagnose('Agent exit observer failed')
+      }
+    })
+  }
+
+  get pid(): number | undefined {
+    return this.managed.child.pid
+  }
+  get closed(): boolean {
+    return this.peer.closed
+  }
+  get rootVerdict(): ManagedProviderProcess['rootVerdict'] {
+    return this.managed.rootVerdict
+  }
+  get lastCloseResult(): ManagedProviderProcess['lastCloseResult'] {
+    return this.managed.lastCloseResult
+  }
+
+  request(
+    command: string,
+    params: Record<string, unknown> = {},
+    options: { timeoutMs?: number | null } = {}
+  ): Promise<unknown> {
+    return this.peer.request(command, params, options)
+  }
+
+  send(record: JsonlRpcRecord): Promise<void> {
+    return this.peer.send(record)
+  }
+
+  /** Stop sends the dialect's abort first, then closes this connection through the supervisor. */
+  close(error?: Error): Promise<ProviderProcessCloseResult> {
+    this.closing = true
+    this.peer.close(error)
+    return this.managed.close()
+  }
+
+  private readonly onError = (error: Error): void => this.peer.close(error)
+  private diagnose(message: string): void {
+    try {
+      this.options.onDiagnostic?.(message)
+    } catch {
+      /* Diagnostics cannot break cleanup. */
+    }
+  }
+}
