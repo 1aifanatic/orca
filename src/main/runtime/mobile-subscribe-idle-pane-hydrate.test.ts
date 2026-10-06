@@ -48,12 +48,19 @@ async function screenOn(grid: { cols: number; rows: number }): Promise<string> {
   }
 }
 
-function setup(opts: { paneMounted: boolean; providerSnapshot?: boolean }) {
+function setup(opts: {
+  paneMounted: boolean
+  providerSnapshot?: boolean
+  repaintOnResize?: boolean
+}) {
   const sizes = new Map([[PTY_ID, { ...DESKTOP }]])
-  const serializeBuffer = vi.fn(async () =>
-    opts.paneMounted ? { data: await screenOn(DESKTOP), ...DESKTOP } : null
-  )
   const runtime = new OrcaRuntimeService()
+  // The pane orders its screen against PTY output, as a mounted desktop xterm does.
+  const serializeBuffer = vi.fn(async () =>
+    opts.paneMounted
+      ? { data: await screenOn(DESKTOP), ...DESKTOP, seq: runtime.getPtyOutputSequence(PTY_ID) }
+      : null
+  )
   runtime.setPtyController({
     write: () => true,
     kill: () => true,
@@ -61,6 +68,10 @@ function setup(opts: { paneMounted: boolean; providerSnapshot?: boolean }) {
     getSize: (ptyId: string) => sizes.get(ptyId) ?? null,
     resize: (ptyId: string, cols: number, rows: number) => {
       sizes.set(ptyId, { cols, rows })
+      if (opts.repaintOnResize) {
+        // A TUI answering SIGWINCH before the subscribe reaches its own hydrate.
+        runtime.onPtyData(ptyId, '\x1b[?25h', Date.now())
+      }
       return true
     },
     hasRendererSerializer: () => opts.paneMounted,
@@ -176,6 +187,16 @@ describe('phone subscribe to an idle PTY whose hidden pane sits at desktop size'
     expect((await paintedRows(snapshot)).slice(0, 4)).toEqual(EXPECTED_PHONE_ROWS)
     const resubscribed = await firstSnapshot(runtime, handle)
     expect({ cols: resubscribed.cols, rows: resubscribed.rows }).toEqual(PHONE)
+  })
+
+  it('joins a hydrate the resize repaint already started', async () => {
+    const { runtime, handle, serializeBuffer } = setup({ paneMounted: true, repaintOnResize: true })
+
+    const snapshot = await firstSnapshot(runtime, handle)
+
+    expect({ cols: snapshot.cols, rows: snapshot.rows }).toEqual(PHONE)
+    expect((await paintedRows(snapshot)).slice(0, 4)).toEqual(EXPECTED_PHONE_ROWS)
+    expect(serializeBuffer).toHaveBeenCalledTimes(1)
   })
 
   it('keeps serving the model on resubscribe without re-reading the pane', async () => {
