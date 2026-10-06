@@ -23,7 +23,9 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
     kittyKeyboardFlags?: number
     terminalOwner?: 'shell'
   } | null> {
-    const restoredSnapshot = await this.serializePreferredRestoredTerminalBuffer(ptyId, opts)
+    const restoredSnapshot = await this.serializePreferredRestoredTerminalBuffer(ptyId, opts, {
+      seedModelFromRenderer: true
+    })
     if (restoredSnapshot) {
       return restoredSnapshot
     }
@@ -32,7 +34,7 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
       return headlessSnapshot
     }
 
-    const rendererSnapshot = await this.serializeRendererTerminalBuffer(ptyId, opts)
+    const rendererSnapshot = await this.serializeRendererScreenOntoModel(ptyId, opts)
     if (!rendererSnapshot) {
       return this.serializeProviderTerminalBuffer(ptyId, opts)
     }
@@ -51,7 +53,8 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
 
   protected async serializePreferredRestoredTerminalBuffer(
     ptyId: string,
-    opts: { scrollbackRows?: number } = {}
+    opts: { scrollbackRows?: number } = {},
+    fallback: { seedModelFromRenderer?: boolean } = {}
   ) {
     if (!this.providerSnapshotPreferredPtys.has(ptyId)) {
       return null
@@ -59,8 +62,25 @@ export class OrcaRuntimeWithSerializeTerminalBufferFromAvailableState extends Or
     // Pre-attach bytes are only a suffix; older providers can fall back to the renderer.
     return (
       (await this.serializeProviderTerminalBuffer(ptyId, opts)) ??
-      (await this.serializeRendererTerminalBuffer(ptyId, opts))
+      (await (fallback.seedModelFromRenderer
+        ? this.serializeRendererScreenOntoModel(ptyId, opts)
+        : this.serializeRendererTerminalBuffer(ptyId, opts)))
     )
+  }
+
+  // Why: a pane answers at its own size; seed the model onto the PTY grid and serve that instead.
+  protected async serializeRendererScreenOntoModel(
+    ptyId: string,
+    opts: { scrollbackRows?: number }
+  ) {
+    const outputSequence = this.getPtyOutputSequence(ptyId)
+    const screen = await this.serializeRendererTerminalBuffer(ptyId, opts)
+    // Why: output that landed during the read is in neither the screen nor a fresh model.
+    if (!screen?.data.length || this.getPtyOutputSequence(ptyId) !== outputSequence) {
+      return screen
+    }
+    await this.replaceHeadlessTerminalFromRendererSnapshotForRecovery(ptyId, screen)
+    return (await this.serializeHeadlessTerminalBuffer(ptyId, opts)) ?? screen
   }
 
   async serializeRendererTerminalBuffer(

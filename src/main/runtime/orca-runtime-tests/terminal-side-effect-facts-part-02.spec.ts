@@ -52,7 +52,8 @@ describe('terminal side-effect fact channel', () => {
     runtime.ingestSyntheticTitleFrame('pty-1', '\x1b]0;⠋ Cursor Agent\x07')
 
     const snapshot = await runtime.serializeTerminalBuffer('pty-1', { scrollbackRows: 10 })
-    expect(snapshot?.source).toBe('renderer')
+    // The renderer screen is seeded into the host model, which then answers.
+    expect(snapshot?.source).toBe('headless')
     expect(snapshot?.lastTitle).toBe('⠋ Cursor Agent')
   })
 
