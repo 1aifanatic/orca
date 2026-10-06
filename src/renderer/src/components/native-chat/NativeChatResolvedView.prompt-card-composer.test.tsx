@@ -35,7 +35,7 @@ vi.mock('@/runtime/runtime-terminal-verified-input', () => ({
 // Stand-in field over the production send lifecycle, queue and observed writes, wired as the
 // composer wires them.
 vi.mock('./NativeChatComposer', async () => {
-  const { forwardRef, useEffect, useImperativeHandle } = await import('react')
+  const { forwardRef, useEffect, useImperativeHandle, useRef } = await import('react')
   const { useNativeChatSendLifecycle } = await import('./use-native-chat-send-lifecycle')
   const { sendNativeChatMessage } = await import('./native-chat-runtime-send')
   return {
@@ -44,8 +44,12 @@ vi.mock('./NativeChatComposer', async () => {
         useEffect(() => {
           composer.mounts += 1
         }, [])
+        const fieldRef = useRef<HTMLTextAreaElement>(null)
         useImperativeHandle(ref, () => ({
-          focus: () => true,
+          focus: () => {
+            fieldRef.current?.focus()
+            return true
+          },
           insertTypedText: composer.typed,
           handlePasteEvent: () => {},
           pasteFromClipboard: () => {},
@@ -73,9 +77,12 @@ vi.mock('./NativeChatComposer', async () => {
           lifecycle.trackPendingSend(handle, pendingId)
         }
         return (
-          <button type="button" data-testid="composer-send" onClick={send}>
-            send
-          </button>
+          <>
+            <textarea ref={fieldRef} data-testid="composer-field" />
+            <button type="button" data-testid="composer-send" onClick={send}>
+              send
+            </button>
+          </>
         )
       }
     )
@@ -211,4 +218,26 @@ describe('a prompt card hides the composer without unmounting it', () => {
     expect(composer.typed).toHaveBeenCalledExactlyOnceWith('x')
     expect(composer.mounts).toBe(1)
   })
+
+  it.each(['Escape', 'chevron'])(
+    'gives the composer focus after a %s collapse',
+    async (gesture) => {
+      setStatus({ state: 'waiting', interactivePrompt: approval })
+      renderPane()
+      const card = document.querySelector<HTMLElement>('[data-native-chat-approval-card="true"]')!
+      expect(document.activeElement).toBe(card)
+      act(() => {
+        if (gesture === 'Escape') {
+          fireEvent.keyDown(card, { key: 'Escape' })
+        } else {
+          fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+        }
+      })
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      })
+      expect(document.activeElement).toBe(screen.getByTestId('composer-field'))
+      expect(pty.verified).not.toHaveBeenCalled()
+    }
+  )
 })

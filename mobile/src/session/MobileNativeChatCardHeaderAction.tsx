@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet } from 'react-native'
+import { Keyboard, Pressable, StyleSheet } from 'react-native'
 import { ChevronDown, X } from 'lucide-react-native'
 import { colors } from '../theme/mobile-theme'
 
@@ -24,7 +24,15 @@ export function MobileNativeChatCardHeaderAction<Prompt>({
       accessibilityState={onCancel ? undefined : { expanded: true }}
       hitSlop={8}
       style={styles.action}
-      onPress={() => (onCancel ? void onCancel(prompt) : onCollapse?.())}
+      onPress={() => {
+        if (onCancel) {
+          void onCancel(prompt)
+          return
+        }
+        // Why: a reply field hidden by the collapse must not keep the keyboard up.
+        Keyboard.dismiss()
+        onCollapse?.()
+      }}
       disabled={disabled}
     >
       <Icon size={16} color={colors.textMuted} />

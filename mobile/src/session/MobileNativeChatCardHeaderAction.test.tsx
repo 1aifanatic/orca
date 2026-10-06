@@ -1,10 +1,12 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
+import { Keyboard } from 'react-native'
 import { MobileNativeChatAsk } from './MobileNativeChatAsk'
 import { MobileNativeChatPermission } from './MobileNativeChatPermission'
 
 vi.mock('react-native', () => ({
+  Keyboard: { dismiss: vi.fn() },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
@@ -42,6 +44,8 @@ describe('rendered prompt card collapse controls', () => {
     })
     act(() => tree!.root.findByProps({ accessibilityLabel: 'Collapse' }).props.onPress())
     expect(onCollapse).toHaveBeenCalledOnce()
+    // The reply field the collapse hides must not keep the keyboard.
+    expect(Keyboard.dismiss).toHaveBeenCalledOnce()
     expect(onCancel).not.toHaveBeenCalled()
     expect(onAnswer).not.toHaveBeenCalled()
     act(() => tree!.unmount())
