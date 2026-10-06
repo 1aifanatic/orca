@@ -63,20 +63,13 @@ async function flush(): Promise<void> {
   }
 }
 
-/** The crash dialog is rendered and not stepped aside under another dialog. */
 function crashOnScreen(): boolean {
-  return [...document.querySelectorAll('[role="dialog"]:not([data-stepped-aside])')].some(
-    (dialog) => dialog.textContent?.includes('Send Report')
-  )
-}
-
-function crashMounted(): boolean {
   return document.body.textContent?.includes('Send Report') === true
 }
 
 function sshOnScreen(): boolean {
-  return [...document.querySelectorAll('[role="dialog"]:not([data-stepped-aside])')].some(
-    (dialog) => dialog.textContent?.includes('SSH Key Passphrase')
+  return [...document.querySelectorAll('[role="dialog"]')].some((dialog) =>
+    dialog.textContent?.includes('SSH Key Passphrase')
   )
 }
 
@@ -162,19 +155,19 @@ function raiseSsh(): void {
   })
 }
 
-it('notes typed into the launch crash report survive an SSH prompt that interrupts it', async () => {
+it('an SSH prompt stacks over the launch crash report, which keeps its notes throughout', async () => {
   await mountBoth()
   typeNotes('it crashed when I opened the diff')
+  const area = document.querySelector('textarea')
   raiseSsh()
   await flush()
-  // Stepped aside under the SSH prompt, still mounted with what the user typed.
   expect(sshOnScreen()).toBe(true)
-  expect(crashOnScreen()).toBe(false)
-  expect(crashMounted()).toBe(true)
+  expect(document.querySelector('textarea')).toBe(area)
+  expect(notes()).toBe('it crashed when I opened the diff')
 
   await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
   await flush()
-  expect(crashOnScreen()).toBe(true)
+  expect(document.querySelector('textarea')).toBe(area)
   expect(notes()).toBe('it crashed when I opened the diff')
 })
 
@@ -191,7 +184,7 @@ it('a report sent while an SSH prompt interrupts it is sent once and the dialog 
   await flush()
   await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
   await flush()
-  expect(crashMounted()).toBe(false)
+  expect(crashOnScreen()).toBe(false)
   expect(crashReports.submit).toHaveBeenCalledTimes(1)
 })
 
@@ -205,7 +198,7 @@ it('Help > Report Crash over the launch report: closing it does not bring the sa
   await vi.waitFor(() => expect(document.body.textContent).toContain('Orca 9.9.9'))
   await act(async () => button("Don't Send").click())
   await flush()
-  expect(crashMounted()).toBe(false)
+  expect(crashOnScreen()).toBe(false)
   expect(useAppStore.getState().automaticPromptRequests).toEqual([])
 })
 
@@ -229,23 +222,8 @@ it('a send in flight when Help > Report Crash opens is sent once and closes the 
     resolveSubmit({ ok: true, report: { ...pendingCrash, status: 'submitted' } })
   })
   await flush()
-  expect(crashMounted()).toBe(false)
+  expect(crashOnScreen()).toBe(false)
   expect(crashReports.submit).toHaveBeenCalledTimes(1)
-})
-
-it('focus goes back into the crash report when the SSH prompt over it closes', async () => {
-  await mountBoth()
-  typeNotes('notes')
-  const area = document.querySelector('textarea')
-  act(() => area?.focus())
-  expect(document.activeElement).toBe(area)
-  raiseSsh()
-  await flush()
-  expect(area?.contains(document.activeElement)).toBe(false)
-
-  await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
-  await flush()
-  expect(document.activeElement).toBe(area)
 })
 
 const newerCrash: CrashReportRecord = {
@@ -287,7 +265,7 @@ it('a send in flight when Help is pressed again is sent once and closes the dial
   await openFromHelp()
   await act(async () => resolveSubmit({ ok: true, report: { ...newerCrash, status: 'submitted' } }))
   await flush()
-  expect(crashMounted()).toBe(false)
+  expect(crashOnScreen()).toBe(false)
   expect(crashReports.submit).toHaveBeenCalledTimes(1)
 })
 
@@ -306,17 +284,6 @@ it('a send in flight when Help shows a newer report still settles the report it 
   await act(async () => button("Don't Send").click())
   await flush()
   // The sent report never comes back to be sent again.
-  expect(crashMounted()).toBe(false)
+  expect(crashOnScreen()).toBe(false)
   expect(crashReports.submit).toHaveBeenCalledTimes(1)
-})
-
-it('a prompt dialog takes no transitions, so stepping aside and back is immediate in a browser', async () => {
-  await mountBoth()
-  const content = [...document.querySelectorAll('[data-slot="dialog-content"]')].find((dialog) =>
-    dialog.textContent?.includes('Send Report')
-  )
-  // Chromium transitions `visibility` under `duration-200`: seen for 200 ms after stepping aside,
-  // and hidden for a frame on return, which is when focus is put back. happy-dom has no CSS.
-  expect(content?.hasAttribute('data-automatic-prompt')).toBe(true)
-  expect(content?.className).toContain('data-[automatic-prompt]:transition-none')
 })

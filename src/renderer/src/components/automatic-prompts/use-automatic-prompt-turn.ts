@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect } from 'react'
-import { useAutomaticPromptScope } from '@/lib/dialog-presence'
+import { useInsideAutomaticPrompt } from '@/lib/dialog-presence'
 import { useAppStore } from '@/store'
 import {
   selectAutomaticPromptTurnHeld,
@@ -15,9 +15,9 @@ import {
  * next item an owner queues) is a new request, so each item takes its own turn and is rendered only
  * once its own request holds it.
  *
- * Once shown, the prompt stays rendered while another dialog is up: render it inside
- * AutomaticPromptDialogScope, which hides it until that dialog closes. Before it is shown it is not
- * rendered at all while another dialog is up.
+ * Once shown, the prompt stays on screen and a dialog opened later stacks over it. Before it is
+ * shown it is not rendered while another dialog is up; render it inside AutomaticPromptDialogScope
+ * so its own dialogs never count as that other dialog.
  *
  * Call `markShown` from the committed dialog content, never on being granted: a lazy surface may
  * not have rendered yet, and only a prompt on screen keeps its turn against later arrivals.
@@ -50,13 +50,13 @@ export function useAutomaticPromptTurn(
 
 /**
  * Registers a dialog the user opened, or one answering something in flight, while it is visible.
- * It is never delayed: prompts not yet shown and tours wait behind it. One already showing steps
- * aside through the shared dialog primitive's presence marker, not through this.
+ * It is never delayed: prompts not yet shown and tours wait behind it; one already showing stays
+ * under it.
  * Inside an automatic prompt's own tree it is part of that prompt, so it registers nothing.
  */
 export function usePromptBlockingDialog(name: string, visible: boolean): void {
   const setPromptBlockingDialogVisible = useAppStore((s) => s.setPromptBlockingDialogVisible)
-  const insidePrompt = useAutomaticPromptScope() !== null
+  const insidePrompt = useInsideAutomaticPrompt()
   // Per instance, so two copies of one dialog never clear each other's entry.
   const id = `${name}:${useId()}`
   const registered = visible && !insidePrompt

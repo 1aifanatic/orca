@@ -8,11 +8,7 @@ import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
-import {
-  DialogPresenceMarker,
-  useAutomaticPromptScope,
-  usePromptContentRef
-} from '@/lib/dialog-presence'
+import { DialogPresenceMarker } from '@/lib/dialog-presence'
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -34,16 +30,14 @@ function DialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
-  const steppedAside = useAutomaticPromptScope()?.steppedAside === true ? true : undefined
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
-      data-stepped-aside={steppedAside}
       // Why: in dark mode the canvas is already near-black, so a flat 50% black
       // scrim disappears into the background. A deeper scrim + 2px backdrop
       // blur lifts the canvas behind the dialog without needing per-mode colors.
       className={cn(
-        'fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[stepped-aside]:invisible',
+        'fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
         className
       )}
       {...props}
@@ -56,27 +50,16 @@ function DialogContent({
   children,
   overlayClassName,
   showCloseButton = true,
-  ref,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   overlayClassName?: string
   showCloseButton?: boolean
 }) {
-  // Why: an automatic prompt under another dialog stays mounted but unseen; Radix's layer and focus
-  // stacks already treat the newer dialog as the top one. It takes no transitions: `duration-200`
-  // would otherwise transition `visibility` too, leaving it seen for 200 ms after stepping aside
-  // and hidden for a frame on return, too late for focus to land back in it.
-  const promptScope = useAutomaticPromptScope()
-  const steppedAside = promptScope?.steppedAside === true ? true : undefined
-  const contentRef = usePromptContentRef(ref)
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
-        ref={contentRef}
         data-slot="dialog-content"
-        data-automatic-prompt={promptScope ? true : undefined}
-        data-stepped-aside={steppedAside}
         // Why: bg-background in dark mode is the same color as the canvas, and
         // border-border/50 is ~3.5% white over that canvas — both invisible.
         // A translucent surface, solid 14% border, dual shadow, and 2xl backdrop
@@ -86,7 +69,7 @@ function DialogContent({
         // unbreakable token (long filename in the title) widens the column past the
         // panel and pushes justify-end footers outside the visible surface.
         className={cn(
-          'fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] grid-cols-[minmax(0,1fr)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border border-black/14 bg-background/96 p-6 text-foreground shadow-[0_20px_60px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl duration-200 outline-none dark:border-white/14 dark:bg-[rgba(23,23,23,0.96)] dark:shadow-[0_24px_72px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[automatic-prompt]:transition-none data-[stepped-aside]:invisible sm:max-w-lg',
+          'fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] grid-cols-[minmax(0,1fr)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border border-black/14 bg-background/96 p-6 text-foreground shadow-[0_20px_60px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl duration-200 outline-none dark:border-white/14 dark:bg-[rgba(23,23,23,0.96)] dark:shadow-[0_24px_72px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg',
           className
         )}
         {...props}

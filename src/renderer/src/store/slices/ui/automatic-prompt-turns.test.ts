@@ -95,7 +95,7 @@ describe('automatic prompt turns', () => {
     store.getState().requestAutomaticPrompt('native-chat-resume')
     expect(show(store)).toBe('native-chat-resume')
 
-    // Hidden by its dialog scope, not unmounted, so nothing typed or in flight is lost.
+    // Left on screen under it, so nothing typed or in flight is lost.
     setOtherDialogOnScreen(store, true)
     store.getState().setPromptBlockingDialogVisible('ssh-credential:1', true)
     store.getState().requestAutomaticPrompt('crash-report')

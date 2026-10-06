@@ -113,7 +113,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map())
   // Each opening starts from the rows' defaults. This component never unmounts, so an untick made
   // before a close would otherwise greet a reopen, e.g. as "Resume 0 chats" over what a run left.
-  // Keyed on the request, not visibility: stepping aside for another dialog keeps the user's ticks.
+  // Keyed on the request, not on whose turn it is, so waiting for a turn never resets the ticks.
   const requested = request !== null
   const [openedWith, setOpenedWith] = useState(requested)
   if (openedWith !== requested) {
@@ -203,7 +203,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const interruptedByUpdate = rows.some((row) => row.trigger === 'update')
 
   return (
-    // Raised by the launch, it steps aside under another dialog; opened by the user, it counts as one.
+    // Raised by the launch, its own dialog never holds it back; opened by the user, it counts as one.
     <AutomaticPromptDialogScope automatic={request !== 'user'}>
       <Dialog
         open

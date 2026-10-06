@@ -25,7 +25,7 @@ export function SshPassphraseDialog(): React.JSX.Element | null {
 
   const open = request !== null
   // Why: a connection is waiting on this with a deadline in main, so it is never queued behind an
-  // automatic prompt; one that is showing steps aside until this closes.
+  // automatic prompt; one already showing stays under this.
   usePromptBlockingDialog('ssh-credential', open)
 
   const requestId = request?.requestId

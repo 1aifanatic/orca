@@ -73,7 +73,7 @@ afterEach(() => {
   container.remove()
 })
 
-it('an SSH prompt arriving mid CLI setup keeps the app-open tip and its setup terminal', async () => {
+it('an SSH prompt arriving mid CLI setup stacks over the app-open tip, which keeps its setup terminal', async () => {
   // The app-open tip holds its turn and the modal slot, as the owner leaves it.
   act(() => {
     useAppStore.getState().requestAutomaticPrompt('feature-tip')
@@ -101,6 +101,10 @@ it('an SSH prompt arriving mid CLI setup keeps the app-open tip and its setup te
   await act(async () => install?.click())
   await flush()
   expect(terminal).toEqual({ mounts: 1, unmounts: 0 })
+  const tipDialog = document
+    .querySelector('[data-testid="skill-terminal"]')
+    ?.closest('[role="dialog"]')
+  expect(tipDialog).toBeTruthy()
 
   act(() => {
     useAppStore.getState().enqueueSshCredentialRequest({
@@ -111,15 +115,14 @@ it('an SSH prompt arriving mid CLI setup keeps the app-open tip and its setup te
     })
   })
   await flush()
-  // Stepped aside under the SSH prompt: hidden, but the installer keeps running.
-  const tipDialog = document
-    .querySelector('[data-testid="skill-terminal"]')
-    ?.closest('[role="dialog"]')
-  expect(tipDialog?.hasAttribute('data-stepped-aside')).toBe(true)
+  // The SSH prompt stacks over the tip, which stays on screen with its installer running.
+  expect(document.body.textContent).toContain('SSH Key Passphrase')
+  expect(tipDialog?.isConnected).toBe(true)
   expect(terminal).toEqual({ mounts: 1, unmounts: 0 })
 
   await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
   await flush()
-  expect(tipDialog?.hasAttribute('data-stepped-aside')).toBe(false)
+  expect(tipDialog?.isConnected).toBe(true)
+  expect(useAppStore.getState().activeModal).toBe('feature-tips')
   expect(terminal).toEqual({ mounts: 1, unmounts: 0 })
 })

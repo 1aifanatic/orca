@@ -205,8 +205,8 @@ export function CrashReportDialog(): React.JSX.Element | null {
   const report = userDialog ? userDialog.report : (automatic?.report ?? null)
 
   return (
-    // Raised by itself, its own dialog never counts as another one and it steps aside under one;
-    // opened from Help it is a user dialog like any other.
+    // Raised by itself, its own dialog never counts as another one; opened from Help it is a user
+    // dialog like any other.
     <AutomaticPromptDialogScope automatic={!userOpen}>
       <Suspense fallback={null}>
         <CrashReportDialogSurface

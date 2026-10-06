@@ -32,7 +32,7 @@ import { VoiceDictationTipDialog } from './VoiceDictationTipDialog'
 
 export default function FeatureTipsModal(): JSX.Element {
   const automaticTip = useAppStore((s) => s.modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip')
-  // Raised by the app, its own dialogs never count as another one and it steps aside under one.
+  // Raised by the app, its own dialogs never count as another one.
   return (
     <AutomaticPromptDialogScope automatic={automaticTip}>
       <FeatureTipDialogs />

@@ -3,8 +3,8 @@
  *
  * Exactly one automatic prompt is visible at a time and the next opens after it closes. Dialogs the
  * user opened, or that answer something in flight (an SSH credential, a confirmation), are never
- * scheduled: they only register as visible, and while any is up every automatic prompt waits. One
- * that was already showing is hidden and keeps its turn until they close.
+ * scheduled: they only register as visible, and while any is up every automatic prompt not yet
+ * shown waits. One already showing stays on screen and keeps its turn; they stack over it.
  */
 
 /** Lower goes first. The resume offer leads because it describes the restart the user just saw. */
@@ -86,7 +86,7 @@ function compareRequests(a: AutomaticPromptRequest, b: AutomaticPromptRequest): 
 }
 
 /** The request whose dialog is rendered now. One already shown stays rendered under a dialog opened
- *  over it; AutomaticPromptDialogScope only hides it, so nothing it holds is lost. */
+ *  over it, so nothing it holds is lost. */
 export function selectVisibleAutomaticPrompt(
   state: PromptTurnInputs
 ): AutomaticPromptRequest | null {

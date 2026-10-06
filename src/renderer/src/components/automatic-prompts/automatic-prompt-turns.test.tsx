@@ -39,7 +39,7 @@ const surface = vi.hoisted(() => ({ loaded: Promise.resolve(), suspended: false,
 // The real surface is covered by its own tests; here only whether it is on screen matters.
 vi.mock('../crash-report/CrashReportDialogSurface', async () => {
   const { useEffect } = await import('react')
-  const { DialogPresenceMarker, useAutomaticPromptScope } = await import('@/lib/dialog-presence')
+  const { DialogPresenceMarker } = await import('@/lib/dialog-presence')
   return {
     CrashReportDialogSurface: ({
       open,
@@ -52,7 +52,6 @@ vi.mock('../crash-report/CrashReportDialogSurface', async () => {
       onOpenChange: (open: boolean) => void
       onShown?: () => void
     }) => {
-      const steppedAside = useAutomaticPromptScope()?.steppedAside === true
       useEffect(() => {
         surface.mounts += 1
       }, [])
@@ -66,12 +65,7 @@ vi.mock('../crash-report/CrashReportDialogSurface', async () => {
         throw surface.loaded
       }
       return (
-        <div
-          role="dialog"
-          data-testid="crash-report"
-          data-report={report?.id}
-          data-stepped-aside={steppedAside || undefined}
-        >
+        <div role="dialog" data-testid="crash-report" data-report={report?.id}>
           {/* As the real surface's DialogContent does. */}
           <DialogPresenceMarker />
           {report?.status}
@@ -147,23 +141,24 @@ async function mount(node: React.ReactNode): Promise<void> {
   await flush()
 }
 
-/** Text of the dialogs the user can see: a prompt stepped aside under another stays mounted. */
 function visibleDialogText(): string {
-  return [...document.querySelectorAll('[role="dialog"]:not([data-stepped-aside])')]
+  return [...document.querySelectorAll('[role="dialog"]')]
     .map((dialog) => dialog.textContent ?? '')
     .join('\n')
 }
 
-function resumeMounted(): boolean {
-  return document.body.textContent?.includes('Resume interrupted chats?') === true
+function resumeDialog(): Element | undefined {
+  return [...document.querySelectorAll('[role="dialog"]')].find((dialog) =>
+    dialog.textContent?.includes('Resume interrupted chats?')
+  )
 }
 
 function resumeOnScreen(): boolean {
-  return visibleDialogText().includes('Resume interrupted chats?')
+  return resumeDialog() !== undefined
 }
 
 function crashOnScreen(): boolean {
-  return document.querySelector('[data-testid="crash-report"]:not([data-stepped-aside])') !== null
+  return document.querySelector('[data-testid="crash-report"]') !== null
 }
 
 function sshOnScreen(): boolean {
@@ -286,7 +281,7 @@ it('a failed acknowledgment does not hold the crash report back', async () => {
   consoleError.mockRestore()
 })
 
-it('an SSH credential prompt shows over a visible resume offer without waiting', async () => {
+it('an SSH credential prompt stacks over a shown resume offer without waiting', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(
     <>
@@ -294,7 +289,8 @@ it('an SSH credential prompt shows over a visible resume offer without waiting',
       <SshPassphraseDialog />
     </>
   )
-  expect(resumeOnScreen()).toBe(true)
+  const offer = resumeDialog()
+  expect(offer).toBeDefined()
 
   await act(async () =>
     useAppStore.getState().enqueueSshCredentialRequest({
@@ -306,14 +302,13 @@ it('an SSH credential prompt shows over a visible resume offer without waiting',
   )
   await flush()
   expect(sshOnScreen()).toBe(true)
-  expect(resumeOnScreen()).toBe(false)
-  // Stepped aside, not closed: it keeps its turn and whatever the user had ticked.
-  expect(resumeMounted()).toBe(true)
+  // Left as it was under the SSH prompt: same dialog, same turn, whatever the user had ticked.
+  expect(resumeDialog()).toBe(offer)
 
   await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
   await flush()
   expect(sshOnScreen()).toBe(false)
-  expect(resumeOnScreen()).toBe(true)
+  expect(resumeDialog()).toBe(offer)
 })
 
 it('an SSH credential prompt never waits for the launch read', async () => {
@@ -349,7 +344,7 @@ function UserModal(): React.JSX.Element {
   )
 }
 
-it('a modal the user opens hides the resume offer, which comes back after', async () => {
+it('a modal the user opens stacks over a shown resume offer, which stays as it was', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(
     <>
@@ -357,14 +352,15 @@ it('a modal the user opens hides the resume offer, which comes back after', asyn
       <UserModal />
     </>
   )
-  expect(resumeOnScreen()).toBe(true)
+  const offer = resumeDialog()
+  expect(offer).toBeDefined()
 
   await act(async () => useAppStore.getState().openModal('add-repo'))
-  expect(resumeOnScreen()).toBe(false)
-  expect(resumeMounted()).toBe(true)
+  expect(visibleDialogText()).toContain('Add project')
+  expect(resumeDialog()).toBe(offer)
   await act(async () => useAppStore.getState().closeModal())
   await flush()
-  expect(resumeOnScreen()).toBe(true)
+  expect(resumeDialog()).toBe(offer)
 })
 
 it('a modal-slot dialog that failed to render holds back nothing, not even its own crash report', async () => {
@@ -725,35 +721,48 @@ function InnerResponseDialog(): React.JSX.Element {
   )
 }
 
-it('a dialog a prompt opens inside itself never makes that prompt step aside', async () => {
+it('a dialog a prompt opens inside itself never holds that prompt back', async () => {
   useAppStore.getState().settleLaunchPromptDiscovery()
   await mount(<PromptWithInnerDialog />)
   expect(visibleDialogText()).toContain('Prompt')
   expect(visibleDialogText()).toContain('Inner')
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([
+    expect.objectContaining({ id: 'native-chat-resume', shown: true })
+  ])
   expect(useAppStore.getState().promptBlockingDialogIds).toEqual([])
   expect(useAppStore.getState().otherDialogOnScreen).toBe(false)
 })
 
-it('any other dialog on screen holds a visible resume offer back until it closes', async () => {
+it('a dialog opened over a shown resume offer stacks on it; a crash report raised meanwhile waits its turn', async () => {
   rpc.mockResolvedValue({ sessions: offered })
-  await mount(<NativeChatResumeOnRestartModal />)
-  expect(resumeOnScreen()).toBe(true)
-
-  await mount(
+  const withDialog = (open: boolean): React.ReactNode => (
     <>
       <NativeChatResumeOnRestartModal />
-      <Dialog open>
+      <CrashReportDialog />
+      <Dialog open={open}>
         <DialogContent>
           <DialogTitle>Unsaved changes</DialogTitle>
         </DialogContent>
       </Dialog>
     </>
   )
-  expect(resumeOnScreen()).toBe(false)
-  expect(resumeMounted()).toBe(true)
+  await mount(withDialog(false))
+  const offer = resumeDialog()
+  expect(offer).toBeDefined()
 
-  await mount(<NativeChatResumeOnRestartModal />)
-  expect(resumeOnScreen()).toBe(true)
+  await mount(withDialog(true))
+  expect(visibleDialogText()).toContain('Unsaved changes')
+  expect(resumeDialog()).toBe(offer)
+  await raiseBoundaryReports('boundary-1')
+  expect(crashOnScreen()).toBe(false)
+
+  await mount(withDialog(false))
+  // Still one automatic prompt at a time: the report waits for the offer, not for the dialog.
+  expect(resumeDialog()).toBe(offer)
+  expect(crashOnScreen()).toBe(false)
+  closeResume()
+  await flush()
+  expect(shownCrashReportId()).toBe('boundary-1')
 })
 
 it('a machine with no chats ends the launch wait by itself', async () => {
@@ -815,7 +824,7 @@ it('the app-level tip owner with no tip pending does not re-render when dialogs 
   expect(renders - before).toBe(2)
 })
 
-it('the crash dialog opened from Help counts as a user dialog: a resume offer on screen steps aside', async () => {
+it('the crash dialog opened from Help shows at once, over a resume offer on screen that stays', async () => {
   let openFromHelp: () => void = () => {}
   Object.assign(window.api.ui, {
     onOpenCrashReport: (callback: () => void) => {
@@ -831,16 +840,16 @@ it('the crash dialog opened from Help counts as a user dialog: a resume offer on
       <CrashReportDialog />
     </>
   )
-  expect(resumeOnScreen()).toBe(true)
+  const offer = resumeDialog()
+  expect(offer).toBeDefined()
 
   await act(async () => openFromHelp())
   await flush()
   expect(crashOnScreen()).toBe(true)
-  expect(resumeOnScreen()).toBe(false)
-  expect(resumeMounted()).toBe(true)
+  expect(resumeDialog()).toBe(offer)
 })
 
-it('the resume dialog opened by the user counts as a user dialog: a crash report on screen steps aside', async () => {
+it('the resume dialog opened by the user shows at once, over a crash report on screen that stays', async () => {
   // The launch read answers after the wait ended, so the crash report went first.
   const read = Promise.withResolvers<unknown>()
   rpc.mockImplementation(async () => read.promise)
@@ -857,11 +866,12 @@ it('the resume dialog opened by the user counts as a user dialog: a crash report
   await flush()
   expect(crashOnScreen()).toBe(true)
   expect(resumeOnScreen()).toBe(false)
+  const mounts = surface.mounts
 
   // The user opens the offer from the status bar.
   await act(async () => requestNativeChatResumeOnRestartDialog('user'))
   await flush()
   expect(resumeOnScreen()).toBe(true)
-  expect(crashOnScreen()).toBe(false)
   expect(shownCrashReportId()).toBe('crash-1')
+  expect(surface.mounts).toBe(mounts)
 })
