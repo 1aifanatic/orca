@@ -23,6 +23,22 @@ function candidate(ptyId: string, dispatchId: string): LegacyWorkerTerminalRecov
   }
 }
 
+// A local worker the pass must resolve, so the pass is still running when shutdown begins.
+const ACTIVE_CANDIDATE: LegacyWorkerTerminalRecoveryPlan['candidates'][number] = {
+  dispatchId: 'dispatch-1',
+  dispatchStatus: 'dispatched',
+  contractVersion: 1,
+  taskId: 'task-1',
+  worktreeId: 'repo-1::/tmp/worktree-a',
+  terminalHandle: 'handle-1',
+  paneKey: 'tab-1:pane-1',
+  tabId: 'tab-1',
+  leafId: 'pane-1',
+  processIncarnation: 'pty-1:inc-1',
+  ptyId: 'pty-1',
+  incarnationId: 'inc-1'
+}
+
 function setup() {
   const ports = {
     preparePlan: vi.fn((): LegacyWorkerTerminalRecoveryPlan => ({
@@ -47,6 +63,7 @@ function setup() {
     notifyResolution: vi.fn(),
     canRecoverPersistentLocalPtys: () => true,
     reconcileRequestedReleases: vi.fn(async (): Promise<unknown> => undefined),
+    hasRequestedReleases: () => false,
     reconcile: vi.fn(async () => ({
       adoptedDispatchIds: [],
       exitedDispatchIds: [],
@@ -81,26 +98,30 @@ it('cancels both local and SSH retry timers and refuses later recovery work', as
   await expect(controller.reconcile()).rejects.toThrow('recovery_stopped')
 })
 
-it('drains an active persistence pass but refuses a queued pass after shutdown', async () => {
+it('drains an active recovery pass but refuses a queued pass after shutdown', async () => {
   const { controller, ports } = setup()
-  let finish!: (value: Set<string>) => void
-  ports.persist.mockImplementationOnce(
+  ports.preparePlan.mockReturnValueOnce({
+    candidates: [ACTIVE_CANDIDATE],
+    ambiguousDispatchIds: []
+  })
+  let finish!: () => void
+  ports.resolveWorkspace.mockImplementationOnce(
     () =>
-      new Promise<Set<string>>((resolve) => {
-        finish = resolve
+      new Promise<never>((_resolve, reject) => {
+        finish = () => reject(new Error('workspace gone'))
       })
   )
   const first = controller.reconcile()
-  await vi.waitFor(() => expect(ports.persist).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(ports.resolveWorkspace).toHaveBeenCalledOnce())
   const queued = expect(controller.reconcile()).rejects.toThrow('recovery_stopped')
   const settled = vi.fn()
   const stopping = controller.stop().then(settled)
   await Promise.resolve()
   expect(settled).not.toHaveBeenCalled()
-  finish(new Set())
+  finish()
   await Promise.all([first, queued, stopping])
   expect(ports.preparePlan).toHaveBeenCalledOnce()
-  expect(ports.persist).toHaveBeenCalledOnce()
+  expect(ports.resolveWorkspace).toHaveBeenCalledOnce()
 })
 
 it('holds shutdown until requested-release reconciliation finishes', async () => {
