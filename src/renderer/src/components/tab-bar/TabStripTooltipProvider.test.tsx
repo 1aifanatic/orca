@@ -27,8 +27,8 @@ describe('TabStripTooltipProvider', () => {
         skipDelayDuration: 0
       })
     )
-    // Why: pinned against the App provider's 400ms so a future edit can't quietly
-    // make tab tooltips as eager as every other surface.
-    expect(TAB_TOOLTIP_DELAY_MS).toBeGreaterThan(400)
+    // Why: pinned well past the App provider's 400ms so a future edit can't quietly
+    // make tab tooltips eager again.
+    expect(TAB_TOOLTIP_DELAY_MS).toBeGreaterThanOrEqual(1000)
   })
 })
