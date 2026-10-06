@@ -52,6 +52,25 @@ export function projectStructuredAiVaultSearchResponse(
   }
 }
 
+/** The hits once the chat host is installed; plain hits if it will not install, since owning and
+ *  naming them must never cost the user the search. */
+export async function searchWithStructuredOwners(
+  search: Promise<AiVaultSearchResponse>,
+  ensureHost?: () => Promise<unknown>
+): Promise<AiVaultSearchResponse> {
+  const hostReady = ensureHost
+    ? ensureStructuredAgentSessionHostUnlessRefused(ensureHost).then(
+        () => true,
+        (error: unknown) => {
+          console.warn('[ai-vault-search] returning hits without native chat owners', error)
+          return false
+        }
+      )
+    : true
+  const response = await search
+  return (await hostReady) ? projectStructuredAiVaultSearchResponse(response) : response
+}
+
 function ownedTitle(ownership: StructuredProviderSessionOwnership) {
   return {
     title: ownership.conversationName ?? defaultAgentChatLabel(ownership.provider),

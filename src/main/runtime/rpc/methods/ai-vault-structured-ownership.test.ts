@@ -113,10 +113,11 @@ it('owns indexed search hits only for a client that can open the native chat', a
     truncated: { candidates: false, snippets: 0, query: false, freshness: false },
     durationMs: 1
   })
+  const ensureHost = vi.fn(async () => {})
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this exact RPC method only reaches this runtime member.
   const runtime = {
     getRuntimeId: () => 'host-runtime',
-    ensureStructuredAgentSessionHost: vi.fn(async () => {})
+    ensureStructuredAgentSessionHost: ensureHost
   } as unknown as OrcaRuntimeService
   const dispatcher = new RpcDispatcher({ runtime, methods: AI_VAULT_METHODS })
   const request = {
@@ -150,4 +151,16 @@ it('owns indexed search hits only for a client that can open the native chat', a
   })
   expect(legacy).toMatchObject({ ok: true, result: { hits: [{ title: 'First prompt' }] } })
   expect(JSON.stringify(legacy)).not.toContain('structuredSession')
+  // A client that gets no owners never waits on the chat host.
+  expect(ensureHost).toHaveBeenCalledTimes(1)
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  ensureHost.mockRejectedValueOnce(new Error('chat journal unavailable'))
+  const failedInstall = await dispatcher.dispatch(request, {
+    clientKind: 'runtime',
+    clientCapabilities: [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY]
+  })
+  expect(failedInstall).toMatchObject({ ok: true, result: { hits: [{ title: 'First prompt' }] } })
+  expect(JSON.stringify(failedInstall)).not.toContain('structuredSession')
+  expect(warn).toHaveBeenCalled()
+  warn.mockRestore()
 })
