@@ -4,38 +4,17 @@
  * and message ids join back to orchestration's own rows while those exist.
  */
 
-import { parseOrcaSessionAddress } from '../../../shared/orca-session-address'
-import {
-  agentMessageSenderName,
-  type AgentMessageSource,
-  type AgentMessageSender
+import type {
+  AgentMessageSource,
+  AgentMessageSender
 } from '../../../shared/agent-session-message-source'
 import type { MessageRow, OrchestrationDb } from './db'
-import { resolveOrchestrationParty } from './orchestration-party'
+import { agentMessageSender, type SenderNameResolver } from './agent-message-sender'
 
 export type MailSourceMessage = Pick<
   MessageRow,
   'id' | 'from_handle' | 'run_id' | 'type' | 'payload'
 >
-
-/** A name from Orca's records for a party (never an agent-painted title); null when it has none.
- *  `reportedDispatchId`: the dispatch the sender's own `worker_done` among these messages names. */
-export type SenderNameResolver = (
-  party: AgentMessageSender['party'],
-  reportedDispatchId?: string
-) => string | null
-
-/** The one way a sender is recorded on a message: its party as orchestration resolves the
- *  address, and a bounded snapshot of its name for when it is gone. */
-export function agentMessageSender(
-  address: string,
-  db: OrchestrationDb | null,
-  senderName: SenderNameResolver,
-  reportedDispatchId?: string
-): AgentMessageSender {
-  const party = senderParty(address, db)
-  return { party, name: snapshotName(senderName, party, reportedDispatchId) }
-}
 
 export function structuredMailSource(input: {
   db: OrchestrationDb | null
@@ -74,16 +53,6 @@ export function structuredMailSource(input: {
   }
 }
 
-function senderParty(address: string, db: OrchestrationDb | null): AgentMessageSender['party'] {
-  try {
-    const { paneKey: _credential, ...party } = resolveOrchestrationParty(address, db)
-    return party
-  } catch {
-    // A worker this host lost the identity of: what the address itself says.
-    return { address, terminalHandle: null, orcaSessionId: parseOrcaSessionAddress(address) }
-  }
-}
-
 /** The dispatch a sender's own `worker_done` here reports: the task it just finished, whose
  *  dispatch that report already settled. */
 function reportedDispatchId(
@@ -108,17 +77,4 @@ function reportedDispatchId(
     }
   }
   return undefined
-}
-
-function snapshotName(
-  senderName: SenderNameResolver,
-  party: AgentMessageSender['party'],
-  reportedDispatchId: string | undefined
-): string | null {
-  try {
-    return agentMessageSenderName(senderName(party, reportedDispatchId))
-  } catch {
-    // A name is a label, never a reason the mail is not delivered.
-    return null
-  }
 }

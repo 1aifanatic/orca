@@ -4,6 +4,8 @@ import type { OrchestrationPartyLocationResult } from '../../../shared/orchestra
 import type { OrcaSessionId } from '../../../shared/orca-session-address'
 import type { OrchestrationDb } from './db'
 import { resolveOrchestrationParty } from './orchestration-party'
+import { OrchestrationError } from './orchestration-error'
+import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../shared/orchestration-session-caller-codes'
 import { lineageLiveSession, type AgentSessionRecordReader } from './structured-session-lineage'
 
 type PartyLocationDeps = {
@@ -27,9 +29,13 @@ export function locateOrchestrationParty(
   let party: ReturnType<typeof resolveOrchestrationParty>
   try {
     party = resolveOrchestrationParty(address, deps.db)
-  } catch {
-    // A worker this host lost the identity of.
-    return { location: null, lost: 'chat' }
+  } catch (error) {
+    // Only a worker this host proves it lost the identity of is gone; any other failure is the
+    // caller's to report as unreachable.
+    if (error instanceof OrchestrationError && error.code === CODES.notLive) {
+      return { location: null, lost: 'chat' }
+    }
+    throw error
   }
   if (party.orcaSessionId) {
     return locateSession(party.orcaSessionId, deps.records)
@@ -61,7 +67,9 @@ function locateTerminal(
 }
 
 /** As mail to the dispatch is routed (mailbox-delivery-target.ts): its assignee's pane, else
- *  its recorded handle, else a remote attachment's. */
+ *  its recorded handle, else a remote attachment's. A dispatch whose worker this host does not run
+ *  (a federated one, at its run's home) is unknown here, never gone: not seeing a worker is no
+ *  evidence it stopped. */
 function locateDispatchAssignee(
   dispatchId: string,
   deps: PartyLocationDeps
@@ -78,7 +86,7 @@ function locateDispatchAssignee(
     remote?.terminal_handle
   return handle && !handle.startsWith('dispatch:')
     ? locateOrchestrationParty(handle, deps)
-    : { location: null, lost: 'terminal' }
+    : { location: null }
 }
 
 function locateSession(

@@ -10,7 +10,7 @@ import {
   orchestrationSenderName,
   type TerminalSenderNaming
 } from './orchestration/orchestration-sender-name'
-import { agentMessageSender } from './orchestration/structured-mail-source'
+import { agentMessageSender } from './orchestration/agent-message-sender'
 import { readAgentSessionRecordStore } from './orchestration/structured-session-lineage'
 
 type RuntimeSenderNameDeps = {

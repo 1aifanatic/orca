@@ -56,9 +56,13 @@ export function openAgentMessageSender(
   if (inFlight) {
     return inFlight
   }
-  const opening = openSender(source, sender, chatWorktreeId).finally(() =>
-    opensInFlight.delete(key)
-  )
+  const opening = openSender(source, sender, chatWorktreeId)
+    .catch((error: unknown) => {
+      // Every answer above shows its own words; one that threw showed none.
+      console.warn('[agent-message-sender] opening the sender failed', error)
+      showLookupFailure('unreachable')
+    })
+    .finally(() => opensInFlight.delete(key))
   opensInFlight.set(key, opening)
   return opening
 }
@@ -86,8 +90,11 @@ async function openSender(
   if (!location) {
     if (found.lost === 'chat') {
       structuredSessionOpenFeedback.gone()
-    } else {
+    } else if (found.lost === 'terminal') {
       showAgentPaneUnavailable()
+    } else {
+      // Not found, and not proven gone: one this host does not run.
+      showLookupFailure('unreachable')
     }
     return
   }

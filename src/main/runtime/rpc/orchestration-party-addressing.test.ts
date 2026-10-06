@@ -240,7 +240,7 @@ describe('every target param resolves both spellings of a party to one canonical
     })
     expect(
       await as(undefined, 'orchestration.partyLocation', { address: 'dispatch:gone' })
-    ).toEqual({ location: null, lost: 'terminal' })
+    ).toEqual({ location: null })
   })
 
   it("partyLocation: a terminal handle from an earlier run opens as its pane's live terminal, by the mail it sent", async () => {

@@ -96,6 +96,18 @@ describe("another agent's message in the transcript", () => {
     expect(screen.getByText('+1')).toBeInTheDocument()
   })
 
+  it('shows a sender on another host as plain text, since this host cannot open it', () => {
+    renderUserMessage(
+      from([
+        { address: 'dispatch:d1', name: 'Port the parser' },
+        { address: CODER.address, name: 'Coder' }
+      ])
+    )
+    expect(screen.getByText('Port the parser')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Port the parser' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Coder' })).toBeInTheDocument()
+  })
+
   it('shows the name as plain text where there is no chat to open it from', () => {
     renderUserMessage(from([{ address: CODER.address, name: 'Coder' }]), null)
     expect(screen.getByText('Coder')).toBeInTheDocument()

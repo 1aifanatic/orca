@@ -24,7 +24,8 @@ import {
   resolveStructuredPointerOperation,
   type StructuredPointerSubmission
 } from './structured-pointer-operation-id'
-import { structuredMailSource, type SenderNameResolver } from './structured-mail-source'
+import { structuredMailSource } from './structured-mail-source'
+import type { SenderNameResolver } from './agent-message-sender'
 import {
   retainReasonForDispatch,
   structuredDispatchDelivered,

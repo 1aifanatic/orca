@@ -1,6 +1,6 @@
 // Where a message's sender opens: the host's read of a party, over the records production keeps.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   agentSessionLeaseFixture,
@@ -10,6 +10,17 @@ import { testOrcaSessionId } from '../../../shared/orca-session-address-test-fix
 import { OrchestrationDb } from './db'
 import { createRootDispatch } from './db/root-dispatch-test-fixture'
 import { locateOrchestrationParty } from './orchestration-party-location'
+import { OrchestrationError } from './orchestration-error'
+import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../shared/orchestration-session-caller-codes'
+import type * as OrchestrationParty from './orchestration-party'
+
+// The real resolver, which a test can make fail once.
+const resolveParty = vi.hoisted(() => vi.fn())
+vi.mock('./orchestration-party', async (importOriginal) => {
+  const actual = await importOriginal<typeof OrchestrationParty>()
+  resolveParty.mockImplementation(actual.resolveOrchestrationParty)
+  return { ...actual, resolveOrchestrationParty: resolveParty }
+})
 import type { AgentSessionRecordReader } from './structured-session-lineage'
 
 const ROOT = testOrcaSessionId('4a1f6c2e-8b3d-4e7a-9c15-0d2b6e8f1a37')
@@ -115,6 +126,34 @@ describe('where a sender opens', () => {
     expect(locate(`dispatch:${dispatch.id}`)).toEqual({
       location: { kind: 'terminal', handle: 'term_now' }
     })
-    expect(locate('dispatch:gone')).toEqual({ location: null, lost: 'terminal' })
+    expect(locate('dispatch:gone')).toEqual({ location: null })
+  })
+
+  it('never calls a dispatch this host does not run gone: a federated one has no assignee here', () => {
+    const run = db.createRun({
+      objective: 'o',
+      coordinatorHandle: 'term_coord',
+      coordinatorPaneKey: null
+    })
+    const task = db.createTask({ runId: run.id, spec: 'remote work' })
+    // At the run's home, a federated worker's dispatch is a row with no local assignee.
+    const started = db.createStartingWorkerDispatch({
+      creator: { kind: 'system' },
+      maxDepth: Number.MAX_SAFE_INTEGER,
+      taskId: task.id,
+      startOptions: {}
+    })
+    expect(locate(`dispatch:${started.dispatch.id}`)).toEqual({ location: null })
+  })
+
+  it('calls a chat gone only on proof, and leaves any other failure to the caller', () => {
+    resolveParty.mockImplementationOnce(() => {
+      throw new OrchestrationError(CODES.notLive, 'lost its identity')
+    })
+    expect(locate(`orca_session_id:${ROOT}`)).toEqual({ location: null, lost: 'chat' })
+    resolveParty.mockImplementationOnce(() => {
+      throw new Error('database is locked')
+    })
+    expect(() => locate(`orca_session_id:${ROOT}`)).toThrow('database is locked')
   })
 })

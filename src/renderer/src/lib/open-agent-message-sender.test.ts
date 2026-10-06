@@ -200,6 +200,26 @@ describe("opening a message's sender", () => {
     expect(mocks.toastError).toHaveBeenCalledWith(OLDER_HOST)
   })
 
+  it('says it could not reach a sender the host cannot place, never that it is gone', async () => {
+    mocks.callRuntimeRpc.mockResolvedValue({ location: null })
+    await open(dispatch)
+    expect(mocks.toastError).toHaveBeenCalledWith(UNREACHABLE)
+    expect(mocks.paneUnavailable).not.toHaveBeenCalled()
+    expect(mocks.gone).not.toHaveBeenCalled()
+  })
+
+  it('reports an open that throws instead of leaving it unhandled', async () => {
+    mocks.callRuntimeRpc.mockResolvedValue({
+      location: { kind: 'chat', sessionId: 'live-session', worktreeId: 'wt-sender' }
+    })
+    mocks.activateChat.mockRejectedValueOnce(new Error('store unavailable'))
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await expect(open(chat)).resolves.toBeUndefined()
+    expect(mocks.toastError).toHaveBeenCalledWith(UNREACHABLE)
+    expect(warned).toHaveBeenCalled()
+    warned.mockRestore()
+  })
+
   it('runs one open per sender at a time', async () => {
     let answer: (value: unknown) => void = () => {}
     mocks.callRuntimeRpc.mockReturnValue(new Promise((resolve) => (answer = resolve)))

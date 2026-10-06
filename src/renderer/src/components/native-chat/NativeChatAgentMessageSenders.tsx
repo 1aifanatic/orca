@@ -9,7 +9,8 @@ import {
 import { agentMessageSenderLabel } from './native-chat-agent-message-sender-label'
 
 /** "Message from <name>" over another agent's message; each name opens that agent. Plain text
- *  where the transcript has no chat to resolve the sender against. */
+ *  where the transcript has no chat to resolve the sender against, and for a sender that runs on
+ *  another host. */
 export function NativeChatAgentMessageSenders({
   from,
   chatWorktreeId
@@ -29,7 +30,7 @@ export function NativeChatAgentMessageSenders({
       {shown.map((sender, index) => (
         // Fragment keys: one sender's name and the separator after it.
         <Fragment key={sender.party.address}>
-          {chatWorktreeId ? (
+          {chatWorktreeId && opensFromHere(sender) ? (
             <Button
               type="button"
               variant="link"
@@ -52,4 +53,9 @@ export function NativeChatAgentMessageSenders({
       {more > 0 ? <span>+{more}</span> : null}
     </div>
   )
+}
+
+/** A federated sender (`dispatch:<id>`) runs on another host, which this chat's host cannot open. */
+function opensFromHere(sender: AgentMessageSource['senders'][number]): boolean {
+  return !sender.party.address.startsWith('dispatch:')
 }
