@@ -8,6 +8,7 @@ import { recoverStructuredRewind } from './structured-rewind-recovery'
 // state; this owns the ordering between them.
 
 import { randomUUID } from 'node:crypto'
+import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
 import type {
   AgentSessionAttachResult,
   AgentSessionMutationResult,
@@ -123,14 +124,22 @@ async function runAttach(
   const probe = await withAgentSessionCreatePhase('probe_owner', recordPhase, () =>
     context.runtimeState.probeOwner(sessionId)
   )
-  // A child this attach spawns writes through a sink this attempt owns. Only a successful
-  // attach makes the child and its sink the session's; any other exit closes the sink with
-  // whatever the child queued, and leaves the conversation's child as it was.
-  const attemptSink = context.runtimeState.mintEventSink(sessionId)
   // Read before the reserve clears it: how the previous generation ended decides how whatever it
   // left running is settled.
   const priorRecord = context.deps.store.getRecord(sessionId)
   const priorDeathEvidence = priorRecord?.lease.deathEvidence ?? null
+  const launchDirectory =
+    !priorRecord && isFloatingWorkspaceId(params.location.workspaceId)
+      ? (options.hostLaunchDirectory ??
+        (await context.deps.resolveWorkspacePath?.(params.location.workspaceId)))
+      : undefined
+  if (!priorRecord && isFloatingWorkspaceId(params.location.workspaceId) && !launchDirectory) {
+    throw new Error('floating_agent_session_launch_directory_unavailable')
+  }
+  // A child this attach spawns writes through a sink this attempt owns. Only a successful
+  // attach makes the child and its sink the session's; any other exit closes the sink with
+  // whatever the child queued, and leaves the conversation's child as it was.
+  const attemptSink = context.runtimeState.mintEventSink(sessionId)
   const attempt: { candidate: AttachCandidate | null; committed: boolean } = {
     candidate: null,
     committed: false
@@ -149,7 +158,7 @@ async function runAttach(
         }
       },
       authority: {
-        ...(options.hostLaunchDirectory ? { launchDirectory: options.hostLaunchDirectory } : {}),
+        ...(launchDirectory ? { launchDirectory } : {}),
         spawnToken: () => context.deps.mintSpawnToken?.() ?? randomUUID(),
         claimKeyId: context.deps.claimKeyId,
         handoffOperationId: params.envelope.clientOperationId,

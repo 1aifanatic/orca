@@ -41,7 +41,9 @@ export function useTabGroupCloseScopeCommands({
         item.contentType === 'conflict-review' ||
         item.contentType === 'check-details'
       ) {
-        closeItem(item.id)
+        if (!item.isPinned) {
+          closeItem(item.id)
+        }
       }
     }
   }, [closeItem, groupTabs])

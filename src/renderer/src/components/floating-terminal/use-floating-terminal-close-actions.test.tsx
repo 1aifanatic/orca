@@ -33,6 +33,14 @@ const chat = makeUnifiedTab({
   contentType: 'agent-session',
   entityId: 'chat-session'
 })
+const pinnedEditor = makeUnifiedTab({
+  id: 'pinned-editor',
+  worktreeId,
+  groupId,
+  contentType: 'editor',
+  entityId: 'pinned-file',
+  isPinned: true
+})
 const group = makeTabGroup({
   id: groupId,
   worktreeId,
@@ -44,12 +52,14 @@ const closeFile = vi.fn<ReturnType<typeof useAppStore.getState>['closeFile']>()
 const closeUnifiedTab = vi.fn<ReturnType<typeof useAppStore.getState>['closeUnifiedTab']>(
   () => null
 )
+const requestPinnedTabCloseConfirm = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
   useAppStore.setState({
     closeFile,
     closeUnifiedTab,
+    requestPinnedTabCloseConfirm,
     unifiedTabsByWorktree: { [worktreeId]: [editor, chat, secondReference] },
     groupsByWorktree: { [worktreeId]: [group] },
     activeGroupIdByWorktree: { [worktreeId]: groupId },
@@ -57,18 +67,17 @@ beforeEach(() => {
   })
 })
 
-function actions() {
-  return renderHook(() =>
-    useFloatingTerminalCloseActions({ activeGroup: group, groupTabs: [editor, chat] })
-  ).result.current
+function actions(groupTabs = [editor, chat]) {
+  return renderHook(() => useFloatingTerminalCloseActions({ activeGroup: group, groupTabs })).result
+    .current
 }
 
 describe('floating titlebar close actions', () => {
   it('closes one editor reference while keeping its shared open file', () => {
     actions().closeFloatingItemConfirmed(editor.id)
 
-    expect(closeUnifiedTab).toHaveBeenCalledWith(editor.id)
     expect(closeFile).not.toHaveBeenCalled()
+    expect(closeUnifiedTab).toHaveBeenCalledWith(editor.id)
   })
 
   it('closes editor tabs without closing structured chats from Close All Editor Tabs', () => {
@@ -77,6 +86,42 @@ describe('floating titlebar close actions', () => {
     expect(closeUnifiedTab).toHaveBeenCalledWith(editor.id)
     expect(closeUnifiedTab).not.toHaveBeenCalledWith(chat.id)
     expect(closeFile).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])(
+    'retains pinned editors without prompting during Close All Editor Tabs (confirmation %s)',
+    (confirmClosePinnedTab) => {
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings, confirmClosePinnedTab },
+        unifiedTabsByWorktree: { [worktreeId]: [editor, pinnedEditor, chat] },
+        openFiles: [
+          makeOpenFile({ id: sharedFileId, worktreeId }),
+          makeOpenFile({ id: 'pinned-file', worktreeId })
+        ]
+      })
+
+      actions([editor, pinnedEditor, chat]).closeAllFiles()
+
+      expect(closeUnifiedTab).toHaveBeenCalledWith(editor.id)
+      expect(closeUnifiedTab).not.toHaveBeenCalledWith(pinnedEditor.id)
+      expect(closeUnifiedTab).not.toHaveBeenCalledWith(chat.id)
+      expect(requestPinnedTabCloseConfirm).not.toHaveBeenCalled()
+    }
+  )
+
+  it('keeps the confirmation policy for an explicit pinned editor close', () => {
+    useAppStore.setState({
+      settings: { ...useAppStore.getState().settings, confirmClosePinnedTab: true },
+      unifiedTabsByWorktree: { [worktreeId]: [pinnedEditor] },
+      openFiles: [makeOpenFile({ id: 'pinned-file', worktreeId })]
+    })
+
+    actions([pinnedEditor]).closeFloatingItemConfirmed(pinnedEditor.id)
+
+    expect(requestPinnedTabCloseConfirm).toHaveBeenCalledOnce()
+    expect(closeUnifiedTab).not.toHaveBeenCalled()
+    requestPinnedTabCloseConfirm.mock.calls[0]?.[0].onConfirm()
+    expect(closeUnifiedTab).toHaveBeenCalledWith(pinnedEditor.id)
   })
 
   it('routes a dirty last reference through the shared save confirmation', () => {

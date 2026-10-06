@@ -323,6 +323,7 @@ async function installOnJournal(
     claimKeyId: deps.claimKeyId,
     probeOwner: createStructuredAgentSessionOwnerProbe(deps.hostId),
     probeOwners: createStructuredAgentSessionOwnerProbes(deps.hostId),
+    resolveWorkspacePath: deps.resolveWorkspacePath,
     ...(deps.resolveLaunchArgs
       ? {
           resolveLaunchArgs: async (provider: AgentSessionRecord['provider']) =>
