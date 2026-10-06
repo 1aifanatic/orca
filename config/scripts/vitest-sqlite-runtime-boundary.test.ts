@@ -19,6 +19,7 @@ const sqliteModules = new Set([
   resolve('src/main/runtime/agent-session-record-store-slot')
 ])
 
+/** Type-only names do not erase a default binding or an empty import's side effects. */
 function importsSqliteRuntime(file: string, source: string): boolean {
   const module = ts.createSourceFile(file, source, ts.ScriptTarget.Latest)
   return module.statements.some((statement) => {

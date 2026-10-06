@@ -4,7 +4,7 @@ import { MAX_ORCA_YAML_CODE_UNITS } from './orca-yaml-file-limit'
 
 type ConversionSize = { entries: number; mappingEntries: number }
 
-// Merge aliases re-convert maps; yaml's alias counter does not bound that work.
+/** Merge aliases re-convert maps; yaml's alias counter does not bound that work. */
 export function isOrcaYamlConversionWithinLimit(document: Document): boolean {
   const anchors = new Map<string, Node>()
   const targets = new Map<Alias, Node | undefined>()
@@ -21,12 +21,14 @@ export function isOrcaYamlConversionWithinLimit(document: Document): boolean {
   const measured = new Map<object, ConversionSize>()
   const active = new Set<object>()
   const zero = { entries: 0, mappingEntries: 0 }
+  /** Use the source-text cap as a separate collection-work budget. */
   const bound = (value: number): number => {
     if (value > MAX_ORCA_YAML_CODE_UNITS) {
       throw new Error('YAML conversion budget exceeded')
     }
     return value
   }
+  /** Cache repeat-conversion cost, rather than counting a node only once. */
   function measure(node: unknown): ConversionSize {
     if (!isMap(node) && !isSeq(node) && !isPair(node)) {
       return zero
