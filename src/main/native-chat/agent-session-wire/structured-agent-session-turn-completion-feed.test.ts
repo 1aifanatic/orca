@@ -818,7 +818,7 @@ describe('a request that settles while the user is asked something', () => {
       expect(retired).toEqual([[agentSessionPromptAttentionKey(LOCATION, 'session-1', 'a1')]])
     })
 
-    it('lets a settle that finds the prompt stand for it', () => {
+    it('announces a prompt under its own identity when the turn settles beside it', () => {
       const h = harness()
       h.listen({ includePrompts: true })
       h.setJournal([user, running], accepted)
@@ -832,8 +832,8 @@ describe('a request that settles while the user is asked something', () => {
         accepted
       )
       h.observe()
-      expect(h.prompts()).toEqual([])
-      expect(h.awaitingUser()).toEqual([true])
+      expect(h.prompts()).toEqual(['a1'])
+      expect(h.outcomes()).toEqual([])
     })
   })
 })

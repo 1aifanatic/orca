@@ -99,12 +99,9 @@ export class StructuredAgentSessionTurnCompletionFeed {
   }
 
   /**
-   * One journal publication. Emits at most one event: a completion on the transition into a
-   * settled request this feed has not already accounted for, else a prompt when one is newly
-   * pending. A settle that finds the user asked already says so (`awaitingUser`), so it stands for
-   * any prompt raised in the same commit. ONE ALERT PER PROMPT: a clean settle whose `awaitingUser`
-   * only restates a prompt pending last commit is news to completion-only subscribers alone,
-   * because every prompt-aware one was already told. A failure is its own news and reaches all.
+   * One journal publication, at most one event per subscriber. A new prompt keeps its own identity
+   * beside a clean completion, so answering it retires its alert. That completion reaches only
+   * completion-only subscribers; a failure remains distinct news for everyone.
    *
    * The first observation of a session only records where it is, so restore, restart, rewind and
    * a re-read of history all pass through silently. An already-settled request republished by an
@@ -143,10 +140,11 @@ export class StructuredAgentSessionTurnCompletionFeed {
     baseline.prompts = prompts
     const completion = this.settledCompletion(sessionId, session, state, baseline)
     if (completion) {
-      const restatesPrompt =
-        completion.awaitingUser === true && completion.outcome === 'success' && raised === undefined
+      const restatesPrompt = completion.awaitingUser === true && completion.outcome === 'success'
       this.broadcast({ type: 'completion', completion }, restatesPrompt ? 'legacy' : 'all')
-      return
+      if (!restatesPrompt) {
+        return
+      }
     }
     if (raised === undefined) {
       return
