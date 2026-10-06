@@ -196,13 +196,15 @@ export function useStructuredAgentSessionOutbox(args: {
     },
     [recordFailures, sessionId]
   )
-  useStructuredAgentSessionReplacementCarry({
+  // Messages left for a chat a /clear replaced, still being asked about: sending rows here.
+  const askedAbout = useStructuredAgentSessionReplacementCarry({
     replacesSessionId,
     composerScopeKey,
-    ready: fence !== null,
+    target,
+    fence,
+    submissions,
     queuedMessageIds,
-    say: setError,
-    notice: agentSessionWriteNoticeText(['sentAsCleared'])
+    say: setError
   })
 
   const [drains, setDrains] = useState(0)
@@ -314,7 +316,7 @@ export function useStructuredAgentSessionOutbox(args: {
     })
   }
   return {
-    outbox,
+    outbox: askedAbout.length > 0 ? [...askedAbout, ...outbox] : outbox,
     error,
     failedHere,
     send,

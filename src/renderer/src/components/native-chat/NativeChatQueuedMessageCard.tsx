@@ -70,6 +70,11 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
         'components.native-chat.queuedMessages.behindReturnedHold',
         'Waiting — a message ahead needs attention'
       )
+    case 'background-tasks':
+      return translate(
+        'components.native-chat.queuedMessages.waitingForBackgroundTasks',
+        'Waiting for background tasks to finish'
+      )
     case 'awaiting-answer':
       return translate(
         'components.native-chat.queuedMessages.awaitingAnswerHold',

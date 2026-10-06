@@ -217,6 +217,26 @@ describe('a /compact the host holds in line', () => {
     )
   })
 
+  it('a /clear the host holds is not refused here for background tasks: the host waits them out', () => {
+    expect(
+      structuredConversationCommandHold({
+        ...idle,
+        waitsInLine: true,
+        agentWorking: true,
+        backgroundTasksRunning: true,
+        waitsOutBackgroundTasks: true
+      })
+    ).toBeNull()
+    // A host that can't hold a /clear still gets the check here.
+    expect(
+      structuredConversationCommandHold({
+        ...idle,
+        agentWorking: true,
+        backgroundTasksRunning: true
+      })
+    ).toBe('background')
+  })
+
   it('against a host that cannot hold it, and for /clear, keeps every check in true words', () => {
     expect(structuredConversationCommandHold(idle)).toBeNull()
     expect(structuredConversationCommandHold({ ...idle, agentWorking: true })).toBe('working')

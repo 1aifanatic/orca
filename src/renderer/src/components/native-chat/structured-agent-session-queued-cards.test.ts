@@ -57,6 +57,34 @@ function handOff(
 const IDLE = { hasPendingPrompt: false }
 const QUEUEING = { capability: 'supported', enabled: true } as const
 
+describe('a /clear card waiting on background tasks', () => {
+  const clearCard = (id: string, position: number) =>
+    draft(id, position, {
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/clear' }],
+        command: { name: 'clear' }
+      }
+    })
+  const tasks = { hasPendingPrompt: false, backgroundTasksRunning: true }
+
+  it('says so, next in line with the agent idle, and only then', () => {
+    const [first, second] = projectQueuedMessageCards([clearCard('c', 1), draft('m', 2)], [], tasks)
+    expect(first?.hold).toBe('background-tasks')
+    expect(second?.hold).toBe('turn')
+    // Behind a turn, the turn is what it waits on; with no tasks, nothing to say.
+    expect(
+      projectQueuedMessageCards([clearCard('c', 1)], [], { ...tasks, agentWorking: true })[0]?.hold
+    ).toBe('turn')
+    expect(projectQueuedMessageCards([clearCard('c', 1)], [], IDLE)[0]?.hold).toBe('turn')
+    // A /compact is refused at hand-over instead; a /clear behind another card waits its turn.
+    expect(projectQueuedMessageCards([draft('m', 1), clearCard('c', 2)], [], tasks)[1]?.hold).toBe(
+      'turn'
+    )
+  })
+})
+
 describe('queued message cards', () => {
   it('orders by host position whatever order the list arrives in', () => {
     const cards = projectQueuedMessageCards([draft('b', 2), draft('a', 1), draft('c', 3)], [], IDLE)

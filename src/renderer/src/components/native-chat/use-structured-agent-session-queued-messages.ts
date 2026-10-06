@@ -67,6 +67,8 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   hasPendingPrompt: boolean
   /** The chat shows the agent working: a command card offers no send then. */
   agentWorking?: boolean
+  /** Background tasks run: a /clear next in line says it waits them out. */
+  backgroundTasksRunning?: boolean
   /** This pane's outbox, whose queue sends the host has no record of yet show as sending. */
   sending?: {
     outbox: readonly StructuredAgentSessionOutboxEntry[]
@@ -78,6 +80,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
   const agentWorking = args.agentWorking === true
+  const backgroundTasksRunning = args.backgroundTasksRunning === true
   const pause = args.queuePause
   const { outbox = NO_SENDS, isWorking = false, queueDelivery = NO_DELIVERY } = args.sending ?? {}
 
@@ -86,6 +89,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
       ...projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
         agentWorking,
+        backgroundTasksRunning,
         queuePaused: pause !== null
       }),
       ...sendingQueuedMessageCards(
@@ -100,6 +104,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     ],
     [
       agentWorking,
+      backgroundTasksRunning,
       hasPendingPrompt,
       isWorking,
       outbox,

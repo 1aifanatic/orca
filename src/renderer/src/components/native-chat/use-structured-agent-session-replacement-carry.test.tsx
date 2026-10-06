@@ -6,14 +6,23 @@
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 
+const mocks = vi.hoisted(() => ({
+  call: vi.fn<(target: unknown, method: string, params: unknown) => Promise<unknown>>(
+    async () => null
+  )
+}))
+
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: vi.fn(async () => null)
+  callStructuredAgentSession: mocks.call
 }))
 
 import {
@@ -23,9 +32,15 @@ import {
 } from './native-chat-draft-cache'
 import {
   clearNativeChatComposerDraftIfUnchanged,
+  hydrateNativeChatComposerDrafts,
   readNativeChatComposerDraft,
   structuredAgentSessionDraftScopeKey as scope
 } from './native-chat-composer-draft-store'
+import {
+  createMemoryNativeChatComposerDraftStorage,
+  setNativeChatComposerDraftStorageForTests
+} from './native-chat-composer-draft-storage'
+import { resetNativeChatComposerDraftLoadForTests } from './native-chat-composer-draft-load'
 import {
   commitStructuredAgentSessionOutbox,
   getStructuredAgentSessionOutbox
@@ -34,22 +49,32 @@ import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-
 
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 const CLEARED = "The chat was cleared before your message went out. It's back in the composer."
+const NOT_SENT = "Your message wasn't sent. It's back in the composer."
 
 afterEach(cleanup)
 
 beforeEach(() => {
+  vi.clearAllMocks()
+  mocks.call.mockImplementation(async () => null)
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
 })
 
-function pane(sessionId: string, options: { replaces?: string; cards?: readonly string[] } = {}) {
+function pane(
+  sessionId: string,
+  options: {
+    replaces?: string
+    cards?: readonly string[]
+    submissions?: readonly AgentJournalSubmission[]
+  } = {}
+) {
   return renderHook(() =>
     useStructuredAgentSessionOutbox({
       journalItems: NO_ITEMS,
       sessionId,
       target: { kind: 'local' },
       fence: 1,
-      submissions: [],
+      submissions: options.submissions ?? [],
       composerScopeKey: scope(sessionId),
       queuedMessageIds: options.cards ?? [],
       ...(options.replaces ? { replacesSessionId: options.replaces } : {})
@@ -81,76 +106,196 @@ const REFUSED_AS_CLEARED = {
 } as const
 
 describe('the /clear the composer sent', () => {
-  it('never starts the new chat, when the tab moves before the reply', () => {
+  it('never starts the new chat, when the tab moves before the reply', async () => {
     // The composer clears a command's text only once its reply lands.
     writeNativeChatDraftCache(scope('old'), '/clear')
     pane('new', { replaces: 'old' })
+    // The carry has run: it took the old draft, and dropped it.
+    await waitFor(() => expect(readNativeChatDraftCache(scope('old'))).toBe(''))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
     // The reply then lands on the old composer, which finds nothing to clear.
     clearNativeChatComposerDraftIfUnchanged(scope('old'), readNativeChatComposerDraft(scope('old')))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
   })
 
-  it('never starts the new chat, when the reply lands first', () => {
+  it('never starts the new chat, when the reply lands first', async () => {
     writeNativeChatDraftCache(scope('old'), '/clear')
     clearNativeChatComposerDraftIfUnchanged(scope('old'), readNativeChatComposerDraft(scope('old')))
     pane('new', { replaces: 'old' })
+    await act(async () => {
+      await hydrateNativeChatComposerDrafts()
+    })
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
   })
 })
 
 describe('a draft typed in the chat a /clear replaced', () => {
-  it('comes along after what the new chat already holds, and leaves the old one', () => {
+  it('comes along after what the new chat already holds, and leaves the old one', async () => {
     writeNativeChatDraftCache(scope('old'), 'typed while the clear waited')
     writeNativeChatDraftCache(scope('new'), 'already here')
     pane('new', { replaces: 'old' })
+    await waitFor(() => expect(readNativeChatDraftCache(scope('old'))).toBe(''))
     expect(readNativeChatDraftCache(scope('new'))).toBe(
       'already here\n\ntyped while the clear waited'
     )
     expect(readNativeChatDraftCache(scope('old'))).toBe('')
   })
 
-  it('comes along for a pane first mounted on the new chat, and only once', () => {
+  it('comes along for a pane first mounted on the new chat, and only once', async () => {
     writeNativeChatDraftCache(scope('old'), 'saved before a reload')
-    pane('new', { replaces: 'old' }).unmount()
+    const first = pane('new', { replaces: 'old' })
+    await waitFor(() => expect(readNativeChatDraftCache(scope('old'))).toBe(''))
+    first.unmount()
     pane('new', { replaces: 'old' })
     expect(readNativeChatDraftCache(scope('new'))).toBe('saved before a reload')
   })
 })
 
+describe('a draft saved before the saved drafts finished loading', () => {
+  afterEach(() => {
+    setNativeChatComposerDraftStorageForTests(null)
+    resetNativeChatComposerDraftLoadForTests()
+  })
+
+  it('is carried once the load lands, not lost to an empty read', async () => {
+    const saved = createMemoryNativeChatComposerDraftStorage()
+    saved.drafts.set(scope('old'), { text: 'saved before a reload', images: [], savedAt: 1 })
+    let land: () => void = () => {}
+    const landed = new Promise<void>((resolve) => {
+      land = resolve
+    })
+    setNativeChatComposerDraftStorageForTests({
+      ...saved,
+      loadAll: async () => {
+        await landed
+        return new Map(saved.drafts)
+      }
+    })
+    resetNativeChatComposerDraftLoadForTests()
+    void hydrateNativeChatComposerDrafts()
+    pane('new', { replaces: 'old' })
+    expect(readNativeChatDraftCache(scope('new'))).toBe('')
+    await act(async () => {
+      land()
+      await hydrateNativeChatComposerDrafts()
+    })
+    await waitFor(() =>
+      expect(readNativeChatDraftCache(scope('new'))).toBe('saved before a reload')
+    )
+  })
+})
+
 describe('messages this window held for the chat a /clear replaced', () => {
-  it('come back to the composer in order, said once; none is sent again', async () => {
+  it('come back in order when proven never recorded, said once, by the right cause', async () => {
     commitStructuredAgentSessionOutbox('old', [
       entry('m1', 'refused as the clear ran', {
         state: 'rejected',
         lastAttemptAt: 2,
         lastFailure: REFUSED_AS_CLEARED
       }),
-      entry('m2', 'still waiting behind it'),
-      entry('m3', 'its answer was lost', { state: 'unconfirmed', lastAttemptAt: 3 })
+      entry('m2', 'still waiting behind it')
     ])
     const { result } = pane('new', { replaces: 'old' })
     await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
     expect(readNativeChatDraftCache(scope('new'))).toBe(
-      'refused as the clear ran\n\nstill waiting behind it\n\nits answer was lost'
+      'refused as the clear ran\n\nstill waiting behind it'
     )
     expect(result.current.error).toBe(CLEARED)
-    expect(result.current.outbox).toEqual([])
+    expect(mocks.call).not.toHaveBeenCalled()
   })
 
-  it('leave without their text when the host has them: its row there, or its card here', async () => {
+  it('one refused for another reason before the clear comes back saying only it was not sent', async () => {
+    commitStructuredAgentSessionOutbox('old', [
+      entry('m1', 'refused for something else', {
+        state: 'rejected',
+        lastAttemptAt: 2,
+        lastFailure: {
+          kind: 'refused',
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'rewindUnconfirmed' }
+        }
+      })
+    ])
+    const { result } = pane('new', { replaces: 'old' })
+    await waitFor(() =>
+      expect(readNativeChatDraftCache(scope('new'))).toBe('refused for something else')
+    )
+    expect(result.current.error).toBe(NOT_SENT)
+  })
+
+  it('leave without their text when the host has them: its row there, its card or turn here', async () => {
     commitStructuredAgentSessionOutbox('old', [
       entry('m1', 'recorded and rejected there', {
         state: 'rejected',
         lastAttemptAt: 2,
         lastFailure: { kind: 'rejected', reason: 'The provider refused it.' }
       }),
-      entry('m2', 'carried as a card', { state: 'unconfirmed', lastAttemptAt: 3 })
+      entry('m2', 'carried as a card', { state: 'unconfirmed', lastAttemptAt: 3 }),
+      entry('m3', 'carried, and already sent here', { state: 'unconfirmed', lastAttemptAt: 4 })
     ])
-    const { result } = pane('new', { replaces: 'old', cards: ['m2'] })
+    const sentHere = {
+      clientMessageId: 'handoff-1',
+      queuedMessageId: 'm3',
+      dispatchState: 'accepted'
+    } as unknown as AgentJournalSubmission
+    const { result } = pane('new', { replaces: 'old', cards: ['m2'], submissions: [sentHere] })
     await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
     expect(result.current.error).toBeNull()
+    expect(mocks.call).not.toHaveBeenCalled()
+  })
+
+  it('one whose answer was lost and DID run is asked again, and leaves without its text', async () => {
+    let answer: (value: unknown) => void = () => {}
+    mocks.call.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        })
+    )
+    commitStructuredAgentSessionOutbox('old', [
+      entry('m1', 'it ran in the old chat', { state: 'unconfirmed', lastAttemptAt: 3 })
+    ])
+    const { result } = pane('new', { replaces: 'old' })
+    // Asked under its own id, in the chat it was sent to; meanwhile it is a sending row here.
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    expect(mocks.call.mock.calls[0]![2]).toMatchObject({
+      envelope: { sessionId: 'old', clientOperationId: 'm1' }
+    })
+    expect(result.current.outbox).toMatchObject([{ clientMessageId: 'm1', state: 'dispatching' }])
+    act(() =>
+      answer({
+        ok: true,
+        replayed: true,
+        fence: 1,
+        cursor: { epoch: 'e', sequence: 1 },
+        value: { clientMessageId: 'm1', submission: { clientMessageId: 'm1' } }
+      })
+    )
+    await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
+    expect(readNativeChatDraftCache(scope('new'))).toBe('')
+    expect(result.current.error).toBeNull()
+    expect(result.current.outbox).toEqual([])
+  })
+
+  it('one whose answer was lost and did NOT run is asked again, and comes back once', async () => {
+    mocks.call.mockResolvedValue({
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_invalid',
+        details: { reason: 'conversationCleared' },
+        message: 'This conversation has been cleared. Use the current conversation.'
+      }
+    })
+    commitStructuredAgentSessionOutbox('old', [
+      entry('m1', 'it never landed', { state: 'unconfirmed', lastAttemptAt: 3 })
+    ])
+    const { result, rerender } = pane('new', { replaces: 'old' })
+    await waitFor(() => expect(readNativeChatDraftCache(scope('new'))).toBe('it never landed'))
+    expect(result.current.error).toBe(CLEARED)
+    rerender()
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(readNativeChatDraftCache(scope('new'))).toBe('it never landed')
   })
 
   it('a refusal that lands after the move comes to the new chat, said there once', async () => {

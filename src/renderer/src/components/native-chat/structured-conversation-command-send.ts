@@ -44,6 +44,8 @@ export function structuredConversationCommandHold(input: {
   agentWorking: boolean
   promptPending: boolean
   backgroundTasksRunning: boolean
+  /** A /clear the host holds: it waits background tasks out instead of refusing. */
+  waitsOutBackgroundTasks?: boolean
   /** A message this window sent shows its Retry on its row. */
   outboxRetry: boolean
   /** A message this window sent is still on its way with no Retry on its row (one a Stop kept). */
@@ -51,7 +53,8 @@ export function structuredConversationCommandHold(input: {
   /** A message this window sent that the host doesn't have yet. */
   outboxUnsent: boolean
 }): StructuredConversationCommandHold | null {
-  if (input.backgroundTasksRunning) {
+  // A /clear the host holds waits background tasks out there; anything else is refused here.
+  if (input.backgroundTasksRunning && !input.waitsOutBackgroundTasks) {
     return 'background'
   }
   if (input.waitsInLine) {
@@ -181,6 +184,7 @@ export function structuredConversationCommandRunner(args: {
       pending: args.pending,
       hold: structuredConversationCommandHold({
         waitsInLine,
+        waitsOutBackgroundTasks: command === 'clear' && hostHoldsIt,
         agentWorking: args.agentWorking,
         promptPending: args.promptPending,
         backgroundTasksRunning: args.backgroundTasksRunning,

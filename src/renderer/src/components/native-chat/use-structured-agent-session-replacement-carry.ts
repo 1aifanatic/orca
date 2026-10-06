@@ -1,18 +1,38 @@
 // A /clear replaces a chat with a new conversation and moves its tab there; the host publishes
 // which conversation the tab's replaced (`replacesSessionId`). Whatever this window still held for
-// the old one — the composer's draft, and messages that never reached it — belongs where the user
-// now is. Derived from that link whenever the new chat renders, so it holds for a pane that was
-// never mounted, after a reload, or for a tab that was not active when the clear ran.
+// the old one — the composer's draft, and messages it sent there — belongs where the user now is.
+// Derived from that link whenever the new chat renders, so it holds for a pane that was never
+// mounted, after a reload, or for a tab that was not active when the clear ran.
 
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentSessionMutationResult,
+  AgentSessionSendResult
+} from '../../../../shared/agent-session-wire'
+import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
 import { isLoneStructuredAgentSessionConversationCommand } from '../../../../shared/structured-agent-session-composer'
-import { structuredAgentSessionEntryRejectedByHost } from '../../../../shared/structured-agent-session-outbox'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import {
+  structuredAgentSessionSendRequest,
+  type StructuredAgentSessionOutboxEntry
+} from '../../../../shared/structured-agent-session-outbox'
+import {
+  classifyReplacedLeftover,
+  replacedLeftoverNotice,
+  resolveReplacedLeftover,
+  type ReplacedLeftoverCause
+} from '../../../../shared/structured-agent-session-replaced-leftovers'
+import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
+import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import {
   appendToNativeChatComposerDraft,
   deleteNativeChatComposerDraft,
+  hydrateNativeChatComposerDrafts,
+  isNativeChatComposerDraftLoadPending,
   readNativeChatComposerDraft,
-  structuredAgentSessionDraftScopeKey
+  structuredAgentSessionDraftScopeKey,
+  subscribeToNativeChatComposerDraft
 } from './native-chat-composer-draft-store'
 import { readMountedStructuredAgentSessionOutbox } from './structured-agent-session-outbox-dispatch'
 import {
@@ -26,9 +46,11 @@ import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-se
 
 const NO_ENTRIES: readonly StructuredAgentSessionOutboxEntry[] = []
 const NO_SUBSCRIPTION = (): void => {}
+/** Asked again after 1, 2, 4, 8 and 16 s; with still no answer, the text comes back saying so. */
+const ASK_AGAIN_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
 
 /** The old conversation's draft goes after anything already here. A lone command is the /clear
- *  that replaced it (or one spent with it), which the new chat must never start with. */
+ *  that replaced it, which the new chat must never start with. */
 function carryDraft(fromSessionId: string, composerScopeKey: string): void {
   const from = structuredAgentSessionDraftScopeKey(fromSessionId)
   const draft = readNativeChatComposerDraft(from)
@@ -44,76 +66,205 @@ function carryDraft(fromSessionId: string, composerScopeKey: string): void {
   }
 }
 
+/** Returns the old chat's messages still being asked about, to show as sending rows here. */
 export function useStructuredAgentSessionReplacementCarry(args: {
   replacesSessionId: string | undefined
   composerScopeKey: string | undefined
-  /** The new chat's state is loaded: its host-held cards are known. */
-  ready: boolean
-  /** Ids of the new chat's cards: a message the host carried as one is already here. */
+  target: RuntimeClientTarget
+  /** The new chat's fence; null until its state has loaded. */
+  fence: number | null
+  /** The new chat's submissions and cards: a message the host carried here is already here. */
+  submissions: readonly AgentJournalSubmission[]
   queuedMessageIds: readonly string[] | undefined
   /** Says once, on this composer's line, why text came back. */
   say: (notice: string) => void
-  notice: string
-}): void {
-  const { composerScopeKey, notice, queuedMessageIds, ready, replacesSessionId, say } = args
+}): readonly StructuredAgentSessionOutboxEntry[] {
+  const { composerScopeKey, fence, queuedMessageIds, replacesSessionId, say, submissions, target } =
+    args
+  const fromSessionId = replacesSessionId ?? ''
   // A send still marked on its way had its pane unmounted under it: read as in doubt, as a pane
   // mounting on its own chat reads it.
   const load = useCallback(
     () =>
-      replacesSessionId
-        ? readMountedStructuredAgentSessionOutbox(replacesSessionId, null, readOutbox)
-        : [],
-    [replacesSessionId]
+      fromSessionId ? readMountedStructuredAgentSessionOutbox(fromSessionId, null, readOutbox) : [],
+    [fromSessionId]
   )
   const subscribe = useCallback(
     (listener: () => void) =>
-      replacesSessionId
-        ? subscribeToStructuredAgentSessionOutbox(replacesSessionId, load, listener)
+      fromSessionId
+        ? subscribeToStructuredAgentSessionOutbox(fromSessionId, load, listener)
         : NO_SUBSCRIPTION,
-    [load, replacesSessionId]
+    [fromSessionId, load]
   )
   const leftovers = useSyncExternalStore(subscribe, () =>
-    replacesSessionId ? loadStructuredAgentSessionOutbox(replacesSessionId, load) : NO_ENTRIES
+    fromSessionId ? loadStructuredAgentSessionOutbox(fromSessionId, load) : NO_ENTRIES
   )
-  const fromSessionId = replacesSessionId ?? ''
+  const fromDraftScope = fromSessionId ? structuredAgentSessionDraftScopeKey(fromSessionId) : ''
+  const subscribeDraft = useCallback(
+    (listener: () => void) =>
+      fromDraftScope
+        ? subscribeToNativeChatComposerDraft(fromDraftScope, listener)
+        : NO_SUBSCRIPTION,
+    [fromDraftScope]
+  )
+  // Re-read when the old draft changes; until the saved drafts have loaded it may not be in memory.
+  const fromDraft = useSyncExternalStore(subscribeDraft, () =>
+    readNativeChatComposerDraft(fromDraftScope)
+  )
   const restore = useStructuredAgentSessionWithdrawnRestore(fromSessionId, composerScopeKey)
 
+  const [loads, setLoads] = useState(0)
   useEffect(() => {
-    if (replacesSessionId && composerScopeKey) {
-      carryDraft(replacesSessionId, composerScopeKey)
+    if (!fromSessionId || !composerScopeKey) {
+      return undefined
     }
-  }, [composerScopeKey, replacesSessionId])
+    if (!isNativeChatComposerDraftLoadPending()) {
+      carryDraft(fromSessionId, composerScopeKey)
+      return undefined
+    }
+    // Carried once the load lands; a load that fails waits for its own retry and the next change.
+    let live = true
+    void hydrateNativeChatComposerDrafts().then(() => {
+      if (live && !isNativeChatComposerDraftLoadPending()) {
+        setLoads((count) => count + 1)
+      }
+    })
+    return () => {
+      live = false
+    }
+  }, [composerScopeKey, fromDraft, fromSessionId, loads])
+
+  const ownedByHost = useMemo(
+    () =>
+      new Set([
+        ...submissions.map((submission) => submission.clientMessageId),
+        ...handedOffQueuedMessageIds(submissions),
+        ...(queuedMessageIds ?? [])
+      ]),
+    [queuedMessageIds, submissions]
+  )
+  const verdicts = useMemo(
+    () =>
+      leftovers.map((entry) => ({ entry, verdict: classifyReplacedLeftover(entry, ownedByHost) })),
+    [leftovers, ownedByHost]
+  )
+
+  /** Takes these from the old chat's outbox, giving back the text of those with a cause. */
+  const settle = useCallback(
+    (
+      settled: readonly {
+        entry: StructuredAgentSessionOutboxEntry
+        cause?: ReplacedLeftoverCause
+      }[]
+    ) => {
+      if (!fromSessionId || settled.length === 0) {
+        return
+      }
+      const handedBack = settled.filter((item) => item.cause !== undefined)
+      restore.byStop(handedBack.map((item) => item.entry))
+      const ids = new Set(settled.map((item) => item.entry.clientMessageId))
+      commitStructuredAgentSessionOutbox(
+        fromSessionId,
+        getStructuredAgentSessionOutbox(fromSessionId).filter(
+          (entry) => !ids.has(entry.clientMessageId)
+        )
+      )
+      const notice = replacedLeftoverNotice(
+        handedBack.flatMap((item) => (item.cause ? [item.cause] : []))
+      )
+      if (notice) {
+        say(agentSessionWriteNoticeText(notice))
+      }
+    },
+    [fromSessionId, restore, say]
+  )
 
   useEffect(() => {
-    if (!replacesSessionId || !composerScopeKey || !ready || leftovers.length === 0) {
+    if (!composerScopeKey || fence === null) {
       return
     }
-    const carriedAsCards = new Set(queuedMessageIds)
-    // Never resent into the cleared chat. One the host recorded and rejected is its row there; one
-    // the host carried as a card is that card here; the rest never reached it, so their text does.
-    const handedBack = leftovers.filter(
-      (entry) =>
-        !structuredAgentSessionEntryRejectedByHost(entry) &&
-        !carriedAsCards.has(entry.clientMessageId)
-    )
-    restore.byStop(handedBack)
-    commitStructuredAgentSessionOutbox(
-      replacesSessionId,
-      getStructuredAgentSessionOutbox(replacesSessionId).filter(
-        (entry) => !leftovers.some((left) => left.clientMessageId === entry.clientMessageId)
+    settle(
+      verdicts.flatMap(({ entry, verdict }) =>
+        verdict.kind === 'owned'
+          ? [{ entry }]
+          : verdict.kind === 'handBack'
+            ? [{ entry, cause: verdict.cause }]
+            : []
       )
     )
-    if (handedBack.length > 0) {
-      say(notice)
+  }, [composerScopeKey, fence, settle, verdicts])
+
+  // In doubt: asked again under its own id, in the chat it was sent to, until the host's answer
+  // proves it recorded (it stays the host's) or not (its text comes back). Each is asked once per
+  // mount however often the chat re-renders; leaving the chat stops asking.
+  const asking = useRef<{
+    ids: Set<string>
+    timers: Set<ReturnType<typeof setTimeout>>
+    live: boolean
+  }>({ ids: new Set(), timers: new Set(), live: true })
+  const settleRef = useRef(settle)
+  useEffect(() => {
+    settleRef.current = settle
+  }, [settle])
+  useEffect(() => {
+    const state = asking.current
+    state.live = true
+    return () => {
+      state.live = false
+      state.timers.forEach(clearTimeout)
+      state.timers.clear()
+      state.ids.clear()
     }
-  }, [
-    composerScopeKey,
-    leftovers,
-    notice,
-    queuedMessageIds,
-    ready,
-    replacesSessionId,
-    restore,
-    say
-  ])
+  }, [])
+  useEffect(() => {
+    if (!composerScopeKey || fence === null) {
+      return
+    }
+    const state = asking.current
+    const ask = (entry: StructuredAgentSessionOutboxEntry, attempt: number): void => {
+      void callStructuredAgentSession<AgentSessionMutationResult<AgentSessionSendResult>>(
+        target,
+        'agentSession.send',
+        structuredAgentSessionSendRequest(entry, fence)
+      )
+        .then(
+          (answer) => answer,
+          () => 'thrown' as const
+        )
+        .then((answer) => {
+          if (!state.live) {
+            return
+          }
+          const resolved = resolveReplacedLeftover(answer)
+          if (resolved === 'askAgain' && attempt < ASK_AGAIN_MS.length) {
+            const timer = setTimeout(() => {
+              state.timers.delete(timer)
+              ask(entry, attempt + 1)
+            }, ASK_AGAIN_MS[attempt])
+            state.timers.add(timer)
+            return
+          }
+          state.ids.delete(entry.clientMessageId)
+          settleRef.current([
+            resolved === 'recorded'
+              ? { entry }
+              : { entry, cause: resolved === 'askAgain' ? 'unconfirmed' : resolved.handBack }
+          ])
+        })
+    }
+    for (const { entry, verdict } of verdicts) {
+      if (verdict.kind === 'inDoubt' && !state.ids.has(entry.clientMessageId)) {
+        state.ids.add(entry.clientMessageId)
+        ask(entry, 0)
+      }
+    }
+  }, [composerScopeKey, fence, target, verdicts])
+
+  return useMemo(
+    () =>
+      verdicts.flatMap(({ entry, verdict }) =>
+        verdict.kind === 'inDoubt' ? [{ ...entry, state: 'dispatching' as const }] : []
+      ),
+    [verdicts]
+  )
 }

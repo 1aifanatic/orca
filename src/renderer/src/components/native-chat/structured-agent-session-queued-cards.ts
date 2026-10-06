@@ -18,6 +18,8 @@ import {
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
   | 'turn'
+  /** A /clear next in line, which the host runs only once background tasks end. */
+  | 'background-tasks'
   /** The whole queue is paused: the header row says why and offers Resume, so the card makes
    *  no promise about when it sends — not even after an answer, which does not drain it. */
   | 'queue-paused'
@@ -60,7 +62,13 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
-  session: { hasPendingPrompt: boolean; queuePaused?: boolean; agentWorking?: boolean }
+  session: {
+    hasPendingPrompt: boolean
+    queuePaused?: boolean
+    agentWorking?: boolean
+    /** Background tasks run: a /clear next in line waits them out on the host. */
+    backgroundTasksRunning?: boolean
+  }
 ): QueuedMessageCard[] {
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
@@ -69,7 +77,13 @@ export function projectQueuedMessageCards(
     .sort((left, right) => left.position - right.position)
     .filter((message) => message.state === 'returned' || !handedOff.has(message.messageId))
   let behindReturned = false
-  return ordered.map((message) => {
+  return ordered.map((message, index) => {
+    // Said only while it is what holds the card: nothing ahead of it, and the agent idle.
+    const waitsOnTasks =
+      index === 0 &&
+      session.backgroundTasksRunning === true &&
+      session.agentWorking !== true &&
+      message.body.command?.name === 'clear'
     const hold: QueuedMessageCardHold =
       message.state === 'returned'
         ? 'returned'
@@ -81,7 +95,9 @@ export function projectQueuedMessageCards(
               ? 'queue-paused'
               : session.hasPendingPrompt
                 ? 'awaiting-answer'
-                : 'turn'
+                : waitsOnTasks
+                  ? 'background-tasks'
+                  : 'turn'
     behindReturned = behindReturned || message.state === 'returned'
     return {
       messageId: message.messageId,

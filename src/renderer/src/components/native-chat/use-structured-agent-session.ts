@@ -220,6 +220,7 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
     agentWorking: transportState.turnId !== null || transportState.isWorking,
+    backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
     // Hidden from the transcript, a queue send on its way reads as sending among the cards.
     sending: { outbox, isWorking, queueDelivery },
     composerScopeKey,
