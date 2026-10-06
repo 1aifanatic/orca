@@ -48,6 +48,7 @@ describe('drain disconnect gap', () => {
     const result = measureDrainDisconnectGap({
       sourceCellId: 'c1',
       drainStartedAt: start,
+      drainEndedAt: start + 1_200_000,
       controlsAtDrainStart: 5,
       closes,
       grants
@@ -66,6 +67,7 @@ describe('drain disconnect gap', () => {
     const result = measureDrainDisconnectGap({
       sourceCellId: 'a1',
       drainStartedAt: start,
+      drainEndedAt: start + 1_200_000,
       controlsAtDrainStart: 2,
       closes: readDrainCloses([
         close('h-away', 100, 'resolve configured director'),
@@ -87,6 +89,7 @@ describe('drain disconnect gap', () => {
     const result = measureDrainDisconnectGap({
       sourceCellId: 'c1',
       drainStartedAt: start,
+      drainEndedAt: start + 1_200_000,
       controlsAtDrainStart: 1,
       closes: readDrainCloses([
         close('h', 300, 'resolve configured director'),
@@ -106,12 +109,40 @@ describe('drain disconnect gap', () => {
         measureDrainDisconnectGap({
           sourceCellId: 'c1',
           drainStartedAt: Date.parse('not a time'),
+          drainEndedAt: start,
           controlsAtDrainStart: 1,
           closes: [],
           grants: []
         }),
       /drain start time is invalid/
     )
+  })
+
+  it('leaves out closes after the drain ended and refuses a bad end time', () => {
+    const input = {
+      sourceCellId: 'c1',
+      drainStartedAt: start,
+      drainEndedAt: start + 600_000,
+      controlsAtDrainStart: 1,
+      closes: readDrainCloses([
+        close('h-drained', 100, 'resolve configured director'),
+        // The new container's session after the roll.
+        close('h-new', 700, '', 4)
+      ]),
+      grants: readReconnectGrants([grant('h-drained', 650, 'c2')])
+    }
+    const result = measureDrainDisconnectGap(input)
+    assert.equal(result.closedHosts, 1)
+    assert.equal(result.otherClose, 0)
+    assert.equal(result.phoneSessionsDropped, 0)
+    // A grant after the window still ends that host's gap.
+    assert.equal(result.cutOffGap.maxMs, 550_000)
+    for (const drainEndedAt of [Number.NaN, start]) {
+      assert.throws(
+        () => measureDrainDisconnectGap({ ...input, drainEndedAt }),
+        /drain end time is invalid/
+      )
+    }
   })
 
   it('ignores lines that are not the two it reads', () => {

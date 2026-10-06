@@ -66,20 +66,26 @@ function summary(values) {
 
 // `controlsAtDrainStart` is the denominator: hosts the cell held when the drain began,
 // read from its runtime metrics line, so a desktop that never logged a close still counts.
+// `drainEndedAt` closes the window: after it the rolled cell's new container serves new sessions,
+// and their closes are not part of the drain. Grants after it still count, as the gap's far end.
 export function measureDrainDisconnectGap({
   sourceCellId,
   drainStartedAt,
+  drainEndedAt,
   controlsAtDrainStart,
   closes,
   grants,
   cellRegions = {}
 }) {
   if (!Number.isFinite(drainStartedAt)) throw new Error('drain start time is invalid')
+  if (!Number.isFinite(drainEndedAt) || drainEndedAt <= drainStartedAt) {
+    throw new Error('drain end time is invalid')
+  }
   const sourceRegion = cellRegions[sourceCellId]
   // First close per host after the drain began; later closes are the host's new sessions.
   const firstClose = new Map()
   for (const close of closes) {
-    if (close.at < drainStartedAt || firstClose.has(close.host)) continue
+    if (close.at < drainStartedAt || close.at > drainEndedAt || firstClose.has(close.host)) continue
     firstClose.set(close.host, close)
   }
   const grantsByHost = new Map()
@@ -143,6 +149,7 @@ function main() {
   const result = measureDrainDisconnectGap({
     sourceCellId: required('source-cell'),
     drainStartedAt: Date.parse(required('drain-started-at')),
+    drainEndedAt: Date.parse(required('drain-ended-at')),
     controlsAtDrainStart: Number(required('controls')),
     closes: readDrainCloses(readJson(required('cell-log'))),
     grants: readReconnectGrants(readJson(required('director-log'))),
