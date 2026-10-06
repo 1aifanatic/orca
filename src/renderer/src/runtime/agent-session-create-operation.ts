@@ -7,7 +7,10 @@ const MAX_AMBIGUOUS_CREATE_ATTEMPTS = 2
 
 export type AgentSessionCreateOperation = {
   readonly clientOperationId: string
-  run<TResult>(invoke: (clientOperationId: string) => Promise<TResult>): Promise<TResult>
+  run<TResult>(
+    invoke: (clientOperationId: string) => Promise<TResult>,
+    options?: { waitToReplay?: () => Promise<boolean> }
+  ): Promise<TResult>
 }
 
 function isAmbiguousCreateFailure(error: unknown): boolean {
@@ -23,7 +26,7 @@ export function createAgentSessionCreateOperation(): AgentSessionCreateOperation
   const clientOperationId = createAgentSessionOperationId()
   return {
     clientOperationId,
-    async run(invoke) {
+    async run(invoke, options) {
       let lastError: unknown
       for (let attempt = 0; attempt < MAX_AMBIGUOUS_CREATE_ATTEMPTS; attempt += 1) {
         try {
@@ -34,6 +37,11 @@ export function createAgentSessionCreateOperation(): AgentSessionCreateOperation
             throw error
           }
         }
+      }
+      // Why: the immediate replay can fail only because the network is still down; one more
+      // replay after the caller sees a reconnect settles it instead of leaving it unknown.
+      if (options?.waitToReplay && (await options.waitToReplay())) {
+        return await invoke(clientOperationId)
       }
       throw lastError
     }

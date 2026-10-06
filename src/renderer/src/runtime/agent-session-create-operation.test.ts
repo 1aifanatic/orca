@@ -39,4 +39,28 @@ describe('createAgentSessionCreateOperation', () => {
     await expect(createAgentSessionCreateOperation().run(invoke)).resolves.toBe('created')
     expect(invoke).toHaveBeenCalledTimes(2)
   })
+
+  it('replays once more after a reconnect when the immediate replay met a still-down network', async () => {
+    const invoke = vi
+      .fn()
+      .mockRejectedValueOnce(rpcFailure('remote_runtime_unavailable'))
+      .mockRejectedValueOnce(rpcFailure('remote_runtime_unavailable'))
+      .mockResolvedValueOnce('replayed')
+    const waitToReplay = vi.fn(async () => true)
+
+    await expect(createAgentSessionCreateOperation().run(invoke, { waitToReplay })).resolves.toBe(
+      'replayed'
+    )
+    expect(waitToReplay).toHaveBeenCalledTimes(1)
+    expect(new Set(invoke.mock.calls.map(([id]) => id)).size).toBe(1)
+  })
+
+  it('stays unknown when no reconnect comes', async () => {
+    const invoke = vi.fn().mockRejectedValue(rpcFailure('remote_runtime_unavailable'))
+
+    await expect(
+      createAgentSessionCreateOperation().run(invoke, { waitToReplay: async () => false })
+    ).rejects.toMatchObject({ code: 'remote_runtime_unavailable' })
+    expect(invoke).toHaveBeenCalledTimes(2)
+  })
 })

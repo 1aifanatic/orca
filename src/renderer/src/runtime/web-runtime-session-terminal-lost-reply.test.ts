@@ -7,6 +7,7 @@ import {
 } from '../../../shared/protocol-version'
 import { resetWebSessionCloseIntentForTests } from './web-session-close-intent'
 import {
+  ENVIRONMENT_ID,
   WORKTREE_ID,
   makeSnapshot,
   resetTerminalCreateEnvironment,
@@ -76,6 +77,10 @@ vi.mock('./web-runtime-browser-materialization', () => ({
 afterEach(() => resetWebSessionCloseIntentForTests())
 
 type RuntimeRequest = { method: string; params?: Record<string, unknown> }
+type DiagnosticsListener = (event: {
+  environmentId: string
+  diagnostics: { state: string }
+}) => void
 
 const LOST_REPLY = {
   id: 'lost',
@@ -103,8 +108,9 @@ function statusResponse(capabilities: string[]): unknown {
 function stubRuntime(
   capabilities: string[],
   create: (request: RuntimeRequest, attempt: number) => unknown
-): { calls: RuntimeRequest[] } {
+): { calls: RuntimeRequest[]; emitControlState: (state: string) => void } {
   const calls: RuntimeRequest[] = []
+  const listeners = new Set<DiagnosticsListener>()
   let attempts = 0
   const runtimeCall = vi.fn(async (request: RuntimeRequest) => {
     calls.push(request)
@@ -120,8 +126,25 @@ function stubRuntime(
     }
     return { id: 'list', ok: true, result: makeSnapshot() }
   })
-  vi.stubGlobal('window', { api: { runtimeEnvironments: { call: runtimeCall } } })
-  return { calls }
+  vi.stubGlobal('window', {
+    api: {
+      runtimeEnvironments: {
+        call: runtimeCall,
+        onSharedControlDiagnostics: (listener: DiagnosticsListener) => {
+          listeners.add(listener)
+          return () => listeners.delete(listener)
+        }
+      }
+    }
+  })
+  return {
+    calls,
+    emitControlState: (state) => {
+      for (const listener of listeners) {
+        listener({ environmentId: ENVIRONMENT_ID, diagnostics: { state } })
+      }
+    }
+  }
 }
 
 function createRequests(calls: RuntimeRequest[], method: string): RuntimeRequest[] {
@@ -156,6 +179,26 @@ describe('createWebRuntimeSessionTerminal when the reply is lost', () => {
     expect(creates).toHaveLength(2)
     expect(creates[0].params?.clientMutationId).toEqual(expect.any(String))
     expect(creates[1].params?.clientMutationId).toBe(creates[0].params?.clientMutationId)
+  })
+
+  it('replays a plain create again once the connection comes back', async () => {
+    const runtime = stubRuntime([TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY], (_, attempt) => {
+      if (attempt === 2) {
+        // The immediate replay meets a network that is still down; the host then comes back.
+        queueMicrotask(() => {
+          runtime.emitControlState('awaiting_ready')
+          runtime.emitControlState('ready')
+        })
+      }
+      return attempt < 3 ? LOST_REPLY : CREATED_TAB
+    })
+
+    await expect(
+      createWebRuntimeSessionTerminal({ worktreeId: WORKTREE_ID, activate: true })
+    ).resolves.toEqual({ status: 'created' })
+    const creates = createRequests(runtime.calls, 'session.tabs.createTerminal')
+    expect(creates).toHaveLength(3)
+    expect(new Set(creates.map((request) => request.params?.clientMutationId)).size).toBe(1)
   })
 
   it('reports an unconfirmed create, not a failure, when the host cannot dedupe a replay', async () => {

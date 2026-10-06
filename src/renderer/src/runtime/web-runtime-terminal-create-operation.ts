@@ -45,6 +45,7 @@ import { formatAgentTypeLabel } from '../../../shared/agent-type-label'
 import { isRemoteCreateOutcomeUnknown } from './remote-create-outcome'
 import { beginPendingWebRuntimeTerminalCreate } from './pending-web-runtime-terminal-creates'
 import { createSessionTabsTerminalWithReplay } from './web-runtime-session-tabs-create-replay'
+import { watchRuntimeControlReconnect } from './runtime-control-reconnect-watch'
 
 export async function createWebRuntimeSessionTerminalResult(
   args: CreateWebRuntimeSessionTerminalArgs
@@ -87,6 +88,8 @@ export async function createWebRuntimeSessionTerminalResult(
       ? formatAgentTypeLabel(pendingAgent)
       : translate('runtime.webRuntimeSession.pendingTerminalLabel', 'Terminal')
   })
+  const reconnectWatch = watchRuntimeControlReconnect(environmentId)
+  const waitToReplay = (): Promise<boolean> => reconnectWatch.reconnected(30_000)
   let hostCreated = false
   let createdTabId: string | undefined
   let createdLeafId: string | undefined
@@ -135,34 +138,36 @@ export async function createWebRuntimeSessionTerminalResult(
                 )
             : undefined
           : async () =>
-              await createAgentSessionCreateOperation().run(async (clientOperationId) =>
-                readCreatedAgentTerminalIdentity(
-                  unwrapRuntimeRpcResult(
-                    await callEnvironment({
-                      method: 'terminal.createAgentSession',
-                      params: withAgentSessionCreateOperationId(
-                        {
-                          ...(await keyboardOptions(environmentId)),
-                          worktree: toRuntimeWorktreeSelector(args.worktreeId),
-                          agent,
-                          ...(args.prompt ? { prompt: args.prompt } : {}),
-                          ...(args.promptDelivery ? { promptDelivery: args.promptDelivery } : {}),
-                          ...(agentArgsOverride !== undefined
-                            ? { agentArgs: agentArgsOverride }
-                            : {}),
-                          ...(args.launchPreferences
-                            ? { launchPreferences: args.launchPreferences }
-                            : {}),
-                          ...(args.cwd ? { startupCwd: args.cwd } : {}),
-                          ...(args.viewMode ? { viewMode: args.viewMode } : {}),
-                          presentation: 'background'
-                        },
-                        clientOperationId
-                      ),
-                      timeoutMs: 15_000
-                    })
-                  )
-                )
+              await createAgentSessionCreateOperation().run(
+                async (clientOperationId) =>
+                  readCreatedAgentTerminalIdentity(
+                    unwrapRuntimeRpcResult(
+                      await callEnvironment({
+                        method: 'terminal.createAgentSession',
+                        params: withAgentSessionCreateOperationId(
+                          {
+                            ...(await keyboardOptions(environmentId)),
+                            worktree: toRuntimeWorktreeSelector(args.worktreeId),
+                            agent,
+                            ...(args.prompt ? { prompt: args.prompt } : {}),
+                            ...(args.promptDelivery ? { promptDelivery: args.promptDelivery } : {}),
+                            ...(agentArgsOverride !== undefined
+                              ? { agentArgs: agentArgsOverride }
+                              : {}),
+                            ...(args.launchPreferences
+                              ? { launchPreferences: args.launchPreferences }
+                              : {}),
+                            ...(args.cwd ? { startupCwd: args.cwd } : {}),
+                            ...(args.viewMode ? { viewMode: args.viewMode } : {}),
+                            presentation: 'background'
+                          },
+                          clientOperationId
+                        ),
+                        timeoutMs: 15_000
+                      })
+                    )
+                  ),
+                { waitToReplay }
               )
       const resumeHostAuthorityCapability =
         args.agentSessionKind === 'resume' ? agentResumeHostAuthorityCapability(agent) : undefined
@@ -178,7 +183,8 @@ export async function createWebRuntimeSessionTerminalResult(
           const legacyCreated = await createSessionTabsTerminalWithReplay(
             environmentId,
             callEnvironment,
-            args
+            args,
+            waitToReplay
           )
           legacyAlreadyPlacedInGroup = true
           return {
@@ -210,7 +216,8 @@ export async function createWebRuntimeSessionTerminalResult(
       const created = await createSessionTabsTerminalWithReplay(
         environmentId,
         callEnvironment,
-        args
+        args,
+        waitToReplay
       )
       hostCreated = true
       createdTabId = created.tab.id
@@ -291,5 +298,6 @@ export async function createWebRuntimeSessionTerminalResult(
     return { outcome: { status: 'failed', message } }
   } finally {
     endPending()
+    reconnectWatch.dispose()
   }
 }

@@ -496,12 +496,19 @@ async function seenToasts(page: Page): Promise<unknown> {
 
 const pendingTabs = (page: Page): Locator => page.locator('[data-pending-remote-terminal-tab]')
 
-async function clickNewTerminalFromNewTabMenu(page: Page): Promise<void> {
-  await openNewTabMenu(page)
-  await page
-    .getByRole('menuitem', { name: /^New Terminal/ })
-    .first()
-    .click()
+/**
+ * Picks a "New tab" menu entry once. Why retry only a failed click: a click can land while a
+ * previous menu is closing or re-rendering, but re-clicking after one registered would create twice.
+ */
+async function chooseFromNewTabMenu(page: Page, item: RegExp): Promise<void> {
+  const before = await pendingTabs(page).count()
+  await expect(async () => {
+    if ((await page.getByRole('menu').count()) === 0) {
+      await page.getByRole('button', { name: 'New tab' }).first().click({ timeout: 2_000 })
+    }
+    await page.getByRole('menuitem', { name: item }).first().click({ timeout: 3_000 })
+  }).toPass({ timeout: 30_000 })
+  await expect(pendingTabs(page)).toHaveCount(before + 1, { timeout: 2_000 })
 }
 
 // Why retry: a second click right after the first can land while the previous menu is closing.
@@ -521,19 +528,35 @@ async function openNewTabMenu(page: Page): Promise<void> {
  */
 async function expectCreatesSettleOverDeadReturnPath(
   path: DeadReturnPath,
-  create: (page: Page) => Promise<void>,
+  menuItem: RegExp,
   hostCreates: () => Promise<number>
 ): Promise<void> {
-  const { client, worktreeId, settled } = path
+  const { client, proxy, worktreeId, settled } = path
   const hostBefore = await hostCreates()
+  // Why: keep the network down until both clicks land, so a slow runner cannot settle the first
+  // create before the second click and the gap is the same on every machine.
+  proxy.refuseNew(true)
+  // Why: while new connections are refused, any further close is a frozen socket being dropped.
+  const eventsBeforeClick = proxy.events.length
   const clickedAt = Date.now()
-  await create(client.page)
   // 1. Feedback right after the click, not after the host round-trip.
-  await expect(pendingTabs(client.page)).toHaveCount(1, { timeout: 1_000 })
+  await chooseFromNewTabMenu(client.page, menuItem)
   await expect(pendingTabs(client.page).first()).toBeVisible({ timeout: 1_000 })
   // The user clicks again while nothing has appeared yet; that is a second create, not a retry.
-  await create(client.page)
-  await expect(pendingTabs(client.page)).toHaveCount(2, { timeout: 1_000 })
+  await chooseFromNewTabMenu(client.page, menuItem)
+  await expect(pendingTabs(client.page)).toHaveCount(2)
+  // The send probe, not the 25s idle liveness, must drop the silent socket.
+  await expect
+    .poll(() => proxy.events.slice(eventsBeforeClick).some((event) => event.includes(' close#')), {
+      timeout: 12_000
+    })
+    .toBe(true)
+  test.info().annotations.push({
+    type: 'deadSocketDroppedAfterMs',
+    description: String(Date.now() - clickedAt)
+  })
+  const releasedAt = Date.now()
+  proxy.refuseNew(false)
 
   // 2 + 3. Exactly one host create per click, and both settle into their real tabs.
   await expect
@@ -550,10 +573,10 @@ async function expectCreatesSettleOverDeadReturnPath(
       { timeout: 60_000 }
     )
     .toEqual({ hostCreates: 2, clientTabs: 2, pending: 0 })
-  const settledAfterMs = Date.now() - clickedAt
-  test.info().annotations.push({ type: 'settledAfterMs', description: String(settledAfterMs) })
-  // Why: before the send probe the reply waited out the 15s request timeout plus 25s liveness.
-  expect(settledAfterMs, `settled after ${settledAfterMs}ms`).toBeLessThan(20_000)
+  test.info().annotations.push({
+    type: 'settledAfterReconnectMs',
+    description: String(Date.now() - releasedAt)
+  })
   // A late replay would show up as a third create.
   await client.page.waitForTimeout(3_000)
   expect((await hostCreates()) - hostBefore).toBe(2)
@@ -565,7 +588,7 @@ test('a Claude launch the host accepted over a dead return path is not reported 
 {}, testInfo) => {
   test.setTimeout(300_000)
   await runOverDeadReturnPath(testInfo, 'dead-return-path-agent-create', async (path) => {
-    await expectCreatesSettleOverDeadReturnPath(path, launchClaudeFromNewTabMenu, async () =>
+    await expectCreatesSettleOverDeadReturnPath(path, /^Claude$/, async () =>
       fakeClaudeLaunchCount()
     )
   })
@@ -575,7 +598,7 @@ test('a plain terminal created over a dead return path shows pending and settles
 {}, testInfo) => {
   test.setTimeout(300_000)
   await runOverDeadReturnPath(testInfo, 'dead-return-path-terminal-create', async (path) => {
-    await expectCreatesSettleOverDeadReturnPath(path, clickNewTerminalFromNewTabMenu, () =>
+    await expectCreatesSettleOverDeadReturnPath(path, /^New Terminal/, () =>
       path.host.evaluate(
         (id) => window.__store?.getState().tabsByWorktree[id]?.length ?? 0,
         path.worktreeId

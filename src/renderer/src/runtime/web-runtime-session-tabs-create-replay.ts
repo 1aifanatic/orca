@@ -12,9 +12,10 @@ import { toHostSessionTabId } from './web-terminal-surface-id'
 export function createSessionTabsTerminalWithReplay(
   environmentId: string,
   callEnvironment: ReturnType<typeof captureRuntimeEnvironmentCall>,
-  args: CreateWebRuntimeSessionTerminalArgs
+  args: CreateWebRuntimeSessionTerminalArgs,
+  waitToReplay?: () => Promise<boolean>
 ): Promise<RuntimeMobileSessionCreateTerminalResult> {
-  return runSessionTabsCreateWithReplay(environmentId, async (clientMutationId) => {
+  return runSessionTabsCreateWithReplay(environmentId, waitToReplay, async (clientMutationId) => {
     const response = await callEnvironment({
       method: 'session.tabs.createTerminal',
       params: {
@@ -51,6 +52,7 @@ export function createSessionTabsTerminalWithReplay(
  */
 export async function runSessionTabsCreateWithReplay<TResult>(
   environmentId: string,
+  waitToReplay: (() => Promise<boolean>) | undefined,
   invoke: (clientMutationId: string) => Promise<TResult>
 ): Promise<TResult> {
   // Why always sent: hosts without the dedupe strip the unknown key, as for mobile creates.
@@ -59,6 +61,14 @@ export async function runSessionTabsCreateWithReplay<TResult>(
     return await invoke(clientMutationId)
   } catch (error) {
     if (!isRemoteCreateOutcomeUnknown(error) || !(await hostDedupesCreates(environmentId))) {
+      throw error
+    }
+  }
+  try {
+    return await invoke(clientMutationId)
+  } catch (error) {
+    // Why: as for agent creates, a replay that met a still-down network gets one more after reconnect.
+    if (!isRemoteCreateOutcomeUnknown(error) || !waitToReplay || !(await waitToReplay())) {
       throw error
     }
     return await invoke(clientMutationId)

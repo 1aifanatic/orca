@@ -6,6 +6,8 @@ export type FreezableTcpProxy = {
   events: string[]
   /** Silently stops forwarding on every open connection while keeping it open, like a NAT drop. */
   freezeExisting: (direction?: 'both' | 'to-client') => number
+  /** Refuses new connections while true, like a network that is still down. */
+  refuseNew: (refuse: boolean) => void
   close: () => Promise<void>
 }
 
@@ -17,8 +19,14 @@ export async function startFreezableTcpProxy(
   const pairs = new Set<{ client: net.Socket; upstream: net.Socket; frozen: boolean }>()
   const events: string[] = []
   let nextId = 0
+  let refusing = false
   const server = net.createServer((client) => {
     const id = nextId++
+    if (refusing) {
+      events.push(`${Date.now()} refused#${id}`)
+      client.destroy()
+      return
+    }
     events.push(`${Date.now()} open#${id}`)
     client.on('close', () => events.push(`${Date.now()} close#${id}`))
     const upstream = net.connect(targetPort, targetHost)
@@ -64,6 +72,9 @@ export async function startFreezableTcpProxy(
         frozen += 1
       }
       return frozen
+    },
+    refuseNew: (refuse) => {
+      refusing = refuse
     },
     close: async () => {
       for (const pair of pairs) {
