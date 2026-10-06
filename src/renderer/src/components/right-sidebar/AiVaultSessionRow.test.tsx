@@ -182,9 +182,7 @@ describe('VaultSessionRow native session actions', () => {
         structuredSession: { sessionId: 'session-native', workspaceId: 'worktree-1' }
       }
     })
-    expect(screen.getByText('Cached provider title')).toBeTruthy()
-    publish('Repair the login flow')
-    expect(screen.getByText('Repair the login flow')).toBeTruthy()
+    expect(screen.getByText('Codex Chat')).toBeTruthy()
     expect(screen.queryByText('Cached provider title')).toBeNull()
     publish('auth/login')
     expect(screen.getByText('auth/login')).toBeTruthy()

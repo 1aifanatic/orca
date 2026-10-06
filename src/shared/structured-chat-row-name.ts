@@ -1,4 +1,3 @@
-import { defaultAgentChatLabel } from './agent-session-chat-label'
 import type { Tab } from './tab-types'
 
 export function structuredChatRowName(
@@ -12,5 +11,5 @@ export function structuredChatRowName(
     return custom
   }
   const label = tab.label.trim()
-  return label && label !== defaultAgentChatLabel(tab.agentSessionAgent) ? label : null
+  return label || null
 }

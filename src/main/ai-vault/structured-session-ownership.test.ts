@@ -43,6 +43,22 @@ describe('structured AI Vault ownership', () => {
     expect(projected.sessions[1]).toBe(unowned)
   })
 
+  it.each(['claude', 'codex'] as const)(
+    'keeps an unnamed %s chat at its ordinary label',
+    (provider) => {
+      installOwnership({ provider })
+      const result = listResult()
+      result.sessions = result.sessions.map((session) => ({
+        ...session,
+        agent: provider,
+        title: 'First prompt'
+      }))
+      expect(projectStructuredAiVaultSessions(result, true).sessions[0]?.title).toBe(
+        provider === 'claude' ? 'Claude Chat' : 'Codex Chat'
+      )
+    }
+  )
+
   it('derives typed refusals from the single writer predicate for live and proving leases', async () => {
     installOwnership()
     expect(() =>

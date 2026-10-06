@@ -96,7 +96,7 @@ describe('useAgentRowConversationName', () => {
         customLabel: null
       }
     ]
-    expect(useAgentRowConversationName(agent)).toBeNull()
+    expect(useAgentRowConversationName(agent)).toBe('Claude Chat')
   })
 
   it('ignores a retired stored opt-out value', () => {
