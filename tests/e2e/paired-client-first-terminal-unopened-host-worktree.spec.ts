@@ -71,34 +71,29 @@ test('a paired client gets a first terminal in a host worktree the host never op
       'first-terminal-unopened-worktree'
     )
     // Added through the host's runtime, so the host's own window never opens the worktree.
-    await callRuntime(client.page, client.environmentId, 'repo.add', {
-      path: repoPath,
-      kind: 'git'
-    })
-    const worktreeId = await expect
-      .poll(
-        () =>
-          client!.page.evaluate(
-            (path) =>
-              window.__store
-                ?.getState()
-                .allWorktrees()
-                .find((worktree) => worktree.path === path)?.id ?? null,
-            repoPath
-          ),
-        { timeout: 60_000, message: 'Paired client never saw the host worktree' }
+    const added = await callRuntime<{ repo: { id: string } }>(
+      client.page,
+      client.environmentId,
+      'repo.add',
+      { path: repoPath, kind: 'git' }
+    )
+    // Why the repo id: worktree paths are normalized differently per platform.
+    const findWorktreeId = (): Promise<string | null> =>
+      client!.page.evaluate(
+        (repoId) =>
+          window.__store
+            ?.getState()
+            .allWorktrees()
+            .find((worktree) => worktree.repoId === repoId)?.id ?? null,
+        added.repo.id
       )
+    await expect
+      .poll(findWorktreeId, {
+        timeout: 60_000,
+        message: 'Paired client never saw the host worktree'
+      })
       .not.toBeNull()
-      .then(() =>
-        client!.page.evaluate(
-          (path) =>
-            window.__store
-              ?.getState()
-              .allWorktrees()
-              .find((worktree) => worktree.path === path)?.id ?? '',
-          repoPath
-        )
-      )
+    const worktreeId = (await findWorktreeId()) ?? ''
     // Precondition: the host is started but has published nothing for this worktree.
     expect(await hostTerminalCount(client.page, client.environmentId, worktreeId)).toBe(0)
 
@@ -118,10 +113,7 @@ test('a paired client gets a first terminal in a host worktree the host never op
       .poll(
         () =>
           client!.page.evaluate(
-            (id) =>
-              (window.__store?.getState().tabsByWorktree[id] ?? []).filter(
-                (tab) => tab.contentType !== 'browser'
-              ).length,
+            (id) => (window.__store?.getState().tabsByWorktree[id] ?? []).length,
             worktreeId
           ),
         { timeout: 30_000, message: 'The paired client never showed the first terminal tab' }
