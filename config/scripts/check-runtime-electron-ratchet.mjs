@@ -121,7 +121,10 @@ export async function collectElectronImporters(entryPoints, { plugins = [] } = {
     outdir: path.join(ROOT, 'runtime-electron-ratchet-metafile-only'),
     platform: 'node',
     target: 'node20',
-    format: 'cjs',
+    // Why splitting: ~2.5k entry points each bundled whole held every copy of the graph in
+    // memory (2GB+), enough to take down a CI runner; shared chunks keep one copy.
+    format: 'esm',
+    splitting: true,
     external: EXTERNAL,
     metafile: true,
     absWorkingDir: ROOT,
