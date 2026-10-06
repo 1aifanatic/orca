@@ -41,8 +41,26 @@ describe('a send still opening its turn', () => {
   })
 
   // A Stop the provider took before the turn opened may write no turn record at all.
-  it("ends at a Stop's note written after the handover, so a later message is not held", () => {
+  it("ends at a taken Stop's note written after the handover, so a later message is not held", () => {
     expect(opening([handover, stopNote(6)])).toBe(false)
+  })
+
+  // A refused or unconfirmed Stop leaves the turn opening: the next message still joins it.
+  it("keeps holding past a Stop's note that carries a failure", () => {
+    const refused = stopNote(6)
+    expect(
+      opening([
+        handover,
+        {
+          ...refused,
+          body: {
+            kind: 'status',
+            text: 'Cancellation was not confirmed.',
+            failure: { kind: 'cancelUnconfirmed' }
+          }
+        }
+      ])
+    ).toBe(true)
   })
 
   it("keeps holding past a Stop's note written before the handover", () => {
