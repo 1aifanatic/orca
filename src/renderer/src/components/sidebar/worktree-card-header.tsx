@@ -104,8 +104,7 @@ export function WorktreeCardHeader({
           </RepoIdentityChip>
         )}
 
-        {/* Why: this pill is a reconnect control; a read-only card names its host with the chip. */}
-        {repo?.connectionId && interactive && (
+        {repo?.connectionId && (
           <WorktreeCardSshHostControl
             targetId={repo.connectionId}
             targetLabel={sshTargetLabel || repo.displayName}
@@ -113,6 +112,7 @@ export function WorktreeCardHeader({
             targetRemoved={sshTargetRemoved}
             sshOwnerEnvironmentId={sshOwnerEnvironmentId}
             iconOnly={compactCards || newCardStyle}
+            interactive={interactive}
             onPointerDown={stopQuickActionPointerPropagation}
           />
         )}

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { Loader2, Server, ServerOff } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
@@ -31,6 +31,7 @@ type WorktreeCardSshHostControlProps = {
   sshOwnerEnvironmentId: string | null
   /** True when the row cannot afford a visible label: icon-only with an sr-only label. */
   iconOnly: boolean
+  interactive?: boolean
   onPointerDown: React.PointerEventHandler<HTMLButtonElement>
 }
 
@@ -47,21 +48,27 @@ function PassiveGlyph({
   icon,
   tooltip,
   accessibleName,
-  targetLabel
+  targetLabel,
+  interactive
 }: {
   icon: React.ReactNode
   tooltip: string
   accessibleName: string
   targetLabel: string
+  interactive: boolean
 }): React.JSX.Element {
+  const glyph = (
+    <span className="shrink-0 inline-flex items-center" data-ssh-target-label={targetLabel}>
+      {icon}
+      <span className="sr-only">{accessibleName}</span>
+    </span>
+  )
+  if (!interactive) {
+    return glyph
+  }
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="shrink-0 inline-flex items-center" data-ssh-target-label={targetLabel}>
-          {icon}
-          <span className="sr-only">{accessibleName}</span>
-        </span>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{glyph}</TooltipTrigger>
       <TooltipContent side="right" sideOffset={8}>
         {tooltip}
       </TooltipContent>
@@ -76,6 +83,7 @@ export function WorktreeCardSshHostControl({
   targetRemoved,
   sshOwnerEnvironmentId,
   iconOnly,
+  interactive = true,
   onPointerDown
 }: WorktreeCardSshHostControlProps): React.JSX.Element | null {
   const setSshConnectionState = useAppStore((store) => store.setSshConnectionState)
@@ -140,6 +148,7 @@ export function WorktreeCardSshHostControl({
   if (status === null || status === 'connected') {
     return (
       <PassiveGlyph
+        interactive={interactive}
         targetLabel={targetLabel}
         icon={<Server className="size-3 text-muted-foreground" />}
         tooltip={translate(
@@ -161,6 +170,7 @@ export function WorktreeCardSshHostControl({
   if (targetRemoved) {
     return (
       <PassiveGlyph
+        interactive={interactive}
         targetLabel={targetLabel}
         icon={<ServerOff className="size-3 text-muted-foreground" />}
         tooltip={translate(
@@ -225,6 +235,33 @@ export function WorktreeCardSshHostControl({
           )
         : accessibleName
 
+  const content = (
+    <>
+      {connecting ? (
+        <Loader2 className="size-2.5 animate-spin motion-reduce:animate-none" />
+      ) : (
+        iconOnly && <ServerOff className="size-2.5" />
+      )}
+      {!iconOnly && <span className="text-left">{label}</span>}
+    </>
+  )
+  if (!interactive) {
+    return (
+      <span
+        className={cn(
+          buttonVariants({ variant: 'ghost' }),
+          PILL_BASE,
+          failed ? PILL_FAILED : PILL_QUIET,
+          iconOnly && 'w-4 justify-center !px-0 has-[>svg]:!px-0',
+          'cursor-default'
+        )}
+        data-ssh-target-label={targetLabel}
+      >
+        {content}
+        <span className="sr-only">{accessibleName}</span>
+      </span>
+    )
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -265,14 +302,7 @@ export function WorktreeCardSshHostControl({
             void handleConnect()
           }}
         >
-          {connecting ? (
-            <Loader2 className="size-2.5 animate-spin motion-reduce:animate-none" />
-          ) : (
-            iconOnly && <ServerOff className="size-2.5" />
-          )}
-          {/* Why: aria-label already names the control, so a second sr-only copy would be
-              dead markup; the label span exists only for sighted users. */}
-          {!iconOnly && <span className="text-left">{label}</span>}
+          {content}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="right" sideOffset={8}>

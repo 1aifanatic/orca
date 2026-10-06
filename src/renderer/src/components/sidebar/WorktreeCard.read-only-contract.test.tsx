@@ -3,6 +3,8 @@
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SshConnectionStatus } from '../../../../shared/ssh-types'
+import { worktreeCardTitleXSignature } from './worktree-card-title-geometry.test-support'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorktreeCardProperty } from '../../../../shared/ui-chrome-types'
@@ -44,6 +46,7 @@ let settings: Partial<GlobalSettings> = {}
 let deleteStateByWorktreeId: Record<string, unknown> = {}
 let activityStatus: WorktreeStatus = 'working'
 let sleeping = true
+let sshStatus: SshConnectionStatus = 'disconnected'
 const onChatClick = vi.fn()
 
 vi.mock('@/store', () => ({
@@ -79,7 +82,7 @@ vi.mock('@/store', () => ({
       setActiveWorktree: vi.fn(),
       setRenamingWorktreeId: vi.fn(),
       settings,
-      sshConnectionStates: new Map([['ssh-target-1', { status: 'disconnected' }]]),
+      sshConnectionStates: new Map([['ssh-target-1', { status: sshStatus }]]),
       sshStateByEnvironment: new Map(),
       sshTargetLabels: new Map([['ssh-target-1', 'Remote target']]),
       sshTargetsHydrated: true,
@@ -219,6 +222,7 @@ describe('WorktreeCard read-only contract', () => {
     vi.clearAllMocks()
     activityStatus = 'working'
     sleeping = true
+    sshStatus = 'disconnected'
     deleteStateByWorktreeId = {}
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -316,6 +320,51 @@ describe('WorktreeCard read-only contract', () => {
   }
 
   for (const style of CARD_STYLES) {
+    it.each([
+      'connected',
+      'disconnected',
+      'connecting',
+      'error',
+      'auth-failed',
+      'reconnection-failed'
+    ] as const)(
+      `${style.name} card: %s SSH identity matches the live sidebar without controls`,
+      (status) => {
+        settings = style.settings
+        sshStatus = status
+        activityStatus = 'inactive'
+        sleeping = false
+        const overrides = { isUnread: false, firstAgentMessageRenameError: null }
+        render(false, overrides)
+        const liveIdentity = container.querySelector('[data-ssh-target-label]')
+        expect(liveIdentity).not.toBeNull()
+        const liveClasses = [...(liveIdentity?.classList ?? [])]
+          .filter((name) => name !== 'cursor-pointer')
+          .toSorted()
+        const liveGlyph = liveIdentity?.querySelector('svg')?.outerHTML
+        const liveSignature = worktreeCardTitleXSignature(
+          container.querySelector('[data-worktree-title-inline-rename]'),
+          container
+        )
+        render(true, overrides)
+        const identity = container.querySelector('[data-ssh-target-label]')
+        expect(
+          worktreeCardTitleXSignature(
+            container.querySelector('[data-worktree-title-inline-rename]'),
+            container
+          )
+        ).toEqual(liveSignature)
+        expect(identity?.tagName).toBe('SPAN')
+        expect(
+          [...(identity?.classList ?? [])].filter((name) => name !== 'cursor-default').toSorted()
+        ).toEqual(liveClasses)
+        expect(identity?.querySelector('svg')?.outerHTML).toBe(liveGlyph)
+        expect(identity?.textContent).toContain('Remote target')
+        expect(controlsOutsideCallerRows()).toEqual([])
+        expect(identity?.hasAttribute('aria-describedby')).toBe(false)
+      }
+    )
+
     it(`${style.name} card: the same fixture is live without readOnly`, () => {
       settings = style.settings
       render(false)
