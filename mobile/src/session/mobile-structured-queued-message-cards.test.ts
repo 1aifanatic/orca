@@ -68,6 +68,26 @@ describe('mobileQueuedMessageCards', () => {
     ).toMatchObject({ command: true, waitsForAgent: true })
   })
 
+  it("a kept command card's caption names Send only when Send is there", () => {
+    const kept = draft({
+      messageId: 'c',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_KEPT,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      mobileQueuedMessageCards([kept], [], { pendingPrompt: false, agentWorking: true })[0]?.caption
+    ).toBe('Not sent yet — tap Send to send it once the agent finishes')
+    expect(mobileQueuedMessageCards([kept], [], { pendingPrompt: false })[0]?.caption).toBe(
+      'Not sent yet — tap Send to send it'
+    )
+  })
+
   it("a send-failed command card's caption names Send only when Send is there", () => {
     const failed = draft({
       messageId: 'c',

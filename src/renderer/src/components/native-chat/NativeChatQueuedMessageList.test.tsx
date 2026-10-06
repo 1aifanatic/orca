@@ -137,6 +137,22 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
+  it("a kept command card's caption names Send only when Send is there, and it never steers", () => {
+    const kept = { command: true as const, hold: 'paused' as const, pausedReason: 'kept' }
+    renderList(
+      controller([
+        card({ messageId: 'working', text: '/compact', ...kept, waitsForAgent: true }),
+        card({ messageId: 'idle', text: '/compact', ...kept })
+      ])
+    )
+    expect(
+      screen.getByText('Not sent yet — press Send to send it once the agent finishes.')
+    ).toBeTruthy()
+    expect(screen.getByText('Not sent yet — press Send to send it.')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull()
+  })
+
   it("a send-failed command card's caption names Send only when Send is there", () => {
     const failed = { command: true as const, hold: 'paused' as const, pausedReason: 'send_failed' }
     renderList(
