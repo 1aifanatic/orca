@@ -234,10 +234,14 @@ describe('structured agent session message sender', () => {
     await flush()
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await a.outcome).toBe('returned')
-    // Given back, but worded as unconfirmed: the earlier attempt may have landed.
+    // Given back, but worded as unconfirmed: the earlier attempt may have landed, so check first.
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
-      "Orca couldn't confirm your message reached the agent"
+      "Orca couldn't confirm your message reached the agent. Check the chat"
     )
+    // Nothing sends it again on its own.
+    const calls = mocks.call.mock.calls.length
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS * 2)
+    expect(mocks.call.mock.calls.length).toBe(calls)
     mocks.proof.mockReturnValue(true)
   })
 
