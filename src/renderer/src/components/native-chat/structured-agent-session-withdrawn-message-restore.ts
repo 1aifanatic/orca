@@ -1,10 +1,32 @@
 import { useMemo } from 'react'
+import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { appendNativeChatDraftCache, readNativeChatDraftCache } from './native-chat-draft-cache'
 import {
   appendNativeChatAttachmentCache,
   readNativeChatAttachmentCache
 } from './use-native-chat-composer-attachments'
+
+/** Puts a message's text and images into a composer, after whatever is there. */
+export function returnMessageToComposer(
+  composerScopeKey: string,
+  /** Unique to this message, so its images never collide with ones already attached. */
+  attachmentIdPrefix: string,
+  blocks: AgentJournalMessageItem['blocks']
+): void {
+  appendNativeChatDraftCache(
+    composerScopeKey,
+    blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
+  )
+  appendNativeChatAttachmentCache(
+    composerScopeKey,
+    blocks.flatMap((block, index) =>
+      block.type === 'image-ref' && block.path
+        ? [{ id: `${attachmentIdPrefix}-${index}`, path: block.path }]
+        : []
+    )
+  )
+}
 
 /**
  * Gives the sender back what its own Stop took out of the outbox before the host held it, into
@@ -24,18 +46,10 @@ function restoreUnsentMessages(
     return false
   }
   for (const entry of withdrawn) {
-    const blocks = entry.body.blocks
-    appendNativeChatDraftCache(
+    returnMessageToComposer(
       composerScopeKey,
-      blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
-    )
-    appendNativeChatAttachmentCache(
-      composerScopeKey,
-      blocks.flatMap((block, index) =>
-        block.type === 'image-ref' && block.path
-          ? [{ id: `withdrawn-${entry.clientMessageId}-${index}`, path: block.path }]
-          : []
-      )
+      `withdrawn-${entry.clientMessageId}`,
+      entry.body.blocks
     )
   }
   return true
