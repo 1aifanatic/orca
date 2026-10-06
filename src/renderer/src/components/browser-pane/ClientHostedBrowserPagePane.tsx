@@ -20,7 +20,7 @@ import { useBrowserClientHostedDownloadNotices } from './browser-client-hosted-d
 import { useBrowserClientHostedPopupNotices } from './browser-client-hosted-popup-notices'
 import { useBrowserClientHostedPermissionNotices } from './browser-client-hosted-permission-notices'
 import { useClientHostedBrowserIntroTour } from './use-client-hosted-browser-intro-tour'
-import { ClientHostedBrowserUnavailableNotice } from './client-hosted-browser-unavailable-notice'
+import { ClientHostedBrowserAvailabilityNotice } from './client-hosted-browser-unavailable-notice'
 import { watchBrowserClientPageGuestLoss } from './host-guest/browser-client-page-guest-loss'
 import { useRestoredClientHostedRecoveryWindow } from './restored-client-hosted-recovery-window'
 import { useClientHostedBrowserMarkup } from './annotate/use-client-hosted-browser-markup'
@@ -414,13 +414,14 @@ export function ClientHostedBrowserPagePane({
             }
           />
         ) : null}
-        {attachmentError || restoredPageUnrecovered ? (
-          <ClientHostedBrowserUnavailableNotice
-            runtimeEnvironmentId={runtimeEnvironmentId}
-            worktreeId={worktreeId}
-            lastCommittedUrl={browserTab.url}
-          />
-        ) : null}
+        <ClientHostedBrowserAvailabilityNotice
+          runtimeEnvironmentId={runtimeEnvironmentId}
+          worktreeId={worktreeId}
+          lastCommittedUrl={browserTab.url}
+          guestUnavailable={Boolean(attachmentError) || restoredPageUnrecovered}
+          browserHostClientId={browserHostClientId}
+          isActive={isActive}
+        />
       </div>
     </div>
   )

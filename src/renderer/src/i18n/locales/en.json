@@ -82,7 +82,6 @@
     "clientHosted": {
       "preparationFailed": "Couldn't start the remote browser on this desktop. Check the paired connection and try again.",
       "unavailableTitle": "Client-hosted browser unavailable",
-      "unavailableDescription": "This page is attached to a different desktop or is no longer available.",
       "download": {
         "started": "Downloading {{filename}}…",
         "completed": "Downloaded {{filename}}",
@@ -100,7 +99,14 @@
       "hostRowOfflineNamed": "Offline — was hosted on {{device}}",
       "hostRowOffline": "Offline — the device hosting it quit",
       "hostRowNamed": "Hosted on {{device}}",
-      "hostRow": "Hosted on another device"
+      "hostRow": "Hosted on another device",
+      "hostOfflineDescription": "Reconnecting. This page comes back when the host is reachable again.",
+      "reconnectNow": "Reconnect now",
+      "otherDesktopDescription": "This page is open on a different desktop.",
+      "noLongerAvailableDescription": "This page is no longer available on this desktop.",
+      "reconnecting": "reconnecting",
+      "hostOfflineNamed": "{{host}} is offline",
+      "hostOffline": "The host is offline"
     },
     "navigation": {
       "back": "Back",
