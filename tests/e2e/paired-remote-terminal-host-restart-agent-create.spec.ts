@@ -28,6 +28,8 @@ import {
   type PairedElectronClient
 } from './helpers/paired-electron-client'
 import { attachRepoAndOpenTerminal, createRestartSession } from './helpers/orca-restart'
+import { decodePairingOffer, encodePairingOffer } from '../../src/shared/pairing'
+import { startFreezableTcpProxy, type FreezableTcpProxy } from './helpers/freezable-tcp-proxy'
 import {
   holdWindowGraphPublication,
   releaseWindowGraphPublication
@@ -112,9 +114,10 @@ async function hostInventory(
 async function census(
   host: Page,
   client: PairedElectronClient,
-  worktreeId: string
+  worktreeId: string,
+  includeInventory = true
 ): Promise<Census> {
-  const inventory = await hostInventory(client, worktreeId)
+  const inventory = includeInventory ? await hostInventory(client, worktreeId) : []
   const hostWindowTabs = await host.evaluate(
     (id) => window.__store?.getState().tabsByWorktree[id]?.length ?? 0,
     worktreeId
@@ -240,26 +243,28 @@ async function expectLaunchMirrored(
   client: PairedElectronClient,
   worktreeId: string,
   before: Census,
-  label: string
+  label: string,
+  options: { timeoutMs?: number; launchEvidenceOnly?: boolean } = {}
 ): Promise<Census> {
   let last = before
   try {
     await expect
       .poll(
         async () => {
-          last = await census(host, client, worktreeId)
+          last = await census(host, client, worktreeId, !options.launchEvidenceOnly)
           return (
             last.launches === before.launches + 1 &&
-            last.hostInventoryTabs === before.hostInventoryTabs + 1 &&
+            (options.launchEvidenceOnly ||
+              last.hostInventoryTabs === before.hostInventoryTabs + 1) &&
             last.clientTabs === before.clientTabs + 1 &&
             last.clientVisibleTabs === before.clientVisibleTabs + 1
           )
         },
-        { timeout: 30_000 }
+        { timeout: options.timeoutMs ?? 30_000 }
       )
       .toBe(true)
   } catch {
-    const inventory = await hostInventory(client, worktreeId)
+    const inventory = options.launchEvidenceOnly ? [] : await hostInventory(client, worktreeId)
     const tails: string[] = []
     for (const tab of inventory) {
       if (tab.type === 'terminal' && tab.terminal) {
@@ -283,7 +288,7 @@ async function expectLaunchMirrored(
 
 test('a Claude tab launched from the client after a host relaunch appears on the client', async (// oxlint-disable-next-line no-empty-pattern -- This lifecycle test owns both host launches.
 {}, testInfo) => {
-  test.setTimeout(360_000)
+  test.setTimeout(600_000)
   const repoPath = seededRepoPathOrSkip()
   // Why: macOS terminals launch through `login -f`, which restores the real HOME and shell rc (and
   // with them the real PATH); disabling it keeps the isolated HOME and sanitized PATH in the shell.
@@ -384,6 +389,86 @@ test('a Claude tab launched from the client after a host relaunch appears on the
     }
     if (firstHost) {
       await session.close(firstHost)
+    }
+    await session.dispose()
+  }
+})
+
+test('a Claude launch the host accepted over a dead return path is not reported as failed', async (// oxlint-disable-next-line no-empty-pattern -- This test owns its host launch.
+{}, testInfo) => {
+  test.setTimeout(300_000)
+  const repoPath = seededRepoPathOrSkip()
+  const session = createRestartSession(testInfo, {
+    PATH: SANITIZED_PATH,
+    ORCA_DISABLE_MACOS_LOGIN_SHELL: '1'
+  })
+  let host: ElectronApplication | null = null
+  let client: PairedElectronClient | null = null
+  let proxy: FreezableTcpProxy | null = null
+  try {
+    const launched = await session.launch()
+    host = launched.app
+    const worktreeId = await attachRepoAndOpenTerminal(launched.page, repoPath)
+    // Why a proxy: it can silently drop host→client bytes on the live socket (sleep/NAT/Wi-Fi
+    // change) while client→host still delivers, which no in-process fault can express.
+    const offer = await createRuntimeDesktopPairingOffer(launched.page)
+    const decoded = decodePairingOffer(offer.pairingUrl)
+    const endpoint = new URL(decoded.endpoint)
+    proxy = await startFreezableTcpProxy(endpoint.hostname, Number(endpoint.port))
+    endpoint.port = String(proxy.port)
+    client = await launchPairedElectronClient(
+      { pairingUrl: encodePairingOffer({ ...decoded, endpoint: endpoint.toString() }) },
+      testInfo,
+      'dead-return-path-agent-create'
+    )
+    await showWorktree(client.page, worktreeId)
+    await expect(client.page.locator('[data-testid="sortable-tab"]').first()).toBeVisible({
+      timeout: 60_000
+    })
+    await assertHostResolvesFakeClaude(client, worktreeId)
+    let settled = await census(launched.page, client, worktreeId)
+    await expect
+      .poll(
+        async () => {
+          settled = await census(launched.page, client!, worktreeId)
+          return settled.hostInventoryTabs > 0 && settled.hostInventoryTabs === settled.clientTabs
+        },
+        { timeout: 30_000 }
+      )
+      .toBe(true)
+
+    // Why an observer: toasts auto-dismiss, so a point-in-time count can miss one.
+    await client.page.evaluate(() => {
+      const seen: { type: string | null; text: string }[] = []
+      Reflect.set(window, '__e2eToasts', seen)
+      new MutationObserver(() => {
+        for (const toast of document.querySelectorAll('[data-sonner-toast]')) {
+          const text = toast.textContent ?? ''
+          if (!seen.some((entry) => entry.text === text)) {
+            seen.push({ type: toast.getAttribute('data-type'), text })
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true })
+    })
+    expect(proxy.freezeExisting('to-client'), 'client must hold a live socket').toBeGreaterThan(0)
+    await launchClaudeFromNewTabMenu(client.page)
+    // The host accepts the launch, and the tab mirrors once the client replaces the dead socket.
+    await expectLaunchMirrored(launched.page, client, worktreeId, settled, 'dead return path', {
+      timeoutMs: 120_000,
+      launchEvidenceOnly: true
+    })
+    expect(fakeClaudeLaunchCount()).toBe(settled.launches + 1)
+    // A launch the host performed must never be reported to the user as failed: that invites a
+    // second click, which starts a second agent.
+    const toasts = await client.page.evaluate(() => Reflect.get(window, '__e2eToasts') as unknown)
+    expect(toasts, 'client reported a host-accepted launch as failed').toEqual([])
+  } finally {
+    await proxy?.close()
+    if (client) {
+      await client.dispose()
+    }
+    if (host) {
+      await session.close(host)
     }
     await session.dispose()
   }
