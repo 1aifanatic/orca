@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
-import type { ClaudeChildTreeReaper } from './claude-agent-sdk-exit-proof'
+import {
+  createClaudeChildTreeReaper,
+  type ClaudeChildTreeReaper
+} from './claude-agent-sdk-exit-proof'
 import { proveClaudeChildExitWithReaper } from './claude-child-exit-proof-ladder'
 
 function fakeTree(): ClaudeChildTreeReaper & { reap: ReturnType<typeof vi.fn> } {
@@ -41,6 +44,53 @@ function rootStoppedBySigterm(stopMs: number) {
   }
 }
 
+/** A Windows root that leaves on stdin end when `leavesOnStdinEnd`, otherwise only once killed. */
+function windowsRoot(leavesOnStdinEnd: boolean) {
+  let exited = false
+  let settle = (): void => {}
+  const exitPromise = new Promise<void>((resolve) => {
+    settle = resolve
+  })
+  const leave = (): void => {
+    exited = true
+    settle()
+  }
+  const kill = vi.fn(() => {
+    leave()
+    return true
+  })
+  const stdin = {
+    end: vi.fn(() => {
+      if (leavesOnStdinEnd) {
+        leave()
+      }
+    })
+  }
+  return {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The ladder reads only pid, kill and stdin.end from its child.
+    child: { pid: 4321, kill, stdin } as unknown as Parameters<
+      typeof proveClaudeChildExitWithReaper
+    >[0]['child'],
+    kill,
+    exitPromise,
+    exited: () => exited
+  }
+}
+
+function windowsTree(
+  root: ReturnType<typeof windowsRoot>,
+  terminateWindowsTree: (rootPid: number) => Promise<boolean>
+) {
+  const captureDescendants = vi.fn(async () => null)
+  const tree = createClaudeChildTreeReaper(root.child, {
+    platform: 'win32',
+    exited: root.exited,
+    captureDescendants,
+    terminateWindowsTree
+  })
+  return { tree, reap: vi.spyOn(tree, 'reap'), captureDescendants }
+}
+
 describe('Claude child exit proof ladder', () => {
   it('stops a supervised child with SIGTERM and waits out the supervisor stop before forcing', async () => {
     // Slower than the unsupervised 1.5 s grace, still inside the supervisor's own bound.
@@ -69,4 +119,65 @@ describe('Claude child exit proof ladder', () => {
     expect(root.kill).not.toHaveBeenCalledWith('SIGTERM')
     expect(tree.reap).toHaveBeenCalled()
   }, 10_000)
+
+  it('on Windows proves a close when Claude leaves on its own after its stdin ends', async () => {
+    const root = windowsRoot(true)
+    const terminateWindowsTree = vi.fn(async () => true)
+    const { tree, reap, captureDescendants } = windowsTree(root, terminateWindowsTree)
+
+    await expect(
+      proveClaudeChildExitWithReaper({ ...root, tree, platform: 'win32' }, () => tree)
+    ).resolves.toBe(true)
+
+    // No claim about what Claude started: nothing is read, reaped or taskkilled after it left.
+    expect(reap).not.toHaveBeenCalled()
+    expect(terminateWindowsTree).not.toHaveBeenCalled()
+    expect(captureDescendants).not.toHaveBeenCalled()
+    expect(root.kill).not.toHaveBeenCalled()
+    expect(tree.treeVerdict).toBe('unverifiable')
+  })
+
+  it.each([
+    { taskkill: true, proven: true },
+    { taskkill: false, proven: false }
+  ])(
+    'on Windows a forced close is proven only by taskkill: taskkill $taskkill',
+    async ({ taskkill, proven }) => {
+      const root = windowsRoot(false)
+      const terminateWindowsTree = vi.fn(async () => taskkill)
+      const { tree } = windowsTree(root, terminateWindowsTree)
+
+      await expect(
+        proveClaudeChildExitWithReaper({ ...root, tree, platform: 'win32' }, () => tree)
+      ).resolves.toBe(proven)
+
+      expect(terminateWindowsTree).toHaveBeenCalledWith(4321)
+      // The root still leaves through its held handle whatever taskkill reported.
+      expect(root.exited()).toBe(true)
+    },
+    10_000
+  )
+
+  it('on POSIX still reaps a root that left on its own and keeps the tree verdict', async () => {
+    let exited = false
+    const stdin = {
+      end: vi.fn(() => {
+        exited = true
+      })
+    }
+    const tree = { ...fakeTree(), treeVerdict: 'unverifiable' as const }
+    const input = {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The ladder reads only pid, kill and stdin.end from its child.
+      child: { pid: 4321, kill: vi.fn(), stdin } as unknown as Parameters<
+        typeof proveClaudeChildExitWithReaper
+      >[0]['child'],
+      exitPromise: Promise.resolve(),
+      exited: () => exited,
+      tree,
+      platform: 'linux' as const
+    }
+
+    await expect(proveClaudeChildExitWithReaper(input, () => tree)).resolves.toBe(false)
+    expect(tree.reap).toHaveBeenCalledOnce()
+  })
 })

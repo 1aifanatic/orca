@@ -67,9 +67,9 @@ export type ClaudeChildTreeReaper = {
    */
   reap(): Promise<DescendantTreeVerdict>
   /**
-   * `unverifiable` until a reap observes otherwise. `exited` is the only verdict
-   * that proves a close; `live` names a descendant that was seen still running,
-   * which no later caller may collapse into "unknown".
+   * `unverifiable` until a reap answers otherwise. `exited` is observed on POSIX
+   * and is taskkill's own report on Windows; `live` names a descendant that was
+   * seen still running, which no later caller may collapse into "unknown".
    */
   readonly treeVerdict: DescendantTreeVerdict
 }
@@ -248,7 +248,7 @@ export function createClaudeChildTreeReaper(
     return terminated ? 'exited' : 'unverifiable'
   }
 
-  /** The only source of a tree verdict: every `exited` here is an observation. */
+  /** The only source of a tree verdict: `exited` is observed on POSIX, taskkill's report on Windows. */
   async function judgeTree(): Promise<DescendantTreeVerdict> {
     const killRoot = (): boolean => terminateClaudeRoot({ child, exited })
     const rootPid = child.pid
@@ -321,13 +321,15 @@ export function createClaudeChildTreeReaper(
  * Orca's own shutdown ladder on the child it spawned, kept because the SDK's
  * close path returns no proof and Orca never releases a lease on an assumed exit.
  *
- * Resolves true only after the child actually emitted exit and its snapshotted
- * descendants were observed gone; false is unproven. A root that left on its
- * own before a snapshot could be armed stays unproven: its descendants had
- * already reparented out of reach when the ladder first looked.
+ * Resolves true only after the child actually emitted exit and, on POSIX, its
+ * snapshotted descendants were observed gone; on Windows, after it left on its
+ * own once its stdin ended, or a forced `taskkill /T /F` reported its tree
+ * terminated. False is unproven. On POSIX a root that left on its own before a
+ * snapshot could be armed stays unproven: its descendants had already
+ * reparented out of reach when the ladder first looked.
  */
 export function proveClaudeChildExit(input: ClaudeChildExitProofInput): Promise<boolean> {
   return proveClaudeChildExitWithReaper(input, () =>
-    createClaudeChildTreeReaper(input.child, { exited: input.exited })
+    createClaudeChildTreeReaper(input.child, { exited: input.exited, platform: input.platform })
   )
 }

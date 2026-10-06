@@ -15,6 +15,7 @@ export type ClaudeChildExitProofInput = {
   tree?: ClaudeChildTreeReaper
   /** The child is the POSIX provider supervisor: SIGTERM stops Claude, which reaps its tools. */
   supervised?: boolean
+  platform?: NodeJS.Platform
 }
 
 export async function proveClaudeChildExitWithReaper(
@@ -46,6 +47,11 @@ export async function proveClaudeChildExitWithReaper(
       await tree.reap()
       await waitForProcessExitUntil(input.exitPromise, FORCED_EXIT_MS)
     }
+  }
+  // On Windows, as with the Codex close, Claude leaving on its own after its stdin ends is the
+  // close: Orca makes no claim about processes Claude started, and no reap could address them.
+  if (!reaped && input.exited() && (input.platform ?? process.platform) === 'win32') {
+    return true
   }
   if (!reaped && input.exited() && tree.treeVerdict !== 'exited') {
     await tree.reap()
