@@ -37,6 +37,7 @@ export async function rewindStructuredAgentSession(
     const result = await admitAndRunAgentSessionMutation<AgentSessionRewindResult>({
       store,
       adapter: context.deps.adapter,
+      agents: context.deps.agents,
       logger: context.deps.logger,
       callerKey: caller.callerKey,
       envelope: params.envelope,
@@ -65,7 +66,7 @@ export async function rewindStructuredAgentSession(
         run: async (ctx) => {
           await attachContext.runtimeState.flushEventSink(sessionId)
           const record = store.getRecord(sessionId)!
-          const support = ctx.adapter.rewindSupport?.(sessionId)
+          const support = ctx.adapter.rewindSupport?.(sessionId, ctx.agent)
           if (!support?.supported) {
             return rewindRefusal(support?.reason ?? 'unsupported')
           }

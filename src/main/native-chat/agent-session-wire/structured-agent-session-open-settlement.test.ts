@@ -93,8 +93,11 @@ const COMBINATIONS = JOURNAL_SESSION_STATE_CASES.flatMap((name) =>
 describe('the stored status and the plan agree (T4)', () => {
   it.each(COMBINATIONS)('%s, death evidence %s', async (name, evidenceName) => {
     const sessionId = `chat-${(chats += 1)}`
+    const writer = await open(sessionId)
+    await JOURNAL_SESSION_STATE_CORPUS[name](writer)
+    await writer.close()
+    // The open after the process that wrote it is gone.
     const journal = await open(sessionId)
-    await JOURNAL_SESSION_STATE_CORPUS[name](journal)
     const deathEvidence = CORPUS_DEATH_EVIDENCE[evidenceName] ?? null
     const record: OpenSettlementRecordFacts = { sessionId, fence: CORPUS_FENCE, deathEvidence }
 
@@ -229,8 +232,10 @@ describe('the stored status and the plan agree (T4)', () => {
   })
 
   it('selects a chat whose only debt is a queued leftover, and settles it (T15b)', async () => {
+    const writer = await open('queued')
+    await JOURNAL_SESSION_STATE_CORPUS['queued leftover'](writer)
+    await writer.close()
     const journal = await open('queued')
-    await JOURNAL_SESSION_STATE_CORPUS['queued leftover'](journal)
     expect(storedStatus('queued')).toMatchObject({ lifecycle: 'idle', queuedSends: 1 })
     const plan = planOpenSettlement(journal, null)
     expect(plan.leftoverQueued).toEqual(['send-queued'])

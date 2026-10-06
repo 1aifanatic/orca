@@ -1,6 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { defaultAgentChatLabel } from '../../shared/agent-session-chat-label'
-import { OrcaRuntimeWithGetStructuredAgentSessionCreateSupport } from './orca-runtime-get-structured-agent-session-create-support'
+import { OrcaRuntimeWithStructuredAgentSessionStartupStep } from './orca-runtime-structured-agent-session-startup-step'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import type { ConversationReplacement } from '../native-chat/agent-session-wire/structured-conversation-command'
@@ -27,8 +27,9 @@ import { isWindowsAbsolutePathLike } from '../../shared/cross-platform-path'
 import { isWslUncPath } from '../../shared/wsl-paths'
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import type { PtyProcessInspection } from '../providers/pty-process-inspection'
+import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 
-export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRuntimeWithGetStructuredAgentSessionCreateSupport {
+export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRuntimeWithStructuredAgentSessionStartupStep {
   /** Projects only: a replacement's chat already has its tab in the store, which the /clear commit
    *  moved in the same write. */
   replaceStructuredAgentSessionTab(replacement: ConversationReplacement): void {
@@ -64,10 +65,8 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
       })
     }
     this.hydrateHeadlessMobileSessionTabsFromWorkspaceSession()
+    // Every session here is of an agent this host registered: its store holds no other agent's records.
     const restored = (host?.listSessionTabs(listedIds) ?? []).flatMap((session) => {
-      if (session.agent !== 'codex' && session.agent !== 'claude') {
-        return []
-      }
       let sessionId = session.sessionId
       while (sessionId.startsWith('agent-session:')) {
         sessionId = sessionId.slice('agent-session:'.length)
@@ -120,7 +119,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   async publishStructuredAgentSessionTab(input: {
     workspaceId: string
     sessionId: string
-    agent: 'claude' | 'codex'
+    agent: StructuredAgentId
     activate: boolean
     notify?: boolean
     replacesSessionId?: string
@@ -148,7 +147,7 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   projectStructuredAgentSessionTab(input: {
     workspaceId: string
     sessionId: string
-    agent: 'claude' | 'codex'
+    agent: StructuredAgentId
     activate: boolean
     notify?: boolean
     replacesSessionId?: string
@@ -270,9 +269,10 @@ export class OrcaRuntimeWithRestoreStructuredAgentSessionTabsOnce extends OrcaRu
   async searchRepoRefs(
     repoSelector: string,
     query: string,
-    limit = DEFAULT_REPO_SEARCH_REFS_LIMIT
+    limit = DEFAULT_REPO_SEARCH_REFS_LIMIT,
+    includeQualifiedRefs = true
   ): Promise<RuntimeRepoSearchRefs> {
-    return this.repositoryRefQueries.search(repoSelector, query, limit)
+    return this.repositoryRefQueries.search(repoSelector, query, limit, includeQualifiedRefs)
   }
 
   protected async resolveHostedReviewTarget(args: {

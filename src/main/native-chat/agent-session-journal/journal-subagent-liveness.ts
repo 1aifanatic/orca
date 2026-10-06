@@ -64,8 +64,8 @@ export function staleSubagentRosterRevisions(
 export function staleSubagentRosterRevision(
   item: Pick<AgentJournalRenderItem, 'itemId' | 'body'>
 ): JournalSubagentLivenessRevision | null {
-  const body = item.body
-  if (body.kind !== 'message' || !body.blocks.some(hasStaleLiveWork)) {
+  const body = lostLiveWorkJournalBody(item.body)
+  if (!body) {
     return null
   }
   // A key that will not parse cannot be re-addressed, and appending under a
@@ -74,7 +74,16 @@ export function staleSubagentRosterRevision(
   if (!identity || agentJournalItemKey(identity) !== item.itemId) {
     return null
   }
-  return { identity, body: { ...body, blocks: settleBlocks(body.blocks) } }
+  return { identity, body }
+}
+
+/** The row once the host lost the session running its live work: every working child and
+ *  in-flight background task `unverifiable`, plain-text twins restated. Null when none is live. */
+export function lostLiveWorkJournalBody(body: AgentJournalItemBody): AgentJournalItemBody | null {
+  if (body.kind !== 'message' || !body.blocks.some(hasStaleLiveWork)) {
+    return null
+  }
+  return { ...body, blocks: settleBlocks(body.blocks) }
 }
 
 function hasStaleLiveWork(block: NativeChatBlock): boolean {

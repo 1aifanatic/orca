@@ -15,7 +15,8 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { cancelledJournalPromptBody } from './journal-prompt-body-bounds'
+import type { AgentJournalRunningCallEnd } from '../../../shared/agent-journal-tool-call-lifecycle'
+import { requiresTerminalSettlement, terminalAgentJournalBody } from './journal-terminal-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import { staleSubagentRosterRevision } from './journal-subagent-liveness'
 
@@ -27,17 +28,13 @@ export function openSettlementItemIdentity(
   return parseAgentJournalItemKey(item.itemId)
 }
 
-/** A running tool call fails, and a pending approval or question is cancelled. */
+/** A running tool call ends as `end` says (its turn's row, or the death evidence), and a pending
+ *  approval or question is cancelled. */
 export function openSettlementTerminalBody(
-  item: Pick<AgentJournalRenderItem, 'body'>
+  item: Pick<AgentJournalRenderItem, 'body'>,
+  end: AgentJournalRunningCallEnd
 ): AgentJournalItemBody | null {
-  if (item.body.kind === 'tool-call' && item.body.state === 'running') {
-    return { ...item.body, state: 'failed' }
-  }
-  if (item.body.kind === 'approval' || item.body.kind === 'question') {
-    return item.body.resolution.state === 'pending' ? cancelledJournalPromptBody(item.body) : null
-  }
-  return null
+  return terminalAgentJournalBody(item.body, end)
 }
 
 /** Every turn record still `running` gets the verdict for its own writer. */
@@ -86,7 +83,7 @@ function itemFacts(item: AgentJournalRenderItem): ItemFacts {
   let facts = ITEM_FACTS.get(item)
   if (!facts) {
     const running = isRunningJournalTurn(item) || isRunningToolCall(item)
-    const prompt = !running && openSettlementTerminalBody(item) !== null
+    const prompt = !running && requiresTerminalSettlement(item.body)
     const settlable = (running || prompt) && openSettlementItemIdentity(item) !== null
     facts = {
       running: settlable && running,

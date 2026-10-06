@@ -1,4 +1,5 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -80,13 +81,16 @@ export class StructuredAgentSessionHost {
     () => this.deps,
     (sessionId) => this.queued.onJournalActivity(sessionId),
     (sessionId) => this.restartResume.onAgentStarted(sessionId),
-    (sessionId) => this.backgroundTasks.publish(sessionId)
+    (sessionId) => this.backgroundTasks.publish(sessionId),
+    (sessionId) => this.backgroundTasks.read(sessionId)
   )
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
   private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>
-  private readonly restore: ReturnType<typeof createStructuredAgentSessionHostRestore>
+  /** Startup from each chat's stored state (`structured-agent-session-startup-state`), and the
+   *  history restore after the listing. */
+  readonly startup: ReturnType<typeof createStructuredAgentSessionHostRestore>
   private readonly lifetime: StructuredAgentSessionConversationLifetime
   private readonly conversationDelivery: ReturnType<
     typeof createStructuredAgentSessionConversationDelivery
@@ -126,7 +130,7 @@ export class StructuredAgentSessionHost {
         agentStart.ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
       clientDelivery: this.clientDelivery
     })
-    this.restore = createStructuredAgentSessionHostRestore(deps, {
+    this.startup = createStructuredAgentSessionHostRestore(deps, {
       reconcileLeases: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
@@ -211,6 +215,17 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
+  /** Every agent this runtime registered: what `agentSession.agents` publishes. */
+  agentDefinitions = (): readonly StructuredAgentDefinition[] => this.deps.agents.definitions()
+
+  /** Saved chats can outlive their registration; both vocabularies bound a client's audience. */
+  knownAgentIds = (): readonly string[] => [
+    ...new Set([
+      ...this.deps.agents.definitions().map(({ agent }) => agent),
+      ...this.deps.store.listRecords().map(({ provider }) => provider)
+    ])
+  ]
+
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,
     this.sessions,
@@ -227,15 +242,9 @@ export class StructuredAgentSessionHost {
   holdsSessions = (): boolean => this.deps.store.holdsRecords() || this.legacyRecordImportOwed()
   onSessionsHeld = (listener: () => void): (() => void) => this.deps.store.onFirstRecord(listener)
 
-  reconcileRestartLeases = (): Promise<void> => this.restore.reconcileRestartLeases()
+  reconcileRestartLeases = (): Promise<void> => this.startup.reconcileRestartLeases()
 
-  restoreReadableSessions = (ids?: readonly string[]) => this.restore.restoreReadableSessions(ids)
-  // Startup, from each chat's stored state: see `structured-agent-session-startup-state`.
-  catchUpMissingStatuses = (ids: readonly string[]) => this.restore.catchUpMissingStatuses(ids)
-  restoreListedFromPerChatFiles = (ids: readonly string[]) =>
-    this.restore.restoreListedFromPerChatFiles(ids)
-  seedStoredStatuses = (ids: readonly string[]) => this.restore.seedStoredStatuses(ids)
-  settleOwedSessions = (ids: readonly string[]) => this.restore.settleOwedSessions(ids)
+  restoreReadableSessions = (ids?: readonly string[]) => this.startup.restoreReadableSessions(ids)
 
   /** Make one persisted session addressable again; see `structured-agent-session-reveal`. */
   revealSession = (sessionId: string): Promise<StructuredAgentSessionReveal> =>
@@ -256,8 +265,10 @@ export class StructuredAgentSessionHost {
 
   // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
   // type, and this file has no line budget left for the import.
-  /** Quit: no exit or recovery settled after this starts a child or hands a message over. */
-  stopDelivery = (): void => this.conversationDelivery.dispose()
+  /** Quit: no exit or recovery settled after this starts a child or hands a message over, and the
+   *  queue hands no card over. */
+  stopDelivery = (): void =>
+    [this.conversationDelivery, this.queued.drain].forEach((d) => d.dispose())
 
   async flushAllStreamedEvents(options?: { trigger?: 'quit' | 'update' }): Promise<void> {
     this.stopDelivery()

@@ -151,10 +151,10 @@ const listedIds = (rig: RestTestRig) => rig.store.getVisibleSessionTabIndex().se
 async function startup(rig: RestTestRig): Promise<string[]> {
   const listed = listedIds(rig)
   await rig.host.reconcileRestartLeases()
-  await rig.host.catchUpMissingStatuses(listed)
-  await rig.host.restoreListedFromPerChatFiles(listed)
-  const background = rig.host.seedStoredStatuses(listed)
-  await rig.host.settleOwedSessions(listed)
+  await rig.host.startup.catchUpMissingStatuses(listed)
+  await rig.host.startup.restoreListedFromPerChatFiles(listed)
+  const background = rig.host.startup.seedStoredStatuses(listed)
+  await rig.host.startup.settleOwedSessions(listed)
   return background
 }
 
@@ -224,15 +224,15 @@ describe('listed chats with no stored status after the upgrade', () => {
     const openedAt = recordOpens(rig)
     await rig.host.reconcileRestartLeases()
 
-    await rig.host.catchUpMissingStatuses(listed)
+    await rig.host.startup.catchUpMissingStatuses(listed)
     // Stored, so the settle selects it; not shown: the seed leaves an unsettled row to the settle.
     expect(readTestJournalSessionStatus(rig.root, 'session-running')).toMatchObject({
       lifecycle: 'running'
     })
-    rig.host.seedStoredStatuses(listed)
+    rig.host.startup.seedStoredStatuses(listed)
     expect(latestRestTestStatus(rig, 'session-running')).toBeUndefined()
     // The settle is what chat commands wait on.
-    await rig.host.settleOwedSessions(listed)
+    await rig.host.startup.settleOwedSessions(listed)
 
     expect(restTestOpens(rig, 'session-fine')).toBe(0)
     expect(openedAt.has('session-running')).toBe(true)
@@ -282,7 +282,7 @@ describe('listed chats with no stored status after the upgrade', () => {
     db.pragma('wal_checkpoint(TRUNCATE)')
     const pageSize = Number(db.pragma('page_size', { simple: true }))
 
-    await rig.host.catchUpMissingStatuses(listedIds(rig))
+    await rig.host.startup.catchUpMissingStatuses(listedIds(rig))
 
     const frames =
       (statSync(join(rig.root, 'agent-session-journal.db-wal')).size - 32) / (pageSize + 24)
@@ -528,7 +528,7 @@ describe('listed chats with no stored status after the upgrade', () => {
       })
     }
 
-    await rig.host.catchUpMissingStatuses(listedIds(rig))
+    await rig.host.startup.catchUpMissingStatuses(listedIds(rig))
 
     expect(await sent).toMatchObject({ ok: true })
     expect(ahead.parts).toBeGreaterThanOrEqual(0)

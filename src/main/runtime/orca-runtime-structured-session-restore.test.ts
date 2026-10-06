@@ -21,10 +21,12 @@ type StartupHostMembers = Partial<
 /** A host offering the startup step's seed and settle, plus the members a test drives. */
 function installStartupHost(members: StartupHostMembers): void {
   const host = {
-    catchUpMissingStatuses: async () => undefined,
-    restoreListedFromPerChatFiles: async () => undefined,
-    seedStoredStatuses: (ids: readonly string[]) => [...ids],
-    settleOwedSessions: async () => undefined,
+    startup: {
+      catchUpMissingStatuses: async () => undefined,
+      restoreListedFromPerChatFiles: async () => undefined,
+      seedStoredStatuses: (ids: readonly string[]) => [...ids],
+      settleOwedSessions: async () => undefined
+    },
     ...members
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: startup restoration reaches only the members each test supplies.

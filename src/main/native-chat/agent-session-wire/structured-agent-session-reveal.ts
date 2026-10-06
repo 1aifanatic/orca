@@ -13,10 +13,6 @@
 import type { AgentSessionWireRefusal } from '../../../shared/agent-session-wire'
 import { agentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import { sessionTabListed } from './structured-agent-session-host-tabs'
-import {
-  adapterSupportsRecord,
-  hostCanSettleRecord
-} from './structured-agent-session-provider-support'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { journalOpenRefusal } from '../agent-session-journal/journal-open-failure'
 import { StructuredAgentSessionReadableRestorer } from './structured-agent-session-readable-restorer'
@@ -41,18 +37,13 @@ import type {
 
 /** Throws its refusal as the code itself. */
 export async function revealStructuredAgentSession(
-  deps: Pick<StructuredAgentSessionHostDeps, 'store' | 'adapter'>,
+  deps: { store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'> },
   sessionId: string,
   openConversation: (sessionId: string) => Promise<unknown>
 ): Promise<StructuredAgentSessionReveal> {
   const record = deps.store.getRecord(sessionId)
   if (!record) {
     throw agentSessionRefusalError('agent_session_identity_required', { reason: 'recordMissing' })
-  }
-  if (!adapterSupportsRecord(deps.adapter, record)) {
-    throw agentSessionRefusalError('structured_agent_session_unsupported', {
-      reason: 'hostUnsupported'
-    })
   }
   // Lease state is not consulted on purpose: this neither claims the lease nor spawns a child, so a
   // contested or reconciling chat still reveals and the send that follows adjudicates it. Refusing
@@ -92,9 +83,9 @@ export function createStructuredAgentSessionHostRestore(
   const { reconcileLeases, resolveRecovery, seedStatus, ...rest } = wiring
   const failures = reportEachFailureOnce(deps.logger)
   const reconcile = createReaderReconcile(reconcileLeases, failures)
-  const supportsRecord = (record: AgentSessionRecord) => adapterSupportsRecord(deps.adapter, record)
+  // Reading and settling a chat need no adapter; only starting its agent does.
   const canSettle = (record: AgentSessionRecord | null): record is AgentSessionRecord =>
-    hostCanSettleRecord(deps.adapter, record)
+    record !== null
   const readRestore: StructuredAgentSessionReadRestoreDeps = {
     openDeps: deps,
     isListed: (sessionId) => sessionTabListed(deps.store, sessionId),
@@ -127,8 +118,7 @@ export function createStructuredAgentSessionHostRestore(
   // Startup's lease bookkeeping: no lease is checked again, or recovered twice.
   const restorer = new StructuredAgentSessionReadableRestorer({
     ...readRestore,
-    ...startup.leases,
-    supportsRecord
+    ...startup.leases
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()
   return {

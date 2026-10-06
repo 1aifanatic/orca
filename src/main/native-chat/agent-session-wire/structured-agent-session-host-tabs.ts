@@ -1,7 +1,6 @@
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 
 /**
  * Chat-tab visibility is the deletion funnel: every path that removes a chat as a user-facing
@@ -53,20 +52,20 @@ export type StructuredAgentSessionTab = {
   agent: AgentSessionRecord['provider']
 }
 
-/** Tabs from durable state alone: each requested id, once, in the order given, that has a record
- *  this host serves. Opens nothing: a chat whose history is unreadable keeps its tab and its read
+/** Tabs from durable state alone: each requested id, once, in the order given, that has a record.
+ *  Reading a chat needs no adapter, so a workspace this host cannot start an agent in still lists
+ *  its tabs. Opens nothing: a chat whose history is unreadable keeps its tab and its read
  *  says why; one whose history is missing keeps its tab and reads empty. */
 export function listPersistedSessionTabs(
   deps: {
     store: { getRecord: (sessionId: string) => AgentSessionRecord | null }
-    adapter: Parameters<typeof adapterSupportsRecord>[0]
   },
   sessionIds: readonly string[]
 ): StructuredAgentSessionTab[] {
   const tabs = new Map<string, StructuredAgentSessionTab>()
   for (const sessionId of sessionIds) {
     const record = deps.store.getRecord(sessionId)
-    if (!record || tabs.has(sessionId) || !adapterSupportsRecord(deps.adapter, record)) {
+    if (!record || tabs.has(sessionId)) {
       continue
     }
     tabs.set(sessionId, {

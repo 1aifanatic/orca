@@ -17,6 +17,9 @@ import {
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
+import { runningCallEnd } from '../agent-session-journal/journal-terminal-settlement'
+import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
+import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   isRunningJournalTurn,
@@ -34,6 +37,7 @@ import { runningRootTurnScope } from './structured-agent-session-exit-turn-scope
 import {
   endedByPersonsStop,
   provenUnverifiableTurnRevisions,
+  provenUnverifiedToolCallRevisions,
   runningTurnLifecycleRevisions,
   stopFoundTurnLiveAt,
   turnVerdictFromDeathEvidence
@@ -67,7 +71,7 @@ export type OpenSettlementPlan = {
 
 export type OpenSettlementJournal = Pick<
   AgentSessionJournal,
-  'snapshot' | 'submissions' | 'itemFence' | 'cursor' | 'stopMarks'
+  'snapshot' | 'submissions' | 'itemFence' | 'cursor' | 'stopMarks' | 'itemBody' | 'wroteBeforeOpen'
 >
 
 export type OpenSettlementOptions = {
@@ -85,8 +89,13 @@ export function planOpenSettlement(
     recoveredDispatches: submissions
       .filter(owesRecoveredDispatch)
       .map((submission) => submission.clientMessageId),
+    // What `holdUnsentSends` settles: queued by a process before this open.
     leftoverQueued: submissions
-      .filter(isQueuedAgentJournalSubmission)
+      .filter(
+        (submission) =>
+          isQueuedAgentJournalSubmission(submission) &&
+          journal.wroteBeforeOpen(submission.acceptedSequence)
+      )
       .map((submission) => submission.clientMessageId),
     goneGeneration: options.acquisition
       ? null
@@ -108,12 +117,14 @@ export function planOpenSettlement(
  * Settles whatever a generation with no child in this process left running: found when a new child
  * is acquired, or when a chat is reopened. Derived from the journal and the lease's death evidence
  * each time, so nothing is owed in between. Proven death ends the turn interrupted, and a proof
- * written after an earlier settle revises what that settle left `unverifiable`.
+ * written after an earlier settle revises what that settle left `unverifiable`, the turn and the
+ * calls it closed alike.
  */
 export function planGoneGenerationSettlement(input: {
   items: readonly AgentJournalRenderItem[]
-  /** Who wrote each item, and what the latest Stop event says about the turn it found. */
-  journal: Pick<AgentSessionJournal, 'itemFence' | 'stopMarks'>
+  /** Who wrote each item, what the latest Stop event says about the turn it found, and each
+   *  call's turn row. */
+  journal: Pick<AgentSessionJournal, 'itemFence' | 'stopMarks' | 'itemBody'>
   sessionId: string
   fence: number
   generation: string
@@ -128,10 +139,22 @@ export function planGoneGenerationSettlement(input: {
       input.journal.itemFence(item.itemId),
       stopFoundTurnLiveAt(input.journal, item)
     )
-  const mutations: JournalLifecycleMutationInput[] = []
+  // Calls an earlier settle closed with no proof, revised once a proof names their owner.
+  const mutations: JournalLifecycleMutationInput[] = provenUnverifiedToolCallRevisions(
+    items,
+    input.deathEvidence,
+    input.journal
+  )
   for (const item of items) {
     const identity = openSettlementItemIdentity(item)
-    const body = openSettlementTerminalBody(item)
+    // A turn already settled (a person's Stop) ends its calls as it ended; only a turn still running
+    // leaves them to the evidence.
+    const end = runningCallEnd(
+      item.turnScope,
+      (id) => input.journal.itemBody(id),
+      verdictFor(item).state
+    )
+    const body = openSettlementTerminalBody(item, end)
     if (identity && body) {
       mutations.push({
         kind: 'item',
@@ -224,20 +247,23 @@ export async function appendOpenSettlement(
     if (plan.recoveredDispatches.length > 0) {
       await journal.markPendingSubmissionsUnknown(fence)
     }
-    // A conversation's close abandons what it queued first, so a queued row found here was
-    // accepted by a process that is gone.
-    if (plan.leftoverQueued.length > 0) {
-      const leftovers = new Set(plan.leftoverQueued)
-      await journal.rejectQueuedSubmissions(
-        fence,
-        agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
-          surface: 'rejection'
-        }),
-        (submission) => leftovers.has(submission.clientMessageId)
-      )
-    }
   } catch (error) {
     onError(error)
+  }
+  // A queued row found here was accepted by a process that is gone: a person's message is kept as
+  // a held card, the rest rejected. Before a Stop this open serves can withdraw one.
+  if (plan.leftoverQueued.length > 0) {
+    try {
+      await holdUnsentSends(journal, {
+        fence,
+        hostInstance: structuredAgentSessionHostInstance(),
+        hold: { cause: 'hostRestarted' }
+      })
+    } catch (error) {
+      // The row stays queued. The delivery loop's first step tries again before it hands anything
+      // over; if that fails too, the loop fails and rejects every queued send.
+      onError(error)
+    }
   }
   if (plan.goneGeneration && plan.goneGeneration.mutations.length > 0) {
     try {

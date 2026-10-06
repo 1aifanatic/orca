@@ -137,7 +137,10 @@ async function install(): Promise<{
     .map(({ fields: { scope: _scope, outcome, ...rest } }) => ({ kind: outcome, ...rest }))
   return {
     database,
-    store: AgentSessionRecordStore.open({ journalDatabase: database, hostId: 'local' }),
+    store: AgentSessionRecordStore.open({
+      journalDatabase: database,
+      hostId: 'local'
+    }),
     reports
   }
 }

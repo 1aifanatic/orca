@@ -43,7 +43,7 @@ export type StructuredAgentSessionStartupStateDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
     store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecords'>
   }
-  /** `hostCanSettleRecord` bound to this host's adapter. */
+  /** Whether a chat can be settled here: its record exists. Reading and settling need no adapter. */
   canSettle: (record: AgentSessionRecord | null) => record is AgentSessionRecord
   seedStatus: (
     record: AgentSessionRecord,
@@ -252,9 +252,9 @@ async function settleOwedSessions(
 }
 
 /**
- * A row no settle here can clear: its chat's record is gone, or this host does not serve its
- * provider. Dropped, so it is not selected every boot; an open writes it again if the chat is ever
- * opened here. Kept while the records import is owed, which may still bring the record.
+ * A row no settle here can clear: its chat's record is gone. Dropped, so it is not selected every
+ * boot; an open writes it again if the chat is ever opened here. Kept while the records import is
+ * owed, which may still bring the record.
  */
 function dropUnreachableStatus(
   deps: StructuredAgentSessionStartupStateDeps,

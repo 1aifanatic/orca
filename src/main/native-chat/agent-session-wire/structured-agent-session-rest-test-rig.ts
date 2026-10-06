@@ -25,6 +25,7 @@ import type {
   StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { claudeAndCodexAgents } from './structured-agent-session-adapter-router-test-support'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host-types'
 import {
   HOST_TEST_LOCATION,
@@ -198,6 +199,7 @@ export async function createRestTestRig(
   watchRestTestJournalOpens(root, (sessionId) => journalOpens(sessionId))
   const hostFor = (overrides: Partial<StructuredAgentSessionHostDeps>) => {
     const host = new StructuredAgentSessionHost({
+      agents: claudeAndCodexAgents(),
       logger: createStructuredAgentSessionLogger(),
       store,
       adapter: {

@@ -31,10 +31,10 @@ afterEach(async () => {
 async function startup(rig: RestTestRig): Promise<void> {
   const listed = rig.store.getVisibleSessionTabIndex().sessionIds
   await rig.host.reconcileRestartLeases()
-  await rig.host.catchUpMissingStatuses(listed)
-  await rig.host.restoreListedFromPerChatFiles(listed)
-  const background = rig.host.seedStoredStatuses(listed)
-  await rig.host.settleOwedSessions(listed)
+  await rig.host.startup.catchUpMissingStatuses(listed)
+  await rig.host.startup.restoreListedFromPerChatFiles(listed)
+  const background = rig.host.startup.seedStoredStatuses(listed)
+  await rig.host.startup.settleOwedSessions(listed)
   await rig.host.restoreReadableSessions(background)
 }
 

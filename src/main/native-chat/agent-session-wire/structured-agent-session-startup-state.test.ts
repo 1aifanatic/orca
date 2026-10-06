@@ -84,10 +84,10 @@ async function crashMidTurn(rig: RestTestRig, sessionId: string): Promise<void> 
 /** What startup runs, in order, on the ids the tab list names. */
 async function startup(rig: RestTestRig, listed: readonly string[]) {
   await rig.host.reconcileRestartLeases()
-  await rig.host.catchUpMissingStatuses(listed)
-  await rig.host.restoreListedFromPerChatFiles(listed)
-  const background = rig.host.seedStoredStatuses(listed)
-  await rig.host.settleOwedSessions(listed)
+  await rig.host.startup.catchUpMissingStatuses(listed)
+  await rig.host.startup.restoreListedFromPerChatFiles(listed)
+  const background = rig.host.startup.seedStoredStatuses(listed)
+  await rig.host.startup.settleOwedSessions(listed)
   await rig.host.restoreReadableSessions(background)
   return background
 }
@@ -125,7 +125,7 @@ describe('seeding statuses from stored state', () => {
 
     const host = await rig.boot()
     await host.reconcileRestartLeases()
-    expect(host.seedStoredStatuses(ids)).toEqual([])
+    expect(host.startup.seedStoredStatuses(ids)).toEqual([])
     expect(opened(rig, ids)).toEqual([])
     // The same chats in another run, each opened by a read.
     await readRig.host.reconcileRestartLeases()
@@ -184,7 +184,7 @@ describe('seeding statuses from stored state', () => {
 
     const host = await rig.boot()
     await host.reconcileRestartLeases()
-    expect(host.seedStoredStatuses(ids)).toEqual([])
+    expect(host.startup.seedStoredStatuses(ids)).toEqual([])
     expect(opened(rig, ids)).toEqual([])
     await readRig.host.reconcileRestartLeases()
     for (const sessionId of ids) {
@@ -209,7 +209,7 @@ describe('seeding statuses from stored state', () => {
     }
     await rig.crash()
     const host = await rig.boot()
-    host.seedStoredStatuses(listedIds(rig))
+    host.startup.seedStoredStatuses(listedIds(rig))
     const snapshots: AgentSessionStatusSummary[][] = []
     host.subscribeStatus({
       id: 'remote-client',
@@ -231,7 +231,7 @@ describe('seeding statuses from stored state', () => {
     await rig.crash()
     const onSessionStatusChanged = vi.fn()
     const host = await rig.boot({ onSessionStatusChanged })
-    host.seedStoredStatuses(['session-1'])
+    host.startup.seedStoredStatuses(['session-1'])
     expect(onSessionStatusChanged).toHaveBeenCalledOnce()
     expect(onSessionStatusChanged).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'session-1', status: 'idle' }),
@@ -244,7 +244,7 @@ describe('seeding statuses from stored state', () => {
     await restTestChat(rig, 'session-1', { message: 'hi' })
     await rig.crash()
     const host = await rig.boot()
-    host.seedStoredStatuses(['session-1'])
+    host.startup.seedStoredStatuses(['session-1'])
     expect(rig.sink.publish).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'session-1' }),
       expect.anything()
@@ -268,8 +268,8 @@ describe('seeding statuses from stored state', () => {
     const host = await rig.boot()
     const ids = listedIds(rig)
 
-    expect(host.seedStoredStatuses(ids)).toEqual(ids)
-    await host.settleOwedSessions(ids)
+    expect(host.startup.seedStoredStatuses(ids)).toEqual(ids)
+    await host.startup.settleOwedSessions(ids)
     expect(rig.sink.publish).not.toHaveBeenCalled()
     expect(opened(rig, ids)).toEqual([])
   })
@@ -427,15 +427,15 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     expect(rig.store.getRecord('session-closed')!.lease.unreconciled).toBe(true)
     // An attach let through mid-catch-up checks the leases first, moving them to `recovering`;
     // what it answers after that does not matter here.
-    const catchingUp = rig.host.catchUpMissingStatuses(listed)
+    const catchingUp = rig.host.startup.catchUpMissingStatuses(listed)
     await restTestChat(rig, 'session-listed').catch(() => undefined)
     expect(rig.store.getRecord('session-closed')!.lease.handoffStage).toBe('recovering')
     await catchingUp
-    await rig.host.restoreListedFromPerChatFiles(listed)
-    rig.host.seedStoredStatuses(listed)
+    await rig.host.startup.restoreListedFromPerChatFiles(listed)
+    rig.host.startup.seedStoredStatuses(listed)
     // Owed: the crash cut its turn, so the settle opens it.
     expect(readUnsettledJournalSessionIds(db(rig))).toContain('session-closed')
-    await rig.host.settleOwedSessions(listed)
+    await rig.host.startup.settleOwedSessions(listed)
 
     expectInterruptedAndStopped(rig, 'session-closed', stopOwnerProcess)
   })
@@ -467,11 +467,11 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
       .mockRejectedValueOnce(failed)
       .mockRejectedValueOnce(failed)
     await rig.host.reconcileRestartLeases()
-    await rig.host.catchUpMissingStatuses(listed)
-    await rig.host.restoreListedFromPerChatFiles(listed)
-    rig.host.seedStoredStatuses(listed)
+    await rig.host.startup.catchUpMissingStatuses(listed)
+    await rig.host.startup.restoreListedFromPerChatFiles(listed)
+    rig.host.startup.seedStoredStatuses(listed)
 
-    const settling = rig.host.settleOwedSessions(listed)
+    const settling = rig.host.startup.settleOwedSessions(listed)
     // The settle has waited on its recoveries and read its records; an attach the gate let through
     // now checks the leases, and what it answers after that does not matter here.
     await new Promise((resolve) => setImmediate(resolve))
@@ -501,8 +501,8 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     await restTestChat(rig, 'session-other', { listed: false }).catch(() => undefined)
     expect(rig.store.getRecord('session-file')!.lease.handoffStage).toBe('recovering')
 
-    await rig.host.catchUpMissingStatuses(listed)
-    await rig.host.restoreListedFromPerChatFiles(listed)
+    await rig.host.startup.catchUpMissingStatuses(listed)
+    await rig.host.startup.restoreListedFromPerChatFiles(listed)
 
     // Opened before the listing from its file, after its recovery: the turn reads as interrupted.
     expect(rig.host.hasSession('session-file')).toBe(true)
@@ -603,11 +603,11 @@ describe('one awaited settle covers a chat whose tab closes meanwhile (R1T-4)', 
     const listed = listedIds(rig)
     expect(listed).toContain('session-closing')
     await rig.host.reconcileRestartLeases()
-    rig.host.seedStoredStatuses(listed)
+    rig.host.startup.seedStoredStatuses(listed)
     // The tab closes after the listing named it, before its settle runs.
     await rig.store.setSessionTabVisibility('session-closing', false)
 
-    await rig.host.settleOwedSessions(listed)
+    await rig.host.startup.settleOwedSessions(listed)
 
     expect(readTestJournalSessionStatus(rig.root, 'session-closing')).toMatchObject({
       lifecycle: 'idle',
@@ -633,7 +633,7 @@ describe('the startup gate holds chat commands and never refuses them', () => {
     const rig = await bootGated(gate)
     // The tab list and the seeded status answer while the gate is closed.
     expect(listedIds(rig)).toContain('session-1')
-    rig.host.seedStoredStatuses(['session-1'])
+    rig.host.startup.seedStoredStatuses(['session-1'])
     expect(latestRestTestStatus(rig, 'session-1')).toMatchObject({ status: 'idle' })
     const dispatched = rig.adapter.dispatch.mock.calls.length
     let answered = false
@@ -681,7 +681,7 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     await rig.boot({ commandsReady: gate.ready })
     const listed = listedIds(rig)
     await rig.host.reconcileRestartLeases()
-    rig.host.seedStoredStatuses(listed)
+    rig.host.startup.seedStoredStatuses(listed)
     expect(readUnsettledJournalSessionIds(db(rig)).toSorted()).toEqual(['session-a', 'session-b'])
     const started = Date.now()
     const elapsed = () => Date.now() - started
@@ -689,7 +689,7 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     // Before the settle: a send to a crashed chat, and the option read a chat pane fires on mount.
     const sendBefore = sendRestTestMessage(rig, 'session-a', 'during startup').then(elapsed)
     const optionsBefore = rig.host.readOptions('session-a').then(elapsed)
-    const settled = rig.host.settleOwedSessions(listed)
+    const settled = rig.host.startup.settleOwedSessions(listed)
     gate.openWhen(settled)
     // During the settle: the second crashed chat, which the settle has not reached yet.
     const optionsDuring = rig.host.readOptions('session-b').then(elapsed)
@@ -717,7 +717,7 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     await rig.boot({ commandsReady: gate.ready })
     const listed = listedIds(rig)
     await rig.host.reconcileRestartLeases()
-    rig.host.seedStoredStatuses(listed)
+    rig.host.startup.seedStoredStatuses(listed)
     const opensAtBoot = crashed.map((id) => restTestOpens(rig, id))
     const started = Date.now()
     const elapsed = () => Date.now() - started
@@ -734,7 +734,7 @@ describe('commands held for the real startup settle never deadlock it (R2T-1)', 
     await new Promise((resolve) => setTimeout(resolve, 20))
     // Held: none has opened its crashed chat ahead of the settle.
     expect(crashed.map((id) => restTestOpens(rig, id))).toEqual(opensAtBoot)
-    const settled = rig.host.settleOwedSessions(listed)
+    const settled = rig.host.startup.settleOwedSessions(listed)
     gate.openWhen(settled)
     const settleEnded = await settled.then(elapsed)
 
@@ -862,31 +862,25 @@ describe('a listed chat whose recovery never answers', () => {
 })
 
 describe('a stored status no settle here can clear (R2A-4)', () => {
-  it('drops the row of a chat whose record is gone or whose provider this host does not serve, so the next boot selects neither', async () => {
+  it('drops the row of a chat whose record is gone, so the next boot selects it no more', async () => {
     const rig = await newRig()
     await crashMidSend(rig, 'session-gone', false)
-    await crashMidSend(rig, 'session-elsewhere', false)
     await rig.crash()
     await editPersistedTestAgentSessionStore(rig.root, (persisted) => {
       delete persisted.records['session-gone']
     })
-    rig.unsupportedWorkspaceIds.add(rig.store.getRecord('session-elsewhere')!.location.workspaceId)
 
     await rig.boot()
     await startup(rig, listedIds(rig))
 
-    for (const sessionId of ['session-gone', 'session-elsewhere']) {
-      expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
-    }
-    expect(opened(rig, ['session-gone', 'session-elsewhere'])).toEqual([])
+    expect(readTestJournalSessionStatus(rig.root, 'session-gone')).toBeNull()
+    expect(opened(rig, ['session-gone'])).toEqual([])
 
-    // The obligation died: the next boot finds no row to select and opens neither chat.
+    // The obligation died: the next boot finds no row to select and opens nothing.
     await rig.crash()
     await rig.boot()
     await startup(rig, listedIds(rig))
-    for (const sessionId of ['session-gone', 'session-elsewhere']) {
-      expect(readTestJournalSessionStatus(rig.root, sessionId)).toBeNull()
-    }
-    expect(opened(rig, ['session-gone', 'session-elsewhere'])).toEqual([])
+    expect(readTestJournalSessionStatus(rig.root, 'session-gone')).toBeNull()
+    expect(opened(rig, ['session-gone'])).toEqual([])
   })
 })

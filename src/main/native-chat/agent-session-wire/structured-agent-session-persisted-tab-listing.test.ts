@@ -109,7 +109,7 @@ describe('the tab list after a restart', () => {
     ])
   })
 
-  it('lists no chat without a record, and none this host cannot serve (T10, regression guard)', async () => {
+  it('lists no chat without a record, and lists and reads one in a workspace this host cannot start an agent in (T10)', async () => {
     await restTestChat(rig, 'session-served', { message: 'here' })
     await restTestChat(rig, 'session-gated', { workspaceId: 'workspace-gated', message: 'there' })
     await rig.crash()
@@ -119,6 +119,12 @@ describe('the tab list after a restart', () => {
 
     await host.restoreReadableSessions(ids)
 
-    expect(host.listSessionTabs(ids)).toEqual([tab('session-served')])
+    // Reading needs no adapter: only starting the agent is gated.
+    expect(host.listSessionTabs(ids)).toEqual([
+      tab('session-served'),
+      tab('session-gated', 'workspace-gated')
+    ])
+    const page = await host.history({ sessionId: 'session-gated', direction: 'tail' })
+    expect(page.ok).toBe(true)
   })
 })

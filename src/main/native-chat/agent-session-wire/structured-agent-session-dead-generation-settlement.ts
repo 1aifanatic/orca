@@ -12,6 +12,11 @@ import {
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
+import {
+  requiresTerminalSettlement,
+  runningCallEnd,
+  terminalAgentJournalBody
+} from '../agent-session-journal/journal-terminal-settlement'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
   agentSessionFailureWords,
@@ -28,7 +33,6 @@ import {
   type StructuredAgentSessionTurnVerdict
 } from './structured-agent-session-stale-turn-verdict'
 import { exitedRootTurnScope } from './structured-agent-session-exit-turn-scope'
-import { openSettlementTerminalBody } from '../agent-session-journal/journal-open-settlement-plan'
 import {
   appendGoneGenerationSettlement,
   planGoneGenerationSettlement
@@ -169,9 +173,12 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         turnScope: exitedRootTurnScope(items, input.verdict)
       })
     }
+    const bodies = new Map(items.map((item) => [item.itemId, item.body]))
     for (const item of items) {
       const identity = parseAgentJournalItemKey(item.itemId)
-      const body = openSettlementTerminalBody(item)
+      // Ended as its turn is: a proven death cuts a running call short.
+      const end = runningCallEnd(item.turnScope, (id) => bodies.get(id), input.verdict.state)
+      const body = terminalAgentJournalBody(item.body, end)
       if (identity && body) {
         mutations.push({
           kind: 'item',
@@ -228,10 +235,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
 }
 
 function isUnfinishedItem(item: AgentJournalRenderItem): boolean {
-  return (
-    readAgentJournalTurn(item.body)?.state === 'running' ||
-    openSettlementTerminalBody(item) !== null
-  )
+  return requiresTerminalSettlement(item.body)
 }
 
 /** Work that means the provider was MID-RESPONSE. A pending approval or question is the provider

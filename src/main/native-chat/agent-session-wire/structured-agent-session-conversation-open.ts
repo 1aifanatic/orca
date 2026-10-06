@@ -2,12 +2,13 @@
 // for an attach that finds none open.
 //
 // A damaged journal fails the open, which refuses it as unloadable. It appends the chat's open
-// settlement plan (structured-agent-session-open-settlement.ts): what an earlier
-// host process handed over and left unanswered becomes doubt, what it accepted and never handed
-// over is rejected, and what it left running is settled — the crash boundary. That needs no lease:
-// provider history decides a doubtful row later, under a won lease, in the attach. Nothing here
-// starts a provider child. The plan's appends keep the chat's stored state current, and the open
-// re-derives it when something else (an older build, an import) left it behind.
+// settlement plan (structured-agent-session-open-settlement.ts): what an earlier host process
+// handed over and left unanswered becomes doubt, what it accepted and never handed over is kept as
+// a held card when it is a person's message and rejected otherwise (`journal-unsent-send-hold.ts`),
+// and what it left running is settled — the crash boundary. That needs no lease: provider history
+// decides a doubtful row later, under a won lease, in the attach. Nothing here starts a provider
+// child. The plan's appends keep the chat's stored state current, and the open re-derives it when
+// something else (an older build, an import) left it behind.
 
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'

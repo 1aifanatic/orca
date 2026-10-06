@@ -23,6 +23,7 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import { carryQueuedMessagesToClearReplacement } from './structured-agent-session-queued-mutations'
 import { serializeStructuredAgentSessionCommand } from './structured-agent-session-command-entry'
+import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 
 /** A command's `error` is the sentence its row shows. */
 export function conversationCommandFailure(
@@ -44,7 +45,7 @@ export type ConversationReplacement = {
   sourceSessionId: string
   sessionId: string
   workspaceId: string
-  agent: 'claude' | 'codex'
+  agent: StructuredAgentId
 }
 
 const clearFingerprintOf = (sessionId: string) =>
@@ -106,11 +107,12 @@ export function runStructuredConversationCommand(
     return admitAndRunAgentSessionMutation({
       store,
       adapter: context.deps.adapter,
+      agents: context.deps.agents,
       logger: context.deps.logger,
       callerKey: caller.callerKey,
       envelope,
       // Starts the agent only to settle a rewind in doubt, as a send does; a /clear itself starts nothing.
-      prepareSession: sendPreparation(context, envelope),
+      prepareSession: sendPreparation(context, envelope, { refusesInRun: true }),
       journal: () => context.sessions.get(sessionId)?.journal,
       publish: (journal) => context.publish(sessionId, journal),
       now: context.now,

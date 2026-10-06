@@ -64,9 +64,9 @@ async function crashWithHungRecovery(
 async function startupThroughListing(rig: RestTestRig): Promise<string[]> {
   const listed = listedIds(rig)
   await rig.host.reconcileRestartLeases()
-  await rig.host.catchUpMissingStatuses(listed)
-  await rig.host.restoreListedFromPerChatFiles(listed)
-  return rig.host.seedStoredStatuses(listed)
+  await rig.host.startup.catchUpMissingStatuses(listed)
+  await rig.host.startup.restoreListedFromPerChatFiles(listed)
+  return rig.host.startup.seedStoredStatuses(listed)
 }
 
 const within = <T>(work: Promise<T>, ms: number) =>
@@ -95,7 +95,7 @@ describe('startup lease recovery, per lease', () => {
     expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({ status: 'idle' })
     // The tabless chat's recovery is still running, started before the listing; the settle waits.
     expect(hung()).toBe(1)
-    await rig.host.settleOwedSessions(listedIds(rig))
+    await rig.host.startup.settleOwedSessions(listedIds(rig))
     expect(hung()).toBe(1)
   }, 30_000)
 
