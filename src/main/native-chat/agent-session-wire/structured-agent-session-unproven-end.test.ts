@@ -34,7 +34,7 @@ beforeEach(async () => {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: THREAD }
+      providerHandle: { transport: 'codex-app-server', agent: 'codex', nativeId: THREAD }
     },
     database: openTestJournalHostDatabase(root),
     now: () => NOW

@@ -18,6 +18,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { structuredCodexLifecycleEvent } from '../../runtime/structured-codex-lifecycle-event'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import { claudeAndCodexAgents } from './structured-agent-session-adapter-router-test-support'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 import {
@@ -56,7 +57,7 @@ beforeEach(async () => {
         args: ['app-server'],
         cwd: root,
         codexHome: null,
-        resumeThreadId: head?.handle.provider === 'codex' ? head.handle.threadId : null
+        resumeThreadId: head?.handle.nativeId ?? null
       }
     },
     // As the runtime routes them.
@@ -74,6 +75,7 @@ beforeEach(async () => {
   })
   store = await openTestAgentSessionRecordStore(root)
   host = new StructuredAgentSessionHost({
+    agents: claudeAndCodexAgents(adapter),
     store,
     adapter: Object.assign(adapter, { supportsCreate: () => true }),
     journalDatabase: openTestJournalHostDatabase(root),
