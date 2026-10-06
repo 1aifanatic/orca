@@ -181,6 +181,46 @@ describe('structured agent session message sender', () => {
     expect(sendCalls()).toBe(0)
   })
 
+  // A failure before any request went out that trying again won't clear: not sent, at once.
+  it('gives back at once, with its own words, a send this client and the server cannot talk on', async () => {
+    const blocked = Object.assign(
+      new Error('The selected Orca server is too old for this client. Update Orca on the server.'),
+      { code: 'runtime_compat_block' }
+    )
+    mocks.compatible.mockRejectedValue(blocked)
+    const a = send('a', { target: { kind: 'environment', environmentId: 'env-1' } })
+    expect(await a.outcome).toBe('returned')
+    const notice = getStructuredAgentSessionSendNotice(SESSION) ?? ''
+    expect(notice).toContain('The selected Orca server is too old for this client.')
+    expect(notice).toContain('was not sent')
+    expect(notice).not.toContain("couldn't reach")
+    expect(mocks.compatible).toHaveBeenCalledOnce()
+    expect(sendCalls()).toBe(0)
+  })
+
+  it("gives back at once, in the host's words, a send whose history read the host refused", async () => {
+    resetStructuredAgentSessionSendsForTests()
+    mocks.call.mockRejectedValue(
+      Object.assign(new Error('refused'), {
+        response: {
+          error: {
+            data: {
+              refusal: {
+                code: 'structured_agent_session_unsupported',
+                message: 'off',
+                details: { reason: 'hostDisabled' }
+              }
+            }
+          }
+        }
+      })
+    )
+    const a = send('a')
+    expect(await a.outcome).toBe('returned')
+    expect(mocks.call.mock.calls.map((call) => call[1])).toEqual(['agentSession.history'])
+    expect(getStructuredAgentSessionSendNotice(SESSION)).not.toContain("couldn't reach")
+  })
+
   it("keeps the host's reason when it refused every resend by throwing, without saying not sent", async () => {
     const thrown = Object.assign(new Error('refused'), {
       response: {

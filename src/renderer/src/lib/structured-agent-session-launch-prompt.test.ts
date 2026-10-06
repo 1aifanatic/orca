@@ -17,14 +17,18 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import {
   resetStructuredAgentSessionSendsForTests,
-  sendStructuredAgentSessionMessage
+  sendStructuredAgentSessionMessage,
+  settleStructuredAgentSessionSendsFromJournal
 } from '@/components/native-chat/structured-agent-session-message-sender'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
 } from '@/components/native-chat/native-chat-draft-cache'
 import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
-import { getStructuredAgentSessionPendingSends } from '@/components/native-chat/structured-agent-session-pending-sends'
+import {
+  getStructuredAgentSessionPendingSends,
+  subscribeToStructuredAgentSessionPendingSends
+} from '@/components/native-chat/structured-agent-session-pending-sends'
 import {
   discardStructuredLaunchPrompts,
   hasStagedStructuredLaunchPrompt,
@@ -222,6 +226,60 @@ describe('settleStructuredAgentLaunchPrompt', () => {
     discardStructuredLaunchPrompts(SESSION)
     expect(pendingTexts()).toEqual([])
     expect(sends()).toHaveLength(0)
+  })
+
+  // Once sent, the prompt's entry is the sender's: what it keeps after settling stays.
+  it('gives back a launch prompt the host recorded as pending and a Stop then withdrew', async () => {
+    const stagedPrompt = stageStructuredLaunchPrompt(SESSION, 'review this')
+    mocks.call.mockImplementation(async (_target, _method, params) => {
+      const answer = accepted(params.envelope.clientOperationId)
+      answer.value.submission.dispatchState = 'pending'
+      return answer
+    })
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: SESSION, fence: 1 }),
+        target,
+        options: { prompt: 'review this' },
+        stagedPrompt
+      })
+    ).resolves.toEqual({ delivered: true, failureNotified: false })
+    const [entry] = getStructuredAgentSessionPendingSends(SESSION)
+    expect(pendingTexts()).toEqual(['review this:recorded'])
+
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [
+        {
+          clientMessageId: entry!.clientMessageId,
+          fence: 1,
+          payloadFingerprint: 'fingerprint',
+          dispatchState: 'rejected',
+          providerItemId: null,
+          reason: null,
+          rejection: { kind: 'cancelled' },
+          submittedAt: 1,
+          resolvedAt: 2
+        }
+      ],
+      []
+    )
+    expect(draft()).toBe('review this')
+  })
+
+  it("keeps an open chat drawing its launch prompt until the prompt's row arrives", async () => {
+    const stop = subscribeToStructuredAgentSessionPendingSends(SESSION, () => {})
+    const stagedPrompt = stageStructuredLaunchPrompt(SESSION, 'review this')
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: SESSION, fence: 1 }),
+        target,
+        options: { prompt: 'review this' },
+        stagedPrompt
+      })
+    ).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(pendingTexts()).toEqual(['review this:recorded'])
+    stop()
   })
 
   it('reports nothing for a draft, which the composer adopts instead', () => {

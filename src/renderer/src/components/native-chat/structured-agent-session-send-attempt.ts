@@ -20,6 +20,7 @@ import {
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
+import { isRuntimeCompatBlockError } from '@/runtime/runtime-protocol-compat'
 import {
   agentSessionThrownFailure,
   readAgentSessionErrorRefusal,
@@ -92,6 +93,21 @@ export type StructuredAgentSessionSendAttempt = {
   submission: AgentJournalSubmission | null
   /** The refusal a thrown answer carried: what the host said, though it proves nothing. */
   thrownRefusal: AgentSessionWriteFailure | null
+  /** A definite failure before this request went out, which trying again won't clear: the host
+   *  refused the checks, or this client and the server can't talk. Null for a transport error. */
+  blocked: { failure: AgentSessionWriteFailure } | { text: string } | null
+}
+
+function blockedBeforeRequest(
+  error: unknown,
+  rpcCode: string | undefined
+): StructuredAgentSessionSendAttempt['blocked'] {
+  if (isRuntimeCompatBlockError(error) && error instanceof Error) {
+    return { text: error.message }
+  }
+  return readAgentSessionErrorRefusal(error)
+    ? { failure: agentSessionThrownFailure(error, rpcCode) }
+    : null
 }
 
 /** Null when the attempt stopped before its request went out, or was abandoned meanwhile. */
@@ -107,6 +123,8 @@ export async function attemptStructuredAgentSessionSend(args: {
   let answer: StructuredAgentSessionSendAnswer
   let firstAttempt = !entry.issued
   let answersWithProof = false
+  let requested = false
+  let blocked: StructuredAgentSessionSendAttempt['blocked'] = null
   try {
     if (target.kind === 'environment') {
       await ensureRuntimeEnvironmentCompatible(target.environmentId)
@@ -118,6 +136,7 @@ export async function attemptStructuredAgentSessionSend(args: {
       return null
     }
     firstAttempt = issue.firstAttempt
+    requested = true
     const params = structuredAgentSessionMessageSendMutation({
       sessionId: entry.sessionId,
       clientOperationId: entry.clientMessageId,
@@ -135,11 +154,9 @@ export async function attemptStructuredAgentSessionSend(args: {
         : await callStructuredAgentSession<SendAnswer>(target, 'agentSession.send', params)
     answer = { kind: 'result', result }
   } catch (error) {
-    answer = {
-      kind: 'thrown',
-      error,
-      rpcCode: error instanceof RuntimeRpcCallError ? error.code : undefined
-    }
+    const rpcCode = error instanceof RuntimeRpcCallError ? error.code : undefined
+    answer = { kind: 'thrown', error, rpcCode }
+    blocked = requested ? null : blockedBeforeRequest(error, rpcCode)
   }
   if (args.abandoned()) {
     return null
@@ -151,6 +168,7 @@ export async function attemptStructuredAgentSessionSend(args: {
     thrownRefusal:
       answer.kind === 'thrown' && readAgentSessionErrorRefusal(answer.error)
         ? agentSessionThrownFailure(answer.error, answer.rpcCode)
-        : null
+        : null,
+    blocked
   }
 }

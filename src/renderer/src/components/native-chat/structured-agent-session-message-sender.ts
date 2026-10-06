@@ -10,6 +10,7 @@
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
+  agentSessionBlockedSendParts,
   agentSessionUnconfirmedSendParts,
   agentSessionWriteNoticeParts,
   agentSessionWriteNotDoneParts
@@ -162,6 +163,11 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
   }
   const { evidence } = outcome
   runtime.thrownRefusal = outcome.thrownRefusal ?? runtime.thrownRefusal
+  if (outcome.blocked) {
+    // Trying again won't clear it: back now, with its own cause.
+    handBack(current, agentSessionBlockedSendParts(outcome.blocked, current.issued))
+    return
+  }
   if (evidence.kind === 'recorded') {
     settleRecorded(current, outcome.submission, 'reply')
     return
@@ -261,13 +267,14 @@ export function reserveStructuredAgentSessionSend(
   if (!entry) {
     return null
   }
-  const held = (): StructuredAgentSessionPendingSend | undefined => {
-    const current = findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
-    return current && !runtimes.has(entry.clientMessageId) ? current : undefined
-  }
+  // Once sent, the entry is the send's: what it keeps after settling is not the reservation's.
+  let sent = false
+  const held = (): StructuredAgentSessionPendingSend | undefined =>
+    sent ? undefined : findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
   return {
     send: (target) => {
       const current = held()
+      sent = true
       return current ? dispatch(current, target) : null
     },
     release: () => {

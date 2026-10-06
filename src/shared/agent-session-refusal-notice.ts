@@ -179,6 +179,20 @@ export function agentSessionUnconfirmedSendParts(
   return [...cause, 'sendOutcomeLost']
 }
 
+/** A send stopped before its request went out, by a cause trying again won't clear: not sent,
+ *  unless an earlier attempt went out, which may have landed. */
+export function agentSessionBlockedSendParts(
+  blocked: { failure: AgentSessionWriteFailure } | { text: string },
+  issued: boolean
+): AgentSessionWriteNoticePart[] {
+  if ('text' in blocked) {
+    return [{ text: blocked.text }, issued ? 'sendOutcomeLost' : 'notDoneSend']
+  }
+  return issued
+    ? agentSessionUnconfirmedSendParts(blocked.failure)
+    : agentSessionWriteNoticeParts(blocked.failure, 'composer-send')
+}
+
 export function agentSessionWriteNoticeEnglish(
   parts: readonly AgentSessionWriteNoticePart[]
 ): string {
