@@ -257,24 +257,16 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setCaret
     })
 
-    const sendPty = useNativeChatPtyComposerSend({
+    // What both terminal send paths share: where a command goes and what the composer resets.
+    const ptyCommandRouting = {
       agent,
-      draft,
-      imageAttachments,
       disabled,
       isDispatchingSessionOption,
-      launchDraft: launchSeed?.launchDraft,
-      launchDraftResolved: launchSeed?.launchDraftResolved === true,
-      readTerminalScreen,
       resolveTarget,
-      classifySend,
-      onOptimisticSend,
-      optimisticSendOutcome,
       onSlashCommand,
       onSubmitted,
       answerCommandLocally,
       sessionOptionsSurface: ptySessionOptionsSurface,
-      terminalTabId,
       trackPendingSend,
       setHistory,
       setDraft,
@@ -282,6 +274,18 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       clearSkillOrigin,
       clearImageAttachments,
       setNotice
+    }
+    const sendPty = useNativeChatPtyComposerSend({
+      ...ptyCommandRouting,
+      draft,
+      imageAttachments,
+      launchDraft: launchSeed?.launchDraft,
+      launchDraftResolved: launchSeed?.launchDraftResolved === true,
+      readTerminalScreen,
+      classifySend,
+      onOptimisticSend,
+      optimisticSendOutcome,
+      terminalTabId
     })
     const { send, goalMode } = useNativeChatComposerSubmit({
       structuredTransport,
@@ -306,22 +310,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
 
     const dispatchPtyPickerCommand = useNativeChatPickerCommandDispatch({
-      agent,
-      disabled,
-      isDispatchingSessionOption,
-      resolveTarget,
-      onSlashCommand,
-      onSubmitted,
-      answerCommandLocally,
-      sessionOptionsSurface: ptySessionOptionsSurface,
-      trackPendingSend,
-      setHistory,
-      setDraft,
-      setCaret,
-      setActiveSuggestion,
-      clearSkillOrigin,
-      clearImageAttachments,
-      setNotice
+      ...ptyCommandRouting,
+      setActiveSuggestion
     })
     const dispatchPickerCommand = useCallback(
       (command: Parameters<typeof dispatchPtyPickerCommand>[0]) =>
