@@ -263,4 +263,32 @@ describe('live reasoning, read through the one live line', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Thinking' }))
     expect(screen.getAllByText('Checking the background build')).toHaveLength(1)
   })
+
+  // A live region only announces changes to itself; a replaced one says nothing.
+  it('keeps one live region while the line turns into the disclosure and back', () => {
+    const tool: NativeChatMessage = {
+      id: 'tool-1',
+      role: 'assistant',
+      blocks: [{ type: 'tool-call', name: 'shell', input: { command: 'ls' }, state: 'completed' }],
+      timestamp: STARTED,
+      source: 'transcript'
+    }
+    const later = { timestamp: STARTED + 50 }
+    const region = () => document.querySelector('[data-native-chat-turn-activity][aria-live]')
+    const { rerender } = render(list([tool]))
+    const before = region()
+    expect(before).toHaveTextContent('Working…')
+    rerender(list([tool, reasoning('r-1', 'Weighing two approaches', 'running', later)]))
+    expect(region()).toBe(before)
+    expect(before).toHaveTextContent('Thinking')
+    rerender(
+      list([
+        tool,
+        reasoning('r-1', 'Weighing two approaches', 'completed', later),
+        { ...tool, id: 'tool-2', timestamp: STARTED + 60 }
+      ])
+    )
+    expect(region()).toBe(before)
+    expect(before).toHaveTextContent('Working…')
+  })
 })

@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
+import { nativeChatReasoningDisclosureKey } from '../../../src/shared/native-chat-reasoning-row'
 import {
-  nativeChatReasoningDisclosureKey,
-  selectNativeChatLiveReasoning
-} from '../../../src/shared/native-chat-reasoning-row'
+  nativeChatLiveLine,
+  type NativeChatLiveLine
+} from '../../../src/shared/native-chat-live-line'
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
 import {
   isNativeChatRowInLiveWorkingTurn,
@@ -39,13 +40,8 @@ export type MobileNativeChatTurnRow = {
   onToggleReasoning: (key: string) => void
 }
 
-/** The live activity line, when it draws. `reasoning`: the open block it discloses. */
-export type MobileNativeChatLiveLine = {
-  thinking: boolean
-  activityText: string | null
-  reasoning: NativeChatMessage | null
-  reasoningExpanded: boolean
-}
+/** The live activity line, when it draws, and whether the reader opened the block it discloses. */
+export type MobileNativeChatLiveLine = NativeChatLiveLine & { reasoningExpanded: boolean }
 
 /** Keys the reader opened in this chat, bounded; another chat's never leak in. */
 function useScopedOpenKeys(scopeKey: string): [ReadonlySet<string>, (key: string) => void] {
@@ -166,27 +162,27 @@ export function useMobileNativeChatTurnDisclosure({
     [enabled, isWorking, liveTurnKey, turnKeys]
   )
   const activeActivityText = enabled && isWorking ? (activityText ?? null) : null
-  const showsLiveLine = enabled && isWorking && !lineYields && active !== null
-  // The line's own render condition, so a row is never hidden while nothing on screen discloses it.
-  const lineShowsThinking = showsLiveLine && active?.thinking === true
-  const liveReasoning = useMemo(
-    () => selectNativeChatLiveReasoning(rows, inLiveWorkingTurn, lineShowsThinking),
-    [inLiveWorkingTurn, lineShowsThinking, rows]
+  const line = useMemo(
+    () =>
+      nativeChatLiveLine({
+        draws: enabled && isWorking && !lineYields && active !== null,
+        thinking: active?.thinking === true,
+        activityText: activeActivityText,
+        messages: rows,
+        inLiveWorkingTurn
+      }),
+    [active, activeActivityText, enabled, inLiveWorkingTurn, isWorking, lineYields, rows]
   )
-  const liveReasoningId = liveReasoning?.id
+  const liveReasoningId = line?.reasoning?.message.id
   const liveLine = useMemo<MobileNativeChatLiveLine | null>(
     () =>
-      showsLiveLine
-        ? {
-            thinking: active?.thinking === true,
-            activityText: activeActivityText,
-            reasoning: liveReasoning,
-            reasoningExpanded:
-              liveReasoning !== null &&
-              expandedReasoning.has(nativeChatReasoningDisclosureKey(liveReasoning.id))
-          }
-        : null,
-    [active, activeActivityText, expandedReasoning, liveReasoning, showsLiveLine]
+      line && {
+        ...line,
+        reasoningExpanded:
+          line.reasoning !== null &&
+          expandedReasoning.has(nativeChatReasoningDisclosureKey(line.reasoning.message.id))
+      },
+    [expandedReasoning, line]
   )
   const resolveRow = useCallback(
     (listIndex: number, message: NativeChatMessage): MobileNativeChatTurnRow => {

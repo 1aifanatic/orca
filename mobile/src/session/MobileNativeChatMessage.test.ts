@@ -380,6 +380,17 @@ describe('MobileNativeChatMessage', () => {
       expect(render(reasoning({ blocks: [{ type: 'text', text: ' \n ' }] })).toJSON()).toBeNull()
     })
 
+    // The turn's bar is not the block's: hiding the block must not hide the bar it sits on.
+    it("still draws its turn's bar while the live line discloses it", () => {
+      const tree = render(reasoning({ state: 'running' }), {
+        activeTurnIsWorking: true,
+        reasoningIsLive: true,
+        turnStatus: { startedAt: 1_000, thinking: true, workedSeconds: null }
+      })
+      expect(tree.root.findAll((node) => String(node.type) === 'Pressable')).toHaveLength(0)
+      expect(textIn(tree.root).some((text) => text.startsWith('Working for'))).toBe(true)
+    })
+
     // Only the block the line discloses hides: a subagent's or a stale open block draws, unended.
     it('draws any other open block in its working turn as Reasoning', () => {
       const child = render(reasoning({ state: 'running', agentId: 'sub-1' }), {

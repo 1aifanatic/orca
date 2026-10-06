@@ -28,45 +28,44 @@ const open = row('r-1', 'reasoning', 'Weighing two approaches', { state: 'runnin
 const inTurn = (): boolean => true
 
 describe('the open block the live line discloses', () => {
-  it('is the newest root reasoning row with text, while the line reads "Thinking"', () => {
-    expect(selectNativeChatLiveReasoning([prompt, open], inTurn, true)).toBe(open)
+  const select = (messages: NativeChatMessage[], live: (index: number) => boolean = inTurn) =>
+    selectNativeChatLiveReasoning(messages, live)?.message ?? null
+
+  it('is the newest root reasoning row with text, with the text it has so far', () => {
+    expect(selectNativeChatLiveReasoning([prompt, open], inTurn)).toEqual({
+      message: open,
+      markdown: 'Weighing two approaches'
+    })
     // A host that keeps no lifecycle gets the same single live slot.
     const stateless = row('r-1', 'reasoning', 'Weighing two approaches')
-    expect(selectNativeChatLiveReasoning([prompt, stateless], inTurn, true)).toBe(stateless)
+    expect(select([prompt, stateless])).toBe(stateless)
   })
 
-  it('is nothing unless the line shows "Thinking", or when the block is blank or ended', () => {
-    expect(selectNativeChatLiveReasoning([prompt, open], inTurn, false)).toBeNull()
-    const blank = row('r-1', 'reasoning', ' \n', { state: 'running' })
-    expect(selectNativeChatLiveReasoning([prompt, blank], inTurn, true)).toBeNull()
-    const ended = { ...open, state: 'completed' as const }
-    expect(selectNativeChatLiveReasoning([prompt, ended], inTurn, true)).toBeNull()
+  it('is nothing when the block is blank or ended', () => {
+    expect(select([prompt, row('r-1', 'reasoning', ' \n', { state: 'running' })])).toBeNull()
+    expect(select([prompt, { ...open, state: 'completed' }])).toBeNull()
   })
 
   it('is nothing once a tool or the answer is newer than the block', () => {
-    const answer = row('a-1', 'assistant', 'Here it is')
-    expect(selectNativeChatLiveReasoning([prompt, open, answer], inTurn, true)).toBeNull()
+    expect(select([prompt, open, row('a-1', 'assistant', 'Here it is')])).toBeNull()
     const tool = row('t-1', 'assistant', '', {
       blocks: [{ type: 'tool-call', name: 'Read', input: { file_path: 'a.ts' }, state: 'running' }]
     })
-    expect(selectNativeChatLiveReasoning([prompt, open, tool], inTurn, true)).toBeNull()
+    expect(select([prompt, open, tool])).toBeNull()
   })
 
   it('looks past notices, empty rows and rows outside the live working turn', () => {
     const notice = row('s-1', 'system', 'Compacting')
     const empty = row('a-0', 'assistant', '')
     const waiting = row('user-2', 'user', 'Also say banana')
-    const live = (index: number): boolean => index < 4
-    expect(selectNativeChatLiveReasoning([prompt, open, notice, empty, waiting], live, true)).toBe(
-      open
-    )
+    expect(select([prompt, open, notice, empty, waiting], (index) => index < 4)).toBe(open)
   })
 
   it('stops at the live turn prompt and ignores a subagent reasoning', () => {
-    expect(selectNativeChatLiveReasoning([open, prompt], inTurn, true)).toBeNull()
+    expect(select([open, prompt])).toBeNull()
     const child = row('r-2', 'reasoning', 'Child thinking', { state: 'running', agentId: 'sub-1' })
-    expect(selectNativeChatLiveReasoning([prompt, child], inTurn, true)).toBeNull()
-    expect(selectNativeChatLiveReasoning([prompt, open, child], inTurn, true)).toBe(open)
+    expect(select([prompt, child])).toBeNull()
+    expect(select([prompt, open, child])).toBe(open)
   })
 
   it('keys one block the same for the line and the row, apart from tool runs', () => {

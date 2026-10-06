@@ -1,22 +1,23 @@
 import { useMemo } from 'react'
-import { selectNativeChatLiveReasoning } from '../../../../shared/native-chat-reasoning-row'
+import {
+  nativeChatLiveLine,
+  type NativeChatLiveLine
+} from '../../../../shared/native-chat-live-line'
 import { isNativeChatRowInLiveWorkingTurn } from '../../../../shared/native-chat-turn-membership'
-import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   buildNativeChatTranscriptSlots,
   type NativeChatTranscriptSlot,
   type NativeChatTranscriptSlotsInput
 } from './native-chat-transcript-slots'
 
-/** The transcript's slots, and the open reasoning block the live activity line discloses instead
- *  of a slot. Decided together, so a row is hidden exactly while the line shows it. */
+/** The transcript's slots and its live activity line, decided together: the open reasoning block
+ *  the line discloses takes no slot, so a row is hidden exactly while the line shows it. */
 export function useNativeChatTranscriptSlots({
-  lineShowsThinking,
+  line,
   ...input
 }: Omit<NativeChatTranscriptSlotsInput, 'liveReasoningId'> & {
-  /** The live line's own render condition and that it reads "Thinking". */
-  lineShowsThinking: boolean
-}): { slots: NativeChatTranscriptSlot[]; liveReasoning: NativeChatMessage | null } {
+  line: { draws: boolean; thinking: boolean; activityText?: string | null }
+}): { slots: NativeChatTranscriptSlot[]; liveLine: NativeChatLiveLine | null } {
   const {
     messages,
     turnKeys,
@@ -30,21 +31,24 @@ export function useNativeChatTranscriptSlots({
     subagentSections,
     subagentChoices
   } = input
-  const liveReasoning = useMemo(
+  const { draws, thinking, activityText } = line
+  const liveLine = useMemo(
     () =>
-      selectNativeChatLiveReasoning(
+      nativeChatLiveLine({
+        draws,
+        thinking,
+        activityText,
         messages,
-        (index) =>
+        inLiveWorkingTurn: (index) =>
           isNativeChatRowInLiveWorkingTurn(
             turnKeys[index],
             liveTurnKey,
             isWorking || lifecycleWorking
-          ),
-        lineShowsThinking
-      ),
-    [isWorking, lifecycleWorking, lineShowsThinking, liveTurnKey, messages, turnKeys]
+          )
+      }),
+    [activityText, draws, isWorking, lifecycleWorking, liveTurnKey, messages, thinking, turnKeys]
   )
-  const liveReasoningId = liveReasoning?.id ?? null
+  const liveReasoningId = liveLine?.reasoning?.message.id ?? null
   const slots = useMemo(
     () =>
       buildNativeChatTranscriptSlots({
@@ -76,5 +80,5 @@ export function useNativeChatTranscriptSlots({
       turnStatuses
     ]
   )
-  return { slots, liveReasoning }
+  return { slots, liveLine }
 }

@@ -802,7 +802,10 @@ describe('the open reasoning block the live line discloses', () => {
   it('hides only that block, and lands it open once it ends if the reader opened it live', () => {
     const prompt = userMessage('u1')
     show([prompt, block('r-1', 'running')], { thinking: true })
-    expect(latest().liveLine).toMatchObject({ reasoning: { id: 'r-1' }, reasoningExpanded: false })
+    expect(latest().liveLine).toMatchObject({
+      reasoning: { message: { id: 'r-1' } },
+      reasoningExpanded: false
+    })
     expect(latest().resolveRow(1, block('r-1', 'running')).reasoningIsLive).toBe(true)
     act(() => latest().onToggleReasoning('reasoning:r-1'))
     expect(latest().liveLine.reasoningExpanded).toBe(true)
@@ -815,7 +818,10 @@ describe('the open reasoning block the live line discloses', () => {
 
     // The next block starts collapsed.
     show([prompt, block('r-1', 'completed'), block('r-2', 'running')], { thinking: true })
-    expect(latest().liveLine).toMatchObject({ reasoning: { id: 'r-2' }, reasoningExpanded: false })
+    expect(latest().liveLine).toMatchObject({
+      reasoning: { message: { id: 'r-2' } },
+      reasoningExpanded: false
+    })
   })
 
   it('discloses nothing, and hides nothing, while a prompt takes the line', () => {

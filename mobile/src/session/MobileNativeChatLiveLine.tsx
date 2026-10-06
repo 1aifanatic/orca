@@ -1,15 +1,18 @@
+import { useCallback, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 import { ChevronRight } from 'lucide-react-native'
 import { nativeChatReasoningDisclosureKey } from '../../../src/shared/native-chat-reasoning-row'
-import { deriveNativeChatRowContent } from '../../../src/shared/native-chat-row-content'
 import { formatNativeChatActiveTurnLabel } from '../../../src/shared/native-chat-turn-status'
+import { INLINE_TEXT_SELECTION } from '../components/inline-text-selection'
 import { colors, spacing, typography } from '../theme/mobile-theme'
+import { MobileNativeChatMessageActionsSheet } from './MobileNativeChatMessageActionsSheet'
 import { MobileNativeChatReasoningBody } from './MobileNativeChatReasoningRow'
-import { MobileNativeChatTurnActivity } from './MobileNativeChatTurnStatus'
 import type { MobileNativeChatLiveLine as LiveLine } from './use-mobile-native-chat-turn-disclosure'
 
-/** The live turn's tail line. While the agent's open reasoning block has text it is also that
- *  block's disclosure, and the block's row draws nothing. Desktop parity: `NativeChatTurnActivityLine`. */
+/** The live turn's tail line: a spinner beside what the provider says it is doing, else
+ *  "Thinking", else "Working…". The clock stays in the turn bar. While the agent's open reasoning
+ *  block has text it is also that block's disclosure, and the block's row draws nothing.
+ *  Desktop parity: `NativeChatTurnActivityLine`. */
 export function MobileNativeChatLiveLine({
   line,
   onToggleReasoning,
@@ -21,55 +24,77 @@ export function MobileNativeChatLiveLine({
   fontScale: number
   onOpenFile?: (relativePath: string) => void
 }): React.JSX.Element {
-  const { reasoning, reasoningExpanded: open } = line
-  if (!reasoning) {
-    return (
-      <MobileNativeChatTurnActivity thinking={line.thinking} activityText={line.activityText} />
-    )
-  }
+  const { reasoning, reasoningExpanded } = line
+  const open = reasoning !== null && reasoningExpanded
   const label = formatNativeChatActiveTurnLabel(line)
+  // Android has no inline selection; the finished row's long-press sheet copies the live text too.
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const openActions = useCallback(() => setActionsOpen(true), [])
   return (
     <View>
+      {/* One element for every state of the line, so TalkBack hears each new label; the body
+          sits outside it. */}
       <Pressable
-        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-        // The finished row reads this key too, so a block opened here lands open once it ends.
-        onPress={() => onToggleReasoning(nativeChatReasoningDisclosureKey(reasoning.id))}
+        style={({ pressed }) => [styles.row, reasoning && pressed && styles.pressed]}
+        onPress={
+          reasoning
+            ? () => onToggleReasoning(nativeChatReasoningDisclosureKey(reasoning.message.id))
+            : undefined
+        }
+        // With the row's 32 pt height, the 44 pt target the reasoning row has.
         hitSlop={6}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
+        accessibilityRole={reasoning ? 'button' : undefined}
+        accessibilityState={reasoning ? { expanded: open } : undefined}
         accessibilityLabel={label}
-        // Only the line is live: the streaming body below would be re-announced on every frame.
         accessibilityLiveRegion="polite"
       >
-        <ActivityIndicator size="small" color={colors.textMuted} />
+        <View style={styles.glyph}>
+          <ActivityIndicator size="small" color={colors.textMuted} />
+        </View>
         <Text style={styles.label} numberOfLines={1}>
           {label}
         </Text>
-        <View style={open ? styles.caretOpen : undefined}>
-          <ChevronRight size={14} color={colors.textMuted} strokeWidth={2} />
-        </View>
+        {reasoning ? (
+          <View style={open ? styles.caretOpen : undefined}>
+            <ChevronRight size={14} color={colors.textMuted} strokeWidth={2} />
+          </View>
+        ) : null}
       </Pressable>
-      {open ? (
+      {reasoning && open ? (
         <View style={styles.body}>
           <MobileNativeChatReasoningBody
-            markdown={deriveNativeChatRowContent(reasoning.blocks).markdown}
+            markdown={reasoning.markdown}
             fontScale={fontScale}
             onOpenFile={onOpenFile}
+            onLongPress={INLINE_TEXT_SELECTION ? undefined : openActions}
           />
         </View>
+      ) : null}
+      {reasoning && actionsOpen ? (
+        <MobileNativeChatMessageActionsSheet
+          message={reasoning.message}
+          onClose={() => setActionsOpen(false)}
+        />
       ) : null}
     </View>
   )
 }
 
+// The finished reasoning row's geometry (row gutter, 15 pt glyph slot, its gap, its 32 pt height),
+// so the label and the open text do not move when that row takes over.
 const styles = StyleSheet.create({
-  // Matches `MobileNativeChatTurnActivity`'s row, so the line does not move when it turns expandable.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    minHeight: 28,
-    paddingHorizontal: spacing.md
+    gap: spacing.sm,
+    minHeight: 32,
+    paddingHorizontal: spacing.lg
+  },
+  // The spinner is wider than the brain; centred in the brain's slot it keeps the text column.
+  glyph: {
+    width: 15,
+    alignItems: 'center',
+    overflow: 'visible'
   },
   pressed: {
     opacity: 0.6
@@ -83,6 +108,6 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '90deg' }]
   },
   body: {
-    paddingHorizontal: spacing.md
+    paddingHorizontal: spacing.lg
   }
 })

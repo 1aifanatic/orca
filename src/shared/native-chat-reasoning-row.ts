@@ -7,19 +7,18 @@ import { deriveNativeChatRowContent, nativeChatRowRendersContent } from './nativ
 import { formatNativeChatDuration } from './native-chat-turn-status'
 import type { NativeChatMessage } from './native-chat-types'
 
+/** An open reasoning block and the text it has so far. */
+export type NativeChatLiveReasoning = { message: NativeChatMessage; markdown: string }
+
 /**
- * The open reasoning block the live activity line discloses, or null. Its row draws nothing while
- * this returns it, so the line is the one live "Thinking" and nothing is ever hidden that the
- * screen does not show. `lineShowsThinking` must be the line's own render condition.
+ * The agent's open reasoning block, with its text, when it is the newest thing its live working
+ * turn produced; else null. Only `nativeChatLiveLine` asks, so a block is disclosed (and its row
+ * hidden) only while the line that discloses it draws.
  */
 export function selectNativeChatLiveReasoning(
   messages: readonly NativeChatMessage[],
-  inLiveWorkingTurn: (index: number) => boolean,
-  lineShowsThinking: boolean
-): NativeChatMessage | null {
-  if (!lineShowsThinking) {
-    return null
-  }
+  inLiveWorkingTurn: (index: number) => boolean
+): NativeChatLiveReasoning | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (!message || !inLiveWorkingTurn(index)) {
@@ -39,10 +38,11 @@ export function selectNativeChatLiveReasoning(
       return null
     }
     // Not `=== 'running'`: a host that keeps no lifecycle gets the same single live slot.
-    return message.state !== 'completed' &&
-      deriveNativeChatRowContent(message.blocks).markdown.trim().length > 0
-      ? message
-      : null
+    if (message.state === 'completed') {
+      return null
+    }
+    const { markdown } = deriveNativeChatRowContent(message.blocks)
+    return markdown.trim().length > 0 ? { message, markdown } : null
   }
   return null
 }

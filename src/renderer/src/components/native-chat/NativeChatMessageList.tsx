@@ -184,7 +184,7 @@ export function NativeChatMessageList({
         ? 'activity'
         : null
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
-  const { slots: allSlots, liveReasoning } = useNativeChatTranscriptSlots({
+  const { slots: allSlots, liveLine } = useNativeChatTranscriptSlots({
     messages: rows,
     turnKeys,
     liveTurnKey,
@@ -196,8 +196,11 @@ export function NativeChatMessageList({
     lifecycleWorking,
     subagentSections,
     subagentChoices,
-    // The line's own render condition, so a row is never hidden while nothing on screen discloses it.
-    lineShowsThinking: tailRow === 'activity' && turnStatuses.active?.thinking === true
+    line: {
+      draws: tailRow === 'activity',
+      thinking: turnStatuses.active?.thinking === true,
+      activityText: turnActivity?.text
+    }
   })
   // A message waiting behind the live turn draws after that turn's live activity, not inside it.
   const { slots, waitingSlots } = useMemo(
@@ -383,11 +386,9 @@ export function NativeChatMessageList({
                   context={rowContext}
                   window={transcriptWindow}
                 />
-                {tailRow === 'activity' ? (
+                {liveLine ? (
                   <NativeChatTurnActivityLine
-                    activity={turnActivity}
-                    thinking={turnStatuses.active?.thinking === true}
-                    liveReasoning={liveReasoning}
+                    line={liveLine}
                     onLinkClick={onLinkClick}
                     allowFileUriLinks={allowFileUriLinks}
                   />

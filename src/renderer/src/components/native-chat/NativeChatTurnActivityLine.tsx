@@ -1,12 +1,11 @@
+import { useId } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
-import type { NativeChatTurnActivity } from '../../../../shared/native-chat-turn-activity'
-import { describeNativeChatActiveTurnLabel } from '../../../../shared/native-chat-turn-status'
-import type { NativeChatMessage } from '../../../../shared/native-chat-types'
-import { deriveNativeChatRowContent } from '../../../../shared/native-chat-row-content'
+import type { NativeChatLiveLine } from '../../../../shared/native-chat-live-line'
 import { nativeChatReasoningDisclosureKey } from '../../../../shared/native-chat-reasoning-row'
+import { describeNativeChatActiveTurnLabel } from '../../../../shared/native-chat-turn-status'
 import {
   NativeChatReasoningBody,
   NativeChatReasoningChevron
@@ -18,94 +17,67 @@ import { useNativeChatDisclosure } from './native-chat-disclosure-store'
  *  The clock lives in the turn bar under the user's message, not here. While the
  *  agent's open reasoning block has text, the line is that block's disclosure. */
 export function NativeChatTurnActivityLine({
-  activity,
-  thinking,
-  liveReasoning = null,
+  line,
   onLinkClick,
   allowFileUriLinks
 }: {
-  activity?: NativeChatTurnActivity | null
-  thinking: boolean
-  /** The open block this line discloses; its row draws nothing meanwhile. */
-  liveReasoning?: NativeChatMessage | null
+  line: NativeChatLiveLine
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
 }): React.JSX.Element {
-  const resolved = describeNativeChatActiveTurnLabel({ activityText: activity?.text, thinking })
+  const resolved = describeNativeChatActiveTurnLabel(line)
   const label =
     resolved.source === 'activity'
       ? resolved.text
       : resolved.key === 'thinking'
         ? translate('components.native-chat.status.thinking', 'Thinking')
         : translate('components.native-chat.status.working', 'Working…')
-
-  if (liveReasoning) {
-    return (
-      <NativeChatTurnActivityDisclosure
-        label={label}
-        reasoning={liveReasoning}
-        onLinkClick={onLinkClick}
-        allowFileUriLinks={allowFileUriLinks}
-      />
-    )
-  }
-  return (
-    <div
-      className="flex min-h-6 items-center gap-1.5 text-sm leading-relaxed text-muted-foreground"
-      data-native-chat-turn-activity="true"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <Loader2 aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
-      <span className="min-w-0 flex-1 truncate text-foreground/85">{label}</span>
-    </div>
-  )
-}
-
-function NativeChatTurnActivityDisclosure({
-  label,
-  reasoning,
-  onLinkClick,
-  allowFileUriLinks
-}: {
-  label: string
-  reasoning: NativeChatMessage
-  onLinkClick?: CommentMarkdownLinkClickHandler
-  allowFileUriLinks?: boolean
-}): React.JSX.Element {
+  const { reasoning } = line
   // The finished row reads this key too, so a block opened here lands open once it ends.
-  const disclosure = useNativeChatDisclosure(nativeChatReasoningDisclosureKey(reasoning.id), false)
+  const disclosure = useNativeChatDisclosure(
+    reasoning ? nativeChatReasoningDisclosureKey(reasoning.message.id) : undefined,
+    false
+  )
+  const open = reasoning !== null && disclosure.open
+  const labelId = useId()
+
   return (
-    <div className="min-w-0 text-sm text-muted-foreground" data-native-chat-turn-activity="true">
-      <Collapsible open={disclosure.open} onOpenChange={disclosure.setOpen}>
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="group/reasoning flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md text-left leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
-          >
-            <Loader2
-              aria-hidden
-              className="size-4 shrink-0 animate-spin motion-reduce:animate-none"
-            />
-            {/* Only the label is live: the streaming body would be re-announced on every frame. */}
-            <span
-              aria-live="polite"
-              aria-atomic="true"
-              className="min-w-0 truncate text-foreground/85"
-            >
-              {label}
-            </span>
+    <Collapsible open={open} onOpenChange={disclosure.setOpen}>
+      {/* One element for every state of the line, so a screen reader hears each new label. The
+          trigger overlays it, rather than wrapping it, and the body sits outside it. */}
+      <div
+        className="group/reasoning relative flex min-h-6 items-center gap-1.5 text-sm leading-relaxed text-muted-foreground"
+        data-native-chat-turn-activity="true"
+        data-state={open ? 'open' : 'closed'}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <Loader2 aria-hidden className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />
+        <span id={labelId} className="min-w-0 truncate text-foreground/85">
+          {label}
+        </span>
+        {reasoning ? (
+          <>
             <NativeChatReasoningChevron />
-          </button>
-        </CollapsibleTrigger>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                aria-labelledby={labelId}
+                className="absolute inset-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+              />
+            </CollapsibleTrigger>
+          </>
+        ) : null}
+      </div>
+      {reasoning ? (
         <CollapsibleContent>
           <NativeChatReasoningBody
-            markdown={deriveNativeChatRowContent(reasoning.blocks).markdown}
+            markdown={reasoning.markdown}
             onLinkClick={onLinkClick}
             allowFileUriLinks={allowFileUriLinks}
           />
         </CollapsibleContent>
-      </Collapsible>
-    </div>
+      ) : null}
+    </Collapsible>
   )
 }

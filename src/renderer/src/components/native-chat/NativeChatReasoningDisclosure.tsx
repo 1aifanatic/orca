@@ -30,13 +30,13 @@ export function NativeChatReasoningBody({
   )
 }
 
-/** The disclosure caret of a `group/reasoning` header: shown on hover, keyboard focus and touch,
- *  and turned while open. */
+/** The disclosure caret of a `group/reasoning` header: shown on hover, keyboard focus (on the
+ *  header or a trigger inside it) and touch, and turned while open. */
 export function NativeChatReasoningChevron(): React.JSX.Element {
   return (
     <ChevronRight
       aria-hidden
-      className="size-3.5 shrink-0 transition-all can-hover:opacity-0 group-hover/reasoning:opacity-100 group-focus-visible/reasoning:opacity-100 group-data-[state=open]/reasoning:rotate-90 group-data-[state=open]/reasoning:opacity-100 motion-reduce:transition-none"
+      className="size-3.5 shrink-0 transition-all can-hover:opacity-0 group-hover/reasoning:opacity-100 group-focus-visible/reasoning:opacity-100 group-has-[:focus-visible]/reasoning:opacity-100 group-data-[state=open]/reasoning:rotate-90 group-data-[state=open]/reasoning:opacity-100 motion-reduce:transition-none"
     />
   )
 }
