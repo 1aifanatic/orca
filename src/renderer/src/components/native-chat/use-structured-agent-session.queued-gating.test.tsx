@@ -552,7 +552,8 @@ describe('a /compact against a host that holds commands in line', () => {
     })
     expect(outcome).toEqual({
       accepted: false,
-      error: 'Your earlier message is still being sent. Run /clear once it has gone.'
+      error: 'Your earlier message is still being sent. Run /clear once it has gone.',
+      refusedWhile: 'outbox'
     })
   })
 
@@ -566,7 +567,8 @@ describe('a /compact against a host that holds commands in line', () => {
     })
     expect(outcome).toEqual({
       accepted: false,
-      error: 'Your earlier message is still being sent. Run /clear once it has gone.'
+      error: 'Your earlier message is still being sent. Run /clear once it has gone.',
+      refusedWhile: 'outbox'
     })
     expect(commandCalls()).toHaveLength(0)
   })
@@ -581,7 +583,8 @@ describe('a /compact against a host that holds commands in line', () => {
     })
     expect(outcome).toEqual({
       accepted: false,
-      error: 'Retry your earlier message, then run /clear.'
+      error: 'Retry your earlier message, then run /clear.',
+      refusedWhile: 'outbox'
     })
     expect(commandCalls()).toHaveLength(0)
   })
@@ -682,13 +685,14 @@ describe('a /compact against a host that holds commands but has its queue dark',
 
   it("is exactly today's: held back mid-turn, and idle goes out without `delivery`", async () => {
     const { result } = render()
-    let outcome: { accepted: boolean; error: string | null } | undefined
+    let outcome: unknown
     await act(async () => {
       outcome = await result.current.runConversationCommand('compact')
     })
     expect(outcome).toEqual({
       accepted: false,
-      error: "The agent is still working. Run /compact when it's done."
+      error: "The agent is still working. Run /compact when it's done.",
+      refusedWhile: 'working'
     })
     expect(commandCalls()).toHaveLength(0)
     items = []

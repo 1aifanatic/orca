@@ -230,6 +230,12 @@ export function createStructuredSessionMocks() {
               supportsStopAll: mocks.supportsBackgroundTaskStopAll
             },
             turnId: mocks.turnId,
+            commandRefusalCauses: {
+              working: mocks.turnId !== null || mocks.isWorking,
+              prompt: mocks.promptItems.length > 0,
+              background: mocks.showBackgroundTasks || mocks.monitoringBackgroundTasks,
+              outbox: outbox.outbox.length > 0
+            },
             epoch: 'epoch-1',
             rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,

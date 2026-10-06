@@ -65,8 +65,8 @@ export function useNativeChatStructuredComposerSend({
       }
       const submitted = readNativeChatComposerDraft(draftScopeKey)
       void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
-        .then(({ accepted, error }) => {
-          structuredTransport.onError(error)
+        .then(({ accepted, error, refusedWhile }) => {
+          structuredTransport.onError(error, refusedWhile)
           if (!accepted) {
             return
           }

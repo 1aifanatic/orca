@@ -2,7 +2,10 @@ import type { AgentSessionConversationCommand } from '../../../../shared/agent-s
 import type { StructuredAgentContextUsage } from '../../../../shared/structured-agent-session-context-usage'
 import type { AgentSessionSlashCommand } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
-import type { StructuredAgentSessionCommandOutcome } from '../../../../shared/structured-agent-session-composer'
+import type {
+  StructuredAgentSessionCommandOutcome,
+  StructuredAgentSessionCommandRefusalCause
+} from '../../../../shared/structured-agent-session-composer'
 import type {
   SessionOptionDescriptor,
   SessionOptionsSurface
@@ -31,7 +34,11 @@ export type NativeChatStructuredComposerTransport = {
   worktreeId?: string
   /** Present only where the host can set this session's goal. */
   threadGoal?: { setObjective: (objective: string) => Promise<boolean> }
-  onError: (message: string | null) => void
+  /** `refusedWhile`: a command's refusal, said only while what it waits on still holds. */
+  onError: (
+    message: string | null,
+    refusedWhile?: StructuredAgentSessionCommandRefusalCause
+  ) => void
   runtime: 'local' | 'remote'
   /** The session behind this composer; a real user send relinquishes orchestration ownership. */
   sessionId: string
