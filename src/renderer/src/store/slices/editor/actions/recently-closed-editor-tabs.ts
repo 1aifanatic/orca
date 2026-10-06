@@ -1,12 +1,13 @@
+import { reopenRecoveredEditorTab } from './reopen-recovered-editor-tab'
 import type { EditorGet, EditorSet } from '../types/editor-set-get'
 import type { EditorSlice } from '../types/editor-slice'
 import {
   createRecentlyClosedTabPositionIndex,
-  pushRecentlyClosedTabKind,
-  restoreRecentlyClosedTabPosition
+  pushRecentlyClosedTabKind
 } from '../../recently-closed-tabs'
 import { notifyHostOfMirroredEditorClose } from '@/runtime/close-mirrored-editor-tab'
-import { type ClosedEditorTabSnapshot, MAX_RECENT_CLOSED_EDITOR_TABS } from '../types/open-file'
+import type { ClosedEditorTabSnapshot } from '../types/open-file'
+import { retainClosedEditorSnapshots } from './parked-recovered-editor-drafts'
 import {
   deleteUntouchedUntitledFile,
   shouldDeleteUntouchedUntitledFile
@@ -18,26 +19,7 @@ export function createRecentlyClosedEditorTabs(
   get: EditorGet
 ): Pick<EditorSlice, 'reopenClosedEditorTab' | 'closeAllFiles'> {
   return {
-    reopenClosedEditorTab: (worktreeId) => {
-      const stack = get().recentlyClosedEditorTabsByWorktree[worktreeId] ?? []
-      const next = stack[0]
-      if (!next) {
-        return false
-      }
-      set((s) => ({
-        recentlyClosedEditorTabsByWorktree: {
-          ...s.recentlyClosedEditorTabsByWorktree,
-          [worktreeId]: (s.recentlyClosedEditorTabsByWorktree[worktreeId] ?? []).slice(1)
-        }
-      }))
-      const { position, reopenId, ...file } = next
-      const restoredFileId = get().openFile(file, {
-        targetGroupId: position?.groupId,
-        reopenId
-      })
-      restoreRecentlyClosedTabPosition(get, worktreeId, restoredFileId, position)
-      return true
-    },
+    reopenClosedEditorTab: (worktreeId) => reopenRecoveredEditorTab(set, get, worktreeId),
 
     closeAllFiles: () => {
       const state = get()
@@ -159,14 +141,14 @@ export function createRecentlyClosedEditorTabs(
           }
           const { id: _id, isDirty: _dirty, mirroredFromRuntimeSession: _mirrored, ...snap } = f
           const position = positionIndex.positionFor(f.id)
-          nextRecentClosed = [
+          nextRecentClosed = retainClosedEditorSnapshots([
             {
               ...(snap as ClosedEditorTabSnapshot),
               reopenId: f.id,
               ...(position ? { position } : {})
             },
             ...nextRecentClosed
-          ].slice(0, MAX_RECENT_CLOSED_EDITOR_TABS)
+          ])
           capturedCloseCount += 1
         }
 

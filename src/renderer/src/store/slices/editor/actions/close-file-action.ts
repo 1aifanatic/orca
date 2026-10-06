@@ -1,9 +1,12 @@
+import { retainClosedEditorSnapshots } from './parked-recovered-editor-drafts'
 import type { EditorGet, EditorSet } from '../types/editor-set-get'
 import type { EditorSlice } from '../types/editor-slice'
 import { getRecentlyClosedTabPosition, pushRecentlyClosedTabKind } from '../../recently-closed-tabs'
 import { notifyHostOfMirroredEditorClose } from '@/runtime/close-mirrored-editor-tab'
-import { type ClosedEditorTabSnapshot, MAX_RECENT_CLOSED_EDITOR_TABS } from '../types/open-file'
+import type { OpenFile } from '../types/open-file'
 import { removeMarkdownVisibilityKeys } from '../tabs/workspace-editor-item'
+import { isEditorTabContentType } from '../tabs/editor-tab-content-type'
+import { collectSameDocumentOpenFileIds } from '../file-ids/editor-file-ids'
 import {
   deleteUntouchedUntitledFile,
   shouldDeleteUntouchedUntitledFile
@@ -16,29 +19,96 @@ export function createCloseFileAction(
 ): Pick<EditorSlice, 'closeFile'> {
   return {
     closeFile: (fileId) => {
+      // Why one snapshot: every read below describes the same pre-set() state, and closeFile runs
+      // once per tab in the bulk-close loops, so a get() per candidate is paid N times over.
+      const preCloseState = get()
       // Why: capture untitled+dirty state before set() mutates the store, so cleanup of throwaway untitled files can decide after removal.
-      const preClose = get().openFiles.find((f) => f.id === fileId)
+      const preClose = preCloseState.openFiles.find((f) => f.id === fileId)
+
       // Why: also check editorDrafts — isDirty is set by a debounced callback, so a draft can exist before isDirty flushes; a draft means the user typed something.
-      const hasDraft = !!get().editorDrafts[fileId]
-      const shouldDeleteFromDisk = shouldDeleteUntouchedUntitledFile(preClose, hasDraft)
+      const hasUnsavedWork = (file: OpenFile): boolean =>
+        file.isDirty === true || preCloseState.editorDrafts[file.id] !== undefined
+      const documentFileIds = preClose
+        ? collectSameDocumentOpenFileIds(preCloseState.openFiles, preClose, preCloseState)
+        : new Set<string>()
+      const documentFiles = preCloseState.openFiles.filter(
+        (file) => file.worktreeId === preClose?.worktreeId && documentFileIds.has(file.id)
+      )
+      // Why: a pinned tab survives every bulk close (see `isPinned` in shared/tab-types.ts), and the
+      // sweep is a bulk close the user never aimed at that sibling — so pinning keeps it like a
+      // rival draft does. The named id still closes even when pinned: that one was aimed at.
+      const pinnedSiblingIds = new Set(
+        preClose
+          ? (preCloseState.unifiedTabsByWorktree?.[preClose.worktreeId] ?? [])
+              .filter((tab) => tab.isPinned === true && isEditorTabContentType(tab.contentType))
+              .map((tab) => tab.entityId)
+          : []
+      )
+      // Why: duplicate records for one document each keep their own tab; closing one of them
+      // leaves the rest to reopen the file, so a close takes the whole identity with it.
+      // Why the unsaved filter: the caller's save/discard confirmation only asked about the named
+      // id, so a duplicate holding its own unsaved buffer stays open rather than being discarded
+      // silently — closing that one goes through the prompt on its own.
+      const keptSiblingIds = new Set(
+        documentFiles
+          .filter(
+            (file) => file.id !== fileId && (hasUnsavedWork(file) || pinnedSiblingIds.has(file.id))
+          )
+          .map((f) => f.id)
+      )
+      const siblingIds = new Set(
+        documentFiles.length > 0
+          ? documentFiles.filter((file) => !keptSiblingIds.has(file.id)).map((file) => file.id)
+          : [fileId]
+      )
+      const sweptUnsavedWork = documentFiles.some(
+        (file) => siblingIds.has(file.id) && hasUnsavedWork(file)
+      )
+      // Why the kept-sibling guard: a surviving duplicate still points at the untitled placeholder on disk.
+      const shouldDeleteFromDisk =
+        keptSiblingIds.size === 0 && shouldDeleteUntouchedUntitledFile(preClose, sweptUnsavedWork)
 
       // Why: mirrored tabs are host-owned, so the host must close its copy or its next snapshot re-mirrors the file and the tab reopens.
-      notifyHostOfMirroredEditorClose(get(), preClose?.worktreeId, fileId)
+      // Why per sibling: the notifier resolves the mirror from the id it is given, so a mirrored duplicate swept under another id is never reported.
+      notifyHostOfMirroredEditorClose(preCloseState, preClose?.worktreeId, fileId)
+      for (const siblingId of siblingIds) {
+        if (siblingId !== fileId) {
+          notifyHostOfMirroredEditorClose(preCloseState, preClose?.worktreeId, siblingId)
+        }
+      }
 
       set((s) => {
-        const closedFile = s.openFiles.find((f) => f.id === fileId)
-        const newFiles = s.openFiles.filter((f) => f.id !== fileId)
+        const closedFile = s.openFiles.find(
+          (file) => file.id === fileId && file.worktreeId === preClose?.worktreeId
+        )
+        const closingWorktreeId = closedFile?.worktreeId ?? s.activeWorktreeId
+        const newFiles = s.openFiles.filter(
+          (file) => file.worktreeId !== closingWorktreeId || !siblingIds.has(file.id)
+        )
+        const survivingIds = new Set(newFiles.map((file) => file.id))
         const newEditorDrafts = { ...s.editorDrafts }
-        delete newEditorDrafts[fileId]
         const newMarkdownViewMode = { ...s.markdownViewMode }
-        delete newMarkdownViewMode[fileId]
         const newMarkdownRichModeSizeOverride = { ...s.markdownRichModeSizeOverride }
-        delete newMarkdownRichModeSizeOverride[fileId]
         const newEditorViewMode = { ...s.editorViewMode }
-        delete newEditorViewMode[fileId]
-        const markdownVisibilityKeys = new Set([fileId])
-        if (closedFile?.markdownPreviewSourceFileId) {
-          markdownVisibilityKeys.add(closedFile.markdownPreviewSourceFileId)
+        // Why: editorCursorLine is keyed by fileId and grows unbounded across a long session without cleanup on close.
+        const newEditorCursorLine = { ...s.editorCursorLine }
+        const markdownVisibilityKeys = new Set<string>()
+        for (const siblingId of siblingIds) {
+          if (survivingIds.has(siblingId)) {
+            continue
+          }
+          delete newEditorDrafts[siblingId]
+          delete newMarkdownViewMode[siblingId]
+          delete newMarkdownRichModeSizeOverride[siblingId]
+          delete newEditorViewMode[siblingId]
+          delete newEditorCursorLine[siblingId]
+          markdownVisibilityKeys.add(siblingId)
+          const sourceFileId = s.openFiles.find(
+            (f) => f.id === siblingId
+          )?.markdownPreviewSourceFileId
+          if (sourceFileId) {
+            markdownVisibilityKeys.add(sourceFileId)
+          }
         }
         const visibilityKeysToRemove = [...markdownVisibilityKeys].filter(
           (key) =>
@@ -52,31 +122,49 @@ export function createCloseFileAction(
           visibilityKeysToRemove.length > 0
             ? removeMarkdownVisibilityKeys(s.markdownTableOfContentsVisible, visibilityKeysToRemove)
             : s.markdownTableOfContentsVisible
-        // Why: editorCursorLine is keyed by fileId and grows unbounded across a long session without cleanup on close.
-        const newEditorCursorLine = { ...s.editorCursorLine }
-        delete newEditorCursorLine[fileId]
         let newActiveId = s.activeFileId
         const newActiveFileIdByWorktree = { ...s.activeFileIdByWorktree }
+        const activeWasClosed =
+          s.activeWorktreeId === closingWorktreeId &&
+          s.activeFileId !== null &&
+          siblingIds.has(s.activeFileId)
 
-        if (s.activeFileId === fileId) {
-          // Why: a stale activeFileId (e.g. an orphan editor tab promoted by closeUnifiedTab) is not in openFiles; scope the fallback to the active worktree.
+        if (activeWasClosed) {
           const worktreeId = closedFile?.worktreeId ?? s.activeWorktreeId
+          const preSweepFiles = worktreeId
+            ? s.openFiles.filter((f) => f.worktreeId === worktreeId)
+            : s.openFiles
           const worktreeFiles = worktreeId
             ? newFiles.filter((f) => f.worktreeId === worktreeId)
             : []
           if (worktreeFiles.length === 0) {
             newActiveId = null
           } else {
-            // Pick adjacent file from same worktree; -1 (closed file not open) clamps to the first.
-            const closedWorktreeIdx = (
-              worktreeId ? s.openFiles.filter((f) => f.worktreeId === worktreeId) : s.openFiles
-            ).findIndex((f) => f.id === fileId)
+            const closedPreSweepIdx = preSweepFiles.findIndex((f) => f.id === fileId)
+            const closedWorktreeIdx =
+              closedPreSweepIdx === -1
+                ? 0
+                : preSweepFiles.slice(0, closedPreSweepIdx).filter((f) => !siblingIds.has(f.id))
+                    .length
             newActiveId =
               worktreeFiles[Math.min(Math.max(closedWorktreeIdx, 0), worktreeFiles.length - 1)].id
           }
           if (worktreeId) {
             newActiveFileIdByWorktree[worktreeId] = newActiveId
           }
+        }
+        // Why: a swept sibling must not stay named as some workspace's active file.
+        const reselectedWorktreeId = activeWasClosed ? closedFile?.worktreeId : undefined
+        for (const [wId, activeId] of Object.entries(newActiveFileIdByWorktree)) {
+          if (
+            wId !== closingWorktreeId ||
+            wId === reselectedWorktreeId ||
+            !activeId ||
+            !siblingIds.has(activeId)
+          ) {
+            continue
+          }
+          newActiveFileIdByWorktree[wId] = newFiles.find((f) => f.worktreeId === wId)?.id ?? null
         }
 
         // Why: editors share a mixed tab strip with browser tabs; closing the last editor should reveal a browser tab before falling back to a terminal.
@@ -110,10 +198,7 @@ export function createCloseFileAction(
         // Structured chats have no legacy terminal row to keep their workspace selected.
         const hasRemainingUnifiedTabs =
           activeWorktreeId !== null &&
-          unifiedTabsKeepWorktreeSelected(
-            s.unifiedTabsByWorktree?.[activeWorktreeId],
-            new Set([fileId])
-          )
+          unifiedTabsKeepWorktreeSelected(s.unifiedTabsByWorktree?.[activeWorktreeId], siblingIds)
         const shouldDeactivateWorktree =
           activeWorktreeId !== null &&
           remainingForWorktree.length === 0 &&
@@ -128,7 +213,7 @@ export function createCloseFileAction(
             ? {
                 ...s.tabBarOrderByWorktree,
                 [worktreeId]: (s.tabBarOrderByWorktree[worktreeId] ?? []).filter(
-                  (entryId) => entryId !== fileId
+                  (entryId) => !siblingIds.has(entryId)
                 )
               }
             : s.tabBarOrderByWorktree
@@ -153,14 +238,14 @@ export function createCloseFileAction(
           const position = getRecentlyClosedTabPosition(s, wtRecent, fileId)
           nextRecentlyClosed = {
             ...s.recentlyClosedEditorTabsByWorktree,
-            [wtRecent]: [
+            [wtRecent]: retainClosedEditorSnapshots([
               {
-                ...(snap as ClosedEditorTabSnapshot),
+                ...snap,
                 reopenId: fileId,
                 ...(position ? { position } : {})
               },
               ...stack
-            ].slice(0, MAX_RECENT_CLOSED_EDITOR_TABS)
+            ])
           }
           nextRecentlyClosedKinds = pushRecentlyClosedTabKind(
             s.recentlyClosedTabKindsByWorktree,
@@ -192,7 +277,9 @@ export function createCloseFileAction(
           tabBarOrderByWorktree: nextTabBarOrderByWorktree,
           pendingEditorReveal: null,
           pendingEditorFocusRequest:
-            s.pendingEditorFocusRequest?.fileId === fileId ? null : s.pendingEditorFocusRequest,
+            s.pendingEditorFocusRequest && siblingIds.has(s.pendingEditorFocusRequest.fileId)
+              ? null
+              : s.pendingEditorFocusRequest,
           recentlyClosedEditorTabsByWorktree: nextRecentlyClosed,
           recentlyClosedTabKindsByWorktree: nextRecentlyClosedKinds
         }
@@ -204,19 +291,23 @@ export function createCloseFileAction(
       }
 
       // Why: route editor/diff closes through the unified close path (MRU + visual-neighbor fallback) so they match terminal/browser tab-close behavior.
-      for (const tabs of Object.values(get().unifiedTabsByWorktree ?? {})) {
-        const unifiedTab = tabs.find(
-          (entry) =>
-            entry.entityId === fileId &&
-            (entry.contentType === 'editor' ||
-              entry.contentType === 'diff' ||
-              entry.contentType === 'conflict-review' ||
-              entry.contentType === 'check-details')
-        )
-        if (unifiedTab) {
-          get().closeUnifiedTab(unifiedTab.id)
-          break
-        }
+      // Why collected first: each close rewrites the tab maps this scan would otherwise be reading.
+      // Why scoped: every swept record shares preClose's worktree and an editor tab is filed under
+      // its file's worktree, so the other worktrees cost a pass per close and can only contribute a
+      // foreign tab that happens to reuse the id.
+      const tabsByWorktree = get().unifiedTabsByWorktree ?? {}
+      const scannedTabLists = preClose
+        ? [tabsByWorktree[preClose.worktreeId] ?? []]
+        : Object.values(tabsByWorktree)
+      const closableTabIds = scannedTabLists.flatMap((tabs) =>
+        tabs
+          .filter(
+            (entry) => siblingIds.has(entry.entityId) && isEditorTabContentType(entry.contentType)
+          )
+          .map((entry) => entry.id)
+      )
+      for (const tabId of closableTabIds) {
+        get().closeUnifiedTab(tabId)
       }
     }
   }

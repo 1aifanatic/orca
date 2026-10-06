@@ -57,7 +57,10 @@ describe('Monaco cursor-line ownership lifetime', () => {
   it('isolates same-path positions and closes only the selected file identity', () => {
     const store = createEditorStore()
     const local = makeFile('editor:wt-1:local:file.ts', '/repo/file.ts')
-    const remote = makeFile('editor:wt-1:remote-a:file.ts', '/repo/file.ts')
+    const remote = {
+      ...makeFile('editor:wt-1:remote-a:file.ts', '/repo/file.ts'),
+      runtimeEnvironmentId: 'remote-a'
+    }
     store.setState({ openFiles: [local, remote] })
     const localTracking = startTracking(store, local, 12)
     const remoteTracking = startTracking(store, remote, 35)
