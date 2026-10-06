@@ -47,6 +47,15 @@ const CutoverRecordSchema = z.object({
   sourceStateFingerprint: z.string().min(1).max(80).optional(),
   // Retirement started on this chain: rows may already be gone, so it is never read as "changed".
   sourceRetiringAt: z.string().datetime().optional(),
+  // What retirement may remove, path to value digests, written before it deletes anything: a
+  // later attempt removes only rows still matching it, so a start marker alone authorizes nothing.
+  sourceRetirementBaseline: z
+    .record(z.string().max(4_096), z.array(z.string().length(32)).max(64))
+    .optional(),
+  // Rows a retirement attempt found changed since its baseline; kept until they match it again.
+  sourceRetirementConflict: z
+    .object({ at: z.string().datetime(), paths: z.array(z.string().max(4_096)).max(32) })
+    .optional(),
   manifest: z.unknown()
 })
 

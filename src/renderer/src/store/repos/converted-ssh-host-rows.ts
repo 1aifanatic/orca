@@ -1,5 +1,9 @@
 import type { AppState } from '../types'
-import { getRepoExecutionHostId, toSshExecutionHostId } from '../../../../shared/execution-host'
+import {
+  getRepoExecutionHostId,
+  parseExecutionHostId,
+  toSshExecutionHostId
+} from '../../../../shared/execution-host'
 
 type ConvertedHostRows = Pick<
   AppState,
@@ -20,10 +24,15 @@ export function withoutConvertedSshHostRows(
   const hostId = toSshExecutionHostId(targetId)
   const pinned = Object.values(state.worktreesByRepo)
     .flat()
-    .filter(
-      (worktree) =>
-        worktree.hostId === hostId && !state.contestedPrimaryHostBySessionKey[worktree.id]
-    )
+    .filter((worktree) => {
+      const existing = state.contestedPrimaryHostBySessionKey[worktree.id]
+      // Why a 'local' or same-host primary is overwritten: boot may already route the key to local.
+      return (
+        worktree.hostId === hostId &&
+        existing !== hostId &&
+        parseExecutionHostId(existing)?.kind !== 'runtime'
+      )
+    })
   const repos = state.repos.filter((repo) => getRepoExecutionHostId(repo) !== hostId)
   const worktreesByRepo = withoutHostRows(state.worktreesByRepo, hostId)
   let detectedChanged = false

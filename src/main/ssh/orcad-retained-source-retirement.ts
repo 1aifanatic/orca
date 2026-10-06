@@ -5,6 +5,7 @@
  * Why newest first, compacting only at the end: a failure part-way leaves a retired head, which
  * resumes, never a retained head whose baseline counts rows already deleted and so reads as changed.
  */
+import type { OrcadMigrationSourceCutover } from '../../shared/orcad-migration-source-cutover'
 import { listEnvironments } from '../../shared/runtime-environment-store'
 import type { SshTarget } from '../../shared/ssh-types'
 import type { Store } from '../persistence'
@@ -14,6 +15,7 @@ import {
 } from './orcad-migration-cutover-journal'
 import { retireOrcadMigrationSource } from './orcad-migration-source-retirement'
 import { compareRetainedOrcadSource } from './orcad-retained-source'
+import { recordOrcadRetirementBaselines } from './orcad-retirement-authorization'
 
 export async function retireRetainedOrcadSourceChain(
   userDataPath: string,
@@ -27,23 +29,33 @@ export async function retireRetainedOrcadSourceChain(
   if (!head || (head.phase !== 'destination-committed' && head.phase !== 'source-retired')) {
     return 'skipped'
   }
-  // Rows an older build changed are a new move, never something to delete.
+  // Every committed cutover needs its journaled baseline before anything is deleted.
   if (
-    head.phase === 'destination-committed' &&
-    !head.sourceRetiringAt &&
-    compareRetainedOrcadSource(store, target, head) !== 'unchanged'
+    chain.some(
+      (cutover) => cutover.phase === 'destination-committed' && !cutover.sourceRetirementBaseline
+    )
   ) {
-    return 'skipped'
+    // Rows an older build changed are a new move, never something to delete. A start marker with
+    // no baseline (an earlier build's) proves nothing, so only an unchanged source may record one.
+    if (
+      head.phase !== 'destination-committed' ||
+      compareRetainedOrcadSource(store, target, head) !== 'unchanged'
+    ) {
+      if (head.sourceRetiringAt) {
+        markLegacyRetirementConflict(userDataPath, head)
+      }
+      return 'skipped'
+    }
+    recordOrcadRetirementBaselines(
+      userDataPath,
+      store,
+      chain,
+      head.sourceRetiringAt ?? new Date().toISOString()
+    )
   }
   const environment =
     listEnvironments(userDataPath).find((entry) => entry.id === head.destinationEnvironmentId) ??
     null
-  if (head.phase === 'destination-committed' && !head.sourceRetiringAt) {
-    writeOrcadMigrationSourceCutover(userDataPath, {
-      ...head,
-      sourceRetiringAt: new Date().toISOString()
-    })
-  }
   for (const cutover of chain.toReversed()) {
     await runTargetLifecycle(target.id, () =>
       retireOrcadMigrationSource({ userDataPath, store, environment: null }, cutover.migrationId)
@@ -55,4 +67,16 @@ export async function retireRetainedOrcadSourceChain(
     )
   }
   return 'retired'
+}
+
+function markLegacyRetirementConflict(
+  userDataPath: string,
+  head: OrcadMigrationSourceCutover
+): void {
+  if (!head.sourceRetirementConflict) {
+    writeOrcadMigrationSourceCutover(userDataPath, {
+      ...head,
+      sourceRetirementConflict: { at: new Date().toISOString(), paths: ['baseline-missing'] }
+    })
+  }
 }

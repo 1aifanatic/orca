@@ -7,12 +7,30 @@ import { withoutConvertedSshHostRows } from './converted-ssh-host-rows'
 const SSH_HOST = 'ssh:target-1' as const
 const WORKTREE_ID = 'repo-1::/srv/app'
 
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: routing reads only id and host fields.
+const repo = { id: 'repo-1', connectionId: 'target-1' } as Repo
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: routing reads only id, repoId and hostId.
+const worktree = { id: WORKTREE_ID, repoId: 'repo-1', hostId: SSH_HOST } as unknown as Worktree
+
 describe('dropping a converted SSH host from the renderer', () => {
+  it.each([
+    ['local', 'local' as const, SSH_HOST],
+    ['a runtime host', 'runtime:env-1' as const, 'runtime:env-1']
+  ])(
+    're-pins a key boot already routed to %s only when it is not a runtime host',
+    (_l, primary, expected) => {
+      const before = {
+        repos: [repo],
+        worktreesByRepo: { 'repo-1': [worktree] },
+        detectedWorktreesByRepo: {},
+        contestedPrimaryHostBySessionKey: { [WORKTREE_ID]: primary }
+      }
+      const after = { ...before, ...withoutConvertedSshHostRows(before, 'target-1') }
+      expect(after.contestedPrimaryHostBySessionKey[WORKTREE_ID]).toBe(expected)
+    }
+  )
+
   it('keeps routing its leftover session rows to the host partition, never to local', () => {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: routing reads only id and host fields.
-    const repo = { id: 'repo-1', connectionId: 'target-1' } as Repo
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: routing reads only id, repoId and hostId.
-    const worktree = { id: WORKTREE_ID, repoId: 'repo-1', hostId: SSH_HOST } as unknown as Worktree
     const before = {
       repos: [repo],
       worktreesByRepo: { 'repo-1': [worktree] },

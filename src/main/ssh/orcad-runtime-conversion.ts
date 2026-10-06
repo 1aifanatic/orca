@@ -38,6 +38,7 @@ import {
 } from './orcad-migration-terminal-gate'
 import { createManagedOrcadEnvironment } from './orcad-runtime-deployment'
 import { retireOrcadMigrationSource } from './orcad-migration-source-retirement'
+import { recordOrcadRetirementBaselines } from './orcad-retirement-authorization'
 import {
   isOrcadSourceRetirementEnabled,
   retainOrcadMigrationSource
@@ -113,18 +114,23 @@ export async function convertSshTargetToManagedOrcad(
   ) {
     retainOrcadMigrationSource(userDataPath, committed.migrationId, args.now)
   } else {
-    await runTargetLifecycle(fenced.sshTargetId, () =>
-      retireOrcadMigrationSource(
+    await runTargetLifecycle(fenced.sshTargetId, () => {
+      const store = targetStore.getOrcadMigrationSource()
+      // Just committed from a frozen source: what it holds now is what may be retired.
+      if (committed.phase === 'destination-committed' && !committed.sourceRetirementBaseline) {
+        recordOrcadRetirementBaselines(userDataPath, store, [committed])
+      }
+      return retireOrcadMigrationSource(
         {
           userDataPath,
-          store: targetStore.getOrcadMigrationSource(),
+          store,
           environment: marked,
           now: args.now,
           signal: args.signal
         },
         committed.migrationId
       )
-    )
+    })
   }
   return {
     outcome: 'converted',

@@ -13,6 +13,7 @@ import {
 import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fake'
 import { fenceOrcadMigrationSource } from './orcad-migration-source-fence'
 import { retireOrcadMigrationSource } from './orcad-migration-source-retirement'
+import { recordOrcadRetirementBaselines } from './orcad-retirement-authorization'
 import { SshTargetOrcadClaims } from './ssh-target-orcad-claims'
 
 const TARGET: SshTarget = {
@@ -117,11 +118,19 @@ async function setup(
       fenced.cutover.migrationId
     )
   }
-  const retire = () =>
-    retireOrcadMigrationSource(
+  // As production callers do: the baseline is recorded before the first deletion.
+  const retire = () => {
+    const cutover = listOrcadMigrationSourceCutovers(userDataPath).find(
+      (entry) => entry.migrationId === fenced.cutover.migrationId
+    )
+    if (cutover?.phase === 'destination-committed' && !cutover.sourceRetirementBaseline) {
+      recordOrcadRetirementBaselines(userDataPath, store, [cutover])
+    }
+    return retireOrcadMigrationSource(
       { userDataPath, store, environment: null },
       fenced.cutover.migrationId
     )
+  }
   return { userDataPath, store, retire, migrationId: fenced.cutover.migrationId, groupId: group.id }
 }
 
@@ -222,8 +231,12 @@ describe('retiring a migrated source', () => {
       h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: tabs } })
     )
     await expect(h.retire()).rejects.toThrow(
-      `orcad_migration_source_workspace_session_reappeared:local|${WORKTREE}`
+      `orcad_migration_retirement_conflict:session|unifiedTabs|${WORKTREE}`
     )
+    await expect(h.retire()).rejects.toThrow('orcad_migration_retirement_conflict')
+    expect(
+      listOrcadMigrationSourceCutovers(h.userDataPath)[0]?.sourceRetirementConflict
+    ).toBeDefined()
     expect(h.store.getWorkspaceSession().unifiedTabs?.[WORKTREE]).toEqual(tabs)
     expect(listOrcadMigrationSourceCutovers(h.userDataPath)[0]?.phase).toBe('destination-committed')
   })

@@ -16,19 +16,22 @@ import {
 } from './orcad-migration-cutover-journal'
 import { environmentMatchesManagedOrcadCutover } from './orcad-managed-migration-status'
 import { resolveOrcadMigrationFence } from './orcad-migration-source-fence'
+import { authorizeOrcadRetirement } from './orcad-retirement-authorization'
 
 export type OrcadMigrationRetirementStore = Pick<
   Store,
   | 'assertOrcadMigrationSourceRetired'
-  | 'collectOrcadMigrationRetirableSessionRows'
+  | 'collectOrcadMigrationRetirementBaselines'
+  | 'collectOrcadMigrationRetirementRows'
   | 'deleteRetiredOrcadMigrationScrollback'
   | 'flushPendingOrThrowAsync'
   | 'getSshRemotePtyLeases'
   | 'getSshTarget'
   | 'removeSshPtyConsumerRecovery'
   | 'removeSshRemotePtyLease'
+  | 'restoreOrcadMigrationSourceCatalog'
   | 'retireOrcadMigrationSourceCatalog'
-  | 'retireStaleOrcadMigrationSessionReplay'
+  | 'snapshotOrcadMigrationSourceCatalog'
 >
 
 export async function retireOrcadMigrationSource(
@@ -66,24 +69,35 @@ export async function retireOrcadMigrationSource(
     ) {
       throw new Error('orcad_migration_source_fence_lost')
     }
-    const retiredSession = context.store.collectOrcadMigrationRetirableSessionRows(cutover.manifest)
+    const now = context.now ?? (() => new Date())
+    // Only rows the journaled baseline names may go; anything changed since stays as a conflict.
+    authorizeOrcadRetirement(context.userDataPath, context.store, migrationId, now)
+    const catalog = context.store.snapshotOrcadMigrationSourceCatalog(cutover.manifest)
     await retireAndFlush(context, cutover)
     try {
       context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
     } catch (error) {
-      // Why: a save landing during the flush can replay moved session state. Only an exact replay
-      // is removed again; a new or changed row is a user's write, so retirement defers and keeps it.
-      if (
-        !isSessionReappeared(error) ||
-        !context.store.retireStaleOrcadMigrationSessionReplay(cutover.manifest, retiredSession)
-      ) {
+      // Why: a save landing during the flush can replay moved rows. Only an exact replay of the
+      // baseline is removed again; a new or changed row defers retirement and is kept.
+      if (!isReappeared(error)) {
         throw error
       }
+      try {
+        authorizeOrcadRetirement(context.userDataPath, context.store, migrationId, now)
+      } catch (conflict) {
+        // The user's row stays, and so must the project it belongs to.
+        context.store.restoreOrcadMigrationSourceCatalog(catalog)
+        await flush(context)
+        // The assertion's message names the partition the row landed in.
+        throw new Error(`${errorMessage(conflict)} (${errorMessage(error)})`)
+      }
+      context.store.retireOrcadMigrationSourceCatalog(cutover.manifest)
       await flush(context)
       context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
     }
     retired = {
       ...cutover,
+      sourceRetirementConflict: undefined,
       phase: 'source-retired',
       updatedAt: (context.now ?? (() => new Date()))().toISOString()
     }
@@ -119,11 +133,8 @@ function flush(context: {
   })
 }
 
-function isSessionReappeared(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.startsWith('orcad_migration_source_workspace_session_reappeared')
-  )
+function isReappeared(error: unknown): boolean {
+  return error instanceof Error && /^orcad_migration_source_\w+_reappeared/.test(error.message)
 }
 
 /** Leases the fence proved exited name a relay that no longer serves this host. */
@@ -137,4 +148,8 @@ function retireProvenLeases(
       store.removeSshRemotePtyLease(cutover.sshTargetId, lease.ptyId)
     }
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

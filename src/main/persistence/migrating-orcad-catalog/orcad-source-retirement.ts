@@ -11,22 +11,19 @@ import {
 } from '../loading-store/repo-lifecycle-operations'
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import { scheduleSave, type WriteSchedulingOperations } from '../loading-store/write-scheduling'
-import { retireOrcadSourceCatalogState } from './orcad-source-catalog-retirement'
+import { assertOrcadMigrationSourceDormantStateRetired } from './orcad-source-dormant-retirement'
 import {
-  assertOrcadMigrationSourceDormantStateRetired,
-  retireOrcadMigrationSourceDormantState
-} from './orcad-source-dormant-retirement'
-import {
-  retireOrcadMigrationSourceWorkspaceSession,
-  retireOrcadSourceReconnectHint
-} from './orcad-source-workspace-session-retirement'
-import {
-  collectOrcadMigrationRetirableSessionRows,
-  isStaleOrcadMigrationSessionReplay,
-  type OrcadMigrationSessionRows
-} from './orcad-source-session-replay'
-import { retargetOrcadSourceClientFocus } from './orcad-source-client-focus-retarget'
+  applyOrcadSourceRetirement,
+  collectOrcadRetirementBaselines,
+  collectOrcadRetirementRows,
+  type OrcadRetirementRows
+} from './orcad-source-retirement-baseline'
 import { deleteUnreferencedOrcadMigrationScrollback } from './orcad-source-scrollback-cleanup'
+
+export type OrcadSourceCatalogRows = Pick<
+  StoreRuntimeState['state'],
+  'folderWorkspaces' | 'projectGroups' | 'repos'
+>
 
 const orcadSourceRetirementContext = Symbol('OrcadSourceRetirementPersistence')
 type OrcadSourceRetirementRuntime = Pick<
@@ -55,10 +52,7 @@ export class OrcadSourceRetirementPersistence {
     assertOrcadMigrationManifestDigest(manifest)
     const context = this[orcadSourceRetirementContext]
     const state = context.runtime.state
-    retireOrcadSourceCatalogState(state, manifest)
-    retargetOrcadSourceClientFocus(state, manifest)
-    retireOrcadMigrationSourceDormantState(state, manifest)
-    retireOrcadSourceReconnectHint(state, manifest.source.sshTargetId)
+    applyOrcadSourceRetirement(state, manifest)
     syncProjectHostSetupCompatibilityState(context.repos)
     scheduleSave(context.scheduling)
   }
@@ -79,30 +73,52 @@ export class OrcadSourceRetirementPersistence {
     assertOrcadMigrationSourceDormantStateRetired(state, manifest)
   }
 
-  /** The session rows this manifest's retirement would remove now, taken before it runs. */
-  collectOrcadMigrationRetirableSessionRows(
-    manifest: OrcadMigrationManifest
-  ): OrcadMigrationSessionRows {
-    return collectOrcadMigrationRetirableSessionRows(
-      this[orcadSourceRetirementContext].runtime.state,
-      manifest
-    )
+  /** The manifest's catalog rows still present, to put back if retirement stops on a conflict. */
+  snapshotOrcadMigrationSourceCatalog(manifest: OrcadMigrationManifest): OrcadSourceCatalogRows {
+    const state = this[orcadSourceRetirementContext].runtime.state
+    const ids = {
+      repos: new Set(manifest.payload.repositories.map((row) => row.id)),
+      projectGroups: new Set(manifest.payload.projectGroups.map((row) => row.id)),
+      folderWorkspaces: new Set(manifest.payload.folderWorkspaces.map((row) => row.id))
+    }
+    return structuredClone({
+      repos: state.repos.filter((row) => ids.repos.has(row.id)),
+      projectGroups: state.projectGroups.filter((row) => ids.projectGroups.has(row.id)),
+      folderWorkspaces: state.folderWorkspaces.filter((row) => ids.folderWorkspaces.has(row.id))
+    })
   }
 
-  /** Removes reappeared session rows only if every one replays `retired` exactly; else keeps them. */
-  retireStaleOrcadMigrationSessionReplay(
-    manifest: OrcadMigrationManifest,
-    retired: OrcadMigrationSessionRows
-  ): boolean {
+  /**
+   * Puts back catalog rows a stopped retirement removed: a row a user wrote since is kept, and
+   * without its project it would not survive the next load.
+   */
+  restoreOrcadMigrationSourceCatalog(rows: OrcadSourceCatalogRows): void {
     const context = this[orcadSourceRetirementContext]
     const state = context.runtime.state
-    const current = collectOrcadMigrationRetirableSessionRows(state, manifest)
-    if (!isStaleOrcadMigrationSessionReplay(current, retired)) {
-      return false
-    }
-    retireOrcadMigrationSourceWorkspaceSession(state, manifest)
+    const missing = <T extends { id: string }>(current: T[], saved: T[]): T[] => [
+      ...current,
+      ...saved.filter((row) => !current.some((entry) => entry.id === row.id))
+    ]
+    state.projectGroups = missing(state.projectGroups, rows.projectGroups)
+    state.repos = missing(state.repos, rows.repos)
+    state.folderWorkspaces = missing(state.folderWorkspaces, rows.folderWorkspaces)
+    syncProjectHostSetupCompatibilityState(context.repos)
     scheduleSave(context.scheduling)
-    return true
+  }
+
+  /** What this manifest's retirement would remove or rewrite now, as path → digests. */
+  collectOrcadMigrationRetirementRows(manifest: OrcadMigrationManifest): OrcadRetirementRows {
+    return collectOrcadRetirementRows(this[orcadSourceRetirementContext].runtime.state, manifest)
+  }
+
+  /** Each manifest's retirement rows, retiring them in the given order on one copy. */
+  collectOrcadMigrationRetirementBaselines(
+    manifests: readonly OrcadMigrationManifest[]
+  ): Map<string, OrcadRetirementRows> {
+    return collectOrcadRetirementBaselines(
+      this[orcadSourceRetirementContext].runtime.state,
+      manifests
+    )
   }
 
   /**
