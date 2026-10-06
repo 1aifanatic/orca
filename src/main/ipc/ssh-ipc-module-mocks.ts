@@ -147,6 +147,7 @@ export function createSshIpcMocks(): SshIpcMocks {
     // Null keeps today's relay path; the real decision is covered by its own tests.
     hostServerConnect: {
       decideHostServer: vi.fn(async () => null),
+      recheckWhenManagedFenceClears: vi.fn(),
       publishHostServerDecisionFailure: vi.fn(),
       publishManagedServerConnect: vi.fn(),
       recordRelayDecision: vi.fn(),

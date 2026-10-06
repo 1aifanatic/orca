@@ -5,6 +5,7 @@
 import type { SshManagedServerUpdateNote, SshTarget } from '../../shared/ssh-types'
 import type { ManagedOrcadAutoUpdateOutcome } from './orcad-managed-auto-update'
 import type { HostServerUpdateReason } from './ssh-host-server-connect-events'
+import { ORCAD_ACTIVATION_FENCE_BUSY_CODE } from './orcad-activation-fence-hold'
 
 export type ManagedServerUpdateDeps = {
   /** Runs the Managed servers update when the host is behind this app; `onUpdating` fires first. */
@@ -20,6 +21,8 @@ export type ManagedServerUpdateDeps = {
 
 export type HostServerUpdateOnConnect = {
   note: SshManagedServerUpdateNote | undefined
+  /** Deferred only because another desktop's update holds the host; worth checking again soon. */
+  fenceBusy?: true
   reason: HostServerUpdateReason
   /** True when a recorded failure for this app version skipped the update without a try. */
   recorded: boolean
@@ -57,7 +60,8 @@ export async function checkManagedServerUpdate(
       return {
         note: { state: 'deferred', detail: result.reason },
         reason: 'update_deferred',
-        recorded: false
+        recorded: false,
+        ...(result.code === ORCAD_ACTIVATION_FENCE_BUSY_CODE ? { fenceBusy: true as const } : {})
       }
     case 'failed':
       deps.recordUpdateFailure(target, result.reason)

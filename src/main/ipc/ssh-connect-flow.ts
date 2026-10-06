@@ -14,6 +14,7 @@ import { adoptSshConnection, runAttributedToSshOwner } from '../ssh/ssh-connecti
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import {
   decideHostServer,
+  recheckWhenManagedFenceClears,
   publishHostServerDecisionFailure,
   refineRelayTerminalDecision,
   publishManagedServerConnect,
@@ -204,6 +205,9 @@ async function doConnect(
   }
   adoptCurrentTransport(targetId, owner)
   if (server?.route === 'managed') {
+    if (server.fenceHeld) {
+      recheckWhenManagedFenceClears(target, server.environmentId)
+    }
     return publishManagedServerConnect(
       targetId,
       server.environmentId,

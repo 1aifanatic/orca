@@ -8,7 +8,11 @@ import type {
 } from '../../shared/ssh-types'
 import type { HostServerOnConnectResult } from '../ssh/ssh-host-server-on-connect'
 import { relayServerStatus, shouldToastManagedServerMove } from '../ssh/ssh-host-server-move-offer'
-import { clearSshHostServerStatus, setSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import {
+  clearSshHostServerStatus,
+  getSshHostServerStatus,
+  setSshHostServerStatus
+} from '../ssh/ssh-host-server-status'
 import { trackSshHostServerMove } from '../ssh/ssh-host-server-telemetry'
 import { knownSshHostPlatform } from '../ssh/ssh-host-platform-memo'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
@@ -43,6 +47,29 @@ export async function decideHostServer(
     console.warn('[ssh] Could not decide the managed Orca server for this host:', error)
     return null
   }
+}
+
+/** Rechecks a host another desktop's update held during this connect, until the fence clears. */
+export function recheckWhenManagedFenceClears(target: SshTarget, environmentId: string): void {
+  void Promise.all([
+    import('../ssh/managed-server-fence-recheck'),
+    import('./ssh-host-server-on-connect-wiring')
+  ]).then(([{ recheckFencedManagedServer, scheduleManagedServerFenceRecheck }, wiring]) => {
+    const deps = wiring.hostServerOnConnectDeps(getAppEnvironment().getPath('userData'))
+    scheduleManagedServerFenceRecheck(target.id, {
+      stillCurrent: () => {
+        const status = getSshHostServerStatus(target.id)
+        return (
+          connectionManager?.getState(target.id)?.status === 'connected' &&
+          status?.kind === 'managed' &&
+          status.environmentId === environmentId
+        )
+      },
+      recheck: () => recheckFencedManagedServer(target, environmentId, deps),
+      publish: (result) =>
+        publishManagedServerConnect(target.id, environmentId, result.update, result.serving)
+    })
+  })
 }
 
 /**

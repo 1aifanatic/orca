@@ -29,6 +29,10 @@ export type OrcadManagedServingInput = {
   probe: (environment: KnownRuntimeEnvironment, timeoutMs: number) => Promise<boolean>
 }
 
+/** A wake refused because another update, rollback or recovery holds the host; it clears itself. */
+export const MANAGED_ORCAD_FENCED_DETAIL =
+  'An update, rollback or recovery holds this host; it was not started.'
+
 const PROBE_TIMEOUT_MS = 5_000
 // Why: a connect checks right after its fresh tunnel did; one verdict serves both, on that
 // transport and port only, so a kill, reboot or rebind is never answered from cache.
@@ -147,7 +151,7 @@ async function wakeIfStopped(
 function wakeRefusal(outcome: 'not-activated' | 'unverifiable' | 'fenced'): string {
   switch (outcome) {
     case 'fenced':
-      return 'An update, rollback or recovery holds this host; it was not started.'
+      return MANAGED_ORCAD_FENCED_DETAIL
     case 'not-activated':
       return 'This host has no activated managed server to start.'
     case 'unverifiable':

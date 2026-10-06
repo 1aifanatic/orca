@@ -6,7 +6,7 @@ import {
   requireManagedOrcadEnvironment,
   resolveLinkedOrcadContext
 } from './orcad-managed-runtime-context'
-import { readManagedOrcadUpdateDeferral } from './orcad-managed-update-deferrals'
+import { currentManagedOrcadUpdateDeferral } from './orcad-managed-update-deferrals'
 import { findIncompleteManagedOrcadMigration } from './orcad-managed-migration-status'
 import { collectManagedTerminalCensus } from './orcad-terminal-census-client'
 
@@ -36,7 +36,7 @@ export async function getManagedOrcadRuntimeStatus(
       recovery: transaction ? managedRecoveryStatus(transaction) : null,
       terminals: await collectManagedTerminalCensus(userDataPath, environment, record),
       migration: migrationStatus(userDataPath, environment.id),
-      deferredUpdate: readManagedOrcadUpdateDeferral(environment.id)
+      deferredUpdate: currentManagedOrcadUpdateDeferral(environment.id, record.active)
     }
   })
 }
