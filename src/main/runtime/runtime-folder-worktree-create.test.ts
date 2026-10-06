@@ -60,7 +60,7 @@ async function startupTerminalOptions(startupPaneKey?: string): Promise<Record<s
 describe('a folder workspace create with a startup agent', () => {
   it('seeds a headless activated folder workspace without a paired viewer', async () => {
     const { deps, createTerminal } = createDeps()
-    deps.provisionInBackground = true
+    deps.provisionInBackground = () => true
     const result = await createRuntimeFolderWorktree({
       request: { repoSelector: `id:${repo.id}`, name: 'headless', activate: true },
       repo,

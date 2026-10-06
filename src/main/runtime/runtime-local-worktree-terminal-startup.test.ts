@@ -92,7 +92,7 @@ describe('startRuntimeLocalWorktreeTerminals default shell seeding', () => {
     'provisions a headless activated workspace without a viewer (setup=%s)',
     async (withSetup) => {
       const { ports } = createPorts()
-      ports.provisionInBackground = true
+      ports.provisionInBackground = () => true
       const setup = withSetup ? { runnerScriptPath: '/repo/setup.sh', envVars: {} } : undefined
       await startRuntimeLocalWorktreeTerminals({
         request: { repoSelector: `id:${repo.id}`, name: 'headless', activate: true },

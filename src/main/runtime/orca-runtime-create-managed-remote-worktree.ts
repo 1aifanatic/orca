@@ -28,7 +28,7 @@ export class OrcaRuntimeWithCreateManagedRemoteWorktree extends OrcaRuntimeWithC
     return createRuntimeRemoteManagedWorktree(repo, args, {
       store: this.store,
       canSpawn: () => Boolean(this.ptyController?.spawn),
-      provisionInBackground: !this.notifier && (args.navigation ?? 'host') === 'host',
+      provisionInBackground: () => this.shouldProvisionWorktreeInBackground(args.navigation),
       createTerminal: (selector, options) => this.createTerminal(selector, options),
       pasteDraft: (handle, draft) => this.pasteStartupDraftWhenReady(handle, draft),
       sendFollowup: (handle, followup) => this.sendStartupFollowupWhenReady(handle, followup),

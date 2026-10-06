@@ -120,6 +120,8 @@ borrow a paired client's view. Catalog and session updates continue to reach eve
 subscriber independently of navigation.
 Headless host/CLI creates provision their shells, setup, and default tabs on the
 execution host in the background, without depending on an observer to open them.
+The same fallback applies when an attached host renderer is unavailable or
+reloading; availability is checked after creation, rather than before its awaits.
 
 `activateWorktree` client events carry an optional `navigation` field. Only explicit
 `clients` or `all` requests publish these events; updated clients ignore events

@@ -97,7 +97,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
         deps: {
           store: this.store,
           ptySpawnAvailable: Boolean(this.ptyController?.spawn),
-          provisionInBackground: !this.notifier && (args.navigation ?? 'host') === 'host',
+          provisionInBackground: () => this.shouldProvisionWorktreeInBackground(args.navigation),
           createTerminal: (selector, options) => this.createTerminal(selector, options),
           pasteDraft: (handle, draft) => this.pasteStartupDraftWhenReady(handle, draft),
           sendFollowup: (handle, followup) => this.sendStartupFollowupWhenReady(handle, followup),
@@ -242,8 +242,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       warning,
       ports: {
         canSpawn: Boolean(this.ptyController?.spawn),
-        // Headless host activation cannot delegate setup or shell creation to a remote observer.
-        provisionInBackground: !this.notifier && (args.navigation ?? 'host') === 'host',
+        provisionInBackground: () => this.shouldProvisionWorktreeInBackground(args.navigation),
         createTerminal: (selector, options) => this.createTerminal(selector, options, worktree),
         pasteDraft: (handle, draft) => this.pasteStartupDraftWhenReady(handle, draft),
         sendFollowup: (handle, followup) => this.sendStartupFollowupWhenReady(handle, followup),

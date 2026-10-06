@@ -6,8 +6,16 @@ import { prefetchWorktreeCreateBase } from '../worktree-create-base-prefetch'
 import { prepareWorktreeCreateForRepo } from '../worktree-create-preparation'
 import { getWorktreeCreatePrefetchGitOptions } from '../project-runtime-git-options'
 import type { Worktree } from '../../shared/worktree/types'
+import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 
 export class OrcaRuntimeWithGetWorktreeTerminalProvisioningHost extends OrcaRuntimeWithActivateManagedWorktree {
+  protected shouldProvisionWorktreeInBackground(navigation?: RuntimeNavigationTarget): boolean {
+    return (
+      (navigation ?? 'host') === 'host' &&
+      (!this.notifier || this.graphStatus !== 'ready' || !this.getAvailableAuthoritativeWindow())
+    )
+  }
+
   protected getWorktreeTerminalProvisioningHost(
     createdWorktree?: Worktree
   ): WorktreeTerminalProvisioningHost {
