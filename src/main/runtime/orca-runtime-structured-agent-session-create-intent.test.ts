@@ -185,6 +185,8 @@ describe('structured agent-session create intent', () => {
     // A read must not run launch preparation: no home sync, no session bridge,
     // no cleared account selection — the read-only sibling answers instead.
     expect(prepareCodexStructuredLaunch).not.toHaveBeenCalled()
+    // A read pins no launch, so it writes no folder trust either.
+    expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
     expect(resolveCodexStructuredLaunchHome).toHaveBeenCalledWith({
       launchEnv: expect.objectContaining({ CODEX_HOME: '/configured/home' })
     })
