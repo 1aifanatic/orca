@@ -42,6 +42,9 @@ export type QueuedMessageCard = {
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
   waitsForAgent?: true
+  /** A /clear next in line that nothing but background tasks holds: the queue runs it without a
+   *  press, so it offers no Send (which could only run it early or be refused). */
+  runsOnItsOwn?: true
   pausedReason?: string
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
@@ -99,6 +102,10 @@ export function projectQueuedMessageCards(
                   ? 'background-tasks'
                   : 'turn'
     behindReturned = behindReturned || message.state === 'returned'
+    const runsOnItsOwn =
+      index === 0 &&
+      message.body.command?.name === 'clear' &&
+      (hold === 'turn' || hold === 'background-tasks')
     return {
       messageId: message.messageId,
       position: message.position,
@@ -108,7 +115,8 @@ export function projectQueuedMessageCards(
       ...(message.body.command !== undefined
         ? {
             command: true as const,
-            ...(session.agentWorking ? { waitsForAgent: true as const } : {})
+            ...(session.agentWorking ? { waitsForAgent: true as const } : {}),
+            ...(runsOnItsOwn ? { runsOnItsOwn: true as const } : {})
           }
         : {}),
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),

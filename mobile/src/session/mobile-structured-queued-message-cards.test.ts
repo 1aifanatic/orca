@@ -68,6 +68,33 @@ describe('mobileQueuedMessageCards', () => {
     ).toMatchObject({ command: true, waitsForAgent: true })
   })
 
+  it('a /clear next in line that nothing holds offers no Send: the queue is about to run it', () => {
+    const clear = (overrides: Partial<AgentSessionQueuedMessage> = {}) =>
+      draft({
+        messageId: 'c',
+        body: {
+          kind: 'message',
+          role: 'user',
+          blocks: [{ type: 'text', text: '/clear' }],
+          command: { name: 'clear' }
+        },
+        ...overrides
+      })
+    const idle = { pendingPrompt: false }
+    expect(mobileQueuedMessageCards([clear()], [], idle)[0]).toMatchObject({ runsOnItsOwn: true })
+    // Anything the person must act on keeps its Send, as does a /clear behind another card.
+    for (const [cards, facts] of [
+      [[clear()], { ...idle, queuePaused: true }],
+      [[clear()], { pendingPrompt: true }],
+      [[clear({ paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT })], idle],
+      [[draft({ messageId: 'a' }), clear()], idle]
+    ] as const) {
+      expect(mobileQueuedMessageCards(cards, [], facts).some((card) => card.runsOnItsOwn)).toBe(
+        false
+      )
+    }
+  })
+
   it("a kept command card's caption names Send only when Send is there", () => {
     const kept = draft({
       messageId: 'c',

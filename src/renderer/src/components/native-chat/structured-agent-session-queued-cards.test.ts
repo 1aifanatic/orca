@@ -85,6 +85,51 @@ describe('a /clear card waiting on background tasks', () => {
   })
 })
 
+describe('a /clear card the queue is about to run', () => {
+  const clearCard = (id: string, position: number) =>
+    draft(id, position, {
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/clear' }],
+        command: { name: 'clear' }
+      }
+    })
+  const runsOnItsOwn = (cards: ReturnType<typeof projectQueuedMessageCards>, index = 0): boolean =>
+    cards[index]?.runsOnItsOwn === true
+
+  it('next in line with nothing holding it, or only background tasks, offers no Send', () => {
+    expect(runsOnItsOwn(projectQueuedMessageCards([clearCard('c', 1)], [], IDLE))).toBe(true)
+    const tasks = { hasPendingPrompt: false, backgroundTasksRunning: true }
+    const waiting = projectQueuedMessageCards([clearCard('c', 1)], [], tasks)
+    expect(waiting[0]?.hold).toBe('background-tasks')
+    expect(runsOnItsOwn(waiting)).toBe(true)
+  })
+
+  it('keeps Send whenever something the person must act on holds it', () => {
+    const kept = draft('c', 1, {
+      body: clearCard('c', 1).body,
+      paused: true,
+      pausedReason: 'kept'
+    })
+    for (const cards of [
+      projectQueuedMessageCards([clearCard('c', 1)], [], { ...IDLE, queuePaused: true }),
+      projectQueuedMessageCards([clearCard('c', 1)], [], { hasPendingPrompt: true }),
+      projectQueuedMessageCards([kept], [], IDLE)
+    ]) {
+      expect(runsOnItsOwn(cards)).toBe(false)
+    }
+    // Behind another card, or a /compact: the turn it waits for is not its own run.
+    expect(
+      runsOnItsOwn(projectQueuedMessageCards([draft('m', 1), clearCard('c', 2)], [], IDLE), 1)
+    ).toBe(false)
+    const compact = draft('k', 1, {
+      body: { ...clearCard('k', 1).body, command: { name: 'compact' } }
+    })
+    expect(runsOnItsOwn(projectQueuedMessageCards([compact], [], IDLE))).toBe(false)
+  })
+})
+
 describe('queued message cards', () => {
   it('orders by host position whatever order the list arrives in', () => {
     const cards = projectQueuedMessageCards([draft('b', 2), draft('a', 1), draft('c', 3)], [], IDLE)

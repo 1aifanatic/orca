@@ -156,6 +156,16 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(nodeTypes(rows[1]!)).toContain('CornerDownRight')
   })
 
+  it('a /clear the queue is about to run offers Delete but no Send', async () => {
+    const mounted = await mount({
+      cards: [card({ messageId: 'clear', text: '/clear', command: true, runsOnItsOwn: true })]
+    })
+    expect(texts(mounted).filter((text) => text === 'Send' || text === 'Steer')).toEqual([])
+    expect(
+      mounted.root.findAllByProps({ accessibilityLabel: 'Delete this queued message' })
+    ).toHaveLength(1)
+  })
+
   it('a command card never steers: Send only while the agent is idle, and no menu', async () => {
     const onSend = vi.fn(async () => true)
     const mounted = await mount({

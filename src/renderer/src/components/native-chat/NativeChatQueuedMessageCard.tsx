@@ -180,8 +180,9 @@ export function NativeChatQueuedMessageCard({
       {/* Nothing acts on a send still on its way: the host holds no card for it yet. */}
       {card.hold === 'sending' ? null : (
         <>
-          {/* A command never steers: its Send shows only while the agent is idle. */}
-          {card.waitsForAgent ? null : (
+          {/* A command never steers: its Send shows only while the agent is idle, and never on
+              a /clear the queue is about to run. */}
+          {card.waitsForAgent || card.runsOnItsOwn ? null : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button type="button" variant="ghost" size="xs" onClick={onSteer}>

@@ -134,8 +134,9 @@ export function MobileNativeChatQueuedMessages({
                   </Text>
                 ) : null}
               </View>
-              {/* A command never steers: its Send shows only while the agent is idle. */}
-              {card.waitsForAgent ? null : (
+              {/* A command never steers: its Send shows only while the agent is idle, and never on
+                  a /clear the queue is about to run. */}
+              {card.waitsForAgent || card.runsOnItsOwn ? null : (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ disabled: busy }}

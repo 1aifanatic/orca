@@ -174,6 +174,24 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull()
   })
 
+  it('a /clear the queue is about to run offers Delete but no Send, waiting caption or not', () => {
+    renderList(
+      controller([
+        card({ messageId: 'clear-1', text: '/clear', command: true, runsOnItsOwn: true }),
+        card({
+          messageId: 'clear-2',
+          text: '/clear',
+          command: true,
+          runsOnItsOwn: true,
+          hold: 'background-tasks'
+        })
+      ])
+    )
+    expect(screen.getByText('Waiting for background tasks to finish')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
+  })
+
   it('a command card offers no Edit: its text is not a draft', async () => {
     renderList(controller([card({ messageId: 'compact-1', text: '/compact', command: true })]))
     fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))

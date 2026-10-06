@@ -27,6 +27,9 @@ export type MobileQueuedMessageCard = {
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
   waitsForAgent?: true
+  /** A /clear next in line that nothing this client sees holds: the queue runs it without a
+   *  press (once any background tasks end), so it offers no Send. */
+  runsOnItsOwn?: true
 }
 
 function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string {
@@ -139,6 +142,14 @@ export function mobileQueuedMessageCards(
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
                 : null
+    const runsOnItsOwn =
+      cards.length === 0 &&
+      draft.body.command?.name === 'clear' &&
+      draft.state === 'waiting' &&
+      !paused &&
+      !behindReturned &&
+      facts.queuePaused !== true &&
+      !facts.pendingPrompt
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),
@@ -151,7 +162,8 @@ export function mobileQueuedMessageCards(
       ...(draft.body.command !== undefined
         ? {
             command: true as const,
-            ...(facts.agentWorking ? { waitsForAgent: true as const } : {})
+            ...(facts.agentWorking ? { waitsForAgent: true as const } : {}),
+            ...(runsOnItsOwn ? { runsOnItsOwn: true as const } : {})
           }
         : {})
     })
