@@ -18,6 +18,7 @@ import {
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { structuredAgentSessionStopControl } from './structured-agent-session-stop-control'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -182,17 +183,6 @@ export function useStructuredAgentSession(args: {
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
   const stopsConversation =
     useStructuredAgentSessionHostStopsConversation(target) && transportState.fence !== null
-  // Before the host publishes this chat to this view, nothing sent has reached it: a Stop takes back
-  // what this client holds, so a start that never answers cannot hold the message hostage.
-  const stopsUnpublishedSend =
-    !transportEnabled &&
-    hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)
-  const canStop =
-    transportState.turnId !== null ||
-    stopsUnpublishedSend ||
-    (stopsConversation &&
-      (transportState.isWorking ||
-        hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
@@ -273,23 +263,15 @@ export function useStructuredAgentSession(args: {
     turnActivity: transportState.turnActivity,
     backgroundTasks: transportState.backgroundTasks,
     turnId: transportState.turnId,
-    canStop,
-    stop: () => {
-      if (!transportEnabled) {
-        outboxController.withdrawUnsent()
-        return Promise.resolve(null)
-      }
-      if (stopsConversation) {
-        // Unsent text this client still owns goes back to its composer — a local move.
-        // Host-held drafts are never withdrawn by a Stop: the host pauses them and
-        // they stay visible as cards, on every device, until the user acts on one.
-        outboxController.withdrawUnsent()
-        return mutate('agentSession.cancel', 'agentSession.cancel', {})
-      }
-      return transportState.turnId
-        ? mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
-        : Promise.resolve(null)
-    },
+    ...structuredAgentSessionStopControl({
+      published: transportEnabled,
+      stopsConversation,
+      turnId: transportState.turnId,
+      isWorking: transportState.isWorking,
+      holdsUnsent: hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions),
+      withdrawUnsent: outboxController.withdrawUnsent,
+      cancel: (params) => mutate('agentSession.cancel', 'agentSession.cancel', params)
+    }),
     queuedMessages: queuedController,
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate fingerprints the payload:
