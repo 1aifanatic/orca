@@ -2,12 +2,14 @@ import { listSshFiles } from './ssh-file-listing'
 import { describe, expect, it, vi } from 'vitest'
 import { readSshMarkdownDocuments } from './ssh-markdown-document-listing'
 import { readSshDirectoryBounded } from './ssh-directory-listing'
+import { SshFilesystemProvider } from './ssh-filesystem-provider'
 import type { SshChannelMultiplexer } from '../ssh/ssh-channel-multiplexer'
 
 function muxFixture(result: unknown, error?: Error) {
   const mock = {
     request: error ? vi.fn().mockRejectedValue(error) : vi.fn().mockResolvedValue(result),
     notify: vi.fn(),
+    onNotification: vi.fn(() => () => {}),
     onNotificationByMethod: vi.fn(() => () => {}),
     onDispose: vi.fn(() => () => {}),
     isDisposed: () => false
@@ -35,10 +37,31 @@ describe('SSH listing compatibility', () => {
     expect(loadLegacy).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects an old-peer sentinel inventory rather than reporting a Markdown prefix as complete', async () => {
+  it('keeps late Markdown files in large old-peer source inventories', async () => {
+    const paths = Array.from({ length: 25_002 }, (_, index) => `src/file-${index}.ts`)
+    paths.push('docs/late.md')
+    const { mux, mock } = muxFixture(paths)
+    mock.request.mockRejectedValueOnce(unsupported())
+    const provider = new SshFilesystemProvider('legacy', mux)
+    await expect(provider.listMarkdownDocuments('/repo')).resolves.toEqual([
+      {
+        filePath: '/repo/docs/late.md',
+        relativePath: 'docs/late.md',
+        basename: 'late.md',
+        name: 'late'
+      }
+    ])
+    expect(mock.request).toHaveBeenLastCalledWith('fs.listFiles', {
+      rootPath: '/repo',
+      __streamResponse: true
+    })
+    provider.dispose()
+  })
+
+  it('still rejects an old-peer inventory with too many Markdown documents', async () => {
     const { mux } = muxFixture(undefined, unsupported())
     await expect(
-      readSshMarkdownDocuments(mux, '/repo', undefined, async () => Array(20_001).fill('source.ts'))
+      readSshMarkdownDocuments(mux, '/repo', undefined, async () => Array(20_001).fill('source.md'))
     ).rejects.toThrow('Workspace is too large')
   })
 

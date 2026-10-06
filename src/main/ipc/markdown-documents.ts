@@ -1,4 +1,5 @@
 import { spawnBundledRipgrep } from '../ripgrep/bundled-ripgrep-spawn'
+import { stopBundledRipgrep } from '../ripgrep/bundled-ripgrep-stop'
 import { parseWslPath } from '../wsl'
 import {
   collectMarkdownDocuments,
@@ -19,5 +20,7 @@ export async function listMarkdownDocuments(
     wslDistroForOutput: distro,
     stdio: ['ignore', 'pipe', 'pipe']
   })
-  return collectMarkdownDocuments(child, rootPath, Boolean(distro), options.signal)
+  return collectMarkdownDocuments(child, rootPath, Boolean(distro), options.signal, {
+    stopProcess: () => stopBundledRipgrep(child, Boolean(distro))
+  })
 }

@@ -4,6 +4,7 @@ import { RipgrepFilenameDecoder } from './ripgrep-filename-decoder'
 import { isRipgrepMissingCwdExit, ripgrepMissingCwdError } from './ripgrep-process-availability'
 import { abortSignalReason } from './abort-signal-reason'
 import { markdownDocumentFromRelativePath, isMarkdownDocumentName } from './markdown-document-paths'
+import { joinSearchRoot } from './text-search-paths'
 import {
   createMarkdownDocumentListingBudget,
   retainMarkdownDocument,
@@ -12,6 +13,7 @@ import {
 } from './markdown-document-listing-limits'
 
 const MARKDOWN_LISTING_TIMEOUT_MS = 15_000
+export const MARKDOWN_DOCUMENT_GLOB = '*.{[mM][dD],[mM][dD][xX],[mM][aA][rR][kK][dD][oO][wW][nN]}'
 export const MARKDOWN_DOCUMENT_LISTING_ARGS = [
   '--files',
   '--hidden',
@@ -22,7 +24,7 @@ export const MARKDOWN_DOCUMENT_LISTING_ARGS = [
   '/',
   // Keep case variants in --glob: --iglob is applied after exclusions and can reopen hidden folders.
   '--glob',
-  '*.{[mM][dD],[mM][dD][xX],[mM][aA][rR][kK][dD][oO][wW][nN]}',
+  MARKDOWN_DOCUMENT_GLOB,
   '--glob',
   '!**/.*/',
   '--glob',
@@ -36,7 +38,8 @@ export function collectMarkdownDocuments(
   child: ChildProcessHandle,
   rootPath: string,
   windowsOutput = false,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: { allowPartialListing?: boolean; stopProcess?: () => void } = {}
 ): Promise<MarkdownDocument[]> {
   return new Promise((resolveListing, reject) => {
     const filenameDecoder = new RipgrepFilenameDecoder((error) => finish(error), windowsOutput)
@@ -66,7 +69,11 @@ export function collectMarkdownDocuments(
       if (error) {
         if (child.pid !== undefined) {
           try {
-            child.kill('SIGKILL')
+            if (options.stopProcess) {
+              options.stopProcess()
+            } else {
+              child.kill('SIGKILL')
+            }
           } catch {
             // The process may have exited before the timeout or stream error arrived.
           }
@@ -105,6 +112,7 @@ export function collectMarkdownDocuments(
         if (isMarkdownDocumentName(path)) {
           const document = markdownDocumentFromRelativePath(rootPath, path.slice(2))
           if (document) {
+            document.filePath = joinSearchRoot(rootPath, document.relativePath)
             try {
               retainMarkdownDocument(budget, document)
               documents.push(document)
@@ -124,7 +132,12 @@ export function collectMarkdownDocuments(
     const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
       if (isRipgrepMissingCwdExit(code)) {
         finish(ripgrepMissingCwdError(rootPath))
-      } else if (signal || (code !== 0 && code !== 1)) {
+      } else if (
+        signal ||
+        (code !== 0 &&
+          code !== 1 &&
+          !(code === 2 && options.allowPartialListing && documents.length > 0))
+      ) {
         finish(new Error(`Markdown document listing failed (${signal ?? code}): ${stderr.trim()}`))
       } else {
         if (!filenameDecoder.finish()) {

@@ -1,10 +1,11 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { resolve } from 'node:path'
+import { resolve, win32 } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }))
+const { spawnMock, stopMock } = vi.hoisted(() => ({ spawnMock: vi.fn(), stopMock: vi.fn() }))
 vi.mock('../ripgrep/bundled-ripgrep-spawn', () => ({ spawnBundledRipgrep: spawnMock }))
+vi.mock('../ripgrep/bundled-ripgrep-stop', () => ({ stopBundledRipgrep: stopMock }))
 
 import { listMarkdownDocuments } from './markdown-documents'
 
@@ -12,7 +13,7 @@ class ListingProcess extends EventEmitter {
   stdout = new PassThrough()
   stderr = new PassThrough()
   pid: number | undefined = 123
-  kill = vi.fn(() => true)
+  kill = vi.fn<(signal?: NodeJS.Signals) => boolean>(() => true)
 }
 
 const root = resolve('/workspace/docs')
@@ -22,6 +23,7 @@ let child: ListingProcess
 beforeEach(() => {
   child = new ListingProcess()
   spawnMock.mockReset().mockReturnValue(child)
+  stopMock.mockReset().mockImplementation((process: ListingProcess) => process.kill('SIGKILL'))
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -70,6 +72,23 @@ describe('Markdown document ripgrep lifecycle', () => {
     child.emit('close', 1, null)
     await expect(result).resolves.toEqual([])
   })
+
+  it.each(['C:\\repo', '\\\\server\\share\\repo'])(
+    'preserves native Windows editor path identity under %s',
+    async (windowsRoot) => {
+      const result = listMarkdownDocuments(windowsRoot)
+      child.stdout.write('./docs/README.md\0')
+      child.emit('close', 0, null)
+      expect(await result).toEqual([
+        {
+          filePath: win32.join(windowsRoot, 'docs', 'README.md'),
+          relativePath: 'docs/README.md',
+          basename: 'README.md',
+          name: 'README'
+        }
+      ])
+    }
+  )
 
   it('rejects an unreadable subtree even after receiving valid documents', async () => {
     const result = listMarkdownDocuments(root)
@@ -190,3 +209,26 @@ it('cancels the filtered producer and permits a fresh request', async () => {
   expect(child.kill).toHaveBeenCalledWith('SIGKILL')
   expect(child.stdout.listenerCount('data')).toBe(0)
 })
+
+it.each(['abort', 'timeout', 'capacity'] as const)(
+  'uses the bundled WSL process-tree stop for Markdown %s',
+  async (reason) => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const result = listMarkdownDocuments(root, {
+      wslDistro: 'Ubuntu',
+      signal: controller.signal
+    })
+    const rejected = expect(result).rejects.toThrow()
+    if (reason === 'abort') {
+      controller.abort(new Error('editor closed'))
+    } else if (reason === 'timeout') {
+      await vi.advanceTimersByTimeAsync(15_000)
+    } else {
+      child.stdout.write(`./${'a'.repeat(65_537)}`)
+    }
+    await rejected
+    expect(stopMock).toHaveBeenCalledExactlyOnceWith(child, true)
+    expect(child.stdout.listenerCount('data')).toBe(0)
+  }
+)

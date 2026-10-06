@@ -1,5 +1,7 @@
 import { readRelayDirectoryBounded } from './fs-directory-listing'
 import { listRelayMarkdownDocuments } from './fs-markdown-document-listing'
+import { markdownDocumentsFromRelativePaths } from '../shared/markdown-document-paths'
+import { joinSearchRoot } from '../shared/text-search-paths'
 import { pathsExistOnRelay } from './fs-path-existence'
 import { tmpdir } from 'node:os'
 import type { RelayDispatcher, RequestContext } from './dispatcher'
@@ -123,7 +125,25 @@ export class FsHandler {
       if (typeof p.rootPath !== 'string') {
         throw new Error('Invalid Markdown discovery root')
       }
-      const documents = await listRelayMarkdownDocuments(p.rootPath, c?.signal)
+      const rootPath = expandTilde(p.rootPath)
+      const documents = await listRelayMarkdownDocuments(rootPath, c?.signal).catch(
+        async (error) => {
+          if (!(error instanceof RipgrepUnavailableError)) {
+            throw error
+          }
+          const paths = await this.listFiles({ rootPath }, c)
+          if (
+            !Array.isArray(paths) ||
+            !paths.every((path): path is string => typeof path === 'string')
+          ) {
+            throw new Error('Invalid fallback file listing')
+          }
+          return markdownDocumentsFromRelativePaths(rootPath, paths).map((document) => ({
+            ...document,
+            filePath: joinSearchRoot(rootPath, document.relativePath)
+          }))
+        }
+      )
       return this.responseStreams
         ? maybeStreamRpcResponse(documents, p, c, this.responseStreams, this.dispatcher)
         : documents

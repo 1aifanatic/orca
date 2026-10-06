@@ -315,7 +315,7 @@ export class SshFilesystemProvider implements IFilesystemProvider {
 
   listMarkdownDocuments = (rootPath: string, options?: { signal?: AbortSignal }) =>
     readSshMarkdownDocuments(this.mux, rootPath, options?.signal, () =>
-      this.listFiles(rootPath, { maxResults: 20_001, signal: options?.signal })
+      this.listFiles(rootPath, { signal: options?.signal })
     )
 
   supportsQuickOpenSearch = (options: { signal?: AbortSignal } = {}): Promise<boolean> =>

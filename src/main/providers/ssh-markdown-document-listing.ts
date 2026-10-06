@@ -3,10 +3,7 @@ import type { SshChannelMultiplexer } from '../ssh/ssh-channel-multiplexer'
 import { requestGitStreamable } from '../ssh/ssh-git-response-stream-reader'
 import { isMethodNotFoundError } from '../ssh/ssh-filesystem-stream-reader'
 import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
-import {
-  assertMarkdownDocumentsWithinLimit,
-  MarkdownDocumentListingCapacityError
-} from '../../shared/markdown-document-listing-limits'
+import { assertMarkdownDocumentsWithinLimit } from '../../shared/markdown-document-listing-limits'
 
 export async function readSshMarkdownDocuments(
   mux: SshChannelMultiplexer,
@@ -25,11 +22,7 @@ export async function readSshMarkdownDocuments(
   } catch (error) {
     if (isMethodNotFoundError(error)) {
       if (loadLegacy) {
-        const paths = await loadLegacy()
-        if (paths.length >= 20_001) {
-          throw new MarkdownDocumentListingCapacityError()
-        }
-        return markdownDocumentsFromRelativePaths(rootPath, paths)
+        return markdownDocumentsFromRelativePaths(rootPath, await loadLegacy())
       }
       throw new Error('Markdown discovery requires an updated SSH relay. Reconnect and retry.')
     }
