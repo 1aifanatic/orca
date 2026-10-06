@@ -14569,17 +14569,11 @@
             "88ffb502e5": "Open Markdown Note",
             "629528690b": "New Markdown Note",
             "3215fc73e9": "New Terminal",
-            "da508bd7f5": "Save",
-            "918c2139f3": "Don't Save",
-            "e7bf09d4d4": "Cancel",
-            "690b6fb98a": "Unsaved Changes",
             "bbc177f98f": "Enable",
             "adc281394d": "Dismiss",
             "8cf80db43b": "Set up the Orca CLI and agent skill so agents can coordinate through Orca.",
             "2a3c5ddf5e": "Enable orchestration",
             "8b14ba6c17": "New Browser Tab",
-            "b085fb58b5": "This file has unsaved changes.",
-            "5ddc688c52": "\"{{value0}}\" has unsaved changes. Do you want to save before closing?",
             "25d7817f79": "terminal"
           },
           "FloatingTerminalToggleButton": {
