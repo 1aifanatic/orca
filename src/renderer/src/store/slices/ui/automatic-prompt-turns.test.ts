@@ -105,10 +105,20 @@ describe('automatic prompt turns', () => {
     expect(visible(store)).toBe('native-chat-resume')
   })
 
-  it('a modal slot whose dialog never rendered holds nothing back', () => {
+  it('a user modal counts from the moment it takes the slot, until its surface fails', () => {
     const store = createUIStore()
-    // A modal-slot dialog that failed to render: the slot is set, nothing is on screen.
+    // Its code may still be loading: nothing is rendered yet, but it is coming.
     store.getState().openModal('new-workspace-composer')
+    store.getState().requestAutomaticPrompt('crash-report')
+    expect(visible(store)).toBeNull()
+    // Its surface failed and shows the error fallback: no dialog is coming.
+    store.setState({ modalSurfaceFailed: true })
+    expect(visible(store)).toBe('crash-report')
+  })
+
+  it('a modal-slot handoff that renders no dialog holds nothing back', () => {
+    const store = createUIStore()
+    store.getState().openModal('project-added')
     store.getState().requestAutomaticPrompt('crash-report')
     expect(visible(store)).toBe('crash-report')
   })

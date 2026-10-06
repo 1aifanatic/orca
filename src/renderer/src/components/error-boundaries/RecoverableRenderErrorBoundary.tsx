@@ -6,6 +6,7 @@ import { isLazyChunkLoadError } from '@/lib/lazy-with-retry'
 import { reportReactErrorBoundaryCrash } from '@/lib/react-error-boundary-reporting'
 import type { ReactErrorBoundaryReportArgs } from '../../../../shared/crash-reporting'
 import { translate } from '@/i18n/i18n'
+import { FailedModalSurfaceMarker } from '@/lib/dialog-presence'
 
 type BoundaryFallbackArgs = {
   error: Error | null
@@ -69,9 +70,21 @@ export class RecoverableRenderErrorBoundary extends React.Component<Props, State
     if (!this.state.error) {
       return this.props.children
     }
+    if (this.props.surface !== 'modal') {
+      return this.renderFallback(this.state.error)
+    }
+    // A failed modal no longer holds the modal slot against dialogs that open by themselves.
+    return (
+      <>
+        {this.renderFallback(this.state.error)}
+        <FailedModalSurfaceMarker />
+      </>
+    )
+  }
 
+  private renderFallback(error: Error): React.ReactNode {
     if (this.props.fallback) {
-      return this.props.fallback({ error: this.state.error, reset: this.handleReset })
+      return this.props.fallback({ error, reset: this.handleReset })
     }
 
     return (

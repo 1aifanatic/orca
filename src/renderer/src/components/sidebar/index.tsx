@@ -18,7 +18,7 @@ import { useWorkspaceRevealBodyRedirect } from './use-workspace-reveal-body-redi
 import { resolveLeftSidebarStyleVariables } from '@/lib/left-sidebar-appearance'
 import { useSystemPrefersDark } from '@/components/terminal-pane/use-system-prefers-dark'
 import { lazyWithRetry } from '@/lib/lazy-with-retry'
-import { DialogLoadingSuspense } from '@/lib/dialog-presence'
+import { RecoverableRenderErrorBoundary } from '../error-boundaries/RecoverableRenderErrorBoundary'
 import { LocalGitToolchainScanBanner } from './LocalGitToolchainScanBanner'
 
 // Why lazy: the Agents list pulls the whole activity pipeline (virtualizer, markdown
@@ -248,13 +248,21 @@ function Sidebar({
 
       {/* Dialogs render outside sidebar to avoid clipping. Lazy-load them only
       for the modal that needs their flow-specific hooks and UI. */}
-      <DialogLoadingSuspense>
-        {activeModal === 'edit-meta' ? <WorktreeMetaDialog /> : null}
-        {activeModal === 'confirm-remove-folder' ? <RemoveFolderDialog /> : null}
-        {activeModal === 'worktree-visibility' ? <WorktreeVisibilityDialog /> : null}
-        {activeModal === 'confirm-orca-yaml-hooks' ? <OrcaYamlTrustDialog /> : null}
-        {activeModal === 'forget-ssh-workspace' ? <ForgetSshWorkspaceDialog /> : null}
-      </DialogLoadingSuspense>
+      {/* A modal surface, so a dialog that fails here releases the modal slot it holds. */}
+      <RecoverableRenderErrorBoundary
+        boundaryId="modal.sidebar-dialogs"
+        surface="modal"
+        compact
+        resetKey={activeModal}
+      >
+        <React.Suspense fallback={null}>
+          {activeModal === 'edit-meta' ? <WorktreeMetaDialog /> : null}
+          {activeModal === 'confirm-remove-folder' ? <RemoveFolderDialog /> : null}
+          {activeModal === 'worktree-visibility' ? <WorktreeVisibilityDialog /> : null}
+          {activeModal === 'confirm-orca-yaml-hooks' ? <OrcaYamlTrustDialog /> : null}
+          {activeModal === 'forget-ssh-workspace' ? <ForgetSshWorkspaceDialog /> : null}
+        </React.Suspense>
+      </RecoverableRenderErrorBoundary>
       {sidebarOpen ? (
         <WorkspaceKanbanDrawer
           leftSidebarStyle={leftSidebarStyle}

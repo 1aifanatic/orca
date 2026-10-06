@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, lazy, useEffect } from 'react'
+import { act, lazy, Suspense, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
@@ -8,7 +8,6 @@ import { getDefaultSettings } from '../../../../shared/constants'
 import { getDefaultOnboardingState } from '../../../../shared/onboarding-defaults'
 import { useOnboardingAndFeatureTips } from '../../app-shell/use-onboarding-and-feature-tips'
 import { MODAL_DISMISSED_KEY } from '@/store/slices/modal-slot-dismissal'
-import { DialogLoadingSuspense } from '@/lib/dialog-presence'
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
 import { TooltipProvider } from '../ui/tooltip'
 import FeatureTipsModal from '../feature-tips/FeatureTipsModal'
@@ -178,9 +177,9 @@ it('a prompt not yet shown waits while a modal the user opened is still loading'
   await act(async () => useAppStore.getState().openModal('worktree-palette'))
   await mount(
     <>
-      <DialogLoadingSuspense>
+      <Suspense fallback={null}>
         <UserModal />
-      </DialogLoadingSuspense>
+      </Suspense>
       <StandInPrompt />
     </>
   )
@@ -204,11 +203,11 @@ it('a modal that failed to load holds nothing back', async () => {
   await act(async () => useAppStore.getState().openModal('worktree-palette'))
   await mount(
     <>
-      <DialogLoadingSuspense>
-        <RecoverableRenderErrorBoundary boundaryId="modal.palette" surface="modal" compact resetKey>
+      <RecoverableRenderErrorBoundary boundaryId="modal.palette" surface="modal" compact resetKey>
+        <Suspense fallback={null}>
           <UserModal />
-        </RecoverableRenderErrorBoundary>
-      </DialogLoadingSuspense>
+        </Suspense>
+      </RecoverableRenderErrorBoundary>
       <StandInPrompt />
     </>
   )
@@ -219,4 +218,51 @@ it('a modal that failed to load holds nothing back', async () => {
   expect(document.body.textContent).toContain('hit an error')
   expect(promptOnScreen()).toBe(true)
   consoleError.mockRestore()
+})
+
+/** A modal whose dialog renders a while after it takes the slot, as the worktree palette does. */
+function SlowPalette({ ready }: { ready: boolean }): React.JSX.Element | null {
+  const open = useAppStore((s) => s.activeModal === 'worktree-palette')
+  if (!ready) {
+    return null
+  }
+  return (
+    <Dialog open={open}>
+      <DialogContent>
+        <DialogTitle>Jump to worktree</DialogTitle>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+it('a modal opened during the launch wait holds back the prompt before it renders anything', async () => {
+  let setReady: (ready: boolean) => void = () => {}
+  function Host(): React.JSX.Element {
+    const [ready, setReadyState] = useState(false)
+    setReady = setReadyState
+    return <SlowPalette ready={ready} />
+  }
+  await mount(
+    <>
+      <Host />
+      <StandInPrompt />
+    </>
+  )
+  await act(async () => useAppStore.getState().openModal('worktree-palette'))
+  // The launch read answers before the palette has rendered anything.
+  await act(async () => useAppStore.getState().settleLaunchPromptDiscovery())
+  await flush()
+  expect(promptOnScreen()).toBe(false)
+
+  await act(async () => setReady(true))
+  await act(async () => useAppStore.getState().closeModal())
+  await flush()
+  expect(promptOnScreen()).toBe(true)
+})
+
+it('a modal-slot entry that renders no dialog holds nothing back', async () => {
+  useAppStore.getState().settleLaunchPromptDiscovery()
+  await act(async () => useAppStore.getState().openModal('project-added'))
+  await mount(<StandInPrompt />)
+  expect(promptOnScreen()).toBe(true)
 })

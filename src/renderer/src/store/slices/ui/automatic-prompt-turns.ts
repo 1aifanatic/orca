@@ -44,6 +44,8 @@ export type PromptTurnState = {
   promptBlockingDialogIds: readonly string[]
   /** Mirrors lib/dialog-presence: a dialog other than an automatic prompt's own is rendered. */
   otherDialogOnScreen: boolean
+  /** Mirrors lib/dialog-presence: a modal surface is showing its error fallback instead. */
+  modalSurfaceFailed: boolean
   launchPromptDiscoveryPending: boolean
   /** When the launch wait ends regardless (epoch ms): the backstop from boot, then the bound from
    *  the start of the resume read. */
@@ -56,10 +58,27 @@ type PromptTurnInputs = PromptTurnState & {
   activeContextualTourId: string | null
 }
 
-/** A user dialog or a response dialog is up; automatic prompts not yet shown wait behind it. Read
- *  from what is rendered, not the modal slot, so a slot whose dialog failed holds nothing back. */
+/** Modal-slot entries that are a handoff, not a dialog: they render nothing while they hold the slot. */
+const MODAL_SLOTS_WITHOUT_DIALOG: ReadonlySet<string> = new Set(['project-added'])
+
+/** The user's modal counts from the moment it takes the slot, before its code has even loaded, so
+ *  nothing opens in that gap; not once its surface failed, since then no dialog is coming. */
+function modalSlotHeldByUser(state: PromptTurnInputs): boolean {
+  return (
+    state.activeModal !== 'none' &&
+    state.modalData[AUTOMATIC_PROMPT_MODAL_KEY] === undefined &&
+    !MODAL_SLOTS_WITHOUT_DIALOG.has(state.activeModal) &&
+    !state.modalSurfaceFailed
+  )
+}
+
+/** A user dialog or a response dialog is up; automatic prompts not yet shown wait behind it. */
 export function selectUserDialogVisible(state: PromptTurnInputs): boolean {
-  return state.promptBlockingDialogIds.length > 0 || state.otherDialogOnScreen
+  return (
+    state.promptBlockingDialogIds.length > 0 ||
+    state.otherDialogOnScreen ||
+    modalSlotHeldByUser(state)
+  )
 }
 
 function compareRequests(a: AutomaticPromptRequest, b: AutomaticPromptRequest): number {

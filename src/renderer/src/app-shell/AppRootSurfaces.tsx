@@ -205,7 +205,7 @@ export function AppRootSurfaces(props: {
           <NewWorkspaceComposerModal />
         </ModalBoundary>
       ) : null}
-      <DialogLoadingSuspense>
+      <Suspense fallback={null}>
         {shouldMountAddRepoDialog ? (
           <ModalBoundary boundaryId="modal.add-repo" resetKey={activeModal === 'add-repo'}>
             <AddRepoDialog />
@@ -227,9 +227,9 @@ export function AppRootSurfaces(props: {
             <ProjectAddedDialog />
           </ModalBoundary>
         ) : null}
-      </DialogLoadingSuspense>
+      </Suspense>
       {/* Why: root overlays can render Radix <Tooltip>s; keep inside the shared provider so lazy surfaces mount from any entry point. */}
-      <DialogLoadingSuspense>
+      <Suspense fallback={null}>
         {mountedLazyModalIds.has('workspace-cleanup') ? (
           <ModalBoundary
             boundaryId="modal.workspace-cleanup"
@@ -238,8 +238,8 @@ export function AppRootSurfaces(props: {
             <WorkspaceCleanupDialog />
           </ModalBoundary>
         ) : null}
-      </DialogLoadingSuspense>
-      <DialogLoadingSuspense>
+      </Suspense>
+      <Suspense fallback={null}>
         {mountedLazyModalIds.has('quick-open') ? (
           <ModalBoundary boundaryId="modal.quick-open" resetKey={activeModal === 'quick-open'}>
             <QuickOpen />
@@ -263,9 +263,6 @@ export function AppRootSurfaces(props: {
             <FeatureWallModal />
           </ModalBoundary>
         ) : null}
-      </DialogLoadingSuspense>
-      {/* Its own boundary: the tip loading must not count as a dialog it waits behind. */}
-      <Suspense fallback={null}>
         {mountedLazyModalIds.has('feature-tips') ? (
           <ModalBoundary
             boundaryId="modal.feature-tips"
@@ -325,7 +322,7 @@ export function AppRootSurfaces(props: {
       <OverlayBoundary boundaryId="overlay.zoom" resetKey={activeView}>
         <ZoomOverlay />
       </OverlayBoundary>
-      <DialogLoadingSuspense>
+      <Suspense fallback={null}>
         {activeModal === 'delete-worktree' ? (
           <ModalBoundary boundaryId="modal.delete-worktree" resetKey>
             <DeleteWorktreeDialog />
@@ -336,8 +333,9 @@ export function AppRootSurfaces(props: {
             <PreservedBranchBatchReviewModal />
           </ModalBoundary>
         ) : null}
-      </DialogLoadingSuspense>
+      </Suspense>
       {hasSshCredentialRequest ? (
+        // Not in the modal slot, so it counts as on screen from its request while its code loads.
         <DialogLoadingSuspense>
           <ModalBoundary boundaryId="modal.ssh-passphrase" resetKey={activeModal}>
             <SshPassphraseDialog />

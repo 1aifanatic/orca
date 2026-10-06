@@ -44,7 +44,7 @@ const pendingCrash: CrashReportRecord = {
 let openCrashReportFromMenu: () => void = () => {}
 let resolveSubmit: (value: unknown) => void = () => {}
 const crashReports = {
-  getLatestPending: vi.fn(async () => pendingCrash),
+  getLatestPending: vi.fn(async (): Promise<CrashReportRecord | null> => pendingCrash),
   getLatestReport: vi.fn(async (): Promise<CrashReportRecord | null> => null),
   dismiss: vi.fn(async () => undefined),
   submit: vi.fn(
@@ -136,7 +136,7 @@ afterEach(() => {
   container.remove()
 })
 
-async function mountBoth(): Promise<void> {
+async function mountBoth({ waitForCrash = true } = {}): Promise<void> {
   await act(async () =>
     root.render(
       <TooltipProvider>
@@ -146,7 +146,9 @@ async function mountBoth(): Promise<void> {
     )
   )
   await flush()
-  await vi.waitFor(() => expect(crashOnScreen()).toBe(true), { timeout: 5000 })
+  if (waitForCrash) {
+    await vi.waitFor(() => expect(crashOnScreen()).toBe(true), { timeout: 5000 })
+  }
 }
 
 function raiseSsh(): void {
@@ -244,4 +246,77 @@ it('focus goes back into the crash report when the SSH prompt over it closes', a
   await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
   await flush()
   expect(document.activeElement).toBe(area)
+})
+
+const newerCrash: CrashReportRecord = {
+  ...pendingCrash,
+  id: 'crash-2',
+  createdAt: '2026-10-05T01:00:00.000Z',
+  appVersion: '9.9.9'
+}
+
+/** Real IPC answers on a later task, after React has rendered the Help click. */
+function latestAfterIpc(report: CrashReportRecord | null): void {
+  crashReports.getLatestReport.mockImplementation(
+    () => new Promise((resolve) => setTimeout(() => resolve(report), 20))
+  )
+}
+
+async function openFromHelp(): Promise<void> {
+  await act(async () => openCrashReportFromMenu())
+  await flush()
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Orca 9.9.9'))
+}
+
+it('Help pressed again while its dialog is open keeps the same dialog and its notes', async () => {
+  crashReports.getLatestPending.mockResolvedValueOnce(null)
+  latestAfterIpc(newerCrash)
+  await mountBoth({ waitForCrash: false })
+  await openFromHelp()
+  typeNotes('second help press')
+  await openFromHelp()
+  expect(notes()).toBe('second help press')
+})
+
+it('a send in flight when Help is pressed again is sent once and closes the dialog', async () => {
+  crashReports.getLatestPending.mockResolvedValueOnce(null)
+  latestAfterIpc(newerCrash)
+  await mountBoth({ waitForCrash: false })
+  await openFromHelp()
+  await act(async () => button('Send Report').click())
+  await openFromHelp()
+  await act(async () => resolveSubmit({ ok: true, report: { ...newerCrash, status: 'submitted' } }))
+  await flush()
+  expect(crashMounted()).toBe(false)
+  expect(crashReports.submit).toHaveBeenCalledTimes(1)
+})
+
+it('a send in flight when Help shows a newer report still settles the report it was for', async () => {
+  latestAfterIpc(newerCrash)
+  await mountBoth()
+  await act(async () => button('Send Report').click())
+  await openFromHelp()
+  await act(async () =>
+    resolveSubmit({ ok: true, report: { ...pendingCrash, status: 'submitted' } })
+  )
+  await flush()
+  // The newer report the user is looking at stays open.
+  expect(document.body.textContent).toContain('Orca 9.9.9')
+
+  await act(async () => button("Don't Send").click())
+  await flush()
+  // The sent report never comes back to be sent again.
+  expect(crashMounted()).toBe(false)
+  expect(crashReports.submit).toHaveBeenCalledTimes(1)
+})
+
+it('a prompt dialog takes no transitions, so stepping aside and back is immediate in a browser', async () => {
+  await mountBoth()
+  const content = [...document.querySelectorAll('[data-slot="dialog-content"]')].find((dialog) =>
+    dialog.textContent?.includes('Send Report')
+  )
+  // Chromium transitions `visibility` under `duration-200`: seen for 200 ms after stepping aside,
+  // and hidden for a frame on return, which is when focus is put back. happy-dom has no CSS.
+  expect(content?.hasAttribute('data-automatic-prompt')).toBe(true)
+  expect(content?.className).toContain('data-[automatic-prompt]:transition-none')
 })

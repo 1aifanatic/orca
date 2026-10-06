@@ -38,6 +38,27 @@ export function isOtherDialogOpen(): boolean {
   return openDialogs.size > 0
 }
 
+const failedModalSurfaces = new Set<symbol>()
+
+/** A modal surface's error fallback is showing, so the modal slot it held renders no dialog. */
+export function isModalSurfaceFailed(): boolean {
+  return failedModalSurfaces.size > 0
+}
+
+/** Rendered by a modal surface's error fallback, for exactly as long as that fallback shows. */
+export function FailedModalSurfaceMarker(): null {
+  useLayoutEffect(() => {
+    const entry = Symbol('failed-modal-surface')
+    failedModalSurfaces.add(entry)
+    emit()
+    return () => {
+      failedModalSurfaces.delete(entry)
+      emit()
+    }
+  }, [])
+  return null
+}
+
 function subscribeNowhere(): () => void {
   return () => {}
 }

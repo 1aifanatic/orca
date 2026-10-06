@@ -65,6 +65,8 @@ describe('CrashReportDialogSurface overflow containment', () => {
         loading={false}
         onOpenChange={() => {}}
         onReportChange={() => {}}
+        submitting={false}
+        onSubmit={async () => ({ ok: true, report: null })}
       />
     )
     await waitFor(() => expect(viewer).toHaveBeenCalledOnce())

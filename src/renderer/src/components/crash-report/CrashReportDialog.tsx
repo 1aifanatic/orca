@@ -11,6 +11,7 @@ import {
 } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
 import { useAppStore } from '@/store'
+import { useCrashReportSends } from './use-crash-report-sends'
 import type { CrashReportRecord } from '../../../../shared/crash-reporting'
 
 const CrashReportDialogSurface = lazy(() =>
@@ -40,9 +41,9 @@ export function CrashReportDialog(): React.JSX.Element | null {
   const promptedThisLaunch = useRef(false)
   const acknowledgedIds = useRef(new Set<string>())
   const mountedRef = useMountedRef()
-  // Help > Report Crash: the user asked, so it opens at once.
-  const [userOpen, setUserOpen] = useState(false)
-  const [userReport, setUserReport] = useState<CrashReportRecord | null>(null)
+  // Help > Report Crash: the user asked, so it opens at once. Null while it is not open.
+  const [userDialog, setUserDialog] = useState<{ report: CrashReportRecord | null } | null>(null)
+  const userOpen = userDialog !== null
   const [loading, setLoading] = useState(false)
   // Each report the app raises by itself waits its own turn; a later one never replaces it.
   const [queue, setQueue] = useState<readonly AutomaticCrashReport[]>([])
@@ -85,7 +86,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
     try {
       const nextReport = await window.api.crashReports.getLatestReport()
       if (mountedRef.current) {
-        setUserReport((current) => nextReport ?? current)
+        setUserDialog((current) => current && { report: nextReport ?? current.report })
       }
     } catch (error) {
       console.error('Failed to load crash report:', error)
@@ -116,7 +117,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
     if (!report) {
       return
     }
-    setUserReport((current) => (current?.id === report.id ? report : current))
+    setUserDialog((current) => (current?.report?.id === report.id ? { report } : current))
     setQueue((current) =>
       current.map((entry) => (entry.report.id === report.id ? { ...entry, report } : entry))
     )
@@ -124,11 +125,25 @@ export function CrashReportDialog(): React.JSX.Element | null {
 
   // Closing a report's dialog is done with that report, however it opened: one report, one dialog.
   const closeReport = useCallback((reportId: string | undefined) => {
-    setUserOpen(false)
+    setUserDialog(null)
     if (reportId !== undefined) {
       setQueue((current) => current.filter((entry) => entry.report.id !== reportId))
     }
   }, [])
+
+  // A sent report is done wherever it is shown now; a dialog showing another report stays open.
+  const { send, isSending } = useCrashReportSends(
+    useCallback(
+      (reportId: string | null, sent: CrashReportRecord | null) => {
+        changeReport(sent)
+        setUserDialog((current) => ((current?.report?.id ?? null) === reportId ? null : current))
+        if (reportId !== null) {
+          setQueue((current) => current.filter((entry) => entry.report.id !== reportId))
+        }
+      },
+      [changeReport]
+    )
+  )
 
   // From the committed dialog content: the lazy surface may load well after the turn is granted.
   const onAutomaticShown = useCallback((): void => {
@@ -155,8 +170,8 @@ export function CrashReportDialog(): React.JSX.Element | null {
 
   useEffect(() => {
     return window.api.ui.onOpenCrashReport(() => {
-      setUserReport(onScreenReportRef.current)
-      setUserOpen(true)
+      // Pressed again while open, the dialog keeps the report it shows rather than starting over.
+      setUserDialog((current) => current ?? { report: onScreenReportRef.current })
       void loadUserCrashReport()
     })
   }, [loadUserCrashReport])
@@ -187,7 +202,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
   if (!open) {
     return null
   }
-  const report = userOpen ? userReport : (automatic?.report ?? null)
+  const report = userDialog ? userDialog.report : (automatic?.report ?? null)
 
   return (
     // Raised by itself, its own dialog never counts as another one and it steps aside under one;
@@ -207,6 +222,8 @@ export function CrashReportDialog(): React.JSX.Element | null {
             }
           }}
           onReportChange={changeReport}
+          submitting={isSending(report)}
+          onSubmit={(request) => send(report, request)}
           onShown={userOpen ? undefined : onAutomaticShown}
         />
       </Suspense>

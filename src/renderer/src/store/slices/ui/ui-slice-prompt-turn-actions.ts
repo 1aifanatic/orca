@@ -1,5 +1,9 @@
 import type { UISlice, UISliceGet, UISliceSet } from './ui-slice-contract'
-import { isOtherDialogOpen, subscribeDialogPresence } from '@/lib/dialog-presence'
+import {
+  isModalSurfaceFailed,
+  isOtherDialogOpen,
+  subscribeDialogPresence
+} from '@/lib/dialog-presence'
 import {
   LAUNCH_PROMPT_DISCOVERY_BACKSTOP_MS,
   LAUNCH_PROMPT_DISCOVERY_BOUND_MS,
@@ -40,8 +44,10 @@ export function createUiPromptTurnActions(set: UISliceSet, get: UISliceGet): Par
   // The store is created once per window, so this subscription lives as long as the presence set.
   subscribeDialogPresence(() => {
     const open = isOtherDialogOpen()
-    if (get().otherDialogOnScreen !== open) {
-      set({ otherDialogOnScreen: open })
+    const failed = isModalSurfaceFailed()
+    const state = get()
+    if (state.otherDialogOnScreen !== open || state.modalSurfaceFailed !== failed) {
+      set({ otherDialogOnScreen: open, modalSurfaceFailed: failed })
     }
   })
 
@@ -49,6 +55,7 @@ export function createUiPromptTurnActions(set: UISliceSet, get: UISliceGet): Par
     automaticPromptRequests: [],
     promptBlockingDialogIds: [],
     otherDialogOnScreen: isOtherDialogOpen(),
+    modalSurfaceFailed: isModalSurfaceFailed(),
     launchPromptDiscoveryPending: true,
     launchPromptDiscoveryDeadline: Date.now() + LAUNCH_PROMPT_DISCOVERY_BACKSTOP_MS,
     requestAutomaticPrompt: (id, key = null) => {
