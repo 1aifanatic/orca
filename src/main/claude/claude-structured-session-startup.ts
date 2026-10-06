@@ -3,7 +3,10 @@
 // input at once. Every way the start can fail (exit, auth, a foreign session id) faults the
 // published session through its exit path; a CLI that never answers is ended by a Stop or a close.
 
-import type { StructuredAgentSessionStartedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type {
+  StructuredAgentSessionOptionsSkippedEvent,
+  StructuredAgentSessionStartedEvent
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeStreamJsonConnection } from './claude-stream-json-connection'
 import { ClaudeControlRequestError } from './claude-agent-sdk-control-requests'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
@@ -90,8 +93,13 @@ export function createClaudeInitProof(): ClaudeInitProof {
 
 export type StructuredAgentSessionStartedOptions = Pick<
   StructuredAgentSessionStartedEvent,
-  'reportedOptions' | 'restoreSkippedOptions'
+  'reportedOptions' | 'restoreSkippedOptions' | 'retiredOptions'
 >
+
+/** A lifecycle event the start reports, before the session's identity is stamped on it. */
+export type ClaudeStartupReport =
+  | ({ type: 'started' } & StructuredAgentSessionStartedOptions)
+  | Pick<StructuredAgentSessionOptionsSkippedEvent, 'type' | 'options'>
 
 export type ClaudeStartupFacts = {
   init: ClaudeInitObservation | null
@@ -158,21 +166,20 @@ export async function readClaudeStartupFacts(input: {
 }
 
 /** A new conversation is launched without a saved Fast on, which its settings may opt in to per
- *  session. Those settings now read: an opt-in drops it, as before; otherwise it is applied before
- *  `started`, and no message waits on that. A refusal drops it as main's restore did; silence keeps
- *  it wanted and unconfirmed. */
-async function applyClaudeFreshSessionFastMode(
+ *  session. Those settings now read: an opt-in drops it, as before, and so do the guards a live
+ *  Fast write takes. True when it is still to be applied. */
+function admitClaudeFreshSessionFastMode(
   session: ClaudeSession,
   facts: ClaudeStartupFacts
-): Promise<void> {
+): boolean {
   if (facts.resumesTranscript || session.options.get('fastMode') !== 'true') {
-    return
+    return false
   }
   if (facts.prepared.fastModePerSessionOptIn === true) {
     session.options.delete('fastMode')
-    return
+    return false
   }
-  // The guards a live Fast write takes, over the listing this start already holds.
+  // Over the listing this start already holds.
   const listed = listedModels({ models: readClaudeModels(facts.initialization) })
   const blocked =
     session.fastModeDisabledReason !== undefined &&
@@ -183,19 +190,35 @@ async function applyClaudeFreshSessionFastMode(
   ) {
     session.options.delete('fastMode')
     session.restoreSkippedOptions.add('fastMode')
-    return
+    return false
   }
+  return true
+}
+
+/** Applies a new conversation's saved Fast on after `started`, so nothing waits on it. A refusal
+ *  drops it as main's refused restore did, from the record too; silence keeps it wanted and
+ *  unconfirmed. A write the user made meanwhile owns the option. */
+async function applyClaudeFreshSessionFastMode(
+  session: ClaudeSession,
+  facts: ClaudeStartupFacts,
+  report: (event: ClaudeStartupReport) => void
+): Promise<void> {
+  const sequence = session.optionMutationSequence
   try {
     await session.connection.applyFlagSettings(
       { fastMode: true },
       { timeoutMs: facts.requestTimeoutMs }
     )
   } catch (error) {
+    if (sequence !== session.optionMutationSequence) {
+      return
+    }
+    session.confirmedOptions.delete('fastMode')
     if (error instanceof ClaudeControlRequestError) {
       session.options.delete('fastMode')
       session.restoreSkippedOptions.add('fastMode')
+      report({ type: 'options-skipped', options: { fastMode: 'true' } })
     }
-    session.confirmedOptions.delete('fastMode')
   }
 }
 
@@ -263,8 +286,9 @@ export async function settleClaudeSessionStartup(input: {
   facts: Promise<ClaudeStartupFacts>
   isCurrent: () => boolean
   fault: (error: Error) => void
-  /** Startup has proven; `options` is what the child now reports, snapshotted from memory. */
-  onStarted: (options: StructuredAgentSessionStartedOptions) => void
+  /** `started` once startup has proven, with what the child now reports, snapshotted from memory;
+   *  then any saved option the child showed it cannot run. */
+  report: (event: ClaudeStartupReport) => void
 }): Promise<void> {
   const { session } = input
   const superseded = (): boolean => {
@@ -287,9 +311,10 @@ export async function settleClaudeSessionStartup(input: {
       }
     }
     applyClaudeStartupFacts(session, facts)
-    await applyClaudeFreshSessionFastMode(session, facts)
+    const appliesFastMode = admitClaudeFreshSessionFastMode(session, facts)
     if (!superseded()) {
-      input.onStarted({
+      input.report({
+        type: 'started',
         // `list_models` is answered from this same initialize result, so nothing is re-read.
         reportedOptions: claudeStartedReportedOptions(
           session,
@@ -300,6 +325,13 @@ export async function settleClaudeSessionStartup(input: {
       })
       if (session.startup.state === 'pending') {
         session.startup.state = 'proven'
+      }
+      if (appliesFastMode) {
+        void applyClaudeFreshSessionFastMode(session, facts, (event) => {
+          if (input.isCurrent()) {
+            input.report(event)
+          }
+        })
       }
     }
   } catch (caught) {

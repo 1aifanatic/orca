@@ -287,13 +287,12 @@ export async function acquireClaudeSession({
         }),
         isCurrent: () => sessions.get(sessionId) === session,
         fault: (error) => callbacks.handleExit(sessionId, attempt, error),
-        onStarted: (options) =>
+        report: (event) =>
           emit({
-            type: 'started',
+            ...event,
             sessionId,
             fence: input.fence,
-            acquisitionGeneration: session.acquisitionGeneration,
-            ...options
+            acquisitionGeneration: session.acquisitionGeneration
           })
       })
     ])

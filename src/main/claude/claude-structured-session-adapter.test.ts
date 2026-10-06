@@ -174,13 +174,12 @@ describe('ClaudeStructuredSessionAdapter.acquire', () => {
   ] as const)(
     'settles a saved Fast on a new conversation when the CLI %s its apply',
     async (_case, failure, kept) => {
+      let answerApply: (error: Error) => void = () => {}
       const claude = fakeClaude({
         settings: { applied: {}, effective: {}, sources: {} },
         initModels: [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }],
         routes: {
-          apply_flag_settings: () => {
-            throw failure
-          }
+          apply_flag_settings: () => new Promise<never>((_, reject) => (answerApply = reject))
         }
       })
       const events: ClaudeStructuredSessionEvent[] = []
@@ -193,11 +192,22 @@ describe('ClaudeStructuredSessionAdapter.acquire', () => {
         options: { model: 'opus', fastMode: 'true' }
       })
 
-      // A refusal drops the pick, as main's refused restore did; silence keeps it, unconfirmed.
+      // Started, with the pick, while the apply is still unanswered: nothing waits on it.
+      expect(claude.connections[0].calls.at(-1)?.subtype).toBe('apply_flag_settings')
       expect(events.find((event) => event.type === 'started')).toMatchObject({
-        reportedOptions: kept ? { fastMode: true } : { model: 'opus' },
-        restoreSkippedOptions: kept ? [] : ['fastMode']
+        reportedOptions: { fastMode: true },
+        restoreSkippedOptions: []
       })
+      answerApply(failure)
+      await tick()
+
+      // A refusal drops the pick, as main's refused restore did, from the record too, after
+      // `started`; silence keeps it wanted and unconfirmed.
+      const skipped = events.filter((event) => event.type === 'options-skipped')
+      expect(skipped).toEqual(
+        kept ? [] : [expect.objectContaining({ fence: 7, options: { fastMode: 'true' } })]
+      )
+      expect(adapter.readOptionRestoreFailures('session-1')).toEqual(kept ? [] : ['fastMode'])
       const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
       expect(options.current.fastMode === true).toBe(kept)
       expect(options.current.confirmed ?? []).not.toContain('fastMode')

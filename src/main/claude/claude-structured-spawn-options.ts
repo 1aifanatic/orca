@@ -116,8 +116,9 @@ export function adoptClaudeStructuredSpawnOptions(
   if (model !== undefined) {
     session.translator?.modelWritten(model)
   }
-  // The journal's window was measured under a value this child did not take.
-  if (spawn.skipped.includes('model') || spawn.skipped.includes('permissionMode')) {
+  // The journal's window was measured under a mode this child did not take (`opusplan`'s plan
+  // mode runs Opus); a launch never leaves a model out.
+  if (spawn.skipped.includes('permissionMode')) {
     session.translator?.modelMayHaveChanged()
   }
 }

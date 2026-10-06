@@ -53,14 +53,17 @@ describe('the context ring after a session option write', () => {
     expect(s.respond('turn-b', 2_000)).toMatchObject({ windowTokens: 1_000_000, percentage: 10 })
   })
 
-  it('implies no window for a model the child refused or the launch left out', async () => {
+  it('implies no window for a model the child refused or a mode the launch left out', async () => {
     const refused = ringSession()
     refused.setModel.mockRejectedValueOnce(new ClaudeControlRequestError('set_model', 'refused'))
     await expect(refused.write('model', 'opus[1m]')).rejects.toThrow()
     expect(refused.respond('turn-a', 1_000)).toBeNull()
 
     const skipped = ringSession()
-    adoptClaudeStructuredSpawnOptions(skipped.session, { options: new Map(), skipped: ['model'] })
+    adoptClaudeStructuredSpawnOptions(skipped.session, {
+      options: new Map([['model', 'sonnet[1m]']]),
+      skipped: ['permissionMode']
+    })
     expect(skipped.respond('turn-a', 1_000)).toBeNull()
   })
 

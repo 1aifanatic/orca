@@ -187,7 +187,7 @@ export function fakeClaude(
       },
       applyFlagSettings: async (settings) => {
         connection.calls.push({ subtype: 'apply_flag_settings', params: { settings } })
-        routed('apply_flag_settings', { settings })
+        await routed('apply_flag_settings', { settings })
       },
       interrupt: async (interruptOptions) => {
         connection.calls.push({
