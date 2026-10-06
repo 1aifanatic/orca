@@ -11,6 +11,7 @@ import {
 import { useStructuredAgentSessionHostStopsConversation } from '@/runtime/structured-agent-session-host-capability'
 import { useStructuredAgentSessionQueueGates } from './use-structured-agent-session-queue-gates'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -39,6 +40,8 @@ import type { NativeChatRewindHost } from './use-native-chat-rewind'
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
 type StructuredPromptCancelTarget = { itemId: string; expectedRevision: number }
+
+const NO_ASKED_ROWS: readonly StructuredAgentSessionOutboxEntry[] = []
 
 export function useStructuredAgentSession(args: {
   sessionId: string
@@ -153,7 +156,7 @@ export function useStructuredAgentSession(args: {
 
   // Stop and the command holds read this window's own outbox; the transcript also draws a cleared
   // chat's messages still being asked about, which no Stop here can end.
-  const { outbox, transcriptRows = outbox } = outboxController
+  const { outbox, askedRows = NO_ASKED_ROWS } = outboxController
   // What the host refuses a rewind behind; a command's own hold is the runner's below.
   const conversationBusy = Boolean(
     transportState.turnId ||
@@ -195,10 +198,12 @@ export function useStructuredAgentSession(args: {
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
-  const transcriptOutbox = useMemo(
-    () => outboxOutsideQueuedCards(transcriptRows, queuedMessageIds, isWorking, queueDelivery),
-    [isWorking, queueDelivery, queuedMessageIds, transcriptRows]
-  )
+  const transcriptOutbox = useMemo(() => {
+    const own = outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, queueDelivery)
+    // Not this chat's queue sends, so never its sending cards: a row until the host answers.
+    const asked = askedRows.filter((entry) => !queuedMessageIds.includes(entry.clientMessageId))
+    return asked.length > 0 ? [...asked, ...own] : own
+  }, [askedRows, isWorking, outbox, queueDelivery, queuedMessageIds])
   // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
   const transcriptItems = useMemo(
     () =>

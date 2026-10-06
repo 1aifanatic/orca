@@ -34,6 +34,8 @@ let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
 let submissions: AgentJournalSubmission[] = []
 let outboxEntries: StructuredAgentSessionOutboxEntry[] = []
+/** A replaced chat's messages the carry is asking about, drawn in this chat's transcript. */
+let askedEntries: StructuredAgentSessionOutboxEntry[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -78,6 +80,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
     mocks.outboxArgs.push(args)
     return {
       outbox: outboxEntries,
+      askedRows: askedEntries,
       error: null,
       send: vi.fn(),
       retry: vi.fn(),
@@ -156,6 +159,7 @@ beforeEach(() => {
   queuedMessages = undefined
   submissions = []
   outboxEntries = []
+  askedEntries = []
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
 })
@@ -766,6 +770,12 @@ describe('against a host without the capability', () => {
 })
 
 describe('a /clear against a host that runs it from the queue', () => {
+  const CLEAR_WAITS = [
+    AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+    AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+    AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
+    AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
+  ]
   const queuedClearAnswer = {
     command: 'clear',
     state: 'completed',
@@ -773,11 +783,7 @@ describe('a /clear against a host that runs it from the queue', () => {
   }
 
   it('mid-turn, goes to the host asking to wait, and its queued answer shows no notice', async () => {
-    setLocalRuntimeCapabilitiesForTests([
-      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
-      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
-      AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
-    ])
+    setLocalRuntimeCapabilitiesForTests(CLEAR_WAITS)
     answerCommands(queuedClearAnswer)
     const { result } = render()
     let outcome: unknown
@@ -818,26 +824,46 @@ describe('a /clear against a host that runs it from the queue', () => {
     { card: 'waiting', held: false, enabled: true },
     { card: 'held (kept or couldn’t send), which the queue skips', held: true, enabled: false }
   ])('a $card /clear card decides whether a send queues behind it', ({ held, enabled }) => {
-    setLocalRuntimeCapabilitiesForTests([
-      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
-      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
-      AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
-    ])
+    setLocalRuntimeCapabilitiesForTests(CLEAR_WAITS)
     queuedMessages = [
       {
         ...draft('clear-1'),
-        body: {
-          kind: 'message' as const,
-          role: 'user' as const,
-          blocks: [{ type: 'text' as const, text: '/clear' }],
-          command: { name: 'clear' as const }
-        },
+        body: { ...draft('clear-1').body, command: { name: 'clear' } },
         ...(held ? { paused: true as const, pausedReason: 'kept' as const } : {})
       }
     ]
     render(false)
     expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({ capability: 'supported', enabled })
   })
+
+  it.each([
+    { chat: 'working', turn: true },
+    { chat: 'idle', turn: false }
+  ])(
+    "a cleared chat's queue send being asked about is one sending row while $chat: no card, no Stop",
+    ({ turn }) => {
+      setLocalRuntimeCapabilitiesForTests(CLEAR_WAITS)
+      items = turn ? [RUNNING_TURN] : []
+      askedEntries = [
+        {
+          ...createStructuredAgentSessionOutboxEntry({
+            clientMessageId: 'asked',
+            sessionId: 'old-session',
+            text: 'message asked about',
+            attachments: [],
+            queuedAt: 1
+          }),
+          state: 'dispatching',
+          lastAttemptAt: 2,
+          sentDelivery: 'queue-if-active'
+        }
+      ]
+      const { result } = render()
+      expect(JSON.stringify(result.current.messages).split('message asked about')).toHaveLength(2)
+      expect(result.current.queuedMessages.cards).toEqual([])
+      expect(result.current.canStop).toBe(turn)
+    }
+  )
 
   it('without the queue lit, keeps the refusal even when the host could hold it', async () => {
     setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY])
