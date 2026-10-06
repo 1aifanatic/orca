@@ -88,7 +88,8 @@ export async function launchAgentSessionContinuation({
   let deliveryUnconfirmed = false
   let createdTabId: string | undefined
   const executionHostId = useAppStore.getState().getKnownWorktreeById(worktreeId)?.hostId
-  const result = launchAgentInNewTab({
+  let result: ReturnType<typeof launchAgentInNewTab> = null
+  result = launchAgentInNewTab({
     requestId: newAgentLaunchRequestId(),
     agent,
     worktreeId,

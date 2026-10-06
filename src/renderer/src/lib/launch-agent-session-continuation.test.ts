@@ -215,6 +215,27 @@ describe('launchAgentSessionContinuation', () => {
     expect(toast.error).toHaveBeenCalled()
   })
 
+  it('does not report success or throw from a queued delivery when the launcher throws', async () => {
+    const queued: (() => void)[] = []
+    vi.stubGlobal('queueMicrotask', (callback: () => void) => queued.push(callback))
+    launchAgentInNewTab.mockImplementation((args) => {
+      args.onPromptDelivered()
+      throw new Error('launch failed after delivery callback')
+    })
+    const { launchAgentSessionContinuation } = await import('./launch-agent-session-continuation')
+    await expect(
+      launchAgentSessionContinuation({
+        agent: 'claude',
+        prompt: 'continue',
+        worktreeId: 'wt-1',
+        launchSource: 'sidebar'
+      })
+    ).rejects.toThrow('launch failed after delivery callback')
+    expect(queued).toHaveLength(1)
+    expect(() => queued[0]()).not.toThrow()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
   it('detects the target Agent on the SSH host that owns the workspace', async () => {
     connectionId.value = 'ssh-1'
     const { detectAgentSessionContinuationAgents } =
