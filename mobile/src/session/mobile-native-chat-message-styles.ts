@@ -57,6 +57,10 @@ export const styles = StyleSheet.create({
   reasoningCaretOpen: {
     transform: [{ rotate: '90deg' }]
   },
+  reasoningBody: {
+    // The common cap for an open reasoning block (about ten lines).
+    maxHeight: 240
+  },
   toolRun: {
     marginTop: spacing.xs
   },

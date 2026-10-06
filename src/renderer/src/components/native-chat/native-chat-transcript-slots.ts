@@ -14,14 +14,16 @@ import {
   type NativeChatMessage
 } from '../../../../shared/native-chat-types'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
-import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../../shared/native-chat-turn-membership'
+import {
+  isNativeChatRowInLiveWorkingTurn,
+  nativeChatMessagesWaitingBehindLiveTurn
+} from '../../../../shared/native-chat-turn-membership'
 import { nativeChatTurnBarRows } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnFold,
   type NativeChatTurnFoldRow
 } from '../../../../shared/native-chat-turn-fold'
 import { nativeChatRowRendersContent } from '../../../../shared/native-chat-row-content'
-import { isNativeChatReasoningUnderway } from '../../../../shared/native-chat-reasoning-row'
 import {
   estimateNativeChatRowHeight,
   nativeChatRowContentMetrics
@@ -99,6 +101,8 @@ export type NativeChatTranscriptSlotsInput = {
   lifecycleWorking: boolean
   subagentSections?: NativeChatSubagentSections
   subagentChoices?: NativeChatSubagentChoices
+  /** The open reasoning block the live activity line discloses: its row takes no slot meanwhile. */
+  liveReasoningId?: string | null
 }
 
 export function buildNativeChatTranscriptSlots(
@@ -115,7 +119,8 @@ export function buildNativeChatTranscriptSlots(
     isWorking,
     lifecycleWorking,
     subagentSections: sections = NO_NATIVE_CHAT_SUBAGENT_SECTIONS,
-    subagentChoices: choices = NO_NATIVE_CHAT_SUBAGENT_CHOICES
+    subagentChoices: choices = NO_NATIVE_CHAT_SUBAGENT_CHOICES,
+    liveReasoningId = null
   } = input
   // One pass to decide what each row draws, then the fold over those readings —
   // so "is this the answer" and "does this row render prose" cannot disagree.
@@ -182,16 +187,14 @@ export function buildNativeChatTranscriptSlots(
     // Skipping a folded row entirely is what keeps windowing honest: a counted
     // index the row declines to draw reserves estimated height for nothing and
     // opens a gap in the transcript.
-    // Liveness is the owning turn's, not the newest prompt's: a running turn's
-    // rows stay live while a newer message waits behind it.
-    const activeTurnIsWorking =
-      (liveTurnKey ? turnKey === liveTurnKey : turnKey === undefined) &&
-      (isWorking || lifecycleWorking)
+    const activeTurnIsWorking = isNativeChatRowInLiveWorkingTurn(
+      turnKey,
+      liveTurnKey,
+      isWorking || lifecycleWorking
+    )
     const drawsRow =
       receipt !== undefined ||
-      (!folded &&
-        nativeChatRowRendersContent(message.blocks) &&
-        !isNativeChatReasoningUnderway(message, activeTurnIsWorking))
+      (!folded && nativeChatRowRendersContent(message.blocks) && message.id !== liveReasoningId)
     const roster = sectionSlots.rosterAt(message.id)
     if (drawsRow || status !== undefined || turnDiff !== undefined) {
       slots.push({

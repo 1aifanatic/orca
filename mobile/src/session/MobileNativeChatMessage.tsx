@@ -13,7 +13,7 @@ import {
 } from '../../../src/shared/agent-session-host-status-rows'
 import type { NativeChatBlock, NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { MobileMarkdown } from '../components/MobileMarkdown'
-import { isNativeChatReasoningUnderway } from '../../../src/shared/native-chat-reasoning-row'
+import { deriveNativeChatRowContent } from '../../../src/shared/native-chat-row-content'
 import { MobileNativeChatReasoningRow } from './MobileNativeChatReasoningRow'
 import { MobileNativeChatTurnStatus } from './MobileNativeChatTurnStatus'
 import { ToolRun } from './MobileNativeChatToolRun'
@@ -102,7 +102,10 @@ function MobileNativeChatMessageImpl({
   turnKey,
   onToggleTurn,
   activeTurnIsWorking,
-  structuredActivityUi = false
+  structuredActivityUi = false,
+  reasoningIsLive = false,
+  reasoningExpanded,
+  onToggleReasoning
 }: {
   message: NativeChatMessage
   toolsExpanded?: boolean
@@ -123,6 +126,11 @@ function MobileNativeChatMessageImpl({
   activeTurnIsWorking?: boolean
   /** Structured lane only: live tool progress plus the turn-status disclosure. */
   structuredActivityUi?: boolean
+  /** This open reasoning block is disclosed by the live activity line, so its row draws nothing. */
+  reasoningIsLive?: boolean
+  /** The transcript-held disclosure of a reasoning row; one stable handler takes its key. */
+  reasoningExpanded?: boolean
+  onToggleReasoning?: (key: string) => void
 }): React.JSX.Element {
   const isUser = message.role === 'user'
   const isReasoning = message.role === 'reasoning'
@@ -160,11 +168,10 @@ function MobileNativeChatMessageImpl({
     />
   ) : null
   if (isReasoning) {
-    const markdown = prose.flatMap((block) => (isTextBlock(block) ? [block.text] : [])).join('\n\n')
-    // Blank, or still being written in the live turn: nothing draws, not even an empty row.
-    const draws =
-      markdown.trim().length > 0 &&
-      !isNativeChatReasoningUnderway(message, activeTurnIsWorking === true)
+    // The same text the live line's selector reads, so the two agree on whether there is any.
+    const markdown = deriveNativeChatRowContent(message.blocks).markdown
+    // Blank, or disclosed by the live activity line: nothing draws, not even an empty row.
+    const draws = markdown.trim().length > 0 && !reasoningIsLive
     return (
       <>
         {turnStatusAbove ? statusRow : null}
@@ -174,6 +181,9 @@ function MobileNativeChatMessageImpl({
               message={message}
               markdown={markdown}
               fontScale={fontScale}
+              live={activeTurnIsWorking === true}
+              expanded={reasoningExpanded}
+              onToggle={onToggleReasoning}
               onOpenFile={onOpenFile}
               onLongPress={onLongPress}
             />

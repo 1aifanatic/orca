@@ -23,6 +23,8 @@ vi.mock('react-native', async () => {
     Image: 'Image',
     Platform: { OS: 'android' },
     Pressable: 'Pressable',
+    ScrollView: ({ children, ...props }: { children?: ReactNode }) =>
+      React.createElement('ScrollView', props, children),
     Text,
     View: ({ children, ...props }: { children?: ReactNode }) =>
       React.createElement('View', props, children),

@@ -24,10 +24,10 @@ import {
 import type { NativeChatTranscriptRowContext } from './NativeChatTranscriptRow'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import {
-  buildNativeChatTranscriptSlots,
   splitNativeChatSlotsWaitingBehindLiveTurn,
   nativeChatSlotIndexOf
 } from './native-chat-transcript-slots'
+import { useNativeChatTranscriptSlots } from './use-native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
 import { nativeChatRowsInTranscriptOrder } from './native-chat-subagent-sections'
 import { useNativeChatSubagentSections } from './use-native-chat-subagent-sections'
@@ -184,35 +184,21 @@ export function NativeChatMessageList({
         ? 'activity'
         : null
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
-  const allSlots = useMemo(
-    () =>
-      buildNativeChatTranscriptSlots({
-        messages: rows,
-        turnKeys,
-        liveTurnKey,
-        receipts,
-        turnStatuses,
-        turnDiffs,
-        expandedTurnKeys: expandedTurnIds,
-        isWorking,
-        lifecycleWorking,
-        subagentSections,
-        subagentChoices
-      }),
-    [
-      liveTurnKey,
-      expandedTurnIds,
-      isWorking,
-      lifecycleWorking,
-      receipts,
-      rows,
-      subagentChoices,
-      subagentSections,
-      turnDiffs,
-      turnKeys,
-      turnStatuses
-    ]
-  )
+  const { slots: allSlots, liveReasoning } = useNativeChatTranscriptSlots({
+    messages: rows,
+    turnKeys,
+    liveTurnKey,
+    receipts,
+    turnStatuses,
+    turnDiffs,
+    expandedTurnKeys: expandedTurnIds,
+    isWorking,
+    lifecycleWorking,
+    subagentSections,
+    subagentChoices,
+    // The line's own render condition, so a row is never hidden while nothing on screen discloses it.
+    lineShowsThinking: tailRow === 'activity' && turnStatuses.active?.thinking === true
+  })
   // A message waiting behind the live turn draws after that turn's live activity, not inside it.
   const { slots, waitingSlots } = useMemo(
     () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, journalItems),
@@ -401,6 +387,9 @@ export function NativeChatMessageList({
                   <NativeChatTurnActivityLine
                     activity={turnActivity}
                     thinking={turnStatuses.active?.thinking === true}
+                    liveReasoning={liveReasoning}
+                    onLinkClick={onLinkClick}
+                    allowFileUriLinks={allowFileUriLinks}
                   />
                 ) : tailRow === 'awaiting-input' ? (
                   <NativeChatAwaitingInputRow subject={null} pending />

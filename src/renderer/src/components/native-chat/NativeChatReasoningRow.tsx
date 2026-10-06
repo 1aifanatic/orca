@@ -1,17 +1,18 @@
-import { ChevronRight } from 'lucide-react'
-import CommentMarkdown, {
-  type CommentMarkdownLinkClickHandler
-} from '@/components/sidebar/CommentMarkdown'
+import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
-  isNativeChatReasoningUnderway,
+  nativeChatReasoningDisclosureKey,
   nativeChatReasoningHeadline,
   type NativeChatReasoningHeadline
 } from '../../../../shared/native-chat-reasoning-row'
-import { NativeChatCodeBlock } from './NativeChatCodeBlock'
+import {
+  NativeChatReasoningBody,
+  NativeChatReasoningChevron
+} from './NativeChatReasoningDisclosure'
 import { NativeChatToolRunIcon } from './NativeChatToolIcon'
+import { useNativeChatDisclosure } from './native-chat-disclosure-store'
 
 function translatedHeadline(headline: NativeChatReasoningHeadline): string {
   if (headline.kind === 'thoughtFor') {
@@ -31,22 +32,24 @@ export function NativeChatReasoningRow({
   onLinkClick,
   allowFileUriLinks
 }: {
-  message: Pick<NativeChatMessage, 'role' | 'state' | 'completedAt' | 'timestamp'>
+  message: Pick<NativeChatMessage, 'id' | 'role' | 'state' | 'completedAt' | 'timestamp'>
   markdown: string
-  /** The row's own turn is still running; a row is live only inside one. */
+  /** The row's own turn (or subagent) is still running; an open row there has not ended. */
   turnIsWorking?: boolean
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
 }): React.JSX.Element | null {
-  if (!markdown.trim() || isNativeChatReasoningUnderway(message, turnIsWorking)) {
+  // Keyed like the live line, so a block opened while it streamed lands open, and windowing keeps it.
+  const disclosure = useNativeChatDisclosure(nativeChatReasoningDisclosureKey(message.id), false)
+  if (!markdown.trim()) {
     return null
   }
   const label = translate('components.native-chat.reasoning', 'Reasoning')
-  const headline = translatedHeadline(nativeChatReasoningHeadline(message))
+  const headline = translatedHeadline(nativeChatReasoningHeadline(message, { live: turnIsWorking }))
 
   return (
     <div className="min-w-0 text-sm text-muted-foreground">
-      <Collapsible>
+      <Collapsible open={disclosure.open} onOpenChange={disclosure.setOpen}>
         <CollapsibleTrigger asChild>
           {/* Laid out like a tool run's header, so its glyph sits in the same column. */}
           <button
@@ -58,24 +61,15 @@ export function NativeChatReasoningRow({
             <span className="min-w-0 truncate leading-relaxed transition-colors group-hover/reasoning:text-foreground/80">
               {headline}
             </span>
-            <ChevronRight
-              aria-hidden
-              className="size-3.5 shrink-0 transition-all can-hover:opacity-0 group-hover/reasoning:opacity-100 group-focus-visible/reasoning:opacity-100 group-data-[state=open]/reasoning:rotate-90 group-data-[state=open]/reasoning:opacity-100 motion-reduce:transition-none"
-            />
+            <NativeChatReasoningChevron />
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="mt-1 pl-5.5 italic">
-            <CommentMarkdown
-              content={markdown}
-              variant="document"
-              className="text-sm"
-              renderCodeBlock={NativeChatCodeBlock}
-              onLinkClick={onLinkClick}
-              allowFileUriLinks={allowFileUriLinks}
-              linkifyFilePaths={onLinkClick !== undefined}
-            />
-          </div>
+          <NativeChatReasoningBody
+            markdown={markdown}
+            onLinkClick={onLinkClick}
+            allowFileUriLinks={allowFileUriLinks}
+          />
         </CollapsibleContent>
       </Collapsible>
     </div>

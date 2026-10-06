@@ -24,6 +24,8 @@ vi.mock('react-native', async () => {
     Image: 'Image',
     Platform: { OS: 'ios' },
     Pressable: 'Pressable',
+    ScrollView: ({ children, ...props }: { children?: unknown }) =>
+      React.createElement('ScrollView', props, children),
     Text,
     View: ({ children, ...props }: { children?: unknown }) =>
       React.createElement('View', props, children),
@@ -78,6 +80,7 @@ describe('MobileNativeChatMessage', () => {
         workedSeconds: number | null
       } | null
       onToggleTurn?: () => void
+      reasoningIsLive?: boolean
     } = {}
   ): ReactTestRenderer {
     act(() => {
@@ -367,11 +370,23 @@ describe('MobileNativeChatMessage', () => {
       ])
     })
 
-    it('draws nothing while still being written in the live turn, or when blank', () => {
+    it('draws nothing while the live line discloses it, or when blank', () => {
       expect(
-        render(reasoning({ state: 'running' }), { activeTurnIsWorking: true }).toJSON()
+        render(reasoning({ state: 'running' }), {
+          activeTurnIsWorking: true,
+          reasoningIsLive: true
+        }).toJSON()
       ).toBeNull()
       expect(render(reasoning({ blocks: [{ type: 'text', text: ' \n ' }] })).toJSON()).toBeNull()
+    })
+
+    // Only the block the line discloses hides: a subagent's or a stale open block draws, unended.
+    it('draws any other open block in its working turn as Reasoning', () => {
+      const child = render(reasoning({ state: 'running', agentId: 'sub-1' }), {
+        activeTurnIsWorking: true
+      })
+      expect(textIn(child.root)).toContain('Reasoning')
+      expect(toggleOf(child).props.accessibilityLabel).toBe('Reasoning')
     })
 
     it('says only what the host saw', () => {

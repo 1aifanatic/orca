@@ -543,23 +543,18 @@ describe('turn-owned grouping', () => {
     ])
   })
 
-  it('reserves nothing for reasoning still underway in the live turn, and draws it once it ends', () => {
-    const reasoning = (state: 'running' | 'completed'): NativeChatMessage => ({
-      ...text('r', 'Weighing two approaches', 'reasoning'),
+  it('skips only the open reasoning the live line discloses, and only while it does', () => {
+    const reasoning = (id: string, state: 'running' | 'completed'): NativeChatMessage => ({
+      ...text(id, 'Weighing two approaches', 'reasoning'),
       state
     })
-    const live = { turnKeys: ['A', 'A'], liveTurnKey: 'A', isWorking: true }
-    expect(
-      build([text('A', 'go', 'user'), reasoning('running')], live).map((slot) => slot.message.id)
-    ).toEqual(['A'])
-    expect(
-      build([text('A', 'go', 'user'), reasoning('completed')], live).map((slot) => slot.message.id)
-    ).toEqual(['A', 'r'])
-    // A row still open in a turn that is no longer running ended unseen; it draws as before.
-    expect(
-      build([text('A', 'go', 'user'), reasoning('running')], { turnKeys: ['A', 'A'] }).map(
-        (slot) => slot.message.id
-      )
-    ).toEqual(['A', 'r'])
+    const live = { turnKeys: ['A', 'A', 'A'], liveTurnKey: 'A', isWorking: true }
+    const rows = [text('A', 'go', 'user'), reasoning('r-1', 'running'), reasoning('r-2', 'running')]
+    const ids = (overrides: Partial<Parameters<typeof build>[1]>) =>
+      build(rows, { ...live, ...overrides }).map((slot) => slot.message.id)
+    expect(ids({ liveReasoningId: 'r-2' })).toEqual(['A', 'r-1'])
+    // Nothing discloses it (a prompt took the line, or it says something else): it draws.
+    expect(ids({ liveReasoningId: null })).toEqual(['A', 'r-1', 'r-2'])
+    expect(ids({})).toEqual(['A', 'r-1', 'r-2'])
   })
 })

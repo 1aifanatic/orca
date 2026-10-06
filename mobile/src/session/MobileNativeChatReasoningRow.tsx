@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, ScrollView, Text, View } from 'react-native'
 import { Brain, ChevronRight } from 'lucide-react-native'
 import {
+  nativeChatReasoningDisclosureKey,
   nativeChatReasoningHeadline,
   nativeChatReasoningHeadlineText
 } from '../../../src/shared/native-chat-reasoning-row'
@@ -17,24 +18,35 @@ export function MobileNativeChatReasoningRow({
   message,
   markdown,
   fontScale,
+  live = false,
+  expanded: transcriptExpanded = false,
+  onToggle,
   onOpenFile,
   onLongPress
 }: {
-  message: Pick<NativeChatMessage, 'state' | 'completedAt' | 'timestamp'>
+  message: Pick<NativeChatMessage, 'id' | 'state' | 'completedAt' | 'timestamp'>
   markdown: string
   fontScale: number
+  /** Drawn inside its working turn: an open row there has not ended. */
+  live?: boolean
+  /** The transcript's disclosure, keyed like the live line's; absent, the row keeps its own. */
+  expanded?: boolean
+  onToggle?: (key: string) => void
   onOpenFile?: (relativePath: string) => void
   /** Android only: opens the message's actions sheet, as a long press on any other message does. */
   onLongPress?: () => void
 }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false)
-  const headline = nativeChatReasoningHeadlineText(nativeChatReasoningHeadline(message))
+  const [localExpanded, setLocalExpanded] = useState(false)
+  const expanded = onToggle ? transcriptExpanded : localExpanded
+  const toggle = () =>
+    onToggle ? onToggle(nativeChatReasoningDisclosureKey(message.id)) : setLocalExpanded(!expanded)
+  const headline = nativeChatReasoningHeadlineText(nativeChatReasoningHeadline(message, { live }))
   const label = nativeChatReasoningHeadlineText({ kind: 'reasoning' })
   return (
     <View>
       <Pressable
         style={({ pressed }) => [styles.reasoningToggle, pressed && styles.reasoningPressed]}
-        onPress={() => setExpanded((open) => !open)}
+        onPress={toggle}
         hitSlop={6}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -50,16 +62,41 @@ export function MobileNativeChatReasoningRow({
         </View>
       </Pressable>
       {expanded ? (
-        <MobileNativeChatLongPressContent onLongPress={onLongPress} style={styles.reasoning}>
-          <MobileMarkdown
-            content={markdown}
-            rangeSelectable
-            textScale={1.25 * fontScale}
-            onOpenFile={onOpenFile}
-            onLongPress={onLongPress}
-          />
-        </MobileNativeChatLongPressContent>
+        <MobileNativeChatReasoningBody
+          markdown={markdown}
+          fontScale={fontScale}
+          onOpenFile={onOpenFile}
+          onLongPress={onLongPress}
+        />
       ) : null}
     </View>
+  )
+}
+
+/** A reasoning block's text, under its row or the live activity line. Capped and scrollable, so an
+ *  open block streaming at the tail cannot grow without bound. */
+export function MobileNativeChatReasoningBody({
+  markdown,
+  fontScale,
+  onOpenFile,
+  onLongPress
+}: {
+  markdown: string
+  fontScale: number
+  onOpenFile?: (relativePath: string) => void
+  onLongPress?: () => void
+}): React.JSX.Element {
+  return (
+    <ScrollView style={styles.reasoningBody} nestedScrollEnabled>
+      <MobileNativeChatLongPressContent onLongPress={onLongPress} style={styles.reasoning}>
+        <MobileMarkdown
+          content={markdown}
+          rangeSelectable
+          textScale={1.25 * fontScale}
+          onOpenFile={onOpenFile}
+          onLongPress={onLongPress}
+        />
+      </MobileNativeChatLongPressContent>
+    </ScrollView>
   )
 }
