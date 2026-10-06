@@ -25,6 +25,9 @@ const callbacks = {
   onLineageToggle: vi.fn()
 }
 
+const INTERACTION_VARIANT =
+  /(?:^|:)(?:hover|focus|focus-visible|focus-within|active|disabled|aria-invalid):/
+
 const ALL_CARD_PROPERTIES: WorktreeCardProperty[] = [
   'status',
   'unread',
@@ -339,7 +342,7 @@ describe('WorktreeCard read-only contract', () => {
         const liveIdentity = container.querySelector('[data-ssh-target-label]')
         expect(liveIdentity).not.toBeNull()
         const liveClasses = [...(liveIdentity?.classList ?? [])]
-          .filter((name) => name !== 'cursor-pointer')
+          .filter((name) => name !== 'cursor-pointer' && !INTERACTION_VARIANT.test(name))
           .toSorted()
         const liveGlyph = liveIdentity?.querySelector('svg')?.outerHTML
         const liveSignature = worktreeCardTitleXSignature(
@@ -355,6 +358,9 @@ describe('WorktreeCard read-only contract', () => {
           )
         ).toEqual(liveSignature)
         expect(identity?.tagName).toBe('SPAN')
+        expect(
+          [...(identity?.classList ?? [])].filter((name) => INTERACTION_VARIANT.test(name))
+        ).toEqual([])
         expect(
           [...(identity?.classList ?? [])].filter((name) => name !== 'cursor-default').toSorted()
         ).toEqual(liveClasses)

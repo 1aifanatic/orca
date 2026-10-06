@@ -105,6 +105,13 @@ describe('WorktreeCardSshHostControl', () => {
       const { container } = renderControl({ status, iconOnly, interactive: false, onPointerDown })
       const identity = container.querySelector('[data-ssh-target-label]')
       expect(identity?.tagName).toBe('SPAN')
+      expect(
+        [...(identity?.classList ?? [])].filter((name) =>
+          /(?:^|:)(?:hover|focus|focus-visible|focus-within|active|disabled|aria-invalid):/.test(
+            name
+          )
+        )
+      ).toEqual([])
       expect(identity?.textContent).toContain('devbox')
       expect(
         container.querySelector('button, [tabindex], [role="button"], [data-tooltip]')
