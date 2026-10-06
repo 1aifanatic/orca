@@ -80,6 +80,8 @@ type Props = {
   /** Overrides the hover tooltip; null suppresses it for an existing tooltip. */
   title?: string | null
   tooltipSide?: StateIndicatorTooltipSide
+  /** Overrides the default state-tooltip delay; the tab strip passes its longer strip delay. */
+  tooltipDelayMs?: number
 }
 
 /** Render the compact state glyph used by agent rows and terminal tabs. */
@@ -88,7 +90,8 @@ export const AgentStateDot = React.memo(function AgentStateDot({
   size = 'sm',
   className,
   title,
-  tooltipSide
+  tooltipSide,
+  tooltipDelayMs
 }: Props): React.JSX.Element {
   const box = size === 'md' ? 'h-3 w-3' : 'h-2.5 w-2.5'
   const inner = size === 'md' ? 'size-2' : 'size-1.5'
@@ -171,7 +174,7 @@ export const AgentStateDot = React.memo(function AgentStateDot({
   }
 
   return (
-    <StateIndicatorTooltip label={tooltipLabel} side={tooltipSide}>
+    <StateIndicatorTooltip label={tooltipLabel} side={tooltipSide} delayMs={tooltipDelayMs}>
       {indicator}
     </StateIndicatorTooltip>
   )
