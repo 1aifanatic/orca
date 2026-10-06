@@ -4,13 +4,11 @@ import { NativeChatResolvedView } from './NativeChatResolvedView'
 import { useNativeChatStatusEntry } from './use-native-chat-status-entry'
 import type { NativeChatViewProps } from './native-chat-view-types'
 import { NativeChatPaneFileDropSurface } from './NativeChatPaneFileDropSurface'
-import { useDraftFollowsReplacedConversation } from './native-chat-composer-draft-forwarding'
 
 export type { NativeChatViewProps } from './native-chat-view-types'
 
 /** Resolves an agent terminal into its native conversation and composer UI. */
 export default function NativeChatView(props: NativeChatViewProps): React.JSX.Element {
-  useDraftFollowsReplacedConversation(props.mode === 'structured' ? props.sessionId : undefined)
   return (
     <NativeChatPaneFileDropSurface className="relative flex h-full min-h-0 min-w-0 w-full">
       {props.mode === 'structured' ? (

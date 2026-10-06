@@ -445,10 +445,10 @@ describe('ambiguous operation refusals', () => {
 })
 
 describe('a send that a /clear raced', () => {
-  const cleared = (attempted: StructuredAgentSessionOutboxEntry) =>
-    disposeStructuredAgentSessionSendResult({
-      entries: [attempted],
-      entry: attempted,
+  it("keeps the host's own refusal on its row here: the new chat, not this one, takes its text", () => {
+    const disposition = disposeStructuredAgentSessionSendResult({
+      entries: [entry],
+      entry,
       result: {
         ok: false,
         refusal: {
@@ -459,19 +459,11 @@ describe('a send that a /clear raced', () => {
       },
       createOperationId: () => 'client-2'
     })
-
-  it('on a first attempt, leaves the outbox and hands its text back, said once', () => {
-    const disposition = cleared(entry)
-    expect(disposition.entries).toEqual([])
-    expect(disposition.handedBack).toBe(entry)
-    expect(agentSessionWriteNoticeEnglish(disposition.error ?? [])).toBe(
-      "The chat was cleared before your message went out. It's back in the composer."
-    )
-  })
-
-  it('on a resend, stays held for its Retry: an earlier attempt may have landed', () => {
-    const disposition = cleared({ ...entry, lastAttemptAt: 5 })
-    expect(disposition.handedBack).toBeUndefined()
+    // A pane still on the cleared chat shows the host's "open the current conversation".
     expect(disposition.entries).toHaveLength(1)
+    expect(disposition.entries[0]?.lastFailure).toMatchObject({
+      kind: 'refused',
+      details: { reason: 'conversationCleared' }
+    })
   })
 })

@@ -79,6 +79,34 @@ describe('a draft when /clear replaces its conversation', () => {
     expect(state?.composerText).toBe('raced the clear')
   })
 
+  it('comes along even when another tab was showing while the clear ran', async () => {
+    await show(OLD)
+    act(() => state?.setComposerText('typed before switching away'))
+    await show({ tabId: 'agent-session:other', sessionId: 'other' })
+    await show(NEW)
+    expect(state?.composerText).toBe('typed before switching away')
+  })
+
+  it('takes text handed back to the old tab while another tab showed', async () => {
+    await show(OLD)
+    const origin = state?.captureSendOrigin('raced the clear')
+    await show({ tabId: 'agent-session:other', sessionId: 'other' })
+    act(() => {
+      if (origin) {
+        state?.restoreRejectedDraft(origin, 'raced the clear')
+      }
+    })
+    await show(NEW)
+    expect(state?.composerText).toBe('raced the clear')
+  })
+
+  it('never carries the lone /clear itself', async () => {
+    await show(OLD)
+    act(() => state?.setComposerText('/clear'))
+    await show(NEW)
+    expect(state?.composerText).toBe('')
+  })
+
   it('a tab switch to another chat moves nothing', async () => {
     await show(OLD)
     act(() => state?.setComposerText('stays here'))

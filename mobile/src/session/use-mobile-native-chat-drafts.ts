@@ -203,24 +203,22 @@ export function useMobileNativeChatDrafts(args: {
     )
   }, [])
 
-  const draftKeyNow = useMobileNativeChatDraftFollowsReplacement({
+  useMobileNativeChatDraftFollowsReplacement({
     draftKey,
     sessionId,
     replacesSessionId: args.replacesSessionId ?? null,
+    drafts,
     setDrafts
   })
-  const restoreRejectedDraft = useCallback(
-    (origin: MobileNativeChatSendOrigin, text: string) => {
-      // Appended, so typing done while the send was in flight stays and the returned text isn't dropped.
-      const key = draftKeyNow(origin.draftKey)
-      setDrafts((previous) => {
-        const current = previous[key] ?? ''
-        const next = appendReturnedDraftText(current, text)
-        return next === current ? previous : { ...previous, [key]: next }
-      })
-    },
-    [draftKeyNow]
-  )
+  const restoreRejectedDraft = useCallback((origin: MobileNativeChatSendOrigin, text: string) => {
+    // Appended, so typing done while the send was in flight stays and the returned text isn't dropped.
+    // Kept under the tab it was sent from; a /clear's new tab takes it from there when it shows.
+    setDrafts((previous) => {
+      const current = previous[origin.draftKey] ?? ''
+      const next = appendReturnedDraftText(current, text)
+      return next === current ? previous : { ...previous, [origin.draftKey]: next }
+    })
+  }, [])
 
   const acceptSend = useCallback(
     (origin: MobileNativeChatSendOrigin, text: string, images?: string[]) => {

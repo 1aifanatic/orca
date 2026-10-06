@@ -50,6 +50,9 @@ const StructuredAgentSessionOverlaySlot = memo(function StructuredAgentSessionOv
         tabId={tab.id}
         groupId={groupId}
         sessionId={tab.entityId}
+        {...(tab.agentSessionReplacesSessionId
+          ? { replacesSessionId: tab.agentSessionReplacesSessionId }
+          : {})}
         agent={tab.agentSessionAgent}
         isVisible={isActive}
         isFocusedGroup={isFocusedGroup}

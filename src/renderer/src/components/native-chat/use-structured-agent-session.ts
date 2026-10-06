@@ -58,6 +58,8 @@ export function useStructuredAgentSession(args: {
   composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
+  /** The conversation a /clear replaced with this one, as the tab's host publishes it. */
+  replacesSessionId?: string
 }) {
   const {
     agent,
@@ -66,6 +68,7 @@ export function useStructuredAgentSession(args: {
     launch,
     providerStarting = false,
     queueFollowUps = true,
+    replacesSessionId,
     sessionId,
     target,
     transportEnabled = true
@@ -140,7 +143,8 @@ export function useStructuredAgentSession(args: {
     journalItems: transportState.journalItems,
     composerScopeKey,
     queueDelivery,
-    queuedMessageIds
+    queuedMessageIds,
+    ...(replacesSessionId ? { replacesSessionId } : {})
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({

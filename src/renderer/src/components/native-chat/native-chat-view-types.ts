@@ -34,6 +34,8 @@ export type NativeChatStructuredViewProps = {
   tabId: string
   groupId?: string
   sessionId: string
+  /** The conversation a /clear replaced with this one: its leftover draft and sends come here. */
+  replacesSessionId?: string
   target: RuntimeClientTarget
   agent: AgentType
   isVisible: boolean

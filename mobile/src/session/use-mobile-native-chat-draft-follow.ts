@@ -1,51 +1,50 @@
-import { useCallback, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { appendReturnedDraftText } from '../../../src/shared/returned-draft-text'
+import { isLoneStructuredAgentSessionConversationCommand } from '../../../src/shared/structured-agent-session-composer'
 
 /**
- * A /clear moves the tab to the conversation that replaces it, under a new tab id. What was typed
- * under the old one goes along, after anything there, and text a send's answer hands back later
- * to the old one lands in the new one. Returns where a draft key's text belongs now.
+ * A /clear moves a tab to the conversation that replaces it, under a new tab id, and the host
+ * publishes which conversation it replaced. Whenever the tab that replaced a session shows, every
+ * draft kept for that session comes to it, after anything there, whenever it was typed or handed
+ * back and whichever tab was showing when the clear ran. A lone command is the /clear that
+ * replaced it, never carried.
  */
 export function useMobileNativeChatDraftFollowsReplacement(args: {
   draftKey: string | null
   sessionId: string | null
   /** The session the active tab's conversation replaced, as its host published it. */
   replacesSessionId: string | null
+  drafts: Readonly<Record<string, string>>
   setDrafts: Dispatch<SetStateAction<Record<string, string>>>
-}): (draftKey: string) => string {
-  const { draftKey, sessionId, replacesSessionId, setDrafts } = args
-  const forwarded = useRef(new Map<string, string>())
-  const previous = useRef({ draftKey, sessionId })
+}): void {
+  const { draftKey, drafts, replacesSessionId, sessionId, setDrafts } = args
+  // Which session each draft was kept for: what a draft key's tab showed when it was active.
+  const sessionOfKey = useRef(new Map<string, string>())
   useLayoutEffect(() => {
-    const from = previous.current
-    previous.current = { draftKey, sessionId }
-    if (
-      !draftKey ||
-      !from.draftKey ||
-      from.draftKey === draftKey ||
-      !replacesSessionId ||
-      from.sessionId !== replacesSessionId
-    ) {
+    if (draftKey && sessionId) {
+      sessionOfKey.current.set(draftKey, sessionId)
+    }
+  }, [draftKey, sessionId])
+  useLayoutEffect(() => {
+    if (!draftKey || !replacesSessionId) {
       return
     }
-    const fromKey = from.draftKey
-    forwarded.current.set(fromKey, draftKey)
-    setDrafts((drafts) => {
-      const moved = drafts[fromKey] ?? ''
-      if (moved === '') {
-        return drafts
-      }
-      const { [fromKey]: _left, ...rest } = drafts
-      return { ...rest, [draftKey]: appendReturnedDraftText(drafts[draftKey] ?? '', moved) }
-    })
-  }, [draftKey, replacesSessionId, sessionId, setDrafts])
-  return useCallback((key: string) => {
-    const seen = new Set<string>()
-    let current = key
-    while (forwarded.current.has(current) && !seen.has(current)) {
-      seen.add(current)
-      current = forwarded.current.get(current)!
+    const fromKeys = [...sessionOfKey.current]
+      .filter(([key, session]) => session === replacesSessionId && key !== draftKey)
+      .map(([key]) => key)
+    if (!fromKeys.some((key) => (drafts[key] ?? '') !== '')) {
+      return
     }
-    return current
-  }, [])
+    setDrafts((current) => {
+      const next = { ...current }
+      for (const key of fromKeys) {
+        const moved = next[key] ?? ''
+        delete next[key]
+        if (moved !== '' && !isLoneStructuredAgentSessionConversationCommand(moved.trim())) {
+          next[draftKey] = appendReturnedDraftText(next[draftKey] ?? '', moved)
+        }
+      }
+      return next
+    })
+  }, [draftKey, drafts, replacesSessionId, setDrafts])
 }

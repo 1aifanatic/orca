@@ -39,10 +39,7 @@ import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
-import {
-  noteStructuredAgentSessionHandedBackSend,
-  useStructuredAgentSessionHandedBackNotice
-} from './structured-agent-session-handed-back-notice'
+import { useStructuredAgentSessionReplacementCarry } from './use-structured-agent-session-replacement-carry'
 import { useStructuredAgentSessionOutboxOwnership } from './use-structured-agent-session-outbox-ownership'
 import {
   handedOffQueuedMessageIds,
@@ -81,6 +78,8 @@ export function useStructuredAgentSessionOutbox(args: {
    *  its entry here under the draft's own id; once the host visibly holds the draft, the
    *  entry retires so the same text can never come back twice. */
   queuedMessageIds?: readonly string[]
+  /** The conversation a /clear replaced with this one, as the tab's host publishes it. */
+  replacesSessionId?: string
 }) {
   const {
     composerScopeKey,
@@ -88,6 +87,7 @@ export function useStructuredAgentSessionOutbox(args: {
     journalItems,
     queueDelivery = NO_QUEUE_DELIVERY,
     queuedMessageIds,
+    replacesSessionId,
     sessionId,
     submissions,
     target
@@ -190,20 +190,20 @@ export function useStructuredAgentSessionOutbox(args: {
       // Released here rather than in a `.finally`: the state write below is what re-runs the
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
-      const notice = disposition.error ? agentSessionWriteNoticeText(disposition.error) : null
-      if (disposition.handedBack && notice) {
-        // Its text is back in the composer before the entry leaves, said where that composer is.
-        restoreWithdrawn.byStop([disposition.handedBack])
-        noteStructuredAgentSessionHandedBackSend(composerScopeKey, notice)
-      } else {
-        setError(notice)
-      }
+      setError(disposition.error ? agentSessionWriteNoticeText(disposition.error) : null)
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },
-    [composerScopeKey, recordFailures, restoreWithdrawn, sessionId]
+    [recordFailures, sessionId]
   )
-  useStructuredAgentSessionHandedBackNotice(composerScopeKey, setError)
+  useStructuredAgentSessionReplacementCarry({
+    replacesSessionId,
+    composerScopeKey,
+    ready: fence !== null,
+    queuedMessageIds,
+    say: setError,
+    notice: agentSessionWriteNoticeText(['sentAsCleared'])
+  })
 
   const [drains, setDrains] = useState(0)
   const drainAgain = useCallback(() => setDrains((count) => count + 1), [])
