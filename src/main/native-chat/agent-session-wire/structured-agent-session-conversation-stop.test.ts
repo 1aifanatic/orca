@@ -199,7 +199,9 @@ describe('a Stop that names no turn', () => {
       identity: identityFor(SESSION),
       fence: 1,
       spawnToken: 'spawn-catalog',
-      options: { fastMode: 'true' }
+      options: { fastMode: 'true' },
+      // Codex's turn events reach the host's journal, as the runtime wires them.
+      ...(events ? { events } : {})
     })
     dispatch.mockImplementation((input) => adapter.dispatch(input))
     cancelTurn.mockImplementation((input) => adapter.cancelTurn(input))

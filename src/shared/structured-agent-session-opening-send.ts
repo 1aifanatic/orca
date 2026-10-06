@@ -10,6 +10,7 @@ import type {
   AgentJournalTurnScope
 } from './agent-session-journal-types'
 import { readAgentJournalTurn } from './agent-session-turn-record'
+import { isStructuredAgentSessionStopNote } from './structured-agent-session-stop-note-key'
 
 /** What the read needs of each journal item; the host visits its fold without a snapshot. */
 export type StructuredAgentSessionOpeningSendItem = {
@@ -21,13 +22,14 @@ export type StructuredAgentSessionOpeningSendItem = {
 }
 
 /**
- * A send handed over while no turn ran, still unsettled, with no turn record written since its
- * handover (`fence`, when given: handed over by that child). A message handed over now would join
+ * A send handed over while no turn ran, still unsettled, with no turn record and no Stop's note
+ * written since its handover (`fence`, when given: handed over by that child). A message handed over now would join
  * the turn that send is opening (Codex steers it in once the turn opens, Claude folds it into the
  * running cycle), yet its handover row would be written before that turn exists, and so read as
  * belonging to none. So the host holds it until the turn opens, and a client draws it after the
  * live turn meanwhile. Every way the send stops opening — its turn record, its echo, its refusal, a
- * lost answer's doubt, its child's end, a Stop that takes it back — is a journal commit.
+ * lost answer's doubt, its child's end, a Stop, taken or not — is a journal commit. After a Stop the
+ * next message is a new instruction, not one for the stopped send's turn, so it is not held.
  */
 export function structuredAgentSessionSendOpeningTurn(
   submissions: readonly Pick<
@@ -62,10 +64,10 @@ export function structuredAgentSessionOpeningSendItemId(
   if (opening.size === 0) {
     return null
   }
-  const newest: { handover: string | null; handoverAt: number; turnRecordAt: number } = {
+  const newest: { handover: string | null; handoverAt: number; settledAt: number } = {
     handover: null,
     handoverAt: -1,
-    turnRecordAt: -1
+    settledAt: -1
   }
   visitItems((item) => {
     if (
@@ -76,11 +78,14 @@ export function structuredAgentSessionOpeningSendItemId(
       newest.handover = item.itemId
       newest.handoverAt = item.sequence
     }
-    if (readAgentJournalTurn(item.body) && isRootAgentJournalItem(item)) {
-      newest.turnRecordAt = Math.max(newest.turnRecordAt, item.sequence)
+    if (
+      (readAgentJournalTurn(item.body) && isRootAgentJournalItem(item)) ||
+      isStructuredAgentSessionStopNote(item.itemId)
+    ) {
+      newest.settledAt = Math.max(newest.settledAt, item.sequence)
     }
   })
-  return newest.handoverAt > newest.turnRecordAt ? newest.handover : null
+  return newest.handoverAt > newest.settledAt ? newest.handover : null
 }
 
 /** The same read over a client's journal items: the item of the send still opening, or null. */
