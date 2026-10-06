@@ -6,6 +6,10 @@ import { getDefaultSettings } from '../../shared/constants'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import { CLAUDE_SIGN_IN_NOT_FINISHED_MESSAGE } from './claude-account-registration'
+import {
+  CLAUDE_ACCOUNT_FOLDER_IN_USE_MESSAGE,
+  CLAUDE_ACCOUNT_NEEDS_SIGN_IN_MESSAGE
+} from './claude-account-selection'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import { ClaudeAccountService } from './service'
 
@@ -155,17 +159,50 @@ describe('ClaudeAccountService', () => {
     const f = fixture()
     f.signIn('a', 'a@example.test')
     await f.service.removeAccount('a')
+    expect(f.settings().claudeManagedAccounts.map((entry) => entry.id)).toEqual(['b'])
     expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBeNull()
     expect(f.runtimeAuth.syncForCurrentSelection).toHaveBeenCalledWith({ runtime: 'host' })
     expect(f.runtimeAuth.removeAccountFolder).toHaveBeenCalledWith('a', { runtime: 'host' })
   })
 
+  it("deletes a cancelled sign-in's folder but never a saved account's", async () => {
+    const f = fixture()
+    const begun = await f.service.beginSignIn({ runtime: 'host' })
+    await f.service.cancelSignIn({ accountId: begun.accountId, runtime: 'host' })
+    expect(f.runtimeAuth.removeAccountFolder).toHaveBeenCalledWith(begun.accountId, {
+      runtime: 'host'
+    })
+    f.runtimeAuth.removeAccountFolder.mockClear()
+    await f.service.cancelSignIn({ accountId: 'a', runtime: 'host' })
+    expect(f.runtimeAuth.removeAccountFolder).not.toHaveBeenCalled()
+  })
+
+  it('keeps the row when its folder cannot be deleted, so the user can retry', async () => {
+    const f = fixture()
+    f.runtimeAuth.removeAccountFolder.mockRejectedValueOnce(
+      Object.assign(new Error('resource busy'), { code: 'EBUSY' })
+    )
+    await expect(f.service.removeAccount('a')).rejects.toThrow(CLAUDE_ACCOUNT_FOLDER_IN_USE_MESSAGE)
+    expect(f.settings().claudeManagedAccounts.map((entry) => entry.id)).toEqual(['a', 'b'])
+    expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBeNull()
+  })
+
   it('puts the previous account back when publishing a new selection fails', async () => {
     const f = fixture()
+    f.signIn('b', 'b@example.test')
     f.runtimeAuth.syncForCurrentSelection.mockRejectedValueOnce(new Error('publish failed'))
     await expect(f.service.selectAccount('b')).rejects.toThrow('publish failed')
     expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBe('a')
     expect(f.runtimeAuth.publishAll).toHaveBeenCalled()
+  })
+
+  it('refuses to select an account whose folder holds no login', async () => {
+    const f = fixture()
+    await expect(f.service.selectAccount('b')).rejects.toThrow(CLAUDE_ACCOUNT_NEEDS_SIGN_IN_MESSAGE)
+    expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBe('a')
+    f.signIn('b', 'b@example.test')
+    await f.service.selectAccount('b')
+    expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBe('b')
   })
 
   it('refuses to select a WSL account for the host', async () => {

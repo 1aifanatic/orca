@@ -1,4 +1,5 @@
 import { translate } from '@/i18n/i18n'
+import { getRendererAppPlatform } from '@/lib/renderer-app-platform'
 import {
   removeClaudeProviderAccount,
   removeCodexProviderAccount
@@ -24,8 +25,11 @@ export function renderAccountsRemovalDialogs(
     runCodexAccountAction,
     setRemoveClaudeTarget,
     setRemoveCodexTarget,
-    settings
+    settings,
+    accountVisibilityOptions: { remoteOwner, ownerPlatform: remotePlatform }
   } = model
+  // Null while a remote owner's platform is unknown.
+  const ownerPlatform = remoteOwner ? remotePlatform : getRendererAppPlatform()
   return (
     <>
       <Dialog
@@ -84,10 +88,18 @@ export function renderAccountsRemovalDialogs(
               )}
             </DialogTitle>
             <DialogDescription>
-              {translate(
-                'settings.accounts.claudeRemoveFolder',
-                "Orca deletes this account's Claude folder and its sign-in from this computer. Chat history shared with System default stays. If it is selected, the next Claude you start uses System default."
-              )}
+              {/* Why: Windows keeps each host account's history private, so it goes with the folder;
+                  an unknown owner gets the warning rather than a false reassurance. */}
+              {removeClaudeTarget?.runtime.runtime === 'host' &&
+              (ownerPlatform === 'win32' || ownerPlatform === null)
+                ? translate(
+                    'settings.accounts.claudeRemoveFolderWindows',
+                    "Orca deletes this account's Claude folder, its sign-in and its chat history from this computer. If it is selected, the next Claude you start uses System default."
+                  )
+                : translate(
+                    'settings.accounts.claudeRemoveFolder',
+                    "Orca deletes this account's Claude folder and its sign-in from this computer. Chat history shared with System default stays. If it is selected, the next Claude you start uses System default."
+                  )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

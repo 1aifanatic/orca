@@ -44,6 +44,17 @@ export const ACCOUNT_METHODS = [
     }
   }),
   defineMethod({
+    name: 'accounts.cancelClaudeSignIn',
+    params: FinishClaudeSignInParams,
+    handler: async (params, { runtime, clientKind }) => {
+      if (clientKind !== undefined) {
+        throw new Error('Sign in on the Orca execution host.')
+      }
+      await runtime.cancelClaudeSignIn(params)
+      return {}
+    }
+  }),
+  defineMethod({
     name: 'accounts.listData',
     params: null,
     handler: async (_, { runtime }) => runtime.getDataAccountsSnapshot()

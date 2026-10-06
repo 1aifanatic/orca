@@ -4,7 +4,8 @@ import { translate } from '@/i18n/i18n'
 import { OnboardingInlineCommandTerminal } from '@/components/onboarding/OnboardingInlineCommandTerminal'
 import type {
   ClaudeAccountSignIn,
-  ClaudeRateLimitAccountsState
+  ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest
 } from '../../../../shared/managed-account-types'
 import { Button } from '../ui/button'
 import {
@@ -17,13 +18,6 @@ import {
 } from '../ui/dialog'
 import { getClaudeAccountErrorDescription } from './accounts-pane-action-errors'
 import { buildClaudeSignInCommand } from './claude-sign-in-command'
-
-export type ClaudeSignInRequest = {
-  /** Set to sign a saved account in again; a new account otherwise. */
-  accountId?: string
-  runtime: 'host' | 'wsl'
-  wslDistro?: string | null
-}
 
 /**
  * Runs `claude auth login` against the account's folder in a terminal the user sees (superset
@@ -80,12 +74,21 @@ export function ClaudeSignInDialog({
     }
   }
 
+  // Why: an abandoned sign-in must not leave its folder behind; the host keeps a saved account's.
+  const cancel = (): void => {
+    if (signIn) {
+      const { accountId, runtime, wslDistro } = signIn
+      void window.api.claudeAccounts.cancelSignIn({ accountId, runtime, wslDistro }).catch(() => {})
+    }
+    onClose()
+  }
+
   const terminal = signIn
     ? buildClaudeSignInCommand(signIn, navigator.userAgent.includes('Windows') ? 'win32' : 'posix')
     : null
 
   return (
-    <Dialog open={request !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={request !== null} onOpenChange={(open) => !open && cancel()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
@@ -129,7 +132,7 @@ export function ClaudeSignInDialog({
           </p>
         ) : null}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={cancel}>
             {translate('auto.components.settings.AccountsPane.dbb9626ed1', 'Cancel')}
           </Button>
           <Button onClick={() => void finish()} disabled={!signIn || finishing}>

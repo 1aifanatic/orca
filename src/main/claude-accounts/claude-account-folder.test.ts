@@ -55,6 +55,16 @@ describe('claude account folder', () => {
     expect(readClaudeFolderLogin(stateFile)).toBeNull()
   })
 
+  it('reuses a recent answer within maxAgeMs even though the file changed', () => {
+    const { home } = fixture()
+    const stateFile = join(home, '.claude.json')
+    writeFileSync(stateFile, JSON.stringify({ oauthAccount: { emailAddress: 'a@example.test' } }))
+    expect(readClaudeFolderLogin(stateFile, 5_000)?.email).toBe('a@example.test')
+    writeFileSync(stateFile, JSON.stringify({ oauthAccount: { emailAddress: 'b@example.test!' } }))
+    expect(readClaudeFolderLogin(stateFile, 5_000)?.email).toBe('a@example.test')
+    expect(readClaudeFolderLogin(stateFile)?.email).toBe('b@example.test!')
+  })
+
   it('unlinks shared history before deleting, and leaves the older layout alone', async () => {
     const { root, dataRoot, home } = fixture()
     const history = join(root, '.claude', 'projects')

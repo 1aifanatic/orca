@@ -3,6 +3,7 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type {
   ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest,
   CodexRateLimitAccountsState
 } from '../../../../shared/managed-account-types'
 import type {
@@ -12,7 +13,6 @@ import type {
 import type { CodexConfigSyncStatus } from '../../../../shared/codex-config-sync-types'
 import type { FeatureInteractionId } from '../../../../shared/feature-interaction-catalog'
 import type { ProviderAccountRuntimeView } from './provider-account-visibility'
-import type { ClaudeSignInRequest } from './ClaudeSignInDialog'
 
 export type AccountsPaneProps = {
   settings: GlobalSettings

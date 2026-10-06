@@ -43,10 +43,20 @@ export function claudeStateFile(configDir: string | undefined, userHome = homedi
 }
 
 // Why memoized: a state file grows with history and the account list is read on every refresh.
-const logins = new Map<string, { mtimeMs: number; size: number; login: ClaudeFolderLogin | null }>()
+const logins = new Map<
+  string,
+  { mtimeMs: number; size: number; readAt: number; login: ClaudeFolderLogin | null }
+>()
 
-/** The login a Claude state file names; null when signed out (superset U/profiles.ts:121-137). */
-export function readClaudeFolderLogin(stateFile: string): ClaudeFolderLogin | null {
+/**
+ * The login a Claude state file names; null when signed out (superset U/profiles.ts:121-137).
+ * `maxAgeMs` reuses a recent answer without a stat, for a file Claude rewrites constantly.
+ */
+export function readClaudeFolderLogin(stateFile: string, maxAgeMs = 0): ClaudeFolderLogin | null {
+  const recent = logins.get(stateFile)
+  if (recent && Date.now() - recent.readAt < maxAgeMs) {
+    return recent.login
+  }
   let stat: { mtimeMs: number; size: number }
   try {
     stat = statSync(stateFile)
@@ -54,9 +64,9 @@ export function readClaudeFolderLogin(stateFile: string): ClaudeFolderLogin | nu
     logins.delete(stateFile)
     return null
   }
-  const cached = logins.get(stateFile)
-  if (cached?.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
-    return cached.login
+  if (recent?.mtimeMs === stat.mtimeMs && recent.size === stat.size) {
+    recent.readAt = Date.now()
+    return recent.login
   }
   const read = readClaudeProfileObject(stateFile)
   const parsed = read.kind === 'present' ? oauthAccount.safeParse(read.value.oauthAccount) : null
@@ -69,7 +79,7 @@ export function readClaudeFolderLogin(stateFile: string): ClaudeFolderLogin | nu
           organizationName: parsed.data.organizationName ?? null
         }
       : null
-  logins.set(stateFile, { mtimeMs: stat.mtimeMs, size: stat.size, login })
+  logins.set(stateFile, { mtimeMs: stat.mtimeMs, size: stat.size, readAt: Date.now(), login })
   return login
 }
 

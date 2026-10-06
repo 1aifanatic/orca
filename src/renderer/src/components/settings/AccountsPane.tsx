@@ -2,6 +2,7 @@ import type { SecretAtRestProtection } from '../../../../shared/secret-at-rest-p
 import { useEffect, useRef, useState } from 'react'
 import type {
   ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest,
   CodexRateLimitAccountsState
 } from '../../../../shared/managed-account-types'
 import type { CodexConfigSyncStatus } from '../../../../shared/codex-config-sync-types'
@@ -68,7 +69,7 @@ import {
 import { renderMiniMaxAccountsSection } from './accounts-pane-minimax-section'
 import { ManagedDataAccountsSection } from './ManagedDataAccountsSection'
 import { renderAccountsRemovalDialogs } from './accounts-pane-removal-dialogs'
-import { ClaudeSignInDialog, type ClaudeSignInRequest } from './ClaudeSignInDialog'
+import { ClaudeSignInDialog } from './ClaudeSignInDialog'
 
 export { getAccountsPaneSearchEntries }
 

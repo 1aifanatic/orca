@@ -5,6 +5,7 @@ export const claudeAccountsApi = {
   list: () => ipcRenderer.invoke('claudeAccounts:list'),
   beginSignIn: (args) => ipcRenderer.invoke('claudeAccounts:beginSignIn', args),
   finishSignIn: (args) => ipcRenderer.invoke('claudeAccounts:finishSignIn', args),
+  cancelSignIn: (args) => ipcRenderer.invoke('claudeAccounts:cancelSignIn', args),
   remove: (args: { accountId: string }) => ipcRenderer.invoke('claudeAccounts:remove', args),
   select: (args: {
     accountId: string | null

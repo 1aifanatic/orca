@@ -1,6 +1,7 @@
 import type {
   ClaudeAccountSignIn,
-  ClaudeRateLimitAccountsState
+  ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest
 } from '../../shared/managed-account-types'
 import { ClaudeAccountRegistration } from './claude-account-registration'
 import {
@@ -11,8 +12,6 @@ import {
 } from './claude-account-selection'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
-
-export type ClaudeSignInRequest = ClaudeAccountSelectionTarget & { accountId?: string }
 
 export class ClaudeAccountService {
   private mutationQueue: Promise<unknown> = Promise.resolve()
@@ -46,6 +45,11 @@ export class ClaudeAccountService {
     signIn: Omit<ClaudeAccountSignIn, 'configDir'>
   ): Promise<ClaudeRateLimitAccountsState> {
     return this.serializeMutation(() => this.registration.finish(signIn))
+  }
+
+  /** Deletes the folder of a sign-in that never became an account; a saved account's is kept. */
+  cancelSignIn(signIn: Omit<ClaudeAccountSignIn, 'configDir'>): Promise<void> {
+    return this.serializeMutation(() => this.registration.cancel(signIn))
   }
 
   removeAccount(accountId: string): Promise<ClaudeRateLimitAccountsState> {

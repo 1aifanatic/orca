@@ -321,6 +321,7 @@
     "followSymlinkedDirectories": "Follow symlinked directories",
     "followSymlinkedDirectoriesDescription": "Search linked folders in Quick Open and expand local linked folders in File Explorer.",
     "accounts": {
+      "claudeRemoveFolderWindows": "Orca deletes this account's Claude folder, its sign-in and its chat history from this computer. If it is selected, the next Claude you start uses System default.",
       "claudeRemoveFolder": "Orca deletes this account's Claude folder and its sign-in from this computer. Chat history shared with System default stays. If it is selected, the next Claude you start uses System default."
     }
   },
@@ -3918,7 +3919,6 @@
             "54e8d6bb2d": "Fable",
             "d79c3362c4": "5h",
             "a79c64f87e": "Fable",
-            "8295903d17": "Restart live Claude terminals before continuing old conversations after switching.",
             "c98ea88392": "No other accounts",
             "9332ba8684": "Switch to",
             "d450654fa2": "Claude Account",
@@ -6715,7 +6715,6 @@
         "AccountsPane": {
           "c2d2751587": "Remove Account",
           "dbb9626ed1": "Cancel",
-          "854ebbcc45": "Orca will delete the managed Claude auth for this saved account. If it is currently active, Orca falls back to the system default Claude login.",
           "63843e37e2": "Remove Claude Account?",
           "380a7736cc": "Removing this account permanently deletes its managed Codex home, including all Codex session history and MCP logins stored inside. This cannot be undone. If the account is currently active, Orca falls back to the system default Codex login.",
           "0d47394635": "Remove Codex Account?",
@@ -6767,12 +6766,10 @@
           "3fe7862418": "No managed Claude accounts for {{value0}}. Orca will use that environment's system default Claude login until you add one here.",
           "3455cf43fa": "Claude login.",
           "fcc4093fc1": "Use your current {{value0}} Codex login.",
-          "79e484c3b2": "Optional account switcher for the shared Claude auth files.",
           "8bbfd74556": "Claude Accounts",
           "72b36ea174": "Optional. Orca can use your normal Claude login; add accounts only if you want quick switching without moving chat sessions.",
           "26ef4b55be": "Claude",
           "2743cdc0af": "Claude account update failed.",
-          "b15ce90870": "{{value0}} -> {{value1}}. Restart live Claude terminals before continuing old sessions.",
           "f921d32606": "Claude account updated.",
           "5bf8764953": "Codex account update failed.",
           "9baf45d071": "This device",
@@ -14959,7 +14956,6 @@
                 "d90d2e1f6d": "Track session and weekly usage.",
                 "8919321417": "Codex sign-in failed.",
                 "c7b90c140b": "Codex account added.",
-                "4e71d72912": "Claude sign-in failed.",
                 "9ddeb558f9": "Claude account added.",
                 "29d0653961": "Sign in",
                 "945865332e": "Signing in",

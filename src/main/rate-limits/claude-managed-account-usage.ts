@@ -2,11 +2,18 @@ import type { ProviderRateLimits } from '../../shared/rate-limit-types'
 import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { savedWslClaudeAccountHome } from '../claude-accounts/claude-profile-wsl-paths'
 import { toWindowsWslPath } from '../../shared/wsl-paths'
-import type { InactiveClaudeAccount } from './claude-managed-account-credentials'
 import type { ClaudeManagedAccountUsageOptions } from './claude-usage-fetch-options'
 import { fetchActiveClaudeRateLimits } from './claude-active-usage-fetch'
 import { claudeUsageUnavailable, makeClaudeUsageResult } from './claude-usage-result'
 import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
+
+/** Usage reads the account's own folder; a host account's comes from its id, never a stored path. */
+export type InactiveClaudeAccount = {
+  id: string
+  managedAuthRuntime?: 'host' | 'wsl'
+  wslDistro?: string | null
+  wslLinuxAuthPath?: string | null
+}
 
 export async function fetchInactiveClaudeAccountUsage(
   account: InactiveClaudeAccount,

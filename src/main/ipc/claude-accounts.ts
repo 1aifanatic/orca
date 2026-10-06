@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron'
-import type { ClaudeAccountService, ClaudeSignInRequest } from '../claude-accounts/service'
+import type { ClaudeAccountService } from '../claude-accounts/service'
 import type { ClaudeAccountSelectionTarget } from '../claude-accounts/runtime-selection'
 import type {
   ClaudeAccountSignIn,
-  ClaudeRateLimitAccountsState
+  ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest
 } from '../../shared/managed-account-types'
 import { CLAUDE_ACCOUNT_FUNCTION_DAEMON_PROTOCOL_VERSION } from '../daemon/daemon-protocol-version'
 import { hasTerminalsFromBeforeDaemonProtocol } from '../daemon/daemon-provider-state'
@@ -30,6 +31,10 @@ export function registerClaudeAccountHandlers(
     'claudeAccounts:finishSignIn',
     (_event, args: Omit<ClaudeAccountSignIn, 'configDir'>) =>
       withTerminalNotice(claudeAccounts.finishSignIn(args))
+  )
+  ipcMain.handle(
+    'claudeAccounts:cancelSignIn',
+    (_event, args: Omit<ClaudeAccountSignIn, 'configDir'>) => claudeAccounts.cancelSignIn(args)
   )
   ipcMain.handle('claudeAccounts:remove', (_event, args: { accountId: string }) =>
     withTerminalNotice(claudeAccounts.removeAccount(args.accountId))

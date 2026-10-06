@@ -157,7 +157,14 @@ async function addClaudeAccount({ client, cwd, json }: HandlerContext): Promise<
   }
   const result = await withInteractiveLoginCleanup(
     session,
-    async () => {},
+    // Why always: the host keeps a folder that became an account, and deletes an abandoned one.
+    // Never thrown: an older running Orca lacks the method, and the add itself already finished.
+    async () => {
+      const { accountId, runtime, wslDistro } = signIn
+      await client
+        .call('accounts.cancelClaudeSignIn', { accountId, runtime, wslDistro })
+        .catch((error: unknown) => console.warn('[account] Could not clean up sign-in:', error))
+    },
     async () => {
       if (signIn.runtime === 'wsl' && signIn.wslDistro) {
         const login = `exec env CLAUDE_CONFIG_DIR=${quotePosixShell(signIn.configDir)} claude auth login`

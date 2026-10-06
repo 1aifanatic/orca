@@ -100,6 +100,13 @@ export type ClaudeManagedAccountSummary = {
 }
 
 /** A sign-in in progress: `configDir` is the CLAUDE_CONFIG_DIR `claude auth login` runs against. */
+/** A sign-in to a new account folder, or to a saved account's own when `accountId` is given. */
+export type ClaudeSignInRequest = {
+  accountId?: string
+  runtime?: 'host' | 'wsl'
+  wslDistro?: string | null
+}
+
 export type ClaudeAccountSignIn = {
   accountId: string
   configDir: string

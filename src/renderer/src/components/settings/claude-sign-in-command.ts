@@ -6,12 +6,14 @@ import { buildSkillSetupTerminalCommand } from './CliSkillRuntimeSetup'
 /**
  * The visible sign-in command for an account folder (superset addAccountCommand). Windows always
  * signs in from PowerShell, which hands a WSL account's command to the distro's login shell.
+ * Both bypass Orca's `claude` function, which would note that CLAUDE_CONFIG_DIR overrides the
+ * selected account.
  */
 export function buildClaudeSignInCommand(
   signIn: Pick<ClaudeAccountSignIn, 'configDir' | 'runtime' | 'wslDistro'>,
   platform: 'win32' | 'posix'
 ): { command: string; shellOverride?: string } {
-  const posix = `CLAUDE_CONFIG_DIR=${quotePosixShell(signIn.configDir)} claude auth login`
+  const posix = `CLAUDE_CONFIG_DIR=${quotePosixShell(signIn.configDir)} command claude auth login`
   if (platform !== 'win32') {
     return { command: posix }
   }
@@ -27,7 +29,7 @@ export function buildClaudeSignInCommand(
     }
   }
   return {
-    command: `$env:CLAUDE_CONFIG_DIR = ${quotePowerShellLiteral(signIn.configDir)}; claude auth login`,
+    command: `$env:CLAUDE_CONFIG_DIR = ${quotePowerShellLiteral(signIn.configDir)}; & (Get-Command claude -CommandType Application,ExternalScript | Select-Object -First 1).Source auth login`,
     shellOverride: 'powershell.exe'
   }
 }

@@ -19,6 +19,12 @@ import {
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
 
+export const CLAUDE_ACCOUNT_NEEDS_SIGN_IN_MESSAGE =
+  'Sign in to this Claude account again before selecting it.'
+
+export const CLAUDE_ACCOUNT_FOLDER_IN_USE_MESSAGE =
+  "Orca couldn't delete this Claude account's folder. Quit any Claude running in this account, then remove it again."
+
 export type ClaudeAccountSettings = Pick<
   GlobalSettings,
   | 'claudeManagedAccounts'
@@ -62,9 +68,10 @@ export class ClaudeAccountSelection {
       .map((account) => this.summarize(account))
       .sort((a, b) => b.updatedAt - a.updatedAt)
     const userConfigDir = this.runtimeAuth.router.userConfigDir()
-    // Why only with accounts: the personal state file is large, and no row compares with it otherwise.
+    // Why only with accounts, and at most every 5 s: the personal state file is large and every
+    // running Claude rewrites it, so a list would otherwise re-parse it on main each time.
     const systemDefault =
-      accounts.length > 0 ? readClaudeFolderLogin(claudeStateFile(userConfigDir)) : null
+      accounts.length > 0 ? readClaudeFolderLogin(claudeStateFile(userConfigDir), 5_000) : null
     return {
       accounts,
       activeAccountId: selection.host,
@@ -115,16 +122,26 @@ export class ClaudeAccountSelection {
       accountId
     )
     this.saveSettings({
-      claudeManagedAccounts: settings.claudeManagedAccounts.filter(
-        (entry) => entry.id !== accountId
-      ),
       activeClaudeManagedAccountId:
         settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host,
       activeClaudeManagedAccountIdsByRuntime: nextSelection
     })
     // Why before the delete: no new launch may pick the folder while it is being removed.
     await this.runtimeAuth.syncForCurrentSelection(target)
-    await this.runtimeAuth.removeAccountFolder(accountId, target)
+    try {
+      await this.runtimeAuth.removeAccountFolder(accountId, target)
+    } catch (error) {
+      // Why keep the row: the folder (on Windows, with its history) is still there to retry.
+      console.warn('[claude-accounts] Could not delete the account folder:', error)
+      throw new Error(CLAUDE_ACCOUNT_FOLDER_IN_USE_MESSAGE)
+    }
+    this.saveSettings({
+      claudeManagedAccounts: this.store
+        .getSettings()
+        .claudeManagedAccounts.filter((entry) => entry.id !== accountId)
+    })
+    // Why again: the last account's removal also removes the which-account file.
+    await this.runtimeAuth.syncForCurrentSelection(target)
     this.rateLimits.evictInactiveClaudeCache(accountId)
     this.refreshUsage(wasSelected ? accountId : undefined, target)
     return this.list()
@@ -136,7 +153,8 @@ export class ClaudeAccountSelection {
   ): Promise<ClaudeRateLimitAccountsState> {
     let effectiveTarget = target
     if (accountId !== null) {
-      const accountTarget = getClaudeSelectionTargetForAccount(this.requireAccount(accountId))
+      const account = this.requireAccount(accountId)
+      const accountTarget = getClaudeSelectionTargetForAccount(account)
       const requested = normalizeClaudeAccountSelectionTarget(target ?? accountTarget)
       const owned = normalizeClaudeAccountSelectionTarget(accountTarget)
       if (
@@ -144,6 +162,10 @@ export class ClaudeAccountSelection {
         (requested.wslDistro !== null && requested.wslDistro !== owned.wslDistro)
       ) {
         throw new Error('That Claude account belongs to a different runtime.')
+      }
+      // Why on the host: the CLI and paired clients select without the renderer's check.
+      if (this.summarize(account).needsSignIn) {
+        throw new Error(CLAUDE_ACCOUNT_NEEDS_SIGN_IN_MESSAGE)
       }
       effectiveTarget = accountTarget
     }

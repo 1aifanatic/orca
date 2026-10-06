@@ -1,9 +1,10 @@
-import type { ClaudeAccountService, ClaudeSignInRequest } from '../claude-accounts/service'
+import type { ClaudeAccountService } from '../claude-accounts/service'
 import { hasAppEnvironment } from '../../shared/app-environment'
 import { getManagedDataAccountService } from '../managed-data-accounts/service'
 import type {
   ClaudeAccountSignIn,
   ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest,
   CodexRateLimitAccountsState,
   ManagedDataAccountProvider,
   ManagedDataAccountsState
@@ -173,6 +174,10 @@ export class RuntimeAccountController {
     signIn: Omit<ClaudeAccountSignIn, 'configDir'>
   ): Promise<ClaudeRateLimitAccountsState> {
     return this.requireServices().claudeAccounts.finishSignIn(signIn)
+  }
+
+  cancelClaudeSignIn(signIn: Omit<ClaudeAccountSignIn, 'configDir'>): Promise<void> {
+    return this.requireServices().claudeAccounts.cancelSignIn(signIn)
   }
 
   removeCodex(accountId: string): Promise<CodexRateLimitAccountsState> {

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type {
   ClaudeAccountSignIn,
-  ClaudeRateLimitAccountsState
+  ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest
 } from '../../shared/managed-account-types'
 import { claudeStateFile, readClaudeFolderLogin } from './claude-account-folder'
 import type {
@@ -36,14 +37,18 @@ export class ClaudeAccountRegistration {
   ) {}
 
   /** A new folder, or a saved account's own folder when `accountId` is given. */
-  async begin(
-    request: ClaudeAccountSelectionTarget & { accountId?: string }
-  ): Promise<ClaudeAccountSignIn> {
+  async begin(request: ClaudeSignInRequest): Promise<ClaudeAccountSignIn> {
     const saved = request.accountId ? this.deps.selection.requireAccount(request.accountId) : null
     const target = saved ? getClaudeSelectionTargetForAccount(saved) : signInTarget(request)
     const accountId = saved?.id ?? randomUUID()
     const folder = await this.deps.runtimeAuth.prepareAccountFolder(accountId, target)
     return { accountId, configDir: folder.configDir, ...target }
+  }
+
+  async cancel(signIn: Omit<ClaudeAccountSignIn, 'configDir'>): Promise<void> {
+    if (!this.deps.selection.findAccount(signIn.accountId)) {
+      await this.deps.runtimeAuth.removeAccountFolder(signIn.accountId, signInTarget(signIn))
+    }
   }
 
   async finish(

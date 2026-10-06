@@ -10,14 +10,12 @@ import { readIpcErrorMessage } from '@/lib/ipc-error'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import type {
   ClaudeRateLimitAccountsState,
+  ClaudeSignInRequest,
   CodexRateLimitAccountsState
 } from '../../../../../shared/managed-account-types'
 import { getFeatureWallUsageProviderConnection } from '../feature-wall-usage-tracking'
 import { translate } from '@/i18n/i18n'
-import {
-  ClaudeSignInDialog,
-  type ClaudeSignInRequest
-} from '@/components/settings/ClaudeSignInDialog'
+import { ClaudeSignInDialog } from '@/components/settings/ClaudeSignInDialog'
 
 type ConnectAction = 'idle' | 'adding'
 
