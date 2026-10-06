@@ -111,9 +111,9 @@ describe('desktop renderer runtime client capabilities', () => {
   ] as const)('reads every agent %s registered', (_host, clientCapabilities) => {
     expect(
       structuredAgentsReadBy({ clientKind: 'runtime', clientCapabilities }, [
-        { agent: 'claude' },
-        { agent: 'codex' },
-        { agent: 'grok' }
+        'claude',
+        'codex',
+        'grok'
       ])
     ).toBeUndefined()
   })
