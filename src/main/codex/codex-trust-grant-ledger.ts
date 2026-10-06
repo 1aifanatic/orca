@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { dirname, join } from 'node:path'
 import { resolveOrcaManagedCodexHomePath } from './codex-home-paths'
@@ -132,15 +132,6 @@ export function removeCodexTrustGrantLedgerHome(
   }
   delete file.homes[homeKey]
   persistLedgerFile(ledgerPath, file)
-}
-
-export function buildNativeCodexBinaryStamp(binaryPath: string): CodexTrustGrantBinaryStamp | null {
-  try {
-    const stat = statSync(binaryPath)
-    return { kind: 'native', path: binaryPath, size: stat.size, mtimeMs: stat.mtimeMs }
-  } catch {
-    return null
-  }
 }
 
 export function binaryStampsMatch(
