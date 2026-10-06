@@ -72,6 +72,20 @@ export function lockAgeSecondsCommand(host: RemoteHostPlatform, lockDir: string)
   )
 }
 
+/**
+ * Backdates a lock its holder is leaving behind on purpose, so stale-takeover recovery need not
+ * wait out the window that only protects a holder still working.
+ */
+export function orphanInstallLockCommand(host: RemoteHostPlatform, lockDir: string): string {
+  if (!isWindowsRemoteHost(host)) {
+    return `touch -m -t 200001010000 ${shellEscape(lockDir)}`
+  }
+  return powerShellCommand(
+    `(Get-Item -LiteralPath ${powerShellLiteral(lockDir)} -ErrorAction Stop).LastWriteTimeUtc = ` +
+      '[DateTime]::SpecifyKind([DateTime]::new(2000, 1, 1), [DateTimeKind]::Utc)'
+  )
+}
+
 export function tryStealInstallLockCommand(
   host: RemoteHostPlatform,
   lockDir: string,

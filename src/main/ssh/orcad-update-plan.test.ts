@@ -117,6 +117,22 @@ describe('planOrcadUpdate', () => {
     }
   )
 
+  it('names in-process terminals, not an unreported protocol, when the daemon is empty', async () => {
+    const census = await collectOrcadTerminalCensus(
+      1,
+      async () => [],
+      async () => 2
+    )
+    const plan = planOrcadUpdate({
+      candidateDaemonProtocol: PROTOCOL,
+      record: record(),
+      candidateVersion: '0.3.0+cc01',
+      census,
+      force: true
+    })
+    expect(plan).toMatchObject({ action: 'defer', code: 'orcad_update_ends_in_process_terminals' })
+  })
+
   it('replaces the daemon only when nothing is running under it', () => {
     const plan = planOrcadUpdate({
       candidateDaemonProtocol: PROTOCOL,

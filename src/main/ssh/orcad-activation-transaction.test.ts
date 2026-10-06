@@ -178,6 +178,12 @@ describe('activation fence', () => {
       .mock.calls.map(([, command]) => command)
       .filter((command) => command.includes('rm -'))
 
+  const orphanings = (): string[] =>
+    vi
+      .mocked(execCommand)
+      .mock.calls.map(([, command]) => command)
+      .filter((command) => command.includes('touch -m -t 200001010000'))
+
   const locked = <T>(run: Parameters<typeof withOrcadActivationLock<T>>[1]): Promise<T> =>
     withOrcadActivationLock(target, run, () => {
       throw new Error('fence held')
@@ -217,6 +223,18 @@ describe('activation fence', () => {
       })
     ).rejects.toThrow('mid-transaction')
     await locked(async (lock) => lock.retain())
+    expect(removals()).toEqual([])
+    // A finished run's fence is ownerless; one an unconfirmed command may still use stays fresh.
+    expect(orphanings()).toHaveLength(2)
+  })
+
+  it('marks a fence recovery retained as ownerless, so the next recovery need not wait', async () => {
+    vi.clearAllMocks()
+    await withStaleOrcadActivationRecoveryLock(target, async (lock) => lock.retain())
+    await expect(
+      withStaleOrcadActivationRecoveryLock(target, () => Promise.reject(new Error('refused')))
+    ).rejects.toThrow('refused')
+    expect(orphanings()).toHaveLength(2)
     expect(removals()).toEqual([])
   })
 
