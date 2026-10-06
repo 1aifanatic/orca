@@ -9,7 +9,6 @@ import {
   terminalTabActivityToAgentDotState,
   type TerminalTabActivityStatus
 } from './terminal-tab-activity-status'
-import { TAB_TOOLTIP_DELAY_MS } from './TabStripTooltipProvider'
 import { translate } from '@/i18n/i18n'
 
 type TerminalTabLeadingIconProps = {
@@ -77,7 +76,8 @@ export function TerminalTabLeadingIcon({
         data-agent-activity-status={activityStatus}
         className="mr-1 inline-flex shrink-0 items-center gap-1"
       >
-        <AgentStateDot state={dotState} size="md" tooltipDelayMs={TAB_TOOLTIP_DELAY_MS} />
+        {/* Why: the state glyph is self-describing and the tab title already has a tooltip; hover here stays quiet. */}
+        <AgentStateDot state={dotState} size="md" title={null} />
         {/* Why: status and identity answer different questions. Keep the agent
             logo beside the state glyph so parallel tabs remain scannable. */}
         {agent ? <TerminalTabAgentIdentityIcon agent={agent} isActive={isActive} /> : null}

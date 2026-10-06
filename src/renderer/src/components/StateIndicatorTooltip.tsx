@@ -7,12 +7,10 @@ export type StateIndicatorTooltipSide = ComponentProps<typeof TooltipContent>['s
 export function StateIndicatorTooltip({
   label,
   side = 'top',
-  delayMs = STATE_INDICATOR_TOOLTIP_DELAY_MS,
   children
 }: {
   label: string | null
   side?: StateIndicatorTooltipSide
-  delayMs?: number
   children: ReactElement
 }): React.JSX.Element {
   if (label === null) {
@@ -20,7 +18,7 @@ export function StateIndicatorTooltip({
   }
 
   return (
-    <Tooltip delayDuration={delayMs}>
+    <Tooltip delayDuration={STATE_INDICATOR_TOOLTIP_DELAY_MS}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side={side} sideOffset={6}>
         {label}
