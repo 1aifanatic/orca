@@ -28,11 +28,13 @@ import { useWorktreeCardLifecycleEffects } from '../sidebar/use-worktree-card-li
 import { useWorktreeCardSecondaryDetails } from '../sidebar/use-worktree-card-secondary-details'
 import { getReviewLabel } from '../sidebar/worktree-review-helpers'
 import { ActivityThreadHoverCardSummary } from './activity-thread-hover-card-summary'
+import { useActivityThreadHoverCardIntent } from './activity-thread-hover-card-intent'
 import type { AgentPaneThread } from './activity-thread-types'
 
 export type ActivityThreadHoverCardProps = {
   thread: AgentPaneThread
   children: React.ReactElement
+  // Keyboard focus only; pointer hover opens on rest (see activity-thread-hover-card-intent).
   openDelay?: number
   closeDelay?: number
   onJumpToWorkspace?: (thread: AgentPaneThread) => void
@@ -48,6 +50,10 @@ export function ActivityThreadHoverCard({
   canJumpToWorkspace
 }: ActivityThreadHoverCardProps): React.JSX.Element {
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
+  const intent = useActivityThreadHoverCardIntent({
+    open: detailsHoverControl.hoverOpen,
+    onOpenChange: detailsHoverControl.handleHoverOpenChange
+  })
 
   return (
     <HoverCard
@@ -56,7 +62,13 @@ export function ActivityThreadHoverCard({
       openDelay={openDelay}
       closeDelay={closeDelay}
     >
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      <HoverCardTrigger
+        asChild
+        data-hover-card-resting={intent.resting ? '' : undefined}
+        {...intent.triggerHandlers}
+      >
+        {children}
+      </HoverCardTrigger>
       {detailsHoverControl.hoverOpen ? (
         <ActivityThreadHoverCardContent
           thread={thread}
