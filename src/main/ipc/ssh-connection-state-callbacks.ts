@@ -2,6 +2,7 @@ import type { SshConnectionCallbacks } from '../ssh/ssh-connection'
 import type { SshConnectionState, SshTarget } from '../../shared/ssh-types'
 import { rotateSshProviderAuthority } from '../ssh/ssh-provider-authority'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
+import { isSshHostCensusInFlight } from '../ssh/ssh-connection-attribution'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
   connectInFlight,
@@ -82,7 +83,7 @@ export function handleSshConnectionStateChange(targetId: string, state: SshConne
     // No session yet: the server decision's census, deploy or conversion opened the transport.
     sessionState !== 'ready' &&
     !completedTransportReconnect &&
-    connectInFlight.has(targetId)
+    (connectInFlight.has(targetId) || isSshHostCensusInFlight(targetId))
   ) {
     // Why: the raw SSH transport reaches 'connected' before the relay session establishes during an
     // explicit connect. Forwarding it makes the renderer treat the host as fully up — it remounts
