@@ -14,6 +14,7 @@ import type { AgentSessionTokenUsage } from './agent-session-context-usage'
 import type { AgentSessionFailureFact } from './agent-session-failure'
 import type {
   AgentJournalMessageSendMode,
+  AgentJournalMessageState,
   AgentJournalPosition,
   AgentJournalProducerLinkage,
   AgentJournalToolCallEnding,
@@ -226,6 +227,10 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   parentId?: string
   /** How a user message was delivered when it was not an ordinary prompt. */
   sentAs?: AgentJournalMessageSendMode
+  /** The journal row's own lifecycle; absent means unknown, never live. */
+  state?: AgentJournalMessageState
+  /** Host clock when the row's message was seen to end; absent when no end was seen live. */
+  completedAt?: number
   /** On a conversation command the user sent, such as `/compact`: the command it names. */
   command?: { name: string }
   /** Accepted but not yet handed to the agent: drawn after everything the agent has done. */
@@ -233,6 +238,11 @@ export type NativeChatMessage = AgentJournalProducerLinkage & {
   /** Shown as not sent: in no turn, so a newer turn's bar and clock never land on it. Drawn where
    *  the journal recorded it, or after the conversation when it holds no place there. */
   unsent?: true
+  /** This client's send, made while the chat read Stopping, that the host has not recorded yet. */
+  sentWhileStopping?: true
+  /** A send a Stop took back (its submission withdrawn): no rail tick, as the conversation
+   *  outline the host serves leaves it out. */
+  stoppedBeforeStart?: true
   /** Set only by the structured projection, on rows the journal holds, and ranks
    *  them ahead of time. Terminal-backed messages never carry it, and worker reads strip it. */
   journalPosition?: AgentJournalPosition
