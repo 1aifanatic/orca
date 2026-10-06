@@ -80,8 +80,7 @@ const stalePidRecord: ParsedDaemonPid = {
 const origin = {
   app_version_match: 'different',
   code_identity: 'parked',
-  spawner_path_class: 'updater-cache',
-  launch_method: 'app-fork'
+  spawner_path_class: 'updater-cache'
 } as const
 const PID_PATH = '/fake/daemon.pid'
 
@@ -109,8 +108,7 @@ describe('classifyDaemonAdoptionOrigin', () => {
     expect(await classifyDaemonAdoptionOrigin(null)).toEqual({
       app_version_match: 'unknown',
       code_identity: 'parked',
-      spawner_path_class: 'unknown',
-      launch_method: 'unknown'
+      spawner_path_class: 'unknown'
     })
     expect(codeIdentityMock).toHaveBeenLastCalledWith(undefined)
   })
@@ -122,15 +120,14 @@ describe('classifyDaemonAdoptionOrigin', () => {
         '/Users/alice/Library/Application Support/Orca/daemon-host/macos/runtime-x1/Orca.app/Contents/MacOS/Orca'
     }
     expect(await classifyDaemonAdoptionOrigin(stableCopy)).toMatchObject({
-      spawner_path_class: 'other',
-      launch_method: 'stable-copy'
+      spawner_path_class: 'stable-copy'
     })
     expect(getPathMock).toHaveBeenCalledWith('userData')
     getPathMock.mockImplementationOnce(() => {
       throw new Error('AppEnvironment not initialized')
     })
     expect(await classifyDaemonAdoptionOrigin(stableCopy)).toMatchObject({
-      launch_method: 'unknown'
+      spawner_path_class: 'other'
     })
   })
 })
@@ -216,8 +213,7 @@ describe('trackDaemonPtyCwdVerdict', () => {
       cwd_class: 'documents',
       app_version_match: 'same',
       code_identity: 'parked',
-      spawner_path_class: 'applications',
-      launch_method: 'app-fork'
+      spawner_path_class: 'applications'
     })
   })
 

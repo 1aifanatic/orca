@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  classifyDaemonLaunchMethod,
   classifyDaemonPtyCwd,
   classifyDaemonSpawnerPath,
-  DAEMON_LAUNCH_METHODS,
   DAEMON_PTY_CWD_CLASSES,
   isMacTccFolderClass,
   MAC_TCC_FOLDER_CLASSES
@@ -15,30 +13,50 @@ describe('classifyDaemonSpawnerPath', () => {
 
   it('classifies the installed app, the ShipIt staging area, and everything else', () => {
     expect(
-      classifyDaemonSpawnerPath('/Applications/Orca.app/Contents/MacOS/Orca', alwaysExists)
+      classifyDaemonSpawnerPath('/Applications/Orca.app/Contents/MacOS/Orca', alwaysExists, null)
     ).toBe('applications')
     expect(
-      classifyDaemonSpawnerPath('/private/Applications/Orca.app/Contents/MacOS/Orca', alwaysExists)
+      classifyDaemonSpawnerPath(
+        '/private/Applications/Orca.app/Contents/MacOS/Orca',
+        alwaysExists,
+        null
+      )
     ).toBe('applications')
     expect(
       classifyDaemonSpawnerPath(
         '/Users/a/Library/Caches/com.stablyai.orca.ShipIt/update.abc/Orca.app/Contents/MacOS/Orca',
-        alwaysExists
+        alwaysExists,
+        null
       )
     ).toBe('updater-cache')
     expect(
-      classifyDaemonSpawnerPath('/Users/a/Applications/Orca.app/Contents/MacOS/Orca', alwaysExists)
+      classifyDaemonSpawnerPath(
+        '/Users/a/Applications/Orca.app/Contents/MacOS/Orca',
+        alwaysExists,
+        null
+      )
     ).toBe('other')
-    expect(classifyDaemonSpawnerPath('/tmp/OrcaA.app/Contents/MacOS/Orca', alwaysExists)).toBe(
-      'other'
-    )
+    expect(
+      classifyDaemonSpawnerPath('/tmp/OrcaA.app/Contents/MacOS/Orca', alwaysExists, null)
+    ).toBe('other')
   })
 
   it('reports a deleted spawner as missing and an unrecorded one as unknown', () => {
     expect(
-      classifyDaemonSpawnerPath('/Applications/Orca.app/Contents/MacOS/Orca', () => false)
+      classifyDaemonSpawnerPath('/Applications/Orca.app/Contents/MacOS/Orca', () => false, null)
     ).toBe('missing')
-    expect(classifyDaemonSpawnerPath(null, alwaysExists)).toBe('unknown')
+    expect(classifyDaemonSpawnerPath(null, alwaysExists, null)).toBe('unknown')
+  })
+
+  it("classifies Orca's private stable copy from the recorded spawner path", () => {
+    const prefix = '/Users/alice/Library/Application Support/Orca/daemon-host/macos/runtime-'
+    const copy = `${prefix}Ab12/Orca.app/Contents/MacOS/Orca`
+    expect(classifyDaemonSpawnerPath(copy, alwaysExists, prefix)).toBe('stable-copy')
+    expect(classifyDaemonSpawnerPath(copy, () => false, prefix)).toBe('missing')
+    expect(classifyDaemonSpawnerPath(copy, alwaysExists, null)).toBe('other')
+    expect(
+      classifyDaemonSpawnerPath('/Applications/Orca.app/Contents/MacOS/Orca', alwaysExists, prefix)
+    ).toBe('applications')
   })
 })
 
@@ -71,7 +89,6 @@ describe('daemon_adopted / daemon_pty_cwd_denied schemas', () => {
     app_version_match: 'different',
     spawner_path_class: 'updater-cache',
     code_identity: 'unresolvable',
-    launch_method: 'app-fork',
     tcc_attribution: 'intact',
     live_session_count_bucket: '2-5'
   }
@@ -79,8 +96,7 @@ describe('daemon_adopted / daemon_pty_cwd_denied schemas', () => {
     cwd_class: 'documents',
     app_version_match: 'different',
     spawner_path_class: 'updater-cache',
-    code_identity: 'parked',
-    launch_method: 'stable-copy'
+    code_identity: 'parked'
   }
 
   it('accepts the enum payloads', () => {
@@ -111,38 +127,15 @@ describe('daemon_adopted / daemon_pty_cwd_denied schemas', () => {
       eventSchemas.daemon_adopted.safeParse({ ...adopted, code_identity: 'severed' }).success
     ).toBe(false)
     expect(
-      eventSchemas.daemon_pty_cwd_readable.safeParse({ ...denied, launch_method: 'launchd' })
+      eventSchemas.daemon_pty_cwd_readable.safeParse({ ...denied, launch_method: 'stable-copy' })
         .success
     ).toBe(false)
-  })
-
-  it('requires the launch method on every daemon origin event', () => {
-    const { launch_method: _omitted, ...withoutLaunch } = denied
-    expect(eventSchemas.daemon_pty_cwd_denied.safeParse(withoutLaunch).success).toBe(false)
-    expect(eventSchemas.daemon_pty_cwd_readable.safeParse(withoutLaunch).success).toBe(false)
-    const { launch_method: _adoptedOmitted, ...adoptedWithoutLaunch } = adopted
-    expect(eventSchemas.daemon_adopted.safeParse(adoptedWithoutLaunch).success).toBe(false)
-  })
-})
-
-describe('classifyDaemonLaunchMethod', () => {
-  const prefix = '/Users/alice/Library/Application Support/Orca/daemon-host/macos/runtime-'
-
-  it('reads the stable-copy launcher from the recorded spawner path only', () => {
-    expect(classifyDaemonLaunchMethod(`${prefix}Ab12/Orca.app/Contents/MacOS/Orca`, prefix)).toBe(
-      'stable-copy'
-    )
-    expect(classifyDaemonLaunchMethod('/Applications/Orca.app/Contents/MacOS/Orca', prefix)).toBe(
-      'app-fork'
-    )
     expect(
-      classifyDaemonLaunchMethod(
-        '/Users/alice/Library/Caches/com.stablyai.orca.ShipIt/u/Orca.app/Contents/MacOS/Orca',
-        prefix
-      )
-    ).toBe('app-fork')
-    expect(classifyDaemonLaunchMethod(null, prefix)).toBe('unknown')
-    expect([...DAEMON_LAUNCH_METHODS]).toEqual(['stable-copy', 'app-fork', 'unknown'])
+      eventSchemas.daemon_pty_cwd_readable.safeParse({
+        ...denied,
+        spawner_path_class: 'stable-copy'
+      }).success
+    ).toBe(true)
   })
 })
 

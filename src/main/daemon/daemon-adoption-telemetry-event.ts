@@ -7,12 +7,10 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import {
-  classifyDaemonLaunchMethod,
   classifyDaemonPtyCwd,
   classifyDaemonSpawnerPath,
   isMacTccFolderClass,
   type DaemonAdoptedAppVersionMatch,
-  type DaemonLaunchMethod,
   type DaemonSpawnerPathClass
 } from '../../shared/daemon-adoption-telemetry'
 import { bucketDaemonLiveSessionCount } from '../../shared/daemon-lifecycle-telemetry'
@@ -32,18 +30,14 @@ import {
 
 export type DaemonAdoptionOrigin = Pick<
   EventProps<'daemon_pty_cwd_denied'>,
-  'app_version_match' | 'code_identity' | 'spawner_path_class' | 'launch_method'
+  'app_version_match' | 'code_identity' | 'spawner_path_class'
 >
 
-function classifyLaunchMethod(spawnerExecPath: string | null): DaemonLaunchMethod {
+function stableCopyPrefix(): string | null {
   try {
-    const userDataPath = getAppEnvironment().getPath('userData')
-    return classifyDaemonLaunchMethod(
-      spawnerExecPath,
-      join(getMacDaemonBundleRoot(userDataPath), 'runtime-')
-    )
+    return join(getMacDaemonBundleRoot(getAppEnvironment().getPath('userData')), 'runtime-')
   } catch {
-    return 'unknown'
+    return null
   }
 }
 
@@ -58,13 +52,13 @@ export async function classifyDaemonAdoptionOrigin(
       : 'different'
   const spawnerPathClass: DaemonSpawnerPathClass = classifyDaemonSpawnerPath(
     pidRecord?.spawnerExecPath ?? null,
-    existsSync
+    existsSync,
+    stableCopyPrefix()
   )
   return {
     app_version_match: appVersionMatch,
     code_identity: await getDaemonMacCodeIdentity(pidRecord?.pid),
-    spawner_path_class: spawnerPathClass,
-    launch_method: classifyLaunchMethod(pidRecord?.spawnerExecPath ?? null)
+    spawner_path_class: spawnerPathClass
   }
 }
 
