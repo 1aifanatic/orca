@@ -47,6 +47,27 @@ export function markProviderChildStarted(
   return child !== null
 }
 
+/** From the moment the host receives the exit: the child stops vouching for its lease. */
+export function markProviderChildExited(
+  session: ChildBearer,
+  identity: StructuredAgentSessionProviderChildIdentity
+): void {
+  const child = matchingChild(session, identity)
+  if (child) {
+    child.exitObserved = true
+  }
+}
+
+/** This runtime holds a child at `fence` whose exit it has not received: first-hand proof of life
+ *  that needs no PID probe. A previous runtime's child is never on record here. */
+export function holdsLiveProviderChild(
+  session: Pick<ChildBearer, 'child'> | undefined,
+  fence: number
+): boolean {
+  const child = session?.child
+  return !!child && child.fence === fence && child.exitObserved !== true
+}
+
 /** `endedAt` is a close's ask; an exit of the child's own ends where the journal stands. */
 export function endProviderChild(
   session: ChildBearer,
