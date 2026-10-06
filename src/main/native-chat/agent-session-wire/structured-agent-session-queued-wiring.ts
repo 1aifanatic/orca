@@ -56,29 +56,31 @@ export function wireStructuredAgentSessionQueuedMessages(
     wakeDelivery: (sessionId) => context().wakeDelivery(sessionId),
     // Read lazily, like the rest of this wiring: the host's deps are not assigned yet.
     logger: deferredStructuredAgentSessionLogger(() => context().deps.logger),
-    runQueuedClear: async (sessionId, card) =>
-      (
-        await runQueuedConversationClear(
-          context(),
-          clearContext(sessionId, sessions.get(sessionId)!.journal),
-          card
-        )
-      ).kind === 'cleared',
-    carryAfterClear: async (sessionId) => {
-      const marker = committedClearOf(context().deps.store.getRecord(sessionId))
-      const journal = sessions.get(sessionId)?.journal
-      if (!marker || !journal) {
-        return
-      }
-      await carryQueuedMessagesToClearReplacement(clearContext(sessionId, journal), {
-        replacementSessionId: marker.replacementSessionId,
-        openReplacementJournal: async () =>
-          (await context().conversation(marker.replacementSessionId)).journal,
-        callerKey: marker.callerKey,
-        operationId: marker.operationId
-      })
-    },
-    afterClear
+    clear: {
+      run: async (sessionId, card) =>
+        (
+          await runQueuedConversationClear(
+            context(),
+            clearContext(sessionId, sessions.get(sessionId)!.journal),
+            card
+          )
+        ).kind === 'cleared',
+      carry: async (sessionId) => {
+        const marker = committedClearOf(context().deps.store.getRecord(sessionId))
+        const journal = sessions.get(sessionId)?.journal
+        if (!marker || !journal) {
+          return
+        }
+        await carryQueuedMessagesToClearReplacement(clearContext(sessionId, journal), {
+          replacementSessionId: marker.replacementSessionId,
+          openReplacementJournal: async () =>
+            (await context().conversation(marker.replacementSessionId)).journal,
+          callerKey: marker.callerKey,
+          operationId: marker.operationId
+        })
+      },
+      after: afterClear
+    }
   })
   /** A replacement opening is where its cards are looked for: a source whose carry a crash cut
    *  short is opened, and its drain finishes the carry. Read from the shared table, so a source

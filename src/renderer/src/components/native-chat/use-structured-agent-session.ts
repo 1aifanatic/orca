@@ -154,7 +154,7 @@ export function useStructuredAgentSession(args: {
   // Stop and the command holds read this window's own outbox; the transcript also draws a cleared
   // chat's messages still being asked about, which no Stop here can end.
   const { outbox, transcriptRows = outbox } = outboxController
-  // What the host refuses a conversation command or a rewind behind.
+  // What the host refuses a rewind behind; a command's own hold is the runner's below.
   const conversationBusy = Boolean(
     transportState.turnId ||
     prompts.length ||
@@ -210,8 +210,7 @@ export function useStructuredAgentSession(args: {
   const messages = useStructuredAgentSessionMessages(
     transcriptItems,
     transcriptOutbox,
-    transportState.submissions,
-    queuedMessageIds
+    transportState.submissions
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -248,8 +247,6 @@ export function useStructuredAgentSession(args: {
     failedHere: outboxController.failedHere,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
-    /** The host's queued cards, which hold their own rejected hand-offs. */
-    queuedMessageIds,
     // A message typed during a command queues behind it on the host.
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.

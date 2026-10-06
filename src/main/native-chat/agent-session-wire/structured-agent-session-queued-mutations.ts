@@ -281,7 +281,7 @@ export function deleteQueuedStructuredAgentMessage(
 
 /** Resume: ends the queue's pause — a Stop's, or a restart's — so the cards send
  *  again, oldest first, as the session goes idle. A no-op when nothing is paused,
- *  and a per-card `send_failed` hold stays for its own Send. */
+ *  and a per-card hold (`send_failed`, `kept`) stays for its own Send. */
 export function resumeStructuredAgentQueue(
   context: StructuredAgentSessionMutationContext,
   caller: StructuredAgentSessionCaller,

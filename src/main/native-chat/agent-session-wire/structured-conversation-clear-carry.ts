@@ -2,6 +2,7 @@
 // carry a failure or a crash cut short.
 
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import {
@@ -13,6 +14,17 @@ import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 
 export const STRUCTURED_AGENT_SESSION_CLEAR_COMMAND = 'clear'
+
+/** What the queue's drain needs to run a /clear card itself. */
+export type QueuedClearDrainDeps = {
+  /** The card's turn, inside the drain's step; true once the clear committed. A card waiting on
+   *  background tasks or a handoff stays waiting; their ending wakes the drain. */
+  run: (sessionId: string, card: QueuedMessageRow) => Promise<boolean>
+  /** Finishes the carry a committed clear owes its replacement, inside the step. */
+  carry: (sessionId: string) => Promise<void>
+  /** What follows a committed clear, outside the step: it closes the source, which serializes. */
+  after: (sessionId: string) => Promise<void>
+}
 
 /** A /clear the queue holds: run by the host when its turn comes, never handed to the agent. */
 export function isQueuedClearCard(row: Pick<QueuedMessageRow, 'body'>): boolean {
@@ -53,7 +65,8 @@ export function clearCarryOwed(
  *     the fresh chat, so they run there as they would have here.
  *   - sent before the clear (an immediate /clear over a paused queue): a message card carries
  *     over paused ('cleared', lifted like a Stop's), since it was written for the context the
- *     clear discarded; a command card is withdrawn without a copy.
+ *     clear discarded; a command card, kept or not, is withdrawn without a copy.
+ * A kept send (`QUEUED_MESSAGE_PAUSED_KEPT`) keeps that hold wherever it lands.
  * Runs after the clear commits, opening the replacement only when there is something to carry;
  * the source rows, the /clear card included, are tombstoned last, so a cut-short carry still
  * finds the card that orders it. Bookkeeping around the clear: a failure is reported, never gates
@@ -96,7 +109,12 @@ export async function carryQueuedMessagesToClearReplacement(
           // Its own: a card a process that has since died wrote keeps that restart's pause.
           hostInstance: row.hostInstance,
           ...(row.position > behind ? {} : { carriedFrom: ctx.sessionId }),
-          source: row.source
+          source: row.source,
+          // A kept send stays held there too, before or behind the clear: only its person's Send
+          // sends it, never the queue.
+          ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT
+            ? { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
+            : {})
         })
       }
     }

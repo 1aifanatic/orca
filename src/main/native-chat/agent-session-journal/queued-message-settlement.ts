@@ -11,13 +11,13 @@ import {
   journalDispatchRowNewlyRejects
 } from './journal-dispatch-settlement'
 import type { JournalReducerState } from './journal-reducer'
-import { settleRejectedQueuedMessage } from './queued-message-rejection-settlement'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionCommandTurnIdentity } from '../../../shared/structured-agent-session-command-turn-identity'
 import type { JournalRow } from './journal-row-schema'
 import { draftDeliveredByEcho, draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
 import {
   listQueuedMessages,
+  settleRejectedQueuedMessage,
   withdrawQueuedMessages,
   type QueuedMessageRow
 } from './queued-message-table'
@@ -60,6 +60,7 @@ export function settleOwedQueuedMessages(
       consumedRef,
       reason: submission?.reason ?? null,
       rejection: submission?.rejection,
+      origin: submission?.origin,
       commandTurnReported: commandTurnReported(input.state, consumedRef),
       now: input.now
     })
@@ -84,7 +85,8 @@ export function settleOwedQueuedMessages(
  * The live hook, before `row` applies: an echo proving a waiting draft's first
  * send was delivered withdraws it; a row that NEWLY settles a dispatched
  * draft's current submission to `rejected` settles the draft — a refusal
- * returns it, a withdrawal (a Stop, a restart) sends it back to waiting.
+ * returns it, a withdrawal (a Stop, a restart) sends it back to waiting
+ * (`rejectedDraftSettlement`).
  * Decided by the same function the reducer folds rows through, so a row the
  * journal's settlement rules ignore never alters a draft. Returns how many
  * drafts changed.
@@ -116,7 +118,8 @@ export function settleQueuedMessagesForRow(
   if (row.kind !== 'dispatch' || row.state !== 'rejected') {
     return changed
   }
-  if (!journalDispatchRowNewlyRejects(input.state.submissions.get(row.clientMessageId), row)) {
+  const submission = input.state.submissions.get(row.clientMessageId)
+  if (!journalDispatchRowNewlyRejects(submission, row)) {
     return changed
   }
   const settled = settleRejectedQueuedMessage(db, {
@@ -124,6 +127,7 @@ export function settleQueuedMessagesForRow(
     consumedRef: row.clientMessageId,
     reason: row.reason,
     rejection: row.rejection,
+    origin: submission?.origin,
     commandTurnReported: commandTurnReported(input.state, row.clientMessageId),
     now: input.now
   })

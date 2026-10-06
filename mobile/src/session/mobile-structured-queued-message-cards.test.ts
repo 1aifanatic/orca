@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../src/shared/structured-agent-session-dispatch-rejection'
-import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../src/shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED
+} from '../../../src/shared/agent-session-wire'
 import type { AgentSessionQueuedMessage } from '../../../src/shared/agent-session-wire'
 import {
   mobileQueueHasResumableCard,
@@ -63,6 +66,26 @@ describe('mobileQueuedMessageCards', () => {
     expect(
       mobileQueuedMessageCards([compact], [], { pendingPrompt: false, agentWorking: true })[0]
     ).toMatchObject({ command: true, waitsForAgent: true })
+  })
+
+  it("a kept command card's caption names Send only when Send is there", () => {
+    const kept = draft({
+      messageId: 'c',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_KEPT,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      mobileQueuedMessageCards([kept], [], { pendingPrompt: false, agentWorking: true })[0]?.caption
+    ).toBe('Not sent yet — tap Send to send it once the agent finishes')
+    expect(mobileQueuedMessageCards([kept], [], { pendingPrompt: false })[0]?.caption).toBe(
+      'Not sent yet — tap Send to send it'
+    )
   })
 
   it("a send-failed command card's caption names Send only when Send is there", () => {
@@ -155,6 +178,26 @@ describe('mobileQueuedMessageCards', () => {
     expect(resumable([failed])).toBe(false)
     expect(resumable([failed, waiting])).toBe(true)
     expect(resumable([waiting, { ...returned, position: 3 }])).toBe(true)
+    // A kept card is held on its own, like a failed one: the drain goes past it.
+    const kept = draft({ messageId: 'k', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT })
+    expect(resumable([kept])).toBe(false)
+    expect(resumable([kept, waiting])).toBe(true)
+  })
+
+  // The host kept it unsent across a restart or a close; the cards behind it are not held by it.
+  it('captions a kept card as not sent yet, and leaves the cards behind it plainly queued', () => {
+    const cards = mobileQueuedMessageCards(
+      [
+        draft({ messageId: 'k', paused: true, pausedReason: QUEUED_MESSAGE_PAUSED_KEPT }),
+        draft({ messageId: 'b', position: 2 })
+      ],
+      [],
+      { pendingPrompt: false }
+    )
+    expect(cards.map(({ caption, needsAttention }) => ({ caption, needsAttention }))).toEqual([
+      { caption: 'Not sent yet — tap Send to send it', needsAttention: false },
+      { caption: null, needsAttention: false }
+    ])
   })
 
   it('words the paused queue by reason, and one this build does not know as a plain pause', () => {

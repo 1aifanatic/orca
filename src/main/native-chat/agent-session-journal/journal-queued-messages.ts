@@ -6,7 +6,6 @@
 
 import type Database from '../../sqlite/sync-database'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
@@ -16,11 +15,7 @@ import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import type { JournalOperationReceipt, JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
-import {
-  adoptQueuedMessages,
-  holdQueuedMessages,
-  returnUnsentQueuedMessage
-} from './queued-message-holds'
+import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
 import {
   deriveQueuePauses,
   journalUserStopInForce,
@@ -40,6 +35,7 @@ import {
 } from './queued-message-table'
 import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
+import { moveQueuedMessages, type QueuedMessagePositionMove } from './queued-message-positions'
 import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
 import {
   queuedMessageSettlementOwed,
@@ -77,6 +73,10 @@ export class JournalQueuedMessages {
 
   constructor(private readonly deps: JournalQueuedMessagesDeps) {}
 
+  get sessionId(): string {
+    return this.deps.sessionId
+  }
+
   revision(): number {
     return this.changeRevision
   }
@@ -107,8 +107,9 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused.
-   *  `receipt`: the send's ledger answer, committed with the draft only when this inserts it. */
+  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused;
+   *  `holdReason` carries a hold of its own over with it. `receipt`: the send's ledger answer,
+   *  committed with the draft only when this inserts it. */
   insert(
     input: {
       messageId: string
@@ -117,6 +118,7 @@ export class JournalQueuedMessages {
       hostInstance: string
       carriedFrom?: string
       source: AgentSessionMessageSource
+      holdReason?: QueuedMessageHoldReason
     },
     receipt?: JournalOperationReceipt
   ): Promise<QueuedMessageRow> {
@@ -154,25 +156,6 @@ export class JournalQueuedMessages {
       (db) => holdQueuedMessages(db, { ...input, sessionId: this.deps.sessionId }),
       (held) => held > 0
     ).then(() => undefined)
-  }
-
-  /** A card the host runs itself could not run: returned with why (`returnUnsentQueuedMessage`). */
-  returnUnsent(input: {
-    messageId: string
-    reason: string | null
-    rejection: UnreadAgentSessionFailureFact | null
-  }): Promise<boolean> {
-    return this.transact(
-      (db) =>
-        returnUnsentQueuedMessage(db, {
-          sessionId: this.deps.sessionId,
-          messageId: input.messageId,
-          reason: input.reason,
-          rejection: input.rejection ? JSON.stringify(input.rejection) : null,
-          now: this.deps.now()
-        }),
-      (changed) => changed
-    )
   }
 
   /** The queue's pauses in force, derived from the fold and the cards (`queued-message-pause.ts`). */
@@ -217,6 +200,26 @@ export class JournalQueuedMessages {
     ).then((changed) => changed > 0)
   }
 
+  /** Inside the caller's journal-row transaction (`journal-unsent-send-hold.ts`): one kept send
+   *  becomes a card, and the cards ahead of the queue take the positions given. False when a card
+   *  by that id already exists, which then stands. */
+  holdInTransaction(
+    db: Database.Database,
+    input: {
+      card: Omit<Parameters<typeof insertQueuedMessage>[1], 'sessionId' | 'now'> | null
+      positions: readonly QueuedMessagePositionMove[]
+    }
+  ): boolean {
+    const { sessionId } = this.deps
+    this.changeRevision += moveQueuedMessages(db, sessionId, input.positions)
+    if (!input.card || getQueuedMessage(db, sessionId, input.card.messageId)) {
+      return false
+    }
+    insertQueuedMessage(db, { ...input.card, sessionId, now: this.deps.now() })
+    this.changeRevision++
+    return true
+  }
+
   /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones,
    *  kept only so a replay of the settling operation answers "spent". */
   withdraw(input: {
@@ -239,8 +242,9 @@ export class JournalQueuedMessages {
   }
 
   /** One standalone draft-table transaction on the journal's queue; one that
-   *  changed rows bumps the revision and notifies after COMMIT, `adopted` first. */
-  private transact<T>(
+   *  changed rows bumps the revision and notifies after COMMIT, `adopted` first. Open to the
+   *  draft-table writers outside this file (`queued-message-holds.ts`), which take no other path. */
+  transact<T>(
     run: (db: Database.Database) => JournalWriteResult<T>,
     changed: (result: T) => boolean,
     adopted?: () => void

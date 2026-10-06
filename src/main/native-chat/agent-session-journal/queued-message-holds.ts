@@ -1,9 +1,12 @@
 // Per-draft holds: what keeps one card from auto-sending, stored on its row. A
 // Stop or a restart pauses the queue instead (`queued-message-pause.ts`, derived);
-// a per-draft hold is only a conversion that failed, which an explicit Send releases.
+// a per-draft hold is a conversion that failed, or a send the host kept
+// (`QueuedMessageHoldReason`), which an explicit Send releases.
 
 import type Database from '../../sqlite/sync-database'
 import type { QueuedMessageHoldReason } from './queued-message-table'
+import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { JournalQueuedMessages } from './journal-queued-messages'
 
 /** Hold waiting drafts from auto-sending. The hold retires with the row: consume
  *  and withdraw clear it in their own UPDATE. Returns how many rows it newly reached. */
@@ -50,13 +53,33 @@ export function adoptQueuedMessages(
 /** waiting → returned with no hand-off: a card the host runs itself (a queued /clear) that could
  *  not run. Like a refused hand-off's card it blocks the cards behind it until its own Send or
  *  Delete; a returned card asked again keeps its place with the newer reason. */
-export function returnUnsentQueuedMessage(
+export function returnUnsentQueuedCard(
+  queued: Pick<JournalQueuedMessages, 'transact' | 'sessionId'>,
+  input: {
+    messageId: string
+    reason: string | null
+    rejection: UnreadAgentSessionFailureFact
+    now: number
+  }
+): Promise<boolean> {
+  return queued.transact(
+    (db) =>
+      returnUnsentQueuedMessage(db, {
+        ...input,
+        sessionId: queued.sessionId,
+        rejection: JSON.stringify(input.rejection)
+      }),
+    (changed) => changed
+  )
+}
+
+function returnUnsentQueuedMessage(
   db: Database.Database,
   input: {
     sessionId: string
     messageId: string
     reason: string | null
-    rejection: string | null
+    rejection: string
     now: number
   }
 ): boolean {

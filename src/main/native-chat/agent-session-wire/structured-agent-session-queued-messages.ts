@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
   USER_MESSAGE_SOURCE,
-  type AgentMessageSource
+  type AgentSessionMessageSource
 } from '../../../shared/agent-session-message-source'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
@@ -39,6 +39,7 @@ import {
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { clearCarryOwed, isQueuedClearCard } from './structured-conversation-clear-carry'
+import type { QueuedClearDrainDeps } from './structured-conversation-clear-carry'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -200,7 +201,7 @@ export async function maybeQueueStructuredAgentSessionSend(
     /** A person's send at a chat surface; it outranks any `source`. */
     userSend?: true
     /** Who a host-side send is from. */
-    source?: AgentMessageSource
+    source?: AgentSessionMessageSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -263,13 +264,8 @@ export type QueuedMessageDrainDeps = {
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
   logger: StructuredAgentSessionLogger
-  /** A /clear card's turn, run by the host inside this step; true once the clear committed. A
-   *  card waiting on background tasks or a handoff stays waiting; their ending wakes the drain. */
-  runQueuedClear: (sessionId: string, card: QueuedMessageRow) => Promise<boolean>
-  /** Finishes the carry a committed clear owes its replacement, inside this step. */
-  carryAfterClear: (sessionId: string) => Promise<void>
-  /** What follows a committed clear, outside the step: it closes the source, which serializes. */
-  afterClear: (sessionId: string) => Promise<void>
+  /** How the host runs a /clear card, finishes a carry a clear cut short, and follows a clear. */
+  clear: QueuedClearDrainDeps
 }
 
 /**
@@ -282,8 +278,16 @@ export type QueuedMessageDrainDeps = {
  */
 export class StructuredAgentSessionQueuedMessageDrain {
   private readonly scheduled = new Set<string>()
+  private disposed = false
 
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
+
+  /** Quit, with delivery: a hand-off made now could only be settled by the next process, so a
+   *  quit leaves the cards exactly as a crash does. Read by the step at its start, and again
+   *  right before it appends, since quit can land while it awaits. */
+  dispose(): void {
+    this.disposed = true
+  }
 
   schedule(sessionId: string): void {
     const journal = this.deps.sessions.get(sessionId)?.journal
@@ -319,7 +323,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
         this.scheduled.delete(sessionId)
         return this.step(sessionId)
       })
-      .then((cleared) => (cleared ? this.deps.afterClear(sessionId) : undefined))
+      .then((cleared) => (cleared ? this.deps.clear.after(sessionId) : undefined))
       .catch((error: unknown) => {
         this.scheduled.delete(sessionId)
         this.deps.logger.warn('draining queued messages failed', {
@@ -333,7 +337,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
   /** True when this step committed a /clear. */
   private async step(sessionId: string): Promise<boolean> {
     const session = this.deps.sessions.get(sessionId)
-    if (!session) {
+    if (this.disposed || !session) {
       return false
     }
     const journal = session.journal
@@ -351,7 +355,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     if (clearCarryOwed(record, journal)) {
       // A clear committed here with its carry cut short: the cards behind it belong to the
       // replacement, and this source sends nothing again.
-      await this.deps.carryAfterClear(sessionId)
+      await this.deps.clear.carry(sessionId)
       return false
     }
     const next = oldestActionableQueuedMessage(journal)
@@ -362,13 +366,13 @@ export class StructuredAgentSessionQueuedMessageDrain {
     // Live facts only, through the one gate; the backlog is never a gate, so a
     // lone draft drains. Whatever clears a hold publishes or commits, which
     // re-derives this step.
-    if (structuredQueueHold({ journal, record, fence }) !== null) {
+    if (this.disposed || structuredQueueHold({ journal, record, fence }) !== null) {
       return false
     }
     // Never a submission: the host runs a /clear itself, one card per step. The hold being null
     // means no turn, unanswered message or question is in flight, so its stop cuts off nothing.
     if (isQueuedClearCard(next)) {
-      return this.deps.runQueuedClear(sessionId, next)
+      return this.deps.clear.run(sessionId, next)
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.
     const submissionId = createStructuredAgentSessionOperationId(randomUUID)

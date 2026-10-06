@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
 import {
@@ -353,6 +354,65 @@ describe('a /compact that waits in line', () => {
       value: { submission: { queuedMessageId: compactId } }
     })
     await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
+  })
+
+  /** A command card consumed while the agent starts, and never handed over: then Orca crashes. */
+  async function consumedThenCrashed(send: 'drain' | 'sendNow'): Promise<string> {
+    await rig.dispose()
+    rig = await createQueuedMessageTestRig({ restartable: true })
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    // No child now, and the next start never finishes: the hand-off stays queued.
+    await rig.host.close(SESSION, 'evict')
+    rig.awaitStarted.mockImplementation(() => new Promise<undefined>(() => undefined))
+    const startsBefore = rig.awaitStarted.mock.calls.length
+    if (send === 'drain') {
+      expect(await rig.resume()).toMatchObject({ ok: true })
+    } else {
+      expect(await rig.sendNow(compactId)).toMatchObject({ ok: true })
+    }
+    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+    rig.crashRestartHostProcess()
+    return compactId
+  }
+
+  it('cut short by a restart after the queue sent it: waits again under the restart, never spent', async () => {
+    const compactId = await consumedThenCrashed('drain')
+    // The queue's own hand-off is not the person's, so it waits as any queued card does.
+    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
+    expect(await rig.queuePause()).toEqual({ reason: 'restarted' })
+    expect(rig.compact).not.toHaveBeenCalled()
+  })
+
+  it('cut short by a restart after the person sent it: kept, never spent', async () => {
+    const compactId = await consumedThenCrashed('sendNow')
+    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting', paused: true }])
+    const card = rig.host
+      .collaboratorsForTests()
+      .sessions.get(SESSION)
+      ?.journal.queuedMessages.get(compactId)
+    expect(card).toMatchObject({
+      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+      body: { command: { name: 'compact' } }
+    })
+    expect(rig.compact).not.toHaveBeenCalled()
+  })
+
+  it('a direct /compact (no opt-in, as on a host without the queue) cut short by a restart is never a card', async () => {
+    await rig.dispose()
+    rig = await createQueuedMessageTestRig({ restartable: true })
+    await rig.workingSend()
+    await rig.host.close(SESSION, 'evict')
+    rig.awaitStarted.mockImplementation(() => new Promise<undefined>(() => undefined))
+    const startsBefore = rig.awaitStarted.mock.calls.length
+    const { id } = compact()
+    await eventually(() => expect(rig.awaitStarted.mock.calls.length).toBeGreaterThan(startsBefore))
+    rig.crashRestartHostProcess()
+    // A command in flight is not resumed: the person runs it again. No card, kept or otherwise.
+    expect(await rig.drafts()).toEqual([])
+    expect(await rig.submission(id)).toMatchObject({ dispatchState: 'rejected' })
   })
 
   it('a /clear drops a waiting command card instead of carrying it to the new chat', async () => {

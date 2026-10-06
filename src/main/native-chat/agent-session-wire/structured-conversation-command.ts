@@ -143,7 +143,11 @@ export function runStructuredConversationCommand(
             return outcome.conversationCommand
           }
           // Its card answers until the queue runs it; the card is keyed by this operation id.
-          const card = queuedSendAnswer(replayCtx.journal, clientOperationId)
+          // Only a /clear that asked to wait can have one, as for a send.
+          const card =
+            params.delivery === 'queue-if-active'
+              ? queuedSendAnswer(replayCtx.journal, clientOperationId)
+              : null
           return card && 'queued' in card
             ? { command: 'clear', state: 'completed', queued: card.queued }
             : null

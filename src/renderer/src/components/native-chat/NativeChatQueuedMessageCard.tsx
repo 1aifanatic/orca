@@ -20,7 +20,10 @@ import { translate } from '@/i18n/i18n'
 import { structuredAgentSessionReturnedCardParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { classifyDispatchRejection } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
+import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
+  QUEUED_MESSAGE_PAUSED_SEND_FAILED
+} from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 
@@ -62,6 +65,18 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
           : translate(
               'components.native-chat.queuedMessages.pausedSendFailed',
               "Couldn't send — press Send to retry."
+            )
+      }
+      if (card.pausedReason === QUEUED_MESSAGE_PAUSED_KEPT) {
+        // A command card's Send shows only while the agent is idle.
+        return card.waitsForAgent
+          ? translate(
+              'components.native-chat.queuedMessages.pausedKeptWaiting',
+              'Not sent yet — press Send to send it once the agent finishes.'
+            )
+          : translate(
+              'components.native-chat.queuedMessages.pausedKept',
+              'Not sent yet — press Send to send it.'
             )
       }
       return translate('components.native-chat.queuedMessages.paused', 'Paused')
@@ -128,7 +143,8 @@ export function NativeChatQueuedMessageCard({
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
-  onTurnOffQueueing: () => void
+  /** Absent when the host does not queue sends, so there is nothing to turn off. */
+  onTurnOffQueueing?: () => void
 }): React.JSX.Element {
   const caption = queuedMessageCardCaption(card)
   const returned = card.state === 'returned'
@@ -225,12 +241,14 @@ export function NativeChatQueuedMessageCard({
                   {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={onTurnOffQueueing}>
-                {translate(
-                  'components.native-chat.queuedMessages.turnOffQueueing',
-                  'Turn off queueing'
-                )}
-              </DropdownMenuItem>
+              {onTurnOffQueueing ? (
+                <DropdownMenuItem onSelect={onTurnOffQueueing}>
+                  {translate(
+                    'components.native-chat.queuedMessages.turnOffQueueing',
+                    'Turn off queueing'
+                  )}
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </>

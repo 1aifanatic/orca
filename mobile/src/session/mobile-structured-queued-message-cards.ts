@@ -7,6 +7,7 @@ import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-sessio
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionReturnedCardParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionQueuedMessage,
   type AgentSessionQueuePause
@@ -51,13 +52,19 @@ function returnedCaption(
   )
 }
 
-/** One card's own hold: only a failed conversion; the queue's pause is the list's first row. */
+/** One card's own hold: a failed conversion, or a send the host kept; the queue's pause is the
+ *  list's first row. */
 function pausedCaption(reason: string | undefined, waitsForAgent: boolean): string {
+  // A command card's Send shows only while the agent is idle.
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
-    // A command card's Send shows only while the agent is idle.
     return waitsForAgent
       ? "Couldn't send — tap Send to retry once the agent finishes"
       : "Couldn't send — tap Send to retry"
+  }
+  if (reason === QUEUED_MESSAGE_PAUSED_KEPT) {
+    return waitsForAgent
+      ? 'Not sent yet — tap Send to send it once the agent finishes'
+      : 'Not sent yet — tap Send to send it'
   }
   // Absent or unknown (newer host) marker: a plain pause, promising no release rule.
   return 'Paused'

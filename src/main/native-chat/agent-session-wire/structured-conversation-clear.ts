@@ -12,6 +12,7 @@ import {
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
+import { returnUnsentQueuedCard } from '../agent-session-journal/queued-message-holds'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
@@ -142,10 +143,11 @@ export async function runQueuedConversationClear(
     })
   }
   const words = agentSessionFailureWords(fact, { command: 'clear', surface: 'rejection' })
-  await ctx.journal.queuedMessages.returnUnsent({
+  await returnUnsentQueuedCard(ctx.journal.queuedMessages, {
     messageId: card.messageId,
     reason: words.reason,
-    rejection: words.rejection
+    rejection: words.rejection,
+    now: context.now()
   })
   return { kind: 'returned' }
 }
