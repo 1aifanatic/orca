@@ -16,6 +16,7 @@ import {
 } from './claude-structured-session-adapter'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
+export { claudeStartupSettled } from './claude-structured-startup-settled-test-support'
 
 export const PROVIDER_SESSION_ID = '819cf9f8-e43c-4ad7-b50f-54aa158a726a'
 
@@ -242,15 +243,6 @@ export function fakeClaude(
   return { connections, openConnection, routes }
 }
 
-/** Resolves once the session's background startup read has landed, faulted, or been ended. */
-export async function claudeStartupSettled(
-  adapter: ClaudeStructuredSessionAdapter,
-  sessionId: string
-): Promise<void> {
-  // Element access reaches the adapter's private map, which no production caller needs.
-  await adapter['sessions'].get(sessionId)?.startup.settled
-}
-
 /** Acquisition resolves only once startup has landed, as suites written before
  *  publish-first expect; `adapterAtPublishFor` observes the published window itself. */
 export function adapterFor(
@@ -260,7 +252,7 @@ export function adapterFor(
   const acquire = adapter.acquire
   adapter.acquire = async (input) => {
     const acquisition = await acquire(input)
-    await claudeStartupSettled(adapter, input.identity.sessionId)
+    await adapter['sessions'].get(input.identity.sessionId)?.startup.settled
     return acquisition
   }
   return adapter
@@ -336,4 +328,14 @@ export function recordingJournalSink(): StructuredAgentSessionEventSink {
 
 export function tick(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
+}
+
+/** Delivers one frame from Claude on `connection`, under the provider session it runs. */
+export function claudeFrame(connection: FakeConnection, message: Record<string, unknown>): void {
+  connection.handlers.onMessage?.({ session_id: PROVIDER_SESSION_ID, ...message })
+}
+
+/** Whether anything sent to Claude on `connection` carries `text`. */
+export function claudeWasSent(connection: FakeConnection, text: string): boolean {
+  return connection.sent.some((message) => JSON.stringify(message).includes(text))
 }

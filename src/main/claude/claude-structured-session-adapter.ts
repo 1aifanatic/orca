@@ -36,7 +36,8 @@ import {
 } from './claude-structured-session-exit-lifecycle'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
 import { resolveClaudeProviderHistoryWindow } from './claude-structured-history-window'
-import { claudePromptCardWritten, drainClaudeChildWork } from './claude-child-work-evidence'
+import { drainClaudeChildWork } from './claude-child-work-evidence'
+import { emitClaudeStructuredSessionEvent } from './claude-structured-event-delivery'
 import {
   answerClaudeStructuredPrompt,
   cancelClaudeStructuredTurn,
@@ -44,7 +45,6 @@ import {
   settleClaudePromptFreeingChild
 } from './claude-structured-prompt-ownership'
 import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
-import { retireClaudeLaunchedModel } from './claude-structured-retired-model'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
 export type {
@@ -77,12 +77,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   }
 
   supportsLocation = supportsClaudeStructuredLocation
-
-  // Orca's marker-based rewind proof can never pass on the real binary; rewind returns via a fork.
-  rewindSupport: NonNullable<StructuredAgentSessionAdapter['rewindSupport']> = () => ({
-    supported: false,
-    reason: 'unsupported'
-  })
 
   acquire = (input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> => {
     this.settledExitErrors.delete(input.identity.sessionId)
@@ -143,38 +137,12 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     })
 
   private emit(session: ClaudeSession | null, event: ClaudeStructuredSessionEvent): void {
-    // The host's child records, fed by the decoder's evidence drained below, are what every surface
-    // and every Stop reads; the tracker's roster is kept only for tests that compare the two.
-    if (event.type === 'ended') {
-      session?.childWork.clear()
-      session?.backgroundTasks.clear()
-    } else if (event.type === 'message') {
-      session?.childWork.observe(event.message)
-      session?.backgroundTasks.observe(event.message, event.startsTurn === true)
-    } else if (event.type === 'prompt-cancelled') {
-      // A withdrawn request frees its child before its card closes: the journal may take that
-      // write, and publish it, as it is submitted.
-      this.publishChildWork(event.sessionId, session)
-    }
-    if (event.type === 'message' && session?.commands.observe(event.message)) {
-      session.events?.publish()
-    }
-    session?.translator?.handle(event)
-    this.deps.onEvent?.(event)
-    const retired =
-      event.type === 'message' && session ? retireClaudeLaunchedModel(session, event.message) : null
-    if (session && retired !== null) {
-      this.deps.onEvent?.({
-        type: 'options-skipped',
-        sessionId: event.sessionId,
-        fence: session.fence,
-        acquisitionGeneration: session.acquisitionGeneration,
-        options: { model: retired }
-      })
-    }
-    this.publishChildWork(event.sessionId, session, event.type === 'message' ? event.message : null)
-    // A subagent's card holds it waiting only once its row is written: its wait goes out after.
-    void claudePromptCardWritten(session, event)?.then(() => this.publishChildWork(event.sessionId))
+    emitClaudeStructuredSessionEvent({
+      session,
+      event,
+      deps: this.deps,
+      publishChildWork: (id, child, message) => this.publishChildWork(id, child, message)
+    })
   }
 
   /** After the journal handled the frame, which republished the parent's own row: the host never
@@ -266,9 +234,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     )
   readOptions = (input: { sessionId: string; fence: number }) =>
     readClaudeStructuredSessionOptions(this.session(input.sessionId), this.deps.requestTimeoutMs)
-  // Provider-level: a session at rest still reports the usage its journal recorded.
-  recordsContextUsage = (): boolean => true
-
   readOptionRestoreFailures = (sessionId: string): readonly string[] => [
     ...(this.sessions.get(sessionId)?.restoreSkippedOptions ?? [])
   ]

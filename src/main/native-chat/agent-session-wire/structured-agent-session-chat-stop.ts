@@ -102,7 +102,7 @@ export function mutateWithChatStop<TValue>(
         }
         if (child?.phase === 'starting') {
           // A start that may never land takes no interrupt, so Stop ends it; the chat stays. Its end
-          // settles what the child was handed as stopped (`stoppedDuringStartup`). The event is
+          // settles what the child was handed as stopped (`unrunRejection`). The event is
           // issued first and lands behind the withdrawal, in the journal's queue order.
           const effect = tookEffect()
           try {

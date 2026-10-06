@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
+import { claudeAcquireCatalogAccess } from './claude-structured-acquire-catalog'
 import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 import { ClaudeStructuredSessionAdapter } from './claude-structured-session-adapter'
@@ -18,7 +18,7 @@ import {
 const ACCOUNT_HOME = '/accounts/claude'
 
 function catalogAccess(store: AgentModelCatalogStore) {
-  const access = agentModelCatalogSessionAccess(store, 'claude', ACCOUNT_HOME)
+  const access = claudeAcquireCatalogAccess(store, ACCOUNT_HOME)
   if (!access) {
     throw new Error('a store and an account home always give access')
   }
