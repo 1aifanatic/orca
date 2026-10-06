@@ -464,7 +464,7 @@ describe('a /compact against a host that holds commands in line', () => {
     expect(commandCalls()).toHaveLength(1)
   })
 
-  it('a send stuck behind one in doubt never holds the command for good: Stop gives it back', async () => {
+  it('a send stuck behind one in doubt never holds the command for good: Stop takes it out of line', async () => {
     items = []
     answerCommands({ command: 'compact', state: 'completed' })
     // The first send's outcome is unknown and waits for its Retry; the second waits behind it.
@@ -473,7 +473,8 @@ describe('a /compact against a host that holds commands in line', () => {
       lastAttemptAt: 2,
       retryAfterUnknownSubmittedAt: 2
     })
-    outboxEntries = [inDoubt, unsent('behind')]
+    const behind = unsent('behind')
+    outboxEntries = [inDoubt, behind]
     const { result, rerender } = render()
     expect(result.current.canStop).toBe(true)
     await act(async () => {
@@ -483,13 +484,15 @@ describe('a /compact against a host that holds commands in line', () => {
       })
     })
     // The busy control is Stop, always pressable. Stop takes back what has not gone out
-    // (`withdrawUnsentStructuredAgentSessionOutboxEntries`), leaving only the one in doubt.
+    // (`withdrawUnsentStructuredAgentSessionOutboxEntries`), leaving only the one in doubt to send.
     expect(
       withdrawUnsentStructuredAgentSessionOutboxEntries(outboxEntries, [], null).map(
         (entry) => entry.clientMessageId
       )
     ).toEqual(['in-doubt'])
-    outboxEntries = [inDoubt]
+    // The composer holds /compact, so the taken-back message stays on screen with its Retry
+    // (`useStructuredAgentSessionOutboxOwnership`), no longer on its way.
+    outboxEntries = [inDoubt, { ...behind, state: 'rejected' }]
     rerender()
     expect(result.current.canStop).toBe(false)
     await act(async () => {
