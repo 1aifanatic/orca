@@ -12,6 +12,7 @@ vi.mock('./structured-agent-session-create-adoption', () => ({
 }))
 
 import { OrcaRuntimeService } from './orca-runtime'
+import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 
 beforeEach(() => {
   applyAgentWorkspaceTrust.mockClear()
@@ -62,6 +63,7 @@ describe('structured Codex folder trust', () => {
       connectionId: null,
       codexHome: '/accounts/selected/home'
     })
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledTimes(1)
     expect(prepareCodexStructuredLaunch.mock.invocationCallOrder[0]).toBeLessThan(
       applyAgentWorkspaceTrust.mock.invocationCallOrder[0]
     )
@@ -103,6 +105,44 @@ describe('structured Codex folder trust', () => {
 
     expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
     expect(prepareCodexStructuredLaunch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the Codex runtime registration', () => {
+  const services = {
+    getClaudeConfigDirectory: vi.fn(() => null),
+    prepareCodexLaunchHome: vi.fn(() => '/accounts/selected/home'),
+    readCodexLaunchHome: vi.fn(() => '/accounts/selected/home'),
+    workspaceTrustSettings: () => ({ agentWorkspaceTrustEnabled: true })
+  }
+
+  it.each(['launch', 'read'] as const)(
+    'resolves a %s account home without writing trust, which waits for the pinned home',
+    async (purpose) => {
+      const codex = structuredAgentRuntimeRegistration('codex')!
+      await expect(
+        codex.resolveAccountHomePath({ launchEnv: {}, location: null, purpose }, services)
+      ).resolves.toBe('/accounts/selected/home')
+      expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
+    }
+  )
+
+  it('writes trust into the home its post-pin step is given', async () => {
+    const codex = structuredAgentRuntimeRegistration('codex')!
+    await codex.afterAccountHomePinned!(
+      { accountHomePath: '/accounts/pinned/home', workspacePath: async () => '/repos/workspace-1' },
+      services
+    )
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledTimes(1)
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith(
+      'codex',
+      '/repos/workspace-1',
+      expect.objectContaining({ codexHome: '/accounts/pinned/home' })
+    )
+  })
+
+  it('gives Claude no post-pin step', () => {
+    expect(structuredAgentRuntimeRegistration('claude')!.afterAccountHomePinned).toBeUndefined()
   })
 })
 
