@@ -1,6 +1,6 @@
 import { useChecksDetailTimer } from './use-checks-detail-timer'
 import { ChecksDetailPollingPolicy } from './checks-detail-polling-policy'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { gitLabPipelineJobsToPRChecks } from '../../../../../shared/gitlab-pipeline-checks'
 import {
   checksPanelAsyncResultKey,
@@ -36,8 +36,8 @@ export type ChecksPanelPollingInput = Pick<
 
 export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
   const modelRef = useRef(model)
-  const policyRef = useRef<ChecksDetailPollingPolicy>(undefined!)
-  policyRef.current ??= new ChecksDetailPollingPolicy()
+  const [policy] = useState(() => new ChecksDetailPollingPolicy())
+  const policyRef = useRef(policy)
   useEffect(() => {
     modelRef.current = model
   })
