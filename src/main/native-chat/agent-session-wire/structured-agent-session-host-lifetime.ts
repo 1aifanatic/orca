@@ -24,7 +24,10 @@ import type {
 } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionChildExit } from './structured-agent-session-child-exit'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import {
+  markStructuredQueueReopen,
+  structuredAgentSessionHostInstance
+} from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionStopCause } from './structured-agent-session-adapter'
 export type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-stop-event'
 import {
@@ -58,10 +61,12 @@ export type StructuredAgentSessionLifetimeContext = {
 
 type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'logger'> & {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
+  /** The host's open conversations (`markStructuredQueueReopen`). */
+  sessions: ReadonlyMap<string, unknown>
 }
 
 /** What is still queued when the chat closes will not be handed over: a person's message is kept
- *  as a held card, the rest rejected (`journal-unsent-send-hold.ts`). A quit is not a close: the
+ *  as a card that waits for the chat's next turn, the rest rejected (`journal-unsent-send-hold.ts`). A quit is not a close: the
  *  next open settles what it left. `which` narrows it to the messages a close that did not complete
  *  closed. Best effort, so a close never waits on it: resolves false when it failed, reported and
  *  never thrown. */
@@ -71,8 +76,9 @@ export async function holdClosedStructuredAgentSessionSends(
   journal: StructuredAgentSessionHostSession['journal'],
   which?: (submission: AgentJournalSubmission) => boolean
 ): Promise<boolean> {
-  return holdUnsentSends(journal, {
-    fence: structuredAgentSessionConversationFence(deps.store, sessionId),
+  const fence = structuredAgentSessionConversationFence(deps.store, sessionId)
+  const held = await holdUnsentSends(journal, {
+    fence,
     hostInstance: structuredAgentSessionHostInstance(),
     hold: { cause: 'chatClosed', ...(which ? { which } : {}) }
   }).then(
@@ -86,6 +92,9 @@ export async function holdClosedStructuredAgentSessionSends(
       return false
     }
   )
+  // The chat stopped running: nothing it closed with sends by itself, even if it stays open.
+  await markStructuredQueueReopen(deps, sessionId, journal, fence)
+  return held
 }
 
 /**

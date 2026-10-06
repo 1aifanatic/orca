@@ -68,7 +68,12 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     holdClosed: async (sessionId, which) => {
       const session = sessions.get(sessionId)
       return session
-        ? holdClosedStructuredAgentSessionSends(deps, sessionId, session.journal, which)
+        ? holdClosedStructuredAgentSessionSends(
+            { ...deps, sessions },
+            sessionId,
+            session.journal,
+            which
+          )
         : true
     },
     failureTextContext: (sessionId) =>

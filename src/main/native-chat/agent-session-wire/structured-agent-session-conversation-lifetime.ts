@@ -25,6 +25,7 @@ import type { StructuredAgentSessionHostSession } from './structured-agent-sessi
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { forgetStructuredQueueOpen } from './structured-agent-session-queued-pause'
 
 export type StructuredAgentSessionConversationLifetime = ReturnType<
   typeof createStructuredAgentSessionConversationLifetime
@@ -153,14 +154,20 @@ export function createStructuredAgentSessionConversationLifetime(host: {
       })
     },
     /** Ends a chat's resources, not the chat: its record and journal stay on disk, and what is
-     *  still queued will not be sent; a person's message stays as a held card. */
+     *  still queued waits for the chat's next turn; a person's unsent message stays as a card. */
     close: (sessionId: string, cause: StructuredAgentSessionCloseCause): Promise<void> =>
       serialize(sessionId, async () => {
         readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
         if (session) {
-          // Settled before the stop, so no start delivers it.
-          await holdClosedStructuredAgentSessionSends(deps(), sessionId, session.journal)
+          // Settled and marked before the stop, so no start delivers it.
+          await holdClosedStructuredAgentSessionSends(
+            { ...deps(), sessions },
+            sessionId,
+            session.journal
+          )
+        } else {
+          forgetStructuredQueueOpen(sessions, sessionId)
         }
         await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
         await closeConversation(sessionId)

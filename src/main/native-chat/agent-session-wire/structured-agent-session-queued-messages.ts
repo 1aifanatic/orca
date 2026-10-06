@@ -387,7 +387,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
           expect: 'waiting',
           settledByOp: null,
           hostInstance: structuredAgentSessionHostInstance(),
-          yieldsToPause: { hostInstance: structuredAgentSessionHostInstance() }
+          yieldsToPause: true
         }
       )
     } catch (error) {

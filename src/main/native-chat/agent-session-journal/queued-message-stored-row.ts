@@ -60,7 +60,7 @@ export function readStoredQueuedMessageRow(row: unknown): QueuedMessageRow | nul
     createdAt: record.created_at,
     hostInstance: record.host_instance,
     state,
-    holdReason: record.hold_reason,
+    holdReason: storedHoldReason(record.hold_reason),
     returnedReason: record.returned_reason,
     returnedRejection: storedRejection(record.returned_rejection),
     settledAt: record.settled_at,
@@ -73,6 +73,14 @@ export function readStoredQueuedMessageRow(row: unknown): QueuedMessageRow | nul
         : null,
     source: storedSource(record.source_json)
   }
+}
+
+/** Holds an earlier build stored that this one derives instead: a kept send (`kept`) waits under
+ *  the reopen's pause, a Stop's (`stopped`) under the Stop's. */
+const QUEUED_MESSAGE_RETIRED_HOLD_REASONS: ReadonlySet<string> = new Set(['kept', 'stopped'])
+
+function storedHoldReason(stored: string | null): string | null {
+  return stored !== null && QUEUED_MESSAGE_RETIRED_HOLD_REASONS.has(stored) ? null : stored
 }
 
 function storedSource(json: string | null): AgentSessionMessageSource {

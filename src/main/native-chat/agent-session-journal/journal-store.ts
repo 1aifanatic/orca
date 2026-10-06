@@ -57,6 +57,7 @@ import type {
 import type { JournalQueuedMessages } from './journal-queued-messages'
 import {
   journalQueueResumeRowBuilder,
+  journalQueueReopenRowBuilder,
   journalStopEventRowBuilder
 } from './journal-stop-and-resume-rows'
 import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-schema'
@@ -84,6 +85,7 @@ export class AgentSessionJournal {
 
   private state: JournalReducerState
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
+  private reopenUnmarked = false
   private onCommitted: (() => void) | null = null
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
@@ -157,6 +159,14 @@ export class AgentSessionJournal {
       this.state.epoch === this.openedThrough.epoch &&
       sequence <= this.openedThrough.sequence
     )
+  }
+
+  /** Where the reopen's pause begins when this handle could not write its mark: the open itself.
+   *  Null once marked, or when nothing needed one. Per handle, so the next open marks again. */
+  reopenFloor(): AgentJournalCursor | null {
+    return this.reopenUnmarked
+      ? { epoch: this.openedThrough.epoch, sequence: this.openedThrough.sequence + 1 }
+      : null
   }
 
   async open(): Promise<void> {
@@ -307,6 +317,21 @@ export class AgentSessionJournal {
   /** A person's Resume of the queue. */
   appendQueueResume(fence: number): Promise<AgentJournalCursor> {
     return this.rowWriter.append(journalQueueResumeRowBuilder(() => this.state, fence))
+  }
+
+  /** This open found waiting cards an earlier handle wrote (`queued-message-pause.ts`). */
+  appendQueueReopen(fence: number): Promise<AgentJournalCursor> {
+    return this.rowWriter.append(journalQueueReopenRowBuilder(() => this.state, fence))
+  }
+
+  /** Marks the reopen when cards wait; a failed write leaves the open itself as the pause's start
+   *  (`reopenFloor`), and still throws. */
+  async markQueueReopen(fence: number): Promise<void> {
+    if (this.queuedMessages.list().some((row) => row.state === 'waiting')) {
+      this.reopenUnmarked = true
+      await this.appendQueueReopen(fence)
+      this.reopenUnmarked = false
+    }
   }
 
   appendLifecycleBatch(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {

@@ -1,9 +1,10 @@
 // What becomes of a send the host accepted and can no longer hand over: an earlier host process
 // quit or crashed first (settled at the next open), or the chat is closing. Either way the agent
 // provably never got it. A person's message (typed, or a launch's first prompt) is kept as a card
-// at the head of the queue, held until the person sends, edits or deletes it (`kept`). Everything
-// else is rejected as before, because something else re-derives it or the person re-runs it. The
-// submission itself is always rejected, so it is never handed over twice.
+// at the head of the queue, an ordinary one: like every card the chat closed with, it waits for the
+// chat's next turn (`queued-message-pause.ts`). Everything else is rejected as before, because
+// something else re-derives it or the person re-runs it. The submission itself is always rejected,
+// so it is never handed over twice.
 
 import type {
   AgentJournalItemBody,
@@ -12,7 +13,6 @@ import type {
 } from '../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
-import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
@@ -61,12 +61,13 @@ export function unsentSendKeptAsCard(
  * both. This batch's cards, and the card of a Send the person asked for, go to the head of the
  * queue in the order they were accepted, behind the cards an earlier settlement kept; the queue's
  * own hand-off returns its card where it stood. Throws once every row was
- * tried when one of them could not be written at all: that row stays queued.
+ * tried when one of them could not be written at all: that row stays queued. Resolves whether it
+ * settled any send.
  */
 export async function holdUnsentSends(
   journal: AgentSessionJournal,
   input: { fence: number; hostInstance: string; hold: UnsentSendHold }
-): Promise<void> {
+): Promise<boolean> {
   const { hold } = input
   const unsent = journal
     .submissions()
@@ -79,7 +80,7 @@ export async function holdUnsentSends(
     )
     .sort((a, b) => (a.acceptedSequence ?? 0) - (b.acceptedSequence ?? 0))
   if (unsent.length === 0) {
-    return
+    return false
   }
   const { epoch } = journal.cursor()
   const kept = unsent.map((submission) => ({
@@ -123,7 +124,6 @@ export async function holdUnsentSends(
                       fields: { body: card.body }
                     }),
                     hostInstance: input.hostInstance,
-                    holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
                     // Only a person's send is kept.
                     source: USER_MESSAGE_SOURCE,
                     queuedAt: { epoch, sequence: submission.acceptedSequence ?? 0 },
@@ -166,6 +166,7 @@ export async function holdUnsentSends(
   if (failures.length > 0) {
     throw new AggregateError(failures, 'settling unsent sends failed')
   }
+  return true
 }
 
 /** Where each card of the batch goes: right before every other card, the cards an earlier
@@ -177,8 +178,18 @@ function headOfQueuePositions(
   batch: readonly { submission: AgentJournalSubmission; body: AgentJournalMessageItem | null }[]
 ): { placed: QueuedMessagePositionMove[]; earlier: QueuedMessagePositionMove[] } {
   const cards = journal.queuedMessages.list()
+  const keptIds = new Set(
+    journal.submissions().flatMap((entry) => entry.keptAsQueuedMessageId ?? [])
+  )
+  const { epoch } = journal.cursor()
+  // Kept by an earlier settlement: its rejection names it, or, past an epoch that dropped that
+  // row, it was queued in an earlier epoch, before anything this one accepted.
   const earlier = cards
-    .filter((card) => card.state === 'waiting' && card.holdReason === QUEUED_MESSAGE_PAUSED_KEPT)
+    .filter(
+      (card) =>
+        card.state === 'waiting' &&
+        (keptIds.has(card.messageId) || (card.queuedAt !== null && card.queuedAt.epoch !== epoch))
+    )
     .map((card) => card.messageId)
   const placed: QueuedMessagePositionMove[] = []
   for (const { submission, body } of batch) {

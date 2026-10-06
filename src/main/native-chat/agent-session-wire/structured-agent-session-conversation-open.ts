@@ -6,8 +6,9 @@
 // crash boundary. That
 // needs no lease: provider history decides such a row later, under a won lease, in the attach. A
 // row an earlier process accepted and never handed over (it quit or crashed first) is settled here
-// too, before any reader, command or child sees it: a person's message is kept as a held card, the
-// rest rejected (`journal-unsent-send-hold.ts`). Nothing here starts a provider child.
+// too, before any reader, command or child sees it: a person's message is kept as a card, the rest
+// rejected (`journal-unsent-send-hold.ts`). The cards then wait for the chat's next turn
+// (`queued-message-pause.ts`). Nothing here starts a provider child.
 
 import type { JournalHostDatabase } from '../agent-session-journal/journal-host-database'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -23,7 +24,10 @@ import {
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import {
+  markStructuredQueueFirstOpen,
+  structuredAgentSessionHostInstance
+} from './structured-agent-session-queued-pause'
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession
@@ -73,6 +77,13 @@ export async function openStructuredAgentSessionConversation(
     return null
   }
   const opened = await openStructuredAgentSessionConversationJournal(context.deps, record, options)
+  // After the open made its leftovers cards, so the mark follows every card it found.
+  await markStructuredQueueFirstOpen(
+    { sessions: context.sessions, logger: context.deps.logger },
+    sessionId,
+    opened.session.journal,
+    record.lease.runtimeFence
+  )
   await context.adoptOpened(sessionId, opened)
   return opened.session
 }

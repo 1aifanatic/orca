@@ -7,13 +7,12 @@
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
-import {
-  QUEUED_MESSAGE_PAUSED_KEPT,
-  type AgentSessionMutationEnvelope,
-  type AgentSessionMutationResult,
-  type AgentSessionQueuedMessageDeleteResult,
-  type AgentSessionQueuedMessagesResumeResult,
-  type AgentSessionSendResult
+import type {
+  AgentSessionMutationEnvelope,
+  AgentSessionMutationResult,
+  AgentSessionQueuedMessageDeleteResult,
+  AgentSessionQueuedMessagesResumeResult,
+  AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
@@ -119,11 +118,7 @@ export async function carryQueuedMessagesToClearReplacement(
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
         hostInstance: structuredAgentSessionHostInstance(),
         carriedFrom: ctx.sessionId,
-        source: row.source,
-        // A kept send stays held there too: no later message may release it.
-        ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT
-          ? { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
-          : {})
+        source: row.source
       })
     }
     await withdrawQueuedMessagesForOperation(ctx.journal, {

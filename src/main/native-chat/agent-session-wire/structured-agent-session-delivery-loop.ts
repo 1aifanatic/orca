@@ -21,7 +21,10 @@ import {
 } from '../../../shared/agent-session-failure'
 import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
 import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import {
+  markStructuredQueueReopen,
+  structuredAgentSessionHostInstance
+} from './structured-agent-session-queued-pause'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
 import {
@@ -163,11 +166,16 @@ export class StructuredAgentSessionDeliveryLoop {
     // The open already did, unless its write failed: a row an earlier handle wrote is never handed
     // over, whether it outlived a quit or a crash. A failure here throws, so none is: this run then
     // fails, which rejects every queued send, this process's own too.
-    await holdUnsentSends(session.journal, {
-      fence: this.deps.conversationFence(sessionId),
+    const fence = this.deps.conversationFence(sessionId)
+    const settled = await holdUnsentSends(session.journal, {
+      fence,
       hostInstance: structuredAgentSessionHostInstance(),
       hold: { cause: 'hostRestarted' }
     })
+    if (settled) {
+      // The open's settle failed, so it marked nothing for the cards this made.
+      await markStructuredQueueReopen(this.deps, sessionId, session.journal, fence)
+    }
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)

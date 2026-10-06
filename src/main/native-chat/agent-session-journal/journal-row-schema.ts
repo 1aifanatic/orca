@@ -95,6 +95,9 @@ export type JournalTombstoneRow = JournalRowBase & {
   stopEvent?: JournalStopEvent
   /** Present: not a removal but a person's Resume of the queue, on an id no item ever takes. */
   queueResume?: true
+  /** Present: not a removal but a reopen that found waiting cards (`queued-message-pause.ts`), on
+   *  an id no item ever takes. */
+  queueReopen?: true
 }
 
 /** One Stop that took effect. Temporary carrier: a tombstone's extra key, which every host ignores,
@@ -112,16 +115,21 @@ export type JournalStopEvent = {
   caller?: string
 }
 
-/** A tombstone that carries a Stop event or a Resume mark instead of removing an item. */
+/** A tombstone that carries a Stop event, a Resume or a reopen mark instead of removing an item. */
 export type JournalStopOrResumeRow = JournalTombstoneRow &
   (
     | { stopEvent: NonNullable<JournalTombstoneRow['stopEvent']> }
     | { queueResume: NonNullable<JournalTombstoneRow['queueResume']> }
+    | { queueReopen: NonNullable<JournalTombstoneRow['queueReopen']> }
   )
 
-/** A Stop's event or a Resume. Any value counts, so a newer build's mark never removes an item. */
+/** A Stop's event, a Resume or a reopen mark. Any value counts, so a newer build's mark never
+ *  removes an item. */
 export function isJournalStopOrResumeRow(row: JournalRow): row is JournalStopOrResumeRow {
-  return row.kind === 'tombstone' && (row.stopEvent !== undefined || row.queueResume !== undefined)
+  return (
+    row.kind === 'tombstone' &&
+    (row.stopEvent !== undefined || row.queueResume !== undefined || row.queueReopen !== undefined)
+  )
 }
 
 /** The write-ahead row. Durable BEFORE the adapter dispatches anything; it
