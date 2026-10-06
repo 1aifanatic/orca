@@ -29,6 +29,7 @@ import {
   createQueuedRigProvider,
   type QueuedRigProviderOptions
 } from './structured-agent-session-queued-message-rig-provider.test-fixture'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
 type RigSendOptions = { internal?: true; source?: AgentMessageSource }
@@ -52,6 +53,7 @@ export async function createQueuedMessageTestRig(
   const { dispatch, awaitStarted, compact, cancelTurn, closeSession } = provider
   const makeHost = () =>
     new StructuredAgentSessionHost({
+      agents: claudeAndCodexDeclared(),
       logger: createStructuredAgentSessionLogger(),
       store,
       adapter: provider.adapter,
@@ -76,11 +78,7 @@ export async function createQueuedMessageTestRig(
       sessionId,
       clientOperationId,
       expectedRuntimeFence: 1,
-      payloadFingerprint: computeAgentSessionPayloadFingerprint({
-        method,
-        sessionId,
-        fields
-      })
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({ method, sessionId, fields })
     }
   }
 
