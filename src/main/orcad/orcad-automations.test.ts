@@ -2,12 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  closeTestStores,
-  createStore,
-  makeRepo,
-  testState
-} from '../persistence-test-harness'
+import { closeTestStores, createStore, makeRepo, testState } from '../persistence-test-harness'
 import type { AutomationService } from '../automations/service'
 import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
 
@@ -25,7 +20,9 @@ function headlessRuntime() {
       startupTerminal: { handle: 'term-1', tabId: 'tab-1', paneKey: 'tab-1:1', ptyId: 'pty-1' }
     })),
     waitForTerminal: vi.fn(async () => ({ satisfied: true })),
-    readTerminal: vi.fn(async () => ({ tail: ['done'] }))
+    readTerminal: vi.fn(async () => ({ tail: ['done'] })),
+    getTerminalHandleForPaneKey: vi.fn(() => null),
+    getAgentStatusRowsForPane: vi.fn(() => [])
   }
   return { runtime, service: () => bound }
 }
