@@ -105,12 +105,28 @@ test('a managed orcad stops after idling and starts again on the next connect', 
       idleTimeoutMs: IDLE_TIMEOUT_MS
     })
 
-    const second = await session.launch()
+    // The relaunch's SSH lines and the host's fence explain a start that came back fenced.
+    const sshLines: string[] = []
+    const second = await session.launch({
+      onStderr: (chunk) => {
+        sshLines.push(...chunk.split('\n').filter((line) => /\[ssh|\[orcad|fence/i.test(line)))
+      }
+    })
     app = second.app
     await waitForSessionReady(second.page)
     const connected = await reconnect(second.page, remote.targetId)
     // A start inherited from the launch-time connect this reconnect dropped would report `serving`.
     expect(JSON.parse(connected)).toMatchObject({ kind: 'managed' })
+    if ('serving' in JSON.parse(connected)) {
+      console.error(sshLines.join('\n'))
+      console.error(
+        execDockerSshRelayTargetCommand(
+          target,
+          'cd /root/.orca-remote/.orcad-activation-transaction 2>/dev/null && ls -laR && ' +
+            'for f in $(find . -type f); do echo "== $f"; head -c 400 "$f"; echo; done; true'
+        )
+      )
+    }
     expect(JSON.parse(connected)).not.toHaveProperty('serving')
     expect(runningOrcadPids(target)).toHaveLength(1)
     // The restarted server read the record, so a later crash cannot be mistaken for an idle stop.
