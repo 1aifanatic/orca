@@ -1,7 +1,9 @@
+import type { DirectSshAuthority } from '../../shared/ssh-types'
 import type { SshConnection } from '../ssh/ssh-connection'
 import type { SshRelaySession } from '../ssh/ssh-relay-session'
 import { getSshTargetRegistryStore } from '../ssh/ssh-target-registry'
 import { clearSshHostServerStatus } from '../ssh/ssh-host-server-status'
+import { isSshConnectionSolelyOwnedBy } from '../ssh/ssh-connection-attribution'
 import { activeSessions } from './ssh-active-relay-sessions'
 import {
   connectInFlight,
@@ -174,19 +176,25 @@ export async function abandonCancelledConnectAttempt(
 }
 
 /**
- * A cancelled connect whose server decision opened the transport (a census, deploy or
- * conversion) closes it, unless a newer connect is already using it.
+ * A cancelled connect, or one whose server decision failed, closes the transport its own decision
+ * opened (a census, deploy or conversion), and only while nothing newer took it over: a completed
+ * replacement connect or a managed tunnel adopts it, and a pending replacement may be about to.
  */
 export async function abandonDecisionTransport(
   targetId: string,
-  priorConnection: SshConnection | undefined
+  owner: symbol,
+  authority: DirectSshAuthority
 ): Promise<void> {
   const opened = connectionManager!.getConnection(targetId)
   const newer = connectInFlight.get(targetId)
+  // A pending replacement may be about to reuse it, though it has not adopted it yet. While this
+  // attempt is still current the in-flight entry is its own, so nothing newer can exist.
   if (
     !opened ||
-    opened === priorConnection ||
-    (newer && isCurrentConnectAttempt(targetId, newer.authority))
+    !isSshConnectionSolelyOwnedBy(opened, owner) ||
+    (newer &&
+      isCurrentConnectAttempt(targetId, newer.authority) &&
+      !isCurrentConnectAttempt(targetId, authority))
   ) {
     return
   }
