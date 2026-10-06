@@ -64,7 +64,12 @@ describe('agent.launch with the real floating workspace resolver', () => {
       expect(structuredHost).not.toHaveBeenCalled()
       expect(createTerminal).toHaveBeenCalledExactlyOnceWith(
         `id:${FLOATING_TERMINAL_WORKTREE_ID}`,
-        { startupAgent: 'claude', onPtySpawnDispatched: expect.any(Function) }
+        {
+          startupAgent: 'claude',
+          // Derived on the host by the window's rule, from the same chat-view setting.
+          viewMode: structuredPreference ? 'chat' : 'terminal',
+          onPtySpawnDispatched: expect.any(Function)
+        }
       )
       expect(result).toMatchObject({
         worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
