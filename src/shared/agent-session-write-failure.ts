@@ -8,6 +8,7 @@ import {
   type AgentSessionRefusalReason
 } from './agent-session-refusal-details'
 import type { AgentSessionRewindReason } from './agent-session-rewind'
+import type { AgentSessionArgumentProblem } from './agent-session-argument-problem'
 import {
   isAgentSessionWireRefusalCode,
   readAgentSessionRefusalReference,
@@ -65,6 +66,7 @@ type DurableRefusalFacts = {
   agent_session_operation_invalid: {
     rewindReason?: AgentSessionRewindReason
     account?: AgentSessionAccountKind
+    argumentProblem?: AgentSessionArgumentProblem
   }
   agent_session_operation_unknown: { rewindReason?: AgentSessionRewindReason }
   /** A snapshot from when it was refused; see `agentSessionOwnerVerdictAllowsFreshOperationId`. */
@@ -72,7 +74,7 @@ type DurableRefusalFacts = {
 }
 
 const DURABLE_FACT_KEYS: Partial<Record<AgentSessionWireRefusalCode, readonly string[]>> = {
-  agent_session_operation_invalid: ['rewindReason', 'account'],
+  agent_session_operation_invalid: ['rewindReason', 'account', 'argumentProblem'],
   agent_session_operation_unknown: ['rewindReason'],
   agent_session_ownership_unknown: ['ownerVerdict']
 } satisfies { [C in keyof DurableRefusalFacts]: readonly (keyof DurableRefusalFacts[C])[] }

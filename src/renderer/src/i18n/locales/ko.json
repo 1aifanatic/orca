@@ -12,7 +12,18 @@
   },
   "settings": {
     "chat": {
-      "description": "채팅 모양을 선택하세요."
+      "description": "채팅 모양과 이름 지정 방식을 선택하세요.",
+      "names": {
+        "title": "채팅 이름",
+        "description": "에이전트가 첫 메시지를 바탕으로 새 채팅의 이름을 생성합니다. 이름이 생성되지 않으면 Claude Chat 또는 Codex Chat으로 유지됩니다.",
+        "enable": "채팅 이름 자동 지정",
+        "recipe": "채팅 이름",
+        "recipeDescription": "새 채팅의 첫 메시지에서 짧은 이름을 생성합니다.",
+        "customCommandDescription": "사용자 지정 명령을 선택한 레시피가 공유하는 명령줄입니다. {prompt}를 사용하면 입력을 인수로 전달하고, 그렇지 않으면 표준 입력으로 전달합니다.",
+        "saveFailed": "채팅 이름 설정을 저장하지 못했습니다.",
+        "searchAgent": "에이전트",
+        "searchTemplate": "명령 템플릿"
+      }
     },
     "terminal": {
       "optionLayoutAlt": "ABC 또는 U.S. — Option 키가 Alt/Esc 시퀀스를 전송합니다",
@@ -8292,8 +8303,8 @@
           "3c88ec55d6": "\"에 대한 설정을 찾을 수 없습니다.",
           "c7ad095d96": "설정 로드 중...",
           "acc7bbdefd": "설정을 종료하려면 ESC를 다시 누르세요.",
-          "43b68e10f0": "저장되지 않은 Git AI Author 변경사항이 있습니다. 떠나면 폐기됩니다.",
-          "17bdee4ff1": "저장되지 않은 Git AI Author 변경사항을 삭제하시겠습니까?",
+          "43b68e10f0": "저장하지 않은 AI 설정이 있습니다. 나가면 변경 사항이 버려집니다.",
+          "17bdee4ff1": "저장하지 않은 AI 설정을 버리시겠습니까?",
           "084d8fac5b": "개인 정보 보호 및 보안",
           "23931df7e8": "원격 호스트",
           "mobile_group": "모바일",
@@ -17578,6 +17589,7 @@
         "sendToTryAgain": "다시 시도하려면 메시지를 보내세요.",
         "sendAgainToTryOnceMore": "메시지를 다시 보내 한 번 더 시도하세요.",
         "couldNotStart": "{{agent}}을(를) 시작하지 못했습니다.",
+        "editSavedArguments": "설정 > 에이전트 > 인수에서 수정하세요.",
         "couldNotRestart": "{{agent}}을(를) 다시 시작하지 못했습니다.",
         "notSignedIn": "{{agent}}이(가) 선택한 계정으로 로그인되어 있지 않습니다.",
         "claudeSystemNotSignedIn": "Claude에 로그인하지 않았습니다. `claude`를 실행하고 /login으로 로그인하거나 Claude 계정 설정에서 계정을 선택하세요.",
@@ -17630,6 +17642,10 @@
         "stopRefusedQuoted": "{{agent}}이(가) 중지되지 않았습니다: {{detail}}.",
         "noTurnToStop": "{{agent}}에 중지할 실행 중인 턴이 없었습니다.",
         "answerUnconfirmed": "응답이 기록되었지만 에이전트가 확인하지 않았습니다.",
+        "argumentsMissingValue": "저장된 인수의 {{option}}에 값이 필요합니다.",
+        "argumentsMultipleValues": "저장된 인수에 {{option}}의 값이 여러 개 지정되어 있습니다.",
+        "argumentsPositionalPrompt": "저장된 인수에 프롬프트가 포함되어 있습니다.",
+        "argumentsUnsupportedOption": "저장된 인수에 지원하지 않는 옵션({{option}})이 포함되어 있습니다.",
         "hostFault": "Orca에 문제가 발생하여 이 작업이 완료되지 않았습니다.",
         "hostFaultTryAgain": "Orca에 문제가 발생하여 이 작업이 완료되지 않았습니다. 다시 시도하세요.",
         "hostStopped": "{{agent}}이(가) 시작을 마치지 못해 Orca가 중지했습니다.",
@@ -17972,7 +17988,8 @@
         "details": "세부",
         "plan": "계획",
         "historyRepaired": "이 채팅 기록의 일부를 불러올 수 없습니다.",
-        "historyItemTooLarge": "채팅의 이 부분은 너무 커서 표시할 수 없습니다."
+        "historyItemTooLarge": "채팅의 이 부분은 너무 커서 표시할 수 없습니다.",
+        "stoppedBeforeStart": "에이전트가 시작되기 전에 중지됨"
       },
       "providerFrame": {
         "byteLength": "{{value0}}바이트"
@@ -18067,6 +18084,10 @@
         "used": "컨텍스트: {{used}} 토큰 사용, 마지막 응답 기준 추정치입니다.",
         "unreported": "이 세션에서는 컨텍스트 사용량을 확인할 수 없습니다."
       },
+      "agentMessage": {
+        "messageFrom": "보낸 사람:",
+        "unnamedSender": "Agent"
+      },
       "goal": {
         "placeholder": "목표를 설명하고, 최상의 결과를 위해 측정 가능한 결과를 정의하세요.",
         "clear": "명확한 목표",
@@ -18119,7 +18140,8 @@
         "queuePausedRestarted": "Orca가 다시 시작되어 대기열이 일시 중지되었습니다",
         "queuePausedCleared": "대화를 지워서 대기열이 일시 중지되었습니다",
         "queuePaused": "대기열이 일시 중지되었습니다",
-        "resume": "재개"
+        "resume": "재개",
+        "from": "보낸 사람: {{names}}"
       },
       "thought": "생각함",
       "thoughtForDuration": "{{duration}} 동안 생각함",

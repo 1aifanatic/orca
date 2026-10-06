@@ -12,7 +12,18 @@
   },
   "settings": {
     "chat": {
-      "description": "Elige el aspecto de los chats."
+      "description": "Elige cómo se ven y se nombran los chats.",
+      "names": {
+        "title": "Nombres de chats",
+        "description": "Usa un agente para nombrar los chats nuevos a partir de su primer mensaje. Si no se genera un nombre, se mantienen como Claude Chat o Codex Chat.",
+        "enable": "Nombrar chats automáticamente",
+        "recipe": "Nombre del chat",
+        "recipeDescription": "Genera un nombre breve a partir del primer mensaje de un chat nuevo.",
+        "customCommandDescription": "Línea de comandos compartida por las recetas que seleccionan Comando personalizado. Usa {prompt} para pasar la entrada como argumento; de lo contrario, se envía por la entrada estándar.",
+        "saveFailed": "No se pudo guardar la configuración de nombres de chats.",
+        "searchAgent": "agente",
+        "searchTemplate": "plantilla de comandos"
+      }
     },
     "terminal": {
       "optionLayoutAlt": "ABC o EE. UU. — Option envía secuencias Alt/Esc",
@@ -8307,8 +8318,8 @@
           "3c88ec55d6": "No se encontraron configuraciones para \"",
           "c7ad095d96": "Cargando ajustes...",
           "acc7bbdefd": "Presiona ESC de nuevo para salir de ajustes",
-          "43b68e10f0": "Tienes cambios no guardados de Git AI Author. Al salir se descartarán.",
-          "17bdee4ff1": "¿Descartar cambios no guardados de Git AI Author?",
+          "43b68e10f0": "Hay cambios de IA sin guardar. Se descartarán al salir.",
+          "17bdee4ff1": "¿Descartar los cambios de IA sin guardar?",
           "084d8fac5b": "Privacidad y seguridad",
           "23931df7e8": "Hosts remotos",
           "mobile_group": "Móvil",
@@ -17543,6 +17554,7 @@
         "sendToTryAgain": "Envíe su mensaje para volver a intentarlo.",
         "sendAgainToTryOnceMore": "Vuelva a enviar su mensaje para intentarlo de nuevo.",
         "couldNotStart": "{{agent}} no pudo iniciarse.",
+        "editSavedArguments": "Edítalos en Ajustes > Agentes > Argumentos.",
         "couldNotRestart": "{{agent}} no pudo reiniciarse.",
         "notSignedIn": "{{agent}} no tiene la sesión iniciada con la cuenta seleccionada.",
         "claudeSystemNotSignedIn": "Claude no ha iniciado sesión. Ejecuta `claude` e inicia sesión con /login, o elige una cuenta en la configuración de Cuentas de Claude.",
@@ -17595,6 +17607,10 @@
         "stopRefusedQuoted": "{{agent}} no se detuvo: {{detail}}.",
         "noTurnToStop": "{{agent}} no tenía ningún turno en curso que detener.",
         "answerUnconfirmed": "Su respuesta se registró, pero el agente no la confirmó.",
+        "argumentsMissingValue": "Los argumentos guardados necesitan un valor para {{option}}.",
+        "argumentsMultipleValues": "Los argumentos guardados asignan más de un valor a {{option}}.",
+        "argumentsPositionalPrompt": "Los argumentos guardados incluyen un mensaje.",
+        "argumentsUnsupportedOption": "Los argumentos guardados contienen una opción no compatible ({{option}}).",
         "hostFault": "Orca tuvo un problema, así que esto no se completó.",
         "hostFaultTryAgain": "Orca tuvo un problema, así que esto no se completó. Vuelva a intentarlo.",
         "hostStopped": "{{agent}} no terminó de iniciarse, así que Orca lo detuvo.",
@@ -17960,7 +17976,8 @@
         "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
-        "resume": "Reanudar"
+        "resume": "Reanudar",
+        "from": "De {{names}}"
       },
       "thought": "Pensó",
       "thoughtForDuration": "Pensó durante {{duration}}",
@@ -18044,7 +18061,8 @@
         "details": "Detalles",
         "plan": "Plan",
         "historyRepaired": "No se pudo cargar parte del historial de este chat.",
-        "historyItemTooLarge": "Esta parte del chat era demasiado grande para mostrarla."
+        "historyItemTooLarge": "Esta parte del chat era demasiado grande para mostrarla.",
+        "stoppedBeforeStart": "Detenido antes de que el agente empezara"
       },
       "providerFrame": {
         "byteLength": "{{value0}} bytes"
@@ -18071,6 +18089,10 @@
         "summary": "Contexto: {{used}} / {{window}} tokens ({{percent}} %), estimado a partir de la última respuesta.",
         "used": "Contexto: {{used}} tokens usados, estimado a partir de la última respuesta.",
         "unreported": "El uso del contexto no está disponible para esta sesión."
+      },
+      "agentMessage": {
+        "messageFrom": "Mensaje de",
+        "unnamedSender": "un agente"
       },
       "goal": {
         "placeholder": "Describe tu objetivo y define resultados medibles para obtener mejores resultados",

@@ -8,6 +8,10 @@
 
 import type { AgentSessionAccountKind } from './agent-session-availability'
 import type { AgentJournalResolution } from './agent-session-journal-types'
+import {
+  readAgentSessionArgumentProblem,
+  type AgentSessionArgumentProblem
+} from './agent-session-argument-problem'
 import { isAgentJournalResolution } from './agent-session-journal-schemas'
 import { AGENT_SESSION_REWIND_REASONS, type AgentSessionRewindReason } from './agent-session-rewind'
 import type {
@@ -139,7 +143,10 @@ type NoFacts = Record<never, never>
 
 /** The facts a code carries beside its reason. */
 type AgentSessionRefusalFactsByCode = {
-  agent_session_operation_invalid: RewindFacts & { account?: AgentSessionAccountKind }
+  agent_session_operation_invalid: RewindFacts & {
+    account?: AgentSessionAccountKind
+    argumentProblem?: AgentSessionArgumentProblem
+  }
   agent_session_operation_unknown: RewindFacts
   agent_session_checkpoint_stale: {
     /** So the client can retry without another round trip. */
@@ -256,6 +263,10 @@ export function readAgentSessionRefusalDetails<C extends AgentSessionWireRefusal
     (kept, key) => ({ ...kept, ...readFact(key, value[key]) }),
     {}
   )
+  const argumentProblem =
+    code === 'agent_session_operation_invalid'
+      ? readAgentSessionArgumentProblem(value.argumentProblem)
+      : undefined
   const read = {
     ...(isAgentSessionRefusalReason(code, value.reason) ? { reason: value.reason } : {}),
     ...facts,
@@ -263,7 +274,8 @@ export function readAgentSessionRefusalDetails<C extends AgentSessionWireRefusal
     value.reason === 'notSignedIn' &&
     (value.account === 'managed' || value.account === 'system')
       ? { account: value.account }
-      : {})
+      : {}),
+    ...(argumentProblem ? { argumentProblem } : {})
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the reason was checked against `code`'s list and only the facts `code` lists (plus the verdict every code may carry) were kept.
   return Object.keys(read).length > 0 ? (read as AgentSessionRefusalDetails<C>) : undefined

@@ -1,4 +1,3 @@
-import { agentSessionSignInCopyId } from './agent-session-availability'
 // The sentence a person reads beside each failure fact, and the one constructor that writes both.
 //
 // A row's `text`, a rejected message's `reason` and a conversation command's `error` are what
@@ -19,6 +18,7 @@ import {
   type SubmissionRejectionKind
 } from './agent-session-failure'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
+import { cliMissingSentence, notSignedInSentence } from './agent-session-availability-sentences'
 import {
   sayAgentSessionFailureEnglish,
   type AgentSessionFailureCopyId,
@@ -143,6 +143,20 @@ function startRetry(
 function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
   return (context, fact, _surface, say) => {
     const failed = say(verb, agent(say, context))
+    if (fact.argumentProblem) {
+      const problemCopy = {
+        unsupportedOption: 'argumentsUnsupportedOption',
+        missingValue: 'argumentsMissingValue',
+        multipleValues: 'argumentsMultipleValues',
+        positionalPrompt: 'argumentsPositionalPrompt'
+      } as const
+      return joinSentences([
+        failed,
+        say(problemCopy[fact.argumentProblem.problem], { option: fact.argumentProblem.option }),
+        say('editSavedArguments'),
+        ...startRetry(say, context)
+      ])
+    }
     // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
     if (fact.refusal?.details?.reason === 'claimConflicted') {
       return joinSentences([failed, say('terminalAgentHoldsChat'), say('quitTerminalAgent')])
@@ -196,37 +210,8 @@ const FAILURE_SENTENCES = {
   providerStartFailed: (context, _fact, _surface, say) =>
     joinSentences([say('providerStartFailed', agent(say, context)), ...startRetry(say, context)]),
   startFailed: couldNot('couldNotStart'),
-  notSignedIn: (context, fact, _surface, say) => {
-    if (!context.provider && context.agentName !== 'Claude' && context.agentName !== 'Codex') {
-      return joinSentences([
-        say('notSignedIn', agent(say, context)),
-        context.retryControl
-          ? say('signInFirst')
-          : context.command
-            ? say('signInThenRunCommand', { command: context.command })
-            : say('signInThenSend')
-      ])
-    }
-    const provider =
-      context.agentName === 'Codex'
-        ? 'codex'
-        : context.agentName === 'Claude'
-          ? 'claude'
-          : (context.provider ?? 'claude')
-    const signIn = say(agentSessionSignInCopyId(provider, fact.account))
-    // Signing in is the step; a command the start was for still has to be run again after it.
-    return context.command && !context.retryControl
-      ? joinSentences([signIn, say('runCommandAgain', { command: context.command })])
-      : signIn
-  },
-  // The disabled Send's own sentence; a command the start was for is still run again after.
-  cliMissing: (context, _fact, _surface, say) =>
-    joinSentences([
-      say('cliMissing', agent(say, context)),
-      ...(context.command && !context.retryControl
-        ? [say('runCommandAgain', { command: context.command })]
-        : [])
-    ]),
+  notSignedIn: (context, fact, _surface, say) => notSignedInSentence(context, fact, say),
+  cliMissing: (context, _fact, _surface, say) => cliMissingSentence(context, say),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),

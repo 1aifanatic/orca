@@ -58,10 +58,12 @@ export function NativeChatLaunchRetry({
           'Chat connection could not be confirmed.'
         )
   const cause = agentSessionWriteNoticeText(parts)
+  const saysStartFailure =
+    failure?.code === 'agent_session_operation_invalid' && failure.details?.argumentProblem
   return (
     <div className="mx-auto flex w-full max-w-(--chat-content-max-width) items-center justify-between gap-3 px-4 py-1 text-xs text-destructive">
       <span className="min-w-0 break-words">
-        {cause ? joinSentences([message, cause]) : message}
+        {cause ? (saysStartFailure ? cause : joinSentences([message, cause])) : message}
       </span>
       <Button type="button" variant="ghost" size="xs" onClick={onRetry}>
         <RotateCcw className="size-3" />

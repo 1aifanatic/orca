@@ -4,6 +4,7 @@
 import {
   agentSessionFailureFact,
   providerDiagnosticOf,
+  type AgentSessionArgumentProblem,
   type SubmissionRejectionFact,
   type AgentSessionFailureKind,
   type ProviderDiagnostic
@@ -20,6 +21,7 @@ import {
 } from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
 import { providerExecutableMissing } from '../../provider-process/provider-executable-missing'
+import { argumentProblemOf } from '../structured-agent-arguments-error'
 
 /** Start refusals whose situation is itself what the person reads, with its own next step. */
 const TYPED_START_REFUSALS = [
@@ -80,7 +82,7 @@ export function providerStartupFailureFact(cause?: unknown): SubmissionRejection
   }
   return agentSessionFailureFact(
     providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',
-    { detail: providerDiagnosticOf(cause) }
+    { detail: providerDiagnosticOf(cause), argumentProblem: argumentProblemOf(cause) }
   )
 }
 
@@ -101,7 +103,7 @@ function startupFailureFromExit(
 function refusedStartFailureFact(
   cause: Extract<StructuredAgentSessionStartFailureCause, { refusal: unknown }>
 ): SubmissionRejectionFact {
-  const { refusal, diagnostic } = cause
+  const { refusal, diagnostic, argumentProblem } = cause
   const reason = refusal.details?.reason
   const typed = typedStartRefusal(reason)
   if (typed) {
@@ -117,6 +119,7 @@ function refusedStartFailureFact(
   }
   return agentSessionFailureFact(cause.newSession ? 'startFailed' : 'restartFailed', {
     detail: diagnostic,
+    argumentProblem,
     refusal: agentSessionRefusalReference(refusal)
   })
 }
@@ -125,7 +128,12 @@ function refusedStartFailureFact(
 export type StructuredAgentSessionStartFailureCause =
   /** The session could not be made ready; the provider's words, if any, are kept host-side, off
    *  the refusal. `newSession`: one that never ran, so it failed to start rather than restart. */
-  | { refusal: AgentSessionWireRefusal; diagnostic?: ProviderDiagnostic; newSession?: true }
+  | {
+      refusal: AgentSessionWireRefusal
+      diagnostic?: ProviderDiagnostic
+      argumentProblem?: AgentSessionArgumentProblem
+      newSession?: true
+    }
   /** A start that threw, or an adapter's own startup failure; any diagnostic it carries. */
   | { error: unknown }
   /** The child ended before it proved its start, as its ended event told it. */
