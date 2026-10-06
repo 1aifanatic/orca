@@ -124,7 +124,7 @@ export function useStructuredAgentSession(args: {
   )
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   const promptsUnanswerableHere = pendingPromptsAllUnanswerableHere(prompts)
-  // A send after a waiting command goes behind it, even with follow-ups off: send order is kept.
+  // A send after a command the queue will run goes behind it, even with follow-ups off.
   // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
   // answer: the send must start a turn, after which the card's cancel works.
   const commandWaiting = commandCardWaiting(transportState.queuedMessages)

@@ -104,12 +104,14 @@ export function projectQueuedMessageCards(
   })
 }
 
-/** A command card waits in line: a later send goes behind it, even with follow-ups off. */
+/** A command card waits in line: a later send goes behind it, even with follow-ups off. A card
+ *  held on its own (kept, couldn't send) is skipped by the queue, so nothing is behind it. */
 export function commandCardWaiting(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined
 ): boolean {
   return (queuedMessages ?? []).some(
-    (message) => message.state === 'waiting' && message.body.command !== undefined
+    (message) =>
+      message.state === 'waiting' && !message.paused && message.body.command !== undefined
   )
 }
 

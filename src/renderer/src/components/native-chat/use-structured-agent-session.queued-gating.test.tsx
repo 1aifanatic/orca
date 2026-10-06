@@ -618,22 +618,32 @@ describe('a /compact against a host that holds commands in line', () => {
     expect(commandCalls()).toHaveLength(0)
   })
 
+  const compactCard = (held: boolean) => ({
+    ...draft('compact-1'),
+    body: {
+      kind: 'message' as const,
+      role: 'user' as const,
+      blocks: [{ type: 'text' as const, text: '/compact' }],
+      command: { name: 'compact' as const }
+    },
+    ...(held ? { paused: true as const, pausedReason: 'kept' as const } : {})
+  })
+
   it('a send behind a waiting command card queues, even with follow-ups off', () => {
-    queuedMessages = [
-      {
-        ...draft('compact-1'),
-        body: {
-          kind: 'message',
-          role: 'user',
-          blocks: [{ type: 'text', text: '/compact' }],
-          command: { name: 'compact' }
-        }
-      }
-    ]
+    queuedMessages = [compactCard(false)]
     render(false)
     expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
       capability: 'supported',
       enabled: true
+    })
+  })
+
+  it('a kept command card, which the queue skips, does not force a send to queue', () => {
+    queuedMessages = [compactCard(true)]
+    render(false)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+      capability: 'supported',
+      enabled: false
     })
   })
 })
