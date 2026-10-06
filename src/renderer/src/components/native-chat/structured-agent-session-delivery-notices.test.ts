@@ -34,7 +34,7 @@ function pending(
     previewUris: [],
     queuedAt: 1,
     phase,
-    issued: phase !== 'waiting'
+    issued: true
   }
 }
 
@@ -76,13 +76,10 @@ function texts(map: ReturnType<typeof notices>): Record<string, string> {
 }
 
 describe('the line under each of the chat own messages', () => {
-  it('says only that a message waiting or on its way is sending', () => {
-    expect(texts(notices({ pending: [pending('a', 'sending'), pending('b', 'waiting')] }))).toEqual(
-      {
-        [agentJournalSubmissionKey('a')]: SENDING,
-        [agentJournalSubmissionKey('b')]: SENDING
-      }
-    )
+  it('says only that a message on its way is sending', () => {
+    expect(texts(notices({ pending: [pending('a', 'sending')] }))).toEqual({
+      [agentJournalSubmissionKey('a')]: SENDING
+    })
     // The host's row draws a recorded one.
     expect(texts(notices({ pending: [pending('c', 'recorded')] }))).toEqual({})
   })

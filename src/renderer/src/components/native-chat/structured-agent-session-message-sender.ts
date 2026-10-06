@@ -1,11 +1,12 @@
 // The one way a structured chat message reaches its host: composer, launch prompt and a message sent
 // from outside the chat all call `sendStructuredAgentSessionMessage`, with or without the chat's view
 // mounted. The host's journal and queue own every message they hold. This module keeps, in memory
-// only, the sends the host has not answered yet: for their "Sending…" bubble, to keep them in order,
-// and to put a message back in the composer when the host did not take it, or nobody can say.
+// only, the one send per chat the host has not answered yet: for its "Sending…" bubble, and to put
+// the message back in the composer when the host did not take it, or nobody can say. While it is
+// out the chat takes no other send, which keeps the host's arrival order without a client line.
 //
-// Nothing here is saved, nothing blocks a later send past one deadline, and nothing is sent twice
-// under a new id: a resend reuses the message's id, which the host never runs twice.
+// Nothing here is saved, nothing outlives one deadline, and nothing is sent twice under a new id: a
+// resend reuses the message's id, which the host never runs twice.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
@@ -33,6 +34,7 @@ import {
   findStructuredAgentSessionPendingSend,
   getStructuredAgentSessionPendingSends,
   publishStructuredAgentSessionSends,
+  structuredAgentSessionSendOut,
   structuredAgentSessionsWithPendingSends,
   updateStructuredAgentSessionPendingSend,
   type StructuredAgentSessionPendingSend
@@ -79,7 +81,6 @@ function finish(
     runtime.resolve(outcome)
   }
   updateStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId, keep ?? null)
-  pump(entry.sessionId)
 }
 
 function handBack(
@@ -119,27 +120,12 @@ function settleRecorded(
   )
 }
 
-function pump(sessionId: string): void {
-  const entries = getStructuredAgentSessionPendingSends(sessionId)
-  // One send out at a time keeps the host's arrival order; a recorded one holds nothing.
-  if (entries.some((entry) => entry.phase === 'sending')) {
-    return
-  }
-  const next = entries.find((entry) => entry.phase === 'waiting')
-  if (next) {
-    void attempt(next)
-  }
-}
-
 async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> {
   const runtime = runtimes.get(entry.clientMessageId)
   if (!runtime) {
     return
   }
   const generation = runtime.generation
-  updateStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId, {
-    phase: 'sending'
-  })
   const outcome = await attemptStructuredAgentSessionSend({
     entry,
     target: runtime.target,
@@ -204,9 +190,9 @@ function onDeadline(sessionId: string, clientMessageId: string): void {
 }
 
 /**
- * Sends one message. Resolves once its fate is known here: `recorded` (the host holds it),
- * `returned` (it went back to the composer, with the reason on the chat's line), or `dropped` (its
- * chat closed first).
+ * Sends one message, or returns null while another send of its chat is out. Resolves once its fate
+ * is known here: `recorded` (the host holds it), `returned` (it went back to the composer, with the
+ * reason on the chat's line), or `dropped` (its launch was cancelled or its worktree purged).
  */
 export function sendStructuredAgentSessionMessage(input: {
   sessionId: string
@@ -218,7 +204,10 @@ export function sendStructuredAgentSessionMessage(input: {
   /** The caller keeps the text if it comes back, instead of the chat's composer. */
   callerKeepsText?: true
   now?: number
-}): { clientMessageId: string; outcome: Promise<StructuredAgentSessionSendOutcome> } {
+}): { clientMessageId: string; outcome: Promise<StructuredAgentSessionSendOutcome> } | null {
+  if (structuredAgentSessionSendOut(input.sessionId)) {
+    return null
+  }
   const attachments = input.attachments ?? []
   const clientMessageId = createStructuredAgentSessionOperationId(createBrowserUuid)
   const entry: StructuredAgentSessionPendingSend = {
@@ -232,7 +221,7 @@ export function sendStructuredAgentSessionMessage(input: {
     ...(attachments.some((attachment) => attachment.connectionId)
       ? { imageConnectionIds: attachments.map((attachment) => attachment.connectionId ?? null) }
       : {}),
-    phase: 'waiting',
+    phase: 'sending',
     issued: false
   }
   const outcome = new Promise<StructuredAgentSessionSendOutcome>((resolve) => {
@@ -254,7 +243,7 @@ export function sendStructuredAgentSessionMessage(input: {
     entries: [...getStructuredAgentSessionPendingSends(input.sessionId), entry],
     notice: null
   })
-  pump(input.sessionId)
+  void attempt(entry)
   return { clientMessageId, outcome }
 }
 
@@ -292,11 +281,11 @@ export function settleStructuredAgentSessionSendsFromJournal(
 }
 
 /**
- * A Stop, or the chat's tab closing: what has not gone out goes back to the composer silently, and
- * what has is never sent again under its id. One whose request is out settles from its answer; one
- * between attempts goes back now, as unconfirmed.
+ * A Stop, or the chat's tab closing: nothing more goes out. A send whose request is out settles
+ * from its answer; one between attempts goes back now, as unconfirmed; one still being readied
+ * never went out, so it goes back silently.
  */
-export function withdrawUnsentStructuredAgentSessionSends(sessionId: string): void {
+export function stopStructuredAgentSessionSends(sessionId: string): void {
   for (const entry of getStructuredAgentSessionPendingSends(sessionId)) {
     const runtime = runtimes.get(entry.clientMessageId)
     if (!runtime) {

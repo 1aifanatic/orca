@@ -26,14 +26,16 @@ vi.mock('./structured-agent-session-message-hand-back', () => ({
 
 import {
   STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS,
+  dropStructuredAgentSessionSends,
   resetStructuredAgentSessionSendsForTests,
   sendStructuredAgentSessionMessage,
   settleStructuredAgentSessionSendsFromJournal,
-  withdrawUnsentStructuredAgentSessionSends
+  stopStructuredAgentSessionSends
 } from './structured-agent-session-message-sender'
 import {
   getStructuredAgentSessionPendingSends,
-  getStructuredAgentSessionSendNotice
+  getStructuredAgentSessionSendNotice,
+  structuredAgentSessionSendOut
 } from './structured-agent-session-pending-sends'
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
 
@@ -83,6 +85,18 @@ async function flush(): Promise<void> {
   }
 }
 
+/** Sends one message in SESSION; fails the test if the sender refuses it. */
+function send(
+  text: string,
+  extra: Partial<Parameters<typeof sendStructuredAgentSessionMessage>[0]> = {}
+) {
+  const sent = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text, ...extra })
+  if (!sent) {
+    throw new Error(`refused: ${text}`)
+  }
+  return sent
+}
+
 function sendCalls(): number {
   return mocks.call.mock.calls.filter((call) => call[1] === 'agentSession.send').length
 }
@@ -109,16 +123,17 @@ describe('structured agent session message sender', () => {
     vi.useRealTimers()
   })
 
-  it('sends one at a time, in order, and the host answer settles each', async () => {
+  it('refuses a second send while one is out, and takes the next once it settles', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
+    expect(sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })).toBeNull()
     await flush()
-    expect(phases()).toEqual(['a:sending', 'b:waiting'])
+    expect(phases()).toEqual(['a:sending'])
     expect(calls).toHaveLength(1)
     calls[0].resolve(okSubmission(a.clientMessageId, 'accepted'))
-    await flush()
     expect(await a.outcome).toBe('recorded')
+    send('b')
+    await flush()
     expect(phases()).toEqual(['b:sending'])
     expect(mocks.call.mock.calls[1][2]).toMatchObject({
       envelope: { sessionId: SESSION, expectedRuntimeFence: 4 },
@@ -126,9 +141,38 @@ describe('structured agent session message sender', () => {
     })
   })
 
+  it.each([
+    ['recorded', (calls: Deferred[], id: string) => calls[0].resolve(okSubmission(id, 'accepted'))],
+    ['refused', (calls: Deferred[]) => calls[0].resolve(refusedFirst)],
+    [
+      'past its deadline',
+      () => vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    ],
+    ['dropped', () => dropStructuredAgentSessionSends(SESSION)],
+    [
+      'stopped, then unanswered',
+      (calls: Deferred[]) => {
+        stopStructuredAgentSessionSends(SESSION)
+        calls[0].reject(new Error('timeout'))
+      }
+    ]
+  ] as const)('frees the chat for the next send once its send is %s', async (_how, end) => {
+    const calls = deferredCalls()
+    const a = send('a')
+    await flush()
+    expect(structuredAgentSessionSendOut(SESSION)).toBe(true)
+    await end(calls, a.clientMessageId)
+    await a.outcome
+    expect(structuredAgentSessionSendOut(SESSION)).toBe(false)
+    noteStructuredAgentSessionFence(SESSION, 4)
+    send('b')
+    await flush()
+    expect(sendCalls()).toBe(2)
+  })
+
   it('keeps a pending send only to give back what a Stop withdraws', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
     calls[0].resolve(okSubmission(a.clientMessageId, 'pending'))
     await flush()
@@ -144,7 +188,7 @@ describe('structured agent session message sender', () => {
 
   it('never hands back a message the host recorded and then rejected: its row says not sent', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
     calls[0].resolve(okSubmission(a.clientMessageId, 'pending'))
     await flush()
@@ -159,22 +203,21 @@ describe('structured agent session message sender', () => {
 
   it('settles from the journal before the reply, and ignores the late reply', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
     await flush()
     settleStructuredAgentSessionSendsFromJournal(SESSION, [], [a.clientMessageId])
     expect(await a.outcome).toBe('recorded')
+    send('b')
     await flush()
-    expect(phases()).toEqual(['b:sending'])
     calls[0].reject(new Error('timeout'))
     await flush()
     expect(phases()).toEqual(['b:sending'])
+    expect(calls).toHaveLength(2)
   })
 
   it('never probes a host-recorded unknown, and sends what follows it', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
     await flush()
     // The agent died with the message on its way: the host recorded it and can't tell.
     settleStructuredAgentSessionSendsFromJournal(
@@ -183,6 +226,7 @@ describe('structured agent session message sender', () => {
       []
     )
     expect(await a.outcome).toBe('recorded')
+    send('b')
     await flush()
     expect(phases()).toEqual(['b:sending'])
     expect(calls).toHaveLength(2)
@@ -191,20 +235,17 @@ describe('structured agent session message sender', () => {
 
   it('gives a refused first attempt back to the composer with the reason', async () => {
     mocks.call.mockResolvedValue(refusedFirst)
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     expect(await a.outcome).toBe('returned')
     expect(mocks.handBack).toHaveBeenCalledTimes(1)
     expect(getStructuredAgentSessionSendNotice(SESSION)).toBeTruthy()
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    send('b')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
   })
 
   it('gives back a remote image with the connection it lives on, which never goes to the host', async () => {
     mocks.call.mockResolvedValue(refusedFirst)
-    const a = sendStructuredAgentSessionMessage({
-      sessionId: SESSION,
-      target,
-      text: 'look',
+    const a = send('look', {
       attachments: [{ path: '/remote/shot.png', previewUri: 'x', connectionId: 'ssh-1' }]
     })
     expect(await a.outcome).toBe('returned')
@@ -219,7 +260,7 @@ describe('structured agent session message sender', () => {
 
   it('resends the same id after a thrown error, then gives it back as unconfirmed at the deadline', async () => {
     mocks.call.mockRejectedValue(new Error('connection closed'))
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
     await vi.advanceTimersByTimeAsync(1_000)
     await vi.advanceTimersByTimeAsync(2_000)
@@ -241,11 +282,11 @@ describe('structured agent session message sender', () => {
 
   it('never holds a later send behind one nobody answered', async () => {
     mocks.call.mockRejectedValueOnce(new Error('timeout')).mockRejectedValue(new Error('timeout'))
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    send('a')
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
     mocks.call.mockReset()
     const calls = deferredCalls()
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    send('b')
     await flush()
     expect(phases()).toEqual(['b:sending'])
     expect(calls).toHaveLength(1)
@@ -260,7 +301,7 @@ describe('structured agent session message sender', () => {
     const { resetStructuredAgentSessionSendsForTests: reset } =
       await import('./structured-agent-session-message-sender')
     reset()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
     expect(await a.outcome).toBe('returned')
     expect(mocks.handBack).toHaveBeenCalledTimes(1)
@@ -270,7 +311,7 @@ describe('structured agent session message sender', () => {
   it('reads a refusal of a resent id as proof only from a host that answers with proof', async () => {
     mocks.proof.mockReturnValue(false)
     mocks.call.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce(refusedFirst)
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await a.outcome).toBe('returned')
@@ -285,31 +326,26 @@ describe('structured agent session message sender', () => {
     mocks.proof.mockReturnValue(true)
   })
 
-  // A Stop, or the chat's tab closing, which withdraws the same way.
-  it('gives back on Stop only what has not gone out, and never sends it', async () => {
-    const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
-    const c = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'c' })
+  // A Stop, or the chat's tab closing, which stops its sends the same way.
+  it('gives back silently, and never sends, one a Stop finds still being readied', async () => {
+    deferredCalls()
+    mocks.compatible.mockImplementationOnce(() => new Promise<void>(() => {}))
+    const a = send('a', { target: { kind: 'environment', environmentId: 'env-1' } })
     await flush()
-    withdrawUnsentStructuredAgentSessionSends(SESSION)
-    expect(await b.outcome).toBe('returned')
-    expect(await c.outcome).toBe('returned')
+    stopStructuredAgentSessionSends(SESSION)
+    expect(await a.outcome).toBe('returned')
+    expect(mocks.handBack).toHaveBeenCalledTimes(1)
     expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
-    expect(phases()).toEqual(['a:sending'])
-    calls[0].resolve(okSubmission(a.clientMessageId, 'accepted'))
-    expect(await a.outcome).toBe('recorded')
-    expect(mocks.handBack).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
-    expect(sendCalls()).toBe(1)
+    expect(sendCalls()).toBe(0)
   })
 
   it('never resends a send that was on its way when Stop was pressed', async () => {
     mocks.call.mockRejectedValue(new Error('timeout'))
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
     // The first attempt went out and its answer was lost: a same-id resend is due.
-    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    stopStructuredAgentSessionSends(SESSION)
     expect(await a.outcome).toBe('returned')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
@@ -321,9 +357,9 @@ describe('structured agent session message sender', () => {
 
   it('lets a send on its way when Stop was pressed settle from its answer, never a resend', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
-    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    stopStructuredAgentSessionSends(SESSION)
     calls[0].reject(new Error('timeout'))
     expect(await a.outcome).toBe('returned')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
@@ -336,7 +372,7 @@ describe('structured agent session message sender', () => {
   it('never resends after a Stop that lands while the resend is being readied', async () => {
     const remote = { kind: 'environment', environmentId: 'env-1' } as const
     mocks.call.mockRejectedValue(new Error('connection closed'))
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target: remote, text: 'a' })
+    const a = send('a', { target: remote })
     await flush()
     expect(sendCalls()).toBe(1)
     // The resend's timer fires; it waits on the host's version check before its request goes out.
@@ -348,7 +384,7 @@ describe('structured agent session message sender', () => {
         })
     )
     await vi.advanceTimersByTimeAsync(1_000)
-    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    stopStructuredAgentSessionSends(SESSION)
     ready()
     expect(await a.outcome).toBe('returned')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
@@ -360,9 +396,9 @@ describe('structured agent session message sender', () => {
 
   it('settles a send on its way at a Stop from its answer: recorded, or the host held it as a card', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
-    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    stopStructuredAgentSessionSends(SESSION)
     // The journal shows its row, whatever the Stop did.
     settleStructuredAgentSessionSendsFromJournal(
       SESSION,
@@ -370,14 +406,11 @@ describe('structured agent session message sender', () => {
       []
     )
     expect(await a.outcome).toBe('recorded')
-    const b = sendStructuredAgentSessionMessage({
-      sessionId: SESSION,
-      target,
-      text: 'b',
+    const b = send('b', {
       delivery: 'queue-if-active'
     })
     await flush()
-    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    stopStructuredAgentSessionSends(SESSION)
     calls[1].resolve({
       ok: true,
       replayed: false,
@@ -408,10 +441,10 @@ describe('structured agent session message sender', () => {
         submission: kept(params.envelope.clientOperationId)
       }
     }))
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     expect(await a.outcome).toBe('recorded')
     const calls = deferredCalls()
-    const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const b = send('b')
     await flush()
     settleStructuredAgentSessionSendsFromJournal(SESSION, [kept(b.clientMessageId)], [])
     expect(await b.outcome).toBe('recorded')
@@ -434,7 +467,7 @@ describe('structured agent session message sender', () => {
         })
       }
     }))
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     expect(await a.outcome).toBe('returned')
     expect(mocks.handBack).toHaveBeenCalledTimes(1)
     expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
@@ -442,7 +475,7 @@ describe('structured agent session message sender', () => {
 
   it('leaves a send to its own answer while the journal has no row for it', async () => {
     const calls = deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const a = send('a')
     await flush()
     settleStructuredAgentSessionSendsFromJournal(SESSION, [submission('other', 'accepted')], [])
     expect(phases()).toEqual(['a:sending'])
@@ -452,8 +485,7 @@ describe('structured agent session message sender', () => {
 
   it('reads a pending row in the journal as the host holding it, kept only for a Stop', async () => {
     deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
     await flush()
     settleStructuredAgentSessionSendsFromJournal(
       SESSION,
@@ -461,14 +493,14 @@ describe('structured agent session message sender', () => {
       []
     )
     expect(await a.outcome).toBe('recorded')
+    send('b')
     await flush()
     expect(phases()).toEqual(['a:recorded', 'b:sending'])
   })
 
   it('reads a send the host left in doubt at a Stop as its record, and sends the next', async () => {
     deferredCalls()
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
     await flush()
     settleStructuredAgentSessionSendsFromJournal(
       SESSION,
@@ -481,6 +513,7 @@ describe('structured agent session message sender', () => {
       []
     )
     expect(await a.outcome).toBe('recorded')
+    send('b')
     await flush()
     expect(phases()).toEqual(['b:sending'])
     expect(mocks.handBack).not.toHaveBeenCalled()
@@ -494,10 +527,7 @@ describe('structured agent session message sender', () => {
       cursor: { epoch: 'e', sequence: 1 },
       value: { clientMessageId: 'x', queued: { messageId: 'x', position: 0, state: 'waiting' } }
     })
-    const a = sendStructuredAgentSessionMessage({
-      sessionId: SESSION,
-      target,
-      text: 'a',
+    const a = send('a', {
       delivery: 'queue-if-active'
     })
     await flush()
@@ -527,22 +557,21 @@ describe('a send whose fate is unknown never freezes the chat', () => {
     vi.useRealTimers()
   })
 
-  it('holds what was sent behind one nobody answers no longer than its deadline', async () => {
+  it('holds the chat no longer than the deadline of a send nobody answers', async () => {
     mocks.call.mockRejectedValue(new Error('connection closed'))
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS - 1)
-    expect(phases()).toEqual(['a:sending', 'b:waiting'])
+    expect(phases()).toEqual(['a:sending'])
+    expect(structuredAgentSessionSendOut(SESSION)).toBe(true)
     await vi.advanceTimersByTimeAsync(1)
     expect(await a.outcome).toBe('returned')
-    expect(await b.outcome).toBe('returned')
-    expect(phases()).toEqual([])
+    expect(structuredAgentSessionSendOut(SESSION)).toBe(false)
     // The next message goes out at once.
     mocks.call.mockReset()
     deferredCalls()
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'c' })
+    send('b')
     await flush()
-    expect(phases()).toEqual(['c:sending'])
+    expect(phases()).toEqual(['b:sending'])
     expect(sendCalls()).toBe(1)
   })
 
@@ -555,8 +584,7 @@ describe('a send whose fate is unknown never freezes the chat', () => {
         details: { reason: 'operationExpired' }
       }
     })
-    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
-    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const a = send('a')
     await flush()
     const calls = deferredCalls()
     await vi.advanceTimersByTimeAsync(1_000)
@@ -564,6 +592,7 @@ describe('a send whose fate is unknown never freezes the chat', () => {
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
     )
+    send('b')
     await flush()
     expect(phases()).toEqual(['b:sending'])
     expect(calls).toHaveLength(1)

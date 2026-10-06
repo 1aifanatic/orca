@@ -197,22 +197,14 @@ describe('queued message cards', () => {
       entries.map((candidate) => candidate.clientMessageId)
     const sends = [
       entry('queued', { delivery: 'queue-if-active' }),
-      entry('waiting', { delivery: 'queue-if-active', phase: 'waiting', issued: false }),
       entry('plain'),
       entry('recorded', { phase: 'recorded' })
     ]
     // Its card draws a queue send while the agent works; a plain send stays in view; the host's row
     // draws a recorded one.
     expect(ids(pendingSendsOutsideQueuedCards(sends, [], true))).toEqual(['plain'])
-    expect(ids(pendingSendsOutsideQueuedCards(sends, [], false))).toEqual([
-      'queued',
-      'waiting',
-      'plain'
-    ])
+    expect(ids(pendingSendsOutsideQueuedCards(sends, [], false))).toEqual(['queued', 'plain'])
     // Once the host visibly holds it, it is a card.
-    expect(ids(pendingSendsOutsideQueuedCards(sends, ['plain'], false))).toEqual([
-      'queued',
-      'waiting'
-    ])
+    expect(ids(pendingSendsOutsideQueuedCards(sends, ['plain'], false))).toEqual(['queued'])
   })
 })

@@ -37,14 +37,18 @@ export async function sendMessageToAgent(args: {
   }
   relaunchFailedStructuredAgentSessionForMessage(worktreeId, target.sessionId)
   // Sent as its composer would, so it shows in the chat; reported only once the host answers.
-  const { outcome } = sendStructuredAgentSessionMessage({
+  const sent = sendStructuredAgentSessionMessage({
     sessionId: target.sessionId,
     target: runtime,
     text: prompt,
     callerKeepsText: true
   })
+  // The chat's own send is still out: the notes wait, as its composer would.
+  if (!sent) {
+    return { status: 'not-ready', code: 'session-send-refused' }
+  }
   // Anything else leaves the text with the caller, which keeps its notes.
-  return (await outcome) === 'recorded'
+  return (await sent.outcome) === 'recorded'
     ? { status: 'sent' }
     : { status: 'not-writable', code: 'session-send-refused' }
 }

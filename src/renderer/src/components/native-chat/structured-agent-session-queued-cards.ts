@@ -105,11 +105,7 @@ export function pendingSendsOutsideQueuedCards(
     (entry) =>
       entry.phase !== 'recorded' &&
       !held.has(entry.clientMessageId) &&
-      !(
-        isWorking &&
-        entry.delivery === 'queue-if-active' &&
-        (entry.phase === 'waiting' || entry.phase === 'sending')
-      )
+      !(isWorking && entry.delivery === 'queue-if-active')
   )
   return next.length === pending.length ? pending : next
 }

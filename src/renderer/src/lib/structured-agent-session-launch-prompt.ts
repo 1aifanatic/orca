@@ -85,13 +85,23 @@ function sendStagedPrompt(
 ): Promise<boolean> {
   prompt.delivery ??= (async () => {
     noteStructuredAgentSessionFence(prompt.sessionId, receipt.fence)
-    const { outcome } = sendStructuredAgentSessionMessage({
+    const sent = sendStructuredAgentSessionMessage({
       sessionId: prompt.sessionId,
       target,
       text: prompt.text
     })
+    if (!sent) {
+      // The person's own message went out first: the launch text waits in the composer instead.
+      unstage(prompt)
+      handBackStructuredAgentSessionMessage(
+        prompt.sessionId,
+        `launch-${prompt.sessionId}`,
+        structuredAgentSessionSendBody(prompt.text, [])
+      )
+      return false
+    }
     try {
-      return (await outcome) === 'recorded'
+      return (await sent.outcome) === 'recorded'
     } finally {
       unstage(prompt)
     }

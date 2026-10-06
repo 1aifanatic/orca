@@ -6,7 +6,7 @@ import type { StructuredAgentSessionHostCapabilityState } from '@/runtime/struct
 import {
   sendStructuredAgentSessionMessage,
   settleStructuredAgentSessionSendsFromJournal,
-  withdrawUnsentStructuredAgentSessionSends
+  stopStructuredAgentSessionSends
 } from './structured-agent-session-message-sender'
 import {
   clearStructuredAgentSessionSendNotice,
@@ -79,14 +79,16 @@ export function useStructuredAgentSessionSends(args: {
         return false
       }
       const delivery = queueRequest(queue, attachments)
-      sendStructuredAgentSessionMessage({
-        sessionId,
-        target,
-        text,
-        attachments,
-        ...(delivery ? { delivery } : {})
-      })
-      return true
+      // Refused while the chat's send is out: the text stays in the box.
+      return (
+        sendStructuredAgentSessionMessage({
+          sessionId,
+          target,
+          text,
+          attachments,
+          ...(delivery ? { delivery } : {})
+        }) !== null
+      )
     },
     [queue, sessionId, target]
   )
@@ -97,6 +99,6 @@ export function useStructuredAgentSessionSends(args: {
     error: notice,
     clearError: () => clearStructuredAgentSessionSendNotice(sessionId),
     send,
-    withdrawUnsent: () => withdrawUnsentStructuredAgentSessionSends(sessionId)
+    stopSends: () => stopStructuredAgentSessionSends(sessionId)
   }
 }

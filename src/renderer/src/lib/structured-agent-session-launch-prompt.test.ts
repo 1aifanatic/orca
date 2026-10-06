@@ -15,7 +15,10 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
     mocks.call(target, method, params)
 }))
 
-import { resetStructuredAgentSessionSendsForTests } from '@/components/native-chat/structured-agent-session-message-sender'
+import {
+  resetStructuredAgentSessionSendsForTests,
+  sendStructuredAgentSessionMessage
+} from '@/components/native-chat/structured-agent-session-message-sender'
 import {
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache
@@ -178,6 +181,27 @@ describe('settleStructuredAgentLaunchPrompt', () => {
 
     expect(onPromptDelivered).not.toHaveBeenCalled()
     expect(draft()).toBe('review this')
+  })
+
+  it('waits in the composer when the person sent a message of their own first', async () => {
+    const stagedPrompt = stageStructuredLaunchPrompt(SESSION, 'review this')
+    mocks.call.mockImplementation(() => new Promise(() => {}))
+    expect(
+      sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'mine first' })
+    ).not.toBeNull()
+
+    await expect(
+      settleStructuredAgentLaunchPrompt({
+        launchResult: Promise.resolve({ sessionId: SESSION, fence: 1 }),
+        target,
+        options: { prompt: 'review this' },
+        stagedPrompt
+      })
+    ).resolves.toEqual({ delivered: false, failureNotified: false })
+
+    expect(draft()).toBe('review this')
+    expect(hasStagedStructuredLaunchPrompt(SESSION)).toBe(false)
+    expect(JSON.stringify(sends())).not.toContain('review this')
   })
 
   it('reports nothing for a draft, which the composer adopts instead', () => {

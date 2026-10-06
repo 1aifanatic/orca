@@ -157,8 +157,8 @@ export function useStructuredAgentSession(args: {
   })
 
   const { pending } = sends
-  // On its way to the host: Stop takes back what has not gone out, and stops what it opens.
-  const sending = pending.some((entry) => entry.phase === 'waiting' || entry.phase === 'sending')
+  // Out and unsettled: the chat takes no other send, and Stop stops it.
+  const sending = pending.some((entry) => entry.phase === 'sending')
   // What the host refuses a conversation command or a rewind behind.
   const conversationBusy = Boolean(
     transportState.turnId ||
@@ -247,6 +247,8 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     prompts,
     pending,
+    /** A send is out; the chat takes no other until it settles. */
+    sendOut: sending,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
     // A message typed during a command queues behind it on the host.
@@ -267,13 +269,13 @@ export function useStructuredAgentSession(args: {
       // one that has is never sent again. Host-held cards are never withdrawn by a Stop: the host
       // pauses them and they stay visible, on every device, until the user acts on one.
       if (stopsConversation) {
-        sends.withdrawUnsent()
+        sends.stopSends()
         return mutate('agentSession.cancel', 'agentSession.cancel', {})
       }
       if (!transportState.turnId) {
         return Promise.resolve(null)
       }
-      sends.withdrawUnsent()
+      sends.stopSends()
       return mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
     },
     queuedMessages: queuedController,

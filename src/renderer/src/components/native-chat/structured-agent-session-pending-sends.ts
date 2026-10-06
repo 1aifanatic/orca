@@ -11,11 +11,11 @@ export type StructuredAgentSessionPendingSend = {
   queuedAt: number
   delivery?: 'queue-if-active'
   /**
-   * `waiting`: behind another send. `sending`: an attempt is out, or its same-id resend is due.
+   * `sending`: out, or its same-id resend is due; the chat takes no other send meanwhile.
    * `recorded`: the host holds it and its row draws it; kept only so a Stop that withdraws it gives
    * the text back.
    */
-  phase: 'waiting' | 'sending' | 'recorded'
+  phase: 'sending' | 'recorded'
   /** An attempt under this id may have reached the host. */
   issued: boolean
   /** A sender outside the chat keeps its own copy, so nothing goes to the chat's composer. */
@@ -79,6 +79,11 @@ export function getStructuredAgentSessionPendingSends(
   sessionId: string
 ): readonly StructuredAgentSessionPendingSend[] {
   return sessions.get(sessionId)?.entries ?? EMPTY_STRUCTURED_AGENT_SESSION_SENDS
+}
+
+/** A send of this chat is out and not yet settled: the chat takes no other until it is. */
+export function structuredAgentSessionSendOut(sessionId: string): boolean {
+  return getStructuredAgentSessionPendingSends(sessionId).some((entry) => entry.phase === 'sending')
 }
 
 export function getStructuredAgentSessionSendNotice(sessionId: string): string | null {

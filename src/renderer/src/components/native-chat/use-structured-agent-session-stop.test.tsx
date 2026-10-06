@@ -15,7 +15,7 @@ import type { AgentSessionLatestTurn } from '../../../../shared/agent-session-wi
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  withdrawUnsent: vi.fn(),
+  stopSends: vi.fn(),
   operations: 0
 }))
 let items: AgentJournalRenderItem[] = []
@@ -52,7 +52,7 @@ vi.mock('./use-structured-agent-session-sends', () => ({
     error: null,
     clearError: vi.fn(),
     send: vi.fn(),
-    withdrawUnsent: mocks.withdrawUnsent
+    stopSends: mocks.stopSends
   })
 }))
 
@@ -75,7 +75,7 @@ function entry(
     previewUris: [],
     phase,
     queuedAt: 1,
-    issued: phase !== 'waiting'
+    issued: true
   }
 }
 
@@ -169,12 +169,12 @@ describe('Stop against a host that stops the conversation', () => {
         await result.current.stop()
       })
 
-      expect(mocks.withdrawUnsent).toHaveBeenCalledOnce()
+      expect(mocks.stopSends).toHaveBeenCalledOnce()
       // Withdrawn first, so the drain has nothing left to send after the Stop.
       const cancelCall = mocks.call.mock.calls.findIndex(
         ([, method]) => method === 'agentSession.cancel'
       )
-      expect(mocks.withdrawUnsent.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(mocks.stopSends.mock.invocationCallOrder[0]).toBeLessThan(
         mocks.call.mock.invocationCallOrder[cancelCall] ?? 0
       )
       expect(cancels()).toEqual([expect.not.objectContaining({ turnId: expect.anything() })])
@@ -529,7 +529,7 @@ describe.each([
         await result.current.stop()
       })
       expect(cancels()).toEqual([])
-      expect(mocks.withdrawUnsent).not.toHaveBeenCalled()
+      expect(mocks.stopSends).not.toHaveBeenCalled()
     }
   )
 
@@ -543,7 +543,7 @@ describe.each([
     })
     expect(cancels()).toEqual([expect.objectContaining({ turnId: 'provider-turn' })])
     // Every Stop takes back what has not gone out and keeps what has from being sent again.
-    expect(mocks.withdrawUnsent).toHaveBeenCalledOnce()
+    expect(mocks.stopSends).toHaveBeenCalledOnce()
   })
 })
 

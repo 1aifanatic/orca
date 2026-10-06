@@ -181,7 +181,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const imageBlock = nativeChatImageSendBlock(imageAttachments)
     const sendButtonDisabled = isWorking
       ? !hasPty || !onStop
-      : disabled || imageBlock.holdsSend || (draft.trim() === '' && imageAttachments.length === 0)
+      : disabled ||
+        structuredTransport?.sendOut === true ||
+        imageBlock.holdsSend ||
+        (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
       terminalTabId,

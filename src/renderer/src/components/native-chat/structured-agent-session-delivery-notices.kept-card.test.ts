@@ -19,7 +19,7 @@ function pendingSend(
     body: structuredAgentSessionSendBody('the kept words', []),
     previewUris: [],
     queuedAt: 1,
-    phase: 'waiting',
+    phase: 'sending',
     issued: false,
     ...patch
   }
@@ -52,10 +52,10 @@ function notices(
   })
 }
 
-// Still waiting its turn, on its way, or resent under its id after a lost answer.
+// Still being readied, on its way, or resent under its id after a lost answer.
 const SENDS = [
   pendingSend(),
-  pendingSend({ phase: 'sending', issued: true }),
+  pendingSend({ issued: true }),
   pendingSend({ phase: 'recorded', issued: true })
 ]
 

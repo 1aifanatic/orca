@@ -107,10 +107,7 @@ export function structuredAgentSessionDeliveryNotices(args: {
   // A row under the id is the host's to describe, before the sender settles from it.
   const recorded = new Set(submissions.map((submission) => submission.clientMessageId))
   for (const entry of args.pending) {
-    if (
-      (entry.phase === 'waiting' || entry.phase === 'sending') &&
-      !recorded.has(entry.clientMessageId)
-    ) {
+    if (entry.phase === 'sending' && !recorded.has(entry.clientMessageId)) {
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         STRUCTURED_AGENT_SESSION_DELIVERY_SENDING
