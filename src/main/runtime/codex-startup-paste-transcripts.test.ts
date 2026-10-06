@@ -6,6 +6,7 @@ describe('Codex launch draft readiness from captured PTY output', () => {
   it.each([
     'codex-fullscreen-startup',
     'codex-fullscreen-early-input',
+    'codex-fullscreen-multiline-early-input',
     'codex-fullscreen-custom-footer'
   ])('%s: waits through the provisional composer and resolves on the live footer', async (name) => {
     const data = readRuntimeFixture(name)

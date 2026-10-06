@@ -45,4 +45,15 @@ describe('Codex fullscreen composer paste gate', () => {
       scanner.observe(`${BEGIN}\x1b[38;3Hcontinued note\x1b[38;17H\x1b[?25h\x1b[?2026l`).ready
     ).toBe(false)
   })
+
+  it('keeps the reserved footer row when early multiline input contains footer glyphs', () => {
+    const scanner = createDraftPasteReadyScanner('codex-composer-prompt')
+    scanner.observe(PROVISIONAL)
+    expect(
+      scanner.observe(
+        `${BEGIN}\x1b[35;1H› first line\x1b[36;3H? second line\x1b[37;3Hthird · line\x1b[35;3H\x1b[?25h\x1b[?2026l`
+      ).ready
+    ).toBe(false)
+    expect(scanner.observe(LIVE).ready).toBe(true)
+  })
 })

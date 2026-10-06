@@ -66,7 +66,7 @@ export function createCodexComposerReadyScanner(): {
         } else if (char === '·' && promptRow !== null && row !== null && row > promptRow) {
           footerRow = row
         } else if (char === '?' && promptRow !== null && row !== null && row > promptRow) {
-          hintRow = row
+          hintRow = Math.max(hintRow ?? row, row)
         }
       }
     }
@@ -82,9 +82,10 @@ export function createCodexComposerReadyScanner(): {
         promptRow !== null &&
         row !== null &&
         row >= promptRow &&
+        hintRow !== null &&
         // Single-item status lines have no separator; their reserved row is below the input padding.
-        ((footerRow !== null && row < footerRow) ||
-          (hintRow !== null && row + 2 < hintRow && paintedRows.has(row + 2)))
+        ((footerRow !== null && footerRow === hintRow - 1 && row < footerRow) ||
+          (row + 2 < hintRow && paintedRows.has(hintRow - 1)))
       // Older inline builds do not paint synchronized fullscreen frames.
       const legacyComposer = promptSeen && !leftAltScreen && (!altScreen || !sawSynchronizedFrame)
       return {
