@@ -56,7 +56,6 @@ describe("the turn bar while a person's Stop ends the turn", () => {
         isWorking
         stopping
         expandSignal={false}
-        fontScale={1}
       />
     )
 
@@ -87,7 +86,6 @@ describe('a message sent while Stopping, before the host has handed it over', ()
         isWorking
         stopping={stopping}
         expandSignal={false}
-        fontScale={1}
       />
     )
   }
@@ -118,7 +116,6 @@ describe('a message sent while Stopping, before the host has handed it over', ()
         isWorking
         stopping
         expandSignal={false}
-        fontScale={1}
       />
     )
 
