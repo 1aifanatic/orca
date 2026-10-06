@@ -2,11 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TerminalRunFactsRegister } from '../../../runtime/terminal-run-facts'
 import { ptyOwnership } from '../provider/ownership-state'
 import { createPtyWriteInput } from './write-input'
+import {
+  WRITE_ACCEPTED,
+  writeRefused,
+  writeUnverifiable,
+  type WriteSettlement
+} from '../../../../shared/pty-write-settlement'
 
 const PTY_ID = 'pty-user-input'
 
 const { provider } = vi.hoisted(() => ({
-  provider: { write: vi.fn(), hasPty: vi.fn(() => true) }
+  provider: {
+    write: vi.fn(),
+    hasPty: vi.fn(() => true),
+    writeWithSettlement:
+      vi.fn<(id: string, data: string) => WriteSettlement | Promise<WriteSettlement>>()
+  }
 }))
 
 vi.mock('../provider/registry', () => ({
@@ -30,6 +41,7 @@ function createWriteInput(
 beforeEach(() => {
   ptyOwnership.set(PTY_ID, null)
   provider.write.mockReset()
+  provider.writeWithSettlement.mockReset()
 })
 
 afterEach(() => {
@@ -37,6 +49,41 @@ afterEach(() => {
 })
 
 describe('renderer PTY writes: input kind', () => {
+  it.each([null, 'ssh-connection'])(
+    'observes a settled write only after acceptance on the execution host (%s)',
+    async (owner) => {
+      ptyOwnership.set(PTY_ID, owner)
+      const observe = vi.fn()
+      const input = createWriteInput(new TerminalRunFactsRegister(), observe)
+      let finish: (settlement: WriteSettlement) => void = () => {}
+      provider.writeWithSettlement.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve
+        })
+      )
+      const args = {
+        id: PTY_ID,
+        data: '\x1b[27u',
+        inputKind: 'driving' as const,
+        requireWriteSettlement: true as const
+      }
+      const pending = input.writePtyInputAccepted(args)
+      expect(observe).not.toHaveBeenCalled()
+      finish(WRITE_ACCEPTED)
+      expect(await pending).toBe(true)
+      expect(observe).toHaveBeenCalledTimes(owner === null ? 1 : 0)
+      observe.mockClear()
+      provider.writeWithSettlement.mockReturnValueOnce(writeRefused('endpoint_disconnected'))
+      expect(await input.writePtyInputAccepted(args)).toBe(false)
+      provider.writeWithSettlement.mockResolvedValueOnce(
+        writeUnverifiable('transport_settlement_lost', true)
+      )
+      await expect(input.writePtyInputAccepted(args)).rejects.toThrow('acknowledgment unavailable')
+      expect(observe).not.toHaveBeenCalled()
+      expect(provider.write).not.toHaveBeenCalled()
+    }
+  )
+
   it.each(['writePtyInput', 'writePtyInputAccepted'] as const)(
     '%s observes Escape only after a successful local write',
     async (writer) => {
