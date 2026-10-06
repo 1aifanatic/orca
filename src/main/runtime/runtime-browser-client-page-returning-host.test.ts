@@ -164,6 +164,21 @@ describe('a desktop returning after its lease was fenced', () => {
     expect(rig.leases.getPlacement('page-a')).toBeUndefined()
   })
 
+  it('closes only on the host saying the page is gone, never on a record it cannot match', async () => {
+    const rig = fencedDesktop()
+    // The host still holds the page, just not under the placement the desktop reports: an
+    // ambiguous answer, so the kept guest must be left alone rather than closed.
+    const returning = returnDesktop(rig, [
+      keptInventory(rig.placement, { pageHostGeneration: rig.placement.pageHostGeneration + 5 })
+    ])
+
+    const result = await returning.adopt()
+
+    expect(returning.commands).toEqual([])
+    expect(result.adoptedPageIds).toEqual([])
+    expect(rig.pages.getPage('page-a')?.placement).toEqual(rig.placement)
+  })
+
   it('reloads a kept guest the desktop could not vouch for', async () => {
     const rig = fencedDesktop()
     const returning = returnDesktop(rig, [

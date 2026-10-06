@@ -136,6 +136,39 @@ describe('browser.clientHost.attach RPC', () => {
     expect(JSON.parse(replies[1]!).result).not.toHaveProperty('pageCommandProtocolVersion')
   })
 
+  it.each([
+    ['a desktop that asks for it', { returningHostReclaimProtocolVersion: 1 }, true],
+    // Old desktops never send the field: the host must answer exactly as it did before.
+    ['an older desktop', {}, false]
+  ])('echoes returning-host reclaim only to %s', async (_label, extra, echoed) => {
+    const cleanups = new Map<string, () => void>()
+    const hostRuntime = runtime(cleanups)
+    const dispatcher = new RpcDispatcher({
+      runtime: hostRuntime,
+      methods: BROWSER_CLIENT_HOST_METHODS
+    })
+    const replies: string[] = []
+    const attach = request('host-a', 1, 1, 1)
+    const dispatch = dispatcher.dispatchStreaming(
+      { ...attach, params: { ...attach.params, pageReconciliationProtocolVersion: 1, ...extra } },
+      (reply) => replies.push(reply),
+      {
+        connectionId: 'connection-a',
+        clientKind: 'runtime',
+        pairedDeviceId: 'device-a',
+        clientCapabilities: [BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY]
+      }
+    )
+
+    await vi.waitFor(() => expect(replies).toHaveLength(1))
+    const ready = JSON.parse(replies[0]!).result
+    expect(ready).toMatchObject({ type: 'ready', pageReconciliationProtocolVersion: 1 })
+    expect('returningHostReclaimProtocolVersion' in ready).toBe(echoed)
+
+    cleanups.get('browser-client-host:host-a')?.()
+    await dispatch
+  })
+
   it('echoes and retains only an explicitly negotiated complete page inventory', async () => {
     const cleanups = new Map<string, () => void>()
     const hostRuntime = runtime(cleanups)

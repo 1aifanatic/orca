@@ -46,6 +46,28 @@ describe('browser client host attach request', () => {
     expect(attach.params).not.toHaveProperty('leaseReconnectProtocolVersion')
   })
 
+  it('asks for returning-host reclaim only beside page reconciliation', () => {
+    const options = {
+      pairing,
+      authorityRuntimeId: 'runtime-a',
+      browserHostClientId: 'host-a',
+      hostCapabilities: ['webview'],
+      pageCommandProtocolVersion: 1 as const,
+      onPageCommand: vi.fn(() => ({ status: 'completed' as const })),
+      pageInventoryProtocolVersion: 1 as const,
+      getPageInventory: () => [],
+      returningHostReclaimProtocolVersion: 1 as const
+    }
+
+    expect(
+      createBrowserClientHostAttachRequest({ ...options, pageReconciliationProtocolVersion: 1 })
+        .params
+    ).toMatchObject({ returningHostReclaimProtocolVersion: 1 })
+    expect(createBrowserClientHostAttachRequest(options).params).not.toHaveProperty(
+      'returningHostReclaimProtocolVersion'
+    )
+  })
+
   it('includes reconnect negotiation only beside an encoded inventory snapshot', () => {
     const attach = createBrowserClientHostAttachRequest({
       pairing,
