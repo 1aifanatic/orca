@@ -20,7 +20,7 @@ env:
 jobs:
   compare:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -50,31 +50,32 @@ jobs:
           export ORCA_SHARD_SOURCE_SHA
           mkdir -p ci-balance
           status=0
-          for arm in original candidate; do
+          for treatment in 1-original 1-candidate 2-candidate 2-original; do
+            arm="${treatment#*-}"
             cp "$RUNNER_TEMP/$arm-weights.json" config/scripts/ci-shard-timings.json
-            export ORCA_SHARD_MANIFEST="ci-balance/$arm-assignment.json"
-            export ORCA_UNIT_TIMING_REPORT="ci-balance/$arm-unit-timings.json"
+            export ORCA_SHARD_MANIFEST="ci-balance/$treatment-assignment.json"
+            export ORCA_UNIT_TIMING_REPORT="ci-balance/$treatment-unit-timings.json"
             started="$(node -p 'performance.timeOrigin + performance.now()')"
             arm_status=0
             pnpm exec vitest run --config config/vitest.config.ts \
               --shard="$SHARD/5" --maxWorkers=4 --no-cache \
               --experimental.fsModuleCache=false \
               --reporter=default --reporter=./config/scripts/ci-unit-timing-reporter.mjs \
-              --reporter=json --outputFile.json="ci-balance/$arm-results.json" \
-              > "ci-balance/$arm.log" 2>&1 || arm_status=$?
+              --reporter=json --outputFile.json="ci-balance/$treatment-results.json" \
+              > "ci-balance/$treatment.log" 2>&1 || arm_status=$?
             finished="$(node -p 'performance.timeOrigin + performance.now()')"
-            ARM="$arm" STARTED="$started" FINISHED="$finished" ARM_STATUS="$arm_status" \
+            TREATMENT="$treatment" STARTED="$started" FINISHED="$finished" ARM_STATUS="$arm_status" \
               node --input-type=module <<'JS'
           import { writeFileSync } from 'node:fs'
-          const { ARM, STARTED, FINISHED, ARM_STATUS, ORCA_SHARD_SOURCE_SHA } = process.env
-          writeFileSync(`ci-balance/${ARM}-elapsed.json`, JSON.stringify({
+          const { TREATMENT, STARTED, FINISHED, ARM_STATUS, ORCA_SHARD_SOURCE_SHA } = process.env
+          writeFileSync(`ci-balance/${TREATMENT}-elapsed.json`, JSON.stringify({
             elapsedMs: Number(FINISHED) - Number(STARTED),
             exitCode: Number(ARM_STATUS),
             sourceSha: ORCA_SHARD_SOURCE_SHA,
             nodeVersion: process.versions.node
           }))
           JS
-            tail -n 12 "ci-balance/$arm.log"
+            tail -n 12 "ci-balance/$treatment.log"
             if [ "$arm_status" != 0 ]; then status=1; fi
           done
           cp "$RUNNER_TEMP/candidate-weights.json" config/scripts/ci-shard-timings.json
