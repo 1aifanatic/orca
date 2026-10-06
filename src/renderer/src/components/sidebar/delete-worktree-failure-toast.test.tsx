@@ -64,7 +64,7 @@ describe('showDeleteWorktreeFailureToast', () => {
       worktreeName: 'feature/submodules'
     })
     const body = renderToastBody('info')
-    expect(body.textContent).toContain('publish any local submodule commits')
+    expect(body.textContent).toContain('unpublished commits')
     expect(body.textContent).toContain('permanently discard')
     expect(onForceDelete).not.toHaveBeenCalled()
     clickButton(body, 'Force Delete')

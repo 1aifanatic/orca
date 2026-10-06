@@ -12,7 +12,7 @@ describe('submodule removal guidance', () => {
       classifyWorktreeForceDeleteReason(refusal),
       refusal
     )
-    expect(copy.description).toContain('publish any local submodule commits')
+    expect(copy.description).toContain('unpublished commits')
     expect(copy.description).toContain('permanently discard')
     expect(getWorktreeDeleteErrorToShow(null, { isDeleting: false, error: refusal })).toBe(
       copy.description
