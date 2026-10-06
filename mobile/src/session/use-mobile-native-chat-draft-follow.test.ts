@@ -52,6 +52,15 @@ describe('a draft when /clear replaces its conversation', () => {
     expect(state?.composerText).toBe('')
   })
 
+  it('goes after a draft the new tab already holds, never over it', async () => {
+    await show(NEW)
+    act(() => state?.setComposerText('already in the new chat'))
+    await show(OLD)
+    act(() => state?.setComposerText('typed in the old one'))
+    await show(NEW)
+    expect(state?.composerText).toBe('already in the new chat\n\ntyped in the old one')
+  })
+
   it('takes text a send hands back after the move', async () => {
     await show(OLD)
     act(() => state?.setComposerText('raced the clear'))

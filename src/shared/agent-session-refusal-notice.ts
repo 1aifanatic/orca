@@ -52,12 +52,14 @@ const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> =
 }
 
 /** One plain sentence for a refusal whose usual words would mislead: a /clear or /compact refused
- *  because the agent is working, saying only what the person sees and can do; and the phone's
- *  send that a /clear raced, whose text it hands back to the composer. */
+ *  because the agent is working, saying only what the person sees and can do; a /clear pressed on
+ *  a chat already cleared; and the phone's send that a /clear raced, whose text it hands back. */
 const COMMAND_WHILE_WORKING: Partial<
   Record<AgentSessionWriteKind, Partial<Record<string, AgentSessionWriteNoticeSentence[]>>>
 > = {
   clear: {
+    // A cleared chat needs no "the command didn't run": being cleared already is the answer.
+    conversationCleared: ['conversationCleared', 'openCurrentConversation'],
     turnActive: ['agentStillWorking', 'runClearWhenDone'],
     messagesUnsettled: ['agentStillWorking', 'runClearWhenDone'],
     promptPending: ['clearAfterAnswer']

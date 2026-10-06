@@ -450,15 +450,17 @@ describe('the notice for every reason a host names', () => {
         write === 'read-history' && failure.code === 'agent_session_journal_unreadable'
       // "Run /clear when it's done" already says the command has yet to happen, and "the chat
       // was cleared before your message went out" that the message did not.
-      const clearWhileWorking = (
-        [
-          'runClearWhenDone',
-          'clearAfterAnswer',
-          'runCompactWhenDone',
-          'compactAfterAnswer',
-          'sentAsCleared'
-        ] as const
-      ).some((sentence) => parts.includes(sentence))
+      const clearWhileWorking =
+        (
+          [
+            'runClearWhenDone',
+            'clearAfterAnswer',
+            'runCompactWhenDone',
+            'compactAfterAnswer',
+            'sentAsCleared'
+          ] as const
+        ).some((sentence) => parts.includes(sentence)) ||
+        (write === 'clear' && failure.details?.reason === 'conversationCleared')
       expect(notDone, cell).toEqual(
         answeredAway || unsupported || saysNotDone || clearWhileWorking ? [] : [NOT_DONE[write]]
       )
@@ -620,6 +622,19 @@ describe('a chat whose history the host could not open', () => {
     expect(agentSessionReadHistoryRefusalParts('agent_session_from_the_future')).toEqual([
       'notDoneReadHistory'
     ])
+  })
+})
+
+describe('a /clear pressed on a chat already cleared', () => {
+  it('says so and where to go, once, with no "command didn\'t run"', () => {
+    const cleared = {
+      kind: 'refused',
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'conversationCleared' }
+    } as const
+    expect(agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(cleared, 'clear'))).toBe(
+      'This conversation has been cleared. Open the current conversation to continue.'
+    )
   })
 })
 

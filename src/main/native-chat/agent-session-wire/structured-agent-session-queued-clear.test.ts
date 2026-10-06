@@ -178,8 +178,25 @@ describe('a /clear that waits in line', () => {
     expect(await rig.drafts()).toHaveLength(1)
     await rig.settleAccepted(working, 'a')
     await clearedReplacement()
-    expect(await clear('queue-if-active', clearId).result).toMatchObject({ ok: true })
+    // The original client's resend answers from what it asked for, never "conversation cleared".
+    const resent = await clear('queue-if-active', clearId).result
+    expect(resent).toMatchObject({ ok: true, value: { command: 'clear', state: 'completed' } })
+    expect(resent.ok && (resent.value.queued?.messageId ?? resent.value.replacementSessionId)).toBe(
+      resent.ok && resent.value.queued ? clearId : replacementOf()
+    )
     await settleMs()
+    expect(committedClears()).toBe(1)
+  })
+
+  it('a new /clear pressed on the cleared chat reads as cleared, and runs nothing', async () => {
+    const working = await rig.workingSend()
+    await queuedClear()
+    await rig.settleAccepted(working, 'a')
+    await clearedReplacement()
+    expect(await clear().result).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'conversationCleared' } }
+    })
     expect(committedClears()).toBe(1)
   })
 
