@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { ChevronRight } from 'lucide-react-native'
 import { nativeChatReasoningDisclosureKey } from '../../../src/shared/native-chat-reasoning-row'
 import { formatNativeChatActiveTurnLabel } from '../../../src/shared/native-chat-turn-status'
+import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { INLINE_TEXT_SELECTION } from '../components/inline-text-selection'
 import { colors, spacing, typography } from '../theme/mobile-theme'
 import { MobileNativeChatMessageActionsSheet } from './MobileNativeChatMessageActionsSheet'
@@ -28,8 +29,10 @@ export function MobileNativeChatLiveLine({
   const open = reasoning !== null && reasoningExpanded
   const label = formatNativeChatActiveTurnLabel(line)
   // Android has no inline selection; the finished row's long-press sheet copies the live text too.
-  const [actionsOpen, setActionsOpen] = useState(false)
-  const openActions = useCallback(() => setActionsOpen(true), [])
+  // It holds the block it opened for, so it outlives that block ending and never reopens by itself.
+  const [actionsFor, setActionsFor] = useState<NativeChatMessage | null>(null)
+  const liveMessage = reasoning?.message ?? null
+  const openActions = useCallback(() => setActionsFor(liveMessage), [liveMessage])
   return (
     <View>
       {/* One element for every state of the line, so TalkBack hears each new label; the body
@@ -70,10 +73,10 @@ export function MobileNativeChatLiveLine({
           />
         </View>
       ) : null}
-      {reasoning && actionsOpen ? (
+      {actionsFor ? (
         <MobileNativeChatMessageActionsSheet
-          message={reasoning.message}
-          onClose={() => setActionsOpen(false)}
+          message={actionsFor}
+          onClose={() => setActionsFor(null)}
         />
       ) : null}
     </View>

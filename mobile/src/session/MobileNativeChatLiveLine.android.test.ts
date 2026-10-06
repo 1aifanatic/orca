@@ -74,4 +74,50 @@ describe('MobileNativeChatLiveLine on Android', () => {
     act(() => sheet!.props.onClose())
     expect(byType('MessageActionsSheet')).toHaveLength(0)
   })
+
+  it('keeps the sheet through the block ending, and never opens one for the next by itself', () => {
+    const line = (reasoning: NativeChatLiveReasoning | null) =>
+      createElement(MobileNativeChatLiveLine, {
+        line: { thinking: true, activityText: null, reasoning, reasoningExpanded: true },
+        onToggleReasoning: vi.fn(),
+        fontScale: 1
+      })
+    act(() => {
+      renderer = create(line(block))
+    })
+    act(() => byType('ReasoningBody')[0]!.props.onLongPress())
+    // The block ends while the reader copies or selects it.
+    act(() => renderer!.update(line(null)))
+    expect(byType('MessageActionsSheet').map((sheet) => sheet.props.message)).toEqual([
+      block.message
+    ])
+    act(() => byType('MessageActionsSheet')[0]!.props.onClose())
+    const next: NativeChatLiveReasoning = {
+      message: { ...block.message, id: 'r-2' },
+      markdown: 'Next thought'
+    }
+    act(() => renderer!.update(line(next)))
+    expect(byType('MessageActionsSheet')).toHaveLength(0)
+  })
+
+  it('opens no sheet for the next block when the first ends with the sheet open', () => {
+    const line = (reasoning: NativeChatLiveReasoning | null) =>
+      createElement(MobileNativeChatLiveLine, {
+        line: { thinking: true, activityText: null, reasoning, reasoningExpanded: true },
+        onToggleReasoning: vi.fn(),
+        fontScale: 1
+      })
+    act(() => {
+      renderer = create(line(block))
+    })
+    act(() => byType('ReasoningBody')[0]!.props.onLongPress())
+    act(() => renderer!.update(line(null)))
+    const next: NativeChatLiveReasoning = {
+      message: { ...block.message, id: 'r-2' },
+      markdown: 'Next thought'
+    }
+    act(() => renderer!.update(line(next)))
+    // Still the first block's sheet, the one the reader opened; none for r-2.
+    expect(byType('MessageActionsSheet').map((sheet) => sheet.props.message.id)).toEqual(['r-1'])
+  })
 })
