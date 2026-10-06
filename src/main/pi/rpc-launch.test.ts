@@ -77,4 +77,34 @@ describe('Pi RPC launch', () => {
   it('rejects a supervised permissions request instead of silently running in full access', () => {
     expect(() => buildPiRpcLaunch({ ...options, fullAccess: false })).toThrow('full access only')
   })
+
+  it('rejects an empty supplied resume handle', () => {
+    expect(() => buildPiRpcLaunch({ ...options, sessionFile: '' })).toThrow(
+      'requires a session file'
+    )
+  })
+
+  it('scrubs inherited structured identity and injects only this acquisition identity', () => {
+    const inherited = {
+      ORCA_AGENT_SESSION_ID: 'stale',
+      ORCA_STRUCTURED_SESSION: '1',
+      ORCA_TERMINAL_HANDLE: 'structworker_stale',
+      ORCA_AGENT_SESSION_SPAWN_TOKEN: 'old-token'
+    }
+    expect(resolveProviderChildEnv(buildPiRpcLaunch(options), inherited)).toEqual({})
+    const childEnv = resolveProviderChildEnv(
+      buildPiRpcLaunch({
+        ...options,
+        env: inherited,
+        structuredSession: { id: 'this-session', spawnToken: 'this-token' }
+      }),
+      inherited
+    )
+    expect(childEnv).toMatchObject({
+      ORCA_AGENT_SESSION_ID: 'this-session',
+      ORCA_STRUCTURED_SESSION: '1',
+      ORCA_AGENT_SESSION_SPAWN_TOKEN: 'this-token'
+    })
+    expect(childEnv).not.toHaveProperty('ORCA_TERMINAL_HANDLE')
+  })
 })

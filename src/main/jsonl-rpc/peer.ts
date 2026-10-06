@@ -23,8 +23,18 @@ const responseSchema = z.looseObject({
 })
 
 export type JsonlRpcRecord = z.infer<typeof recordSchema>
+export class JsonlRpcResponseError extends Error {
+  constructor(
+    readonly command: string,
+    message: string
+  ) {
+    super(message)
+    this.name = 'JsonlRpcResponseError'
+  }
+}
 export type JsonlRpcPeerHandlers = {
   /** Includes deferred prompt acknowledgements without an id. */
+  /** A dialect failure is fatal: continuing would discard session or tool lifecycle evidence. */
   onRecord?: (record: JsonlRpcRecord) => void
   onClose?: (error: Error) => void
   onDiagnostic?: (message: string) => void
@@ -44,6 +54,7 @@ export class JsonlRpcPeer {
   private readonly framer: ReturnType<typeof createIncrementalNdjsonFramer>
   private nextId = 0
   private terminalError?: Error
+  private inputEndError?: Error
   private readingPaused = false
 
   constructor(
@@ -93,6 +104,11 @@ export class JsonlRpcPeer {
     return this.terminalError !== undefined
   }
 
+  /** A process exit can precede the last bytes already written to stdout. */
+  finishOnInputEnd(error: Error): void {
+    this.inputEndError = error
+  }
+
   pauseReading(): void {
     this.readingPaused = true
     this.input.pause()
@@ -126,12 +142,8 @@ export class JsonlRpcPeer {
     }
     let timeoutMs: number | null
     try {
-      // Slash expansion can await a dialog before Pi acknowledges a prompt.
-      if (command === 'prompt' && options.timeoutMs != null) {
-        throw new RangeError('Prompt acknowledgements cannot have a timeout')
-      }
       timeoutMs =
-        command === 'prompt' || options.timeoutMs === null
+        options.timeoutMs === null
           ? null
           : jsonlRpcRequestTimeout(options.timeoutMs ?? this.limits.requestTimeoutMs)
     } catch (error) {
@@ -159,7 +171,7 @@ export class JsonlRpcPeer {
     })
   }
 
-  /** Fire-and-forget prompts allow dialogs to be answered while their acknowledgement is pending. */
+  /** The dialect may track acknowledgements independently of transport correlation. */
   send(record: JsonlRpcRecord, signal?: AbortSignal): Promise<void> {
     if (this.terminalError) {
       return Promise.reject(this.terminalError)
@@ -202,7 +214,7 @@ export class JsonlRpcPeer {
       this.close(error instanceof Error ? error : new Error(String(error)))
     }
   }
-  private readonly onEnd = (): void => this.close()
+  private readonly onEnd = (): void => this.close(this.inputEndError)
   private readonly onError = (error: Error): void => this.close(error)
 
   private diagnose(message: string): void {
@@ -237,6 +249,16 @@ export class JsonlRpcPeer {
       return
     }
     const record = parsed.data
+    if (
+      record.type !== 'response' &&
+      record.type !== 'extension_ui_request' &&
+      typeof record.id === 'string' &&
+      this.pending.has(record.id) &&
+      (Object.hasOwn(record, 'command') || Object.hasOwn(record, 'success'))
+    ) {
+      this.rejectPending(record.id, new Error('Invalid agent RPC response'))
+      return
+    }
     if (record.type === 'response' && typeof record.id === 'string') {
       const pending = this.pending.get(record.id)
       if (!pending) {
@@ -252,7 +274,12 @@ export class JsonlRpcPeer {
       if (response.data.success) {
         pending.resolve(response.data.data)
       } else {
-        pending.reject(new Error(response.data.error ?? `Agent rejected ${pending.command}`))
+        pending.reject(
+          new JsonlRpcResponseError(
+            pending.command,
+            response.data.error ?? `Agent rejected ${pending.command}`
+          )
+        )
       }
       return
     }

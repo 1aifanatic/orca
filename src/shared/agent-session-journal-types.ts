@@ -164,6 +164,13 @@ export type AgentJournalPromptOption = {
   description?: string
 }
 
+export type AgentJournalFreeTextInput = {
+  allowEmpty?: boolean
+  multiline?: boolean
+  initialValue?: string
+  placeholder?: string
+}
+
 export type AgentJournalQuestion = {
   id: string
   question: string
@@ -172,6 +179,7 @@ export type AgentJournalQuestion = {
   options: AgentJournalPromptOption[]
   /** Present when the provider accepts an answer outside the offered options. */
   freeTextQuestionId?: string
+  freeTextInput?: AgentJournalFreeTextInput
 }
 
 export type AgentJournalApprovalMatchedAskRule = {
@@ -220,6 +228,7 @@ export type AgentJournalQuestionItem = {
   questions?: AgentJournalQuestion[]
   /** Present when the provider accepts an answer outside the offered options. */
   freeTextQuestionId?: string
+  freeTextInput?: AgentJournalFreeTextInput
   resolution: AgentJournalResolution
 }
 

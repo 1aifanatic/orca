@@ -8,6 +8,12 @@ import type { AgentSessionExecutionLocation } from '../../shared/agent-session-r
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { PI_RPC_AGENT } from '../pi/rpc-agent-definition'
+import { PiRpcSessionAdapter } from '../pi/rpc-session-adapter'
+import { createPiRpcLaunchResolver } from '../pi/rpc-launch-resolution'
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionLifecycleEvent
@@ -160,6 +166,48 @@ async function resolveCodexAccountHomePath(
 
 export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRuntimeRegistration[] =
   [
+    {
+      definition: PI_RPC_AGENT,
+      createAdapter: (context) =>
+        new PiRpcSessionAdapter({
+          resolveLaunch: createPiRpcLaunchResolver({
+            store: context.store,
+            resolveWorkspacePath: context.deps.resolveWorkspacePath,
+            resolveEnvironment: async () => ({
+              ...(await context.environment.resolveClaudeInheritedEnv()),
+              ...(await context.deps.resolvePiLaunchEnv?.())
+            }),
+            ...(context.deps.resolvePiCommand
+              ? { resolveCommand: context.deps.resolvePiCommand }
+              : {})
+          }),
+          ...(context.deps.openPiConnection
+            ? { openConnection: context.deps.openPiConnection }
+            : {}),
+          ...(context.deps.readProcessStartTime
+            ? { readProcessStartTime: context.deps.readProcessStartTime }
+            : {}),
+          onLifecycle: context.deliverLifecycle,
+          onSettled: ({ sessionId, clientMessageId, outcome }) => {
+            if (outcome.state === 'admitted') {
+              return
+            }
+            context.followUps.onDispatchSettledLate({
+              sessionId,
+              clientMessageId,
+              ...(outcome.state === 'accepted'
+                ? { providerIdentity: outcome.providerIdentity }
+                : outcome)
+            })
+          },
+          onIdle: context.followUps.releaseUnansweredDispatches,
+          logger: context.deps.logger
+        }),
+      supportsLocation: (location) =>
+        location.executionHostId === LOCAL_EXECUTION_HOST_ID && location.wslDistro === null,
+      resolveAccountHomePath: async ({ launchEnv }) =>
+        launchEnv.PI_CODING_AGENT_DIR?.trim() || join(homedir(), '.pi', 'agent')
+    },
     {
       definition: CODEX_STRUCTURED_AGENT,
       createAdapter: createCodexAdapter,

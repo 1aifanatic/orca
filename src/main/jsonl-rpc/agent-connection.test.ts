@@ -78,12 +78,14 @@ describe('JSON-lines RPC process ownership', () => {
   })
 
   it('settles requests on proven exit with stdout open, and excludes stderr from public errors', async () => {
+    vi.useFakeTimers()
     const onExit = vi.fn()
     const { connection, child } = fixture({ onExit })
     const pending = expect(connection.request('prompt')).rejects.toThrow('code 7')
     child.stderr.write('sensitive stderr text')
     child.emit('exit', 7, null)
     child.emit('close', 7, null)
+    await vi.advanceTimersByTimeAsync(1_000)
     await pending
     expect(child.stdout.readableEnded).toBe(false)
     expect(connection.rootVerdict).toBe('exited')
@@ -92,6 +94,23 @@ describe('JSON-lines RPC process ownership', () => {
       exit: { code: 7, signal: null, processless: false }
     })
     expect(onExit.mock.calls[0][0].message).not.toContain('sensitive')
+  })
+
+  it('drains final response and event bytes written before the root exit', async () => {
+    const onRecord = vi.fn()
+    const onExit = vi.fn()
+    const { connection, child } = fixture({ onRecord, onExit })
+    const request = connection.request('get_state')
+    child.emit('exit', 0, null)
+    expect(connection.rootVerdict).toBe('exited')
+    expect(onExit).not.toHaveBeenCalled()
+    child.stdout.end(
+      '{"type":"response","command":"get_state","id":"orca-1","success":true,"data":{}}\n{"type":"agent_settled"}\n'
+    )
+    await expect(request).resolves.toEqual({})
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(onRecord).toHaveBeenCalledExactlyOnceWith({ type: 'agent_settled' })
+    expect(onExit).toHaveBeenCalledOnce()
   })
 
   it('closes a broken stdout transport and cleans up, while keeping host exit evidence separate', async () => {

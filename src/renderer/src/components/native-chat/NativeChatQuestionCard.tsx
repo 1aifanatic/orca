@@ -1,9 +1,11 @@
 import { ImeInput } from '@/lib/ime-text-field'
+import { Textarea } from '@/components/ui/textarea'
 import { useState, type RefObject } from 'react'
 import { Check, Pencil, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { AskAnswerSelection, AskPrompt } from './native-chat-interactive-prompt'
+import type { AgentJournalFreeTextInput } from '../../../../shared/agent-session-journal-types'
 
 export type NativeChatQuestionCardProps = {
   prompt: AskPrompt
@@ -12,6 +14,7 @@ export type NativeChatQuestionCardProps = {
   /** Deliver the chosen answer (per-question option indices + free text). */
   onAnswer: (selections: AskAnswerSelection[]) => void
   allowOther?: boolean | readonly boolean[]
+  freeTextInputs?: readonly (AgentJournalFreeTextInput | undefined)[]
   /** Dismiss the prompt (sends Escape to the agent). */
   onCancel: () => void
   /** Exposes the free-text row so pane-level Paste can target it while the
@@ -36,6 +39,7 @@ export function NativeChatQuestionCard({
   isSubmitting = false,
   onAnswer,
   allowOther = true,
+  freeTextInputs,
   onCancel,
   answerInputRef
 }: NativeChatQuestionCardProps): React.JSX.Element {
@@ -43,17 +47,24 @@ export function NativeChatQuestionCard({
   // Keep option identity by index: labels are display text and are not guaranteed
   // unique, while Claude's selector commits the numbered row (STA-1860).
   const [selections, setSelections] = useState<number[][]>(() => prompt.questions.map(() => []))
-  const [otherText, setOtherText] = useState<string[]>(() => prompt.questions.map(() => ''))
+  const [otherText, setOtherText] = useState<string[]>(() =>
+    prompt.questions.map((_, qi) => freeTextInputs?.[qi]?.initialValue ?? '')
+  )
 
   const total = prompt.questions.length
   const isLast = index === total - 1
   const q = prompt.questions[index]!
   const questionAllowsOther = Array.isArray(allowOther) ? (allowOther[index] ?? false) : allowOther
+  const freeTextInput = freeTextInputs?.[index]
+  const acceptsEmpty = (qi: number): boolean =>
+    freeTextInputs?.[qi]?.allowEmpty === true && prompt.questions[qi]?.options.length === 0
+  const typedText = (qi: number, oth = otherText): string =>
+    freeTextInputs?.[qi]?.allowEmpty ? (oth[qi] ?? '') : (oth[qi] ?? '').trim()
 
   // Picking an option replaces a chosen typed answer on single-select; the text stays in
   // the field, unsent, until the user types or clicks there again.
   const typedAnswerChosen = (qi: number, sel = selections, oth = otherText): boolean =>
-    (sel[qi] ?? []).includes(TYPED_ANSWER) && (oth[qi] ?? '').trim().length > 0
+    acceptsEmpty(qi) || ((sel[qi] ?? []).includes(TYPED_ANSWER) && typedText(qi, oth).length > 0)
 
   const chooseTypedAnswer = (qi: number): void => {
     setSelections((prev) => {
@@ -86,21 +97,23 @@ export function NativeChatQuestionCard({
     const picked = pickedOptions(qi, sel)
       .map((optionIndex) => question?.options[optionIndex]?.label ?? '')
       .filter((label) => label.length > 0)
-    const other = typedAnswerChosen(qi, sel, oth) ? (oth[qi] ?? '').trim() : ''
+    const other = typedAnswerChosen(qi, sel, oth) ? typedText(qi, oth) : ''
     return [...picked, ...(other ? [other] : [])].join(', ')
   }
 
-  const currentAnswered = answerFor(index).length > 0
+  const currentAnswered = answerFor(index).length > 0 || acceptsEmpty(index)
   const currentTypedAnswerChosen = typedAnswerChosen(index)
 
   const submitAll = (sel: number[][], oth: string[]): void => {
     const resolved: AskAnswerSelection[] = prompt.questions.map((_, i) => {
       return {
         indices: pickedOptions(i, sel),
-        other: typedAnswerChosen(i, sel, oth) ? (oth[i] ?? '').trim() : ''
+        other: typedAnswerChosen(i, sel, oth) ? typedText(i, oth) : ''
       }
     })
-    const anyAnswered = resolved.some((s) => s.indices.length > 0 || (s.other ?? '').length > 0)
+    const anyAnswered = resolved.some(
+      (s, i) => s.indices.length > 0 || (s.other ?? '').length > 0 || acceptsEmpty(i)
+    )
     if (anyAnswered) {
       onAnswer(resolved)
     }
@@ -146,7 +159,7 @@ export function NativeChatQuestionCard({
       advanceOrSubmit(selections, otherText)
       return
     }
-    const anyAnswered = prompt.questions.some((_, i) => answerFor(i).length > 0)
+    const anyAnswered = prompt.questions.some((_, i) => answerFor(i).length > 0 || acceptsEmpty(i))
     if (anyAnswered) {
       submitAll(selections, otherText)
     } else if (!fromKeyboard) {
@@ -243,35 +256,47 @@ export function NativeChatQuestionCard({
                       AskUserQuestion tool result: it reaches the model but never the command
                       parser, so `/compact` and friends are inert, while a skill name can
                       still be acted on. */}
-                  <ImeInput
-                    ref={answerInputRef}
-                    disabled={isSubmitting}
-                    value={otherText[index]}
-                    onChange={(e) => setOther(index, e.target.value)}
-                    // Click, not focus: tabbing through the field toward Submit must not
-                    // replace the option the user just picked.
-                    onClick={() => {
-                      if ((otherText[index] ?? '').trim().length > 0) {
-                        chooseTypedAnswer(index)
+                  {freeTextInput?.multiline ? (
+                    <Textarea
+                      disabled={isSubmitting}
+                      value={otherText[index]}
+                      onChange={(e) => setOther(index, e.target.value)}
+                      placeholder={freeTextInput.placeholder}
+                    />
+                  ) : (
+                    <ImeInput
+                      ref={answerInputRef}
+                      disabled={isSubmitting}
+                      value={otherText[index]}
+                      onChange={(e) => setOther(index, e.target.value)}
+                      // Click, not focus: tabbing through the field toward Submit must not
+                      // replace the option the user just picked.
+                      onClick={() => {
+                        if ((otherText[index] ?? '').trim().length > 0) {
+                          chooseTypedAnswer(index)
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          confirm(true)
+                        }
+                      }}
+                      placeholder={
+                        freeTextInput?.placeholder ??
+                        translate(
+                          'components.native-chat.question.otherPlaceholder',
+                          'Type your answer'
+                        )
                       }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        confirm(true)
-                      }
-                    }}
-                    placeholder={translate(
-                      'components.native-chat.question.otherPlaceholder',
-                      'Type your answer'
-                    )}
-                    className={cn(
-                      'min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 disabled:cursor-default disabled:opacity-50',
-                      currentTypedAnswerChosen || !otherText[index]
-                        ? 'text-foreground'
-                        : 'text-muted-foreground'
-                    )}
-                  />
+                      className={cn(
+                        'min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60 disabled:cursor-default disabled:opacity-50',
+                        currentTypedAnswerChosen || !otherText[index]
+                          ? 'text-foreground'
+                          : 'text-muted-foreground'
+                      )}
+                    />
+                  )}
                 </>
               ) : (
                 <span className="flex-1" />

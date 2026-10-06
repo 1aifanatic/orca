@@ -19,6 +19,7 @@ export class JsonlRpcAgentConnection {
   private readonly managed: ManagedProviderProcess
   private readonly peer: JsonlRpcPeer
   private closing = false
+  private finishObservedExit?: () => void
 
   constructor(
     launch: ProviderProcessLaunch,
@@ -60,12 +61,42 @@ export class JsonlRpcAgentConnection {
           ? 'Agent process could not start'
           : `Agent process exited (code ${exit.code ?? 'none'}, signal ${exit.signal ?? 'none'})`
       )
-      this.peer.close(error)
-      managed.child.removeListener('error', this.onError)
-      try {
-        options.onExit?.(error, { expected: this.closing, exit })
-      } catch {
-        this.diagnose('Agent exit observer failed')
+      this.peer.finishOnInputEnd(error)
+      const stdout = managed.child.stdout
+      let finished = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const finish = (): void => {
+        if (finished) {
+          return
+        }
+        finished = true
+        clearTimeout(timer)
+        stdout.removeListener('end', finish)
+        stdout.removeListener('close', finish)
+        this.finishObservedExit = undefined
+        this.peer.close(error)
+        managed.child.removeListener('error', this.onError)
+        try {
+          options.onExit?.(error, { expected: this.closing, exit })
+        } catch {
+          this.diagnose('Agent exit observer failed')
+        }
+      }
+      this.finishObservedExit = finish
+      if (
+        this.closing ||
+        exit.processless ||
+        this.peer.closed ||
+        stdout.destroyed ||
+        stdout.readableEnded
+      ) {
+        finish()
+      } else {
+        stdout.once('end', finish)
+        stdout.once('close', finish)
+        // A descendant can inherit stdout after the provider root exits.
+        timer = setTimeout(finish, 1_000)
+        timer.unref()
       }
     })
   }
@@ -78,6 +109,9 @@ export class JsonlRpcAgentConnection {
   }
   get rootVerdict(): ManagedProviderProcess['rootVerdict'] {
     return this.managed.rootVerdict
+  }
+  get processless(): boolean {
+    return this.managed.processless
   }
   get lastCloseResult(): ManagedProviderProcess['lastCloseResult'] {
     return this.managed.lastCloseResult
@@ -106,6 +140,7 @@ export class JsonlRpcAgentConnection {
   /** Stop sends the dialect's abort first, then closes this connection through the supervisor. */
   close(error?: Error): Promise<ProviderProcessCloseResult> {
     this.closing = true
+    this.finishObservedExit?.()
     this.peer.close(error)
     return this.managed.close()
   }

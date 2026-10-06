@@ -10,6 +10,7 @@
 // A process whose journal will not open installs none and answers every
 // structured request with the refusal that says why.
 
+import type { PiRpcSessionDeps } from '../pi/rpc-session'
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -93,6 +94,9 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
+  resolvePiCommand?: (options: { pathEnv?: string | null; homePath?: string }) => string
+  openPiConnection?: PiRpcSessionDeps['openConnection']
+  resolvePiLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']

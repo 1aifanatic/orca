@@ -106,21 +106,22 @@ describe('JSON-lines RPC peer', () => {
   it('does not time out prompts waiting for slash expansion, but bounds control requests', async () => {
     vi.useFakeTimers()
     const { peer, reply } = fixture({}, { requestTimeoutMs: 100 })
-    const prompt = peer.request('prompt', { message: '/ask' })
+    const prompt = peer.request('prompt', { message: '/ask' }, { timeoutMs: null })
     const control = expect(peer.request('get_state')).rejects.toThrow('get_state in time')
     await vi.advanceTimersByTimeAsync(1_000)
     await control
     reply({ type: 'response', id: 'orca-1', command: 'prompt', success: true })
     await expect(prompt).resolves.toBeUndefined()
-    await expect(peer.request('prompt', {}, { timeoutMs: 10 })).rejects.toThrow(
-      'cannot have a timeout'
-    )
+    const bounded = expect(peer.request('prompt', {}, { timeoutMs: 10 })).rejects.toThrow('in time')
+    await vi.advanceTimersByTimeAsync(10)
+    await bounded
     expect(vi.getTimerCount()).toBe(0)
   })
 
   it.each([
     { type: 'response', command: 'wrong', success: true },
     { type: 'response', command: 'prompt', success: 'yes' },
+    { type: 'reponse', command: 'prompt', success: true },
     { type: 4 }
   ])('rejects malformed identified replies without stranding a prompt: %j', async (record) => {
     const { peer, reply } = fixture()
@@ -199,6 +200,18 @@ describe('JSON-lines RPC peer', () => {
     await expect(peer.send({ type: 'abort' })).rejects.toThrow('broken pipe')
     await expect(peer.request('prompt')).rejects.toThrow('broken pipe')
     expect(() => output.emit('error', new Error('late error'))).not.toThrow()
+  })
+
+  it('closes a stalled active control write on timeout so later aborts cannot wait on it', async () => {
+    vi.useFakeTimers()
+    const output = new Writable({ write() {} })
+    const peer = new JsonlRpcPeer(new PassThrough(), output, {}, { requestTimeoutMs: 10 })
+    peers.push(peer)
+    const pending = expect(peer.request('get_state')).rejects.toThrow('in time')
+    await vi.advanceTimersByTimeAsync(10)
+    await pending
+    expect(peer.closed).toBe(true)
+    await expect(peer.send({ type: 'abort' })).rejects.toThrow('in time')
   })
 
   it('rejects invalid limits before installing stream listeners', () => {

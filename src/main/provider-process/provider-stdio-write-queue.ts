@@ -36,6 +36,12 @@ export class ProviderStdioWriteQueue {
     return new Promise((resolve, reject) => {
       const write: Write = { line, resolve, reject }
       const abort = (): void => {
+        if (this.active === write) {
+          this.onFailure(
+            signal?.reason instanceof Error ? signal.reason : new Error('Agent write aborted')
+          )
+          return
+        }
         const index = this.queue.indexOf(write)
         if (index === -1) {
           return
@@ -58,6 +64,7 @@ export class ProviderStdioWriteQueue {
     }
     this.terminalError = error
     this.detachDrain?.()
+    this.active?.detachAbort?.()
     this.active?.reject(error)
     this.active = undefined
     for (const write of this.queue.splice(0)) {
@@ -75,7 +82,6 @@ export class ProviderStdioWriteQueue {
     if (!write) {
       return
     }
-    write.detachAbort?.()
     this.active = write
     if (this.output.destroyed || !this.output.writable) {
       this.onFailure(this.errors.closed())
@@ -89,6 +95,7 @@ export class ProviderStdioWriteQueue {
         return
       }
       this.detachDrain?.()
+      write.detachAbort?.()
       this.active = undefined
       this.bytes -= Buffer.byteLength(write.line)
       write.resolve()

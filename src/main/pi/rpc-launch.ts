@@ -2,8 +2,12 @@ import {
   ORCA_SCRUB_SAFE_LAUNCH_ENV,
   ORCA_SCRUB_SAFE_PANE_ENV
 } from '../../shared/agent-hook-scrub-safe-env'
-import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
+import {
+  AGENT_HOOK_RUNTIME_ENV_KEYS,
+  ORCA_AGENT_SESSION_CALLER_ENV_KEYS
+} from '../ipc/pty/host-env/spawn-env-keys'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
+import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
 
 export type PiRpcLaunchOptions = {
   /** Binary and paths are resolved by the execution host before building the launch. */
@@ -13,6 +17,8 @@ export type PiRpcLaunchOptions = {
   extraArgs?: readonly string[]
   env?: Record<string, string>
   sessionFile?: string
+  forkFile?: string
+  structuredSession?: { id: string; spawnToken: string }
 }
 
 const CHILD_ENV_TO_DELETE: readonly string[] = [
@@ -24,12 +30,36 @@ const CHILD_ENV_TO_DELETE: readonly string[] = [
   ORCA_SCRUB_SAFE_LAUNCH_ENV,
   ...AGENT_HOOK_RUNTIME_ENV_KEYS
 ]
+const CALLER_ENV_TO_DELETE = [
+  ...ORCA_AGENT_SESSION_CALLER_ENV_KEYS,
+  'ORCA_TERMINAL_HANDLE',
+  'ORCA_AGENT_SESSION_SPAWN_TOKEN'
+]
 
 /** Pi stores its own sessions; an explicit session file is shared with terminal resumes. */
 export function buildPiRpcLaunch(options: PiRpcLaunchOptions): ProviderProcessLaunch {
   if (!options.fullAccess) {
     throw new Error('Pi structured chat supports full access only')
   }
+  if (options.sessionFile !== undefined && !options.sessionFile.trim()) {
+    throw new Error('Pi resume requires a session file')
+  }
+  if (
+    options.forkFile !== undefined &&
+    (!options.forkFile.trim() || options.sessionFile !== undefined)
+  ) {
+    throw new Error('Pi fork requires one source session file')
+  }
+  const env = { ...options.env }
+  for (const key of CALLER_ENV_TO_DELETE) {
+    delete env[key]
+  }
+  const childEnv = options.structuredSession
+    ? {
+        ...structuredSessionChildIdentityEnv(options.structuredSession.id, env),
+        ORCA_AGENT_SESSION_SPAWN_TOKEN: options.structuredSession.spawnToken
+      }
+    : env
   const args = [...(options.extraArgs ?? [])]
   let provider = false
   let model = false
@@ -56,7 +86,8 @@ export function buildPiRpcLaunch(options: PiRpcLaunchOptions): ProviderProcessLa
         '-r',
         '--resume',
         '-c',
-        '--continue'
+        '--continue',
+        '--fork'
       ].includes(flag)
     ) {
       throw new Error(`Pi ${flag} conflicts with the structured chat launch`)
@@ -72,9 +103,17 @@ export function buildPiRpcLaunch(options: PiRpcLaunchOptions): ProviderProcessLa
       '--mode',
       'rpc',
       ...args,
-      ...(options.sessionFile ? ['--session', options.sessionFile] : [])
+      ...(options.sessionFile ? ['--session', options.sessionFile] : []),
+      ...(options.forkFile ? ['--fork', options.forkFile] : [])
     ],
-    env: options.env,
-    envToDelete: CHILD_ENV_TO_DELETE
+    env: childEnv,
+    envToDelete: [
+      ...CHILD_ENV_TO_DELETE,
+      ...(options.structuredSession
+        ? Object.hasOwn(childEnv, 'ORCA_TERMINAL_HANDLE')
+          ? []
+          : ['ORCA_TERMINAL_HANDLE']
+        : CALLER_ENV_TO_DELETE)
+    ]
   }
 }

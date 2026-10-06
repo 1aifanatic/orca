@@ -14,7 +14,7 @@ import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draf
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
-import { NativeChatQuestionCard } from './NativeChatQuestionCard'
+import { NativeChatStructuredQuestionCard } from './NativeChatStructuredQuestionCard'
 import { selectNativeChatViewState, structuredChatHistoryPhase } from './native-chat-view-state'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useNativeChatFontSize } from './use-native-chat-font-size'
@@ -178,8 +178,8 @@ export function NativeChatStructuredSession(
       }
     : null
   const cancelPrompt = () => {
-    if (controller.turnId && prompt) {
-      void controller.cancel(controller.turnId, {
+    if (prompt) {
+      void controller.cancel(controller.turnId ?? undefined, {
         itemId: prompt.itemId,
         expectedRevision: prompt.revision
       })
@@ -360,34 +360,10 @@ export function NativeChatStructuredSession(
             />
           ) : null}
           {prompt && questionBody ? (
-            <NativeChatQuestionCard
+            <NativeChatStructuredQuestionCard
               key={`${prompt.itemId}:${prompt.revision}`}
-              prompt={{
-                questions: questions.map((question) => ({
-                  question: question.question,
-                  ...(question.header ? { header: question.header } : {}),
-                  multiSelect: question.multiSelect,
-                  options: question.options.map((option) => ({
-                    label: option.label,
-                    ...(option.description ? { description: option.description } : {})
-                  }))
-                }))
-              }}
-              allowOther={questions.map((question) => Boolean(question.freeTextQuestionId))}
-              onAnswer={(answers) => {
-                const chosen = questions.map((question, questionIndex) => {
-                  const answer = answers[questionIndex]
-                  const other = answer?.other?.trim()
-                  const optionIds = (answer?.indices ?? []).flatMap((optionIndex) => {
-                    const optionId = question.options[optionIndex]?.id
-                    return optionId ? [optionId] : []
-                  })
-                  return { questionId: question.id, optionIds, ...(other ? { other } : {}) }
-                })
-                if (chosen.every((answer) => answer.optionIds.length > 0 || answer.other)) {
-                  void controller.respond(prompt, { kind: 'answers', answers: chosen })
-                }
-              }}
+              questions={questions}
+              onAnswer={(response) => void controller.respond(prompt, response)}
               onCancel={cancelPrompt}
             />
           ) : null}

@@ -1,0 +1,158 @@
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
+import { agentSessionProviderHandleKey } from '../../shared/agent-session-provider-handle'
+import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
+import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
+import { createPiRpcLaunchResolver, piRpcProviderLink } from './rpc-launch-resolution'
+
+const identity: AgentSessionJournalIdentity = {
+  sessionId: 'session-pi-resolve',
+  workspaceId: 'folder-1',
+  hostId: 'local',
+  agent: 'pi',
+  providerHandle: null
+}
+let root: string
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), 'orca-pi-resolver-'))
+})
+afterEach(async () => {
+  closeTestJournalHostDatabase(root)
+  await rm(root, { recursive: true, force: true })
+})
+
+async function setup() {
+  const store = await openTestAgentSessionRecordStore(root)
+  const { record } = await store.reserveOwner({
+    sessionId: identity.sessionId,
+    location: {
+      executionHostId: 'local',
+      wslDistro: null,
+      workspaceId: 'folder-1',
+      workspaceKind: 'folder'
+    },
+    provider: 'pi',
+    accountHome: { variable: 'PI_CODING_AGENT_DIR', path: '/host/account' },
+    expectedFence: null,
+    spawnToken: 'spawn-pi',
+    claimKeyId: 'key-1',
+    handoffOperationId: null,
+    probe: { outcome: 'reservation-unused' },
+    operation: {
+      callerKey: 'client-1',
+      operationId: '1800000000000-00000000000000000000000000000001',
+      fingerprint: 'pi-create'
+    },
+    now: 1_800_000_000_000
+  })
+  const workspace = join(root, 'workspace')
+  await mkdir(workspace)
+  const resolveEnvironment = vi.fn(async () => ({
+    PATH: '/host/bin',
+    HOME: '/host/home',
+    PI_CODING_AGENT_DIR: '/inherited/wrong'
+  }))
+  const resolveCommand = vi.fn(() => '/host/bin/pi')
+  const resolver = createPiRpcLaunchResolver({
+    store,
+    resolveWorkspacePath: async () => workspace,
+    resolveEnvironment,
+    resolveCommand
+  })
+  const prior = (
+    file: string,
+    origin: AgentSessionProviderHandleLink['origin'] = 'created'
+  ): AgentSessionProviderHandleLink => ({
+    linkId: 'prior-link',
+    handle: { transport: 'jsonl-rpc', agent: 'pi', nativeId: file },
+    origin,
+    mintedAtFence: 1,
+    observedAt: 100
+  })
+  const withPrior = (link: AgentSessionProviderHandleLink) => {
+    vi.spyOn(store, 'getRecord').mockReturnValue({ ...record, providerHandleChain: [link] })
+  }
+  return { store, workspace, resolver, resolveCommand, prior, withPrior }
+}
+
+describe('Pi host launch resolution', () => {
+  it('uses the runtime workspace, binary and account home for a new folder session', async () => {
+    const h = await setup()
+    const launch = await h.resolver(identity)
+    expect(launch).toMatchObject({
+      command: '/host/bin/pi',
+      cwd: h.workspace,
+      env: { PATH: '/host/bin', HOME: '/host/home', PI_CODING_AGENT_DIR: '/host/account' },
+      previous: null,
+      fullAccess: true
+    })
+    expect(h.resolveCommand).toHaveBeenCalledWith({ pathEnv: '/host/bin', homePath: '/host/home' })
+  })
+
+  it('resumes the same directory and forks a session from a different directory', async () => {
+    const h = await setup()
+    const same = join(root, 'same.jsonl')
+    await writeFile(same, `${JSON.stringify({ type: 'session', cwd: h.workspace })}\n`)
+    h.withPrior(h.prior(same))
+    const resumed = await h.resolver(identity)
+    expect(resumed.sessionFile).toBe(same)
+    expect(resumed.forkFile).toBeUndefined()
+    expect(piRpcProviderLink(resumed, same, 2, 'next', 200).origin).toBe('resumed')
+    expect(() => piRpcProviderLink(resumed, join(root, 'wrong.jsonl'), 2, 'bad', 200)).toThrow(
+      'different session file'
+    )
+
+    const elsewhere = join(root, 'elsewhere.jsonl')
+    await writeFile(elsewhere, `${JSON.stringify({ type: 'session', cwd: join(root, 'other') })}\n`)
+    h.withPrior(h.prior(elsewhere))
+    const forked = await h.resolver(identity)
+    expect(forked.forkFile).toBe(elsewhere)
+    expect(forked.sessionFile).toBeUndefined()
+    expect(piRpcProviderLink(forked, join(root, 'fork.jsonl'), 2, 'fork', 200)).toMatchObject({
+      origin: 'forked',
+      forkedFromKey: agentSessionProviderHandleKey(h.prior(elsewhere).handle)
+    })
+    expect(() => piRpcProviderLink(forked, elsewhere, 2, 'bad', 200)).toThrow('did not fork')
+  })
+
+  it('distinguishes an unsaved creation from an existing session that could not restore', async () => {
+    const h = await setup()
+    const missing = join(root, 'missing.jsonl')
+    h.withPrior(h.prior(missing))
+    const unsaved = await h.resolver(identity)
+    expect(unsaved.replacement).toBe('unsaved')
+    expect(piRpcProviderLink(unsaved, join(root, 'new.jsonl'), 2, 'new', 200)).toMatchObject({
+      origin: 'created',
+      supersedesKey: agentSessionProviderHandleKey(h.prior(missing).handle)
+    })
+    h.withPrior(h.prior(missing, 'resumed'))
+    const lost = await h.resolver(identity)
+    expect(lost.replacement).toBe('restore-failed')
+    expect(
+      piRpcProviderLink(lost, join(root, 'replacement.jsonl'), 2, 'replace', 200)
+    ).toMatchObject({ replaces: { reason: 'restore-failed', replacedAt: 200 } })
+  })
+
+  it('refuses a different execution host and a foreign account home before resolving paths', async () => {
+    const h = await setup()
+    const record = h.store.getRecord(identity.sessionId)
+    if (!record) {
+      throw new Error('record missing')
+    }
+    vi.spyOn(h.store, 'getRecord').mockReturnValue({
+      ...record,
+      location: { ...record.location, executionHostId: 'ssh:remote' }
+    })
+    await expect(h.resolver(identity)).rejects.toThrow('another execution host')
+    vi.spyOn(h.store, 'getRecord').mockReturnValue({
+      ...record,
+      accountHome: { variable: 'CODEX_HOME', path: '/wrong' }
+    })
+    await expect(h.resolver(identity)).rejects.toThrow('account home')
+    expect(h.resolveCommand).not.toHaveBeenCalled()
+  })
+})
