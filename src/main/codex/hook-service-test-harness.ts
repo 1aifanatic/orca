@@ -9,8 +9,11 @@ import {
 } from './config-toml-trust'
 import { _internals as grantInternals } from './codex-hook-trust-grant'
 import { _internals as lookupInternals } from './codex-hook-hash-lookup'
-import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
-import { computeOrcaCodexHookHashes } from './codex-hook-local-install'
+import {
+  computeOrcaCodexHookHashes,
+  getManagedCommand,
+  getManagedScriptPath
+} from './codex-hook-definition'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
 

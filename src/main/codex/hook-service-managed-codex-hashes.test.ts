@@ -33,7 +33,6 @@ vi.mock('../agent-hooks/installer-utils', async (importOriginal) => {
 
 import { CodexHookService } from './hook-service'
 import { _internals as lookupInternals } from './codex-hook-hash-lookup'
-import { computeOrcaCodexHookHashes } from './codex-hook-local-install'
 import { fingerprintCodex, memoizeCodexHookTrust } from './codex-hook-trust-memo'
 import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
 import {
@@ -44,7 +43,13 @@ import {
   upsertHookTrustEntries,
   type CodexEventLabel
 } from './config-toml-trust'
-import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
+import {
+  CODEX_EVENTS,
+  CODEX_EVENT_LABEL,
+  computeOrcaCodexHookHashes,
+  getManagedCommand,
+  getManagedScriptPath
+} from './codex-hook-definition'
 import { CODEX_DAEMON_OVERRIDE_MARKER } from './codex-daemon-socket-path-guard'
 
 // Why this file: a managed CODEX_HOME's approval for Orca's entry is Codex's
@@ -73,6 +78,16 @@ function managedKey(eventLabel: CodexEventLabel, groupIndex: number): string {
     handlerIndex: 0,
     command: getManagedCommand(getManagedScriptPath())
   })
+}
+
+/** The approval at Orca's entry in each event Codex listed. */
+function listedEventApprovals(): Record<string, string | undefined> {
+  const trust = readHookTrustEntries(join(managedHome(), 'config.toml'))
+  return Object.fromEntries(
+    CODEX_EVENTS.map((eventName) => CODEX_EVENT_LABEL[eventName])
+      .filter((label) => label in CODEX_HASHES)
+      .map((label) => [label, trust.get(managedKey(label, 0))?.trustedHash])
+  )
 }
 
 function seedSystemUserStopHook(): void {
@@ -252,7 +267,6 @@ describe('managed-home Codex hook approval', () => {
     useCodexHashes()
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
-    const before = readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
     // Why: before the shell PATH is hydrated, the codex a pane runs may not be found yet.
     useAnswer({
       codexVersion: null,
@@ -263,7 +277,7 @@ describe('managed-home Codex hook approval', () => {
 
     const status = await service.install()
 
-    expect(readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')).toBe(before)
+    expect(listedEventApprovals()).toEqual(CODEX_HASHES)
     expect(
       readHookTrustEntries(join(managedHome(), 'config.toml')).get(managedKey('stop', 0))
         ?.trustedHash
@@ -326,7 +340,6 @@ describe('managed-home Codex hook approval', () => {
     useCodexHashes()
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
-    const before = readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
     // Why: a Codex update makes the answer for the new binary slower than the launch may wait.
     lookupInternals.resetForTesting()
     lookupInternals.setHashResolverForTesting(
@@ -342,7 +355,7 @@ describe('managed-home Codex hook approval', () => {
 
     await service.install(undefined, 10)
 
-    expect(readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')).toBe(before)
+    expect(listedEventApprovals()).toEqual(CODEX_HASHES)
     expect(
       readHookTrustEntries(join(managedHome(), 'config.toml')).get(managedKey('stop', 0))
     ).toEqual({ trustedHash: 'sha256:codex-stop', enabled: true })
@@ -384,7 +397,6 @@ describe('managed-home Codex hook approval', () => {
     useCodexHashes()
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
-    const before = readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
     lookupInternals.resetForTesting()
     // Why a version: the app-server timed out after `codex --version` answered.
     lookupInternals.setHashResolverForTesting(async () => ({
@@ -396,7 +408,7 @@ describe('managed-home Codex hook approval', () => {
 
     await service.install(undefined, 3_000)
 
-    expect(readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')).toBe(before)
+    expect(listedEventApprovals()).toEqual(CODEX_HASHES)
     expect(
       readHookTrustEntries(join(managedHome(), 'config.toml')).get(managedKey('stop', 0))
         ?.trustedHash
@@ -532,6 +544,29 @@ describe('managed-home Codex hook approval', () => {
         state: 'partial',
         detail: "Orca's hook entry is not approved yet (timed out)"
       })
+    })
+
+    it("keeps each event's approval and gives Orca's hash to the rest until Codex answers", async () => {
+      useAnswer({
+        codexVersion: 'codex-cli 0.131.0',
+        hashes: { stop: CODEX_HASHES.stop },
+        failure: null
+      })
+      const service = new CodexHookService()
+      await service.install()
+      useAnswer({ codexVersion: null, hashes: null, failure: 'timed out', transient: true })
+
+      await service.install()
+
+      const runtimeHooks = JSON.parse(
+        readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
+      ).hooks
+      expect(isCodexManagedCommand(runtimeHooks.SessionStart[0].hooks[0].command)).toBe(true)
+      const trust = readHookTrustEntries(join(managedHome(), 'config.toml'))
+      expect(trust.get(managedKey('stop', 0))?.trustedHash).toBe('sha256:codex-stop')
+      expect(trust.get(managedKey('session_start', 0))?.trustedHash).toBe(
+        computeOrcaCodexHookHashes().session_start
+      )
     })
 
     it("replaces Orca's hash with Codex's once Codex answers", async () => {

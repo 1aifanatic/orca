@@ -29,8 +29,7 @@ vi.mock('os', async (importOriginal) => {
 })
 vi.mock('./codex-hook-local-install', async (importOriginal) => ({
   ...(await importOriginal<typeof CodexHookLocalInstall>()),
-  installCodexHooksExclusively: installExclusivelyMock,
-  readApprovedManagedOrcaHashes: () => null
+  installCodexHooksExclusively: installExclusivelyMock
 }))
 // Why: stands in for asking a real Codex for its hook hashes.
 vi.mock('./codex-hook-hash-lookup', async (importOriginal) => ({

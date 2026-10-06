@@ -9,13 +9,8 @@ import {
 } from '../agent-hooks/installer-utils'
 import { syncSystemConfigIntoManagedCodexHome } from './codex-config-mirror'
 import {
-  computeTrustKey,
-  computeTrustedHash,
   getCodexExplicitHomeHookSourcePath,
-  readHookTrustEntries,
   upsertHookTrustEntries,
-  type CodexEventLabel,
-  type CodexHookTrustState,
   type CodexTrustEntry
 } from './config-toml-trust'
 import {
@@ -205,67 +200,4 @@ function trustWriteError(
     managedHooksPresent,
     detail: `Codex hooks could not be written: ${error instanceof Error ? error.message : String(error)}`
   }
-}
-
-/**
- * The hashes this managed home already approves Orca's entry with, for a launch
- * without Codex's answer: keeping them keeps a working entry.
- */
-export function readApprovedManagedOrcaHashes(runtimeHomePath: string): CodexHookHashes | null {
-  const configPath = getConfigPath(runtimeHomePath)
-  const hooks = readHooksJson(configPath)?.hooks
-  const command = getManagedCommand(getManagedScriptPath())
-  let trust: ReadonlyMap<string, CodexHookTrustState>
-  try {
-    trust = readHookTrustEntries(getCodexConfigTomlPath(runtimeHomePath))
-  } catch {
-    return null
-  }
-  const hashes: Partial<Record<CodexEventLabel, string>> = {}
-  for (const eventName of CODEX_EVENTS) {
-    const hook = hooks?.[eventName]?.[0]?.hooks?.[0]
-    const label = CODEX_EVENT_LABEL[eventName]
-    const state =
-      hook?.command === command
-        ? trust.get(
-            computeTrustKey({
-              sourcePath: getCodexExplicitHomeHookSourcePath(configPath),
-              eventLabel: label,
-              groupIndex: 0,
-              handlerIndex: 0,
-              command
-            })
-          )
-        : undefined
-    if (state?.trustedHash) {
-      hashes[label] = state.trustedHash
-    }
-  }
-  return Object.keys(hashes).length > 0 ? hashes : null
-}
-
-/**
- * Orca's own hash of its entry in every managed event, as main wrote before
- * asking Codex: the stopgap while Codex has not answered. Codex's answer
- * replaces it at the next install.
- */
-export function computeOrcaCodexHookHashes(
-  command: string = getManagedCommand(getManagedScriptPath())
-): CodexHookHashes {
-  return Object.fromEntries(
-    CODEX_EVENTS.map((eventName) => {
-      const eventLabel = CODEX_EVENT_LABEL[eventName]
-      return [
-        eventLabel,
-        computeTrustedHash({
-          sourcePath: '',
-          eventLabel,
-          groupIndex: 0,
-          handlerIndex: 0,
-          command,
-          timeoutSec: buildCodexManagedHook(command, eventName).timeout
-        })
-      ]
-    })
-  )
 }

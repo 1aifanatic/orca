@@ -1,19 +1,17 @@
 import type { AgentHookInstallState, AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { readHooksJson } from '../agent-hooks/installer-utils'
-import {
-  computeTrustKey,
-  getCodexExplicitHomeHookSourcePath,
-  readHookTrustEntries,
-  type CodexHookTrustState
-} from './config-toml-trust'
+import { readHookTrustEntries, type CodexHookTrustState } from './config-toml-trust'
 import {
   CODEX_EVENTS,
   CODEX_EVENT_LABEL,
-  getCodexConfigTomlPath,
-  getConfigPath,
   getManagedCommand,
   getManagedScriptPath
 } from './codex-hook-definition'
+import {
+  approvalsAtOrcaEntries,
+  findOrcaEntrySlots,
+  getManagedCodexHookHome
+} from './codex-hook-orca-approvals'
 import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
 import { isDefinitiveCodexHookAnswer } from './codex-hook-hash-lookup'
 
@@ -26,7 +24,8 @@ export function readCodexHookHomeStatus(
   runtimeHomePath: string,
   answer: CodexHookTrustAnswer | null
 ): AgentHookInstallStatus {
-  const configPath = getConfigPath(runtimeHomePath)
+  const home = getManagedCodexHookHome(runtimeHomePath)
+  const configPath = home.hooksJsonPath
   const command = getManagedCommand(getManagedScriptPath())
   const status = (
     state: AgentHookInstallState,
@@ -37,17 +36,17 @@ export function readCodexHookHomeStatus(
   if (!config) {
     return status('error', false, 'Could not parse Codex hooks.json')
   }
-  const slots = new Map(
-    CODEX_EVENTS.flatMap((eventName) => {
-      const definitions = Array.isArray(config.hooks?.[eventName]) ? config.hooks![eventName]! : []
-      const slot = definitions.flatMap((definition, groupIndex) =>
-        (definition.hooks ?? []).flatMap((hook, handlerIndex) =>
-          hook.command === command ? [{ groupIndex, handlerIndex }] : []
-        )
-      )[0]
-      return slot ? [[eventName, slot] as const] : []
-    })
-  )
+  const slots = findOrcaEntrySlots(config.hooks, command)
+  // Why: an unreadable config.toml is distinct from an absent one (an empty map).
+  let trustStates: ReadonlyMap<string, CodexHookTrustState>
+  let trustReadError: string | null = null
+  try {
+    trustStates = readHookTrustEntries(home.tomlPath)
+  } catch (error) {
+    trustStates = new Map()
+    trustReadError = error instanceof Error ? error.message : String(error)
+  }
+  const approvals = approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)
   if (!answer?.hashes) {
     const reason = answer?.failure ?? 'Orca has not asked Codex yet'
     if (slots.size === 0) {
@@ -57,20 +56,13 @@ export function readCodexHookHomeStatus(
       return status('partial', true, `Orca's hook entry is installed, but ${reason}`)
     }
     // Why not an error: until Codex answers, the approval is the home's earlier one or Orca's own hash.
-    return readsApprovedSlots(runtimeHomePath, slots, command)
+    const approved =
+      trustReadError === null &&
+      [...approvals.values()].every((held) => held.some((approval) => approval.enabled !== false))
+    return approved
       ? status('installed', true, `Approved by Orca; not yet confirmed by Codex (${reason})`)
       : status('partial', true, `Orca's hook entry is not approved yet (${reason})`)
   }
-  // Why: an unreadable config.toml is distinct from an absent one (an empty map).
-  let trustStates: ReadonlyMap<string, CodexHookTrustState>
-  let trustReadError: string | null = null
-  try {
-    trustStates = readHookTrustEntries(getCodexConfigTomlPath(runtimeHomePath))
-  } catch (error) {
-    trustStates = new Map()
-    trustReadError = error instanceof Error ? error.message : String(error)
-  }
-  const sourcePath = getCodexExplicitHomeHookSourcePath(configPath)
   const listedEvents = CODEX_EVENTS.filter(
     (eventName) => answer.hashes[CODEX_EVENT_LABEL[eventName]] !== undefined
   )
@@ -79,8 +71,7 @@ export function readCodexHookHomeStatus(
   for (const eventName of listedEvents) {
     const label = CODEX_EVENT_LABEL[eventName]
     const hash = answer.hashes[label]
-    const slot = slots.get(eventName)
-    if (!slot) {
+    if (!slots.has(eventName)) {
       missing.push(eventName)
       continue
     }
@@ -88,10 +79,10 @@ export function readCodexHookHomeStatus(
     if (hash === null) {
       continue
     }
-    const state = trustStates.get(
-      computeTrustKey({ sourcePath, eventLabel: label, command, ...slot })
-    )
-    if (trustReadError === null && (state?.trustedHash !== hash || state?.enabled === false)) {
+    const approved = approvals
+      .get(label)
+      ?.some((approval) => approval.trustedHash === hash && approval.enabled !== false)
+    if (trustReadError === null && !approved) {
       unapproved.push(eventName)
     }
   }
@@ -113,29 +104,4 @@ export function readCodexHookHomeStatus(
   return parts.length === 0
     ? status('installed', true, null)
     : status('partial', true, parts.join('; '))
-}
-
-function readsApprovedSlots(
-  runtimeHomePath: string,
-  slots: ReadonlyMap<string, { groupIndex: number; handlerIndex: number }>,
-  command: string
-): boolean {
-  let trustStates: ReadonlyMap<string, CodexHookTrustState>
-  try {
-    trustStates = readHookTrustEntries(getCodexConfigTomlPath(runtimeHomePath))
-  } catch {
-    return false
-  }
-  const sourcePath = getCodexExplicitHomeHookSourcePath(getConfigPath(runtimeHomePath))
-  return [...slots].every(([eventName, slot]) => {
-    const state = trustStates.get(
-      computeTrustKey({
-        sourcePath,
-        eventLabel: CODEX_EVENT_LABEL[eventName],
-        command,
-        ...slot
-      })
-    )
-    return Boolean(state?.trustedHash) && state?.enabled !== false
-  })
 }

@@ -5,12 +5,13 @@ import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-p
 import { dedupeInFlightRun } from '../in-flight-run-dedupe'
 import { refreshManagedScriptIfPresent } from '../agent-hooks/managed-hook-script-refresh'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
-import { getManagedScriptPath } from './codex-hook-definition'
 import {
   computeOrcaCodexHookHashes,
-  installCodexHooksExclusively,
-  readApprovedManagedOrcaHashes
-} from './codex-hook-local-install'
+  getManagedCommand,
+  getManagedScriptPath
+} from './codex-hook-definition'
+import { installCodexHooksExclusively } from './codex-hook-local-install'
+import { getManagedCodexHookHome, readApprovedOrcaHashes } from './codex-hook-orca-approvals'
 import {
   refreshCodexRuntimeUserHooksExclusively,
   removeCodexHooksExclusively
@@ -211,14 +212,19 @@ export class CodexHookService {
   ): Promise<AgentHookInstallStatus> {
     const answer = await resolveCodexHookAnswerForLaunch(answerWaitMs)
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () => {
-      // Why fall back to the home's own approvals, then Orca's own hash (main's fallback):
-      // an answer still on its way, a timeout or a codex not found yet must never leave
-      // a managed home worse than main. Codex's answer, once it comes, always wins.
+      // Why each event keeps the home's approval, else gets Orca's own hash (main's fallback):
+      // an answer still on its way must never leave a managed home worse than main.
       const hashes =
         answer?.hashes ??
         (isDefinitiveCodexHookAnswer(answer)
           ? null
-          : (readApprovedManagedOrcaHashes(runtimeHomePath) ?? computeOrcaCodexHookHashes()))
+          : {
+              ...computeOrcaCodexHookHashes(),
+              ...readApprovedOrcaHashes(
+                getManagedCodexHookHome(runtimeHomePath),
+                getManagedCommand(getManagedScriptPath())
+              )
+            })
       if (!hashes) {
         // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
         return this.refreshRuntimeUserHooksExclusively(runtimeHomePath, answer)
