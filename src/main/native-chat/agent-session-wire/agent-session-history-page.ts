@@ -9,6 +9,7 @@
 
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
+import { latestStructuredAgentSessionTurn } from '../../../shared/structured-agent-session-live-turn'
 import type {
   AgentJournalCursor,
   AgentJournalRenderItem,
@@ -308,6 +309,8 @@ function buildPage(input: {
     liveCursor: input.snapshot.cursor,
     hasOlder: input.hasOlder,
     hasNewer: input.hasNewer,
-    ...(input.subagentRoster === undefined ? {} : { subagentRoster: input.subagentRoster })
+    ...(input.subagentRoster === undefined ? {} : { subagentRoster: input.subagentRoster }),
+    // From the whole timeline, never the page: a long turn's record sits below any window.
+    latestTurn: latestStructuredAgentSessionTurn(input.snapshot.items)
   }
 }

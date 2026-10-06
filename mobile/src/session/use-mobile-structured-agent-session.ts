@@ -7,8 +7,8 @@ import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-n
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
 import { isFinalAgentSessionReadRefusal } from '../../../src/shared/structured-agent-session-read-refusal'
 import {
-  activeStructuredAgentSessionTurnId,
-  isStructuredAgentSessionThinking
+  isStructuredAgentSessionThinking,
+  runningStructuredAgentSessionTurnId
 } from '../../../src/shared/structured-agent-session-live-turn'
 import { selectStructuredAgentTurnActivity } from '../../../src/shared/native-chat-turn-activity'
 import {
@@ -177,7 +177,7 @@ export function useMobileStructuredAgentSession(args: {
       }),
     [transcriptItems, state.submissions]
   )
-  const turnId = activeStructuredAgentSessionTurnId(state.items)
+  const turnId = runningStructuredAgentSessionTurnId(state)
   const turnTiming = useMobileStructuredAgentTurnTiming(
     { ...state, items: transcriptItems },
     turnId

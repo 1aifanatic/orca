@@ -24,6 +24,7 @@ import {
   type AgentJournalTurnScope
 } from './agent-session-journal-types'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
+import type { AgentSessionLatestTurn } from './agent-session-wire'
 import { readAgentJournalTurn } from './agent-session-turn-record'
 import type { NativeChatToolCallBlock } from './native-chat-types'
 import {
@@ -101,13 +102,34 @@ export function activeStructuredAgentSessionTurnIdBySequence(
 export function newestStructuredAgentSessionTurn(
   items: readonly AgentJournalRenderItem[]
 ): AgentJournalTurnLifecycle | null {
+  return latestStructuredAgentSessionTurn(items)?.turn ?? null
+}
+
+/** The same record as a page publishes it, with the identity a client keys the turn by. */
+export function latestStructuredAgentSessionTurn(
+  items: readonly AgentJournalRenderItem[]
+): AgentSessionLatestTurn | null {
   for (let index = items.length - 1; index >= 0; index -= 1) {
-    const turn = readAgentJournalTurn(items[index]?.body)
-    if (turn) {
-      return turn
+    const item = items[index]
+    const turn = readAgentJournalTurn(item?.body)
+    if (item && turn) {
+      return { itemId: item.itemId, observedAt: item.observedAt, turn }
     }
   }
   return null
+}
+
+/** The turn the session's own agent is running, for a client: the host's answer over the whole
+ *  journal, which no loaded window can hide. Temporary: an older host sends none, so its clients
+ *  still read the loaded rows' newest record; delete that arm once such hosts age out. */
+export function runningStructuredAgentSessionTurnId(state: {
+  items: readonly AgentJournalRenderItem[]
+  latestTurn?: AgentSessionLatestTurn | null
+}): string | null {
+  if (state.latestTurn === undefined) {
+    return activeStructuredAgentSessionTurnId(state.items)
+  }
+  return state.latestTurn?.turn.state === 'running' ? state.latestTurn.turn.turnId : null
 }
 
 /**
