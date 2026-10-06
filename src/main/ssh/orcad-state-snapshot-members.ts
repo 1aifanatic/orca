@@ -18,5 +18,13 @@ export const ORCAD_SNAPSHOT_EXCLUDED = ['daemon', 'logs'] as const
 
 export const ORCAD_STATE_RESTORE_STAGE_DIRNAME = '.orcad-state-restore-stage'
 
+/** Under `~/.orca-remote`: held by one snapshot capture, restore or clear at a time. */
+export const ORCAD_STATE_MUTATION_LOCK_DIRNAME = 'orcad-state-mutation.lock'
+
+/** A state mutation found another still running, so it did nothing. */
+export const ORCAD_STATE_MUTATION_BUSY = 'STATE_MUTATION_BUSY'
+/** The host-side deadline killed a state mutation part way through. */
+export const ORCAD_STATE_MUTATION_DEADLINE = 'STATE_MUTATION_DEADLINE'
+
 /** Windows keeps the snapshot as a directory copy, where POSIX keeps `state.tar`. */
 export const ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME = 'state'

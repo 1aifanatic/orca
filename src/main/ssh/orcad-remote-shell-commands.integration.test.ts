@@ -61,6 +61,8 @@ const host = getRemoteHostPlatform('linux-x64')
 let root = ''
 let dataDir = ''
 let snapshotDir = ''
+// The ~/.orca-remote stand-in that holds the state-mutation lock.
+const baseDir = (): string => join(root, '.orca-remote')
 let versionDir = ''
 const launchedPids = new Set<number>()
 
@@ -178,7 +180,7 @@ function stopTestRuntime(justLaunched = false): ReturnType<typeof parseOrcadStop
 
 describe('state snapshot commands, run for real', () => {
   it('detects candidate SQLite migration without modifying current state or the snapshot', () => {
-    sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir))
+    sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
     const archive = readFileSync(join(snapshotDir, 'state.tar'))
     const compare = (): boolean =>
       orcadSnapshotIsUnchanged(sh(compareOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
@@ -207,7 +209,7 @@ describe('state snapshot commands, run for real', () => {
     expect(
       orcadSnapshotIsUnchanged(sh(compareOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
     ).toBe(false)
-    sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir))
+    sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
     writeFileSync(join(snapshotDir, 'state.tar'), 'not an archive')
     expect(
       orcadSnapshotIsUnchanged(sh(compareOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
@@ -225,7 +227,9 @@ describe('state snapshot commands, run for real', () => {
     symlinkSync(external, profile)
 
     expect(
-      parseOrcadSnapshotCapture(sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
+      parseOrcadSnapshotCapture(
+        sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
+      )
     ).toBe('failed')
 
     mkdirSync(snapshotDir, { recursive: true })
@@ -239,7 +243,9 @@ describe('state snapshot commands, run for real', () => {
 
   it('captures, then restores state the newer build overwrote', () => {
     expect(
-      parseOrcadSnapshotCapture(sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
+      parseOrcadSnapshotCapture(
+        sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
+      )
     ).toBe('captured')
     expect(sh(probeOrcadStateSnapshotCommand(host, snapshotDir)).trim()).toBe('PRESENT')
 
@@ -248,7 +254,9 @@ describe('state snapshot commands, run for real', () => {
     writeFileSync(join(dataDir, 'profiles', 'p1', 'new-build-only.json'), '{}')
 
     expect(
-      parseOrcadSnapshotRestore(sh(restoreOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
+      parseOrcadSnapshotRestore(
+        sh(restoreOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
+      )
     ).toBe('restored')
     expect(readFileSync(join(dataDir, 'orca-profile-index.json'), 'utf8')).toBe('{"v":"before"}')
     // Removed before extraction, so the older build never sees a file it cannot interpret.
@@ -268,7 +276,9 @@ describe('state snapshot commands, run for real', () => {
       // the generated command reads the now-quiescent files.
       expect(existsSync(`${databasePath}-wal`)).toBe(true)
       expect(
-        parseOrcadSnapshotCapture(sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
+        parseOrcadSnapshotCapture(
+          sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
+        )
       ).toBe('captured')
     } finally {
       opened.db.close()
@@ -284,7 +294,9 @@ describe('state snapshot commands, run for real', () => {
       changed.db.close()
     }
     expect(
-      parseOrcadSnapshotRestore(sh(restoreOrcadStateSnapshotCommand(host, dataDir, snapshotDir)))
+      parseOrcadSnapshotRestore(
+        sh(restoreOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
+      )
     ).toBe('restored')
 
     const restored = openProfileStateDatabase(databasePath, 'p1')
@@ -299,11 +311,11 @@ describe('state snapshot commands, run for real', () => {
   })
 
   it('leaves the live daemon runtime dir untouched through capture and restore', () => {
-    sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir))
+    sh(captureOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
     // The daemon is running across the rollback and rewrites its token; a restore that
     // reached <root>/daemon would break the fence that keeps its terminals adoptable.
     writeFileSync(join(dataDir, 'daemon', 'daemon.sock.token'), 'token-after-restart')
-    sh(restoreOrcadStateSnapshotCommand(host, dataDir, snapshotDir))
+    sh(restoreOrcadStateSnapshotCommand(host, dataDir, snapshotDir, baseDir()))
     expect(readFileSync(join(dataDir, 'daemon', 'daemon.sock.token'), 'utf8')).toBe(
       'token-after-restart'
     )
@@ -313,7 +325,9 @@ describe('state snapshot commands, run for real', () => {
     const emptyRoot = join(root, 'fresh')
     mkdirSync(emptyRoot)
     expect(
-      parseOrcadSnapshotCapture(sh(captureOrcadStateSnapshotCommand(host, emptyRoot, snapshotDir)))
+      parseOrcadSnapshotCapture(
+        sh(captureOrcadStateSnapshotCommand(host, emptyRoot, snapshotDir, baseDir()))
+      )
     ).toBe('empty')
     expect(sh(probeOrcadStateSnapshotCommand(host, snapshotDir)).trim()).toBe('ABSENT')
   })
@@ -321,7 +335,7 @@ describe('state snapshot commands, run for real', () => {
   it('reports MISSING rather than claiming a restore it did not perform', () => {
     expect(
       parseOrcadSnapshotRestore(
-        sh(restoreOrcadStateSnapshotCommand(host, dataDir, join(root, 'nope')))
+        sh(restoreOrcadStateSnapshotCommand(host, dataDir, join(root, 'nope'), baseDir()))
       )
     ).toBe('missing')
   })
@@ -337,7 +351,9 @@ describe('state snapshot commands, run for real', () => {
     mkdirSync(join(nasty, 'profiles'), { recursive: true })
     writeFileSync(join(nasty, 'orca-profile-index.json'), '{"v":"quoted"}')
     expect(
-      parseOrcadSnapshotCapture(sh(captureOrcadStateSnapshotCommand(host, nasty, snapshotDir)))
+      parseOrcadSnapshotCapture(
+        sh(captureOrcadStateSnapshotCommand(host, nasty, snapshotDir, baseDir()))
+      )
     ).toBe('captured')
     expect(
       orcadSnapshotIsUnchanged(sh(compareOrcadStateSnapshotCommand(host, nasty, snapshotDir)))
@@ -347,7 +363,9 @@ describe('state snapshot commands, run for real', () => {
       orcadSnapshotIsUnchanged(sh(compareOrcadStateSnapshotCommand(host, nasty, snapshotDir)))
     ).toBe(false)
     expect(
-      parseOrcadSnapshotRestore(sh(restoreOrcadStateSnapshotCommand(host, nasty, snapshotDir)))
+      parseOrcadSnapshotRestore(
+        sh(restoreOrcadStateSnapshotCommand(host, nasty, snapshotDir, baseDir()))
+      )
     ).toBe('restored')
     expect(readFileSync(join(nasty, 'orca-profile-index.json'), 'utf8')).toBe('{"v":"quoted"}')
   })

@@ -6,6 +6,7 @@
  * when an operator accepts it — the slot exposed RPC, and with it stopped nothing on the host
  * can count the terminals it started, so the snapshot may no longer describe them.
  */
+import { execOrcadStateMutation } from './orcad-state-mutation-exec'
 import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
@@ -145,7 +146,7 @@ async function restoreState(options: OrcadSlotOptions, state: OrcadSnapshotVerdi
           options.userDataDir,
           orcadRemoteBaseDir(options.host, options.remoteHome)
         )
-  const restored = parseOrcadSnapshotRestore(await execOrcadRemote(options, command))
+  const restored = parseOrcadSnapshotRestore(await execOrcadStateMutation(options, command))
   if (restored !== 'restored') {
     throw new Error(`The prelaunch state could not be restored (${restored}).`)
   }

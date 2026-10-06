@@ -121,3 +121,36 @@ describe('Windows owner admission', () => {
     expect(await op('owner-admission', root)).toBe('UNVERIFIABLE orcad.lock')
   })
 })
+
+describe('the Windows state-mutation lock', () => {
+  it('answers busy and leaves state alone while a live run holds it', async () => {
+    expect(await op('snapshot-capture', root, snapshot)).toBe('CAPTURED')
+    writeFileSync(join(root, 'orca-profile-index.json'), '{"v":"current"}')
+    const lock = join(dir, 'orcad-state-mutation.lock')
+    mkdirSync(lock)
+    writeFileSync(join(lock, 'pid'), String(process.pid))
+
+    for (const [name, ...args] of [
+      ['snapshot-restore', root, snapshot],
+      ['snapshot-capture', root, snapshot],
+      ['snapshot-clear', root]
+    ] as const) {
+      expect(await op(name, ...args)).toBe('STATE_MUTATION_BUSY')
+    }
+    expect(readFileSync(join(root, 'orca-profile-index.json'), 'utf8')).toBe('{"v":"current"}')
+    expect(existsSync(lock)).toBe(true)
+  })
+
+  it('takes over a lock whose holder exited, and releases it when done', async () => {
+    expect(await op('snapshot-capture', root, snapshot)).toBe('CAPTURED')
+    writeFileSync(join(root, 'orca-profile-index.json'), '{"v":"current"}')
+    const lock = join(dir, 'orcad-state-mutation.lock')
+    mkdirSync(lock)
+    const exited = await runProcess({ program: process.execPath, args: ['-p', 'process.pid'] })
+    writeFileSync(join(lock, 'pid'), exited.stdout.trim())
+
+    expect(await op('snapshot-restore', root, snapshot)).toBe('RESTORED')
+    expect(readFileSync(join(root, 'orca-profile-index.json'), 'utf8')).toBe('{"v":"before"}')
+    expect(existsSync(lock)).toBe(false)
+  })
+})

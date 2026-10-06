@@ -36,6 +36,7 @@ import {
 } from './orcad-activation-transaction-transitions'
 import { writeOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import { execOrcadRemoteOr, withoutAbortSignal } from './orcad-remote-runtime-control'
+import { execOrcadStateMutationOr } from './orcad-state-mutation-exec'
 import {
   initialOrcadActivationAdmissionCommand,
   parseInitialOrcadActivationAdmission
@@ -154,7 +155,7 @@ export async function activateInstalledOrcad(
   // A live SQLite WAL is not a backup boundary, so the snapshot waits for confirmed exit.
   const snapshotDir = orcadSnapshotPath(options, transaction.snapshot.dirName)
   const capture = parseOrcadSnapshotCapture(
-    await execOrcadRemoteOr(
+    await execOrcadStateMutationOr(
       options,
       captureOrcadStateSnapshotCommand(
         options.host,

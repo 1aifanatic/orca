@@ -12,6 +12,8 @@ import { PRIMARY_RUNTIME_METADATA_FILE } from '../../shared/runtime-bootstrap'
 import { ORCAD_LOCK_FILE_NAME } from '../orcad/orcad-instance-lock'
 import {
   ORCAD_SNAPSHOT_MEMBERS,
+  ORCAD_STATE_MUTATION_BUSY,
+  ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME,
   ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME
 } from './orcad-state-snapshot-members'
@@ -33,6 +35,32 @@ export const ORCAD_WINDOWS_HOST_STATE_OPS = `
 const MEMBERS = ${text(ORCAD_SNAPSHOT_MEMBERS)}
 const STATE_DIR = ${text(ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME)}
 const RESTORE_STAGE = ${text(ORCAD_STATE_RESTORE_STAGE_DIRNAME)}
+const MUTATION_LOCK = path.join(__dirname, ${text(ORCAD_STATE_MUTATION_LOCK_DIRNAME)})
+
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true } catch (error) { return error.code === 'EPERM' }
+}
+
+// One capture, restore or clear at a time: a client that stopped waiting has not stopped the
+// last one, and a rerun beside it would mix two restores in one stage.
+function withStateMutationLock(run) {
+  return (...opArgs) => {
+    try { fs.mkdirSync(MUTATION_LOCK) } catch (error) {
+      if (error.code !== 'EEXIST') return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
+      let holder = NaN
+      try { holder = Number(fs.readFileSync(path.join(MUTATION_LOCK, 'pid'), 'utf8')) } catch {}
+      const aged = Date.now() - (lstatOrNull(MUTATION_LOCK)?.mtimeMs ?? 0) > 60000
+      if (Number.isInteger(holder) && holder > 0 ? processAlive(holder) : !aged) return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
+      try { removeTree(MUTATION_LOCK); fs.mkdirSync(MUTATION_LOCK) } catch { return answer(${text(ORCAD_STATE_MUTATION_BUSY)}) }
+    }
+    try {
+      fs.writeFileSync(path.join(MUTATION_LOCK, 'pid'), String(process.pid))
+      return run(...opArgs)
+    } finally {
+      try { removeTree(MUTATION_LOCK) } catch {}
+    }
+  }
+}
 
 function lstatOrNull(target) {
   try { return fs.lstatSync(target) } catch (error) { if (error.code === 'ENOENT') return null; throw error }
@@ -80,7 +108,7 @@ function renameWithRetry(from, to) {
 const removeTree = (target) => fs.rmSync(target, { recursive: true, force: true, maxRetries: 5 })
 
 Object.assign(ops, {
-  'snapshot-capture'(root, snapshotDir) {
+  'snapshot-capture': withStateMutationLock((root, snapshotDir) => {
     let present
     try {
       present = MEMBERS.filter((member) => lstatOrNull(path.join(root, member)))
@@ -101,7 +129,7 @@ Object.assign(ops, {
       return answer('FAILED')
     }
     answer('CAPTURED')
-  },
+  }),
 
   'snapshot-probe'(snapshotDir) {
     let stats
@@ -110,7 +138,7 @@ Object.assign(ops, {
   },
 
   // Copy into a stage first, so an unreadable snapshot fails before live state is touched.
-  'snapshot-restore'(root, snapshotDir) {
+  'snapshot-restore': withStateMutationLock((root, snapshotDir) => {
     const state = path.join(snapshotDir, STATE_DIR)
     const stats = lstatOrNull(state)
     if (!stats || !stats.isDirectory()) return answer('MISSING')
@@ -135,15 +163,15 @@ Object.assign(ops, {
       removeTree(stage)
     } catch { return answer('FAILED') }
     answer('RESTORED')
-  },
+  }),
 
-  'snapshot-clear'(root) {
+  'snapshot-clear': withStateMutationLock((root) => {
     try {
       fs.mkdirSync(root, { recursive: true })
       for (const member of MEMBERS) removeTree(path.join(root, member))
     } catch { return answer('FAILED') }
     answer('RESTORED')
-  },
+  }),
 
   'snapshot-compare'(root, snapshotDir) {
     try {

@@ -20,6 +20,9 @@ import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './
 import type { OrcadWindowsHostStateOp } from './orcad-windows-host-state-ops'
 import {
   ORCAD_SNAPSHOT_MEMBERS,
+  ORCAD_STATE_MUTATION_BUSY,
+  ORCAD_STATE_MUTATION_DEADLINE,
+  ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME
 } from './orcad-state-snapshot-members'
 import { orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
@@ -52,6 +55,37 @@ function windowsStateCommand(
   return orcadWindowsHostOpCommand(host, baseDir, op, args)
 }
 
+/** Past this the host kills a capture, restore or clear; the client waits a minute longer. */
+export const ORCAD_STATE_MUTATION_DEADLINE_SECONDS = 15 * 60
+
+/**
+ * Runs a state mutation under the host's lock and deadline. Why on the host: sshd keeps a
+ * pty-less command running after its channel closes, so a client that stops waiting has not
+ * stopped the work, and a rerun beside it would mix two restores in one stage.
+ */
+function serializedStateMutationCommand(baseDir: string, script: string): string {
+  const lock = shellEscape(`${baseDir}/${ORCAD_STATE_MUTATION_LOCK_DIRNAME}`)
+  const guarded = [
+    `lock=${lock};`,
+    `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
+    'if ! mkdir "$lock" 2>/dev/null; then',
+    'holder=$(cat "$lock/pid" 2>/dev/null);',
+    // Why the age check: a run killed between mkdir and its pid write leaves no holder to probe.
+    'if { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; } ||',
+    '{ [ -z "$holder" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }; then',
+    `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; fi;`,
+    `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; }; fi;`,
+    `echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT;`,
+    script
+  ].join(' ')
+  const run = `sh -c ${shellEscape(guarded)}`
+  // Why KILL: GNU timeout signals the whole group, so tar and rm stop with the shell.
+  return [
+    `if command -v timeout >/dev/null 2>&1; then timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS} ${run}; else ${run}; fi;`,
+    `status=$?; if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then echo ${ORCAD_STATE_MUTATION_DEADLINE}; fi`
+  ].join(' ')
+}
+
 function noSymlinkedStateCommand(path: string): string {
   return `links=$(find ${path} -type l -print) && [ -z "$links" ]`
 }
@@ -79,7 +113,7 @@ export function captureOrcadStateSnapshotCommand(
   host: RemoteHostPlatform,
   userDataDir: string,
   snapshotDir: string,
-  baseDir?: string
+  baseDir: string
 ): string {
   const windows = windowsStateCommand(host, baseDir, 'snapshot-capture', [userDataDir, snapshotDir])
   if (windows) {
@@ -101,17 +135,20 @@ export function captureOrcadStateSnapshotCommand(
       )
     }
   ).join(' ')
-  return [
-    `members=;`,
-    memberTests,
-    'if [ -z "$members" ]; then echo EMPTY; else',
-    // Umask first so the snapshot dir, not just the archive, is owner-only.
-    `umask 077 && mkdir -p ${dir} &&`,
-    // Why a temp name then mv: a deploy killed mid-tar must not leave a truncated archive
-    // that a later rollback would happily restore.
-    `tar -C ${root} -cf ${archive}.partial $members && mv ${archive}.partial ${archive} &&`,
-    'echo CAPTURED; fi'
-  ].join(' ')
+  return serializedStateMutationCommand(
+    baseDir,
+    [
+      `members=;`,
+      memberTests,
+      'if [ -z "$members" ]; then echo EMPTY; else',
+      // Umask first so the snapshot dir, not just the archive, is owner-only.
+      `umask 077 && mkdir -p ${dir} &&`,
+      // Why a temp name then mv: a deploy killed mid-tar must not leave a truncated archive
+      // that a later rollback would happily restore.
+      `tar -C ${root} -cf ${archive}.partial $members && mv ${archive}.partial ${archive} &&`,
+      'echo CAPTURED; fi'
+    ].join(' ')
+  )
 }
 
 export type OrcadSnapshotCapture = 'captured' | 'empty' | 'failed'
@@ -164,7 +201,7 @@ export function restoreOrcadStateSnapshotCommand(
   host: RemoteHostPlatform,
   userDataDir: string,
   snapshotDir: string,
-  baseDir?: string
+  baseDir: string
 ): string {
   const windows = windowsStateCommand(host, baseDir, 'snapshot-restore', [userDataDir, snapshotDir])
   if (windows) {
@@ -181,31 +218,37 @@ export function restoreOrcadStateSnapshotCommand(
   const stagedMemberChecks = ORCAD_SNAPSHOT_MEMBERS.map(
     (member) => `[ -e ${stage}/${shellEscape(member)} ]`
   ).join(' || ')
-  return [
-    `test -f ${archive} || { echo MISSING; exit 0; };`,
-    'umask 077;',
-    `test -d ${root} || mkdir -p ${root};`,
-    // Re-extracting from the intact archive makes an interrupted restore safe to rerun.
-    `rm -rf ${stage}; mkdir -p ${stage} || { echo FAILED; exit 0; };`,
-    // Extraction proves every archived byte is readable before live state is removed.
-    `tar -C ${stage} -xf ${archive} 2>/dev/null || { rm -rf ${stage}; echo FAILED; exit 0; };`,
-    `${stagedMemberChecks} || { rm -rf ${stage}; echo FAILED; exit 0; };`,
-    `if ${removals} && ${replacements}; then rm -rf ${stage}; echo RESTORED; else echo FAILED; fi`
-  ].join(' ')
+  return serializedStateMutationCommand(
+    baseDir,
+    [
+      `test -f ${archive} || { echo MISSING; exit 0; };`,
+      'umask 077;',
+      `test -d ${root} || mkdir -p ${root};`,
+      // Re-extracting from the intact archive makes an interrupted restore safe to rerun.
+      `rm -rf ${stage}; mkdir -p ${stage} || { echo FAILED; exit 0; };`,
+      // Extraction proves every archived byte is readable before live state is removed.
+      `tar -C ${stage} -xf ${archive} 2>/dev/null || { rm -rf ${stage}; echo FAILED; exit 0; };`,
+      `${stagedMemberChecks} || { rm -rf ${stage}; echo FAILED; exit 0; };`,
+      `if ${removals} && ${replacements}; then rm -rf ${stage}; echo RESTORED; else echo FAILED; fi`
+    ].join(' ')
+  )
 }
 
 /** Restore an originally empty state root after a candidate populated it. */
 export function clearOrcadStateSnapshotMembersCommand(
   host: RemoteHostPlatform,
   userDataDir: string,
-  baseDir?: string
+  baseDir: string
 ): string {
   const windows = windowsStateCommand(host, baseDir, 'snapshot-clear', [userDataDir])
   if (windows) {
     return windows
   }
   const root = shellEscape(userDataDir)
-  return `test -d ${root} || mkdir -p ${root}; if ${removeMembersCommand(root)}; then echo RESTORED; else echo FAILED; fi`
+  return serializedStateMutationCommand(
+    baseDir,
+    `test -d ${root} || mkdir -p ${root}; if ${removeMembersCommand(root)}; then echo RESTORED; else echo FAILED; fi`
+  )
 }
 
 function removeMembersCommand(root: string): string {
