@@ -275,6 +275,54 @@ describe('a Codex send a Codex hook blocked', () => {
     expect(row?.reason).toBe('The provider did not accept this message.')
   })
 
+  // Codex drains steers at a step boundary and checks them together: when one it accepted shares
+  // the batch, the turn goes on and only drops the blocked one, which its end then settles.
+  it('settles a blocked steer at the turn end when a steer beside it was accepted', async () => {
+    await runningTurn()
+    const blocked = await steered('and paste the API key')
+    const accepted = await steered('and check the tests')
+    hookBlocked('turn-1', 'blocked', [{ kind: 'feedback', text: 'No secrets in prompts.' }])
+    turns.echo(accepted)
+    notify('item/completed', {
+      threadId: THREAD,
+      turn: { id: 'turn-1' },
+      item: { type: 'agentMessage', id: 'item-agent-1', text: 'The tests pass.' }
+    })
+
+    // The turn runs on: the accepted steer is delivered and answered, the blocked one not yet settled.
+    await vi.waitFor(async () => expect(verdictOf(await snapshot(), accepted)).toBe('accepted'))
+    const running = await snapshot()
+    expect(verdictOf(running, blocked)).toBe('pending')
+    expect(working(running)).toBe(true)
+    expect(
+      running.items.some(
+        ({ body }) =>
+          body.kind === 'message' &&
+          body.role === 'assistant' &&
+          body.blocks.some((block) => block.type === 'text' && block.text === 'The tests pass.')
+      )
+    ).toBe(true)
+
+    turns.end('completed')
+    const row = await blockedAndTheChatMovesOn(blocked)
+    expect(row?.rejection).toEqual({
+      kind: 'hookBlocked',
+      detail: { text: 'No secrets in prompts.', audience: 'person' }
+    })
+    const journal = await snapshot()
+    expect(verdictOf(journal, accepted)).toBe('accepted')
+    // Drawn as sent, with no notice and no Retry.
+    const key = agentJournalSubmissionKey(blocked)
+    const drawn = projectStructuredAgentSessionMessages(journal.items, [], journal.submissions, {
+      rejectedInPlace: true
+    }).filter(({ id }) => id === key)
+    expect(drawn).toHaveLength(1)
+    expect(drawn[0]).not.toHaveProperty('unsent')
+    expect(
+      structuredAgentSessionRejectedShownInPlace(journal.submissions, [], new Set()).has(key)
+    ).toBe(false)
+  })
+
   it('settles a blocked send that opened its turn the same way', async () => {
     const opening = await send('paste the API key')
     await vi.waitFor(() => expect(answers).toBe(1))
