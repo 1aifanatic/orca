@@ -219,7 +219,10 @@ describe('a connect cancelled during the relay-terminal re-check', () => {
   })
 })
 
-function asTransport(value: object): SshConnection {
+/** The stand-in transports these tests hand the mocked pool. */
+type FakeTransport = { id: string }
+
+function asTransport(value: FakeTransport): SshConnection {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: attribution keys on identity only.
-  return value as SshConnection
+  return value as unknown as SshConnection
 }
