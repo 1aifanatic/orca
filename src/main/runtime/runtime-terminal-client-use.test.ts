@@ -19,11 +19,8 @@ describe('readTerminalClientUse', () => {
   it('reads a terminal a client is viewing as used', () => {
     const runtime = new OrcaRuntimeService()
     runtime.terminalRunFacts.recordSpawnCommit({ id: 'pty-1' })
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test reaches the protected viewer registry a client attach registers with.
-    const viewers = (
-      runtime as unknown as { terminalViewSubscribers: { registerRaw(id: string): () => void } }
-    ).terminalViewSubscribers
-    const release = viewers.registerRaw('pty-1')
+    // What a client's terminal stream subscribe registers.
+    const release = runtime.registerRemoteTerminalViewSubscriber('pty-1')
     expect(runtime.readTerminalClientUse('pty-1')).toBe('used')
     release()
     expect(runtime.readTerminalClientUse('pty-1')).toBe('unused')

@@ -85,7 +85,7 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
    * terminals: `unknown` when this process cannot tell (it adopted the PTY rather than spawned it).
    */
   readTerminalClientUse(ptyId: string): 'used' | 'unused' | 'unknown' {
-    if (this.terminalViewSubscribers.hasRaw(ptyId)) {
+    if (this.hasRawTerminalViewSubscriber(ptyId)) {
       return 'used'
     }
     const facts = this.terminalRunFacts.read(ptyId, undefined)
