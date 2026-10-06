@@ -16,13 +16,10 @@ export type RestartContinuationOutcome = {
 
 function continuedCountText(count: number): string {
   return count === 1
-    ? translate(
-        'auto.components.NativeChatResumeOnRestartModal.continuedOne',
-        'Resumed 1 chat and asked it to continue'
-      )
+    ? translate('auto.components.NativeChatResumeOnRestartModal.continuedOne', 'Resumed 1 chat')
     : translate(
         'auto.components.NativeChatResumeOnRestartModal.continuedMany',
-        'Resumed {{value0}} chats and asked them to continue',
+        'Resumed {{value0}} chats',
         { value0: count }
       )
 }

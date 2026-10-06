@@ -29,7 +29,7 @@ it('says how many chats were resumed', () => {
     [],
     show
   )
-  expect(vi.mocked(toast).mock.calls).toEqual([['Resumed 2 chats and asked them to continue']])
+  expect(vi.mocked(toast).mock.calls).toEqual([['Resumed 2 chats']])
 })
 
 it('offers Show for chats a resume could not carry on', () => {
@@ -55,10 +55,7 @@ it('reports a mixed resume in one toast', () => {
     show
   )
   expect(vi.mocked(toast).mock.calls).toEqual([
-    [
-      '1 chat couldn’t be resumed',
-      expect.objectContaining({ description: 'Resumed 2 chats and asked them to continue' })
-    ]
+    ['1 chat couldn’t be resumed', expect.objectContaining({ description: 'Resumed 2 chats' })]
   ])
 })
 
@@ -85,7 +82,7 @@ it('puts each extra count on its own line when a resume had all three outcomes',
   }
   expect(renderToStaticMarkup(description)).toBe(
     '<span class="block">Couldn’t confirm 1 other chat was resumed</span>' +
-      '<span class="block">Resumed 1 chat and asked it to continue</span>'
+      '<span class="block">Resumed 1 chat</span>'
   )
 })
 
@@ -118,7 +115,7 @@ it('counts every chat as unconfirmed when the answer carried no outcomes', () =>
 // report the chat, and as resumed, not as a failure the list can no longer show.
 it('counts an unconfirmed chat the host no longer lists as resumed', () => {
   announceRestartResults(['a'], [{ sessionId: 'a', outcome: 'unknown' }], [], show)
-  expect(titles()).toEqual(['Resumed 1 chat and asked it to continue'])
+  expect(titles()).toEqual(['Resumed 1 chat'])
 })
 
 // Unconfirmed means the agent may well be working; "couldn't be resumed" would invite a second send.

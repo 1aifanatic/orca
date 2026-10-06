@@ -307,7 +307,7 @@ it('closes on Resume and shows the resume in the status bar until the host answe
   // Nothing is left to show, so the reopen request is retired rather than left to latch.
   expect(getNativeChatResumeOnRestartDialogRequest()).toBe(false)
   // The click is answered once, when the run settles, across chats that are off-screen.
-  expect(toasts()).toEqual([['Resumed 2 chats and asked them to continue']])
+  expect(toasts()).toEqual([['Resumed 2 chats']])
 })
 
 // A dialog the user reopened mid-run is theirs: the run's answer must not close it over a chat
@@ -427,7 +427,7 @@ it('resumes and continues once when the launch begins opted in', async () => {
     ['agentSession.restartContinue', {}]
   ])
   // Answered once, as a click is, however often the settings above re-render the surfaces.
-  expect(toasts()).toEqual([['Resumed 2 chats and asked them to continue']])
+  expect(toasts()).toEqual([['Resumed 2 chats']])
   expect(offerIds()).toEqual([])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
@@ -630,7 +630,7 @@ it('reports the chats a lost resume request named once, as failed, until it is r
     { sessionIds: ['b'] }
   ])
   expect(getNativeChatRestartOffer()).toMatchObject({ candidates: [], failed: [] })
-  expect(toasts().at(-1)).toEqual(['Resumed 1 chat and asked it to continue'])
+  expect(toasts().at(-1)).toEqual(['Resumed 1 chat'])
 })
 
 // One click, one toast across chats mostly off-screen; its Show opens the list behind it.
@@ -656,9 +656,7 @@ it('answers a mixed Resume with one toast whose Show opens the dialog', async ()
   await mount(<NativeChatResumeOnRestartModal />)
   await act(async () => button('Resume 2 chats').click())
   expect(document.querySelector('[role="dialog"]')).toBeNull()
-  expect(toasts()).toEqual([
-    ['1 chat couldn’t be resumed', 'Resumed 1 chat and asked it to continue']
-  ])
+  expect(toasts()).toEqual([['1 chat couldn’t be resumed', 'Resumed 1 chat']])
   // Show opens the dialog the click closed, over a fresh read of the list.
   await act(async () => lastToastShow()?.())
   const dialog = document.querySelector('[role="dialog"]')
@@ -787,7 +785,7 @@ it.each(['footer', 'row'] as const)(
       'agentSession.restartContinue',
       { sessionIds: ['b'] }
     ])
-    expect(toasts()).toEqual([['Resumed 1 chat and asked it to continue']])
+    expect(toasts()).toEqual([['Resumed 1 chat']])
     expect(document.querySelector('[role="dialog"]')).toBeNull()
   }
 )

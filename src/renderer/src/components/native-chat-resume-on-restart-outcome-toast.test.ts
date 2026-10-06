@@ -109,10 +109,7 @@ it('answers a mixed opted-in launch with one toast', async () => {
   await refreshNativeChatRestartOffer()
   await resumes.launch()
   expect(vi.mocked(toast).mock.calls).toEqual([
-    [
-      '1 chat couldn’t be resumed',
-      expect.objectContaining({ description: 'Resumed 1 chat and asked it to continue' })
-    ]
+    ['1 chat couldn’t be resumed', expect.objectContaining({ description: 'Resumed 1 chat' })]
   ])
   expect(lastToastShow()).toBeDefined()
 })
