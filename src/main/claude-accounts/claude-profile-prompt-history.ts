@@ -10,6 +10,7 @@ import {
   renameSync,
   statSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
   type Stats
 } from 'node:fs'
@@ -37,8 +38,8 @@ export function lstatIfPresent(file: string): Stats | undefined {
   }
 }
 
-function appendHistory(destination: string, bytes: Buffer): void {
-  if (bytes.length === 0) {
+function appendHistory(destination: string, lines: string[]): void {
+  if (lines.length === 0) {
     return
   }
   const size = statSync(destination).size
@@ -53,45 +54,48 @@ function appendHistory(destination: string, bytes: Buffer): void {
       closeSync(fd)
     }
   }
-  // Why: an unterminated last record would fuse with Claude's next append.
-  const terminator = bytes.at(-1) === 10 ? [] : [Buffer.from('\n')]
-  const lead = separator ? [Buffer.from('\n')] : []
-  appendFileSync(destination, Buffer.concat([...lead, bytes, ...terminator]))
-}
-
-/** Bytes a rewrite of the shared file carried over unchanged, cut back to a whole line. */
-function sharedPrefixLength(own: Buffer, destination: string): number {
-  const shared = readFileSync(destination)
-  const limit = Math.min(own.length, shared.length)
-  let length = 0
-  while (length < limit && own[length] === shared[length]) {
-    length++
-  }
-  return length === 0 ? 0 : own.lastIndexOf(10, length - 1) + 1
+  // Why: every record ends its line so it cannot fuse with Claude's next append.
+  appendFileSync(destination, `${separator ? '\n' : ''}${lines.join('\n')}\n`)
 }
 
 /**
  * Keeps the renamed file and its cursor: a Claude that opened the old path just before the swap
- * appends there, and the next run drains it.
+ * appends there, and the next run drains it; a later run that finds nothing new deletes it.
  */
-function drainHistory(pending: string, destination: string): void {
+function drainHistory(pending: string, destination: string, shared: Set<string>): void {
   const content = readFileSync(pending)
+  const cursor = `${pending}.offset`
   let offset = 0
+  let saved = false
   try {
-    const stored = Number(readFileSync(`${pending}.offset`, 'utf8'))
+    const stored = Number(readFileSync(cursor, 'utf8'))
     if (Number.isSafeInteger(stored) && stored >= 0 && stored <= content.length) {
       offset = stored
+      saved = true
     }
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
       throw error
     }
-    // Why: `claude purge` rewrites the shared file through the link; only its new lines are new.
-    offset = sharedPrefixLength(content, destination)
   }
-  appendHistory(destination, content.subarray(offset))
-  // Advance only after append; a crash can duplicate records, never discard unattempted bytes.
-  writeFileSync(`${pending}.offset`, `${content.length}\n`, { mode: 0o600 })
+  if (saved && offset === content.length) {
+    // Why: cursor first; a copy without one re-drains to nothing because its lines are present.
+    unlinkSync(cursor)
+    unlinkSync(pending)
+    return
+  }
+  // Why: `claude purge` rewrites the shared file through the link; only lines it lacks are new.
+  const lines = content
+    .subarray(offset)
+    .toString('utf8')
+    .split('\n')
+    .filter((line) => line !== '' && !shared.has(line))
+  appendHistory(destination, lines)
+  for (const line of lines) {
+    shared.add(line)
+  }
+  // Advance only after append; a crash re-drains, and lines already present are skipped.
+  writeFileSync(cursor, `${content.length}\n`, { mode: 0o600 })
 }
 
 function pendingGeneration(name: string): number | null {
@@ -122,6 +126,7 @@ export function mergeClaudeProfilePromptHistory(
   if (!lstatIfPresent(destination)) {
     writeFileSync(destination, '', { flag: 'wx', mode: 0o600 })
   }
+  const shared = new Set(readFileSync(destination, 'utf8').split('\n'))
   const pendings: { name: string; generation: number }[] = []
   for (const item of readdirSync(profile, { withFileTypes: true })) {
     const generation = pendingGeneration(item.name)
@@ -133,7 +138,7 @@ export function mergeClaudeProfilePromptHistory(
   pendings.sort((left, right) => left.generation - right.generation)
   for (const { name } of pendings) {
     try {
-      drainHistory(join(profile, name), destination)
+      drainHistory(join(profile, name), destination, shared)
     } catch (error) {
       // Why: an old retained copy is bookkeeping; it must not keep the profile from being linked.
       warnClaudeProfile(report, HISTORY, error)
@@ -160,7 +165,7 @@ export function mergeClaudeProfilePromptHistory(
     throw new ClaudeProfileSurfaceError('link-failed', String(error))
   }
   if (aside) {
-    drainHistory(aside, destination)
+    drainHistory(aside, destination, shared)
   }
   return 'linked'
 }

@@ -89,7 +89,8 @@ export function linkClaudeProfileDirectory(
     rmdirSync(target)
   }
   mkdirSync(dirname(target), { recursive: true })
-  symlinkSync(canonical, target, platform === 'win32' ? 'junction' : 'dir')
+  // Why: link the path itself so a user who re-points their own link is followed.
+  symlinkSync(source, target, platform === 'win32' ? 'junction' : 'dir')
   return 'linked'
 }
 
