@@ -38,6 +38,7 @@ import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
+import { nativeChatStructuredApproval } from './native-chat-interactive-prompt'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -160,22 +161,7 @@ export function NativeChatStructuredSession(
   const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
   const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
   const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
-  const approval = approvalBody
-    ? {
-        title: approvalBody.title,
-        ...(approvalBody.displayName ? { displayName: approvalBody.displayName } : {}),
-        ...(approvalBody.description ? { description: approvalBody.description } : {}),
-        ...(approvalBody.decisionReason ? { decisionReason: approvalBody.decisionReason } : {}),
-        ...(approvalBody.blockedPath ? { blockedPath: approvalBody.blockedPath } : {}),
-        ...(approvalBody.matchedAskRule ? { matchedAskRule: approvalBody.matchedAskRule } : {}),
-        ...(approvalBody.subject ? { subject: approvalBody.subject } : {}),
-        ...(approvalBody.detail ? { detail: approvalBody.detail } : {}),
-        options: approvalBody.options.map((option) => ({
-          label: option.label,
-          send: option.id
-        }))
-      }
-    : null
+  const approval = nativeChatStructuredApproval(approvalBody)
   const cancelPrompt = () => {
     if (controller.turnId && prompt) {
       void controller.cancel(controller.turnId, {

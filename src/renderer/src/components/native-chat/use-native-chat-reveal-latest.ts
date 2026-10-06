@@ -1,6 +1,36 @@
 // How a chat pane tells its transcript that the reader just sent something.
 
-import { useCallback, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
+import { hasAskAnswer } from './native-chat-interactive-prompt'
+import type { NativeChatInteractiveSend } from './use-native-chat-interactive-send'
+
+export function useNativeChatInteractiveSendReveal(
+  { sendAnswer, sendRaw, cancelPending, cancelAsk, cancel }: NativeChatInteractiveSend,
+  targetPtyId: string | null,
+  revealLatest: () => void
+): NativeChatInteractiveSend {
+  return useMemo<NativeChatInteractiveSend>(
+    () => ({
+      // Only what is written moves the reader: no terminal, or an empty answer, writes nothing.
+      sendAnswer: (prompt, selections, onDeliverySettled) => {
+        if (targetPtyId && hasAskAnswer(prompt, selections)) {
+          revealLatest()
+        }
+        return sendAnswer(prompt, selections, onDeliverySettled)
+      },
+      sendRaw: (raw) => {
+        if (targetPtyId) {
+          revealLatest()
+        }
+        sendRaw(raw)
+      },
+      cancelPending,
+      cancelAsk,
+      cancel
+    }),
+    [cancel, cancelAsk, cancelPending, revealLatest, sendAnswer, sendRaw, targetPtyId]
+  )
+}
 
 export type NativeChatMessageListHandle = {
   /** Bring the latest into view and follow it, wherever the reader had scrolled. */

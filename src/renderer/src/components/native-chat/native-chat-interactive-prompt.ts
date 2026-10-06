@@ -1,6 +1,7 @@
 import { nativeChatApprovalAcceptKey } from '../../../../shared/native-chat-agent-support'
 import { translate } from '@/i18n/i18n'
 import type {
+  AgentJournalApprovalItem,
   AgentJournalApprovalMatchedAskRule,
   AgentJournalApprovalSubject
 } from '../../../../shared/agent-session-journal-types'
@@ -50,6 +51,27 @@ export type InteractivePromptCard =
   | { kind: 'question'; prompt: AskPrompt }
   | { kind: 'approval'; approval: ChatApproval }
   | null
+
+export function nativeChatStructuredApproval(
+  approvalBody: AgentJournalApprovalItem | null
+): ChatApproval | null {
+  return approvalBody
+    ? {
+        title: approvalBody.title,
+        ...(approvalBody.displayName ? { displayName: approvalBody.displayName } : {}),
+        ...(approvalBody.description ? { description: approvalBody.description } : {}),
+        ...(approvalBody.decisionReason ? { decisionReason: approvalBody.decisionReason } : {}),
+        ...(approvalBody.blockedPath ? { blockedPath: approvalBody.blockedPath } : {}),
+        ...(approvalBody.matchedAskRule ? { matchedAskRule: approvalBody.matchedAskRule } : {}),
+        ...(approvalBody.subject ? { subject: approvalBody.subject } : {}),
+        ...(approvalBody.detail ? { detail: approvalBody.detail } : {}),
+        options: approvalBody.options.map((option) => ({
+          label: option.label,
+          send: option.id
+        }))
+      }
+    : null
+}
 
 const ESCAPE = String.fromCharCode(27)
 

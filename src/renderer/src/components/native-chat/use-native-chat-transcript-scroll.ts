@@ -72,7 +72,6 @@ export function useNativeChatTranscriptScroll({
   const previousIsVisibleRef = useRef(isVisible)
   const previousDistanceFromEndRef = useRef(Number.POSITIVE_INFINITY)
   const readerGenerationRef = useRef(0)
-  const readerScrollUntilRef = useRef(0)
   const mountedRef = useRef(true)
 
   const syncScrollState = useCallback((): ScrollGeometry | null => {
@@ -88,7 +87,6 @@ export function useNativeChatTranscriptScroll({
 
   const beginDisclosure = useCallback(() => {
     readerGenerationRef.current += 1
-    readerScrollUntilRef.current = 0
     followingRef.current = false
     reconcileReaderScroll(true)
     syncScrollState()
@@ -110,7 +108,6 @@ export function useNativeChatTranscriptScroll({
 
   const readerActs = useCallback(() => {
     readerGenerationRef.current += 1
-    readerScrollUntilRef.current = performance.now() + 250
     if (holdRef.current) {
       settleDisclosure()
     }
@@ -143,9 +140,7 @@ export function useNativeChatTranscriptScroll({
           geometry,
           previousDistanceFromEnd: previousDistanceFromEndRef.current
         })
-        if (performance.now() <= readerScrollUntilRef.current) {
-          reconcileReaderScroll(false)
-        }
+        reconcileReaderScroll(false)
       }
       previousDistanceFromEndRef.current = distanceFromBottom(geometry)
       syncScrollState()
@@ -161,7 +156,6 @@ export function useNativeChatTranscriptScroll({
   const scrollToBottom = useCallback(() => {
     readerGenerationRef.current += 1
     cancelDisclosure()
-    readerScrollUntilRef.current = 0
     followingRef.current = true
     scrollToEndWhenMeasurable()
     setShowJump(false)
@@ -169,7 +163,6 @@ export function useNativeChatTranscriptScroll({
   const scrollMessageToTop = useCallback(
     (element: HTMLElement) => {
       readerActs()
-      readerScrollUntilRef.current = 0
       followingRef.current = false
       alignToViewportTop(element)
     },

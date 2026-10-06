@@ -11,19 +11,18 @@ import { useNativeChatRetainedSession } from './use-native-chat-retained-session
 import { isNativeChatTranscriptUnsettled } from './native-chat-live-session-contract'
 import { selectNativeChatViewState } from './native-chat-view-state'
 import { NativeChatMessageList } from './NativeChatMessageList'
-import { useNativeChatRevealLatest } from './use-native-chat-reveal-latest'
+import {
+  useNativeChatInteractiveSendReveal,
+  useNativeChatRevealLatest
+} from './use-native-chat-reveal-latest'
 import { useNativeChatLaunchPromptDeliveryNotice } from './use-native-chat-launch-prompt-delivery-notice'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
 import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { useNativeChatCanSend } from './use-native-chat-can-send'
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
-import { hasAskAnswer } from './native-chat-interactive-prompt'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
-import {
-  useNativeChatInteractiveSend,
-  type NativeChatInteractiveSend
-} from './use-native-chat-interactive-send'
+import { useNativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import { shouldClearNativeChatWorkingSuppression } from './native-chat-working-suppression'
 import { resolveNativeChatTerminalTurn } from './native-chat-terminal-turn'
 import { useNativeChatTerminalTurnTiming } from './use-native-chat-terminal-turn-timing'
@@ -121,37 +120,12 @@ export function NativeChatResolvedView({
   const canSend = useNativeChatCanSend(targetPtyId)
   // Reuse the verified composer send path for interactive cards and composer
   // stop (Stop sends ESC, the agent-TUI interrupt key).
-  const { sendAnswer, sendRaw, cancelPending, cancelAsk, cancel } = useNativeChatInteractiveSend(
-    terminalTabId,
-    paneKey,
-    targetPtyId,
-    agent
-  )
+  const send = useNativeChatInteractiveSend(terminalTabId, paneKey, targetPtyId, agent)
   // Every send this pane makes brings the latest into view, wherever the reader had scrolled.
   const revealScope = `${agent}:${sessionId}:${targetPtyId}`
   const reveals = useNativeChatRevealLatest(revealScope, isVisible)
   const { messageListRef, revealLatest, holdRevealLatest } = reveals
-  const interactiveSend = useMemo<NativeChatInteractiveSend>(
-    () => ({
-      // Only what is written moves the reader: no terminal, or an empty answer, writes nothing.
-      sendAnswer: (prompt, selections, onDeliverySettled) => {
-        if (targetPtyId && hasAskAnswer(prompt, selections)) {
-          revealLatest()
-        }
-        return sendAnswer(prompt, selections, onDeliverySettled)
-      },
-      sendRaw: (raw) => {
-        if (targetPtyId) {
-          revealLatest()
-        }
-        sendRaw(raw)
-      },
-      cancelPending,
-      cancelAsk,
-      cancel
-    }),
-    [cancel, cancelAsk, cancelPending, revealLatest, sendAnswer, sendRaw, targetPtyId]
-  )
+  const interactiveSend = useNativeChatInteractiveSendReveal(send, targetPtyId, revealLatest)
   const [workingInterrupted, setWorkingInterrupted] = useState(false)
   const previousWorkingEpochRef = useRef<number | null>(null)
   // True while a question card owns the input region, so the composer is hidden.

@@ -10,11 +10,13 @@ function TranscriptHarness({
   isVisible,
   restoreScrollOffset,
   scrollToEnd,
+  reconcileReaderScroll = vi.fn(),
   itemCount = 100
 }: {
   isVisible: boolean
   restoreScrollOffset: (offset: number) => void
   scrollToEnd: () => void
+  reconcileReaderScroll?: (isTakingOver: boolean) => void
   itemCount?: number
 }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -30,7 +32,7 @@ function TranscriptHarness({
     scrollToEnd,
     restoreScrollOffset,
     consumeProgrammaticScroll: () => false,
-    reconcileReaderScroll: vi.fn()
+    reconcileReaderScroll
   })
   const input = useNativeChatReaderScrollInput(scrollRef, {
     onReaderScroll: transcript.readerActs,
@@ -51,7 +53,84 @@ function TranscriptHarness({
   )
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+it.each([0, 250, 251])(
+  'rebases a pending reader target after %i ms until its frame ends',
+  (elapsed) => {
+    let clock = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      const id = ++nextFrame
+      frames.set(id, callback)
+      return id
+    })
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => frames.delete(id))
+    let element: HTMLElement | null = null
+    let pendingFrame: number | null = null
+    let retainedTarget = 8204
+    const rebase = vi.fn((offset: number) => {
+      retainedTarget = offset
+    })
+    // The window adapter replaces targets only on takeover or while its frame is pending.
+    const reconcileReaderScroll = vi.fn((isTakingOver: boolean) => {
+      if (!element || (!isTakingOver && pendingFrame === null)) {
+        return
+      }
+      rebase(element.scrollTop)
+      if (pendingFrame === null) {
+        pendingFrame = window.requestAnimationFrame(() => {
+          pendingFrame = null
+        })
+      }
+    })
+    const view = render(
+      <TranscriptHarness
+        isVisible
+        restoreScrollOffset={vi.fn()}
+        scrollToEnd={vi.fn()}
+        reconcileReaderScroll={reconcileReaderScroll}
+      />
+    )
+    element = view.getByTestId('scroll')
+    Object.defineProperties(element, {
+      clientHeight: { configurable: true, value: 600 },
+      scrollHeight: { configurable: true, value: 8804 }
+    })
+    element.scrollTop = 8204
+    fireEvent.scroll(element)
+    expect(rebase).not.toHaveBeenCalled()
+    expect(frames.size).toBe(0)
+
+    fireEvent.wheel(element, { deltaY: -100 })
+    expect(rebase.mock.calls).toEqual([[8204]])
+    expect(frames.size).toBe(1)
+    clock += elapsed
+    element.scrollTop = 2000
+    fireEvent.scroll(element)
+    expect(retainedTarget).toBe(2000)
+    expect(rebase.mock.calls).toEqual([[8204], [2000]])
+    expect(frames.size).toBe(1)
+
+    for (const [id, callback] of frames) {
+      frames.delete(id)
+      callback(clock)
+    }
+    expect(pendingFrame).toBeNull()
+    element.scrollTop = 1800
+    fireEvent.scroll(element)
+    fireEvent.scroll(element)
+    expect(reconcileReaderScroll).toHaveBeenLastCalledWith(false)
+    expect(retainedTarget).toBe(2000)
+    expect(rebase.mock.calls).toEqual([[8204], [2000]])
+    expect(frames.size).toBe(0)
+  }
+)
 
 describe('native chat transcript visibility', () => {
   it('restores the last detached offset when a retained tab is revealed', () => {
