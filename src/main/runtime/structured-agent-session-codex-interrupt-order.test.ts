@@ -343,41 +343,90 @@ describe('a send behind a Codex Stop answered before its turn ends', () => {
   })
 })
 
-// A message sent asking to be queued while a person's Stop ends the turn is a card at once, while
-// the Stop still waits on Codex, and runs as its own turn once the stopped turn has ended.
+async function resume(): Promise<void> {
+  const resumed = await host.queuedMessagesResume(CALLER, {
+    envelope: envelope('agentSession.queuedMessagesResume', {})
+  })
+  expect(resumed).toMatchObject({ ok: true, value: { resumed: true } })
+}
+
+/** The cards each queue hand-off sent, in order. */
+async function handOffs(): Promise<string[]> {
+  return (await host.journalSnapshot(SESSION)).submissions.flatMap((entry) =>
+    entry.queuedMessageId ? [entry.queuedMessageId] : []
+  )
+}
+
+function queuedMessageId(sent: Awaited<ReturnType<typeof sendQueued>>): string {
+  if (!('queued' in sent)) {
+    throw new Error('expected a queued receipt')
+  }
+  return sent.queued.messageId
+}
+
+/** A running turn-1, and a person's Stop of it whose interrupt Codex has yet to answer. */
+async function stopAwaitingCodex(beforeStop?: () => Promise<void>) {
+  const first = await send('look around')
+  await vi.waitFor(() => expect(answers).toBe(1))
+  turns.start()
+  turns.echo(first)
+  await beforeStop?.()
+  const answer = Promise.withResolvers<void>()
+  interruptAnswer = answer.promise
+  let stopped = false
+  const stopping = stop().then(() => {
+    stopped = true
+  })
+  await vi.waitFor(() => expect(statuses.at(-1)?.stopping).toBe(true))
+  return {
+    stopped: () => stopped,
+    /** Codex answers the interrupt, then ends the turn; nothing then runs by itself. */
+    land: async () => {
+      answer.resolve()
+      await stopping
+      turns.end('interrupted')
+      await vi.waitFor(async () => expect(await owesWork()).toBe(false))
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      expect(answers).toBe(1)
+      expect(startedTurns).toEqual(['turn-1'])
+    }
+  }
+}
+
+/** The turn the last turn/start opened runs, takes the latest send, and completes. */
+async function completeTurn(): Promise<void> {
+  const latest = (await host.journalSnapshot(SESSION)).submissions.at(-1)
+  turns.start()
+  turns.echo(latest?.clientMessageId ?? '')
+  turns.end('completed')
+}
+
+// A message sent asking to be queued while a person's Stop ends the turn is a card at once, at the
+// end, while the Stop still waits on Codex. The Stop's pause holds it, even alone: Resume, or a turn
+// accepted after the Stop, sends the cards, each as its own turn.
 describe('a queued send while a Codex Stop waits on its answer', () => {
-  it('is a card at once, held by no pause, and opens its own turn after the stop', async () => {
-    const first = await send('look around')
-    await vi.waitFor(() => expect(answers).toBe(1))
-    turns.start()
-    turns.echo(first)
-    const answer = Promise.withResolvers<void>()
-    interruptAnswer = answer.promise
-    let stopped = false
-    const stopping = stop().then(() => {
-      stopped = true
-    })
-    await vi.waitFor(() => expect(statuses.at(-1)?.stopping).toBe(true))
+  it('is a card at once that the Stop holds even alone; Resume sends it as its own turn', async () => {
+    const stopping = await stopAwaitingCodex()
 
     const queued = await sendQueued('run this after the stop')
 
-    expect(stopped).toBe(false)
-    expect(queued).toMatchObject({ queued: { state: 'waiting' } })
-    const messageId = 'queued' in queued ? queued.queued.messageId : ''
-    expect(await queuedCards()).toEqual([expect.objectContaining({ messageId, state: 'waiting' })])
-    // The Stop's pause holds no card queued after it, so it offers no Resume.
-    expect((await queuePage()).pause).toBeNull()
-    // A retry of the same operation answers the same card, on the lane or off it.
+    expect(stopping.stopped()).toBe(false)
+    const messageId = queuedMessageId(queued)
+    expect(await queuePage()).toEqual({
+      cards: [expect.objectContaining({ messageId, state: 'waiting' })],
+      pause: expect.objectContaining({ reason: 'stopped' })
+    })
+    // A retry of the same operation answers the same card.
     expect(await sendQueued('run this after the stop', messageId)).toEqual(queued)
 
-    answer.resolve()
-    await stopping
-    turns.end('interrupted')
+    await stopping.land()
+    expect(await queuedCards()).toEqual([expect.objectContaining({ messageId, state: 'waiting' })])
 
+    await resume()
     await vi.waitFor(() => expect(answers).toBe(2))
     expect(startedTurns).toEqual(['turn-1', 'turn-2'])
     expect(steers).toBe(0)
-    // Retried once handed off, on the lane, it answers with the card's hand-off, as any queued send.
+    // Retried once handed off, it answers with the card's hand-off, as any queued send.
     expect(await sendQueued('run this after the stop', messageId)).toMatchObject({
       submission: { queuedMessageId: messageId }
     })
@@ -389,41 +438,52 @@ describe('a queued send while a Codex Stop waits on its answer', () => {
   })
 })
 
-// A card queued before the Stop waits for Resume; one queued while it stops runs when it lands.
 describe('a queued send while Stopping, behind a card the Stop paused', () => {
-  it('runs as its own turn after the stop, and the paused card waits for Resume', async () => {
-    const first = await send('look around')
-    await vi.waitFor(() => expect(answers).toBe(1))
-    turns.start()
-    turns.echo(first)
-    const before = await sendQueued('queued before the stop')
-    const paused = 'queued' in before ? before.queued.messageId : ''
-    const answer = Promise.withResolvers<void>()
-    interruptAnswer = answer.promise
-    const stopping = stop()
-    await vi.waitFor(() => expect(statuses.at(-1)?.stopping).toBe(true))
+  let paused = ''
+  const queueBeforeStop = async () => {
+    paused = queuedMessageId(await sendQueued('queued before the stop'))
+  }
 
-    const during = await sendQueued('sent while stopping')
-    const runsNext = 'queued' in during ? during.queued.messageId : ''
-    // The pause names the one card it holds; the card queued after the Stop is not one.
-    expect((await queuePage()).cards.map((card) => [card.messageId, card.heldByPause])).toEqual([
-      [paused, true],
-      [runsNext, undefined]
-    ])
-    answer.resolve()
-    await stopping
-    turns.end('interrupted')
+  it('waits at the end with it; Resume sends both in order, each its own turn', async () => {
+    const stopping = await stopAwaitingCodex(queueBeforeStop)
+    const during = queuedMessageId(await sendQueued('sent while stopping'))
+    expect((await queuedCards()).map((card) => card.messageId)).toEqual([paused, during])
 
-    await vi.waitFor(() => expect(answers).toBe(2))
-    expect(startedTurns).toEqual(['turn-1', 'turn-2'])
-    expect(steers).toBe(0)
-    const handOffs = (await host.journalSnapshot(SESSION)).submissions.flatMap((entry) =>
-      entry.queuedMessageId ? [entry.queuedMessageId] : []
-    )
-    expect(handOffs).toEqual([runsNext])
+    await stopping.land()
     expect(await queuePage()).toEqual({
-      cards: [expect.objectContaining({ messageId: paused, state: 'waiting', heldByPause: true })],
+      cards: [
+        expect.objectContaining({ messageId: paused, state: 'waiting' }),
+        expect.objectContaining({ messageId: during, state: 'waiting' })
+      ],
       pause: expect.objectContaining({ reason: 'stopped' })
     })
+
+    await resume()
+    await vi.waitFor(() => expect(answers).toBe(2))
+    expect(await handOffs()).toEqual([paused])
+    await completeTurn()
+    await vi.waitFor(() => expect(answers).toBe(3))
+    expect(await handOffs()).toEqual([paused, during])
+    expect(startedTurns).toEqual(['turn-1', 'turn-2', 'turn-3'])
+    expect(steers).toBe(0)
+  })
+
+  it('the next turn sent after the stop releases them: it runs first, then both in order', async () => {
+    const stopping = await stopAwaitingCodex(queueBeforeStop)
+    const during = queuedMessageId(await sendQueued('sent while stopping'))
+    await stopping.land()
+
+    // What the "Send message?" dialog's Send does: a plain send past the paused cards.
+    await send('sent now, past the paused cards')
+    await vi.waitFor(() => expect(answers).toBe(2))
+    expect(await handOffs()).toEqual([])
+    await completeTurn()
+    await vi.waitFor(() => expect(answers).toBe(3))
+    expect(await handOffs()).toEqual([paused])
+    await completeTurn()
+    await vi.waitFor(() => expect(answers).toBe(4))
+    expect(await handOffs()).toEqual([paused, during])
+    expect(startedTurns).toEqual(['turn-1', 'turn-2', 'turn-3', 'turn-4'])
+    expect(steers).toBe(0)
   })
 })
