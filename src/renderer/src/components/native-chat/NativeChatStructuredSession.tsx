@@ -10,6 +10,7 @@ import { structuredAgentSessionPaneKey } from '../../../../shared/structured-age
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
+import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
@@ -197,17 +198,14 @@ export function NativeChatStructuredSession(
       ? (objective: string) => threadGoal.change({ kind: 'set', objective })
       : null
     return {
-      send: (
-        text: string,
-        attachments: readonly { id: string; path: string; connectionId?: string }[]
-      ): boolean =>
+      send: (text: string, attachments: readonly NativeChatComposerImageAttachment[]): boolean =>
         sendThroughRelaunch(() =>
           controller.send(
             text,
-            attachments.map((attachment) => ({
-              path: attachment.path,
-              previewUri: attachment.path,
-              ...(attachment.connectionId ? { connectionId: attachment.connectionId } : {})
+            attachments.map(({ path, connectionId }) => ({
+              path,
+              previewUri: path,
+              ...(connectionId ? { connectionId } : {})
             }))
           )
         ),
