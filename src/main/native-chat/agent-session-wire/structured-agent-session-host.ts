@@ -1,4 +1,5 @@
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -20,10 +21,7 @@ import {
 } from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
-import {
-  attachStructuredAgentSession,
-  type StructuredAgentSessionAttachOptions
-} from './structured-agent-session-attach-orchestration'
+import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import * as agentStart from './structured-agent-session-agent-start'
 import {
@@ -215,6 +213,17 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
+  /** Every agent this runtime registered: what `agentSession.agents` publishes. */
+  agentDefinitions = (): readonly StructuredAgentDefinition[] => this.deps.agents.definitions()
+
+  /** Saved chats can outlive their registration; both vocabularies bound a client's audience. */
+  knownAgentIds = (): readonly string[] => [
+    ...new Set([
+      ...this.deps.agents.definitions().map(({ agent }) => agent),
+      ...this.deps.store.listRecords().map(({ provider }) => provider)
+    ])
+  ]
+
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,
     this.sessions,
@@ -245,7 +254,7 @@ export class StructuredAgentSessionHost {
   attach(
     caller: StructuredAgentSessionCaller,
     params: AgentSessionAttachParams,
-    options?: StructuredAgentSessionAttachOptions
+    options?: Parameters<typeof attachStructuredAgentSession>[3]
   ): Promise<SessionWire.AgentSessionMutationResult<SessionWire.AgentSessionAttachResult>> {
     return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params, options)
   }

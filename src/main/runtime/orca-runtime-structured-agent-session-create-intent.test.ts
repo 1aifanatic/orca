@@ -38,7 +38,7 @@ function createCodexIntentRuntime(
   const createIntent = () =>
     runtime.resolveStructuredAgentSessionCreateIntent({
       envelope: { sessionId: 'session-1', clientOperationId: 'operation-1' },
-      worktree: 'id:workspace-1',
+      worktree: `id:${workspaceId}`,
       agent: 'codex'
     })
   return { prepareCodexStructuredLaunch, createIntent }

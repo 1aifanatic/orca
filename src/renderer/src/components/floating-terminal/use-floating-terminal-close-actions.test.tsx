@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import { useAppStore } from '@/store'
 import { makeOpenFile, makeTabGroup, makeUnifiedTab } from '@/store/slices/store-test-helpers'
 import { useFloatingTerminalCloseActions } from './use-floating-terminal-close-actions'
@@ -72,6 +72,11 @@ function actions(groupTabs = [editor, chat]) {
     .current
 }
 
+function setPinnedConfirmation(confirmClosePinnedTab: boolean) {
+  const settings = useAppStore.getState().settings ?? getDefaultSettings(process.cwd())
+  useAppStore.setState({ settings: { ...settings, confirmClosePinnedTab } })
+}
+
 describe('floating titlebar close actions', () => {
   it('closes one editor reference while keeping its shared open file', () => {
     actions().closeFloatingItemConfirmed(editor.id)
@@ -91,8 +96,8 @@ describe('floating titlebar close actions', () => {
   it.each([true, false])(
     'retains pinned editors without prompting during Close All Editor Tabs (confirmation %s)',
     (confirmClosePinnedTab) => {
+      setPinnedConfirmation(confirmClosePinnedTab)
       useAppStore.setState({
-        settings: { ...useAppStore.getState().settings, confirmClosePinnedTab },
         unifiedTabsByWorktree: { [worktreeId]: [editor, pinnedEditor, chat] },
         openFiles: [
           makeOpenFile({ id: sharedFileId, worktreeId }),
@@ -110,8 +115,8 @@ describe('floating titlebar close actions', () => {
   )
 
   it('keeps the confirmation policy for an explicit pinned editor close', () => {
+    setPinnedConfirmation(true)
     useAppStore.setState({
-      settings: { ...useAppStore.getState().settings, confirmClosePinnedTab: true },
       unifiedTabsByWorktree: { [worktreeId]: [pinnedEditor] },
       openFiles: [makeOpenFile({ id: 'pinned-file', worktreeId })]
     })

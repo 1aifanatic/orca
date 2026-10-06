@@ -72,19 +72,25 @@ describe('codex structured launch resolution', () => {
     expect(resolveWorkspacePath).not.toHaveBeenCalled()
   })
 
-  it('pins the first launch directory of a new session', async () => {
+  it('repairs the first launch directory of an unpinned legacy floating session', async () => {
     const pinLaunchDirectory = vi.fn()
     const resolveLaunch = createCodexStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinLaunchDirectory },
-      resolveWorkspacePath: async (id) => `/repos/${id}`,
+      store: {
+        getRecord: () =>
+          record({
+            location: { ...record().location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID }
+          }),
+        pinLaunchDirectory
+      },
+      resolveWorkspacePath: async () => '/floating/start-folder',
       resolveCommand: () => '/usr/local/bin/codex',
       isWindowsProcessStartTimeAvailable: () => true
     })
 
     await expect(resolveLaunch({ identity: IDENTITY })).resolves.toMatchObject({
-      cwd: '/repos/workspace-1'
+      cwd: '/floating/start-folder'
     })
-    expect(pinLaunchDirectory).toHaveBeenCalledExactlyOnceWith(SESSION_ID, '/repos/workspace-1')
+    expect(pinLaunchDirectory).toHaveBeenCalledExactlyOnceWith(SESSION_ID, '/floating/start-folder')
   })
 
   it('launches the app server in the workspace and account home the record pinned', async () => {
