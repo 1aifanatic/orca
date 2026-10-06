@@ -52,15 +52,24 @@ import {
   getStructuredAgentSessionOutbox
 } from './structured-agent-session-outbox-storage'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 const CLEARED = "The chat was cleared before your message went out. It's back in the composer."
 const NOT_SENT = "Your message wasn't sent. It's back in the composer."
+const UNCONFIRMED =
+  "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setLocalRuntimeCapabilitiesForTests(null)
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The host's answers are proof, as current hosts advertise.
+  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY])
   mocks.call.mockImplementation(async () => null)
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
@@ -494,6 +503,33 @@ describe('messages this window held for the chat a /clear replaced', () => {
     rerender()
     expect(mocks.call).toHaveBeenCalledOnce()
     expect(readNativeChatDraftCache(scope('new'))).toBe('it never landed')
+  })
+
+  it('from a host whose answers are not proof, a "cleared" refusal is asked again, then comes back unconfirmed', async () => {
+    // An older host may refuse as cleared a message it already ran.
+    setLocalRuntimeCapabilitiesForTests([])
+    mocks.call.mockResolvedValue({ ok: false, refusal: CLEARED_REFUSAL })
+    commitStructuredAgentSessionOutbox('old', [
+      entry('m1', 'maybe it ran', { state: 'unconfirmed', lastAttemptAt: 3 })
+    ])
+    vi.useFakeTimers()
+    try {
+      const { result } = pane('new', { replaces: 'old' })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(mocks.call).toHaveBeenCalledOnce()
+      expect(readNativeChatDraftCache(scope('new'))).toBe('')
+      expect(result.current.askedRows).toMatchObject([{ clientMessageId: 'm1' }])
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(31_000)
+      })
+      expect(mocks.call).toHaveBeenCalledTimes(6)
+      expect(readNativeChatDraftCache(scope('new'))).toBe('maybe it ran')
+      expect(result.current.error).toBe(UNCONFIRMED)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a refusal that lands after the move comes to the new chat, said there once', async () => {

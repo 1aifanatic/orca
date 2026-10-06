@@ -84,15 +84,21 @@ export function classifyReplacedLeftover(
   return { kind: 'inDoubt' }
 }
 
-/** The host's answer to asking again under the same id; `thrown` is no answer at all. */
+/** The host's answer to asking again under the same id; `thrown` is no answer at all. A refusal
+ *  proves nothing from a host without `agent-session.send-answers-proof.v1`, which may refuse an
+ *  id it already recorded. */
 export function resolveReplacedLeftover(
-  answer: AgentSessionMutationResult<AgentSessionSendResult> | 'thrown'
+  answer: AgentSessionMutationResult<AgentSessionSendResult> | 'thrown',
+  answersProve: boolean
 ): 'recorded' | 'askAgain' | { handBack: ReplacedLeftoverCause } {
   if (answer === 'thrown') {
     return 'askAgain'
   }
   if (answer.ok) {
     return 'recorded'
+  }
+  if (!answersProve) {
+    return 'askAgain'
   }
   const cause = refusalProvesUnrecorded(answer.refusal)
   return cause ? { handBack: cause } : 'askAgain'

@@ -49,9 +49,9 @@ describe("the one proof rule for a cleared chat's leftovers", () => {
   it('a refusal proves nothing was recorded only when the host could tell', () => {
     for (const refusal of NON_PROVING) {
       expect(refusalProvesUnrecorded(refusal), refusal.code).toBeNull()
-      expect(resolveReplacedLeftover({ ok: false, refusal }), refusal.code).toBe('askAgain')
+      expect(resolveReplacedLeftover({ ok: false, refusal }, true), refusal.code).toBe('askAgain')
     }
-    expect(resolveReplacedLeftover('thrown')).toBe('askAgain')
+    expect(resolveReplacedLeftover('thrown', true)).toBe('askAgain')
     expect(
       refusalProvesUnrecorded({
         code: 'agent_session_operation_invalid',
@@ -59,6 +59,43 @@ describe("the one proof rule for a cleared chat's leftovers", () => {
       })
     ).toBe('cleared')
     expect(refusalProvesUnrecorded({ code: 'agent_session_owner_restart_failed' })).toBe('notSent')
+  })
+
+  it('a host that does not advertise its answers as proof is asked again whatever it refuses', () => {
+    const cleared: AgentSessionWireRefusal = {
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'conversationCleared' },
+      message: 'x'
+    }
+    expect(resolveReplacedLeftover({ ok: false, refusal: cleared }, true)).toEqual({
+      handBack: 'cleared'
+    })
+    // An older host may refuse an id it already ran as cleared.
+    expect(resolveReplacedLeftover({ ok: false, refusal: cleared }, false)).toBe('askAgain')
+    expect(
+      resolveReplacedLeftover(
+        {
+          ok: true,
+          replayed: true,
+          fence: 1,
+          cursor: { epoch: 'e', sequence: 1 },
+          value: {
+            clientMessageId: 'm1',
+            submission: {
+              clientMessageId: 'm1',
+              fence: 1,
+              payloadFingerprint: 'fingerprint',
+              dispatchState: 'accepted',
+              providerItemId: null,
+              reason: null,
+              submittedAt: 1,
+              resolvedAt: 2
+            }
+          }
+        },
+        false
+      )
+    ).toBe('recorded')
   })
 
   it('a refused first attempt says its own cause, not the clear', () => {

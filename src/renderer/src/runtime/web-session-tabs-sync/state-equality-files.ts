@@ -96,6 +96,8 @@ export function tabEqual(a: Tab, b: Tab): boolean {
     a.executionHostId === b.executionHostId &&
     a.contentType === b.contentType &&
     a.agentSessionAgent === b.agentSessionAgent &&
+    // Why: not in the saved session, so a tab restored after a reload takes it from the host's next snapshot.
+    a.agentSessionReplacesSessionId === b.agentSessionReplacesSessionId &&
     a.label === b.label &&
     // Why: the generated label is the visible tab title; ignoring it let the
     // equality bail keep a unified tab that disagreed with its terminal tab.

@@ -110,6 +110,45 @@ describe('clear pane identity', () => {
       )
     }
   )
+  it('a tab restored after a reload, which the saved session keeps without its link, takes it from the host', () => {
+    const replacement = {
+      type: 'agent-session' as const,
+      id: 'agent-session:new-session',
+      sessionId: 'new-session',
+      agent: 'codex' as const,
+      title: 'Codex Chat',
+      isActive: true
+    }
+    const options = {
+      contentScope: 'agent-session' as const,
+      preserveLocalLayout: true,
+      terminalPtyMode: 'local' as const
+    }
+    // The saved session drops the link, so the restored tab is the mirrored one without it.
+    const restored = applyWebSessionTabsSnapshot(
+      makeState(),
+      makeSnapshot([replacement], { activeTabId: replacement.id, activeTabType: 'agent-session' }),
+      ENV,
+      NOW,
+      options
+    )
+    expect(restored.unifiedTabsByWorktree?.[WT]?.[0]?.agentSessionReplacesSessionId).toBeUndefined()
+    const next = applyWebSessionTabsSnapshot(
+      { ...makeState(), ...restored },
+      makeSnapshot([{ ...replacement, replacesSessionId: 'old-session' }], {
+        activeTabId: replacement.id,
+        activeTabType: 'agent-session'
+      }),
+      ENV,
+      NOW + 1,
+      options
+    )
+    expect(next.unifiedTabsByWorktree?.[WT]?.[0]).toMatchObject({
+      entityId: 'new-session',
+      agentSessionReplacesSessionId: 'old-session'
+    })
+  })
+
   it('gives reopened history its own tab when clear retained its former local ID', () => {
     const current = [
       {

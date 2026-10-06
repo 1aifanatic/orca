@@ -23,7 +23,9 @@ import {
   resolveReplacedLeftover,
   type ReplacedLeftoverCause
 } from '../../../../shared/structured-agent-session-replaced-leftovers'
+import { AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+import { useStructuredAgentSessionHostCapability } from '@/runtime/structured-agent-session-host-capability'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import {
@@ -208,9 +210,16 @@ export function useStructuredAgentSessionReplacementCarry(args: {
   // again), stops asking, and an answer still on its way is dropped.
   const asking = useRef<AskingState>(newAskingState())
   const settleRef = useRef(settle)
+  // Read when each answer lands: a remote host's capabilities may still be on their way.
+  const hostAnswersProve = useStructuredAgentSessionHostCapability(
+    target,
+    AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY
+  )
+  const answersProve = useRef(hostAnswersProve)
   useEffect(() => {
     settleRef.current = settle
-  }, [settle])
+    answersProve.current = hostAnswersProve
+  }, [hostAnswersProve, settle])
   useEffect(() => {
     const state = newAskingState()
     asking.current = state
@@ -235,7 +244,7 @@ export function useStructuredAgentSessionReplacementCarry(args: {
           if (!state.live) {
             return
           }
-          const resolved = resolveReplacedLeftover(answer)
+          const resolved = resolveReplacedLeftover(answer, answersProve.current)
           if (resolved === 'askAgain' && attempt < ASK_AGAIN_MS.length) {
             // Owned by the cleanup above, which clears every one still pending.
             const timer = setTimeout(() => {
