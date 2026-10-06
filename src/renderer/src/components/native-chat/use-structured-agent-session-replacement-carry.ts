@@ -216,16 +216,13 @@ export function useStructuredAgentSessionReplacementCarry(args: {
       state.ids.clear()
     }
   }, [])
-  useEffect(() => {
-    if (!composerScopeKey || fence === null) {
-      return
-    }
-    const state = asking.current
-    const ask = (entry: StructuredAgentSessionOutboxEntry, attempt: number): void => {
+  const ask = useCallback(
+    (entry: StructuredAgentSessionOutboxEntry, attempt: number, toFence: number): void => {
+      const state = asking.current
       void callStructuredAgentSession<AgentSessionMutationResult<AgentSessionSendResult>>(
         target,
         'agentSession.send',
-        structuredAgentSessionSendRequest(entry, fence)
+        structuredAgentSessionSendRequest(entry, toFence)
       )
         .then(
           (answer) => answer,
@@ -237,9 +234,10 @@ export function useStructuredAgentSessionReplacementCarry(args: {
           }
           const resolved = resolveReplacedLeftover(answer)
           if (resolved === 'askAgain' && attempt < ASK_AGAIN_MS.length) {
+            // Owned by the unmount cleanup above, which clears every one still pending.
             const timer = setTimeout(() => {
               state.timers.delete(timer)
-              ask(entry, attempt + 1)
+              ask(entry, attempt + 1, toFence)
             }, ASK_AGAIN_MS[attempt])
             state.timers.add(timer)
             return
@@ -251,14 +249,21 @@ export function useStructuredAgentSessionReplacementCarry(args: {
               : { entry, cause: resolved === 'askAgain' ? 'unconfirmed' : resolved.handBack }
           ])
         })
+    },
+    [target]
+  )
+  useEffect(() => {
+    if (!composerScopeKey || fence === null) {
+      return
     }
+    const state = asking.current
     for (const { entry, verdict } of verdicts) {
       if (verdict.kind === 'inDoubt' && !state.ids.has(entry.clientMessageId)) {
         state.ids.add(entry.clientMessageId)
-        ask(entry, 0)
+        ask(entry, 0, fence)
       }
     }
-  }, [composerScopeKey, fence, target, verdicts])
+  }, [ask, composerScopeKey, fence, verdicts])
 
   return useMemo(
     () =>

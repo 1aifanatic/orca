@@ -233,11 +233,17 @@ describe('messages this window held for the chat a /clear replaced', () => {
       entry('m2', 'carried as a card', { state: 'unconfirmed', lastAttemptAt: 3 }),
       entry('m3', 'carried, and already sent here', { state: 'unconfirmed', lastAttemptAt: 4 })
     ])
-    const sentHere = {
+    const sentHere: AgentJournalSubmission = {
       clientMessageId: 'handoff-1',
       queuedMessageId: 'm3',
-      dispatchState: 'accepted'
-    } as unknown as AgentJournalSubmission
+      fence: 1,
+      payloadFingerprint: 'fingerprint',
+      dispatchState: 'accepted',
+      providerItemId: null,
+      reason: null,
+      submittedAt: 1,
+      resolvedAt: 2
+    }
     const { result } = pane('new', { replaces: 'old', cards: ['m2'], submissions: [sentHere] })
     await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
