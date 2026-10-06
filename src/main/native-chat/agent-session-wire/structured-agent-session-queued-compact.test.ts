@@ -1,7 +1,7 @@
 // A /compact asked to wait (`delivery`) while the agent works: held as a card like a queued
 // send, answered at once, run when the queue drains it. Without the opt-in, today's refusal.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -279,10 +279,68 @@ describe('a /compact that waits in line', () => {
     const laterId = later.value.queued.messageId
     await eventually(async () => expect(await rig.handoff(laterId)).toBeDefined())
     expect(rig.compact).not.toHaveBeenCalled()
-    expect(await rig.handoff(compactId)).toMatchObject({ dispatchState: 'rejected' })
+    // Refused while still queued: no hand-off was recorded for a command that never left.
+    const refused = await rig.handoff(compactId)
+    expect(refused).toMatchObject({ dispatchState: 'rejected' })
+    expect(refused?.handedOverAt).toBeUndefined()
     const { failures, cards } = await failureRowsAndCards()
     expect(failures).toHaveLength(1)
+    // The reason, as the direct path says it, not a bare "try it again".
+    expect(failures[0]!.body).toMatchObject({
+      text: 'Background tasks are still running. Wait for the background tasks to finish.'
+    })
     expect(cards).toEqual([])
+  })
+
+  it('refused before it starts, a failed rejection write never drops the card without its row', async () => {
+    let tasks: AgentChildWorkView[] = []
+    Object.assign(rig.host.deps, {
+      statusSink: { publish: () => {}, forget: () => {}, readChildWork: () => tasks }
+    })
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    const journal = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal
+    const resolve = journal.resolveDispatch.bind(journal)
+    const failed = vi.fn()
+    vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (input) => {
+      if (input.state === 'rejected' && !failed.mock.calls.length) {
+        failed()
+        throw new Error('disk full')
+      }
+      return resolve(input)
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    tasks = [BACKGROUND_TASK]
+    await rig.settleAccepted(working, 'a')
+    await eventually(() => expect(failed).toHaveBeenCalledOnce())
+    // The refusal's row landed before the write that failed, so the card never left without it;
+    // the loop then reports its own fault, and nothing was ever handed over.
+    const { failures } = await failureRowsAndCards()
+    expect(failures.map((row) => row.body)).toContainEqual(
+      expect.objectContaining({
+        text: 'Background tasks are still running. Wait for the background tasks to finish.'
+      })
+    )
+    expect((await rig.handoff(compactId))?.handedOverAt).toBeUndefined()
+    expect(rig.compact).not.toHaveBeenCalled()
+  })
+
+  it('a failed agent start returns its card like any card, never spends it', async () => {
+    await rig.dispose()
+    rig = await createQueuedMessageTestRig({ restartable: true })
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    // The chat's agent went away; the next start fails.
+    await rig.restartHostProcess()
+    rig.awaitStarted.mockRejectedValue(new Error('the agent could not start'))
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(await rig.resume()).toMatchObject({ ok: true })
+    await eventually(async () =>
+      expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'returned' }])
+    )
+    expect(rig.compact).not.toHaveBeenCalled()
   })
 
   it('Send on its card works whenever the agent is idle, as after a paused queue', async () => {

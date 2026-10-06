@@ -16,10 +16,12 @@ import type {
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { nativeChatComposerDraftWriteSettled } from './native-chat-composer-draft-store'
 import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
+  sendingQueuedMessageCards,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
@@ -42,6 +44,8 @@ export type StructuredAgentSessionQueuedMessagesController = {
   steerNewest: () => boolean
 }
 
+const NO_SENDS: readonly StructuredAgentSessionOutboxEntry[] = []
+
 function alreadySentNotice(): void {
   toast.error(
     translate('components.native-chat.queuedMessages.alreadySent', 'This message was already sent.')
@@ -57,21 +61,26 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   hasPendingPrompt: boolean
   /** The chat shows the agent working: a command card offers no send then. */
   agentWorking?: boolean
+  /** Queue sends on their way that the host holds no card for yet. */
+  sending?: readonly StructuredAgentSessionOutboxEntry[]
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
   const agentWorking = args.agentWorking === true
   const pause = args.queuePause
+  const sending = args.sending ?? NO_SENDS
 
   const cards = useMemo(
-    () =>
-      projectQueuedMessageCards(queuedMessages, submissions, {
+    () => [
+      ...projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
         agentWorking,
         queuePaused: pause !== null
       }),
-    [agentWorking, hasPendingPrompt, pause, queuedMessages, submissions]
+      ...sendingQueuedMessageCards(sending)
+    ],
+    [agentWorking, hasPendingPrompt, pause, queuedMessages, sending, submissions]
   )
   const cardsRef = useRef(cards)
   useEffect(() => {

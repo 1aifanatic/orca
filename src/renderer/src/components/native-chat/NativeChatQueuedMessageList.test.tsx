@@ -129,6 +129,27 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
   })
 
+  it('a send on its way reads Sending and offers nothing until the host holds it', () => {
+    renderList(controller([card({ messageId: 'sending-1', text: 'on its way', hold: 'sending' })]))
+    expect(screen.getByText('Sending…')).toBeTruthy()
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it("a send-failed command card's caption names Send only when Send is there", () => {
+    const failed = { command: true as const, hold: 'paused' as const, pausedReason: 'send_failed' }
+    renderList(
+      controller([
+        card({ messageId: 'working', text: '/compact', ...failed, waitsForAgent: true }),
+        card({ messageId: 'idle', text: '/compact', ...failed })
+      ])
+    )
+    expect(
+      screen.getByText("Couldn't send — press Send to retry once the agent finishes.")
+    ).toBeTruthy()
+    expect(screen.getByText("Couldn't send — press Send to retry.")).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Send' })).toHaveLength(1)
+  })
+
   it('an idle command card waiting its turn reads Send, not Steer', () => {
     renderList(controller([card({ messageId: 'compact-1', text: '/compact', command: true })]))
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()

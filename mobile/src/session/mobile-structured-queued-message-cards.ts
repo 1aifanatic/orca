@@ -53,9 +53,12 @@ function returnedCaption(
 }
 
 /** One card's own hold: only a failed conversion; the queue's pause is the list's first row. */
-function pausedCaption(reason: string | undefined): string {
+function pausedCaption(reason: string | undefined, waitsForAgent: boolean): string {
   if (reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED) {
-    return "Couldn't send — tap Send to retry"
+    // A command card's Send shows only while the agent is idle.
+    return waitsForAgent
+      ? "Couldn't send — tap Send to retry once the agent finishes"
+      : "Couldn't send — tap Send to retry"
   }
   // Absent or unknown (newer host) marker: a plain pause, promising no release rule.
   return 'Paused'
@@ -118,7 +121,10 @@ export function mobileQueuedMessageCards(
       draft.state === 'returned'
         ? returnedCaption(draft)
         : paused
-          ? pausedCaption(draft.pausedReason)
+          ? pausedCaption(
+              draft.pausedReason,
+              draft.body.command !== undefined && facts.agentWorking === true
+            )
           : behindReturned
             ? 'Waiting — a message ahead needs attention'
             : facts.queuePaused

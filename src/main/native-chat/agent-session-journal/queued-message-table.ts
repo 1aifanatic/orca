@@ -5,7 +5,8 @@
 // submission's append. Until then it lives here, `session_id`-keyed so it
 // survives epoch rollover and replacement (`journal-row-table.ts` deletes only
 // `journal_rows`). After a refusal its text survives as a `returned` row a
-// rewind cannot delete; after a withdrawal it waits again.
+// rewind cannot delete — a command refused in its own turn is spent instead, its
+// turn's row saying why; after a withdrawal it waits again.
 
 import type Database from '../../sqlite/sync-database'
 import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
@@ -18,7 +19,6 @@ import {
   serializeAgentSessionMessageSource,
   type AgentSessionMessageSource
 } from '../../../shared/agent-session-message-source'
-import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
 export type QueuedMessageState = 'waiting' | 'dispatched' | 'returned' | 'withdrawn'
@@ -224,65 +224,6 @@ export function withdrawQueuedMessages(
     })
   }
   return withdrawn
-}
-
-/**
- * dispatched → returned, or back to waiting (`rejectedDraftSettlement`); a refused command
- * card is spent (withdrawn) instead of returned,
- * matched on the draft's CURRENT hand-off (`consumed_as`), so a re-send refused
- * again still settles while a late duplicate of an earlier refusal matches
- * nothing. A draft back to waiting keeps its position and carries no refusal;
- * its spent submissions stay findable by their `queuedMessageId` link.
- */
-export function settleRejectedQueuedMessage(
-  db: Database.Database,
-  input: {
-    sessionId: string
-    consumedRef: string
-    reason: string | null
-    rejection: UnreadAgentSessionFailureFact | undefined
-    now: number
-  }
-): boolean {
-  const settlement = rejectedDraftSettlement({ reason: input.reason, rejection: input.rejection })
-  if (settlement.state === 'returned') {
-    // A refused command is spent, not returned: its turn's row says why, once, and a returned
-    // card would hold every card behind it.
-    const spent = db
-      .prepare(
-        `UPDATE queued_messages SET state = 'withdrawn', settled_at = ?
-         WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?
-           AND json_extract(body_json, '$.command') IS NOT NULL`
-      )
-      .run(input.now, input.sessionId, input.consumedRef)
-    if (Number(spent.changes ?? 0) > 0) {
-      return true
-    }
-  }
-  const changed =
-    settlement.state === 'waiting'
-      ? db
-          .prepare(
-            `UPDATE queued_messages
-             SET state = 'waiting', hold_reason = NULL, consumed_as = NULL,
-                 returned_reason = NULL, returned_rejection = NULL, settled_at = NULL, settled_by_op = NULL
-             WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?`
-          )
-          .run(input.sessionId, input.consumedRef)
-      : db
-          .prepare(
-            `UPDATE queued_messages
-             SET state = 'returned', returned_reason = ?, returned_rejection = ?, settled_at = ?
-             WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?`
-          )
-          .run(
-            input.reason,
-            input.rejection ? JSON.stringify(input.rejection) : null,
-            input.now,
-            input.sessionId,
-            input.consumedRef
-          )
-  return Number(changed.changes ?? 0) > 0
 }
 
 /** Replay receipts: every row a given caller-scoped operation settled. */

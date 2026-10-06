@@ -65,6 +65,27 @@ describe('mobileQueuedMessageCards', () => {
     ).toMatchObject({ command: true, waitsForAgent: true })
   })
 
+  it("a send-failed command card's caption names Send only when Send is there", () => {
+    const failed = draft({
+      messageId: 'c',
+      paused: true,
+      pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED,
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      mobileQueuedMessageCards([failed], [], { pendingPrompt: false, agentWorking: true })[0]
+        ?.caption
+    ).toBe("Couldn't send — tap Send to retry once the agent finishes")
+    expect(mobileQueuedMessageCards([failed], [], { pendingPrompt: false })[0]?.caption).toBe(
+      "Couldn't send — tap Send to retry"
+    )
+  })
+
   it('renders nothing without a published list', () => {
     expect(mobileQueuedMessageCards(null, [], { pendingPrompt: false })).toEqual([])
     expect(mobileQueuedMessageCards([], [], { pendingPrompt: false })).toEqual([])

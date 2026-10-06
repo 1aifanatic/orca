@@ -72,7 +72,7 @@ export async function runStructuredCompaction(
     return { ...accepted, value: accepted.value.recorded }
   }
   if ('queued' in accepted.value) {
-    // The card is the one surface from here: a later refusal at hand-off returns it.
+    // The card is the one surface from here: a refusal in its own turn is said there, once.
     return {
       ...accepted,
       value: { command: 'compact', state: 'completed', queued: accepted.value.queued }

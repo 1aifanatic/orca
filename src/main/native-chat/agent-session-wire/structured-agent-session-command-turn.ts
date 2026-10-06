@@ -17,7 +17,6 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import {
-  agentJournalItemKey,
   agentJournalSubmissionKey,
   parseAgentJournalItemKey
 } from '../../../shared/agent-session-journal-item-key'
@@ -44,6 +43,10 @@ import type {
 } from './structured-agent-session-adapter'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
+import { structuredAgentSessionCommandTurn } from '../../../shared/structured-agent-session-command-turn-identity'
+import { refuseQueuedCommand } from './structured-agent-session-queued-command-refusal'
+
+export { structuredAgentSessionCommandTurn } from '../../../shared/structured-agent-session-command-turn-identity'
 
 export const STRUCTURED_AGENT_SESSION_COMPACT_COMMAND = 'compact'
 
@@ -86,24 +89,6 @@ export function structuredAgentSessionAwaitedCommand(
   return body?.kind === 'message' && body.command?.name === STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
     ? STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
     : undefined
-}
-
-/** The command's turn: its record and the `turnId` a Stop names. The `compact:` prefix is how the
- *  host's Stop and delivery gate tell a command's turn from any other. */
-export function structuredAgentSessionCommandTurn(clientMessageId: string): {
-  identity: AgentJournalItemIdentity
-  itemId: string
-  turnId: string
-  /** The command's one result row, inside its turn. */
-  resultIdentity: AgentJournalItemIdentity
-} {
-  const identity = { provider: 'orca' as const, clientMessageId: `command-turn:${clientMessageId}` }
-  return {
-    identity,
-    itemId: agentJournalItemKey(identity),
-    turnId: `compact:${clientMessageId}`,
-    resultIdentity: { provider: 'orca', clientMessageId: `command-result:${clientMessageId}` }
-  }
 }
 
 /** Whether the journal's running turn is a command's, which takes no input while it runs. */
@@ -174,7 +159,11 @@ export async function handOverStructuredAgentSessionCommand(
   if (blocked) {
     const refused = {
       state: 'rejected' as const,
-      ...agentSessionFailureWords(blocked, { ...ctx.failureTextContext, surface: 'rejection' })
+      ...agentSessionFailureWords(blocked, {
+        ...ctx.failureTextContext,
+        command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND,
+        surface: 'rejection'
+      })
     }
     if (submission.queuedMessageId === undefined) {
       // The command RPC that sent it is still waiting, and its answer says why.
@@ -182,8 +171,13 @@ export async function handOverStructuredAgentSessionCommand(
       return
     }
     // A queued card's refusal has nobody waiting on it: its turn's one row says why.
-    await openCommandTurn(ctx, submission)
-    await settleUnsentCommand(ctx, clientMessageId, refused)
+    await refuseQueuedCommand(
+      ctx,
+      submission,
+      blocked,
+      refused,
+      STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
+    )
     return
   }
   const { turn, running } = await openCommandTurn(ctx, submission)

@@ -38,7 +38,9 @@ export type RejectedDraftSettlement = { state: 'returned' } | { state: 'waiting'
  * position, under whatever pauses the queue: the Stop's own pause, or the
  * restart's, derived from the host instance. A returned card would block the
  * drafts behind it on a failure that never happened. A failure returns the
- * card with its refusal for the user to act on.
+ * card with its refusal for the user to act on — except a command card refused
+ * in its own turn, which `settleRejectedQueuedMessage` spends: that turn's row
+ * already says why.
  */
 export function rejectedDraftSettlement(
   rejection: Pick<AgentJournalSubmission, 'reason'> & { rejection?: unknown }

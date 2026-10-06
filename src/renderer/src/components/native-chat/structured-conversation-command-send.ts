@@ -11,9 +11,16 @@ import { agentSessionFailureSentence } from '../../../../shared/agent-session-fa
 import { translate } from '@/i18n/i18n'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import { agentSessionFailureStatedByStartRow } from './structured-agent-session-delivery-notices'
+import {
+  agentSessionFailureStatedByStartRow,
+  structuredAgentSessionDeliveryNotices
+} from './structured-agent-session-delivery-notices'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import {
+  structuredAgentSessionEntryRejectedByHost,
+  type StructuredAgentSessionOutboxEntry
+} from '../../../../shared/structured-agent-session-outbox'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
@@ -26,6 +33,7 @@ export type StructuredConversationCommandHold =
   | 'prompt'
   | 'background'
   | 'retry'
+  | 'sending'
 
 /** A command that waits in line is held only by a message the host doesn't have yet, which must
  *  stay ahead of it; any other command, by anything the agent still has in flight. */
@@ -36,8 +44,10 @@ export function structuredConversationCommandHold(input: {
   agentWorking: boolean
   promptPending: boolean
   backgroundTasksRunning: boolean
-  /** Any message this window sent that the host has not answered. */
-  outboxHeld: boolean
+  /** A message this window sent shows its Retry on its row. */
+  outboxRetry: boolean
+  /** A message this window sent is still on its way with no Retry on its row (one a Stop kept). */
+  outboxSending: boolean
   /** A message this window sent that the host doesn't have yet. */
   outboxUnsent: boolean
 }): StructuredConversationCommandHold | null {
@@ -53,8 +63,11 @@ export function structuredConversationCommandHold(input: {
   if (input.agentWorking || input.outboxUnsent) {
     return 'working'
   }
-  // Only messages that failed are left, each with its own Retry: the agent is not working.
-  return input.outboxHeld ? 'retry' : null
+  // The agent is not working: what is left is said as its row says it.
+  if (input.outboxRetry) {
+    return 'retry'
+  }
+  return input.outboxSending ? 'sending' : null
 }
 
 /** The line a command refused here gets: what the person sees and can do, as the host says it. */
@@ -73,6 +86,8 @@ function heldCommandText(
       ])
     case 'retry':
       return agentSessionWriteNoticeText([clear ? 'clearAfterRetry' : 'compactAfterRetry'])
+    case 'sending':
+      return agentSessionWriteNoticeText([clear ? 'clearAfterSending' : 'compactAfterSending'])
     case 'background':
       break
   }
@@ -168,7 +183,7 @@ export function structuredConversationCommandRunner(args: {
         agentWorking: args.agentWorking,
         promptPending: args.promptPending,
         backgroundTasksRunning: args.backgroundTasksRunning,
-        outboxHeld: args.outbox.length > 0,
+        ...outboxRows(args.outbox, args.submissions, args.agentName),
         outboxUnsent: hasUnsentStructuredAgentSessionOutboxEntry(args.outbox, args.submissions)
       }),
       startFailures: args.startFailures,
@@ -179,6 +194,34 @@ export function structuredConversationCommandRunner(args: {
             : { command }
         )
     })
+  }
+}
+
+/** What this window's own messages offer on their rows: a Retry, or nothing while still on
+ *  their way. One the host already refused is the host's row, and holds nothing up. */
+function outboxRows(
+  outbox: readonly StructuredAgentSessionOutboxEntry[],
+  submissions: readonly AgentJournalSubmission[],
+  agentName: string
+): { outboxRetry: boolean; outboxSending: boolean } {
+  if (outbox.length === 0) {
+    return { outboxRetry: false, outboxSending: false }
+  }
+  const notices = structuredAgentSessionDeliveryNotices(
+    outbox,
+    agentName,
+    () => {},
+    submissions,
+    [],
+    new Set()
+  )
+  const offersRetry = (entry: StructuredAgentSessionOutboxEntry) =>
+    notices.get(agentJournalSubmissionKey(entry.clientMessageId))?.onRetry !== undefined
+  return {
+    outboxRetry: outbox.some(offersRetry),
+    outboxSending: outbox.some(
+      (entry) => !offersRetry(entry) && !structuredAgentSessionEntryRejectedByHost(entry)
+    )
   }
 }
 

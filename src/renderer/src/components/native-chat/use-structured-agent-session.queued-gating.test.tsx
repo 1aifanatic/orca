@@ -455,6 +455,55 @@ describe('a /compact against a host that holds commands in line', () => {
     })
   })
 
+  it('mid-turn, behind a queue send on its way: it reads Sending as a card, and nothing is armed', async () => {
+    answerCommands({ command: 'compact', state: 'completed' })
+    outboxEntries = [
+      unsent('on-its-way', {
+        state: 'dispatching',
+        lastAttemptAt: 2,
+        sentDelivery: 'queue-if-active'
+      })
+    ]
+    const { result } = render()
+    // Not a transcript bubble mid-turn; the card it is about to become reads as sending.
+    expect(JSON.stringify(result.current.messages)).not.toContain('message on-its-way')
+    expect(result.current.queuedMessages.cards).toEqual([
+      expect.objectContaining({
+        messageId: 'on-its-way',
+        text: 'message on-its-way',
+        hold: 'sending'
+      })
+    ])
+    await act(async () => {
+      expect(await result.current.runConversationCommand('compact')).toEqual({
+        accepted: false,
+        error: null
+      })
+    })
+    expect(commandCalls()).toHaveLength(0)
+  })
+
+  it('/clear right after a Stop kept a send on its way names no Retry it does not show', async () => {
+    items = []
+    outboxEntries = [
+      unsent('kept', {
+        state: 'dispatching',
+        lastAttemptAt: 2,
+        sentDelivery: 'queue-if-active',
+        outlivedStop: true
+      })
+    ]
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('clear')
+    })
+    expect(outcome).toEqual({
+      accepted: false,
+      error: 'Your earlier message is still being sent. Run /clear once it has gone.'
+    })
+  })
+
   it('/clear behind only a failed message names its Retry, not the agent working', async () => {
     items = []
     outboxEntries = [unsent('failed', { lastAttemptAt: 2, lastFailure: { kind: 'failed' } })]

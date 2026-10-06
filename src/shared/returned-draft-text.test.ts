@@ -20,4 +20,12 @@ describe('appendReturnedDraftText', () => {
   it('still appends text that only ends a line of the draft', () => {
     expect(appendReturnedDraftText('say ping', 'ping')).toBe('say ping\n\nping')
   })
+
+  it('a lone slash command gives way to the message handed back, which it could not carry', () => {
+    expect(appendReturnedDraftText('/compact', 'my message')).toBe('my message')
+    expect(appendReturnedDraftText(' /clear\n', 'my message')).toBe('my message')
+    // Anything more than the command is the person's text, and stays.
+    expect(appendReturnedDraftText('/compact now', 'my message')).toBe('/compact now\n\nmy message')
+    expect(appendReturnedDraftText('a/b', 'my message')).toBe('a/b\n\nmy message')
+  })
 })

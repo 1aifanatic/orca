@@ -25,6 +25,9 @@ export type QueuedMessageCardHold =
   | 'paused'
   | 'behind-returned'
   | 'returned'
+  /** On its way to the host, which holds no card for it yet: it reads as sending, and nothing
+   *  can act on it until the host's card replaces it under the same id. */
+  | 'sending'
 
 export type QueuedMessageCard = {
   messageId: string
@@ -106,7 +109,21 @@ export function newestSteerableQueuedMessageCard(
   cards: readonly QueuedMessageCard[]
 ): QueuedMessageCard | null {
   const newest = cards.at(-1)
-  return newest && !newest.command ? newest : null
+  return newest && !newest.command && newest.hold !== 'sending' ? newest : null
+}
+
+/** A queue send still on its way, as the card it is about to become. */
+export function sendingQueuedMessageCards(
+  entries: readonly StructuredAgentSessionOutboxEntry[]
+): QueuedMessageCard[] {
+  return entries.map((entry, index) => ({
+    messageId: entry.clientMessageId,
+    // After every card the host holds, in send order.
+    position: Number.MAX_SAFE_INTEGER - entries.length + index,
+    text: queuedMessageCardText(entry.body),
+    state: 'waiting',
+    hold: 'sending'
+  }))
 }
 
 /**
@@ -125,16 +142,30 @@ export function outboxOutsideQueuedCards(
   host: StructuredAgentSessionQueueDelivery
 ): readonly StructuredAgentSessionOutboxEntry[] {
   const held = new Set(heldIds)
+  const onItsWay = new Set(outboxQueueSendsOnTheirWay(outbox, heldIds, isWorking, host))
+  const next = outbox.filter((entry) => !held.has(entry.clientMessageId) && !onItsWay.has(entry))
+  return next.length === outbox.length ? outbox : next
+}
+
+/** The queue sends on their way that the host holds no card for yet: shown as sending cards. */
+export function outboxQueueSendsOnTheirWay(
+  outbox: readonly StructuredAgentSessionOutboxEntry[],
+  heldIds: readonly string[],
+  isWorking: boolean,
+  host: StructuredAgentSessionQueueDelivery
+): StructuredAgentSessionOutboxEntry[] {
+  if (!isWorking) {
+    return []
+  }
+  const held = new Set(heldIds)
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
-  const next = outbox.filter((entry, index) => {
-    const onItsWay =
-      isWorking &&
+  return outbox.filter(
+    (entry, index) =>
+      !held.has(entry.clientMessageId) &&
       (stalledFrom === -1 || index < stalledFrom) &&
       (entry.state === 'queued' || entry.state === 'dispatching') &&
       !structuredAgentSessionEntryHeldForRetry(entry) &&
       structuredAgentSessionEntryAsksToQueue(entry, host)
-    return !held.has(entry.clientMessageId) && !onItsWay
-  })
-  return next.length === outbox.length ? outbox : next
+  )
 }

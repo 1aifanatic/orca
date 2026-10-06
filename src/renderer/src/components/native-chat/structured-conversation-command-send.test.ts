@@ -196,7 +196,8 @@ describe('a /compact the host holds in line', () => {
     agentWorking: false,
     promptPending: false,
     backgroundTasksRunning: false,
-    outboxHeld: false,
+    outboxRetry: false,
+    outboxSending: false,
     outboxUnsent: false
   }
 
@@ -207,12 +208,10 @@ describe('a /compact the host holds in line', () => {
         ...inLine,
         agentWorking: true,
         promptPending: true,
-        outboxHeld: true
+        outboxRetry: true
       })
     ).toBeNull()
-    expect(
-      structuredConversationCommandHold({ ...inLine, outboxHeld: true, outboxUnsent: true })
-    ).toBe('ahead')
+    expect(structuredConversationCommandHold({ ...inLine, outboxUnsent: true })).toBe('ahead')
     expect(structuredConversationCommandHold({ ...inLine, backgroundTasksRunning: true })).toBe(
       'background'
     )
@@ -221,12 +220,12 @@ describe('a /compact the host holds in line', () => {
   it('against a host that cannot hold it, and for /clear, keeps every check in true words', () => {
     expect(structuredConversationCommandHold(idle)).toBeNull()
     expect(structuredConversationCommandHold({ ...idle, agentWorking: true })).toBe('working')
-    expect(
-      structuredConversationCommandHold({ ...idle, outboxHeld: true, outboxUnsent: true })
-    ).toBe('working')
+    expect(structuredConversationCommandHold({ ...idle, outboxUnsent: true })).toBe('working')
     expect(structuredConversationCommandHold({ ...idle, promptPending: true })).toBe('prompt')
     // Only a failed message waits for its Retry: the agent is not working.
-    expect(structuredConversationCommandHold({ ...idle, outboxHeld: true })).toBe('retry')
+    expect(structuredConversationCommandHold({ ...idle, outboxRetry: true })).toBe('retry')
+    // One a Stop kept on its way shows no Retry: it reads as still sending.
+    expect(structuredConversationCommandHold({ ...idle, outboxSending: true })).toBe('sending')
   })
 })
 
@@ -266,6 +265,13 @@ describe('a command held here', () => {
       error: "The agent is still working. Run /clear when it's done."
     })
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('behind a message still being sent after a Stop, says so, naming no Retry', async () => {
+    expect(await held('clear', 'sending').result).toEqual({
+      accepted: false,
+      error: 'Your earlier message is still being sent. Run /clear once it has gone.'
+    })
   })
 
   it('behind only a failed message, names the step that clears the way', async () => {

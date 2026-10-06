@@ -33,7 +33,10 @@ import { useStructuredAgentSessionContextUsage } from './use-structured-agent-se
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
 import { structuredConversationCommandRunner } from './structured-conversation-command-send'
-import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
+import {
+  outboxOutsideQueuedCards,
+  outboxQueueSendsOnTheirWay
+} from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
@@ -189,6 +192,11 @@ export function useStructuredAgentSession(args: {
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
+  // Hidden from the transcript, a queue send on its way reads as sending among the cards.
+  const queueSendsOnTheirWay = useMemo(
+    () => outboxQueueSendsOnTheirWay(outbox, queuedMessageIds, isWorking, queueDelivery),
+    [isWorking, outbox, queueDelivery, queuedMessageIds]
+  )
   const transcriptOutbox = useMemo(
     () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, queueDelivery),
     [isWorking, outbox, queueDelivery, queuedMessageIds]
@@ -214,6 +222,7 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
     agentWorking: transportState.turnId !== null || transportState.isWorking,
+    sending: queueSendsOnTheirWay,
     composerScopeKey,
     mutate
   })
