@@ -137,7 +137,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     sparseDirectories: git.sparseDirectories,
     configuredPushTarget: git.configuredPushTarget,
     checkoutExistingBranch: candidate.checkoutExistingBranch,
-    baseBranch,
+    baseBranch: git.baseBranch,
     branchName: candidate.branchName,
     effectiveRequestedName: candidate.effectiveRequestedName,
     requestedDisplayName: candidate.requestedDisplayName,
@@ -152,6 +152,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     ...materialized,
     worktreePath: candidate.worktreePath,
     created: git.created,
-    addResult: git.addResult
+    // Why on the add's result: the base it fell back to is reported beside its other base-ref outcomes.
+    addResult: { ...git.addResult, ...(git.baseFallback ? { baseFallback: git.baseFallback } : {}) }
   }
 }

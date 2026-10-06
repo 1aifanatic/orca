@@ -347,3 +347,49 @@ describe('runtime create Git priority', () => {
     expect(mocks.consume).not.toHaveBeenCalled()
   })
 })
+
+describe('runtime create base without a tracking ref', () => {
+  const originMain = {
+    remote: 'origin',
+    branch: 'main',
+    ref: 'refs/remotes/origin/main',
+    base: 'origin/main'
+  }
+
+  beforeEach(() => {
+    mocks.remoteBase.mockResolvedValue(originMain)
+    mocks.hasRemoteRef.mockResolvedValue(false)
+  })
+
+  it('uses the local branch a remote base names, without fetching, and reports the fallback', async () => {
+    mocks.hasBase.mockImplementation(async (_repo: string, ref: string) => ref === 'main')
+
+    const result = await createWorktree({ baseBranch: 'origin/main' })
+
+    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ baseBranch: 'main' }))
+    expect(result.addResult.baseFallback).toEqual({ requestedRef: 'origin/main', localRef: 'main' })
+  })
+
+  it('reports the fallback for a named local base too', async () => {
+    mocks.hasBase.mockResolvedValue(true)
+
+    const result = await createWorktree({ baseBranch: 'origin/main' })
+
+    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(result.addResult.baseFallback).toEqual({
+      requestedRef: 'origin/main',
+      localRef: 'origin/main'
+    })
+  })
+
+  it('still refreshes when no local base is usable', async () => {
+    mocks.hasBase.mockResolvedValue(false)
+    mocks.hasRemoteRef.mockResolvedValueOnce(false).mockResolvedValue(true)
+
+    const result = await createWorktree({ baseBranch: 'origin/main' })
+
+    expect(mocks.refresh).toHaveBeenCalledOnce()
+    expect(result.addResult.baseFallback).toBeUndefined()
+  })
+})
