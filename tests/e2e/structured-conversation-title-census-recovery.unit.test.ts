@@ -1,6 +1,6 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useAiVaultSessionRefresh } from '@/components/right-sidebar/ai-vault-session-refresh'
+import { useAiVaultSessionRefresh } from '../../src/renderer/src/components/right-sidebar/ai-vault-session-refresh'
 import { DEFAULT_AI_VAULT_SESSION_LIMIT } from '@/components/right-sidebar/ai-vault-session-limit'
 import type { AiVaultListResult } from '../../src/shared/ai-vault-types'
 // @vitest-environment happy-dom
