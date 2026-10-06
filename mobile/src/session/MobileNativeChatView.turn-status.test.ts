@@ -182,7 +182,9 @@ describe('MobileNativeChatView', () => {
     function footerProps(): Record<string, unknown> | null {
       const list = renderer!.root.find((node) => String(node.type) === 'FlatList')
       const line = list.props.ListFooterComponent?.props.line
-      return line ? { thinking: line.thinking, activityText: line.activityText } : null
+      return line
+        ? { thinking: line.thinking, activityText: line.activityText, stopping: line.stopping }
+        : null
     }
 
     function workingIndicators(): ReactTestInstance[] {
