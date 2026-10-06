@@ -190,10 +190,15 @@ describe('Pi RPC session ownership and delivery', () => {
     const controller = new AbortController()
     const started = h.adapter.acquire({ ...h.input, fence: 8, signal: controller.signal })
     await Promise.resolve()
-    controller.abort()
-    resolving.resolve(launch!)
+    controller.abort(new Error('Pi closed while starting'))
     await expect(started).rejects.toThrow('closed while starting')
     expect(h.connections).toHaveLength(1)
+    await expect(h.adapter.acquire({ ...h.input, fence: 9 })).resolves.toMatchObject({
+      link: { origin: 'created' }
+    })
+    resolving.resolve(launch!)
+    await Promise.resolve()
+    expect(h.connections).toHaveLength(2)
   })
 
   it('kills the child and rejects a stalled startup when the host aborts it', async () => {
@@ -214,7 +219,7 @@ describe('Pi RPC session ownership and delivery', () => {
     const started = h.adapter.acquire({ ...h.input, fence: 8, signal: controller.signal })
     const child = await opened.promise
     await Promise.resolve()
-    controller.abort()
+    controller.abort(new Error('Pi closed while starting'))
     await expect(started).rejects.toThrow('closed while starting')
     expect(child.rootVerdict).toBe('exited')
   })

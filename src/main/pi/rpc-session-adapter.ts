@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
 import {
@@ -67,7 +68,10 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       }
       let launch: PiRpcResolvedLaunch
       try {
-        launch = await this.deps.resolveLaunch(input.identity)
+        launch = await waitForPromiseWithSignal(
+          this.deps.resolveLaunch(input.identity),
+          attempt.signal
+        )
       } catch (error) {
         throw new AgentSessionPreSpawnError(error)
       }
@@ -90,7 +94,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
         await spawned.onSpawned(session.connection.pid)
       }
       const process = await spawned.read(session.connection.pid)
-      const file = await session.start()
+      const file = await waitForPromiseWithSignal(session.start(), attempt.signal)
       if (session.connection.closed || attempt.signal.aborted) {
         throw new Error('Pi exited while starting')
       }

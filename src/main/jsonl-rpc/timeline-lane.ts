@@ -42,7 +42,7 @@ export class JsonlRpcTimelineLane {
         ...deps.sink,
         tryAppendTransition: (transition) =>
           deps.sink.tryAppendTransition(
-            this.finalizing ? { ...transition, lifecycle: true } : transition
+            this.finalizing ? { ...transition, lifecycle: true, finalTail: true } : transition
           )
       }
     })
@@ -162,7 +162,7 @@ export class JsonlRpcTimelineLane {
   }
 
   finalize(): void {
-    // The final tail shares the host's reserved settlement budget and lifecycle barrier.
+    // Admission must precede the host's exit barrier even when lifecycle writes are full.
     this.finalizing = true
     this.retry()
     this.flush()
