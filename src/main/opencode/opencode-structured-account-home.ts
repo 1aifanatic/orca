@@ -1,7 +1,14 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import type { OpenCodeAgentSessionAccountHome } from '../../shared/agent-session-account-home'
-import type { ManagedDataAccountService } from '../managed-data-accounts/service'
+import {
+  isLegacyAgentSessionAccountHome,
+  type OpenCodeAgentSessionAccountHome
+} from '../../shared/agent-session-account-home'
+import {
+  getManagedDataAccountService,
+  type ManagedDataAccountService
+} from '../managed-data-accounts/service'
+import type { AcpAccountBinding } from '../acp/acp-account-binding'
 
 type AccountReader = Pick<
   ManagedDataAccountService,
@@ -110,5 +117,29 @@ export function environmentForStructuredOpenCodeAccountHome(
     ...(locator.databaseSelection.kind === 'override'
       ? { OPENCODE_DB: locator.databaseSelection.value }
       : {})
+  }
+}
+
+/** OpenCode's account over ACP: a managed profile or the data and state directories it reads. */
+export function openCodeAcpAccountBinding(
+  managedAccounts: () => AccountReader = getManagedDataAccountService
+): AcpAccountBinding {
+  return {
+    pin: { accountLocatorKind: 'opencode' },
+    resolve: async ({ launchEnv, baseEnvironment }) =>
+      resolveStructuredOpenCodeAccountHome({
+        launchEnv,
+        baseEnvironment: await baseEnvironment(),
+        managedAccounts: managedAccounts()
+      }),
+    environment: (home, env) => {
+      if (isLegacyAgentSessionAccountHome(home)) {
+        throw new Error('OpenCode chat requires a pinned data account')
+      }
+      return environmentForStructuredOpenCodeAccountHome(home, {
+        managedAccounts: managedAccounts(),
+        baseEnvironment: env
+      })
+    }
   }
 }

@@ -22,13 +22,10 @@ import {
 import type { NativeChatLaunchPromptDelivery } from '@/lib/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
-import {
-  readLocalRuntimeCapabilitiesOrUnknown,
-  readLocalStructuredAgents
-} from '@/runtime/local-runtime-capabilities'
-import { decodeAgentSessionAgentsResult } from '../../../shared/agent-session-registered-agents'
+import { readLocalRuntimeCapabilitiesOrUnknown } from '@/runtime/local-runtime-capabilities'
 import { resolveStructuredAgentSessionOwner } from '@/runtime/structured-agent-session-owner'
 import { pairedHostClientCapabilities } from '@/runtime/paired-host-client-capabilities'
+import { readHostStructuredAgents } from '@/runtime/host-structured-agents'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 
 export type ProspectiveWorkspaceKind = NonNullable<AgentLaunchRoutingInput['workspaceKind']>
@@ -127,6 +124,14 @@ function resolveTranscriptIsLocalReadable(
   return host?.kind === 'ssh' ? isNativeChatTranscriptLocalReadable(host.targetId) : true
 }
 
+function hostStructuredAgentsInput(
+  store: AgentLaunchRouteStore,
+  executionHostId: string
+): Pick<AgentLaunchRoutingInput, 'hostStructuredAgents'> {
+  const agents = readHostStructuredAgents(executionHostId, store.runtimeStatusByEnvironmentId)
+  return agents ? { hostStructuredAgents: agents.map((row) => row.agent) } : {}
+}
+
 /** The one place that gathers what a launch route decision needs; only the planner resolves on it. */
 export function buildAgentLaunchRouteInput(
   store: AgentLaunchRouteStore,
@@ -139,23 +144,11 @@ export function buildAgentLaunchRouteInput(
     ? resolveStructuredAgentSessionOwner(store, workspace.worktreeId)
     : undefined
   const executionHostId = owner ?? resolveExecutionHostId(store, workspace)
-  const host = parseExecutionHostId(executionHostId)
-  const structuredAgents =
-    host?.kind === 'runtime'
-      ? decodeAgentSessionAgentsResult({
-          agents: lastVerifiedRuntimeStatus(
-            store.runtimeStatusByEnvironmentId?.get(host.environmentId)
-          )?.structuredAgents
-        })?.map((row) => row.agent)
-      : host?.kind === 'local'
-        ? readLocalStructuredAgents()
-        : null
   return {
     agent,
     settings: store.settings,
     executionHostId,
     hostCapabilities: owner === null ? null : resolveHostCapabilities(store, executionHostId),
-    ...(structuredAgents ? { hostStructuredAgents: structuredAgents } : {}),
     ...(parseExecutionHostId(executionHostId)?.kind === 'runtime'
       ? { clientCapabilities: pairedHostClientCapabilities() }
       : {}),
@@ -179,6 +172,7 @@ export function buildAgentLaunchRouteInput(
       resolveFolderWorkspacePath: (folderWorkspaceId) =>
         store.folderWorkspaces?.find((entry) => entry.id === folderWorkspaceId)?.folderPath
     }),
-    initialSessionOptions: args.initialSessionOptions
+    initialSessionOptions: args.initialSessionOptions,
+    ...hostStructuredAgentsInput(store, executionHostId)
   }
 }

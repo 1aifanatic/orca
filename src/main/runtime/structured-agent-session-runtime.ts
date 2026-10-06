@@ -23,8 +23,6 @@ import { AgentSessionRecoveryCapsule } from './agent-session-recovery-capsule'
 import type { CodexStructuredPermissionPolicy } from '../codex/codex-structured-permission-policy'
 import type { CodexStructuredSessionAdapterDeps } from '../codex/codex-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
-import type { OpenCodeStructuredSessionAdapterDeps } from '../opencode/opencode-structured-session-adapter'
-import type { OpenCodeStructuredLaunchResolverDeps } from '../opencode/opencode-structured-launch-resolution'
 import {
   StructuredAgentSessionHost,
   type StructuredAgentSessionHostDeps
@@ -101,11 +99,6 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
-  openOpenCodeServer?: OpenCodeStructuredSessionAdapterDeps['openServer']
-  resolveOpenCodeCommand?: OpenCodeStructuredLaunchResolverDeps['resolveCommand']
-  resolveOpenCodeLaunchEnv?: OpenCodeStructuredLaunchResolverDeps['resolveLaunchEnv']
-  resolveOpenCodePermissionRules?: OpenCodeStructuredLaunchResolverDeps['resolvePermissionRules']
-  resolveOpenCodePinnedEnvironment?: OpenCodeStructuredLaunchResolverDeps['resolvePinnedEnvironment']
   /** Scripted app-servers carry fake pids the real start-time read cannot answer for. */
   readProcessStartTime?: CodexStructuredSessionAdapterDeps['readProcessStartTime']
   resolveLaunchArgs?: (provider: AgentSessionRecord['provider']) => Promise<string[]> | string[]
@@ -118,6 +111,10 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
   /** The same setting for Codex, as app-server thread policy. */
   resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
+  resolveAgentFullAccess?: (agent: string) => boolean
+  /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
+  resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
   getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
@@ -266,6 +263,7 @@ async function installOnJournal(
   const context: StructuredAgentAdapterContext = {
     deps,
     store,
+    journalDatabase,
     environment: envResolvers,
     deliverLifecycle: lifecycle.deliver,
     followUps: createStructuredAgentSessionDispatchFollowUps({

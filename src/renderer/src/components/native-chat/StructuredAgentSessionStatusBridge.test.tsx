@@ -701,10 +701,25 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(feed().target).toEqual({ kind: 'environment', environmentId: 'server-1' })
   })
 
-  it('does not read status for a malformed agent identity', async () => {
+  // Hosts publish chat tabs only of agents they registered; each projects as itself.
+  it("projects a host-registered agent's status as that agent, never as Codex", async () => {
     mocks.store?.setState({
       unifiedTabsByWorktree: {
-        'wt-1': [{ ...structuredTab, agentSessionAgent: 'invalid agent' }]
+        'wt-1': [{ ...structuredTab, agentSessionAgent: 'grok' }]
+      }
+    })
+    render(<StructuredAgentSessionStatusBridge />)
+    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+
+    act(() => feed().emit({ type: 'snapshot', sessions: [summary()] }))
+
+    expect(statuses()).toEqual([expect.objectContaining({ agentType: 'grok' })])
+  })
+
+  it('does not project a tab naming no agent', async () => {
+    mocks.store?.setState({
+      unifiedTabsByWorktree: {
+        'wt-1': [{ ...structuredTab, agentSessionAgent: undefined }]
       }
     })
     render(<StructuredAgentSessionStatusBridge />)
@@ -713,21 +728,6 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(mocks.subscribeStatus).not.toHaveBeenCalled()
     expect(mocks.setAgentStatus).not.toHaveBeenCalled()
   })
-
-  it.each(['opencode', 'opencode2', 'gemini'])(
-    'projects %s under its own identity rather than Codex',
-    async (agent) => {
-      mocks.store?.setState({
-        unifiedTabsByWorktree: { 'wt-1': [{ ...structuredTab, agentSessionAgent: agent }] }
-      })
-      render(<StructuredAgentSessionStatusBridge />)
-      await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
-
-      act(() => feed().emit({ type: 'snapshot', sessions: [summary({ agent })] }))
-
-      expect(statuses()).toEqual([expect.objectContaining({ agentType: agent, state: 'working' })])
-    }
-  )
 
   it('re-renders a startup reader only when its phase changes', async () => {
     const phases: ReturnType<typeof useStructuredAgentSessionHostExecutionPhase>[] = []

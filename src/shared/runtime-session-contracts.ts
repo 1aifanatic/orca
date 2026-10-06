@@ -15,7 +15,6 @@ import type {
   RuntimeMobileSessionTerminalClientTab
 } from './runtime-mobile-session-tab-contracts'
 import type { CliStatusCaller } from './orchestration-caller-status'
-import type { AgentSessionRegisteredAgent } from './agent-session-registered-agents'
 
 export type * from './runtime-mobile-session-tab-contracts'
 
@@ -76,8 +75,6 @@ export type RuntimeStatus = {
   runtimeProtocolVersion?: number
   minCompatibleRuntimeClientVersion?: number
   capabilities?: RuntimeCapability[]
-  /** The answering host's structured registrations; absent on older hosts. */
-  structuredAgents?: AgentSessionRegisteredAgent[]
   /** Optional policy for clients that negotiated worktree.create-idempotency.v1. */
   worktreeCreateIdempotency?: {
     dedupeTtlMs: number

@@ -3,6 +3,7 @@
 import { createCodexStructuredLaunchResolver } from '../codex/codex-structured-launch-resolution'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
 import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
+import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import {
@@ -12,15 +13,6 @@ import {
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
-import {
-  OPENCODE_STRUCTURED_AGENT,
-  OPENCODE2_STRUCTURED_AGENT
-} from '../opencode/opencode-structured-agent-definition'
-import { OpenCodeStructuredSessionAdapter } from '../opencode/opencode-structured-session-adapter'
-import { createOpenCodeStructuredLaunchResolver } from '../opencode/opencode-structured-launch-resolution'
-import { resolveStructuredOpenCodeAccountHome } from '../opencode/opencode-structured-account-home'
-import { getManagedDataAccountService } from '../managed-data-accounts/service'
-import { supportsProviderProcessLocation } from '../provider-process/provider-location-support'
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionLifecycleEvent
@@ -29,7 +21,8 @@ import type { StructuredAgentDefinition } from '../native-chat/agent-session-wir
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
-import { agentModelCatalogFingerprintForRecord } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
+import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
+import { replayJournal } from '../native-chat/agent-session-journal/journal-open'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type { createStructuredAgentSessionDispatchFollowUps } from './structured-agent-session-dispatch-followups'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
@@ -41,11 +34,17 @@ import {
   type StructuredClaudeAccountHomeDeps,
   type StructuredCodexAccountHomeDeps
 } from './structured-agent-account-home'
+import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
+import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
+import { createAcpAgentConnection } from '../acp/acp-agent-connection'
+import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
+import { AcpStructuredSessionAdapter } from '../acp/acp-structured-session-adapter'
 
 /** What an agent's adapter is built from: the open store and the runtime around it. */
 export type StructuredAgentAdapterContext = {
   deps: StructuredAgentSessionRuntimeDeps
   store: AgentSessionRecordStore
+  journalDatabase: JournalHostDatabase
   environment: ReturnType<typeof createStructuredAgentEnvironmentResolvers>
   /** Hands the host an exit or other lifecycle event the agent observed. */
   deliverLifecycle: (event: StructuredAgentSessionLifecycleEvent) => void
@@ -77,7 +76,8 @@ export type StructuredAgentAccountHomeServices = {
   /** Codex's home for a launch, prepared for it; and the same answer with no side effects. */
   prepareCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
   readCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
-  resolveProviderEnvironment: () => Promise<Record<string, string>>
+  /** The environment a launch inherits on this host, before any agent's own variables. */
+  resolveBaseEnvironment: () => Promise<Record<string, string>>
   workspaceTrustSettings: () => Parameters<typeof applyStructuredCodexWorkspaceTrust>[0]['settings']
 }
 
@@ -86,7 +86,7 @@ export type StructuredAgentRuntimeRegistration = {
   createAdapter: (context: StructuredAgentAdapterContext) => StructuredAgentRuntimeAdapter
   /** Whether this agent's chats can run at `location`; answered without building the host. */
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
-  /** The account home a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
+  /** The account a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
   resolveAccountHome: (
     request: StructuredAgentAccountHomeRequest,
     services: StructuredAgentAccountHomeServices
@@ -155,6 +155,42 @@ function createClaudeAdapter(
   })
 }
 
+function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistration {
+  return {
+    definition: acpStructuredAgentDefinition(spec),
+    supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
+    resolveAccountHome: ({ launchEnv }, services) =>
+      spec.account.resolve({ launchEnv, baseEnvironment: services.resolveBaseEnvironment }),
+    createAdapter: (context) => {
+      const { deps, store, followUps } = context
+      const readJournal = (sessionId: string) =>
+        replayJournal(context.journalDatabase.db, sessionId)
+      return new AcpStructuredSessionAdapter({
+        spec,
+        readJournal,
+        resolveLaunch: createAcpStructuredLaunchResolver(spec, {
+          store,
+          readJournal,
+          resolveWorkspacePath: deps.resolveWorkspacePath,
+          resolveEnvironment: context.environment.resolveBaseEnvironment,
+          ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
+          ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
+        }),
+        connect: (launch, options) => createAcpAgentConnection(launch, options),
+        ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
+        onDispatchSettledLate: followUps.onDispatchSettledLate,
+        logger: deps.logger,
+        // Every exit, expected or not: the host ends that child's record.
+        onEvent: (event) => {
+          if (event.type === 'ended') {
+            context.deliverLifecycle(event)
+          }
+        }
+      })
+    }
+  }
+}
+
 async function resolveCodexAccountHomePath(
   request: StructuredAgentAccountHomeRequest,
   services: StructuredAgentAccountHomeServices
@@ -172,63 +208,6 @@ async function resolveCodexAccountHomePath(
     resolveLaunchHome:
       purpose === 'launch' ? services.prepareCodexLaunchHome : services.readCodexLaunchHome
   })
-}
-
-function createOpenCodeAdapter(
-  context: StructuredAgentAdapterContext
-): StructuredAgentRuntimeAdapter {
-  const { deps, store, followUps, host } = context
-  return new OpenCodeStructuredSessionAdapter({
-    resolveLaunch: createOpenCodeStructuredLaunchResolver({
-      store,
-      resolveWorkspacePath: deps.resolveWorkspacePath,
-      resolveEnvironment: context.environment.resolveProviderEnvironment,
-      ...(deps.resolveOpenCodeCommand ? { resolveCommand: deps.resolveOpenCodeCommand } : {}),
-      ...(deps.resolveOpenCodeLaunchEnv ? { resolveLaunchEnv: deps.resolveOpenCodeLaunchEnv } : {}),
-      ...(deps.resolveOpenCodePermissionRules
-        ? { resolvePermissionRules: deps.resolveOpenCodePermissionRules }
-        : {}),
-      ...(deps.resolveOpenCodePinnedEnvironment
-        ? { resolvePinnedEnvironment: deps.resolveOpenCodePinnedEnvironment }
-        : {})
-    }),
-    ...(deps.openOpenCodeServer ? { openServer: deps.openOpenCodeServer } : {}),
-    ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
-    onEvent: context.deliverLifecycle,
-    onCatalog: (sessionId, models) => {
-      const record = store.getRecord(sessionId)
-      if (record) {
-        agentModelCatalogStore.recordSuccess(
-          agentModelCatalogFingerprintForRecord(record),
-          record.provider,
-          { models: [...models], fastModeTierByModel: new Map(), origin: 'live-session' }
-        )
-      }
-    },
-    onChildWorkEvidence: (sessionId, evidence) =>
-      host()?.publishChildWorkEvidence(sessionId, evidence),
-    onDispatchSettledLate: followUps.onDispatchSettledLate,
-    onPrimaryThreadStoppedRunning: followUps.releaseUnansweredDispatches,
-    logger: deps.logger
-  })
-}
-
-function openCodeRegistration(
-  definition: StructuredAgentDefinition
-): StructuredAgentRuntimeRegistration {
-  return {
-    definition,
-    createAdapter: createOpenCodeAdapter,
-    supportsLocation: supportsProviderProcessLocation,
-    resolveAccountHome: async ({ launchEnv }, services) => {
-      const managedAccounts = getManagedDataAccountService()
-      return resolveStructuredOpenCodeAccountHome({
-        baseEnvironment: await services.resolveProviderEnvironment(),
-        launchEnv,
-        managedAccounts
-      })
-    }
-  }
 }
 
 export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRuntimeRegistration[] =
@@ -257,8 +236,7 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
           })
         )
     },
-    openCodeRegistration(OPENCODE_STRUCTURED_AGENT),
-    openCodeRegistration(OPENCODE2_STRUCTURED_AGENT)
+    ...ACP_LAUNCH_SPECS.map(acpRegistration)
   ]
 
 /** The registration of `agent`; null for an agent this runtime does not drive. */

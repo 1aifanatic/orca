@@ -63,7 +63,6 @@ function discoveredModel(
   return {
     id: model.id,
     label: model.label,
-    ...(model.contextWindowTokens ? { contextWindowTokens: model.contextWindowTokens } : {}),
     ...(model.description ? { description: model.description } : {}),
     ...(model.isDefault ? { isDefault: true } : {}),
     options: [
@@ -86,21 +85,6 @@ export function structuredAgentSessionOptionCatalog(
       label: result.current.model,
       options: seed.unknownModelOptions ?? []
     })
-  }
-  if (result.modes?.length) {
-    for (const model of models) {
-      model.options.push({
-        id: 'mode',
-        label: 'Mode',
-        category: 'mode',
-        kind: {
-          type: 'select',
-          choices: result.modes,
-          defaultValue: result.current.mode ?? ''
-        },
-        apply: { midSession: { kind: 'unsupported' } }
-      })
-    }
   }
   return { ...seed, models, defaultModelIsCliDefault: true }
 }
@@ -199,7 +183,6 @@ export function applyStructuredAgentSessionOptions(
     {
       model: result.current.model,
       ...(result.current.effort ? { effort: result.current.effort } : {}),
-      ...(result.current.mode ? { mode: result.current.mode } : {}),
       ...(result.current.fastMode !== undefined ? { fastMode: result.current.fastMode } : {})
     },
     result.current.confirmed ?? []

@@ -32,8 +32,7 @@ import {
   WORKTREE_CREATE_COLLISION_CODE
 } from '../../../../shared/new-workspace/worktree-create-collision'
 import { assertOpenCodeModelLaunchPreferencesAbsent } from '../../../opencode/opencode-model-startup-plan'
-import { prefersStructuredNativeChatByDefault } from '../../../../shared/structured-native-chat-launch-route'
-import { readAgentLaunchModeSettings } from '../../../agent-launch/agent-launch-mode'
+import { runtimePrefersStructuredLaunch } from '../../../agent-launch/agent-launch-mode'
 import { executeAgentLaunch } from '../../../agent-launch/agent-launch-executor'
 import {
   trackTerminalSpawnDispatch,
@@ -53,6 +52,7 @@ import {
   selectAgentLaunchTabForCaller
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
+import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 
 /**
  * Advertising `agent.launch.v2` is a client's statement that it understands EITHER outcome — a
@@ -68,6 +68,23 @@ export function supportsAgentLaunch(
   return (
     context.clientKind === undefined ||
     context.clientCapabilities?.includes(AGENT_LAUNCH_RUNTIME_CAPABILITY) === true
+  )
+}
+
+/**
+ * `agent.launch.v2` was defined when Claude and Codex were the only chats, so it vouches for those
+ * two. Any other agent's chat needs the client to say it reads it, by the rule tabs and restart
+ * offers use; a client that does not gets that agent as a terminal.
+ */
+function callerRendersLaunchedChat(
+  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>,
+  agent: string
+): boolean {
+  return (
+    context.clientKind === undefined ||
+    agent === 'claude' ||
+    agent === 'codex' ||
+    clientRendersStructuredAgent(context.clientCapabilities, agent)
   )
 }
 
@@ -142,8 +159,7 @@ async function resolveUnlaunchedIntent(
 ): Promise<AgentLaunchIntent> {
   if (
     params.reuseTerminal ||
-    (params.target.kind === 'create-worktree' &&
-      !prefersStructuredNativeChatByDefault(readAgentLaunchModeSettings(runtime)))
+    (params.target.kind === 'create-worktree' && !runtimePrefersStructuredLaunch(runtime))
   ) {
     assertOpenCodeModelLaunchPreferencesAbsent(params.agent, params.sessionOptions)
   }
@@ -171,6 +187,7 @@ async function runAgentLaunch(
       terminalSpawn
     ),
     workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
+    ...(callerRendersLaunchedChat(context, intent.agent) ? {} : { callerRendersStructured: false }),
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     ...(callerNavigationId !== null
       ? {

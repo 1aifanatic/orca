@@ -21,11 +21,14 @@ import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { buildWorktreeListingPage } from './worktree-listing-host-scope'
 import { structuredWorkerOwesWork } from './structured-worker-custody'
-import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import {
+  resolvedTuiAgentArgsBypassPermissions,
+  resolveTuiAgentLaunchEnv
+} from '../../shared/tui-agent-launch-defaults'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { claudeStructuredPermissionModeForSettings } from '../claude/claude-structured-permission-mode'
 import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-structured-permission-policy'
-import { openCodeStructuredPermissionRulesForSettings } from '../opencode/opencode-structured-permission-policy'
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import { claudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
 
@@ -156,10 +159,6 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         resolveTuiAgentLaunchEnv('codex', this.requireStore().getSettings().agentDefaultEnv),
       resolveClaudeLaunchEnv: () =>
         resolveTuiAgentLaunchEnv('claude', this.requireStore().getSettings().agentDefaultEnv),
-      resolveOpenCodeLaunchEnv: (agent) =>
-        resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv),
-      resolveOpenCodePermissionRules: () =>
-        openCodeStructuredPermissionRulesForSettings(this.requireStore().getSettings()),
       // Wired only here, so a test runtime never runs a real `claude --version`.
       claudeThinkingDisplay: claudeThinkingDisplaySupport,
       resolveShellEnvironmentPolicy: () =>
@@ -172,6 +171,17 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         claudeStructuredPermissionModeForSettings(this.requireStore().getSettings()),
       resolveCodexPermissionPolicy: () =>
         codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings()),
+      resolveAgentFullAccess: (agent) =>
+        isTuiAgent(agent) &&
+        resolvedTuiAgentArgsBypassPermissions(
+          agent,
+          this.requireStore().getSettings(),
+          process.platform
+        ),
+      resolveAgentLaunchEnv: (agent) =>
+        isTuiAgent(agent)
+          ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv)
+          : {},
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),

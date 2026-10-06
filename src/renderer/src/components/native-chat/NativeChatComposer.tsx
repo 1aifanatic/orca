@@ -149,6 +149,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const attachments = useNativeChatComposerAttachments({
       attachmentScopeKey: draftScopeKey,
       allowWithoutTarget: Boolean(structuredTransport),
+      acceptsImages: structuredTransport?.acceptsImages !== false,
       caret,
       disabled,
       isComposing: imeEnterGesture.isComposing,

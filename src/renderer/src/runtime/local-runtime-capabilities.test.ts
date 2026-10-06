@@ -5,7 +5,6 @@ import {
   ensureLocalRuntimeCapabilities,
   readLocalRuntimeCapabilities,
   readLocalRuntimeCapabilitiesOrUnknown,
-  readLocalStructuredAgents,
   refreshLocalRuntimeCapabilities,
   setLocalRuntimeCapabilitiesForTests
 } from './local-runtime-capabilities'
@@ -41,24 +40,6 @@ describe('local runtime capabilities', () => {
     ])
     expect(readLocalRuntimeCapabilities()).toEqual(['agent-session.structured.v1'])
     expect(readLocalRuntimeCapabilitiesOrUnknown()).toEqual(['agent-session.structured.v1'])
-  })
-
-  it('takes registrations from the same host status and clears them when that host is lost', async () => {
-    const getStatus = vi
-      .fn()
-      .mockResolvedValueOnce({
-        capabilities: ['agent-session.structured.v1'],
-        structuredAgents: [
-          { agent: 'opencode', capabilities: { compact: true } },
-          { agent: '../../invalid', capabilities: {} }
-        ]
-      })
-      .mockRejectedValueOnce(new Error('offline'))
-    Object.assign(window, { api: { runtime: { getStatus } } })
-    await refreshLocalRuntimeCapabilities()
-    expect(readLocalStructuredAgents()).toEqual(['opencode'])
-    await refreshLocalRuntimeCapabilities()
-    expect(readLocalStructuredAgents()).toBeNull()
   })
 
   it('coalesces concurrent live status reads', async () => {

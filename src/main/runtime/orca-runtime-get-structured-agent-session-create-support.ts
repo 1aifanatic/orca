@@ -22,7 +22,6 @@ import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import {
-  agentSessionAccountHome,
   isLegacyAgentSessionAccountHome,
   type AgentSessionAccountHome
 } from '../../shared/agent-session-account-home'
@@ -67,7 +66,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       getClaudeConfigDirectory: (target) => this.accounts.getClaudeConfigDirectory(target),
       prepareCodexLaunchHome: this.prepareCodexStructuredLaunchFn,
       readCodexLaunchHome: this.resolveCodexStructuredLaunchHomeFn,
-      resolveProviderEnvironment: async () =>
+      resolveBaseEnvironment: async () =>
         structuredAgentBaseEnvironment({
           shellEnv: await resolveLoginShellEnvironment(),
           policy: nativeChatShellEnvironmentPolicy(this.requireStore().getSettings())
@@ -262,9 +261,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       location,
       provider: input.agent,
       agent: input.agent,
-      accountHome: adoption
-        ? agentSessionAccountHome(definition, adoption.accountHomePath)
-        : selectedAccountHome,
+      accountHome:
+        adoption && isLegacyAgentSessionAccountHome(selectedAccountHome)
+          ? { variable: selectedAccountHome.variable, path: adoption.accountHomePath }
+          : selectedAccountHome,
       ...(options ? { options } : {}),
       ...(input.resumeFrom && adoption
         ? {

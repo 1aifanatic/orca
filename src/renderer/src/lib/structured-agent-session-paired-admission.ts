@@ -1,5 +1,5 @@
 import { toast } from 'sonner'
-import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
+import type { TuiAgent } from '../../../shared/tui-agent'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
@@ -45,7 +45,7 @@ type AdmittedLaunch = {
 const DELIVERED: StructuredPromptDeliveryResult = { delivered: true, failureNotified: false }
 const NOT_DELIVERED: StructuredPromptDeliveryResult = { delivered: false, failureNotified: false }
 
-function notifyHostDeclined(agent: StructuredAgentId): void {
+function notifyHostDeclined(agent: TuiAgent): void {
   const agentLabel = structuredAgentLabel(agent)
   toast.info(
     translate(
@@ -63,7 +63,7 @@ function notifyHostDeclined(agent: StructuredAgentId): void {
   )
 }
 
-function notifyHostUnreachable(agent: StructuredAgentId, executionHostId: ExecutionHostId): void {
+function notifyHostUnreachable(agent: TuiAgent, executionHostId: ExecutionHostId): void {
   const hostLabel = selectExecutionHostDisplayLabel(useAppStore.getState(), executionHostId)
   toast.error(
     translate(
@@ -126,7 +126,7 @@ export async function openDeclinedStructuredLaunchTerminal(args: {
  * equivalent, fails); unreachable opens nothing and says so. There is nothing to undo either way.
  */
 export function beginPairedStructuredLaunch(args: {
-  plan: AgentSessionLaunchPlan & { agent: StructuredAgentId }
+  plan: AgentSessionLaunchPlan & { agent: TuiAgent }
   hooks: StructuredAgentLaunchHooks
   worktreeId: string
   executionHostId: ExecutionHostId

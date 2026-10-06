@@ -4,7 +4,6 @@ import type {
   AgentModelCatalogSessionAccess,
   AgentModelCatalogStore
 } from './agent-model-catalog-store'
-import type { AgentSessionStoredAgent } from '../../../shared/agent-session-stored-agent'
 import {
   isLegacyAgentSessionAccountHome,
   type AgentSessionAccountHome
@@ -59,7 +58,7 @@ export function agentModelCatalogFingerprintForRecord(
  *  Native only: both structured adapters refuse non-native locations at launch. */
 export function agentModelCatalogSessionAccess(
   store: AgentModelCatalogStore | undefined,
-  agent: Pick<AgentSessionStoredAgent, 'agent' | 'accountHomeVariable'>,
+  agent: { agent: string; accountHomeVariable: string },
   accountHomePath: string | null
 ): AgentModelCatalogSessionAccess | undefined {
   if (!store || !accountHomePath) {

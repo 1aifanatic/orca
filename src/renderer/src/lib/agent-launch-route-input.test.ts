@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import {
   STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
 } from '../../../shared/protocol-version'
 import type { ProjectExecutionRuntimeResolution } from '../../../shared/project-execution-runtime'
@@ -14,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   getLocalProjectExecutionRuntimeContext: vi.fn(),
   getLocalRepoProjectExecutionRuntimeContext: vi.fn(),
   readLocalRuntimeCapabilitiesOrUnknown: vi.fn(),
-  readLocalStructuredAgents: vi.fn(),
   isWebClientLocation: vi.fn(() => false)
 }))
 
@@ -35,8 +33,7 @@ vi.mock('@/lib/web-client-location', () => ({
   isWebClientLocation: mocks.isWebClientLocation
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: mocks.readLocalRuntimeCapabilitiesOrUnknown,
-  readLocalStructuredAgents: mocks.readLocalStructuredAgents
+  readLocalRuntimeCapabilitiesOrUnknown: mocks.readLocalRuntimeCapabilitiesOrUnknown
 }))
 // Why: the planner is the only route consumer; its settle loop is out of scope here.
 vi.mock('@/lib/structured-agent-launch-settlement', () => ({
@@ -94,29 +91,10 @@ function stageLocalStructuredHost(): void {
   mocks.readLocalRuntimeCapabilitiesOrUnknown.mockReturnValue([
     STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
   ])
-  mocks.readLocalStructuredAgents.mockReturnValue(null)
 }
 
 describe('buildAgentLaunchRouteInput', () => {
   beforeEach(stageLocalStructuredHost)
-
-  it.each(['opencode', 'opencode2'] as const)(
-    'routes a registered %s through the updated-chat setting',
-    (agent) => {
-      mocks.readLocalRuntimeCapabilitiesOrUnknown.mockReturnValue([
-        STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
-        STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
-      ])
-      mocks.readLocalStructuredAgents.mockReturnValue(['codex', 'opencode', 'opencode2'])
-      const args = { agent, workspace: { kind: 'folder' as const, worktreeId: 'folder:notes' } }
-      expect(routeFor(store(), args)).toBe('structured-native-chat')
-      expect(
-        routeFor(store({ ...STRUCTURED_SETTINGS, experimentalStructuredNativeChat: false }), args)
-      ).toBe('legacy-native-chat')
-      mocks.readLocalStructuredAgents.mockReturnValue(['codex'])
-      expect(routeFor(store(), args)).toBe('legacy-native-chat')
-    }
-  )
 
   it('gathers the full input set for an existing local git worktree', () => {
     mocks.getLocalProjectExecutionRuntimeContext.mockReturnValue(WSL_RUNTIME)

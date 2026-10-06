@@ -7384,7 +7384,7 @@
             "defaultViewTerminal": "Terminal chat",
             "defaultViewNative": "Chat UI",
             "structuredTitle": "Use updated structured native chat",
-            "structuredCopy": "Open new Codex and Claude agents as structured chats. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.",
+            "structuredCopy": "Open new agents as structured chats where supported. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.",
             "structuredScope": "Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.",
             "structuredToggleLabel": "Toggle updated structured native chat",
             "resumeTitle": "Resume working chats automatically after a restart",
@@ -17823,7 +17823,8 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "Couldn't stop {{agent}} from before."
+        "previousExitUnverifiable": "Couldn't stop {{agent}} from before.",
+        "sessionNotRestored": "{{agent}} couldn't reopen its earlier session, so this chat continues in a new one. {{agent}} doesn't remember the earlier messages."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",

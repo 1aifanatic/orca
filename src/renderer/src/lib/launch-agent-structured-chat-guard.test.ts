@@ -160,8 +160,7 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
   LOCAL_STRUCTURED_SESSION_OWNER: 'local-structured-session'
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities,
-  readLocalStructuredAgents: () => null
+  readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities
 }))
 vi.mock('@/lib/worktree-runtime-owner', () => ({
   getExecutionHostIdForWorktree: () =>

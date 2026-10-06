@@ -77,10 +77,21 @@ export function agentSessionAccountHomesEqual(
 
 /** The account home of `agent` at `path`. */
 export function agentSessionAccountHome(
-  agent: Pick<AgentSessionStoredAgent, 'accountHomeVariable'>,
+  agent: { accountHomeVariable: string },
   path: string
 ): LegacyAgentSessionAccountHome {
   return { variable: agent.accountHomeVariable, path }
+}
+
+/** Whether `home` is the kind of account `agent` pins: its own directory variable, or its locator
+ *  kind. It becomes the child's environment, so a record pinning another agent's kind never starts. */
+export function agentPinsAccountHome(
+  agent: AgentSessionStoredAgent,
+  home: AgentSessionAccountHome
+): boolean {
+  return isLegacyAgentSessionAccountHome(home)
+    ? agent.accountHomeVariable !== undefined && home.variable === agent.accountHomeVariable
+    : agent.accountLocatorKind === home.kind
 }
 
 function isBoundedAccountString(value: unknown, max: number): value is string {

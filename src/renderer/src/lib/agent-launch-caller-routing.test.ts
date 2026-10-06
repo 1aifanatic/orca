@@ -69,8 +69,7 @@ vi.mock('@/lib/launch-agent-in-new-tab-structured', () => ({
   launchAgentInStructuredNewTab: mockLaunchAgentInStructuredNewTab
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => mockHostCapabilities(),
-  readLocalStructuredAgents: () => null
+  readLocalRuntimeCapabilitiesOrUnknown: () => mockHostCapabilities()
 }))
 /** What the paired server that owns 'wt-1' last reported about itself. */
 function serverReports(capabilities: readonly string[] | null): void {

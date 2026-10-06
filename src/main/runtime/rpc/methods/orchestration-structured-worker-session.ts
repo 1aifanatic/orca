@@ -12,7 +12,6 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type { StructuredAgentId } from '../../../../shared/agent-session-provider-handle'
 import { isDefinitiveAgentSessionCreateRefusal } from '../../../../shared/agent-session-definitive-refusal'
 import type {
   AgentJournalMessageItem,
@@ -68,7 +67,7 @@ export function releaseStructuredWorkerSession(
 export async function createStructuredWorkerSession(args: {
   runtime: OrcaRuntimeService
   worktreeId: string
-  agent: StructuredAgentId
+  agent: 'claude' | 'codex'
   dispatchId: string
   /** The dispatch's own `--model`/`--effort`, already narrowed to the seedable string subset. */
   options?: Readonly<Record<string, string>>

@@ -15,10 +15,7 @@ import type { RuntimeTerminalState } from '../../shared/runtime-types'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import type { OrchestrationDb } from './orchestration/db'
 import { structuredWorkerAddressable } from './structured-worker-custody'
-import {
-  isStructuredAgentId,
-  type StructuredAgentId
-} from '../../shared/agent-session-provider-handle'
+import { isAgentSessionHandleProvider } from '../../shared/agent-session-provider-handle'
 import {
   isStructuredWorkerHandle,
   structuredWorkerIdentities,
@@ -118,9 +115,10 @@ export function resolveStructuredWorkerAuthority(
  * relabel every restarted Codex worker as Claude, permanently, because the startup release
  * reconciler stamps the frozen journal archive with whatever it is told here.
  */
-export function structuredWorkerAgent(identity: StructuredWorkerIdentity): StructuredAgentId {
+export function structuredWorkerAgent(identity: StructuredWorkerIdentity): 'claude' | 'codex' {
+  // Workers are Claude or Codex sessions only: dispatch refuses any other agent.
   const provider = readStructuredAgentSessionRecord(identity.sessionId)?.provider
-  return identity.agent ?? (isStructuredAgentId(provider) ? provider : 'claude')
+  return identity.agent ?? (isAgentSessionHandleProvider(provider) ? provider : 'claude')
 }
 
 export type StructuredWorkerObservation = {

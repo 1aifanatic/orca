@@ -43,8 +43,7 @@ vi.mock('@/lib/agent-ready-wait', () => ({
   waitForAgentReady: vi.fn(async () => ({ ready: true, reason: 'foreground-match' }))
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => [],
-  readLocalStructuredAgents: () => null
+  readLocalRuntimeCapabilitiesOrUnknown: () => []
 }))
 
 const CODEX_BYPASS = '--dangerously-bypass-approvals-and-sandbox'

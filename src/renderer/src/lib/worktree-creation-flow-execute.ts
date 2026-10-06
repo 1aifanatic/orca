@@ -13,7 +13,6 @@ import {
   formatWorkspaceCreateError,
   getWorkspaceCreateErrorToastMessage
 } from '@/lib/workspace-create-error-format'
-import { isStructuredAgentId } from '../../../shared/agent-session-provider-handle'
 import type { CreateWorktreeResult } from '../../../shared/worktree/create-types'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import { createBrowserUuid } from '@/lib/browser-uuid'
@@ -283,8 +282,7 @@ export async function executeWorktreeCreation(
 
   let structuredLaunchAccepted = structuredLaunch
   const { agentLaunchRoute } = preparedRequest
-  const structuredAgent = preparedRequest.agent
-  if (agentLaunchRoute === 'structured-native-chat' && isStructuredAgentId(structuredAgent)) {
+  if (agentLaunchRoute === 'structured-native-chat' && preparedRequest.agent) {
     let structuredSession: WorktreeCreationStructuredSessionResult | null = null
     try {
       structuredSession = await launchStructuredWorktreeSession({

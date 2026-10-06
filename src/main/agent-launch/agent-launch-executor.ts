@@ -26,7 +26,6 @@
  */
 
 import { assertOpenCodeModelLaunchPreferencesAbsent } from '../opencode/opencode-model-startup-plan'
-import { structuredAgentRuntimeRegistration } from '../runtime/structured-agent-runtime-registrations'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import type {
   AgentLaunchIntent,
@@ -42,7 +41,6 @@ import {
   promptReceipt,
   settleLaunchPromptDisposal
 } from './agent-launch-prompt-delivery'
-import type { TuiAgent } from '../../shared/tui-agent'
 import {
   workspaceKindForWorktreeId,
   type WorkspaceLaunchKind
@@ -70,6 +68,8 @@ export type AgentLaunchExecution = {
   surfaces: AgentLaunchSurfaceFactory
   workspaces?: AgentLaunchWorkspaceFactory
   vocabulary?: AgentLaunchModeVocabulary
+  /** False when the calling client cannot show the agent's chat; absent for the host's own callers. */
+  callerRendersStructured?: boolean
   /** Attributes a throw to the step that was running, the way a dispatch's own stages do. */
   onStage?: (stage: 'worktree_create' | 'mode_settle' | 'surface_create') => void
   /** The surface exists and its tab is published; runs before any prompt delivery. Must not throw. */
@@ -82,10 +82,10 @@ export async function executeAgentLaunch(
   execution: AgentLaunchExecution
 ): Promise<AgentLaunchResult> {
   const { intent, runtime } = execution
-  const vocabulary = execution.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
   if (intent.reuseTerminal) {
     assertOpenCodeModelLaunchPreferencesAbsent(intent.agent, intent.sessionOptions)
   }
+  const vocabulary = execution.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
   const settings = readAgentLaunchModeSettings(runtime)
   const preflight = decideAgentLaunchMode({
     placement: {
@@ -95,15 +95,14 @@ export async function executeAgentLaunch(
       ...(intent.cwd ? { cwd: intent.cwd } : {}),
       ...(intent.target.kind === 'existing' && intent.target.workspacePath
         ? { workspacePath: intent.target.workspacePath }
-        : {})
+        : {}),
+      ...(execution.callerRendersStructured === false ? { callerRendersStructured: false } : {})
     },
     settings,
     vocabulary
   })
-  if (
-    preflight.mode === 'terminal' &&
-    (intent.reuseTerminal || intent.target.kind === 'create-worktree')
-  ) {
+  // A structured chat takes a model pick; OpenCode's terminal launch into a new worktree cannot.
+  if (preflight.mode === 'terminal' && intent.target.kind === 'create-worktree') {
     assertOpenCodeModelLaunchPreferencesAbsent(intent.agent, intent.sessionOptions)
   }
 
@@ -274,7 +273,7 @@ async function createSurface(
   settled: AgentLaunchModeReceipt
 ): Promise<CreatedSurface> {
   const { intent, surfaces } = execution
-  if (settled.mode === 'structured' && isStructuredProvider(intent.agent)) {
+  if (settled.mode === 'structured') {
     // One reservation serves either route: the tab half of the reserved pane is the chat's tab.
     const reservedTabId = intent.paneKey ? parsePaneKey(intent.paneKey)?.tabId : undefined
     const session = await surfaces.createStructuredSession({
@@ -376,10 +375,6 @@ function combineLaunchWarnings(
     return create ?? surface
   }
   return `${create} Also ${surface[0].toLowerCase()}${surface.slice(1)}`
-}
-
-function isStructuredProvider(agent: TuiAgent): boolean {
-  return structuredAgentRuntimeRegistration(agent) !== null
 }
 
 function existingWorktreeId(target: AgentLaunchTarget): string {

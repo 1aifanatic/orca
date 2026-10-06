@@ -56,8 +56,6 @@ export type ProviderTimelineJoin = {
   thread?: string
   /** The provider turn it belongs to. Absent: the turn open now. */
   turn?: string
-  /** Independent child work survives a root turn's end, until its own close or session end. */
-  scope?: 'thread'
 }
 
 /** A streamed text item: one the provider names (the same item as item events with that id), or
@@ -129,5 +127,3 @@ export type ProviderTimelineEvent =
   | ({ type: 'provider.frame'; frameKind: string; payload: unknown } & Joined)
   /** The provider child is gone. The verdict is what the host can prove about its end. */
   | { type: 'session.ended'; verdict: StructuredAgentSessionTurnVerdict }
-  /** One independent child execution ended; its producer's work settles without ending the chat. */
-  | { type: 'producer.ended'; agentId: string; at: number; state: 'completed' | 'interrupted' }

@@ -50,8 +50,6 @@ export type ProviderTimelineAssembler = {
   apply(event: ProviderTimelineEvent): ProviderTimelineApplyResult
   /** The turn id of the open turn, as its row and a client's Stop name it. */
   readonly openTurnId: string | null
-  /** A published request's row; null before its queued write has chosen its incarnation. */
-  requestItemId(request: string): string | null
   /** Writes the text the coalescing window holds. */
   flush(): void
   /** Drops the text the window holds: apply `session.ended` first, which writes it. */
@@ -188,7 +186,6 @@ export function createProviderTimelineAssembler(
       case 'context.usage':
       case 'provider.frame':
       case 'session.ended':
-      case 'producer.ended':
         return applyDecided(event, journal)
     }
   }
@@ -198,7 +195,6 @@ export function createProviderTimelineAssembler(
     get openTurnId() {
       return state.open?.turnId ?? null
     },
-    requestItemId: (request) => state.items.get(`request:${request}`)?.row?.itemId ?? null,
     flush: () => streams.flush(),
     dispose: () => streams.dispose()
   }

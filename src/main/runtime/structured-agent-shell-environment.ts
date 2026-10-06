@@ -89,9 +89,10 @@ export type StructuredAgentEnvironmentSources = {
 export function createStructuredAgentEnvironmentResolvers(
   sources: StructuredAgentEnvironmentSources
 ): {
-  resolveProviderEnvironment: () => Promise<Record<string, string>>
   resolveCodexEnvironment: () => Promise<NodeJS.ProcessEnv>
   resolveClaudeInheritedEnv: () => Promise<Record<string, string>>
+  /** The shared base every agent's child env starts from, before its own overlay. */
+  resolveBaseEnvironment: () => Promise<Record<string, string>>
 } {
   const shellEnvironment = (sources.resolveEnvironment ?? resolveLoginShellEnvironment)()
   const resolveBase = async (): Promise<Record<string, string>> =>
@@ -100,13 +101,13 @@ export function createStructuredAgentEnvironmentResolvers(
       policy: sources.resolveShellEnvironmentPolicy?.() ?? nativeChatShellEnvironmentPolicy(null)
     })
   return {
-    resolveProviderEnvironment: resolveBase,
     resolveCodexEnvironment: async () => ({
       ...(await resolveBase()),
       ...(await sources.resolveLaunchEnv?.()),
       ...(await sources.resolveLaunchEnvOverlay?.()),
       ...sources.resolveCodexOverrides?.()
     }),
-    resolveClaudeInheritedEnv: resolveBase
+    resolveClaudeInheritedEnv: resolveBase,
+    resolveBaseEnvironment: resolveBase
   }
 }

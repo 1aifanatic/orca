@@ -1,5 +1,5 @@
-import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import type { StructuredAgentDefinition } from './structured-agent-definition'
+import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -296,6 +296,7 @@ export class StructuredAgentSessionHost {
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       stopAgent: (sessionId, ending) => this.lifetime.stopAgent(sessionId, ending),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
+      acquireAborts: this.runtimeState.acquireAborts,
       now: () => this.now()
     }
   }

@@ -1,10 +1,9 @@
 // What every decision of one assembler shares, and where a joined row goes.
 
-import {
-  AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalProducerLinkage,
-  type AgentJournalTurnScope,
-  type AgentType
+import type {
+  AgentJournalProducerLinkage,
+  AgentJournalTurnScope,
+  AgentType
 } from '../../../shared/agent-session-journal-types'
 import type { ProviderTimelineJoin } from './provider-timeline-event'
 import { providerKey, type ProviderTimelineRows } from './provider-timeline-rows'
@@ -35,9 +34,6 @@ export function providerTimelinePlacement(
   state: ProviderTimelineState,
   join: ProviderTimelineJoin | undefined
 ): AgentJournalTurnScope {
-  if (join?.scope === 'thread') {
-    return AGENT_JOURNAL_THREAD_SCOPE
-  }
   const thread = join?.thread ?? null
   if (join?.turn === undefined) {
     return state.scope
