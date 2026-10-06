@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../../../claude-accounts/claude-profile-routing-authority'
+import { getClaudeProfileRouter } from '../../../claude-accounts/claude-profile-installed-router'
 import {
   isWslShellName,
   resolveLocalWindowsTerminalRuntimeOptions
@@ -229,7 +229,7 @@ export async function preparePtyIpcSpawnPreflight(ctx: PtyIpcSpawnState): Promis
     ctx.expectedWslDistro
   )
   if (!args.connectionId && initialSelectionTarget.runtime !== 'wsl') {
-    const profileEnv = getClaudeProfileRoutingAuthority()?.terminalEnv()
+    const profileEnv = getClaudeProfileRouter()?.terminalEnv()
     if (profileEnv) {
       args.env = { ...args.env, ...profileEnv }
     }

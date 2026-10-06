@@ -1,16 +1,10 @@
-import { homedir } from 'node:os'
-import { resolveClaudeCommand } from '../codex-cli/command'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { claudeProfileRoutingEnabled } from '../../shared/claude-profile-routing'
+import { ClaudeProfileRouter } from './claude-profile-router'
 import {
-  createNativeClaudeProfileRouting,
-  systemDefaultClaudeHome
-} from './claude-profile-native-owner'
-import {
-  installClaudeProfileRoutingAuthority,
-  getClaudeProfileRoutingAuthority
-} from './claude-profile-routing-authority'
-import { probeClaudeCliVersionCached } from '../claude/claude-hook-event-versions'
+  getClaudeProfileRouter,
+  installClaudeProfileRouter
+} from './claude-profile-installed-router'
 import type { Store } from '../persistence'
 import {
   getSelectedClaudeAccountIdForTarget,
@@ -21,17 +15,19 @@ import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-t
 
 export type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 
+// Why host only: WSL keeps the legacy path until guest account folders exist (Step 3).
+function routerFor(target: ClaudeAccountSelectionTarget): ClaudeProfileRouter | undefined {
+  return target.runtime === 'wsl' ? undefined : getClaudeProfileRouter()
+}
+
 export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
   constructor(store: Store) {
     super(store)
     if (claudeProfileRoutingEnabled()) {
-      installClaudeProfileRoutingAuthority(
-        createNativeClaudeProfileRouting({
-          store,
-          dataRoot: getAppEnvironment().getPath('userData'),
-          userHome: homedir(),
-          defaultHome: () => systemDefaultClaudeHome(process.env, homedir()),
-          claudeVersion: () => probeClaudeCliVersionCached(resolveClaudeCommand())
+      installClaudeProfileRouter(
+        new ClaudeProfileRouter({
+          getSettings: () => store.getSettings(),
+          dataRoot: getAppEnvironment().getPath('userData')
         })
       )
     }
@@ -43,9 +39,9 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     target?: ClaudeAccountSelectionTarget
   ): Promise<ClaudeRuntimeAuthPreparation> {
     const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
-    const profiles = getClaudeProfileRoutingAuthority()
-    if (profiles) {
-      return profiles.prepare(effectiveTarget)
+    const router = routerFor(effectiveTarget)
+    if (router) {
+      return router.preparation()
     }
     await this.syncForCurrentSelection(effectiveTarget)
     return this.getPreparation(effectiveTarget)
@@ -54,11 +50,11 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
   async prepareForRateLimitFetch(
     target?: ClaudeAccountSelectionTarget
   ): Promise<ClaudeRuntimeAuthPreparation> {
-    const profiles = getClaudeProfileRoutingAuthority()
-    if (profiles) {
-      return profiles.preparation(profiles.resolve(target))
-    }
     const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
+    const router = routerFor(effectiveTarget)
+    if (router) {
+      return router.preparation()
+    }
     await this.syncForCurrentSelection(effectiveTarget)
     return this.getPreparation(effectiveTarget)
   }
@@ -66,18 +62,16 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
   async syncForCurrentSelection(target?: ClaudeAccountSelectionTarget): Promise<void> {
     await this.serializeMutation(async () => {
       const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
-      const profiles = getClaudeProfileRoutingAuthority()
-      await (profiles
-        ? profiles.publish(effectiveTarget)
-        : this.doSyncForCurrentSelection(effectiveTarget))
+      const router = routerFor(effectiveTarget)
+      await (router ? router.publish() : this.doSyncForCurrentSelection(effectiveTarget))
     })
   }
 
   async forceMaterializeCurrentSelectionForRollback(): Promise<void> {
     await this.serializeMutation(async () => {
-      const profiles = getClaudeProfileRoutingAuthority()
-      if (profiles) {
-        await profiles.startup()
+      const router = getClaudeProfileRouter()
+      if (router) {
+        await router.publish()
         return
       }
       const settings = this.store.getSettings()
@@ -98,8 +92,7 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
   }
 
   getRuntimeConfigDir(target?: ClaudeAccountSelectionTarget): string {
-    const legacy = () => this.getPreparation(target).configDir
-    return getClaudeProfileRoutingAuthority()?.configDirOr(target, legacy) ?? legacy()
+    return this.getPreparation(target).configDir
   }
 
   private initializeLastSyncedState(): void {
@@ -109,8 +102,8 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
 
   private async safeSyncForCurrentSelection(): Promise<void> {
     try {
-      const profiles = getClaudeProfileRoutingAuthority()
-      await (profiles ? profiles.startup() : this.syncForCurrentSelection())
+      const router = getClaudeProfileRouter()
+      await (router ? router.publish() : this.syncForCurrentSelection())
     } catch (error) {
       console.warn('[claude-runtime-auth] Failed to sync runtime auth state:', error)
     }

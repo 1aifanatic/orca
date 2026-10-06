@@ -1,4 +1,4 @@
-import { claudeProfileReaderRoots } from '../claude-accounts/claude-profile-reader-roots'
+import { claudeProfileHistoryDirs } from '../claude-accounts/claude-profile-installed-router'
 import { homedir } from 'node:os'
 import { basename, extname, join } from 'node:path'
 import type { AgentType } from '../../shared/native-chat-types'
@@ -39,12 +39,10 @@ import { wslTranscriptFsRefusal, type WslTranscriptFsError } from './wsl-transcr
 function claudeProjectsDirs(): string[] {
   const candidates = [
     join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude'), 'projects'),
-    join(homedir(), '.claude', 'projects')
+    join(homedir(), '.claude', 'projects'),
+    ...claudeProfileHistoryDirs('projects')
   ]
-  return claudeProfileReaderRoots(
-    candidates.filter((dir, index) => candidates.indexOf(dir) === index),
-    'projects'
-  )
+  return candidates.filter((dir, index) => candidates.indexOf(dir) === index)
 }
 
 // Why: Orca launches Codex with ORCA_CODEX_HOME pointing at its own managed

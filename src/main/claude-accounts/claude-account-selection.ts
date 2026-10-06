@@ -1,4 +1,3 @@
-import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
@@ -29,8 +28,7 @@ export class ClaudeAccountSelection {
 
   list(): ClaudeRateLimitAccountsState {
     this.normalizeActiveSelection()
-    const profiles = getClaudeProfileRoutingAuthority()
-    return profiles ? profiles.describeAccounts(this.snapshot()) : this.snapshot()
+    return this.snapshot()
   }
 
   async remove(accountId: string): Promise<ClaudeRateLimitAccountsState> {
