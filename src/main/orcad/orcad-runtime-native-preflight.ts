@@ -15,6 +15,7 @@ import {
   readWindowsProcessCreationTime,
   readWindowsProcessIdentityTableFresh
 } from '../windows/windows-process-table'
+import { WindowsProcessTableTimeoutError } from '../windows/windows-process-table-timeout-error'
 
 // A cold first conpty spawn on a slow (arm64, AV-scanned) Windows host can outlast the steady-state budget.
 const WINDOWS_FIRST_PTY_PROBE_TIMEOUT_MS = 15_000
@@ -101,8 +102,12 @@ async function preflightWindowsProcessIdentity(): Promise<void> {
     const rows = await readWindowsProcessIdentityTableFresh()
     created = rows.find((row) => row.pid === process.pid)?.creationTimeMs
   } catch (error) {
-    // A whole-table snapshot can time out on a loaded host; the addon's one-PID query still
-    // proves this runtime can identify a process, which is all readiness needs.
+    // Only slowness falls back: an unreadable table (EDR hook, restricted token) must still
+    // fail qualification, or every later liveness verdict on this host reads unverifiable.
+    if (!(error instanceof WindowsProcessTableTimeoutError)) {
+      throw error
+    }
+    // The addon's one-PID query proves this runtime can identify a process without a snapshot.
     created = readWindowsProcessCreationTime(process.pid)
     if (created === null) {
       throw error
