@@ -168,7 +168,18 @@ describe('session snapshot host isolation', () => {
       const hydrated = apply(makeState(), terminalSnapshot('shared-tab'), 'wsl')
       const wsl = bound
         ? hydrated
-        : { ...hydrated, tabsByWorktree: {}, ptyIdsByTabId: {}, terminalLayoutsByTabId: {} }
+        : {
+            ...hydrated,
+            tabsByWorktree: {},
+            unifiedTabsByWorktree: {
+              [WT]: hydrated.unifiedTabsByWorktree[WT]!.map((tab) => ({
+                ...tab,
+                id: 'canonical-alias'
+              }))
+            },
+            ptyIdsByTabId: {},
+            terminalLayoutsByTabId: {}
+          }
       const otherWorktree = 'repo::/another-worktree'
       const both = apply(wsl, { ...terminalSnapshot('shared-tab'), worktree: otherWorktree }, 'mac')
       expect(both.unifiedTabsByWorktree[WT]).toEqual(wsl.unifiedTabsByWorktree[WT])
