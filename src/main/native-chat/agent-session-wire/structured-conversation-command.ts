@@ -100,7 +100,9 @@ export function runStructuredConversationCommand(
   const { envelope, command } = params
   const { sessionId, clientOperationId } = envelope
   const store = context.deps.store
-  const matching = () => {
+  /** For a replay, once the ledger has proved this caller owns the id: the clear it committed,
+   *  or the one the queue ran for its card, recorded under the queue's own key. */
+  const replayedClear = () => {
     const record = store.getRecord(sessionId)?.conversationCommand
     return record?.operationId === clientOperationId &&
       (record.callerKey === caller.callerKey || record.callerKey === QUEUED_CLEAR_CALLER_KEY)
@@ -132,12 +134,13 @@ export function runStructuredConversationCommand(
         recoverUnknownFromDurableState: true,
         settledOutcome: (value) => ({ status: 'succeeded', sessionId, conversationCommand: value }),
         replay: (replayCtx, outcome) => {
-          if (outcome.status === 'succeeded' && outcome.conversationCommand) {
-            return outcome.conversationCommand
-          }
-          const prior = matching()
+          // What the clear did outranks the receipt its card was answered with.
+          const prior = replayedClear()
           if (prior?.phase === 'committed') {
             return prior
+          }
+          if (outcome.status === 'succeeded' && outcome.conversationCommand) {
+            return outcome.conversationCommand
           }
           // Its card answers until the queue runs it; the card is keyed by this operation id.
           const card = queuedSendAnswer(replayCtx.journal, clientOperationId)
@@ -148,11 +151,6 @@ export function runStructuredConversationCommand(
         // The commit and the card are its only writes, so with neither answering it changed nothing.
         rerunWhenReplayMissing: () => true,
         run: async (ctx) => {
-          // A /clear the queue already ran for this id, its answer lost: what it did.
-          const ranFromQueue = matching()
-          if (ranFromQueue?.phase === 'committed') {
-            return { ok: true, value: ranFromQueue }
-          }
           if (params.delivery) {
             // The queue's own accept rule decides first, as for /compact: whatever a queued send
             // waits behind, the clear waits behind too, and the host runs it when its turn comes.

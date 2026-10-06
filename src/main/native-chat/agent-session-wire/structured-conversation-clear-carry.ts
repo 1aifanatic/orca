@@ -9,7 +9,6 @@ import {
   type QueuedMessageRow
 } from '../agent-session-journal/queued-message-table'
 import { queuedMessageFingerprint } from './structured-agent-session-queued-messages'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
 import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import type { AgentSessionTurnContext } from './structured-agent-session-turns'
 
@@ -94,7 +93,8 @@ export async function carryQueuedMessagesToClearReplacement(
           messageId: row.messageId,
           body: row.body,
           fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
-          hostInstance: structuredAgentSessionHostInstance(),
+          // Its own: a card a process that has since died wrote keeps that restart's pause.
+          hostInstance: row.hostInstance,
           ...(row.position > behind ? {} : { carriedFrom: ctx.sessionId }),
           source: row.source
         })

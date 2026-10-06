@@ -2,11 +2,10 @@
 // The wire carries no hold copy on purpose: the caption is derived here from the
 // draft's own state plus the live facts the client already holds.
 
-import { readWholeAgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
-import { structuredAgentSessionAttemptFailureParts } from '../../../src/shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionReturnedCardParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionQueuedMessage,
@@ -34,7 +33,7 @@ function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string 
 }
 
 function returnedCaption(
-  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection'>
+  draft: Pick<AgentSessionQueuedMessage, 'returnedReason' | 'returnedRejection' | 'body'>
 ): string {
   const reason = draft.returnedReason ?? null
   const rejection = draft.returnedRejection
@@ -44,11 +43,11 @@ function returnedCaption(
   // Worded as the desktop card words it: a fact read whole decides, the host's reason is the
   // fallback, and the card's own Send is the retry, so the words leave out sending again.
   return agentSessionWriteNoticeEnglish(
-    structuredAgentSessionAttemptFailureParts(
-      { kind: 'rejected', reason },
-      { retryControl: true },
-      readWholeAgentSessionFailureFact(rejection)
-    )
+    structuredAgentSessionReturnedCardParts({
+      returnedReason: reason,
+      ...(rejection ? { returnedRejection: rejection } : {}),
+      command: draft.body.command !== undefined
+    })
   )
 }
 

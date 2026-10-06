@@ -83,7 +83,11 @@ export class StructuredAgentSessionHost {
     () => this.deps,
     (sessionId) => this.queued.onJournalActivity(sessionId),
     (sessionId) => this.restartResume.onAgentStarted(sessionId),
-    (sessionId) => this.backgroundTasks.publish(sessionId)
+    (sessionId) => {
+      this.backgroundTasks.publish(sessionId)
+      // A /clear card waits on background tasks: their ending is its turn.
+      this.queued.drain.schedule(sessionId)
+    }
   )
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
@@ -105,6 +109,8 @@ export class StructuredAgentSessionHost {
     // Every collaborator reads this copy, so a logger that throws cannot fail what it reports.
     this.deps = deps = sessionLogger.withNeverThrowingLogger(deps)
     this.clientDelivery.watchAtRestCommands(deps.adapter)
+    // A /clear card waits on a handoff, which ends in the record store, not the journal.
+    deps.store.onHandoffEnded((sessionId) => this.queued.drain.schedule(sessionId))
     this.backgroundTasks = new StructuredAgentSessionBackgroundTaskChannel(
       deps,
       this.sessions,

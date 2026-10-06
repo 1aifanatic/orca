@@ -17,9 +17,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { translate } from '@/i18n/i18n'
-import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionReturnedCardParts } from '../../../../shared/structured-agent-session-send-disposition'
 import { classifyDispatchRejection } from '../../../../shared/structured-agent-session-dispatch-rejection'
-import { readWholeAgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
@@ -43,12 +42,11 @@ export function queuedMessageCardCaption(card: QueuedMessageCard): string | null
         )
       }
       return agentSessionWriteNoticeText(
-        structuredAgentSessionAttemptFailureParts(
-          { kind: 'rejected', reason },
-          // The card's own Send is the retry, so the words leave out sending again.
-          { retryControl: true },
-          readWholeAgentSessionFailureFact(card.returnedRejection)
-        )
+        structuredAgentSessionReturnedCardParts({
+          returnedReason: reason,
+          returnedRejection: card.returnedRejection,
+          command: card.command === true
+        })
       )
     }
     case 'paused':

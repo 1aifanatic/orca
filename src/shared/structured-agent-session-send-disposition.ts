@@ -19,7 +19,11 @@ import {
   agentSessionRefusalFailure,
   type AgentSessionWriteRefusal
 } from './agent-session-write-failure'
-import type { AgentSessionFailureFact } from './agent-session-failure'
+import {
+  readWholeAgentSessionFailureFact,
+  type AgentSessionFailureFact,
+  type UnreadAgentSessionFailureFact
+} from './agent-session-failure'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
 import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import {
@@ -209,6 +213,22 @@ export function structuredAgentSessionAttemptFailureParts(
     return [{ text: failure.reason }]
   }
   return structuredAgentSessionRejectionParts(failure.reason, 'send', fact, context)
+}
+
+/** A returned queued card's caption, as the desktop and the phone word it. Its own Send is the
+ *  retry, so the words leave out sending again; a command that simply didn't run says "try it
+ *  again", which names no control, since a command card's Send shows only while the agent is idle. */
+export function structuredAgentSessionReturnedCardParts(card: {
+  returnedReason?: string | null
+  returnedRejection?: UnreadAgentSessionFailureFact
+  command?: boolean
+}): AgentSessionWriteNoticePart[] {
+  const fact = readWholeAgentSessionFailureFact(card.returnedRejection)
+  return structuredAgentSessionAttemptFailureParts(
+    { kind: 'rejected', reason: card.returnedReason ?? null },
+    { retryControl: !(card.command === true && fact?.kind === 'commandRefused') },
+    fact
+  )
 }
 
 /** A send the host refused, whether it returned the refusal or threw it. */

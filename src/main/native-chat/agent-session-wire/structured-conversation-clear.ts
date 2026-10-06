@@ -7,7 +7,10 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionConversationCommandRecord } from '../../../shared/agent-session-conversation-command'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
-import { agentSessionRefusalReference } from '../../../shared/agent-session-wire-refusals'
+import {
+  agentSessionRefusalReference,
+  type AgentSessionWireRefusal
+} from '../../../shared/agent-session-wire-refusals'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
@@ -94,17 +97,27 @@ export async function clearConversationUnderSerialize(
   return { ok: true, value: completed }
 }
 
+/** Refusals that end on their own: the card keeps waiting, and the drain runs it once they end
+ *  (it wakes on child work and on a handoff ending), as it waits for a turn. */
+const WAITS_FOR = new Set(['backgroundTasksRunning', 'handoffInFlight'])
+
+export type QueuedClearOutcome =
+  | { kind: 'cleared' }
+  /** Still waiting, on something that ends on its own; nothing was written. */
+  | { kind: 'waiting'; refusal: AgentSessionWireRefusal }
+  | { kind: 'returned' }
+
 /**
  * A /clear card's turn, from the drain or the card's own Send, inside the session's serialize.
- * True once the clear committed. Refused, or failed before its commit (which changed nothing),
- * the card is returned with why — the card is where that is said, once — and the cards behind it
- * wait: they were written for the cleared chat.
+ * Refused for a wait (background tasks, a handoff) it stays waiting. Refused otherwise, or failed
+ * before its commit (which changed nothing), the card is returned with why — the card is where
+ * that is said, once — and the cards behind it wait: they were written for the cleared chat.
  */
 export async function runQueuedConversationClear(
   context: StructuredAgentSessionMutationContext,
   ctx: ClearContext,
   card: Pick<QueuedMessageRow, 'messageId'>
-): Promise<boolean> {
+): Promise<QueuedClearOutcome> {
   let fact = agentSessionFailureFact('commandRefused')
   try {
     const cleared = await clearConversationUnderSerialize(context, ctx, {
@@ -112,7 +125,11 @@ export async function runQueuedConversationClear(
       callerKey: QUEUED_CLEAR_CALLER_KEY
     })
     if (cleared.ok) {
-      return true
+      return { kind: 'cleared' }
+    }
+    const reason = cleared.refusal.details?.reason
+    if (reason !== undefined && WAITS_FOR.has(reason)) {
+      return { kind: 'waiting', refusal: cleared.refusal }
     }
     fact = agentSessionFailureFact('commandRefused', {
       refusal: agentSessionRefusalReference(cleared.refusal)
@@ -124,12 +141,11 @@ export async function runQueuedConversationClear(
       error
     })
   }
-  // Worded as the card's caption is: its own Send is the way to run it again.
-  const words = agentSessionFailureWords(fact, { retryControl: true, surface: 'rejection' })
+  const words = agentSessionFailureWords(fact, { command: 'clear', surface: 'rejection' })
   await ctx.journal.queuedMessages.returnUnsent({
     messageId: card.messageId,
     reason: words.reason,
     rejection: words.rejection
   })
-  return false
+  return { kind: 'returned' }
 }

@@ -80,6 +80,7 @@ export const AGENT_SESSION_LEASE_TTL_MS = 30_000,
 
 export class AgentSessionRecordStore {
   private readonly deathEvidenceListeners = new Set<(sessionId: string) => void>()
+  private readonly handoffEndedListeners = new Set<(sessionId: string) => void>()
   private readonly firstRecordListeners = new Set<() => void>()
 
   private constructor(
@@ -343,6 +344,11 @@ export class AgentSessionRecordStore {
     this.deathEvidenceListeners.add(listener)
     return () => this.deathEvidenceListeners.delete(listener)
   }
+  /** A session's lease handoff ended: what waited on it may run. */
+  onHandoffEnded(listener: (sessionId: string) => void): () => void {
+    this.handoffEndedListeners.add(listener)
+    return () => this.handoffEndedListeners.delete(listener)
+  }
 
   /** Told, once committed, when the store records its first chat. Must not throw. */
   onFirstRecord(listener: () => void): () => void {
@@ -357,27 +363,39 @@ export class AgentSessionRecordStore {
     options?: { inMemoryWhenReadOnly?: boolean }
   ): Promise<T> => {
     let proven: string[] = []
+    let handedOff: string[] = []
     let heldBefore = true
     const result = await this.transactions.transact((draft) => {
       heldBefore = this.holdsRecords()
-      if (this.deathEvidenceListeners.size === 0) {
+      if (this.deathEvidenceListeners.size === 0 && this.handoffEndedListeners.size === 0) {
         return apply(draft)
       }
-      const before = new Map(
-        [...draft.records].map(([id, record]) => [id, record.lease.deathEvidence])
-      )
+      const before = new Map([...draft.records].map(([id, record]) => [id, record.lease]))
       const applied = apply(draft)
       proven = [...draft.records]
-        .filter(([id, { lease }]) => lease.deathEvidence && lease.deathEvidence !== before.get(id))
+        .filter(
+          ([id, { lease }]) =>
+            lease.deathEvidence && lease.deathEvidence !== before.get(id)?.deathEvidence
+        )
+        .map(([id]) => id)
+      handedOff = [...draft.records]
+        .filter(([id, { lease }]) => handoffInFlight(before.get(id)) && !handoffInFlight(lease))
         .map(([id]) => id)
       return applied
     }, options)
     for (const sessionId of proven) {
       this.deathEvidenceListeners.forEach((listener) => listener(sessionId))
     }
+    for (const sessionId of handedOff) {
+      this.handoffEndedListeners.forEach((listener) => listener(sessionId))
+    }
     if (!heldBefore && this.holdsRecords()) {
       this.firstRecordListeners.forEach((listener) => listener())
     }
     return result
   }
+}
+
+function handoffInFlight(lease: AgentSessionRecord['lease'] | undefined): boolean {
+  return Boolean(lease?.handoffStage || lease?.handoffOperationId)
 }

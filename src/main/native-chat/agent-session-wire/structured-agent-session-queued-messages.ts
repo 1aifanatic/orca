@@ -263,7 +263,8 @@ export type QueuedMessageDrainDeps = {
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
   logger: StructuredAgentSessionLogger
-  /** A /clear card's turn, run by the host inside this step; true once the clear committed. */
+  /** A /clear card's turn, run by the host inside this step; true once the clear committed. A
+   *  card waiting on background tasks or a handoff stays waiting; their ending wakes the drain. */
   runQueuedClear: (sessionId: string, card: QueuedMessageRow) => Promise<boolean>
   /** Finishes the carry a committed clear owes its replacement, inside this step. */
   carryAfterClear: (sessionId: string) => Promise<void>

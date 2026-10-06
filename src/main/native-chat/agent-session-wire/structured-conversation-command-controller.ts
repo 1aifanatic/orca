@@ -40,12 +40,6 @@ export class StructuredConversationCommandController {
     entry.count++
     this.pending.set(params.envelope.sessionId, entry)
     return runStructuredConversationCommand(this.context(), caller, params)
-      .then(async (result) => {
-        if (result.ok && result.value.command === 'clear' && result.value.replacementSessionId) {
-          await this.afterClear(params.envelope.sessionId)
-        }
-        return result
-      })
       .finally(() => {
         if (--entry.count === 0 && this.pending.get(params.envelope.sessionId) === entry) {
           this.pending.delete(params.envelope.sessionId)
@@ -53,6 +47,13 @@ export class StructuredConversationCommandController {
         // A clear can settle with no journal commit (a refusal), and drafts held behind it
         // would otherwise wait for an unrelated commit.
         this.context().wakeQueuedDrain?.(params.envelope.sessionId)
+      })
+      .then(async (result) => {
+        // After the latch: a send arriving while the source closes meets the clear itself.
+        if (result.ok && result.value.command === 'clear' && result.value.replacementSessionId) {
+          await this.afterClear(params.envelope.sessionId)
+        }
+        return result
       })
   }
 

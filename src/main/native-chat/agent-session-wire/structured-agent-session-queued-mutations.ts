@@ -158,10 +158,13 @@ export function sendQueuedStructuredAgentMessage(
         return invalid("A command can't be sent while the agent is working.")
       }
       if (isQueuedClearCard(row)) {
-        // Run by the host, as the drain runs it: never a submission. A refusal lands on the card
-        // itself, so this answers with the card rather than saying it a second time.
-        await runQueuedConversationClear(context, ctx, row)
-        return { ok: true, value: queuedClearSendAnswer(ctx, operationId, row) }
+        // Run by the host, as the drain runs it: never a submission. A failure lands on the card
+        // itself, so this answers with the card rather than saying it a second time; a wait
+        // (background tasks, a handoff) changes nothing on the card, so this Send says it.
+        const ran = await runQueuedConversationClear(context, ctx, row)
+        return ran.kind === 'waiting'
+          ? { ok: false, refusal: ran.refusal }
+          : { ok: true, value: queuedClearSendAnswer(ctx, operationId, row) }
       }
       const submissionId = operationId
       try {

@@ -3,9 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import { readWholeAgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
-import { structuredAgentSessionAttemptFailureParts } from '../../../shared/structured-agent-session-send-disposition'
+import { structuredAgentSessionReturnedCardParts } from '../../../shared/structured-agent-session-send-disposition'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import {
   createQueuedMessageTestRig,
@@ -178,14 +177,35 @@ describe('a /clear that waits in line', () => {
     expect(await rig.drafts()).toHaveLength(1)
     await rig.settleAccepted(working, 'a')
     await clearedReplacement()
-    // The original client's resend answers from what it asked for, never "conversation cleared".
+    // The original client's resend answers with the clear the queue ran: never "conversation
+    // cleared", and never the card's old "waiting" receipt.
     const resent = await clear('queue-if-active', clearId).result
-    expect(resent).toMatchObject({ ok: true, value: { command: 'clear', state: 'completed' } })
-    expect(resent.ok && (resent.value.queued?.messageId ?? resent.value.replacementSessionId)).toBe(
-      resent.ok && resent.value.queued ? clearId : replacementOf()
-    )
+    expect(resent).toMatchObject({
+      ok: true,
+      value: { command: 'clear', state: 'completed', replacementSessionId: replacementOf() }
+    })
+    expect(resent.ok && resent.value.queued).toBeFalsy()
     await settleMs()
     expect(committedClears()).toBe(1)
+  })
+
+  it('a send arriving while the cleared chat closes meets the clear, not an operation in flight', async () => {
+    let finishClose: () => void = () => {}
+    const close = rig.host.close.bind(rig.host)
+    const closing = vi.spyOn(rig.host, 'close').mockImplementation(async (sessionId, cause) => {
+      await new Promise<void>((resolve) => {
+        finishClose = resolve
+      })
+      return close(sessionId, cause)
+    })
+    const answer = clear().result
+    await eventually(() => expect(closing).toHaveBeenCalled())
+    expect(await rig.send('sent while it closes').result).toMatchObject({
+      ok: false,
+      refusal: { details: { reason: 'conversationCleared' } }
+    })
+    finishClose()
+    expect(await answer).toMatchObject({ ok: true, value: { command: 'clear' } })
   })
 
   it('a new /clear pressed on the cleared chat reads as cleared, and runs nothing', async () => {
@@ -278,7 +298,7 @@ describe('a /clear that waits in line', () => {
 })
 
 describe('a /clear card that cannot run', () => {
-  it('is returned with why, said once on the card; the cards behind it wait; Send retries', async () => {
+  it('waits behind background tasks, unreturned, and runs by itself once they end', async () => {
     let tasks: AgentChildWorkView[] = []
     Object.assign(rig.host.deps, {
       statusSink: { publish: () => {}, forget: () => {}, readChildWork: () => tasks }
@@ -288,42 +308,28 @@ describe('a /clear card that cannot run', () => {
     const later = await queuedSend('for the cleared chat')
     tasks = [BACKGROUND_TASK]
     await rig.settleAccepted(working, 'a')
-    await eventually(async () =>
-      expect(await rig.drafts()).toEqual([
-        { messageId: clearId, state: 'returned' },
-        { messageId: later, state: 'waiting' }
-      ])
-    )
-    const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
-    const card = page.ok ? page.page.queuedMessages?.[0] : undefined
-    expect(card?.returnedRejection).toMatchObject({
-      kind: 'commandRefused',
-      refusal: { details: { reason: 'backgroundTasksRunning' } }
-    })
-    expect(card?.returnedReason).toBe(
-      'Background tasks are still running. Wait for the background tasks to finish.'
-    )
-    // The caption a client draws from the card's fact, with its Send beside it, says the same.
-    expect(
-      agentSessionWriteNoticeEnglish(
-        structuredAgentSessionAttemptFailureParts(
-          { kind: 'rejected', reason: card?.returnedReason ?? null },
-          { retryControl: true },
-          readWholeAgentSessionFailureFact(card?.returnedRejection)
-        )
-      )
-    ).toBe('Background tasks are still running. Wait for the background tasks to finish.')
-    // No status row repeats it, and the later card did not run in the uncleared chat.
+    await settleMs()
+    // Still a plain waiting card: nothing failed, so nothing is said and nothing is returned.
+    expect(await rig.drafts()).toEqual([
+      { messageId: clearId, state: 'waiting' },
+      { messageId: later, state: 'waiting' }
+    ])
     const snapshot = await rig.host.journalSnapshot(SESSION)
     expect(snapshot.items.filter((item) => item.body.kind === 'status')).toEqual([])
     expect(await rig.handoff(later)).toBeUndefined()
     expect(replacementOf()).toBeUndefined()
-    // The tasks end; the card's own Send runs the clear, and the card behind goes with it.
-    tasks = []
+    // Its Send meanwhile says why it waits, once, and changes nothing.
     expect(await rig.sendNow(clearId)).toMatchObject({
-      ok: true,
-      value: { queued: { state: 'withdrawn' } }
+      ok: false,
+      refusal: { details: { reason: 'backgroundTasksRunning' } }
     })
+    expect(await rig.drafts()).toEqual([
+      { messageId: clearId, state: 'waiting' },
+      { messageId: later, state: 'waiting' }
+    ])
+    // The tasks end, as their provider reports it: the clear runs with no one pressing anything.
+    tasks = []
+    rig.host.publishChildWorkEvidence(SESSION, [])
     const replacementId = await clearedReplacement()
     await eventually(async () =>
       expect(
@@ -332,6 +338,23 @@ describe('a /clear card that cannot run', () => {
         )
       ).toBe(true)
     )
+  })
+
+  it('waits behind a handoff, and runs once the store records it ended', async () => {
+    const working = await rig.workingSend()
+    const clearId = await queuedClear()
+    const handoff = (operationId: string | null) =>
+      rig.store.transitionHandoff(SESSION, (record) => ({
+        ...record,
+        lease: { ...record.lease, handoffOperationId: operationId }
+      }))
+    await handoff('op-handoff')
+    await rig.settleAccepted(working, 'a')
+    await settleMs()
+    expect(await rig.drafts()).toEqual([{ messageId: clearId, state: 'waiting' }])
+    expect(replacementOf()).toBeUndefined()
+    await handoff(null)
+    await clearedReplacement()
   })
 
   it('a clear that throws before its commit returns the card and changes nothing', async () => {
@@ -346,6 +369,19 @@ describe('a /clear card that cannot run', () => {
       expect(await rig.drafts()).toEqual([{ messageId: clearId, state: 'returned' }])
     )
     expect(replacementOf()).toBeUndefined()
+    // What happened and what to do, naming no control: the card's Send shows only while idle.
+    const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+    const card = page.ok ? page.page.queuedMessages?.[0] : undefined
+    expect(card?.returnedReason).toBe("This command didn't run. Try it again.")
+    expect(
+      agentSessionWriteNoticeEnglish(
+        structuredAgentSessionReturnedCardParts({
+          returnedReason: card?.returnedReason ?? null,
+          returnedRejection: card?.returnedRejection,
+          command: true
+        })
+      )
+    ).toBe("This command didn't run. Try it again.")
     commit.mockRestore()
     expect(await rig.sendNow(clearId)).toMatchObject({ ok: true })
     await clearedReplacement()
@@ -372,7 +408,9 @@ describe('a crash between the clear and its carry', () => {
     Object.assign(rig.host.deps, { onConversationReplaced: replaced })
     // Opening the new chat re-derives the carry from the clear's record and the card it names.
     await eventually(async () => expect(await carriedOrder(replacementId)).toEqual([first, second]))
-    expect(await rig.queuePause(replacementId)).toBeNull()
+    // Written by the process that died: they wait for the user, as that restart's cards do anywhere.
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'restarted' })
+    expect((await rig.drafts(replacementId)).map((card) => card.messageId)).toEqual([first, second])
     const source = rig.store.listRecords().find((record) => record.sessionId === SESSION)
     expect(source?.conversationCommand?.operationId).toBe(clearId)
     expect(await rig.drafts()).toEqual([])

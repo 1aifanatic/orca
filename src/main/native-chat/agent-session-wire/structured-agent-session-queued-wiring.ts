@@ -54,12 +54,14 @@ export function wireStructuredAgentSessionQueuedMessages(
     wakeDelivery: (sessionId) => context().wakeDelivery(sessionId),
     // Read lazily, like the rest of this wiring: the host's deps are not assigned yet.
     logger: deferredStructuredAgentSessionLogger(() => context().deps.logger),
-    runQueuedClear: (sessionId, card) =>
-      runQueuedConversationClear(
-        context(),
-        clearContext(sessionId, sessions.get(sessionId)!.journal),
-        card
-      ),
+    runQueuedClear: async (sessionId, card) =>
+      (
+        await runQueuedConversationClear(
+          context(),
+          clearContext(sessionId, sessions.get(sessionId)!.journal),
+          card
+        )
+      ).kind === 'cleared',
     carryAfterClear: async (sessionId) => {
       const marker = committedClearOf(context().deps.store.getRecord(sessionId))
       const journal = sessions.get(sessionId)?.journal
