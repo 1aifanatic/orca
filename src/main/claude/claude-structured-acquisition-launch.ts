@@ -7,7 +7,10 @@ import {
 import { stopAgentSessionProviderRoot } from '../native-chat/agent-session-wire/structured-agent-session-provider-exit-proof'
 import { withAgentSessionCreatePhase } from '../observability/agent-session-instrumentation'
 import type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
-import { claudeStructuredSpawnOptions } from './claude-structured-spawn-options'
+import {
+  claudeStructuredSpawnOptions,
+  type ClaudeStructuredSpawnOptions
+} from './claude-structured-spawn-options'
 import {
   cancelClaudeAcquisitionAttempt,
   type ClaudeAcquisitionAttempt,
@@ -24,7 +27,7 @@ import {
 
 /** The launch with the chat's saved options in its spawn options. */
 export type ClaudeAcquisitionLaunch = ClaudeStructuredLaunch & {
-  savedOptions: { options: Map<string, string>; skipped: readonly string[] }
+  savedOptions: Omit<ClaudeStructuredSpawnOptions, 'sdkOptions'>
 }
 
 export async function resolveClaudeAcquisitionLaunch(args: {
@@ -97,7 +100,11 @@ export async function resolveClaudeAcquisitionLaunch(args: {
     return {
       ...launch,
       options: spawn.sdkOptions,
-      savedOptions: { options: spawn.options, skipped: spawn.skipped }
+      savedOptions: {
+        options: spawn.options,
+        skipped: spawn.skipped,
+        fastModeAtStart: spawn.fastModeAtStart
+      }
     }
   })
 }

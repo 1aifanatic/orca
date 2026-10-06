@@ -8,7 +8,6 @@ import type {
   StructuredAgentSessionStartedEvent
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeStreamJsonConnection } from './claude-stream-json-connection'
-import { ClaudeControlRequestError } from './claude-agent-sdk-control-requests'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import {
   claudeAuthDiagnostic,
@@ -22,10 +21,8 @@ import {
   prepareClaudeStructuredSessionAcquisitionOptions,
   readClaudeStructuredSessionSettings
 } from './claude-structured-session-acquisition-options'
-import { listedModels } from './claude-structured-model-catalog'
 import { claudeRetiredOptions } from './claude-structured-retired-model'
 import {
-  claudeModelFastModeSupport,
   claudeStructuredSessionOptionsFrom,
   observeClaudeSettingsApplied,
   readClaudeSettingsEffort
@@ -35,6 +32,10 @@ import {
   type ClaudeSessionStartup
 } from './claude-structured-session-startup-state'
 import type { ClaudeSession, ClaudeStructuredSessionEvent } from './claude-structured-session-state'
+import {
+  admitClaudeStartFastMode,
+  applyClaudeStartFastMode
+} from './claude-structured-start-fast-mode'
 
 /** The CLI's own frame naming the session it runs (system/init or a SessionStart hook). Only a
  *  SessionStart hook sends one before the first turn, so startup takes it when it came and never
@@ -165,63 +166,6 @@ export async function readClaudeStartupFacts(input: {
   }
 }
 
-/** A new conversation is launched without a saved Fast on, which its settings may opt in to per
- *  session. Those settings now read: an opt-in drops it, as before, and so do the guards a live
- *  Fast write takes. True when it is still to be applied. */
-function admitClaudeFreshSessionFastMode(
-  session: ClaudeSession,
-  facts: ClaudeStartupFacts
-): boolean {
-  if (facts.resumesTranscript || session.options.get('fastMode') !== 'true') {
-    return false
-  }
-  if (facts.prepared.fastModePerSessionOptIn === true) {
-    session.options.delete('fastMode')
-    return false
-  }
-  // Over the listing this start already holds.
-  const listed = listedModels({ models: readClaudeModels(facts.initialization) })
-  const blocked =
-    session.fastModeDisabledReason !== undefined &&
-    !['preference', 'sdk_opt_in_required'].includes(session.fastModeDisabledReason)
-  if (
-    blocked ||
-    (listed.length > 0 && claudeModelFastModeSupport(session, listed).supported !== true)
-  ) {
-    session.options.delete('fastMode')
-    session.restoreSkippedOptions.add('fastMode')
-    return false
-  }
-  return true
-}
-
-/** Applies a new conversation's saved Fast on after `started`, so nothing waits on it. A refusal
- *  drops it as main's refused restore did, from the record too; silence keeps it wanted and
- *  unconfirmed. A write the user made meanwhile owns the option. */
-async function applyClaudeFreshSessionFastMode(
-  session: ClaudeSession,
-  facts: ClaudeStartupFacts,
-  report: (event: ClaudeStartupReport) => void
-): Promise<void> {
-  const sequence = session.optionMutationSequence
-  try {
-    await session.connection.applyFlagSettings(
-      { fastMode: true },
-      { timeoutMs: facts.requestTimeoutMs }
-    )
-  } catch (error) {
-    if (sequence !== session.optionMutationSequence) {
-      return
-    }
-    session.confirmedOptions.delete('fastMode')
-    if (error instanceof ClaudeControlRequestError) {
-      session.options.delete('fastMode')
-      session.restoreSkippedOptions.add('fastMode')
-      report({ type: 'options-skipped', options: { fastMode: 'true' } })
-    }
-  }
-}
-
 function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFacts): void {
   const { init, initialization, settings, prepared } = facts
   const effort = readClaudeSettingsEffort(settings)
@@ -311,7 +255,7 @@ export async function settleClaudeSessionStartup(input: {
       }
     }
     applyClaudeStartupFacts(session, facts)
-    const appliesFastMode = admitClaudeFreshSessionFastMode(session, facts)
+    const startFastMode = admitClaudeStartFastMode(session, facts)
     if (!superseded()) {
       input.report({
         type: 'started',
@@ -326,8 +270,8 @@ export async function settleClaudeSessionStartup(input: {
       if (session.startup.state === 'pending') {
         session.startup.state = 'proven'
       }
-      if (appliesFastMode) {
-        void applyClaudeFreshSessionFastMode(session, facts, (event) => {
+      if (startFastMode !== null) {
+        void applyClaudeStartFastMode(session, facts, startFastMode, (event) => {
           if (input.isCurrent()) {
             input.report(event)
           }

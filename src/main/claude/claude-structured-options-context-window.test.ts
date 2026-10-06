@@ -40,7 +40,8 @@ describe('the context ring after a session option write', () => {
     const s = ringSession()
     adoptClaudeStructuredSpawnOptions(s.session, {
       options: new Map([['model', 'opus[1m]']]),
-      skipped: []
+      skipped: [],
+      fastModeAtStart: false
     })
     expect(s.respond('turn-a', 1_000)).toMatchObject({ windowTokens: 1_000_000, percentage: 10 })
   })
@@ -62,7 +63,8 @@ describe('the context ring after a session option write', () => {
     const skipped = ringSession()
     adoptClaudeStructuredSpawnOptions(skipped.session, {
       options: new Map([['model', 'sonnet[1m]']]),
-      skipped: ['permissionMode']
+      skipped: ['permissionMode'],
+      fastModeAtStart: false
     })
     expect(skipped.respond('turn-a', 1_000)).toBeNull()
   })

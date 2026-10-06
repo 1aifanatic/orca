@@ -45,6 +45,19 @@ function claudeStructuredOptionsWithPermissionMode(
   return { ...options, permissionMode: mode, extraArgs }
 }
 
+/** The saved value stands in for the agent Arguments' own flag for it: the chat's pick wins, and
+ *  the CLI is never handed the flag twice. */
+function withoutConfiguredFlag(
+  options: ClaudeStructuredSdkOptions,
+  flag: string
+): ClaudeStructuredSdkOptions {
+  if (!options.extraArgs || !Object.hasOwn(options.extraArgs, flag)) {
+    return options
+  }
+  const { [flag]: _configured, ...extraArgs } = options.extraArgs
+  return { ...options, extraArgs }
+}
+
 function isEffortLevel(value: string): value is EffortLevel {
   return EFFORT_LEVELS.has(value)
 }
@@ -59,6 +72,8 @@ export type ClaudeStructuredSpawnOptions = {
   options: Map<string, string>
   /** Saved options left out: the provider's own value wins and is re-persisted. */
   skipped: readonly string[]
+  /** A saved Fast the launch does not carry, which the start applies. */
+  fastModeAtStart: boolean
 }
 
 /**
@@ -74,16 +89,17 @@ export function claudeStructuredSpawnOptions(input: {
   const options = new Map<string, string>()
   const skipped: string[] = []
   let sdkOptions: ClaudeStructuredSdkOptions = { ...input.launch.options }
+  let fastModeAtStart = false
   const model = saved.get('model')
   if (model !== undefined) {
     options.set('model', model)
-    sdkOptions.model = model
+    sdkOptions = { ...withoutConfiguredFlag(sdkOptions, 'model'), model }
   }
   const effort = saved.get('effort')
   if (effort !== undefined) {
     if (isEffortLevel(effort)) {
       options.set('effort', effort)
-      sdkOptions.effort = effort
+      sdkOptions = { ...withoutConfiguredFlag(sdkOptions, 'effort'), effort }
     } else {
       skipped.push('effort')
     }
@@ -95,10 +111,16 @@ export function claudeStructuredSpawnOptions(input: {
       skipped.push('fastMode')
     } else {
       options.set('fastMode', fastMode)
-      // A new CLI session may opt in to Fast per session, which only its settings say: the start
-      // applies a saved Fast on there once it has read them (`applyClaudeFreshSessionFastMode`).
-      if (!decoded || input.launch.resumesTranscript) {
+      // A new CLI session may opt in to Fast per session, which only its settings say, and the
+      // agent Arguments' own `--settings` would be replaced by one carrying Fast: either way the
+      // start applies the saved Fast once it has read them (`applyClaudeStartFastMode`).
+      if (
+        (!decoded || input.launch.resumesTranscript) &&
+        !Object.hasOwn(sdkOptions.extraArgs ?? {}, 'settings')
+      ) {
         sdkOptions.settings = { fastMode: decoded }
+      } else {
+        fastModeAtStart = true
       }
     }
   }
@@ -116,15 +138,19 @@ export function claudeStructuredSpawnOptions(input: {
       skipped.push('permissionMode')
     }
   }
-  return { sdkOptions, options, skipped }
+  return { sdkOptions, options, skipped, fastModeAtStart }
 }
 
 /** The published session takes on what its child was launched with. */
 export function adoptClaudeStructuredSpawnOptions(
-  session: Pick<ClaudeSession, 'restoreSkippedOptions' | 'translator' | 'launchedModel'>,
-  spawn: Pick<ClaudeStructuredSpawnOptions, 'options' | 'skipped'>
+  session: Pick<
+    ClaudeSession,
+    'restoreSkippedOptions' | 'translator' | 'launchedModel' | 'fastModeAtStart'
+  >,
+  spawn: Pick<ClaudeStructuredSpawnOptions, 'options' | 'skipped' | 'fastModeAtStart'>
 ): void {
   session.launchedModel = spawn.options.get('model') ?? null
+  session.fastModeAtStart = spawn.fastModeAtStart
   for (const key of spawn.skipped) {
     session.restoreSkippedOptions.add(key)
   }

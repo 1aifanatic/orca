@@ -187,6 +187,8 @@ export type ClaudeSession = {
   restoreSkippedOptions: Set<string>
   /** The model the child was launched with, as `--model`; null when it runs the CLI's own. */
   launchedModel: string | null
+  /** The launch left the saved Fast out, so the start applies it once the settings are read. */
+  fastModeAtStart: boolean
   /** Absent when the adapter runs without a host catalog store (tests). */
   catalogAccess?: AgentModelCatalogSessionAccess
   /** CLI-advertised protocol capabilities from init; gates interrupt-receipt handling. */
