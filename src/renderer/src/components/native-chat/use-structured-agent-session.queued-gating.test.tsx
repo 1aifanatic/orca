@@ -807,11 +807,8 @@ describe('a /clear against a host that runs it from the queue', () => {
   })
 
   it('against a host that holds only /compact, keeps the refusal and never asks (temporary)', async () => {
-    setLocalRuntimeCapabilitiesForTests(
-      CLEAR_WAITS.filter(
-        (capability) => capability !== AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
-      )
-    )
+    // Every capability but the last, queued-clear.
+    setLocalRuntimeCapabilitiesForTests(CLEAR_WAITS.slice(0, -1))
     answerCommands(queuedClearAnswer)
     const { result } = render()
     let outcome: unknown
