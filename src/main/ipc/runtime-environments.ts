@@ -1,3 +1,4 @@
+import { retireUnownedRuntimeSession } from '../runtime/retire-unowned-runtime-session'
 import {
   registerRuntimeEnvironmentSubscriptionHandlers,
   type RetainedRemoteRuntimeSubscription,
@@ -115,7 +116,10 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
   registerRuntimeEnvironmentPassiveHandlers(getUserDataPath)
   setRuntimeEnvironmentRemovalWatch({
     getUserDataPath,
-    retire: invalidateRuntimeEnvironmentTransport
+    retire: async (environmentId) => {
+      await invalidateRuntimeEnvironmentTransport(environmentId)
+      await retireUnownedRuntimeSession(store, environmentId)
+    }
   })
   for (const environment of listEnvironments(getUserDataPath())) {
     if (!isRuntimeEnvironmentManuallyDisconnected(environment.id)) {
