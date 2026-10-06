@@ -1,11 +1,10 @@
-import { mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import { CLAUDE_PROFILE_POINTER_ENV } from '../../shared/claude-profile-routing'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
-import { ClaudeHookService } from '../claude/hook-service'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import {
@@ -15,7 +14,8 @@ import {
   readUserClaudeConfigDir,
   resolveClaudeDefaultHome
 } from './claude-profile-paths'
-import { provisionClaudeAccountProfile } from './claude-profile-setup'
+import type { ClaudeProfileSetupReport } from './claude-profile-setup'
+import { runClaudeProfileSetupInWorker } from './claude-profile-setup-worker'
 import type { ClaudeEnvPatch } from './environment'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
@@ -30,6 +30,14 @@ export type ClaudeProfileRouterSettings = Pick<
   | 'disabledTuiAgents'
 >
 
+export const CLAUDE_PROFILE_SETUP_FAILED_MESSAGE =
+  'The selected Claude account could not be set up. Try again or choose another account.'
+
+// Written by setup's ownership gate, so its absence means this folder was never set up.
+function profileMarkerPath(profile: ClaudeProfileDescriptor): string {
+  return join(dirname(profile.home), 'profile.json')
+}
+
 export const CLAUDE_PROFILE_MISSING_MESSAGE =
   "The selected Claude account's folder is missing. Sign in to it again or choose another account."
 
@@ -39,12 +47,15 @@ export const CLAUDE_PROFILE_MISSING_MESSAGE =
  */
 export class ClaudeProfileRouter {
   readonly pointerPath: string
+  private readonly setups = new Map<string, Promise<ClaudeProfileSetupReport>>()
   constructor(
     private readonly args: {
       getSettings: () => ClaudeProfileRouterSettings
       dataRoot: string
       userHome?: string
       env?: NodeJS.ProcessEnv
+      /** Tests replace the worker. */
+      runSetup?: typeof runClaudeProfileSetupInWorker
     }
   ) {
     this.pointerPath = join(args.dataRoot, 'claude-profiles', 'selected-host')
@@ -78,10 +89,9 @@ export class ClaudeProfileRouter {
     return home
   }
 
-  /** Pointer first, then best-effort setup, as superset does. No saved accounts means no pointer. */
-  async publish(): Promise<void> {
-    const settings = this.args.getSettings()
-    if (settings.claudeManagedAccounts.length === 0) {
+  /** Pointer first, then setup in the background, as superset does. No saved accounts means no pointer. */
+  publish(): void {
+    if (this.args.getSettings().claudeManagedAccounts.length === 0) {
       rmSync(this.pointerPath, { force: true })
       return
     }
@@ -89,31 +99,51 @@ export class ClaudeProfileRouter {
     mkdirSync(dirname(this.pointerPath), { recursive: true, mode: 0o700 })
     writeFileAtomically(this.pointerPath, profile?.home ?? '', { mode: 0o600 })
     // Why the existence check: setup creates the folder, and only sign-in may create an account.
-    if (!profile || !isDirectory(profile.home)) {
-      return
-    }
-    try {
-      const hooks = isAgentStatusHooksEnabledForAgent(settings, 'claude')
-      const claudeVersion = hooks ? await probeClaudeCliVersion(resolveClaudeCommand()) : null
-      const report = await provisionClaudeAccountProfile({
-        dataRoot: this.args.dataRoot,
-        profile,
-        userHome: this.userHome,
-        userConfigDir: readUserClaudeConfigDir(this.args.env ?? process.env),
-        installHooks: hooks
-          ? ({ configDir }) =>
-              new ClaudeHookService().install({
-                configDir,
-                claudeVersion: claudeVersion ?? undefined
-              })
-          : null
+    if (profile && isDirectory(profile.home)) {
+      this.setUp(profile).catch((error: unknown) => {
+        console.warn('[claude-profile] Account setup failed:', error)
       })
-      if (report.outcome === 'refused' || report.warnings.length > 0) {
-        console.warn('[claude-profile] Account setup was incomplete:', report)
-      }
-    } catch (error) {
-      console.warn('[claude-profile] Account setup failed:', error)
     }
+  }
+
+  /** Waits for setup only for a folder that was never set up; otherwise launches at once. */
+  async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
+    const profile = this.selectedProfile()
+    if (profile && isDirectory(profile.home) && !existsSync(profileMarkerPath(profile))) {
+      const report = await this.setUp(profile).catch(() => null)
+      if (report?.outcome !== 'prepared') {
+        throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+      }
+    }
+    return this.preparation()
+  }
+
+  /** One setup per account at a time; a later request reuses the running one. */
+  private setUp(profile: ClaudeProfileDescriptor): Promise<ClaudeProfileSetupReport> {
+    const running = this.setups.get(profile.accountId)
+    if (running) {
+      return running
+    }
+    const run = this.runSetup(profile).finally(() => this.setups.delete(profile.accountId))
+    this.setups.set(profile.accountId, run)
+    return run
+  }
+
+  private async runSetup(profile: ClaudeProfileDescriptor): Promise<ClaudeProfileSetupReport> {
+    const hooks = isAgentStatusHooksEnabledForAgent(this.args.getSettings(), 'claude')
+    const claudeVersion = hooks ? await probeClaudeCliVersion(resolveClaudeCommand()) : null
+    const report = await (this.args.runSetup ?? runClaudeProfileSetupInWorker)({
+      dataRoot: this.args.dataRoot,
+      profile,
+      userHome: this.userHome,
+      userConfigDir: readUserClaudeConfigDir(this.args.env ?? process.env),
+      hooks,
+      claudeVersion: claudeVersion ?? undefined
+    })
+    if (report.outcome === 'refused' || report.warnings.length > 0) {
+      console.warn('[claude-profile] Account setup was incomplete:', report)
+    }
+    return report
   }
 
   /** Env for a launch Orca makes itself. Throws like selectedHome. */

@@ -298,7 +298,7 @@ export function createClaudeStructuredLaunchResolver(
         })
       : record.accountHome.path
     if (router) {
-      applyClaudeEnvPatch(env, router.launchEnv())
+      applyClaudeEnvPatch(env, (await router.prepareLaunch()).envPatch)
     }
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.

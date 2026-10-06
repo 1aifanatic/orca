@@ -11,8 +11,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
+import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
+  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
   ClaudeProfileRouter,
   type ClaudeProfileRouterSettings
 } from './claude-profile-router'
@@ -46,38 +48,80 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
     claudeManagedAccounts: [account('a'), account('b')],
     activeClaudeManagedAccountId: 'a',
     activeClaudeManagedAccountIdsByRuntime: undefined,
-    // Hooks off: setup must not probe or touch a real Claude here.
+    // Hooks off: setup must not probe a real Claude here.
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
   }
-  const router = new ClaudeProfileRouter({ getSettings: () => settings, dataRoot, userHome, env })
+  // Stands in for the worker; each setup stays pending until the test settles it.
+  const setup: { calls: number; outcome: ClaudeProfileSetupReport['outcome']; settle: () => void } =
+    { calls: 0, outcome: 'prepared', settle: () => {} }
+  const runSetup = () => {
+    setup.calls += 1
+    return new Promise<ClaudeProfileSetupReport>((resolve) => {
+      setup.settle = () => resolve({ outcome: setup.outcome, warnings: [], surfaces: {} })
+    })
+  }
+  const router = new ClaudeProfileRouter({
+    getSettings: () => settings,
+    dataRoot,
+    userHome,
+    env,
+    runSetup
+  })
   const home = (id: string) => join(dataRoot, 'claude-profiles', id, 'home')
-  return { root, userHome, dataRoot, settings, router, home }
+  return { root, userHome, dataRoot, settings, router, home, setup }
 }
 
 describe('ClaudeProfileRouter', () => {
-  it('publishes the selected folder, System default as empty, and no file without accounts', async () => {
+  it('publishes the selected folder, System default as empty, and no file without accounts', () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
-    await f.router.publish()
+    f.router.publish()
     expect(readFileSync(f.router.pointerPath, 'utf8')).toBe(f.home('a'))
-    // Setup ran: it writes the ownership marker beside the folder.
-    expect(existsSync(join(f.dataRoot, 'claude-profiles', 'a', 'profile.json'))).toBe(true)
+    // publish returned while its setup is still running in the background.
+    expect(f.setup.calls).toBe(1)
 
     f.settings.activeClaudeManagedAccountId = null
-    await f.router.publish()
+    f.router.publish()
     expect(readFileSync(f.router.pointerPath, 'utf8')).toBe('')
 
     f.settings.claudeManagedAccounts = []
-    await f.router.publish()
+    f.router.publish()
     expect(existsSync(f.router.pointerPath)).toBe(false)
+  })
+
+  it('makes a launch wait only for a folder that was never set up, reusing the running setup', async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    f.router.publish()
+    let launched = false
+    const launch = f.router.prepareLaunch().then((prepared) => {
+      launched = true
+      return prepared
+    })
+    await Promise.resolve()
+    expect(launched).toBe(false)
+    expect(f.setup.calls).toBe(1)
+    f.setup.settle()
+    await expect(launch).resolves.toMatchObject({ configDir: f.home('a') })
+
+    f.setup.outcome = 'refused'
+    const refused = f.router.prepareLaunch()
+    f.setup.settle()
+    await expect(refused).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+
+    // Set up once (setup's marker exists): launches stop waiting.
+    writeFileSync(join(f.dataRoot, 'claude-profiles', 'a', 'profile.json'), '{}')
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
+    expect(f.setup.calls).toBe(2)
   })
 
   it('names a never-signed-in folder without creating it, and refuses to launch it', async () => {
     const f = fixture()
     f.settings.activeClaudeManagedAccountId = 'b'
-    await f.router.publish()
+    f.router.publish()
     expect(readFileSync(f.router.pointerPath, 'utf8')).toBe(f.home('b'))
+    expect(f.setup.calls).toBe(0)
     expect(existsSync(f.home('b'))).toBe(false)
     expect(() => f.router.preparation()).toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
     // A terminal still opens; its claude function refuses from the pointer instead.

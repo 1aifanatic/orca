@@ -41,7 +41,7 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     const effectiveTarget = target ?? this.getDefaultAccountSelectionTarget()
     const router = routerFor(effectiveTarget)
     if (router) {
-      return router.preparation()
+      return router.prepareLaunch()
     }
     await this.syncForCurrentSelection(effectiveTarget)
     return this.getPreparation(effectiveTarget)
