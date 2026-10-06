@@ -29,9 +29,14 @@ function harness(runs: AutomationRun[]) {
   const closed: string[] = []
   const forgotten: AutomationRun[] = []
   const use = new Map<string, 'used' | 'unused' | 'unknown'>()
+  // Runs whose shell is proven alone at its prompt; any other is unproven, as a live agent reads.
+  const idleShell = new Set<string>()
+  const dead = new Set<string>()
   const retention = createHeadlessRunTerminalRetention({
     listRuns: () => runs.filter((run) => !forgotten.some((gone) => gone.id === run.id)),
     terminalClientUse: (run) => use.get(run.id) ?? 'unused',
+    runTerminalAlive: (run) => !dead.has(run.id),
+    shellAloneAtPrompt: async (run) => idleShell.has(run.id),
     closeRunTerminal: async (run) => {
       closed.push(run.terminalPaneKey ?? '')
       return true
@@ -40,7 +45,7 @@ function harness(runs: AutomationRun[]) {
       forgotten.push(run)
     }
   })
-  return { retention, closed, forgotten, use }
+  return { retention, closed, forgotten, use, idleShell, dead }
 }
 
 beforeEach(() => {
@@ -94,7 +99,7 @@ describe('headless run terminal retention', () => {
   })
 
   it.each(['dispatch_failed', 'skipped_precheck'] as const)(
-    'never closes a %s run, whose agent may still be alive',
+    'keeps a %s run whose shell is not proven alone, since its agent may still be alive',
     async (status) => {
       const runs = [
         ...[0, 1, 2, 3].map((n) => makeRun(`f${n}`, n, status)),
@@ -154,5 +159,70 @@ describe('headless run terminal retention', () => {
       'tab-r3:1',
       'tab-r4:1'
     ])
+  })
+
+  it('closes a failed run whose agent command was not found, once its shell is idle', async () => {
+    const runs = [
+      makeRun('missing', 0, 'dispatch_failed'),
+      ...[1, 2, 3].map((n) => makeRun(`done${n}`, n))
+    ]
+    const h = harness(runs)
+    h.idleShell.add('missing')
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS)
+    await h.retention.sweep()
+    expect(h.closed).toEqual(['tab-missing:1'])
+    expect(h.forgotten[0]).toMatchObject({ id: 'missing', status: 'dispatch_failed' })
+  })
+
+  it('keeps a timed-out run whose agent still runs in its shell', async () => {
+    const runs = [
+      makeRun('timed-out', 0, 'dispatch_failed'),
+      ...[1, 2, 3].map((n) => makeRun(`done${n}`, n))
+    ]
+    const h = harness(runs)
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS * 10)
+    await h.retention.sweep()
+    expect(h.closed).toEqual([])
+  })
+
+  it('closes a still-dispatched run whose agent exited, leaving its shell idle', async () => {
+    const runs = [
+      makeRun('exited', 0, 'dispatched'),
+      ...[1, 2, 3].map((n) => makeRun(`done${n}`, n))
+    ]
+    const h = harness(runs)
+    h.idleShell.add('exited')
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS)
+    await h.retention.sweep()
+    expect(h.closed).toEqual(['tab-exited:1'])
+  })
+
+  it('keeps the newest three live terminals, not counting ones already gone', async () => {
+    const runs = [0, 1, 2, 3, 4].map((n) => makeRun(`r${n}`, n))
+    const h = harness(runs)
+    // The newest run's terminal was closed by hand: it must not take a keep slot.
+    h.dead.add('r4')
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS)
+    await h.retention.sweep()
+    expect(h.closed).toEqual(['tab-r0:1'])
+    expect(h.forgotten.map((run) => run.id).toSorted()).toEqual(['r0', 'r4'])
+  })
+
+  it('drains idle failed and exited runs for an update, never a live agent', async () => {
+    const runs = [
+      makeRun('missing', 0, 'dispatch_failed'),
+      makeRun('exited', 1, 'dispatched'),
+      makeRun('timed-out', 2, 'dispatch_failed'),
+      makeRun('working', 3, 'dispatched')
+    ]
+    const h = harness(runs)
+    h.idleShell.add('missing')
+    h.idleShell.add('exited')
+    expect(await h.retention.drain()).toBe(2)
+    expect(h.closed.toSorted()).toEqual(['tab-exited:1', 'tab-missing:1'])
   })
 })

@@ -7,6 +7,7 @@ import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
+import type { AutomationRun } from '../../shared/automations-types'
 import { createHeadlessRunTerminalRetention } from './headless-run-terminal-retention'
 import {
   getTuiAgentDetectCommands,
@@ -123,16 +124,15 @@ function bindHeadlessRunTerminalRetention(
     listRuns: () => store.listAutomationRuns(),
     terminalClientUse: (run) =>
       run.terminalPtyId ? runtime.readTerminalClientUse(run.terminalPtyId) : 'unknown',
+    runTerminalAlive: (run) => runOwnHandle(runtime, run) !== null,
+    shellAloneAtPrompt: (run) =>
+      run.terminalPtyId
+        ? runtime.confirmTerminalShellAlone(run.terminalPtyId)
+        : Promise.resolve(false),
     closeRunTerminal: async (run) => {
-      const handle = run.terminalPaneKey
-        ? runtime.getTerminalHandleForPaneKey(run.terminalPaneKey)
-        : null
       // Only the run's own process: a restarted pane holds a new PTY a user may be working in.
-      if (
-        !handle ||
-        !run.terminalPtyId ||
-        runtime.getTerminalPtyIdForHandle(handle) !== run.terminalPtyId
-      ) {
+      const handle = runOwnHandle(runtime, run)
+      if (!handle) {
         return false
       }
       // The run's pane only: a pane a user split into the same tab is theirs.
@@ -140,10 +140,14 @@ function bindHeadlessRunTerminalRetention(
       return true
     },
     forgetRunTerminal: async (run) => {
+      // A run still dispatched had its agent exit without a result, proven by its idle shell.
+      const unfinished = run.status === 'dispatched'
       await service.markDispatchResult({
         runId: run.id,
-        status: run.status,
-        error: run.error,
+        status: unfinished ? 'dispatch_failed' : run.status,
+        error: unfinished
+          ? (run.error ?? 'The agent exited without reporting completion.')
+          : run.error,
         terminalSessionId: null,
         terminalPaneKey: null,
         terminalPtyId: null
@@ -169,4 +173,16 @@ function automationAgentCommands(agentId: string | undefined): string[] {
   }
   const config = TUI_AGENT_CONFIG[agentId]
   return [...getTuiAgentDetectCommands(config), config.launchCmd]
+}
+
+/** The run's pane handle while that pane still holds the run's own PTY; null otherwise. */
+function runOwnHandle(runtime: OrcaRuntimeService, run: AutomationRun): string | null {
+  const handle = run.terminalPaneKey
+    ? runtime.getTerminalHandleForPaneKey(run.terminalPaneKey)
+    : null
+  return handle &&
+    run.terminalPtyId &&
+    runtime.getTerminalPtyIdForHandle(handle) === run.terminalPtyId
+    ? handle
+    : null
 }
