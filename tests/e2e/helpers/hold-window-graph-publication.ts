@@ -3,6 +3,12 @@ import type { IpcMainInvokeEvent } from 'electron'
 
 const GRAPH_CHANNEL = 'runtime:syncWindowGraph'
 
+type GraphPublicationGate = { held: boolean; published: number }
+
+declare global {
+  var __e2eGraphPublicationGate: GraphPublicationGate | undefined
+}
+
 /**
  * Holds a relaunched desktop host's renderer graph publication so a paired client deterministically
  * meets the host in the window between its RPC server accepting calls and its first published tab
@@ -10,28 +16,24 @@ const GRAPH_CHANNEL = 'runtime:syncWindowGraph'
  */
 export async function holdWindowGraphPublication(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }, channel) => {
-    Reflect.set(globalThis, '__e2eGraphHeld', true)
-    Reflect.set(globalThis, '__e2eGraphPublished', 0)
+    const gate: GraphPublicationGate = { held: true, published: 0 }
+    globalThis.__e2eGraphPublicationGate = gate
     type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
     const wrap =
       (handler: Handler): Handler =>
       async (event, ...args) => {
-        while (Reflect.get(globalThis, '__e2eGraphHeld') === true) {
+        while (gate.held) {
           await new Promise((resolve) => setTimeout(resolve, 25))
         }
         const result = await handler(event, ...args)
-        const published: unknown = Reflect.get(globalThis, '__e2eGraphPublished')
-        Reflect.set(
-          globalThis,
-          '__e2eGraphPublished',
-          (typeof published === 'number' ? published : 0) + 1
-        )
+        gate.published += 1
         return result
       }
-    // Electron keeps invoke handlers in a private map; patch both an existing and a later registration.
-    const handlers: unknown = Reflect.get(ipcMain, '_invokeHandlers')
-    const existing = handlers instanceof Map ? handlers.get(channel) : undefined
-    if (handlers instanceof Map && typeof existing === 'function') {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Electron keeps invoke handlers in this private map; absence leaves only the later-registration patch.
+    const handlers = (ipcMain as unknown as { _invokeHandlers?: Map<string, Handler> })
+      ._invokeHandlers
+    const existing = handlers?.get(channel)
+    if (handlers && existing) {
       handlers.set(channel, wrap(existing))
     }
     const handle = ipcMain.handle.bind(ipcMain)
@@ -45,8 +47,11 @@ export async function holdWindowGraphPublication(app: ElectronApplication): Prom
  */
 export async function releaseWindowGraphPublication(app: ElectronApplication): Promise<number> {
   return app.evaluate(() => {
-    Reflect.set(globalThis, '__e2eGraphHeld', false)
-    const published: unknown = Reflect.get(globalThis, '__e2eGraphPublished')
-    return typeof published === 'number' ? published : 0
+    const gate = globalThis.__e2eGraphPublicationGate
+    if (!gate) {
+      throw new Error('window graph publication was never held')
+    }
+    gate.held = false
+    return gate.published
   })
 }

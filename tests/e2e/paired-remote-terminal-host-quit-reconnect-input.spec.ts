@@ -327,6 +327,15 @@ test('an active remote terminal accepts input after the host app quits and relau
       )
       .not.toBeNull()
       .catch(() => undefined)
+    // Why: proves the hold beat the host's first publication, so the client really met an unpublished host.
+    const heldList = await callRuntime<{ publicationEpoch: string; tabs: unknown[] }>(
+      client.page,
+      client.environmentId,
+      'session.tabs.list',
+      { worktree: `id:${worktreeId}` }
+    )
+    expect(heldList.publicationEpoch.startsWith('none'), JSON.stringify(heldList)).toBe(true)
+    expect(heldList.tabs).toEqual([])
     expect(
       await releaseWindowGraphPublication(second.app),
       'the relaunched host must not have published a graph before the client settled'
