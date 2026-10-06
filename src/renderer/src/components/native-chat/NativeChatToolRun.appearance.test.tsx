@@ -39,6 +39,7 @@ describe('tool-run summary in a matching chat', () => {
     const failure = container.querySelector('[aria-label="Failed tool calls: 1"]')
     expect(failure).toHaveTextContent('1 failed')
     expect(failure).toHaveClass('shrink-0')
+    expect(failure?.parentElement).toHaveClass('flex', 'h-[1lh]', 'items-center')
   })
 
   it('keeps a long command available in the expanded detail', () => {
@@ -65,5 +66,41 @@ describe('tool-run summary in a matching chat', () => {
     fireEvent.click(screen.getByRole('button'))
 
     expect(container.querySelector('pre')).toHaveTextContent(command)
+  })
+
+  it.each([
+    ['wrapped', `QA inert command for display only: ${'x'.repeat(400)}`],
+    ['single-line', 'pnpm test']
+  ])('pins the marks to the first line of a %s summary', (_shape, command) => {
+    const { container } = render(
+      <NativeChatToolRun
+        blocks={[
+          { type: 'tool-call', name: 'shell', input: { command }, state: 'completed' },
+          { type: 'tool-result', output: 'done' }
+        ]}
+        expandSignal={false}
+        activeTurnIsWorking={false}
+      />
+    )
+
+    const header = screen.getByRole('button')
+    // Top-aligned in the summary's own type, so `1lh` is one summary line.
+    expect(header).toHaveClass('items-start', 'text-sm', 'leading-relaxed')
+    expect(header).toHaveClass('native-chat-message-text')
+    expect(header).not.toHaveClass('items-center')
+    const summary = container.querySelector('span.native-chat-message-text')
+    expect(summary?.parentElement).toBe(header)
+    expect(summary).toHaveClass('min-w-0', 'line-clamp-2')
+
+    const slots = Array.from(header.children).filter((child) => child !== summary)
+    expect(slots.length).toBeGreaterThanOrEqual(3)
+    for (const slot of slots) {
+      expect(slot).toHaveClass('flex', 'h-[1lh]', 'items-center')
+    }
+    // The icon leads, so a wrapped second line starts under the text, not under it.
+    expect(header.firstElementChild?.querySelector('svg')).toBeInTheDocument()
+    expect(header.children[1]).toBe(summary)
+    expect(header.querySelector('.lucide-check')?.parentElement).toHaveClass('h-[1lh]')
+    expect(header.querySelector('.lucide-chevron-right')?.parentElement).toHaveClass('h-[1lh]')
   })
 })
