@@ -193,19 +193,20 @@ export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]
 ): T | null {
+  let pastStopHeld = false
   for (const card of cards) {
     if (card.state === 'returned') {
       return null
     }
     if (queuePauseHolding(pauses, card)) {
-      // The Stop holds every other card, so the only one found past it is mail.
-      if (heldOnlyByStop(pauses, card)) {
-        continue
+      if (!heldOnlyByStop(pauses, card)) {
+        return null
       }
-      return null
+      pastStopHeld = true
+      continue
     }
     if (card.state === 'waiting' && card.holdReason === null) {
-      return card
+      return !pastStopHeld || isOrchestrationMail(card) ? card : null
     }
   }
   return null
