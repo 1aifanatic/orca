@@ -33,7 +33,7 @@ export function useStructuredAgentSessionQueueGates(args: {
   // A /compact or /clear waits in line only where its card renders.
   const commandsWait = useStructuredAgentSessionHostQueuesCommands(target) && queueCapable
   const clearWaits = useStructuredAgentSessionHostQueuesClear(target) && queueCapable
-  // A send after a waiting command goes behind it, even with follow-ups off: send order is kept.
+  // A send after a command the queue will run goes behind it, even with follow-ups off.
   // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
   // answer: the send must start a turn, after which the card's cancel works.
   const queueEnabled =

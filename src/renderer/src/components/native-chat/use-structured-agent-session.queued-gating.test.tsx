@@ -814,6 +814,31 @@ describe('a /clear against a host that runs it from the queue', () => {
     expect(commandCalls()).toHaveLength(0)
   })
 
+  it.each([
+    { card: 'waiting', held: false, enabled: true },
+    { card: 'held (kept or couldn’t send), which the queue skips', held: true, enabled: false }
+  ])('a $card /clear card decides whether a send queues behind it', ({ held, enabled }) => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
+    ])
+    queuedMessages = [
+      {
+        ...draft('clear-1'),
+        body: {
+          kind: 'message' as const,
+          role: 'user' as const,
+          blocks: [{ type: 'text' as const, text: '/clear' }],
+          command: { name: 'clear' as const }
+        },
+        ...(held ? { paused: true as const, pausedReason: 'kept' as const } : {})
+      }
+    ]
+    render(false)
+    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({ capability: 'supported', enabled })
+  })
+
   it('without the queue lit, keeps the refusal even when the host could hold it', async () => {
     setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY])
     const { result } = render()
