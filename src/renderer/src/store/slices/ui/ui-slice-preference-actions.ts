@@ -70,9 +70,6 @@ export function createUiPreferenceActions(set: UISliceSet, get: UISliceGet): Par
       const normalized = normalizeExecutionHostScope(scope)
       const visibleWorkspaceHostIds = normalized === 'all' ? null : [normalized]
       set({ workspaceHostScope: normalized, visibleWorkspaceHostIds })
-      window.api.ui
-        .set({ workspaceHostScope: normalized, visibleWorkspaceHostIds })
-        .catch(console.error)
     },
     visibleWorkspaceHostIds: null,
     setVisibleWorkspaceHostIds: (ids) => {
@@ -85,9 +82,6 @@ export function createUiPreferenceActions(set: UISliceSet, get: UISliceGet): Par
         workspaceHostScope = normalized[0]
       }
       set({ visibleWorkspaceHostIds: normalized, workspaceHostScope })
-      window.api.ui
-        .set({ visibleWorkspaceHostIds: normalized, workspaceHostScope })
-        .catch(console.error)
     },
     workspaceHostOrder: [],
     setWorkspaceHostOrder: (ids) => {

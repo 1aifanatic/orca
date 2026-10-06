@@ -20,6 +20,8 @@ export type PersistedUIWriteBaseline = {
   sortBy: PersistedUIState['sortBy']
   projectOrderBy: PersistedUIState['projectOrderBy']
   showSleepingWorkspaces: boolean
+  workspaceHostScope: PersistedUIState['workspaceHostScope']
+  visibleWorkspaceHostIds: PersistedUIState['visibleWorkspaceHostIds']
   hideDefaultBranchWorkspace: boolean
   hideAutomationGeneratedWorkspaces: boolean
   hideCliCreatedWorkspaces: boolean
@@ -50,6 +52,8 @@ const PERSISTED_UI_WRITE_BASELINE_FIELD_SET = {
   sortBy: true,
   projectOrderBy: true,
   showSleepingWorkspaces: true,
+  workspaceHostScope: true,
+  visibleWorkspaceHostIds: true,
   hideDefaultBranchWorkspace: true,
   hideAutomationGeneratedWorkspaces: true,
   hideCliCreatedWorkspaces: true,
@@ -101,6 +105,9 @@ function stringArrayEqual(a: readonly string[], b: readonly string[]): boolean {
 function writeFieldEqual(field: keyof PersistedUIWriteBaseline, a: unknown, b: unknown): boolean {
   if (field === 'filterRepoIds') {
     return stringArrayEqual(a as readonly string[], b as readonly string[])
+  }
+  if (field === 'visibleWorkspaceHostIds') {
+    return a === b || (Array.isArray(a) && Array.isArray(b) && stringArrayEqual(a, b))
   }
   if (
     field === 'explorerDisplayRootByWorktree' ||
