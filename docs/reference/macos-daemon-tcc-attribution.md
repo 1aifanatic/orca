@@ -81,6 +81,13 @@ has mode 0600 and is removed after bootstrap because inherited environment varia
 credentials. A connection failure retries observation of that same job; it never starts another
 daemon just because observation timed out.
 
+When no job from the attempt can still claim the endpoint, the launcher falls back to the
+existing fork from the app, so terminals stay persistent without the update protection for that
+run. That covers a copy, signature, plist or deadline failure before bootstrap; a bootstrap launchd
+refused with the job absent; a job whose daemon exited before answering; and a foreign daemon on
+the endpoint, which the fork path adopts normally. A timed-out bootstrap, or a job still running
+or unreadable, stays fatal as before.
+
 This path applies only to packaged macOS GUI applications. Node servers, SSH execution hosts,
 unpackaged development builds, Linux, and Windows retain their existing launch mechanisms.
 All workspace types use the same local daemon; the mechanism does not require a git worktree.

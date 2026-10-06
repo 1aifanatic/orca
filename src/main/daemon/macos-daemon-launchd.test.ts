@@ -47,7 +47,10 @@ vi.mock('./client', () => ({
   }
 }))
 
-import { launchMacDaemonFromStableBundle } from './macos-daemon-launchd'
+import {
+  launchMacDaemonFromStableBundle,
+  MacDaemonStableLaunchUnavailableError
+} from './macos-daemon-launchd'
 import type { DaemonChildSpawnOptions } from './daemon-launched-child-spawn'
 
 let options: DaemonChildSpawnOptions
@@ -137,9 +140,44 @@ it('launches the stable main executable and leaves no inherited credentials on d
   )
 })
 
+const ok = { code: 0, signal: null, stdout: '', stderr: '', timedOut: false }
+
+function routeLaunchctl(handlers: { bootstrap?: ProcessResult; print?: ProcessResult }): void {
+  const plutil = runProcessMock.getMockImplementation()
+  runProcessMock.mockImplementation(async (spec) => {
+    if (spec.program === '/bin/launchctl' && spec.args?.[0] === 'bootstrap') {
+      return handlers.bootstrap ?? ok
+    }
+    if (spec.program === '/bin/launchctl' && spec.args?.[0] === 'print') {
+      return handlers.print ?? ok
+    }
+    if (spec.program === '/usr/sbin/lsof') {
+      return { ...ok, code: 1 }
+    }
+    return (await plutil?.(spec)) ?? ok
+  })
+}
+
+async function launchFailure(deadlineMs?: number): Promise<unknown> {
+  return launchMacDaemonFromStableBundle(options, deadlineMs).then(
+    () => null,
+    (error: unknown) => error
+  )
+}
+
+const notRunning = { ...ok, stdout: 'gui/501/x = {\n\tstate = not running\n}\n' }
+const running = { ...ok, stdout: 'gui/501/x = {\n\tstate = running\n}\n' }
+const missing = {
+  ...ok,
+  code: 113,
+  stderr: 'Could not find service "x" in domain for user gui: 501'
+}
+
 it('rejects a foreign endpoint and stops only the job it created', async () => {
   state.identity = { pid: 55555, startedAtMs: 2000, launchNonce: 'another-launch' }
-  await expect(launchMacDaemonFromStableBundle(options)).rejects.toThrow('Another daemon owns')
+  const error = await launchFailure()
+  expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(error).toHaveProperty('message', 'Another daemon owns the terminal endpoint')
   await expect(access(options.pidPath)).rejects.toThrow()
   expect(disconnectMock).toHaveBeenCalled()
   expect(runProcessMock).toHaveBeenCalledWith(
@@ -177,9 +215,9 @@ it('retries a connection refusal while retaining the same launch attempt', async
 })
 
 it('does not submit a daemon after the startup gate deadline expires', async () => {
-  await expect(launchMacDaemonFromStableBundle(options, Date.now() - 1)).rejects.toThrow(
-    'deadline expired'
-  )
+  const error = await launchFailure(Date.now() - 1)
+  expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(error).toHaveProperty('cause.message', expect.stringContaining('deadline expired'))
   expect(runProcessMock).not.toHaveBeenCalled()
   await expect(access(join(state.root, 'runtime'))).rejects.toThrow()
 })
@@ -192,9 +230,55 @@ it('removes a private runtime when plist preparation fails before bootstrap', as
     stderr: '',
     timedOut: false
   })
-  await expect(launchMacDaemonFromStableBundle(options)).rejects.toThrow('prepare the macOS')
+  const error = await launchFailure()
+  expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(error).toHaveProperty('cause.message', expect.stringContaining('prepare the macOS'))
   await expect(access(join(state.root, 'runtime'))).rejects.toThrow()
   expect(runProcessMock.mock.calls.some(([spec]) => spec.args?.includes('bootstrap'))).toBe(false)
+})
+
+it('lets the fork launcher run when the runtime copy cannot be prepared', async () => {
+  materializeMock.mockRejectedValueOnce(new Error('Could not copy the macOS terminal runtime'))
+  expect(await launchFailure()).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(runProcessMock).not.toHaveBeenCalled()
+})
+
+it('lets the fork launcher run and retires the copy when launchd refused the job', async () => {
+  routeLaunchctl({ bootstrap: { ...ok, code: 5, stderr: 'Bootstrap failed: 5' }, print: missing })
+  expect(await launchFailure()).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(ensureWithinMock).not.toHaveBeenCalled()
+  await vi.waitFor(() => expect(access(join(state.root, 'runtime'))).rejects.toThrow())
+})
+
+it.each([
+  ['running', running],
+  ['unverifiable', { ...ok, code: 1, stderr: 'Operation not permitted' }]
+])('keeps a refused bootstrap fatal when the job reads %s', async (_state, print) => {
+  routeLaunchctl({ bootstrap: { ...ok, code: 5 }, print })
+  const error = await launchFailure()
+  expect(error).not.toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(error).toHaveProperty('message', 'Could not start the macOS terminal service')
+  await expect(access(join(state.root, 'runtime'))).resolves.toBeUndefined()
+})
+
+it('unregisters a daemon that exited before answering and lets the fork launcher run', async () => {
+  routeLaunchctl({ print: notRunning })
+  ensureWithinMock.mockRejectedValue(new Error('ECONNREFUSED'))
+  const error = await launchFailure(Date.now() + 200)
+  expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(runProcessMock).toHaveBeenCalledWith(
+    expect.objectContaining({ args: ['bootout', expect.stringContaining('owned-launch')] })
+  )
+})
+
+it('never starts another daemon while a silent job is still running', async () => {
+  routeLaunchctl({ print: running })
+  ensureWithinMock.mockRejectedValue(new Error('ECONNREFUSED'))
+  const error = await launchFailure(Date.now() + 200)
+  expect(error).not.toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(error).toHaveProperty('message', 'ECONNREFUSED')
+  expect(runProcessMock.mock.calls.some(([spec]) => spec.args?.[0] === 'bootout')).toBe(false)
+  await expect(access(join(state.root, 'runtime'))).resolves.toBeUndefined()
 })
 
 it.each(['linux', 'win32'] as const)('keeps %s on the existing launcher', async (platform) => {

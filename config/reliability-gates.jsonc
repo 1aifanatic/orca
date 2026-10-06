@@ -22183,13 +22183,14 @@
       "oracle": "Reproduce persistent EPERM for a cold detached Helper during a source-path gap, retain FDA in the independent daemon, then retain one authenticated production daemon through 22 protected cwd/file/Git/FDA PTY checks across two signed replacements and reconnect. Deterministic ownership, cleanup and deadline tests preserve unknown states and foreign endpoints.",
       "commands": [
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/daemon",
-        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/daemon/macos-daemon-bundle.test.ts src/main/daemon/macos-daemon-launchd.test.ts src/main/daemon/macos-daemon-job-state.test.ts src/main/daemon/macos-daemon-bundle-retirement.test.ts src/main/daemon/daemon-full-disk-access-status.test.ts src/main/daemon/daemon-pty-adapter-full-disk-access.test.ts config/scripts/macos-folder-usage-descriptions.test.mjs src/renderer/src/components/settings/DeveloperPermissionsPane.test.tsx",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/daemon/macos-daemon-bundle.test.ts src/main/daemon/macos-daemon-launchd.test.ts src/main/daemon/daemon-init-macos-stable-launch-fallback.test.ts src/main/daemon/macos-daemon-job-state.test.ts src/main/daemon/macos-daemon-bundle-retirement.test.ts src/main/daemon/daemon-full-disk-access-status.test.ts src/main/daemon/daemon-pty-adapter-full-disk-access.test.ts config/scripts/macos-folder-usage-descriptions.test.mjs src/renderer/src/components/settings/DeveloperPermissionsPane.test.tsx",
         "ORCA_BACKGROUND_LAUNCH=1 python3 tests/tools/macos-tcc-update/run.py --identity '<matching Developer ID>' --output notes/tcc-update-results.json",
         "ORCA_BACKGROUND_LAUNCH=1 python3 tests/tools/macos-tcc-update/product.py --identity '<matching Developer ID>' --output notes/tcc-product-results.json"
       ],
       "testFiles": [
         "src/main/daemon/macos-daemon-bundle.test.ts",
         "src/main/daemon/macos-daemon-launchd.test.ts",
+        "src/main/daemon/daemon-init-macos-stable-launch-fallback.test.ts",
         "src/main/daemon/macos-daemon-job-state.test.ts",
         "src/main/daemon/macos-daemon-bundle-retirement.test.ts",
         "src/main/daemon/daemon-full-disk-access-status.test.ts",

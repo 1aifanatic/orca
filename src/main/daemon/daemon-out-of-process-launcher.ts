@@ -14,7 +14,10 @@ import {
 } from './daemon-launched-child'
 import { getDaemonEntryPath, probeDaemonSocket as probeSocket } from './daemon-launch-paths'
 import { materializeRelocatedDaemonHost } from './daemon-host-relocation'
-import { launchMacDaemonFromStableBundle } from './macos-daemon-launchd'
+import {
+  launchMacDaemonFromStableBundle,
+  MacDaemonStableLaunchUnavailableError
+} from './macos-daemon-launchd'
 import { DAEMON_RECOVERY_BUDGET_MS, daemonRecoveryProbeTimeoutMs } from './daemon-recovery-budget'
 import { cleanupDaemonForProtocol } from './daemon-protocol-cleanup'
 import {
@@ -121,20 +124,33 @@ export function createOutOfProcessLauncher(
       }
 
       const userDataPath = getAppEnvironment().getPath('userData')
-      const macHandle = await launchMacDaemonFromStableBundle(
-        {
-          entryPath,
-          forkEntryPath: entryPath,
-          userDataPath,
-          socketPath,
-          tokenPath,
-          pidPath,
-          launchNonce,
-          macosLoginSessionWatch
-        },
-        // Leave five seconds of the desktop's 60-second PTY gate for adapter installation.
-        launchStartedAtMs + 55_000
-      )
+      let macHandle: DaemonProcessHandle | null = null
+      try {
+        macHandle = await launchMacDaemonFromStableBundle(
+          {
+            entryPath,
+            forkEntryPath: entryPath,
+            userDataPath,
+            socketPath,
+            tokenPath,
+            pidPath,
+            launchNonce,
+            macosLoginSessionWatch
+          },
+          // Leave five seconds of the desktop's 60-second PTY gate for adapter installation.
+          launchStartedAtMs + 55_000
+        )
+      } catch (error) {
+        if (!(error instanceof MacDaemonStableLaunchUnavailableError)) {
+          throw error
+        }
+        // Why: no job from that attempt can claim the endpoint, and a forked daemon keeps
+        // persistent terminals where failing here would leave only local PTYs.
+        console.warn(
+          `[daemon] macOS stable-bundle launch unavailable (${error.message}); forking from the app`,
+          error.cause
+        )
+      }
       if (macHandle) {
         return macHandle
       }
