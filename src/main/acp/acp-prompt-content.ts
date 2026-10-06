@@ -128,7 +128,8 @@ export async function acpPromptBlocks(
     imageBytes += image.bytes
     blocks.push(image.block)
   }
-  if (Buffer.byteLength(JSON.stringify(blocks)) > ACP_PROMPT_LINE_BUDGET) {
+  // Only images can carry a message past one line here; their words are the refusal's.
+  if (imageCount > 0 && Buffer.byteLength(JSON.stringify(blocks)) > ACP_PROMPT_LINE_BUDGET) {
     throw attachmentProblem({ reason: 'totalTooLarge', limit: ACP_PROMPT_IMAGE_MAX_BYTES })
   }
   return blocks

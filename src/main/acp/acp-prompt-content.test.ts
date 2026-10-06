@@ -75,13 +75,26 @@ describe('ACP prompt content', () => {
     ).toMatchObject({ attachment: { reason: 'unsupportedType' } })
   })
 
-  it('keeps the encoded prompt within one protocol line', async () => {
-    // Under the raw image limit, but the base64 prompt would pass the line the agent can read.
-    const text = 'x'.repeat(ACP_PROMPT_IMAGE_MAX_BYTES)
-    expect(await refusal(message({ type: 'text', text }, { type: 'text', text }))).toMatchObject({
+  it('keeps a message with images within one protocol line', async () => {
+    // The images fit their raw limit, but with this much text the prompt would pass the line.
+    const text = 'x'.repeat(8 * 1024 * 1024)
+    const image = {
+      type: 'image-ref' as const,
+      url: `data:image/png;base64,${PNG.toString('base64')}`
+    }
+    expect(
+      await refusal(message({ type: 'text', text }, { type: 'text', text }, image))
+    ).toMatchObject({
       attachment: { reason: 'totalTooLarge' }
     })
     expect(ACP_PROMPT_IMAGE_MAX_BYTES * (4 / 3)).toBeLessThan(16 * 1024 * 1024)
+  })
+
+  it('leaves a text-only message to the agent, however long', async () => {
+    const text = 'x'.repeat(9 * 1024 * 1024)
+    await expect(
+      acpPromptBlocks(message({ type: 'text', text }, { type: 'text', text }), true)
+    ).resolves.toHaveLength(2)
   })
 
   it("bounds one message's images together", async () => {

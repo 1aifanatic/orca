@@ -66,14 +66,14 @@ async function answer(rig: AcpAdapterRig, replay: GrokFixtureReplay, optionId: s
 }
 
 describe('OpenCode recordings through the adapter', () => {
-  it('an approved shell command lands with its exit code, and "always" says it lasts for this chat', async () => {
+  it('an approved shell command lands with its exit code, and "always" says it lasts until OpenCode restarts', async () => {
     const { rig, replay } = await replaying('opencode-v1-tool')
     const approval = await answer(rig, replay, 'once')
     expect(approval.body).toMatchObject({
       kind: 'approval',
       options: [
         { id: 'once', label: 'Allow once' },
-        { id: 'always', label: 'Allow for this chat' },
+        { id: 'always', label: 'Allow until OpenCode restarts' },
         { id: 'reject', label: 'Reject' }
       ]
     })

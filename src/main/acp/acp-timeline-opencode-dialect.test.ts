@@ -75,7 +75,7 @@ describe('OpenCode over ACP', () => {
     expect(OPENCODE_ACP_DIALECT.normalizeToolUpdate!(plain)).toBe(plain)
   })
 
-  it('says that "always" lasts only for this chat', async () => {
+  it('says that "always" lasts only until OpenCode restarts', async () => {
     const { translator, apply, update } = await openCodeRig()
     update(bashStart, 1001)
     const request = translator.request(
@@ -95,7 +95,7 @@ describe('OpenCode over ACP', () => {
     expect(request.presentation?.body).toMatchObject({
       options: [
         { id: 'once', label: 'Allow once' },
-        { id: 'always', label: 'Allow for this chat' },
+        { id: 'always', label: 'Allow until OpenCode restarts' },
         { id: 'reject', label: 'Reject' }
       ]
     })
