@@ -112,12 +112,10 @@ export function removeSystemManagedHookTrustEntries(
   systemHomePath: string,
   sourcePaths: readonly [string, ...string[]]
 ): void {
-  const [sourcePath, ...aliasSourcePaths] = sourcePaths
   removeCodexManagedHookTrustEntries({
     tomlPath: getSystemCodexConfigTomlPath(),
     runtimeHomePath: systemHomePath,
-    sourcePath,
-    aliasSourcePaths,
+    sourcePaths,
     command: getManagedCommand(getManagedScriptPath()),
     managedEventLabels: CODEX_MANAGED_EVENT_LABELS,
     timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
@@ -129,7 +127,7 @@ export function removeRuntimeManagedHookTrustEntries(configPath: string): void {
     removeCodexManagedHookTrustEntries({
       tomlPath: getCodexConfigTomlPath(),
       runtimeHomePath: getOrcaManagedCodexHomePath(),
-      sourcePath: configPath,
+      sourcePaths: [configPath],
       command: getManagedCommand(getManagedScriptPath()),
       managedEventLabels: CODEX_MANAGED_EVENT_LABELS,
       timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS,
@@ -148,7 +146,7 @@ export function removeWslRuntimeManagedHookTrustEntries(
     removeCodexManagedHookTrustEntries({
       tomlPath: plan.tomlPath,
       runtimeHomePath: pathWin32.dirname(plan.tomlPath),
-      sourcePath: plan.trustConfigPath,
+      sourcePaths: [plan.trustConfigPath],
       command: wrapReadablePosixHookCommand(plan.commandScriptPath),
       managedEventLabels: CODEX_MANAGED_EVENT_LABELS,
       timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS

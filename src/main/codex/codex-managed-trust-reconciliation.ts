@@ -58,14 +58,13 @@ function addLedgerRecognizedHashes(
 
 type CodexManagedHookTrustOwnershipOptions = {
   runtimeHomePath: string
-  sourcePath: string
+  /** hooks.json first, then other spellings Codex may key it by (same hash). */
+  sourcePaths: readonly [string, ...string[]]
   command: string
   managedEventLabels: ReadonlySet<CodexEventLabel>
   timeoutSec: number
   /** Explicit native homes resolve their parent before hook discovery. */
   sourceUsesExplicitCodexHome?: boolean
-  /** Other spellings Codex may key the same hooks.json by; their copies carry the same hash. */
-  aliasSourcePaths?: readonly string[]
 }
 
 function getCodexManagedHookTrustEntryKeys(
@@ -73,10 +72,11 @@ function getCodexManagedHookTrustEntryKeys(
   options: CodexManagedHookTrustOwnershipOptions
 ): string[] {
   const ledgerHome = readCodexTrustGrantLedgerHomeForReconciliation(options.runtimeHomePath)
+  const [sourcePath, ...aliases] = options.sourcePaths
   const expectedSourcePath = options.sourceUsesExplicitCodexHome
-    ? getCodexExplicitHomeHookSourcePath(options.sourcePath)
-    : normalizeCodexHookSourcePath(options.sourcePath)
-  const aliasSourcePaths = (options.aliasSourcePaths ?? []).map(normalizeCodexHookSourcePath)
+    ? getCodexExplicitHomeHookSourcePath(sourcePath)
+    : normalizeCodexHookSourcePath(sourcePath)
+  const aliasSourcePaths = aliases.map(normalizeCodexHookSourcePath)
   const ownedKeys: string[] = []
   for (const [key, state] of existingEntries) {
     const parts = parseTrustKey(key)

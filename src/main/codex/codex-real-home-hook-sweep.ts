@@ -56,9 +56,9 @@ export async function sweepRealHomeCodexHook(): Promise<'removed' | 'unavailable
   }
   if (removedAny) {
     const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
-    const [sourcePath, ...aliasSourcePaths] = getRealHomeHookKeySourcePaths()
+    const sourcePaths = getRealHomeHookKeySourcePaths()
     mutateRealHomeHooksPreservingUserTrust({
-      sourcePaths: [sourcePath, ...aliasSourcePaths],
+      sourcePaths,
       tomlPath: getRealHomeConfigTomlPath(),
       beforeHooks: config.hooks,
       afterHooks: nextHooks,
@@ -75,8 +75,7 @@ export async function sweepRealHomeCodexHook(): Promise<'removed' | 'unavailable
       removeCodexManagedHookTrustEntries({
         tomlPath: getRealHomeConfigTomlPath(),
         runtimeHomePath: getSystemCodexHomePath(),
-        sourcePath,
-        aliasSourcePaths,
+        sourcePaths,
         command: material.command,
         managedEventLabels: new Set(Object.values(material.eventLabel)),
         timeoutSec: MANAGED_HOOK_TIMEOUT_SECONDS
