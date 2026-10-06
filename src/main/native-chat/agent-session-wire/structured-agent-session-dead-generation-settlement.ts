@@ -126,7 +126,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
-  /** A close ended the child before what it was handed could run: each such send is rejected so. */
+  /** A person's Stop ended a starting child before what it was handed could run: each is rejected so. */
   unrunRejection?: SubmissionRejectionFact
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
@@ -137,7 +137,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     }
     // A queued message is the delivery loop's to settle: it was never handed to this child. A send
     // a child still starting was handed and never echoed did not run, and its root is gone: it is
-    // rejected, with the child's own diagnostic or as the close that ended it. A proven child's
+    // rejected, with the child's own diagnostic or as the Stop that ended it. A proven child's
     // handed-over sends stay in doubt.
     const startupFailure = input.exitedDuringStartup
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)

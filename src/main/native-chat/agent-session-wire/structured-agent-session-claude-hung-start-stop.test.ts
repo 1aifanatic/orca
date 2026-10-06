@@ -163,7 +163,12 @@ it('writes the message to a start that never answers, and a Stop ends it: stoppe
 
 async function sendHello(): Promise<string> {
   const body = hostTestMessage('hello')
-  const sent = await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  // A person's send, which a close keeps as a held card.
+  const sent = await host.send(CALLER, {
+    envelope: envelope('agentSession.send', { body }),
+    body,
+    userSend: true
+  })
   if (!sent.ok) {
     throw new Error('send refused')
   }
@@ -181,19 +186,21 @@ async function submission(id: string) {
   )
 }
 
-// A CLI that never answered initialize ran nothing it was handed, however its child ends.
-it.each([
-  ['user-close', 'The chat closed before this message was sent.'],
-  ['evict', 'This message was not delivered. Send it again to continue.']
-] as const)(
-  'settles a message written to a start that never answered as not sent when a %s ends it',
-  async (cause, reason) => {
+// A CLI that never answered initialize ran nothing it was handed: a close settles it as it does a
+// queued send, keeping the person's words as a held card.
+it.each(['user-close', 'evict'] as const)(
+  'keeps a message written to a start that never answered as a held card when a %s ends it',
+  async (cause) => {
     const id = await sendHello()
 
     await host.close(SESSION, cause)
 
     await vi.waitFor(async () =>
-      expect(await submission(id)).toMatchObject({ dispatchState: 'rejected', reason })
+      expect(await submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        reason: 'The chat closed before this message was sent.',
+        keptAsQueuedMessageId: id
+      })
     )
   }
 )
