@@ -12,11 +12,16 @@ import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import {
   isWindowsProcessTableAvailable,
   isWindowsProcessStartTimeAvailable,
-  readWindowsProcessIdentityTableFresh
+  readWindowsProcessIdentityTableFresh,
+  type WindowsProcessIdentityRow
 } from '../windows/windows-process-table'
+import { WindowsProcessTableTimeoutError } from '../windows/windows-process-table-timeout-error'
 
 // A cold first conpty spawn on a slow (arm64, AV-scanned) Windows host can outlast the steady-state budget.
 const WINDOWS_FIRST_PTY_PROBE_TIMEOUT_MS = 15_000
+// One process-table read has a 3s deadline; a loaded host can miss several in a row.
+const WINDOWS_PROCESS_TABLE_READINESS_BUDGET_MS = 30_000
+const WINDOWS_PROCESS_TABLE_RETRY_DELAY_MS = 500
 
 /** The candidate process owns disposable PTY and watcher probes before it touches user state. */
 export async function preflightOrcadNativeRuntime(
@@ -95,10 +100,35 @@ async function preflightWindowsProcessIdentity(): Promise<void> {
   if (!isWindowsProcessTableAvailable() || !isWindowsProcessStartTimeAvailable()) {
     throw new Error('The bundled Windows process table must support process creation times')
   }
-  const rows = await readWindowsProcessIdentityTableFresh()
+  const rows = await readProcessTableWithinBudget()
+  // Why non-fatal: slowness is not a wrong answer, and runtime readers already treat a timeout as unverifiable.
+  if (!rows) {
+    console.warn(
+      '[orcad] Windows process table stayed slower than its read deadline; starting anyway'
+    )
+    return
+  }
   const self = rows.find((row) => row.pid === process.pid)
   const created = self?.creationTimeMs
   if (created === undefined || !Number.isFinite(created) || created <= 0 || created > Date.now()) {
     throw new Error('The bundled Windows process table could not identify this process')
+  }
+}
+
+/** Retries only reads that timed out; null once the budget is spent without an answer. */
+async function readProcessTableWithinBudget(): Promise<WindowsProcessIdentityRow[] | null> {
+  const giveUpAt = Date.now() + WINDOWS_PROCESS_TABLE_READINESS_BUDGET_MS
+  for (;;) {
+    try {
+      return await readWindowsProcessIdentityTableFresh()
+    } catch (error) {
+      if (!(error instanceof WindowsProcessTableTimeoutError)) {
+        throw error
+      }
+      if (Date.now() >= giveUpAt) {
+        return null
+      }
+      await new Promise((settle) => setTimeout(settle, WINDOWS_PROCESS_TABLE_RETRY_DELAY_MS))
+    }
   }
 }

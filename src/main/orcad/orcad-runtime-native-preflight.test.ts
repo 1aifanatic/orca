@@ -5,6 +5,7 @@ import type {
   WatcherProcessHooks
 } from '../ipc/parcel-watcher-process-subscription'
 import { PtySpawnHealthTimeoutError } from '../daemon/pty-subprocess/spawn-preflight'
+import { WindowsProcessTableTimeoutError } from '../windows/windows-process-table-timeout-error'
 import { preflightOrcadNativeRuntime } from './orcad-runtime-native-preflight'
 
 const fixture = vi.hoisted(() => ({
@@ -84,6 +85,47 @@ describe('bundled native readiness', () => {
     await expect(preflightOrcadNativeRuntime({ nativeFeatures: false })).rejects.toThrow(
       'Windows process table'
     )
+  })
+
+  it('retries a Windows process-table read that timed out on a loaded host', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const self = { pid: process.pid, creationTimeMs: Date.now() - 1_000 }
+    fixture.rows
+      .mockRejectedValueOnce(new WindowsProcessTableTimeoutError('windows process table timed out'))
+      .mockRejectedValueOnce(new WindowsProcessTableTimeoutError('windows process table is wedged'))
+      .mockResolvedValueOnce([self])
+    const ready = preflightOrcadNativeRuntime({ nativeFeatures: false })
+    await vi.advanceTimersByTimeAsync(1_000)
+    await expect(ready).resolves.toBeUndefined()
+    expect(fixture.rows).toHaveBeenCalledTimes(3)
+  })
+
+  it('starts when the Windows process table stays slow past the readiness budget', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    fixture.rows.mockRejectedValue(
+      new WindowsProcessTableTimeoutError('windows process table timed out')
+    )
+    const ready = preflightOrcadNativeRuntime({ nativeFeatures: false })
+    await vi.advanceTimersByTimeAsync(31_000)
+    await expect(ready).resolves.toBeUndefined()
+  })
+
+  it('still fails a Windows process table that answers without this process', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    fixture.rows.mockResolvedValue([{ pid: process.pid + 1, creationTimeMs: Date.now() - 1_000 }])
+    await expect(preflightOrcadNativeRuntime({ nativeFeatures: false })).rejects.toThrow(
+      'could not identify this process'
+    )
+  })
+
+  it('does not retry a Windows process table read that failed outright', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    fixture.rows.mockRejectedValue(new Error('windows process table is unreadable'))
+    await expect(preflightOrcadNativeRuntime({ nativeFeatures: false })).rejects.toThrow(
+      'unreadable'
+    )
+    expect(fixture.rows).toHaveBeenCalledOnce()
   })
 
   it('does not admit a failed PTY in explicit qualification', async () => {

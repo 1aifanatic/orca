@@ -17,6 +17,7 @@ import {
   type WindowsProcessRow
 } from './windows-process-table'
 import { resetWindowsCommandLineRecoveryHealthForTests } from './windows-command-line-recovery-health'
+import { WindowsProcessTableTimeoutError } from './windows-process-table-timeout-error'
 
 /** None | CreationTime, and CommandLine on top of it. Memory (1) is never asked for. */
 const IDENTITY_FLAGS = 4
@@ -318,12 +319,15 @@ describe('windows process table', () => {
     getAllProcesses.mockImplementation(() => {})
     resetWindowsProcessTableForTests()
     const wedge = readWindowsProcessIdentityTableFresh()
-    const wedgeAssertion = expect(wedge).rejects.toThrow(/timed out/)
+    // Typed, so orcad's readiness can retry slowness without retrying wrong answers.
+    const wedgeAssertion = expect(wedge).rejects.toBeInstanceOf(WindowsProcessTableTimeoutError)
     await vi.advanceTimersByTimeAsync(3_000)
     await wedgeAssertion
 
     await expect(readWindowsProcessTableFresh()).rejects.toThrow(/wedged/)
-    await expect(readWindowsProcessIdentityTableFresh()).rejects.toThrow(/wedged/)
+    await expect(readWindowsProcessIdentityTableFresh()).rejects.toBeInstanceOf(
+      WindowsProcessTableTimeoutError
+    )
     expect(getAllProcesses).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
