@@ -127,7 +127,7 @@ describe('DaemonPtyAdapter startup delivery', () => {
       await waitFor(() => vi.mocked(lastSubprocess.write).mock.calls.length > 0)
       const [script] = readdirSync(stagingDir)
       expect(lastSubprocess.write).toHaveBeenCalledExactlyOnceWith(
-        `. '${join(stagingDir, script)}'\n`
+        `. '${join(stagingDir, script)}'\r`
       )
     } finally {
       vi.unstubAllEnvs()

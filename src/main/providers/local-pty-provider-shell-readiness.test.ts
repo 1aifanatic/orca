@@ -237,7 +237,7 @@ describe('LocalPtyProvider', () => {
         )
         expect(staged?.[1]).toContain(`\n${command}\n`)
         await vi.advanceTimersByTimeAsync(200)
-        expect(mockProc.write).toHaveBeenCalledWith(`. '${staged?.[0]}'\n`)
+        expect(mockProc.write).toHaveBeenCalledWith(`. '${staged?.[0]}'\r`)
       } finally {
         vi.useRealTimers()
       }
@@ -260,7 +260,7 @@ describe('LocalPtyProvider', () => {
           '[orca] Could not stage the launch command (ENOSPC: no space left on device)'
         )
         await vi.advanceTimersByTimeAsync(200)
-        expect(mockProc.write).toHaveBeenCalledWith(`${command}\n`)
+        expect(mockProc.write).toHaveBeenCalledWith(`${command}\r`)
       } finally {
         vi.useRealTimers()
       }
