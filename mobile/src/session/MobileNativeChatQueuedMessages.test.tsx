@@ -8,6 +8,7 @@ import type { MobileQueuedMessageCard } from './mobile-structured-queued-message
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
+  ScrollView: 'ScrollView',
   StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
   Text: 'Text',
   View: 'View'
@@ -90,6 +91,24 @@ describe('MobileNativeChatQueuedMessages', () => {
     ).toBe(2)
     expect(nodeTypes(rows[0]!)).toContain('ListEnd')
     expect(nodeTypes(rows[0]!)).not.toContain('AlertCircle')
+  })
+
+  it('a tap on the text opens the whole message, line breaks kept, and a second tap folds it', async () => {
+    const text = 'You have 1 orchestration message.\nRun `orca orchestration check --run run_e99`'
+    const mounted = await mount({ cards: [card({ messageId: 'mail', text })] })
+    const body = () =>
+      mounted.root.find((node) => String(node.type) === 'Text' && node.props.children === text)
+    const toggle = () => mounted.root.findByProps({ testID: 'queued-card-text' })
+    expect(body().props.numberOfLines).toBe(2)
+    expect(toggle().props.accessibilityState).toEqual({ expanded: false })
+    await act(async () => toggle().props.onPress())
+    expect(body().props.numberOfLines).toBeUndefined()
+    expect(toggle().props.accessibilityState).toEqual({ expanded: true })
+    // A long message scrolls inside a capped box rather than pushing the composer away.
+    const scroll = mounted.root.find((node) => String(node.type) === 'ScrollView')
+    expect(flatStyle(scroll.props.style).maxHeight).toBeGreaterThan(0)
+    await act(async () => toggle().props.onPress())
+    expect(body().props.numberOfLines).toBe(2)
   })
 
   it('divides rows with hairlines inside one box, the first row undivided', async () => {
@@ -382,8 +401,12 @@ describe('MobileNativeChatQueuedMessages', () => {
       onDelete: vi.fn(async () => true),
       onEdit: vi.fn(async () => true)
     })
+    // The card's text is its own tap target, sized by the text it shows.
     const buttons = mounted.root.findAll(
-      (node) => typeof node.type === 'string' && node.props.accessibilityRole === 'button'
+      (node) =>
+        typeof node.type === 'string' &&
+        node.props.accessibilityRole === 'button' &&
+        node.props.testID !== 'queued-card-text'
     )
     expect(buttons.map((button) => button.props.accessibilityLabel)).toEqual([
       'Resume sending the queued messages',

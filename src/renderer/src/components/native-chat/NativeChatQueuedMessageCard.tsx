@@ -1,5 +1,7 @@
+import { useId, useState } from 'react'
 import {
   AlertCircle,
+  ChevronDown,
   CornerDownRight,
   ListEnd,
   MoreHorizontal,
@@ -15,6 +17,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
 import { translate } from '@/i18n/i18n'
 import { structuredAgentSessionAttemptFailureParts } from '../../../../shared/structured-agent-session-send-disposition'
@@ -28,6 +31,7 @@ import {
 import { isMacPlatform } from './native-chat-shortcut'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import { queuedCardSenderLine } from './native-chat-agent-message-sender-label'
+import { useNativeChatClippedLine } from './use-native-chat-clipped-line'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
@@ -113,6 +117,26 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
   }
 }
 
+/** Why Edit waits: the prompt card standing in the composer's slot must be answered first. */
+function queuedMessageCardEditHold(
+  editHeldBy: 'question' | 'approval' | null
+): string | null {
+  switch (editHeldBy) {
+    case 'question':
+      return translate(
+        'components.native-chat.queuedMessages.editHeldByQuestion',
+        'Answer the question to edit'
+      )
+    case 'approval':
+      return translate(
+        'components.native-chat.queuedMessages.editHeldByApproval',
+        'Answer the request to edit'
+      )
+    case null:
+      return null
+  }
+}
+
 export function NativeChatQueuedMessageCard({
   card,
   showsSteerShortcut,
@@ -120,6 +144,7 @@ export function NativeChatQueuedMessageCard({
   onSteer,
   onDelete,
   onEdit,
+  editHeldBy = null,
   onTurnOffQueueing
 }: {
   card: QueuedMessageCard
@@ -130,6 +155,8 @@ export function NativeChatQueuedMessageCard({
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
+  /** A prompt card stands where the composer would take Edit's text; Edit waits for the answer. */
+  editHeldBy?: 'question' | 'approval' | null
   /** Absent when the host does not queue sends, so there is nothing to turn off. */
   onTurnOffQueueing?: () => void
 }): React.JSX.Element {
@@ -137,11 +164,17 @@ export function NativeChatQueuedMessageCard({
   const returned = card.state === 'returned'
   const sendNow = queuedMessageCardSendNow(card)
   const isMac = isMacPlatform()
+  // A clipped line opens in place: a card can hold text the person never typed (another agent's
+  // message), and Steer or Delete must not be a blind choice.
+  const [expanded, setExpanded] = useState(false)
+  const [clipped, measureLine] = useNativeChatClippedLine(false)
+  const textId = useId()
+  const editHold = queuedMessageCardEditHold(editHeldBy)
   return (
     <li
       data-queued-message-id={card.messageId}
       data-queued-message-state={card.state}
-      className="flex items-center gap-2 px-2.5 py-1.5"
+      className={cn('flex gap-2 px-2.5 py-1.5', expanded ? 'items-start' : 'items-center')}
     >
       {returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED ? (
         <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden />
@@ -154,9 +187,18 @@ export function NativeChatQueuedMessageCard({
             {queuedCardSenderLine(card.from)}
           </p>
         ) : null}
-        <p className="truncate text-sm" title={card.text}>
-          {card.text}
-        </p>
+        {expanded ? (
+          <p
+            id={textId}
+            className="scrollbar-sleek max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm"
+          >
+            {card.text}
+          </p>
+        ) : (
+          <p id={textId} ref={measureLine} className="truncate text-sm">
+            {card.text}
+          </p>
+        )}
         {caption ? (
           <p
             className={
@@ -169,6 +211,13 @@ export function NativeChatQueuedMessageCard({
           </p>
         ) : null}
       </div>
+      {expanded || clipped ? (
+        <QueuedMessageExpandToggle
+          expanded={expanded}
+          controls={textId}
+          onToggle={() => setExpanded(!expanded)}
+        />
+      ) : null}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button type="button" variant="ghost" size="xs" onClick={onSteer} disabled={steerHeld}>
@@ -216,9 +265,12 @@ export function NativeChatQueuedMessageCard({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onEdit}>
+          <DropdownMenuItem onSelect={onEdit} disabled={editHold !== null}>
             <Pencil />
-            {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
+            <span className="flex flex-col">
+              {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
+              {editHold ? <span className="text-muted-foreground">{editHold}</span> : null}
+            </span>
           </DropdownMenuItem>
           {onTurnOffQueueing ? (
             <DropdownMenuItem onSelect={onTurnOffQueueing}>
@@ -231,5 +283,40 @@ export function NativeChatQueuedMessageCard({
         </DropdownMenuContent>
       </DropdownMenu>
     </li>
+  )
+}
+
+function QueuedMessageExpandToggle({
+  expanded,
+  controls,
+  onToggle
+}: {
+  expanded: boolean
+  /** The text element it opens and folds. */
+  controls: string
+  onToggle: () => void
+}): React.JSX.Element {
+  const label = expanded
+    ? translate('components.native-chat.queuedMessages.showLess', 'Show less')
+    : translate('components.native-chat.queuedMessages.showFullMessage', 'Show full message')
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={label}
+          aria-expanded={expanded}
+          aria-controls={controls}
+          onClick={onToggle}
+        >
+          <ChevronDown className={cn('size-3.5 transition-transform', expanded && 'rotate-180')} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={4}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   )
 }

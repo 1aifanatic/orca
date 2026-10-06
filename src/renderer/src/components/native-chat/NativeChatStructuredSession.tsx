@@ -40,6 +40,7 @@ import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
+import { promptHoldingComposerSlot } from './native-chat-composer-slot'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -155,10 +156,9 @@ export function NativeChatStructuredSession(
     { sessionId: props.sessionId, isVisible: props.isVisible }
   )
   const prompt = controller.prompts[0] ?? null
-  // Prompts this build cannot answer leave the composer open: a send starts a turn, whose card
-  // cancel then works.
   const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
-  const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
+  // The queue's Edit reads the same slot (`editHeldBy`): text never moves into a hidden composer.
+  const composerShown = promptHoldingComposerSlot(controller.prompts) === null && !readFailedFinally
   const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   const cancelPrompt = () => {
     if (controller.turnId && prompt) {

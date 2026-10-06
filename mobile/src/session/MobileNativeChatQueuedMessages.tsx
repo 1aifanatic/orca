@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   AlertCircle,
   CornerDownRight,
@@ -128,10 +128,7 @@ export function MobileNativeChatQueuedMessages({
                     {card.attribution}
                   </Text>
                 ) : null}
-                {/* Two lines, not the desktop's one: the phone row has no hover title to read the rest. */}
-                <Text style={styles.body} numberOfLines={2}>
-                  {card.text}
-                </Text>
+                <MobileQueuedCardText text={card.text} />
                 {card.caption ? (
                   // A returned card's reason only reads whole, often at its end; a hold is one line.
                   <Text
@@ -221,6 +218,33 @@ export function MobileNativeChatQueuedMessages({
   )
 }
 
+/** Two lines until tapped: a card can hold another agent's message the person never read, and
+ *  Steer or Delete must not be a blind choice. Opened, a long one scrolls in a capped box. */
+function MobileQueuedCardText({ text }: { text: string }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const toggle = (
+    <Pressable
+      testID="queued-card-text"
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      accessibilityHint={expanded ? 'Shows less of the message' : 'Shows the whole message'}
+      onPress={() => setExpanded(!expanded)}
+    >
+      <Text style={styles.body} numberOfLines={expanded ? undefined : 2}>
+        {text}
+      </Text>
+    </Pressable>
+  )
+  // The press sits inside the scroll, so a drag scrolls and only a tap folds it.
+  return expanded ? (
+    <ScrollView style={styles.expandedBody} nestedScrollEnabled>
+      {toggle}
+    </ScrollView>
+  ) : (
+    toggle
+  )
+}
+
 // Every action touches as a 44pt target (platform floor) inside its row: Android drops touches
 // outside the parent, so the row is at least that tall and nothing overhangs it.
 const MIN_TOUCH_TARGET = 44
@@ -262,6 +286,9 @@ const styles = StyleSheet.create({
   body: {
     color: colors.textPrimary,
     fontSize: typography.bodySize
+  },
+  expandedBody: {
+    maxHeight: 240
   },
   caption: {
     color: colors.textMuted,

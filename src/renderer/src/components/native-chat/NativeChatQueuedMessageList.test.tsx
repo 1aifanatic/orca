@@ -63,6 +63,7 @@ function controller(
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     edit: vi.fn(async () => {}),
+    editHeldBy: null,
     steerNewest: vi.fn(() => false)
   }
 }
@@ -494,6 +495,35 @@ describe('NativeChatQueuedMessageList', () => {
     )
   })
 
+  it('a clipped card opens to its whole text, line breaks kept, and folds back', () => {
+    // happy-dom lays nothing out: a line wider than its box is what a clipped card measures.
+    const width = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(900)
+    const box = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300)
+    try {
+      const text = 'You have 1 orchestration message.\nRun `orca orchestration check --run run_e99`'
+      renderList(controller([card({ messageId: 'mail', text })]))
+      const open = screen.getByRole('button', { name: 'Show full message' })
+      expect(open.getAttribute('aria-expanded')).toBe('false')
+      fireEvent.click(open)
+      const fold = screen.getByRole('button', { name: 'Show less' })
+      expect(fold.getAttribute('aria-expanded')).toBe('true')
+      const whole = document.getElementById(fold.getAttribute('aria-controls') ?? '')
+      expect(whole?.textContent).toBe(text)
+      expect(whole?.className).toContain('whitespace-pre-wrap')
+      expect(whole?.className).not.toContain('truncate')
+      fireEvent.click(fold)
+      expect(screen.getByRole('button', { name: 'Show full message' })).toBeTruthy()
+    } finally {
+      width.mockRestore()
+      box.mockRestore()
+    }
+  })
+
+  it('a card whose text fits its line offers no toggle', () => {
+    renderList(controller([card({ messageId: 'short', text: 'ok' })]))
+    expect(screen.queryByRole('button', { name: 'Show full message' })).toBeNull()
+  })
+
   it('the menu offers Edit message and Turn off queueing', async () => {
     const owner = controller([card({ messageId: 'draft-1' })])
     renderList(owner)
@@ -504,6 +534,26 @@ describe('NativeChatQueuedMessageList', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Turn off queueing' }))
     expect(mocks.updateSettings).toHaveBeenCalledWith({ nativeChatQueueFollowUps: false })
   })
+
+  // The prompt card stands in the composer's slot: Edit would move the text out of sight.
+  it.each([
+    { editHeldBy: 'question' as const, reason: 'Answer the question to edit' },
+    { editHeldBy: 'approval' as const, reason: 'Answer the request to edit' }
+  ])(
+    'Edit waits, saying why, while the $editHeldBy card holds the composer slot',
+    async ({ editHeldBy, reason }) => {
+      const owner = { ...controller([card({ messageId: 'draft-1' })]), editHeldBy }
+      renderList(owner)
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
+      const item = await screen.findByRole('menuitem', { name: /Edit message/ })
+      expect(item.getAttribute('aria-disabled')).toBe('true')
+      expect(item.textContent).toContain(reason)
+      fireEvent.click(item)
+      expect(owner.edit).not.toHaveBeenCalled()
+      // The card itself stays readable and actionable.
+      expect(screen.getByRole('button', { name: 'Steer' })).toBeTruthy()
+    }
+  )
 
   // A kept message shows as a card even where the host does not queue sends; there the setting
   // and the chord would do nothing, so neither is offered.

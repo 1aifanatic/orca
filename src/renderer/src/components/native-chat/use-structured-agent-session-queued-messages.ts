@@ -41,6 +41,8 @@ export type StructuredAgentSessionQueuedMessagesController = {
   remove: (messageId: string) => Promise<void>
   /** Copy the card's shown text into the composer, then delete the draft. */
   edit: (messageId: string) => Promise<void>
+  /** The prompt card standing in the composer's slot; Edit waits until it is answered. */
+  editHeldBy: 'question' | 'approval' | null
   /** Cmd/Ctrl+Enter: Send-now the newest card. False when there is none to steer. */
   steerNewest: () => boolean
 }
@@ -58,10 +60,20 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
+  /** A prompt card stands in the composer's slot, so there is no composer to take Edit's text. */
+  promptInComposerSlot: 'question' | 'approval' | null
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
-  const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
+  const {
+    composerScopeKey,
+    enabled,
+    hasPendingPrompt,
+    mutate,
+    promptInComposerSlot,
+    queuedMessages,
+    submissions
+  } = args
   const pause = args.queuePause
 
   const cards = useMemo(
@@ -125,10 +137,10 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     (messageId: string): Promise<void> =>
       actOnce(messageId, async () => {
         // The text is copied FIRST, from the card this pane already shows — a local move,
-        // never a wire payload. Without a composer to hold it, deleting would destroy it,
-        // so the draft then stays a card.
+        // never a wire payload. Without a composer to hold it, or with a prompt card hiding
+        // it, deleting would make the text vanish, so the draft then stays a card.
         const card = cardsRef.current.find((entry) => entry.messageId === messageId)
-        if (!card || !composerScopeKey) {
+        if (!card || !composerScopeKey || promptInComposerSlot) {
           return
         }
         appendNativeChatDraftCache(composerScopeKey, card.text)
@@ -151,7 +163,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         }
         // A failed Delete leaves the card: the text shows in both places, visibly, never lost.
       }),
-    [actOnce, composerScopeKey, mutate]
+    [actOnce, composerScopeKey, mutate, promptInComposerSlot]
   )
 
   const resumingRef = useRef(false)
@@ -195,6 +207,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     steer,
     remove,
     edit,
+    editHeldBy: promptInComposerSlot,
     steerNewest
   }
 }

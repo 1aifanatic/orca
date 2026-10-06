@@ -40,6 +40,7 @@ function createHarness(
     queuedMessages?: AgentSessionQueuedMessage[]
     enabled?: boolean
     composerScopeKey?: string | undefined
+    promptInComposerSlot?: 'question' | 'approval' | null
     mutateResult?: (call: MutateCall) => unknown
   } = {}
 ) {
@@ -54,7 +55,8 @@ function createHarness(
       queuedMessages: overrides.queuedMessages ?? [draft('draft-1', 1), draft('draft-2', 2)],
       queuePause: null,
       submissions: [],
-      hasPendingPrompt: false,
+      hasPendingPrompt: overrides.promptInComposerSlot != null,
+      promptInComposerSlot: overrides.promptInComposerSlot ?? null,
       composerScopeKey: 'composerScopeKey' in overrides ? overrides.composerScopeKey : SCOPE,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each scripted answer is the result shape of the one mutate it responds to; generic erasure cannot express that.
       mutate: mutate as StructuredAgentSessionMutate
@@ -178,6 +180,18 @@ describe('queued message actions', () => {
     await act(() => harness.result.current.edit('draft-1'))
     expect(harness.mutate).not.toHaveBeenCalled()
   })
+
+  // A prompt card stands where the composer was: text moved there would vanish from the page.
+  it.each(['question', 'approval'] as const)(
+    'Edit while the %s card holds the composer slot keeps the card and moves no text',
+    async (promptInComposerSlot) => {
+      const harness = createHarness({ promptInComposerSlot })
+      await act(() => harness.result.current.edit('draft-1'))
+      expect(readNativeChatDraftCache(SCOPE)).toBe('')
+      expect(harness.mutate).not.toHaveBeenCalled()
+      expect(harness.result.current.editHeldBy).toBe(promptInComposerSlot)
+    }
+  )
 
   it('a second press on a card while its action is in flight sends nothing more', async () => {
     const harness = createHarness()

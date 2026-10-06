@@ -72,6 +72,7 @@ export function NativeChatQueuedMessageList({
                   onSteer={() => refocusAfter(controller.steer(card.messageId))}
                   onDelete={() => refocusAfter(controller.remove(card.messageId))}
                   onEdit={() => refocusAfter(controller.edit(card.messageId))}
+                  editHeldBy={controller.editHeldBy}
                   onTurnOffQueueing={turnOffQueueing}
                 />
               ))}
