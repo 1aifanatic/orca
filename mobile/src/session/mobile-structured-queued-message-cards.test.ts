@@ -47,9 +47,22 @@ describe('mobileQueuedMessageCards', () => {
       { pendingPrompt: false }
     )
     expect(card).toMatchObject({ text: '/compact', command: true, caption: null })
+    expect(card).not.toHaveProperty('waitsForAgent')
     expect(
       mobileQueuedMessageCards([draft({ messageId: 'a' })], [], { pendingPrompt: false })[0]
     ).not.toHaveProperty('command')
+    const compact = draft({
+      messageId: 'c',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      mobileQueuedMessageCards([compact], [], { pendingPrompt: false, agentWorking: true })[0]
+    ).toMatchObject({ command: true, waitsForAgent: true })
   })
 
   it('renders nothing without a published list', () => {

@@ -63,6 +63,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   clearAfterAnswer: "Answer the agent's question or approval, then run /clear.",
   runCompactWhenDone: "Run /compact when it's done.",
   compactAfterAnswer: "Answer the agent's question or approval, then run /compact.",
+  clearAfterRetry: 'Retry your earlier message, then run /clear.',
+  compactAfterRetry: 'Retry your earlier message, then run /compact.',
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",
   agentRefused: 'The agent turned this down.',

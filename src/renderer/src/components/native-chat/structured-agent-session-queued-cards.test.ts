@@ -181,6 +181,13 @@ describe('queued message cards', () => {
       ['/compact', true]
     ])
     expect(newestSteerableQueuedMessageCard(cards)).toBeNull()
+    // While the agent works it offers no send; a message card is unaffected.
+    const working = projectQueuedMessageCards([draft('a', 1), compact], [], {
+      ...IDLE,
+      agentWorking: true
+    })
+    expect(working.map((card) => card.waitsForAgent ?? false)).toEqual([false, true])
+    expect(cards[1]).not.toHaveProperty('waitsForAgent')
   })
 
   it('a mid-turn queue send on its way is no bubble; one that stalled stays visible', () => {

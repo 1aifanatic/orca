@@ -54,19 +54,23 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
+  /** The chat shows the agent working: a command card offers no send then. */
+  agentWorking?: boolean
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
+  const agentWorking = args.agentWorking === true
   const pause = args.queuePause
 
   const cards = useMemo(
     () =>
       projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
+        agentWorking,
         queuePaused: pause !== null
       }),
-    [hasPendingPrompt, pause, queuedMessages, submissions]
+    [agentWorking, hasPendingPrompt, pause, queuedMessages, submissions]
   )
   const cardsRef = useRef(cards)
   useEffect(() => {

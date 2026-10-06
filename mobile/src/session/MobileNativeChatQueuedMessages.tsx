@@ -107,7 +107,7 @@ export function MobileNativeChatQueuedMessages({
           const returned = card.state === 'returned'
           // "Steer" submits beside the running turn, the paused queue's cards too; a card whose
           // own send failed, or a returned one, is sent again.
-          const steers = !returned && !card.paused
+          const steers = !returned && !card.paused && !card.command
           return (
             <View
               key={card.messageId}
@@ -134,17 +134,17 @@ export function MobileNativeChatQueuedMessages({
                   </Text>
                 ) : null}
               </View>
-              {/* A command runs when the agent finishes, so it offers no Steer or Send. */}
-              {card.command ? null : (
+              {/* A command never steers: its Send shows only while the agent is idle. */}
+              {card.waitsForAgent ? null : (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ disabled: busy }}
                   accessibilityLabel={
                     returned
                       ? 'Send this message again'
-                      : card.paused
-                        ? 'Send this message'
-                        : 'Submit without interrupting the model'
+                      : steers
+                        ? 'Submit without interrupting the model'
+                        : 'Send this message'
                   }
                   style={({ pressed }) => [
                     styles.textAction,

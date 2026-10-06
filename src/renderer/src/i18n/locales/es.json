@@ -17587,6 +17587,8 @@
         "clearAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /clear.",
         "runCompactWhenDone": "Ejecute /compact cuando termine.",
         "compactAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /compact.",
+        "clearAfterRetry": "Reintente su mensaje anterior y luego ejecute /clear.",
+        "compactAfterRetry": "Reintente su mensaje anterior y luego ejecute /compact.",
         "optionRejected": "El agente no aceptó este ajuste.",
         "goalsUnsupported": "Este agente no admite objetivos.",
         "agentRefused": "El agente lo rechazó.",

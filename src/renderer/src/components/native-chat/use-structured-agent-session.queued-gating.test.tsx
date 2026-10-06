@@ -15,6 +15,9 @@ import {
   createStructuredAgentSessionOutboxEntry,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { withdrawUnsentStructuredAgentSessionOutboxEntries } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -368,56 +371,102 @@ describe('a /compact against a host that holds commands in line', () => {
     )
   })
 
-  it('behind a message this window has not handed to the host, waits quietly, then goes out', async () => {
-    answerCommands({
-      command: 'compact',
-      state: 'completed',
-      queued: { messageId: 'operation-1', position: 1, state: 'waiting' }
-    })
-    outboxEntries = [
-      createStructuredAgentSessionOutboxEntry({
-        clientMessageId: 'unsent',
+  function unsent(id: string, overrides: Partial<StructuredAgentSessionOutboxEntry> = {}) {
+    return {
+      ...createStructuredAgentSessionOutboxEntry({
+        clientMessageId: id,
         sessionId: 'session-1',
-        text: 'on its way',
+        text: `message ${id}`,
         attachments: [],
         queuedAt: 1
-      })
-    ]
+      }),
+      ...overrides
+    }
+  }
+
+  it('behind a message still on its way: Send is busy, the message reads Sending, nothing is armed', async () => {
+    items = []
+    answerCommands({ command: 'compact', state: 'completed' })
+    outboxEntries = [unsent('on-its-way')]
     const { result, rerender } = render()
-    let outcome: Promise<unknown> | undefined
-    act(() => {
-      outcome = result.current.runConversationCommand('compact')
-    })
+    // The composer's send control is Stop while a send is on its way: the existing busy state.
+    expect(result.current.canStop).toBe(true)
+    // Its row reads "Sending…" (`NativeChatMessageRow`), from the same outbox.
+    expect(
+      structuredAgentSessionDeliveryNotices(
+        outboxEntries,
+        'Claude',
+        () => {},
+        [],
+        [],
+        new Set()
+      ).get(agentJournalSubmissionKey('on-its-way'))
+    ).toEqual({ sending: true })
+    let outcome: unknown
     await act(async () => {
-      await Promise.resolve()
+      outcome = await result.current.runConversationCommand('compact')
     })
-    expect(commandCalls()).toHaveLength(0)
-    // The message leaves the outbox (the host has it, or it was given back): the command follows.
+    expect(outcome).toEqual({ accepted: false, error: null })
+    // The host has it now: nothing goes out on its own; the next press does.
     outboxEntries = []
     rerender()
+    expect(commandCalls()).toHaveLength(0)
+    expect(result.current.canStop).toBe(false)
     await act(async () => {
-      expect(await outcome).toEqual({ accepted: true, error: null })
+      outcome = await result.current.runConversationCommand('compact')
     })
+    expect(outcome).toEqual({ accepted: true, error: null })
     expect(commandCalls()).toHaveLength(1)
   })
 
-  it('a wait the pane outlives sends nothing', async () => {
-    outboxEntries = [
-      createStructuredAgentSessionOutboxEntry({
-        clientMessageId: 'unsent',
-        sessionId: 'session-1',
-        text: 'on its way',
-        attachments: [],
-        queuedAt: 1
-      })
-    ]
-    const { result, unmount } = render()
-    let outcome: Promise<unknown> | undefined
-    act(() => {
-      outcome = result.current.runConversationCommand('compact')
+  it('a send stuck behind one in doubt never holds the command for good: Stop gives it back', async () => {
+    items = []
+    answerCommands({ command: 'compact', state: 'completed' })
+    // The first send's outcome is unknown and waits for its Retry; the second waits behind it.
+    const inDoubt = unsent('in-doubt', {
+      state: 'unconfirmed',
+      lastAttemptAt: 2,
+      retryAfterUnknownSubmittedAt: 2
     })
-    unmount()
-    expect(await outcome).toEqual({ accepted: false, error: null })
+    outboxEntries = [inDoubt, unsent('behind')]
+    const { result, rerender } = render()
+    expect(result.current.canStop).toBe(true)
+    await act(async () => {
+      expect(await result.current.runConversationCommand('compact')).toEqual({
+        accepted: false,
+        error: null
+      })
+    })
+    // The busy control is Stop, always pressable. Stop takes back what has not gone out
+    // (`withdrawUnsentStructuredAgentSessionOutboxEntries`), leaving only the one in doubt.
+    expect(
+      withdrawUnsentStructuredAgentSessionOutboxEntries(outboxEntries, [], null).map(
+        (entry) => entry.clientMessageId
+      )
+    ).toEqual(['in-doubt'])
+    outboxEntries = [inDoubt]
+    rerender()
+    expect(result.current.canStop).toBe(false)
+    await act(async () => {
+      expect(await result.current.runConversationCommand('compact')).toEqual({
+        accepted: true,
+        error: null
+      })
+    })
+  })
+
+  it('/clear behind only a failed message names its Retry, not the agent working', async () => {
+    items = []
+    outboxEntries = [unsent('failed', { lastAttemptAt: 2, lastFailure: { kind: 'failed' } })]
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('clear')
+    })
+    expect(outcome).toEqual({
+      accepted: false,
+      error: 'Retry your earlier message, then run /clear.'
+    })
     expect(commandCalls()).toHaveLength(0)
   })
 

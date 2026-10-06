@@ -156,15 +156,20 @@ describe('MobileNativeChatQueuedMessages', () => {
     expect(nodeTypes(rows[1]!)).toContain('CornerDownRight')
   })
 
-  it('offers a command card no Steer or Send, only Delete and the menu', async () => {
+  it('a command card never steers: Send only while the agent is idle, and no menu', async () => {
+    const onSend = vi.fn(async () => true)
     const mounted = await mount({
       cards: [
-        card({ messageId: 'compact', text: '/compact', command: true }),
-        card({ messageId: 'returned', text: '/compact', command: true, state: 'returned' })
+        card({ messageId: 'working', text: '/compact', command: true, waitsForAgent: true }),
+        card({ messageId: 'idle', text: '/compact', command: true })
       ],
-      onSend: vi.fn(async () => true)
+      onSend
     })
-    expect(texts(mounted).filter((text) => text === 'Send' || text === 'Steer')).toEqual([])
+    expect(texts(mounted).filter((text) => text === 'Send' || text === 'Steer')).toEqual(['Send'])
+    await act(async () => {
+      mounted.root.findByProps({ accessibilityLabel: 'Send this message' }).props.onPress()
+    })
+    expect(onSend).toHaveBeenCalledWith('idle')
     // Its menu holds only Edit, which a command does not take.
     expect(mounted.root.findAllByProps({ accessibilityLabel: 'More actions' })).toHaveLength(0)
     expect(

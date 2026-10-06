@@ -172,34 +172,21 @@ export async function handOverStructuredAgentSessionCommand(
   // Provider frames already received decide whether a turn is running: each landed at its call.
   const blocked = commandBlocked(ctx, body)
   if (blocked) {
-    await ctx.journal.resolveDispatch({
-      clientMessageId,
-      state: 'rejected',
-      ...agentSessionFailureWords(blocked, { ...ctx.failureTextContext, surface: 'rejection' }),
-      fence: ctx.fence
-    })
+    const refused = {
+      state: 'rejected' as const,
+      ...agentSessionFailureWords(blocked, { ...ctx.failureTextContext, surface: 'rejection' })
+    }
+    if (submission.queuedMessageId === undefined) {
+      // The command RPC that sent it is still waiting, and its answer says why.
+      await ctx.journal.resolveDispatch({ clientMessageId, ...refused, fence: ctx.fence })
+      return
+    }
+    // A queued card's refusal has nobody waiting on it: its turn's one row says why.
+    await openCommandTurn(ctx, submission)
+    await settleUnsentCommand(ctx, clientMessageId, refused)
     return
   }
-  const turn = structuredAgentSessionCommandTurn(clientMessageId)
-  await ctx.journal.resolveDispatch({
-    clientMessageId,
-    state: 'pending',
-    fence: ctx.fence,
-    turnScope: ctx.journal.liveTurnScope()
-  })
-  const startedAt = ctx.now()
-  const running = agentJournalTurnBody({
-    turnId: turn.turnId,
-    state: 'running',
-    userItemId: agentJournalSubmissionKey(clientMessageId),
-    requestedAt: structuredAgentSessionHandoverOrigin(ctx.journal, submission),
-    startedAt
-  })
-  await ctx.journal.appendItem(turn.identity, running, {
-    fence: ctx.fence,
-    observedAt: startedAt,
-    turnScope: AGENT_JOURNAL_THREAD_SCOPE
-  })
+  const { turn, running } = await openCommandTurn(ctx, submission)
   let admission: AgentSessionCommandAdmission
   try {
     admission = await ctx.adapter.compact!({
@@ -235,6 +222,35 @@ export async function handOverStructuredAgentSessionCommand(
     // An unknown write leaves the turn to the provider's end or the child's: it may have run.
     await ctx.journal.resolveDispatch({ clientMessageId, ...admission, fence: ctx.fence })
   }
+}
+
+/** Hands the command over and opens its own turn. */
+async function openCommandTurn(
+  ctx: StructuredAgentSessionCommandHandoverContext,
+  submission: AgentJournalSubmission
+) {
+  const { clientMessageId } = submission
+  const turn = structuredAgentSessionCommandTurn(clientMessageId)
+  await ctx.journal.resolveDispatch({
+    clientMessageId,
+    state: 'pending',
+    fence: ctx.fence,
+    turnScope: ctx.journal.liveTurnScope()
+  })
+  const startedAt = ctx.now()
+  const running = agentJournalTurnBody({
+    turnId: turn.turnId,
+    state: 'running',
+    userItemId: agentJournalSubmissionKey(clientMessageId),
+    requestedAt: structuredAgentSessionHandoverOrigin(ctx.journal, submission),
+    startedAt
+  })
+  await ctx.journal.appendItem(turn.identity, running, {
+    fence: ctx.fence,
+    observedAt: startedAt,
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+  })
+  return { turn, running }
 }
 
 /** Where the turn a handed-over submission runs in starts counting: its handover, so time spent

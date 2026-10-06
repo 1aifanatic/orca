@@ -214,17 +214,17 @@ export function sendQueuedStructuredAgentMessage(
       if (row.state === 'withdrawn') {
         return invalid('This queued message was withdrawn.')
       }
-      // A command never steers: handed over mid-turn it would only be refused. Clients offer no
-      // Send-now on a command card; this answers one that does.
-      if (hold === 'working' && row.body.command && row.state !== 'dispatched') {
-        return invalid('This command runs once the agent finishes.')
-      }
       if (row.state === 'dispatched') {
         // Already a submission — answer with it rather than sending twice.
         const submission = row.consumedAs === null ? undefined : submissionFor(ctx, row.consumedAs)
         return submission
           ? { ok: true, value: { clientMessageId: submission.clientMessageId, submission } }
           : invalid('This queued message was already sent.')
+      }
+      // A command never steers: handed over mid-turn it would only be refused. Clients offer its
+      // Send only while the agent is idle; this answers an older one that offers it mid-turn.
+      if (hold === 'working' && row.body.command) {
+        return invalid("A command can't be sent while the agent is working.")
       }
       const submissionId = operationId
       try {

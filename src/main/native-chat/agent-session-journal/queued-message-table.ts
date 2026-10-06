@@ -217,7 +217,8 @@ export function withdrawQueuedMessages(
 }
 
 /**
- * dispatched → returned, or back to waiting (`rejectedDraftSettlement`),
+ * dispatched → returned, or back to waiting (`rejectedDraftSettlement`); a refused command
+ * card is spent (withdrawn) instead of returned,
  * matched on the draft's CURRENT hand-off (`consumed_as`), so a re-send refused
  * again still settles while a late duplicate of an earlier refusal matches
  * nothing. A draft back to waiting keeps its position and carries no refusal;
@@ -234,6 +235,20 @@ export function settleRejectedQueuedMessage(
   }
 ): boolean {
   const settlement = rejectedDraftSettlement({ reason: input.reason, rejection: input.rejection })
+  if (settlement.state === 'returned') {
+    // A refused command is spent, not returned: its turn's row says why, once, and a returned
+    // card would hold every card behind it.
+    const spent = db
+      .prepare(
+        `UPDATE queued_messages SET state = 'withdrawn', settled_at = ?
+         WHERE session_id = ? AND state = 'dispatched' AND consumed_as = ?
+           AND json_extract(body_json, '$.command') IS NOT NULL`
+      )
+      .run(input.now, input.sessionId, input.consumedRef)
+    if (Number(spent.changes ?? 0) > 0) {
+      return true
+    }
+  }
   const changed =
     settlement.state === 'waiting'
       ? db

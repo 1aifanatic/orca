@@ -23,8 +23,10 @@ export type MobileQueuedMessageCard = {
   needsAttention: boolean
   /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
   caption: string | null
-  /** A conversation command such as /compact: it waits for the agent and never steers. */
+  /** A conversation command such as /compact: it never steers into a running turn. */
   command?: true
+  /** A command card while the agent works: it offers no send until the agent is idle. */
+  waitsForAgent?: true
 }
 
 function queuedMessageBodyText(body: AgentSessionQueuedMessage['body']): string {
@@ -93,7 +95,7 @@ export function mobileQueuePauseLabel(pause: Pick<AgentSessionQueuePause, 'reaso
 export function mobileQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null,
   submissions: readonly Pick<AgentJournalSubmission, 'queuedMessageId' | 'dispatchState'>[],
-  facts: { pendingPrompt: boolean; queuePaused?: boolean }
+  facts: { pendingPrompt: boolean; queuePaused?: boolean; agentWorking?: boolean }
 ): MobileQueuedMessageCard[] {
   if (!queuedMessages || queuedMessages.length === 0) {
     return []
@@ -134,7 +136,12 @@ export function mobileQueuedMessageCards(
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
       caption,
-      ...(draft.body.command !== undefined ? { command: true as const } : {})
+      ...(draft.body.command !== undefined
+        ? {
+            command: true as const,
+            ...(facts.agentWorking ? { waitsForAgent: true as const } : {})
+          }
+        : {})
     })
     if (draft.state === 'returned') {
       behindReturned = true

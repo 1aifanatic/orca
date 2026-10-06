@@ -17686,6 +17686,8 @@
         "clearAfterAnswer": "Répondez à la question ou à la demande d'approbation de l'agent, puis lancez /clear.",
         "runCompactWhenDone": "Lancez /compact quand il aura terminé.",
         "compactAfterAnswer": "Répondez à la question ou à la demande d'approbation de l'agent, puis lancez /compact.",
+        "clearAfterRetry": "Réessayez votre message précédent, puis lancez /clear.",
+        "compactAfterRetry": "Réessayez votre message précédent, puis lancez /compact.",
         "optionRejected": "L'agent n'a pas accepté ce réglage.",
         "goalsUnsupported": "Cet agent ne prend pas en charge les objectifs.",
         "agentRefused": "L'agent l'a refusé.",

@@ -116,23 +116,23 @@ describe('NativeChatQueuedMessageList', () => {
     expect(owner.remove).toHaveBeenCalledWith('draft-2')
   })
 
-  it('a command card offers no Steer or Send: it runs when the agent finishes', () => {
-    renderList(
-      controller([
-        card({ messageId: 'compact-1', text: '/compact', command: true }),
-        card({
-          messageId: 'compact-2',
-          text: '/compact',
-          command: true,
-          state: 'returned',
-          hold: 'returned'
-        })
-      ])
-    )
+  it('a command card never steers: Send only while the agent is idle', () => {
+    const owner = controller([
+      card({ messageId: 'compact-1', text: '/compact', command: true, waitsForAgent: true }),
+      card({ messageId: 'compact-2', text: '/compact', command: true, hold: 'paused' })
+    ])
+    renderList(owner)
     expect(screen.getAllByText('/compact')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(owner.steer).toHaveBeenCalledWith('compact-2')
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
+  })
+
+  it('an idle command card waiting its turn reads Send, not Steer', () => {
+    renderList(controller([card({ messageId: 'compact-1', text: '/compact', command: true })]))
+    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Steer' })).toBeNull()
   })
 
   it('a command card offers no Edit: its text is not a draft', async () => {

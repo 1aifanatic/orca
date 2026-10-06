@@ -49,6 +49,8 @@ export function useMobileStructuredQueuedMessageControls(args: {
   queuePause: MobileQueuePause
   submissions: readonly AgentJournalSubmission[]
   pendingPrompt: boolean
+  /** The chat shows the agent working: a command card offers no send then. */
+  agentWorking?: boolean
   mutate: MobileStructuredAgentMutate
   /** The active pane's live composer, Edit's copy target; absent = Edit refuses. False when
    *  nothing was copied. */
@@ -69,15 +71,17 @@ export function useMobileStructuredQueuedMessageControls(args: {
     sessionKey,
     submissions
   } = args
+  const agentWorking = args.agentWorking === true
   const cards = useMemo(
     () =>
       queueCapable
         ? mobileQueuedMessageCards(queuedMessages, submissions, {
             pendingPrompt,
+            agentWorking,
             queuePaused: queuePause !== null
           })
         : [],
-    [pendingPrompt, queueCapable, queuePause, queuedMessages, submissions]
+    [agentWorking, pendingPrompt, queueCapable, queuePause, queuedMessages, submissions]
   )
   const resolved = useCallback(
     (accepted: boolean): boolean => {

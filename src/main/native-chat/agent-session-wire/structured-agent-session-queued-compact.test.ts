@@ -3,6 +3,9 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
 import {
   createQueuedMessageTestRig,
@@ -67,6 +70,19 @@ function prompt(state: 'pending' | 'resolved') {
     },
     { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
   )
+}
+
+const BACKGROUND_TASK: AgentChildWorkView = {
+  id: 'child-dev',
+  providerId: 'task-dev',
+  kind: 'command',
+  description: 'npm run dev',
+  state: 'working',
+  membership: 'live',
+  firstObservedAt: 1,
+  observedAt: 1,
+  stoppable: true,
+  invocation: { invocationId: 'spawn-dev', generation: 1 }
 }
 
 const settleMs = () => new Promise((resolve) => setTimeout(resolve, 150))
@@ -139,7 +155,7 @@ describe('a /compact that waits in line', () => {
     const compactId = await queuedCompact()
     expect(await rig.sendNow(compactId)).toMatchObject({
       ok: false,
-      refusal: { message: 'This command runs once the agent finishes.' }
+      refusal: { message: "A command can't be sent while the agent is working." }
     })
     expect(await rig.handoff(compactId)).toBeUndefined()
     await rig.settleAccepted(working, 'a')
@@ -206,6 +222,80 @@ describe('a /compact that waits in line', () => {
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
+    await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
+  })
+
+  /** The rows that report a failure, and the cards still listed. */
+  async function failureRowsAndCards() {
+    const snapshot = await rig.host.journalSnapshot(SESSION)
+    return {
+      failures: snapshot.items.filter(
+        (item) => item.body.kind === 'status' && item.body.tone === 'error'
+      ),
+      cards: await rig.drafts()
+    }
+  }
+
+  it('refused by the agent: spent, said once in its turn, and the next card still runs', async () => {
+    // Every compaction is refused, as on a short chat: a returned card would loop or block.
+    rig.compact.mockResolvedValue({
+      state: 'rejected',
+      ...agentSessionFailureWords(
+        agentSessionFailureFact('providerRejected', {
+          detail: { text: 'Not enough messages to compact.', audience: 'person' }
+        }),
+        { surface: 'rejection' }
+      )
+    })
+    const working = await rig.workingSend()
+    await queuedCompact()
+    const later = await rig.send('sent after the compact', 'queue-if-active').result
+    if (!later.ok || !('queued' in later.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () =>
+      expect(await rig.handoff(later.value.queued.messageId)).toBeDefined()
+    )
+    const { failures, cards } = await failureRowsAndCards()
+    expect(failures).toHaveLength(1)
+    expect(JSON.stringify(failures[0]!.body)).toContain('Not enough messages to compact.')
+    expect(cards).toEqual([])
+    expect(rig.compact).toHaveBeenCalledOnce()
+  })
+
+  it('refused before it starts (background tasks): one row says so, and the next card runs', async () => {
+    let tasks: AgentChildWorkView[] = []
+    Object.assign(rig.host.deps, {
+      statusSink: { publish: () => {}, forget: () => {}, readChildWork: () => tasks }
+    })
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    const later = await rig.send('sent after the compact', 'queue-if-active').result
+    if (!later.ok || !('queued' in later.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    tasks = [BACKGROUND_TASK]
+    await rig.settleAccepted(working, 'a')
+    await eventually(async () =>
+      expect(await rig.handoff(later.value.queued.messageId)).toBeDefined()
+    )
+    expect(rig.compact).not.toHaveBeenCalled()
+    expect(await rig.handoff(compactId)).toMatchObject({ dispatchState: 'rejected' })
+    const { failures, cards } = await failureRowsAndCards()
+    expect(failures).toHaveLength(1)
+    expect(cards).toEqual([])
+  })
+
+  it('Send on its card works whenever the agent is idle, as after a paused queue', async () => {
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    expect(await rig.sendNow(compactId)).toMatchObject({
+      ok: true,
+      value: { submission: { queuedMessageId: compactId } }
+    })
     await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
   })
 

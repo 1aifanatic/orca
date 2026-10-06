@@ -12,18 +12,28 @@ import { translate } from '@/i18n/i18n'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { agentSessionFailureStatedByStartRow } from './structured-agent-session-delivery-notices'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
 
 /** Why this client does not send the command yet. `ahead`: a message this window sent is not
- *  the host's yet, and the command waits for it quietly; the rest are refused here. */
-export type StructuredConversationCommandHold = 'ahead' | 'working' | 'prompt' | 'background'
+ *  the host's yet; the command is not taken, and its text stays in the composer while Send is
+ *  busy, as for any send on its way. The rest are refused here, in words. */
+export type StructuredConversationCommandHold =
+  | 'ahead'
+  | 'working'
+  | 'prompt'
+  | 'background'
+  | 'retry'
 
 /** A command that waits in line is held only by a message the host doesn't have yet, which must
  *  stay ahead of it; any other command, by anything the agent still has in flight. */
 export function structuredConversationCommandHold(input: {
   /** A /compact the host can hold as a card behind the turn or prompt. */
   waitsInLine: boolean
-  turnActive: boolean
+  /** A turn runs, or the chat shows the agent working on a message it has not answered. */
+  agentWorking: boolean
   promptPending: boolean
   backgroundTasksRunning: boolean
   /** Any message this window sent that the host has not answered. */
@@ -40,7 +50,11 @@ export function structuredConversationCommandHold(input: {
   if (input.promptPending) {
     return 'prompt'
   }
-  return input.turnActive || input.outboxHeld ? 'working' : null
+  if (input.agentWorking || input.outboxUnsent) {
+    return 'working'
+  }
+  // Only messages that failed are left, each with its own Retry: the agent is not working.
+  return input.outboxHeld ? 'retry' : null
 }
 
 /** The line a command refused here gets: what the person sees and can do, as the host says it. */
@@ -48,16 +62,19 @@ function heldCommandText(
   command: AgentSessionConversationCommand,
   hold: Exclude<StructuredConversationCommandHold, 'ahead'>
 ): string {
-  if (hold === 'prompt') {
-    return agentSessionWriteNoticeText([
-      command === 'clear' ? 'clearAfterAnswer' : 'compactAfterAnswer'
-    ])
-  }
-  if (hold === 'working') {
-    return agentSessionWriteNoticeText([
-      'agentStillWorking',
-      command === 'clear' ? 'runClearWhenDone' : 'runCompactWhenDone'
-    ])
+  const clear = command === 'clear'
+  switch (hold) {
+    case 'prompt':
+      return agentSessionWriteNoticeText([clear ? 'clearAfterAnswer' : 'compactAfterAnswer'])
+    case 'working':
+      return agentSessionWriteNoticeText([
+        'agentStillWorking',
+        clear ? 'runClearWhenDone' : 'runCompactWhenDone'
+      ])
+    case 'retry':
+      return agentSessionWriteNoticeText([clear ? 'clearAfterRetry' : 'compactAfterRetry'])
+    case 'background':
+      break
   }
   return translate(
     'components.native-chat.conversationCommand.pendingWork',
@@ -71,28 +88,25 @@ export async function sendStructuredConversationCommand(input: {
   agentName: string
   pending: { current: boolean }
   hold: StructuredConversationCommandHold | null
-  /** Resolves once the messages ahead of the command are the host's, whatever became of them;
-   *  false when this pane went away first, which sends nothing. */
-  untilAheadHandedOver: () => Promise<boolean>
   /** What the chat's loaded start-failure rows state, read when the reply lands. */
   startFailures: () => readonly AgentSessionFailureFact[]
   send: (
     command: AgentSessionConversationCommand
   ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
 }): Promise<{ accepted: boolean; error: string | null }> {
-  // A repeated press: the command already on its way settles the composer's text.
+  // A command on its way is the agent's work in flight.
   if (input.pending.current) {
+    return { accepted: false, error: heldCommandText(input.command, 'working') }
+  }
+  // The message ahead reads as sending, and Send is busy until the host has it; nothing is armed.
+  if (input.hold === 'ahead') {
     return { accepted: false, error: null }
   }
-  if (input.hold !== null && input.hold !== 'ahead') {
+  if (input.hold !== null) {
     return { accepted: false, error: heldCommandText(input.command, input.hold) }
   }
   input.pending.current = true
   try {
-    // The text stays in the composer meanwhile, which clears only once the command is accepted.
-    if (input.hold === 'ahead' && !(await input.untilAheadHandedOver())) {
-      return { accepted: false, error: null }
-    }
     const outcome = await input.send(input.command)
     if (outcome.kind === 'not-done') {
       return { accepted: false, error: outcome.notice }
@@ -116,6 +130,55 @@ export async function sendStructuredConversationCommand(input: {
     return { accepted: value.state === 'completed' && !error, error }
   } finally {
     input.pending.current = false
+  }
+}
+
+/** The composer's /clear or /compact, with what this pane knows about work in flight. */
+export function structuredConversationCommandRunner(args: {
+  agentName: string
+  pending: { current: boolean }
+  /** The host holds a /compact as a card, and this client renders the queue. */
+  commandsWait: boolean
+  /** The chat shows the agent working: a turn runs, or a message it has not answered. */
+  agentWorking: boolean
+  promptPending: boolean
+  /** Every pending prompt is one this build cannot answer: a card would wait on it forever. */
+  promptsUnanswerableHere: boolean
+  backgroundTasksRunning: boolean
+  outbox: readonly StructuredAgentSessionOutboxEntry[]
+  submissions: readonly AgentJournalSubmission[]
+  startFailures: () => readonly AgentSessionFailureFact[]
+  write: (
+    fields: Record<string, unknown>
+  ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
+}): (
+  command: AgentSessionConversationCommand
+) => Promise<{ accepted: boolean; error: string | null }> {
+  return (command) => {
+    const waitsInLine =
+      command === 'compact' &&
+      args.commandsWait &&
+      !(args.promptPending && args.promptsUnanswerableHere)
+    return sendStructuredConversationCommand({
+      command,
+      agentName: args.agentName,
+      pending: args.pending,
+      hold: structuredConversationCommandHold({
+        waitsInLine,
+        agentWorking: args.agentWorking,
+        promptPending: args.promptPending,
+        backgroundTasksRunning: args.backgroundTasksRunning,
+        outboxHeld: args.outbox.length > 0,
+        outboxUnsent: hasUnsentStructuredAgentSessionOutboxEntry(args.outbox, args.submissions)
+      }),
+      startFailures: args.startFailures,
+      send: (command) =>
+        args.write(
+          command === 'compact' && args.commandsWait
+            ? { command, delivery: 'queue-if-active' }
+            : { command }
+        )
+    })
   }
 }
 

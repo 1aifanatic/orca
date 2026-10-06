@@ -86,7 +86,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
   label: string
   hint: string
 } {
-  if (card.hold === 'paused' || card.hold === 'returned') {
+  if (card.hold === 'paused' || card.hold === 'returned' || card.command) {
     return {
       steers: false,
       label: translate('components.native-chat.queuedMessages.send', 'Send'),
@@ -150,8 +150,8 @@ export function NativeChatQueuedMessageCard({
           </p>
         ) : null}
       </div>
-      {/* A command runs when the agent finishes, so it offers no Send-now. */}
-      {card.command ? null : (
+      {/* A command never steers: its Send shows only while the agent is idle. */}
+      {card.waitsForAgent ? null : (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button type="button" variant="ghost" size="xs" onClick={onSteer}>

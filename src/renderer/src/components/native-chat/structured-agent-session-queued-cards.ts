@@ -33,8 +33,10 @@ export type QueuedMessageCard = {
   text: string
   state: 'waiting' | 'returned'
   hold: QueuedMessageCardHold
-  /** A conversation command such as /compact: it waits for the agent and never steers. */
+  /** A conversation command such as /compact: it never steers into a running turn. */
   command?: true
+  /** A command card while the agent works: it offers no send until the agent is idle. */
+  waitsForAgent?: true
   pausedReason?: string
   returnedReason?: string | null
   /** The typed fact the returned card's submission settled with; read like its `rejection`. */
@@ -55,7 +57,7 @@ function queuedMessageCardText(body: AgentSessionQueuedMessage['body']): string 
 export function projectQueuedMessageCards(
   queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined,
   submissions: readonly AgentJournalSubmission[],
-  session: { hasPendingPrompt: boolean; queuePaused?: boolean }
+  session: { hasPendingPrompt: boolean; queuePaused?: boolean; agentWorking?: boolean }
 ): QueuedMessageCard[] {
   const handedOff = handedOffQueuedMessageIds(
     submissions.filter((submission) => submission.dispatchState !== 'rejected')
@@ -84,7 +86,12 @@ export function projectQueuedMessageCards(
       text: queuedMessageCardText(message.body),
       state: message.state,
       hold,
-      ...(message.body.command !== undefined ? { command: true as const } : {}),
+      ...(message.body.command !== undefined
+        ? {
+            command: true as const,
+            ...(session.agentWorking ? { waitsForAgent: true as const } : {})
+          }
+        : {}),
       ...(message.pausedReason !== undefined ? { pausedReason: message.pausedReason } : {}),
       ...(message.returnedReason !== undefined ? { returnedReason: message.returnedReason } : {}),
       ...(message.returnedRejection !== undefined
