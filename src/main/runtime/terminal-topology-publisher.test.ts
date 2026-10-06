@@ -3,8 +3,10 @@ import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { TEST_LEAF_1 } from '../persistence-session-fixtures'
-import type { WorkspaceSessionOwner } from './runtime-workspace-session-controller'
-import { TerminalTopologyPublisher } from './terminal-topology-publisher'
+import {
+  TerminalTopologyPublisher,
+  type WorkspaceSessionOwner
+} from './terminal-topology-publisher'
 
 const WT = 'repo-1::/tmp/wt-a'
 const WT_B = 'repo-1::/tmp/wt-b'
@@ -47,9 +49,17 @@ function harness(initial: WorkspaceSessionState) {
       )
   )
   const pushes: TerminalTopologySlice[] = []
-  const publisher = new TerminalTopologyPublisher(readOwners)
-  publisher.setSink((slice) => pushes.push(slice))
-  publisher.subscribe()
+  let sinkError: Error | null = null
+  const publisher = new TerminalTopologyPublisher(readOwners, (slice) => {
+    if (sinkError) {
+      throw sinkError
+    }
+    pushes.push(slice)
+  })
+  // The first settle publishes the starting topology; tests then observe only later changes.
+  publisher.markDirty()
+  publisher.settle()
+  pushes.length = 0
   return {
     publisher,
     pushes,
@@ -59,6 +69,9 @@ function harness(initial: WorkspaceSessionState) {
     },
     replace(next: WorkspaceSessionState) {
       session = next
+    },
+    failSink(error: Error) {
+      sinkError = error
     }
   }
 }
@@ -68,12 +81,22 @@ afterEach(() => {
 })
 
 describe('TerminalTopologyPublisher', () => {
-  it('takes a baseline without pushing, and the pull returns it', () => {
-    const h = harness(sessionWith([WT, WT_B]))
+  it('publishes every worktree on the first flush', () => {
+    const pushes: TerminalTopologySlice[] = []
+    const session = sessionWith([WT, WT_B])
+    const publisher = new TerminalTopologyPublisher(
+      () =>
+        new Map<string, WorkspaceSessionOwner>([
+          [WT, { hostId: 'local', session }],
+          [WT_B, { hostId: 'local', session }]
+        ]),
+      (slice) => pushes.push(slice)
+    )
 
-    expect(h.pushes).toEqual([])
-    const slices = h.publisher.readSlices()
-    expect(slices.map((slice) => [slice.worktreeId, slice.publishSeq])).toEqual([
+    publisher.markDirty()
+    publisher.flush()
+
+    expect(pushes.map((slice) => [slice.worktreeId, slice.publishSeq])).toEqual([
       [WT, 1],
       [WT_B, 2]
     ])
@@ -132,7 +155,6 @@ describe('TerminalTopologyPublisher', () => {
         sleeping: {}
       }
     ])
-    expect(h.publisher.readSlices().map((slice) => slice.worktreeId)).toEqual([WT_B])
   })
 
   it('settle flushes synchronously so a reply names a push that already went out', () => {
@@ -147,7 +169,7 @@ describe('TerminalTopologyPublisher', () => {
     expect(h.publisher.settle()).toBe(seq)
   })
 
-  it('keeps publishSeq monotonic across pushes and re-baselines', async () => {
+  it('keeps publishSeq monotonic across pushes', async () => {
     const h = harness(sessionWith([WT]))
     const seqs: number[] = [h.publisher.settle(WT)]
     for (const ptyId of ['a', 'b', 'c']) {
@@ -158,21 +180,15 @@ describe('TerminalTopologyPublisher', () => {
       await Promise.resolve()
       seqs.push(h.publisher.settle(WT))
     }
-    h.publisher.setSink(() => {})
-    h.publisher.subscribe()
-    seqs.push(h.publisher.settle(WT))
 
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
     expect(new Set(seqs).size).toBe(seqs.length)
   })
 
-  it('records a throwing sink or projection without throwing to the caller', async () => {
+  it('logs a throwing sink or projection once without throwing to the caller', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const h = harness(sessionWith([WT]))
-    h.publisher.setSink(() => {
-      throw new Error('frame gone')
-    })
-    h.publisher.subscribe()
+    h.failSink(new Error('frame gone'))
     h.replace(sessionWith([WT, WT_B]))
     h.publisher.markDirty()
     await Promise.resolve()
@@ -182,37 +198,7 @@ describe('TerminalTopologyPublisher', () => {
     h.publisher.markDirty()
 
     expect(() => h.publisher.settle(WT)).not.toThrow()
-    expect(h.publisher.failureCount).toBe(2)
+    expect(h.readOwners).toHaveBeenCalledTimes(3)
     expect(warn).toHaveBeenCalledTimes(1)
-  })
-
-  it('stays dormant with a window but no subscriber, until the first pull', async () => {
-    const readOwners = vi.fn(() => new Map<string, WorkspaceSessionOwner>())
-    const pushes: TerminalTopologySlice[] = []
-    const publisher = new TerminalTopologyPublisher(readOwners)
-    publisher.setSink((slice) => pushes.push(slice))
-
-    publisher.markDirty()
-    await Promise.resolve()
-    expect(publisher.settle(WT)).toBe(0)
-    expect(readOwners).not.toHaveBeenCalled()
-
-    publisher.readSlices()
-    publisher.markDirty()
-    await Promise.resolve()
-    expect(readOwners).toHaveBeenCalledTimes(2)
-    expect(pushes).toEqual([])
-  })
-
-  it('does no projection work while no window consumes it', () => {
-    const h = harness(sessionWith([WT]))
-    h.publisher.setSink(null)
-    h.readOwners.mockClear()
-
-    h.publisher.markDirty()
-    h.publisher.flush()
-
-    expect(h.readOwners).not.toHaveBeenCalled()
-    expect(h.publisher.readSlices().map((slice) => slice.worktreeId)).toEqual([WT])
   })
 })

@@ -1,11 +1,15 @@
 import { isDeepStrictEqual } from 'node:util'
+import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
-import type { WorkspaceSessionOwner } from './runtime-workspace-session-controller'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import {
   emptyTerminalTopologySlice,
   projectTerminalTopologySlice,
   type UnsequencedTerminalTopologySlice
 } from './terminal-topology-projection'
+
+/** A persisted worktree and the host partition that owns its rows. */
+export type WorkspaceSessionOwner = { hostId: ExecutionHostId; session: WorkspaceSessionState }
 
 type PublishedSlice = { publishSeq: number; snapshot: UnsequencedTerminalTopologySlice }
 
@@ -16,38 +20,18 @@ export type TerminalTopologySink = (slice: TerminalTopologySlice) => void
  * Compares by value because some persistence writers edit session objects in place.
  */
 export class TerminalTopologyPublisher {
-  private sink: TerminalTopologySink | null = null
   private readonly published = new Map<string, PublishedSlice>()
   private lastSeq = 0
   private dirty = false
-  private subscribed = false
-  private failures = 0
+  private failureLogged = false
 
-  constructor(private readonly readOwners: () => Map<string, WorkspaceSessionOwner>) {}
-
-  get failureCount(): number {
-    return this.failures
-  }
-
-  /** Dormant until a reader subscribes, so writes cost nothing while no one listens. */
-  setSink(sink: TerminalTopologySink | null): void {
-    this.sink = sink
-    this.dirty = false
-    this.subscribed = false
-    this.published.clear()
-  }
-
-  /** The current topology becomes the baseline unsent; the subscriber pulls it instead. */
-  subscribe(): void {
-    if (!this.sink || this.subscribed) {
-      return
-    }
-    this.subscribed = true
-    this.guard(() => this.reconcile(false))
-  }
+  constructor(
+    private readonly readOwners: () => Map<string, WorkspaceSessionOwner>,
+    private readonly sink: TerminalTopologySink
+  ) {}
 
   markDirty(): void {
-    if (!this.subscribed || this.dirty) {
+    if (this.dirty) {
       return
     }
     this.dirty = true
@@ -60,28 +44,24 @@ export class TerminalTopologyPublisher {
       return
     }
     this.dirty = false
-    this.guard(() => this.reconcile(true))
+    // A failed projection or push is logged once; it never reaches the write that notified it.
+    try {
+      this.reconcile()
+    } catch (error) {
+      if (!this.failureLogged) {
+        this.failureLogged = true
+        console.warn('[terminal-topology] publish failed; persistence is unaffected:', error)
+      }
+    }
   }
 
-  /** A publishSeq whose push (or pull) includes every write made before this call. */
+  /** A publishSeq whose push includes every write made before this call. */
   settle(worktreeId?: string): number {
     this.flush()
     return (worktreeId ? this.published.get(worktreeId)?.publishSeq : undefined) ?? this.lastSeq
   }
 
-  readSlices(): TerminalTopologySlice[] {
-    if (!this.sink) {
-      return [...this.readOwners()].map(([worktreeId, owner]) => ({
-        ...projectTerminalTopologySlice(owner.session, owner.hostId, worktreeId),
-        publishSeq: this.lastSeq
-      }))
-    }
-    this.subscribe()
-    this.flush()
-    return [...this.published.values()].map(sequenced)
-  }
-
-  private reconcile(push: boolean): void {
+  private reconcile(): void {
     const owners = this.readOwners()
     const changed: UnsequencedTerminalTopologySlice[] = []
     for (const [worktreeId, owner] of owners) {
@@ -103,29 +83,11 @@ export class TerminalTopologyPublisher {
     for (const snapshot of changed) {
       const entry = { publishSeq: ++this.lastSeq, snapshot }
       this.published.set(snapshot.worktreeId, entry)
-      if (push) {
-        this.send(entry)
-      }
+      this.send(entry)
     }
   }
 
-  private send(entry: PublishedSlice): void {
-    this.guard(() => this.sink?.(sequenced(entry)))
+  private send({ publishSeq, snapshot }: PublishedSlice): void {
+    this.sink({ ...snapshot, publishSeq })
   }
-
-  // A failed projection or push is counted and logged once; it never reaches the write.
-  private guard(run: () => void): void {
-    try {
-      run()
-    } catch (error) {
-      this.failures += 1
-      if (this.failures === 1) {
-        console.warn('[terminal-topology] publish failed; persistence is unaffected:', error)
-      }
-    }
-  }
-}
-
-function sequenced({ publishSeq, snapshot }: PublishedSlice): TerminalTopologySlice {
-  return { ...snapshot, publishSeq }
 }

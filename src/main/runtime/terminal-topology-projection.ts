@@ -35,7 +35,6 @@ export function projectTerminalTopologySlice(
   worktreeId: string
 ): UnsequencedTerminalTopologySlice {
   const tabs = (session.tabsByWorktree?.[worktreeId] ?? []).map(projectTabRow)
-  const tabIds = new Set(tabs.map((tab) => tab.id))
   const layouts: Record<string, TerminalTopologyLayout> = {}
   for (const tab of tabs) {
     const layout = session.terminalLayoutsByTabId?.[tab.id]
@@ -50,7 +49,7 @@ export function projectTerminalTopologySlice(
   }
   const sleeping: Record<string, SleepingAgentSessionRecord> = {}
   for (const [paneKey, record] of Object.entries(session.sleepingAgentSessionsByPaneKey ?? {})) {
-    if (record.worktreeId === worktreeId || tabIds.has(paneKey.split(':')[0] ?? '')) {
+    if (record.worktreeId === worktreeId) {
       sleeping[paneKey] = record
     }
   }

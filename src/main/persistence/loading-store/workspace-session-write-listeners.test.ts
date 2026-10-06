@@ -3,8 +3,10 @@ import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { TerminalTopologySlice } from '../../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { TEST_LEAF_1, TEST_LEAF_2 } from '../../persistence-session-fixtures'
-import type { WorkspaceSessionOwner } from '../../runtime/runtime-workspace-session-controller'
-import { TerminalTopologyPublisher } from '../../runtime/terminal-topology-publisher'
+import {
+  TerminalTopologyPublisher,
+  type WorkspaceSessionOwner
+} from '../../runtime/terminal-topology-publisher'
 import { ProfileStateWriterError } from '../profile-state/profile-state-writer-errors'
 import { fixture } from './profile-state-delayed-authority-fixture'
 import type { Store } from './store'
@@ -28,7 +30,7 @@ const binding = {
   incarnationId: 'observed-incarnation'
 }
 
-type Mode = 'none' | 'dormant' | 'publisher' | 'throwing'
+type Mode = 'none' | 'publisher' | 'throwing'
 
 function ownersOf(store: Store): Map<string, WorkspaceSessionOwner> {
   const owners = new Map<string, WorkspaceSessionOwner>()
@@ -75,27 +77,19 @@ function hostSession(store: Store): WorkspaceSessionState {
 async function runScenario(mode: Mode) {
   vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const { store, authority, readState } = await fixture()
   const pushes: TerminalTopologySlice[] = []
-  const publisher = new TerminalTopologyPublisher(() => ownersOf(store))
   if (mode !== 'none') {
-    publisher.setSink(
-      mode !== 'throwing'
+    const publisher = new TerminalTopologyPublisher(
+      () => ownersOf(store),
+      mode === 'publisher'
         ? (slice) => pushes.push(slice)
         : () => {
             throw new Error('sink failed')
           }
     )
     store.onWorkspaceSessionWritten(() => publisher.markDirty())
-  }
-  if (mode === 'publisher' || mode === 'throwing') {
-    publisher.subscribe()
-  }
-  if (mode === 'throwing') {
-    store.onWorkspaceSessionWritten(() => {
-      throw new Error('observer failed')
-    })
   }
   const snapshots: unknown[] = []
   const step = async (run: () => unknown) => {
@@ -123,7 +117,8 @@ async function runScenario(mode: Mode) {
       persisted: readState()
     }),
     pushes,
-    failures: publisher.failureCount
+    warnings: warn.mock.calls.filter(([message]) => String(message).includes('terminal-topology'))
+      .length
   }
 }
 
@@ -148,16 +143,14 @@ function withStableFixtureIds(value: unknown): unknown {
 describe('workspace session write observers are inert', () => {
   it('leave saved state and write order identical, even when they throw', async () => {
     const baseline = await runScenario('none')
-    const dormant = await runScenario('dormant')
     const observed = await runScenario('publisher')
     const throwing = await runScenario('throwing')
 
     expect(JSON.stringify(baseline.saved)).toContain('split-pty')
-    expect(dormant.saved).toEqual(baseline.saved)
-    expect(dormant.pushes).toEqual([])
+    expect(observed.pushes.length).toBeGreaterThan(0)
     expect(observed.saved).toEqual(baseline.saved)
     expect(throwing.saved).toEqual(baseline.saved)
-    expect(throwing.failures).toBeGreaterThan(0)
+    expect(throwing.warnings).toBe(1)
   })
 
   it('pushes each committed topology change, including durable binds and the removal', async () => {

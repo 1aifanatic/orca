@@ -4,7 +4,6 @@ import type { TerminalRevealIdentity } from '../../shared/terminal-reveal-identi
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type { ClientHostedBrowserRowsEvent } from '../../shared/client-hosted-browser-rows'
-import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
 import type {
   WorktreeBaseStatusEvent,
   WorktreeRemoteBranchConflictEvent
@@ -159,6 +158,4 @@ export type RuntimeNotifier = {
   browserDriverChanged?(browserPageId: string, driver: RuntimeBrowserDriverState): void
   browserRemoteViewersChanged?(browserPageId: string, hasRemoteViewers: boolean): void
   clientHostedBrowserRowsChanged?(event: ClientHostedBrowserRowsEvent): void
-  /** Local window only: a worktree's persisted terminal topology changed by value. */
-  terminalTopologyChanged?(slice: TerminalTopologySlice): void
 }

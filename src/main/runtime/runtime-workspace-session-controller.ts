@@ -22,8 +22,6 @@ type RuntimeWorkspaceSessionDependencies = {
   ) => boolean
 }
 
-export type WorkspaceSessionOwner = { hostId: ExecutionHostId; session: WorkspaceSessionState }
-
 export class RuntimeWorkspaceSessionController {
   constructor(private readonly deps: RuntimeWorkspaceSessionDependencies) {}
 
@@ -143,15 +141,6 @@ export class RuntimeWorkspaceSessionController {
   }
 
   getHydrationTargets(includeAllPersistedWorktrees: boolean): Map<string, WorkspaceSessionState> {
-    const targets = new Map<string, WorkspaceSessionState>()
-    for (const [worktreeId, owner] of this.getHydrationOwners(includeAllPersistedWorktrees)) {
-      targets.set(worktreeId, owner.session)
-    }
-    return targets
-  }
-
-  /** Each persisted worktree with the host partition that owns its rows. */
-  getHydrationOwners(includeAllPersistedWorktrees: boolean): Map<string, WorkspaceSessionOwner> {
     const store = this.deps.getStore()
     if (!store) {
       return new Map()
@@ -182,7 +171,7 @@ export class RuntimeWorkspaceSessionController {
       hostIds.add(hostId)
     }
 
-    const targets = new Map<string, WorkspaceSessionOwner>()
+    const targets = new Map<string, WorkspaceSessionState>()
     const sessionsByHostId = new Map<ExecutionHostId, WorkspaceSessionState>()
     for (const hostId of hostIds) {
       const session = store?.getWorkspaceSession?.(hostId)
@@ -212,7 +201,7 @@ export class RuntimeWorkspaceSessionController {
           (includeAllPersistedWorktrees ||
             this.deps.hasRuntimeOwnedPtyCandidate(session, worktreeId, tabs))
         ) {
-          targets.set(worktreeId, { hostId, session })
+          targets.set(worktreeId, session)
         }
       }
     }
