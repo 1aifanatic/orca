@@ -95,7 +95,7 @@ export function serializedStateMutationCommand(
     `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
     'if ! mkdir "$lock" 2>/dev/null; then',
     'holder=$(cat "$lock/pid" 2>/dev/null); group=$(cat "$lock/pgid" 2>/dev/null);',
-    // No pid yet: the run died before its work began, so only the first minute is unsafe.
+    // No pid yet: no work began, and the pid write is exclusive, so a late writer backs off.
     'if [ -z "$holder" ]; then',
     `[ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || { ${busy} };`,
     // Why the group: a killed shell can leave its tar or rm running; any live member keeps it.
@@ -104,10 +104,11 @@ export function serializedStateMutationCommand(
     `elif kill -0 "$holder" 2>/dev/null || [ -z "$(find "$lock" -maxdepth 0 -mmin +${staleMinutes} 2>/dev/null)" ]; then ${busy}`,
     'fi;',
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { ${busy} }; fi;`,
+    // Noclobber: a run that resumes after a takeover finds a pid already there and backs off.
+    `set -C; { echo $$ > "$lock/pid"; } 2>/dev/null || { ${busy} }; set +C;`,
     'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
     `group=$(${posixProcessGroupCommand('$$')});`,
     'case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > "$lock/pgid";; esac; fi;',
-    'echo $$ > "$lock/pid";',
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
     // A wake's fence ages toward takeover on its own, so its token stops the refresh.
     `beat_fence() { touch -c -m "$lock" 2>/dev/null; [ -e "$fence/${ORCAD_WAKE_OWNER_FILENAME}" ] || touch -c -m "$fence" 2>/dev/null; };`,

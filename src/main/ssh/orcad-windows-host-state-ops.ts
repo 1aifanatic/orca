@@ -87,22 +87,23 @@ function readOwner() {
   } catch { return null }
 }
 
-// Why a heartbeat on the lock too: with no readable identity, only a live holder keeps it fresh.
-const UNVERIFIABLE_HOLDER_STALE_MS = ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 5 * 1000}
-
 function takeStateMutationLock() {
-  try { fs.mkdirSync(MUTATION_LOCK); return true } catch (error) { if (error.code !== 'EEXIST') return false }
-  const owner = readOwner()
-  const age = Date.now() - (lstatOrNull(MUTATION_LOCK)?.mtimeMs ?? 0)
-  // No owner yet: a run that died between mkdir and its owner write, once a minute has passed.
-  const state = owner ? holderState(owner) : age > 60000 ? 'dead' : 'alive'
-  if (state === 'alive' || (state === 'unknown' && age <= UNVERIFIABLE_HOLDER_STALE_MS)) return false
-  try { removeTree(MUTATION_LOCK); fs.mkdirSync(MUTATION_LOCK); return true } catch { return false }
-}
-
-function beatStateMutation() {
-  refreshFence()
-  try { const now = new Date(); fs.utimesSync(MUTATION_LOCK, now, now) } catch {}
+  try { fs.mkdirSync(MUTATION_LOCK) } catch (error) {
+    if (error.code !== 'EEXIST') return false
+    const owner = readOwner()
+    const age = Date.now() - (lstatOrNull(MUTATION_LOCK)?.mtimeMs ?? 0)
+    // No owner yet: no work began, and the owner write is exclusive, so a late writer backs off.
+    const state = owner ? holderState(owner) : age > 60000 ? 'dead' : 'alive'
+    // Only proof of exit frees it: a live pid whose identity is unknown may be a suspended run.
+    if (state !== 'dead') return false
+    try { removeTree(MUTATION_LOCK); fs.mkdirSync(MUTATION_LOCK) } catch { return false }
+  }
+  // Exclusive: a run that resumes after a takeover finds an owner already there and backs off.
+  try {
+    const owner = { pid: process.pid, creationTimeMs: processCreationTime(process.pid) }
+    fs.writeFileSync(path.join(MUTATION_LOCK, 'owner.json'), JSON.stringify(owner), { flag: 'wx' })
+    return true
+  } catch { return false }
 }
 
 // One capture, restore or clear at a time: a client that stopped waiting has not stopped the
@@ -112,10 +113,8 @@ function withStateMutationLock(run) {
     if (!takeStateMutationLock()) return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
     let token = 'FAILED'
     // Why async ops: a synchronous copy would block this timer for the whole mutation.
-    const beat = setInterval(beatStateMutation, ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000})
+    const beat = setInterval(refreshFence, ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000})
     try {
-      const owner = { pid: process.pid, creationTimeMs: processCreationTime(process.pid) }
-      fs.writeFileSync(path.join(MUTATION_LOCK, 'owner.json'), JSON.stringify(owner))
       refreshFence()
       token = await run(...opArgs)
     } catch {
