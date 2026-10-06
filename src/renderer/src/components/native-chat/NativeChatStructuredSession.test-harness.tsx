@@ -206,6 +206,8 @@ export function createStructuredSessionMocks() {
               supportsStopAll: mocks.supportsBackgroundTaskStopAll
             },
             turnId: mocks.turnId,
+            epoch: 'epoch-1',
+            rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,
             stop: mocks.stop,
             queuedMessages: {
@@ -260,8 +262,8 @@ export function createStructuredSessionMocks() {
       useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
       useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
-    useNativeChatFontScale: () => ({
-      useNativeChatFontScale: () => ({ scale: 1 })
+    useNativeChatFontSize: () => ({
+      useNativeChatFontSize: () => undefined
     }),
     useNativeChatFileLinkContext: () => ({
       useNativeChatFileLinkContext: () => ({

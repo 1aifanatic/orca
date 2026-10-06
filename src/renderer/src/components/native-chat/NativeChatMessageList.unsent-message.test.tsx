@@ -176,7 +176,6 @@ describe('a message the host rejected after a crash, with no outbox entry left',
         workingStartedAt={phase === 'done' ? null : Date.now() - 1500}
         settledTurns={settledTurns}
         expandSignal={false}
-        fontScale={1}
       />
     )
   }

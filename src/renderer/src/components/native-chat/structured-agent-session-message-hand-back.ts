@@ -8,16 +8,27 @@ export function structuredAgentSessionMessageText(body: AgentJournalMessageItem)
   return body.blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
 }
 
-/** The images a message body carries, as composer attachments. */
-export function structuredAgentSessionMessageImages(
-  clientMessageId: string,
-  body: AgentJournalMessageItem
-): { id: string; path: string }[] {
-  return body.blocks.flatMap((block, index) =>
-    block.type === 'image-ref' && block.path
-      ? [{ id: `returned-${clientMessageId}-${index}`, path: block.path }]
-      : []
+/** Puts a message's text and images into a composer, after whatever is there. True once the text
+ *  is durable. */
+export function returnMessageToComposer(
+  composerScopeKey: string,
+  /** Unique to this message, so its images never collide with ones already attached. */
+  attachmentIdPrefix: string,
+  blocks: AgentJournalMessageItem['blocks']
+): boolean {
+  const durable = appendNativeChatDraftCache(
+    composerScopeKey,
+    structuredAgentSessionMessageText({ kind: 'message', role: 'user', blocks })
   )
+  appendNativeChatAttachmentCache(
+    composerScopeKey,
+    blocks.flatMap((block, index) =>
+      block.type === 'image-ref' && block.path
+        ? [{ id: `${attachmentIdPrefix}-${index}`, path: block.path }]
+        : []
+    )
+  )
+  return durable
 }
 
 /**
@@ -30,11 +41,9 @@ export function handBackStructuredAgentSessionMessage(
   clientMessageId: string,
   body: AgentJournalMessageItem
 ): boolean {
-  const scopeKey = structuredAgentSessionDraftScopeKey(sessionId)
-  const durable = appendNativeChatDraftCache(scopeKey, structuredAgentSessionMessageText(body))
-  appendNativeChatAttachmentCache(
-    scopeKey,
-    structuredAgentSessionMessageImages(clientMessageId, body)
+  return returnMessageToComposer(
+    structuredAgentSessionDraftScopeKey(sessionId),
+    `returned-${clientMessageId}`,
+    body.blocks
   )
-  return durable
 }
