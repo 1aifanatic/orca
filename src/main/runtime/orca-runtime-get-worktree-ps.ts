@@ -14,7 +14,6 @@ import { compareWorktreePs } from './runtime-worktree-status-projection'
 import type { Repo } from '../../shared/repo-types'
 import { enrichMissingRepoGitRemoteIdentities } from '../repo-git-remote-identity-enrichment'
 import { ensureStructuredAgentSessionHost as installStructuredAgentSessionHost } from './structured-agent-session-runtime'
-import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   createStructuredAttentionMobileDelivery,
   readStructuredAttentionWorkspaceLabels
@@ -179,10 +178,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           getAgentEnvResolvers: () => this.getCommitMessageAgentEnvironmentResolvers(),
           hasOpenDispatch: (record) =>
             structuredWorkerOwesWork(this.getOrchestrationDbIfAvailable?.() ?? null, record),
-          onNamed: (workspaceId, sessionId) => {
-            getStructuredAgentSessionHost()?.publishConversationName(sessionId)
+          retitleOpenTab: (workspaceId, sessionId) =>
             this.refreshStructuredConversationTabTitle(workspaceId, sessionId)
-          }
         },
         logger
       )
