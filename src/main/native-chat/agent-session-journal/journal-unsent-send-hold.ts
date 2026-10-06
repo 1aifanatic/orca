@@ -13,6 +13,7 @@ import type {
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
+import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
@@ -31,9 +32,9 @@ export type UnsentSendHold =
  *  - a card's own hand-off: its rejection already returns the card (`rejectedDraftSettlement`);
  *  - `/compact` and other commands: a command in flight is not resumed, the person re-runs it;
  *  - an image: cards are text-only;
- *  - orchestration mail (the mailbox re-sends it), a dispatch preamble or a restart continuation
- *    (their owners re-derive them), a source this build does not know, and a row with no source
- *    that is not a person's (it could be either). */
+ *  - a send not from a person: orchestration mail (the mailbox re-sends it), a dispatch preamble
+ *    or a restart continuation (their owners re-derive them), a kind this build does not know, and
+ *    a row with no source that is not a person's (it could be either). */
 export function unsentSendKeptAsCard(
   submission: Pick<AgentJournalSubmission, 'queuedMessageId' | 'source' | 'origin'>,
   body: AgentJournalItemBody | null
@@ -45,9 +46,10 @@ export function unsentSendKeptAsCard(
     return null
   }
   const { source } = submission
+  // Exactly 'user': never `readAgentSessionMessageSource`, whose fallback for what it cannot read
+  // is the person.
   const persons =
-    source === 'person' ||
-    source === 'launch' ||
+    source?.kind === USER_MESSAGE_SOURCE.kind ||
     // A build before `source` was recorded: `client` was only ever a person's send.
     (source === undefined && submission.origin === 'client')
   return persons ? body : null
@@ -122,6 +124,8 @@ export async function holdUnsentSends(
                     }),
                     hostInstance: input.hostInstance,
                     holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+                    // Only a person's send is kept.
+                    source: USER_MESSAGE_SOURCE,
                     queuedAt: { epoch, sequence: submission.acceptedSequence ?? 0 },
                     position: card.position
                   }

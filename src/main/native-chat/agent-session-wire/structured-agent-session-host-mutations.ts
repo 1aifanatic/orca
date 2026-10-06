@@ -7,10 +7,7 @@
 // admitted without the writer lease; the delivery loop starts the provider child a send needs, and
 // an operation only the provider can perform starts it before admission.
 
-import type {
-  AgentJournalHostSendSource,
-  AgentJournalMessageItem
-} from '../../../shared/agent-session-journal-types'
+import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionCancelResult,
   AgentSessionMutationEnvelope,
@@ -40,6 +37,7 @@ import {
   setOptionPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
@@ -63,8 +61,10 @@ export function sendStructuredAgentSessionTurn(
      *  Orchestration mail, a restart continuation and `agent.launch`'s host-sent
      *  prompt never set it. */
     userSend?: true
-    /** Which host-internal path sent it, when not a person (`AgentJournalSubmissionSource`). */
-    source?: AgentJournalHostSendSource
+    /** Host-local, never on the wire: who a host-side send is from. A queued one records it on
+     *  its card, a direct one its kind on the submission. A client's send is always its person's
+     *  (`userSend`). */
+    source?: AgentSessionMessageSource
     beforeRun?: () => void
   },
   arrival?: Parameters<typeof sendPreparation>[2]

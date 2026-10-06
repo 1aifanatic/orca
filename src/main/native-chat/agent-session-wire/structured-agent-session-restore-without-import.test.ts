@@ -42,6 +42,7 @@ import { restoreStructuredAgentSessionsOnRestart } from './structured-agent-sess
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 
 const { readOnlyOpens, openReadOnly } = vi.hoisted(() => ({
   readOnlyOpens: new Array<string>(),
@@ -138,7 +139,7 @@ async function seedLegacyChat(
     handoverRecorded: true,
     // A person's send that run accepted and quit before handing over.
     ...(midWork === 'never handed over'
-      ? { origin: 'client' as const, source: 'person' as const }
+      ? { origin: 'client' as const, source: USER_MESSAGE_SOURCE }
       : {})
   })
   if (midWork === 'running tool call') {
@@ -558,7 +559,8 @@ describe('startup restore of chats still in their per-chat files', () => {
       messageId: 'draft-1',
       body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'later' }] },
       fingerprint: 'fp-draft-1',
-      hostInstance: 'proc-1'
+      hostInstance: 'proc-1',
+      source: { kind: 'user' }
     })
 
     expect(journal.importPending).toBe(false)

@@ -1,5 +1,6 @@
 import type { AgentJournalDispatchRejection } from '../../../shared/agent-session-failure-words'
 import type {
+  AgentJournalAnsweredTurnIdentity,
   AgentJournalCursor,
   AgentJournalItemBody,
   AgentJournalItemIdentity,
@@ -7,10 +8,10 @@ import type {
   AgentJournalProducerLinkage,
   AgentJournalResetReason,
   AgentJournalRowAttribution,
-  AgentJournalSubmissionSource,
   AgentJournalTurnScope,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import type { JournalHostDatabase } from './journal-host-database'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
 import type { JournalRow } from './journal-row-schema'
@@ -41,7 +42,11 @@ export type ResolveDispatchInput = {
     | { state: 'pending'; turnScope: AgentJournalTurnScope }
     /** `reason` is what released clients print, `rejection` what newer ones read: both from
      *  `agentSessionFailureWords`, never written by hand. */
-    | ({ state: 'rejected'; keptAsQueuedMessageId?: string } & AgentJournalDispatchRejection)
+    | ({
+        state: 'rejected'
+        keptAsQueuedMessageId?: string
+        answeredInTurn?: AgentJournalAnsweredTurnIdentity
+      } & AgentJournalDispatchRejection)
     | { state: 'unknown'; reason?: string | null }
   )
 
@@ -88,8 +93,8 @@ export type JournalSubmissionInput = {
   queuedMessageId?: string
   /** Who asked for this turn (`JournalSubmissionRow.origin`). */
   origin?: 'client' | 'host'
-  /** Which path sent it (`JournalSubmissionRow.source`). */
-  source?: AgentJournalSubmissionSource
+  /** Who it is from (`JournalSubmissionRow.source`); the row keeps the kind only. */
+  source?: Pick<AgentSessionMessageSource, 'kind'>
 }
 
 /** A submission append that converts a queued draft, in one transaction. */

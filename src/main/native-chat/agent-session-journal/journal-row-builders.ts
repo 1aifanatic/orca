@@ -4,11 +4,11 @@ import type {
   AgentJournalMessageItem,
   AgentJournalProducerLinkage,
   AgentJournalRowAttribution,
-  AgentJournalSubmissionSource,
   AgentJournalTurnScope,
   AgentSessionJournalIdentity,
   AgentSessionJournalProviderHandle
 } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { agentSessionJournalProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
 import {
@@ -115,6 +115,17 @@ export function journalDispatchRowBuilder(
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
     ...(input.state === 'rejected' && input.keptAsQueuedMessageId !== undefined
       ? { keptAsQueuedMessageId: input.keptAsQueuedMessageId }
+      : {}),
+    // Every rejection states its turn, null for none, so a reader tells it from an older row.
+    ...(input.state === 'rejected'
+      ? {
+          answeredInTurn: input.answeredInTurn
+            ? {
+                turnItemId: agentJournalItemKey(input.answeredInTurn.turn),
+                via: input.answeredInTurn.via
+              }
+            : null
+        }
       : {}),
     ...journalRowBase(state().epoch, seq, input.fence, ts),
     ...(input.recovered ? { recovered: input.recovered } : {}),
@@ -314,7 +325,7 @@ export function buildJournalSubmissionRow(input: {
   handoverRecorded?: true
   queuedMessageId?: string
   origin?: 'client' | 'host'
-  source?: AgentJournalSubmissionSource
+  source?: Pick<AgentSessionMessageSource, 'kind'>
 }): JournalSubmissionRow {
   return {
     kind: 'submission',
@@ -326,6 +337,7 @@ export function buildJournalSubmissionRow(input: {
     ...(input.handoverRecorded ? { handoverRecorded: true } : {}),
     ...(input.queuedMessageId !== undefined ? { queuedMessageId: input.queuedMessageId } : {}),
     ...(input.origin !== undefined ? { origin: input.origin } : {}),
-    ...(input.source !== undefined ? { source: input.source } : {})
+    // The kind only: a caller's full source carries senders that stay host-only.
+    ...(input.source !== undefined ? { source: { kind: input.source.kind } } : {})
   }
 }

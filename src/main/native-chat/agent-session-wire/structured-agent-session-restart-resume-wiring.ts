@@ -51,7 +51,6 @@ type RestartResumeHostBindings = {
       envelope: AgentSessionMutationEnvelope
       body: AgentJournalMessageItem
       beforeRun?: () => void
-      source: 'continuation'
     }
   ) => Promise<AgentSessionMutationResult<AgentSessionSendResult>>
   /** The host's existing settlement waiter; a send returns while its dispatch is still pending. */
@@ -69,10 +68,7 @@ export function structuredAgentSessionRestartResumeSurfaces(
   return {
     revealSession: host.revealSession,
     send: (params) =>
-      host.send(
-        { callerKey: STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER },
-        { ...params, source: 'continuation' }
-      ),
+      host.send({ callerKey: STRUCTURED_AGENT_SESSION_RESTART_CONTINUATION_CALLER }, params),
     // Accepted like any send, so its verdict is its delivery, however long the start takes; the
     // wait ends when the submission settles or the session closes.
     awaitSendSettlement: (sessionId, clientMessageId) =>

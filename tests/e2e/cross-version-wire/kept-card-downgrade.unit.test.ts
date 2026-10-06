@@ -8,6 +8,7 @@ import type {
   AgentSessionJournalProviderHandle
 } from '../../../src/shared/agent-session-journal-types'
 import { claudeProviderHandle } from '../../../src/shared/agent-session-provider-handle-encoding'
+import { USER_MESSAGE_SOURCE } from '../../../src/shared/agent-session-message-source'
 import { agentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../src/shared/agent-session-failure-words'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../src/shared/agent-session-queued-message-wire'
@@ -125,7 +126,7 @@ async function acceptPersonSend(
     fence: 0,
     handoverRecorded: true,
     origin: 'client',
-    source: 'person'
+    source: USER_MESSAGE_SOURCE
   })
 }
 

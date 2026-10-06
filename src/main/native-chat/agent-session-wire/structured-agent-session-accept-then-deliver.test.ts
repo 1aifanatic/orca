@@ -47,6 +47,7 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -651,7 +652,7 @@ describe('Stop withdraws what is queued', () => {
       await journal.appendSubmission({
         ...earlierSubmission('person', 'p', true),
         origin: 'client',
-        source: 'person',
+        source: USER_MESSAGE_SOURCE,
         fence
       })
       await journal.appendSubmission({ ...earlierSubmission('leftover', 'l', true), fence })

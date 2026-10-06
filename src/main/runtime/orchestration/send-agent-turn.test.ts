@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionSendResult } from '../../../shared/agent-session-wire'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { ORCHESTRATION_READINESS_TIMEOUT_MS } from '../../../shared/orchestration-timing-budgets'
 import { dispatchPreambleSendOptions } from './preamble'
 import {
@@ -52,6 +53,17 @@ function structuredHost(answer: HostSendAnswer, settled?: AgentJournalSubmission
   return { host, send, waitForSendSettlement }
 }
 
+const MAIL_SOURCE: AgentMessageSource = {
+  kind: 'agent',
+  senders: [],
+  orchestration: {
+    message: 'mail-notice',
+    mailbox: 'dispatch:d1',
+    dispatchId: 'd1',
+    messages: [{ messageId: 'm1', runId: 'r1', from: 'term_peer' }]
+  }
+}
+
 const turn: StructuredSessionTurn = {
   body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
   delivery: 'now',
@@ -65,7 +77,6 @@ const structured = (host: StructuredAgentTurnHost, sent: StructuredSessionTurn =
     host,
     sessionId: 's1',
     callerKey: 'trusted-local:k',
-    source: 'mail',
     turn: sent
   }) as const
 
@@ -83,8 +94,7 @@ describe('sendAgentTurn to a structured session', () => {
       clientMessageId: 'op-1',
       submission: submissionOf('accepted')
     })
-    // The body-only digest every orchestration send carried before it was derived here; `source`
-    // is host-local and stays out of it.
+    // The body-only digest every orchestration send carried before it was derived here.
     expect(fake.send).toHaveBeenCalledWith(
       { callerKey: 'trusted-local:k' },
       {
@@ -94,8 +104,7 @@ describe('sendAgentTurn to a structured session', () => {
           expectedRuntimeFence: 7,
           payloadFingerprint: hostFingerprint({ body: turn.body })
         },
-        body: turn.body,
-        source: 'mail'
+        body: turn.body
       }
     )
     expect(fake.waitForSendSettlement).not.toHaveBeenCalled()
@@ -145,7 +154,7 @@ describe('sendAgentTurn to a structured session', () => {
       })
     )
     await expect(
-      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue' }))
+      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue', source: MAIL_SOURCE }))
     ).resolves.toEqual({
       kind: 'queued',
       clientMessageId: 'op-1',
@@ -162,7 +171,8 @@ describe('sendAgentTurn to a structured session', () => {
         },
         body: turn.body,
         delivery: 'queue-if-active',
-        source: 'mail'
+        // Host-local: who the card is from rides beside the envelope, outside its fingerprint.
+        source: MAIL_SOURCE
       }
     )
     expect(fake.waitForSendSettlement).not.toHaveBeenCalled()
@@ -176,7 +186,7 @@ describe('sendAgentTurn to a structured session', () => {
       })
     )
     await expect(
-      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue' }))
+      sendAgentTurn(structured(fake.host, { ...turn, delivery: 'queue', source: MAIL_SOURCE }))
     ).resolves.toMatchObject({ kind: 'queued', queued: { state: 'returned' } })
   })
 })

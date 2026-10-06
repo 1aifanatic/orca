@@ -13,9 +13,9 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import type {
   AgentJournalMessageItem,
-  AgentJournalSubmission,
-  AgentJournalSubmissionSource
+  AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import {
   refuse,
   type AgentSessionRefusalReason,
@@ -128,7 +128,8 @@ export async function performSend(
     body: AgentJournalMessageItem
     /** Who asked for the turn; absent on callers that predate it. */
     origin?: 'client' | 'host'
-    source?: AgentJournalSubmissionSource
+    /** Who it is from; the submission keeps the kind only. */
+    source?: AgentSessionMessageSource
   }
 ): Promise<TurnOutcome<AgentSessionSendResult>> {
   const existing = ctx.journal
@@ -233,6 +234,7 @@ export async function handOverSubmission(
               state: 'rejected',
               reason: outcome.reason,
               rejection: outcome.rejection,
+              ...(outcome.answeredInTurn ? { answeredInTurn: outcome.answeredInTurn } : {}),
               fence: ctx.fence
             }
           : { clientMessageId, state: 'unknown', reason: outcome.reason, fence: ctx.fence }

@@ -119,6 +119,7 @@ export async function carryQueuedMessagesToClearReplacement(
         fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
         hostInstance: structuredAgentSessionHostInstance(),
         carriedFrom: ctx.sessionId,
+        source: row.source,
         // A kept send stays held there too: no later message may release it.
         ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT
           ? { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
@@ -228,7 +229,6 @@ export function sendQueuedStructuredAgentMessage(
             clientMessageId: submissionId,
             // The person asked for this turn, so it ends a Stop's pause once it starts.
             origin: 'client',
-            source: 'queue',
             payloadFingerprint: row.fingerprint,
             body: row.body,
             fence: ctx.fence,

@@ -18,7 +18,7 @@ it('keeps a kept send’s card id and its source through a parse', () => {
     submittedAt: 1,
     resolvedAt: 2,
     recovered: true,
-    source: 'person',
+    source: { kind: 'user' },
     keptAsQueuedMessageId: 'client-kept'
   }
   expect(isAdmissibleAgentJournalSubmission(kept)).toBe(true)

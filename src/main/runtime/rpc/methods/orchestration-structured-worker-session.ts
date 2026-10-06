@@ -231,7 +231,6 @@ export async function sendStructuredWorkerPreamble(args: {
     host: args.host,
     sessionId: args.sessionId,
     callerKey: structuredPointerCallerKey(args.dispatchId),
-    source: 'dispatch',
     turn: {
       body,
       delivery: 'now',

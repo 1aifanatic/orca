@@ -8,9 +8,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type {
   AgentJournalMessageItem,
   AgentJournalSubmission,
-  AgentJournalSubmissionSource,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
+import {
+  USER_MESSAGE_SOURCE,
+  type AgentMessageSource,
+  type AgentSessionMessageSource
+} from '../../../shared/agent-session-message-source'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
@@ -74,13 +78,20 @@ function hold(journal: AgentSessionJournal, settle: UnsentSendHold = { cause: 'h
   return holdUnsentSends(journal, { fence: 0, hostInstance: HOST, hold: settle })
 }
 
+/** Orchestration mail as the mailbox sends it: from another agent, naming its sender. */
+const MAIL_SOURCE: AgentMessageSource = {
+  kind: 'agent',
+  senders: [{ party: { address: 'agent:coordinator', terminalHandle: null, orcaSessionId: null } }],
+  orchestration: { message: 'mail-notice', mailbox: 'agent:worker', dispatchId: null, messages: [] }
+}
+
 async function accept(
   journal: AgentSessionJournal,
   id: string,
   fields: {
     body?: AgentJournalMessageItem
     origin?: 'client' | 'host'
-    source?: AgentJournalSubmissionSource
+    source?: AgentSessionMessageSource
   } = {}
 ): Promise<void> {
   const body = fields.body ?? message(`text of ${id}`)
@@ -126,8 +137,8 @@ afterEach(async () => {
 describe('which sends an earlier host process left unsent are kept', () => {
   it('keeps a person’s and a launch’s text, and an older build’s client send', async () => {
     const journal = await afterRestart(async (earlier) => {
-      await accept(earlier, 'person', { origin: 'client', source: 'person' })
-      await accept(earlier, 'launch', { origin: 'host', source: 'launch' })
+      await accept(earlier, 'person', { origin: 'client', source: USER_MESSAGE_SOURCE })
+      await accept(earlier, 'launch', { origin: 'host', source: USER_MESSAGE_SOURCE })
       await accept(earlier, 'legacy-client', { origin: 'client' })
     })
     await hold(journal)
@@ -164,15 +175,15 @@ describe('which sends an earlier host process left unsent are kept', () => {
       ]
     }
     const journal = await afterRestart(async (earlier) => {
-      await accept(earlier, 'mail', { origin: 'host', source: 'mail' })
-      await accept(earlier, 'dispatch', { origin: 'host', source: 'dispatch' })
-      await accept(earlier, 'continuation', { origin: 'host', source: 'continuation' })
+      await accept(earlier, 'mail', { origin: 'host', source: MAIL_SOURCE })
+      await accept(earlier, 'dispatch', { origin: 'host' })
+      await accept(earlier, 'continuation', { origin: 'host' })
       await accept(earlier, 'compact', {
         origin: 'client',
-        source: 'person',
+        source: USER_MESSAGE_SOURCE,
         body: structuredAgentSessionCompactBody()
       })
-      await accept(earlier, 'image', { origin: 'client', source: 'person', body: image })
+      await accept(earlier, 'image', { origin: 'client', source: USER_MESSAGE_SOURCE, body: image })
       await accept(earlier, 'legacy-host', { origin: 'host' })
       await accept(earlier, 'no-origin')
     })
@@ -206,7 +217,8 @@ describe('which sends an earlier host process left unsent are kept', () => {
           messageId: 'card',
           body: message('card text'),
           fingerprint: fingerprint(message('card text')),
-          hostInstance: 'proc-1'
+          hostInstance: 'proc-1',
+          source: USER_MESSAGE_SOURCE
         })
         await earlier.appendSubmission(
           {
@@ -215,8 +227,7 @@ describe('which sends an earlier host process left unsent are kept', () => {
             body: message('card text'),
             fence: 0,
             handoverRecorded: true,
-            origin,
-            source: 'queue'
+            origin
           },
           { messageId: 'card', expect: 'waiting', settledByOp: null }
         )
@@ -235,7 +246,7 @@ describe('which sends an earlier host process left unsent are kept', () => {
 
   it('leaves alone what this process accepted', async () => {
     const journal = await open()
-    await accept(journal, 'mine', { origin: 'client', source: 'person' })
+    await accept(journal, 'mine', { origin: 'client', source: USER_MESSAGE_SOURCE })
     await hold(journal)
     expect(journal.submission('mine')?.dispatchState).toBe('pending')
     expect(journal.queuedMessages.list()).toEqual([])
@@ -243,15 +254,18 @@ describe('which sends an earlier host process left unsent are kept', () => {
 
   it('never keeps a queue hand-off, a card’s link, or a send with no message body', () => {
     const body = message('x')
-    expect(unsentSendKeptAsCard({ source: 'person' }, body)).toBe(body)
-    expect(unsentSendKeptAsCard({ source: 'queue' }, body)).toBeNull()
+    expect(unsentSendKeptAsCard({ source: USER_MESSAGE_SOURCE }, body)).toBe(body)
+    expect(unsentSendKeptAsCard({ origin: 'client', source: { kind: 'agent' } }, body)).toBeNull()
+    // Undecodable (folded as an empty kind) and unknown kinds are never a person's.
+    expect(unsentSendKeptAsCard({ origin: 'client', source: { kind: '' } }, body)).toBeNull()
+    expect(unsentSendKeptAsCard({ origin: 'client', source: { kind: 'orca' } }, body)).toBeNull()
     expect(unsentSendKeptAsCard({ origin: 'client', queuedMessageId: 'card' }, body)).toBeNull()
     expect(unsentSendKeptAsCard({ origin: 'client' }, null)).toBeNull()
   })
 
-  // Only a row with no source at all is an older build's; a newer build's source may name a path
+  // Only a row with no source at all is an older build's; a newer build's kind may name a sender
   // that must not become a card.
-  it('never keeps a source this build does not know, whatever its origin', async () => {
+  it('never keeps a source kind this build does not know, whatever its origin', async () => {
     const journal = await afterRestart(async (earlier) => {
       await earlier.appendSubmission({
         clientMessageId: 'future',
@@ -260,14 +274,34 @@ describe('which sends an earlier host process left unsent are kept', () => {
         fence: 0,
         handoverRecorded: true,
         origin: 'client',
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer build's source, which this build's type cannot name.
-        source: 'a-newer-path' as AgentJournalSubmissionSource
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer build's kind, which this build's type cannot name.
+        source: { kind: 'a-newer-kind' } as AgentSessionMessageSource
       })
     })
-    expect(journal.submission('future')?.source).toBe('a-newer-path')
+    expect(journal.submission('future')?.source).toEqual({ kind: 'a-newer-kind' })
     await hold(journal)
     expect(journal.queuedMessages.list()).toEqual([])
     expect(journal.submission('future')).toMatchObject({ dispatchState: 'rejected' })
+  })
+
+  // A source with no readable kind is not a row without one: an older build's rule never applies.
+  it('never keeps a send whose stored source has no readable kind', async () => {
+    const journal = await afterRestart(async (earlier) => {
+      await earlier.appendSubmission({
+        clientMessageId: 'unreadable',
+        payloadFingerprint: fingerprint(message('unreadable')),
+        body: message('unreadable'),
+        fence: 0,
+        handoverRecorded: true,
+        origin: 'client',
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stored source with no kind, which this build's type cannot name.
+        source: {} as AgentSessionMessageSource
+      })
+    })
+    expect(journal.submission('unreadable')?.source).toEqual({ kind: '' })
+    await hold(journal)
+    expect(journal.queuedMessages.list()).toEqual([])
+    expect(journal.submission('unreadable')).toMatchObject({ dispatchState: 'rejected' })
   })
 })
 
@@ -284,15 +318,17 @@ describe('where kept sends go in the queue', () => {
           messageId: 'H',
           body: message('H'),
           fingerprint: fingerprint(message('H')),
-          hostInstance: 'proc-1'
+          hostInstance: 'proc-1',
+          source: USER_MESSAGE_SOURCE
         })
         await earlier.queuedMessages.insert({
           messageId: 'C',
           body: message('C'),
           fingerprint: fingerprint(message('C')),
-          hostInstance: 'proc-1'
+          hostInstance: 'proc-1',
+          source: USER_MESSAGE_SOURCE
         })
-        await accept(earlier, 'A', { origin: 'client', source: 'person' })
+        await accept(earlier, 'A', { origin: 'client', source: USER_MESSAGE_SOURCE })
         await earlier.appendSubmission(
           {
             clientMessageId: 'H-handoff',
@@ -300,12 +336,11 @@ describe('where kept sends go in the queue', () => {
             body: message('H'),
             fence: 0,
             handoverRecorded: true,
-            origin,
-            source: 'queue'
+            origin
           },
           { messageId: 'H', expect: 'waiting', settledByOp: null }
         )
-        await accept(earlier, 'B', { origin: 'client', source: 'person' })
+        await accept(earlier, 'B', { origin: 'client', source: USER_MESSAGE_SOURCE })
       })
       await hold(journal)
 
@@ -319,10 +354,11 @@ describe('where kept sends go in the queue', () => {
         messageId: 'C',
         body: message('C'),
         fingerprint: fingerprint(message('C')),
-        hostInstance: 'proc-1'
+        hostInstance: 'proc-1',
+        source: USER_MESSAGE_SOURCE
       })
-      await accept(earlier, 'A', { origin: 'client', source: 'person' })
-      await accept(earlier, 'B', { origin: 'client', source: 'person' })
+      await accept(earlier, 'A', { origin: 'client', source: USER_MESSAGE_SOURCE })
+      await accept(earlier, 'B', { origin: 'client', source: USER_MESSAGE_SOURCE })
     })
     // That run kept A, at a stale place behind C, then died before B.
     await interrupted.resolveDispatch(
@@ -356,8 +392,8 @@ describe('where kept sends go in the queue', () => {
 describe('a close of the chat', () => {
   it('keeps a person’s unsent send in place, rejected as closed, by the same rule as a restart', async () => {
     const journal = await open()
-    await accept(journal, 'person', { origin: 'client', source: 'person' })
-    await accept(journal, 'mail', { origin: 'host', source: 'mail' })
+    await accept(journal, 'person', { origin: 'client', source: USER_MESSAGE_SOURCE })
+    await accept(journal, 'mail', { origin: 'host', source: MAIL_SOURCE })
     await hold(journal, { cause: 'chatClosed' })
 
     expect(cardOrder(journal)).toEqual(['person'])
@@ -372,8 +408,8 @@ describe('a close of the chat', () => {
 
   it('settles only what `which` names, leaving a later send queued', async () => {
     const journal = await open()
-    await accept(journal, 'before', { origin: 'client', source: 'person' })
-    await accept(journal, 'after', { origin: 'client', source: 'person' })
+    await accept(journal, 'before', { origin: 'client', source: USER_MESSAGE_SOURCE })
+    await accept(journal, 'after', { origin: 'client', source: USER_MESSAGE_SOURCE })
     await hold(journal, {
       cause: 'chatClosed',
       which: (submission) => submission.clientMessageId === 'before'
@@ -389,13 +425,13 @@ describe('the order kept cards stand in', () => {
   it('a card kept before the epoch rolled stays ahead of one kept after it', async () => {
     const journal = await afterRestart(async (earlier) => {
       for (const id of ['m1', 'm2', 'm3']) {
-        await accept(earlier, id, { origin: 'host', source: 'mail' })
+        await accept(earlier, id, { origin: 'host', source: MAIL_SOURCE })
       }
-      await accept(earlier, 'A', { origin: 'client', source: 'person' })
+      await accept(earlier, 'A', { origin: 'client', source: USER_MESSAGE_SOURCE })
     })
     await hold(journal)
     await journal.rollEpoch('handle_forked', 0)
-    await accept(journal, 'B', { origin: 'client', source: 'person' })
+    await accept(journal, 'B', { origin: 'client', source: USER_MESSAGE_SOURCE })
     await journal.close()
     const reopened = await open()
     await hold(reopened)
@@ -410,10 +446,20 @@ describe('the order kept cards stand in', () => {
 describe('the source a send records', () => {
   it('is folded from the row; a row without one folds without it', async () => {
     const journal = await open()
-    await accept(journal, 'with-source', { origin: 'host', source: 'launch' })
+    await accept(journal, 'with-source', { origin: 'host', source: USER_MESSAGE_SOURCE })
     await accept(journal, 'without', { origin: 'client' })
     const folded: AgentJournalSubmission | undefined = journal.submission('with-source')
-    expect(folded?.source).toBe('launch')
+    expect(folded?.source).toEqual({ kind: 'user' })
     expect(journal.submission('without')).not.toHaveProperty('source')
+  })
+
+  // Who sent it stays on the card, host-only; a submission is published to clients as it folds.
+  it('keeps only the kind of an agent’s source, never its senders', async () => {
+    const journal = await open()
+    await accept(journal, 'mail', { origin: 'host', source: MAIL_SOURCE })
+    await journal.close()
+    const reopened = await open()
+    expect(reopened.submission('mail')?.source).toEqual({ kind: 'agent' })
+    expect(JSON.stringify(reopened.submission('mail'))).not.toContain('agent:coordinator')
   })
 })

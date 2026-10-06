@@ -8,6 +8,7 @@ import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import { createStructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -28,6 +29,13 @@ import {
   hostTestMessage,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
+
+/** Orchestration mail as the mailbox sends it: from another agent, naming its sender. */
+const MAIL_SOURCE: AgentMessageSource = {
+  kind: 'agent',
+  senders: [{ party: { address: 'agent:coordinator', terminalHandle: null, orcaSessionId: null } }],
+  orchestration: { message: 'mail-notice', mailbox: 'agent:worker', dispatchId: null, messages: [] }
+}
 
 const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
   surface: 'rejection'
@@ -105,7 +113,7 @@ describe('a message accepted while the agent starts, then Orca stops', () => {
       dispatchState: 'rejected',
       ...HOST_RESTARTED,
       origin: 'client',
-      source: 'person'
+      source: { kind: 'user' }
     })
     const [card] = journal().queuedMessages.list()
     expect(card).toMatchObject({
@@ -168,7 +176,7 @@ describe('only an action on the card releases a kept card', () => {
     expect(await rig.sendNow(id)).toMatchObject({ ok: true })
     const handoff = await rig.handoff(id)
     expect(handoff?.clientMessageId).not.toBe(id)
-    expect(handoff).toMatchObject({ origin: 'client', source: 'queue' })
+    expect(handoff).toMatchObject({ origin: 'client' })
     await eventually(() => expect(dispatchedTexts()).toEqual(['the kept words', 'the kept words']))
     expect(await rig.drafts()).toEqual([])
   })
@@ -185,7 +193,7 @@ describe('only an action on the card releases a kept card', () => {
     })
     expect(await rig.sendNow(sent)).toMatchObject({
       ok: true,
-      value: { submission: { queuedMessageId: sent, origin: 'client', source: 'queue' } }
+      value: { submission: { queuedMessageId: sent, origin: 'client' } }
     })
     await eventually(() => expect(dispatchedTexts()).toEqual(['send me now']))
     expect(await rig.drafts()).toEqual([])
@@ -512,20 +520,19 @@ describe('the same send arriving again after the restart', () => {
 })
 
 describe('what is not kept', () => {
-  it.each(['mail', 'dispatch'] as const)(
-    'an orchestration %s send is rejected, as before',
-    async (source) => {
-      const { userSend: _person, ...sent } = sendRequest(source)
-      await acceptWhileStarting({ ...sent, source })
-      await rig.crashRestartHostProcess()
-      expect(await rig.drafts()).toEqual([])
-      expect(await rig.submission(sent.envelope.clientOperationId)).toMatchObject({
-        dispatchState: 'rejected',
-        ...HOST_RESTARTED,
-        source
-      })
-    }
-  )
+  // Mail names its sender (an agent); a dispatch preamble names none. Neither is a person's.
+  it.each([
+    { by: 'mail', source: MAIL_SOURCE, recorded: { kind: 'agent' } },
+    { by: 'dispatch', source: undefined, recorded: undefined }
+  ])('an orchestration $by send is rejected, as before', async ({ by, source, recorded }) => {
+    const { userSend: _person, ...sent } = sendRequest(by)
+    await acceptWhileStarting({ ...sent, ...(source ? { source } : {}) })
+    await rig.crashRestartHostProcess()
+    expect(await rig.drafts()).toEqual([])
+    const submission = await rig.submission(sent.envelope.clientOperationId)
+    expect(submission).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+    expect(submission?.source).toEqual(recorded)
+  })
 
   it('a send whose card could not be written is rejected as before, and nothing stays queued', async () => {
     const id = await acceptWhileStarting(sendRequest('card write fails'))
