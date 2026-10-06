@@ -2,11 +2,9 @@ import { useEffect } from 'react'
 import { useAppStore } from '@/store'
 import { runtimeHostConnectionStateForEntry } from '@/runtime/runtime-host-connection-state'
 
-/** Asks main for one re-attach of this environment's parked browser host; a no-op when attached. */
-export function requestClientHostedBrowserReattach(runtimeEnvironmentId: string): void {
-  void window.api.runtimeEnvironments
-    .resumeBrowserClientHost?.(runtimeEnvironmentId)
-    .catch(() => undefined)
+/** Asks main for one re-attach of every parked browser host; a no-op for attached ones. */
+export function requestClientHostedBrowserReattach(): void {
+  void window.api.runtimeEnvironments.retryConnectionsNow?.().catch(() => undefined)
 }
 
 /**
@@ -33,7 +31,7 @@ export function useClientHostedBrowserHostReachability({
   )
   useEffect(() => {
     if (isActive) {
-      requestClientHostedBrowserReattach(runtimeEnvironmentId)
+      requestClientHostedBrowserReattach()
     }
   }, [isActive, runtimeEnvironmentId])
   return { hostOffline, hostName }

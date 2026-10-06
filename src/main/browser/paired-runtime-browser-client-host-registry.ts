@@ -12,7 +12,6 @@ type RegisteredBrowserClientHost<Start> = {
   /** True while the runtime is unreachable and the composition is holding its pages for it. */
   readonly parked: boolean
   resume(): Promise<BrowserClientHostLeaseAuthority>
-  park(error: Error): void
   retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean>
   close(error?: Error): Promise<boolean>
   whenClosed(): Promise<void>
@@ -126,11 +125,10 @@ export class PairedRuntimeBrowserClientHostRegistry<
     })
   }
 
-  /** One re-attach attempt for each parked environment; live ones are untouched. */
-  resumeParked(environmentId?: string): Promise<void> {
-    const environmentIds = environmentId === undefined ? [...this.hosts.keys()] : [environmentId]
+  /** One re-attach attempt for each parked environment the caller allows; live ones are untouched. */
+  resumeParked(allows: (environmentId: string) => boolean): Promise<void> {
     return Promise.all(
-      environmentIds.map((id) =>
+      [...this.hosts.keys()].filter(allows).map((id) =>
         this.enqueue(id, async () => {
           const record = this.hosts.get(id)
           if (this.closed || !record?.composition.parked || record.cleanupPending) {
@@ -141,10 +139,6 @@ export class PairedRuntimeBrowserClientHostRegistry<
         })
       )
     ).then(() => undefined)
-  }
-
-  parkEnvironment(environmentId: string, error: Error): void {
-    this.hosts.get(environmentId)?.composition.park(error)
   }
 
   closeEnvironment(environmentId: string, error?: Error): Promise<boolean> {

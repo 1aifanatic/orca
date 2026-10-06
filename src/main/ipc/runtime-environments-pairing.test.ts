@@ -148,7 +148,6 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       'runtimeEnvironments:disconnect',
       'runtimeEnvironments:connect',
       'runtimeEnvironments:retryControlConnection',
-      'runtimeEnvironments:resumeBrowserClientHost',
       'runtimeEnvironments:prepareBrowserClientHostPlacement',
       'runtimeEnvironments:retryConnectionsNow',
       'runtimeEnvironments:getStatus',

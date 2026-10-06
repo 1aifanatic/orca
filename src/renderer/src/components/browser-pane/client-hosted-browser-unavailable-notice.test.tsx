@@ -6,7 +6,7 @@ import { resetBrowserClientHostIdForTests } from '@/runtime/browser-client-host-
 import { installClientHostedPaneApi } from './client-hosted-browser-pane-test-rig'
 import { ClientHostedBrowserAvailabilityNotice } from './client-hosted-browser-unavailable-notice'
 
-const resumeBrowserClientHost = vi.fn(async () => {})
+const retryConnectionsNow = vi.fn(async () => {})
 
 function renderNotice(
   props: Partial<Parameters<typeof ClientHostedBrowserAvailabilityNotice>[0]> = {}
@@ -35,10 +35,10 @@ function setHostOffline(offline: boolean): void {
 describe('ClientHostedBrowserAvailabilityNotice', () => {
   beforeEach(() => {
     resetBrowserClientHostIdForTests()
-    resumeBrowserClientHost.mockClear()
+    retryConnectionsNow.mockClear()
     installClientHostedPaneApi({
       browser: { readClientHostId: () => 'this-desktop' },
-      runtimeEnvironments: { resumeBrowserClientHost }
+      runtimeEnvironments: { retryConnectionsNow }
     })
   })
   afterEach(() => {
@@ -59,7 +59,7 @@ describe('ClientHostedBrowserAvailabilityNotice', () => {
 
     expect(screen.getByRole('status').textContent).toContain('Build box is offline')
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect now' }))
-    expect(resumeBrowserClientHost).toHaveBeenCalledWith('env-a')
+    expect(retryConnectionsNow).toHaveBeenCalled()
   })
 
   it('waits for an offline host instead of calling a missing guest unavailable', () => {
@@ -83,6 +83,6 @@ describe('ClientHostedBrowserAvailabilityNotice', () => {
   it('asks a parked host to re-attach when the tab is opened', () => {
     renderNotice({ isActive: true })
 
-    expect(resumeBrowserClientHost).toHaveBeenCalledWith('env-a')
+    expect(retryConnectionsNow).toHaveBeenCalled()
   })
 })

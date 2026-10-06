@@ -83,12 +83,16 @@ const browserClientHosts =
         downloadRelay,
         (params) => executor?.recordPublishedPageUrl(params)
       )
-      return new PairedRuntimeBrowserClientHostComposition({
+      const composition = new PairedRuntimeBrowserClientHostComposition({
         onClosing: routes.release,
         parkedGuestDiscardMs: e2eParkedGuestDiscardMs(),
         initialInput: input,
+        // Why park, not retire: a route that stayed dark is lost contact, not lost pages.
         createRoutes: (next, authority) =>
-          createNetworkRoutes(next.pairing, authority, next.storageScope, input.environmentId),
+          createNetworkRoutes(next.pairing, authority, next.storageScope, (error) => {
+            reportBrowserClientHostError(error)
+            composition.park(error)
+          }),
         createExecutor: (next, { retainNetworkRoute, onPageUnavailable }) => {
           executor = new BrowserClientPageCommandExecutor({
             orcaProfileId: next.orcaProfileId,
@@ -137,6 +141,7 @@ const browserClientHosts =
         },
         onError: (error) => retireFailedEnvironmentHost(input.environmentId, error)
       })
+      return composition
     }
   })
 
@@ -231,12 +236,11 @@ export function retirePairedRuntimeBrowserClientHostEnvironment(
   return browserClientHosts.retireEnvironment(environmentId, error)
 }
 
-/**
- * Asks every parked environment (or just one) for a single re-attach. Callers are real events:
- * the environment's connection coming back, wake, network online, or the user opening the tab.
- */
-export function resumeParkedPairedRuntimeBrowserClientHosts(environmentId?: string): Promise<void> {
-  return browserClientHosts.resumeParked(environmentId)
+/** Asks each parked environment the caller allows for a single re-attach. */
+export function resumeParkedPairedRuntimeBrowserClientHosts(
+  allows: (environmentId: string) => boolean
+): Promise<void> {
+  return browserClientHosts.resumeParked(allows)
 }
 
 export function shutdownPairedRuntimeBrowserClientHosts(): Promise<void> {
@@ -248,7 +252,7 @@ function createNetworkRoutes(
   pairing: PairingOffer,
   authority: BrowserClientHostLeaseAuthority,
   authorityStorageKey: string,
-  environmentId: string
+  onUnavailable: (error: Error) => void
 ): BrowserClientNetworkRouteRegistry {
   return new BrowserClientNetworkRouteRegistry({
     authority,
@@ -260,12 +264,7 @@ function createNetworkRoutes(
         executionHost,
         executionHostRevision: executionHost.kind === 'native' ? executionHost.revision : 0,
         onError: reportBrowserClientHostError,
-        // Why park, not retire: a route that stayed dark is lost contact, not lost pages. Parking
-        // drops the lease so the next real trigger re-attaches with fresh routes.
-        onUnavailable: (error) => {
-          reportBrowserClientHostError(error)
-          browserClientHosts.parkEnvironment(environmentId, error)
-        }
+        onUnavailable
       })
   })
 }

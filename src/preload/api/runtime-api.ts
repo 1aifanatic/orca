@@ -117,8 +117,6 @@ export type RuntimeApi = {
     ) => Promise<BrowserPageCreationPlacement>
     // Why: system resume / browser online advance pending shared-control reconnect timers only.
     retryConnectionsNow?: () => Promise<void>
-    /** Asks a parked client-hosted browser for one re-attach; a no-op when it is attached. */
-    resumeBrowserClientHost?: (environmentId: string) => Promise<void>
     call: (args: {
       selector: string
       method: string

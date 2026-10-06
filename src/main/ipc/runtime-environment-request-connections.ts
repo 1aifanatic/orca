@@ -18,7 +18,6 @@ import type {
 import { isRuntimeEnvironmentCapabilityPaused } from './runtime-environment-capability-evidence'
 import { isRuntimeEnvironmentManuallyDisconnected } from './runtime-environment-manual-disconnect'
 import { publishRuntimeEnvironmentDiagnostics } from './runtime-environment-diagnostics-broadcast'
-import { notifyRemoteRuntimeSharedControlReady } from './runtime-environment-shared-control-ready'
 import {
   advanceRuntimeEnvironmentTransportGeneration,
   getRuntimeEnvironmentTransportGeneration
@@ -211,7 +210,6 @@ function getSharedControlConnection(
     advanceRuntimeEnvironmentTransportGeneration(environmentId)
     cached?.connection.close()
     const transportGeneration = getRuntimeEnvironmentTransportGeneration(environmentId)
-    let ready = false
     cached = {
       pairingKey,
       connection: new RemoteRuntimeSharedControlConnection(pairing, {
@@ -228,11 +226,6 @@ function getSharedControlConnection(
             transportGeneration,
             diagnostics
           })
-          const wasReady = ready
-          ready = diagnostics.state === 'ready'
-          if (ready && !wasReady) {
-            notifyRemoteRuntimeSharedControlReady(environmentId)
-          }
           statusOwners
             .get(environmentId)
             ?.owner.connectionChanged(

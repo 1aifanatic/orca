@@ -82,8 +82,6 @@ export const runtimeEnvironmentsApi = {
     ipcRenderer.invoke('runtimeEnvironments:prepareBrowserClientHostPlacement', args),
   retryConnectionsNow: (): Promise<void> =>
     ipcRenderer.invoke('runtimeEnvironments:retryConnectionsNow'),
-  resumeBrowserClientHost: (environmentId: string): Promise<void> =>
-    ipcRenderer.invoke('runtimeEnvironments:resumeBrowserClientHost', environmentId),
   call: (args: {
     selector: string
     method: string

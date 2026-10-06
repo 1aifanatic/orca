@@ -21,7 +21,7 @@ import { refreshRuntimeEnvironmentStatus } from './runtime-status-refresh'
 import * as runtimeStatusConnectionGeneration from './runtime-status-connection-generation'
 import { replayClientHostedBrowserCloseIntents } from '@/runtime/client-hosted-browser-close-intent-replay'
 import {
-  ensureBrowserClientHostForRestartedRuntime,
+  ensureBrowserClientHostForReturningRuntime,
   ensureBrowserClientHostsForRestoredPages
 } from '@/runtime/restored-client-hosted-browser-host-attach'
 import { applyRuntimeHostStatusSnapshot } from './runtime-status-snapshot'
@@ -252,8 +252,9 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
         ...(environmentsChanged ? { runtimeEnvironments } : {})
       }
     })
-    if (runtimeRestarted) {
-      void ensureBrowserClientHostForRestartedRuntime(get(), environmentId)
+    // A same-runtime return re-attaches a parked browser host; a restart replaces its authority.
+    if (runtimeRestarted || (previous?.status === null && status.status !== null)) {
+      void ensureBrowserClientHostForReturningRuntime(get(), environmentId)
     }
     if (options?.suppressDisconnectToast) {
       dismissRuntimeDisconnectedToast(environmentId)

@@ -51,12 +51,7 @@ export function ClientHostedBrowserAvailabilityNotice({
       />
     )
   }
-  return hostOffline ? (
-    <ClientHostedBrowserHostOfflineStrip
-      runtimeEnvironmentId={runtimeEnvironmentId}
-      hostName={hostName}
-    />
-  ) : null
+  return hostOffline ? <ClientHostedBrowserHostOfflineStrip hostName={hostName} /> : null
 }
 
 /**
@@ -93,7 +88,7 @@ export function ClientHostedBrowserUnavailableNotice({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => requestClientHostedBrowserReattach(runtimeEnvironmentId)}
+            onClick={() => requestClientHostedBrowserReattach()}
           >
             {translate('browser.clientHosted.reconnectNow', 'Reconnect now')}
           </Button>
@@ -131,11 +126,9 @@ export function ClientHostedBrowserUnavailableNotice({
 }
 
 /** Sits over a live page while its host is unreachable: the page stays, its network does not. */
-export function ClientHostedBrowserHostOfflineStrip({
-  runtimeEnvironmentId,
+function ClientHostedBrowserHostOfflineStrip({
   hostName
 }: {
-  runtimeEnvironmentId: string
   hostName: string | null
 }): React.JSX.Element {
   return (
@@ -153,7 +146,7 @@ export function ClientHostedBrowserHostOfflineStrip({
         type="button"
         variant="ghost"
         size="xs"
-        onClick={() => requestClientHostedBrowserReattach(runtimeEnvironmentId)}
+        onClick={() => requestClientHostedBrowserReattach()}
       >
         {translate('browser.clientHosted.reconnectNow', 'Reconnect now')}
       </Button>

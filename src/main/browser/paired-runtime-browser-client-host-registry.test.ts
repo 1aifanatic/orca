@@ -127,8 +127,8 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
     await registry.start({ ...input(11), environmentId: 'environment-b' })
     parked.parked = true
 
-    await registry.resumeParked()
-    await registry.resumeParked('environment-b')
+    await registry.resumeParked(() => true)
+    await registry.resumeParked((environmentId) => environmentId !== 'environment-a')
 
     expect(parked.resume).toHaveBeenCalledOnce()
     expect(live.resume).not.toHaveBeenCalled()
@@ -231,7 +231,6 @@ function createComposition(
       return authority
     }),
     resume: vi.fn(async () => authority),
-    park: vi.fn(),
     replaceAuthority: vi.fn(async () => ({ ...authority, authorityRuntimeId: 'runtime-b' })),
     retirePage: vi.fn(async () => true),
     close: vi.fn(async () => {
