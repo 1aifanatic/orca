@@ -1,7 +1,11 @@
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
+import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
-import { toWebTerminalSurfaceTabId } from '../web-runtime-session'
+import {
+  toWebTerminalSurfaceTabId,
+  toScopedWebTerminalSurfaceTabId
+} from '../../../../shared/terminal-surface-id'
 import { isTerminalTabOwnedByAnotherHost } from './terminal-surfaces'
 import type { WebSessionTabsSyncState } from './state'
 import {
@@ -9,7 +13,9 @@ import {
   getTerminalTabOwnerWorktreeIds
 } from '../../store/slices/terminal-tab-owner-index'
 
-const canonicalTerminalOwners = createTerminalTabOwnerIndex()
+const canonicalTerminalOwners = createTerminalTabOwnerIndex<Tab>((tab) =>
+  tab.contentType === 'terminal' ? [tab.id, tab.entityId] : []
+)
 
 export function indexTerminalSnapshotHosts(
   state: WebSessionTabsSyncState,
@@ -24,73 +30,81 @@ export function indexTerminalSnapshotHosts(
   )
 }
 
-export function findForeignTerminalSnapshotIdentity(
+/** Keep ordinary IDs stable; namespace collisions before writing global pane records. */
+export function resolveTerminalSnapshotLocalIds(
   state: WebSessionTabsSyncState,
   snapshot: RuntimeMobileSessionTabsResult,
   environmentId: string,
   terminalHostById: ReadonlyMap<string, ExecutionHostId>
-): string | undefined {
-  const incomingIds = new Set(
-    snapshot.tabs.flatMap((tab) =>
-      tab.type === 'terminal' ? [tab.parentTabId, toWebTerminalSurfaceTabId(tab.parentTabId)] : []
-    )
+): ReadonlyMap<string, string> {
+  const localIds = new Map<string, string>()
+  const currentRows = new Map(
+    (state.tabsByWorktree[snapshot.worktree] ?? []).map((tab) => [tab.id, tab])
   )
-  const otherTerminalRows = new Map<string, ReadonlyMap<string, TerminalTab>>()
-  const otherTerminalHosts = new Map<string, ReadonlyMap<string, ExecutionHostId>>()
+  const rowsByWorktree = new Map<string, ReadonlyMap<string, TerminalTab>>([
+    [snapshot.worktree, currentRows]
+  ])
+  const hostsByWorktree = new Map([[snapshot.worktree, terminalHostById]])
   const hostsForWorktree = (worktreeId: string): ReadonlyMap<string, ExecutionHostId> => {
-    let hosts = otherTerminalHosts.get(worktreeId)
+    let hosts = hostsByWorktree.get(worktreeId)
     if (!hosts) {
       hosts = indexTerminalSnapshotHosts(state, worktreeId)
-      otherTerminalHosts.set(worktreeId, hosts)
+      hostsByWorktree.set(worktreeId, hosts)
     }
     return hosts
   }
-  for (const tab of state.tabsByWorktree[snapshot.worktree] ?? []) {
+  const conflicts = (id: string): boolean => {
     if (
-      incomingIds.has(tab.id) &&
-      isTerminalTabOwnedByAnotherHost(tab, environmentId, terminalHostById.get(tab.id))
+      isTerminalTabOwnedByAnotherHost(
+        currentRows.get(id) ?? { ptyId: null },
+        environmentId,
+        terminalHostById.get(id)
+      )
     ) {
-      return tab.id
+      return true
     }
-  }
-  // A pending terminal can have canonical chrome before its legacy row hydrates.
-  for (const id of incomingIds) {
-    if (isTerminalTabOwnedByAnotherHost({ ptyId: null }, environmentId, terminalHostById.get(id))) {
-      return id
-    }
-    // Binding maps are global, so an ID collision in another workspace is unsafe too.
-    for (const worktreeId of getTerminalTabOwnerWorktreeIds(state.tabsByWorktree, id) ?? []) {
-      if (worktreeId === snapshot.worktree) {
-        continue
+    const worktreeIds = new Set([
+      ...(getTerminalTabOwnerWorktreeIds(state.tabsByWorktree, id) ?? []),
+      ...(canonicalTerminalOwners.getOwnerWorktreeIds(state.unifiedTabsByWorktree, id) ?? [])
+    ])
+    for (const worktreeId of worktreeIds) {
+      if (worktreeId !== snapshot.worktree) {
+        return true
       }
-      let rows = otherTerminalRows.get(worktreeId)
+      let rows = rowsByWorktree.get(worktreeId)
       if (!rows) {
         rows = new Map((state.tabsByWorktree[worktreeId] ?? []).map((tab) => [tab.id, tab]))
-        otherTerminalRows.set(worktreeId, rows)
-      }
-      const tab = rows.get(id)
-      const host = hostsForWorktree(worktreeId).get(id)
-      if (tab && isTerminalTabOwnedByAnotherHost(tab, environmentId, host)) {
-        return id
-      }
-    }
-    for (const worktreeId of canonicalTerminalOwners.getOwnerWorktreeIds(
-      state.unifiedTabsByWorktree,
-      id
-    ) ?? []) {
-      if (worktreeId === snapshot.worktree) {
-        continue
+        rowsByWorktree.set(worktreeId, rows)
       }
       if (
         isTerminalTabOwnedByAnotherHost(
-          { ptyId: null },
+          rows.get(id) ?? { ptyId: null },
           environmentId,
           hostsForWorktree(worktreeId).get(id)
         )
       ) {
-        return id
+        return true
       }
     }
+    return false
   }
-  return undefined
+  for (const surface of snapshot.tabs) {
+    if (surface.type !== 'terminal' || localIds.has(surface.parentTabId)) {
+      continue
+    }
+    const ordinaryId = toWebTerminalSurfaceTabId(surface.parentTabId)
+    const scopedId = toScopedWebTerminalSurfaceTabId(
+      surface.parentTabId,
+      environmentId,
+      snapshot.worktree
+    )
+    const scopedAlreadyExists = terminalHostById.has(scopedId) || currentRows.has(scopedId)
+    localIds.set(
+      surface.parentTabId,
+      scopedAlreadyExists || conflicts(ordinaryId) || conflicts(surface.parentTabId)
+        ? scopedId
+        : ordinaryId
+    )
+  }
+  return localIds
 }
