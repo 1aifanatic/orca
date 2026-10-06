@@ -38,6 +38,7 @@ function build(headless: boolean) {
     getTerminalHandleForPaneKey: vi.fn((paneKey: string) => `handle:${paneKey}`),
     // pty-1's terminal has a client on it: typed into or being viewed.
     readTerminalClientUse: vi.fn((ptyId: string) => (ptyId === 'pty-1' ? 'used' : 'unused')),
+    closeTerminal: vi.fn(async (_handle: string) => ({})),
     closeTerminalTab: vi.fn(async (_handle: string) => ({}))
   }
   const store = { listAutomationRuns: vi.fn(() => finishedRuns(5)), listAutomations: () => [] }
@@ -63,17 +64,17 @@ describe('headless automation service run terminal retention', () => {
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS + 2 * 60_000)
 
     // The oldest two finished runs are past the newest three; the one a client used stays open.
-    expect(runtime.closeTerminalTab.mock.calls.map(([handle]) => handle)).toEqual([
-      'handle:tab-0:1'
-    ])
+    // Only the run's own pane closes: a pane a user split into its tab survives.
+    expect(runtime.closeTerminal.mock.calls.map(([handle]) => handle)).toEqual(['handle:tab-0:1'])
+    expect(runtime.closeTerminalTab).not.toHaveBeenCalled()
     expect(service.markDispatchResult).toHaveBeenCalledWith(
       expect.objectContaining({ runId: 'r0', status: 'completed', terminalPaneKey: null })
     )
 
     service.stop()
-    runtime.closeTerminalTab.mockClear()
+    runtime.closeTerminal.mockClear()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS * 2)
-    expect(runtime.closeTerminalTab).not.toHaveBeenCalled()
+    expect(runtime.closeTerminal).not.toHaveBeenCalled()
   })
 
   it('leaves run terminals to the renderer on the desktop', async () => {
@@ -81,6 +82,6 @@ describe('headless automation service run terminal retention', () => {
     const { runtime, service } = build(false)
     service.start()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS * 2)
-    expect(runtime.closeTerminalTab).not.toHaveBeenCalled()
+    expect(runtime.closeTerminal).not.toHaveBeenCalled()
   })
 })

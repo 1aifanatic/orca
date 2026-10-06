@@ -128,7 +128,8 @@ function bindHeadlessRunTerminalRetention(
       if (!handle) {
         return false
       }
-      await runtime.closeTerminalTab(handle)
+      // The run's pane only: a pane a user split into the same tab is theirs.
+      await runtime.closeTerminal(handle)
       return true
     },
     forgetRunTerminal: async (run) => {

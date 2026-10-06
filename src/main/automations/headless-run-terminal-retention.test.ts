@@ -93,15 +93,20 @@ describe('headless run terminal retention', () => {
     expect(h.closed).toEqual(['tab-r1:1'])
   })
 
-  it('treats failed runs alike and keeps their status and error when forgetting the terminal', async () => {
-    const runs = [0, 1, 2, 3].map((n) => makeRun(`f${n}`, n, 'dispatch_failed'))
-    const h = harness(runs)
-    await h.retention.sweep()
-    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS)
-    await h.retention.sweep()
-    expect(h.closed).toEqual(['tab-f0:1'])
-    expect(h.forgotten[0]).toMatchObject({ status: 'dispatch_failed', error: 'agent missing' })
-  })
+  it.each(['dispatch_failed', 'skipped_precheck'] as const)(
+    'never closes a %s run, whose agent may still be alive',
+    async (status) => {
+      const runs = [
+        ...[0, 1, 2, 3].map((n) => makeRun(`f${n}`, n, status)),
+        ...[4, 5, 6].map((n) => makeRun(`done${n}`, n))
+      ]
+      const h = harness(runs)
+      await h.retention.sweep()
+      vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS * 10)
+      await h.retention.sweep()
+      expect(h.closed).toEqual([])
+    }
+  )
 
   it('keeps the newest few per automation, not across all of them', async () => {
     const runs = [

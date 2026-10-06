@@ -1,12 +1,12 @@
 /**
  * Closing finished run terminals on a headless host. The desktop closes a run's terminal when the
  * run completes; on orcad nobody does, so hourly schedules leave a shell and a PTY per run until
- * the host runs out. A finished run's terminal stays open for a grace period and the newest few
+ * the host runs out. A completed run's terminal stays open for a grace period and the newest few
  * per automation stay viewable; older ones are closed. A run that has not finished is never
  * touched, since its agent may still be working, and neither is a terminal a client typed into or
  * is viewing, or one whose use this host cannot tell: as on the desktop, that terminal is the user's.
  */
-import { isFinalAutomationRunStatus, type AutomationRun } from '../../shared/automations-types'
+import type { AutomationRun } from '../../shared/automations-types'
 
 export const RUN_TERMINAL_GRACE_MS = 10 * 60_000
 export const RUN_TERMINALS_KEPT_PER_AUTOMATION = 3
@@ -19,7 +19,7 @@ export type HeadlessRunTerminalRetentionDeps = {
    * a used terminal is the user's now; `unknown` keeps it too.
    */
   terminalClientUse: (run: AutomationRun) => 'used' | 'unused' | 'unknown'
-  /** Closes the run's terminal tab; false when this host no longer has it. */
+  /** Closes the run's own pane, leaving any pane a user split into that tab; false when gone. */
   closeRunTerminal: (paneKey: string) => Promise<boolean>
   /** Drops the closed terminal from the run, keeping its status, error and output. */
   forgetRunTerminal: (run: AutomationRun) => Promise<void>
@@ -40,7 +40,9 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
   const sweepOnce = async (): Promise<void> => {
     const finishedByAutomation = new Map<string, AutomationRun[]>()
     for (const run of deps.listRuns()) {
-      if (!run.terminalPaneKey || !isFinalAutomationRunStatus(run.status)) {
+      // Only completed: a failed run can still hold a live agent (blocked on a prompt, past the
+      // watch window, or after an observer error), as the desktop never closes those either.
+      if (!run.terminalPaneKey || run.status !== 'completed') {
         continue
       }
       if (!finishedSeenAt.has(run.id)) {
