@@ -43,6 +43,7 @@ import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { SSH_EXEC_TIMEOUT_CODE, isUnconfirmedSshCommandTermination } from './ssh-relay-exec-command'
 import type { SshConnection } from './ssh-connection'
 import { BUILD_HASH, FakeOrcadHost, NEW, OLD } from './orcad-activation-host-test-harness'
+import { isSnapshotCaptureCommand } from './orcad-snapshot-capture-command'
 
 let host = new FakeOrcadHost()
 type StateMutation = 'capture' | 'restore'
@@ -81,7 +82,7 @@ function stateMutation(command: string): StateMutation | null {
   if (command.includes('.orcad-state-restore-stage')) {
     return 'restore'
   }
-  return command.includes('-cf') ? 'capture' : null
+  return isSnapshotCaptureCommand(command) ? 'capture' : null
 }
 
 /** What ssh2 reports when the 30s timer closes the channel and sshd acknowledges the close. */

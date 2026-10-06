@@ -9,6 +9,7 @@ import {
   withActivatedVersion,
   type OrcadActivationRecord
 } from './orcad-activation-record'
+import { isSnapshotCaptureCommand } from './orcad-snapshot-capture-command'
 import { sshCommandExitError } from './ssh-relay-exec-command'
 
 export const OLD = '0.1.0+aa01'
@@ -233,7 +234,7 @@ export class FakeOrcadHost {
     if (command.includes('verdict=UNCHANGED') && snapshot) {
       return this.snapshots.get(snapshot) === this.data ? 'UNCHANGED' : 'CHANGED'
     }
-    if (command.includes('-cf') && snapshot) {
+    if (isSnapshotCaptureCommand(command) && snapshot) {
       return this.mutate(() => {
         if (this.data === '') {
           return 'EMPTY'

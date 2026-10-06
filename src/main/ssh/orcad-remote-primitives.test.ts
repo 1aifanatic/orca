@@ -219,6 +219,25 @@ describe('installed build identity and readiness', () => {
       )
     ).rejects.toMatchObject({ verdict: 'rejected' })
   })
+
+  it('reads readiness once even when the client was descheduled past its deadline', async () => {
+    mockExec.mockResolvedValueOnce('4242').mockResolvedValueOnce(`${readyLine(BUILD_HASH)}\n`)
+    await expect(
+      launchOrcadSlotAndAwaitReadiness(
+        { ...target, readinessTimeoutMs: 0, sleep: async () => {} },
+        {
+          remoteInstallDir: slot.remoteInstallDir,
+          nodePath: '/usr/bin/node',
+          fullVersion: '0.2.0+bb01',
+          userDataDir: '/home/u/.orca',
+          bindHost: '127.0.0.1',
+          port: 7777,
+          activationRoot: '/home/u/.orca-remote/.orcad-activation-transaction'
+        },
+        expectation
+      )
+    ).resolves.toMatchObject({ runtimeId: 'r1' })
+  })
 })
 
 describe('readiness parsing bounds', () => {

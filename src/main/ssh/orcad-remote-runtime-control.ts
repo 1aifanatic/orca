@@ -120,7 +120,8 @@ export async function launchOrcadAndAwaitReadiness(
   const sleep = target.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
   let last = parseOrcadReadinessOutput('')
   let lastWaitError: unknown
-  while (Date.now() < deadline) {
+  // At least one read: a client descheduled past a short deadline must not fail a ready launch.
+  for (let first = true; first || Date.now() < deadline; first = false) {
     target.signal?.throwIfAborted()
     const waitSeconds = Math.min(
       ORCAD_READINESS_WAIT_MAX_SECONDS,

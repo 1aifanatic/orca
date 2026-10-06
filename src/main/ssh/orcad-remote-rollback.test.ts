@@ -57,6 +57,7 @@ import { rollbackOrcad, type OrcadRollbackOptions } from './orcad-remote-rollbac
 import { emptyOrcadActivationRecord, type OrcadActivationRecord } from './orcad-activation-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { isReadinessRead } from './orcad-activation-host-test-harness'
+import { isSnapshotCaptureCommand } from './orcad-snapshot-capture-command'
 import type { SshConnection } from './ssh-connection'
 
 const mockExec = vi.mocked(execCommand)
@@ -149,7 +150,7 @@ function scriptHost(log: string[], overrides: HostOverrides = {}): void {
       log.push('compare')
       return overrides.comparison ?? 'CHANGED'
     }
-    if (text.includes('tar -C') && text.includes('-cf')) {
+    if (isSnapshotCaptureCommand(text)) {
       log.push('rescue')
       return 'CAPTURED'
     }

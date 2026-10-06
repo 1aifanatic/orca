@@ -3,6 +3,13 @@ import type * as DeployHelpers from './ssh-relay-deploy-helpers'
 import type * as RecordFile from './orcad-remote-record-file'
 import type * as InstallLock from './ssh-relay-install-lock'
 import type * as VersionedInstall from './ssh-relay-versioned-install'
+import type * as Crypto from 'node:crypto'
+
+const uuid = vi.hoisted((): { fixed: string | null } => ({ fixed: null }))
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof Crypto>()
+  return { ...actual, randomUUID: () => uuid.fixed ?? actual.randomUUID() }
+})
 
 vi.mock('./ssh-relay-deploy-helpers', async (importOriginal) => ({
   ...(await importOriginal<typeof DeployHelpers>()),
@@ -72,6 +79,7 @@ const rollback = (): Promise<unknown> =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  uuid.fixed = null
   vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
   vi.mocked(acquireInstallLock).mockImplementation(async (_conn, dir, _host, options) => {
     if (!host.acquireFence(options)) {
@@ -268,4 +276,13 @@ describe('every launch is a managed one', () => {
       }
     }
   )
+})
+
+// About 1 in 125 random fence tokens contains `-cf`, which the fake host once read as a capture.
+it('restores the pre-activation snapshot under a fence token that contains a tar flag', async () => {
+  uuid.fixed = '00000000-cf00-4000-8000-000000000000'
+  host = FakeOrcadHost.activatedNew()
+  await rollback()
+  expect(host.activeVersion()).toBe(OLD)
+  expect(host.commands.filter((command) => command.includes('nohup')).length).toBeGreaterThan(0)
 })
