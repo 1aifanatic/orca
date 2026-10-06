@@ -34,8 +34,12 @@ export function aiVaultSearchHitToSession(
   }
 }
 
+/** A native chat opens through its owner, like its list row; only other hits need a command. */
 export function canResumeAiVaultSearchHit(hit: AiVaultSearchHit): boolean {
-  return hit.source.presence === 'present' && hit.resumeCommand !== undefined
+  return (
+    hit.structuredSession !== undefined ||
+    (hit.source.presence === 'present' && hit.resumeCommand !== undefined)
+  )
 }
 
 export function hasAiVaultSearchHitPath(hit: AiVaultSearchHit): boolean {
