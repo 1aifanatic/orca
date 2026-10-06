@@ -1,20 +1,30 @@
 import { translate } from '@/i18n/i18n'
 import { AppearanceChatSection } from './AppearanceChatSection'
+import { ChatNamingSetting } from './ChatNamingSetting'
 import { SettingsSection } from './SettingsSection'
 import { SettingsSubsectionHeader } from './SettingsFormControls'
 import { matchesSettingsSearch } from './settings-search'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
+import type { SourceControlAiSettingsPatch } from '../../../../shared/source-control-ai-types'
 import type { SettingsSearchEntry } from './settings-search'
 import { useAppStore } from '../../store'
 
 export function ChatSettingsSection({
   settings,
   updateSettings,
+  writeSourceControlAiSettings,
+  onChatPromptDirtyChange,
+  chatPromptDiscardSignal,
+  hasUnsavedChatPromptChanges = false,
   searchEntries,
   isMounted
 }: {
   settings: GlobalSettings
   updateSettings: (updates: Partial<GlobalSettings>) => void
+  writeSourceControlAiSettings: (patch: SourceControlAiSettingsPatch) => Promise<void>
+  onChatPromptDirtyChange?: (dirty: boolean) => void
+  chatPromptDiscardSignal?: number
+  hasUnsavedChatPromptChanges?: boolean
   searchEntries: SettingsSearchEntry[]
   isMounted: boolean
 }): React.JSX.Element | null {
@@ -28,8 +38,12 @@ export function ChatSettingsSection({
     <SettingsSection
       id="chat"
       title={title}
-      description={translate('settings.chat.description', 'Choose how chats look.')}
+      description={translate(
+        'settings.chat.description',
+        'Choose how chats look and get their names.'
+      )}
       searchEntries={searchEntries}
+      forceVisible={hasUnsavedChatPromptChanges}
     >
       {isMounted ? (
         <div id="chat-appearance" className="space-y-3">
@@ -43,6 +57,16 @@ export function ChatSettingsSection({
             ])}
           />
         </div>
+      ) : null}
+      {isMounted ? (
+        <ChatNamingSetting
+          key={chatPromptDiscardSignal}
+          settings={settings}
+          updateSettings={updateSettings}
+          writeSourceControlAiSettings={writeSourceControlAiSettings}
+          onDirtyChange={onChatPromptDirtyChange}
+          forceVisible={matchesSettingsSearch(query, [{ title }]) || hasUnsavedChatPromptChanges}
+        />
       ) : null}
     </SettingsSection>
   )

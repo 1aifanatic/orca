@@ -6,6 +6,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { ChatSettingsSection } from './ChatSettingsSection'
 import { ActiveSettingsSectionProvider } from './SettingsSection'
 import { getChatAppearanceSearchEntries } from './chat-appearance-search'
+import { getChatNamingSearchEntry } from './chat-naming-search'
 import { buildSettingsNavigationMetadata } from '@/hooks/useSettingsNavigationMetadata'
 import { buildCmdJSettingsResults } from '../cmd-j/palette-results'
 import { isSettingsNavigationTarget } from '@/lib/settings-navigation-types'
@@ -40,7 +41,8 @@ function renderChat(enabled: boolean | undefined) {
       <ChatSettingsSection
         settings={settings}
         updateSettings={updateSettings}
-        searchEntries={getChatAppearanceSearchEntries()}
+        writeSourceControlAiSettings={async () => {}}
+        searchEntries={[...getChatAppearanceSearchEntries(), getChatNamingSearchEntry()]}
         isMounted
       />
     </ActiveSettingsSectionProvider>
@@ -81,6 +83,7 @@ describe('Chat settings page', () => {
         <ChatSettingsSection
           settings={{ ...getDefaultSettings('/tmp'), experimentalStructuredNativeChat: false }}
           updateSettings={vi.fn()}
+          writeSourceControlAiSettings={async () => {}}
           searchEntries={[]}
           isMounted
         />
@@ -111,6 +114,30 @@ describe('Chat settings page', () => {
     expect(chatResults.map((entry) => entry.title)).not.toContain('Appearance')
     expect(chatResults.find((entry) => !entry.targetSectionId)?.configKeywords).toEqual(
       expect.arrayContaining(['appearance'])
+    )
+  })
+
+  it('finds Chat names and resolves its deep link to the naming controls', () => {
+    state.settingsSearchQuery = 'Chat names'
+    const { container } = renderChat(true)
+    expect(screen.getByRole('switch', { name: 'Name chats automatically' })).toBeTruthy()
+    expect(screen.getByText('Command template')).toBeTruthy()
+    expect(screen.queryByRole('spinbutton', { name: 'Text size' })).toBeNull()
+    const sections = buildSettingsNavigationMetadata({
+      isMac: false,
+      isWindows: true,
+      isWebClient: false,
+      experimentalStructuredNativeChat: true,
+      repos: []
+    })
+    const result = buildCmdJSettingsResults(sections).find(
+      (entry) => entry.sectionId === 'chat' && entry.title === 'Chat names'
+    )
+    expect(result?.targetSectionId).toBe('chat-names')
+    const target = { pane: 'chat', repoId: null, sectionId: result?.targetSectionId } as const
+    expect(isSettingsNavigationTarget(target)).toBe(true)
+    expect(getSettingsScrollTarget(target.sectionId ?? '', container)).toBe(
+      container.querySelector('#chat-names')
     )
   })
 

@@ -38,11 +38,15 @@ export function renderAppearanceSettingsSection(context: SettingsRenderContext):
 }
 
 export function renderChatSettingsSection(context: SettingsRenderContext): React.JSX.Element {
-  const { model, navigation, view } = context
+  const { model, interactions, navigation, view } = context
   return (
     <ChatSettingsSection
       settings={model.settings}
       updateSettings={model.updateSettings}
+      writeSourceControlAiSettings={interactions.writeSourceControlAiSettings}
+      onChatPromptDirtyChange={model.setHasUnsavedChatPromptChanges}
+      chatPromptDiscardSignal={model.sourceControlAiPromptDiscardSignal}
+      hasUnsavedChatPromptChanges={model.hasUnsavedChatPromptChanges}
       searchEntries={navigation.getSectionSearchEntries('chat')}
       isMounted={view.isSectionMounted('chat')}
     />

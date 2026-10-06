@@ -7,6 +7,7 @@ import { buildSettingsNavigationMetadata } from '@/hooks/useSettingsNavigationMe
 import { ChatSettingsSection } from './ChatSettingsSection'
 import { ActiveSettingsSectionProvider } from './SettingsSection'
 import { getChatAppearanceSearchEntries } from './chat-appearance-search'
+import { getChatNamingSearchEntry } from './chat-naming-search'
 import { useSettingsRepoScrollEffects } from './use-settings-repo-scroll-effects'
 import type { SettingsStoreModel } from './use-settings-store-model'
 import type { SettingsInteractionController } from './use-settings-interaction-controller'
@@ -89,7 +90,8 @@ function NavigationHarness({
       <ChatSettingsSection
         settings={settings}
         updateSettings={vi.fn()}
-        searchEntries={getChatAppearanceSearchEntries()}
+        writeSourceControlAiSettings={async () => {}}
+        searchEntries={[...getChatAppearanceSearchEntries(), getChatNamingSearchEntry()]}
         isMounted
       />
     </ActiveSettingsSectionProvider>
