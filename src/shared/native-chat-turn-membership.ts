@@ -27,8 +27,12 @@ import {
 } from './native-chat-turn-grouping'
 import type { NativeChatRole } from './native-chat-types'
 import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
-import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
+import {
+  liveStructuredAgentSessionTurnScope,
+  runningStructuredAgentSessionTurnScope
+} from './structured-agent-session-live-turn'
 import { structuredAgentSessionOpeningSendIn } from './structured-agent-session-opening-send'
+import type { AgentSessionLatestTurn } from './agent-session-wire'
 
 /** Whether the host writing this journal states each row's turn. Only a host that runs `/compact`
  *  as a turn of the send path does, so this is also how a client tells that host from an older one. */
@@ -39,6 +43,10 @@ export function hostStatesTurnScopes(items: readonly AgentJournalRenderItem[]): 
 export type NativeChatTurnJournal = {
   items: readonly AgentJournalRenderItem[]
   submissions: readonly AgentJournalSubmission[]
+  /** The host's newest turn record: it names the live turn, and anchors it while it runs when the
+   *  record is not loaded, so the turn's loaded rows still draw under its bar. Absent from older
+   *  hosts. */
+  latestTurn?: AgentSessionLatestTurn | null
 }
 
 /**
@@ -52,7 +60,9 @@ export type NativeChatTurnJournal = {
  */
 export function structuredAgentTurnAnchors(
   items: readonly AgentJournalRenderItem[],
-  submissions: readonly AgentJournalSubmission[] = []
+  submissions: readonly AgentJournalSubmission[] = [],
+  /** Anchored too while it runs with its record above the loaded rows; nothing loaded precedes it. */
+  latestTurn?: AgentSessionLatestTurn | null
 ): ReadonlyMap<string, string> {
   const userItemIds = new Set(
     items.flatMap((item) =>
@@ -114,6 +124,13 @@ export function structuredAgentTurnAnchors(
     )
     inFlightSinceLastTurn = null
   }
+  // Only while running: an ended turn's tail would otherwise regroup when the next turn opens.
+  if (latestTurn?.turn.state === 'running' && !anchors.has(latestTurn.itemId)) {
+    anchors.set(
+      latestTurn.itemId,
+      anchorOf(latestTurn.itemId, latestTurn.turn, userItemIds, aliases, steeredInto, null, null)
+    )
+  }
   return anchors
 }
 
@@ -152,6 +169,9 @@ export type NativeChatTurnMembership = {
   /** Row indexes in the order the transcript draws them (`nativeChatTurnDrawOrder`), or null when
    *  that is the order given. */
   drawOrder: readonly number[] | null
+  /** The live turn's key while its record is above the loaded rows: those rows are only its tail,
+   *  so nothing may total them as the whole turn. */
+  partialTurnKey?: string
 }
 
 type NativeChatTurnMember = { id: string; role: NativeChatRole; unsent?: true }
@@ -173,8 +193,8 @@ export function nativeChatTurnMembership(
     const turnKeys = withoutUnsent(messages, nativeChatRowTurnKeys(messages, null, opens))
     return { turnKeys, liveTurnKey: newestUserTurnKey(messages, turnKeys), drawOrder: null }
   }
-  const anchors = structuredAgentTurnAnchors(journal.items, journal.submissions)
-  const running = liveStructuredAgentSessionTurnScope(journal.items)
+  const anchors = structuredAgentTurnAnchors(journal.items, journal.submissions, journal.latestTurn)
+  const running = runningStructuredAgentSessionTurnScope(journal)
   if (!hostStatesTurnScopes(journal.items)) {
     const recordKeys = namedRecordKeys(journal.items, anchors)
     const turnKeys = withoutUnsent(
@@ -198,6 +218,7 @@ export function nativeChatTurnMembership(
   const runningKey = running.kind === 'turn' ? anchors.get(running.turnItemId) : undefined
   const anchoring = new Set(anchors.values())
   const scopes = new Map(journal.items.map((item) => [item.itemId, item.turnScope]))
+  const runningRecordLoaded = running.kind === 'turn' && scopes.has(running.turnItemId)
   const turnKeys = messages.map((message) => {
     if (message.unsent === true) {
       return undefined
@@ -216,7 +237,8 @@ export function nativeChatTurnMembership(
       runningKey ??
       openingTurnKey(messages, turnKeys, journal) ??
       newestUserTurnKey(messages, turnKeys),
-    drawOrder: nativeChatTurnDrawOrder(messages, turnKeys, anchoring)
+    drawOrder: nativeChatTurnDrawOrder(messages, turnKeys, anchoring),
+    ...(runningKey !== undefined && !runningRecordLoaded ? { partialTurnKey: runningKey } : {})
   }
 }
 
