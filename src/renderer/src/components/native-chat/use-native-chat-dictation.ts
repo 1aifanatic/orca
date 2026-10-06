@@ -1,9 +1,9 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { useCallback, useState, type RefObject } from 'react'
-import { dispatchDictationControl } from '../dictation/dictation-control-events'
 import { useAppStore } from '../../store'
+import { dispatchDictationControl } from '../dictation/dictation-control-events'
 
-/** The composer's dictation: whether it can dictate, whether it is, and the press actions. */
+/** Whether the composer can dictate and is dictating now, and the controls that start and stop it. */
 export function useNativeChatDictation(textareaRef: RefObject<NativeChatComposerInput | null>): {
   dictationDisabled: boolean
   isDictating: boolean
