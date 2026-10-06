@@ -131,18 +131,27 @@ describe('NativeChatApprovalCard', () => {
     outside.remove()
   })
 
-  it('takes focus from a focused text field in the commit that shows it', () => {
+  it.each([
+    ['this pane', true],
+    ['another surface', false]
+  ] as const)('with a text field focused in %s, takes focus: %s', (_where, takes) => {
+    const pane = document.createElement('div')
+    pane.setAttribute('data-native-chat-root', 'true')
     const draft = document.createElement('textarea')
-    document.body.appendChild(draft)
+    ;(takes ? pane : document.body).appendChild(draft)
+    document.body.appendChild(pane)
     draft.focus()
     render(
       <NativeChatApprovalCard
         approval={{ title: 'Allow command?', options: [{ label: 'Allow', send: 'allow' }] }}
         onChoose={() => {}}
         shouldFocus
-      />
+      />,
+      { container: pane }
     )
-    expect(document.activeElement).toBe(screen.getByRole('group', { name: 'Allow command?' }))
+    const card = screen.getByRole('group', { name: 'Allow command?' })
+    expect(document.activeElement).toBe(takes ? card : draft)
+    pane.remove()
     draft.remove()
   })
 

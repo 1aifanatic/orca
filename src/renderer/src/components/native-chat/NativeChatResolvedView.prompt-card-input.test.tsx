@@ -7,9 +7,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { AgentStatusPayload } from '../../../../shared/agent-status-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
-import type * as RuntimeTerminalInspectionModule from '@/runtime/runtime-terminal-inspection'
-
-type RuntimeTerminalInspection = typeof RuntimeTerminalInspectionModule
 
 // The composer is a marker that counts its mounts, so the test sees whether the view remounted it.
 const retained = vi.hoisted((): { session: NativeChatLiveSession | null } => ({ session: null }))
@@ -29,14 +26,13 @@ vi.mock('./NativeChatComposer', async () => {
     }
   }
 })
-vi.mock('@/runtime/runtime-terminal-inspection', async (importOriginal) => ({
-  ...(await importOriginal<RuntimeTerminalInspection>()),
+vi.mock('@/runtime/runtime-terminal-verified-input', () => ({
   sendRuntimePtyInputVerified: ptyInput.verified
 }))
 
 const { NativeChatResolvedView } = await import('./NativeChatResolvedView')
 const { TooltipProvider } = await import('@/components/ui/tooltip')
-const { clearNativeChatPromptDismissalsForTests } = await import('./native-chat-prompt-dismissals')
+const { nativeChatPromptDismissals } = await import('./native-chat-prompt-dismissals')
 const { useAppStore } = await import('../../store')
 const { installNativeChatMessageListTestViewport } =
   await import('./native-chat-message-list-test-viewport')
@@ -125,7 +121,7 @@ function paneElement(targetPtyId = 'pty-card'): React.JSX.Element {
 beforeEach(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
   composer.mounts = 0
-  clearNativeChatPromptDismissalsForTests()
+  nativeChatPromptDismissals.clearForTests()
   ptyInput.verified.mockReset()
   useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
   retained.session = transcript()
@@ -236,7 +232,8 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     renderPane()
     fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
 
-    expect(document.querySelector('[data-native-chat-approval-card="true"]')).toBeNull()
+    const collapsedCard = document.querySelector('[data-native-chat-approval-card="true"]')
+    expect(collapsedCard?.closest('[hidden]')).toHaveAttribute('inert')
     expect(document.querySelector('[data-native-chat-prompt-strip="true"]')).toHaveTextContent(
       'Allow Bash?'
     )
@@ -280,5 +277,33 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     retained.session = withAsk
     view.rerender(paneElement())
     expect(document.querySelector('[data-native-chat-prompt-strip="true"]')).not.toBeNull()
+  })
+
+  it('keeps a partly answered question across collapse and expand, and Escape in its text field', () => {
+    setStatus(
+      {
+        state: 'waiting',
+        toolName: 'AskUserQuestion',
+        interactivePrompt: JSON.stringify({
+          questions: [
+            { question: 'Which folder?', multiSelect: false, options: [{ label: 'dist' }] },
+            { question: 'Which mode?', multiSelect: false, options: [{ label: 'slow' }] }
+          ]
+        })
+      },
+      100
+    )
+    renderPane()
+    fireEvent.click(screen.getByRole('button', { name: /dist/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }))
+    const other = screen.getByPlaceholderText('Type your answer')
+    fireEvent.change(other, { target: { value: 'turbo' } })
+    fireEvent.keyDown(other, { key: 'Escape' })
+    expect(document.querySelector('[data-native-chat-prompt-strip="true"]')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(screen.getByTestId('native-chat-question-card-title')).toHaveTextContent('Which mode?')
+    expect(screen.getByPlaceholderText('Type your answer')).toHaveValue('turbo')
   })
 })

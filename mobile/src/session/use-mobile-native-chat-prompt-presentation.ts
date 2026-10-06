@@ -1,9 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
-import type { MobileNativeChatController } from './mobile-native-chat-controller-contract'
-import type { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
-import { useNativeChatAcceptedAction } from './use-native-chat-action-outcomes'
 import { useMobileNativeChatPromptDismiss } from './use-mobile-native-chat-prompt-dismiss'
 
 /** Acknowledged answers hide, and the user's Collapse folds, a terminal card without changing
@@ -68,8 +65,8 @@ export function useMobileNativeChatPromptPresentation({
   )
   return {
     occurrenceKey: promptKey === null ? null : JSON.stringify([scopeKey, sessionKey, promptKey]),
-    permission: showPrompt ? permission : null,
-    question: showPrompt ? question : null,
+    permission: showPrompt || collapsed ? permission : null,
+    question: showPrompt || collapsed ? question : null,
     collapsePrompt,
     collapsed:
       collapsed && (permission ?? question)
@@ -77,54 +74,5 @@ export function useMobileNativeChatPromptPresentation({
         : null,
     respondPermission: respond,
     answerQuestion: answer
-  }
-}
-
-/** Select the lane's existing card actions and apply terminal-only presentation dismissal. */
-export function useMobileNativeChatPromptCards({
-  terminal,
-  structured,
-  onSendResolved
-}: {
-  terminal: Parameters<typeof useMobileNativeChatPromptPresentation>[0]
-  structured: Pick<
-    ReturnType<typeof useMobileStructuredAgentSession>,
-    'permission' | 'question' | 'respondPermission' | 'respondQuestion' | 'cancelPrompt'
-  > | null
-  onSendResolved: () => void
-}): Pick<
-  MobileNativeChatController,
-  | 'nativeChatPermission'
-  | 'nativeChatQuestion'
-  | 'nativeChatPromptKey'
-  | 'handleNativeChatRespondPermission'
-  | 'handleNativeChatQuestionAnswer'
-  | 'handleNativeChatCancelPrompt'
-  | 'collapseNativeChatPrompt'
-  | 'nativeChatCollapsedPrompt'
-> {
-  const respond = useNativeChatAcceptedAction(
-    structured?.respondPermission ?? terminal.respondPermission,
-    onSendResolved
-  )
-  const cancel = useNativeChatAcceptedAction(
-    structured?.cancelPrompt ?? (async () => false),
-    onSendResolved
-  )
-  const presentation = useMobileNativeChatPromptPresentation({
-    ...terminal,
-    respondPermission: respond
-  })
-  return {
-    nativeChatPermission: structured ? structured.permission : presentation.permission,
-    nativeChatQuestion: structured ? structured.question : presentation.question,
-    nativeChatPromptKey: structured ? null : presentation.occurrenceKey,
-    handleNativeChatRespondPermission: structured ? respond : presentation.respondPermission,
-    handleNativeChatQuestionAnswer: structured
-      ? structured.respondQuestion
-      : presentation.answerQuestion,
-    handleNativeChatCancelPrompt: structured ? cancel : undefined,
-    collapseNativeChatPrompt: structured ? undefined : presentation.collapsePrompt,
-    nativeChatCollapsedPrompt: structured ? null : presentation.collapsed
   }
 }

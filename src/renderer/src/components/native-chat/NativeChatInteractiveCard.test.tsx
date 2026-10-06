@@ -39,10 +39,10 @@ import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
 import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
-import { clearNativeChatPromptDismissalsForTests } from './native-chat-prompt-dismissals'
+import { nativeChatPromptDismissals } from './native-chat-prompt-dismissals'
 
 // Answered occurrences outlive a view by design; each test starts with none.
-beforeEach(clearNativeChatPromptDismissalsForTests)
+beforeEach(nativeChatPromptDismissals.clearForTests)
 
 const mocks = {
   sendAnswer: vi.fn<NativeChatInteractiveSend['sendAnswer']>(),

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { ShieldQuestion, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
@@ -11,6 +11,7 @@ import {
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import type { ChatApproval } from './native-chat-interactive-prompt'
 import { NativeChatPromptCollapseToggle } from './NativeChatPromptCollapse'
+import { useNativeChatPromptCardFocus } from './use-native-chat-prompt-card-focus'
 
 export type NativeChatApprovalCardProps = {
   approval: ChatApproval
@@ -54,12 +55,7 @@ export function NativeChatApprovalCard({
     approval.subject ||
     approval.detail
   )
-  // Layout effect: focus leaves this pane's hidden composer in the commit that hides it.
-  useLayoutEffect(() => {
-    if (shouldFocus) {
-      cardRef.current?.focus()
-    }
-  }, [shouldFocus])
+  useNativeChatPromptCardFocus(cardRef, shouldFocus)
   const escape = onCancel ?? (isSubmitting ? undefined : onCollapse)
 
   return (

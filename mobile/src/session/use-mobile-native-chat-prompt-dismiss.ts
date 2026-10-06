@@ -1,9 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import {
-  forgetMobileNativeChatPromptDismissal,
-  readMobileNativeChatPromptDismissal,
-  subscribeMobileNativeChatPromptDismissals,
-  writeMobileNativeChatPromptDismissal,
+  mobileNativeChatPromptDismissals as dismissals,
   type MobileNativeChatPromptDismissal
 } from './mobile-native-chat-prompt-dismissals'
 
@@ -41,9 +38,7 @@ export function useMobileNativeChatPromptDismiss({
       ? previous
       : { sessionKey, promptKey: detectedPromptKey }
   }, [sessionKey, detectedPromptKey, scopeKey])
-  const dismissed = useSyncExternalStore(subscribeMobileNativeChatPromptDismissals, () =>
-    readMobileNativeChatPromptDismissal(storeKey)
-  )
+  const dismissed = useSyncExternalStore(dismissals.subscribe, () => dismissals.read(storeKey))
   useLayoutEffect(() => {
     if (observing) {
       detectedByScopeRef.current.set(scopeKey, observation)
@@ -56,7 +51,7 @@ export function useMobileNativeChatPromptDismiss({
       dismissed !== undefined &&
       !(dismissed.sessionKey === sessionKey && dismissed.promptKey === detectedPromptKey)
     ) {
-      forgetMobileNativeChatPromptDismissal(storeKey)
+      dismissals.forget(storeKey)
     }
   }, [observing, dismissed, detectedPromptKey, storeKey, sessionKey])
   const matches =
@@ -69,7 +64,7 @@ export function useMobileNativeChatPromptDismiss({
       detected.sessionKey === sessionKey &&
       detected.promptKey === promptKey
     ) {
-      writeMobileNativeChatPromptDismissal(storeKey, { sessionKey, promptKey, state })
+      dismissals.write(storeKey, { sessionKey, promptKey, state })
     }
   }
 
@@ -78,6 +73,6 @@ export function useMobileNativeChatPromptDismiss({
     collapsed: matches && dismissed?.state === 'collapsed',
     dismissPrompt: () => record('answered'),
     collapsePrompt: () => record('collapsed'),
-    expandPrompt: () => forgetMobileNativeChatPromptDismissal(storeKey)
+    expandPrompt: () => dismissals.forget(storeKey)
   }
 }

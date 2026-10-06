@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../../store'
 import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
 import {
-  clearNativeChatPromptDismissalsForTests,
+  nativeChatPromptDismissals,
   forgetNativeChatPromptDismissalsForTab
 } from './native-chat-prompt-dismissals'
 import type { InteractivePromptCard } from './native-chat-interactive-prompt'
@@ -43,7 +43,7 @@ function waitFromStatus(stateStartedAt: number): void {
 }
 
 beforeEach(() => {
-  clearNativeChatPromptDismissalsForTests()
+  nativeChatPromptDismissals.clearForTests()
   useAppStore.setState({ agentStatusByPaneKey: {} })
 })
 

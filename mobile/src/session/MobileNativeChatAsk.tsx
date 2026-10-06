@@ -4,7 +4,7 @@ import { Check } from 'lucide-react-native'
 import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import { TEXT_INPUT_FONT_SIZE } from '../platform/text-input-font-size'
-import { MobileNativeChatCardHeaderAction } from './MobileNativeChatPromptCollapse'
+import { MobileNativeChatCardHeaderAction } from './MobileNativeChatCardHeaderAction'
 
 type Props = {
   prompt: AskPrompt

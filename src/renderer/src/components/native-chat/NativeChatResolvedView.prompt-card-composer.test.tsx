@@ -27,8 +27,10 @@ vi.mock('./use-native-chat-retained-session', () => ({
 }))
 vi.mock('@/runtime/runtime-terminal-inspection', async (importOriginal) => ({
   ...(await importOriginal<RuntimeTerminalInspection>()),
-  sendRuntimePtyInputVerified: pty.verified,
   sendRuntimePtyInput: pty.raw
+}))
+vi.mock('@/runtime/runtime-terminal-verified-input', () => ({
+  sendRuntimePtyInputVerified: pty.verified
 }))
 // Stand-in field over the production send lifecycle, queue and observed writes, wired as the
 // composer wires them.
@@ -86,7 +88,7 @@ const { useAppStore } = await import('../../store')
 const { installNativeChatMessageListTestViewport } =
   await import('./native-chat-message-list-test-viewport')
 const { resetNativeChatPtySendQueuesForTests } = await import('./native-chat-runtime-send')
-const { clearNativeChatPromptDismissalsForTests } = await import('./native-chat-prompt-dismissals')
+const { nativeChatPromptDismissals } = await import('./native-chat-prompt-dismissals')
 
 const paneKey = 'tab-hidden:leaf-hidden'
 const approval = JSON.stringify({ approval: { tool: 'Bash', summary: 'npm test' } })
@@ -135,7 +137,7 @@ function rootElement(): Element {
 beforeEach(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
   resetNativeChatPtySendQueuesForTests()
-  clearNativeChatPromptDismissalsForTests()
+  nativeChatPromptDismissals.clearForTests()
   composer.mounts = 0
   composer.typed.mockReset().mockReturnValue(true)
   pty.verified.mockReset().mockResolvedValue(true)

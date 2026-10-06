@@ -1,10 +1,12 @@
 import { ImeInput } from '@/lib/ime-text-field'
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import { Check, Pencil, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { AskAnswerSelection, AskPrompt } from './native-chat-interactive-prompt'
 import { NativeChatPromptCollapseToggle } from './NativeChatPromptCollapse'
+import { useNativeChatPromptCardFocus } from './use-native-chat-prompt-card-focus'
+import { isEditableTarget } from '@/lib/editable-target'
 
 export type NativeChatQuestionCardProps = {
   prompt: AskPrompt
@@ -49,12 +51,7 @@ export function NativeChatQuestionCard({
   answerInputRef
 }: NativeChatQuestionCardProps): React.JSX.Element {
   const cardRef = useRef<HTMLDivElement>(null)
-  // Layout effect: focus leaves this pane's hidden composer in the commit that hides it.
-  useLayoutEffect(() => {
-    if (shouldFocus) {
-      cardRef.current?.focus()
-    }
-  }, [shouldFocus])
+  useNativeChatPromptCardFocus(cardRef, shouldFocus)
   const [index, setIndex] = useState(0)
   // Keep option identity by index: labels are display text and are not guaranteed
   // unique, while Claude's selector commits the numbered row (STA-1860).
@@ -179,14 +176,16 @@ export function NativeChatQuestionCard({
       role="group"
       aria-label={q.question}
       tabIndex={-1}
-      className="shrink-0 bg-chat-canvas focus:outline-none"
+      className="shrink-0 bg-chat-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       aria-busy={isSubmitting}
       onKeyDown={(event) => {
+        // Why not from a text field: Escape there is editing, and collapsing would hide the draft.
         if (
           event.key === 'Escape' &&
           !event.nativeEvent.isComposing &&
           onCollapse &&
-          !isSubmitting
+          !isSubmitting &&
+          !isEditableTarget(event.target)
         ) {
           event.preventDefault()
           event.stopPropagation()

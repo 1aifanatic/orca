@@ -10,7 +10,7 @@ import { useMobileNativeChatController } from '../use-mobile-native-chat-control
 import { MobileNativeChatOverlay } from '../MobileNativeChatOverlay'
 import { MobileNativeChatAsk } from '../MobileNativeChatAsk'
 import type { AskAnswerSelection } from '../../../../src/shared/native-chat-ask'
-import { clearMobileNativeChatPromptDismissalsForTests } from '../mobile-native-chat-prompt-dismissals'
+import { mobileNativeChatPromptDismissals } from '../mobile-native-chat-prompt-dismissals'
 vi.mock('react-native', async () => {
   const React = await import('react')
   return {
@@ -269,7 +269,7 @@ export function reset(rpcClient: RpcClient) {
   lastProps = null
   sendError.mockReset()
   resolved.mockReset()
-  clearMobileNativeChatPromptDismissalsForTests()
+  mobileNativeChatPromptDismissals.clearForTests()
   vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) =>
     setTimeout(() => callback(0), 0)
   )

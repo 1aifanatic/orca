@@ -231,6 +231,8 @@ export function NativeChatResolvedView({
     transcriptSettled: session.readPhase === 'ready'
   })
   const shownPromptCard = promptCardPresentation.card
+  const collapsedCard = promptCardPresentation.collapsedCard
+  const mountedPromptCard = shownPromptCard ?? collapsedCard
   useNativeChatComposerRevealFocus({
     rootRef,
     composerRef,
@@ -391,21 +393,22 @@ export function NativeChatResolvedView({
           />
         )}
       </div>
-      {shownPromptCard ? (
-        <NativeChatInteractiveCard
-          key={promptCardPresentation.occurrenceKey ?? 'prompt'}
-          card={shownPromptCard}
-          send={interactiveSend}
-          onDismiss={promptCardPresentation.dismiss}
-          onCollapse={promptCardPresentation.collapse}
-          shouldFocus={isVisible && isFocusedGroup}
-          answerInputRef={questionAnswerInputRef}
-        />
-      ) : promptCardPresentation.collapsedCard ? (
-        <NativeChatPromptStrip
-          card={promptCardPresentation.collapsedCard}
-          onExpand={promptCardPresentation.expand}
-        />
+      {/* A collapsed card stays mounted but hidden, so a partly answered question survives. */}
+      {mountedPromptCard ? (
+        <div hidden={collapsedCard !== null} inert={collapsedCard !== null} className="contents">
+          <NativeChatInteractiveCard
+            key={promptCardPresentation.occurrenceKey ?? 'prompt'}
+            card={mountedPromptCard}
+            send={interactiveSend}
+            onDismiss={promptCardPresentation.dismiss}
+            onCollapse={promptCardPresentation.collapse}
+            shouldFocus={shownPromptCard !== null && isVisible && isFocusedGroup}
+            answerInputRef={questionAnswerInputRef}
+          />
+        </div>
+      ) : null}
+      {collapsedCard ? (
+        <NativeChatPromptStrip card={collapsedCard} onExpand={promptCardPresentation.expand} />
       ) : null}
       {/* canSend reflects the mobile presence-lock: when a mobile client holds
           the pty, the composer shows its guarded state instead of racing the

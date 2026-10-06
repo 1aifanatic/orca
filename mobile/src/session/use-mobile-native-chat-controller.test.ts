@@ -160,7 +160,7 @@ import {
   type MobileNativeChatController
 } from './use-mobile-native-chat-controller'
 import type { MobileNativeChatStatus } from './use-mobile-native-chat-session'
-import { clearMobileNativeChatPromptDismissalsForTests } from './mobile-native-chat-prompt-dismissals'
+import { mobileNativeChatPromptDismissals } from './mobile-native-chat-prompt-dismissals'
 
 const sendWithOutcome = vi.mocked(sendMobileNativeChatMessageWithOutcome)
 
@@ -669,7 +669,7 @@ describe('useMobileNativeChatController ask dismissal across a transcript reload
   }
 
   beforeEach(() => {
-    clearMobileNativeChatPromptDismissalsForTests()
+    mobileNativeChatPromptDismissals.clearForTests()
     viewMode.isTabChatView = () => true
     setTranscript('ready')
     Object.assign(promptsState, { ask: PROMPT, detectedAsk: PROMPT })

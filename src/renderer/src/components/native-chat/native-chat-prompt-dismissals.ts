@@ -1,6 +1,4 @@
-// Each pane's dismissed prompt occurrence, kept outside the view so a remount cannot reshow it.
-// Dies when the pane observes its prompt clear or change, its tab retires, or by the bound.
-import { setBoundedScopeCacheEntry } from './native-chat-composer-scope-cache'
+import { createPromptDismissalStore } from '../../../../shared/prompt-dismissal-store'
 
 export type NativeChatPromptDismissal = Readonly<{
   /** The card's content key. */
@@ -11,54 +9,9 @@ export type NativeChatPromptDismissal = Readonly<{
   state: 'answered' | 'collapsed'
 }>
 
-const dismissalsByPaneKey = new Map<string, NativeChatPromptDismissal>()
-const listeners = new Set<() => void>()
-
-function notify(): void {
-  for (const listener of listeners) {
-    listener()
-  }
-}
-
-export function subscribeNativeChatPromptDismissals(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
-
-export function readNativeChatPromptDismissal(paneKey: string): NativeChatPromptDismissal | null {
-  return dismissalsByPaneKey.get(paneKey) ?? null
-}
-
-export function recordNativeChatPromptDismissal(
-  paneKey: string,
-  dismissal: NativeChatPromptDismissal
-): void {
-  setBoundedScopeCacheEntry(dismissalsByPaneKey, paneKey, dismissal)
-  notify()
-}
-
-export function forgetNativeChatPromptDismissal(paneKey: string): void {
-  if (dismissalsByPaneKey.delete(paneKey)) {
-    notify()
-  }
-}
+/** Each pane's dismissed prompt occurrence, keyed by pane key. */
+export const nativeChatPromptDismissals = createPromptDismissalStore<NativeChatPromptDismissal>()
 
 export function forgetNativeChatPromptDismissalsForTab(tabId: string): void {
-  const prefix = `${tabId}:`
-  let changed = false
-  for (const paneKey of dismissalsByPaneKey.keys()) {
-    if (paneKey.startsWith(prefix)) {
-      dismissalsByPaneKey.delete(paneKey)
-      changed = true
-    }
-  }
-  if (changed) {
-    notify()
-  }
-}
-
-export function clearNativeChatPromptDismissalsForTests(): void {
-  dismissalsByPaneKey.clear()
+  nativeChatPromptDismissals.forgetWhere((paneKey) => paneKey.startsWith(`${tabId}:`))
 }

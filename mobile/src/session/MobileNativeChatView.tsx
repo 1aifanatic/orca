@@ -321,6 +321,10 @@ export function MobileNativeChatView({
   const showLoading = status === 'loading' && messages.length === 0
 
   const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
+  // Why only Send, terminal-backed only: that send types into the agent's prompt and can answer it,
+  // while drafting never does; the host queues a structured send behind it.
+  const expandedPromptOwnsSend =
+    !structuredActivityUi && !collapsedPrompt && (ask ?? permission ?? question) != null
   const emptyStateView = emptyState ? (
     <View style={styles.center}>
       <Text style={styles.emptyTitle}>{emptyState.title}</Text>
@@ -461,11 +465,7 @@ export function MobileNativeChatView({
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
         disabled={lockReason !== null}
-        // Why only Send, terminal-backed only: that send types into the agent's prompt and can
-        // answer it, while drafting never does; the host queues a structured send behind it.
-        sendDisabled={
-          !structuredActivityUi && (ask != null || permission != null || question != null)
-        }
+        sendDisabled={expandedPromptOwnsSend}
         placeholder={mobileNativeChatComposerPlaceholder(lockReason)}
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}
