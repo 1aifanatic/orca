@@ -37,23 +37,12 @@ const FOLDER_WORKTREE = `${LOCAL_WORKTREE}${FOLDER_WORKSPACE_INSTANCE_SEPARATOR}
 const SSH_HOST = 'ssh:build-host'
 const NOW = 1_800_000_000_000
 
-const NEW_TAB: TerminalPanePlacement = {
-  kind: 'new-tab',
-  row: { title: 'Agent', launchAgent: 'claude', viewMode: 'chat', createdAt: 1 },
-  size: { cols: 120, rows: 40 }
-}
+const NEW_TAB: TerminalPanePlacement = { kind: 'new-tab' }
 const ROOT: TerminalPanePlacement = { kind: 'root' }
 const split = (parentLeafId: string): TerminalPanePlacement => ({
   kind: 'split',
   parentLeafId,
-  direction: 'horizontal',
-  ratio: 0.3,
-  proposedRoot: {
-    type: 'split',
-    direction: 'horizontal',
-    first: { type: 'leaf', leafId: TEST_LEAF_1 },
-    second: { type: 'leaf', leafId: parentLeafId }
-  }
+  direction: 'horizontal'
 })
 
 type Scenario = {

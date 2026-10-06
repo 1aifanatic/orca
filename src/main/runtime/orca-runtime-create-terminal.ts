@@ -124,7 +124,8 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
           const { launchAgent } = launchOpts
           launchOpts.onPtySpawnDispatched?.({ launchConfig: effectiveLaunchConfig, launchAgent })
           result = await this.ptyController.spawn({
-            ...dependencies.RUNTIME_TERMINAL_SPAWN_GRID,
+            cols: 120,
+            rows: 40,
             cwd,
             command: sequencedStartupCommand
               ? launchOpts.command
@@ -168,7 +169,7 @@ export class OrcaRuntimeWithCreateTerminal extends OrcaRuntimeWithTerminalCreate
               ? { onPtySpawnCommitted: reportPtySpawnCommitted }
               : {}),
             ...(adoptedBeforeLaunch ? { adoptedStablePane: adoptedBeforeLaunch } : {}),
-            placement: dependencies.runtimeNewTabPlacement(launchOpts, cwd),
+            placement: dependencies.runtimeNewTabPlacement(),
             ...(launchOpts.sessionId ? { sessionId: launchOpts.sessionId } : {}),
             ...(!adoptedBeforeLaunch && launchOpts.isNewSession ? { isNewSession: true } : {}),
             ...dependencies.BACKGROUND_TERMINAL_SPAWN_FLAGS

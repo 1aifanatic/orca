@@ -342,8 +342,7 @@ describe('OrcaRuntimeService', () => {
       placement: {
         kind: 'split',
         parentLeafId: HEADLESS_LEAF_ID,
-        direction: 'vertical',
-        ratio: 0.5
+        direction: 'vertical'
       },
       expectedSourceBinding: {
         worktreeId: TEST_WORKTREE_ID,

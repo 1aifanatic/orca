@@ -245,11 +245,7 @@ describe('OrcaRuntimeService', () => {
       expect.objectContaining({
         worktreeId: TEST_WORKTREE_ID,
         persistHostSessionBinding: true,
-        placement: {
-          kind: 'new-tab',
-          row: { startupCwd: TEST_WORKTREE_PATH, createdAt: expect.any(Number) },
-          size: { cols: 120, rows: 40 }
-        }
+        placement: { kind: 'new-tab' }
       })
     )
   })

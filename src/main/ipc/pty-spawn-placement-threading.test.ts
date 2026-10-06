@@ -54,8 +54,7 @@ const WORKTREE = 'repo-1::/tmp/placement'
 const SPLIT: TerminalPanePlacement = {
   kind: 'split',
   parentLeafId: PARENT,
-  direction: 'horizontal',
-  ratio: 0.5
+  direction: 'horizontal'
 }
 
 type RuntimeSpawnController = {
