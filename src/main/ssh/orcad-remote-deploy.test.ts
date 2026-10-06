@@ -46,6 +46,7 @@ import {
 import { emptyOrcadActivationRecord, withActivatedVersion } from './orcad-activation-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 import { isReadinessRead } from './orcad-activation-host-test-harness'
+import { isSnapshotCaptureCommand } from './orcad-snapshot-capture-command'
 import type { SshConnection } from './ssh-connection'
 import { NODE_RUNTIME_PIN } from '../../shared/node-runtime-pin'
 import { serializeOrcadActivationTransaction } from './orcad-activation-transaction'
@@ -166,7 +167,7 @@ function scriptHost(script: HostScript): void {
       script.log.push(`stop:${text.includes(NEW_VERSION) ? NEW_VERSION : OLD_VERSION}`)
       return text.includes(NEW_VERSION) ? (script.candidateStopResult ?? 'STOPPED') : 'STOPPED'
     }
-    if (text.includes('tar -C') && text.includes('-cf')) {
+    if (isSnapshotCaptureCommand(text)) {
       script.log.push('snapshot')
       return script.snapshotResult ?? 'CAPTURED'
     }
