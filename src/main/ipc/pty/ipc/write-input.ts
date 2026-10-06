@@ -157,11 +157,17 @@ export function createPtyWriteInput(deps: {
     try {
       let chunk: IteratorResult<string> = { done: false, value: firstChunk }
       let nextChunk: IteratorResult<string> = { done: false, value: secondChunk }
+      let wroteChunk = false
       while (!chunk.done) {
         const accepted = writeChunk(provider, id, chunk.value, verify)
         if (!(typeof accepted === 'boolean' ? accepted : await accepted)) {
+          if (wroteChunk) {
+            // An accepted prefix is already in the PTY, so this is not a clean refusal.
+            throw new Error('PTY write acknowledgment unavailable: partial_write')
+          }
           return false
         }
+        wroteChunk = true
         if (!nextChunk.done) {
           // setImmediate, not setTimeout(0): the yield exists to let abort/data callbacks run
           // between chunks, and a clamped timer tick per 16 KiB is pure latency.

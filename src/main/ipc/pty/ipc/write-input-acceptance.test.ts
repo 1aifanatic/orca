@@ -91,11 +91,15 @@ describe('verified renderer writes reuse provider settlement', () => {
 
   it('waits for each chunk and stops a paste after refusal', async () => {
     ptyOwnership.set(id, 'connection-1')
+    const paste = 'x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2 + 1)
+    provider.writeWithSettlement.mockReturnValueOnce(writeRefused('transport_queue_full'))
+    await expect(write(paste)).resolves.toBe(false)
     provider.writeWithSettlement
       .mockReturnValueOnce(WRITE_ACCEPTED)
       .mockReturnValueOnce(writeRefused('transport_queue_full'))
-    await expect(write('x'.repeat(TERMINAL_INPUT_CHUNK_MAX_BYTES * 2 + 1))).resolves.toBe(false)
-    expect(provider.writeWithSettlement).toHaveBeenCalledTimes(2)
+    // An accepted prefix makes the refusal partial, matching the paired host's verdict.
+    await expect(write(paste)).rejects.toThrow('acknowledgment unavailable: partial_write')
+    expect(provider.writeWithSettlement).toHaveBeenCalledTimes(3)
     expect(provider.write).not.toHaveBeenCalled()
   })
 })
