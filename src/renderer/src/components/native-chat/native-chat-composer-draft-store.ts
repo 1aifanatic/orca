@@ -207,8 +207,14 @@ export function appendToNativeChatComposerDraft(
   if (!after) {
     return true
   }
-  // Why: a hand-back the draft already holds changes nothing, but that draft may not be saved yet.
-  if (after === before && !hasLocalChange(scopeKey) && !refusedScopes.has(scopeKey)) {
+  // Why: a hand-back the draft already holds changes nothing, but that draft may not be saved yet,
+  // and an untouched launch seed is stored as empty.
+  if (
+    after === before &&
+    after.text !== after.unsavedText &&
+    !hasLocalChange(scopeKey) &&
+    !refusedScopes.has(scopeKey)
+  ) {
     return true
   }
   return journalNativeChatComposerDraftAddition(scopeKey, addition, after.savedAt)

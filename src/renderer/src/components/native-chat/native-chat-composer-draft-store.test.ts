@@ -881,6 +881,17 @@ describe('native-chat composer draft store', () => {
     expect(reloaded.drafts.readNativeChatDraftCache(conversation)).toBe('')
   })
 
+  // A launch seed shown but never saved: a hand-back of that text changes nothing in memory, yet
+  // storage holds nothing, so it must be journaled before its copy may go.
+  it('saves text given back onto an untouched launch seed that already shows it', async () => {
+    const conversation = modules.store.structuredAgentSessionDraftScopeKey('session-1')
+    modules.drafts.writeNativeChatDraftCache(conversation, 'seed', { unsaved: true })
+    await modules.store.nativeChatComposerDraftWriteSettled(conversation)
+    expect(modules.drafts.returnNativeChatDraftText(conversation, 'seed')).toBe(true)
+    const reloaded = await reload()
+    expect(reloaded.drafts.readNativeChatDraftCache(conversation)).toBe('seed')
+  })
+
   it('keeps the drafts of a tab whose id extends the closed one', async () => {
     // A second chat for one session gets `<tab id>:history-1`, so a prefix match would reach it.
     const closed = 'structured-agent-session-claude_1'
