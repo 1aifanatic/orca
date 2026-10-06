@@ -1,6 +1,6 @@
 # Timing-based CI shards
 
-The eight unit shards and fourteen general E2E shards use longest-processing-time
+The five unit shards and fourteen general E2E shards use longest-processing-time
 assignment of whole files to the currently lightest shard. Ties use file path and
 then shard index, independent of filesystem enumeration and locale. Unknown,
 zero, or invalid durations use the baseline's positive median (1 second when no
@@ -46,7 +46,33 @@ age as specs change. Full CI runs on the existing runner classes are required to
 measure elapsed-time and occupancy improvements, including discovery overhead.
 No retries, assertions, coverage exclusions, runner classes or shard counts changed.
 
-## Current unit refresh: September 27, 2026
+## Current unit refresh: October 6, 2026
+
+The baseline imports all five successful Node 24 shards from
+[run 37424638737, attempt 1](https://github.com/stablyai/orca/actions/runs/37424638737/attempts/1).
+Their source was `0960f8b81d0736dd51cec03ec4540afe10c21e11`, on
+`ubuntu-24.04-arm`, Node 24.21.0 and four workers per shard. All 11,167 module
+reports match their saved assignments and the full discovery plan exactly once:
+11,033 passed, 134 skipped, and no unhandled errors. Contributing jobs are
+112142985337, 112142985340, 112142985349, 112142985366 and 112142985511.
+
+Compared with the previous weights, this adds 1,490 current files and removes
+141 deleted files. E2E weights, discovery, exclusions, worker count and the
+five-shard policy are unchanged.
+
+Evaluating both assignments with the source run's measurements reduces the
+maximum estimated load from 1,867.418 to 1,705.032 worker-seconds (8.7%). On an
+independent earlier successful run,
+[37424320346](https://github.com/stablyai/orca/actions/runs/37424320346), the maximum
+estimated load falls from 2,084.323 to 1,983.878 worker-seconds (4.8%). That run
+contains 11,050 measured modules at source
+`dd67fd4bea4442ad2696fc92bdbf6946db5fa497`. These estimates sum overlapping
+worker time; neither is a measured reduction in elapsed time or runner usage.
+
+The source run's actual test steps ranged from 336 to 587 seconds. A fixed-source
+hosted comparison will establish the effect on complete test-step wall time.
+
+## Previous unit refresh: September 27, 2026
 
 The baseline imports every successful Node 24 shard from
 [run 36294142683, attempt 1](https://github.com/stablyai/orca/actions/runs/36294142683/attempts/1).
