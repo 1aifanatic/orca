@@ -1,4 +1,4 @@
-import { isAlias, isMap, isScalar, isSeq, visit } from 'yaml'
+import { isAlias, isMap, isPair, isScalar, isSeq, visit } from 'yaml'
 import type { Alias, Document, Node } from 'yaml'
 import { MAX_ORCA_YAML_CODE_UNITS } from './orca-yaml-file-limit'
 
@@ -28,7 +28,7 @@ export function isOrcaYamlConversionWithinLimit(document: Document): boolean {
     return value
   }
   function measure(node: unknown): ConversionSize {
-    if (!isMap(node) && !isSeq(node)) {
+    if (!isMap(node) && !isSeq(node) && !isPair(node)) {
       return zero
     }
     const cached = measured.get(node)
@@ -47,7 +47,8 @@ export function isOrcaYamlConversionWithinLimit(document: Document): boolean {
         entries = bound(entries + measure(item).entries)
       }
     } else {
-      for (const pair of node.items) {
+      const pairs = isPair(node) ? [node] : node.items
+      for (const pair of pairs) {
         const mergeKey =
           isScalar(pair.key) &&
           (typeof pair.key.value === 'symbol'

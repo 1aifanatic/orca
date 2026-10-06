@@ -112,3 +112,36 @@ defaultTabs:
 `)
   ).toMatchObject({ defaultTabs: [{ command: 'second' }] })
 })
+
+it.each(['omap', 'pairs'])('bounds merge descendants inside explicit !!%s pairs', (tag) => {
+  const toJS = vi.spyOn(Document.prototype, 'toJS').mockImplementation(() => {
+    throw new Error('Over-budget YAML must not reach conversion')
+  })
+  let source = `hidden: !!${tag}\n  - base0: &base0 { command: pnpm dev }\n`
+  for (let level = 1; level <= 10; level += 1) {
+    source += `  - base${level}: &base${level} { <<: [${Array(4)
+      .fill(`*base${level - 1}`)
+      .join(', ')}] }\n`
+  }
+  expect(parseOrcaYaml(`${source}scripts: { setup: pnpm install }\n`)).toBeNull()
+  expect(toJS).not.toHaveBeenCalled()
+})
+
+it('bounds merge keys used directly as explicit !!pairs items', () => {
+  const toJS = vi.spyOn(Document.prototype, 'toJS').mockImplementation(() => {
+    throw new Error('Over-budget YAML must not reach conversion')
+  })
+  const fields = Array.from({ length: 2000 }, (_, index) => `  ignored${index}: x`).join('\n')
+  const pairs = Array.from({ length: 96 }, () => '  - <<: *base').join('\n')
+  const source = `base: &base\n  command: pnpm dev\n${fields}\nhidden: !!pairs\n${pairs}\nscripts: { setup: pnpm install }\n`
+  expect(parseOrcaYaml(source)).toBeNull()
+  expect(toJS).not.toHaveBeenCalled()
+})
+
+it.each(['omap', 'pairs'])('preserves a small explicit !!%s value', (tag) => {
+  expect(
+    parseOrcaYaml(
+      `hidden: !!${tag}\n  - defaults: { command: pnpm dev }\nscripts: { setup: pnpm install }\n`
+    )
+  ).toMatchObject({ scripts: { setup: 'pnpm install' } })
+})
