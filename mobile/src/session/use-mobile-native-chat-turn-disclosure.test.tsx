@@ -9,7 +9,7 @@ import type {
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
-import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
+import { MobileNativeChatTurnDisclosureHarness as Harness } from './mobile-native-chat-turn-disclosure-test-harness'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 
 function userMessage(id: string): NativeChatMessage {
@@ -20,41 +20,6 @@ function userMessage(id: string): NativeChatMessage {
     timestamp: null,
     source: 'transcript'
   }
-}
-
-function Harness({
-  messages,
-  enabled,
-  isWorking = true,
-  settledTurns,
-  turnJournal,
-  workingStartedAt,
-  thinking,
-  lineYields,
-  scopeKey = 'host\0worktree\0tab-a'
-}: {
-  messages: readonly NativeChatMessage[]
-  enabled: boolean
-  isWorking?: boolean
-  settledTurns?: NativeChatSettledTurns
-  turnJournal?: NativeChatTurnJournal
-  workingStartedAt?: number | null
-  thinking?: boolean
-  lineYields?: boolean
-  scopeKey?: string
-}): React.JSX.Element {
-  const disclosure = useMobileNativeChatTurnDisclosure({
-    messages,
-    enabled,
-    isWorking,
-    settledTurns,
-    turnJournal,
-    workingStartedAt,
-    thinking,
-    lineYields,
-    scopeKey
-  })
-  return createElement('result', { disclosure })
 }
 
 describe('useMobileNativeChatTurnDisclosure', () => {
