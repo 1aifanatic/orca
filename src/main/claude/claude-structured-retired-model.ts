@@ -29,9 +29,9 @@ export function retireClaudeLaunchedModel(
   return launched
 }
 
-/** Puts the live child, still launched with the retired model, back on the CLI's own default (the
- *  SDK's `set_model` with no model), as a chat that never picked one runs. A user's pick made
- *  meanwhile owns the model; a refused or unanswered reset changes nothing but the log. */
+/** Moves the live child to the CLI's account default (`set_model` with no model), which unlike a
+ *  fresh launch ignores ANTHROPIC_MODEL and a settings `model`. A user's pick made meanwhile owns
+ *  the model; a refused or unanswered reset changes nothing but the log. */
 export function resetClaudeRetiredModel(
   session: ClaudeSession,
   deps: Pick<ClaudeStructuredSessionAdapterDeps, 'requestTimeoutMs' | 'logger'>,

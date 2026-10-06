@@ -26,7 +26,8 @@ beforeEach(async () => {
     restartable: true,
     starting: true,
     startUnanswered: true,
-    stopEndsSession: true
+    stopEndsSession: true,
+    recoveryCapsule: true
   })
 })
 
@@ -59,6 +60,24 @@ describe('a message handed to a start that never answered, then the chat ends', 
     const [card] =
       rig.host.collaboratorsForTests().sessions.get(SESSION)?.journal.queuedMessages.list() ?? []
     expect(card).toMatchObject({ holdReason: QUEUED_MESSAGE_PAUSED_KEPT })
+    // Nothing ran, so there is nothing to resume: the card alone holds the words.
+    expect(await rig.restartOffers()).toEqual([])
+  })
+
+  it('is offered for resume after a quit once the start answered, as the control', async () => {
+    await rig.dispose()
+    rig = await createQueuedMessageTestRig({
+      restartable: true,
+      starting: true,
+      stopEndsSession: true,
+      recoveryCapsule: true
+    })
+    const id = await handedToHungStart('may have run')
+    await rig.quitRestartHostProcess()
+
+    expect(await rig.restartOffers()).toEqual([
+      { sessionId: SESSION, work: { kind: 'submission', id } }
+    ])
   })
 
   it.each(['user-close', 'evict'] as const)(

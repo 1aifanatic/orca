@@ -55,6 +55,21 @@ export function unsentSendKeptAsCard(
   return persons ? body : null
 }
 
+/** A send handed to the agent that it has neither echoed nor refused. Handed to a child that never
+ *  answered its start, it ran nowhere. */
+export function isUnansweredHandedOverSubmission(
+  entry: Pick<
+    AgentJournalSubmission,
+    'handoverRecorded' | 'dispatchState' | 'handedOverAt' | 'recovered'
+  >
+): boolean {
+  return (
+    !isQueuedAgentJournalSubmission(entry) &&
+    (entry.dispatchState === 'pending' ||
+      (entry.dispatchState === 'unknown' && entry.recovered !== true))
+  )
+}
+
 /**
  * Settles every send `hold` names. Each is rejected with the hold's cause in its own row, and a
  * kept one becomes a card in that row's transaction, so a crash between them can never leave
@@ -79,9 +94,7 @@ export async function holdUnsentSends(
     .submissions()
     .filter((entry) =>
       input.unrun
-        ? !isQueuedAgentJournalSubmission(entry) &&
-          (entry.dispatchState === 'pending' ||
-            (entry.dispatchState === 'unknown' && entry.recovered !== true))
+        ? isUnansweredHandedOverSubmission(entry)
         : isQueuedAgentJournalSubmission(entry) &&
           (hold.cause === 'hostRestarted'
             ? journal.wroteBeforeOpen(entry.acceptedSequence)
