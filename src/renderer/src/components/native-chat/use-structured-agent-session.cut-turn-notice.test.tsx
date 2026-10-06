@@ -95,4 +95,22 @@ describe('useStructuredAgentSession transcript', () => {
     // The list places rows by the same items, so the notice joins the cut turn.
     expect(result.current.journalItems.at(-1)).toMatchObject({ turnScope: SCOPE })
   })
+
+  // The notice names no agent: nothing in the journal says who cut the turn, so it never names
+  // Claude, or any other agent, for it.
+  it('words a cut turn the same for any other agent, never naming Claude', () => {
+    const { result } = renderHook(() =>
+      useStructuredAgentSession({
+        sessionId: 'session-1',
+        agent: 'gemini',
+        target: { kind: 'local' },
+        isVisible: true
+      })
+    )
+
+    expect(result.current.messages.at(-1)).toMatchObject({
+      blocks: [{ text: 'This response was interrupted. You can continue in this conversation.' }]
+    })
+    expect(JSON.stringify(result.current.messages)).not.toContain('Claude')
+  })
 })

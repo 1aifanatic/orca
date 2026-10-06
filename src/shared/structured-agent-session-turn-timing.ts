@@ -14,6 +14,7 @@ import type { AgentTurnOutcome } from './agent-turn-outcome'
 import { structuredAgentTurnVerdictReader } from './native-chat-cut-turn-explanation'
 import { structuredAgentTurnAnchors } from './native-chat-turn-membership'
 import type { NativeChatSettledTurn, NativeChatSettledTurns } from './native-chat-turn-status'
+import type { AgentSessionLatestTurn } from './agent-session-wire'
 
 export type StructuredAgentTurnTiming = {
   state: AgentJournalTurnLifecycleState
@@ -38,9 +39,10 @@ export type StructuredAgentTurnTiming = {
 }
 
 function readTiming(
-  item: AgentJournalRenderItem,
+  item: Pick<AgentJournalRenderItem, 'body' | 'observedAt'>,
   precedingTurnEndedAt: number | undefined,
-  verdictOf: (item: AgentJournalRenderItem) => AgentTurnOutcome | null
+  /** The turn's verdict as every surface reads it (`structuredAgentTurnVerdictReader`). */
+  verdict: AgentTurnOutcome | null
 ): StructuredAgentTurnTiming | null {
   const turn = readAgentJournalTurn(item.body)
   if (!turn) {
@@ -62,7 +64,6 @@ function readTiming(
     durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0
       ? durationMs
       : undefined
-  const verdict = verdictOf(item)
   // A send queued behind the previous turn counts from that turn's end (recorded, else its row's
   // last host revision), never past this turn's own start: the provider opens it only after.
   const queuedUntil =
@@ -105,7 +106,7 @@ function readStructuredAgentJournalTurns(
     if (anchor === undefined || !turn) {
       continue
     }
-    const timing = readTiming(item, precedingTurnEndedAt, verdictOf)
+    const timing = readTiming(item, precedingTurnEndedAt, verdictOf(item))
     precedingTurnEndedAt = timing?.completedAt ?? item.observedAt
     byTurnId.set(turn.turnId, timing)
     if (timing || turn.state === 'unverifiable') {
@@ -224,14 +225,29 @@ function settledTurnsOf(
 export function selectStructuredAgentTurnBars(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[],
-  turnId: string | null
+  turnId: string | null,
+  /** The host's newest turn record, which times a running turn whose row is not loaded. */
+  latestTurn?: AgentSessionLatestTurn | null
 ): {
   settledTurns: NativeChatSettledTurns
   runningTiming: StructuredAgentTurnTiming | null
 } {
   const turns = readStructuredAgentJournalTurns(items, submissions)
+  const unloaded =
+    turnId !== null && !turns.byTurnId.has(turnId) && latestTurn?.turn.turnId === turnId
+      ? latestTurn
+      : null
   return {
     settledTurns: settledTurnsOf(turns, submissions),
-    runningTiming: turnId === null ? null : (turns.byTurnId.get(turnId) ?? null)
+    runningTiming: unloaded
+      ? readTiming(
+          { body: { kind: 'turn', ...unloaded.turn }, observedAt: unloaded.observedAt },
+          undefined,
+          // Running: it has no verdict yet.
+          null
+        )
+      : turnId === null
+        ? null
+        : (turns.byTurnId.get(turnId) ?? null)
   }
 }
