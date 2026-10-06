@@ -6,7 +6,7 @@
 import type { OrcadManagedRuntimeStatus } from '../../shared/orcad-managed-runtime'
 import type { HandlerContext } from '../dispatch'
 import { printResult } from '../format'
-import { RuntimeClientError } from '../runtime-client'
+import { RuntimeClientError, type RuntimeRpcSuccess } from '../runtime-client'
 
 const STATUS_ATTEMPTS = 15
 const STATUS_RETRY_MS = 2_000
@@ -18,7 +18,7 @@ export async function reportAfterClosedConnection(
 ): Promise<void> {
   for (let attempt = 0; attempt < STATUS_ATTEMPTS; attempt++) {
     await sleep(STATUS_RETRY_MS)
-    let response
+    let response: RuntimeRpcSuccess<OrcadManagedRuntimeStatus>
     try {
       response = await client.call<OrcadManagedRuntimeStatus>('managedServer.status', selector)
     } catch {
