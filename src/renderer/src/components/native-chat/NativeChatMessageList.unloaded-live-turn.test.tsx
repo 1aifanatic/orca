@@ -84,7 +84,6 @@ function list(
       isWorking
       workingStartedAt={1_000}
       expandSignal={false}
-      fontScale={1}
     />
   )
 }
