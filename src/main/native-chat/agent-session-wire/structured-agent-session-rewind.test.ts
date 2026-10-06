@@ -1,3 +1,4 @@
+import { expectRawStopNoteRewindRecovery } from './structured-agent-session-rewind-stop-note.test-fixture'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody
@@ -34,6 +35,7 @@ import {
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 const caller = { callerKey: 'desktop' }
 let directory: string
@@ -97,6 +99,7 @@ beforeEach(async () => {
     closeSession: async () => true
   }
   host = new StructuredAgentSessionHost({
+    agents: claudeAndCodexDeclared(),
     logger: createStructuredAgentSessionLogger(),
     store,
     adapter,
@@ -183,6 +186,10 @@ async function params(itemId: string, epoch?: string) {
 }
 
 describe('host rewind', () => {
+  it('retains the raw Stop failure and recovers a committed rewind against raw bodies', async () => {
+    await expectRawStopNoteRewindRecovery({ host, store, rewind })
+  })
+
   it('resolves accepted codex user submissions to provider targets', async () => {
     const target = await seed(true)
     expect(target.startsWith('orca:')).toBe(true)

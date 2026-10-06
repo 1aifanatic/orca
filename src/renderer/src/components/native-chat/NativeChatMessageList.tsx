@@ -1,3 +1,8 @@
+import {
+  NATIVE_CHAT_TRANSCRIPT_OUTER_CLASS,
+  NATIVE_CHAT_TRANSCRIPT_COLUMN_CLASS
+} from './native-chat-appearance-style'
+import { useNativeChatRowTypography } from './use-native-chat-row-typography'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
@@ -23,11 +28,8 @@ import {
 } from './NativeChatTranscriptItems'
 import type { NativeChatTranscriptRowContext } from './NativeChatTranscriptRow'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
-import {
-  buildNativeChatTranscriptSlots,
-  nativeChatSlotIndexOf
-} from './native-chat-transcript-slots'
-import { useNativeChatWaitingSlots } from './use-native-chat-waiting-slots'
+import { nativeChatSlotIndexOf } from './native-chat-transcript-slots'
+import { useNativeChatTranscriptSlots } from './use-native-chat-transcript-slots'
 import { useNativeChatTranscriptWindow } from './use-native-chat-transcript-window'
 import { nativeChatRowsInTranscriptOrder } from './native-chat-subagent-sections'
 import { useNativeChatSubagentSections } from './use-native-chat-subagent-sections'
@@ -75,7 +77,6 @@ export function NativeChatMessageList({
   isVisible = true,
   isWorking,
   expandSignal,
-  fontScale,
   onLinkClick,
   allowFileUriLinks = false,
   workingStartedAt,
@@ -98,8 +99,6 @@ export function NativeChatMessageList({
   isWorking: boolean
   /** Toolbar-driven desired open state for every tool run; each flip re-syncs. */
   expandSignal: boolean
-  /** Chat-only text multiplier (1 = default), driven by the zoom shortcuts. */
-  fontScale: number
   workingStartedAt?: number | null
   /** Recorded turn durations keyed by user message id (the host's, or the transcript's).
    *  A turn missing here shows the duration this list observed, if it saw the turn run. */
@@ -187,42 +186,24 @@ export function NativeChatMessageList({
         ? 'activity'
         : null
   const lifecycleWorking = session.transcriptLifecycle?.state === 'working'
-  const allSlots = useMemo(
-    () =>
-      buildNativeChatTranscriptSlots({
-        messages: rows,
-        turnKeys,
-        liveTurnKey,
-        receipts,
-        turnStatuses,
-        turnDiffs,
-        expandedTurnKeys: expandedTurnIds,
-        isWorking,
-        lifecycleWorking,
-        subagentSections,
-        subagentChoices
-      }),
-    [
-      liveTurnKey,
-      expandedTurnIds,
-      isWorking,
-      lifecycleWorking,
-      receipts,
-      rows,
-      subagentChoices,
-      subagentSections,
-      turnDiffs,
-      turnKeys,
-      turnStatuses
-    ]
-  )
-  // A message waiting behind the live turn draws after that turn's live activity, not inside it.
-  const { slots, waitingSlots } = useNativeChatWaitingSlots(
-    allSlots,
+  const { measureContent, typography } = useNativeChatRowTypography(contentRef)
+  const { slots, waitingSlots } = useNativeChatTranscriptSlots({
+    typography,
+    messages: rows,
+    turnKeys,
+    liveTurnKey,
+    receipts,
+    turnStatuses,
+    turnDiffs,
+    expandedTurnKeys: expandedTurnIds,
+    isWorking,
+    lifecycleWorking,
+    subagentSections,
+    subagentChoices,
     journalItems,
-    stopping,
-    journalSubmissions
-  )
+    journalSubmissions,
+    stopping
+  })
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
     slots,
@@ -365,7 +346,7 @@ export function NativeChatMessageList({
 
   return (
     <NativeChatDisclosureContext.Provider value={disclosures}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col bg-chat-canvas">
         <div className="relative min-h-0 flex-1">
           <div
             ref={scrollRef}
@@ -376,13 +357,6 @@ export function NativeChatMessageList({
             data-native-chat-scroll
             // Browser anchoring would add unattributed movement beside the virtualizer's anchor.
             className="scrollbar-sleek relative h-full overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges]"
-            // Why: `zoom` scales the chat transcript's text and layout together,
-            // scoped to this pane so the rest of the app is untouched. It sits on
-            // the scroll container rather than the content inside it so that
-            // scroll offsets and row measurements share one coordinate space —
-            // measuring zoomed content against an unzoomed scroller misplaces the
-            // window by exactly `fontScale`. (Chromium/Electron only.)
-            style={{ zoom: fontScale }}
           >
             {showOlderHistory ? (
               <NativeChatOlderHistoryRow
@@ -390,12 +364,13 @@ export function NativeChatMessageList({
                 loadingEarlier={loadingEarlier}
               />
             ) : null}
-            <div className="px-3 pt-10 pb-4 sm:px-4">
+            <div className={NATIVE_CHAT_TRANSCRIPT_OUTER_CLASS}>
               <div
-                ref={contentRef}
-                // Why: matches composer column (max-w-4xl) with 5px horizontal inset
+                ref={measureContent}
+                data-native-chat-transcript-column
+                // Why: matches composer width with 5px horizontal inset
                 // on each side so content is slightly narrower than the input box.
-                className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-[5px]"
+                className={NATIVE_CHAT_TRANSCRIPT_COLUMN_CLASS}
               >
                 <NativeChatTranscriptItems
                   slots={slots}
@@ -436,7 +411,7 @@ export function NativeChatMessageList({
         </div>
         {taskListState.list && taskListState.list.tasks.length > 0 ? (
           <div className="shrink-0 px-3 pb-2 sm:px-4">
-            <div className="mx-auto w-full max-w-4xl" style={{ zoom: fontScale }}>
+            <div className="mx-auto w-full max-w-(--chat-content-max-width)">
               <NativeChatTaskList
                 key={session.sessionId}
                 list={taskListState.list}
