@@ -11,17 +11,15 @@ import {
   AgentSessionAcquisitionExitProvenError,
   AgentSessionAcquisitionExitUnprovenError,
   AgentSessionAcquisitionRootExitObservedError,
-  AgentSessionAcquisitionRefusal,
   AgentSessionPreSpawnError
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import { ProviderTimelineLane } from '../native-chat/agent-session-timeline/provider-timeline-lane'
 import {
   structuredProviderProcessIdentity,
   STRUCTURED_PROVIDER_SPAWN_TOKEN_ENV
 } from '../provider-process/structured-process-identity'
 import { openOpenCodeServer, type OpenCodeServerConnection } from './serve/server-connection'
 import { OpenCodeSessionClient } from './serve/session-client'
-import { OpenCodeHttpError } from './serve/http-response'
+import { restoreOpenCodeSessionHistory } from './opencode-structured-session-history'
 import { OpenCodeTimelineTranslator } from './serve/timeline-translator'
 import { openCodeSelectedModel } from './serve/session-catalog'
 import { OPENCODE_SERVE_TRANSPORT } from './opencode-structured-agent-definition'
@@ -222,26 +220,7 @@ export async function acquireOpenCodeSession(input: {
     const translator = new OpenCodeTimelineTranslator({ sessionId: root.id, major: version.major })
     session.translator = translator
     translator.registerSession(root)
-    if (request.events) {
-      const lane = new ProviderTimelineLane({
-        sink: request.events,
-        signal: session.streamAbort.signal,
-        sessionId,
-        agent: launch.agent,
-        generation,
-        namespace: root.id
-      })
-      session.lane = lane
-      if (launch.resumeSessionId) {
-        const history = await client.history(root.id).catch((error: unknown) => {
-          if (error instanceof OpenCodeHttpError && error.kind === 'capacity') {
-            throw AgentSessionAcquisitionRefusal.historyTooLarge(error.message)
-          }
-          throw error
-        })
-        await lane.apply(translator.history(history), true)
-      }
-    }
+    await restoreOpenCodeSessionHistory(session, request.events)
     let catalog = await client.readCatalog(root.id).catch(() => null)
     if (catalog && version.major === 2) {
       for (const key of ['model', 'effort', 'mode'] as const) {
