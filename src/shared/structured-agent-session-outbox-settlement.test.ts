@@ -22,6 +22,9 @@ import {
   readAgentSessionRefusalReference
 } from './agent-session-wire-refusals'
 import { AGENT_SESSION_REFUSAL_REASONS } from './agent-session-refusal-details'
+import { agentSessionFailureFact } from './agent-session-failure'
+import { agentSessionFailureWords } from './agent-session-failure-words'
+import { admitStructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox-admission'
 import {
   agentSessionRefusalReasonWords,
   agentSessionWriteNoticeEnglish
@@ -539,6 +542,53 @@ describe('the journal settles what an answer did not', () => {
         now: pastWindow
       })
     ).toEqual({ kind: 'recorded' })
+  })
+
+  // A Stop that took the send back before its turn opened leaves nothing to wait on behind it.
+  it('a send the host withdrew at a Stop goes back silently, and the next send goes out', () => {
+    const outbox = [
+      entry({ state: 'dispatching', lastAttemptAt: 1 }),
+      entry({ clientMessageId: 'next' })
+    ]
+    const withdrawn = row({
+      dispatchState: 'rejected',
+      recovered: true,
+      ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
+    })
+    const settled = settleStructuredAgentSessionEntryFromJournal(outbox[0]!, {
+      ...reading,
+      submissions: [withdrawn]
+    })
+    expect(settled).toEqual({ kind: 'withdrawn' })
+    const applied = applyStructuredAgentSessionOutboxSettlement(outbox, ID, settled!)
+    expect(applied.returned).toMatchObject({ words: null })
+    expect(admitStructuredAgentSessionOutboxEntry(applied.entries)).toMatchObject({
+      state: 'dispatch',
+      entry: { clientMessageId: 'next' }
+    })
+  })
+
+  it('a send the host left in doubt at a Stop is its record, so the next send goes out', () => {
+    const outbox = [
+      entry({ state: 'dispatching', lastAttemptAt: 1 }),
+      entry({ clientMessageId: 'next' })
+    ]
+    const settled = settleStructuredAgentSessionEntryFromJournal(outbox[0]!, {
+      ...reading,
+      submissions: [
+        row({
+          dispatchState: 'unknown',
+          recovered: true,
+          reason: 'provider_closed_before_acknowledgement'
+        })
+      ]
+    })
+    expect(settled).toEqual({ kind: 'recorded' })
+    const applied = applyStructuredAgentSessionOutboxSettlement(outbox, ID, settled!)
+    expect(admitStructuredAgentSessionOutboxEntry(applied.entries)).toMatchObject({
+      state: 'dispatch',
+      entry: { clientMessageId: 'next' }
+    })
   })
 
   it('a row while the send is in flight as pending changes nothing', () => {

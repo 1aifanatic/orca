@@ -106,9 +106,11 @@ describe('a Stop withdrawing what the host does not hold', () => {
     const firstId = result.current.outbox[0]!.clientMessageId
 
     act(() => result.current.stop('stop-1'))
-    // The one that never left is back in the composer.
-    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
-      'second'
+    // The one that never left is back in the composer, once the drafts' startup load is in.
+    await waitFor(() =>
+      expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey('session-1'))).toBe(
+        'second'
+      )
     )
     await act(async () =>
       reply.resolve({

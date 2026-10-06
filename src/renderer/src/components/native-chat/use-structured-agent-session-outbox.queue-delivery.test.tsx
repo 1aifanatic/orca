@@ -208,8 +208,9 @@ describe('outbox queue delivery selection', () => {
     act(() => {
       view.result.current.stop('stop-1')
     })
-    // The unissued entry came back to the composer; the issued one stayed put.
-    expect(readNativeChatDraftCache(STOP_SCOPE)).toBe('never left')
+    // The unissued entry came back to the composer, once the drafts' startup load is in; the
+    // issued one stayed put.
+    await waitFor(() => expect(readNativeChatDraftCache(STOP_SCOPE)).toBe('never left'))
     // The issued one waits for its answer, stamped with the Stop: nothing sends it again. The
     // withdrawn one leaves once its draft is saved.
     await waitFor(() =>
