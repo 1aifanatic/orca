@@ -132,7 +132,9 @@ describe('chat appearance settings controls', () => {
         fontSize: 18,
         codeFontSize: 16,
         width: 'wide' as const,
-        contrast: 151
+        contrast: 130,
+        matchTerminalInterface: true,
+        futureSetting: 'keep'
       }
     }
     const updateSettings = persistInMock(settings)
@@ -142,7 +144,7 @@ describe('chat appearance settings controls', () => {
     fireEvent.blur(text)
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(2))
-    expect(mocks.state.settings?.nativeChatAppearance).toEqual({ contrast: 151 })
+    expect(mocks.state.settings?.nativeChatAppearance).toEqual({ futureSetting: 'keep' })
   })
   it('indexes each row and width choice in Chat settings search', () => {
     const entries = getChatAppearanceSearchEntries()
