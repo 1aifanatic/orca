@@ -121,6 +121,7 @@ export function createDriver(config, deps) {
   // A pause or enable this run cannot vouch for: `changing` while it may still apply on its own,
   // `unconfirmed` once it finished without a usable result. { kind, name, runId?, url? }
   let uncertain
+  let movedBuild // { commit, runId }: a publish that built a newer main than the reviewed commit
   let login
   const ownRunIds = new Set()
   let enabled = false
@@ -324,8 +325,9 @@ export function createDriver(config, deps) {
       throw new DriverStop(`${runUrl(runId)} is not a successful ${WORKFLOWS.publish.file} run`)
     }
     if (view.headSha !== config.commit) {
+      movedBuild = { commit: view.headSha, runId }
       throw new DriverStop(
-        `publish ${runUrl(runId)} built ${view.headSha}, not the reviewed ${config.commit}: main moved. To deploy that build, review the difference, then re-run with --commit ${view.headSha} --publish-run ${runId}`
+        `publish ${runUrl(runId)} built ${view.headSha}, not the reviewed ${config.commit}: main moved`
       )
     }
     const tag = `${IMAGE_REPOSITORY}:sha-${config.commit}`
@@ -821,11 +823,14 @@ export function createDriver(config, deps) {
     ]
   }
 
-  function rerunCommand(pauseRun = owned?.runId) {
+  function rerunCommand(
+    pauseRun = owned?.runId,
+    build = published?.digest ? { commit: config.commit, runId: published.runId } : undefined
+  ) {
     return [
       'node dev/scripts/drive-relay-director-deploy.mjs',
-      `--commit ${config.commit}`,
-      ...(published?.digest ? [`--publish-run ${published.runId}`] : []),
+      `--commit ${build?.commit ?? config.commit}`,
+      ...(build ? [`--publish-run ${build.runId}`] : []),
       ...(pauseRun ? [`--pause-run ${pauseRun}`] : []),
       ...(config.leaveRehomePaused ? ['--leave-rehome-paused'] : []),
       ...config.configure.map(
@@ -890,7 +895,14 @@ export function createDriver(config, deps) {
         `  ${ghCommand(WORKFLOWS.director, directorDeployInputs({ imageDigest: rollbackPoint.digest, predecessorDigest: rollbackPoint.digest, rehomeGeneration: owned?.generation ?? '<paused generation>' }))}`
       )
     }
-    if (!config.dryRun && !uncertain) {
+    if (movedBuild) {
+      // Re-running the reviewed commit would only build the moved main again.
+      lines.push(
+        '',
+        `Review ${config.commit}..${movedBuild.commit}, then deploy that build without rebuilding:`,
+        `  cd cloud && ${rerunCommand(undefined, movedBuild)}`
+      )
+    } else if (!config.dryRun && !uncertain) {
       lines.push(
         '',
         `Re-run to finish from here (it re-reads everything and skips what is done):`,

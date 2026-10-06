@@ -538,15 +538,14 @@ test('main moving between the check and the publish stops untouched, naming the 
     if (args[0] === 'workflow') world.main = 'b'.repeat(40)
     return run(program, args, input)
   }
-  const { message } = await stopped(start(world, [], deps))
+  assert.match((await stopped(start(world, [], deps))).message, /main moved/)
   const publishRun = String(dispatched(world, PUBLISH)[0].id)
-  assert.match(
-    message,
-    new RegExp(`main moved.*--commit ${world.main} --publish-run ${publishRun}`)
-  )
   assert.deepEqual(keys(world), ['publish-relay-production:publish'])
-  const argv = ['--commit', world.main, '--publish-run', publishRun]
-  assert.equal((await drive(world, argv)).done, true)
+  // The only command printed is the one that reuses the build.
+  const commands = world.printed.filter((line) => line.includes('&& node dev/scripts/'))
+  assert.equal(commands.length, 1)
+  assert.match(commands[0], new RegExp(`--commit ${world.main} --publish-run ${publishRun}$`))
+  assert.equal((await rerun(world)).done, true)
   assert.equal(dispatched(world, PUBLISH).length, 1)
   assert.deepEqual(live(world), [41, true])
 })
