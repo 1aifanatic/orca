@@ -67,6 +67,7 @@ export class StructuredAgentSessionHost {
       this.subscribers.publish(sessionId, journal)
       this.conversationDelivery.afterCommit(sessionId, journal)
     },
+    deliverSettleEdge: (id, journal) => this.conversationDelivery.afterSettleEdge(id, journal),
     logger: sessionLogger.deferredStructuredAgentSessionLogger(() => this.deps.logger),
     onOpened: (sessionId) => this.queued.drain.schedule(sessionId),
     now: () => this.now()
@@ -109,8 +110,8 @@ export class StructuredAgentSessionHost {
       (sessionId) => this.lifetime.conversation(sessionId),
       this.clientDelivery.readChildWork
     )
-    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, (sessionId, error) =>
-      this.eventRecovery.recoverAfterSinkFailure(sessionId, error)
+    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, this.sessions, (id, e) =>
+      this.eventRecovery.recoverAfterSinkFailure(id, e)
     )
     this.reconcileLeases = createRestartReconciler({
       store: deps.store,
