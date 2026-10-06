@@ -132,14 +132,23 @@ test('phone subscribe to an idle relaunched terminal behind another tab fits the
 
     const offer = await createRuntimeDesktopPairingOffer(second.page)
     const pairing = decodePairingOffer(offer.pairingUrl)
-    const list = await sendRemoteRuntimeRequest<{
-      terminals: { handle: string; ptyId: string | null }[]
-    }>(pairing, 'terminal.list', {}, 15_000)
-    if (!list.ok) {
-      throw new Error(`terminal.list failed: ${JSON.stringify(list)}`)
-    }
-    const handle = list.result.terminals.find((terminal) => terminal.ptyId === ptyId)?.handle
-    expect(handle, 'relaunched terminal is not listed').toBeTruthy()
+    let handle: string | undefined
+    // The new tab's PTY spawn refuses terminal.list until its pane binds.
+    await expect
+      .poll(
+        async () => {
+          const list = await sendRemoteRuntimeRequest<{
+            terminals: { handle: string; ptyId: string | null }[]
+          }>(pairing, 'terminal.list', {}, 15_000)
+          if (!list.ok) {
+            return JSON.stringify(list)
+          }
+          handle = list.result.terminals.find((terminal) => terminal.ptyId === ptyId)?.handle
+          return handle ? 'listed' : 'relaunched terminal is not listed'
+        },
+        { timeout: 20_000 }
+      )
+      .toBe('listed')
 
     const seen: { snapshot: { cols: number; rows: number } | null } = { snapshot: null }
     const subscription = await subscribeRemoteRuntimeRequest(
