@@ -7,10 +7,10 @@ import {
   NATIVE_REMOTE_RUNTIME_CLIENT_CAPABILITIES,
   SESSION_TABS_RETIREMENT_PROOF_DELTA_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_CLIENT_LAUNCH_MODE_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
   WORKTREE_BACKGROUND_REMOVAL_RUNTIME_CAPABILITY
 } from './protocol-version'
+import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from './structured-agent-session-registered-agents-capability'
 
 // Electron clients can decode client-hosted page placement; becoming a page
 // host still requires the separate authenticated browser-client lease.

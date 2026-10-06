@@ -4,7 +4,7 @@ import {
   type AgentSessionRegisteredAgent
 } from '../../../shared/agent-session-registered-agents'
 import { parseExecutionHostId } from '../../../shared/execution-host'
-import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../shared/structured-agent-session-registered-agents-capability'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
 import type { RuntimeEnvironmentStatus } from '../../../shared/runtime-host-status'
 import { callRuntimeRpc } from './runtime-rpc-client'

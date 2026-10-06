@@ -8,7 +8,7 @@ import {
   restartRowsFor,
   type StructuredAgentSessionRestartAudience
 } from '../../../native-chat/agent-session-wire/structured-agent-session-restart-resume-set'
-import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../../shared/structured-agent-session-registered-agents-capability'
 import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from '../../../ipc/desktop-renderer-runtime-capabilities'
 import {
   call,
