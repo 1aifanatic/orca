@@ -261,26 +261,50 @@ describe('ACP structured session adapter: approvals', () => {
 })
 
 describe('ACP structured session adapter: requests a Stop cancels', () => {
-  it("answers an open plan approval with Grok's own cancelled reply once a Stop cancels it", async () => {
+  it("answers an open question with Grok's own cancelled reply once a Stop cancels it", async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await send(rig, 'send-1')
     const prompt = await rig.frame('session/prompt')
     const { agent } = rig.child()
-    const plan = agent.request(5, '_x.ai/exit_plan_mode', {
+    const question = agent.request(5, '_x.ai/ask_user_question', {
       sessionId: PROVIDER_SESSION,
       toolCallId: 'call-2',
-      planContent: '# Plan'
+      questions: [{ question: 'Which?', options: [{ label: 'A' }] }]
     })
     await waitFor(async () => {
-      expect((await rig.rig.rows()).some((row) => row.body.kind === 'approval')).toBe(true)
+      expect((await rig.rig.rows()).some((row) => row.body.kind === 'question')).toBe(true)
     })
     agent.on('session/cancel', () => agent.reply(prompt, { stopReason: 'cancelled' }))
     await expect(rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 })).resolves.toEqual({
       cancelled: true
     })
-    expect(await plan).toMatchObject({ result: { outcome: 'abandoned' } })
+    expect(await question).toMatchObject({ result: { outcome: 'cancelled' } })
     expect(agent.frames.filter((frame) => frame.id === 5)).toHaveLength(1)
+  })
+
+  it("shows Grok's plan in the plan row and answers its plan-mode exit at once, with no card", async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    await send(rig, 'send-1')
+    await rig.frame('session/prompt')
+    const { agent } = rig.child()
+    const plan = await agent.request(7, '_x.ai/exit_plan_mode', {
+      sessionId: PROVIDER_SESSION,
+      toolCallId: 'call-3',
+      planContent: '# Plan\n- step'
+    })
+    expect(plan).toMatchObject({ result: { outcome: 'abandoned' } })
+    await rig.settle()
+    const rows = await rig.rig.rows()
+    expect(rows.filter((row) => row.body.kind === 'approval')).toEqual([])
+    expect(rows.map((row) => row.body)).toContainEqual(
+      expect.objectContaining({
+        kind: 'status',
+        presentation: 'plan-document',
+        text: '# Plan\n- step'
+      })
+    )
   })
 
   it('sends a permission answer whose save was under way when the Stop landed', async () => {

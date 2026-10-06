@@ -3,11 +3,7 @@ import { BoundedMap } from '../../shared/bounded-map'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
 import { acpNotificationEnvelopeSchema, AcpContextTimeline } from './acp-context-usage'
 import { AcpBackgroundTaskTimeline } from './acp-background-task-timeline'
-import {
-  GENERIC_ACP_DIALECT,
-  type AcpDialect,
-  type AcpRequestPresentation
-} from './acp-dialects/acp-dialect'
+import { GENERIC_ACP_DIALECT, type AcpDialect } from './acp-dialects/acp-dialect'
 import type { AcpAgentError } from './acp-errors'
 import { acpTurnEnd, AcpPromptTurns } from './acp-prompt-turns'
 import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
@@ -218,7 +214,7 @@ export class AcpTimelineTranslator {
     method: string,
     params: unknown,
     id: string | number
-  ): { events: ProviderTimelineEvent[]; presentation?: AcpRequestPresentation } {
+  ): ReturnType<typeof translateAcpRequest> {
     return translateAcpRequest(method, params, id, {
       sessionId: this.options.sessionId,
       dialect: this.dialect,

@@ -49,6 +49,13 @@ export class AcpStructuredPrompts {
       throw new AcpRpcError(-32603, 'ACP request arrived with no session to show it')
     }
     const translated = lane.translator.request(method, params, context.id)
+    if (translated.settled) {
+      // Answered at once; what it carried shows only while its turn may still show anything.
+      if (this.admits()) {
+        lane.apply(translated.events)
+      }
+      return Promise.resolve(translated.settled.reply)
+    }
     if (translated.presentation && !this.admits()) {
       // Its turn is being stopped or steered, or none is open: the agent hears its own cancelled
       // reply and no card opens.
