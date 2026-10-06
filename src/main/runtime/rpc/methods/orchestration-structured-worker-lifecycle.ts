@@ -35,6 +35,7 @@ import {
 } from '../../../../shared/structured-agent-session-projection'
 import {
   observeStructuredWorker,
+  requireStructuredWorkerSession,
   resolveStructuredWorkerIdentity,
   structuredWorkerAgent,
   structuredWorkerTerminalState,
@@ -67,11 +68,15 @@ export type StructuredWorkerStopOutcome = {
 }
 
 /**
- * Stopping a structured worker.
+ * Stopping a structured worker: closing the session running it now.
  *
  * `host.close` returns void and keeps a failed close indexed for retry, so the only settlement
  * evidence is the observation AFTER it: a session the host no longer holds and whose lease is no
  * longer live is proven gone. Anything else is retained rather than settled.
+ *
+ * Re-resolved after each close: a `/clear` the close queued behind can commit first and hand the
+ * worker to a successor, which is then closed too. A running session that cannot be verified is
+ * not closed, and the outcome says no close was attempted.
  */
 export async function stopStructuredWorker(
   identity: StructuredWorkerIdentity,
@@ -81,12 +86,32 @@ export async function stopStructuredWorker(
     'forgetStructuredSessionMail' | 'retireStructuredAgentSessionTabFromSnapshot'
   >
 ): Promise<StructuredWorkerStopOutcome> {
-  return closeStructuredAgentSessionChild(identity.sessionId, {
-    ...(runtime ? { runtime } : {}),
-    // Between the close and the proof, never after: an unsettled close returns early, and a
-    // surviving redrive subscription keeps nudging a session no dispatch owns.
-    afterClose: () => releaseStructuredWorkerSession(dispatchId, runtime)
-  })
+  const closed = new Set<string>()
+  let outcome: StructuredWorkerStopOutcome | null = null
+  for (;;) {
+    let sessionId: string
+    try {
+      sessionId = requireStructuredWorkerSession(identity).sessionId
+    } catch (error) {
+      // Why returned, not thrown: worker-stop already marked the Dispatch stopping, and only an
+      // outcome lets it record the stop as unknown instead of stranding it there.
+      const reason = error instanceof Error ? error.message : String(error)
+      return { stopped: false, closeAttempted: outcome?.closeAttempted ?? false, reason }
+    }
+    if (outcome && closed.has(sessionId)) {
+      return outcome
+    }
+    closed.add(sessionId)
+    outcome = await closeStructuredAgentSessionChild(sessionId, {
+      ...(runtime ? { runtime } : {}),
+      // Between the close and the proof, never after: an unsettled close returns early, and a
+      // surviving redrive subscription keeps nudging a session no dispatch owns.
+      afterClose: () => releaseStructuredWorkerSession(dispatchId, runtime, identity.sessionId)
+    })
+    if (!outcome.stopped) {
+      return outcome
+    }
+  }
 }
 
 /** The structured half of `worker-read`, or null when a PTY worker owns the dispatch. */
@@ -133,7 +158,8 @@ export async function readStructuredWorkerJournal(args: {
   cursor?: string | number
   limit?: number
 }): Promise<OrchestrationWorkerReadTranscriptResult> {
-  const page = await readStructuredJournalPage(args.identity.sessionId)
+  const running = requireStructuredWorkerSession(args.identity)
+  const page = await readStructuredJournalPage(running.sessionId)
   if (!page) {
     throw new OrchestrationError(
       'transcript_required',
@@ -158,7 +184,8 @@ export async function readStructuredWorkerJournal(args: {
     messages: bounded.messages,
     warnings: [
       ...bounded.warnings,
-      ...(page.hasOlder ? ['Older journal items were omitted from this page.'] : [])
+      ...(page.hasOlder ? ['Older journal items were omitted from this page.'] : []),
+      ...clearedConversationWarnings(running.lineage)
     ],
     limited: bounded.limited || page.hasOlder,
     dispatchId: args.dispatchId,
@@ -218,16 +245,21 @@ export async function captureStructuredWorkerArchive(
   identity: StructuredWorkerIdentity,
   agent: AgentType
 ): Promise<WorkerStructuredJournalArchive> {
+  const running = requireStructuredWorkerSession(identity)
   // Opens a conversation at rest or one the idle sweep closed, so a resting worker's journal is
   // still preserved.
-  const page = await readStructuredJournalPage(identity.sessionId)
+  const page = await readStructuredJournalPage(running.sessionId)
   if (page) {
-    return buildStructuredJournalArchive({
+    const archive = buildStructuredJournalArchive({
       agent,
       processIncarnation: identity.processIncarnation,
       items: page.items,
       hasOlder: page.hasOlder
     })
+    return {
+      ...archive,
+      warnings: [...archive.warnings, ...clearedConversationWarnings(running.lineage)]
+    }
   }
   // An unreadable journal is `archive_failed`, and release retains the worker so the evidence can
   // still be preserved later — the same contract the PTY path keeps. It holds only while the
@@ -237,7 +269,7 @@ export async function captureStructuredWorkerArchive(
   //
   // Only a worker this runtime no longer owns qualifies — released with its chat tab gone. An owned
   // one, running or at rest, keeps its journal, and so does one we could not look at.
-  if (structuredWorkerOwned(identity.sessionId) !== false) {
+  if (structuredWorkerOwned(running.sessionId) !== false) {
     throw new OrchestrationError(
       'archive_failed',
       'Output could not be preserved for this structured worker; the session was retained.'
@@ -256,6 +288,11 @@ export async function captureStructuredWorkerArchive(
       'The structured session was already closed, so its journal could not be preserved.'
     ]
   }
+}
+
+/** Only the running session's journal is read; one line says what an earlier `/clear` left out. */
+function clearedConversationWarnings(lineage: readonly string[]): string[] {
+  return lineage.length > 1 ? ['Earlier conversation from before a /clear is not included.'] : []
 }
 
 export function readArchivedStructuredJournal(args: {

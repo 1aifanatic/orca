@@ -17,8 +17,11 @@
 
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { TerminalAgent } from '../../../shared/terminal-agent'
-import { structuredWorkerAgent } from '../structured-worker-authority'
-import { structuredWorkerAddressable } from '../structured-worker-custody'
+import {
+  resolveStructuredWorkerAuthority,
+  structuredWorkerAgent,
+  structuredWorkerCustody
+} from '../structured-worker-authority'
 import {
   STRUCTURED_WORKER_INCARNATION_PREFIX,
   structuredWorkerIdentityFromRow
@@ -56,13 +59,25 @@ export function listAddressableStructuredWorkers(
         return []
       }
       seen.add(identity.sessionId)
-      return structuredWorkerAddressable(db, identity.sessionId, row) === true ? [identity] : []
+      return structuredWorkerCustody(identity, db, row)?.addressable ? [identity] : []
     })
     .map((identity) => ({
       handle: identity.handle,
       worktreeId: identity.worktreeId,
       agentIdentity: structuredWorkerAgent(identity) as TuiAgent
     }))
+}
+
+/**
+ * `@idle` status for a handle, read off the session running the worker now; `undefined` when the
+ * handle is not a structured worker this runtime holds, so the PTY probes answer instead.
+ */
+export async function structuredWorkerHandleAgentStatus(
+  handle: string,
+  db: OrchestrationDb | null | undefined
+): Promise<string | null | undefined> {
+  const authority = resolveStructuredWorkerAuthority(handle, db)
+  return authority ? structuredWorkerAgentStatus(authority.sessionId) : undefined
 }
 
 /**

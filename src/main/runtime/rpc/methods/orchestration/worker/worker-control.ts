@@ -13,6 +13,7 @@ import {
 import { readArchivedWorkerOutput } from './worker-archive-read'
 import { readStructuredWorkerOutput } from '../../orchestration-structured-worker-lifecycle'
 import { releaseStructuredWorkerSession } from '../../orchestration-structured-worker-session'
+import { sessionIdFromStructuredWorkerIncarnation } from '../../../../structured-worker-identity'
 import { readExactWorkerOutput } from './worker-output'
 import { exposeWorkerTerminalResource } from './worker-release-completion'
 import { readFederatedWorkerOutput } from '../federation/federated-worker-read'
@@ -200,17 +201,21 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
     name: 'orchestration.workerAbandon',
     params: WorkerDispatchParams,
     handler: (params, { runtime, orchestrationCaller }) => {
-      const abandoned = runtime.getOrchestrationDb().abandonWorkerDispatch(
+      const db = runtime.getOrchestrationDb()
+      const abandoned = db.abandonWorkerDispatch(
         params.dispatch,
         runtime.getRuntimeId(),
         // Why: only a session caller is verified; terminal env could name anyone.
         orchestrationCaller?.address
       )
+      const workerSessionId = sessionIdFromStructuredWorkerIncarnation(
+        db.getDispatchContextById(params.dispatch)?.process_incarnation
+      )
       if (abandoned.disposition === 'context_only') {
         if (!abandoned.alreadySettled) {
           // Abandon settles the Dispatch, so it owes the same binding release stop and release do:
           // a surviving redrive subscription keeps nudging a worker nobody is waiting on.
-          releaseStructuredWorkerSession(params.dispatch, runtime)
+          releaseStructuredWorkerSession(params.dispatch, runtime, workerSessionId)
           runtime.notifyMessageArrived(`dispatch:${params.dispatch}`, 'status')
         }
         return {
@@ -225,7 +230,7 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
       }
       const worker = abandoned.worker
       if (abandoned.disposition === 'abandoned') {
-        releaseStructuredWorkerSession(params.dispatch, runtime)
+        releaseStructuredWorkerSession(params.dispatch, runtime, workerSessionId)
         runtime.notifyMessageArrived(`dispatch:${params.dispatch}`, 'status')
       }
       return {

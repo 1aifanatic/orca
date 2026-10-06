@@ -12,6 +12,8 @@
  */
 
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
+import { isOrcaSessionId } from '../../shared/orca-session-address'
+import { canonicalOrcaSessionId } from './orchestration/canonical-orca-session-id'
 import type { OrchestrationDb } from './orchestration/db'
 import type { WorkerDispatchState } from './orchestration/types'
 import {
@@ -104,7 +106,8 @@ export function structuredWorkerAddressable(
  * addressed to its incarnation, on a process this host owns a terminal for. That covers its own
  * worker-start dispatch (whose context stays open while the worker is active, a stop in doubt
  * included, because a supervised worker's context settles only with it) and any task later
- * dispatched to it. A `reclaimable` worker's dispatch has settled, so it owes nothing.
+ * dispatched to it. A `reclaimable` worker's dispatch has settled, so it owes nothing. A `/clear`
+ * successor owes what its lineage root, the session the worker was minted under, owes.
  */
 export function structuredWorkerOwesWork(
   db: OrchestrationDb | null,
@@ -114,7 +117,9 @@ export function structuredWorkerOwesWork(
   if (!db || !hostScope) {
     return false
   }
-  const incarnation = structuredWorkerProcessIncarnation(record.sessionId)
+  const incarnation = structuredWorkerProcessIncarnation(
+    isOrcaSessionId(record.sessionId) ? canonicalOrcaSessionId(record.sessionId) : record.sessionId
+  )
   const owned = db.db
     .prepare(
       `SELECT 1 FROM worker_terminal_resources

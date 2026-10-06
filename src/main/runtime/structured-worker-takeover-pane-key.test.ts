@@ -27,7 +27,8 @@ function installRecord(lease: { runtimeKind: string; claimStatus: string }): voi
             sessionId,
             location: { executionHostId: 'local', wslDistro: null },
             lease: { ...lease, runtimeFence: 1, deathEvidence: null }
-          }) as unknown as AgentSessionRecord
+          }) as unknown as AgentSessionRecord,
+        listRecords: () => []
       }
     },
     hasSession: () => true

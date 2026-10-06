@@ -35,8 +35,10 @@ import type { OrchestrationDb } from './orchestration/db'
 import { boundStructuredJournalTail } from './orchestration/structured-worker-journal-archive'
 import { readStructuredJournalPage } from './orchestration/structured-worker-journal-page'
 import {
-  observeStructuredWorker,
-  resolveStructuredWorkerAuthority,
+  observeStructuredSession,
+  requireStructuredWorkerSession,
+  resolveStructuredWorkerIdentity,
+  structuredWorkerCustody,
   structuredWorkerTerminalState
 } from './structured-worker-authority'
 import { readTerminalTail } from './terminal-tail-read'
@@ -46,7 +48,8 @@ import { readTerminalTail } from './terminal-tail-read'
  *
  * Null is the "not mine" answer, so the PTY path keeps every handle it already owned. A handle that
  * IS a structured worker never falls through: an unreadable journal refuses rather than answering
- * an empty tail, which a caller cannot tell from a worker that has said nothing.
+ * an empty tail, which a caller cannot tell from a worker that has said nothing, and so does a
+ * worker whose running session (a `/clear` may have moved it) cannot be verified.
  */
 export async function readStructuredWorkerTerminal(args: {
   handle: string
@@ -54,8 +57,12 @@ export async function readStructuredWorkerTerminal(args: {
   cursor?: number
   limit?: number
 }): Promise<RuntimeTerminalRead | null> {
-  const identity = resolveStructuredWorkerAuthority(args.handle, args.db)?.identity
+  const identity = resolveStructuredWorkerIdentity(args.handle, args.db)
   if (!identity) {
+    return null
+  }
+  const sessionId = requireStructuredWorkerSession(identity).sessionId
+  if (!structuredWorkerCustody(identity, args.db)?.addressable) {
     return null
   }
   if (args.cursor !== undefined) {
@@ -76,7 +83,7 @@ export async function readStructuredWorkerTerminal(args: {
         'A structured session has no durable line anchor to page from — nothing else does either.'
     )
   }
-  const page = await readStructuredJournalPage(identity.sessionId)
+  const page = await readStructuredJournalPage(sessionId)
   if (!page) {
     // Honest refusal, and the same one the send lane reports: an empty tail would read as "this
     // worker has produced no output", which is a different and false claim.
@@ -89,7 +96,7 @@ export async function readStructuredWorkerTerminal(args: {
   )
   const read = readTerminalTail({
     handle: args.handle,
-    status: structuredWorkerTerminalState(observeStructuredWorker(identity).status),
+    status: structuredWorkerTerminalState(observeStructuredSession(sessionId).status),
     previewLines: lines,
     // Unreachable without a cursor, and deliberately empty rather than a copy of `lines`: a
     // running turn's text is still growing, so calling it "completed" is the `"hel"`/`"hello"`
