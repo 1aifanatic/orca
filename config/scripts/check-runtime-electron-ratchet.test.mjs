@@ -37,8 +37,8 @@ describe('structured chat coverage', () => {
     'src/main/native-chat/reader.ts': 'export {}',
     'src/main/claude/claude-session.ts': 'export {}',
     'src/main/codex/codex-session.ts': 'export {}',
-    'src/main/provider-process/supervisor.ts': 'export {}',
     'src/main/runtime/structured-agent-session-host.ts': 'export {}',
+    'src/main/provider-process/provider-process-teardown.ts': 'export {}',
     'src/shared/agent-session-record.ts': 'export {}'
   }
 
