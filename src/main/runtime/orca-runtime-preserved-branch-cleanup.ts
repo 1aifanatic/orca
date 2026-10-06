@@ -80,6 +80,21 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | ((paneKey: string) => AgentStatusIpcPayload[])
     | null
 
+  /**
+   * Whether a client drove or is viewing a PTY's current process, for closing finished run
+   * terminals: `unknown` when this process cannot tell (it adopted the PTY rather than spawned it).
+   */
+  readTerminalClientUse(ptyId: string): 'used' | 'unused' | 'unknown' {
+    if (this.terminalViewSubscribers.hasRaw(ptyId)) {
+      return 'used'
+    }
+    const facts = this.terminalRunFacts.read(ptyId, undefined)
+    if (facts.firstUserInputAt !== null) {
+      return 'used'
+    }
+    return facts.freshSpawn ? 'unused' : 'unknown'
+  }
+
   /** Agent status rows this host holds for a pane, from hooks, OSC and titles alike. */
   getAgentStatusRowsForPane(paneKey: string): AgentStatusIpcPayload[] {
     return this.getAgentProviderSessionRowsForPaneFn?.(paneKey) ?? []

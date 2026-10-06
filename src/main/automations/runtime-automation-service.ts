@@ -121,6 +121,8 @@ function bindHeadlessRunTerminalRetention(
 ): void {
   const retention = createHeadlessRunTerminalRetention({
     listRuns: () => store.listAutomationRuns(),
+    terminalClientUse: (run) =>
+      run.terminalPtyId ? runtime.readTerminalClientUse(run.terminalPtyId) : 'unknown',
     closeRunTerminal: async (paneKey) => {
       const handle = runtime.getTerminalHandleForPaneKey(paneKey)
       if (!handle) {

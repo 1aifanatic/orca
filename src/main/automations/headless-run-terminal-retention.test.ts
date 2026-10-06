@@ -28,8 +28,10 @@ function makeRun(
 function harness(runs: AutomationRun[]) {
   const closed: string[] = []
   const forgotten: AutomationRun[] = []
+  const use = new Map<string, 'used' | 'unused' | 'unknown'>()
   const retention = createHeadlessRunTerminalRetention({
     listRuns: () => runs.filter((run) => !forgotten.some((gone) => gone.id === run.id)),
+    terminalClientUse: (run) => use.get(run.id) ?? 'unused',
     closeRunTerminal: async (paneKey) => {
       closed.push(paneKey)
       return true
@@ -38,7 +40,7 @@ function harness(runs: AutomationRun[]) {
       forgotten.push(run)
     }
   })
-  return { retention, closed, forgotten }
+  return { retention, closed, forgotten, use }
 }
 
 beforeEach(() => {
@@ -75,6 +77,20 @@ describe('headless run terminal retention', () => {
     vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS * 10)
     await h.retention.sweep()
     expect(h.closed).toEqual(['tab-done2:1'])
+  })
+
+  it.each([
+    ['a client typed into since dispatch', 'used'],
+    ['a client is attached to or viewing', 'used'],
+    ['this host cannot tell whether a client used', 'unknown']
+  ] as const)('never closes a terminal %s', async (_case, verdict) => {
+    const runs = [0, 1, 2, 3, 4].map((n) => makeRun(`r${n}`, n))
+    const h = harness(runs)
+    h.use.set('r0', verdict)
+    await h.retention.sweep()
+    vi.advanceTimersByTime(RUN_TERMINAL_GRACE_MS * 10)
+    await h.retention.sweep()
+    expect(h.closed).toEqual(['tab-r1:1'])
   })
 
   it('treats failed runs alike and keeps their status and error when forgetting the terminal', async () => {

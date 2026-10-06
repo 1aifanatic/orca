@@ -3,7 +3,8 @@
  * run completes; on orcad nobody does, so hourly schedules leave a shell and a PTY per run until
  * the host runs out. A finished run's terminal stays open for a grace period and the newest few
  * per automation stay viewable; older ones are closed. A run that has not finished is never
- * touched, since its agent may still be working.
+ * touched, since its agent may still be working, and neither is a terminal a client typed into or
+ * is viewing, or one whose use this host cannot tell: as on the desktop, that terminal is the user's.
  */
 import { isFinalAutomationRunStatus, type AutomationRun } from '../../shared/automations-types'
 
@@ -13,6 +14,11 @@ const SWEEP_INTERVAL_MS = 60_000
 
 export type HeadlessRunTerminalRetentionDeps = {
   listRuns: () => readonly AutomationRun[]
+  /**
+   * Whether any client drove or is viewing the run's terminal. Like the desktop's take-over rule,
+   * a used terminal is the user's now; `unknown` keeps it too.
+   */
+  terminalClientUse: (run: AutomationRun) => 'used' | 'unused' | 'unknown'
   /** Closes the run's terminal tab; false when this host no longer has it. */
   closeRunTerminal: (paneKey: string) => Promise<boolean>
   /** Drops the closed terminal from the run, keeping its status, error and output. */
@@ -48,7 +54,10 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
     for (const runs of finishedByAutomation.values()) {
       const newestFirst = runs.toSorted((a, b) => runRecency(b) - runRecency(a))
       for (const run of newestFirst.slice(RUN_TERMINALS_KEPT_PER_AUTOMATION)) {
-        if (now() - (finishedSeenAt.get(run.id) ?? now()) < RUN_TERMINAL_GRACE_MS) {
+        if (
+          now() - (finishedSeenAt.get(run.id) ?? now()) < RUN_TERMINAL_GRACE_MS ||
+          deps.terminalClientUse(run) !== 'unused'
+        ) {
           continue
         }
         try {

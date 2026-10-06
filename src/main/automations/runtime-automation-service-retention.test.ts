@@ -23,6 +23,7 @@ function finishedRuns(count: number): AutomationRun[] {
         status: 'completed',
         error: null,
         terminalPaneKey: `tab-${n}:1`,
+        terminalPtyId: `pty-${n}`,
         dispatchedAt: n,
         startedAt: n,
         createdAt: n
@@ -35,6 +36,8 @@ function build(headless: boolean) {
     setAutomationService: vi.fn(),
     notifyAutomationsChanged: vi.fn(),
     getTerminalHandleForPaneKey: vi.fn((paneKey: string) => `handle:${paneKey}`),
+    // pty-1's terminal has a client on it: typed into or being viewed.
+    readTerminalClientUse: vi.fn((ptyId: string) => (ptyId === 'pty-1' ? 'used' : 'unused')),
     closeTerminalTab: vi.fn(async (_handle: string) => ({}))
   }
   const store = { listAutomationRuns: vi.fn(() => finishedRuns(5)), listAutomations: () => [] }
@@ -59,9 +62,9 @@ describe('headless automation service run terminal retention', () => {
     service.start()
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS + 2 * 60_000)
 
-    expect(runtime.closeTerminalTab.mock.calls.map(([handle]) => handle).toSorted()).toEqual([
-      'handle:tab-0:1',
-      'handle:tab-1:1'
+    // The oldest two finished runs are past the newest three; the one a client used stays open.
+    expect(runtime.closeTerminalTab.mock.calls.map(([handle]) => handle)).toEqual([
+      'handle:tab-0:1'
     ])
     expect(service.markDispatchResult).toHaveBeenCalledWith(
       expect.objectContaining({ runId: 'r0', status: 'completed', terminalPaneKey: null })
