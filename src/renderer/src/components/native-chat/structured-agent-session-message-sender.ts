@@ -5,18 +5,16 @@
 // the message back in the composer when the host did not take it, or nobody can say. While it is
 // out the chat takes no other send, which keeps the host's arrival order without a client line.
 //
-// Nothing here is saved, nothing outlives one deadline, and nothing is sent twice under a new id: a
-// resend reuses the message's id, which the host never runs twice.
+// Nothing here is saved, nothing outlives one deadline, and nothing is ever sent twice: a send makes
+// one request, and whatever its answer, nothing sends it again.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
-  agentSessionBlockedSendParts,
-  agentSessionDeadlineSendParts,
   agentSessionUnconfirmedSendParts,
-  agentSessionWriteNoticeParts
+  agentSessionWriteNoticeParts,
+  agentSessionWriteNotDoneParts
 } from '../../../../shared/agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from '../../../../shared/agent-session-write-notice-copy'
-import type { AgentSessionWriteFailure } from '../../../../shared/agent-session-write-failure'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import {
@@ -44,7 +42,6 @@ import {
 /** From the moment a message is sent: past it, the message goes back to the composer, saying it
  *  was not sent if it never went out, and that nobody could confirm it if it did. */
 export const STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS = 30_000
-const RESEND_DELAYS_MS = [1_000, 2_000, 4_000, 8_000]
 
 /** `returned`: back in the composer, not sent. `unconfirmed`: back in the composer, though the host
  *  may hold it. */
@@ -54,17 +51,6 @@ type SendRuntime = {
   target: RuntimeClientTarget
   abort: AbortController
   deadline: ReturnType<typeof setTimeout>
-  resend: ReturnType<typeof setTimeout> | null
-  /** Attempts made, whether or not their request went out: paces the next one. */
-  tries: number
-  /** What the host's last thrown refusal said, for the words when nobody can confirm the send. */
-  thrownRefusal: AgentSessionWriteFailure | null
-  /** Bumped when the journal settles the send, so an answer still on its way changes nothing. */
-  generation: number
-  /** Its request is out and the answer not back yet. */
-  awaiting: boolean
-  /** A Stop came while it was out: its own answer still settles it, but it is never sent again. */
-  stopped?: true
   resolve: (outcome: StructuredAgentSessionSendOutcome) => void
 }
 
@@ -79,10 +65,6 @@ function finish(
   const runtime = runtimes.get(entry.clientMessageId)
   if (runtime) {
     clearTimeout(runtime.deadline)
-    if (runtime.resend) {
-      clearTimeout(runtime.resend)
-    }
-    runtime.generation += 1
     runtimes.delete(entry.clientMessageId)
     runtime.resolve(outcome)
   }
@@ -126,64 +108,35 @@ function settleRecorded(
   finish(entry, 'recorded', keep ? { phase: 'recorded', issued: true } : undefined)
 }
 
+/** The send's one request, and what its answer settles. Nothing is ever sent again. */
 async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> {
   const runtime = runtimes.get(entry.clientMessageId)
   if (!runtime) {
     return
   }
-  const generation = runtime.generation
   const outcome = await attemptStructuredAgentSessionSend({
     entry,
     target: runtime.target,
-    beforeIssue: () => {
-      if (runtime.generation !== generation || runtime.stopped) {
-        return null
-      }
-      runtime.awaiting = true
-      const latest = findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
+    beforeIssue: () =>
       updateStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId, {
         issued: true
-      })
-      return { firstAttempt: !(latest?.issued ?? entry.issued) }
-    },
-    abandoned: () =>
-      runtime.abort.signal.aborted ||
-      runtime.generation !== generation ||
-      runtimes.get(entry.clientMessageId) !== runtime
+      }),
+    abandoned: () => runtime.abort.signal.aborted || runtimes.get(entry.clientMessageId) !== runtime
   })
-  runtime.awaiting = false
-  runtime.tries += 1
   const current = findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
   if (!outcome || !current) {
     return
   }
-  const { evidence } = outcome
-  runtime.thrownRefusal = outcome.thrownRefusal ?? runtime.thrownRefusal
-  if (outcome.blocked) {
-    // Trying again won't clear it: back now, with its own cause.
-    handBack(current, agentSessionBlockedSendParts(outcome.blocked, current.issued))
-    return
-  }
-  if (evidence.kind === 'recorded') {
+  if (outcome.kind === 'not-sent') {
+    handBack(current, outcome.parts)
+  } else if (outcome.evidence.kind === 'recorded') {
     settleRecorded(current, outcome.submission, 'reply')
-    return
+  } else if (outcome.evidence.kind === 'not-recorded') {
+    handBack(current, agentSessionWriteNoticeParts(outcome.evidence.failure, 'composer-send'))
+  } else {
+    // Dropped, unanswered, or an answer that proves nothing: it may have landed, so check first.
+    handBack(current, agentSessionUnconfirmedSendParts(outcome.thrownRefusal))
   }
-  if (evidence.kind === 'not-recorded') {
-    handBack(current, agentSessionWriteNoticeParts(evidence.failure, 'composer-send'))
-    return
-  }
-  if (evidence.kind === 'uncertain' || runtime.stopped) {
-    handBack(current, agentSessionUnconfirmedSendParts(runtime.thrownRefusal))
-    return
-  }
-  const delay = RESEND_DELAYS_MS[Math.min(runtime.tries, RESEND_DELAYS_MS.length) - 1]
-  runtime.resend = setTimeout(() => {
-    runtime.resend = null
-    const latest = findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
-    if (latest?.phase === 'sending' && runtimes.get(entry.clientMessageId) === runtime) {
-      void attempt(latest)
-    }
-  }, delay)
 }
 
 function onDeadline(sessionId: string, clientMessageId: string): void {
@@ -191,10 +144,14 @@ function onDeadline(sessionId: string, clientMessageId: string): void {
   if (!entry || entry.phase === 'recorded') {
     return
   }
-  const runtime = runtimes.get(clientMessageId)
-  runtime?.abort.abort()
+  runtimes.get(clientMessageId)?.abort.abort()
   // One that went out may still land: its row then shows it beside the text given back.
-  handBack(entry, agentSessionDeadlineSendParts(entry.issued, runtime?.thrownRefusal))
+  handBack(
+    entry,
+    entry.issued
+      ? ['sendOutcomeLost']
+      : ['unreachable', ...agentSessionWriteNotDoneParts('composer-send')]
+  )
 }
 
 export type StructuredAgentSessionSent = {
@@ -216,11 +173,6 @@ function dispatch(
         () => onDeadline(sessionId, clientMessageId),
         STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS
       ),
-      resend: null,
-      awaiting: false,
-      tries: 0,
-      thrownRefusal: null,
-      generation: 0,
       resolve
     })
   })
@@ -308,23 +260,15 @@ export function settleStructuredAgentSessionSendsFromJournal(
 }
 
 /**
- * A Stop, or the chat's tab closing: nothing more goes out. A send whose request is out settles
- * from its answer; one between attempts goes back now, as unconfirmed; one still being readied
- * never went out, so it goes back silently.
+ * A Stop, or the chat's tab closing: a send still being readied never went out, so it goes back
+ * silently and nothing is sent; one whose request is out settles from its answer.
  */
 export function stopStructuredAgentSessionSends(sessionId: string): void {
   for (const entry of getStructuredAgentSessionPendingSends(sessionId)) {
     const runtime = runtimes.get(entry.clientMessageId)
-    if (!runtime) {
-      continue
-    }
-    if (!entry.issued) {
+    if (runtime && !entry.issued) {
       runtime.abort.abort()
       handBack(entry, null)
-    } else if (runtime.awaiting) {
-      runtime.stopped = true
-    } else {
-      handBack(entry, agentSessionUnconfirmedSendParts(runtime.thrownRefusal))
     }
   }
 }
@@ -336,9 +280,6 @@ export function dropStructuredAgentSessionSends(sessionId: string): void {
     runtime?.abort.abort()
     if (runtime) {
       clearTimeout(runtime.deadline)
-      if (runtime.resend) {
-        clearTimeout(runtime.resend)
-      }
       runtimes.delete(entry.clientMessageId)
       runtime.resolve('dropped')
     }

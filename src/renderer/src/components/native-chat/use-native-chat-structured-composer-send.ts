@@ -72,8 +72,8 @@ export function useNativeChatStructuredComposerSend({
           }
           emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
           // A real user send is a takeover, exactly as typing into a worker's pane is. Only past
-          // `accepted`, and only from this hook: the sender's resends would re-fire,
-          // and orchestration's own pointer nudges never reach the composer at all.
+          // `accepted`, and only from this hook: orchestration's own pointer nudges never reach
+          // the composer at all.
           reportStructuredSessionUserInput(
             structuredTransport.sessionId,
             structuredTransport.runtimeEnvironmentId

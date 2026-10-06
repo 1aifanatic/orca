@@ -1,5 +1,4 @@
-// What one `agentSession.send` attempt proves about its message, read the way
-// `AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY` documents the host's answers.
+// What the answer to a send's one `agentSession.send` request proves about its message.
 
 import type { AgentSessionMutationResult, AgentSessionSendResult } from './agent-session-wire'
 import {
@@ -20,11 +19,9 @@ export type StructuredAgentSessionSendAnswer =
 export type StructuredAgentSessionSendEvidence =
   /** The host holds the message (a row in any state, or a queued card): it is the host's now. */
   | { kind: 'recorded' }
-  /** Nothing is known yet: the same id goes again, which the host can never run twice. */
-  | { kind: 'resend' }
   /** The host holds nothing under this id and runs nothing for it: the text goes back. */
   | { kind: 'not-recorded'; failure: AgentSessionWriteFailure }
-  /** An answer that proves nothing about an earlier attempt: it may already be in the chat. */
+  /** An answer that proves nothing (a lost one included): it may already be in the chat. */
   | { kind: 'uncertain' }
 
 // RPC codes a host answers before it runs the method: nothing under the id was written.
@@ -35,53 +32,35 @@ const TURNED_AWAY_RPC_CODES: ReadonlySet<string> = new Set([
   'unauthorized'
 ])
 
+/** What the answer to a send's one request proves. Nothing sends it again, so no answer is ever
+ *  read against an earlier attempt. */
 export function structuredAgentSessionSendEvidence(
-  answer: StructuredAgentSessionSendAnswer,
-  host: {
-    /** The host advertises `agent-session.send-answers-proof.v1`. */
-    answersWithProof: boolean
-    /** No earlier attempt under this id may have reached the host. */
-    firstAttempt: boolean
-  }
+  answer: StructuredAgentSessionSendAnswer
 ): StructuredAgentSessionSendEvidence {
   if (answer.kind === 'thrown') {
     // A thrown error, a thrown refusal included, is never proof: the host may have written first.
-    // A call turned away proves only that this one wrote nothing; an earlier one may have landed.
-    return host.firstAttempt &&
-      answer.rpcCode !== undefined &&
+    return answer.rpcCode !== undefined &&
       TURNED_AWAY_RPC_CODES.has(answer.rpcCode) &&
       readAgentSessionErrorRefusal(answer.error) === undefined
       ? { kind: 'not-recorded', failure: agentSessionRpcErrorFailure(answer.rpcCode) }
-      : { kind: 'resend' }
+      : { kind: 'uncertain' }
   }
   const { result } = answer
   if (result.ok) {
     const value: AgentSessionSendResult = result.value
+    // A made-up row for an id the host's ledger holds and its journal lost.
     return 'submission' in value &&
       value.submission.reason === STRUCTURED_AGENT_SESSION_SUBMISSION_MISSING
       ? { kind: 'uncertain' }
       : { kind: 'recorded' }
   }
   const failure = agentSessionRefusalFailure(result.refusal)
-  if (failure.kind !== 'refused') {
-    return { kind: 'resend' }
+  // "Outcome unknown" is never proof; an unconfirmed rewind is the host saying the send never ran.
+  if (failure.kind === 'refused' && failure.code === 'agent_session_operation_unknown') {
+    return failure.details?.reason === 'rewindUnconfirmed'
+      ? { kind: 'not-recorded', failure }
+      : { kind: 'uncertain' }
   }
-  const reason = failure.details?.reason
-  if (failure.code === 'agent_session_operation_unknown') {
-    return reason === 'rewindUnconfirmed' ? { kind: 'not-recorded', failure } : { kind: 'resend' }
-  }
-  // Nothing under a fresh id can be recorded or running: this call is the only one that carried it.
-  if (host.firstAttempt) {
-    return { kind: 'not-recorded', failure }
-  }
-  // A resent id: proof only from a host that answers resends from its record, and not for an
-  // expired id, an id holding other content, or a chat this host no longer holds.
-  const provesNothing =
-    failure.code === 'agent_session_operation_expired' ||
-    failure.code === 'agent_session_operation_conflict' ||
-    reason === 'messageIdReused' ||
-    reason === 'sessionNotAttached'
-  return host.answersWithProof && !provesNothing
-    ? { kind: 'not-recorded', failure }
-    : { kind: 'uncertain' }
+  // This request was the only one that carried the id, so nothing under it is recorded or running.
+  return { kind: 'not-recorded', failure }
 }

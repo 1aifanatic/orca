@@ -39,7 +39,7 @@ export function useStructuredAgentSessionStop(input: {
     pressed: press.pressed,
     stopsConversation,
     stop: (turnId, stopSends) => {
-      // The chat's own send goes no further: never a resend after a Stop. Host-held cards are
+      // The chat's own send goes no further if it has not gone out yet. Host-held cards are
       // never withdrawn by a Stop: the host pauses them, visible on every device, until acted on.
       if (stopsConversation) {
         stopSends()

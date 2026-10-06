@@ -18,7 +18,7 @@ export type StructuredAgentSessionSendInput = {
   sessionId: string
   text: string
   attachments?: readonly StructuredAgentSessionAttachment[]
-  /** Asks the host to hold it as a card while the agent works; decided once, for every resend. */
+  /** Asks the host to hold it as a card while the agent works; decided once, at the send. */
   delivery?: 'queue-if-active'
   /** The caller keeps the text if it comes back, instead of the chat's composer. */
   callerKeepsText?: true

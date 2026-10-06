@@ -194,34 +194,6 @@ export function agentSessionUnconfirmedSendParts(
   return [...cause, 'sendOutcomeLost']
 }
 
-/** A send stopped before its request went out, by a cause trying again won't clear: not sent,
- *  unless an earlier attempt went out, which may have landed. */
-export function agentSessionBlockedSendParts(
-  blocked: { failure: AgentSessionWriteFailure } | { text: string },
-  issued: boolean
-): AgentSessionWriteNoticePart[] {
-  if ('text' in blocked) {
-    return [{ text: blocked.text }, issued ? 'sendOutcomeLost' : 'notDoneSend']
-  }
-  return issued
-    ? agentSessionUnconfirmedSendParts(blocked.failure)
-    : agentSessionWriteNoticeParts(blocked.failure, 'composer-send')
-}
-
-/** A send its 30 s bound ended: unconfirmed if a request went out, else not sent, in the words of
- *  what the host last refused it with, or that Orca couldn't reach the agent. */
-export function agentSessionDeadlineSendParts(
-  issued: boolean,
-  thrownRefusal: AgentSessionWriteFailure | null | undefined
-): AgentSessionWriteNoticePart[] {
-  if (issued) {
-    return agentSessionUnconfirmedSendParts(thrownRefusal)
-  }
-  return thrownRefusal
-    ? agentSessionWriteNoticeParts(thrownRefusal, 'composer-send')
-    : ['unreachable', ...agentSessionWriteNotDoneParts('composer-send')]
-}
-
 export function agentSessionWriteNoticeEnglish(
   parts: readonly AgentSessionWriteNoticePart[]
 ): string {

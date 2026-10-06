@@ -11,11 +11,11 @@ export type StructuredAgentSessionPendingSend = {
   queuedAt: number
   delivery?: 'queue-if-active'
   /**
-   * `sending`: out, or its same-id resend is due; the chat takes no other send meanwhile.
+   * `sending`: on its way, its one request out or about to be; the chat takes no other send meanwhile.
    * `recorded`: the host holds it; an open chat draws it until the host's row or card arrives.
    */
   phase: 'sending' | 'recorded'
-  /** An attempt under this id may have reached the host. */
+  /** Its request went out, so it may have reached the host. */
   issued: boolean
   /** A sender outside the chat keeps its own copy, so nothing goes to the chat's composer. */
   callerKeepsText?: true

@@ -57,162 +57,88 @@ function thrown(rpcCode: string | undefined): StructuredAgentSessionSendAnswer {
   return { kind: 'thrown', error: new Error(rpcCode ?? 'socket closed'), rpcCode }
 }
 
-const proof = { answersWithProof: true, firstAttempt: false }
-const older = { answersWithProof: false, firstAttempt: false }
-const first = { answersWithProof: false, firstAttempt: true }
-
 describe('structuredAgentSessionSendEvidence', () => {
   it('reads any ok answer as the host holding the message', () => {
-    expect(structuredAgentSessionSendEvidence(recorded, first).kind).toBe('recorded')
+    expect(structuredAgentSessionSendEvidence(recorded).kind).toBe('recorded')
   })
 
   it('reads a row the host returns, in any state, as its own from then on', () => {
-    for (const host of [first, proof, older]) {
-      for (const dispatchState of ['pending', 'accepted', 'rejected', 'unknown'] as const) {
-        expect(structuredAgentSessionSendEvidence(withRow({ dispatchState }), host).kind).toBe(
-          'recorded'
-        )
-      }
-      // A restart lost its outcome, or a queued card's hand-off: a record, never a probe.
-      const rows: Partial<AgentJournalSubmission>[] = [
-        { dispatchState: 'unknown', recovered: true, reason: 'host_restarted' },
-        { dispatchState: 'rejected', clientMessageId: 'other', queuedMessageId: 'm' },
-        { dispatchState: 'rejected', keptAsQueuedMessageId: 'm' }
-      ]
-      for (const row of rows) {
-        expect(structuredAgentSessionSendEvidence(withRow(row), host).kind).toBe('recorded')
-      }
+    for (const dispatchState of ['pending', 'accepted', 'rejected', 'unknown'] as const) {
+      expect(structuredAgentSessionSendEvidence(withRow({ dispatchState })).kind).toBe('recorded')
+    }
+    // A restart lost its outcome, or a queued card's hand-off: a record, never a probe.
+    const rows: Partial<AgentJournalSubmission>[] = [
+      { dispatchState: 'unknown', recovered: true, reason: 'host_restarted' },
+      { dispatchState: 'rejected', clientMessageId: 'other', queuedMessageId: 'm' },
+      { dispatchState: 'rejected', keptAsQueuedMessageId: 'm' }
+    ]
+    for (const row of rows) {
+      expect(structuredAgentSessionSendEvidence(withRow(row)).kind).toBe('recorded')
     }
   })
 
   it('reads a made-up row for an id the host journal lost as unconfirmed, not recorded', () => {
-    const missing: StructuredAgentSessionSendAnswer = {
-      kind: 'result',
-      result: {
-        ok: true,
-        replayed: true,
-        fence: 1,
-        cursor: { epoch: 'e', sequence: 1 },
-        value: {
-          clientMessageId: 'm',
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the reason is read.
-          submission: {
-            dispatchState: 'unknown',
-            reason: 'durable_send_submission_missing',
-            recovered: true
-          } as AgentJournalSubmission
-        }
-      }
-    }
-    expect(structuredAgentSessionSendEvidence(missing, proof).kind).toBe('uncertain')
+    expect(
+      structuredAgentSessionSendEvidence(
+        withRow({
+          dispatchState: 'unknown',
+          reason: 'durable_send_submission_missing',
+          recovered: true
+        })
+      ).kind
+    ).toBe('uncertain')
   })
 
-  it('reads no thrown error as an answer, by code: a timeout or a closed socket goes again', () => {
+  it('reads no thrown error as proof: a timeout, a closed socket or a thrown refusal', () => {
     for (const rpcCode of [
       'runtime_timeout',
       'remote_runtime_unavailable',
       'runtime_unavailable',
       undefined
     ]) {
-      for (const host of [first, proof, older]) {
-        expect(structuredAgentSessionSendEvidence(thrown(rpcCode), host).kind).toBe('resend')
-      }
+      expect(structuredAgentSessionSendEvidence(thrown(rpcCode)).kind).toBe('uncertain')
     }
-  })
-
-  it('resends the same id after a thrown error, a thrown refusal included', () => {
-    expect(
-      structuredAgentSessionSendEvidence(
-        { kind: 'thrown', error: new Error('timeout'), rpcCode: undefined },
-        first
-      ).kind
-    ).toBe('resend')
     const thrownRefusal = {
       response: { error: { data: { refusal: { code: 'agent_session_journal_unreadable' } } } }
     }
     expect(
-      structuredAgentSessionSendEvidence(
-        { kind: 'thrown', error: thrownRefusal, rpcCode: 'invalid_argument' },
-        first
-      ).kind
-    ).toBe('resend')
+      structuredAgentSessionSendEvidence({
+        kind: 'thrown',
+        error: thrownRefusal,
+        rpcCode: 'invalid_argument'
+      }).kind
+    ).toBe('uncertain')
   })
 
-  it('treats a call the host turned away before running it as never written, on a first attempt only', () => {
+  it('treats a call the host turned away before running it as never written', () => {
     for (const rpcCode of ['method_not_found', 'invalid_argument', 'unauthorized']) {
-      expect(structuredAgentSessionSendEvidence(thrown(rpcCode), first).kind).toBe('not-recorded')
-      // An earlier attempt may have landed before the host turned this one away.
-      expect(structuredAgentSessionSendEvidence(thrown(rpcCode), proof).kind).toBe('resend')
-      expect(structuredAgentSessionSendEvidence(thrown(rpcCode), older).kind).toBe('resend')
+      expect(structuredAgentSessionSendEvidence(thrown(rpcCode)).kind).toBe('not-recorded')
     }
   })
 
-  it('resends on an unknown outcome or a lost result, and hands back an unconfirmed rewind', () => {
+  it('reads an unknown outcome or a lost result as unconfirmed, and an unconfirmed rewind as not sent', () => {
+    for (const reason of ['outcomeUnknown', 'resultLost']) {
+      expect(
+        structuredAgentSessionSendEvidence(refused('agent_session_operation_unknown', reason)).kind
+      ).toBe('uncertain')
+    }
     expect(
       structuredAgentSessionSendEvidence(
-        refused('agent_session_operation_unknown', 'outcomeUnknown'),
-        proof
-      ).kind
-    ).toBe('resend')
-    expect(
-      structuredAgentSessionSendEvidence(
-        refused('agent_session_operation_unknown', 'resultLost'),
-        first
-      ).kind
-    ).toBe('resend')
-    // Never proof, even on a first attempt.
-    expect(
-      structuredAgentSessionSendEvidence(
-        refused('agent_session_operation_unknown', 'outcomeUnknown'),
-        first
-      ).kind
-    ).toBe('resend')
-    expect(
-      structuredAgentSessionSendEvidence(
-        refused('agent_session_operation_unknown', 'rewindUnconfirmed'),
-        proof
+        refused('agent_session_operation_unknown', 'rewindUnconfirmed')
       ).kind
     ).toBe('not-recorded')
   })
 
-  it('reads any other refusal of a first attempt as never written, on any host', () => {
-    expect(
-      structuredAgentSessionSendEvidence(
-        refused('agent_session_ownership_unknown', 'sessionNotAttached'),
-        first
-      ).kind
-    ).toBe('not-recorded')
-    expect(structuredAgentSessionSendEvidence(refused('agent_session_conflict'), first).kind).toBe(
-      'not-recorded'
-    )
-    expect(
-      structuredAgentSessionSendEvidence(refused('agent_session_operation_capacity'), first).kind
-    ).toBe('not-recorded')
-  })
-
-  it('reads a resent id refusal as proof only from a host that answers with proof', () => {
-    expect(structuredAgentSessionSendEvidence(refused('agent_session_conflict'), proof).kind).toBe(
-      'not-recorded'
-    )
-    expect(
-      structuredAgentSessionSendEvidence(refused('agent_session_journal_unreadable'), proof).kind
-    ).toBe('not-recorded')
-    expect(structuredAgentSessionSendEvidence(refused('agent_session_conflict'), older).kind).toBe(
-      'uncertain'
-    )
-  })
-
-  it('never reads an expired id, an id holding other content, or a detached chat as proof', () => {
+  // The one request is the only one that carried the id, so a refusal of it proves nothing ran.
+  it('reads any other refusal as never written', () => {
     for (const answer of [
-      refused('agent_session_operation_expired', 'operationExpired'),
-      refused('agent_session_operation_conflict', 'operationIdReused'),
-      refused('agent_session_operation_conflict', 'fingerprintMismatch'),
-      refused('agent_session_operation_invalid', 'messageIdReused'),
-      refused('agent_session_ownership_unknown', 'sessionNotAttached')
+      refused('agent_session_ownership_unknown', 'sessionNotAttached'),
+      refused('agent_session_conflict'),
+      refused('agent_session_operation_capacity'),
+      refused('agent_session_journal_unreadable'),
+      refused('agent_session_operation_expired', 'operationExpired')
     ]) {
-      for (const host of [proof, older]) {
-        expect(structuredAgentSessionSendEvidence(answer, host).kind).toBe('uncertain')
-      }
+      expect(structuredAgentSessionSendEvidence(answer).kind).toBe('not-recorded')
     }
   })
 })

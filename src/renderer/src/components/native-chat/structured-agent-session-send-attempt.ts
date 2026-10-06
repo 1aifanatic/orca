@@ -1,5 +1,5 @@
-// One `agentSession.send` attempt and what its answer proves. Everything before the request is
-// local or read-only, so an attempt stopped there never went out.
+// One `agentSession.send` request and what its answer proves. Everything before the request is
+// local or read-only, so a send stopped there never went out.
 
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type {
@@ -7,31 +7,29 @@ import type {
   AgentSessionMutationResult,
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
+import {
+  agentSessionWriteNoticeParts,
+  agentSessionWriteNotDoneParts
+} from '../../../../shared/agent-session-refusal-notice'
+import type { AgentSessionWriteNoticePart } from '../../../../shared/agent-session-write-notice-copy'
 import { structuredAgentSessionMessageSendMutation } from '../../../../shared/structured-agent-session-send-mutation'
 import {
   structuredAgentSessionSendEvidence,
   type StructuredAgentSessionSendAnswer,
   type StructuredAgentSessionSendEvidence
 } from '../../../../shared/structured-agent-session-send-evidence'
-import { AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import {
   ensureRuntimeEnvironmentCompatible,
-  runtimeEnvironmentSupportsCapability,
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { isRuntimeCompatBlockError } from '@/runtime/runtime-protocol-compat'
-import { agentSessionRefusalReasonWords } from '../../../../shared/agent-session-refusal-reason-words'
 import {
   agentSessionThrownFailure,
   readAgentSessionErrorRefusal,
   type AgentSessionWriteFailure
 } from '../../../../shared/agent-session-write-failure'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
-import {
-  ensureLocalRuntimeCapabilities,
-  readLocalRuntimeCapabilitiesOrUnknown
-} from '@/runtime/local-runtime-capabilities'
 import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const fences = new Map<string, number>()
@@ -51,25 +49,7 @@ export function resetStructuredAgentSessionFencesForTests(): void {
   fences.clear()
 }
 
-/** Whether a refusal the host returns for a resent id proves it holds no such message. A failed
- *  probe reads as an older host, whose refusals prove nothing after a first attempt. */
-async function hostAnswersWithProof(target: RuntimeClientTarget): Promise<boolean> {
-  try {
-    if (target.kind === 'environment') {
-      return await runtimeEnvironmentSupportsCapability(
-        target.environmentId,
-        AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY
-      )
-    }
-    const capabilities =
-      readLocalRuntimeCapabilitiesOrUnknown() ?? (await ensureLocalRuntimeCapabilities())
-    return capabilities?.includes(AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY) === true
-  } catch {
-    return false
-  }
-}
-
-async function knownFence(target: RuntimeClientTarget, sessionId: string): Promise<number> {
+async function knownFence(target: RuntimeClientTarget, sessionId: string): Promise<number | null> {
   const known = fences.get(sessionId)
   if (known !== undefined) {
     return known
@@ -82,74 +62,73 @@ async function knownFence(target: RuntimeClientTarget, sessionId: string): Promi
   )
   const fence = history.page.fence ?? (!history.ok ? history.fence : undefined)
   if (typeof fence !== 'number') {
-    throw new Error('structured session fence unavailable')
+    return null
   }
   fences.set(sessionId, fence)
   return fence
 }
 
-export type StructuredAgentSessionSendAttempt = {
-  evidence: StructuredAgentSessionSendEvidence
-  /** The host's row, when its answer carried one. */
-  submission: AgentJournalSubmission | null
-  /** The refusal a thrown answer carried: what the host said, though it proves nothing. */
-  thrownRefusal: AgentSessionWriteFailure | null
-  /** A definite failure before this request went out, which trying again won't clear: the host
-   *  refused the checks, or this client and the server can't talk. Null for a transport error. */
-  blocked: { failure: AgentSessionWriteFailure } | { text: string } | null
-}
+export type StructuredAgentSessionSendAttempt =
+  | {
+      kind: 'answered'
+      evidence: StructuredAgentSessionSendEvidence
+      /** The host's row, when its answer carried one. */
+      submission: AgentJournalSubmission | null
+      /** The refusal a thrown answer carried: what the host said, though it proves nothing. */
+      thrownRefusal: AgentSessionWriteFailure | null
+    }
+  /** It failed before its request went out, so nothing was sent: why, in the composer's words. */
+  | { kind: 'not-sent'; parts: AgentSessionWriteNoticePart[] }
 
-function blockedBeforeRequest(
-  error: unknown,
-  rpcCode: string | undefined
-): StructuredAgentSessionSendAttempt['blocked'] {
+const NOT_SENT = agentSessionWriteNotDoneParts('composer-send')
+
+/** What a failure before the request says: this client and the server can't talk, what the host
+ *  refused, that Orca couldn't reach it, or only that nothing was sent. */
+function notSentParts(error: unknown): AgentSessionWriteNoticePart[] {
   if (isRuntimeCompatBlockError(error) && error instanceof Error) {
-    return { text: error.message }
+    return [{ text: error.message }, 'notDoneSend']
   }
-  if (!readAgentSessionErrorRefusal(error)) {
-    return null
-  }
-  const failure = agentSessionThrownFailure(error, rpcCode)
-  // A refusal the host names as one that clears goes again on the paced schedule.
-  const words = failure.kind === 'refused' ? agentSessionRefusalReasonWords(failure) : undefined
-  return words && words.action !== 'retry' ? { failure } : null
+  const rpcCode = error instanceof RuntimeRpcCallError ? error.code : undefined
+  return readAgentSessionErrorRefusal(error)
+    ? agentSessionWriteNoticeParts(agentSessionThrownFailure(error, rpcCode), 'composer-send')
+    : ['unreachable', ...NOT_SENT]
 }
 
-/** Null when the attempt stopped before its request went out, or was abandoned meanwhile. */
+/** Null when the send was abandoned (a Stop, its deadline, the journal settling it) meanwhile. */
 export async function attemptStructuredAgentSessionSend(args: {
   entry: StructuredAgentSessionPendingSend
   target: RuntimeClientTarget
-  /** Right before the request goes out: whether to send, and whether an earlier attempt under this
-   *  id may have reached the host. */
-  beforeIssue: () => { firstAttempt: boolean } | null
+  /** Right before the request goes out. */
+  beforeIssue: () => void
   abandoned: () => boolean
 }): Promise<StructuredAgentSessionSendAttempt | null> {
   const { entry, target } = args
-  let answer: StructuredAgentSessionSendAnswer
-  let firstAttempt = !entry.issued
-  let answersWithProof = false
-  let requested = false
-  let blocked: StructuredAgentSessionSendAttempt['blocked'] = null
+  let fence: number | null
   try {
     if (target.kind === 'environment') {
       await ensureRuntimeEnvironmentCompatible(target.environmentId)
     }
-    const fence = await knownFence(target, entry.sessionId)
-    answersWithProof = await hostAnswersWithProof(target)
-    const issue = args.abandoned() ? null : args.beforeIssue()
-    if (!issue) {
-      return null
-    }
-    firstAttempt = issue.firstAttempt
-    requested = true
-    const params = structuredAgentSessionMessageSendMutation({
-      sessionId: entry.sessionId,
-      clientOperationId: entry.clientMessageId,
-      expectedRuntimeFence: fence,
-      body: entry.body,
-      ...(entry.delivery ? { delivery: entry.delivery } : {})
-    })
-    type SendAnswer = AgentSessionMutationResult<AgentSessionSendResult>
+    fence = await knownFence(target, entry.sessionId)
+  } catch (error) {
+    return args.abandoned() ? null : { kind: 'not-sent', parts: notSentParts(error) }
+  }
+  if (args.abandoned()) {
+    return null
+  }
+  if (fence === null) {
+    return { kind: 'not-sent', parts: NOT_SENT }
+  }
+  args.beforeIssue()
+  const params = structuredAgentSessionMessageSendMutation({
+    sessionId: entry.sessionId,
+    clientOperationId: entry.clientMessageId,
+    expectedRuntimeFence: fence,
+    body: entry.body,
+    ...(entry.delivery ? { delivery: entry.delivery } : {})
+  })
+  type SendAnswer = AgentSessionMutationResult<AgentSessionSendResult>
+  let answer: StructuredAgentSessionSendAnswer
+  try {
     // Checked above, so the request goes out now or not at all.
     const result =
       target.kind === 'environment'
@@ -159,21 +138,23 @@ export async function attemptStructuredAgentSessionSend(args: {
         : await callStructuredAgentSession<SendAnswer>(target, 'agentSession.send', params)
     answer = { kind: 'result', result }
   } catch (error) {
-    const rpcCode = error instanceof RuntimeRpcCallError ? error.code : undefined
-    answer = { kind: 'thrown', error, rpcCode }
-    blocked = requested ? null : blockedBeforeRequest(error, rpcCode)
+    answer = {
+      kind: 'thrown',
+      error,
+      rpcCode: error instanceof RuntimeRpcCallError ? error.code : undefined
+    }
   }
   if (args.abandoned()) {
     return null
   }
   const value = answer.kind === 'result' && answer.result.ok ? answer.result.value : null
   return {
-    evidence: structuredAgentSessionSendEvidence(answer, { answersWithProof, firstAttempt }),
+    kind: 'answered',
+    evidence: structuredAgentSessionSendEvidence(answer),
     submission: value && 'submission' in value ? value.submission : null,
     thrownRefusal:
       answer.kind === 'thrown' && readAgentSessionErrorRefusal(answer.error)
         ? agentSessionThrownFailure(answer.error, answer.rpcCode)
-        : null,
-    blocked
+        : null
   }
 }
