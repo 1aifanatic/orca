@@ -500,12 +500,15 @@ describe('a mailbox a /clear moves while its nudge is in flight', () => {
         stored.set(row.mailbox_handle, row),
       deleteStructuredPointerOperation: (key: string) => stored.delete(key)
     }
-    let settleHeld: ((state: 'accepted' | 'rejected') => void) | null = null
+    let settleHeld: ((state: 'accepted' | 'rejected' | 'throws') => void) | null = null
     const send = vi.fn(
       ({ sessionId }: { sessionId: string }) =>
-        new Promise<{ kind: 'sent'; state: 'accepted' | 'rejected' }>((resolve) => {
+        new Promise<{ kind: 'sent'; state: 'accepted' | 'rejected' }>((resolve, reject) => {
           if (sessionId === 'session-1') {
-            settleHeld = (state) => resolve({ kind: 'sent', state })
+            settleHeld = (state) =>
+              state === 'throws'
+                ? reject(new Error('the operation-admission write failed'))
+                : resolve({ kind: 'sent', state })
             return
           }
           resolve({ kind: 'sent', state: 'accepted' })
@@ -529,28 +532,31 @@ describe('a mailbox a /clear moves while its nudge is in flight', () => {
       clear: () => {
         target = 'clear-successor'
       },
-      settle: (state: 'accepted' | 'rejected') => settleHeld?.(state)
+      settle: (state: 'accepted' | 'rejected' | 'throws') => settleHeld?.(state)
     }
   }
 
-  it('delivers once to the successor when the old send is then rejected, with no further edge', async () => {
-    const { delivery, send, pointed, clear, settle } = clearingHarness()
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    clear()
-    // The successor's first idle edge lands while the old nudge is still in flight.
-    delivery.deliverForHandle('dispatch:d1')
-    await flush()
-    expect(send.mock.calls.map(([input]) => input.sessionId)).toEqual(['session-1'])
-    settle('rejected')
-    await flush()
-    await flush()
-    expect(send.mock.calls.map(([input]) => input.sessionId)).toEqual([
-      'session-1',
-      'clear-successor'
-    ])
-    expect(pointed.has('m1')).toBe(true)
-  })
+  it.each(['rejected', 'throws'] as const)(
+    'delivers once to the successor when the old send is then %s, with no further edge',
+    async (outcome) => {
+      const { delivery, send, pointed, clear, settle } = clearingHarness()
+      delivery.deliverForHandle('dispatch:d1')
+      await flush()
+      clear()
+      // The successor's first idle edge lands while the old nudge is still in flight.
+      delivery.deliverForHandle('dispatch:d1')
+      await flush()
+      expect(send.mock.calls.map(([input]) => input.sessionId)).toEqual(['session-1'])
+      settle(outcome)
+      await flush()
+      await flush()
+      expect(send.mock.calls.map(([input]) => input.sessionId)).toEqual([
+        'session-1',
+        'clear-successor'
+      ])
+      expect(pointed.has('m1')).toBe(true)
+    }
+  )
 
   it('keeps an unchanged rejected nudge parked for the next edge', async () => {
     const { delivery, send, settle } = clearingHarness()

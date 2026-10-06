@@ -283,19 +283,19 @@ export async function captureStructuredWorkerArchive(
       'Output could not be preserved for this structured worker; the session was retained.'
     )
   }
-  const empty = buildStructuredJournalArchive({
+  // A retired `/clear` successor's journal is gone for good; its predecessors' may not be.
+  const earlier = await readStructuredLineageJournalPage(running.lineage.slice(0, -1))
+  const preserved = buildStructuredJournalArchive({
     agent,
     processIncarnation: identity.processIncarnation,
-    items: [],
-    hasOlder: false
+    items: earlier?.items ?? [],
+    hasOlder: earlier?.hasOlder ?? false
   })
-  return {
-    ...empty,
-    warnings: [
-      ...empty.warnings,
-      'The structured session was already closed, so its journal could not be preserved.'
-    ]
-  }
+  const warning =
+    running.lineage.length > 1 && earlier
+      ? 'The latest session of this conversation was already closed, so its journal could not be preserved; earlier sessions were.'
+      : 'The structured session was already closed, so its journal could not be preserved.'
+  return { ...preserved, warnings: [...preserved.warnings, warning] }
 }
 
 export function readArchivedStructuredJournal(args: {

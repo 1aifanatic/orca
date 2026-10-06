@@ -3,6 +3,9 @@
  * reader and actor must reach the session running it now, read the whole conversation, and say
  * `unverifiable` — never `exited` — when it cannot find that session.
  */
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
@@ -17,7 +20,7 @@ vi.mock('../native-chat/agent-session-wire/structured-agent-session-registry', (
 }))
 
 const { readStructuredWorkerTerminal } = await import('./structured-worker-terminal-read')
-const { observeStructuredWorker, resolveStructuredWorkerAuthority } =
+const { observeStructuredSession, observeStructuredWorker, resolveStructuredWorkerAuthority } =
   await import('./structured-worker-authority')
 const { structuredSessionMailTarget, structuredSessionOwnedMailboxes } =
   await import('./orchestration/structured-session-mail-target')
@@ -36,6 +39,10 @@ const { readStructuredLineageJournalPage, STRUCTURED_JOURNAL_PAGE_LIMIT } =
 const { structuredSessionChildIdentityEnv } =
   await import('./structured-session-child-identity-env')
 const { foundAgentSessionRecord } = await import('./agent-session-record-founding')
+const { applyAgentSessionRestartAdjudication } =
+  await import('./agent-session-restart-lease-transitions')
+const { openTestAgentSessionRecordStore } =
+  await import('./agent-session-record-store-test-harness')
 const { OrcaRuntimeService } = await import('./orca-runtime')
 const { OrchestrationDb } = await import('./orchestration/db')
 const { ORCHESTRATION_METHODS } = await import('./rpc/methods/orchestration')
@@ -123,7 +130,11 @@ function foundedRecord(sessionId: string): AgentSessionRecord {
 const records = new Map<string, AgentSessionRecord>()
 /** Sessions with an attached provider child. */
 const children = new Set<string>()
+/** Conversations open in the host, which is what the real `hasSession` answers; a child implies one. */
+const open = new Set<string>()
 let visibleTabs: string[] = []
+/** False: the persisted tab index could not be read, which proves nothing about a chat. */
+let tabIndexPresent = true
 const journals = new Map<string, AgentJournalRenderItem[]>()
 const unreadable = new Set<string>()
 /** Set to commit a /clear of the minted session while its close waits behind it. */
@@ -143,27 +154,33 @@ function commitClear(): void {
   visibleTabs = [...visibleTabs.filter((id) => id !== MINTED), SUCCESSOR]
 }
 
-/** As `/clear` leaves a worker: its old session stopped and pointing on, its tab renamed. */
-function installClearedWorker(successor: 'live' | 'at-rest' = 'live'): void {
+/** Installs exactly these sessions and tabs; those in `running` have an attached child. */
+function installSessions(
+  sessions: readonly AgentSessionRecord[],
+  tabs: string[],
+  running: readonly string[] = []
+): void {
   records.clear()
   children.clear()
-  records.set(MINTED, clearedRecord(MINTED, SUCCESSOR))
-  records.set(SUCCESSOR, successor === 'live' ? liveRecord(SUCCESSOR) : foundedRecord(SUCCESSOR))
-  if (successor === 'live') {
-    children.add(SUCCESSOR)
-  }
-  visibleTabs = [SUCCESSOR]
+  sessions.forEach((session) => records.set(session.sessionId, session))
+  running.forEach((sessionId) => children.add(sessionId))
+  visibleTabs = tabs
   installHost()
+}
+
+/** As `/clear` leaves a worker: its old session stopped and pointing on, its tab renamed. */
+function installClearedWorker(successor: 'live' | 'at-rest' = 'live'): void {
+  const live = successor === 'live'
+  installSessions(
+    [clearedRecord(MINTED, SUCCESSOR), live ? liveRecord(SUCCESSOR) : foundedRecord(SUCCESSOR)],
+    [SUCCESSOR],
+    live ? [SUCCESSOR] : []
+  )
 }
 
 /** A worker running in the session it was minted under, before any clear. */
 function installUnclearedWorker(): void {
-  records.clear()
-  children.clear()
-  records.set(MINTED, liveRecord(MINTED))
-  children.add(MINTED)
-  visibleTabs = [MINTED]
-  installHost()
+  installSessions([liveRecord(MINTED)], [MINTED], [MINTED])
 }
 
 function installHost(): void {
@@ -172,18 +189,22 @@ function installHost(): void {
       store: {
         getRecord: (id: string) => records.get(id) ?? null,
         listRecords: () => [...records.values()],
-        getVisibleSessionTabIndex: () => ({ present: true, sessionIds: visibleTabs }),
+        getVisibleSessionTabIndex: () => ({ present: tabIndexPresent, sessionIds: visibleTabs }),
         getSessionTabId: () => null
       },
       logger: { warn: () => {} }
     },
-    hasSession: (id: string) => children.has(id),
-    getPersistedVisibleSessionTabIndex: () => ({ present: true, sessionIds: visibleTabs }),
+    hasSession: (id: string) => open.has(id) || children.has(id),
+    getPersistedVisibleSessionTabIndex: () => ({
+      present: tabIndexPresent,
+      sessionIds: visibleTabs
+    }),
     journalSnapshot: async (id: string) => {
       journalAsked.push(id)
       if (!records.has(id)) {
         throw new Error(AGENT_SESSION_NOT_ATTACHED.code)
       }
+      open.add(id)
       return { items: [message(`${id}-1`, 'idle')], submissions: [] }
     },
     setSessionTabVisibility: async (id: string, visible: boolean) => {
@@ -192,9 +213,11 @@ function installHost(): void {
       }
       visibleTabs = visible ? [...visibleTabs, id] : visibleTabs.filter((tab) => tab !== id)
     },
-    // As the real close: a child is stopped with exit evidence; no child, nothing is written.
+    // As the real close: a child is stopped with exit evidence (none, nothing is written), and the
+    // conversation is dropped.
     close: async (id: string) => {
       closed.push(id)
+      open.delete(id)
       if (clearDuringClose && id === MINTED) {
         // The clear held the session's lock first: it commits, then this close runs.
         clearDuringClose = false
@@ -220,6 +243,8 @@ function installHost(): void {
       if (unreadable.has(sessionId)) {
         throw new Error(AGENT_SESSION_NOT_ATTACHED.code)
       }
+      // As the real history: reading opens a closed conversation, and it stays open.
+      open.add(sessionId)
       const items = journals.get(sessionId) ?? [
         message(
           `${sessionId}-1`,
@@ -323,6 +348,8 @@ beforeEach(() => {
   journalAsked.length = 0
   journals.clear()
   unreadable.clear()
+  open.clear()
+  tabIndexPresent = true
   clearDuringClose = false
   failHideOf = null
   db = new OrchestrationDb(':memory:')
@@ -501,6 +528,19 @@ describe("a /clear typed into the worker's chat", () => {
       ownership_state: 'user_owned'
     })
   })
+
+  it('and so is typing after the clear, reported by the successor session', async () => {
+    installClearedWorker('live')
+    const identity = registerWorker()
+    const dispatchId = startWorkerDispatch(db, identity)
+    const { call } = rpcRuntime(db)
+    await expect(
+      call('orchestration.workerTerminalUserInput', { sessionId: SUCCESSOR })
+    ).resolves.toEqual({ changed: 1 })
+    expect(db.getWorkerTerminalResourceByOwner(dispatchId)).toMatchObject({
+      ownership_state: 'user_owned'
+    })
+  })
 })
 
 describe('a successor no agent ever ran', () => {
@@ -524,6 +564,91 @@ describe('a successor no agent ever ran', () => {
     await expect(
       call('orchestration.workerRelease', { dispatch: dispatchId })
     ).resolves.toMatchObject({ state: 'released' })
+  })
+
+  it('lets a stopped worker be released after its output was read, which reopens the chat', async () => {
+    const identity = registerWorker()
+    const { runtime, call } = rpcRuntime(db)
+    const dispatchId = startWorkerDispatch(db, identity, runtime.getRuntimeId())
+    await expect(call('orchestration.workerStop', { dispatch: dispatchId })).resolves.toMatchObject(
+      { state: 'stopped' }
+    )
+    await readJournal(identity)
+    expect(open.has(SUCCESSOR)).toBe(true)
+    structuredWorkerIdentities.clear()
+    await expect(
+      call('orchestration.workerRelease', { dispatch: dispatchId })
+    ).resolves.toMatchObject({ state: 'released' })
+  })
+
+  it('stays unverifiable when the tab index cannot be read', () => {
+    visibleTabs = []
+    tabIndexPresent = false
+    expect(observeStructuredSession(SUCCESSOR).status).toBe('unverifiable')
+  })
+})
+
+describe('a released session whose start was attempted stays unverifiable without proof', () => {
+  let directory: string
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), 'orca-cleared-successor-'))
+    installClearedWorker('at-rest')
+    visibleTabs = []
+  })
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true })
+  })
+
+  async function reserveSuccessor(operationId: string) {
+    const store = await openTestAgentSessionRecordStore(directory)
+    const reserved = await store.reserveOwner({
+      sessionId: SUCCESSOR,
+      location: liveRecord(SUCCESSOR).location,
+      provider: 'claude',
+      accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
+      expectedFence: null,
+      spawnToken: 'spawn-a',
+      claimKeyId: 'key-1',
+      handoffOperationId: operationId,
+      probe: { outcome: 'indeterminate', reason: 'no answer' },
+      operation: { callerKey: 'client-1', operationId, fingerprint: 'fp-1' },
+      now: NOW
+    })
+    return { store, reserved: reserved.record }
+  }
+
+  const NOW = 1_800_000_000_000
+  const OPERATION_ID = `${NOW}-${'1'.padStart(32, '0')}`
+
+  it('after a restart released a reservation whose child was never ruled out', async () => {
+    const { reserved } = await reserveSuccessor(OPERATION_ID)
+    const recovered = applyAgentSessionRestartAdjudication({
+      record: reserved,
+      probe: { outcome: 'indeterminate', reason: 'no answer' },
+      now: NOW + 1
+    })
+    expect(recovered.lease).toMatchObject({ claimStatus: 'released', deathEvidence: null })
+    records.set(SUCCESSOR, recovered)
+    expect(observeStructuredSession(SUCCESSOR).status).toBe('unverifiable')
+  })
+
+  it('after a failed first start whose exit was not proven', async () => {
+    const { store, reserved } = await reserveSuccessor(OPERATION_ID)
+    const settled = await store.settleFailedAcquisition({
+      sessionId: SUCCESSOR,
+      fence: reserved.lease.runtimeFence,
+      spawnToken: 'spawn-a',
+      callerKey: 'client-1',
+      operationId: OPERATION_ID,
+      outcome: { status: 'failed', code: 'agent_session_operation_invalid', message: 'failed' },
+      exitProof: 'unproven',
+      now: NOW + 1
+    })
+    expect(settled.lease).toMatchObject({ claimStatus: 'released', deathEvidence: null })
+    records.set(SUCCESSOR, settled)
+    expect(observeStructuredSession(SUCCESSOR).status).toBe('unverifiable')
   })
 })
 
@@ -559,6 +684,49 @@ describe('stopping a worker while a /clear commits', () => {
       { state: 'stopped', processAction: 'closed_agent_terminal' }
     )
     expect(closed).toEqual([MINTED, SUCCESSOR])
+  })
+})
+
+describe('worker-stop on a structured worker that reads exited without any /clear', () => {
+  it("closes and hides the crashed agent's still-listed chat, and settles stopped", async () => {
+    const { conversationCommand: _none, ...crashed } = clearedRecord(MINTED, SUCCESSOR)
+    installSessions([crashed], [MINTED])
+    const identity = registerWorker()
+    const { runtime, call } = rpcRuntime(db)
+    const dispatchId = startWorkerDispatch(db, identity, runtime.getRuntimeId())
+    await expect(call('orchestration.workerStop', { dispatch: dispatchId })).resolves.toMatchObject(
+      { state: 'stopped', processAction: 'closed_agent_terminal' }
+    )
+    expect(closed).toEqual([MINTED])
+    expect(visibleTabs).not.toContain(MINTED)
+  })
+})
+
+describe('a retired lineage whose newest session cannot be read', () => {
+  beforeEach(() => {
+    installClearedWorker('at-rest')
+    // The user closed the cleared chat, and its journal is gone; the pre-clear one is not.
+    visibleTabs = []
+    unreadable.add(SUCCESSOR)
+  })
+
+  it('archives the readable earlier sessions and says the latest could not be read', async () => {
+    const archive = await captureStructuredWorkerArchive(registerWorker(), 'claude')
+    expect(texts(archive.messages)).toContain('PRE-CLEAR')
+    expect(archive.warnings.join(' ')).toMatch(/latest session .* could not be preserved/)
+  })
+
+  it('commits that archive when the worker is released', async () => {
+    const identity = registerWorker()
+    const dispatchId = startWorkerDispatch(db, identity)
+    db.db
+      .prepare("UPDATE worker_dispatches SET state = 'succeeded' WHERE dispatch_id = ?")
+      .run(dispatchId)
+    const { call } = rpcRuntime(db)
+    await expect(
+      call('orchestration.workerRelease', { dispatch: dispatchId })
+    ).resolves.toMatchObject({ state: 'released' })
+    expect(db.getWorkerTerminalArchive(dispatchId)?.content).toContain('PRE-CLEAR')
   })
 })
 
@@ -603,14 +771,8 @@ describe('the lineage journal page', () => {
 
 describe('a worker cleared twice', () => {
   beforeEach(() => {
-    records.clear()
-    children.clear()
-    records.set(MINTED, clearedRecord(MINTED, SUCCESSOR))
-    records.set(SUCCESSOR, clearedRecord(SUCCESSOR, SECOND))
-    records.set(SECOND, liveRecord(SECOND))
-    children.add(SECOND)
-    visibleTabs = [SECOND]
-    installHost()
+    const chain = [clearedRecord(MINTED, SUCCESSOR), clearedRecord(SUCCESSOR, SECOND)]
+    installSessions([...chain, liveRecord(SECOND)], [SECOND], [SECOND])
   })
 
   it('is read across all three sessions and stopped through the newest', async () => {
@@ -678,11 +840,7 @@ describe('a running session that cannot be verified is refused, never declared e
   }
 
   function installMissingSuccessor(): void {
-    records.clear()
-    children.clear()
-    records.set(MINTED, clearedRecord(MINTED, SUCCESSOR))
-    visibleTabs = [SUCCESSOR]
-    installHost()
+    installSessions([clearedRecord(MINTED, SUCCESSOR)], [SUCCESSOR])
   }
 
   it('when the clear names a successor with no record', async () => {
@@ -713,12 +871,10 @@ describe('a running session that cannot be verified is refused, never declared e
   })
 
   it('when the lineage loops back on itself', async () => {
-    records.clear()
-    children.clear()
-    records.set(MINTED, clearedRecord(MINTED, SUCCESSOR))
-    records.set(SUCCESSOR, clearedRecord(SUCCESSOR, MINTED))
-    visibleTabs = [SUCCESSOR]
-    installHost()
+    installSessions(
+      [clearedRecord(MINTED, SUCCESSOR), clearedRecord(SUCCESSOR, MINTED)],
+      [SUCCESSOR]
+    )
     const identity = registerWorker()
     expect(observeStructuredWorker(identity).status).toBe('unverifiable')
     expect(structuredSessionMailTarget(MINTED, null)).toBeNull()

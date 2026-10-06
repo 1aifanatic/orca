@@ -28,9 +28,10 @@ import {
   type RunningStructuredSession
 } from './orchestration/structured-session-lineage'
 import {
-  structuredSessionTabListed,
+  structuredSessionTabRetired,
   structuredWorkerAddressable
 } from './structured-worker-custody'
+import { AGENT_SESSION_FOUNDING_FENCE } from './agent-session-record-founding'
 import { isAgentSessionHandleProvider } from '../../shared/agent-session-provider-handle'
 import {
   isStructuredWorkerHandle,
@@ -52,7 +53,13 @@ export type StructuredWorkerAuthority = {
 export type StructuredWorkerHold =
   | ({ kind: 'held' } & StructuredWorkerAuthority)
   | ({ kind: 'not-held' } & StructuredWorkerAuthority)
-  | { kind: 'unverifiable'; identity: StructuredWorkerIdentity; refusal: OrchestrationError }
+  | {
+      kind: 'unverifiable'
+      identity: StructuredWorkerIdentity
+      /** What could not be looked at, as an observation reports it. */
+      reason: string
+      refusal: OrchestrationError
+    }
 
 export function readStructuredAgentSessionRecord(sessionId: string): AgentSessionRecord | null {
   try {
@@ -133,12 +140,16 @@ export function structuredWorkerSession(
 /** The worker's running session on this host, or the typed refusal an actor answers instead. */
 function locateStructuredWorker(
   identity: Pick<StructuredWorkerIdentity, 'sessionId'>
-): { running: RunningStructuredSession } | { refusal: OrchestrationError } {
+): { running: RunningStructuredSession } | { reason: string; refusal: OrchestrationError } {
   const located = structuredWorkerSession(identity)
   if (located.kind === 'here') {
     return { running: located }
   }
   return {
+    reason:
+      located.kind === 'other-host'
+        ? 'The session running this worker is on another host.'
+        : located.reason,
     refusal:
       located.kind === 'other-host'
         ? new OrchestrationError(
@@ -173,13 +184,14 @@ export function holdStructuredWorker(
 ): StructuredWorkerHold {
   const located = locateStructuredWorker(identity)
   if ('refusal' in located) {
-    return { kind: 'unverifiable', identity, refusal: located.refusal }
+    return { kind: 'unverifiable', identity, reason: located.reason, refusal: located.refusal }
   }
   const addressable = structuredWorkerAddressable(db, located.running, row)
   if (addressable === null) {
     return {
       kind: 'unverifiable',
       identity,
+      reason: 'The structured agent-session host is not installed in this runtime generation.',
       refusal: new OrchestrationError(
         CODES.notLive,
         'The structured agent-session host is not installed in this runtime generation. No effects were applied.',
@@ -260,24 +272,22 @@ export function structuredWorkerTerminalState(
 export function observeStructuredWorker(
   identity: Pick<StructuredWorkerIdentity, 'sessionId'>
 ): StructuredWorkerObservation {
-  const running = structuredWorkerSession(identity)
-  if (running.kind === 'here') {
-    return observeStructuredSession(running.sessionId)
-  }
-  return {
-    status: 'unverifiable',
-    reason:
-      running.kind === 'other-host'
-        ? 'The session running this worker is on another host.'
-        : running.reason
-  }
+  const located = locateStructuredWorker(identity)
+  return 'running' in located
+    ? observeStructuredSession(located.running.sessionId)
+    : { status: 'unverifiable', reason: located.reason }
 }
 
-/** Released with nothing ever spawned: no owner, no reserved spawn, no handoff and no provider handle. */
+/**
+ * Founded and never reserved: still at the founding fence, which every reservation moves, with no
+ * owner, spawn, handoff or provider handle. A released reservation whose exit was never proven has
+ * moved the fence, so it stays unverifiable.
+ */
 function structuredSessionNeverStarted(record: AgentSessionRecord): boolean {
   const { lease } = record
   return (
     lease.claimStatus === 'released' &&
+    lease.runtimeFence === AGENT_SESSION_FOUNDING_FENCE &&
     lease.ownerProcess === null &&
     lease.reservedSpawnToken === null &&
     lease.handoffStage === null &&
@@ -303,13 +313,10 @@ export function observeStructuredSession(sessionId: string): StructuredWorkerObs
   if (record.lease.claimStatus === 'released' && record.lease.deathEvidence) {
     return { status: 'exited' }
   }
-  if (
-    structuredSessionNeverStarted(record) &&
-    !host.hasSession(sessionId) &&
-    !structuredSessionTabListed(host, sessionId)
-  ) {
+  if (structuredSessionNeverStarted(record) && structuredSessionTabRetired(host, sessionId)) {
     // Why: no close writes death evidence for an agent that never ran (a `/clear` successor at
     // rest), and with its chat gone nothing can start one; `unverifiable` would hold it forever.
+    // Not `hasSession`: that says the conversation is open, which any history read makes it.
     return { status: 'exited' }
   }
   if (host.hasSession(sessionId) && record.lease.claimStatus === 'live') {

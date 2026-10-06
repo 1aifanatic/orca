@@ -5,11 +5,11 @@ import { OrchestrationError } from '../../../../orchestration/orchestration-erro
 import { parseWorkerTerminalHostScope } from '../../../../orchestration/worker-terminal-process-liveness'
 import type { OrchestrationFleetWorker } from '../../../../../../shared/orchestration-fleet-projection'
 import { projectWorkerFleet } from './worker-list-projection'
+import { resolveStructuredWorkerForDispatch } from '../../orchestration-structured-worker-lifecycle'
 import {
-  observeStructuredWorker,
-  resolveStructuredWorkerForDispatch
-} from '../../orchestration-structured-worker-lifecycle'
-import { holdStructuredWorker } from '../../../../structured-worker-authority'
+  holdStructuredWorker,
+  observeStructuredSession
+} from '../../../../structured-worker-authority'
 import type {
   DispatchContextRow,
   FederatedDispatchRow,
@@ -56,8 +56,12 @@ export async function inspectWorkerTerminal(
       paneKey: structured.paneKey,
       processIncarnation: structured.processIncarnation
     })
-    const observation = observeStructuredWorker(structured)
+    // One lineage walk, so status and `addressable` judge the same session even mid-`/clear`.
     const hold = holdStructuredWorker(structured, db)
+    const observation =
+      hold.kind === 'unverifiable'
+        ? { status: 'unverifiable' as const, reason: hold.reason }
+        : observeStructuredSession(hold.running.sessionId)
     const addressable = hold.kind === 'unverifiable' ? null : hold.kind === 'held'
     return {
       terminal: null,

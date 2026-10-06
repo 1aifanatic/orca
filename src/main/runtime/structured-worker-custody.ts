@@ -47,8 +47,21 @@ export function structuredWorkerOwned(running: RunningStructuredSession): boolea
   )
 }
 
+/** Whether the persisted tab index authoritatively omits the session; an unreadable index does not. */
+export function structuredSessionTabRetired(
+  host: NonNullable<ReturnType<typeof getStructuredAgentSessionHost>>,
+  sessionId: string
+): boolean {
+  try {
+    const index = host.getPersistedVisibleSessionTabIndex?.()
+    return index?.present === true && !index.sessionIds.includes(sessionId)
+  } catch {
+    return false
+  }
+}
+
 /** Retirement is the tab index: every path that ends a chat for good hides its tab. */
-export function structuredSessionTabListed(
+function structuredSessionTabListed(
   host: NonNullable<ReturnType<typeof getStructuredAgentSessionHost>>,
   sessionId: string
 ): boolean {

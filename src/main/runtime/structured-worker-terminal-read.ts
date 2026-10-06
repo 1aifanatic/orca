@@ -106,8 +106,8 @@ export async function readStructuredWorkerTerminal(args: {
     completedLines: [],
     partialLine: '',
     completedLineCount: 0,
-    // Older items really were dropped, by the page limit or the byte bound; `truncated` is how the
-    // PTY read already says exactly that.
+    // Older items really were dropped, by the page limit, the byte bound or an earlier session that
+    // could not be read; `truncated` is how the PTY read already says exactly that.
     bufferTruncated: page.hasOlder || bounded.limited,
     ...(args.limit === undefined ? {} : { limit: args.limit })
   })
