@@ -45,6 +45,28 @@ function git(args: string[]): string {
   return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trim()
 }
 
+const FIXTURE_MISSING_PACKAGE = 'orca-cross-version-fixture-missing-package'
+
+/** Commit `files` as a standalone tree without touching the working index. */
+function syntheticReleaseCommit(files: Record<string, string>): string {
+  const index = join(temporaryCacheRoot(), 'synthetic-index')
+  const env = {
+    ...process.env,
+    GIT_INDEX_FILE: index,
+    GIT_AUTHOR_NAME: 'Cross-version fixture',
+    GIT_AUTHOR_EMAIL: 'fixture@invalid',
+    GIT_COMMITTER_NAME: 'Cross-version fixture',
+    GIT_COMMITTER_EMAIL: 'fixture@invalid'
+  }
+  const run = (args: string[], input?: string): string =>
+    execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', env, input }).trim()
+  for (const [path, source] of Object.entries(files)) {
+    const blob = run(['hash-object', '-w', '--stdin'], source)
+    run(['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`])
+  }
+  return run(['commit-tree', run(['write-tree']), '-m', 'cross-version missing-package fixture'])
+}
+
 function syntheticCheckout(): ReleaseCheckout {
   // Why realpath: vite-node reports module urls through macOS's /var -> /private/var
   // symlink, so provenance assertions need the resolved form.
@@ -300,28 +322,39 @@ describe('release checkout materialization', () => {
     expect(relative(cacheRoot, checkout.root)).not.toMatch(/^\.\./)
   }, 180_000)
 
-  // v1.4.221 imports @streamparser/json, which the current tree no longer installs.
-  // Default cache root: package resolution must walk up into the repo's node_modules.
-  it('loads release source that imports a package the current tree dropped', async () => {
-    const checkout = await materializeReleaseCheckout('v1.4.221')
-    const ripgrep = await importReleaseCheckoutModule(
-      checkout,
-      '/src/shared/ripgrep-dense-match-json.ts'
-    )
-    const callExport = (name: string, ...args: unknown[]): unknown => {
-      const exported = ripgrep[name]
-      if (typeof exported !== 'function') {
-        throw new Error(`v1.4.221 ripgrep-dense-match-json has no ${name} export`)
-      }
-      return exported(...args)
-    }
-    const limits = { structuralTokens: 64, nestingDepth: 8 }
-
-    expect(callExport('parseRipgrepMatchJson', '{"type":"match"}', 1, limits)).toEqual({
-      type: 'match'
+  // Hermetic: the package below exists in no tree, so the current install can never satisfy it.
+  it('loads release source that imports a package the current tree does not install', async () => {
+    const commit = syntheticReleaseCommit({
+      'src/shared/terminal-stream-protocol.ts': 'export const synthetic = true\n',
+      'src/shared/missing-package-consumer.ts': [
+        `import { parse } from '${FIXTURE_MISSING_PACKAGE}'`,
+        'export const loaded = true',
+        "export const useMissing = () => parse('{}')",
+        ''
+      ].join('\n'),
+      'src/main/placeholder.ts': '',
+      'src/preload/placeholder.ts': '',
+      'src/renderer/placeholder.ts': '',
+      'src/types/placeholder.ts': '',
+      'mobile/src/worktree/agent-row-display.ts': ''
     })
-    expect(() => callExport('parseDenseRipgrepMatchJson', '{"type":"match"}', 1, 8)).toThrow(
-      /imports '@streamparser\/json'.*does not install/
+    const ref = `refs/orca-checkout-test/${randomUUID()}/missing-package`
+    git(['update-ref', ref, commit, '0'.repeat(40)])
+    temporaryRefs.push({ ref, commit })
+
+    const checkout = await materializeReleaseCheckout(ref, { cacheRoot: temporaryCacheRoot() })
+    const consumer = await importReleaseCheckoutModule(
+      checkout,
+      '/src/shared/missing-package-consumer.ts'
+    )
+    const useMissing = consumer.useMissing
+    if (typeof useMissing !== 'function') {
+      throw new Error('synthetic release has no useMissing export')
+    }
+
+    expect(consumer.loaded).toBe(true)
+    expect(() => useMissing()).toThrow(
+      new RegExp(`imports '${FIXTURE_MISSING_PACKAGE}'.*does not install`)
     )
   }, 180_000)
 
