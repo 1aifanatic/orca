@@ -1,4 +1,6 @@
 import { worktreeCreateGit } from '../git/worktree-create-git-executor'
+import { shouldRunSetupForCreate } from '../effective-hook-config'
+import { getEffectiveHooks } from '../hooks'
 import type { Repo } from '../../shared/repo-types'
 import type { Worktree } from '../../shared/worktree/types'
 import type { Store } from '../persistence'
@@ -58,6 +60,11 @@ export function createRuntimeLocalManagedWorktree<T>(args: RuntimeLocalWorktreeC
 
 async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {
   const { request, repo, store } = args
+  // Why before the add: an `ask` repo with no decision must refuse with nothing created, as the
+  // desktop create does; checked after, it left an orphan worktree behind.
+  if (getEffectiveHooks(repo)?.scripts.setup) {
+    shouldRunSetupForCreate(repo, request.runHooks ? 'run' : (request.setupDecision ?? 'inherit'))
+  }
   const settings = store.getSettings()
   const pathSettings = getWorktreePathSettings(repo, settings, getWorktreeMirrorDistro(store, repo))
   const gitExecOptions = getLocalProjectGitExecOptions(store, repo)

@@ -38,9 +38,16 @@ export async function prepareRuntimeLocalWorktreeSetup(args: {
       ? { tabs: yamlHooks.defaultTabs, runCommands: false }
       : undefined
   }
-  const shouldRunSetup = Boolean(
-    hooks?.scripts.setup && shouldRunSetupForCreate(repo, effectiveDecision)
-  )
+  let shouldRunSetup = false
+  if (hooks?.scripts.setup) {
+    try {
+      shouldRunSetup = shouldRunSetupForCreate(repo, effectiveDecision)
+    } catch (error) {
+      // Why: the new branch may add a setup hook the caller never decided on; the worktree exists,
+      // so skip setup rather than fail the create, as the desktop create does.
+      console.warn(`[hooks] setup hook skipped for ${worktreePath}:`, error)
+    }
+  }
   let didStartInProcessSetupHook = false
   if (shouldRunSetup && hooks?.scripts.setup) {
     if (args.shouldUseSetupRunner) {
