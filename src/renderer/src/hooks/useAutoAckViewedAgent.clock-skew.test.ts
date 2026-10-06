@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as AgentAutoAckPresence from './agent-auto-ack-presence'
 import { useAutoAckViewedAgent } from './useAutoAckViewedAgent'
 import { useAppStore } from '../store'
-import { makeTab } from '../store/slices/store-test-helpers'
+import { makeTab, makeTabGroup, makeUnifiedTab } from '../store/slices/store-test-helpers'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import type { AgentStatusEntry } from '../../../shared/agent-status-types'
 
@@ -24,6 +24,7 @@ vi.mock('./agent-auto-ack-presence', async (importOriginal) => ({
 }))
 
 const TAB_ID = 'tab-main'
+const GROUP_ID = 'group-main'
 const LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const PANE_KEY = makePaneKey(TAB_ID, LEAF_ID)
 const NOW = new Date('2026-06-02T12:00:00Z').getTime()
@@ -44,10 +45,23 @@ function seedFutureStampedTurn(stateStartedAt: number): void {
     activeView: 'terminal',
     activeTabId: TAB_ID,
     activeWorktreeId: 'wt-1',
-    activeTabIdByWorktree: {},
+    activeTabIdByWorktree: { 'wt-1': TAB_ID },
+    activeGroupIdByWorktree: { 'wt-1': GROUP_ID },
     tabsByWorktree: { 'wt-1': [makeTab({ id: TAB_ID, worktreeId: 'wt-1' })] },
+    unifiedTabsByWorktree: {
+      'wt-1': [makeUnifiedTab({ id: TAB_ID, worktreeId: 'wt-1', groupId: GROUP_ID })]
+    },
+    groupsByWorktree: {
+      'wt-1': [
+        makeTabGroup({ id: GROUP_ID, worktreeId: 'wt-1', activeTabId: TAB_ID, tabOrder: [TAB_ID] })
+      ]
+    },
     terminalLayoutsByTabId: {
-      [TAB_ID]: { root: null, activeLeafId: LEAF_ID, expandedLeafId: null }
+      [TAB_ID]: {
+        root: { type: 'leaf', leafId: LEAF_ID },
+        activeLeafId: LEAF_ID,
+        expandedLeafId: null
+      }
     },
     agentStatusByPaneKey: { [PANE_KEY]: entry },
     retainedAgentsByPaneKey: {},

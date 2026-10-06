@@ -2,6 +2,7 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
+import type { Tab, TabGroup } from '../../../../shared/tab-types'
 
 // Why: the mocked store state lives here so each split suite's hoisted `vi.mock` factory can
 // reach it through a lazy dynamic import (hoisted factories cannot close over imports).
@@ -16,8 +17,11 @@ export type NotificationDispatchMockState = {
   activeWorktreeId: string | null
   activeTabId: string | null
   activeTabIdByWorktree: Record<string, string | null>
+  activeGroupIdByWorktree: Record<string, string | null>
   floatingWorkspacePanelOpen: boolean
-  getActiveTab: (worktreeId: string) => null
+  getActiveTab: (worktreeId: string) => Tab | null
+  groupsByWorktree: Record<string, TabGroup[]>
+  unifiedTabsByWorktree: Record<string, Tab[]>
   tabsByWorktree: Record<string, { id: string; ptyId?: string | null }[]>
   ptyIdsByTabId: Record<string, string[]>
   suppressedPtyExitIds: Record<string, boolean>
@@ -66,8 +70,21 @@ function buildNotificationDispatchMockState(): NotificationDispatchMockState {
     activeWorktreeId: 'wt-secondary',
     activeTabId: 'tab-1',
     activeTabIdByWorktree: {},
+    activeGroupIdByWorktree: {},
     floatingWorkspacePanelOpen: false,
-    getActiveTab: () => null,
+    getActiveTab: (worktreeId) => {
+      const groupId = mockState.activeGroupIdByWorktree[worktreeId]
+      const group = (mockState.groupsByWorktree[worktreeId] ?? []).find(
+        (candidate) => candidate.id === groupId
+      )
+      return (
+        (mockState.unifiedTabsByWorktree[worktreeId] ?? []).find(
+          (tab) => tab.id === group?.activeTabId
+        ) ?? null
+      )
+    },
+    groupsByWorktree: {},
+    unifiedTabsByWorktree: {},
     tabsByWorktree: { 'wt-primary': [{ id: 'tab-1', ptyId: 'pty-1' }] },
     ptyIdsByTabId: { 'tab-1': ['pty-1'] },
     suppressedPtyExitIds: {},

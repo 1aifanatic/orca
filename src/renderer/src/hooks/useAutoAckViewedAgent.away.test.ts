@@ -3,11 +3,12 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAutoAckViewedAgent } from './useAutoAckViewedAgent'
 import { useAppStore } from '../store'
-import { makeTab } from '../store/slices/store-test-helpers'
+import { makeTab, makeTabGroup, makeUnifiedTab } from '../store/slices/store-test-helpers'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { createNotificationsApi } from '../web/preload-api/web-notifications-api'
 
 const leaf = '11111111-1111-4111-8111-111111111111'
+const group = 'away-group'
 const pane = makePaneKey('away-tab', leaf)
 const readAway = vi.fn<() => Promise<boolean | undefined>>()
 const dismiss = vi.fn()
@@ -22,12 +23,32 @@ beforeEach(() => {
     activeView: 'terminal',
     activeTabId: 'away-tab',
     activeWorktreeId: 'away-workspace',
-    activeTabIdByWorktree: {},
+    activeTabIdByWorktree: { 'away-workspace': 'away-tab' },
+    activeGroupIdByWorktree: { 'away-workspace': group },
     tabsByWorktree: {
-      'away-workspace': [makeTab({ id: 'away-tab', worktreeId: 'away-workspace' })]
+      'away-workspace': [
+        makeTab({ id: 'away-tab', worktreeId: 'away-workspace' }),
+        makeTab({ id: 'other-tab', worktreeId: 'away-workspace' })
+      ]
+    },
+    unifiedTabsByWorktree: {
+      'away-workspace': [
+        makeUnifiedTab({ id: 'away-tab', worktreeId: 'away-workspace', groupId: group }),
+        makeUnifiedTab({ id: 'other-tab', worktreeId: 'away-workspace', groupId: group })
+      ]
+    },
+    groupsByWorktree: {
+      'away-workspace': [
+        makeTabGroup({
+          id: group,
+          worktreeId: 'away-workspace',
+          activeTabId: 'away-tab',
+          tabOrder: ['away-tab', 'other-tab']
+        })
+      ]
     },
     terminalLayoutsByTabId: {
-      'away-tab': { root: null, activeLeafId: leaf, expandedLeafId: null }
+      'away-tab': { root: { type: 'leaf', leafId: leaf }, activeLeafId: leaf, expandedLeafId: null }
     },
     agentStatusByPaneKey: {},
     retainedAgentsByPaneKey: {},
@@ -181,13 +202,13 @@ it('rechecks the selected pane after a coalesced presence query resolves', async
       })
   )
   renderHook(() => useAutoAckViewedAgent())
-  act(() => useAppStore.setState({ activeTabId: 'other-tab' }))
+  act(() => useAppStore.getState().activateTab('other-tab'))
   expect(readAway).toHaveBeenCalledTimes(1)
   await act(async () => resolve(false))
   expect(useAppStore.getState().unreadAgentCompletionPanes[pane]).toBe('agent-completion')
   expect(dismiss).not.toHaveBeenCalled()
   readAway.mockResolvedValue(false)
-  await act(async () => useAppStore.setState({ activeTabId: 'away-tab' }))
+  await act(async () => useAppStore.getState().activateTab('away-tab'))
   expect(useAppStore.getState().unreadAgentCompletionPanes[pane]).toBeUndefined()
 })
 
