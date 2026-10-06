@@ -80,7 +80,9 @@ export type StructuredAgentSessionState = {
 export type StructuredAgentSessionAction =
   | { type: 'loading' }
   | { type: 'error'; message: string; refusal?: AgentSessionRefusalReference }
-  | { type: 'event'; event: AgentSessionSubscribeEvent }
+  /** `opensSubscription`: the first frame of a new subscription, which states the roster even
+   *  when it resumes from a cursor; a host that omits it there has none to report. */
+  | { type: 'event'; event: AgentSessionSubscribeEvent; opensSubscription?: boolean }
   | { type: 'history-page'; page: AgentSessionHistoryPage }
   | { type: 'older-page'; requestedCursor: AgentJournalCursor; page: AgentSessionHistoryPage }
 
@@ -257,7 +259,9 @@ export function reduceStructuredAgentSession(
   const backgroundTasks =
     event.backgroundTasks !== undefined
       ? admitAgentSessionBackgroundTaskState(event.backgroundTasks, state.backgroundTasks)
-      : state.backgroundTasks
+      : action.opensSubscription
+        ? undefined
+        : state.backgroundTasks
   const activity = event.activity !== undefined ? event.activity : state.activity
   const liveItems = liveItemsWithinWindow(state, event.batch.items)
   // Every roster revision, the window's or not: a trimmed roster row keeps its sequence.
@@ -315,7 +319,7 @@ export function reduceStructuredAgentSession(
     commands: event.commands !== undefined ? event.commands : state.commands,
     latestTurn: latestTurnAfterStructuredAgentSessionBatch(state.latestTurn, event),
     ...queuePublicationField(event, state),
-    ...(backgroundTasks !== undefined ? { backgroundTasks } : {}),
+    backgroundTasks,
     ...(activity !== undefined ? { activity } : {}),
     ...(lostTurnRow ? { unloadedTurnRevisions: (state.unloadedTurnRevisions ?? 0) + 1 } : {}),
     ...hostClockField(event.hostNow, receivedAt, state.hostClock)

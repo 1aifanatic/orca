@@ -114,6 +114,13 @@ export type AgentJournalMessageItem = {
 
 export type AgentJournalToolCallState = 'running' | 'completed' | 'failed'
 
+/** How a call that did not finish on its own ended, finer than its `failed` state. Persisted and
+ *  open for growth: a reader that cannot place a value reads `state`. `unverifiable` is a call its
+ *  session's end closed when nothing proved that end, so a later proof naming its owner finds it
+ *  and revises it to `interrupted`, as it does the turn. */
+export const AGENT_JOURNAL_TOOL_CALL_ENDINGS = ['interrupted', 'unverifiable'] as const
+export type AgentJournalToolCallEnding = (typeof AGENT_JOURNAL_TOOL_CALL_ENDINGS)[number]
+
 export type AgentJournalToolCallItem = NativeChatToolMetadata & {
   kind: 'tool-call'
   name: string
@@ -121,6 +128,9 @@ export type AgentJournalToolCallItem = NativeChatToolMetadata & {
   /** Provider-supplied identity within this item stream; optional for mixed-version peers. */
   callId?: string
   state: AgentJournalToolCallState
+  /** Only beside `state: 'failed'`, which builds that predate it read as they always did. Read
+   *  both through `agentJournalToolCallLifecycle`. */
+  endedAs?: AgentJournalToolCallEnding
   output?: AgentJournalBoundedPayload
 }
 
@@ -468,6 +478,15 @@ export type AgentJournalSubmission = {
    *  A person's turn is what ends a Stop's queue pause. The snapshot still carries it; no released
    *  client reads it. */
   origin?: 'client' | 'host'
+  /** Who it is from: the kind of its `AgentSessionMessageSource` ('user' or 'agent'), so a restart
+   *  or a close keeps only a person's unsent send as a card. Only the kind: the senders stay on the
+   *  card, host-only, and publishing them here would need a strip. A newer build's kind is kept as
+   *  written, never read as absent. Absent when its sender named none (a dispatch preamble, a restart continuation). */
+  source?: { kind: string }
+  /** On a rejected send the host kept as a card: that card's message id. The text lives on the
+   *  card, so no surface draws this send, before or after the card is sent, edited or deleted.
+   *  Recorded in the rejection's own transaction (`journal-unsent-send-hold.ts`). */
+  keptAsQueuedMessageId?: string
 }
 
 /** Durable answer to "did my send land?", keyed by client message id. Only an
