@@ -154,6 +154,21 @@ describe('live reasoning, read through the one live line', () => {
     expect(screen.getByText('Weighing two approaches')).toBeInTheDocument()
   })
 
+  // The body owns its colour: inherited, it read full foreground under the line and muted in the row,
+  // so the text dimmed as the block landed.
+  it('draws the same body, in its own quieter tone, live and once landed', () => {
+    const body = () =>
+      screen.getByText('Weighing two approaches').closest('[data-native-chat-message-tone]')
+    const { rerender } = render(list([reasoning('r-1', 'Weighing two approaches', 'running')]))
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking' }))
+    const live = body()
+    expect(live).toHaveAttribute('data-native-chat-message-tone', 'faint')
+    expect(live).toHaveClass('text-chat-foreground-faint', 'pl-5.5', 'max-h-80')
+    const liveClasses = live?.getAttribute('class')
+    rerender(list([reasoning('r-1', 'Weighing two approaches', 'completed')]))
+    expect(body()?.getAttribute('class')).toBe(liveClasses)
+  })
+
   it('starts the next block collapsed', () => {
     const { rerender } = render(list([reasoning('r-1', 'First thought', 'running')]))
     fireEvent.click(screen.getByRole('button', { name: 'Thinking' }))
