@@ -526,6 +526,7 @@
           "checkRunDetailsLoadFailed": "Failed to load check details.",
           "checkRunDetailsRepoUnavailable": "Repository details are unavailable for this check.",
           "parkedDraftBlockedByUnsavedChanges": "{{path}} is open with unsaved changes. Save or close it, then reopen to recover the parked draft.",
+          "parkedDraftBlockedByOtherOwner": "{{path}} is open on another host. Close that tab, then reopen to recover the parked draft.",
           "parkedDraftBlockedByReadOnlyTab": "{{path}} is open read-only. Close it, then reopen to recover the parked draft."
         },
         "github": {

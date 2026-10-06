@@ -1,3 +1,4 @@
+import { getPersistedEditorOwnerFields } from '@/lib/editor-file-operation-owner'
 import type { AppState } from '../../../types'
 import { type ClosedEditorTabSnapshot, MAX_RECENT_CLOSED_EDITOR_TABS } from '../types/open-file'
 import { appendRecentlyClosedTabKind, pushRecentlyClosedTabKind } from '../../recently-closed-tabs'
@@ -19,11 +20,12 @@ export function retainClosedEditorSnapshots(
 }
 
 function recoveryKey(snapshot: ClosedEditorTabSnapshot): string {
+  const owner = getPersistedEditorOwnerFields(snapshot)
   return JSON.stringify([
     snapshot.worktreeId,
     snapshot.filePath,
-    snapshot.runtimeEnvironmentId ?? null,
-    snapshot.externalSshTargetId ?? null,
+    owner.runtimeEnvironmentId ?? null,
+    owner.externalSshTargetId ?? null,
     snapshot.dirtyDraftContent,
     snapshot.lastKnownDiskSignature ?? null
   ])
