@@ -137,7 +137,8 @@ export function useMobileStructuredQueuedMessageControls(args: {
       // leaves the card beside the copy, visibly, never a silent duplicate. No
       // copy (no composer yet, or an empty card) means no Delete: Edit never
       // removes text it did not keep.
-      if (!card || !appendComposerText?.(card.text)) {
+      // A command's text is not a draft: edited, it would become a message.
+      if (!card || card.command || !appendComposerText?.(card.text)) {
         return false
       }
       onCopied?.()

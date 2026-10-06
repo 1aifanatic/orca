@@ -61,6 +61,8 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   agentStillWorking: 'The agent is still working.',
   runClearWhenDone: "Run /clear when it's done.",
   clearAfterAnswer: "Answer the agent's question or approval, then run /clear.",
+  runCompactWhenDone: "Run /compact when it's done.",
+  compactAfterAnswer: "Answer the agent's question or approval, then run /compact.",
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",
   agentRefused: 'The agent turned this down.',

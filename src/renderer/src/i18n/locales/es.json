@@ -17585,6 +17585,8 @@
         "agentStillWorking": "El agente todavía está trabajando.",
         "runClearWhenDone": "Ejecute /clear cuando termine.",
         "clearAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /clear.",
+        "runCompactWhenDone": "Ejecute /compact cuando termine.",
+        "compactAfterAnswer": "Responda a la pregunta o aprobación del agente y luego ejecute /compact.",
         "optionRejected": "El agente no aceptó este ajuste.",
         "goalsUnsupported": "Este agente no admite objetivos.",
         "agentRefused": "El agente lo rechazó.",

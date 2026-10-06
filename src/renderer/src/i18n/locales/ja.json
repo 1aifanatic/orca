@@ -17620,6 +17620,8 @@
         "agentStillWorking": "Agent はまだ作業中です。",
         "runClearWhenDone": "終わったら /clear を実行してください。",
         "clearAfterAnswer": "Agent の質問または承認に回答してから、/clear を実行してください。",
+        "runCompactWhenDone": "終わったら /compact を実行してください。",
+        "compactAfterAnswer": "Agent の質問または承認に回答してから、/compact を実行してください。",
         "optionRejected": "Agent はこの設定を受け入れませんでした。",
         "goalsUnsupported": "この Agent は目標に対応していません。",
         "agentRefused": "Agent がこれを拒否しました。",

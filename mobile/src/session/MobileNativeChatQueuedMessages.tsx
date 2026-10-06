@@ -176,20 +176,23 @@ export function MobileNativeChatQueuedMessages({
               >
                 <Trash2 size={14} color={colors.textPrimary} strokeWidth={2} />
               </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy }}
-                accessibilityLabel="More actions"
-                style={({ pressed }) => [
-                  styles.iconAction,
-                  pressed && styles.pressed,
-                  busy && styles.disabled
-                ]}
-                disabled={busy}
-                onPress={() => setMenuFor(card.messageId)}
-              >
-                <MoreHorizontal size={14} color={colors.textPrimary} strokeWidth={2} />
-              </Pressable>
+              {/* The menu holds only Edit, which a command does not take. */}
+              {card.command ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy }}
+                  accessibilityLabel="More actions"
+                  style={({ pressed }) => [
+                    styles.iconAction,
+                    pressed && styles.pressed,
+                    busy && styles.disabled
+                  ]}
+                  disabled={busy}
+                  onPress={() => setMenuFor(card.messageId)}
+                >
+                  <MoreHorizontal size={14} color={colors.textPrimary} strokeWidth={2} />
+                </Pressable>
+              )}
             </View>
           )
         })}

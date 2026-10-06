@@ -12,16 +12,16 @@ import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { requestStructuredAgentSessionMutation } from './mobile-structured-agent-session-rpc'
 
-/** A /clear says what the person sees and can do, in the words the desktop uses. */
+/** What the person sees and can do, in the words the desktop uses. */
 function busyCommandText(
   command: AgentSessionConversationCommand,
   busy: 'working' | 'prompt'
 ): string {
-  if (command !== 'clear') {
-    return 'Wait for pending work to finish before using this command.'
-  }
+  const clear = command === 'clear'
   return agentSessionWriteNoticeEnglish(
-    busy === 'prompt' ? ['clearAfterAnswer'] : ['agentStillWorking', 'runClearWhenDone']
+    busy === 'prompt'
+      ? [clear ? 'clearAfterAnswer' : 'compactAfterAnswer']
+      : ['agentStillWorking', clear ? 'runClearWhenDone' : 'runCompactWhenDone']
   )
 }
 

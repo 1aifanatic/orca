@@ -17620,6 +17620,8 @@
         "agentStillWorking": "에이전트가 아직 작업 중입니다.",
         "runClearWhenDone": "작업이 끝나면 /clear를 실행하세요.",
         "clearAfterAnswer": "에이전트의 질문 또는 승인에 응답한 다음 /clear를 실행하세요.",
+        "runCompactWhenDone": "작업이 끝나면 /compact를 실행하세요.",
+        "compactAfterAnswer": "에이전트의 질문 또는 승인에 응답한 다음 /compact를 실행하세요.",
         "optionRejected": "에이전트가 이 설정을 받아들이지 않았습니다.",
         "goalsUnsupported": "이 에이전트는 목표를 지원하지 않습니다.",
         "agentRefused": "에이전트가 이를 거부했습니다.",

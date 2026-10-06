@@ -44,6 +44,7 @@ const WRITES: AgentSessionWriteKind[] = [
   'option',
   'command',
   'clear',
+  'compact',
   'goal'
 ]
 const HOST_TEXT = 'Expected runtime fence 1; the session is at 3.'
@@ -93,6 +94,7 @@ const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> =
   option: 'notDoneOption',
   command: 'notDoneCommand',
   clear: 'notDoneCommand',
+  compact: 'notDoneCommand',
   goal: 'notDoneGoal'
 }
 
@@ -446,10 +448,15 @@ describe('the notice for every reason a host names', () => {
         failure.code === 'structured_agent_session_unsupported' && write !== 'read-history'
       const saysNotDone =
         write === 'read-history' && failure.code === 'agent_session_journal_unreadable'
-      // "Run /clear when it's done" already says the clear has yet to happen.
-      const clearWhileWorking =
-        write === 'clear' &&
-        (parts.includes('runClearWhenDone') || parts.includes('clearAfterAnswer'))
+      // "Run /clear when it's done" already says the command has yet to happen.
+      const clearWhileWorking = (
+        [
+          'runClearWhenDone',
+          'clearAfterAnswer',
+          'runCompactWhenDone',
+          'compactAfterAnswer'
+        ] as const
+      ).some((sentence) => parts.includes(sentence))
       expect(notDone, cell).toEqual(
         answeredAway || unsupported || saysNotDone || clearWhileWorking ? [] : [NOT_DONE[write]]
       )
@@ -614,7 +621,7 @@ describe('a chat whose history the host could not open', () => {
   })
 })
 
-describe('a /clear refused while the agent works', () => {
+describe('a /clear or /compact refused while the agent works', () => {
   const refused = (reason: 'turnActive' | 'messagesUnsettled' | 'promptPending') =>
     ({ kind: 'refused', code: 'agent_session_operation_invalid', details: { reason } }) as const
 
@@ -631,7 +638,20 @@ describe('a /clear refused while the agent works', () => {
     ).toBe("Answer the agent's question or approval, then run /clear.")
   })
 
-  it('leaves every other command its own words', () => {
+  it('says the same for a /compact, which a host without the queue still refuses', () => {
+    for (const reason of ['turnActive', 'messagesUnsettled'] as const) {
+      expect(
+        agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(refused(reason), 'compact'))
+      ).toBe("The agent is still working. Run /compact when it's done.")
+    }
+    expect(
+      agentSessionWriteNoticeEnglish(
+        agentSessionWriteNoticeParts(refused('promptPending'), 'compact')
+      )
+    ).toBe("Answer the agent's question or approval, then run /compact.")
+  })
+
+  it('leaves a command this build does not know its own words', () => {
     expect(agentSessionWriteNoticeParts(refused('turnActive'), 'command')).toEqual([
       'turnActive',
       'notDoneCommand',
@@ -639,12 +659,15 @@ describe('a /clear refused while the agent works', () => {
     ])
   })
 
-  it('is the write a /clear is, and only a /clear', () => {
+  it('is the write a /clear or /compact is, and only those', () => {
     expect(
       agentSessionWriteKindForMethod('agentSession.conversationCommand', { command: 'clear' })
     ).toBe('clear')
     expect(
       agentSessionWriteKindForMethod('agentSession.conversationCommand', { command: 'compact' })
+    ).toBe('compact')
+    expect(
+      agentSessionWriteKindForMethod('agentSession.conversationCommand', { command: 'rewind' })
     ).toBe('command')
   })
 })

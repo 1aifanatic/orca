@@ -29,8 +29,9 @@ export type AgentSessionWriteKind =
   | 'answer'
   | 'option'
   | 'command'
-  /** A /clear: refused while the agent works, in words of its own. */
+  /** A /clear or /compact: refused while the agent works, in words of its own. */
   | 'clear'
+  | 'compact'
   | 'goal'
 
 /** The kind of write an `agentSession.*` call stands for. */
@@ -57,8 +58,11 @@ export function agentSessionWriteKindForMethod(
   if (fingerprintMethod === 'agentSession.threadGoal') {
     return 'goal'
   }
-  if (fingerprintMethod === 'agentSession.conversationCommand' && fields.command === 'clear') {
-    return 'clear'
+  if (
+    fingerprintMethod === 'agentSession.conversationCommand' &&
+    (fields.command === 'clear' || fields.command === 'compact')
+  ) {
+    return fields.command
   }
   return 'command'
 }

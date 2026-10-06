@@ -155,6 +155,11 @@ describe('mobile structured conversation commands', () => {
     expect(input.onError).toHaveBeenLastCalledWith(
       "Answer the agent's question or approval, then run /clear."
     )
+    input.busy = () => 'working'
+    expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
+    expect(input.onError).toHaveBeenLastCalledWith(
+      "The agent is still working. Run /compact when it's done."
+    )
     expect(sendRequest).not.toHaveBeenCalled()
   })
   it('keeps ordinary messages on the existing send path', async () => {

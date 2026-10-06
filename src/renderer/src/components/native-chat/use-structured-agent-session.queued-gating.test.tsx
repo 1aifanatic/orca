@@ -496,7 +496,7 @@ describe('a /compact against a host that holds commands but has its queue dark',
     })
     expect(outcome).toEqual({
       accepted: false,
-      error: 'Wait for pending work and messages to finish before using this command.'
+      error: "The agent is still working. Run /compact when it's done."
     })
     expect(commandCalls()).toHaveLength(0)
     items = []

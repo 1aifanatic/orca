@@ -204,10 +204,13 @@ export function NativeChatQueuedMessageCard({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onEdit}>
-            <Pencil />
-            {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
-          </DropdownMenuItem>
+          {/* A command's text is not a draft: edited, it would become a message. */}
+          {card.command ? null : (
+            <DropdownMenuItem onSelect={onEdit}>
+              <Pencil />
+              {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={onTurnOffQueueing}>
             {translate(
               'components.native-chat.queuedMessages.turnOffQueueing',

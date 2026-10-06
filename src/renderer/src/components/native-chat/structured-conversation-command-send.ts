@@ -43,15 +43,21 @@ export function structuredConversationCommandHold(input: {
   return input.turnActive || input.outboxHeld ? 'working' : null
 }
 
-/** The line a command refused here gets: a /clear says what the person sees and can do. */
+/** The line a command refused here gets: what the person sees and can do, as the host says it. */
 function heldCommandText(
   command: AgentSessionConversationCommand,
   hold: Exclude<StructuredConversationCommandHold, 'ahead'>
 ): string {
-  if (command === 'clear' && (hold === 'working' || hold === 'prompt')) {
-    return agentSessionWriteNoticeText(
-      hold === 'prompt' ? ['clearAfterAnswer'] : ['agentStillWorking', 'runClearWhenDone']
-    )
+  if (hold === 'prompt') {
+    return agentSessionWriteNoticeText([
+      command === 'clear' ? 'clearAfterAnswer' : 'compactAfterAnswer'
+    ])
+  }
+  if (hold === 'working') {
+    return agentSessionWriteNoticeText([
+      'agentStillWorking',
+      command === 'clear' ? 'runClearWhenDone' : 'runCompactWhenDone'
+    ])
   }
   return translate(
     'components.native-chat.conversationCommand.pendingWork',

@@ -165,6 +165,8 @@ describe('MobileNativeChatQueuedMessages', () => {
       onSend: vi.fn(async () => true)
     })
     expect(texts(mounted).filter((text) => text === 'Send' || text === 'Steer')).toEqual([])
+    // Its menu holds only Edit, which a command does not take.
+    expect(mounted.root.findAllByProps({ accessibilityLabel: 'More actions' })).toHaveLength(0)
     expect(
       mounted.root.findAllByProps({ accessibilityLabel: 'Delete this queued message' })
     ).toHaveLength(2)

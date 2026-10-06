@@ -135,6 +135,13 @@ describe('NativeChatQueuedMessageList', () => {
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2)
   })
 
+  it('a command card offers no Edit: its text is not a draft', async () => {
+    renderList(controller([card({ messageId: 'compact-1', text: '/compact', command: true })]))
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'More actions' }))
+    expect(await screen.findByRole('menuitem', { name: 'Turn off queueing' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'Edit message' })).toBeNull()
+  })
+
   it("a paused command card's ways out are Delete and the queue's Resume", () => {
     const owner = controller(
       [card({ messageId: 'compact-1', text: '/compact', command: true, hold: 'queue-paused' })],

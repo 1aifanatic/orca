@@ -17585,6 +17585,8 @@
         "agentStillWorking": "智能体仍在工作。",
         "runClearWhenDone": "完成后再运行 /clear。",
         "clearAfterAnswer": "请先回答智能体的问题或审批，然后再运行 /clear。",
+        "runCompactWhenDone": "完成后再运行 /compact。",
+        "compactAfterAnswer": "请先回答智能体的问题或审批，然后再运行 /compact。",
         "optionRejected": "智能体未接受此设置。",
         "goalsUnsupported": "此智能体不支持目标。",
         "agentRefused": "智能体拒绝了此请求。",

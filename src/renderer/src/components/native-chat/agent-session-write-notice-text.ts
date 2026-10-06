@@ -110,6 +110,10 @@ const SENTENCES: Record<AgentSessionWriteNoticeSentence, () => string> = {
     translate('components.native-chat.writeNotice.runClearWhenDone', COPY.runClearWhenDone),
   clearAfterAnswer: () =>
     translate('components.native-chat.writeNotice.clearAfterAnswer', COPY.clearAfterAnswer),
+  runCompactWhenDone: () =>
+    translate('components.native-chat.writeNotice.runCompactWhenDone', COPY.runCompactWhenDone),
+  compactAfterAnswer: () =>
+    translate('components.native-chat.writeNotice.compactAfterAnswer', COPY.compactAfterAnswer),
   optionRejected: () =>
     translate('components.native-chat.writeNotice.optionRejected', COPY.optionRejected),
   goalsUnsupported: () =>

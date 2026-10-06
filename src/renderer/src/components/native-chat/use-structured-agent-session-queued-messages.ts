@@ -124,7 +124,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         // never a wire payload. Without a composer to hold it, deleting would destroy it,
         // so the draft then stays a card.
         const card = cardsRef.current.find((entry) => entry.messageId === messageId)
-        if (!card || !composerScopeKey) {
+        if (!card || card.command || !composerScopeKey) {
           return
         }
         appendNativeChatDraftCache(composerScopeKey, card.text)

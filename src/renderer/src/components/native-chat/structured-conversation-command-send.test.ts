@@ -297,4 +297,15 @@ describe('a command held here', () => {
       error: "Answer the agent's question or approval, then run /clear."
     })
   })
+
+  it('a /compact a host without the queue refuses reads the same way', async () => {
+    expect(await held('compact', 'working').result).toEqual({
+      accepted: false,
+      error: "The agent is still working. Run /compact when it's done."
+    })
+    expect(await held('compact', 'prompt').result).toEqual({
+      accepted: false,
+      error: "Answer the agent's question or approval, then run /compact."
+    })
+  })
 })
