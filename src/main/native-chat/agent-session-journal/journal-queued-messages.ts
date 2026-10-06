@@ -166,6 +166,19 @@ export class JournalQueuedMessages {
     return this.derivePauses(this.list())
   }
 
+  /** A card waits, or is mid-hand-off and may come back to waiting: a chat that stops running
+   *  marks it (`AgentSessionJournal.markQueueReopen`). */
+  awaitReopenMark(): boolean {
+    const { submissions } = this.deps.state()
+    return this.list().some((row) => {
+      if (row.state === 'waiting') {
+        return true
+      }
+      const handOff = row.consumedAs ? submissions.get(row.consumedAs)?.dispatchState : undefined
+      return row.state === 'dispatched' && (handOff === 'pending' || handOff === 'unknown')
+    })
+  }
+
   /** The person's Stop still pausing the queue, if any (`journalUserStopInForce`). */
   userStopInForce(): JournalQueuePauseMarks['latestStop'] {
     const state = this.deps.state()

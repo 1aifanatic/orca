@@ -25,7 +25,6 @@ import type { StructuredAgentSessionHostSession } from './structured-agent-sessi
 import { StructuredAgentSessionIdleSweep } from './structured-agent-session-idle-sweep'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
-import { forgetStructuredQueueOpen } from './structured-agent-session-queued-pause'
 
 export type StructuredAgentSessionConversationLifetime = ReturnType<
   typeof createStructuredAgentSessionConversationLifetime
@@ -160,14 +159,11 @@ export function createStructuredAgentSessionConversationLifetime(host: {
         readRefusals.forget(sessionId)
         const session = sessions.get(sessionId)
         if (session) {
-          // Settled and marked before the stop, so no start delivers it.
-          await holdClosedStructuredAgentSessionSends(
-            { ...deps(), sessions },
-            sessionId,
-            session.journal
-          )
-        } else {
-          forgetStructuredQueueOpen(sessions, sessionId)
+          // Settled and marked before the stop, so no start delivers it, and nothing it closed with
+          // sends by itself, even if the handle stays open.
+          await holdClosedStructuredAgentSessionSends(deps(), sessionId, session.journal, {
+            mark: 'always'
+          })
         }
         await stopStructuredAgentSessionAgentUnderSerialize(host.context(), sessionId, { cause })
         await closeConversation(sessionId)

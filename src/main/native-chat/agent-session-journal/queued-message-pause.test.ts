@@ -530,6 +530,32 @@ describe("a reopen's pause", () => {
     expect(reason(journal)).toBe('restarted')
   })
 
+  // A hand-off in flight may come back to waiting after the open: the open marks for it too.
+  it('marks a reopen whose only card is mid-hand-off, and holds it once it comes back', async () => {
+    let journal = await open()
+    await queueDraft(journal, 'in-flight')
+    await journal.appendSubmission(
+      {
+        clientMessageId: 'drain-1',
+        payloadFingerprint: 'fp-in-flight',
+        body: message('in-flight'),
+        fence: 0,
+        handoverRecorded: true
+      },
+      { messageId: 'in-flight', expect: 'waiting', settledByOp: null, hostInstance: HOST }
+    )
+    journal = await reopen(journal)
+    await journal.resolveDispatch({
+      clientMessageId: 'drain-1',
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact('notDelivered'), {
+        surface: 'rejection'
+      }),
+      fence: 0
+    })
+    expect(held(journal)).toEqual([['in-flight', true]])
+  })
+
   it('a reopen with no waiting card writes nothing', async () => {
     let journal = await open()
     await turn(journal, 'earlier')

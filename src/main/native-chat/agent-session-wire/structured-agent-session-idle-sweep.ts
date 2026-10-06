@@ -126,6 +126,11 @@ export class StructuredAgentSessionIdleSweep {
       }
       await this.deps.stopAgent(sessionId)
     }
+    // A chat with cards waiting keeps its handle: a reopen marks them to wait for a turn
+    // (`markStructuredQueueReopen`), which an eviction the person never saw must not do.
+    if (session.journal.queuedMessages.list().some((row) => row.state === 'waiting')) {
+      return
+    }
     await this.deps.closeConversation(sessionId)
   }
 

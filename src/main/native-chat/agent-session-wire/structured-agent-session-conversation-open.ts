@@ -25,7 +25,7 @@ import type { AgentSessionRecordStore } from '../../runtime/agent-session-record
 import { settleStaleStructuredAgentSessionState } from './structured-agent-session-dead-generation-settlement'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import {
-  markStructuredQueueFirstOpen,
+  markStructuredQueueReopen,
   structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
 import type {
@@ -77,13 +77,6 @@ export async function openStructuredAgentSessionConversation(
     return null
   }
   const opened = await openStructuredAgentSessionConversationJournal(context.deps, record, options)
-  // After the open made its leftovers cards, so the mark follows every card it found.
-  await markStructuredQueueFirstOpen(
-    { sessions: context.sessions, logger: context.deps.logger },
-    sessionId,
-    opened.session.journal,
-    record.lease.runtimeFence
-  )
   await context.adoptOpened(sessionId, opened)
   return opened.session
 }
@@ -132,6 +125,9 @@ export async function openStructuredAgentSessionConversationJournal(
       error
     })
   }
+  // After the leftovers became cards, so the mark follows every card this open found. Every open
+  // comes after the chat stopped running: the idle sweep never closes one with cards waiting.
+  await markStructuredQueueReopen(sessionId, journal, fence, deps.logger)
   // No child in this process writes to a journal nobody had open, so whatever it shows running
   // belongs to a generation that is gone, whatever the lease still claims. Settled before any
   // reader or child sees it.

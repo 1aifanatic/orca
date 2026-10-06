@@ -297,7 +297,7 @@ describe('held drafts', () => {
     await new Promise((resolve) => setTimeout(resolve, 250))
     expect(await rig.handoff(draftId)).toBeUndefined()
     expect(await rig.queuePause()).toBeNull()
-    // The user's send starting its turn lifts it, and adopts the row into this instance.
+    // The user's send starting its turn lifts it.
     const next = send('user starts a new turn')
     await next.result
     expect(await rig.handoff(draftId)).toBeUndefined()

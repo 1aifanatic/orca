@@ -365,7 +365,8 @@ describe('startup restore of chats still in their per-chat files', () => {
   )
 
   // A send the last run never handed over is kept as a card in the same database the copy wrote,
-  // after the copy: the card and the rejected send both land behind the chat's own rows.
+  // after the copy: the card and the rejected send both land behind the chat's own rows, then the
+  // reopen's mark, so the card waits for the chat's next turn.
   it('keeps a send the last run never handed over as a card, after the copy', async () => {
     const rows = await seedLegacyChat('chat-kept', 0, 'never handed over')
 
@@ -375,11 +376,15 @@ describe('startup restore of chats still in their per-chat files', () => {
     await journal.whenImported()
     const copied = readTestJournalRows(hostDb(), 'chat-kept', rows[0]!.epoch)
     expect(copied.slice(0, rows.length)).toEqual(rows)
-    expect(copied).toHaveLength(rows.length + 1)
-    expect(JSON.parse(copied.at(-1)!.rowJson)).toMatchObject({
+    expect(copied).toHaveLength(rows.length + 2)
+    expect(JSON.parse(copied.at(-2)!.rowJson)).toMatchObject({
       kind: 'dispatch',
       clientMessageId: 'client-chat-kept',
       state: 'rejected'
+    })
+    expect(JSON.parse(copied.at(-1)!.rowJson)).toMatchObject({
+      kind: 'tombstone',
+      queueReopen: true
     })
     const cards = hostDb()
       .prepare('SELECT message_id, hold_reason, state FROM queued_messages WHERE session_id = ?')

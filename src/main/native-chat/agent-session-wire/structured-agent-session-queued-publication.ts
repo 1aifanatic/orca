@@ -115,11 +115,20 @@ export function readQueuePublication(
   // Read per emit: the pause also turns on submissions (a turn starting). Only a person's Stop is
   // shown, and only over a card Resume would send, so its header never offers to send nothing;
   // deleting a blocking returned card shows it again. After a /clear, a restart or a close nothing
-  // is shown, a Stop's included: nothing runs in the chat, its next turn lifts every pause, and the
-  // cards read as plain waiting cards until then. An idle eviction marks nothing, so it hides
-  // nothing.
+  // is shown, a Stop's from before it included: nothing runs in the chat, its next turn lifts every
+  // pause, and the cards read as plain waiting cards until then. A Stop the person makes after the
+  // reopen shows.
   const pauses = structuredQueuePauses(journal)
-  const silent = pauses.some((pause) => pause.reason !== 'stopped')
+  const stop = pauses.find((pause) => pause.reason === 'stopped')?.since
+  const silent = pauses.some(
+    (pause) =>
+      pause.reason === 'cleared' ||
+      (pause.reason === 'restarted' &&
+        (!stop ||
+          !pause.since ||
+          stop.epoch !== pause.since.epoch ||
+          stop.sequence < pause.since.sequence))
+  )
   const resumable = silent ? null : resumableQueuePause(pauses, journal.queuedMessages.list())
   // The submissions are read only while a pause would show, never while the queue runs freely.
   const pause =

@@ -16,7 +16,10 @@ import { openAgentSessionJournal } from '../agent-session-journal/journal-store-
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import { attachParamsForRecord } from './structured-agent-session-conversation-open'
-import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import {
+  structuredAgentSessionHostInstance,
+  structuredQueuePauses
+} from './structured-agent-session-queued-pause'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -694,11 +697,31 @@ describe("the reopen's mark", () => {
     await rig.host.collaboratorsForTests().lifetime.idleSweep.tick()
 
     expect(rig.closeSession).toHaveBeenCalledTimes(1)
-    // Its handle was only a cache, so it closed; the read below reopens it.
-    expect(rig.host.collaboratorsForTests().sessions.has(SESSION)).toBe(false)
+    // A chat with cards waiting keeps its handle, so no reopen can mark them.
+    expect(rig.host.collaboratorsForTests().sessions.has(SESSION)).toBe(true)
     expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     expect(await rig.handoff(held.id)).toBeUndefined()
     expect(marks).not.toHaveBeenCalled()
+    // Kept only while a card waits: once the last one leaves, the next sweep drops it as usual.
+    expect(await rig.deleteQueued(held.id)).toMatchObject({ ok: true, value: { deleted: true } })
+    await rig.host.collaboratorsForTests().lifetime.idleSweep.tick()
+    expect(rig.host.collaboratorsForTests().sessions.has(SESSION)).toBe(false)
+  })
+
+  // The startup restore opens a visible chat through the same open as any reader.
+  it('a chat the startup restore reopens after a crash holds its cards', async () => {
+    const working = await rig.workingSend()
+    const queued = rig.send('queued behind work', 'queue-if-active')
+    await queued.result
+    void working
+    const sent = rig.dispatch.mock.calls.length
+    rig.crashRestartHostProcess()
+    await rig.host.restoreReadableSessions([SESSION])
+    expect(rig.host.collaboratorsForTests().sessions.has(SESSION)).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(await rig.handoff(queued.id)).toBeUndefined()
+    expect(rig.dispatch).toHaveBeenCalledTimes(sent)
+    expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual(['restarted'])
   })
 
   it('an idle chat with no waiting card is closed and reopened without writing anything', async () => {

@@ -174,7 +174,7 @@ export class StructuredAgentSessionDeliveryLoop {
     })
     if (settled) {
       // The open's settle failed, so it marked nothing for the cards this made.
-      await markStructuredQueueReopen(this.deps, sessionId, session.journal, fence)
+      await markStructuredQueueReopen(sessionId, session.journal, fence, this.deps.logger)
     }
     if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.

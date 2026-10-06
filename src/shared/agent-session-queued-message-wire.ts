@@ -38,12 +38,11 @@ export type AgentSessionQueuedMessage = {
   position: number
   body: AgentJournalMessageItem
   state: 'waiting' | 'returned'
-  /** This one card is held, whatever the queue's pause: its conversion failed, or the host kept it. */
+  /** This one card is held, whatever the queue's pause: its conversion failed. */
   paused?: true
-  /** Why it is held, as a marker the client localizes: 'send_failed' ("couldn't
-   *  send") or 'kept' (accepted, never sent); only an explicit Send releases either. A client
-   *  must treat an unknown marker as a plain hold, so a newer host can add one. The queue-level
-   *  pause is `queuePause`, published beside the list. */
+  /** Why it is held, as a marker the client localizes: 'send_failed' ("couldn't send"); only an
+   *  explicit Send releases it. A client must treat an unknown marker as a plain hold, so a newer
+   *  host can add one. The queue-level pause is `queuePause`, published beside the list. */
   pausedReason?: AgentSessionQueuedMessagePausedReason
   /** A returned card's refusal: the `reason` and `rejection` pair its submission settled with.
    *  Only a failure returns a card; a draft a Stop or restart took back waits again. Clients classify it from `returnedRejection` (falling back to `returnedReason` when a host

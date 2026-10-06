@@ -8,8 +8,7 @@ import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journa
 import {
   HOST_TEST_SESSION,
   HOST_TEST_THREAD as THREAD,
-  hostTestMessage,
-  hostTestOperationId
+  hostTestMessage
 } from './structured-agent-session-host-test-data'
 import {
   QUEUED_RIG_CALLER,
@@ -18,11 +17,7 @@ import {
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
 import { sameQueuePause } from './structured-agent-session-queued-publication'
-import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
-import {
-  structuredAgentSessionHostInstance,
-  structuredQueuePauses
-} from './structured-agent-session-queued-pause'
+import { structuredQueuePauses } from './structured-agent-session-queued-pause'
 
 let rig: QueuedMessageTestRig
 
@@ -373,16 +368,17 @@ describe("a restart's pause", () => {
     await next.result
     await rig.settleAccepted(next.id, 'b')
     await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
-    // Reopened, that turn is "before this open", yet the pause it ended stays ended:
-    // the lift adopted the rows into this process.
+    // Closed again with a card still waiting, it waits again for the next turn, unshown.
     await rig.host.close(HOST_TEST_SESSION, 'evict')
     expect(await rig.queuePause()).toBeNull()
     expect(await rig.drafts()).toContainEqual({ messageId: second, state: 'waiting' })
+    expect(derivedPauses()).toEqual(['restarted'])
   })
 })
 
 describe('a card handed off after a restart', () => {
-  it('belongs to the process that sent it: withdrawn back to waiting, it raises no restart pause', async () => {
+  // Returned, not waiting, when Orca restarted: the reopen holds nothing; only the Stop does.
+  it('sent again and withdrawn by a Stop, it waits under that Stop alone, shown; Resume lifts it', async () => {
     const working = await rig.workingSend()
     const draftId = await queuedDraft('refused, then re-sent after a restart')
     await rig.settleAccepted(working, 'a')
@@ -392,7 +388,7 @@ describe('a card handed off after a restart', () => {
       expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'returned' }])
     )
     await rig.restartHostProcess()
-    // Sent again in this process, then withdrawn by a Stop before the agent had it.
+    // Sent again after the restart, then withdrawn by a Stop before the agent had it.
     let release: () => void = () => undefined
     rig.awaitStarted.mockImplementationOnce(
       () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
@@ -403,156 +399,9 @@ describe('a card handed off after a restart', () => {
     await eventually(async () =>
       expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
     )
-    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
-    if (!journal) {
-      throw new Error('expected the conversation open')
-    }
-    expect(journal.queuedMessages.get(draftId)?.hostInstance).toBe(
-      structuredAgentSessionHostInstance()
-    )
-    // With the Stop's pause gone, nothing else holds it: no restart happened since it was sent.
-    await journal.appendQueueResume(
-      structuredAgentSessionConversationFence(rig.store, HOST_TEST_SESSION)
-    )
-    expect(structuredQueuePauses(journal)).toEqual([])
-  })
-})
-
-describe('Resume', () => {
-  it('lifts the pause and the queue drains, oldest first; a second Resume is a no-op', async () => {
-    const working = await rig.workingSend()
-    const first = await queuedDraft('first')
-    const second = await queuedDraft('second')
-    await rig.stop()
-    await rig.settleAccepted(working, 'stopped')
-    await expectPaused(first, second)
+    expect(derivedPauses()).toEqual(['stopped'])
+    expect(await rig.queuePause()).toEqual({ reason: 'stopped' })
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
-    expect(await rig.queuePause()).toBeNull()
-    await eventually(async () => expect(await rig.handoff(first)).toBeDefined())
-    expect(await rig.handoff(second)).toBeUndefined()
-    // Nothing is paused now: another Resume changes nothing.
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: false } })
-  })
-
-  it('is idempotent: a replay of the same Resume answers without lifting a later pause', async () => {
-    const working = await rig.workingSend()
-    const draftId = await queuedDraft('paused twice')
-    await rig.stop()
-    const operationId = hostTestOperationId()
-    expect(await rig.resume(operationId)).toMatchObject({ ok: true, value: { resumed: true } })
-    await rig.stop()
-    expect(await rig.resume(operationId)).toMatchObject({
-      ok: true,
-      replayed: true,
-      value: { resumed: false }
-    })
-    await rig.settleAccepted(working, 'stopped')
-    await expectPaused(draftId)
-  })
-
-  it("of a Stop from before a restart, which no client offers there, also lifts the restart's pause", async () => {
-    const draftId = await stoppedDraft()
-    rig.crashRestartHostProcess()
-    expect(await rig.queuePause()).toBeNull()
-    expect(derivedPauses()).toEqual(['stopped', 'restarted'])
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
-    await eventually(async () => expect(await rig.handoff(draftId)).toBeDefined())
-  })
-
-  it('is a no-op on a queue that is not paused', async () => {
-    await rig.workingSend()
-    await queuedDraft('waiting behind the turn')
-    expect(await rig.queuePause()).toBeNull()
-    expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: false } })
-  })
-})
-
-describe('a failed Stop', () => {
-  // Withdrawing is bookkeeping: its failure is reported, and the Stop still interrupts and pauses.
-  it('still takes effect when its withdrawal fails, and pauses the queue', async () => {
-    await rig.workingSend()
-    const draftId = await queuedDraft('queued before the stop')
-    const reject = vi
-      .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
-      .mockRejectedValueOnce(new Error('disk full'))
-    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    try {
-      expect(await rig.stop()).toMatchObject({ ok: true })
-      expect(warned).toHaveBeenCalledWith(
-        "[agent-session] stop-queued-bookkeeping: Stop's withdrawal failed",
-        expect.objectContaining({ step: 'withdrawal', error: new Error('disk full') })
-      )
-    } finally {
-      reject.mockRestore()
-      warned.mockRestore()
-    }
-    await expectPaused(draftId)
-  })
-
-  it('keeps its pause when it fails after the interrupt reached the agent', async () => {
-    await rig.workingSend()
-    const draftId = await queuedDraft('paused by stop')
-    const append = AgentSessionJournal.prototype.appendItem
-    const failing = vi
-      .spyOn(AgentSessionJournal.prototype, 'appendItem')
-      .mockImplementation(async function (this: AgentSessionJournal, ...args) {
-        // The status note written after the provider was asked to stop.
-        if (args[1].kind === 'status') {
-          throw new Error('disk full')
-        }
-        return append.apply(this, args)
-      })
-    try {
-      await expect(rig.stop()).rejects.toThrow('disk full')
-    } finally {
-      failing.mockRestore()
-    }
-    await expectPaused(draftId)
-  })
-
-  // The drain shares the Stop's lane, so a failed Stop must hold it until its pause lands.
-  it('keeps its pause when it fails while its writes wait behind owed work', async () => {
-    const turn = { provider: 'codex' as const, threadId: THREAD, turnId: 'turn-w', ordinal: 900 }
-    const turnRow = (state: 'running' | 'completed') => {
-      rig
-        .providerEvents()
-        .appendItem(
-          turn,
-          { kind: 'turn', turnId: 'turn-w', state, startedAt: 1 },
-          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-        )
-    }
-    const working = await rig.workingSend()
-    turnRow('running')
-    await rig.settleAccepted(working, 'w')
-    const draftId = await queuedDraft('paused by stop')
-    // The interrupt ends the turn, so the drain runs as soon as the lane frees.
-    vi.mocked(rig.host.deps.adapter.cancelTurn).mockImplementationOnce(async () => {
-      turnRow('completed')
-      return { cancelled: true }
-    })
-    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
-    if (!journal) {
-      throw new Error('no open journal')
-    }
-    const append = journal.appendItem.bind(journal)
-    vi.spyOn(journal, 'appendItem').mockImplementation((identity, body, options) =>
-      body.kind === 'status'
-        ? Promise.reject(new Error('disk full'))
-        : append(identity, body, options)
-    )
-    // Owed from the Stop's first write, after the open paid any import: its writes wait behind it.
-    const owed = Promise.withResolvers<void>()
-    const withdraw = journal.rejectQueuedSubmissions.bind(journal)
-    vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation((...args) => {
-      journal['queue'].owe(() => owed.promise)
-      return withdraw(...args)
-    })
-    const stopping = rig.stop()
-    await eventually(() => expect(rig.host.deps.adapter.cancelTurn).toHaveBeenCalledOnce())
-    owed.resolve()
-    await expect(stopping).rejects.toThrow('disk full')
-    expect(journal.activeTurnId()).toBeNull()
-    await expectPaused(draftId)
+    expect(derivedPauses()).toEqual([])
   })
 })

@@ -61,40 +61,39 @@ export type StructuredAgentSessionLifetimeContext = {
 
 type ConversationCloseDeps = Pick<StructuredAgentSessionHostDeps, 'logger'> & {
   store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'>
-  /** The host's open conversations (`markStructuredQueueReopen`). */
-  sessions: ReadonlyMap<string, unknown>
 }
 
 /** What is still queued when the chat closes will not be handed over: a person's message is kept
- *  as a card that waits for the chat's next turn, the rest rejected (`journal-unsent-send-hold.ts`). A quit is not a close: the
- *  next open settles what it left. `which` narrows it to the messages a close that did not complete
+ *  as a card that waits for the chat's next turn, the rest rejected (`journal-unsent-send-hold.ts`).
+ *  A quit is not a close: the next open settles what it left. The chat stops running, so the
+ *  reopen mark follows (`markStructuredQueueReopen`): on every `close`, or only once it settled a
+ *  send, for a later re-check of the same close, which must never mark past a new send. `which` narrows it to the messages a close that did not complete
  *  closed. Best effort, so a close never waits on it: resolves false when it failed, reported and
  *  never thrown. */
 export async function holdClosedStructuredAgentSessionSends(
   deps: ConversationCloseDeps,
   sessionId: string,
   journal: StructuredAgentSessionHostSession['journal'],
-  which?: (submission: AgentJournalSubmission) => boolean
+  close: { mark: 'always' | 'settled'; which?: (submission: AgentJournalSubmission) => boolean }
 ): Promise<boolean> {
   const fence = structuredAgentSessionConversationFence(deps.store, sessionId)
-  const held = await holdUnsentSends(journal, {
+  const { which } = close
+  const settled = await holdUnsentSends(journal, {
     fence,
     hostInstance: structuredAgentSessionHostInstance(),
     hold: { cause: 'chatClosed', ...(which ? { which } : {}) }
-  }).then(
-    () => true,
-    (error: unknown) => {
-      deps.logger.warn('settling queued messages of a closed chat failed', {
-        scope: 'queued-abandon',
-        sessionId,
-        error
-      })
-      return false
-    }
-  )
-  // The chat stopped running: nothing it closed with sends by itself, even if it stays open.
-  await markStructuredQueueReopen(deps, sessionId, journal, fence)
-  return held
+  }).catch((error: unknown) => {
+    deps.logger.warn('settling queued messages of a closed chat failed', {
+      scope: 'queued-abandon',
+      sessionId,
+      error
+    })
+    return null
+  })
+  if (close.mark === 'always' || settled) {
+    await markStructuredQueueReopen(sessionId, journal, fence, deps.logger)
+  }
+  return settled !== null
 }
 
 /**

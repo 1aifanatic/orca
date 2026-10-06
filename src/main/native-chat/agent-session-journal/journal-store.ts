@@ -85,7 +85,7 @@ export class AgentSessionJournal {
 
   private state: JournalReducerState
   private openedThrough: AgentJournalCursor = { epoch: '', sequence: 0 }
-  private reopenUnmarked = false
+  private reopenUnmarked: AgentJournalCursor | null = null
   private onCommitted: (() => void) | null = null
   private readonly queue: JournalWriteQueue
   private readonly rowWriter: JournalRowWriter
@@ -161,12 +161,10 @@ export class AgentSessionJournal {
     )
   }
 
-  /** Where the reopen's pause begins when this handle could not write its mark: the open itself.
-   *  Null once marked, or when nothing needed one. Per handle, so the next open marks again. */
+  /** Where the reopen's pause begins when this handle could not write its mark: where the mark
+   *  would have gone. Null once a mark is written. Per handle, so the next open marks again. */
   reopenFloor(): AgentJournalCursor | null {
     return this.reopenUnmarked
-      ? { epoch: this.openedThrough.epoch, sequence: this.openedThrough.sequence + 1 }
-      : null
   }
 
   async open(): Promise<void> {
@@ -324,13 +322,13 @@ export class AgentSessionJournal {
     return this.rowWriter.append(journalQueueReopenRowBuilder(() => this.state, fence))
   }
 
-  /** Marks the reopen when cards wait; a failed write leaves the open itself as the pause's start
-   *  (`reopenFloor`), and still throws. */
+  /** Marks the reopen when a card waits or is mid-hand-off (it may come back to waiting); a failed
+   *  write leaves where the mark would have gone as the pause's start (`reopenFloor`), and throws. */
   async markQueueReopen(fence: number): Promise<void> {
-    if (this.queuedMessages.list().some((row) => row.state === 'waiting')) {
-      this.reopenUnmarked = true
+    if (this.queuedMessages.awaitReopenMark()) {
+      this.reopenUnmarked = { epoch: this.state.epoch, sequence: this.state.lastSequence + 1 }
       await this.appendQueueReopen(fence)
-      this.reopenUnmarked = false
+      this.reopenUnmarked = null
     }
   }
 
