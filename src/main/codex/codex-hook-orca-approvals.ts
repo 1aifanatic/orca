@@ -33,8 +33,8 @@ export function getManagedCodexHookHome(runtimeHomePath: string): CodexHookHome 
 }
 
 type CodexEventName = (typeof CODEX_EVENTS)[number]
-export type OrcaEntrySlot = { groupIndex: number; handlerIndex: number }
-export type OrcaEntryApproval = CodexHookTrustState & { trustedHash: string }
+type OrcaEntrySlot = { groupIndex: number; handlerIndex: number }
+type OrcaEntryApproval = CodexHookTrustState & { trustedHash: string }
 
 /** Where each event holds Orca's entry first. */
 export function findOrcaEntrySlots(

@@ -39,7 +39,7 @@ const DERIVE_TIMEOUT_MS = 30_000
 const SCRATCH_DUMMY_HOOK = { type: 'command', command: 'exit 0' }
 const SCRATCH_ORCA_GROUP_INDEXES = [0, 2] as const
 
-export type CodexHookScratchListing = {
+type CodexHookScratchListing = {
   listings: CodexListedHook[]
   homeHooksPath: string
   projectHooksPath: string
@@ -201,7 +201,7 @@ export function readCodexHookHashes(
 }
 
 /** "Codex 0.150.1" for `codex --version`'s "codex-cli 0.150.1"; other output as it is. */
-export function describeCodexVersion(codexVersion: string): string {
+function describeCodexVersion(codexVersion: string): string {
   return codexVersion.replace(/^codex-cli\s+/, 'Codex ')
 }
 

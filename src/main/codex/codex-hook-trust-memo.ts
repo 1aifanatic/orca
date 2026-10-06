@@ -25,7 +25,7 @@ type MemoFile = {
 }
 
 /** An answer Codex itself gave, which holds for every binary of its version. */
-export type MemoizedCodexHookAnswer = Exclude<CodexHookAnswer, { kind: 'pending' }>
+type MemoizedCodexHookAnswer = Exclude<CodexHookAnswer, { kind: 'pending' }>
 
 // Why a cap: one record per Codex version or path ever seen would otherwise accumulate.
 const MAX_RECORDS = 8
