@@ -7,7 +7,7 @@ import type { SourceControlAiSettingsPatch } from '../../../../shared/source-con
 import { normalizeSourceControlAiSettings } from '../../../../shared/source-control-ai'
 import { ChatNamingSetting } from './ChatNamingSetting'
 import { toast } from 'sonner'
-import { StrictMode } from 'react'
+import { startTransition, StrictMode, Suspense } from 'react'
 
 const state = vi.hoisted(() => ({ settingsSearchQuery: '' }))
 vi.mock('../../store', () => ({
@@ -225,5 +225,82 @@ describe('Chat names setting', () => {
     await act(async () => finishWrite())
     expect(onDirtyChange).not.toHaveBeenCalled()
     expect(screen.getByDisplayValue('New draft')).toBeTruthy()
+  })
+
+  it('notifies the latest committed dirty callback after a pending save and on unmount', async () => {
+    const { settings, updateSettings, writeSourceControlAiSettings, rerender, unmount } =
+      renderSetting()
+    let finishWrite = (): void => {}
+    writeSourceControlAiSettings.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve
+        })
+    )
+    changeTemplate('Pending save')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const onDirtyChange = vi.fn()
+    rerender(
+      <ChatNamingSetting
+        settings={settings}
+        updateSettings={updateSettings}
+        writeSourceControlAiSettings={writeSourceControlAiSettings}
+        onDirtyChange={onDirtyChange}
+      />
+    )
+    await act(async () => finishWrite())
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+    changeTemplate('Unsaved after save')
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    unmount()
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('keeps a pending save owned by its committed callback during an unfinished render', async () => {
+    const settings = getDefaultSettings('/tmp')
+    const committedDirty = vi.fn()
+    const speculativeDirty = vi.fn()
+    const suspendAttempt = vi.fn()
+    const suspended = new Promise<void>(() => {})
+    let finishWrite = (): void => {}
+    const writeSourceControlAiSettings = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve
+        })
+    )
+    function RenderGate({ blocked }: { blocked: boolean }) {
+      if (blocked) {
+        suspendAttempt()
+        throw suspended
+      }
+      return null
+    }
+    const element = (blocked: boolean) => (
+      <Suspense fallback={<span>Settings loading</span>}>
+        <ChatNamingSetting
+          settings={settings}
+          updateSettings={vi.fn()}
+          writeSourceControlAiSettings={writeSourceControlAiSettings}
+          onDirtyChange={blocked ? speculativeDirty : committedDirty}
+        />
+        <RenderGate blocked={blocked} />
+      </Suspense>
+    )
+    const { rerender, unmount } = render(element(false))
+    changeTemplate('Committed save')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await act(async () => {
+      startTransition(() => rerender(element(true)))
+    })
+    expect(suspendAttempt).toHaveBeenCalled()
+    expect(screen.queryByText('Settings loading')).toBeNull()
+    committedDirty.mockClear()
+    await act(async () => finishWrite())
+    expect(committedDirty).toHaveBeenLastCalledWith(false)
+    expect(speculativeDirty).not.toHaveBeenCalled()
+    unmount()
+    expect(committedDirty).toHaveBeenLastCalledWith(false)
+    expect(speculativeDirty).not.toHaveBeenCalled()
   })
 })

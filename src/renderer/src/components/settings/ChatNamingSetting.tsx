@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { SourceControlAiSettingsPatch } from '../../../../shared/source-control-ai-types'
@@ -52,10 +52,12 @@ export function ChatNamingSetting({
   const customCommandDirty = customCommand !== config.customAgentCommand
   const recipeDirty = JSON.stringify(value) !== JSON.stringify(persisted)
   const latestValueRef = useRef({ value, customCommand, customCommandDraft })
-  latestValueRef.current = { value, customCommand, customCommandDraft }
   const dirty = recipeDirty || customCommandDirty
   const onDirtyChangeRef = useRef(onDirtyChange)
-  onDirtyChangeRef.current = onDirtyChange
+  useLayoutEffect(() => {
+    latestValueRef.current = { value, customCommand, customCommandDraft }
+    onDirtyChangeRef.current = onDirtyChange
+  }, [value, customCommand, customCommandDraft, onDirtyChange])
   const isMountedRef = useRef(false)
   const clearDirtyOnUnmount = useCallback((node: HTMLSpanElement | null): void => {
     isMountedRef.current = node !== null
