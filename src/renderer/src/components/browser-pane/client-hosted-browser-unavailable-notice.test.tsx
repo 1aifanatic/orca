@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { resetBrowserClientHostIdForTests } from '@/runtime/browser-client-host-identity'
-import { resetRestoredBrowserClientHostAttachForTests } from '@/runtime/restored-client-hosted-browser-host-attach'
+import {
+  resetBrowserClientHostParkedForTests,
+  setBrowserClientHostParked
+} from '@/runtime/browser-client-host-parked-environments'
 import { installClientHostedPaneApi } from './client-hosted-browser-pane-test-rig'
 import { ClientHostedBrowserAvailabilityNotice } from './client-hosted-browser-unavailable-notice'
 
 const retryControlConnection = vi.fn(async () => {})
-const prepareBrowserClientHostPlacement = vi.fn(async () => ({ kind: 'client' }))
+const resumeBrowserClientHost = vi.fn(async () => false)
 
 function renderNotice(
   props: Partial<Parameters<typeof ClientHostedBrowserAvailabilityNotice>[0]> = {}
@@ -26,14 +29,9 @@ function renderNotice(
   )
 }
 
-const clientHostedPage = { environmentId: 'env-a', placement: { kind: 'client' } }
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the attach reads only environmentId and placement.
-const CLIENT_HOSTED_PAGE_HANDLES = { 'page-a': clientHostedPage } as never
-
 function setHostOffline(offline: boolean): void {
   useAppStore.setState({
     runtimeStatusByEnvironmentId: offline ? new Map([['env-a', { status: null }]]) : new Map(),
-    remoteBrowserPageHandlesByPageId: CLIENT_HOSTED_PAGE_HANDLES,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the notice reads only id and name.
     runtimeEnvironments: [{ id: 'env-a', name: 'Build box' }] as never
   })
@@ -42,12 +40,12 @@ function setHostOffline(offline: boolean): void {
 describe('ClientHostedBrowserAvailabilityNotice', () => {
   beforeEach(() => {
     resetBrowserClientHostIdForTests()
-    resetRestoredBrowserClientHostAttachForTests()
+    resetBrowserClientHostParkedForTests()
     retryControlConnection.mockClear()
-    prepareBrowserClientHostPlacement.mockClear()
+    resumeBrowserClientHost.mockClear()
     installClientHostedPaneApi({
       browser: { readClientHostId: () => 'this-desktop' },
-      runtimeEnvironments: { retryControlConnection, prepareBrowserClientHostPlacement }
+      runtimeEnvironments: { retryControlConnection, resumeBrowserClientHost }
     })
   })
   afterEach(() => {
@@ -69,10 +67,17 @@ describe('ClientHostedBrowserAvailabilityNotice', () => {
     expect(screen.getByRole('status').textContent).toContain('Build box is offline')
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect now' }))
     expect(retryControlConnection).toHaveBeenCalledWith({ selector: 'env-a' })
-    expect(prepareBrowserClientHostPlacement).toHaveBeenCalledWith({
-      selector: 'env-a',
-      preference: 'auto'
-    })
+    expect(resumeBrowserClientHost).toHaveBeenCalledWith({ selector: 'env-a' })
+  })
+
+  it('shows the strip while the browser host is parked even with the control link up', () => {
+    setHostOffline(false)
+    act(() => setBrowserClientHostParked('env-a', true))
+    renderNotice()
+
+    expect(screen.getByRole('status').textContent).toContain('Build box is offline')
+    act(() => setBrowserClientHostParked('env-a', false))
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('waits for an offline host instead of calling a missing guest unavailable', () => {
@@ -97,10 +102,7 @@ describe('ClientHostedBrowserAvailabilityNotice', () => {
     setHostOffline(false)
     renderNotice({ isActive: true })
 
-    expect(prepareBrowserClientHostPlacement).toHaveBeenCalledWith({
-      selector: 'env-a',
-      preference: 'auto'
-    })
+    expect(resumeBrowserClientHost).toHaveBeenCalledWith({ selector: 'env-a' })
     expect(retryControlConnection).not.toHaveBeenCalled()
   })
 })

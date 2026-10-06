@@ -7,9 +7,11 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import { resolveEnvironment } from '../../shared/runtime-environment-store'
 import {
   closePairedRuntimeBrowserClientHostEnvironment,
+  resumePairedRuntimeBrowserClientHost,
   startPairedRuntimeBrowserClientHost
 } from '../browser/paired-runtime-browser-client-host-runtime'
 import { prepareBrowserClientHostPlacement } from '../browser/browser-client-host-placement-preparation'
+import { isBrowserClientHostEnvironmentParked } from '../browser/browser-client-host-parked-publication'
 import { isRuntimeEnvironmentManuallyDisconnected } from './runtime-environment-connectivity-handlers'
 import { getRuntimeEnvironmentStatus } from './runtime-environment-transport-routing'
 
@@ -53,6 +55,17 @@ export function registerRuntimeEnvironmentBrowserClientHostHandler(options: {
         }
       }
       return placement
+    }
+  )
+  // Why apart from preparation: opening a tab must not cost a status round-trip when healthy.
+  ipcMain.handle(
+    'runtimeEnvironments:resumeBrowserClientHost',
+    async (_event, args: { selector: string }): Promise<boolean> => {
+      const environment = resolveEnvironment(options.getUserDataPath(), args.selector)
+      if (!isRuntimeEnvironmentManuallyDisconnected(environment.id)) {
+        await resumePairedRuntimeBrowserClientHost(environment.id)
+      }
+      return isBrowserClientHostEnvironmentParked(environment.id)
     }
   )
 }

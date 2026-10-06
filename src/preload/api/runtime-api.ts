@@ -8,6 +8,7 @@ import type {
 } from '../../shared/runtime-types'
 import type { RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
 import type { ClientHostedBrowserRowsEvent } from '../../shared/client-hosted-browser-rows'
+import type { BrowserClientHostParkedEvent } from '../../shared/browser-client-host-parked'
 import type { PublicKnownRuntimeEnvironment } from '../../shared/runtime-environments'
 import type { VerifyAndAddRuntimeEnvironmentResult } from '../../shared/remote-pairing-verification'
 import type {
@@ -115,6 +116,11 @@ export type RuntimeApi = {
     prepareBrowserClientHostPlacement: (
       args: BrowserClientHostPlacementPreparationRequest
     ) => Promise<BrowserPageCreationPlacement>
+    /** One re-attach if this desktop's browser host is parked; answers whether it still is. */
+    resumeBrowserClientHost?: (args: { selector: string }) => Promise<boolean>
+    onBrowserClientHostParked?: (
+      callback: (event: BrowserClientHostParkedEvent) => void
+    ) => () => void
     // Why: system resume / browser online advance pending shared-control reconnect timers only.
     retryConnectionsNow?: () => Promise<void>
     call: (args: {

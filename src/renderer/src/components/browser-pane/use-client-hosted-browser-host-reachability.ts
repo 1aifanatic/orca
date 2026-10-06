@@ -1,14 +1,17 @@
 import { useEffect } from 'react'
 import { useAppStore } from '@/store'
 import { runtimeHostConnectionStateForEntry } from '@/runtime/runtime-host-connection-state'
-import { ensureBrowserClientHostForReturningRuntime } from '@/runtime/restored-client-hosted-browser-host-attach'
+import {
+  resumeBrowserClientHost,
+  useBrowserClientHostParked
+} from '@/runtime/browser-client-host-parked-environments'
 
 /** Retries the host connection now, and re-attaches this environment's browser host if parked. */
 export function requestClientHostedBrowserReconnect(runtimeEnvironmentId: string): void {
   void window.api.runtimeEnvironments
     .retryControlConnection?.({ selector: runtimeEnvironmentId })
     .catch(() => undefined)
-  void ensureBrowserClientHostForReturningRuntime(useAppStore.getState(), runtimeEnvironmentId)
+  void resumeBrowserClientHost(runtimeEnvironmentId)
 }
 
 /**
@@ -22,8 +25,11 @@ export function useClientHostedBrowserHostReachability({
   runtimeEnvironmentId: string
   isActive: boolean
 }): { hostOffline: boolean; hostName: string | null } {
+  // Why both: parked is main's own verdict even while the control link is up; an unreachable control
+  // link still explains a missing guest when no browser host was ever started to park.
+  const parked = useBrowserClientHostParked(runtimeEnvironmentId)
   // Why only a known entry: no status yet is "not checked", and that is not evidence of offline.
-  const hostOffline = useAppStore((s) => {
+  const controlOffline = useAppStore((s) => {
     const entry = s.runtimeStatusByEnvironmentId.get(runtimeEnvironmentId)
     const state = runtimeHostConnectionStateForEntry(entry)
     return entry !== undefined && (state === 'reconnecting' || state === 'disconnected')
@@ -35,8 +41,8 @@ export function useClientHostedBrowserHostReachability({
   )
   useEffect(() => {
     if (isActive) {
-      void ensureBrowserClientHostForReturningRuntime(useAppStore.getState(), runtimeEnvironmentId)
+      void resumeBrowserClientHost(runtimeEnvironmentId)
     }
   }, [isActive, runtimeEnvironmentId])
-  return { hostOffline, hostName }
+  return { hostOffline: parked || controlOffline, hostName }
 }

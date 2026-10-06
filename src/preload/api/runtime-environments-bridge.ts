@@ -10,6 +10,10 @@ import type { PublicKnownRuntimeEnvironment } from '../../shared/runtime-environ
 import type { RemoteRuntimeSharedConnectionDiagnostics } from '../../shared/remote-runtime-shared-control-types'
 import { RUNTIME_ENVIRONMENT_DIAGNOSTICS_CHANNEL } from '../../shared/runtime-environment-diagnostics'
 import {
+  BROWSER_CLIENT_HOST_PARKED_CHANNEL,
+  type BrowserClientHostParkedEvent
+} from '../../shared/browser-client-host-parked'
+import {
   subscribeRuntimeEnvironmentFromPreload,
   type RuntimeEnvironmentSubscriptionHandle
 } from '../runtime-environment-subscriptions'
@@ -80,6 +84,18 @@ export const runtimeEnvironmentsApi = {
   },
   prepareBrowserClientHostPlacement: (args) =>
     ipcRenderer.invoke('runtimeEnvironments:prepareBrowserClientHostPlacement', args),
+  resumeBrowserClientHost: (args: { selector: string }): Promise<boolean> =>
+    ipcRenderer.invoke('runtimeEnvironments:resumeBrowserClientHost', args),
+  onBrowserClientHostParked: (
+    callback: (event: BrowserClientHostParkedEvent) => void
+  ): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: BrowserClientHostParkedEvent
+    ): void => callback(data)
+    ipcRenderer.on(BROWSER_CLIENT_HOST_PARKED_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(BROWSER_CLIENT_HOST_PARKED_CHANNEL, listener)
+  },
   retryConnectionsNow: (): Promise<void> =>
     ipcRenderer.invoke('runtimeEnvironments:retryConnectionsNow'),
   call: (args: {

@@ -14,7 +14,8 @@ const authority: BrowserClientHostLeaseAuthority = {
   authorityEpoch: 'epoch-a',
   browserHostClientId: 'client-a',
   browserHostGeneration: 4,
-  pageCommandProtocolVersion: 1
+  pageCommandProtocolVersion: 1,
+  pageReconciliationProtocolVersion: 1
 }
 
 const replacementAuthority: BrowserClientHostLeaseAuthority = {
@@ -120,9 +121,9 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     const composition = rig.createComposition()
     await composition.start()
 
-    await expect(composition.replaceAuthority(replacementInput)).rejects.toThrow(
-      'browser_client_page_reconciliation_unsupported'
-    )
+    await expect(composition.replaceAuthority(replacementInput)).rejects.toMatchObject({
+      code: 'browser_client_page_reconciliation_unsupported'
+    })
 
     expect(rig.replacementInventory).toEqual([
       expect.objectContaining({ browserPageId: 'page-a', authorityRuntimeId: 'runtime-a' })
@@ -333,22 +334,12 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     await composition.whenClosed()
   })
 
-  it.each([
-    ['an unknown local error', () => new Error('Stale browser host page command')],
-    [
-      'a host-sent recoverable code',
-      () => new BrowserHostAnswerError('runtime_unavailable', 'restarting')
-    ],
-    [
-      'a host-sent capacity code',
-      () => new BrowserHostAnswerError('runtime_busy', 'lease capacity')
-    ]
-  ])('parks on %s instead of treating it as gone', async (_label, error) => {
+  it('parks on an unknown local error instead of treating it as gone', async () => {
     const rig = createRig()
     const composition = rig.createComposition()
     await composition.start()
 
-    rig.hostOptions.onError?.(error())
+    rig.hostOptions.onError?.(new Error('Stale browser host page command'))
 
     expect(composition.isParked).toBe(true)
     expect(rig.onError).not.toHaveBeenCalled()
@@ -367,6 +358,7 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     await composition.resume()
     expect(rig.hosts).toHaveLength(2)
     expect(composition.isParked).toBe(false)
+    expect(rig.onParkedChange.mock.calls).toEqual([[true, expect.any(Error)], [false]])
     // A runtime that can rekey kept guests gets them back in place: nothing is released or closed.
     expect(rig.executor.retirePage).not.toHaveBeenCalled()
     expect(rig.executor.close).not.toHaveBeenCalled()
@@ -379,22 +371,46 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     ])
   })
 
-  it('re-attaches straight away after a dark route parks a healthy lease', async () => {
+  it('swaps a live lease for a fresh one without parking, as a dark route asks', async () => {
     const rig = createRig({
       initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
     })
     const composition = rig.createComposition()
     await composition.start()
 
-    // The route owner parks and then asks for one resume; a lease that still answers takes it.
-    composition.park(new Error('browser network route stayed unavailable'))
-    expect(rig.routes.suspend).toHaveBeenCalled()
-    await composition.resume()
+    await composition.reattach()
 
-    expect(composition.isParked).toBe(false)
     expect(rig.hosts).toHaveLength(2)
+    expect(rig.onParkedChange).not.toHaveBeenCalled()
     expect(rig.onError).not.toHaveBeenCalled()
     expect(rig.executor.retirePage).not.toHaveBeenCalled()
+  })
+
+  it('stays parked when the lease is lost again while a re-attach is in flight', async () => {
+    vi.useFakeTimers()
+    try {
+      const rig = createRig({
+        parkedGuestDiscardMs: 60_000,
+        initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
+      })
+      const composition = rig.createComposition()
+      await composition.start()
+      rig.hostOptions.onError?.(contactLostError())
+      const gate = rig.holdNextStart()
+
+      const resuming = composition.resume()
+      await vi.waitFor(() => expect(rig.hosts).toHaveLength(2))
+      rig.hostOptions.onError?.(contactLostError())
+      gate.resolve()
+
+      await expect(resuming).rejects.toThrow('browser_client_host_reattach_superseded')
+      expect(composition.isParked).toBe(true)
+      vi.advanceTimersByTime(60_000)
+      expect(rig.executor.retirePage).toHaveBeenCalledWith('page-a', 7)
+      await composition.close()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('leaves a live composition alone when a trigger fires', async () => {
@@ -468,6 +484,24 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('frees only the guests it told an older runtime about, sparing pages recovery placed', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+    rig.hostOptions.onError?.(contactLostError())
+    // The runtime's recovery recreates page-b before the attach answer is acted on.
+    rig.afterNextAttach(() =>
+      rig.executor.snapshotPageInventory.mockReturnValue([
+        retainedPageInventory(),
+        { ...retainedPageInventory(), browserPageId: 'page-b', pageHostGeneration: 9 }
+      ])
+    )
+
+    await composition.resume()
+
+    expect(rig.executor.retirePage.mock.calls).toEqual([['page-a', 7]])
   })
 
   it('closes a parked composition when the runtime refuses the re-attach', async () => {
@@ -646,6 +680,8 @@ function createRig(
 ) {
   const initialAuthority = options.initialAuthority ?? authority
   const startFailures: Error[] = []
+  const startGates: Promise<void>[] = []
+  const afterAttach: (() => void)[] = []
   const order: string[] = []
   let onPageUnavailable = (_browserPageId: string, _pageHostGeneration: number): void => {}
   let settleHandlers = (): void => {}
@@ -724,11 +760,14 @@ function createRig(
       if (failure) {
         throw failure
       }
+      const inventory = callbacks.getPageInventory?.() ?? []
+      afterAttach.shift()?.()
+      await startGates.shift()
       const nextAuthority = replacement
         ? (options.replacementAuthority ?? replacementAuthority)
         : initialAuthority
       if (replacement) {
-        replacementInventory = callbacks.getPageInventory?.() ?? []
+        replacementInventory = inventory
         order.push('attach-replacement-inventory')
       }
       callbacks.onAuthority?.(nextAuthority)
@@ -750,9 +789,17 @@ function createRig(
     })
   })
   const onError = vi.fn()
+  const onParkedChange = vi.fn()
   return {
     order,
+    onParkedChange,
     failNextStart: (error: Error) => startFailures.push(error),
+    afterNextAttach: (run: () => void) => afterAttach.push(run),
+    holdNextStart: () => {
+      const gate = deferred<void>()
+      startGates.push(gate.promise)
+      return gate
+    },
     routes,
     replacementRoutes,
     executor,
@@ -798,7 +845,8 @@ function createRig(
         ...(options.parkedGuestDiscardMs
           ? { parkedGuestDiscardMs: options.parkedGuestDiscardMs }
           : {}),
-        onError
+        onError,
+        onParkedChange
       })
   }
 }

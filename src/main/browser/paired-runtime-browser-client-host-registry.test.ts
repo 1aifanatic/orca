@@ -130,8 +130,12 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
     await registry.resume('environment-b')
     await registry.resume('environment-missing')
 
-    expect(parked.resume).toHaveBeenCalledOnce()
-    expect(live.resume).not.toHaveBeenCalled()
+    expect(parked.reattach).toHaveBeenCalledOnce()
+    expect(live.reattach).not.toHaveBeenCalled()
+
+    // A dark route on a live lease swaps it without passing through the parked state.
+    await registry.reattach('environment-b')
+    expect(live.reattach).toHaveBeenCalledOnce()
   })
 
   it('blocks replacement when the old host cannot prove handler settlement', async () => {
@@ -231,6 +235,7 @@ function createComposition(
       return authority
     }),
     resume: vi.fn(async () => authority),
+    reattach: vi.fn(async () => authority),
     replaceAuthority: vi.fn(async () => ({ ...authority, authorityRuntimeId: 'runtime-b' })),
     retirePage: vi.fn(async () => true),
     close: vi.fn(async () => {

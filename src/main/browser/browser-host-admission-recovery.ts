@@ -4,6 +4,7 @@ import {
   isRecoverableRemoteRuntimeConnectionError,
   toRemoteRuntimeClientErrorLike
 } from '../../shared/remote-runtime-client-error-classification'
+import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
 import { nextBrowserHostReconnectDelay } from './browser-host-lease-reconnect-delay'
 import type { BrowserHostReconnectDelay } from './browser-host-lease-reconnect-delay'
 
@@ -80,9 +81,21 @@ export class BrowserHostAnswerError extends RemoteRuntimeClientError {
   }
 }
 
-/** Only the runtime's own non-recoverable answer is a refusal; anything else may be lost contact. */
-export function isBrowserHostRefusal(error: Error): boolean {
-  return error instanceof BrowserHostAnswerError && !isRecoverableBrowserHostLeaseError(error)
+/** A refusal read from the runtime's own answer rather than from its RPC failure frame. */
+export function browserHostRefusal(code: string, message: string): BrowserHostAnswerError {
+  return new BrowserHostAnswerError(code, message)
+}
+
+/**
+ * Only the runtime's own non-recoverable answer is final. A replaced runtime still answers, but its
+ * successor takes the pages back; anything else may be lost contact.
+ */
+export function isFinalBrowserHostRefusal(error: Error): boolean {
+  return (
+    error instanceof BrowserHostAnswerError &&
+    !isRecoverableBrowserHostLeaseError(error) &&
+    !isBrowserClientHostAuthorityReplaced(error)
+  )
 }
 
 function asError(error: unknown): Error {

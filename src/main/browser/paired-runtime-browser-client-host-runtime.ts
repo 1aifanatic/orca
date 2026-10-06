@@ -30,6 +30,7 @@ import {
 import { selectBrowserClientPageRenderer } from './browser-client-page-renderer-runtime'
 import { PairedRuntimeBrowserClientHostComposition } from './paired-runtime-browser-client-host-composition'
 import { PairedRuntimeBrowserClientHost } from './paired-runtime-browser-client-host'
+import { publishBrowserClientHostParked } from './browser-client-host-parked-publication'
 import {
   PairedRuntimeBrowserClientHostRegistry,
   type PairedRuntimeBrowserClientHostStart
@@ -86,14 +87,15 @@ const browserClientHosts =
       const composition = new PairedRuntimeBrowserClientHostComposition({
         onClosing: routes.release,
         parkedGuestDiscardMs: e2eParkedGuestDiscardMs(),
+        onParkedChange: (parked, error) =>
+          publishBrowserClientHostParked(input.environmentId, parked, error),
         initialInput: input,
-        // Why park, not retire: a route that stayed dark is lost contact, not lost pages. The
-        // immediate resume keeps a healthy lease from sitting parked behind a live status.
+        // Why re-attach, not retire: a route that stayed dark is lost contact, not lost pages. If
+        // the fresh lease fails too, the composition parks or fails on that answer.
         createRoutes: (next, authority) =>
           createNetworkRoutes(next.pairing, authority, next.storageScope, (error) => {
             reportBrowserClientHostError(error)
-            composition.park(error)
-            void browserClientHosts.resume(input.environmentId)
+            void browserClientHosts.reattach(input.environmentId)
           }),
         createExecutor: (next, { retainNetworkRoute, onPageUnavailable }) => {
           executor = new BrowserClientPageCommandExecutor({
@@ -236,6 +238,11 @@ export function retirePairedRuntimeBrowserClientHostEnvironment(
 ): Promise<boolean> {
   clientHostRouteIdentities.delete(environmentId)
   return browserClientHosts.retireEnvironment(environmentId, error)
+}
+
+/** One re-attach if the environment's browser host is parked; a live one is untouched. */
+export function resumePairedRuntimeBrowserClientHost(environmentId: string): Promise<void> {
+  return browserClientHosts.resume(environmentId)
 }
 
 export function shutdownPairedRuntimeBrowserClientHosts(): Promise<void> {

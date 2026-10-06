@@ -12,6 +12,7 @@ type RegisteredBrowserClientHost<Start> = {
   /** True while the runtime is unreachable and the composition is holding its pages for it. */
   readonly isParked: boolean
   resume(): Promise<BrowserClientHostLeaseAuthority>
+  reattach(): Promise<BrowserClientHostLeaseAuthority>
   retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean>
   close(error?: Error): Promise<boolean>
   whenClosed(): Promise<void>
@@ -124,12 +125,24 @@ export class PairedRuntimeBrowserClientHostRegistry<
 
   /** One re-attach if the environment's host is parked; a live or absent one is untouched. */
   resume(environmentId: string): Promise<void> {
+    return this.reattachWhen(environmentId, (composition) => composition.isParked)
+  }
+
+  /** Swaps a live environment's lease for a fresh one without parking it first. */
+  reattach(environmentId: string): Promise<void> {
+    return this.reattachWhen(environmentId, () => true)
+  }
+
+  private reattachWhen(
+    environmentId: string,
+    applies: (composition: RegisteredBrowserClientHost<Start>) => boolean
+  ): Promise<void> {
     return this.enqueue(environmentId, async () => {
       const record = this.hosts.get(environmentId)
-      if (this.closed || !record?.composition.isParked || record.cleanupPending) {
+      if (this.closed || !record || record.cleanupPending || !applies(record.composition)) {
         return
       }
-      record.authority = record.composition.resume()
+      record.authority = record.composition.reattach()
       await record.authority.catch(() => undefined)
     })
   }

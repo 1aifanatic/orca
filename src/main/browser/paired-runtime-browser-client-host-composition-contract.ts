@@ -68,4 +68,6 @@ export type PairedRuntimeBrowserClientHostCompositionOptions<
   /** Runs as closing begins, before teardown: the point after which this composition owns nothing. */
   onClosing?: () => void
   parkedGuestDiscardMs?: number
+  /** Parked means the runtime is out of reach and the pages are held for its return. */
+  onParkedChange?: (parked: boolean, error?: Error) => void
 }

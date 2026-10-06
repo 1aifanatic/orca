@@ -4,8 +4,7 @@ import type {
   BrowserClientHostCommandResult,
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
-import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
-import { BrowserHostAnswerError, isBrowserHostRefusal } from './browser-host-admission-recovery'
+import { browserHostRefusal, isFinalBrowserHostRefusal } from './browser-host-admission-recovery'
 import {
   asCompositionError,
   closeBrowserClientHostComposition,
@@ -35,7 +34,9 @@ export class PairedRuntimeBrowserClientHostComposition<
   private errorReported = false
   private inventoryRefreshPromise: Promise<void> | null = null
   private input: Start
-  private lastAuthority: BrowserClientHostLeaseAuthority | null = null
+  private attached = false
+  /** The current lease's attach inventory: the only guests its runtime was told about. */
+  private publishedInventory: readonly BrowserClientHostedPageInventory[] | null = null
   /** Set while the runtime is unreachable: pages and suspended routes are kept for its return. */
   private parked: { discardTimer: ReturnType<typeof setTimeout> | null } | null = null
 
@@ -66,34 +67,26 @@ export class PairedRuntimeBrowserClientHostComposition<
   }
 
   replaceAuthority(input: Start): Promise<BrowserClientHostLeaseAuthority> {
-    if (this.closed) {
-      return Promise.reject(new Error('paired_runtime_browser_client_host_composition_closed'))
-    }
     this.input = input
-    this.startPromise = this.reattach(input, false)
-    return this.startPromise
+    return this.beginReattach(false)
+  }
+
+  /** Swaps the lease for a fresh one with the same runtime, keeping every guest. */
+  reattach(): Promise<BrowserClientHostLeaseAuthority> {
+    return this.beginReattach(true)
   }
 
   /** One re-attach for a parked composition; a live one answers with its current lease. */
   resume(): Promise<BrowserClientHostLeaseAuthority> {
-    if (this.closed || !this.parked) {
-      return this.start()
-    }
-    this.startPromise = this.reattach(this.input, true)
-    return this.startPromise
+    return this.parked ? this.reattach() : this.start()
   }
 
   /** Holds the pages for the runtime's return; only `close` gives them up. */
-  park(error: Error): void {
-    if (this.closed) {
-      return
-    }
+  private park(error: Error): void {
     if (!this.parked) {
-      console.warn('[browser-client-host] runtime unreachable; keeping pages until it returns:', {
-        error: error.message
-      })
+      this.parked = { discardTimer: null }
+      this.options.onParkedChange?.(true, error)
     }
-    this.parked ??= { discardTimer: null }
     this.parked.discardTimer ??= scheduleParkedGuestDiscard(
       this.executor,
       this.options.parkedGuestDiscardMs
@@ -127,8 +120,7 @@ export class PairedRuntimeBrowserClientHostComposition<
   close(error = new Error('Browser client host composition is closed')): Promise<boolean> {
     if (!this.closed) {
       this.closed = true
-      this.clearGuestDiscard()
-      this.parked = null
+      this.unpark()
       this.hostGeneration += 1
       try {
         this.options.onClosing?.()
@@ -151,31 +143,30 @@ export class PairedRuntimeBrowserClientHostComposition<
 
   private createHost(input: Start, requiresReconciliation: boolean): ComposedClientHost {
     const generation = ++this.hostGeneration
-    let publishedInventory: readonly BrowserClientHostedPageInventory[] | null = null
+    this.publishedInventory = null
     return this.options.createHost(input, {
       handler: (event, signal) => this.handleCommand(generation, event, signal),
       getPageInventory: () => {
         if (this.hostGeneration !== generation) {
           return []
         }
-        publishedInventory = this.executor.snapshotPageInventory()
-        return publishedInventory
+        this.publishedInventory = this.executor.snapshotPageInventory()
+        return this.publishedInventory
       },
       onAuthority: (authority) => {
         if (this.hostGeneration === generation) {
           if (
             requiresReconciliation &&
-            publishedInventory?.length &&
+            this.publishedInventory?.length &&
             authority.pageReconciliationProtocolVersion !== 1
           ) {
-            // Read from the runtime's own ready answer, so it is as final as a refusal.
-            throw new BrowserHostAnswerError(
+            throw browserHostRefusal(
               'browser_client_page_reconciliation_unsupported',
-              'browser_client_page_reconciliation_unsupported'
+              'The runtime cannot take back pages this desktop kept.'
             )
           }
           this.routeSets.activate(input, authority)
-          this.lastAuthority = authority
+          this.attached = true
         }
       },
       onTransportLost: (error) => {
@@ -201,10 +192,16 @@ export class PairedRuntimeBrowserClientHostComposition<
    * Swaps the lease for a fresh one under `input`, keeping the executor so its guests survive; the
    * attach inventory is what lets the runtime rekey them in place.
    */
-  private async reattach(
-    input: Start,
-    sameRuntime: boolean
-  ): Promise<BrowserClientHostLeaseAuthority> {
+  private beginReattach(sameRuntime: boolean): Promise<BrowserClientHostLeaseAuthority> {
+    if (this.closed) {
+      return Promise.reject(new Error('paired_runtime_browser_client_host_composition_closed'))
+    }
+    this.startPromise = this.swapLease(sameRuntime)
+    return this.startPromise
+  }
+
+  private async swapLease(sameRuntime: boolean): Promise<BrowserClientHostLeaseAuthority> {
+    const input = this.input
     this.clearGuestDiscard()
     const error = new Error('Browser client host is re-attaching')
     this.hostGeneration += 1
@@ -223,14 +220,19 @@ export class PairedRuntimeBrowserClientHostComposition<
     }
     try {
       this.host = this.createHost(input, true)
+      const generation = this.hostGeneration
       const authority = await this.host.start()
       // An older runtime cannot rekey a kept guest and leaves it placed nowhere. Only its answer
-      // says so; freeing the guests and republishing lets its recovery reload them at their URL.
+      // says so; freeing what it was told about lets its recovery reload them at their URL, and
+      // spares any page that recovery already placed under a newer generation.
       if (sameRuntime && authority.returningHostReclaimProtocolVersion !== 1) {
-        await releaseBrowserClientGuests(this.executor)
+        await releaseBrowserClientGuests(this.executor, this.publishedInventory ?? [])
         await this.host.refreshPageInventory()
       }
-      this.parked = null
+      if (generation !== this.hostGeneration) {
+        throw new Error('browser_client_host_reattach_superseded')
+      }
+      this.unpark()
       return authority
     } catch (attachError) {
       this.parkOrFail(asCompositionError(attachError))
@@ -240,15 +242,19 @@ export class PairedRuntimeBrowserClientHostComposition<
 
   /** Only the runtime's own refusal is final; anything else may be lost contact and is waited out. */
   private parkOrFail(error: Error): void {
-    if (
-      !this.closed &&
-      this.lastAuthority !== null &&
-      (!isBrowserHostRefusal(error) || isBrowserClientHostAuthorityReplaced(error))
-    ) {
+    if (this.closed || !this.attached || isFinalBrowserHostRefusal(error)) {
+      this.handleHostError(error)
+    } else {
       this.park(error)
-      return
     }
-    this.handleHostError(error)
+  }
+
+  private unpark(): void {
+    this.clearGuestDiscard()
+    if (this.parked) {
+      this.parked = null
+      this.options.onParkedChange?.(false)
+    }
   }
 
   private clearGuestDiscard(): void {
