@@ -203,6 +203,7 @@ it('opens a filtered parent chain and owning lane, then restores the saved set o
     'host:local',
     'lineage:local|parent'
   ])
+  const initialProps: { targetId: string | null } = { targetId: child.id }
   const { result, rerender } = renderHook(
     ({ targetId }: { targetId: string | null }) =>
       useEffectiveCollapsedGroups({
@@ -227,7 +228,7 @@ it('opens a filtered parent chain and owning lane, then restores the saved set o
         folderWorkspaces: [],
         defaultHostId: 'local'
       }),
-    { initialProps: { targetId: child.id } }
+    { initialProps }
   )
   expect([...result.current]).toEqual([
     'all',
