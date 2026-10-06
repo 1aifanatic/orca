@@ -12,8 +12,9 @@ import { subscribeRuntimeClientEvents } from '@/runtime/runtime-client-events'
 import { toRemoteRuntimePtyId } from '@/runtime/runtime-terminal-stream'
 import { getEnvironmentSshStateGeneration } from '@/store/slices/runtime-environment-ssh'
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
-import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
+import { getRepoExecutionHostId, toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeClientEvent } from '../../../../shared/runtime-client-events'
+import { navigationTargetsClients } from '../../../../shared/runtime-navigation'
 import { useAppStore } from '../../store'
 import { createRuntimeClientEventsSync } from '../runtime-client-events-sync'
 import {
@@ -38,7 +39,13 @@ export function registerRuntimeClientIpcBridge(
     environmentId: string,
     repoId: string
   ): Promise<void> => {
-    if ((useAppStore.getState().repos ?? []).some((repo) => repo.id === repoId)) {
+    if (
+      (useAppStore.getState().repos ?? []).some(
+        (repo) =>
+          repo.id === repoId &&
+          getRepoExecutionHostId(repo) === toRuntimeExecutionHostId(environmentId)
+      )
+    ) {
       return
     }
     await useAppStore.getState().fetchRuntimeEnvironmentRepos(environmentId)
@@ -127,8 +134,17 @@ export function registerRuntimeClientIpcBridge(
         })
       return
     }
+    // Older hosts broadcast local/CLI activation without an address; that is not this viewer's intent.
+    if (!event.navigation || !navigationTargetsClients(event.navigation)) {
+      return
+    }
     void ensureRuntimeEventRepoKnown(environmentId, event.repoId)
-      .then(() => activateNotifiedWorktree(event, { allowRuntimeEnvironment: true }))
+      .then(() =>
+        activateNotifiedWorktree(event, {
+          allowRuntimeEnvironment: true,
+          executionHostId: toRuntimeExecutionHostId(environmentId)
+        })
+      )
       .catch((error) => {
         console.error('Failed to activate runtime-created worktree:', error)
       })

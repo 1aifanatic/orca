@@ -25,7 +25,7 @@ export type WorktreeEventRuntime = {
   worktreeChangeRefreshQueue: WorktreeChangeRefreshQueue
   activateNotifiedWorktree: (
     event: Extract<RuntimeClientEvent, { type: 'activateWorktree' }>,
-    options: { allowRuntimeEnvironment: boolean }
+    options: { allowRuntimeEnvironment: boolean; executionHostId?: ExecutionHostId }
   ) => Promise<void>
 }
 
@@ -140,16 +140,22 @@ export function createWorktreeEventRuntime(
       startup,
       defaultTabs
     }: Extract<RuntimeClientEvent, { type: 'activateWorktree' }>,
-    options: { allowRuntimeEnvironment: boolean }
+    options: { allowRuntimeEnvironment: boolean; executionHostId?: ExecutionHostId }
   ): Promise<void> => {
     if (!options.allowRuntimeEnvironment && isRuntimeEnvironmentActive()) {
       // Why: local CLI worktree events carry local ids; runtime activation comes via the remote stream, allowed separately.
       return
     }
-    const existedBeforeFetch = Boolean(useAppStore.getState().getKnownWorktreeById(worktreeId))
+    const existedBeforeFetch = Boolean(
+      useAppStore.getState().getKnownWorktreeById(worktreeId, options.executionHostId)
+    )
     // Why: fetch first so activation can resolve the CLI-created worktree; it arrived from main, not yet in renderer state.
-    await useAppStore.getState().fetchWorktrees(repoId)
-    const existsAfterFetch = Boolean(useAppStore.getState().getKnownWorktreeById(worktreeId))
+    await (options.executionHostId
+      ? useAppStore.getState().fetchWorktrees(repoId, { executionHostId: options.executionHostId })
+      : useAppStore.getState().fetchWorktrees(repoId))
+    const existsAfterFetch = Boolean(
+      useAppStore.getState().getKnownWorktreeById(worktreeId, options.executionHostId)
+    )
     // Why: use the canonical activation path so the CLI switch records a back/forward visit, or the nav buttons ignore it.
     activateAndRevealWorktree(worktreeId, {
       ...(setup ? { setup } : {}),
@@ -157,7 +163,8 @@ export function createWorktreeEventRuntime(
       ...(defaultTabs ? { defaultTabs } : {}),
       ...(!existedBeforeFetch && existsAfterFetch ? { sidebarRevealBehavior: 'auto' } : {}),
       // Why: this activation came from the host runtime stream; echoing it back can create a selection loop.
-      notifyHostRuntime: false
+      notifyHostRuntime: false,
+      ...(options.executionHostId ? { executionHostId: options.executionHostId } : {})
     })
   }
 

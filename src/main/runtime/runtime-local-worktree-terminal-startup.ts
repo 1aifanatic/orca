@@ -20,6 +20,7 @@ import type {
 
 type Ports = {
   canSpawn: boolean
+  provisionInBackground?: boolean
   createTerminal: (
     selector: string,
     options: TerminalCreateOptions
@@ -123,11 +124,14 @@ export async function startRuntimeLocalWorktreeTerminals(args: {
   }
 
   if (shouldActivate) {
-    const runtimeWillProvision = didSpawnStartup && Boolean(setup || defaultTabs)
+    const runtimeWillProvision =
+      (ports.provisionInBackground === true && ports.canSpawn) ||
+      (didSpawnStartup && Boolean(setup || defaultTabs))
     if (runtimeWillProvision) {
-      const provisioned = await ports.provision(
-        provisionArgs(args, startupTerminalHandle, didSpawnStartup, wrappedSetupCommand)
-      )
+      const provisioned = await ports.provision({
+        ...provisionArgs(args, startupTerminalHandle, didSpawnStartup, wrappedSetupCommand),
+        ...(ports.provisionInBackground ? { surfaceOwner: false as const } : {})
+      })
       didSpawnSetup = provisioned.setupSpawned
       setupTerminalHandle = provisioned.setupTerminalHandle
     }

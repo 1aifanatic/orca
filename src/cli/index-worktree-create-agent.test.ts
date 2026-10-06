@@ -81,7 +81,7 @@ describe('orca cli worktree awareness', () => {
       activate: true,
       // Why: the CLI pairs as a runtime device but has no viewer, so --activate must
       // stay an explicit all-surface reveal rather than caller-scoped navigation.
-      navigation: 'all',
+      navigation: 'host',
       parentWorktree: undefined,
       cwdParentWorktree: 'id:repo-1::/tmp/repo',
       noParent: false,
@@ -181,7 +181,7 @@ describe('orca cli worktree awareness', () => {
       comment: undefined,
       runHooks: false,
       activate: true,
-      navigation: 'all',
+      navigation: 'host',
       parentWorktree: undefined,
       cwdParentWorktree: 'id:repo-1::/tmp/repo',
       noParent: false,
