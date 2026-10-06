@@ -11,6 +11,7 @@ import {
 } from './sync-runtime-graph'
 import { syncRuntimeGraph } from './sync-runtime-graph/graph-publication'
 import { makeState } from './sync-runtime-graph-test-harness'
+import { captureWorktreeOperationGenerationSnapshot } from '../lib/worktree-operation-generation'
 import { applyWebSessionTabsSnapshot } from './web-session-tabs-sync'
 import { makeSnapshot, makeState as makeMirrorState } from './web-session-tabs-sync-test-harness'
 
@@ -81,6 +82,45 @@ function terminalState(executionHostId: ExecutionHostId, ptyId: string | null = 
 }
 
 describe('local host session publication', () => {
+  it.each(['hub-a', 'hub-b'])(
+    'does not advertise an SSH editor reached through %s',
+    (environmentId) => {
+      const file = {
+        ...editor(),
+        operationProvenance: {
+          ownershipProjection: 'explicit' as const,
+          generation: captureWorktreeOperationGenerationSnapshot({
+            executionHostId: 'ssh:target',
+            runtimeEnvironmentId: environmentId
+          })
+        }
+      }
+      expect(
+        buildMobileSessionTabSnapshots(makeState({ openFiles: [file] })).flatMap(
+          (snapshot) => snapshot.tabs
+        )
+      ).toEqual([])
+    }
+  )
+
+  it('publishes a captured direct SSH editor despite stale runtime metadata', () => {
+    const file = {
+      ...editor('stale-hub'),
+      operationProvenance: {
+        ownershipProjection: 'explicit' as const,
+        generation: captureWorktreeOperationGenerationSnapshot({
+          executionHostId: 'ssh:target',
+          runtimeEnvironmentId: null
+        })
+      }
+    }
+    expect(
+      buildMobileSessionTabSnapshots(makeState({ openFiles: [file] })).flatMap(
+        (snapshot) => snapshot.tabs
+      )
+    ).toHaveLength(1)
+  })
+
   it('does not advertise a foreign runtime editor as a local file', () => {
     const state = makeState({ openFiles: [editor('wsl-owner')] })
     expect(buildMobileSessionTabSnapshots(state).flatMap((snapshot) => snapshot.tabs)).toEqual([])

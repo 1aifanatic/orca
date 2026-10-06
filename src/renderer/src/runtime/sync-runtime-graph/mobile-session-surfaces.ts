@@ -87,7 +87,12 @@ export function isMobileFileDiffSource(
 }
 
 export function isMobilePublishableOpenFile(file: AppState['openFiles'][number]): boolean {
-  if (parseExecutionHostId(getOpenFileExecutionHostId(file))?.kind === 'runtime') {
+  const captured = file.operationProvenance?.generation.route
+  const environmentId = captured ? captured.runtimeEnvironmentId : file.runtimeEnvironmentId
+  if (
+    environmentId?.trim() ||
+    parseExecutionHostId(getOpenFileExecutionHostId(file))?.kind === 'runtime'
+  ) {
     return false
   }
   // Combined diff tabs use display labels as paths and need the desktop renderer.
