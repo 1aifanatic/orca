@@ -19,7 +19,7 @@ import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
 import {
   classifyDispatchRejection,
-  isFailedStartRejection
+  isFailedStartOrHostFault
 } from './structured-agent-session-dispatch-rejection'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
 import {
@@ -90,23 +90,35 @@ export function latestStructuredAgentSessionRequest(
   return null
 }
 
-/** The sends whose start failed, or that Orca's own fault kept from their agent, by their item
- *  keys: each one's failure is final the moment it is written, whatever else the session still
- *  owes. A conversation command is not a request. */
-export function structuredAgentSessionFailedStartIds(
+/** A send whose start failed: its item key, when it was sent, and when its failure landed. */
+export type StructuredAgentSessionFailedStart = {
+  id: string
+  submittedAt: number
+  resolvedAt: number
+}
+
+/** The sends whose start failed, or that Orca's own fault kept from their agent, in journal order:
+ *  each one's failure is final the moment it is written, whatever else the session still owes. A
+ *  conversation command is not a request. */
+export function structuredAgentSessionFailedStarts(
   items: readonly AgentJournalRenderItem[],
   submissions: readonly AgentJournalSubmission[]
-): string[] {
+): StructuredAgentSessionFailedStart[] {
   const commands = new Set(
     items.flatMap((item) => (isStructuredAgentSessionCommandEntry(item.body) ? [item.itemId] : []))
   )
   return submissions.flatMap((submission) => {
-    const key = agentJournalSubmissionKey(submission.clientMessageId)
+    const id = agentJournalSubmissionKey(submission.clientMessageId)
     return submission.dispatchState === 'rejected' &&
-      !commands.has(key) &&
-      (isFailedStartRejection(submission) ||
-        classifyDispatchRejection(submission).kind === 'hostFault')
-      ? [key]
+      !commands.has(id) &&
+      isFailedStartOrHostFault(submission)
+      ? [
+          {
+            id,
+            submittedAt: submission.submittedAt,
+            resolvedAt: submission.resolvedAt ?? submission.submittedAt
+          }
+        ]
       : []
   })
 }

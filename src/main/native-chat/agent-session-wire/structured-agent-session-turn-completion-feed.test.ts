@@ -623,40 +623,80 @@ describe('a request the agent or its start refused', () => {
     expect(h.outcomes()).toEqual([['t1', 'success']])
   })
 
+  /** A failed start sent at `submittedAt` whose failure landed at `resolvedAt`. */
+  const failedStartAt = (clientMessageId: string, submittedAt: number, resolvedAt: number) => ({
+    ...failedStart(clientMessageId),
+    submittedAt,
+    resolvedAt
+  })
+
   // Each queued message makes its own start; when the agent's CLI is missing they all fail alike.
-  it('notifies a run of failed starts once, and the next failure after a turn ran again', () => {
+  it('notifies a run of failed starts once: each later one was already waiting when the first failed', () => {
     const h = harness()
     h.listen()
     h.observe()
     const items = [userEntry('m1', 1), userEntry('m2', 2), userEntry('m3', 3)]
     h.setJournal(items, [pending('m1'), pending('m2'), pending('m3')])
     h.observe()
-    h.setJournal(items, [failedStart('m1'), pending('m2'), pending('m3')])
+    h.setJournal(items, [failedStartAt('m1', 1, 10), pending('m2'), pending('m3')])
     h.observe()
-    h.setJournal(items, [failedStart('m1'), failedStart('m2'), pending('m3')])
+    h.setJournal(items, [failedStartAt('m1', 1, 10), failedStartAt('m2', 2, 11), pending('m3')])
     h.observe()
-    h.setJournal(items, [failedStart('m1'), failedStart('m2'), failedStart('m3')])
+    h.setJournal(items, [
+      failedStartAt('m1', 1, 10),
+      failedStartAt('m2', 2, 11),
+      failedStartAt('m3', 3, 12)
+    ])
     h.observe()
     expect(h.outcomes()).toEqual([[M1, 'failure']])
+  })
 
-    const later = [...items, userEntry('m4', 4), turnItem(turn('t4', 'running'), 5)]
-    const failed = [failedStart('m1'), failedStart('m2'), failedStart('m3')]
-    h.setJournal(later, [...failed, sent('m4', { dispatchState: 'accepted' })])
+  // Nothing ran in between, and the first failure was hours earlier: it is news again.
+  it('notifies a failed start sent after the earlier failure landed, with no turn between', () => {
+    const h = harness()
+    h.listen()
     h.observe()
-    const settled = [...items, userEntry('m4', 4), turnItem(turn('t4', 'completed', 'success'), 5)]
-    h.setJournal(settled, [...failed, sent('m4', { dispatchState: 'accepted' })])
+    const first = [userEntry('m1', 1)]
+    h.setJournal(first, [failedStartAt('m1', 1, 10)])
     h.observe()
-    h.setJournal(
-      [...settled, userEntry('m5', 6)],
-      [...failed, sent('m4', { dispatchState: 'accepted' }), failedStart('m5')]
-    )
+    const later = [...first, userEntry('m2', 2)]
+    h.setJournal(later, [failedStartAt('m1', 1, 10), pending('m2')])
+    h.observe()
+    h.setJournal(later, [failedStartAt('m1', 1, 10), failedStartAt('m2', 3_600_000, 3_600_010)])
     h.observe()
     expect(h.outcomes()).toEqual([
       [M1, 'failure'],
-      ['t4', 'success'],
-      [agentJournalSubmissionKey('m5'), 'failure']
+      [M2, 'failure']
     ])
   })
+
+  it.each([
+    ['sent after the first failure landed: notified', 30, [M1, M3]],
+    ['already waiting when the first failure landed: part of its run', 3, [M1]]
+  ] as const)(
+    'ignores a content refusal between failed starts: a failure %s',
+    (_case, submittedAt, notified) => {
+      const h = harness()
+      h.listen()
+      h.observe()
+      const items = [userEntry('m1', 1), userEntry('m2', 2), userEntry('m3', 3)]
+      const contentRefused = { ...refused('m2'), submittedAt: 15, resolvedAt: 20 }
+      h.setJournal(items, [failedStartAt('m1', 1, 10), contentRefused, pending('m3')])
+      h.observe()
+      h.setJournal(items, [
+        failedStartAt('m1', 1, 10),
+        contentRefused,
+        failedStartAt('m3', submittedAt, 40)
+      ])
+      h.observe()
+      expect(
+        h
+          .outcomes()
+          .filter(([id]) => id !== M2)
+          .map(([id]) => id)
+      ).toEqual(notified)
+    }
+  )
 
   it('does not wait on a send left pending at an older fence', () => {
     const h = harness()

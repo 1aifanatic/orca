@@ -16,7 +16,10 @@ import type {
   AgentSessionTurnCompletion,
   AgentSessionTurnCompletionEvent
 } from '../../../shared/agent-session-wire'
-import type { StructuredAgentSessionLatestRequest } from '../../../shared/structured-agent-session-latest-request'
+import type {
+  StructuredAgentSessionFailedStart,
+  StructuredAgentSessionLatestRequest
+} from '../../../shared/structured-agent-session-latest-request'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionStatusState } from './structured-agent-session-status-feed'
 
@@ -46,12 +49,27 @@ type RequestMark = Pick<StructuredAgentSessionLatestRequest, 'kind' | 'id'>
 
 /** Per-session baseline. `settled` is the last settled request this feed has accounted for, and
  *  `failedStarts` the sends whose start had failed as of the last observation; absence of the whole
- *  entry — not a null field — is what makes the first observation silent. `failedStartStreak`: the
- *  last completion announced was a failed start, and no turn has settled since. */
+ *  entry — not a null field — is what makes the first observation silent. */
 type SessionBaseline = CompletionFeedCursor & {
   settled: RequestMark | null
   failedStarts: ReadonlySet<string>
-  failedStartStreak: boolean
+}
+
+/** Whether a failed start is part of an earlier one's run: it was already waiting when that one's
+ *  failure landed, as each queued message is when the agent's CLI is missing. A failure sent after
+ *  every earlier one landed starts a run of its own. */
+function inEarlierRun(
+  failed: StructuredAgentSessionFailedStart,
+  index: number,
+  all: readonly StructuredAgentSessionFailedStart[]
+): boolean {
+  return all.some(
+    (earlier, earlierIndex) =>
+      earlierIndex !== index &&
+      (earlier.resolvedAt < failed.resolvedAt ||
+        (earlier.resolvedAt === failed.resolvedAt && earlierIndex < index)) &&
+      failed.submittedAt <= earlier.resolvedAt
+  )
 }
 
 function settledMark(request: StructuredAgentSessionLatestRequest | null): RequestMark | null {
@@ -106,15 +124,10 @@ export class StructuredAgentSessionTurnCompletionFeed {
     const cursor = (journal ?? session.journal).cursor()
     const request = state.latestRequest
     const baseline = this.baselines.get(sessionId)
-    const failedStarts = new Set(state.failedStarts)
+    const failedStarts = new Set(state.failedStarts.map((failed) => failed.id))
     if (!baseline) {
       // Baseline only. Whatever the session was already holding is history, not news.
-      this.baselines.set(sessionId, {
-        ...cursor,
-        settled: settledMark(request),
-        failedStarts,
-        failedStartStreak: false
-      })
+      this.baselines.set(sessionId, { ...cursor, settled: settledMark(request), failedStarts })
       return
     }
     if (baseline.epoch !== cursor.epoch || cursor.sequence < baseline.sequence) {
@@ -129,21 +142,17 @@ export class StructuredAgentSessionTurnCompletionFeed {
     }
     baseline.sequence = cursor.sequence
     // A send whose start failed is announced the moment it is final, whatever else the session
-    // still owes, and never again as the latest request below. A run of them, as when the agent's
-    // CLI is missing and each queued message tries in turn, is announced once.
-    for (const id of failedStarts) {
-      if (!baseline.failedStarts.has(id) && !baseline.failedStartStreak) {
-        baseline.failedStartStreak = true
-        this.announce(session, sessionId, state, id, 'failure')
+    // still owes, and never again as the latest request below. A run of them is announced once.
+    state.failedStarts.forEach((failed, index, all) => {
+      if (!baseline.failedStarts.has(failed.id) && !inEarlierRun(failed, index, all)) {
+        this.announce(session, sessionId, state, failed.id, 'failure')
       }
-    }
+    })
     baseline.failedStarts = failedStarts
     if (request?.turnState === 'running') {
       // A running turn clears the mark, so this detector fires on each running → settled
-      // transition rather than on an id it happens not to have seen. A start landed, so the next
-      // failed one is news again.
+      // transition rather than on an id it happens not to have seen.
       baseline.settled = null
-      baseline.failedStartStreak = false
       return
     }
     // Owed work waits, so sends refused one commit at a time announce once, when the last is
@@ -158,9 +167,6 @@ export class StructuredAgentSessionTurnCompletionFeed {
       return
     }
     baseline.settled = settledMark(request)
-    if (request.kind === 'turn') {
-      baseline.failedStartStreak = false
-    }
     if (request.kind === 'refused-send' && failedStarts.has(request.id)) {
       return
     }

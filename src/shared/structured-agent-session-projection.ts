@@ -25,7 +25,8 @@ import {
   latestStructuredAgentSessionAssistantMessage,
   latestStructuredAgentSessionPrompt,
   latestStructuredAgentSessionRequest,
-  structuredAgentSessionFailedStartIds,
+  structuredAgentSessionFailedStarts,
+  type StructuredAgentSessionFailedStart,
   type StructuredAgentSessionLatestRequest
 } from './structured-agent-session-latest-request'
 import {
@@ -247,8 +248,8 @@ export function projectStructuredAgentSessionStatusState(
   latestRequest: StructuredAgentSessionLatestRequest | null
   /** Whether a running turn or an unanswered send is still owed, even beneath a pending prompt. */
   owesWork: boolean
-  /** The sends whose start failed; see `structuredAgentSessionFailedStartIds`. */
-  failedStarts: string[]
+  /** The sends whose start failed; see `structuredAgentSessionFailedStarts`. */
+  failedStarts: StructuredAgentSessionFailedStart[]
 } {
   if (!hasStructuredAgentSessionRequest(items, submissions, currentFence)) {
     return {
@@ -289,7 +290,7 @@ export function projectStructuredAgentSessionStatusState(
   return {
     latestRequest,
     owesWork: status !== 'idle' && owesStructuredAgentSessionWork(items, submissions, currentFence),
-    failedStarts: structuredAgentSessionFailedStartIds(items, submissions),
+    failedStarts: structuredAgentSessionFailedStarts(items, submissions),
     summary: {
       status,
       latestPrompt: normalizePromptField(latestStructuredAgentSessionPrompt(items)),
