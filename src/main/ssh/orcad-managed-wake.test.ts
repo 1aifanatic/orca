@@ -131,6 +131,25 @@ describe('wakeStoppedManagedOrcad', () => {
     expect(host.fence).toBe(false)
   })
 
+  it('releases its own fence on reconnect when the drop surfaced as a plain failure', async () => {
+    host = stoppedHost()
+    // A disconnect fails every later step, the fence release included, without the unconfirmed flag.
+    const gone = new Error('Not connected')
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('nohup') || command.includes('echo RELEASED')) {
+        throw gone
+      }
+      return host.exec(command)
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(gone)
+    expect(host.fence).toBe(true)
+
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
+    expect(await wakeStoppedManagedOrcad(slot)).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
   it('never claims a fence with no owner token, even while its own interrupted token is held', async () => {
     host = stoppedHost()
     const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })

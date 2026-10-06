@@ -18,7 +18,6 @@ import { RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
 import { joinRemotePath } from './ssh-remote-platform'
 
 import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
-import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import {
   ensureOrcadSlotServing,
   orcadSlotDir,
@@ -77,49 +76,30 @@ async function wakeAfterPrior(
     return { outcome: 'fenced' }
   }
   // Claimed before the fence and written by the command that creates it: a drop at any point
-  // after the fence lands leaves one this client can prove its own.
+  // after the fence lands leaves one this client can prove its own. Kept on any failure, since a
+  // release over a dropped connection fails quietly; the next wake re-proves it on the host.
   const token = randomUUID()
   interruptedWakes.set(host, token)
-  const settle = (): void => {
-    if (interruptedWakes.get(host) === token) {
-      interruptedWakes.delete(host)
-    }
-  }
-  return withOrcadActivationLock(
+  const result = await withOrcadActivationLock(
     options,
     async (): Promise<OrcadManagedWake> => {
-      try {
-        // Re-read under the fence: another client may have activated or started a slot meanwhile.
-        const active = (await readOrcadActivationRecord(options)).active
-        if (!active) {
-          settle()
-          return { outcome: 'not-activated' }
-        }
-        const identity = await resolveOrcadSlotIdentity(options, active)
-        onStarting()
-        const readiness = await ensureOrcadSlotServing(options, identity)
-        settle()
-        return { outcome: 'started', readiness }
-      } catch (error) {
-        // A lost connection keeps the fence on the host; anything else releases it.
-        if (!isUnconfirmedSshCommandTermination(error)) {
-          settle()
-        }
-        throw error
+      // Re-read under the fence: another client may have activated or started a slot meanwhile.
+      const active = (await readOrcadActivationRecord(options)).active
+      if (!active) {
+        return { outcome: 'not-activated' }
       }
+      const identity = await resolveOrcadSlotIdentity(options, active)
+      onStarting()
+      return { outcome: 'started', readiness: await ensureOrcadSlotServing(options, identity) }
     },
-    (): OrcadManagedWake => {
-      settle()
-      return { outcome: 'fenced' }
-    },
+    (): OrcadManagedWake => ({ outcome: 'fenced' }),
     token
-  ).catch((error: unknown) => {
-    // Never acquired, or released: only a lost connection can leave this token's fence behind.
-    if (!isUnconfirmedSshCommandTermination(error)) {
-      settle()
-    }
-    throw error
-  })
+  )
+  // Released, or never acquired.
+  if (interruptedWakes.get(host) === token) {
+    interruptedWakes.delete(host)
+  }
+  return result
 }
 
 const runningWakes = new Map<string, Promise<OrcadManagedWake>>()
