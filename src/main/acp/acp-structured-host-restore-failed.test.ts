@@ -1,8 +1,9 @@
 // A Grok session Grok cannot reopen, through the real host, record store, journal and launch
 // resolver: a fresh session continues the chat, the chain records what it replaced, and the chat
-// says so once, unless nothing was ever exchanged on the lost session.
+// says so once, unless nothing was ever exchanged on the lost session. A start that succeeds
+// writes the row an earlier attach failure dropped.
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { readAgentSessionFailureFact } from '../../shared/agent-session-failure'
 import {
@@ -30,25 +31,28 @@ afterEach(async () => {
 })
 
 const FRESH = 'grok-fresh-session'
+const FRESH_2 = 'grok-second-fresh-session'
 const keyOf = (nativeId: string) =>
   agentSessionProviderHandleKey({ transport: ACP_HANDLE_TRANSPORT, agent: 'grok', nativeId })
 
-/** Grok's first session opens, then cannot be reopened with `code`; every session after it reopens. */
-function firstSessionLost(loads: string[], code: number, message: string) {
-  let opened = 0
+type Lost = Map<string, { code: number; message: string }>
+
+/** Grok opens sessions in turn and cannot reopen any session in `lost`; it reopens every other. */
+function sessionsLost(loads: string[], lost: Lost) {
+  const opened = [PROVIDER_SESSION, FRESH, FRESH_2]
   return (agent: AcpScriptedAgent) => {
     agent.on('session/new', (frame) => {
-      opened += 1
       agent.reply(frame, {
-        sessionId: opened === 1 ? PROVIDER_SESSION : FRESH,
+        sessionId: opened.shift() ?? 'grok-unexpected-session',
         configOptions: GROK_CONFIG_OPTIONS
       })
     })
     agent.on('session/load', (frame) => {
       const { sessionId } = z.object({ sessionId: z.string() }).parse(frame.params)
       loads.push(sessionId)
-      if (sessionId === PROVIDER_SESSION) {
-        agent.fail(frame, code, message)
+      const failure = lost.get(sessionId)
+      if (failure) {
+        agent.fail(frame, failure.code, failure.message)
       } else {
         agent.reply(frame, { configOptions: GROK_CONFIG_OPTIONS })
       }
@@ -58,12 +62,13 @@ function firstSessionLost(loads: string[], code: number, message: string) {
 
 async function openRestoreRig(code: number, message: string) {
   const loads: string[] = []
+  const lost: Lost = new Map([[PROVIDER_SESSION, { code, message }]])
   const resolver: { resolve: ReturnType<typeof createAcpStructuredLaunchResolver> | null } = {
     resolve: null
   }
   const opened = await openHostRig({
     initialize: RESUMES,
-    script: firstSessionLost(loads, code, message),
+    script: sessionsLost(loads, lost),
     deps: {
       resolveLaunch: (input) => {
         if (!resolver.resolve) {
@@ -103,7 +108,7 @@ async function openRestoreRig(code: number, message: string) {
     await rig.settle()
     await host.flushStreamedEvents(SESSION)
   }
-  return { ...opened, loads, warnings, exchange }
+  return { ...opened, loads, lost, warnings, exchange }
 }
 
 describe('a saved Grok session Grok cannot reopen', () => {
@@ -208,6 +213,90 @@ describe('a created Grok session Grok reports missing on the first reopen', () =
     })
     expect(head?.replaces).toBeUndefined()
     expect(await warnings()).toEqual([])
+    await host.close(SESSION, 'user-close')
+  })
+})
+
+describe('the warning row of a replacement whose attach failed', () => {
+  async function replaceThenFailAttach() {
+    const opened = await openRestoreRig(-32603, 'session file is corrupt')
+    const { host, store, fence, journalDatabase, warnings } = opened
+    expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
+    await host.close(SESSION, 'user-close')
+    // The journal's open fails after the fresh session's link is durable, before its row is written.
+    vi.spyOn(journalDatabase, 'legacyDirectoryFor').mockImplementationOnce(() => {
+      throw new Error('journal path unavailable')
+    })
+    await expect(host.attach(CALLER, attachParams(fence()))).rejects.toThrow(
+      'journal path unavailable'
+    )
+    expect(
+      agentSessionProviderHandleChainHead(store.getRecord(SESSION)?.providerHandleChain ?? [])
+    ).toMatchObject({
+      handle: { nativeId: FRESH },
+      replaces: { key: keyOf(PROVIDER_SESSION), reason: 'restore-failed' }
+    })
+    expect(await warnings()).toEqual([])
+    return opened
+  }
+
+  it('is written by the next start that loads the fresh session, and only once', async () => {
+    const { host, fence, loads, warnings } = await replaceThenFailAttach()
+
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(loads).toEqual([PROVIDER_SESSION, FRESH])
+    expect(await warnings()).toHaveLength(1)
+
+    await host.close(SESSION, 'user-close')
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(loads).toEqual([PROVIDER_SESSION, FRESH, FRESH])
+    expect(await warnings()).toHaveLength(1)
+    await host.close(SESSION, 'user-close')
+  })
+
+  it('is written when Grok never saved the fresh session and a newer one supersedes it', async () => {
+    const { host, store, fence, loads, lost, warnings } = await replaceThenFailAttach()
+    lost.set(FRESH, { code: -32002, message: 'Resource not found' })
+
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(loads).toEqual([PROVIDER_SESSION, FRESH])
+    const chain = store.getRecord(SESSION)?.providerHandleChain ?? []
+    expect(chain).toHaveLength(2)
+    expect(agentSessionProviderHandleChainHead(chain)).toMatchObject({
+      handle: { nativeId: FRESH_2 },
+      supersedesKey: keyOf(FRESH),
+      replaces: { key: keyOf(PROVIDER_SESSION), reason: 'restore-failed' }
+    })
+    expect(await warnings()).toHaveLength(1)
+    await host.close(SESSION, 'user-close')
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(loads).toEqual([PROVIDER_SESSION, FRESH, FRESH_2])
+    expect(await warnings()).toHaveLength(1)
+    await host.close(SESSION, 'user-close')
+  })
+})
+
+describe('a replacement Grok never saved, superseded after its row was written', () => {
+  it('keeps the one row: the conversation lost is still the first one', async () => {
+    const { host, fence, loads, lost, warnings } = await openRestoreRig(
+      -32603,
+      'session file is corrupt'
+    )
+    expect(await host.attach(CALLER, attachParams())).toMatchObject({ ok: true })
+    await host.close(SESSION, 'user-close')
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(await warnings()).toHaveLength(1)
+    await host.close(SESSION, 'user-close')
+    lost.set(FRESH, { code: -32002, message: 'Resource not found' })
+
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(loads).toEqual([PROVIDER_SESSION, FRESH])
+    expect(await warnings()).toHaveLength(1)
+    // The newer session carries the same loss, so reopening it says nothing new.
+    await host.close(SESSION, 'user-close')
+    expect(await host.attach(CALLER, attachParams(fence()))).toMatchObject({ ok: true })
+    expect(loads).toEqual([PROVIDER_SESSION, FRESH, FRESH_2])
+    expect(await warnings()).toHaveLength(1)
     await host.close(SESSION, 'user-close')
   })
 })

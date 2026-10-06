@@ -47,7 +47,14 @@ async function signInWith(options: {
     launch: {
       env: options.env,
       ...(options.resume
-        ? { resume: { sessionId: PROVIDER_SESSION, key: 'acp-key', mayBeUnsaved: () => false } }
+        ? {
+            resume: {
+              sessionId: PROVIDER_SESSION,
+              key: 'acp-key',
+              mayBeUnsaved: () => false,
+              unannouncedLosses: () => []
+            }
+          }
         : {})
     },
     initialize: { authMethods: options.authMethods },

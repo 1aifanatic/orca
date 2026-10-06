@@ -35,7 +35,12 @@ const hello: AgentJournalMessageItem = {
 const RESUMES = { agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } } }
 const resume = {
   launch: {
-    resume: { sessionId: PROVIDER_SESSION, key: 'acp:grok:saved', mayBeUnsaved: () => false }
+    resume: {
+      sessionId: PROVIDER_SESSION,
+      key: 'acp:grok:saved',
+      mayBeUnsaved: () => false,
+      unannouncedLosses: () => []
+    }
   }
 }
 
@@ -280,7 +285,12 @@ describe('reattaching a Grok chat the journal holds', () => {
   it('starts a new session in place of a created one that session/load reports missing', async () => {
     const rig = await openAcpAdapterRig({
       launch: {
-        resume: { sessionId: 'never-saved', key: 'acp:grok:never-saved', mayBeUnsaved: () => true }
+        resume: {
+          sessionId: 'never-saved',
+          key: 'acp:grok:never-saved',
+          mayBeUnsaved: () => true,
+          unannouncedLosses: () => []
+        }
       },
       initialize: RESUMES,
       script: (agent) =>
@@ -308,7 +318,12 @@ describe('reattaching a Grok chat the journal holds', () => {
     async (_label, mayBeUnsaved, code, message) => {
       const rig = await openAcpAdapterRig({
         launch: {
-          resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: () => mayBeUnsaved }
+          resume: {
+            sessionId: 'saved-1',
+            key: 'acp-key-saved-1',
+            mayBeUnsaved: () => mayBeUnsaved,
+            unannouncedLosses: () => []
+          }
         },
         initialize: RESUMES,
         script: (agent) => agent.on('session/load', (frame) => agent.fail(frame, code, message))
@@ -333,7 +348,12 @@ describe('reattaching a Grok chat the journal holds', () => {
   it('refuses a signed-out agent at reopen rather than replacing its session', async () => {
     const rig = await openAcpAdapterRig({
       launch: {
-        resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: () => false }
+        resume: {
+          sessionId: 'saved-1',
+          key: 'acp-key-saved-1',
+          mayBeUnsaved: () => false,
+          unannouncedLosses: () => []
+        }
       },
       initialize: RESUMES,
       script: (agent) =>
@@ -350,7 +370,12 @@ describe('reattaching a Grok chat the journal holds', () => {
     const logger = { warn: vi.fn(), error: vi.fn() }
     const rig = await openAcpAdapterRig({
       launch: {
-        resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: () => false }
+        resume: {
+          sessionId: 'saved-1',
+          key: 'acp-key-saved-1',
+          mayBeUnsaved: () => false,
+          unannouncedLosses: () => []
+        }
       },
       initialize: RESUMES,
       deps: { logger },

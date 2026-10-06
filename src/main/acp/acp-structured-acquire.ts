@@ -1,7 +1,8 @@
 // Making a reservation real for an ACP agent: open its connection (which spawns and owns the
 // process), record it before any handshake, initialize with the client's file system and terminals
 // off, then reattach the session this chat proved with `session/load` (`session/resume` only for an
-// agent that cannot load) or start a new one; a saved session the agent cannot reopen is replaced by a new one, with a warning row. The
+// agent that cannot load) or start a new one. A saved session the agent cannot reopen is replaced
+// by a new one, with a warning row that any later start writes if this attach never did. The
 // journal already holds a reattached chat, so whatever the agent sends while it reattaches is not
 // written, except context usage. The handshake has no time bound: the acquire's abort signal
 // (Close, Stop, quit) stops it at any point.
@@ -305,8 +306,13 @@ export async function acquireAcpStructuredSession(input: {
     if (connection.exited || connection.closed) {
       throw new Error(connection.stderrTail() || `${spec.command} exited while starting`)
     }
-    if (takeover?.replaces) {
-      liveLane.apply(acpSessionNotRestoredRow(started.sessionId, agentName))
+    // The chat says once per lost conversation that the agent forgot it, this start's loss included.
+    const lost = [
+      ...(launch.resume?.unannouncedLosses() ?? []),
+      ...(takeover?.replaces ? [takeover.replaces.key] : [])
+    ]
+    for (const key of lost) {
+      liveLane.apply(acpSessionNotRestoredRow(key, started.sessionId, agentName))
     }
     return { acquisition: { process, link, acquisitionGeneration: generation }, session }
   } catch (error) {

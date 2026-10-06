@@ -70,7 +70,8 @@ export function launch(resume: () => boolean): () => Promise<AcpStructuredLaunch
             agent: 'grok',
             nativeId: PROVIDER_SESSION
           }),
-          mayBeUnsaved: () => false
+          mayBeUnsaved: () => false,
+          unannouncedLosses: () => []
         }
       : null
   })

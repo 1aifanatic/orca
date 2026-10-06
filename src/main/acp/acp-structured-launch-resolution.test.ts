@@ -7,9 +7,14 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import type { JournalLoad } from '../native-chat/agent-session-journal/journal-open'
 import { createJournalReducerState } from '../native-chat/agent-session-journal/journal-reducer'
-import { spellProviderTimelineKey } from '../native-chat/agent-session-timeline/provider-timeline-identity'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import {
+  createLegacyProviderTimelineIdentityScheme,
+  spellProviderTimelineKey
+} from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
 import { ACP_CHILD_ENV_TO_DELETE, acpLaunchSpecFor } from './acp-launch-specs'
+import { acpSessionNotRestoredItem } from './acp-session-reopen-failure'
 import { createAcpStructuredLaunchResolver } from './acp-structured-launch-resolution'
 
 const GROK = acpLaunchSpecFor('grok')!
@@ -163,6 +168,87 @@ describe('ACP launch resolution', () => {
         throw new Error('journal_closed')
       })
     ).toBe(false)
+  })
+
+  it('names the lost conversations whose warning row no session of the chat wrote', async () => {
+    const link = (nativeId: string, replaced?: string) => ({
+      linkId: `link-${nativeId}`,
+      origin: 'created' as const,
+      mintedAtFence: 1,
+      observedAt: 1,
+      handle: { transport: 'acp', agent: 'grok', nativeId },
+      ...(replaced
+        ? {
+            replaces: {
+              key: agentSessionProviderHandleKey({
+                transport: 'acp',
+                agent: 'grok',
+                nativeId: replaced
+              }),
+              reason: 'restore-failed',
+              replacedAt: 1
+            }
+          }
+        : {})
+    })
+    const lostKey = agentSessionProviderHandleKey({
+      transport: 'acp',
+      agent: 'grok',
+      nativeId: 'acp-1'
+    })
+    const replaced = grokRecord({ providerHandleChain: [link('acp-1'), link('acp-2', 'acp-1')] })
+    /** A journal holding the row for `lostKey`, written while `providerSession` ran. */
+    const withRow = (providerSession: string): JournalLoad => {
+      const load = journalWithTurns()
+      const itemId = agentJournalItemKey(
+        createLegacyProviderTimelineIdentityScheme({
+          agent: 'grok',
+          sessionId: identity.sessionId
+        }).item({
+          namespace: providerSession,
+          family: 'item',
+          key: { source: 'provider', value: acpSessionNotRestoredItem(lostKey) },
+          thread: providerSession
+        })
+      )
+      load.state.items.set(itemId, {
+        itemId,
+        revision: 1,
+        sequence: 2,
+        observedAt: 1,
+        body: { kind: 'status', tone: 'warning', text: 'forgot' }
+      })
+      return load
+    }
+    const losses = async (record: AgentSessionRecord, readJournal: () => JournalLoad | null) =>
+      (await resolver(record, false, readJournal).resolve({ identity })).resume?.unannouncedLosses()
+
+    const reads: string[] = []
+    // A chain that lost nothing never reads the journal.
+    expect(
+      await losses(grokRecord({ providerHandleChain: [link('acp-1')] }), () => {
+        reads.push('read')
+        return null
+      })
+    ).toEqual([])
+    expect(reads).toEqual([])
+    expect(await losses(replaced, () => null)).toEqual([lostKey])
+    expect(await losses(replaced, () => journalWithTurns('acp-2'))).toEqual([lostKey])
+    expect(await losses(replaced, () => withRow('acp-2'))).toEqual([])
+    // A row the superseded replacement wrote still counts.
+    expect(await losses(replaced, () => withRow('acp-gone'))).toEqual([])
+    // A journal that does not read whole proves nothing, so no row is written.
+    expect(
+      await losses(replaced, () => ({
+        ...journalWithTurns(),
+        damage: { sequence: 3, cause: 'sequence-gap' }
+      }))
+    ).toEqual([])
+    expect(
+      await losses(replaced, () => {
+        throw new Error('journal_closed')
+      })
+    ).toEqual([])
   })
 
   it('refuses a record pinned to another host or another agent', async () => {
