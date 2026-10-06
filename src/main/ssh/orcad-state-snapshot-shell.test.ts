@@ -10,20 +10,24 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runProcess } from '../../shared/child-process/run-process'
+import { runProcess, spawnProcess } from '../../shared/child-process/run-process'
 import {
   captureOrcadStateSnapshotCommand,
   clearOrcadStateSnapshotMembersCommand,
   parseOrcadSnapshotCapture,
   parseOrcadSnapshotRestore,
-  restoreOrcadStateSnapshotCommand
+  restoreOrcadStateSnapshotCommand,
+  serializedStateMutationCommand
 } from './orcad-state-snapshot'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 
 const posix = getRemoteHostPlatform('linux-x64')
 
+// Linux hosts often run dash as /bin/sh; its builtins differ from bash's (`kill -- -pgid`).
+const SHELL = process.env.ORCA_TEST_POSIX_SHELL ?? '/bin/sh'
+
 async function sh(command: string): Promise<string> {
-  const result = await runProcess({ program: '/bin/sh', args: ['-c', command] })
+  const result = await runProcess({ program: SHELL, args: ['-c', command] })
   return result.stdout
 }
 
@@ -120,13 +124,14 @@ describe.skipIf(process.platform === 'win32')('snapshot commands on a real shell
     expect(existsSync(lock)).toBe(true)
   })
 
-  it('takes over a lock whose holder is gone, and releases it when done', async () => {
+  it('takes over a lock whose whole process group is gone, and releases it when done', async () => {
     await sh(captureOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))
     writeFileSync(join(root, 'profiles', 'p.json'), 'current')
     const lock = join(remoteBase, 'orcad-state-mutation.lock')
     mkdirSync(lock)
     const exited = (await runProcess({ program: '/bin/sh', args: ['-c', 'echo $$'] })).stdout
     writeFileSync(join(lock, 'pid'), exited.trim())
+    writeFileSync(join(lock, 'pgid'), exited.trim())
 
     expect(
       parseOrcadSnapshotRestore(
@@ -137,20 +142,44 @@ describe.skipIf(process.platform === 'win32')('snapshot commands on a real shell
     expect(existsSync(lock)).toBe(false)
   })
 
-  it('takes over a lock whose pid is alive but whose holder stopped refreshing it', async () => {
-    await sh(captureOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))
-    writeFileSync(join(root, 'profiles', 'p.json'), 'current')
+  it('never takes over a lock that names no process group', async () => {
     const lock = join(remoteBase, 'orcad-state-mutation.lock')
-    mkdirSync(lock)
-    // A reused pid reads alive; ten quiet minutes prove nobody is running under it.
-    writeFileSync(join(lock, 'pid'), String(process.pid))
-    utimesSync(lock, new Date(Date.now() - 10 * 60_000), new Date(Date.now() - 10 * 60_000))
-
+    mkdirSync(lock, { recursive: true })
+    const exited = (await runProcess({ program: '/bin/sh', args: ['-c', 'echo $$'] })).stdout
+    writeFileSync(join(lock, 'pid'), exited.trim())
+    utimesSync(lock, new Date(0), new Date(0))
+    // A host that could not start a group cannot prove the run's children are gone.
     expect(
-      parseOrcadSnapshotRestore(
-        await sh(restoreOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))
-      )
-    ).toBe('restored')
-    expect(existsSync(lock)).toBe(false)
+      (await sh(restoreOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))).trim()
+    ).toBe('STATE_MUTATION_BUSY')
+    expect(existsSync(lock)).toBe(true)
   })
+
+  it('keeps the lock while a killed shell’s child still runs, and frees it once the group is gone', async () => {
+    const lock = join(remoteBase, 'orcad-state-mutation.lock')
+    // Stands in for a restore whose shell dies while its rm or tar keeps going.
+    const run = spawnProcess({
+      program: SHELL,
+      args: ['-c', serializedStateMutationCommand(remoteBase, 'sleep 30; echo DONE', 1)]
+    })
+    try {
+      await expect
+        .poll(() => existsSync(join(lock, 'pid')) && existsSync(join(lock, 'pgid')))
+        .toBe(true)
+      const shell = Number(readFileSync(join(lock, 'pid'), 'utf8'))
+      const group = Number(readFileSync(join(lock, 'pgid'), 'utf8'))
+      expect(group).toBeGreaterThan(1)
+      process.kill(shell, 'SIGKILL')
+
+      const next = (): Promise<string> =>
+        sh(serializedStateMutationCommand(remoteBase, 'echo RAN', 1))
+      expect((await next()).trim()).toBe('STATE_MUTATION_BUSY')
+
+      process.kill(-group, 'SIGKILL')
+      await expect.poll(async () => (await next()).trim(), { timeout: 5_000 }).toBe('RAN')
+      expect(existsSync(lock)).toBe(false)
+    } finally {
+      run.kill('SIGKILL')
+    }
+  }, 20_000)
 })

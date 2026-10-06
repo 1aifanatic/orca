@@ -67,9 +67,6 @@ export const ORCAD_STATE_MUTATION_DEADLINE_SECONDS = 15 * 60
  * pty-less command running after its channel closes, so a client that stops waiting has not
  * stopped the work, and a rerun beside it would mix two restores in one stage.
  */
-// Five missed beats: a live holder never goes this long without refreshing its lock.
-const ORCAD_STATE_MUTATION_HOLDER_STALE_MINUTES = 5
-
 export function serializedStateMutationCommand(
   baseDir: string,
   script: string,
@@ -79,17 +76,23 @@ export function serializedStateMutationCommand(
   const fence = shellEscape(
     `${baseDir}/${ORCAD_ACTIVATION_TRANSACTION_DIRNAME}/${RELAY_INSTALL_LOCK_NAME}`
   )
+  const busy = `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0;`
   const guarded = [
     `lock=${lock}; fence=${fence};`,
     `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
     'if ! mkdir "$lock" 2>/dev/null; then',
-    'holder=$(cat "$lock/pid" 2>/dev/null);',
-    // Why the age check: a run killed between mkdir and its pid write leaves no holder to probe.
-    // Why the beat too: a reused pid reads alive, but only a live holder keeps the lock fresh.
-    `if { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null && [ -n "$(find "$lock" -maxdepth 0 -mmin -${ORCAD_STATE_MUTATION_HOLDER_STALE_MINUTES} 2>/dev/null)" ]; } ||`,
-    '{ [ -z "$holder" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }; then',
-    `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; fi;`,
-    `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; }; fi;`,
+    'holder=$(cat "$lock/pid" 2>/dev/null); group=$(cat "$lock/pgid" 2>/dev/null);',
+    // No pid yet: the run died before its work began, so only the first minute is unsafe.
+    'if [ -z "$holder" ]; then',
+    `[ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || { ${busy} };`,
+    // Why the group: a killed shell can leave its tar or rm running; any live member keeps it.
+    `elif [ -z "$group" ] || kill -0 "-$group" 2>/dev/null; then ${busy}`,
+    'fi;',
+    `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { ${busy} }; fi;`,
+    // A host with no way to start a group records none, so its lock is never taken over.
+    'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
+    'group=$(ps -o pgid= -p $$ 2>/dev/null | tr -d " ");',
+    '[ -n "$group" ] && echo "$group" > "$lock/pgid"; fi;',
     'echo $$ > "$lock/pid";',
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
     // A wake's fence ages toward takeover on its own, so its token stops the refresh.
@@ -100,9 +103,13 @@ export function serializedStateMutationCommand(
     script
   ].join(' ')
   const run = `sh -c ${shellEscape(guarded)}`
-  // Why KILL: GNU timeout signals the whole group, so tar and rm stop with the shell.
   return [
-    `if command -v timeout >/dev/null 2>&1; then timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS} ${run}; else ${run}; fi;`,
+    // Its own process group, so the lock can name every process the mutation started.
+    'orca_state_group() { if command -v setsid >/dev/null 2>&1; then ORCA_STATE_MUTATION_GROUP=1 setsid "$@";',
+    `elif command -v perl >/dev/null 2>&1; then ORCA_STATE_MUTATION_GROUP=1 perl -e ${shellEscape('setpgrp(0, 0); exec { $ARGV[0] } @ARGV or exit 127')} "$@";`,
+    'else "$@"; fi; };',
+    // Why timeout inside the group: KILL then reaches tar and rm, not only the shell.
+    `if command -v timeout >/dev/null 2>&1; then orca_state_group timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS} ${run}; else orca_state_group ${run}; fi;`,
     `status=$?; if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then echo ${ORCAD_STATE_MUTATION_DEADLINE}; fi`
   ].join(' ')
 }
