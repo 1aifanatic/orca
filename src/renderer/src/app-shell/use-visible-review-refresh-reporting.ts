@@ -169,7 +169,9 @@ export function useVisibleReviewRefreshReporting(): void {
           ? state.activeWorktreeId
           : null
       const newlyForeground = foreground !== null && foregroundRef.current !== foreground
-      foregroundRef.current = foreground
+      if (foreground === null) {
+        foregroundRef.current = null
+      }
       void report(
         document.visibilityState === 'visible'
           ? visibleReviewWorktreeIdsForState(useAppStore.getState())
@@ -180,9 +182,12 @@ export function useVisibleReviewRefreshReporting(): void {
         if (
           mounted &&
           newlyForeground &&
+          foregroundRef.current !== foreground &&
+          rightSidebarShowsPullRequestData(current) &&
           document.visibilityState === 'visible' &&
           current.activeWorktreeId === foreground
         ) {
+          foregroundRef.current = foreground
           refreshForegroundVisibleReview(current)
         }
       })

@@ -15,7 +15,7 @@ import {
   visibleCandidateAfterOutcome
 } from './pr-refresh-candidate-policy'
 import type { PRRefreshEventPublisher } from './pr-refresh-event-publisher'
-import type { PRRefreshPacing } from './pr-refresh-pacing'
+import { type PRRefreshPacing, usesActiveRefreshPacing } from './pr-refresh-pacing'
 import type { PRRefreshQueue, PRRefreshQueueEntry } from './pr-refresh-queue'
 import { prRefreshRateLimitPausedUntil } from './pr-refresh-rate-limit-gate'
 import type { PRRefreshRetryState } from './pr-refresh-retry-state'
@@ -211,7 +211,7 @@ export class PRRefreshQueueDrainer {
           ) {
             this.pacing.noteBackgroundStart()
           }
-          if (next.reason === 'active') {
+          if (usesActiveRefreshPacing(next)) {
             this.pacing.noteActiveStart(next)
           }
         }
