@@ -103,6 +103,8 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
     vi.stubEnv('USERPROFILE', home)
     vi.stubEnv('CODEX_HOME', join(root, 'never-used-codex-home'))
     vi.stubEnv('ORCA_USER_DATA_PATH', join(home, 'user-data'))
+    // Why: the app's userData always exists; the memo is written there.
+    mkdirSync(join(home, 'user-data'))
     const codexVersion = await probeCodexVersion(binary!)
     expect(codexVersion).not.toBeNull()
     const derived = await deriveCodexHookHashes(binary!, command(), codexVersion!)
@@ -289,6 +291,7 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
       vi.stubEnv('USERPROFILE', home)
       vi.stubEnv('CODEX_HOME', '')
       vi.stubEnv('ORCA_USER_DATA_PATH', join(home, 'user-data'))
+      mkdirSync(join(home, 'user-data'))
       await reconcileRealHome()
     }
 
@@ -406,7 +409,9 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
     const posts: string[] = []
     const receiver = await listen(recordPosts(posts))
     const model = await startMockResponses()
-    const workdir = join(home, 'tui-work')
+    // Why resolved: Codex 0.158 matches the trusted project only by the real path, and a symlinked
+    // HOME (the ~/.codex case) left it untrusted, so the turn never ran and no hook posted.
+    const workdir = join(realpathSync(home), 'tui-work')
     mkdirSync(workdir, { recursive: true })
     const out = join(home, 'tui.out')
     const help = await execFileAsync(binary!, ['--help'], {
