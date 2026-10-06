@@ -64,6 +64,7 @@ const CODEX_INDEX_HEAL_CONTRACT_PREFIXES = [
   'src/main/codex/codex-hook-trust-',
   'src/main/codex/codex-hook-approval-first-write',
   'src/main/codex/codex-hook-hash-lookup',
+  'src/main/codex/codex-hook-orca-approvals',
   'src/main/codex/codex-hook-local-install',
   'src/main/codex/codex-hook-user-mirroring',
   'src/main/codex/codex-hook-definition',
