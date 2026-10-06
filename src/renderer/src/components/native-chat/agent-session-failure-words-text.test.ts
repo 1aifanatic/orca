@@ -172,7 +172,7 @@ describe('desktop words for a failure fact', () => {
       "Codex n'a pas pu redémarrer. Relancez /compact."
     )
     expect(sentence('notSignedIn', 'clear')).toBe(
-      'Codex n’est pas connecté. Exécutez `codex login` ou choisissez un compte dans les paramètres des Comptes Codex.'
+      'Codex n’est pas connecté. Exécutez `codex login` ou choisissez un compte dans les paramètres des Comptes Codex. Relancez /clear.'
     )
     await i18n.changeLanguage('ja')
     expect(sentence('providerStartFailed', 'compact')).toBe(

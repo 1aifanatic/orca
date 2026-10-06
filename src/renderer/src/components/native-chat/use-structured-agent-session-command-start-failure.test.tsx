@@ -185,7 +185,7 @@ describe('a conversation command whose reply lands after the fence moved', () =>
     const outcome = await commandAcrossFenceMove('clear', commandReply('clear', NOT_SIGNED_IN))
     expect(outcome.accepted).toBe(false)
     expect(outcome.error).toBe(
-      'Codex n’est pas connecté. Exécutez `codex login` ou choisissez un compte dans les paramètres des Comptes Codex.'
+      'Codex n’est pas connecté. Exécutez `codex login` ou choisissez un compte dans les paramètres des Comptes Codex. Relancez /clear.'
     )
   })
 
@@ -233,7 +233,7 @@ describe('a conversation command whose reply lands after the fence moved', () =>
     expect(await commandAcrossFenceMove('clear', commandReply('clear', NOT_SIGNED_IN))).toEqual({
       accepted: false,
       error:
-        "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings."
+        "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings. Run /clear again."
     })
   })
 
