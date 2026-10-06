@@ -1,7 +1,7 @@
 import { open, realpath } from 'node:fs/promises'
 import { isAbsolute, normalize } from 'node:path'
 import { z } from 'zod'
-import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
+import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import {
   agentSessionProviderHandleChainHead,
   agentSessionProviderHandleKey,
@@ -12,6 +12,7 @@ import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
 import type { PiRpcLaunchOptions } from './rpc-launch'
+import { probePiRpcVersion, resolvePiRpcCommand } from './rpc-version'
 
 export type PiRpcResolvedLaunch = PiRpcLaunchOptions & {
   previous: AgentSessionProviderHandleLink | null
@@ -111,10 +112,16 @@ export function createPiRpcLaunchResolver(
     }
     const pathEnv = env.PATH ?? env.Path ?? null
     const homePath = env.HOME ?? env.USERPROFILE
+    const command =
+      deps.resolveCommand?.({ pathEnv, ...(homePath ? { homePath } : {}) }) ??
+      resolvePiRpcCommand(env)
+    if (!(await probePiRpcVersion({ program: command, cwd, env }))) {
+      throw agentSessionRefusalError('structured_agent_session_unsupported', {
+        reason: 'hostUnsupported'
+      })
+    }
     return {
-      command:
-        deps.resolveCommand?.({ pathEnv, ...(homePath ? { homePath } : {}) }) ??
-        resolveCliCommand('pi', { pathEnv, ...(homePath ? { homePath } : {}) }),
+      command,
       cwd,
       env,
       fullAccess: deps.resolveFullAccess?.() ?? true,

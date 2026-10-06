@@ -8,6 +8,13 @@ import { agentSessionProviderHandleKey } from '../../shared/agent-session-provid
 import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
 import { createPiRpcLaunchResolver, piRpcProviderLink } from './rpc-launch-resolution'
+import { probePiRpcVersion } from './rpc-version'
+import type * as PiRpcVersion from './rpc-version'
+
+vi.mock('./rpc-version', async (importOriginal) => ({
+  ...(await importOriginal<typeof PiRpcVersion>()),
+  probePiRpcVersion: vi.fn()
+}))
 
 const identity: AgentSessionJournalIdentity = {
   sessionId: 'session-pi-resolve',
@@ -18,6 +25,7 @@ const identity: AgentSessionJournalIdentity = {
 }
 let root: string
 beforeEach(async () => {
+  vi.mocked(probePiRpcVersion).mockReset().mockResolvedValue(true)
   root = await mkdtemp(join(tmpdir(), 'orca-pi-resolver-'))
 })
 afterEach(async () => {
@@ -80,6 +88,17 @@ async function setup() {
 }
 
 describe('Pi host launch resolution', () => {
+  it('refuses acquisition if the selected binary was replaced by an unsupported version', async () => {
+    const h = await setup()
+    vi.mocked(probePiRpcVersion).mockResolvedValue(false)
+    await expect(h.resolver(identity)).rejects.toThrow('structured_agent_session_unsupported')
+    expect(probePiRpcVersion).toHaveBeenCalledWith({
+      program: '/host/bin/pi',
+      cwd: h.workspace,
+      env: { PATH: '/host/bin', HOME: '/host/home', PI_CODING_AGENT_DIR: '/host/account' }
+    })
+  })
+
   it('uses the runtime workspace, binary and account home for a new folder session', async () => {
     const h = await setup()
     const launch = await h.resolver(identity)

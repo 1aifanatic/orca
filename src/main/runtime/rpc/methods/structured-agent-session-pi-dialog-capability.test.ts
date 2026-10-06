@@ -15,7 +15,10 @@ import { computeAgentSessionPayloadFingerprint } from '../../../../shared/agent-
 import { CLAUDE_STRUCTURED_AGENT } from '../../../claude/claude-structured-agent-definition'
 import { PI_RPC_AGENT } from '../../../pi/rpc-agent-definition'
 import { DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES } from '../../../ipc/desktop-renderer-runtime-capabilities'
-import type { AgentSessionStatusSummary } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionStatusSummary,
+  AgentSessionTurnCompletion
+} from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionStatusSubscriber } from '../../../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import type { StructuredAgentSessionTurnCompletionSubscriber } from '../../../native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
@@ -293,7 +296,7 @@ describe('Pi dialog-shape client capability', () => {
     )
     hostCalls.subscribeTurnCompletions = vi.fn(
       (subscriber: StructuredAgentSessionTurnCompletionSubscriber) => {
-        const completion = {
+        const completion: AgentSessionTurnCompletion = {
           scope: {
             executionHostId: 'local',
             wslDistro: null,

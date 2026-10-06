@@ -3,6 +3,7 @@ import { agentSessionRefusalError } from '../../shared/agent-session-wire-refusa
 import { OrcaRuntimeWithGetWorktreePs } from './orca-runtime-get-worktree-ps'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { resolveStructuredAgentSessionCreateSupport } from '../native-chat/structured-agent-session-create-support'
+import { supportsPiRpcLaunch } from '../pi/rpc-create-support'
 import {
   resolveCommittedStructuredAgentSessionAdoptionIntent,
   resolveStructuredAgentSessionAdoptionForCreate
@@ -34,10 +35,17 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     agent: StructuredAgentId
   ): Promise<{ supported: boolean; reason?: 'agent' | 'remote' | 'wsl' }> {
     const location = await this.resolveStructuredAgentSessionLocation(worktreeSelector)
+    let adapterSupportsCreate = await this.structuredAgentSupportsLocation(agent, location)
+    if (adapterSupportsCreate && agent === 'pi') {
+      adapterSupportsCreate = await supportsPiRpcLaunch({
+        settings: this.requireStore().getSettings(),
+        cwd: (await this.resolveRuntimeFileTarget(worktreeSelector)).worktree.path
+      })
+    }
     return resolveStructuredAgentSessionCreateSupport({
       agent,
       location,
-      adapterSupportsCreate: await this.structuredAgentSupportsLocation(agent, location),
+      adapterSupportsCreate,
       getSettings: () => this.requireStore().getSettings()
     })
   }
