@@ -69,11 +69,11 @@ export function verifyManagedOrcadTunnelIdentity(
   if (!environment.orcadDeployment) {
     return Promise.resolve({ verdict: 'verified' })
   }
-  // Why no device id: the runtime id, our pinned key and our own token being accepted prove the
-  // server; a saved device id left stale by a racing reply must not block it (status re-records it).
-  return verifyOrcadPairingIdentity(getPreferredPairingOffer(environment), {
-    runtimeId: environment.runtimeId
-  })
+  // Why no runtime id: it is minted per process, so a restart by another desktop, or while this one
+  // was away, changes it. The E2EE handshake with our pinned host key and our token being accepted
+  // prove the server; the first authenticated status reply records the new id. Why no device id:
+  // one left stale by a racing reply must not block it either.
+  return verifyOrcadPairingIdentity(getPreferredPairingOffer(environment), { runtimeId: null })
 }
 
 /**
