@@ -1,3 +1,10 @@
+import { STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES } from './structured-agent-session-surface-capabilities'
+export {
+  STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY
+} from './structured-agent-session-surface-capabilities'
 import { AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES } from './agent-session-attention-capabilities'
 export {
   AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
@@ -239,21 +246,6 @@ export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
   'agent-session.structured.claude.v1' as const
-// Why: paired structured clients explicitly hold every visible session surface, allowing the host
-// to stop provider children after the last surface closes without tying lifetime to a transport.
-export const STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY =
-  'agent-session.structured.hold.v1' as const
-// Why: a client holding only a session id — an Agent Session History row — asks the host to
-// republish that chat's tab. An older host has no such method, and a client must learn that during
-// negotiation rather than by calling and reading a refusal it cannot distinguish from a real one.
-export const STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY =
-  'agent-session.structured.reveal.v1' as const
-// Why: `agentSession.create` gains an optional `resumeFrom`, and its params are a STRICT union — an
-// older host rejects the unknown key as a schema error, which a client cannot tell from a real
-// refusal. Worse, without probing, a client cannot know whether a host that accepted the call
-// adopted the conversation or quietly started a blank one. Negotiate before offering the action.
-export const STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY =
-  'agent-session.structured.resume-history.v1' as const
 // Why: agentSession.conversationOutline is additive; a client probes this before calling so an
 // older host leaves the message rail on loaded messages instead of answering method_not_found.
 export const AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY =
@@ -399,9 +391,7 @@ export const RUNTIME_CAPABILITIES = [
   // turn starts, so a client may gate on either.
   AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY,
   AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
-  STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
+  ...STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES,
   ...AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,

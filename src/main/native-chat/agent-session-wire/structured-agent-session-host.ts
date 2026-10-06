@@ -212,6 +212,17 @@ export class StructuredAgentSessionHost {
   supportsCreate = (location: AgentSessionExecutionLocation, agent: string): boolean =>
     providerSupport.adapterSupportsCreate(this.deps.adapter, location, agent)
 
+  /** Every agent this runtime registered: what `agentSession.agents` publishes. */
+  agentDefinitions = () => this.deps.agents.definitions()
+
+  /** Saved chats can outlive their registration; both vocabularies bound a client's audience. */
+  knownAgentIds = (): readonly string[] => [
+    ...new Set([
+      ...this.deps.agents.definitions().map(({ agent }) => agent),
+      ...this.deps.store.listRecords().map(({ provider }) => provider)
+    ])
+  ]
+
   private readonly tabs = sessionTabs.createStructuredAgentSessionTabSurface(
     this,
     this.sessions,

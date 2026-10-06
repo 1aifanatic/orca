@@ -1,6 +1,7 @@
 import { vi } from 'vitest'
 import type { StructuredAgentSessionHost } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-host'
 import { setStructuredAgentSessionHost } from '../../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
+import { CODEX_STRUCTURED_AGENT } from '../../../src/main/codex/codex-structured-agent-definition'
 import {
   AGENT_SESSION_TURN_ITEM_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
@@ -95,7 +96,9 @@ export function structuredHostStub(
     subscribeTurnCompletions: vi.fn(() => () => undefined),
     // No session subject, so an acknowledgement retires nothing and needs no runtime push stub.
     attentionSubjectPrefix: vi.fn(() => null),
-    unsubscribe: vi.fn()
+    unsubscribe: vi.fn(),
+    agentDefinitions: vi.fn(() => [CODEX_STRUCTURED_AGENT]),
+    knownAgentIds: vi.fn(() => [CODEX_STRUCTURED_AGENT.agent])
   }
 }
 

@@ -473,6 +473,7 @@ import {
 import { SshTarget } from './ssh-params'
 import {
   AcknowledgeAttentionParams,
+  AgentsParams,
   AttachParams,
   CancelParams,
   ConversationCommandParams,
@@ -588,6 +589,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agent.launchReplay': AgentLaunchReplay,
   'agentHooks.prepareCodexForWslPane': PrepareCodexForWslPaneParams,
   'agentSession.acknowledgeAttention': AcknowledgeAttentionParams,
+  'agentSession.agents': AgentsParams,
   'agentSession.cancel': CancelParams,
   'agentSession.close': OptionsParams,
   'agentSession.commands': OptionsParams,

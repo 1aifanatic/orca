@@ -4,6 +4,7 @@
 // is how a newer client's field becomes a different effect on an older host.
 export {
   AcknowledgeAttentionParams,
+  AgentsParams,
   AttachParams,
   CancelParams,
   ConversationCommandParams,
