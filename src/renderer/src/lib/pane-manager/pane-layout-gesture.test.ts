@@ -20,7 +20,7 @@ describe('pane layout gesture marker', () => {
 
     divider.dispatchEvent(new MouseEvent('dblclick'))
 
-    expect(onLayoutChanged).toHaveBeenCalledExactlyOnceWith('divider-reset')
+    expect(onLayoutChanged).toHaveBeenCalledExactlyOnceWith('gesture')
   })
 
   it('marks an equalize command as a gesture only when it changes sizes', () => {
@@ -40,6 +40,6 @@ describe('pane layout gesture marker', () => {
     equalizeManagedPaneSizes(panes, root, onLayoutChanged)
     equalizeManagedPaneSizes(panes, root, onLayoutChanged)
 
-    expect(onLayoutChanged).toHaveBeenCalledExactlyOnceWith('equalize')
+    expect(onLayoutChanged).toHaveBeenCalledExactlyOnceWith('gesture')
   })
 })

@@ -2,7 +2,6 @@
 import { cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useTerminalPaneLayoutPersistence } from './use-terminal-pane-layout-persistence'
-import { GESTURE_LAYOUT_PERSIST } from './terminal-layout-persist-options'
 
 const LEFT = '11111111-1111-4111-8111-111111111111'
 const RIGHT = '22222222-2222-4222-8222-222222222222'
@@ -77,7 +76,7 @@ describe('terminal layout gesture persist', () => {
     push.mockClear()
 
     hook.result.current.persistLayoutSnapshot()
-    hook.result.current.persistLayoutSnapshot(GESTURE_LAYOUT_PERSIST)
+    hook.result.current.persistLayoutSnapshot('gesture')
 
     const [[, automaticLayout], [, gestureLayout]] = setTabLayout.mock.calls
     expect(gestureLayout).toEqual(automaticLayout)

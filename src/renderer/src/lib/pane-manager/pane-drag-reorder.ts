@@ -5,9 +5,9 @@ import type {
   PaneExternalDropHandler,
   PaneExternalDropResolver,
   PaneExternalDropTarget,
-  PaneLayoutGesture,
   PaneStyleOptions
 } from './pane-manager-types'
+import type { PaneLayoutEditIntent } from '../../../../shared/rpc-contract/session-tabs-schemas-params'
 import { detachPaneFromTree, findPaneChildren, insertPaneNextTo } from './pane-tree-ops'
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ export type DragReorderCallbacks = {
   applyDividerStyles: () => void
   refitPanesUnder: (el: HTMLElement) => void
   requestPaneReparentFrame?: (callback: FrameRequestCallback) => void
-  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
+  onLayoutChanged?: (intent?: PaneLayoutEditIntent) => void
   onDragActiveChange?: (active: boolean) => void
   resolveExternalDropTarget?: PaneExternalDropResolver
   onExternalPaneDrop?: PaneExternalDropHandler
@@ -134,7 +134,7 @@ export function handlePaneDrop(
   callbacks.applyPaneOpacity()
   callbacks.applyDividerStyles()
   updateMultiPaneState(callbacks)
-  callbacks.onLayoutChanged?.('pane-reorder')
+  callbacks.onLayoutChanged?.('gesture')
 }
 
 export function showDropOverlay(state: DragReorderState): void {

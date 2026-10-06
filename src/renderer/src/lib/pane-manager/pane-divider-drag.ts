@@ -1,9 +1,9 @@
 import { holdPtyResizesForPaneSubtrees } from './pane-pty-resize-hold'
-import type { PaneLayoutGesture } from './pane-manager-types'
+import type { PaneLayoutEditIntent } from '../../../../shared/rpc-contract/session-tabs-schemas-params'
 
 export type DividerCallbacks = {
   refitPanesUnder: (el: HTMLElement) => void
-  onLayoutChanged?: (gesture?: PaneLayoutGesture) => void
+  onLayoutChanged?: (intent?: PaneLayoutEditIntent) => void
   onDragActiveChange?: (active: boolean) => void
 }
 
@@ -176,7 +176,7 @@ export function attachDividerDrag(
     nextInitialFlex = ''
 
     if (didMove && commitLayout) {
-      callbacks.onLayoutChanged?.('divider-drag')
+      callbacks.onLayoutChanged?.('gesture')
     }
     didMove = false
   }
@@ -272,7 +272,7 @@ export function attachDividerDrag(
 
     callbacks.refitPanesUnder(prev)
     callbacks.refitPanesUnder(next)
-    callbacks.onLayoutChanged?.('divider-reset')
+    callbacks.onLayoutChanged?.('gesture')
   }
 
   const onPointerCancel = (e: PointerEvent): void => {

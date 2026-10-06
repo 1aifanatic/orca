@@ -295,7 +295,7 @@ describe('attachPaneDrag', () => {
     expect(state.currentExternalDropTarget).toBeNull()
     expect(state.cleanupActiveDrag).toBeNull()
     expect(onDragActiveChange).toHaveBeenLastCalledWith(false)
-    expect(onLayoutChanged).toHaveBeenCalledExactlyOnceWith('pane-reorder')
+    expect(onLayoutChanged).toHaveBeenCalledExactlyOnceWith('gesture')
   })
 
   it('drops onto an external target when no pane target is under the pointer', () => {

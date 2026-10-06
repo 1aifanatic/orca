@@ -12,10 +12,7 @@ import {
   sanitizeTerminalLayoutPaneTitles
 } from '@/lib/terminal-pane-title-sanitization'
 import type { TerminalPaneStartupController } from './use-terminal-pane-startup-actions'
-import {
-  GESTURE_LAYOUT_PERSIST,
-  type LayoutPersistOptions
-} from './terminal-layout-persist-options'
+import type { PaneLayoutEditIntent } from '../../../../shared/rpc-contract/session-tabs-schemas-params'
 
 export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartupController) {
   const {
@@ -43,7 +40,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
     chatOwnerRef.current = { chatLeafId, isChatViewMode }
   }, [chatLeafId, isChatViewMode])
   const persistLayoutSnapshot = useCallback(
-    (options?: LayoutPersistOptions): void => {
+    (intent?: PaneLayoutEditIntent): void => {
       const manager = managerRef.current
       const container = containerRef.current
       if (!manager || !container) {
@@ -131,12 +128,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
         (ptyId) => typeof ptyId === 'string' && isRemoteRuntimePtyId(ptyId)
       )
       if (hasRemotePane) {
-        remotePaneLayoutPusherRef.current?.push({
-          worktreeId,
-          tabId,
-          layout,
-          intent: options?.intent
-        })
+        remotePaneLayoutPusherRef.current?.push({ worktreeId, tabId, layout, intent })
       }
       for (const leafId of currentLeafIds) {
         clearedScrollbackLeafIds.delete(leafId)
@@ -185,7 +177,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
         removedTitleLeafIdsRef.current.add(leafId)
       }
       // Why: every caller is a user clearing a pane title.
-      persistLayoutSnapshot(GESTURE_LAYOUT_PERSIST)
+      persistLayoutSnapshot('gesture')
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
     [persistLayoutSnapshot]

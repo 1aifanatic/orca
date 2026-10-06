@@ -29,7 +29,6 @@ import {
 } from './terminal-pane-lifecycle-primitives'
 import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
 import type { TerminalPaneManagerOptionsContext } from './terminal-pane-mount-context'
-import { GESTURE_LAYOUT_PERSIST } from './terminal-layout-persist-options'
 import { resolveTerminalInlineImagesEnabled } from '../../../../shared/terminal-inline-images-settings'
 
 /** Builds the imperative PaneManager option bag from the mount context. */
@@ -84,7 +83,7 @@ export function createTerminalPaneManagerOptions(
         context.deps.updateTabTitle(tabId, paneTitle)
       }
     },
-    onLayoutChanged: (gesture) => {
+    onLayoutChanged: (intent) => {
       scheduleRuntimeGraphSync()
       context.deps.syncExpandedLayout()
       context.syncCanExpandState()
@@ -92,7 +91,7 @@ export function createTerminalPaneManagerOptions(
       context.syncPaneLayoutRevision()
       context.queueResizeAll(false)
       if (context.shouldPersistLayout()) {
-        context.deps.persistLayoutSnapshot(gesture ? GESTURE_LAYOUT_PERSIST : undefined)
+        context.deps.persistLayoutSnapshot(intent)
       }
     },
     onPaneDragActiveChange: (active) => {

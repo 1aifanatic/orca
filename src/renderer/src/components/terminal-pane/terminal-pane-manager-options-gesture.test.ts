@@ -29,16 +29,13 @@ function createOptions(shouldPersistLayout = true) {
 }
 
 describe('terminal pane manager layout gesture wiring', () => {
-  it.each(['divider-drag', 'divider-reset', 'pane-reorder', 'equalize'] as const)(
-    'persists a %s gesture with the gesture marker',
-    (gesture) => {
-      const { options, persistLayoutSnapshot } = createOptions()
-      options.onLayoutChanged?.(gesture)
-      expect(persistLayoutSnapshot).toHaveBeenCalledExactlyOnceWith({ intent: 'gesture' })
-    }
-  )
+  it('persists a gesture with the gesture marker', () => {
+    const { options, persistLayoutSnapshot } = createOptions()
+    options.onLayoutChanged?.('gesture')
+    expect(persistLayoutSnapshot).toHaveBeenCalledExactlyOnceWith('gesture')
+  })
 
-  it('persists an automatic layout change without options, as before', () => {
+  it('persists an automatic layout change unmarked, as before', () => {
     const { options, persistLayoutSnapshot } = createOptions()
     options.onLayoutChanged?.()
     expect(persistLayoutSnapshot).toHaveBeenCalledExactlyOnceWith(undefined)
@@ -46,7 +43,7 @@ describe('terminal pane manager layout gesture wiring', () => {
 
   it('keeps the persist gate for gestures', () => {
     const { options, persistLayoutSnapshot } = createOptions(false)
-    options.onLayoutChanged?.('divider-drag')
+    options.onLayoutChanged?.('gesture')
     expect(persistLayoutSnapshot).not.toHaveBeenCalled()
   })
 })
