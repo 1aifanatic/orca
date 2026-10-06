@@ -32,7 +32,7 @@ describe('chat code typography opt-in', () => {
     )
     expect(screen.getByTitle('git status')).toHaveAttribute('data-native-chat-code-content')
     expect(container.querySelector('pre')).toHaveAttribute('data-native-chat-code-content')
-    expect(container.querySelector('code')).not.toHaveAttribute('data-native-chat-code-content')
+    expect(screen.getByText('Ran')).not.toHaveAttribute('data-native-chat-code-content')
     const header = container.querySelector('button')
     expect(header).not.toBeNull()
     expect(header?.querySelector('[data-native-chat-code-content]')).toBeNull()
