@@ -4,10 +4,7 @@ import { isRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { isLogicalClientCutoverError } from '../transport/stable-logical-rpc-client'
 import { nativeChatTerminalWrite } from './mobile-session-write-operations'
 import { typeAgentTuiCommand } from '../../../src/shared/agent-tui-command-typing'
-import {
-  hasLegacyTerminalSendHandoff,
-  readTerminalSendAcknowledgment
-} from '../../../src/shared/terminal-send-acknowledgment'
+import { readTerminalSendAcknowledgment } from '../../../src/shared/terminal-send-acknowledgment'
 
 /** What a native-chat write takes, named from an operation so no module names the raw port. */
 export type MobileNativeChatRpcSender = Parameters<typeof nativeChatTerminalWrite.request>[0]
@@ -29,7 +26,6 @@ type MobileNativeChatSendArgs = {
    *  keystroke sequence). Omit to give this write its own full budget. */
   deadline?: number
   requireWriteSettlement?: true
-  onUnconfirmedHandoff?: () => void
 }
 
 /** 'unknown' = the RPC failed without proof the request never reached the
@@ -83,10 +79,6 @@ export async function sendMobileNativeChatMessageWithOutcome(
     if (args.requireWriteSettlement && response.ok) {
       const acknowledgment = readTerminalSendAcknowledgment(response.result)
       if (acknowledgment === 'unverifiable') {
-        if (hasLegacyTerminalSendHandoff(response.result)) {
-          args.onUnconfirmedHandoff?.()
-          reportWorkerTerminalUserInput(args.client, args.terminal)
-        }
         return 'unknown'
       }
       if (acknowledgment === 'refused') {

@@ -170,16 +170,12 @@ export function useMobileNativeChatAnswerSend(args: {
           ) {
             return false
           }
-          let legacyHandoffCompleted = false
           const outcome = await sendMobileNativeChatMessageWithOutcome({
             client,
             terminal: handle,
             text: body,
             enter,
             requireWriteSettlement: true,
-            onUnconfirmedHandoff: () => {
-              legacyHandoffCompleted = true
-            },
             deadline,
             ...(deviceTokenRef.current
               ? { mobileClient: { id: deviceTokenRef.current, type: 'mobile' } }
@@ -191,7 +187,7 @@ export function useMobileNativeChatAnswerSend(args: {
           if (outcome === 'accepted') {
             sawAcceptedGroup = true
           }
-          return outcome === 'accepted' || legacyHandoffCompleted
+          return outcome === 'accepted'
         }
         const wait = (ms: number): Promise<boolean> => {
           // Already superseded: don't hold the successor for a full pacing step
@@ -261,9 +257,6 @@ export function useMobileNativeChatAnswerSend(args: {
           // Stop, ask-cancel and a dropped lease all bump the generation with no
           // successor, and there a landed answer IS a success.
           const sent = (await sendTerminal(formatAskAnswer(prompt, selections), true)) || fail()
-          if (sawUnknownOutcome) {
-            return fail()
-          }
           return sent && writeTurnsRef.current.get(handle) === turn
         }
         const groups =
@@ -286,9 +279,6 @@ export function useMobileNativeChatAnswerSend(args: {
             // Pacing is deliberate, not transport latency — don't charge it to the budget.
             deadline += MOBILE_NATIVE_CHAT_QUESTION_STEP_MS
           }
-        }
-        if (sawUnknownOutcome) {
-          return fail()
         }
         // Taken over on the last key: same as above, the successor owns the surface.
         return groups.length > 0 && writeTurnsRef.current.get(handle) === turn

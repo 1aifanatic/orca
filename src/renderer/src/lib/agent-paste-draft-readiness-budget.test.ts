@@ -20,7 +20,7 @@ vi.mock('./agent-draft-readiness', () => ({
 
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({
   inspectRuntimeTerminalProcess: testState.inspectProcess,
-  sendRuntimePtyInputForSequence: testState.sendInput
+  sendRuntimePtyInputVerified: testState.sendInput
 }))
 
 describe('pty-bound agent draft readiness budget', () => {

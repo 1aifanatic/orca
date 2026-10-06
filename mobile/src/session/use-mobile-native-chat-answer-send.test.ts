@@ -30,7 +30,7 @@ function acceptedResponse() {
   return {
     id: 'send',
     ok: true as const,
-    result: { send: { accepted: true, writeSettlement: { outcome: 'accepted' } } },
+    result: { send: { accepted: true } },
     _meta: { runtimeId: 'runtime' }
   }
 }

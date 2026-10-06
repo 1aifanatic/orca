@@ -6,8 +6,7 @@ const sendRuntimePtyInput = vi.fn()
 const sendRuntimePtyInputVerified = vi.fn()
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({
   sendRuntimePtyInput: (...args: unknown[]) => sendRuntimePtyInput(...args),
-  sendRuntimePtyInputVerified: (...args: unknown[]) => sendRuntimePtyInputVerified(...args),
-  sendRuntimePtyInputForSequence: (...args: unknown[]) => sendRuntimePtyInputVerified(...args)
+  sendRuntimePtyInputVerified: (...args: unknown[]) => sendRuntimePtyInputVerified(...args)
 }))
 
 import {
@@ -528,17 +527,30 @@ describe('sendNativeChatAskAnswer', () => {
     )
 
     await vi.advanceTimersByTimeAsync(0)
-    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(SETTINGS, PTY, '1', 'driving')
+    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(
+      SETTINGS,
+      PTY,
+      '1',
+      'driving',
+      undefined
+    )
 
     await vi.advanceTimersByTimeAsync(NATIVE_CHAT_QUESTION_STEP_MS)
-    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(SETTINGS, PTY, '2', 'driving')
+    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(
+      SETTINGS,
+      PTY,
+      '2',
+      'driving',
+      undefined
+    )
 
     await vi.advanceTimersByTimeAsync(NATIVE_CHAT_QUESTION_STEP_MS)
     expect(sendRuntimePtyInputVerified).toHaveBeenLastCalledWith(
       SETTINGS,
       PTY,
       buildNativeChatPasteBytes('custom answer'),
-      'driving'
+      'driving',
+      undefined
     )
   })
 
@@ -579,7 +591,9 @@ describe('sendNativeChatAskAnswer', () => {
     const handle = sendNativeChatAskAnswer(SETTINGS, PTY, [{ raw: '2' }], onSettled)
     await vi.advanceTimersByTimeAsync(handle.settleAfterMs)
 
-    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(SETTINGS, PTY, '2', 'driving')
+    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(SETTINGS, PTY, '2', 'driving', {
+      requireWriteSettlement: true
+    })
     expect(onSettled).not.toHaveBeenCalled()
 
     resolveAccepted(true)

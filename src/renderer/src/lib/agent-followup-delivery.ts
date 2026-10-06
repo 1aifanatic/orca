@@ -1,6 +1,6 @@
 import {
   inspectRuntimeTerminalProcess,
-  sendRuntimePtyInputForSequence
+  sendRuntimePtyInputVerified
 } from '@/runtime/runtime-terminal-inspection'
 import {
   isAgentForegroundWrapperProcess,
@@ -22,7 +22,7 @@ export async function sendFollowupPromptWhenAgentReady(args: {
     return false
   }
   try {
-    return await sendRuntimePtyInputForSequence(settings, ptyId, `${prompt}\r`, 'launch')
+    return await sendRuntimePtyInputVerified(settings, ptyId, `${prompt}\r`, 'launch')
   } catch {
     return false
   }

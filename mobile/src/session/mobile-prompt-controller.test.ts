@@ -17,7 +17,9 @@ import {
   permissionAction,
   questionOption,
   getController,
-  askCancel
+  askCancel,
+  askAnswer,
+  sendError
 } from './__mocks__/mobile-prompt-controller'
 
 const client: RpcClient = {
@@ -51,7 +53,7 @@ function option() {
 }
 
 describe('prompt cards through the production controller, send contract and view', () => {
-  it.each(['lost', 'legacy', 'unverifiable'])(
+  it.each(['lost', 'unverifiable'])(
     'keeps a question actionable after %s acknowledgment',
     async (mode) => {
       vi.mocked(client.sendRequest).mockImplementation(async (method, params) => {
@@ -65,7 +67,7 @@ describe('prompt cards through the production controller, send contract and view
           if (mode === 'lost') {
             throw markRpcDeliveryUnknown(new Error('lost acknowledgment'))
           }
-          return response(mode === 'legacy', mode === 'legacy' ? 'legacy' : 'unverifiable')
+          return response(false, 'unverifiable')
         }
         return response()
       })
@@ -93,7 +95,7 @@ describe('prompt cards through the production controller, send contract and view
     )
   })
 
-  it('finishes an older-host selector once without dismissing its unacknowledged card', async () => {
+  it('finishes an older-host selector once and dismisses it like an acknowledged answer', async () => {
     vi.useFakeTimers()
     const prompt: AskPrompt = {
       questions: [{ question: 'Answer?', options: [{ label: 'A' }], multiSelect: false }]
@@ -114,11 +116,11 @@ describe('prompt cards through the production controller, send contract and view
     })
     let pending: Promise<boolean> | undefined
     act(() => {
-      pending = getController().handleNativeChatAnswerAsk(prompt, selections)
+      pending = askAnswer(selections)
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000)
-      await expect(pending).resolves.toBe(false)
+      await expect(pending).resolves.toBe(true)
     })
     const writes = vi
       .mocked(client.sendRequest)
@@ -133,14 +135,30 @@ describe('prompt cards through the production controller, send contract and view
         })
       )
     )
-    expect(getController().nativeChatAsk).not.toBe(null)
-    expect(sendButton().props.disabled).toBe(true)
+    expect(getController().nativeChatAsk).toBe(null)
+    expect(sendButton().props.disabled).toBe(false)
+    expect(sendError).not.toHaveBeenCalled()
   })
 
-  it.each(['refused', 'unverifiable', 'legacy'] as const)(
+  it.each([0, 1])(
+    'dismisses older-host approval choice %i like an acknowledged answer and restores Send',
+    async (choice) => {
+      vi.mocked(client.sendRequest).mockResolvedValue(response(true, 'legacy'))
+      await render({ tab: permissionTab })
+      await act(async () => {
+        await permissionAction(choice).props.onPress()
+      })
+      expect(getController().nativeChatPermission).toBe(null)
+      expect(sendButton().props.disabled).toBe(false)
+      expect(sendError).not.toHaveBeenCalled()
+      expect(client.sendRequest).toHaveBeenCalledOnce()
+    }
+  )
+
+  it.each(['refused', 'unverifiable'] as const)(
     'retains permission choices on %s',
     async (mode) => {
-      vi.mocked(client.sendRequest).mockResolvedValue(response(mode === 'legacy', mode))
+      vi.mocked(client.sendRequest).mockResolvedValue(response(false, mode))
       await render({ tab: permissionTab })
       await act(async () => {
         await permissionAction().props.onPress()

@@ -216,7 +216,8 @@ describe('useNativeChatInteractiveSend', () => {
         { terminalTabId: 'tab-1' },
         'pty-1',
         '\x1b',
-        'driving'
+        'driving',
+        { requireWriteSettlement: true }
       )
       expect(mocks.sendRuntimePtyInput).not.toHaveBeenCalled()
       expect(mocks.sendNativeChatAskAnswer).not.toHaveBeenCalled()

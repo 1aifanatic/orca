@@ -209,7 +209,4 @@ function sendRuntimePtyInputWithinLimit(
   return true
 }
 
-export {
-  sendRuntimePtyInputVerified,
-  sendRuntimePtyInputForSequence
-} from './runtime-terminal-verified-input'
+export { sendRuntimePtyInputVerified } from './runtime-terminal-verified-input'

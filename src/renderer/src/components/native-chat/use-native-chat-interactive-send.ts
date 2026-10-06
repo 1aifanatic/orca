@@ -101,7 +101,8 @@ export function useNativeChatInteractiveSend(
             getSettingsForAgentTabRuntimeOwner(terminalTabId),
             targetPtyId,
             raw,
-            'driving'
+            'driving',
+            { requireWriteSettlement: true }
           ).catch(() => false)
         : Promise.resolve(false),
     [terminalTabId, targetPtyId]

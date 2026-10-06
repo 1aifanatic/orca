@@ -1,5 +1,4 @@
 import { sendRuntimePtyInputVerified } from '@/runtime/runtime-terminal-inspection'
-import { TerminalSendAcknowledgmentUnavailableError } from '../../../../shared/terminal-send-acknowledgment'
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { enqueueNativeChatPtySend } from './native-chat-pty-send-queue'
 import {
@@ -16,6 +15,10 @@ export function sendNativeChatObservedWrites(
   writes: readonly { data: string; delayBeforeMs: number }[],
   options: NativeChatSendOptions & { stopOnUnconfirmed?: boolean; settleDelayMs?: number }
 ) {
+  // Why: only an answer that dismisses its card needs the provider's acknowledgment.
+  const writeOptions = options.onDeliverySettled
+    ? ({ requireWriteSettlement: true } as const)
+    : undefined
   return enqueueNativeChatPtySend(
     ptyId,
     writes.reduce((total, write) => total + write.delayBeforeMs, 0) +
@@ -45,7 +48,7 @@ export function sendNativeChatObservedWrites(
           if (isCancelled()) {
             return
           }
-          void sendRuntimePtyInputVerified(settings, ptyId, write.data, 'driving')
+          void sendRuntimePtyInputVerified(settings, ptyId, write.data, 'driving', writeOptions)
             .then((accepted) => {
               if (isCancelled()) {
                 return
@@ -58,8 +61,9 @@ export function sendNativeChatObservedWrites(
               }
               writeAt(index + 1)
             })
-            // Legacy handoff can advance the sequence without acknowledging the answer.
-            .catch((error) => {
+            // A lost acknowledgment is not a refusal: never re-send these bytes, but still submit
+            // a body that may have landed, as the unobserved path does.
+            .catch(() => {
               if (isCancelled()) {
                 return
               }
@@ -68,13 +72,7 @@ export function sendNativeChatObservedWrites(
                 reportedUnconfirmed = true
                 options.onWriteUnconfirmed?.()
               }
-              if (
-                options.stopOnUnconfirmed &&
-                !(
-                  error instanceof TerminalSendAcknowledgmentUnavailableError &&
-                  error.legacyHandoffCompleted
-                )
-              ) {
+              if (options.stopOnUnconfirmed) {
                 options.onDeliverySettled?.(false)
                 markSubmitted()
                 return

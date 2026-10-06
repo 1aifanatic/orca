@@ -12,7 +12,7 @@ function fixture() {
   const sendRequest = vi.fn<RpcClient['sendRequest']>().mockResolvedValue({
     id: 'send',
     ok: true,
-    result: { send: { accepted: true, writeSettlement: { outcome: 'accepted' } } }
+    result: { send: { accepted: true } }
   })
   const client: RpcClient = {
     sendRequest,

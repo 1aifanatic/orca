@@ -8,7 +8,7 @@ import { resolvePasteReadySignal } from '../../../shared/draft-paste-ready-scann
 import { useAppStore } from '@/store'
 import {
   inspectRuntimeTerminalProcess,
-  sendRuntimePtyInputForSequence
+  sendRuntimePtyInputVerified
 } from '@/runtime/runtime-terminal-inspection'
 import {
   BRACKETED_PASTE_END,
@@ -246,14 +246,14 @@ async function sendBracketedPasteToAgent(args: {
       // Enter arrive in the same PTY write. Split the submit into the next turn so
       // the TUI processes bracketed-paste termination before handling Enter.
       await new Promise<void>((resolve) => window.setTimeout(resolve, POST_PASTE_SUBMIT_DELAY_MS))
-      const submitted = await sendRuntimePtyInputForSequence(settings, ptyId, '\r', inputKind)
+      const submitted = await sendRuntimePtyInputVerified(settings, ptyId, '\r', inputKind)
 
       if (submitRetryDelayMs !== undefined) {
         // Why: agents that render their composer before Enter is live silently eat
         // the first Enter; the retry is best-effort and never downgrades `submitted`.
         await new Promise<void>((resolve) => window.setTimeout(resolve, submitRetryDelayMs))
         try {
-          await sendRuntimePtyInputForSequence(settings, ptyId, '\r', inputKind)
+          await sendRuntimePtyInputVerified(settings, ptyId, '\r', inputKind)
         } catch {
           // Why: a rejected retry leaves the first Enter's verdict untouched.
         }

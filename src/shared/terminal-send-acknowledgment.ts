@@ -1,4 +1,4 @@
-/** Missing or future proof stays unconfirmed, including a legacy raw accepted reply. */
+/** An older host omits `writeSettlement`; its whole-write `accepted` verdict stands, as before. */
 export function readTerminalSendAcknowledgment(
   result: unknown
 ): 'accepted' | 'refused' | 'unverifiable' {
@@ -21,25 +21,13 @@ export function readTerminalSendAcknowledgment(
     }
     return 'unverifiable'
   }
-  return 'accepted' in send && send.accepted === false ? 'refused' : 'unverifiable'
-}
-export class TerminalSendAcknowledgmentUnavailableError extends Error {
-  constructor(readonly legacyHandoffCompleted: boolean) {
-    super('PTY write acknowledgment unavailable')
+  if ('accepted' in send) {
+    if (send.accepted === true) {
+      return 'accepted'
+    }
+    if (send.accepted === false) {
+      return 'refused'
+    }
   }
-}
-
-/** Legacy acceptance confirms whole-write handoff, without provider acknowledgment. */
-export function hasLegacyTerminalSendHandoff(result: unknown): boolean {
-  if (typeof result !== 'object' || result === null || !('send' in result)) {
-    return false
-  }
-  const send = result.send
-  return (
-    typeof send === 'object' &&
-    send !== null &&
-    'accepted' in send &&
-    send.accepted === true &&
-    !('writeSettlement' in send)
-  )
+  return 'unverifiable'
 }

@@ -484,8 +484,7 @@ describe('runtime terminal owner routing', () => {
       params: {
         terminal: 'terminal-1',
         text: 'x',
-        client: { id: 'orca-desktop', type: 'desktop' },
-        requireWriteSettlement: true
+        client: { id: 'orca-desktop', type: 'desktop' }
       },
       timeoutMs: 15_000
     })
@@ -630,14 +629,7 @@ describe('runtime terminal owner routing', () => {
   it('records accepted runtime input against the owning pane key', async () => {
     runtimeCall.mockResolvedValue({
       ok: true,
-      result: {
-        send: {
-          handle: 'terminal-1',
-          accepted: true,
-          bytesWritten: 1,
-          writeSettlement: { outcome: 'accepted' }
-        }
-      },
+      result: { send: { handle: 'terminal-1', accepted: true, bytesWritten: 1 } },
       _meta: { runtimeId: 'runtime-1' }
     })
     useAppStore.setState({

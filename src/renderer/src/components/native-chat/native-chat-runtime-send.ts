@@ -5,7 +5,7 @@
 import { sendNativeChatObservedWrites } from './native-chat-observed-send'
 import {
   sendRuntimePtyInput,
-  sendRuntimePtyInputForSequence
+  sendRuntimePtyInputVerified
 } from '@/runtime/runtime-terminal-inspection'
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import type { AskAnswerKeyGroup } from './native-chat-interactive-prompt'
@@ -143,7 +143,7 @@ export async function sendNativeChatMessageVerified(
 
   // Why: option commands await remote/SSH acceptance so the Enter cannot race
   // ahead of the body while a model-change observer is already armed.
-  const bodyAccepted = await sendRuntimePtyInputForSequence(
+  const bodyAccepted = await sendRuntimePtyInputVerified(
     settings,
     ptyId,
     buildNativeChatPasteBytes(text),
@@ -152,7 +152,7 @@ export async function sendNativeChatMessageVerified(
   if (!bodyAccepted || signal?.aborted || !(await waitForNativeChatSubmit(signal))) {
     return false
   }
-  return sendRuntimePtyInputForSequence(settings, ptyId, NATIVE_CHAT_SUBMIT, 'driving')
+  return sendRuntimePtyInputVerified(settings, ptyId, NATIVE_CHAT_SUBMIT, 'driving')
 }
 
 /** Types a slash command as individual keys so Codex opens its command palette. */
@@ -168,9 +168,7 @@ export async function typeNativeChatCommand(
     command,
     signal,
     write: async (key) =>
-      (await sendRuntimePtyInputForSequence(settings, ptyId, key, 'driving'))
-        ? 'accepted'
-        : 'rejected'
+      (await sendRuntimePtyInputVerified(settings, ptyId, key, 'driving')) ? 'accepted' : 'rejected'
   })
   return outcome === 'accepted'
 }
@@ -199,7 +197,7 @@ export function sendNativeChatTypedCommand(
           if (isCancelled()) {
             return 'rejected'
           }
-          return (await sendRuntimePtyInputForSequence(settings, ptyId, key, 'driving'))
+          return (await sendRuntimePtyInputVerified(settings, ptyId, key, 'driving'))
             ? 'accepted'
             : 'rejected'
         }

@@ -9,6 +9,7 @@ import { vi } from 'vitest'
 import { useMobileNativeChatController } from '../use-mobile-native-chat-controller'
 import { MobileNativeChatOverlay } from '../MobileNativeChatOverlay'
 import { MobileNativeChatAsk } from '../MobileNativeChatAsk'
+import type { AskAnswerSelection } from '../../../../src/shared/native-chat-ask'
 vi.mock('react-native', async () => {
   const React = await import('react')
   return {
@@ -144,7 +145,7 @@ let tree: ReactTestRenderer | null = null
 let controller: MobileNativeChatController
 let lastProps: HarnessProps | null = null
 export const handleRef = { current: 'term-1' }
-const error = vi.fn()
+export const sendError = vi.fn()
 const resolved = vi.fn()
 let client: RpcClient
 
@@ -202,7 +203,7 @@ function Harness(props: HarnessProps) {
     nativeChatTranscriptIsLocalReadable: true,
     nativeChatInputLeaseReady: true,
     connState,
-    onSendError: error,
+    onSendError: sendError,
     onSendResolved: resolved
   })
   captureRenderedController(current)
@@ -243,10 +244,11 @@ export async function render(props: HarnessProps = lastProps ?? {}) {
 export function sendButton() {
   return getTree().root.findByProps({ accessibilityLabel: 'Send message' })
 }
-export function permissionAction() {
+/** Index 1 is Deny. */
+export function permissionAction(index = 1) {
   return getTree()
     .root.findByProps({ testID: 'native-chat-approval-actions' })
-    .findAllByType(Pressable)[1]
+    .findAllByType(Pressable)[index]
 }
 export function questionOption() {
   return getTree()
@@ -262,7 +264,7 @@ export function reset(rpcClient: RpcClient) {
   visible.value = true
   handleRef.current = 'term-1'
   lastProps = null
-  error.mockReset()
+  sendError.mockReset()
   resolved.mockReset()
   vi.stubGlobal('requestAnimationFrame', (callback: (time: number) => void) =>
     setTimeout(() => callback(0), 0)
@@ -282,4 +284,7 @@ export function getController(): MobileNativeChatController {
 }
 export function askCancel(): Promise<boolean> {
   return getTree().root.findByType(MobileNativeChatAsk).props.onCancel()
+}
+export function askAnswer(selections: AskAnswerSelection[]): Promise<boolean> {
+  return getTree().root.findByType(MobileNativeChatAsk).props.onAnswer(selections)
 }
