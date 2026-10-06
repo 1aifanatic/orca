@@ -9,7 +9,7 @@ import {
   symlinkSync,
   unlinkSync
 } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { readClaudeProfileObject } from './claude-profile-paths'
@@ -32,6 +32,14 @@ function stringEntries(value: unknown): Record<string, string> {
     }
   }
   return entries
+}
+
+export function claudeProfileLedgerPath(profileHome: string): string {
+  return join(profileHome, '.orca-profile.json')
+}
+
+export function writeClaudeProfileLedger(file: string, ledger: ClaudeProfileLedger): void {
+  writeFileAtomically(file, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 })
 }
 
 /** Orca's own bookkeeping: an unreadable ledger starts empty, so nothing shared is overwritten. */
