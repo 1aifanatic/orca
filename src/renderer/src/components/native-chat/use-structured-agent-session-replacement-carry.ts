@@ -2,7 +2,8 @@
 // which conversation the tab's replaced (`replacesSessionId`). Whatever this window still held for
 // the old one — the composer's draft, and messages it sent there — belongs where the user now is.
 // Derived from that link whenever the new chat renders, so it holds for a pane that was never
-// mounted, after a reload, or for a tab that was not active when the clear ran.
+// mounted, after a reload, or for a tab that was not active when the clear ran. The link is passed
+// only while no tab shows the old chat: one reopened from history keeps what is typed or sent there.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
@@ -45,6 +46,13 @@ import {
 import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
 
 const NO_ENTRIES: readonly StructuredAgentSessionOutboxEntry[] = []
+
+type AskingState = {
+  ids: Set<string>
+  timers: Set<ReturnType<typeof setTimeout>>
+  live: boolean
+}
+const newAskingState = (): AskingState => ({ ids: new Set(), timers: new Set(), live: true })
 const NO_SUBSCRIPTION = (): void => {}
 /** Asked again after 1, 2, 4, 8 and 16 s; with still no answer, the text comes back saying so. */
 const ASK_AGAIN_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
@@ -196,26 +204,21 @@ export function useStructuredAgentSessionReplacementCarry(args: {
 
   // In doubt: asked again under its own id, in the chat it was sent to, until the host's answer
   // proves it recorded (it stays the host's) or not (its text comes back). Each is asked once per
-  // mount however often the chat re-renders; leaving the chat stops asking.
-  const asking = useRef<{
-    ids: Set<string>
-    timers: Set<ReturnType<typeof setTimeout>>
-    live: boolean
-  }>({ ids: new Set(), timers: new Set(), live: true })
+  // link however often the chat re-renders; leaving the chat, or the link going (the old chat shown
+  // again), stops asking, and an answer still on its way is dropped.
+  const asking = useRef<AskingState>(newAskingState())
   const settleRef = useRef(settle)
   useEffect(() => {
     settleRef.current = settle
   }, [settle])
   useEffect(() => {
-    const state = asking.current
-    state.live = true
+    const state = newAskingState()
+    asking.current = state
     return () => {
       state.live = false
       state.timers.forEach(clearTimeout)
-      state.timers.clear()
-      state.ids.clear()
     }
-  }, [])
+  }, [fromSessionId])
   const ask = useCallback(
     (entry: StructuredAgentSessionOutboxEntry, attempt: number, toFence: number): void => {
       const state = asking.current
@@ -234,7 +237,7 @@ export function useStructuredAgentSessionReplacementCarry(args: {
           }
           const resolved = resolveReplacedLeftover(answer)
           if (resolved === 'askAgain' && attempt < ASK_AGAIN_MS.length) {
-            // Owned by the unmount cleanup above, which clears every one still pending.
+            // Owned by the cleanup above, which clears every one still pending.
             const timer = setTimeout(() => {
               state.timers.delete(timer)
               ask(entry, attempt + 1, toFence)

@@ -187,6 +187,81 @@ describe('a draft typed in the chat a /clear replaced', () => {
   })
 })
 
+/** The new chat's pane, whose link the overlay withholds while a tab shows the old chat again. */
+function linkedPane(sessionId: string, replaces: string | undefined) {
+  return renderHook(
+    ({ link }: { link: string | undefined }) =>
+      useStructuredAgentSessionOutbox({
+        journalItems: NO_ITEMS,
+        sessionId,
+        target: { kind: 'local' },
+        fence: 1,
+        submissions: [],
+        composerScopeKey: scope(sessionId),
+        queuedMessageIds: [],
+        ...(link ? { replacesSessionId: link } : {})
+      }),
+    { initialProps: { link: replaces } }
+  )
+}
+
+describe('the chat a /clear replaced, reopened from history beside the new one', () => {
+  it('keeps what is typed there; the carry at the clear happened once', async () => {
+    writeNativeChatDraftCache(scope('old'), 'typed before the clear')
+    const view = linkedPane('new', 'old')
+    await waitFor(() => expect(readNativeChatDraftCache(scope('old'))).toBe(''))
+    expect(readNativeChatDraftCache(scope('new'))).toBe('typed before the clear')
+    // Reopened: its tab shows the old chat, so the new chat's still-mounted pane has no link.
+    view.rerender({ link: undefined })
+    for (const text of ['t', 'ty', 'typed in the reopened chat']) {
+      act(() => writeNativeChatDraftCache(scope('old'), text))
+    }
+    await act(async () => {})
+    expect(readNativeChatDraftCache(scope('old'))).toBe('typed in the reopened chat')
+    expect(readNativeChatDraftCache(scope('new'))).toBe('typed before the clear')
+    // Once no tab shows it, what it left follows the link here, once.
+    view.rerender({ link: 'old' })
+    await waitFor(() => expect(readNativeChatDraftCache(scope('old'))).toBe(''))
+    expect(readNativeChatDraftCache(scope('new'))).toBe(
+      'typed before the clear\n\ntyped in the reopened chat'
+    )
+  })
+
+  it('keeps a message sent there; asking about one in doubt pauses, then starts afresh', async () => {
+    // The first answer proves nothing, so it would be asked again shortly.
+    mocks.call.mockResolvedValueOnce({
+      ok: false,
+      refusal: { code: 'agent_session_operation_expired', message: 'Expired.' }
+    })
+    const inDoubt = entry('m1', 'asked about', { state: 'unconfirmed', lastAttemptAt: 3 })
+    commitStructuredAgentSessionOutbox('old', [inDoubt])
+    const view = linkedPane('new', 'old')
+    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce())
+    await act(async () => {})
+    view.rerender({ link: undefined })
+    expect(view.result.current.askedRows).toEqual([])
+    // Sent in the reopened chat and refused there as cleared: that chat's own row.
+    const sentThere = refusedSend('m2', 'sent in the reopened chat', CLEARED_REFUSAL)
+    act(() => commitStructuredAgentSessionOutbox('old', [inDoubt, sentThere]))
+    await act(async () => {})
+    expect(getStructuredAgentSessionOutbox('old')).toEqual([inDoubt, sentThere])
+    expect(readNativeChatDraftCache(scope('new'))).toBe('')
+    expect(view.result.current.error).toBeNull()
+    // Once no tab shows it, the one in doubt is asked about afresh, and what it left follows here.
+    mocks.call.mockResolvedValue({
+      ok: true,
+      replayed: true,
+      fence: 1,
+      cursor: { epoch: 'e', sequence: 1 },
+      value: { clientMessageId: 'm1', submission: { clientMessageId: 'm1' } }
+    })
+    view.rerender({ link: 'old' })
+    await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
+    expect(mocks.call).toHaveBeenCalledTimes(2)
+    expect(readNativeChatDraftCache(scope('new'))).toBe('sent in the reopened chat')
+  })
+})
+
 describe('a draft saved before the saved drafts finished loading', () => {
   afterEach(() => {
     setNativeChatComposerDraftStorageForTests(null)

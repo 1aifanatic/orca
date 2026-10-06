@@ -18,7 +18,8 @@ const mocks = vi.hoisted(() => ({
   mountsByTabId: new Map<string, number>(),
   unmountsByTabId: new Map<string, number>(),
   groupIdByTabId: new Map<string, string | undefined>(),
-  targetByTabId: new Map<string, unknown>()
+  targetByTabId: new Map<string, unknown>(),
+  replacesByTabId: new Map<string, string | undefined>()
 }))
 
 vi.mock('@/store', async () => {
@@ -58,15 +59,18 @@ vi.mock('./NativeChatView', async () => {
       groupId,
       isVisible,
       isFocusedGroup,
-      target
+      target,
+      replacesSessionId
     }: {
       tabId: string
       groupId?: string
       isVisible: boolean
       isFocusedGroup: boolean
       target: unknown
+      replacesSessionId?: string
     }) {
       mocks.groupIdByTabId.set(tabId, groupId)
+      mocks.replacesByTabId.set(tabId, replacesSessionId)
       mocks.targetByTabId.set(tabId, target)
       useEffect(() => {
         mocks.mountsByTabId.set(tabId, (mocks.mountsByTabId.get(tabId) ?? 0) + 1)
@@ -101,6 +105,7 @@ describe('StructuredAgentSessionPaneOverlayLayer', () => {
     mocks.unmountsByTabId.clear()
     mocks.groupIdByTabId.clear()
     mocks.targetByTabId.clear()
+    mocks.replacesByTabId.clear()
     mocks.store?.setState(createState(FIRST_TAB_ID))
   })
 
@@ -122,6 +127,22 @@ describe('StructuredAgentSessionPaneOverlayLayer', () => {
       environmentId: 'server-1'
     })
     expect(mocks.targetByTabId.get(SECOND_TAB_ID)).toEqual({ kind: 'local' })
+  })
+
+  it('passes the replaced chat only while no tab shows it again', () => {
+    const replacement = {
+      ...structuredTab(FIRST_TAB_ID, 'session-new', 0),
+      agentSessionReplacesSessionId: 'session-1'
+    }
+    const reopened = structuredTab(SECOND_TAB_ID, 'session-1', 1)
+    mocks.store?.setState({ unifiedTabsByWorktree: { [WORKTREE_ID]: [replacement, reopened] } })
+    render(<StructuredAgentSessionPaneOverlayLayer worktreeId={WORKTREE_ID} isWorktreeActive />)
+    expect(mocks.replacesByTabId.get(FIRST_TAB_ID)).toBeUndefined()
+
+    act(() => {
+      mocks.store?.setState({ unifiedTabsByWorktree: { [WORKTREE_ID]: [replacement] } })
+    })
+    expect(mocks.replacesByTabId.get(FIRST_TAB_ID)).toBe('session-1')
   })
 
   it('keeps materialized chat surfaces mounted while activation only swaps visibility', () => {

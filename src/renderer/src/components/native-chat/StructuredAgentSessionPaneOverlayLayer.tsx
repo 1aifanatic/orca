@@ -20,12 +20,14 @@ const EMPTY_GROUPS: readonly TabGroup[] = []
 
 const StructuredAgentSessionOverlaySlot = memo(function StructuredAgentSessionOverlaySlot({
   tab,
+  replacesSessionId,
   groupId,
   isActive,
   isFocusedGroup,
   onFocusOwningGroup
 }: {
   tab: StructuredAgentSessionTab
+  replacesSessionId: string | undefined
   groupId: string | undefined
   isActive: boolean
   isFocusedGroup: boolean
@@ -50,9 +52,7 @@ const StructuredAgentSessionOverlaySlot = memo(function StructuredAgentSessionOv
         tabId={tab.id}
         groupId={groupId}
         sessionId={tab.entityId}
-        {...(tab.agentSessionReplacesSessionId
-          ? { replacesSessionId: tab.agentSessionReplacesSessionId }
-          : {})}
+        {...(replacesSessionId ? { replacesSessionId } : {})}
         agent={tab.agentSessionAgent}
         isVisible={isActive}
         isFocusedGroup={isFocusedGroup}
@@ -95,6 +95,12 @@ const StructuredAgentSessionPaneOverlayLayer = memo(
         ),
       [unifiedTabs]
     )
+    // A cleared chat reopened from history keeps what is typed or sent there: the carry follows
+    // the link only while no tab shows the chat it replaced.
+    const shownSessionIds = useMemo(
+      () => new Set(structuredTabs.map((tab) => tab.entityId)),
+      [structuredTabs]
+    )
 
     return (
       <>
@@ -102,6 +108,12 @@ const StructuredAgentSessionPaneOverlayLayer = memo(
           <StructuredAgentSessionOverlaySlot
             key={tab.id}
             tab={tab}
+            replacesSessionId={
+              tab.agentSessionReplacesSessionId &&
+              !shownSessionIds.has(tab.agentSessionReplacesSessionId)
+                ? tab.agentSessionReplacesSessionId
+                : undefined
+            }
             groupId={tab.groupId}
             isActive={Boolean(isWorktreeActive && groupActiveTabById.get(tab.groupId) === tab.id)}
             isFocusedGroup={Boolean(
