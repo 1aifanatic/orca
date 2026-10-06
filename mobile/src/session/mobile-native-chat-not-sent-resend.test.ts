@@ -12,6 +12,7 @@ import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
 import {
   countUserTextOccurrences,
+  findLandedImagePreviewEchoes,
   findLandedUnconfirmedSends,
   normalizeReconcileText,
   sendBaselineTailMessageId,
@@ -206,5 +207,69 @@ describe('a phone send whose own row first appears as not sent', () => {
       'later'
     ).pending
     expect(retireLandedMobileNativeChatPending(AFTER, pending ?? [], new Set())).toEqual([])
+  })
+})
+
+// A captioned image send's placeholder retires only once its local preview binds to its row, so the
+// image matcher must apply the same rule: its own not-sent row binds it, an older one doesn't.
+describe('a captioned image send whose own row turns not sent', () => {
+  const CAPTION = 'look at this'
+  function imageRow(id: string, unsent: boolean): NativeChatMessage {
+    return {
+      id,
+      role: 'user',
+      source: 'transcript',
+      timestamp: null,
+      blocks: [
+        { type: 'text', text: CAPTION },
+        { type: 'image-ref', path: '/tmp/x.png' }
+      ],
+      ...(unsent ? { unsent: true as const } : {})
+    }
+  }
+  const HELLO: NativeChatMessage = {
+    id: 'a1',
+    role: 'assistant',
+    source: 'transcript',
+    timestamp: null,
+    blocks: [{ type: 'text', text: 'Hello' }]
+  }
+
+  function placeholderLeft(before: NativeChatMessage[], after: NativeChatMessage[]): number {
+    const normalizedText = normalizeReconcileText(CAPTION)
+    const pending =
+      appendMobileNativeChatPending(
+        {},
+        'pending',
+        'pending-1',
+        {
+          draftKey: 'draft',
+          draftEditGeneration: 0,
+          pendingKey: 'pending',
+          normalizedText,
+          baselineOccurrences: countUserTextOccurrences(before, normalizedText),
+          baselineTailMessageId: sendBaselineTailMessageId(before),
+          baselineResolved: true,
+          baselineUnsentMessageIds: sendBaselineUnsentMessageIds(before)
+        },
+        CAPTION,
+        ['file:///local.png']
+      ).pending ?? []
+    const landed = findLandedImagePreviewEchoes(after, pending)
+    return retireLandedMobileNativeChatPending(
+      after,
+      pending,
+      new Set(landed.map((preview) => preview.pendingId))
+    ).length
+  }
+
+  it('retires its placeholder on its own not-sent row', () => {
+    expect(placeholderLeft([HELLO], [HELLO, imageRow('m2', true)])).toBe(0)
+  })
+
+  it('keeps it while only a not-sent copy from before the send is there', () => {
+    const before = [HELLO, imageRow('m1', true)]
+    expect(placeholderLeft(before, before)).toBe(1)
+    expect(placeholderLeft(before, [...before, imageRow('m2', true)])).toBe(0)
   })
 })
