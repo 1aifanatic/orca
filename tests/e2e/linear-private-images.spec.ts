@@ -3,6 +3,11 @@ import { join } from 'node:path'
 import type { ElectronApplication, Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import type { LinearIssue } from '../../src/shared/linear/issue-types'
+import type { LinearIssueUpdate } from '../../src/shared/issue-mutation-types'
+
+declare global {
+  var __linearImageSaved: LinearIssueUpdate[] | undefined
+}
 
 const SOURCE = 'https://uploads.linear.app/test-workspace/screenshot.png'
 const SIGNED = `${SOURCE}?signature=temporary`
@@ -30,7 +35,7 @@ async function installFixture(app: ElectronApplication, signed: boolean): Promis
         id: signed ? 'after' : 'before',
         ...(signed ? { descriptionImageUrls: { [source]: signedUrl } } : {})
       }
-      const saved: unknown[] = []
+      const saved: LinearIssueUpdate[] = []
       for (const channel of [
         'linear:getIssue',
         'linear:issueComments',
@@ -52,7 +57,7 @@ async function installFixture(app: ElectronApplication, signed: boolean): Promis
           user: { displayName: 'Test user' }
         }
       ])
-      ipcMain.handle('linear:updateIssue', (_event, args) => {
+      ipcMain.handle('linear:updateIssue', (_event, args: { updates: LinearIssueUpdate }) => {
         saved.push(args.updates)
         return { ok: true }
       })
@@ -61,7 +66,7 @@ async function installFixture(app: ElectronApplication, signed: boolean): Promis
       ipcMain.handle('linear:teamStates', () => [])
       ipcMain.handle('linear:teamLabels', () => [])
       ipcMain.handle('linear:teamMembers', () => [])
-      Reflect.set(globalThis, '__linearImageSaved', saved)
+      globalThis.__linearImageSaved = saved
     },
     { issue: ISSUE, source: SOURCE, signedUrl: SIGNED, signed }
   )
@@ -157,9 +162,9 @@ test('private Linear images load without putting signatures into description edi
   await editor.pressSequentially('Verified edit')
   await orcaPage.getByRole('textbox', { name: 'Issue title' }).click()
   await expect
-    .poll(() => electronApp.evaluate(() => Reflect.get(globalThis, '__linearImageSaved')))
+    .poll(() => electronApp.evaluate(() => globalThis.__linearImageSaved))
     .toEqual([{ description: expect.stringContaining(`![Screenshot](${SOURCE})`) }])
-  const saved = await electronApp.evaluate(() => Reflect.get(globalThis, '__linearImageSaved'))
+  const saved = await electronApp.evaluate(() => globalThis.__linearImageSaved)
   expect(JSON.stringify(saved)).toContain('Verified edit')
   expect(JSON.stringify(saved)).not.toContain('signature=')
 })

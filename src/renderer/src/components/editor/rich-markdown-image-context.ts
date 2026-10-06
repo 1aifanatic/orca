@@ -15,13 +15,21 @@ export type RichMarkdownImageResolverContext = {
 
 export type RichMarkdownImageResolverSettings = Parameters<typeof settingsForRuntimeOwner>[0]
 
+type RichMarkdownImageUrls = Record<string, string>
+
+function isRichMarkdownImageUrls(value: unknown): value is RichMarkdownImageUrls {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.values(value).every((url) => typeof url === 'string')
+  )
+}
+
 export function resolveRichMarkdownImageUrl(storage: Record<string, unknown>, src: string): string {
   const imageUrls = storage.imageUrls
-  if (imageUrls && typeof imageUrls === 'object' && Object.hasOwn(imageUrls, src)) {
-    const resolved: unknown = Reflect.get(imageUrls, src)
-    if (typeof resolved === 'string') {
-      return resolved
-    }
+  if (isRichMarkdownImageUrls(imageUrls) && Object.hasOwn(imageUrls, src)) {
+    return imageUrls[src] ?? src
   }
   return src
 }

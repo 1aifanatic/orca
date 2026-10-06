@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as LinearClientModule from './client'
 import { loadLinearSdk } from './linear-sdk'
 import { getDescriptionImageUrls } from './linear-description-images'
 import { getIssue } from './linear-issue-lookups'
@@ -34,6 +35,8 @@ const source = 'https://uploads.linear.app/w/image'
 const signed = `${source}?signature=fresh&expires=123`
 
 describe('Linear description images', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   beforeEach(() => {
     vi.resetAllMocks()
     getClients.mockReturnValue([entry])
@@ -54,6 +57,30 @@ describe('Linear description images', () => {
     })
     expect(getPublicFileUrlClient).toHaveBeenCalledWith(entry)
     expect(rawRequest.mock.calls[0][1]).toEqual({ id: 'issue-1' })
+  })
+
+  it('sends the signing header through the real SDK transport with the owning workspace token', async () => {
+    const clientModule = await vi.importActual<typeof LinearClientModule>('./client')
+    getPublicFileUrlClient.mockImplementation(clientModule.getPublicFileUrlClient)
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ data: { issue: { description: `![Screenshot](${signed})` } } })
+      )
+
+    await expect(
+      getDescriptionImageUrls(entry, 'issue-1', `![Screenshot](${source})`)
+    ).resolves.toEqual({ [source]: signed })
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      'https://api.linear.app/graphql',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: entry.apiKey,
+          'public-file-urls-expire-in': String(clientModule.LINEAR_PUBLIC_FILE_URL_EXPIRY_SECONDS)
+        })
+      })
+    )
   })
 
   it.each([undefined, 'No images', '![Public](https://example.com/image.png)'])(
@@ -84,7 +111,6 @@ describe('Linear description images', () => {
     issue.mockResolvedValue({ id: 'issue-1', description: `![Screenshot](${source})` })
     rawRequest.mockRejectedValue(new Error('Network unavailable'))
     await expect(getIssue('issue-1')).resolves.toMatchObject({ id: 'issue-1' })
-    vi.restoreAllMocks()
   })
 
   it('propagates authentication failures for credential recovery', async () => {
