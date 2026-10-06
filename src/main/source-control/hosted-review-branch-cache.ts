@@ -1,4 +1,3 @@
-import { finishedReviewRefreshIntervalMs } from '../../shared/review-refresh-policy'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { HostedReviewInfo } from '../../shared/hosted-review'
 import {
@@ -26,6 +25,7 @@ import {
 import {
   __resetHostedReviewScopeGenerationsForTests,
   bumpScopeGeneration,
+  hostedReviewRepoScope,
   scopeGeneration
 } from './hosted-review-scope-generations'
 import {
@@ -95,16 +95,9 @@ export type HostedReviewBranchCacheOptions = {
   force?: boolean
 }
 
-/** Repo-scoped prefix so a single repo's entries can be dropped without a full flush.
- *  Keyed on the resolved host, not a raw connection id: two rows at one path on different hosts
- *  are different repositories, and collapsing them serves one host's answer for the other. */
-function repoScope(repoPath: string, executionHostId: ExecutionHostId): string {
-  return `${executionHostId}${KEY_SEPARATOR}${repoPath}`
-}
-
 export function hostedReviewBranchCacheKey(identity: HostedReviewBranchCacheIdentity): string {
   return [
-    repoScope(identity.repoPath, identity.executionHostId),
+    hostedReviewRepoScope(identity.repoPath, identity.executionHostId),
     identity.branch,
     // Each linked id selects a different lookup, so it belongs in the identity.
     identity.linkedGitHubPR ?? '',
@@ -127,10 +120,7 @@ function isHeadSensitive(entry: CacheEntry): boolean {
 
 function refreshIntervalMs(entry: CacheEntry, active: boolean): number {
   if (entry.review !== null) {
-    return (
-      finishedReviewRefreshIntervalMs(entry.review.state, entry.review.status) ??
-      FOUND_REVIEW_TTL_MS
-    )
+    return FOUND_REVIEW_TTL_MS
   }
   return active ? ACTIVE_REFRESH_INTERVAL_MS : NO_REVIEW_REFRESH_INTERVAL_MS
 }
@@ -164,7 +154,7 @@ export function invalidateHostedReviewBranchCache(
   repoPath: string,
   executionHostId: ExecutionHostId
 ): void {
-  const scope = repoScope(repoPath, executionHostId)
+  const scope = hostedReviewRepoScope(repoPath, executionHostId)
   bumpScopeGeneration(scope)
   const prefix = `${scope}${KEY_SEPARATOR}`
   for (const key of entries.keys()) {
@@ -384,5 +374,10 @@ export async function withHostedReviewBranchCache(
     throw new Error(unavailable)
   }
 
-  return startLookup(key, repoScope(identity.repoPath, identity.executionHostId), headOid, lookup)
+  return startLookup(
+    key,
+    hostedReviewRepoScope(identity.repoPath, identity.executionHostId),
+    headOid,
+    lookup
+  )
 }

@@ -1,16 +1,33 @@
 import type { HostedReviewState } from './hosted-review'
 import type { CheckStatus } from './github/pull-request-types'
 
-export const MERGED_REVIEW_REFRESH_INTERVAL_MS = 24 * 60 * 60_000
-export const CLOSED_REVIEW_REFRESH_INTERVAL_MS = 30 * 60_000
+export const REVIEW_REFRESH_COOLDOWN_MS = 10_000
+export const CLOSED_REVIEW_REFRESH_INTERVAL_MS = 15 * 60_000
+
+export function reviewRefreshIntervalMs(input: {
+  state?: HostedReviewState | null
+  checksStatus?: CheckStatus | null
+  hasReview?: boolean | null
+  selected?: boolean
+}): number | null {
+  if (input.hasReview === false) {
+    return input.selected ? 60_000 : 15 * 60_000
+  }
+  if (input.state === 'merged') {
+    // Neutral means completed checks or no checks in the hosted-review contract.
+    return input.checksStatus == null || input.checksStatus === 'pending' ? 60_000 : null
+  }
+  if (input.state === 'closed') {
+    return CLOSED_REVIEW_REFRESH_INTERVAL_MS
+  }
+  return input.selected ? 60_000 : 120_000
+}
 
 export function finishedReviewRefreshIntervalMs(
   state: HostedReviewState | null | undefined,
   status: CheckStatus | null | undefined
 ): number | null {
-  // Checks can finish after merge; keep watching until they settle.
-  if (state === 'merged') {
-    return status === 'pending' ? 90_000 : MERGED_REVIEW_REFRESH_INTERVAL_MS
-  }
-  return state === 'closed' ? CLOSED_REVIEW_REFRESH_INTERVAL_MS : null
+  return state === 'merged' || state === 'closed'
+    ? reviewRefreshIntervalMs({ state, checksStatus: status })
+    : null
 }

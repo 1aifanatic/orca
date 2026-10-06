@@ -1,3 +1,8 @@
+import { getRepoExecutionHostId } from '../../../../shared/execution-host'
+import {
+  hostedReviewRepoScope,
+  scopeGeneration
+} from '../../../source-control/hosted-review-scope-generations'
 import { runCoalescedProbe, type CoalescedProbes } from '../../../git/coalesced-probe'
 import { getSshGitProviderGeneration } from '../../../providers/ssh-git-dispatch'
 import { githubReadExecutionScope } from '../../github-read-execution-scope'
@@ -32,6 +37,7 @@ export async function getPRForBranchOutcome(
     executionScope,
     connectionId ? getSshGitProviderGeneration(connectionId) : null,
     repoPath,
+    scopeGeneration(hostedReviewRepoScope(repoPath, getRepoExecutionHostId({ connectionId }))),
     branchName,
     linkedPRNumber ?? null,
     fallbackPRNumber ?? null,
