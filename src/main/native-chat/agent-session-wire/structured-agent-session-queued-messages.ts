@@ -9,6 +9,10 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
+  USER_MESSAGE_SOURCE,
+  type AgentMessageSource
+} from '../../../shared/agent-session-message-source'
+import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
@@ -212,6 +216,8 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
+    /** Who a host-side send is from; a client's send never carries it, so it is its person's. */
+    source?: AgentMessageSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -252,7 +258,8 @@ export async function maybeQueueStructuredAgentSessionSend(
       messageId: clientMessageId,
       body: params.body,
       fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
-      hostInstance: structuredAgentSessionHostInstance()
+      hostInstance: structuredAgentSessionHostInstance(),
+      source: params.source ?? USER_MESSAGE_SOURCE
     },
     ctx.operationReceipt
   )

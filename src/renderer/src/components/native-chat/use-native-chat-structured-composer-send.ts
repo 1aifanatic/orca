@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback } from 'react'
 import { emitNativeChatMessageSent } from '@/lib/native-chat-telemetry'
 import { reportStructuredSessionUserInput } from '@/lib/worker-terminal-takeover-report'
 import {
@@ -10,13 +10,20 @@ import { dispatchNativeChatStructuredComposerText } from './native-chat-structur
 import { pushHistory, type HistoryState } from './native-chat-composer-state'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { nativeChatAttachImagesAgainReason } from './native-chat-image-reattach'
+import {
+  readNativeChatComposerDraft,
+  updateNativeChatComposerDraft
+} from './native-chat-composer-draft-store'
+import { nativeChatComposerDraftLeftAfterSend } from './native-chat-composer-draft-comparison'
+import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
-  draft?: string
+  draftScopeKey: string
   imageAttachments: readonly NativeChatComposerImageAttachment[]
   structuredTransport?: NativeChatStructuredComposerTransport
-  clearImageAttachments: () => void
+  isComposing: () => boolean
   clearSkillOrigin: () => void
   setHistory: (updater: (previous: HistoryState) => HistoryState) => void
   setDraft: (value: string) => void
@@ -35,48 +42,44 @@ export function isNativeChatStructuredHostCommand(
   )
 }
 
-/** What the composer held when a send was asked for. */
-export type NativeChatComposerComposition = {
-  draft: string | undefined
-  imageAttachments: readonly NativeChatComposerImageAttachment[]
-}
-
-/** A structured send. `sentFrom`: the composition the message was taken from, for a send that
- *  goes out later than it was asked for; the composer is then cleared only if still unchanged. */
+/** A structured send. `sentFrom`: the draft the message was taken from, for a send that goes out
+ *  later than it was asked for; only what it held then leaves the composer. */
 export type NativeChatStructuredComposerSend = (
   text: string,
   attachments?: readonly NativeChatComposerImageAttachment[],
-  sentFrom?: NativeChatComposerComposition
+  sentFrom?: NativeChatComposerDraft
 ) => Promise<void>
 
 /** Send through the structured journal transport, clearing the composer only
  *  once the transport accepts (the PTY path has its own sibling hook). */
 export function useNativeChatStructuredComposerSend({
   agent,
-  draft,
+  draftScopeKey,
   imageAttachments,
   structuredTransport,
-  clearImageAttachments,
+  isComposing,
   clearSkillOrigin,
   setHistory,
   setDraft,
   setCaret
 }: UseNativeChatStructuredComposerSendArgs): NativeChatStructuredComposerSend {
-  const composition = useRef<NativeChatComposerComposition>({ draft, imageAttachments })
-  useLayoutEffect(() => {
-    composition.current = { draft, imageAttachments }
-  }, [draft, imageAttachments])
   return useCallback<NativeChatStructuredComposerSend>(
     async (text, attachments = imageAttachments, sentFrom): Promise<void> => {
       if (!structuredTransport) {
         return
       }
       const hostCommand = isNativeChatStructuredHostCommand(text, agent, structuredTransport)
+      // A command picked while images await re-attaching would send them without a file.
+      const attachAgain = nativeChatAttachImagesAgainReason(attachments)
+      if (attachAgain) {
+        structuredTransport.onError(attachAgain)
+        return
+      }
       if (attachments.length > 0 && hostCommand) {
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return
       }
-      const submitted = sentFrom ?? composition.current
+      const submitted = sentFrom ?? readNativeChatComposerDraft(draftScopeKey)
       await dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
         .then(({ accepted, error }) => {
           structuredTransport.onError(error)
@@ -92,17 +95,21 @@ export function useNativeChatStructuredComposerSend({
             structuredTransport.runtimeEnvironmentId
           )
           setHistory((previous) => pushHistory(previous, text))
-          if (
-            (hostCommand || sentFrom !== undefined) &&
-            (composition.current.draft !== submitted.draft ||
-              composition.current.imageAttachments !== submitted.imageAttachments)
-          ) {
+          // Why: the send settles after a round trip, while this or another composer of the same
+          // conversation may have changed the draft; only what was sent leaves it.
+          const left = nativeChatComposerDraftLeftAfterSend(
+            readNativeChatComposerDraft(draftScopeKey),
+            submitted
+          )
+          if (!left) {
             return
           }
-          setDraft('')
-          setCaret(0)
+          updateNativeChatComposerDraft(draftScopeKey, { images: left.images }, 'immediate')
+          // A live composition owns the field, which keeps only what it composed once cleared.
+          const composing = isComposing()
+          setDraft(composing ? '' : left.text)
+          setCaret(composing ? 0 : left.text.length)
           clearSkillOrigin()
-          clearImageAttachments()
         })
         .catch((error) =>
           structuredTransport.onError(error instanceof Error ? error.message : String(error))
@@ -110,9 +117,10 @@ export function useNativeChatStructuredComposerSend({
     },
     [
       agent,
-      clearImageAttachments,
       clearSkillOrigin,
+      draftScopeKey,
       imageAttachments,
+      isComposing,
       setCaret,
       setDraft,
       setHistory,

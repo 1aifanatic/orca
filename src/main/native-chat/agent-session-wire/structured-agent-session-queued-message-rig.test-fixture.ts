@@ -10,6 +10,7 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuePause } from '../../../shared/agent-session-wire'
+import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
@@ -27,8 +28,10 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
+type RigSendOptions = { source?: AgentMessageSource }
 
 export function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -92,7 +95,7 @@ export async function createQueuedMessageTestRig(
             ...(options.starting ? { providerChildPhase: 'starting' as const } : {}),
             link: {
               linkId: `link-${fence}`,
-              handle: { provider: 'codex' as const, threadId: THREAD },
+              handle: codexProviderHandle(THREAD),
               origin: resumes ? ('resumed' as const) : ('created' as const),
               mintedAtFence: fence,
               observedAt: NOW
@@ -138,15 +141,16 @@ export async function createQueuedMessageTestRig(
     }
   }
 
-  /** A send as the host takes it: a client's over the `agentSession.send` RPC, or Orca's own. */
-  function send(text: string, delivery?: 'queue-if-active') {
+  /** A send as the host takes it: a client's over the `agentSession.send` RPC, or Orca's own,
+   *  with `source` naming who it is from. */
+  function send(text: string, delivery?: 'queue-if-active', options?: RigSendOptions) {
     const body = hostTestMessage(text)
     const clientOperationId = hostTestOperationId()
     const fields = { body, ...(delivery ? { delivery } : {}) }
     const result = host.send(QUEUED_RIG_CALLER, {
       envelope: envelope(fields, 'agentSession.send', clientOperationId),
-      body,
-      ...(delivery ? { delivery } : {})
+      ...fields,
+      ...(options?.source ? { source: options.source } : {})
     })
     return { id: clientOperationId, result }
   }

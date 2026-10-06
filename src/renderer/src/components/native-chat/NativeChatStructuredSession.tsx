@@ -5,6 +5,7 @@ import { structuredAgentSessionPaneKey } from '../../../../shared/structured-age
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
@@ -51,7 +52,8 @@ export function NativeChatStructuredSession(
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
   const controller = useStructuredAgentSession({
     ...props,
-    composerScopeKey: paneKey,
+    // Why: Stop and a queued card's Edit give text back to the conversation's draft, as the composer keeps it.
+    composerScopeKey: structuredAgentSessionDraftScopeKey(props.sessionId),
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
@@ -377,6 +379,7 @@ export function NativeChatStructuredSession(
               ref={composerRef}
               terminalTabId={props.tabId}
               paneKey={paneKey}
+              draftScopeKey={structuredAgentSessionDraftScopeKey(props.sessionId)}
               targetPtyId={null}
               agent={props.agent}
               // Stop is offered whenever the chat looks busy, live only once a turn can be stopped.

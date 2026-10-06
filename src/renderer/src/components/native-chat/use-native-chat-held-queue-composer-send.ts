@@ -5,11 +5,12 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import {
   isNativeChatStructuredHostCommand,
   useNativeChatStructuredComposerSend,
-  type NativeChatComposerComposition,
   type NativeChatStructuredComposerSend,
   type UseNativeChatStructuredComposerSendArgs
 } from './use-native-chat-structured-composer-send'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { readNativeChatComposerDraft } from './native-chat-composer-draft-store'
+import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
 
 type StructuredComposerSend = (
   text: string,
@@ -34,8 +35,8 @@ type PendingSend = {
   attachments: readonly NativeChatComposerImageAttachment[] | undefined
   count: number
   clear: () => Promise<boolean>
-  /** The composer as it was when the message was asked for. */
-  sentFrom: NativeChatComposerComposition
+  /** The draft as it was when the message was asked for. */
+  sentFrom: NativeChatComposerDraft
 }
 
 export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructuredComposerSendArgs): {
@@ -58,14 +59,9 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
   }, [])
   // Clear queue sends once its deletes settle, through the send of that render.
   const sendNowRef = useRef<NativeChatStructuredComposerSend>(sendNow)
-  const compositionRef = useRef<NativeChatComposerComposition>({
-    draft: args.draft,
-    imageAttachments: args.imageAttachments
-  })
   useLayoutEffect(() => {
     sendNowRef.current = sendNow
-    compositionRef.current = { draft: args.draft, imageAttachments: args.imageAttachments }
-  }, [args.draft, args.imageAttachments, sendNow])
+  }, [sendNow])
   // From a Clear queue choice until its message has gone out: the draft still holds that message,
   // and sending it again meanwhile would send it twice.
   const clearingRef = useRef(false)
@@ -85,7 +81,7 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
           attachments,
           count: queueHold.count,
           clear: queueHold.clear,
-          sentFrom: compositionRef.current
+          sentFrom: readNativeChatComposerDraft(args.draftScopeKey)
         }
         untakenRef.current = asked
         setPending(asked)
@@ -94,7 +90,7 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
       }
       void sendNow(text, attachments)
     },
-    [agent, queueHold, sendNow, structuredTransport]
+    [agent, args.draftScopeKey, queueHold, sendNow, structuredTransport]
   )
 
   const sendMessage = useCallback(() => {
