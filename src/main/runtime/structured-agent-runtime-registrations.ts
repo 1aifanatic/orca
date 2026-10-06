@@ -3,6 +3,7 @@
 import { createCodexStructuredLaunchResolver } from '../codex/codex-structured-launch-resolution'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
 import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
+import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
@@ -30,9 +31,15 @@ import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtim
 import {
   resolveStructuredClaudeAccountHomePath,
   resolveStructuredCodexAccountHomePath,
+  resolveStructuredEnvAccountHomePath,
   type StructuredClaudeAccountHomeDeps,
   type StructuredCodexAccountHomeDeps
 } from './structured-agent-account-home'
+import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
+import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
+import { createAcpAgentConnection } from '../acp/acp-agent-connection'
+import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
+import { AcpStructuredSessionAdapter } from '../acp/acp-structured-session-adapter'
 
 /** What an agent's adapter is built from: the open store and the runtime around it. */
 export type StructuredAgentAdapterContext = {
@@ -145,6 +152,42 @@ function createClaudeAdapter(
   })
 }
 
+function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistration {
+  return {
+    definition: acpStructuredAgentDefinition(spec),
+    supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
+    resolveAccountHomePath: async ({ launchEnv }) =>
+      resolveStructuredEnvAccountHomePath({
+        launchEnv,
+        variable: spec.accountHomeVariable,
+        defaultPath: spec.defaultAccountHome
+      }),
+    createAdapter: (context) => {
+      const { deps, store, followUps } = context
+      return new AcpStructuredSessionAdapter({
+        spec,
+        resolveLaunch: createAcpStructuredLaunchResolver(spec, {
+          store,
+          resolveWorkspacePath: deps.resolveWorkspacePath,
+          resolveEnvironment: context.environment.resolveBaseEnvironment,
+          ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
+          ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
+        }),
+        connect: (launch, options) => createAcpAgentConnection(launch, options),
+        ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
+        onDispatchSettledLate: followUps.onDispatchSettledLate,
+        logger: deps.logger,
+        // Every exit, expected or not: the host ends that child's record.
+        onEvent: (event) => {
+          if (event.type === 'ended') {
+            context.deliverLifecycle(event)
+          }
+        }
+      })
+    }
+  }
+}
+
 async function resolveCodexAccountHomePath(
   request: StructuredAgentAccountHomeRequest,
   services: StructuredAgentAccountHomeServices
@@ -224,7 +267,8 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
           wslDistro: location?.wslDistro ?? null,
           getClaudeConfigDirectory: services.getClaudeConfigDirectory
         })
-    }
+    },
+    ...ACP_LAUNCH_SPECS.map(acpRegistration)
   ]
 
 /** The registration of `agent`; null for an agent this runtime does not drive. */

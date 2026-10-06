@@ -780,6 +780,29 @@ describe('openCodexAppServerConnection', () => {
     await connection.close()
   })
 
+  // Stdout can end before the exit is seen, as when the provider supervisor's own exit closes it.
+  it('reports an exit whose stdout ended first once the exit is seen, with its usual reason', async () => {
+    const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
+    answerInitialize(child)
+    const exits: string[] = []
+    const connection = await openCodexAppServerConnection(
+      { command: 'codex', args: ['app-server'] },
+      { onExit: (error) => exits.push(error.message) },
+      spawnImpl
+    )
+
+    child.stderr.write('codex crashed\n')
+    child.stdout.end()
+    await flushStreams()
+    expect(exits).toEqual([])
+    child.emit('exit', 1, null)
+    child.emit('close', 1, null)
+
+    expect(exits).toHaveLength(1)
+    expect(exits[0]).toContain('codex crashed')
+    await connection.close()
+  })
+
   it('reports one exit for a death that arrives through two listeners', async () => {
     const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
     answerInitialize(child)
