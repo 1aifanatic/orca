@@ -8,7 +8,7 @@ on:
         type: string
   push:
     branches:
-      - nwparker/ci-closed-pr-cancellation
+      - nwparker/ci-closed-pr-qualification
 permissions:
   actions: write
   pull-requests: read
@@ -28,7 +28,8 @@ jobs:
             if (pr.merged_at !== null) { core.info('Merged PR retained'); return
             }
 
-            context.payload.pull_request = pr
+            context.payload.pull_request = pr.state === 'open' ? { number:
+            pr.number, closed_at: '2026-10-01T00:00:00Z' } : pr
 
             const closed = context.payload.pull_request
 
