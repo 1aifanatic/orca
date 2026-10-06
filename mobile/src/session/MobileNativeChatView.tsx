@@ -29,7 +29,10 @@ import {
 import { useMobileNativeChatPinchGesture } from './use-mobile-native-chat-pinch-gesture'
 import { useMobileNativeChatTailFollow } from './use-mobile-native-chat-tail-follow'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
-import { useSettledMobileNativeChatInputLock } from './use-mobile-native-chat-input-lease'
+import {
+  mobileNativeChatComposerPlaceholder,
+  useSettledMobileNativeChatInputLock
+} from './use-mobile-native-chat-input-lease'
 import { MobileNativeChatTurnActivity } from './MobileNativeChatTurnStatus'
 import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
@@ -310,6 +313,10 @@ export function MobileNativeChatView({
   const showLoading = status === 'loading' && messages.length === 0
 
   const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
+  // Why terminal-backed only: a send there types into the agent's prompt and can answer it; a
+  // structured send never does (the host queues it behind the prompt).
+  const promptCardOwnsInput =
+    !structuredActivityUi && (ask != null || permission != null || question != null)
   const emptyStateView = emptyState ? (
     <View style={styles.center}>
       <Text style={styles.emptyTitle}>{emptyState.title}</Text>
@@ -455,14 +462,8 @@ export function MobileNativeChatView({
         dictationMode={dictationMode}
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
-        disabled={lockReason !== null}
-        placeholder={
-          lockReason === 'disconnected'
-            ? 'Reconnecting…'
-            : lockReason === 'waiting'
-              ? 'Waiting for terminal…'
-              : 'Message, @files, /commands'
-        }
+        disabled={lockReason !== null || promptCardOwnsInput}
+        placeholder={mobileNativeChatComposerPlaceholder(lockReason, promptCardOwnsInput)}
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}
       />

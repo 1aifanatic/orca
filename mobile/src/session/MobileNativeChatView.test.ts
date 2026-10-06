@@ -713,4 +713,34 @@ describe('MobileNativeChatView', () => {
       vi.useRealTimers()
     }
   })
+  // Why: a terminal-backed send types into the agent's prompt and could answer it.
+  describe('a prompt card owns the input in terminal-backed chat', () => {
+    const permission = { title: 'Approve?', options: [{ label: 'Allow', send: '1' }] }
+
+    it('locks the composer at once while the card shows, and unlocks when it clears', async () => {
+      await render({ permission })
+      expect(composer().props.disabled).toBe(true)
+      expect(composer().props.placeholder).toBe('Answer the prompt above')
+
+      await update({ permission: null })
+      expect(composer().props.disabled).toBe(false)
+      expect(composer().props.placeholder).toBe('Message, @files, /commands')
+    })
+
+    it('locks for an ask and a heuristic question too', async () => {
+      await render({
+        ask: {
+          questions: [{ question: 'Tabs?', multiSelect: false, options: [{ label: 'Tabs' }] }]
+        }
+      })
+      expect(composer().props.disabled).toBe(true)
+      await update({ question: { question: 'Name?', options: [], multiSelect: false } })
+      expect(composer().props.disabled).toBe(true)
+    })
+
+    it('leaves a structured chat composer open: its host queues the send behind the prompt', async () => {
+      await render({ permission, structuredActivityUi: true })
+      expect(composer().props.disabled).toBe(false)
+    })
+  })
 })
