@@ -74,16 +74,9 @@ export type JournalLifecycleBatchInput = {
   mutations: readonly JournalLifecycleMutationInput[]
   fence: number
   recovered?: true
-  /** Rejects the sends still queued with this first, in the same append: a failed start's row
-   *  follows the messages it failed, and no reader meets one without the other. With none still
-   *  queued, the batch is not written either. */
-  rejectsQueued?: AgentJournalDispatchRejection
 }
 
-export type JournalResolvedLifecycleBatchInput = Omit<
-  JournalLifecycleBatchInput,
-  'mutations' | 'rejectsQueued'
-> & {
+export type JournalResolvedLifecycleBatchInput = Omit<JournalLifecycleBatchInput, 'mutations'> & {
   /** Read from the fold with every earlier write landed; may return none. */
   resolve: () => readonly JournalLifecycleMutationInput[]
 }

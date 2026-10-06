@@ -99,7 +99,7 @@ describe('journal row writer', () => {
     // Sequence 2 is taken, so the second of the two rows violates the primary key.
     insertTestJournalRow(database.db, SESSION_ID, row(2, 1))
 
-    await expect(writer.enqueueRows(() => [row, row])).rejects.toThrow()
+    expect(() => writer.writeRows(() => [row, row])).toThrow()
 
     expect(committedRows).toHaveLength(0)
     expect(readTestJournalRows(database.db, SESSION_ID, EPOCH).map((stored) => stored.seq)).toEqual(
