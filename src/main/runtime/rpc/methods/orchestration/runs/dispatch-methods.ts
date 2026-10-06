@@ -191,7 +191,11 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
           }
           injected = true
         } catch (err) {
-          db.failDispatch(ctx.id, err instanceof Error ? err.message : String(err))
+          // Unknown is not undelivered: the chat may be running it, so the Dispatch stays open, as
+          // an unknown worker-start does, for the worker's report or the coordinator's abandon.
+          if (!(err instanceof OrchestrationError && err.code === 'operation_unknown')) {
+            db.failDispatch(ctx.id, err instanceof Error ? err.message : String(err))
+          }
           throw err
         }
       }

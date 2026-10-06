@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { formatOrcaSessionAddress } from '../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../shared/orca-session-address-test-fixture'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
+import { closeStructuredAgentSessionChild } from './structured-agent-session-close'
 import type { FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
 import {
   COORDINATOR,
@@ -157,6 +158,26 @@ describe("a chat assignee's liveness, stop and close", () => {
     expect(db.getTask(taskId)?.status).not.toBe('dispatched')
     expect(await call('orchestration.workerShow', { dispatch: dispatchId })).toMatchObject({
       observation: { status: 'exited' }
+    })
+  })
+
+  it('keeps its Dispatch while a close puts the tab back, and fails it once a close is proven', async () => {
+    const { dispatchId } = await dispatchToChat()
+    vi.spyOn(host, 'close').mockRejectedValueOnce(new Error('the agent would not stop'))
+
+    // As a refusable worktree removal closes each chat in it.
+    const outcome = await closeStructuredAgentSessionChild(PEER_CHAT, {
+      restoreTabOnUnprovenClose: true
+    })
+
+    expect(outcome).toMatchObject({ stopped: false, closeAttempted: true })
+    expectChatOpen(PEER_CHAT)
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
+
+    expect(await closeStructuredAgentSessionChild(PEER_CHAT)).toMatchObject({ stopped: true })
+    expect(db.getDispatchContextById(dispatchId)).toMatchObject({
+      status: 'failed',
+      termination_reason: 'operator_close'
     })
   })
 

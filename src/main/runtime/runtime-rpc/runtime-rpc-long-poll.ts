@@ -37,6 +37,17 @@ export function classifyRuntimeLongPoll(request: RpcRequest): RuntimeLongPollCla
   ) {
     return 'wait'
   }
+  // An injected task into a chat waits for its agent to accept the turn, up to 60 s; the reply
+  // must outlive the 30 s idle timer or a delivered task reads as a dead runtime.
+  if (
+    request.method === 'orchestration.dispatch' &&
+    typeof request.params === 'object' &&
+    request.params !== null &&
+    'inject' in request.params &&
+    request.params.inject === true
+  ) {
+    return 'wait'
+  }
   if (request.method === 'browser.clientHost.attach') {
     return 'browser-host'
   }

@@ -8,7 +8,10 @@ import { formatOrcaSessionAddress } from '../../shared/orca-session-address'
 import { testOrcaSessionId } from '../../shared/orca-session-address-test-fixture'
 import { idOf } from './rpc/orchestration-session-caller-test-fixture'
 import { sendChatTask } from './rpc/methods/orchestration/chat-task-delivery'
-import type { FakeConnection } from './structured-chat-coordinator-fake-codex-fixture'
+import {
+  providerFaults,
+  type FakeConnection
+} from './structured-chat-coordinator-fake-codex-fixture'
 import {
   COORDINATOR,
   PEER_CHAT,
@@ -159,6 +162,26 @@ describe('a chat as the assignee of orchestration dispatch', () => {
 
     expect(await queuedCardTexts(PEER_CHAT)).toEqual(['the task'])
     await endTurn()
+  })
+
+  it('keeps the Dispatch open when the chat may have taken its task but never acknowledged it', async () => {
+    await openChat(COORDINATOR)
+    const worker = await openChat(PEER_CHAT)
+    const { taskId } = await coordinatorRunAndTask()
+    providerFaults.dieBeforeEveryEcho = true
+
+    const error = await refusal(
+      'orchestration.dispatch',
+      { task: taskId, to: WORKER, inject: true },
+      COORDINATOR
+    )
+
+    expect(error).toMatchObject({ code: 'operation_unknown' })
+    expect(worker.turns.length).toBeGreaterThan(0)
+    expect(db.db.prepare('SELECT status FROM dispatch_contexts').all()).toEqual([
+      { status: 'dispatched' }
+    ])
+    expect(db.getTask(taskId)?.status).toBe('dispatched')
   })
 
   it('refuses a chat that injects a Dispatch into itself, naming no --from, with no row written', async () => {

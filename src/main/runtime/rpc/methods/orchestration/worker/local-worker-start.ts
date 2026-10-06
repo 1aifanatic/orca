@@ -28,7 +28,7 @@ import { failWorkerStartWithReceipt } from './worker-start-receipt'
 import { parseTaskDeps } from './task-deps-argument'
 import { assertExplicitWorkerUsable } from './explicit-worker-terminal-validation'
 import { resolveDispatchAssigneeParty } from '../../../../orchestration/orchestration-party'
-import { chatAssigneeOf } from '../chat-assignee-admission'
+import { CHAT_WORKER_AUTHORITY, chatAssigneeOf, chatWorkerMode } from '../chat-assignee-admission'
 import { recordCreatedWorkerTerminalCustody } from './created-worker-terminal-custody'
 import { tearDownFailedWorkerStart } from './failed-worker-start-teardown'
 import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
@@ -129,7 +129,8 @@ export async function startLocalWorker(args: {
       resolvedWorktreeId: resolvedWorktree?.id
     })
   }
-  let mode = await resolveWorkerStartModeOnHost(runtime, args.mode, resolvedWorktree?.id, agent)
+  const hostMode = resolveWorkerStartModeOnHost(runtime, args.mode, resolvedWorktree?.id, agent)
+  let mode = chatWorkerMode(await hostMode, chat)
 
   const startOptions = {
     worktree: requestedWorktree,
@@ -257,7 +258,7 @@ export async function startLocalWorker(args: {
     }
     // A chat has no pane or process; its Dispatch names it by its Orca session ID alone.
     const terminalAuthority = chat
-      ? { paneKey: null, processIncarnation: null }
+      ? CHAT_WORKER_AUTHORITY
       : requireWorkerAuthority(runtime, terminalHandle)
     db.prepareStartingWorkerAuthority({
       dispatchId: started.dispatch.id,

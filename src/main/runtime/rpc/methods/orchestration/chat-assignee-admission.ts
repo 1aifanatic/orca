@@ -5,6 +5,7 @@ import {
 } from '../../../../../shared/orca-session-address'
 import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES as CODES } from '../../../../../shared/orchestration-session-caller-codes'
 import type { OrcaRuntimeService } from '../../../orca-runtime'
+import type { WorkerStartModeReceipt } from '../orchestration-worker-start-mode'
 import { observeChatAssignee } from '../../../orchestration/chat-assignee'
 import type { OrchestrationDb } from '../../../orchestration/db'
 import { OrchestrationError } from '../../../orchestration/orchestration-error'
@@ -13,6 +14,9 @@ import { readAgentSessionRecordStore } from '../../../orchestration/structured-s
 import { refuseUndeliverableSessionRecipient } from './messaging/session-recipient'
 
 const NO_EFFECTS = 'No effects were applied.'
+
+/** A chat has no pane or process; its Dispatch names it by its Orca session ID alone. */
+export const CHAT_WORKER_AUTHORITY = { paneKey: null, processIncarnation: null } as const
 
 /** The chat a Dispatch assignee party names; null for a terminal or a structured worker. */
 export function chatAssigneeOf(party: OrchestrationParty): OrcaSessionId | null {
@@ -63,4 +67,17 @@ export function refuseChatSelfAssignment(args: {
       `${formatOrcaSessionAddress(args.sessionId)} is this coordinator's own Orca session ID. ${args.remedy}`
     )
   }
+}
+
+/** A chat adopted as a worker starts nothing; the decided mode stands, its sentence says so. */
+export function chatWorkerMode(
+  mode: WorkerStartModeReceipt,
+  chat: OrcaSessionId | null
+): WorkerStartModeReceipt {
+  return chat
+    ? {
+        ...mode,
+        detail: `Gave the task to the chat ${formatOrcaSessionAddress(chat)}; no agent was started.`
+      }
+    : mode
 }
