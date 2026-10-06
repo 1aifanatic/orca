@@ -70,15 +70,20 @@ describe('matching chat surfaces with opposite app schemes', () => {
     const chat = createChat(appScheme, terminalScheme)
     // These roles cover transcript payloads, question badges, inline completion menus and controls.
     const matched = getComputedStyle(chat)
+    const terminalForegroundAtFullStrength = `${terminalScheme === 'light' ? '#000000' : '#ffffff'} 100%`
     expect(chat.style.color).toBe('var(--foreground)')
-    expect(matched.getPropertyValue('--foreground')).toContain(
-      terminalScheme === 'light' ? '92%' : '90%'
+    expect(matched.getPropertyValue('--chat-foreground')).toContain(
+      terminalForegroundAtFullStrength
     )
+    expect(matched.getPropertyValue('--chat-foreground-strong')).toContain(
+      terminalForegroundAtFullStrength
+    )
+    expect(matched.getPropertyValue('--foreground')).toContain(terminalForegroundAtFullStrength)
     expect(matched.getPropertyValue('--muted')).toContain('7%')
     expect(matched.getPropertyValue('--muted-foreground')).toContain('62%')
     expect(matched.getPropertyValue('--popover')).toContain('4%')
     expect(matched.getPropertyValue('--popover-foreground')).toContain(
-      terminalScheme === 'light' ? '92%' : '90%'
+      terminalForegroundAtFullStrength
     )
     expect(matched.getPropertyValue('--accent')).toContain('9%')
     expect(matched.getPropertyValue('--input')).toContain('7%')
