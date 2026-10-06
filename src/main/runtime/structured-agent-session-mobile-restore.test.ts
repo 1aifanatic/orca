@@ -13,6 +13,7 @@ import {
   hostTestMessage
 } from '../native-chat/agent-session-wire/structured-agent-session-host-test-data'
 import { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
+import { claudeAndCodexDeclared } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router-test-support'
 import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import {
@@ -85,6 +86,7 @@ describe('prompt delivery after host recovery', () => {
     restarted.onDispatched((event) => events.push(event))
     const store = await openTestAgentSessionRecordStore(h.root)
     const host = new StructuredAgentSessionHost({
+      agents: claudeAndCodexDeclared(),
       logger: h.log.logger,
       store,
       adapter: adapter(),
