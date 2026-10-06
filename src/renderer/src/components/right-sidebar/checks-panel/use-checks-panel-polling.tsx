@@ -36,7 +36,8 @@ export type ChecksPanelPollingInput = Pick<
 
 export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
   const modelRef = useRef(model)
-  const policyRef = useRef(new ChecksDetailPollingPolicy())
+  const policyRef = useRef<ChecksDetailPollingPolicy>(undefined!)
+  policyRef.current ??= new ChecksDetailPollingPolicy()
   useEffect(() => {
     modelRef.current = model
   })
