@@ -44,6 +44,7 @@ export class JsonlRpcPeer {
   private readonly framer: ReturnType<typeof createIncrementalNdjsonFramer>
   private nextId = 0
   private terminalError?: Error
+  private readingPaused = false
 
   constructor(
     private readonly input: Readable,
@@ -70,7 +71,10 @@ export class JsonlRpcPeer {
           this.diagnose('Ignored non-JSON agent output')
         }
       },
-      { maxLineBytes: this.limits.maxLineBytes }
+      {
+        maxLineBytes: this.limits.maxLineBytes,
+        shouldPause: () => this.readingPaused || this.closed
+      }
     )
     input.setEncoding('utf8')
     input.on('data', this.onData)
@@ -87,6 +91,26 @@ export class JsonlRpcPeer {
 
   get closed(): boolean {
     return this.terminalError !== undefined
+  }
+
+  pauseReading(): void {
+    this.readingPaused = true
+    this.input.pause()
+  }
+
+  resumeReading(): void {
+    if (this.closed) {
+      return
+    }
+    this.readingPaused = false
+    try {
+      this.framer.resume()
+      if (!this.readingPaused && !this.closed) {
+        this.input.resume()
+      }
+    } catch (error) {
+      this.close(error instanceof Error ? error : new Error(String(error)))
+    }
   }
 
   request(

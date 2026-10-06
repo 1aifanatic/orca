@@ -59,6 +59,31 @@ describe('JSON-lines RPC peer', () => {
     })
   })
 
+  it('pauses within a burst and preserves queued records and a partial suffix across repeated pauses', async () => {
+    const records: unknown[] = []
+    const { peer, input } = fixture({
+      onRecord: (record) => {
+        records.push(record)
+        peer.pauseReading()
+      }
+    })
+    input.write('{"type":"first"}\n{"type":"second"}\n{"type":"thi')
+    expect(records).toEqual([{ type: 'first' }])
+    input.write('rd"}\n{"type":"fourth"}\n')
+    peer.resumeReading()
+    expect(records).toEqual([{ type: 'first' }, { type: 'second' }])
+    peer.resumeReading()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(records).toEqual([{ type: 'first' }, { type: 'second' }, { type: 'third' }])
+    peer.resumeReading()
+    expect(records).toEqual([
+      { type: 'first' },
+      { type: 'second' },
+      { type: 'third' },
+      { type: 'fourth' }
+    ])
+  })
+
   it('ignores non-JSON output and routes id-less acknowledgements and dialogs', async () => {
     const onRecord = vi.fn()
     const onDiagnostic = vi.fn()

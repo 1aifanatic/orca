@@ -95,6 +95,14 @@ export class JsonlRpcAgentConnection {
     return this.peer.send(record)
   }
 
+  pauseReading(): void {
+    this.peer.pauseReading()
+  }
+
+  resumeReading(): void {
+    this.peer.resumeReading()
+  }
+
   /** Stop sends the dialect's abort first, then closes this connection through the supervisor. */
   close(error?: Error): Promise<ProviderProcessCloseResult> {
     this.closing = true
