@@ -23,7 +23,8 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true })
 })
 
-const scope = (executionHostId: string): StructuredAttentionOrigin['scope'] => ({
+type HostId = StructuredAttentionOrigin['scope']['executionHostId']
+const scope = (executionHostId: HostId): StructuredAttentionOrigin['scope'] => ({
   executionHostId,
   wslDistro: null,
   workspaceId: 'workspace-1',
@@ -49,7 +50,7 @@ function hostWithDeliveries() {
       notificationId: id,
       structuredOrigin: origin
     })
-  const prompt = (sessionId: string, epoch: string, sequence: number, host = 'local') => ({
+  const prompt = (sessionId: string, epoch: string, sequence: number, host: HostId = 'local') => ({
     scope: scope(host),
     sessionId,
     cause: { kind: 'prompt' as const, promptId: `${sessionId}-${sequence}` },
