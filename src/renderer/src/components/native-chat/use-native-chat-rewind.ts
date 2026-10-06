@@ -9,7 +9,6 @@ import type {
 } from '../../../../shared/agent-session-rewind'
 import type { AgentSessionWriteFailure } from '../../../../shared/agent-session-write-failure'
 import type { StructuredAgentSessionState } from '../../../../shared/structured-agent-session-reducer'
-import type { NativeChatMessage } from '../../../../shared/native-chat-types'
 import {
   nativeChatRewindPendingCopy,
   nativeChatRewindReasonCopy,
@@ -22,6 +21,9 @@ import type {
   StructuredAgentSessionWriteOutcome
 } from './use-structured-agent-session-mutate'
 import { returnMessageToComposer } from './structured-agent-session-withdrawn-message-restore'
+import { nativeChatRewindOffered } from './native-chat-rewind-eligibility'
+import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
+import { useStructuredAgentSessionHostRecoversRewindOnSend } from '@/runtime/structured-agent-session-host-capability'
 
 export type NativeChatRewindSurface = {
   disabledReason: string | null
@@ -68,31 +70,6 @@ function rewindFailureReason(failure: AgentSessionWriteFailure): string | undefi
   return failure.details && 'rewindReason' in failure.details
     ? failure.details.rewindReason
     : undefined
-}
-
-/** Whether the provider can rewind at all. An in-doubt read is still capable: the status feed's
- *  live latch, not this cached read, says when it resolves. */
-export function nativeChatRewindOffered(support: AgentSessionRewindSupport | undefined): boolean {
-  return support !== undefined && (support.supported || support.reason === 'outcome-unknown')
-}
-
-/** A sent prompt that opened its own turn, outside any subagent's section. Codex rewinds whole
- *  turns, so a steer would also discard its turn's opener; unsent, queued, command and goal rows
- *  have no turn to go back to. */
-export function nativeChatRowOffersRewind(
-  message: NativeChatMessage,
-  slot: { depth: number; turnKey: string | undefined },
-  hasDeliveryNotice: boolean
-): boolean {
-  return (
-    message.role === 'user' &&
-    slot.depth === 0 &&
-    slot.turnKey === message.id &&
-    !hasDeliveryNotice &&
-    message.queued !== true &&
-    message.command === undefined &&
-    message.sentAs === undefined
-  )
 }
 
 function isRewindTarget(state: StructuredAgentSessionState, itemId: string): boolean {
@@ -290,7 +267,7 @@ export type NativeChatRewindHost = {
 /** The rewind a structured session's user rows offer, sent through the session's own writes. */
 export function useStructuredAgentSessionRewind(
   args: Omit<RewindInput, keyof NativeChatRewindHost | 'send'> &
-    NativeChatRewindHost & { write: StructuredAgentSessionWrite }
+    NativeChatRewindHost & { target: RuntimeClientTarget; write: StructuredAgentSessionWrite }
 ) {
   const {
     blocked,
@@ -300,9 +277,14 @@ export function useStructuredAgentSessionRewind(
     onMessageReturned,
     sessionId,
     state,
-    support,
+    target,
     write
   } = args
+  // An in-doubt rewind returns the prompt for the next send to settle; only a host that settles it
+  // on a send may offer one. Unknown hides it, as unresolved support does.
+  const support = useStructuredAgentSessionHostRecoversRewindOnSend(target)
+    ? args.support
+    : undefined
   const input = useMemo<RewindInput>(
     () => ({
       sessionId,

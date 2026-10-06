@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+  AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import type { RuntimeClientTarget } from './runtime-client-target'
@@ -90,6 +91,17 @@ export function useStructuredAgentSessionHostStopsConversation(
   return useStructuredAgentSessionHostCapability(
     target,
     AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY
+  )
+}
+
+/** Whether the host settles a rewind left in doubt on the next send, agent running or not: only
+ *  then may a client offer a rewind, which hands an in-doubt prompt back for that send. */
+export function useStructuredAgentSessionHostRecoversRewindOnSend(
+  target: RuntimeClientTarget
+): boolean {
+  return useStructuredAgentSessionHostCapability(
+    target,
+    AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY
   )
 }
 

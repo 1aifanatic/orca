@@ -169,6 +169,7 @@ export function useStructuredAgentSession(args: {
   )
   const rewind = useStructuredAgentSessionRewind({
     sessionId,
+    target,
     composerScopeKey,
     ...args.rewind,
     state,

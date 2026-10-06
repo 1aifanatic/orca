@@ -38,11 +38,14 @@ vi.mock('./use-structured-agent-session-read', () => ({
 }))
 
 import { useStructuredAgentSession } from './use-structured-agent-session'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
+import { AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 
 const target = { kind: 'local' } as const
 
 describe('rewind target after send acceptance', () => {
   beforeEach(() => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY])
     vi.clearAllMocks()
     localStorage.clear()
     state = {
@@ -63,7 +66,10 @@ describe('rewind target after send acceptance', () => {
       )
     })
   })
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    setLocalRuntimeCapabilitiesForTests(null)
+  })
 
   it.each([
     ['codex', 'orca'],

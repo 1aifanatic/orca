@@ -12,7 +12,8 @@ import type { NativeChatSubagentDisclosure } from './native-chat-subagent-sectio
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
-import { nativeChatRowOffersRewind, type NativeChatRewindSurface } from './use-native-chat-rewind'
+import type { NativeChatRewindSurface } from './use-native-chat-rewind'
+import { nativeChatRowOffersRewind } from './native-chat-rewind-eligibility'
 
 /** Everything a row needs that is the same for every row. Held as one memoized
  *  object so a row's props change only when that row's own slot does. */

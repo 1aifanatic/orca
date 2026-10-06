@@ -9,11 +9,8 @@ import { AGENT_SESSION_REWIND_REASONS } from '../../../../shared/agent-session-r
 import { EMPTY_STRUCTURED_AGENT_SESSION } from '../../../../shared/structured-agent-session-reducer'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
-import {
-  NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS,
-  nativeChatRowOffersRewind,
-  useNativeChatRewind
-} from './use-native-chat-rewind'
+import { NATIVE_CHAT_REWIND_RESET_TIMEOUT_MS, useNativeChatRewind } from './use-native-chat-rewind'
+import { nativeChatRowOffersRewind } from './native-chat-rewind-eligibility'
 import {
   nativeChatRewindPendingCopy,
   nativeChatRewindReasonCopy,
@@ -433,6 +430,16 @@ describe('which rows offer rewind', () => {
     expect(nativeChatRowOffersRewind(message(), opens, false)).toBe(true)
   })
 
+  it('offers a prompt whose image is a local file, which can go back to the composer', () => {
+    const withFile = message({
+      blocks: [
+        { type: 'text', text: 'Look' },
+        { type: 'image-ref', path: '/tmp/shot.png' }
+      ]
+    })
+    expect(nativeChatRowOffersRewind(withFile, opens, false)).toBe(true)
+  })
+
   it.each([
     ['a steer into a running turn', message(), { depth: 0, turnKey: 'earlier-opener' }, false],
     ['an unsent row', message({ unsent: true }), { depth: 0, turnKey: undefined }, false],
@@ -440,6 +447,12 @@ describe('which rows offer rewind', () => {
     ['a queued row', message({ queued: true }), opens, false],
     ['a /compact row', message({ command: { name: 'compact' } }), opens, false],
     ['a goal', message({ sentAs: 'goal' }), opens, false],
+    [
+      'a prompt with a URL image, which could not go back to the composer',
+      message({ blocks: [{ type: 'image-ref', url: 'https://example.com/shot.png' }] }),
+      opens,
+      false
+    ],
     ['a subagent prompt', message(), { depth: 1, turnKey: 'opener' }, false],
     ['an assistant row', message({ role: 'assistant' }), opens, false]
   ] as const)('never offers %s', (_label, row, slot, notice) => {

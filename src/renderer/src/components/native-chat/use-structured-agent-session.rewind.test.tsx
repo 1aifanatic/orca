@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as RuntimeRpcClient from '@/runtime/runtime-rpc-client'
+import { AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY as RECOVERY } from '../../../../shared/protocol-version'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -9,7 +11,14 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   toastMessage: vi.fn(),
   outboxSend: vi.fn(),
-  outboxRetry: vi.fn()
+  outboxRetry: vi.fn(),
+  remoteCapabilities: new Set<string>()
+}))
+
+vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof RuntimeRpcClient>()),
+  runtimeEnvironmentSupportsCapability: async (_environmentId: string, capability: string) =>
+    mocks.remoteCapabilities.has(capability)
 }))
 
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, message: mocks.toastMessage } }))
@@ -64,12 +73,20 @@ import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { readNativeChatDraftCache, writeNativeChatDraftCache } from './native-chat-draft-cache'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import {
   nativeChatRewindReasonCopy,
   nativeChatRewindReturnedUnknownCopy
 } from './native-chat-rewind-copy'
 
 const LOCAL_TARGET = { kind: 'local' } as const
+
+// This build's host settles an in-doubt rewind on the next send; an older one is tested below.
+beforeEach(() => {
+  setLocalRuntimeCapabilitiesForTests([RECOVERY])
+  mocks.remoteCapabilities = new Set([RECOVERY])
+})
+afterEach(() => setLocalRuntimeCapabilitiesForTests(null))
 
 const OPTIONS = {
   models: [
@@ -337,5 +354,57 @@ describe('useStructuredAgentSession rewind support and composer return', () => {
     await act(() => view.result.current.rewind.request('user-1', async () => true))
     expect(readNativeChatDraftCache('rewind-scope')).toContain('Half-typed')
     expect(readNativeChatDraftCache('rewind-scope')).toContain('Fix the bug')
+  })
+})
+
+describe('offering rewind only where the next send settles an in-doubt one', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fence = 3
+    epoch = 'epoch-1'
+    submissions = []
+    queuedMessages = null
+    items = [
+      {
+        itemId: 'user-1',
+        sequence: 1,
+        revision: 1,
+        observedAt: 1,
+        body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'Prompt' }] }
+      }
+    ]
+    mocks.call.mockResolvedValue({ ...OPTIONS, rewind: { supported: true } })
+  })
+
+  const remote = { kind: 'environment' as const, environmentId: 'ssh-host' }
+  const render = (target: typeof remote | typeof LOCAL_TARGET) =>
+    renderHook(() =>
+      useStructuredAgentSession({ sessionId: 'session-1', target, agent: 'codex', isVisible: true })
+    )
+
+  it('offers it on a remote host that advertises the recovery', async () => {
+    const view = render(remote)
+    await waitFor(() => expect(view.result.current.rewind.surface).toBeDefined())
+  })
+
+  it('offers none on a remote host that rewinds but predates the recovery', async () => {
+    mocks.remoteCapabilities = new Set()
+    const view = render(remote)
+    await waitFor(() =>
+      expect(mocks.call).toHaveBeenCalledWith(remote, 'agentSession.options', expect.anything())
+    )
+    await act(async () => {})
+    expect(view.result.current.rewind.surface).toBeUndefined()
+  })
+
+  it('offers it locally once the runtime answers, and none while it has not', async () => {
+    expect(render(LOCAL_TARGET).result.current.rewind.surface).toBeUndefined()
+    const view = render(LOCAL_TARGET)
+    await waitFor(() => expect(view.result.current.rewind.surface).toBeDefined())
+    setLocalRuntimeCapabilitiesForTests(null)
+    const unanswered = render(LOCAL_TARGET)
+    await waitFor(() => expect(mocks.call).toHaveBeenCalled())
+    await act(async () => {})
+    expect(unanswered.result.current.rewind.surface).toBeUndefined()
   })
 })
