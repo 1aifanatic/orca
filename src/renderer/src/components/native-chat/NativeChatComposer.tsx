@@ -167,9 +167,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       imageAttachments,
       attachResolvedPaths,
       clearImageAttachments,
-      removeImageAttachment,
-      beginPendingImageAttachment,
-      dropPendingImageAttachment
+      removeImageAttachment
     } = attachments
     useNativeChatWorkspaceFileDrop({
       terminalTabId,
@@ -213,11 +211,11 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       disabled,
       resolveAttachmentOwner,
       attachResolvedPaths,
-      beginPendingImageAttachment,
+      beginPendingImageAttachment: attachments.beginPendingImageAttachment,
       // Settles into the scope cache, which outlives a composer a prompt card unmounted.
       resolvePendingImageAttachment: attachments.pendingChips.resolve,
       revealPendingImageAttachment: attachments.revealPendingImageAttachment,
-      dropPendingImageAttachment,
+      dropPendingImageAttachment: attachments.dropPendingImageAttachment,
       setNotice
     })
 
