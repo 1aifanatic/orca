@@ -32,9 +32,9 @@ export type StructuredAgentSessionMutationContext = {
   openConversation: (sessionId: string) => Promise<StructuredAgentSessionHostSession | null>
   /** Gives the session a provider child; inside the caller's serialize. */
   ensureAgent: (sessionId: string) => Promise<AgentSessionMutationSessionPreparation>
-  /** Finishes a stop an earlier attempt left owed, for an operation that starts no child; inside
-   *  the caller's serialize. */
-  finishOwedStop: (sessionId: string) => Promise<AgentSessionMutationSessionPreparation>
+  /** Joins a close a stop began on the session's child, for an operation that starts no child;
+   *  inside the caller's serialize. */
+  joinChildClose: (sessionId: string) => Promise<AgentSessionMutationSessionPreparation>
   /** A message was accepted: the session's delivery loop hands it over. */
   wakeDelivery: (sessionId: string) => void
   /** Stops the session's provider child, keeping its conversation; inside the caller's serialize.
@@ -44,9 +44,6 @@ export type StructuredAgentSessionMutationContext = {
    *  journal commit (a conversation command). Draft-table changes need no call:
    *  the draft store notifies through the journal's own commit listener. */
   wakeQueuedDrain?: (sessionId: string) => void
-  /** The host's reading that a person's Stop is still ending the session's work, as the status
-   *  feed projects it from the journal as it stands. */
-  readStopping?: (sessionId: string) => boolean
   now: () => number
 }
 
@@ -59,30 +56,19 @@ export function mutateStructuredAgentSession<TValue>(
   prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
 ): Promise<AgentSessionMutationResult<TValue>> {
   return context.serialize(envelope.sessionId, () =>
-    mutateStructuredAgentSessionOffLane(context, caller, envelope, plan, prepareSession)
+    admitAndRunAgentSessionMutation({
+      store: context.deps.store,
+      adapter: context.deps.adapter,
+      agents: context.deps.agents,
+      logger: context.deps.logger,
+      callerKey: caller.callerKey,
+      envelope,
+      plan,
+      journal: () => context.sessions.get(envelope.sessionId)?.journal,
+      prepareSession,
+      publish: (journal) => context.publish(envelope.sessionId, journal),
+      providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
+      now: () => context.now()
+    })
   )
-}
-
-/** Admits the envelope and runs the plan without the session's serialize: for a plan that only
- *  writes the journal, through its own ordered writer, and touches nothing the lane orders. */
-export function mutateStructuredAgentSessionOffLane<TValue>(
-  context: StructuredAgentSessionMutationContext,
-  caller: StructuredAgentSessionCaller,
-  envelope: AgentSessionMutationEnvelope,
-  plan: MutationPlan<TValue>,
-  prepareSession?: AgentSessionMutationRequest<TValue>['prepareSession']
-): Promise<AgentSessionMutationResult<TValue>> {
-  return admitAndRunAgentSessionMutation({
-    store: context.deps.store,
-    adapter: context.deps.adapter,
-    logger: context.deps.logger,
-    callerKey: caller.callerKey,
-    envelope,
-    plan,
-    journal: () => context.sessions.get(envelope.sessionId)?.journal,
-    prepareSession,
-    publish: (journal) => context.publish(envelope.sessionId, journal),
-    providerChildPhase: () => context.sessions.get(envelope.sessionId)?.child?.phase,
-    now: () => context.now()
-  })
 }

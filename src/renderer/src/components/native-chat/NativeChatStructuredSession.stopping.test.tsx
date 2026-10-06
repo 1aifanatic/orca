@@ -22,7 +22,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   }
 }))
 vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAgentSession())
-vi.mock('./use-native-chat-font-scale', () => moduleFactories.useNativeChatFontScale())
+vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())
@@ -95,7 +95,7 @@ describe("the chat pane while a person's Stop ends the turn", () => {
 
   it('says a message is queued to run after the stop only where the host queues sends', async () => {
     mocks.turnId = 'turn-1'
-    mocks.queueCapable = true
+    mocks.sendsQueue = true
     renderPane()
     await waitFor(() => expect(hostStatus.emit).not.toBeNull())
 

@@ -22,15 +22,8 @@ import type { AgentSessionPromptRequest } from './structured-agent-session-turns
 import { threadGoalPlan } from './structured-agent-session-thread-goal'
 import {
   mutateStructuredAgentSession,
-  mutateStructuredAgentSessionOffLane,
   type StructuredAgentSessionMutationContext
 } from './structured-agent-session-mutation-context'
-import {
-  maybeQueueStructuredAgentSessionSend,
-  queuedMessageBodyIsTextOnly
-} from './structured-agent-session-queued-messages'
-import type { AgentSessionTurnContext } from './structured-agent-session-turns'
-import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import {
   openForProviderWrite,
   openWithAgent,
@@ -44,6 +37,7 @@ import {
   setOptionPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
@@ -67,71 +61,32 @@ export function sendStructuredAgentSessionTurn(
      *  Orchestration mail, a restart continuation and `agent.launch`'s host-sent
      *  prompt never set it. */
     userSend?: true
+    /** Host-local, never on the wire: who a host-side send is from. A queued one records it on
+     *  its card, a direct one its kind on the submission. A client's send is always its person's
+     *  (`userSend`). */
+    source?: AgentSessionMessageSource
     beforeRun?: () => void
-  }
+  },
+  arrival?: Parameters<typeof sendPreparation>[2]
 ): Promise<AgentSessionMutationResult<AgentSessionSendResult>> {
   const plan = sendPlan(params)
-  const preparation = sendPreparation(context, params.envelope)
-  const queueable = (ctx: AgentSessionTurnContext) =>
-    runQueueableStructuredAgentSessionSend(
-      context,
-      ctx,
-      params,
-      async () =>
-        structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
-        (await plan.run(ctx))
-    )
-  if (!sendQueuesAfterStop(context, params)) {
-    return mutateStructuredAgentSession(
-      context,
-      caller,
-      params.envelope,
-      { ...plan, run: queueable },
-      preparation
-    )
-  }
-  // A message sent while a person's Stop ends the work is a card that runs once the stop lands. Its
-  // write has no order to keep with the Stop, which holds the lane until its provider answers.
-  return mutateStructuredAgentSessionOffLane(context, caller, params.envelope, {
-    ...plan,
-    run: async (ctx) => {
-      // Read again once admitted, in the same tick as the write: the Stop may have settled since.
-      const queued = sendQueuesAfterStop(context, params)
-        ? await maybeQueueStructuredAgentSessionSend(context, ctx, params, true)
-        : null
-      return (
-        queued ??
-        // Anything else takes the lane, on the conversation and fence it stands at there, as every
-        // send does: a close and reopen while it waited replaced the journal admission read.
-        context.serialize(ctx.sessionId, async () => {
-          const prepared = await preparation()
-          const journal = context.sessions.get(ctx.sessionId)?.journal
-          if (!prepared.ok || !journal) {
-            return prepared.ok
-              ? { ok: false as const, refusal: AGENT_SESSION_NOT_ATTACHED }
-              : prepared
-          }
-          const fence = context.deps.store.getRecord(ctx.sessionId)?.lease.runtimeFence
-          return queueable({ ...ctx, journal, fence: fence ?? ctx.fence })
-        })
-      )
-    }
-  })
-}
-
-/** A text send asking to be queued, while the host reads that a person's Stop is ending the work. */
-function sendQueuesAfterStop(
-  context: StructuredAgentSessionMutationContext,
-  params: {
-    envelope: AgentSessionMutationEnvelope
-    body: AgentJournalMessageItem
-    delivery?: 'queue-if-active'
-  }
-): boolean {
-  return (
-    params.delivery === 'queue-if-active' &&
-    queuedMessageBodyIsTextOnly(params.body) &&
-    context.readStopping?.(params.envelope.sessionId) === true
+  return mutateStructuredAgentSession(
+    context,
+    caller,
+    params.envelope,
+    {
+      ...plan,
+      run: (ctx) =>
+        runQueueableStructuredAgentSessionSend(
+          context,
+          ctx,
+          params,
+          async () =>
+            structuredAgentSessionSendBlock(context.deps.store.getRecord(ctx.sessionId)) ??
+            (await plan.run(ctx))
+        )
+    },
+    sendPreparation(context, params.envelope, arrival)
   )
 }
 
@@ -207,7 +162,7 @@ export async function setStructuredAgentSessionOption(
       },
       run: (ctx) =>
         atRest()
-          ? recordStructuredAgentSessionOptionIntent(context.deps.store, ctx, params)
+          ? recordStructuredAgentSessionOptionIntent(context.deps, ctx, params)
           : plan.run(ctx)
     },
     openForProviderWrite(context, params.envelope)

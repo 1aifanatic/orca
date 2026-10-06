@@ -1,6 +1,5 @@
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { forwardRef, useCallback, useState } from 'react'
-import { useAppStore } from '../../store'
 import { useNativeChatComposerInterrupt } from './use-native-chat-composer-interrupt'
 import { useNativeChatContextUsageSummary } from './use-native-chat-context-usage-summary'
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
@@ -14,13 +13,14 @@ import { useNativeChatLaunchDraftAdoption } from './use-native-chat-launch-draft
 import { NativeChatComposerField } from './NativeChatComposerField'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
+import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 import { useNativeChatComposerHandle } from './use-native-chat-composer-handle'
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
 import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
 import { useNativeChatSendLifecycle } from './use-native-chat-send-lifecycle'
 import { useNativeChatSessionOptions } from './use-native-chat-session-options'
 import { useNativeChatFileAttachmentActions } from './use-native-chat-file-attachment-actions'
-import { useNativeChatDictationActions } from './use-native-chat-dictation-actions'
+import { useNativeChatDictation } from './use-native-chat-dictation'
 import { useNativeChatSessionOptionCommand } from './use-native-chat-session-option-command'
 import { useNativeChatComposerCatalog } from './use-native-chat-composer-catalog'
 import { useNativeChatPickerState } from './use-native-chat-picker-state'
@@ -54,6 +54,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     {
       terminalTabId,
       paneKey,
+      draftScopeKey = paneKey,
       targetPtyId,
       agent,
       canSend = true,
@@ -65,21 +66,23 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       optimisticSendOutcome,
       onOptimisticSendCanceled,
       onSlashCommand,
+      answerCommandLocally,
       onSwitchToTerminal,
       readTerminalScreen,
       launchSeed,
       structuredTransport,
-      steerQueued
+      steerQueued,
+      inputOwnedByCard = false
     },
     ref
   ): React.JSX.Element {
     // Scope key shared with image attachments so an unsent draft + its attached
     // images survive both TUI/GUI toggles and PTY replacement on reconnect.
     // Why: local, SSH, and runtime reconnects can replace or temporarily clear
-    // the PTY id. Pane identity is the stable ownership key for unsent input.
+    // the PTY id. Pane (or conversation) identity is the stable owner of unsent input.
     const imeEnterGesture = useImeEnterGestureOwnership()
     const { draft, setDraft, flushDraftAppends } = useNativeChatDraft(
-      paneKey,
+      draftScopeKey,
       imeEnterGesture.isComposing
     )
     const [caret, setCaret] = useState(draft.length)
@@ -96,21 +99,13 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const [history, setHistory] = useState<HistoryState>(EMPTY_HISTORY)
     const [activeSuggestion, setActiveSuggestion] = useState(0)
     const [notice, setNotice] = useState<string | null>(null)
-    const [dictationPressed, setDictationPressed] = useState(false)
     const { textareaRef } = useNativeChatComposerAppMenuSelection(imeEnterGesture.isComposing)
     const { cancelPendingSends, trackPendingSend } = useNativeChatSendLifecycle(
       terminalTabId,
       targetPtyId,
-      onOptimisticSendCanceled
+      onOptimisticSendCanceled,
+      { inputOwnedByCard, onPendingSendRetired: optimisticSendOutcome?.reject }
     )
-    const dictationState = useAppStore((store) => store.dictationState)
-    const voiceSettings = useAppStore((store) => store.settings?.voice)
-    const dictationDisabled = voiceSettings?.enabled !== true || !voiceSettings.sttModel
-    const isDictating =
-      dictationPressed ||
-      dictationState === 'starting' ||
-      dictationState === 'listening' ||
-      dictationState === 'stopping'
 
     const { agentCommands, sessionSkillNames } = useNativeChatComposerCatalog(
       agent,
@@ -147,16 +142,17 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       return { ptyId: targetPtyId, settings: getSettingsForAgentTabRuntimeOwner(terminalTabId) }
     }, [targetPtyId, terminalTabId])
 
+    // Why inputOwnedByCard: the hidden field can still hold keyboard focus for a frame.
     const [hasPty, disabled] = structuredTransport
       ? [true, !canSend]
-      : [targetPtyId !== null, targetPtyId === null || !canSend]
+      : [targetPtyId !== null, targetPtyId === null || !canSend || inputOwnedByCard]
 
     const syncCaret = useCallback((el: NativeChatComposerInput) => {
       setCaret(el.selectionStart ?? el.value.length)
     }, [])
 
     const attachments = useNativeChatComposerAttachments({
-      attachmentScopeKey: paneKey,
+      attachmentScopeKey: draftScopeKey,
       allowWithoutTarget: Boolean(structuredTransport),
       caret,
       disabled,
@@ -184,12 +180,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       attachResolvedPaths,
       setNotice
     })
-    // A pasted image has no agent-readable path until its save lands; sending
-    // mid-save would ship the message without the image the chip promises.
-    const hasPendingAttachment = imageAttachments.some((attachment) => attachment.pending)
+    const imageBlock = nativeChatImageSendBlock(imageAttachments)
     const sendButtonDisabled = isWorking
-      ? !hasPty || !onStop || isStopping
-      : disabled || hasPendingAttachment || (draft.trim() === '' && imageAttachments.length === 0)
+      ? !hasPty || !onStop
+      : disabled || imageBlock.holdsSend || (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
       terminalTabId,
@@ -225,8 +219,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
 
     const { pickAttachment } = useNativeChatFileAttachmentActions(paneKey, attachExternalPaths)
-    const { toggleDictation, startHoldDictation, stopHoldDictation } =
-      useNativeChatDictationActions({ textareaRef, setDictationPressed })
+    const dictation = useNativeChatDictation(textareaRef)
     const { dispatch: dispatchSessionOptionCommand, isDispatching: isDispatchingSessionOption } =
       useNativeChatSessionOptionCommand({
         agent,
@@ -252,10 +245,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     const sendStructured = useNativeChatStructuredComposerSend({
       agent,
-      draft,
+      draftScopeKey,
       imageAttachments,
       structuredTransport,
-      clearImageAttachments,
+      isComposing: imeEnterGesture.isComposing,
       clearSkillOrigin,
       setHistory,
       setDraft,
@@ -276,6 +269,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       onOptimisticSend,
       optimisticSendOutcome,
       onSlashCommand,
+      answerCommandLocally,
       sessionOptionsSurface: ptySessionOptionsSurface,
       terminalTabId,
       trackPendingSend,
@@ -288,6 +282,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
     const { send, goalMode } = useNativeChatComposerSubmit({
       structuredTransport,
+      draftScopeKey,
       draft,
       caret,
       imageAttachments,
@@ -300,6 +295,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
 
     const interrupt = useNativeChatComposerInterrupt({
+      inert: inputOwnedByCard,
       cancelPendingSends,
       isWorking,
       onStop,
@@ -312,6 +308,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       isDispatchingSessionOption,
       resolveTarget,
       onSlashCommand,
+      answerCommandLocally,
       sessionOptionsSurface: ptySessionOptionsSurface,
       trackPendingSend,
       setHistory,
@@ -362,7 +359,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
 
     return (
       <NativeChatComposerField
-        composerScopeKey={paneKey}
+        dropScopeKey={paneKey}
+        draftScopeKey={draftScopeKey}
         textareaRef={textareaRef}
         draft={draft}
         disabled={disabled}
@@ -373,13 +371,14 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         notice={notice}
         imageAttachments={imageAttachments}
         sendButtonDisabled={sendButtonDisabled}
+        sendBlockedReason={imageBlock.reason}
         isWorking={isWorking}
         isStopping={isStopping}
         afterStop={afterStop}
         attachDisabled={disabled}
-        dictationDisabled={dictationDisabled}
-        isDictating={isDictating}
-        isDictationHoldMode={voiceSettings?.dictationMode === 'hold'}
+        dictationDisabled={dictation.dictationDisabled}
+        isDictating={dictation.isDictating}
+        isDictationHoldMode={dictation.isDictationHoldMode}
         imeEnterGesture={imeEnterGesture}
         onDraftChange={handleDraftChange}
         onTextareaSelect={(element) => {
@@ -413,9 +412,9 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         }}
         onRemoveImageAttachment={(id) => removeImageAttachment(id)}
         onAttach={pickAttachment}
-        onDictationToggle={toggleDictation}
-        onDictationHoldStart={startHoldDictation}
-        onDictationHoldEnd={stopHoldDictation}
+        onDictationToggle={dictation.toggleDictation}
+        onDictationHoldStart={dictation.startHoldDictation}
+        onDictationHoldEnd={dictation.stopHoldDictation}
         onSend={send}
         onStop={interrupt}
         sessionOptionsSurface={sessionOptionsSurface}

@@ -4,7 +4,10 @@
 // feed, with turn rows named as Codex writes them.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  agentJournalSubmissionKey
+} from '../../../shared/agent-session-journal-item-key'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemIdentity
@@ -14,7 +17,10 @@ import type {
   AgentSessionStatusEvent,
   AgentSessionStatusSummary
 } from '../../../shared/agent-session-wire'
-import { isStructuredAgentSessionStopNote } from './structured-agent-session-command-turn'
+import {
+  isStructuredAgentSessionStopNote,
+  structuredAgentSessionStopNoteIdentity
+} from './structured-agent-session-command-turn'
 import { HOST_TEST_SESSION, hostTestOperationId } from './structured-agent-session-host-test-data'
 import {
   createQueuedMessageTestRig,
@@ -424,7 +430,7 @@ describe('a Stop whose provider ends its session', () => {
     expect(status()).toMatchObject({ status: 'working', stopping: true })
   })
 
-  it("says the Stop went unconfirmed once the child's end fails, and the next Stop retries it", async () => {
+  it("says the Stop went unconfirmed once the child's end fails, and that it took once the next Stop's joined close proves the exit", async () => {
     const { status } = await runningTurn({ stopEndsSession: true })
     rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
 
@@ -434,13 +440,155 @@ describe('a Stop whose provider ends its session', () => {
     // Still the person's Stop while the work runs on: Stop stays enabled for the retry.
     expect(status()).toMatchObject({ status: 'working', stopping: true })
 
-    // The retry's child end is held, so the status can be read while it runs.
+    // The retry's child end is held, so the status can be read while it runs. The retry joins the
+    // child's close, which runs the stop again since the last one came back unproven.
     const retried = Promise.withResolvers<boolean>()
     rig.closeSession.mockImplementationOnce(() => retried.promise)
-    expect(await rig.stop()).toMatchObject({ ok: true })
+    const retry = rig.stop()
     await eventually(() => expect(rig.closeSession).toHaveBeenCalledTimes(2))
-    expect(stopAnswers()).toEqual(['took'])
     expect(status()).toMatchObject({ status: 'working', stopping: true })
     retried.resolve(true)
+    expect(await retry).toMatchObject({ ok: true })
+    expect(stopAnswers()).toEqual(['took'])
+  })
+
+  it('keeps the note unconfirmed when the next Stop joins a close that fails again', async () => {
+    const { status } = await runningTurn({ stopEndsSession: true })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out again'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+
+    expect(rig.closeSession).toHaveBeenCalledTimes(2)
+    expect(stopAnswers()).toEqual(['cancelUnconfirmed'])
+    expect(status()).toMatchObject({ status: 'working', stopping: true })
+  })
+
+  // The close lives on the child, in memory, and dies with the host. The new host's settlement,
+  // which ends the turn on a proof of the old owner's death, is what says the Stop took.
+  async function crashAfterUnconfirmedStop(): Promise<void> {
+    await runningTurn({ stopEndsSession: true })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+    rig.crashRestartHostProcess()
+  }
+
+  function turnOneState(): string | undefined {
+    return journal()
+      .snapshot()
+      .items.map((item) => (item.body.kind === 'turn' ? item.body : undefined))
+      .find((turn) => turn?.turnId === 'turn-1')?.state
+  }
+
+  /** What the host's restart reconciliation or recovery writes once a probe finds the old pid gone. */
+  async function proveOldOwnerGone(): Promise<void> {
+    const record = rig.store.getRecord(HOST_TEST_SESSION)!
+    await rig.store.evictProvenDeadOwner({
+      sessionId: HOST_TEST_SESSION,
+      expectedFence: record.lease.runtimeFence,
+      probe: { outcome: 'pid-absent' },
+      now: Date.now()
+    })
+  }
+
+  it("says the Stop took once the new host proves the old child's exit after a crash", async () => {
+    await crashAfterUnconfirmedStop()
+    // Proven before the chat opens, as the restart's reconciliation does on most machines.
+    await proveOldOwnerGone()
+    await rig.queuePause()
+
+    expect({ turn: turnOneState(), notes: stopAnswers() }).toEqual({
+      turn: 'interrupted',
+      notes: ['took']
+    })
+  })
+
+  it('keeps the note unconfirmed while the old exit stays unverifiable, then says it took once proven', async () => {
+    await crashAfterUnconfirmedStop()
+    await rig.queuePause()
+    expect({ turn: turnOneState(), notes: stopAnswers() }).toEqual({
+      turn: 'unverifiable',
+      notes: ['cancelUnconfirmed']
+    })
+
+    // A later proof naming the old owner, as recovery writes it, revises the open chat.
+    await proveOldOwnerGone()
+    await eventually(() =>
+      expect({ turn: turnOneState(), notes: stopAnswers() }).toEqual({
+        turn: 'interrupted',
+        notes: ['took']
+      })
+    )
+  })
+
+  // A Stop pressed before its turn showed keys its note by itself, with no turn to sit on; once it is
+  // unconfirmed while that turn runs, the note moves onto the turn, so the turn's proven end finds it.
+  it('moves a note a Stop wrote before its turn showed onto that turn, which then says the Stop took', async () => {
+    rig = await createQueuedMessageTestRig({ stopEndsSession: true })
+    const sent = await rig.workingSend()
+    const kill = Promise.withResolvers<boolean>()
+    rig.closeSession.mockImplementationOnce(() => kill.promise)
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(rig.closeSession).toHaveBeenCalled())
+    await rig.settleAccepted(sent, 'sent')
+    await turn('turn-1', sent, 'running')
+    kill.reject(new Error('the kill timed out'))
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+
+    // A join that fails again neither adds a note nor brings the first one back.
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out again'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    expect(stopAnswers()).toEqual(['cancelUnconfirmed'])
+
+    // The next Stop's joined close proves the exit.
+    expect(await rig.stop()).toMatchObject({ ok: true })
+
+    await eventually(() => expect(stopAnswers()).toEqual(['took']))
+    const turnRecord = journal()
+      .snapshot()
+      .items.find((item) => item.body.kind === 'turn' && item.body.turnId === 'turn-1')
+    const page = await rig.host.history({ sessionId: HOST_TEST_SESSION, direction: 'tail' })
+    const notes = page.ok
+      ? page.page.items.filter((item) => isStructuredAgentSessionStopNote(item.itemId))
+      : []
+    // What a client loads: one note, on that turn.
+    expect(notes.map((item) => [item.itemId, item.turnScope])).toEqual([
+      [
+        agentJournalItemKey(structuredAgentSessionStopNoteIdentity('turn-1')),
+        { kind: 'turn', turnItemId: turnRecord?.itemId }
+      ]
+    ])
+  })
+
+  // The kill timed out, then the agent's process exits on its own: the adapter reports the end of
+  // the close Orca began, and nothing else asks to stop.
+  it("says the Stop took once the agent's process exits on its own after the kill timed out", async () => {
+    await runningTurn({ stopEndsSession: true })
+    rig.closeSession.mockRejectedValueOnce(new Error('the kill timed out'))
+    expect(await rig.stop()).toMatchObject({ ok: true })
+    await eventually(() => expect(stopAnswers()).toEqual(['cancelUnconfirmed']))
+
+    await rig.host.handleAdapterEvent({
+      type: 'ended',
+      sessionId: HOST_TEST_SESSION,
+      reason: 'claude session closed',
+      cause: 'requested-close',
+      fence: fence(),
+      acquisitionGeneration: 'generation-1',
+      observedAt: Date.now()
+    })
+
+    await eventually(() =>
+      expect(
+        rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.child ?? null
+      ).toBeNull()
+    )
+    expect({ turn: turnOneState(), notes: stopAnswers() }).toEqual({
+      turn: 'interrupted',
+      notes: ['took']
+    })
   })
 })

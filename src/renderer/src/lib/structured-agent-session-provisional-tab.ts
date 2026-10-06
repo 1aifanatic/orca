@@ -11,7 +11,10 @@ import type {
 } from '@/lib/structured-agent-launch-settlement'
 import { useAppStore } from '@/store'
 import type { ExecutionHostId } from '../../../shared/execution-host'
-import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import {
+  isAgentSessionHandleProvider,
+  type AgentSessionHandleProvider
+} from '../../../shared/agent-session-provider-handle'
 import {
   beginPairedStructuredLaunch,
   openDeclinedStructuredLaunchTerminal,
@@ -37,7 +40,7 @@ export function openStructuredAgentSessionProvisionalTab(args: {
   /** The host the chat is created on; every later operation on the tab reads it. */
   executionHostId: ExecutionHostId
   sessionId: string
-  agent: 'claude' | 'codex'
+  agent: AgentSessionHandleProvider
   targetGroupId?: string
   activate?: boolean
 }): Tab {
@@ -152,12 +155,16 @@ export function beginStructuredAgentSessionProvisionalLaunch(
 }
 
 function beginLocalProvisionalLaunch(args: ProvisionalLaunchArgs): LocalProvisionalLaunch | null {
-  const handle = args.plan.begin(args.hooks, args.target)
+  const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
+  // The group the tab opens in: the caller's, else the workspace's active one.
+  const groupId =
+    args.targetGroupId ??
+    (worktreeId ? useAppStore.getState().activeGroupIdByWorktree[worktreeId] : undefined)
+  const handle = args.plan.begin(args.hooks, groupId ? { ...args.target, groupId } : args.target)
   if (!handle) {
     return null
   }
-  const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
-  if (!worktreeId || (args.plan.agent !== 'claude' && args.plan.agent !== 'codex')) {
+  if (!worktreeId || !isAgentSessionHandleProvider(args.plan.agent)) {
     throw new Error('A provisional structured launch needs its workspace and provider.')
   }
   try {

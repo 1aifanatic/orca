@@ -1,4 +1,8 @@
 import {
+  CODEX_STRUCTURED_HANDLE_NAMESPACE,
+  isAgentSessionProviderHandleInNamespace
+} from '../../shared/agent-session-provider-handle-encoding'
+import {
   AgentSessionAcquisitionRefusal,
   AgentSessionPreSpawnError,
   type AgentSessionAcquisition,
@@ -34,6 +38,7 @@ import {
 } from './codex-structured-fast-mode'
 import {
   assertCodexConnectionOpen,
+  CODEX_RECEIPT_TIMED_METHODS,
   codexSessionLifecycle,
   mintCodexAcquisitionGeneration,
   type CodexAcquisitionRegistry,
@@ -44,8 +49,6 @@ import {
 import type { CodexStructuredSessionTeardown } from './codex-structured-session-teardown'
 import type { CodexStructuredNotificationRetry } from './codex-structured-notification-retry'
 import type { deliverCodexServerRequest } from './codex-structured-provider-events'
-
-const TURN_BOUNDARIES: ReadonlySet<string> = new Set(['turn/started', 'turn/completed'])
 
 export async function acquireCodexStructuredSession(input: {
   input: StructuredAgentSessionAcquireInput
@@ -71,9 +74,11 @@ export async function acquireCodexStructuredSession(input: {
   const { previousAttempt, attempt } = acquisitions.start(sessionId)
   const acquisition = attempt.window
   let unbindReadingControl: (() => void) | undefined
+  const provenHandle = acquireInput.identity.providerHandle
   let primaryThreadId =
-    acquireInput.identity.providerHandle.kind === 'codex'
-      ? acquireInput.identity.providerHandle.threadId
+    provenHandle &&
+    isAgentSessionProviderHandleInNamespace(provenHandle, CODEX_STRUCTURED_HANDLE_NAMESPACE)
+      ? provenHandle.nativeId
       : null
   const subagentExecutions = new CodexSubagentExecutions()
   const dispatchEchoes = createCodexDispatchEchoes()
@@ -111,7 +116,14 @@ export async function acquireCodexStructuredSession(input: {
       previous: previousAttempt
     })
     acquisitions.assertCurrent(sessionId, attempt)
-    if (!(await closeCodexPublishedSession(sessions, sessionId, deps.onEvent))) {
+    if (
+      !(await closeCodexPublishedSession(
+        sessions,
+        sessionId,
+        deps.onEvent,
+        deps.logger ? { logger: deps.logger } : {}
+      ))
+    ) {
       throw new Error(`codex app-server for session ${sessionId} could not be stopped`)
     }
     acquisitions.assertCurrent(sessionId, attempt)
@@ -131,7 +143,9 @@ export async function acquireCodexStructuredSession(input: {
       {
         onNotification: (method, params) => {
           // Stamped at receipt, ahead of any pre-publication buffering or retry.
-          const observedAt = TURN_BOUNDARIES.has(method) ? (deps.now?.() ?? Date.now()) : undefined
+          const observedAt = CODEX_RECEIPT_TIMED_METHODS.has(method)
+            ? (deps.now?.() ?? Date.now())
+            : undefined
           const dispatchSequenceAtReceipt =
             method === 'turn/started' ? dispatchEchoes.latestSequence() : undefined
           input.deliver(
@@ -163,13 +177,16 @@ export async function acquireCodexStructuredSession(input: {
             Buffer.byteLength(JSON.stringify(payload ?? null), 'utf8')
           ),
         onSpawned: spawnIdentity.onSpawned,
-        onExit: (error) => {
+        onExit: (error, exit) => {
           try {
             handleCodexSessionExit({
               sessions,
               sessionId,
               connection: acquisition.connection,
               error,
+              // The end of a close Orca began, even one that came back unproven before it.
+              ...(exit?.expected ? { closedByOrca: true as const } : {}),
+              ...(deps.logger ? { logger: deps.logger } : {}),
               prompts: acquisition.prompts,
               ...(deps.onEvent ? { onEvent: deps.onEvent } : {})
             })
@@ -234,7 +251,6 @@ export async function acquireCodexStructuredSession(input: {
       connection,
       ...codexSessionLifecycle(acquireInput.fence, acquired.acquisitionGeneration as string),
       threadId: opened.threadId,
-      historyPath: opened.historyPath,
       historyMode: opened.historyMode,
       activeTurnIds: new Set(),
       abortedTurnIds: new Set(),

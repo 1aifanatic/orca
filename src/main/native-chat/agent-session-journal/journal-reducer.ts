@@ -6,9 +6,9 @@
 // dropped rather than resurrecting stale content, and ordering is by the
 // position (sequence, then place in the row) of the write that CREATED an item
 // (a later revision updates the body, it does not move the bubble) — except a
-// queued message, which sits where its handover put it. Producer linkage is
-// likewise the creating write's: a revision naming no producer keeps it, one
-// naming any replaces it.
+// queued message, which sits where its handover put it, and a rejected one, which
+// sits where it was rejected. Producer linkage is likewise the creating write's: a
+// revision naming no producer keeps it, one naming any replaces it.
 
 import type {
   AgentJournalAcceptanceReceipt,
@@ -30,6 +30,7 @@ import { isJournalStopOrResumeRow, type JournalRow } from './journal-row-schema'
 import { acceptSubmissionFromProviderItem, applyJournalSubmission } from './journal-submission-fold'
 import { applyJournalDispatchRow } from './journal-dispatch-reducer'
 import { isWriteFailureSubmission } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { projectJournalStopNote } from './journal-stop-note-projection'
 import {
   createJournalQueuePauseMarks,
   foldJournalQueuePauseMark,
@@ -233,7 +234,9 @@ function resolveItemId(state: JournalReducerState, itemId: string): string {
 export function renderJournalState(state: JournalReducerState): AgentJournalSnapshot {
   // The journal position is the sole ordering key; map insertion order is not,
   // because a re-created item re-enters the map after the items that followed it.
-  const items = [...state.items.values()].sort(compareAgentJournalItems)
+  const items = [...state.items.values()]
+    .map((item) => projectJournalStopNote(item, state.items))
+    .sort(compareAgentJournalItems)
   return {
     sessionId: state.sessionId,
     cursor: { epoch: state.epoch, sequence: state.lastSequence },

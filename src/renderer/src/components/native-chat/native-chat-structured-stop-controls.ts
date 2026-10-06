@@ -4,7 +4,7 @@ import type { NativeChatAfterStopSend } from './native-chat-composer-target'
 
 type StopController = Pick<
   ReturnType<typeof useStructuredAgentSession>,
-  'canStop' | 'stopPressed' | 'stop' | 'queuedMessages' | 'queueCapable'
+  'canStop' | 'stopPressed' | 'stop' | 'queuedMessages' | 'sendsQueue'
 >
 
 /**
@@ -38,7 +38,7 @@ export function nativeChatStructuredStopControls(
       isStopping: stopInFlight,
       onStop: () => void (stopInFlight || controller.stop()),
       steerQueued: stopping ? undefined : controller.queuedMessages.steerNewest,
-      afterStop: stopping ? (controller.queueCapable ? 'queue' : 'send') : undefined
+      afterStop: stopping ? (controller.sendsQueue ? 'queue' : 'send') : undefined
     }
   }
 }

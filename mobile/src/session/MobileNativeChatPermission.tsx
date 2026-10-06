@@ -1,8 +1,13 @@
 import { memo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { ShieldQuestion, X } from 'lucide-react-native'
+import { ShieldQuestion } from 'lucide-react-native'
+import { MobileNativeChatCardHeaderAction } from './MobileNativeChatCardHeaderAction'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
+import {
+  isNewerApprovalSubject,
+  isPlanApprovalSubject
+} from '../../../src/shared/agent-session-approval-subject'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 
 // Renders a detected agent permission ask as a card with tappable options.
@@ -11,14 +16,19 @@ import type { MobileChatPermission } from './mobile-native-chat-permission'
 function MobileNativeChatPermissionImpl({
   permission,
   onRespond,
-  onCancel
+  onCancel,
+  onCollapse
 }: {
   permission: MobileChatPermission
   onRespond: (send: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
+  /** Fold the card to a strip and free Send, writing nothing. */
+  onCollapse?: () => void
 }): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
+  // A newer Orca's subject: its detail is shown, and only the card's cancel answers.
+  const newerSubject = isNewerApprovalSubject(permission.subject)
   const hasContext = Boolean(
     permission.description ||
     permission.decisionReason ||
@@ -51,17 +61,12 @@ function MobileNativeChatPermissionImpl({
         >
           {permission.title}
         </Text>
-        {onCancel ? (
-          <Pressable
-            accessibilityLabel="Cancel"
-            hitSlop={8}
-            style={styles.cancel}
-            onPress={() => void onCancel(permission.prompt)}
-            disabled={submitting}
-          >
-            <X size={16} color={colors.textMuted} />
-          </Pressable>
-        ) : null}
+        <MobileNativeChatCardHeaderAction
+          prompt={permission.prompt}
+          onCancel={onCancel}
+          onCollapse={onCollapse}
+          disabled={submitting}
+        />
       </View>
       {hasContext ? (
         <ScrollView
@@ -93,7 +98,7 @@ function MobileNativeChatPermissionImpl({
               {permission.matchedAskRule.source}
             </Text>
           ) : null}
-          {permission.subject?.kind === 'plan' ? (
+          {isPlanApprovalSubject(permission.subject) ? (
             <View>
               <MobileMarkdown content={permission.subject.text} />
               {permission.subject.filePath ? (
@@ -102,6 +107,11 @@ function MobileNativeChatPermissionImpl({
             </View>
           ) : permission.detail ? (
             <Text style={styles.detail}>{permission.detail}</Text>
+          ) : null}
+          {newerSubject ? (
+            <Text testID="native-chat-approval-needs-newer-orca" style={styles.detail}>
+              This request needs a newer version of Orca.
+            </Text>
           ) : null}
         </ScrollView>
       ) : null}
@@ -114,11 +124,12 @@ function MobileNativeChatPermissionImpl({
               style={({ pressed }) => [
                 styles.option,
                 isPrimary ? styles.optionPrimary : styles.optionSecondary,
-                pressed && !submitting && styles.optionPressed
+                pressed && !submitting && styles.optionPressed,
+                newerSubject && styles.disabled
               ]}
               hitSlop={6}
               onPress={() => respond(option.send)}
-              disabled={submitting}
+              disabled={submitting || newerSubject}
             >
               <Text style={[styles.optionText, isPrimary && styles.optionTextPrimary]}>
                 {option.label}
@@ -157,12 +168,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: typography.bodySize,
     fontWeight: '600'
-  },
-  cancel: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center'
   },
   detail: {
     color: colors.textSecondary,
@@ -211,6 +216,9 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.7
+  },
+  disabled: {
+    opacity: 0.5
   },
   optionText: {
     color: colors.textPrimary,

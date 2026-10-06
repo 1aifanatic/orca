@@ -3,9 +3,15 @@
 //
 // The replay half matters more than it looks. The ledger records only that an
 // operation happened, so the durable answer usually comes back out of the
-// journal. Send is fail-closed: admission alone cannot prove non-delivery.
+// journal. Send is fail-closed: admission alone cannot prove non-delivery, so
+// its success commits with the row that accepts it, and a row still pending is
+// one that wrote nothing.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import {
+  USER_MESSAGE_SOURCE,
+  type AgentSessionMessageSource
+} from '../../../shared/agent-session-message-source'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import type {
@@ -51,13 +57,23 @@ export type MutationPlan<TValue> = {
   conversationWrite?: true
   /** Still runs, decided from the committed ledger, when its ledger row cannot be written. */
   runsWithoutLedgerRow?: true
-  markUnknownBeforeRun?: boolean
   run: (ctx: AgentSessionTurnContext) => Promise<TurnOutcome<TValue>>
   replay: (ctx: AgentSessionTurnContext, outcome: AgentSessionOperationOutcome) => TValue | null
   rerunWhenReplayMissing?: (ctx: AgentSessionTurnContext) => boolean
   recoverUnknownFromDurableState?: boolean
-  settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
-}
+} & (
+  | {
+      /** Its success is the row its run writes, so it commits in that row's transaction
+       *  (`AgentSessionTurnContext.operationReceipt`): a row left pending wrote nothing. That
+       *  success is fixed before the value exists, so it records no `settledOutcome`. */
+      settlesWithWrite: true
+      settledOutcome?: never
+    }
+  | {
+      settlesWithWrite?: never
+      settledOutcome?: (value: TValue) => AgentSessionOperationOutcome
+    }
+)
 
 export function sendPlan(params: {
   envelope: AgentSessionMutationEnvelope
@@ -65,6 +81,8 @@ export function sendPlan(params: {
   retryUnknown?: true
   delivery?: 'queue-if-active'
   userSend?: true
+  /** Who a host-side send is from; a person's send (`userSend`) is always the user. */
+  source?: AgentSessionMessageSource
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
   // The operation id IS the client message id: one send, one durable row, one
@@ -74,7 +92,7 @@ export function sendPlan(params: {
     method: 'agentSession.send',
     operationIdScope: 'global',
     conversationWrite: true,
-    markUnknownBeforeRun: true,
+    settlesWithWrite: true,
     // `delivery` joins the OPERATION fingerprint only; the submission row keeps
     // the body-only fingerprint the reducer's echo-aliasing recomputes.
     fields: { body: params.body, ...(params.delivery ? { delivery: params.delivery } : {}) },
@@ -84,8 +102,10 @@ export function sendPlan(params: {
     run: (ctx) => {
       // Asked at acceptance: a send accepted after this one is queued behind it.
       params.beforeRun?.()
+      const source = params.userSend ? USER_MESSAGE_SOURCE : params.source
       return performSend(ctx, {
         origin: params.userSend ? 'client' : 'host',
+        ...(source ? { source } : {}),
         clientMessageId,
         payloadFingerprint: sendBodyFingerprint(params.envelope.sessionId, params.body),
         body: params.body
@@ -93,8 +113,13 @@ export function sendPlan(params: {
     },
     replay: (ctx, outcome) => {
       // A send this host queued answers from its draft, then its hand-off; a
-      // withdrawn draft replays as spent — never as missing-submission doubt.
-      const queued = queuedSendAnswer(ctx.journal, clientMessageId)
+      // withdrawn draft replays as spent — never as missing-submission doubt. Only a send that
+      // asked to be queued may get that answer: a direct send the host kept as a card answers
+      // from its own submission, which a client that never sent `delivery` can read.
+      const queued =
+        params.delivery === 'queue-if-active'
+          ? queuedSendAnswer(ctx.journal, clientMessageId)
+          : null
       if (queued) {
         return queued
       }
@@ -104,7 +129,9 @@ export function sendPlan(params: {
       if (submission) {
         return { clientMessageId, submission }
       }
-      if (outcome.status === 'failed') {
+      // A pending row wrote nothing, so the send runs for the first time. Succeeded: accepted,
+      // then a new epoch dropped its row. Unknown: only builds before this one wrote that.
+      if (outcome.status === 'failed' || outcome.status === 'pending') {
         return null
       }
       const resolvedAt = ctx.now()
@@ -141,7 +168,7 @@ export function conversationCommandPlan(params: {
   return {
     method: 'agentSession.conversationCommand',
     conversationWrite: true,
-    markUnknownBeforeRun: true,
+    settlesWithWrite: true,
     fields: { command: STRUCTURED_AGENT_SESSION_COMPACT_COMMAND },
     recoverUnknownFromDurableState: true,
     run: async (ctx) => {
@@ -149,6 +176,7 @@ export function conversationCommandPlan(params: {
         clientMessageId,
         // Only a client asks through the command RPC: the person's own turn.
         origin: 'client',
+        source: USER_MESSAGE_SOURCE,
         payloadFingerprint: params.envelope.payloadFingerprint,
         body: structuredAgentSessionCompactBody()
       })
