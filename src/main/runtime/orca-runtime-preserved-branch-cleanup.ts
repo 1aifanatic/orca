@@ -1,5 +1,9 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithTerminalDrivers } from './orca-runtime-terminal-drivers'
+import {
+  confirmRootShellAloneFromProcessTable,
+  inspectionShowsShellAlone
+} from './run-terminal-shell-alone'
 import { ALL_EXECUTION_HOSTS_SCOPE, type ExecutionHostScope } from '../../shared/execution-host'
 import { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import type { IPtyProvider } from '../providers/types'
@@ -101,7 +105,17 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
    */
   async confirmTerminalShellAlone(ptyId: string): Promise<boolean> {
     try {
-      return (await this.ptyController?.confirmShellForeground?.(ptyId)) ?? false
+      if (await this.ptyController?.confirmShellForeground?.(ptyId)) {
+        return true
+      }
+      if (process.platform === 'win32') {
+        return inspectionShowsShellAlone(
+          (await this.ptyController?.inspectProcess?.(ptyId, { scanChildProcesses: true })) ?? null
+        )
+      }
+      const processes = (await this.ptyController?.listProcesses?.(null)) ?? []
+      const rootPid = processes.find((entry) => entry.id === ptyId)?.rootProcessId
+      return rootPid ? await confirmRootShellAloneFromProcessTable(rootPid) : false
     } catch {
       return false
     }
