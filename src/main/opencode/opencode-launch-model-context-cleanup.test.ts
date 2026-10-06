@@ -193,9 +193,10 @@ describe('OpenCode model probe termination evidence', () => {
     })
   })
 
-  it('accepts a forced POSIX stop whose teardown proved the tree gone', async () => {
+  it('trusts no forced POSIX stop, even one whose teardown reports the tree gone', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     child.kill.mockReturnValue(true)
+    // 'exited' covers the supervisor's tree only; the server leads its own detached group.
     vi.mocked(terminateProviderProcessTree).mockImplementation(async () => {
       supervisorExits(null, 'SIGKILL')
       return 'exited'
@@ -205,7 +206,7 @@ describe('OpenCode model probe termination evidence', () => {
     await untilStopRequested()
     await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS)
 
-    expect(await probe).toMatchObject({ primaryAgent: 'build' })
+    expect(await probe).toBeNull()
   })
 
   it('trusts no POSIX stop whose supervisor exited 1, which a failed group reap also exits', async () => {

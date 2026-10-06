@@ -225,8 +225,8 @@ export async function probeOpenCodeLaunchModelContext(options: {
 
 /**
  * True only when the server's group is proven gone: the supervisor exited on its own stop or
- * relayed the server's exit, or a forced teardown proved the tree gone. A forced supervisor dies
- * by SIGKILL and an unverified teardown proves nothing; exit 1 can be a group reap that failed.
+ * relayed the server's exit. A forced stop proves nothing: its teardown reaches the supervisor's
+ * group, not the server's own detached group. Exit 1 can be a group reap that failed.
  */
 async function stopSupervisedPreflight(
   child: ChildProcessHandle,
@@ -239,9 +239,9 @@ async function stopSupervisedPreflight(
   const { root, tree } = await stopSupervisedChildProcess(child, {
     site: OPENCODE_PREFLIGHT_KILL_SITE
   })
-  const supervisorReapedGroup =
-    child.signalCode !== 'SIGKILL' && !(child.signalCode === null && child.exitCode === 1)
-  if (root !== 'exited' || !(tree === 'exited' || (tree === null && supervisorReapedGroup))) {
+  const forced = tree !== null || child.signalCode === 'SIGKILL'
+  const failedReap = child.signalCode === null && child.exitCode === 1
+  if (root !== 'exited' || forced || failedReap) {
     return false
   }
   return withTimeout(closed, SUPERVISOR_PIPE_CLOSE_MS, false)

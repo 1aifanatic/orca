@@ -126,6 +126,8 @@ describe('runCodexAppServerSession stop', () => {
 
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
+    // The session sends no signal of its own on Windows (a SIGTERM there is TerminateProcess);
+    // the teardowns, mocked here, own the kill.
     expect(child.kill).not.toHaveBeenCalled()
     expect(killCodexAppServerProcessTree).toHaveBeenCalledTimes(1)
   })
