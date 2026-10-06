@@ -19,6 +19,7 @@
         "enable": "채팅 이름 자동 지정",
         "recipe": "채팅 이름",
         "recipeDescription": "새 채팅의 첫 메시지에서 짧은 이름을 생성합니다.",
+        "customCommandDescription": "사용자 지정 명령을 선택한 레시피가 공유하는 명령줄입니다. {prompt}를 사용하면 입력을 인수로 전달하고, 그렇지 않으면 표준 입력으로 전달합니다.",
         "saveFailed": "채팅 이름 설정을 저장하지 못했습니다.",
         "searchAgent": "에이전트",
         "searchTemplate": "명령 템플릿"

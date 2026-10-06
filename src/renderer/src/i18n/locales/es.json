@@ -19,6 +19,7 @@
         "enable": "Nombrar chats automáticamente",
         "recipe": "Nombre del chat",
         "recipeDescription": "Genera un nombre breve a partir del primer mensaje de un chat nuevo.",
+        "customCommandDescription": "Línea de comandos compartida por las recetas que seleccionan Comando personalizado. Usa {prompt} para pasar la entrada como argumento; de lo contrario, se envía por la entrada estándar.",
         "saveFailed": "No se pudo guardar la configuración de nombres de chats.",
         "searchAgent": "agente",
         "searchTemplate": "plantilla de comandos"

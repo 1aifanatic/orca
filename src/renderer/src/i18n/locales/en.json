@@ -182,6 +182,7 @@
         "enable": "Name chats automatically",
         "recipe": "Chat name",
         "recipeDescription": "Generate a short name from the first message in a new chat.",
+        "customCommandDescription": "Command line shared by recipes that select Custom command. Use {prompt} to pass the input as an argument; otherwise it is piped to stdin.",
         "saveFailed": "Could not save chat name settings.",
         "searchAgent": "agent",
         "searchTemplate": "command template"

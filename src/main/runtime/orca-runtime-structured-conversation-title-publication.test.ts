@@ -9,6 +9,12 @@ import { OrcaRuntimeService } from './orca-runtime'
 
 afterEach(() => setStructuredAgentSessionHost(null))
 
+class NamingPublicationRuntime extends OrcaRuntimeService {
+  getStoredSnapshot(workspaceId: string) {
+    return this.mobileSessionTabsByWorktree.get(workspaceId)
+  }
+}
+
 async function settle(): Promise<void> {
   for (let index = 0; index < 12; index++) {
     await Promise.resolve()
@@ -17,7 +23,7 @@ async function settle(): Promise<void> {
 
 describe.each(['claude', 'codex'] as const)('saved %s title publication', (provider) => {
   it('publishes a saved record name after the chat closes without persisting the notification', async () => {
-    const runtime = new OrcaRuntimeService()
+    const runtime = new NamingPublicationRuntime()
     const workspaceId = 'folder:workspace'
     const sessionId = 'native-session'
     runtime.replaceStructuredAgentSessionTab({
@@ -86,11 +92,8 @@ describe.each(['claude', 'codex'] as const)('saved %s title publication', (provi
     })
     expect(named?.snapshotVersion).toBeGreaterThan(closed.snapshotVersion)
     expect(named?.tabs).toHaveLength(0)
-    const rawSnapshots: unknown = Reflect.get(runtime, 'mobileSessionTabsByWorktree')
-    if (!(rawSnapshots instanceof Map)) {
-      throw new Error('Expected runtime snapshot map')
-    }
-    const stored: unknown = rawSnapshots.get(workspaceId)
+    const stored = runtime.getStoredSnapshot(workspaceId)
+    expect(stored).toBeDefined()
     expect(stored).not.toHaveProperty('structuredConversationTitle')
     expect(
       (await runtime.listMobileSessionTabs(`id:${workspaceId}`)).structuredConversationTitle

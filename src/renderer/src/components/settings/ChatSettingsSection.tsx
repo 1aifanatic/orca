@@ -17,6 +17,7 @@ export function ChatSettingsSection({
   chatPromptDiscardSignal,
   hasUnsavedChatPromptChanges = false,
   searchEntries,
+  showDesktopOnlySettings,
   isMounted
 }: {
   settings: GlobalSettings
@@ -26,6 +27,7 @@ export function ChatSettingsSection({
   chatPromptDiscardSignal?: number
   hasUnsavedChatPromptChanges?: boolean
   searchEntries: SettingsSearchEntry[]
+  showDesktopOnlySettings: boolean
   isMounted: boolean
 }): React.JSX.Element | null {
   const query = useAppStore((state) => state.settingsSearchQuery)
@@ -58,7 +60,7 @@ export function ChatSettingsSection({
           />
         </div>
       ) : null}
-      {isMounted ? (
+      {isMounted && showDesktopOnlySettings ? (
         <ChatNamingSetting
           key={chatPromptDiscardSignal}
           settings={settings}

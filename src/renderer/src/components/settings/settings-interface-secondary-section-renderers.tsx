@@ -43,11 +43,12 @@ export function renderChatSettingsSection(context: SettingsRenderContext): React
     <ChatSettingsSection
       settings={model.settings}
       updateSettings={model.updateSettings}
-      writeSourceControlAiSettings={interactions.writeSourceControlAiSettings}
+      writeSourceControlAiSettings={interactions.writeSourceControlAiSettingsOrThrow}
       onChatPromptDirtyChange={model.setHasUnsavedChatPromptChanges}
       chatPromptDiscardSignal={model.sourceControlAiPromptDiscardSignal}
       hasUnsavedChatPromptChanges={model.hasUnsavedChatPromptChanges}
       searchEntries={navigation.getSectionSearchEntries('chat')}
+      showDesktopOnlySettings={model.showDesktopOnlySettings}
       isMounted={view.isSectionMounted('chat')}
     />
   )

@@ -19,6 +19,7 @@
         "enable": "チャットに自動で名前を付ける",
         "recipe": "チャット名",
         "recipeDescription": "新しいチャットの最初のメッセージから短い名前を生成します。",
+        "customCommandDescription": "「カスタムコマンド」を選ぶレシピで共有するコマンドです。{prompt} を使うと入力を引数として渡し、使わない場合は標準入力で渡します。",
         "saveFailed": "チャット名の設定を保存できませんでした。",
         "searchAgent": "Agent",
         "searchTemplate": "コマンドテンプレート"

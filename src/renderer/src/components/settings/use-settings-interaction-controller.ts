@@ -28,7 +28,7 @@ export function useSettingsInteractionController(model: SettingsStoreModel) {
     setSettingsSearchQuery,
     setSourceControlAiPromptDiscardSignal,
     settings,
-    updateSettings
+    updateSettingsOrThrow
   } = model
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -50,7 +50,7 @@ export function useSettingsInteractionController(model: SettingsStoreModel) {
   const hasUnsavedSourceControlAiPromptChangesRef = useRef(hasUnsavedSourceControlAiPromptChanges)
   hasUnsavedSourceControlAiPromptChangesRef.current = hasUnsavedSourceControlAiPromptChanges
 
-  const writeSourceControlAiSettings = useCallback(
+  const writeSourceControlAiSettingsOrThrow = useCallback(
     (patch: SourceControlAiSettingsPatch): Promise<void> => {
       const next = sourceControlAiWriteQueueRef.current
         .catch(() => undefined)
@@ -62,12 +62,20 @@ export function useSettingsInteractionController(model: SettingsStoreModel) {
 
           const latestConfig = readSourceControlAiSettings(latestSettings)
           const resolvedPatch = typeof patch === 'function' ? patch(latestConfig) : patch
-          await updateSettings({ sourceControlAi: { ...latestConfig, ...resolvedPatch } })
+          await updateSettingsOrThrow({ sourceControlAi: { ...latestConfig, ...resolvedPatch } })
         })
       sourceControlAiWriteQueueRef.current = next
       return next
     },
-    [settings, updateSettings]
+    [settings, updateSettingsOrThrow]
+  )
+
+  const writeSourceControlAiSettings = useCallback(
+    (patch: SourceControlAiSettingsPatch): Promise<void> =>
+      writeSourceControlAiSettingsOrThrow(patch).catch((error: unknown) => {
+        console.error('Failed to update settings:', error)
+      }),
+    [writeSourceControlAiSettingsOrThrow]
   )
 
   const setSettingsRootNode = useCallback(
@@ -192,6 +200,7 @@ export function useSettingsInteractionController(model: SettingsStoreModel) {
     hasUnsavedSourceControlAiPromptChanges,
     hasUnsavedSourceControlAiPromptChangesRef,
     writeSourceControlAiSettings,
+    writeSourceControlAiSettingsOrThrow,
     setSettingsRootNode,
     setContentScrollNode,
     requestFontSuggestions,

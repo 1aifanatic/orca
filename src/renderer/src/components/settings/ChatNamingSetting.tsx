@@ -12,6 +12,7 @@ import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { translate } from '@/i18n/i18n'
 import { Switch } from '../ui/switch'
 import { SourceControlActionRecipeRow } from './SourceControlActionRecipeRow'
+import { CustomAgentCommandField } from './CustomAgentCommandField'
 import { SettingsSubsectionHeader } from './SettingsFormControls'
 import { SearchableSetting } from './SearchableSetting'
 import { getChatNamingSearchEntry } from './chat-naming-search'
@@ -44,11 +45,15 @@ export function ChatNamingSetting({
     agentArgs: recipe?.agentArgs ?? ''
   }
   const [draft, setDraft] = useState<ActionRecipeDraftValue | null>(null)
+  const [customCommandDraft, setCustomCommandDraft] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const value = draft ?? persisted
-  const latestValueRef = useRef(value)
-  latestValueRef.current = value
-  const dirty = JSON.stringify(value) !== JSON.stringify(persisted)
+  const customCommand = customCommandDraft ?? config.customAgentCommand
+  const customCommandDirty = customCommand !== config.customAgentCommand
+  const recipeDirty = JSON.stringify(value) !== JSON.stringify(persisted)
+  const latestValueRef = useRef({ value, customCommand, customCommandDraft })
+  latestValueRef.current = { value, customCommand, customCommandDraft }
+  const dirty = recipeDirty || customCommandDirty
   const onDirtyChangeRef = useRef(onDirtyChange)
   onDirtyChangeRef.current = onDirtyChange
   const isMountedRef = useRef(false)
@@ -60,9 +65,16 @@ export function ChatNamingSetting({
   }, [])
 
   const updateDraft = (next: ActionRecipeDraftValue): void => {
-    latestValueRef.current = next
+    latestValueRef.current = { value: next, customCommand, customCommandDraft }
     setDraft(next)
-    onDirtyChange?.(JSON.stringify(next) !== JSON.stringify(persisted))
+    onDirtyChange?.(JSON.stringify(next) !== JSON.stringify(persisted) || customCommandDirty)
+  }
+
+  const updateCustomCommandDraft = (next: string): void => {
+    const changed = next !== config.customAgentCommand
+    latestValueRef.current = { value, customCommand: next, customCommandDraft: next }
+    setCustomCommandDraft(next)
+    onDirtyChange?.(recipeDirty || changed)
   }
 
   const save = async (): Promise<void> => {
@@ -72,15 +84,19 @@ export function ChatNamingSetting({
     setIsSaving(true)
     try {
       await writeSourceControlAiSettings((current) => ({
-        actions: setSourceControlActionDefault(current.actions, 'conversationName', value)
+        actions: setSourceControlActionDefault(current.actions, 'conversationName', value),
+        ...(customCommandDirty ? { customAgentCommand: customCommand } : {})
       }))
       if (!isMountedRef.current) {
         return
       }
       const latestValue = latestValueRef.current
-      const hasNewEdits = JSON.stringify(latestValue) !== JSON.stringify(value)
-      setDraft(hasNewEdits ? latestValue : null)
-      onDirtyChangeRef.current?.(hasNewEdits)
+      const hasNewEdits = JSON.stringify(latestValue.value) !== JSON.stringify(value)
+      const hasNewCommandEdits =
+        latestValue.customCommandDraft !== null && latestValue.customCommand !== customCommand
+      setDraft(hasNewEdits ? latestValue.value : null)
+      setCustomCommandDraft(hasNewCommandEdits ? latestValue.customCommand : null)
+      onDirtyChangeRef.current?.(hasNewEdits || hasNewCommandEdits)
     } catch (error) {
       console.error('Failed to save chat name recipe', error)
       toast.error(translate('settings.chat.names.saveFailed', 'Could not save chat name settings.'))
@@ -128,29 +144,47 @@ export function ChatNamingSetting({
         />
       </div>
       {settings.nativeChatAutoName !== false || dirty ? (
-        <SourceControlActionRecipeRow
-          actionId="conversationName"
-          selectedAgent={recipe?.agentId ?? null}
-          draftValue={value}
-          baseValue={persisted}
-          defaultTuiAgent={settings.defaultTuiAgent}
-          isSavingTemplate={isSaving}
-          onAgentChange={(_id, selected) => void saveAgent(selected)}
-          onTemplateChange={(_id, template) =>
-            updateDraft({ ...value, commandInputTemplate: template })
-          }
-          onAgentArgsChange={(_id, agentArgs) => updateDraft({ ...value, agentArgs })}
-          onAppendVariable={(_id, variable) => {
-            const template = value.commandInputTemplate
-            const separator = template.endsWith('\n') || template.length === 0 ? '' : ' '
-            updateDraft({ ...value, commandInputTemplate: `${template}${separator}{${variable}}` })
-          }}
-          onDiscard={() => {
-            setDraft(null)
-            onDirtyChange?.(false)
-          }}
-          onSave={() => void save()}
-        />
+        <>
+          {recipe?.agentId === CUSTOM_AGENT_ID || customCommandDirty ? (
+            <CustomAgentCommandField
+              id="chat-name-custom-command"
+              value={customCommand}
+              onChange={updateCustomCommandDraft}
+              description={translate(
+                'settings.chat.names.customCommandDescription',
+                'Command line shared by recipes that select Custom command. Use {prompt} to pass the input as an argument; otherwise it is piped to stdin.'
+              )}
+            />
+          ) : null}
+          <SourceControlActionRecipeRow
+            actionId="conversationName"
+            selectedAgent={recipe?.agentId ?? null}
+            draftValue={value}
+            baseValue={persisted}
+            hasUnsavedChanges={dirty}
+            defaultTuiAgent={settings.defaultTuiAgent}
+            isSavingTemplate={isSaving}
+            onAgentChange={(_id, selected) => void saveAgent(selected)}
+            onTemplateChange={(_id, template) =>
+              updateDraft({ ...value, commandInputTemplate: template })
+            }
+            onAgentArgsChange={(_id, agentArgs) => updateDraft({ ...value, agentArgs })}
+            onAppendVariable={(_id, variable) => {
+              const template = value.commandInputTemplate
+              const separator = template.endsWith('\n') || template.length === 0 ? '' : ' '
+              updateDraft({
+                ...value,
+                commandInputTemplate: `${template}${separator}{${variable}}`
+              })
+            }}
+            onDiscard={() => {
+              setDraft(null)
+              setCustomCommandDraft(null)
+              onDirtyChange?.(false)
+            }}
+            onSave={() => void save()}
+          />
+        </>
       ) : null}
       <span ref={clearDirtyOnUnmount} />
     </SearchableSetting>

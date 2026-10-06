@@ -33,6 +33,7 @@ type SourceControlActionRecipeRowProps<ActionId extends AiActionId> = {
   baseValue: ActionRecipeDraftValue
   defaultTuiAgent: GlobalSettings['defaultTuiAgent']
   isSavingTemplate: boolean
+  hasUnsavedChanges?: boolean
   repoOverrideNote?: React.ReactNode
   onAgentChange: (actionId: ActionId, value: string) => void
   onTemplateChange: (actionId: ActionId, value: string) => void
@@ -65,6 +66,7 @@ export function SourceControlActionRecipeRow<ActionId extends AiActionId>({
   baseValue,
   defaultTuiAgent,
   isSavingTemplate,
+  hasUnsavedChanges,
   repoOverrideNote,
   onAgentChange,
   onTemplateChange,
@@ -73,7 +75,8 @@ export function SourceControlActionRecipeRow<ActionId extends AiActionId>({
   onDiscard,
   onSave
 }: SourceControlActionRecipeRowProps<ActionId>): React.JSX.Element {
-  const templateDirty = JSON.stringify(draftValue) !== JSON.stringify(baseValue)
+  const templateDirty =
+    hasUnsavedChanges ?? JSON.stringify(draftValue) !== JSON.stringify(baseValue)
   const agentArgsPlaceholder = getSourceControlAgentArgsPlaceholder(
     resolveAgentArgsPlaceholderAgent(selectedAgent, defaultTuiAgent)
   )

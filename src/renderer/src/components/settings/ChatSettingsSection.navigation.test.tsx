@@ -92,6 +92,7 @@ function NavigationHarness({
         updateSettings={vi.fn()}
         writeSourceControlAiSettings={async () => {}}
         searchEntries={[...getChatAppearanceSearchEntries(), getChatNamingSearchEntry()]}
+        showDesktopOnlySettings
         isMounted
       />
     </ActiveSettingsSectionProvider>

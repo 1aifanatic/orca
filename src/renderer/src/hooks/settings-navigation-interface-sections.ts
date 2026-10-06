@@ -45,7 +45,10 @@ export function buildInterfaceSettingsSections({
               'Choose how chats look and get their names.'
             ),
             icon: MessageSquare,
-            searchEntries: [...getChatAppearanceSearchEntries(), getChatNamingSearchEntry()],
+            searchEntries: [
+              ...getChatAppearanceSearchEntries(),
+              ...(showDesktopOnlySettings ? [getChatNamingSearchEntry()] : [])
+            ],
             group: 'interface'
           }
         ]

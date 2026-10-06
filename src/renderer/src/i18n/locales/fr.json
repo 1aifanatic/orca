@@ -118,6 +118,7 @@
         "enable": "Nommer automatiquement les chats",
         "recipe": "Nom du chat",
         "recipeDescription": "Génère un nom court à partir du premier message d’un nouveau chat.",
+        "customCommandDescription": "Ligne de commande partagée par les recettes qui sélectionnent Commande personnalisée. Utilisez {prompt} pour transmettre le texte en argument ; sinon, il est envoyé sur l’entrée standard.",
         "saveFailed": "Impossible d’enregistrer les paramètres de nom des chats.",
         "searchAgent": "agent",
         "searchTemplate": "modèle de commande"

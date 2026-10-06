@@ -28,7 +28,7 @@ beforeEach(() => {
   state.settings = null
 })
 
-function renderChat(enabled: boolean | undefined) {
+function renderChat(enabled: boolean | undefined, showDesktopOnlySettings = true) {
   const settings = { ...getDefaultSettings('/tmp'), experimentalStructuredNativeChat: enabled }
   state.settings = settings
   const updateSettings = vi.fn(async (updates: Partial<GlobalSettings>) => {
@@ -43,6 +43,7 @@ function renderChat(enabled: boolean | undefined) {
         updateSettings={updateSettings}
         writeSourceControlAiSettings={async () => {}}
         searchEntries={[...getChatAppearanceSearchEntries(), getChatNamingSearchEntry()]}
+        showDesktopOnlySettings={showDesktopOnlySettings}
         isMounted
       />
     </ActiveSettingsSectionProvider>
@@ -51,6 +52,23 @@ function renderChat(enabled: boolean | undefined) {
 }
 
 describe('Chat settings page', () => {
+  it('keeps Chat appearance on paired web without ineffective host naming controls or search results', () => {
+    const { container } = renderChat(true, false)
+    expect(screen.getByRole('spinbutton', { name: 'Text size' })).toBeTruthy()
+    expect(container.querySelector('#chat-names')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Name chats automatically' })).toBeNull()
+    const sections = buildSettingsNavigationMetadata({
+      isMac: false,
+      isWindows: false,
+      isWebClient: true,
+      experimentalStructuredNativeChat: true,
+      repos: []
+    })
+    const results = buildCmdJSettingsResults(sections).filter((entry) => entry.sectionId === 'chat')
+    expect(results.some((entry) => entry.targetSectionId === 'chat-text-size')).toBe(true)
+    expect(results.some((entry) => entry.targetSectionId === 'chat-names')).toBe(false)
+  })
+
   it.each([false, undefined])('is absent with structured chat set to %s', (enabled) => {
     const { container } = renderChat(enabled)
     expect(container.querySelector('#chat')).toBeNull()
@@ -85,6 +103,7 @@ describe('Chat settings page', () => {
           updateSettings={vi.fn()}
           writeSourceControlAiSettings={async () => {}}
           searchEntries={[]}
+          showDesktopOnlySettings
           isMounted
         />
       </ActiveSettingsSectionProvider>
