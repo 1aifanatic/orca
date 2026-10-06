@@ -41,6 +41,7 @@ function build(headless: boolean) {
     // pty-1's terminal has a client on it: typed into or being viewed.
     readTerminalClientUse: vi.fn((ptyId: string) => (ptyId === 'pty-1' ? 'used' : 'unused')),
     closeTerminal: vi.fn(async (_handle: string) => ({})),
+    confirmTerminalShellAlone: vi.fn(async (_ptyId: string) => false),
     closeTerminalTab: vi.fn(async (_handle: string) => ({}))
   }
   const store = { listAutomationRuns: vi.fn(() => finishedRuns(5)), listAutomations: () => [] }
@@ -51,7 +52,7 @@ function build(headless: boolean) {
     runtime: runtime as never,
     headless
   })
-  return { runtime, service }
+  return { runtime, service, store }
 }
 
 afterEach(() => {
@@ -94,6 +95,24 @@ describe('headless automation service run terminal retention', () => {
       expect.objectContaining({ runId: 'r0', terminalPaneKey: null, terminalPtyId: null })
     )
     service.stop()
+  })
+
+  it('fails and closes a dispatched run whose agent exited, proven by its shell alone', async () => {
+    vi.useFakeTimers()
+    const { runtime, service, store } = build(true)
+    store.listAutomationRuns.mockReturnValue([
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: retention reads only these run fields.
+      { ...finishedRuns(1)[0], status: 'dispatched' } as AutomationRun
+    ])
+    runtime.confirmTerminalShellAlone.mockResolvedValue(true)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the mocked service exposes the drain hook it was given.
+    const drain = (service as unknown as { releaseFinishedRunTerminals: () => Promise<number> })
+      .releaseFinishedRunTerminals
+    await expect(drain()).resolves.toBe(1)
+    expect(runtime.confirmTerminalShellAlone).toHaveBeenCalledWith('pty-0')
+    expect(service.markDispatchResult).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'r0', status: 'dispatch_failed', terminalPtyId: null })
+    )
   })
 
   it('leaves run terminals to the renderer on the desktop', async () => {
