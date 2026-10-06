@@ -14,7 +14,8 @@ export type ProviderProcessTeardownDeps = {
   dedicatedProcessGroup?: boolean
   captureDescendants?: (rootPid: number) => Promise<DescendantSnapshot | null>
   terminateDescendants?: (snapshot: DescendantSnapshot) => Promise<boolean>
-  terminateWindowsTree?: (rootPid: number, deps?: { site?: string }) => Promise<void>
+  /** Resolves true only when taskkill reports the whole tree terminated. */
+  terminateWindowsTree?: (rootPid: number, deps?: { site?: string }) => Promise<boolean>
   signalProcessGroup?: (pgid: number, signal: NodeJS.Signals) => void
 }
 
@@ -98,10 +99,10 @@ async function terminateOnce(
   }
   if ((deps.platform ?? process.platform) === 'win32') {
     const terminate = deps.terminateWindowsTree ?? terminateWindowsProcessTree
-    await terminate(rootPid, { site: deps.site })
+    const treeTerminated = await terminate(rootPid, { site: deps.site })
     // taskkill owns the tree; this preserves the prior direct-child fallback when it fails.
     child.kill('SIGKILL')
-    return true
+    return treeTerminated
   }
   if (deps.dedicatedProcessGroup) {
     return terminateDedicatedPosixGroup(rootPid, deps)

@@ -38,29 +38,11 @@ describe('supportsClaudeStructuredLocation', () => {
     ).toBe(true)
   })
 
-  it('rejects Windows local locations until creation-time proof is available', () => {
+  it('accepts Windows local locations even when process creation times are unreadable', () => {
     previousPlatform = setPlatform('win32')
+    // An addon build without the creation-time flag used to refuse chat here.
     __setWindowsProcessTreeLoaderForTests(() => ({
       ProcessDataFlag: { None: 0, Memory: 1, CommandLine: 2 },
-      getAllProcesses: () => undefined
-    }))
-    expect(
-      supportsClaudeStructuredLocation({
-        executionHostId: 'local',
-        wslDistro: null,
-        workspaceId: 'workspace-1',
-        workspaceKind: 'git-worktree'
-      })
-    ).toBe(false)
-  })
-
-  it('accepts Windows local locations once creation-time proof is available', () => {
-    previousPlatform = setPlatform('win32')
-    // supportedProcessDataFlags is the addon's own report; the enum alone is
-    // not proof, because pnpm patches the source over the tarball's prebuilt.
-    __setWindowsProcessTreeLoaderForTests(() => ({
-      ProcessDataFlag: { None: 0, Memory: 1, CommandLine: 2, CreationTime: 4 },
-      supportedProcessDataFlags: 7,
       getAllProcesses: () => undefined
     }))
     expect(

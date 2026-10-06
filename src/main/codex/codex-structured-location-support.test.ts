@@ -25,23 +25,16 @@ function withPlatform<T>(platform: NodeJS.Platform, run: () => T): T {
 }
 
 describe('Codex structured location support', () => {
-  it('uses the injected Windows identity capability for location admission', () => {
-    let proofAvailable = false
+  it('admits a native Windows location without consulting process creation times', () => {
     withPlatform('win32', () => {
-      expect(supportsCodexStructuredLocation(LOCAL_WINDOWS_LOCATION, () => proofAvailable)).toBe(
-        false
-      )
-      proofAvailable = true
-      expect(supportsCodexStructuredLocation(LOCAL_WINDOWS_LOCATION, () => proofAvailable)).toBe(
-        true
-      )
+      expect(supportsCodexStructuredLocation(LOCAL_WINDOWS_LOCATION)).toBe(true)
     })
   })
 
   it('rejects WSL locations while retaining native folder support on Windows', () => {
     withPlatform('win32', () => {
-      expect(supportsCodexStructuredLocation(WSL_WINDOWS_LOCATION, () => true)).toBe(false)
-      expect(supportsCodexStructuredLocation(LOCAL_WINDOWS_LOCATION, () => true)).toBe(true)
+      expect(supportsCodexStructuredLocation(WSL_WINDOWS_LOCATION)).toBe(false)
+      expect(supportsCodexStructuredLocation(LOCAL_WINDOWS_LOCATION)).toBe(true)
     })
   })
 })

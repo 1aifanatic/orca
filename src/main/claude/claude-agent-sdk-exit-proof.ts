@@ -3,21 +3,10 @@ import {
   terminateDescendantSnapshotWithVerdict,
   type DescendantTreeVerdict
 } from '../pty-descendant-exit-verification'
-import {
-  captureDescendantSnapshot,
-  type DescendantSnapshot,
-  type PosixProcessIdentity
-} from '../pty-descendant-termination'
-import {
-  captureWindowsDescendantSnapshot,
-  terminateIdentifiedWindowsProcessTree,
-  verifyWindowsDescendantSnapshotExit,
-  verifyWindowsProcessIdentity,
-  type WindowsDescendantSnapshot,
-  type WindowsProcessIdentity
-} from '../windows-descendant-exit-verification'
-import { mergeClaudeCapturedTrees, type ClaudeCapturedTree } from './claude-child-tree-snapshot'
-import { terminateClaudeRoot, terminateClaudeWindowsRoot } from './claude-child-root-termination'
+import { captureDescendantSnapshot, type DescendantSnapshot } from '../pty-descendant-termination'
+import { terminateWindowsProcessTree } from '../windows-process-tree-kill'
+import { mergeClaudeDescendantSnapshots } from './claude-child-tree-snapshot'
+import { terminateClaudeRoot } from './claude-child-root-termination'
 import {
   proveClaudeChildExitWithReaper,
   type ClaudeChildExitProofInput
@@ -37,24 +26,19 @@ const TREE_VERDICT_TRUST: Record<DescendantTreeVerdict, number> = {
 type ReapableChild = Pick<SpawnedProcess, 'pid' | 'kill'>
 
 /**
- * A walk is only admissible while the root it walked was alive. A POSIX walk
- * that found no root says so with a null pgid; either platform's walk can also
- * have raced the root's death. Both can only have missed descendants that
- * already reparented away, so neither is evidence about the tree.
+ * A walk is only admissible while the root it walked was alive. A walk that
+ * found no root says so with a null pgid; it can also have raced the root's
+ * death. Both can only have missed descendants that already reparented away,
+ * so neither is evidence about the tree.
  */
 function admissibleTree(
-  captured: DescendantSnapshot | WindowsDescendantSnapshot | null,
-  platform: NodeJS.Platform,
+  captured: DescendantSnapshot | null,
   exited: boolean
-): ClaudeCapturedTree | null {
+): DescendantSnapshot | null {
   if (!captured || exited) {
     return null
   }
-  if (platform === 'win32') {
-    return { platform: 'win32', tree: captured as WindowsDescendantSnapshot }
-  }
-  const tree = captured as DescendantSnapshot
-  return tree.rootPgid === null ? null : { platform: 'posix', tree }
+  return captured.rootPgid === null ? null : captured
 }
 
 export type ClaudeChildTreeReaperDeps = {
@@ -63,13 +47,8 @@ export type ClaudeChildTreeReaperDeps = {
   exited?: () => boolean
   captureDescendants?: (rootPid: number) => Promise<DescendantSnapshot | null>
   terminateDescendants?: (snapshot: DescendantSnapshot) => Promise<DescendantTreeVerdict>
-  terminateWindowsTree?: (root: WindowsProcessIdentity) => Promise<void>
-  captureWindowsDescendants?: (rootPid: number) => Promise<WindowsDescendantSnapshot | null>
-  terminateWindowsDescendants?: (
-    snapshot: WindowsDescendantSnapshot
-  ) => Promise<DescendantTreeVerdict>
-  /** Identity probe for the bare-pid tree kill; only Windows has one to gate. */
-  verifyRootIdentity?: (root: PosixProcessIdentity | WindowsProcessIdentity) => Promise<boolean>
+  /** `taskkill /T /F` on the held root; true only when taskkill reports the tree terminated. */
+  terminateWindowsTree?: (rootPid: number) => Promise<boolean>
 }
 
 export type ClaudeChildTreeReaper = {
@@ -110,24 +89,23 @@ export function createClaudeChildTreeReaper(
 ): ClaudeChildTreeReaper {
   const platform = deps.platform ?? process.platform
   const exited = deps.exited ?? (() => false)
+  // Windows reaches the tree through the held root instead, so it never snapshots.
+  const snapshots = platform !== 'win32'
+  const capture = deps.captureDescendants ?? captureDescendantSnapshot
   // Undefined until captured; null when no admissible snapshot exists — the root
   // was already gone, or the table could not be read while it was alive — which
   // no later read can make up for.
-  let snapshot: ClaudeCapturedTree | null | undefined
+  let snapshot: DescendantSnapshot | null | undefined
   let capturing: Promise<void> | null = null
   let refreshing: Promise<void> | null = null
   let queuedRefresh: Promise<void> | null = null
   let inFlight: Promise<DescendantTreeVerdict> | null = null
   let treeVerdict: DescendantTreeVerdict = 'unverifiable'
 
-  // Consulted only on win32: POSIX signals descendants by revalidated identity
-  // and reaches the root solely through Node's handle, so neither needs a probe.
-  const verifyRoot =
-    deps.verifyRootIdentity ??
-    ((root: PosixProcessIdentity | WindowsProcessIdentity) =>
-      verifyWindowsProcessIdentity(root as WindowsProcessIdentity))
-
   function captureOnce(): Promise<void> {
+    if (!snapshots) {
+      return Promise.resolve()
+    }
     if (refreshing) {
       const pending = refreshing
       return pending.then(() => queuedRefresh ?? undefined)
@@ -146,10 +124,6 @@ export function createClaudeChildTreeReaper(
       snapshot = exited() ? null : snapshot
       return Promise.resolve()
     }
-    const capture =
-      platform === 'win32'
-        ? (deps.captureWindowsDescendants ?? captureWindowsDescendantSnapshot)
-        : (deps.captureDescendants ?? captureDescendantSnapshot)
     capturing = capture(rootPid)
       .catch(() => null)
       .then((captured) => {
@@ -159,7 +133,7 @@ export function createClaudeChildTreeReaper(
         // still lives the walk is simply retried, rather than latching a failed
         // read as proof that there was nothing to find.
         const rootExited = exited()
-        const tree = admissibleTree(captured, platform, rootExited)
+        const tree = admissibleTree(captured, rootExited)
         if (tree) {
           snapshot = tree
         } else if (rootExited) {
@@ -186,16 +160,12 @@ export function createClaudeChildTreeReaper(
     if (!rootPid) {
       return Promise.resolve()
     }
-    const capture =
-      platform === 'win32'
-        ? (deps.captureWindowsDescendants ?? captureWindowsDescendantSnapshot)
-        : (deps.captureDescendants ?? captureDescendantSnapshot)
     const operation = (async () => {
       const captured = await capture(rootPid).catch(() => null)
       if (exited()) {
         return
       }
-      const tree = admissibleTree(captured, platform, false)
+      const tree = admissibleTree(captured, false)
       if (!tree) {
         return
       }
@@ -208,7 +178,7 @@ export function createClaudeChildTreeReaper(
         // recycle/replace decision, not an absent descendant, so no row here may
         // be signalled from its number. Only the descendant evidence is lost —
         // the root still leaves through the handle no recycled pid can reach.
-        snapshot = mergeClaudeCapturedTrees(snapshot, tree)
+        snapshot = mergeClaudeDescendantSnapshots(snapshot, tree)
       }
       // Keep an earlier admissible snapshot when this close-boundary read fails;
       // it remains the only identity-safe evidence after root exit.
@@ -244,6 +214,9 @@ export function createClaudeChildTreeReaper(
   }
 
   async function refresh(): Promise<void> {
+    if (!snapshots) {
+      return
+    }
     const pending = capturing ?? refreshing
     if (pending) {
       await queueRefreshAfter(pending)
@@ -260,6 +233,21 @@ export function createClaudeChildTreeReaper(
     }
   }
 
+  /** The common pattern: one `taskkill /T /F` addressed through the root Orca still holds. */
+  async function judgeWindowsTree(rootPid: number): Promise<DescendantTreeVerdict> {
+    if (exited()) {
+      // The root's pid left with it, so its tree can no longer be addressed.
+      return 'unverifiable'
+    }
+    const terminateTree =
+      deps.terminateWindowsTree ??
+      ((pid: number) => terminateWindowsProcessTree(pid, { site: 'claude-structured-child-close' }))
+    const terminated = await terminateTree(rootPid).catch(() => false)
+    terminateClaudeRoot({ child, exited })
+    // Only taskkill's clean exit reports the whole tree terminated.
+    return terminated ? 'exited' : 'unverifiable'
+  }
+
   /** The only source of a tree verdict: every `exited` here is an observation. */
   async function judgeTree(): Promise<DescendantTreeVerdict> {
     const killRoot = (): boolean => terminateClaudeRoot({ child, exited })
@@ -268,36 +256,15 @@ export function createClaudeChildTreeReaper(
       // Never spawned, so the OS never created a tree to orphan.
       return 'exited'
     }
-    await captureOnce()
-    if (platform === 'win32') {
-      // Why taskkill's own outcome is never the verdict: it resolves identically
-      // on a timeout, an access denial, a recycled root and a real kill.
-      const { rootVerified } = await terminateClaudeWindowsRoot({
-        snapshot: snapshot?.platform === 'win32' ? snapshot.tree : null,
-        exited,
-        verifyRoot: (root) => verifyRoot(root),
-        terminateTree: (root) =>
-          deps.terminateWindowsTree
-            ? deps.terminateWindowsTree(root)
-            : terminateIdentifiedWindowsProcessTree(root, {
-                ownsRoot: () => !exited()
-              }).then(() => undefined),
-        killRoot
-      })
-      if (!rootVerified && !exited()) {
-        return 'unverifiable'
-      }
-      return snapshot?.platform === 'win32'
-        ? await (deps.terminateWindowsDescendants ?? verifyWindowsDescendantSnapshotExit)(
-            snapshot.tree
-          )
-        : 'unverifiable'
+    if (!snapshots) {
+      return judgeWindowsTree(rootPid)
     }
-    if (snapshot?.platform !== 'posix') {
+    await captureOnce()
+    if (!snapshot) {
       killRoot()
       return 'unverifiable'
     }
-    if (snapshot.tree.descendants.length === 0) {
+    if (snapshot.descendants.length === 0) {
       // Read while the root was alive and childless: a later table read has no
       // row it could match, so it would add nothing to this observation.
       killRoot()
@@ -312,8 +279,8 @@ export function createClaudeChildTreeReaper(
     // reaps them. After a root exit the kill is a no-op: Node drops the handle
     // on exit and never signals a possibly recycled pid.
     const verdictPromise = deps.terminateDescendants
-      ? deps.terminateDescendants(snapshot.tree)
-      : terminateDescendantSnapshotWithVerdict(snapshot.tree, {
+      ? deps.terminateDescendants(snapshot)
+      : terminateDescendantSnapshotWithVerdict(snapshot, {
           requireIdentityBeforeSignal: true
         })
     killRoot()
