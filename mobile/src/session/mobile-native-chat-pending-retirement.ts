@@ -1,8 +1,7 @@
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countImageSourceTurnsAfter,
-  normalizeReconcileText,
-  normalizedUserText
+  normalizeReconcileText
 } from './mobile-native-chat-draft-reconcile'
 import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
 import { normalizedNativeChatUserMessageText } from './mobile-native-chat-image-transcript-markers'
@@ -37,7 +36,8 @@ export function selectGluedPendingIds(
   const turns: UserTurn[] = []
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
-    const text = normalizedUserText(message)
+    // A not-sent row is one refused structured send, never several glued on an input line.
+    const text = message.unsent === true ? null : normalizedNativeChatUserMessageText(message)
     if (text) {
       turns.push({ index, text })
     }
@@ -150,13 +150,14 @@ export function retireLandedMobileNativeChatPending(
   const landedCounts = new Map<string, number>()
   const unsentByText = new Map<string, string[]>()
   for (const message of messages) {
-    const text = normalizedUserText(message)
-    if (text) {
-      landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
+    const text = normalizedNativeChatUserMessageText(message)
+    if (!text) {
+      continue
     }
-    const unsentText = message.unsent === true ? normalizedNativeChatUserMessageText(message) : null
-    if (unsentText) {
-      unsentByText.set(unsentText, [...(unsentByText.get(unsentText) ?? []), message.id])
+    if (message.unsent === true) {
+      unsentByText.set(text, [...(unsentByText.get(text) ?? []), message.id])
+    } else {
+      landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
     }
   }
   // A not-sent row settles a send only when it appeared after the send: then it is the send's own.

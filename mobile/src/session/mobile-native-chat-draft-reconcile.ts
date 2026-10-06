@@ -23,21 +23,15 @@ export type UnconfirmedSend = {
   deadline: ReturnType<typeof setTimeout> | null
 }
 
-/** A user row's text as a send's echo matches it. A row shown as not sent is no copy to count: the
- *  host hides it once a later copy of its text is recorded. (A send's own not-sent row still
- *  settles it; see `sendBaselineUnsentMessageIds`.) */
-export function normalizedUserText(message: NativeChatMessage): string | null {
-  return message.unsent === true ? null : normalizedNativeChatUserMessageText(message)
-}
-
-/** Rows shown as not sent when a send went out. Only these can't settle it: one that appears
- *  later is the send's own, settled as not sent. */
+/** Rows shown as not sent when a send went out. Only these can't be its echo: one that appears
+ *  later is the send's own row, settled as not sent. The count, image and unconfirmed matchers
+ *  all apply this. */
 export function sendBaselineUnsentMessageIds(messages: readonly NativeChatMessage[]): string[] {
   return messages.filter((message) => message.unsent === true).map((message) => message.id)
 }
 
-/** The row a send's echo must land after: the newest one, past any shown as not sent, which the
- *  host may hide once a resend lands. */
+/** The row a send's echo must land after: the newest one, past any shown as not sent, which are in
+ *  the send's baseline and so never its echo. */
 export function sendBaselineTailMessageId(messages: readonly NativeChatMessage[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index]?.unsent !== true) {
@@ -47,13 +41,14 @@ export function sendBaselineTailMessageId(messages: readonly NativeChatMessage[]
   return null
 }
 
+/** At send time: every row shown as not sent is then in the send's baseline, so none is counted. */
 export function countUserTextOccurrences(
   messages: readonly NativeChatMessage[],
   text: string
 ): number {
   let count = 0
   for (const message of messages) {
-    if (normalizedUserText(message) === text) {
+    if (message.unsent !== true && normalizedNativeChatUserMessageText(message) === text) {
       count++
     }
   }
@@ -85,6 +80,8 @@ export type PendingImagePreviewEcho = {
   images?: string[]
   expectedOccurrence: number
   baselineTailMessageId: string | null
+  /** See `sendBaselineUnsentMessageIds`. */
+  baselineUnsentMessageIds?: readonly string[]
 }
 
 export type LandedImagePreviewEcho = {
@@ -199,12 +196,13 @@ export function findLandedImagePreviewEchoes(
       continue
     }
     const targetText = normalizeNativeChatUserText(entry.text)
+    const baselineUnsent = new Set(entry.baselineUnsentMessageIds)
     const candidates = normalized.filter((message) => {
-      if (message.role !== 'user') {
+      if (message.role !== 'user' || (message.unsent === true && baselineUnsent.has(message.id))) {
         return false
       }
       if (targetText) {
-        const text = normalizedUserText(message)
+        const text = normalizedNativeChatUserMessageText(message)
         if (text === null) {
           return false
         }
