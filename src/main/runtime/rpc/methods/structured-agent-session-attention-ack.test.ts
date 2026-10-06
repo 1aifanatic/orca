@@ -30,17 +30,20 @@ describe('agentSession.acknowledgeAttention', () => {
     )
   })
 
-  it('accepts an older caller without granting a session-wide read or installing a host', async () => {
+  it('refuses a read without its journal boundary or with unknown fields, before any host work', async () => {
     setStructuredAgentSessionHost(null)
     const install = vi.fn()
     const retire = vi.fn()
-    const reply = await call(
-      'agentSession.acknowledgeAttention',
+    for (const params of [
       { sessionId: SESSION },
-      STRUCTURED_CLIENT,
-      { retireStructuredAttention: retire, ensureStructuredAgentSessionHost: install }
-    )
-    expect(reply).toMatchObject({ ok: true, result: { acknowledged: false } })
+      { sessionId: SESSION, observedCursor: { epoch: 'epoch-a', sequence: 10 }, extra: true }
+    ]) {
+      const reply = await call('agentSession.acknowledgeAttention', params, STRUCTURED_CLIENT, {
+        retireStructuredAttention: retire,
+        ensureStructuredAgentSessionHost: install
+      })
+      expect(reply).toMatchObject({ ok: false })
+    }
     expect(install).not.toHaveBeenCalled()
     expect(retire).not.toHaveBeenCalled()
     expect(hostCalls.attentionSubjectPrefix).not.toHaveBeenCalled()
@@ -57,28 +60,22 @@ describe('agentSession.acknowledgeAttention', () => {
     expect(reply).toMatchObject({ ok: true })
     expect(retire).not.toHaveBeenCalled()
   })
-  it.each(['cursorless', 'bounded'] as const)(
-    'rejects a caller without structured capability before any host work (%s)',
-    async (mode) => {
-      setStructuredAgentSessionHost(null)
-      const install = vi.fn()
-      const retire = vi.fn()
-      const reply = await call(
-        'agentSession.acknowledgeAttention',
-        {
-          sessionId: SESSION,
-          ...(mode === 'bounded' ? { observedCursor: { epoch: 'epoch-a', sequence: 10 } } : {})
-        },
-        { clientKind: 'runtime', clientCapabilities: [] },
-        { retireStructuredAttention: retire, ensureStructuredAgentSessionHost: install }
-      )
-      expect(reply).toMatchObject({
-        ok: false,
-        error: { message: expect.stringContaining('structured_agent_session_unsupported') }
-      })
-      expect(install).not.toHaveBeenCalled()
-      expect(retire).not.toHaveBeenCalled()
-      expect(hostCalls.attentionSubjectPrefix).not.toHaveBeenCalled()
-    }
-  )
+  it('rejects a caller without structured capability before any host work', async () => {
+    setStructuredAgentSessionHost(null)
+    const install = vi.fn()
+    const retire = vi.fn()
+    const reply = await call(
+      'agentSession.acknowledgeAttention',
+      { sessionId: SESSION, observedCursor: { epoch: 'epoch-a', sequence: 10 } },
+      { clientKind: 'runtime', clientCapabilities: [] },
+      { retireStructuredAttention: retire, ensureStructuredAgentSessionHost: install }
+    )
+    expect(reply).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining('structured_agent_session_unsupported') }
+    })
+    expect(install).not.toHaveBeenCalled()
+    expect(retire).not.toHaveBeenCalled()
+    expect(hostCalls.attentionSubjectPrefix).not.toHaveBeenCalled()
+  })
 })

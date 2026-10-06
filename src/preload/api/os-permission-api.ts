@@ -19,6 +19,7 @@ import type {
   NotificationSoundResult,
   StructuredNotificationRead
 } from '../../shared/notification-settings-types'
+import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 
 export type NotificationsApi = {
   getDesktopAwayState: () => Promise<boolean | undefined>
@@ -29,6 +30,11 @@ export type NotificationsApi = {
     paneKeys?: string[],
     reads?: StructuredNotificationRead[]
   ) => Promise<NotificationDismissResult>
+  /** The remote host owning this session reports no prompt pending; retires relayed prompt alerts. */
+  settleStructuredPrompts: (
+    scope: AgentSessionExecutionLocation,
+    sessionId: string
+  ) => Promise<void>
   openSystemSettings: () => Promise<void>
   getPermissionStatus: () => Promise<NotificationPermissionStatusResult>
   probeDelivery: (args?: { force?: boolean }) => Promise<NotificationDeliveryProbeResult>

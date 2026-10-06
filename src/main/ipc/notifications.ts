@@ -20,6 +20,7 @@ import { createAnnouncedNotificationRegistry } from '../notifications/announced-
 import { registerNotificationSoundHandlers } from './notification-sound-ipc'
 import { openNotificationSystemSettings } from './notification-system-settings-link'
 import { isStructuredAttentionRead } from '../../shared/agent-session-attention'
+import { isAgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import {
   getLastObservedDeliveryOutcome,
   hasTriggeredPermissionDialogThisSession,
@@ -105,11 +106,11 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
             typeof id === 'string' &&
             id.length > 0 &&
             !id.startsWith('agent-attention:') &&
-            !announced.isStructured(id)
+            !announced.isBounded(id)
         )
       )
       const genericMobileIds = new Set(uniqueIds)
-      // Structured alerts need the journal boundary; pane-wide reads still retire ordinary alerts.
+      // Positioned structured alerts need the journal boundary; pane-wide reads retire the rest.
       for (const paneKey of Array.isArray(paneKeys) ? paneKeys : []) {
         if (typeof paneKey === 'string') {
           const read = Array.isArray(reads)
@@ -117,7 +118,7 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
             : undefined
           for (const entry of announced.take(paneKey, read)) {
             uniqueIds.add(entry.id)
-            if (!entry.structured) {
+            if (!entry.origin) {
               genericMobileIds.add(entry.id)
             }
           }
@@ -159,15 +160,21 @@ export function registerNotificationHandlers(store: Store, runtime?: OrcaRuntime
     now: () => Date.now(),
     recordAnnounced: (request) => {
       if (request.paneKey && request.notificationId) {
-        announced.record(
-          request.paneKey,
-          request.notificationId,
-          request.structuredOrigin,
-          request.surface === 'agent-session'
-        )
+        announced.record(request.paneKey, request.notificationId, request.structuredOrigin)
       }
     }
   })
+
+  // A remote host reported no pending prompt: its alerts relayed to this desktop's phones are over.
+  ipcMain.removeHandler('notifications:settleStructuredPrompts')
+  ipcMain.handle(
+    'notifications:settleStructuredPrompts',
+    (_event, scope: unknown, sessionId: unknown): void => {
+      if (isAgentSessionExecutionLocation(scope) && typeof sessionId === 'string' && sessionId) {
+        runtime?.reconcileStructuredPromptAttention({ scope, sessionId, pendingPromptIds: [] })
+      }
+    }
+  )
 
   ipcMain.removeHandler('notifications:dispatch')
   ipcMain.handle(

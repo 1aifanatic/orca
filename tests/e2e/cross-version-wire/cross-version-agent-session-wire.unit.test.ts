@@ -158,32 +158,6 @@ describe('cross-version structured agent sessions', () => {
         STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
       ])
     })
-
-    it('rejects a cursorless attention read before any host work', async () => {
-      const retirement = vi.fn()
-      const install = vi.fn()
-      const replies = await callBuild(
-        current,
-        'agentSession.acknowledgeAttention',
-        { sessionId: SESSION },
-        { clientKind: 'runtime', clientCapabilities: legacyClientCapabilities() },
-        runtimeStub({
-          retireStructuredAttention: retirement,
-          ensureStructuredAgentSessionHost: install
-        })
-      )
-      expect(replies).toEqual([
-        expect.objectContaining({
-          ok: false,
-          error: expect.objectContaining({
-            message: expect.stringContaining('structured_agent_session_unsupported')
-          })
-        })
-      ])
-      expect(retirement).not.toHaveBeenCalled()
-      expect(install).not.toHaveBeenCalled()
-      expect(hostCalls.attentionSubjectPrefix).not.toHaveBeenCalled()
-    })
   })
 
   // Released phones ask createSupport whether a launch should be a chat at all, and the host's

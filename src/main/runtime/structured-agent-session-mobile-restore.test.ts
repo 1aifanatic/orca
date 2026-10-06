@@ -110,8 +110,8 @@ describe('prompt delivery after host recovery', () => {
         expect.objectContaining({ dismissedDelivery: identity })
       ])
       expect(
-        new MobileNotificationDismissalStore(h.root).hasLiveDelivery(identity.notificationId)
-      ).toBe(false)
+        new MobileNotificationDismissalStore(h.root).liveDeliveries(identity.notificationId)
+      ).toEqual([])
       expect(restarted.reconcileDismissedPushes([identity])).toEqual([identity])
       await host.restoreReadableSessions()
       expect(events.filter((event) => event.type === 'dismiss')).toHaveLength(1)

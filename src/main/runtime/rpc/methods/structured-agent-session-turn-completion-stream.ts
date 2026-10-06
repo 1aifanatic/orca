@@ -26,9 +26,6 @@ export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
     params: AcknowledgeAttentionParams,
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
-      if (!params.observedCursor) {
-        return { acknowledged: false }
-      }
       // Built if need be: after a restart the first read can arrive before any chat is opened.
       const host = await requireInstalledStructuredHost(ctx)
       const prefix = host.attentionSubjectPrefix(params.sessionId)

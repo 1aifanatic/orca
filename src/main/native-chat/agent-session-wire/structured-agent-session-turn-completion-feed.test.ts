@@ -812,16 +812,26 @@ describe('a request that settles while the user is asked something', () => {
       expect(h.outcomes()).toEqual([[agentJournalSubmissionKey('m1'), 'failure']])
     })
 
-    it('publishes current pending state before baseline, no-news, and historical returns', () => {
+    it('publishes pending state on baseline, when a prompt ends, and on historical returns only', () => {
       const states: StructuredAttentionState[] = []
       const h = harness()
       h.feed.subscribe({ id: 'host', emit: () => {}, onState: (state) => states.push(state) })
       h.setJournal([user, running, approval('a1', 3, 'pending')], accepted)
       h.observe()
+      // Streaming commits that leave the pending set alone cost no reconciliation.
       h.observe()
-      h.setJournal([user, running, approval('a1', 3, 'resolved')], accepted)
+      h.setJournal(
+        [user, running, approval('a1', 3, 'pending'), approval('a2', 4, 'pending')],
+        accepted
+      )
+      h.observe()
+      h.setJournal(
+        [user, running, approval('a1', 3, 'resolved'), approval('a2', 4, 'pending')],
+        accepted
+      )
+      h.observe()
       h.feed.observe('session-1', undefined, { historical: true })
-      expect(states.map((state) => state.pendingPromptIds)).toEqual([['a1'], ['a1'], []])
+      expect(states.map((state) => state.pendingPromptIds)).toEqual([['a1'], ['a2'], ['a2']])
       expect(states.every((state) => state.sessionId === 'session-1')).toBe(true)
       expect(h.events).toEqual([])
     })

@@ -10,7 +10,7 @@ export const AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY =
 // Why: agentSession.acknowledgeAttention is additive; a client probes it before routing a read
 // chat to the host that pushed its phone alerts, so an older host is never sent a method it lacks.
 export const AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY =
-  'agent-session.attention-ack.v2' as const
+  'agent-session.attention-ack.v1' as const
 
 export const AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES = [
   AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,

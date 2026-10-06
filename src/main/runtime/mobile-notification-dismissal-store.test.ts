@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -73,17 +73,49 @@ it('names the live deliveries a subject can still retire, across a restart', () 
     notificationSeq: 4
   })
   const restarted = new MobileNotificationDismissalStore(h.path)
-  expect(restarted.liveDeliveryIds('subject:')).toEqual(['subject:prompt:a1'])
-  expect(restarted.hasLiveDelivery('subject:prompt:a1')).toBe(true)
-  expect(restarted.hasLiveDelivery('subject:prompt:a10')).toBe(false)
-  expect(restarted.hasLiveDelivery('subject:prompt:a')).toBe(false)
+  expect(restarted.liveDeliveries('subject:').map((entry) => entry.notificationId)).toEqual([
+    'subject:prompt:a1'
+  ])
+})
+
+it('keeps a record whose origin a newer build wrote, losing only that origin', () => {
+  const h = fixture()
+  const origin = {
+    scope: {
+      executionHostId: 'runtime:h',
+      wslDistro: null,
+      workspaceId: 'w',
+      workspaceKind: 'folder'
+    },
+    sessionId: 's',
+    journalCursor: { epoch: 'j', sequence: 3 }
+  }
+  const entry = { ...shown, dismissedThrough: -1, expiresAt: Date.now() + 86400_000 }
+  writeFileSync(
+    join(h.path, 'mobile-notification-dismissals.json'),
+    JSON.stringify([
+      {
+        ...entry,
+        structuredOrigin: { ...origin, cause: { kind: 'subagent-prompt', promptId: 'p' } }
+      },
+      {
+        ...entry,
+        notificationId: 'known',
+        structuredOrigin: { ...origin, cause: { kind: 'prompt', promptId: 'p' } }
+      }
+    ])
+  )
+  expect(new MobileNotificationDismissalStore(h.path).liveDeliveries()).toEqual([
+    shown,
+    expect.objectContaining({ notificationId: 'known', structuredOrigin: expect.anything() })
+  ])
 })
 
 it('retains in-memory delivery and retirement when durable writes fail', () => {
   const h = fixture()
   mkdirSync(join(h.path, 'mobile-notification-dismissals.json'))
   expect(() => h.store.record({ ...alert, ...shown })).toThrow()
-  expect(h.store.hasLiveDelivery(shown.notificationId)).toBe(true)
+  expect(h.store.liveDeliveries(shown.notificationId)).toHaveLength(1)
   expect(() =>
     h.store.record({
       type: 'dismiss',
@@ -93,7 +125,7 @@ it('retains in-memory delivery and retirement when durable writes fail', () => {
       dismissedDelivery: shown
     })
   ).toThrow()
-  expect(h.store.hasLiveDelivery(shown.notificationId)).toBe(false)
+  expect(h.store.liveDeliveries(shown.notificationId)).toEqual([])
   expect(h.store.reconcile([shown])).toEqual([shown])
 })
 

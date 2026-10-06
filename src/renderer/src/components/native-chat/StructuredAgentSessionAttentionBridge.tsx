@@ -15,7 +15,10 @@ import {
   structuredAgentSessionTargetForHost
 } from '@/runtime/structured-agent-session-owner'
 import { getStructuredAgentSessionTurnCompletionFeed } from '@/runtime/structured-agent-session-turn-completion-feed'
+import { getStructuredAgentSessionStatusFeed } from '@/runtime/structured-agent-session-status-feed'
 import { acknowledgeStructuredAgentSessionAttention } from '@/runtime/structured-agent-session-client'
+import type { AgentJournalCursor } from '../../../../shared/agent-session-journal-types'
+import type { AgentSessionExecutionLocation } from '../../../../shared/agent-session-record'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import {
   dispatchStructuredPromptAttention,
@@ -54,18 +57,34 @@ function StructuredAgentSessionOwnedAttention({
   useEffect(() => feed.activate(), [feed])
   const paneKey = structuredAgentSessionPaneKey(tab.id, tab.entityId)
   const readFrontier = useRef<StructuredSubjectRead | undefined>(undefined)
+  // Where the newest edge this tab was handed sits in the journal: what lit its row.
+  const surfaced = useRef<AgentJournalCursor | undefined>(undefined)
+  // A remote prompt this desktop relayed to its phones, until the host says none is pending.
+  const relayedPromptScope = useRef<AgentSessionExecutionLocation | undefined>(undefined)
   useEffect(() => {
     let lastAttempt: { observationKey: string } | undefined
-    const stopCapture = registerAgentSubjectReadCapture(paneKey, () => {
+    const stopCapture = registerAgentSubjectReadCapture(paneKey, (intent) => {
       const state = findStructuredAgentSessionReadOwner(tab.entityId, target)?.getSnapshot().state
-      if (!state?.cursor) {
+      const viewed = state?.cursor
+        ? { cursor: state.cursor, observationKey: structuredAttentionReadObservation(state) }
+        : undefined
+      // Marking the row read covers what lit it, even unmounted or hidden; never a later edge.
+      const edge = intent === 'explicit' ? surfaced.current : undefined
+      const boundary =
+        edge && (!viewed || isLaterCursor(edge, viewed.cursor))
+          ? {
+              cursor: edge,
+              observationKey: `${viewed?.observationKey ?? ''}|edge:${edge.epoch}:${edge.sequence}`
+            }
+          : viewed
+      if (!boundary) {
         return null
       }
       return {
         target,
         sessionId: tab.entityId,
-        observedCursor: { ...state.cursor },
-        observationKey: structuredAttentionReadObservation(state)
+        observedCursor: { ...boundary.cursor },
+        observationKey: boundary.observationKey
       }
     })
     const stopRead = subscribeAgentSubjectReads((reads) => {
@@ -119,13 +138,22 @@ function StructuredAgentSessionOwnedAttention({
       stopRead()
       stopCapture()
       readFrontier.current = undefined
+      surfaced.current = undefined
     }
   }, [paneKey, tab.entityId, target])
   useEffect(
     () =>
       feed.subscribe((edge) => {
+        const payload = edge.type === 'prompt' ? edge.prompt : edge.completion
+        const cursor = payload.sessionId === tab.entityId ? payload.journalCursor : undefined
+        if (cursor && (!surfaced.current || isLaterCursor(cursor, surfaced.current))) {
+          surfaced.current = { ...cursor }
+        }
         if (edge.type === 'prompt') {
           if (edge.prompt.sessionId === tab.entityId) {
+            if (target.kind === 'environment') {
+              relayedPromptScope.current = edge.prompt.scope
+            }
             dispatchStructuredPromptAttention(tab, edge.prompt, target, () => {
               const read = readFrontier.current
               return read?.sessionId === tab.entityId &&
@@ -140,7 +168,42 @@ function StructuredAgentSessionOwnedAttention({
       }),
     [feed, tab, target]
   )
+  useEffect(() => {
+    if (target.kind !== 'environment') {
+      return undefined
+    }
+    // The host publishes a commit's status before its prompt edge, so status read after the edge
+    // that set the scope is never older than that prompt. Only a live mirror is evidence.
+    const status = getStructuredAgentSessionStatusFeed(target)
+    const stopListening = status.subscribe(() => {
+      const scope = relayedPromptScope.current
+      const summary = status.getSnapshot().get(tab.entityId)
+      if (
+        !scope ||
+        !summary ||
+        summary.status === 'attention' ||
+        status.getSessionObservation(tab.entityId) !== 'live'
+      ) {
+        return
+      }
+      relayedPromptScope.current = undefined
+      window.api?.notifications?.settleStructuredPrompts?.(scope, tab.entityId)?.catch((error) => {
+        console.warn('[structured-session-attention] relayed prompt settlement failed', error)
+      })
+    })
+    const release = status.activate()
+    return () => {
+      stopListening()
+      release()
+      relayedPromptScope.current = undefined
+    }
+  }, [tab.entityId, target])
   return null
+}
+
+/** Another epoch counts as later: rewinds re-mint the journal, and only edges are live news. */
+function isLaterCursor(candidate: AgentJournalCursor, current: AgentJournalCursor): boolean {
+  return candidate.epoch !== current.epoch || candidate.sequence > current.sequence
 }
 
 export function StructuredAgentSessionAttentionBridge(): React.JSX.Element {

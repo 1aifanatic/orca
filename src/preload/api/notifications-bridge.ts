@@ -9,6 +9,7 @@ import type {
   NotificationSoundResult,
   StructuredNotificationRead
 } from '../../shared/notification-settings-types'
+import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import type { PreloadApi } from '../api-types'
 
 // Why: cache one shared Audio + blob URL per sound path so notifications do not re-read large files.
@@ -39,6 +40,10 @@ export const notificationsApi = {
     reads === undefined
       ? ipcRenderer.invoke('notifications:dismiss', ids, paneKeys)
       : ipcRenderer.invoke('notifications:dismiss', ids, paneKeys, reads),
+  settleStructuredPrompts: (
+    scope: AgentSessionExecutionLocation,
+    sessionId: string
+  ): Promise<void> => ipcRenderer.invoke('notifications:settleStructuredPrompts', scope, sessionId),
   openSystemSettings: (): Promise<void> => ipcRenderer.invoke('notifications:openSystemSettings'),
   getPermissionStatus: (): Promise<NotificationPermissionStatusResult> =>
     ipcRenderer.invoke('notifications:getPermissionStatus'),

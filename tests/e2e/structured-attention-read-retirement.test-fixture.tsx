@@ -42,6 +42,7 @@ import { useAutoAckViewedAgent } from '@/hooks/useAutoAckViewedAgent'
 import { useStructuredAgentSessionRead } from '@/components/native-chat/use-structured-agent-session-read'
 import { resetStructuredAgentSessionReadOwnersForTests } from '@/components/native-chat/structured-agent-session-read-owner'
 import { resetStructuredAgentSessionTurnCompletionFeedsForTests } from '@/runtime/structured-agent-session-turn-completion-feed'
+import { resetStructuredAgentSessionStatusFeedsForTests } from '@/runtime/structured-agent-session-status-feed'
 
 export const WORKSPACE = 'repo1::/tmp/wt'
 export const TAB = 'chat'
@@ -73,6 +74,7 @@ export let fixture: {
   hostFeed: StructuredAgentSessionTurnCompletionFeed
   completion: ((response: RuntimeRpcResponse<unknown>) => void) | undefined
   journal: ((response: RuntimeRpcResponse<unknown>) => void) | undefined
+  status: ((response: RuntimeRpcResponse<unknown>) => void) | undefined
   hydrate: (() => void) | undefined
 }
 
@@ -121,6 +123,24 @@ export function publishView(): void {
     ok: true,
     _meta: { runtimeId: 'attention-host' },
     result: { type: 'snapshot', sessionId: SESSION, page: history(), fence: 1 }
+  })
+}
+/** The host's status row for this commit, from the same projection its status feed publishes. */
+export function publishStatus(): void {
+  fixture.status?.({
+    id: 'status',
+    ok: true,
+    _meta: { runtimeId: 'attention-host' },
+    result: {
+      type: 'status',
+      session: {
+        sessionId: SESSION,
+        workspaceId: WORKSPACE,
+        agent: 'claude',
+        ...projectStructuredAgentSessionStatusState(fixture.items).summary,
+        updatedAt: fixture.sequence
+      }
+    }
   })
 }
 export function ReadSurface({
@@ -184,6 +204,7 @@ beforeEach(() => {
   const sequence = 2
   resetStructuredAgentSessionReadOwnersForTests()
   resetStructuredAgentSessionTurnCompletionFeedsForTests()
+  resetStructuredAgentSessionStatusFeedsForTests()
   const delivery = createStructuredAttentionMobileDelivery({
     readNotificationSettings: () => ({ ...NOTIFICATION_SETTINGS, suppressWhenFocused: false }),
     readWorkspaceLabels: () => ({}),
@@ -213,6 +234,7 @@ beforeEach(() => {
     hostFeed,
     completion: undefined,
     journal: undefined,
+    status: undefined,
     hydrate: undefined
   }
   fixture.hostFeed.subscribe({
@@ -235,6 +257,7 @@ beforeEach(() => {
   transport.away.mockResolvedValue(false)
   transport.supports.mockResolvedValue(true)
   transport.dismiss.mockResolvedValue({ dismissed: 0 })
+  transport.settle.mockResolvedValue(undefined)
   transport.dispatch.mockResolvedValue({ delivered: true })
   const subscribe = async (
     request: { method: string },
@@ -242,6 +265,8 @@ beforeEach(() => {
   ) => {
     if (request.method === 'agentSession.subscribeTurnCompletions') {
       fixture.completion = emit
+    } else if (request.method === 'agentSession.subscribeStatus') {
+      fixture.status = emit
     } else {
       fixture.journal = emit
     }
@@ -259,6 +284,7 @@ beforeEach(() => {
     notifications: {
       dispatch: transport.dispatch,
       dismiss: transport.dismiss,
+      settleStructuredPrompts: transport.settle,
       getDesktopAwayState: transport.away
     }
   })
@@ -318,6 +344,7 @@ afterEach(() => {
   clearStructuredHostStub()
   resetStructuredAgentSessionReadOwnersForTests()
   resetStructuredAgentSessionTurnCompletionFeedsForTests()
+  resetStructuredAgentSessionStatusFeedsForTests()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   rmSync(fixture.directory, { recursive: true, force: true })

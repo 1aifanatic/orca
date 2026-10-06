@@ -8,14 +8,16 @@ export type StructuredSubjectRead = {
   observationKey: string
 }
 export type AgentSubjectRead = { subjectKey: string; structured?: StructuredSubjectRead }
+/** `explicit`: the user marked the row read without viewing it (Activity, dashboard, a jump). */
+export type AgentSubjectReadIntent = 'view' | 'explicit'
 
-const captures = new Map<string, () => StructuredSubjectRead | null>()
+const captures = new Map<string, (intent: AgentSubjectReadIntent) => StructuredSubjectRead | null>()
 const listeners = new Set<(reads: readonly AgentSubjectRead[]) => void>()
 const viewListeners = new Set<(read: StructuredSubjectRead) => void>()
 
 export function registerAgentSubjectReadCapture(
   subjectKey: string,
-  capture: () => StructuredSubjectRead | null
+  capture: (intent: AgentSubjectReadIntent) => StructuredSubjectRead | null
 ): () => void {
   captures.set(subjectKey, capture)
   return () => {
@@ -25,10 +27,13 @@ export function registerAgentSubjectReadCapture(
   }
 }
 
-export function captureAgentSubjectReads(subjectKeys: readonly string[]): AgentSubjectRead[] {
+export function captureAgentSubjectReads(
+  subjectKeys: readonly string[],
+  intent: AgentSubjectReadIntent = 'view'
+): AgentSubjectRead[] {
   return subjectKeys.map((subjectKey) => {
     try {
-      const structured = captures.get(subjectKey)?.()
+      const structured = captures.get(subjectKey)?.(intent)
       return { subjectKey, ...(structured ? { structured } : {}) }
     } catch (error) {
       console.warn('[agent-subject-read] could not capture accepted view', error)
@@ -41,9 +46,10 @@ export function emitAgentSubjectReads(
   subjectKeys: readonly string[],
   captured?: readonly AgentSubjectRead[]
 ): void {
+  // Viewed acknowledgements always arrive with their captured reads; none means a user action.
   const reads =
     captured === undefined
-      ? captureAgentSubjectReads(subjectKeys)
+      ? captureAgentSubjectReads(subjectKeys, 'explicit')
       : captured.filter((read) => subjectKeys.includes(read.subjectKey))
   for (const listener of listeners) {
     try {

@@ -18,17 +18,13 @@ import {
 const DEFAULT_MAX_SUBJECTS = 256
 const DEFAULT_MAX_IDS_PER_SUBJECT = 20
 
-type AnnouncedNotification = { id: string; origin?: StructuredAttentionOrigin; structured: boolean }
+type AnnouncedNotification = { id: string; origin?: StructuredAttentionOrigin }
 
 export type AnnouncedNotificationRegistry = {
-  record: (
-    paneKey: string,
-    notificationId: string,
-    origin?: StructuredAttentionOrigin,
-    structured?: boolean
-  ) => void
-  isStructured: (notificationId: string) => boolean
-  /** Removes only announcements covered by this read. */
+  record: (paneKey: string, notificationId: string, origin?: StructuredAttentionOrigin) => void
+  /** Whether this id was announced with a journal position, so only a covering read retires it. */
+  isBounded: (notificationId: string) => boolean
+  /** Removes every announcement without a journal position, and those with one this read covers. */
   take: (paneKey: string, read?: StructuredAttentionRead) => readonly AnnouncedNotification[]
 }
 
@@ -41,9 +37,9 @@ export function createAnnouncedNotificationRegistry(limits?: {
   const idsBySubject = new Map<string, AnnouncedNotification[]>()
 
   return {
-    record: (paneKey, notificationId, origin, structured = false) => {
+    record: (paneKey, notificationId, origin) => {
       const ids = (idsBySubject.get(paneKey) ?? []).filter((entry) => entry.id !== notificationId)
-      ids.push({ id: notificationId, origin, structured: structured || origin !== undefined })
+      ids.push({ id: notificationId, origin })
       // Re-insert so eviction drops the subject least recently announced, not the first ever seen.
       idsBySubject.delete(paneKey)
       idsBySubject.set(paneKey, ids.slice(-maxIdsPerSubject))
@@ -54,14 +50,15 @@ export function createAnnouncedNotificationRegistry(limits?: {
         }
       }
     },
-    isStructured: (notificationId) =>
+    isBounded: (notificationId) =>
       [...idsBySubject.values()].some((entries) =>
-        entries.some((entry) => entry.id === notificationId && entry.structured)
+        entries.some((entry) => entry.id === notificationId && entry.origin !== undefined)
       ),
     take: (paneKey, read) => {
       const ids = idsBySubject.get(paneKey) ?? []
+      // No position means a host older than journal cursors, which raises no prompts to race.
       const selected = ids.filter(
-        (entry) => !entry.structured || (read && attentionOriginWasRead(entry.origin, read))
+        (entry) => !entry.origin || (read && attentionOriginWasRead(entry.origin, read))
       )
       const kept = ids.filter((entry) => !selected.includes(entry))
       if (kept.length > 0) {

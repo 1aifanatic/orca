@@ -158,27 +158,6 @@ export class RuntimeMobileNotificationController {
     this.dispatch({ type: 'dismiss', notificationId })
   }
 
-  /** Withdraws a notification this host delivered and has not withdrawn yet; anything else is a
-   *  no-op, so a subject acknowledged again costs no push. The record survives restarts. */
-  retire(notificationId: string): void {
-    if (!this.dismissalStore) {
-      this.dismiss(notificationId)
-      return
-    }
-    for (const delivery of this.dismissalStore.liveDeliveries(notificationId)) {
-      if (delivery.notificationId === notificationId) {
-        this.retireDelivery(delivery)
-      }
-    }
-  }
-
-  /** `retire` for every live delivery whose id starts with `prefix`: one subject's alerts. */
-  retireMatching(prefix: string): void {
-    for (const delivery of this.dismissalStore?.liveDeliveries(prefix) ?? []) {
-      this.retireDelivery(delivery)
-    }
-  }
-
   private retireDelivery(delivery: DeliveredNotificationIdentity): void {
     this.dispatch({
       type: 'dismiss',

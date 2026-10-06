@@ -6,6 +6,7 @@ const transport = vi.hoisted(() => ({
   away: vi.fn(),
   supports: vi.fn(),
   dismiss: vi.fn(),
+  settle: vi.fn(),
   dispatch: vi.fn()
 }))
 vi.mock('@/runtime/runtime-rpc-client', async (original) => ({

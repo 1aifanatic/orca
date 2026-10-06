@@ -31,7 +31,7 @@ export type StructuredAgentSessionTurnCompletionSubscriber = {
   emit: (event: AgentSessionTurnCompletionEvent) => void
   /** Opted in to `prompt` events; a client that predates them would misread the arm. */
   includePrompts?: boolean
-  /** In-process only: authoritative state for delivery reconciliation, including restored history. */
+  /** In-process only: pending prompts for delivery reconciliation, on restore and when one ends. */
   onState?: (state: StructuredAttentionState) => void
 }
 
@@ -117,20 +117,13 @@ export class StructuredAgentSessionTurnCompletionFeed {
       return
     }
     const cursor = (journal ?? session.journal).cursor()
-    for (const subscriber of this.subscribers.values()) {
-      try {
-        subscriber.onState?.({
-          scope: session.params.location,
-          sessionId,
-          pendingPromptIds: state.pendingPromptIds
-        })
-      } catch {
-        // Delivery bookkeeping cannot cost this commit its attention edge.
-      }
-    }
     const request = state.latestRequest
     const prompts = new Set(state.pendingPromptIds)
     const baseline = this.baselines.get(sessionId)
+    // Only a restore or a prompt leaving the set can strand a delivered alert.
+    if (!baseline || options?.historical || [...baseline.prompts].some((id) => !prompts.has(id))) {
+      this.publishState(session, sessionId, state.pendingPromptIds)
+    }
     if (!baseline || options?.historical) {
       // Baseline only. Whatever the session was already holding is history, not news.
       this.baselines.set(sessionId, { ...cursor, settled: settledMark(request), prompts })
@@ -175,6 +168,20 @@ export class StructuredAgentSessionTurnCompletionFeed {
       },
       'prompt-aware'
     )
+  }
+
+  private publishState(
+    session: CompletionFeedSession,
+    sessionId: string,
+    pendingPromptIds: readonly string[]
+  ): void {
+    for (const subscriber of this.subscribers.values()) {
+      try {
+        subscriber.onState?.({ scope: session.params.location, sessionId, pendingPromptIds })
+      } catch {
+        // Delivery bookkeeping cannot cost this commit its attention edge.
+      }
+    }
   }
 
   /** The completion this commit settles, if any. */

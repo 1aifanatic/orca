@@ -34,7 +34,7 @@ export class MobileNotificationDismissalStore {
       hardenExistingSecureFile(this.path)
       const value: unknown = JSON.parse(readFileSync(this.path, 'utf8'))
       if (Array.isArray(value)) {
-        this.entries = value.filter(isEntry).slice(-LIMIT)
+        this.entries = value.flatMap(readEntry).slice(-LIMIT)
       }
     } catch (error) {
       this.unreadable = isUnreadableError(error)
@@ -101,16 +101,6 @@ export class MobileNotificationDismissalStore {
     }
   }
 
-  /** Whether a notification with this id was delivered and not dismissed since. */
-  hasLiveDelivery(notificationId: string): boolean {
-    return this.liveDeliveryIds(notificationId).includes(notificationId)
-  }
-
-  /** Ids delivered and not dismissed since, among those starting with `prefix`. */
-  liveDeliveryIds(prefix: string): string[] {
-    return [...new Set(this.liveDeliveries(prefix).map((entry) => entry.notificationId))]
-  }
-
   liveDeliveries(prefix = ''): DeliveredNotificationRecord[] {
     const now = Date.now()
     return this.entries
@@ -143,7 +133,18 @@ export class MobileNotificationDismissalStore {
   }
 }
 
-function isEntry(value: unknown): value is RecordEntry {
+/** An origin this build cannot read (a newer cause kind) degrades to none; the record survives. */
+function readEntry(value: unknown): RecordEntry[] {
+  if (!isEntry(value)) {
+    return []
+  }
+  const { structuredOrigin, ...entry } = value
+  return [isStructuredAttentionOrigin(structuredOrigin) ? { ...entry, structuredOrigin } : entry]
+}
+
+function isEntry(
+  value: unknown
+): value is Omit<RecordEntry, 'structuredOrigin'> & { structuredOrigin?: unknown } {
   if (!value || typeof value !== 'object') {
     return false
   }
@@ -157,7 +158,6 @@ function isEntry(value: unknown): value is RecordEntry {
     item.notificationSeq >= 0 &&
     Number.isSafeInteger(item.dismissedThrough) &&
     item.dismissedThrough >= -1 &&
-    Number.isFinite(item.expiresAt) &&
-    (item.structuredOrigin === undefined || isStructuredAttentionOrigin(item.structuredOrigin))
+    Number.isFinite(item.expiresAt)
   )
 }
