@@ -30,8 +30,11 @@ import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-a
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
 import { useStructuredAgentSessionHostExecution } from './StructuredAgentSessionStatusBridge'
+import { useNativeChatRewindHost } from './use-native-chat-rewind-host'
+import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { nativeChatStructuredStopControls } from './native-chat-structured-stop-controls'
+import { chatApprovalFromJournal } from './native-chat-interactive-prompt'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
@@ -56,6 +59,8 @@ export function NativeChatStructuredSession(
   )
   // Chat-wide: absent means on; only an explicit off keeps mid-turn sends immediate.
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
+  const composerRef = useRef<NativeChatComposerHandle>(null)
+  const { rewindHost, focusComposer } = useNativeChatRewindHost(props, composerRef)
   const controller = useStructuredAgentSession({
     ...props,
     // Why: Stop and a queued card's Edit give text back to the conversation's draft, as the composer keeps it.
@@ -63,6 +68,7 @@ export function NativeChatStructuredSession(
     queueFollowUps,
     hostStopping: hostExecution.stopping,
     providerStarting: hostExecution.phase === 'starting',
+    rewind: rewindHost,
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
@@ -81,7 +87,6 @@ export function NativeChatStructuredSession(
     sequence: number
   } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<NativeChatComposerHandle>(null)
   const paneCommands = useStructuredNativeChatPaneCommands({
     tabId: props.tabId,
     groupId: props.groupId,
@@ -159,23 +164,7 @@ export function NativeChatStructuredSession(
   // cancel then works.
   const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
   const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
-  const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
-  const approval = approvalBody
-    ? {
-        title: approvalBody.title,
-        ...(approvalBody.displayName ? { displayName: approvalBody.displayName } : {}),
-        ...(approvalBody.description ? { description: approvalBody.description } : {}),
-        ...(approvalBody.decisionReason ? { decisionReason: approvalBody.decisionReason } : {}),
-        ...(approvalBody.blockedPath ? { blockedPath: approvalBody.blockedPath } : {}),
-        ...(approvalBody.matchedAskRule ? { matchedAskRule: approvalBody.matchedAskRule } : {}),
-        ...(approvalBody.subject ? { subject: approvalBody.subject } : {}),
-        ...(approvalBody.detail ? { detail: approvalBody.detail } : {}),
-        options: approvalBody.options.map((option) => ({
-          label: option.label,
-          send: option.id
-        }))
-      }
-    : null
+  const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   const cancelPrompt = () => {
     if (controller.turnId && prompt) {
       void controller.cancel(controller.turnId, {
@@ -279,25 +268,29 @@ export function NativeChatStructuredSession(
         ) : viewState.kind === 'empty' ? (
           <NativeChatEmptyState kind="empty" agent={props.agent} />
         ) : (
-          <NativeChatMessageList
-            session={session}
-            journalItems={controller.journalItems}
-            journalSubmissions={controller.submissions}
-            subagentRoster={controller.subagentRoster}
-            railOutline={controller.railOutline}
-            isVisible={props.isVisible}
-            isWorking={controller.isWorking}
-            expandSignal={false}
-            workingStartedAt={controller.workingStartedAt}
-            settledTurns={controller.settledTurns}
-            awaitingInput={prompt === null ? null : 'shown'}
-            turnActivity={controller.turnActivity}
-            stopping={stopControls.stopping}
-            onLinkClick={onLinkClick}
-            allowFileUriLinks={onLinkClick !== undefined}
-            runtimeContext={imageRuntimeContext}
-            deliveryNotices={deliveryNotices}
-          />
+          <NativeChatRewindContext.Provider value={controller.rewind.surface}>
+            <NativeChatMessageList
+              // A rewind replaces the conversation; nothing the old transcript held carries over.
+              key={controller.epoch ?? undefined}
+              session={session}
+              journalItems={controller.journalItems}
+              journalSubmissions={controller.submissions}
+              subagentRoster={controller.subagentRoster}
+              railOutline={controller.railOutline}
+              isVisible={props.isVisible}
+              isWorking={controller.isWorking}
+              expandSignal={false}
+              workingStartedAt={controller.workingStartedAt}
+              settledTurns={controller.settledTurns}
+              awaitingInput={prompt === null ? null : 'shown'}
+              turnActivity={controller.turnActivity}
+              stopping={stopControls.stopping}
+              onLinkClick={onLinkClick}
+              allowFileUriLinks={onLinkClick !== undefined}
+              runtimeContext={imageRuntimeContext}
+              deliveryNotices={deliveryNotices}
+            />
+          </NativeChatRewindContext.Provider>
         )}
       </div>
       {readFailedFinally ? null : (
@@ -312,7 +305,7 @@ export function NativeChatStructuredSession(
           <NativeChatQueuedMessageList
             controller={controller.queuedMessages}
             steerHeld={stopControls.stopping}
-            focusComposer={() => composerRef.current?.focus()}
+            focusComposer={focusComposer}
           />
           <NativeChatStructuredSessionStatus
             sessionId={props.sessionId}
