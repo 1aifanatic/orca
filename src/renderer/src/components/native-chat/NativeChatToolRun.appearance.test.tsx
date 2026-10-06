@@ -71,7 +71,7 @@ describe('tool-run summary in a matching chat', () => {
   it.each([
     ['wrapped', `QA inert command for display only: ${'x'.repeat(400)}`],
     ['single-line', 'pnpm test']
-  ])('pins the marks to the first line of a %s summary', (_shape, command) => {
+  ])('pins the marks to the first line of a %s summary', (_summaryLength, command) => {
     const { container } = render(
       <NativeChatToolRun
         blocks={[
