@@ -48,7 +48,7 @@ function resolverFor(
   agentDefaultArgs: Record<string, string> = { codex: '' }
 ) {
   return createCodexStructuredLaunchResolver({
-    store: { getRecord: () => value, pinWorkspacePath: vi.fn() },
+    store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath,
     resolveCommand: () => '/usr/local/bin/codex',
     resolveRollout,
@@ -63,7 +63,7 @@ describe('codex structured launch resolution', () => {
     const resolveWorkspacePath = vi.fn(async () => '/floating/current-setting')
     const floating = record({
       location: { ...record().location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID },
-      workspacePath: pinned
+      launchDirectory: pinned
     })
 
     const launch = await resolverFor(floating, resolveWorkspacePath)({ identity: IDENTITY })
@@ -73,9 +73,9 @@ describe('codex structured launch resolution', () => {
   })
 
   it('pins the first launch directory of a new session', async () => {
-    const pinWorkspacePath = vi.fn()
+    const pinLaunchDirectory = vi.fn()
     const resolveLaunch = createCodexStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinWorkspacePath },
+      store: { getRecord: () => record(), pinLaunchDirectory },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/codex',
       isWindowsProcessStartTimeAvailable: () => true
@@ -84,7 +84,7 @@ describe('codex structured launch resolution', () => {
     await expect(resolveLaunch({ identity: IDENTITY })).resolves.toMatchObject({
       cwd: '/repos/workspace-1'
     })
-    expect(pinWorkspacePath).toHaveBeenCalledExactlyOnceWith(SESSION_ID, '/repos/workspace-1')
+    expect(pinLaunchDirectory).toHaveBeenCalledExactlyOnceWith(SESSION_ID, '/repos/workspace-1')
   })
 
   it('launches the app server in the workspace and account home the record pinned', async () => {
@@ -106,7 +106,7 @@ describe('codex structured launch resolution', () => {
 
     await withPlatform('win32', async () => {
       const resolveLaunch = createCodexStructuredLaunchResolver({
-        store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+        store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
         resolveWorkspacePath: async () => String.raw`C:\workspaces\orca`,
         resolveCommand: () => command,
         isWindowsProcessStartTimeAvailable: () => true
@@ -123,7 +123,7 @@ describe('codex structured launch resolution', () => {
     await withPlatform('win32', async () => {
       const resolveWorkspacePath = vi.fn(async () => String.raw`C:\workspaces\orca`)
       const resolveLaunch = createCodexStructuredLaunchResolver({
-        store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+        store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
         resolveWorkspacePath,
         isWindowsProcessStartTimeAvailable: () => false
       })

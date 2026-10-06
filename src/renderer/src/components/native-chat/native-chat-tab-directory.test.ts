@@ -34,8 +34,8 @@ function state(overrides: Partial<NativeChatTabDirectoryState> = {}): NativeChat
       'wt-1': [WORKTREE_TAB],
       'wt-ssh': [{ id: 'ssh-chat-1', entityId: 'session-3' }]
     },
-    structuredSessionWorkspacePathByTabId: {
-      [FLOATING_TAB.id]: { sessionId: 'session-1', workspacePath: '/home/me/pinned' }
+    structuredSessionLaunchDirectoryByTabId: {
+      [FLOATING_TAB.id]: { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
     },
     ...overrides
   }
@@ -57,7 +57,7 @@ describe('resolveNativeChatTabDirectory', () => {
   })
 
   it('has no directory until the pin arrives, instead of the current floating setting', () => {
-    const unpinned = state({ structuredSessionWorkspacePathByTabId: {} })
+    const unpinned = state({ structuredSessionLaunchDirectoryByTabId: {} })
     expect(
       resolveNativeChatTabDirectory(unpinned, FLOATING_TAB.id, FLOATING_TERMINAL_WORKTREE_ID)
     ).toBeNull()
@@ -108,9 +108,9 @@ describe('resolveNativeChatTabDirectory', () => {
 
   it('resolves worktree chats by id even when a pin is recorded for the tab', () => {
     const pinned = state({
-      structuredSessionWorkspacePathByTabId: {
-        [WORKTREE_TAB.id]: { sessionId: 'session-2', workspacePath: '/somewhere/else' },
-        'ssh-chat-1': { sessionId: 'session-3', workspacePath: '/somewhere/else' }
+      structuredSessionLaunchDirectoryByTabId: {
+        [WORKTREE_TAB.id]: { sessionId: 'session-2', launchDirectory: '/somewhere/else' },
+        'ssh-chat-1': { sessionId: 'session-3', launchDirectory: '/somewhere/else' }
       }
     })
     expect(resolveNativeChatTabDirectory(pinned, WORKTREE_TAB.id, 'wt-1')).toBe('/repo/worktree')

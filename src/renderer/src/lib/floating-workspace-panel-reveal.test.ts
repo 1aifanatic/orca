@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getDefaultSettings } from '../../../shared/constants'
+import type { AppState } from '@/store/types'
 import { TOGGLE_FLOATING_TERMINAL_EVENT } from './floating-terminal'
 import { revealFloatingWorkspacePanel } from './floating-workspace-panel-reveal'
 
 function panelState({ enabled, open }: { enabled: boolean; open: boolean }) {
   return {
-    settings: { floatingTerminalEnabled: enabled },
+    settings: { ...getDefaultSettings('/home/test'), floatingTerminalEnabled: enabled },
     floatingWorkspacePanelOpen: open,
-    updateSettings: vi.fn(async () => {})
+    updateSettings: vi.fn<AppState['updateSettings']>(async () => {})
   }
 }
 

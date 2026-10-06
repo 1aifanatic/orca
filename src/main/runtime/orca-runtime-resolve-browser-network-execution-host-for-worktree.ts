@@ -32,7 +32,6 @@ import { getExplicitWorktreeIdSelector } from './runtime-worktree-selection'
 import { WORKTREE_ID_SEPARATOR } from '../../shared/worktree/id'
 import { WorktreeIdRequiresFullPathError } from './runtime-worktree-lineage-resolution'
 import { triggerTerminalSpawnPushTargetMaterialization } from './runtime-terminal-spawn-push-target-materialization'
-import type { Worktree } from '../../shared/worktree/types'
 import { resolveCreatedWorktreeTerminalTarget } from './runtime-created-worktree-terminal-target'
 
 // Why: folder and floating workspaces have no worktree row, so no parent, children or lineage.

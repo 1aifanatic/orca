@@ -188,7 +188,7 @@ describe('useNativeChatSkills', () => {
       ...stateForHost('local'),
       tabsByWorktree: {},
       floatingWorkspacePath: '/home/me/changed-setting',
-      structuredSessionWorkspacePathByTabId: {},
+      structuredSessionLaunchDirectoryByTabId: {},
       unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] }
     }
     const view = render(<Probe enabled />)
@@ -198,8 +198,8 @@ describe('useNativeChatSkills', () => {
 
     mocks.state = {
       ...mocks.state,
-      structuredSessionWorkspacePathByTabId: {
-        'tab-1': { sessionId: 'session-1', workspacePath: '/home/me/pinned' }
+      structuredSessionLaunchDirectoryByTabId: {
+        'tab-1': { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
       }
     }
     view.rerender(<Probe enabled />)

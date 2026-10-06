@@ -25,7 +25,7 @@ type OwnerState = Pick<
   | 'detectedWorktreesByRepo'
   | 'folderWorkspaces'
   | 'floatingWorkspacePath'
-  | 'structuredSessionWorkspacePathByTabId'
+  | 'structuredSessionLaunchDirectoryByTabId'
   | 'projectGroups'
   | 'runtimeEnvironments'
   | 'runtimeEnvironmentCatalogHydrated'
@@ -50,7 +50,7 @@ export function selectNativeChatImageOwnerState(state: AppState): OwnerState {
     detectedWorktreesByRepo: state.detectedWorktreesByRepo,
     folderWorkspaces: state.folderWorkspaces,
     floatingWorkspacePath: state.floatingWorkspacePath,
-    structuredSessionWorkspacePathByTabId: state.structuredSessionWorkspacePathByTabId,
+    structuredSessionLaunchDirectoryByTabId: state.structuredSessionLaunchDirectoryByTabId,
     projectGroups: state.projectGroups,
     runtimeEnvironments: state.runtimeEnvironments,
     runtimeEnvironmentCatalogHydrated: state.runtimeEnvironmentCatalogHydrated,

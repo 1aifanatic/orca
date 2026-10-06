@@ -18,7 +18,7 @@ import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
 
 export type CodexStructuredLaunchResolverDeps = {
-  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinWorkspacePath'>
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinLaunchDirectory'>
   /** Absolute path of a workspace on this host. Rejects when the workspace no
    *  longer resolves, which is the case a stale mobile client hits. */
   resolveWorkspacePath: (workspaceId: string) => Promise<string>

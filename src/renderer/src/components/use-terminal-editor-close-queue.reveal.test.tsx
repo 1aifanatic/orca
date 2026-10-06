@@ -13,7 +13,11 @@ const store = vi.hoisted((): { openFiles: FakeOpenFile[]; activeWorktreeId: stri
 const revealFloatingWorkspacePanel = vi.hoisted(() => vi.fn())
 
 vi.mock('../store', () => ({
-  useAppStore: { getState: () => store, subscribe: () => () => {} }
+  useAppStore: {
+    // "Don't Save" closes through the store, beside the controller's own projection.
+    getState: () => ({ ...store, markFileDirty: vi.fn(), clearEditorDraft: vi.fn(), closeFile }),
+    subscribe: () => () => {}
+  }
 }))
 vi.mock('@/lib/floating-workspace-panel-reveal', () => ({ revealFloatingWorkspacePanel }))
 vi.mock('./terminal/window-close-running-work', () => ({ assessWindowCloseRunningWork: vi.fn() }))

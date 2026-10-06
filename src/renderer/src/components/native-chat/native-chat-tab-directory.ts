@@ -2,7 +2,7 @@ import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { isAgentSessionHandleProvider } from '../../../../shared/agent-session-provider-handle'
 import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
 import { resolveWorkspaceDirectory, type WorkspaceDirectoryState } from '@/lib/workspace-directory'
-import type { StructuredSessionWorkspacePath } from '@/store/slices/structured-session-workspace-paths'
+import type { StructuredSessionLaunchDirectory } from '@/store/slices/structured-session-launch-directories'
 
 type NativeChatDirectoryTab = {
   id: string
@@ -13,7 +13,7 @@ type NativeChatDirectoryTab = {
 
 export type NativeChatTabDirectoryState = WorkspaceDirectoryState & {
   unifiedTabsByWorktree?: Record<string, readonly NativeChatDirectoryTab[]>
-  structuredSessionWorkspacePathByTabId?: Record<string, StructuredSessionWorkspacePath>
+  structuredSessionLaunchDirectoryByTabId?: Record<string, StructuredSessionLaunchDirectory>
 }
 
 export type NativeChatTabDirectoryResolution =
@@ -51,11 +51,11 @@ export function resolveNativeChatTabDirectoryResolution(
   if (executionHostId && executionHostId !== 'local') {
     return { status: 'unavailable' }
   }
-  const pinned = state.structuredSessionWorkspacePathByTabId?.[tabId]
+  const pinned = state.structuredSessionLaunchDirectoryByTabId?.[tabId]
   // Why no setting fallback: absence cannot tell "not delivered yet" from "none", and the setting
   // may name a folder this session never ran in.
   return pinned && pinned.sessionId === structuredTab.entityId
-    ? { status: 'resolved', directory: pinned.workspacePath }
+    ? { status: 'resolved', directory: pinned.launchDirectory }
     : { status: 'awaiting-pin' }
 }
 

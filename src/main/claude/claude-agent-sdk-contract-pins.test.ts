@@ -158,7 +158,7 @@ function resolvedLaunch(permissionMode: PermissionMode, launchArgs: string[] = [
     launchArgs
   } as unknown as AgentSessionRecord
   return createClaudeStructuredLaunchResolver({
-    store: { getRecord: () => record, pinWorkspacePath: vi.fn() },
+    store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath: async () => '/repos/workspace-1',
     resolveCommand: () => FAKE_CLI,
     resolveAuthPolicy: () => ({ stripAuthEnv: true }),

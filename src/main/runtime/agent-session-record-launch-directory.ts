@@ -7,15 +7,15 @@ import { isFloatingWorkspaceId } from '../../shared/floating-workspace-worktree'
  * First writer wins: the pin records where the session ran, so no later launch may move it — a
  * move would be an explicit act, not a side effect of resolving a workspace again.
  */
-export function pinAgentSessionRecordWorkspacePath(
+export function pinAgentSessionRecordLaunchDirectory(
   record: AgentSessionRecord,
-  workspacePath: string,
+  launchDirectory: string,
   now: number
 ): AgentSessionRecord {
-  if (record.workspacePath !== undefined) {
+  if (record.launchDirectory !== undefined) {
     return record
   }
-  return { ...record, workspacePath, updatedAt: now }
+  return { ...record, launchDirectory, updatedAt: now }
 }
 
 /**
@@ -23,5 +23,5 @@ export function pinAgentSessionRecordWorkspacePath(
  * floating id names a setting rather than a place, so only a floating session is held to its pin.
  */
 export function agentSessionPinnedLaunchDirectory(record: AgentSessionRecord): string | undefined {
-  return isFloatingWorkspaceId(record.location.workspaceId) ? record.workspacePath : undefined
+  return isFloatingWorkspaceId(record.location.workspaceId) ? record.launchDirectory : undefined
 }

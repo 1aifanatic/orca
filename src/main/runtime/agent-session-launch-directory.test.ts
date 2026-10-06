@@ -5,11 +5,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
-import {
-  AgentSessionWorkspaceMissingError,
-  resolveAgentSessionLaunchDirectory
-} from './agent-session-launch-directory'
-import { AgentSessionRecordStore } from './agent-session-record-store'
+import { resolveAgentSessionLaunchDirectory } from './agent-session-launch-directory'
+import { foundAgentSessionRecord } from './agent-session-record-founding'
+import type { AgentSessionRecordStore } from './agent-session-record-store'
+import { openTestAgentSessionRecordStore } from './agent-session-record-store-test-harness'
 import type { AgentSessionReserveRequest } from './agent-session-reservation-admission'
 
 const statFault = vi.hoisted(() => {
@@ -51,19 +50,16 @@ const FOLDER: AgentSessionExecutionLocation = {
 }
 
 let root: string
-let storeDirectory: string
 let store: AgentSessionRecordStore
 
-function reserveRequest(
-  location: AgentSessionExecutionLocation,
-  overrides: Partial<AgentSessionReserveRequest> = {}
-): AgentSessionReserveRequest {
+const LAUNCH_FOLDER_MISSING = { name: 'AgentSessionPreSpawnError', reason: 'launchFolderMissing' }
+
+function reserveRequest(location: AgentSessionExecutionLocation): AgentSessionReserveRequest {
   return {
     sessionId: SESSION,
     location,
     provider: 'claude',
     accountHome: { variable: 'CLAUDE_CONFIG_DIR', path: '/home/dev/.claude' },
-    runtimeKind: 'native',
     expectedFence: null,
     spawnToken: 'spawn-a',
     claimKeyId: 'key-1',
@@ -74,16 +70,14 @@ function reserveRequest(
       operationId: `${NOW}-${'1'.padStart(32, '0')}`,
       fingerprint: 'fp-1'
     },
-    now: NOW,
-    ...overrides
+    now: NOW
   }
 }
 
-async function reserve(
-  location: AgentSessionExecutionLocation,
-  overrides: Partial<AgentSessionReserveRequest> = {}
-) {
-  return (await store.reserveOwner(reserveRequest(location, overrides))).record
+/** A session reserved at `location`, pinned to `launchDirectory` when one is given. */
+async function reserve(location: AgentSessionExecutionLocation, launchDirectory?: string) {
+  const { record } = await store.reserveOwner(reserveRequest(location))
+  return launchDirectory === undefined ? record : store.pinLaunchDirectory(SESSION, launchDirectory)
 }
 
 async function directory(name: string): Promise<string> {
@@ -94,8 +88,7 @@ async function directory(name: string): Promise<string> {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-launch-directory-'))
-  storeDirectory = join(root, 'store')
-  store = await AgentSessionRecordStore.open({ directory: storeDirectory, hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
 })
 
 afterEach(async () => {
@@ -115,11 +108,8 @@ describe('agent session launch directory', () => {
     )
 
     expect(cwd).toBe(configured)
-    const reopened = await AgentSessionRecordStore.open({
-      directory: storeDirectory,
-      hostId: 'local'
-    })
-    expect(reopened.getRecord(SESSION)?.workspacePath).toBe(configured)
+    const reopened = await openTestAgentSessionRecordStore(root)
+    expect(reopened.getRecord(SESSION)?.launchDirectory).toBe(configured)
   })
 
   it('pins a new worktree session to the path its id resolved to', async () => {
@@ -131,52 +121,48 @@ describe('agent session launch directory', () => {
         record
       )
     ).resolves.toBe(`/resolved/${WORKTREE.workspaceId}`)
-    expect(store.getRecord(SESSION)?.workspacePath).toBe(`/resolved/${WORKTREE.workspaceId}`)
+    expect(store.getRecord(SESSION)?.launchDirectory).toBe(`/resolved/${WORKTREE.workspaceId}`)
   })
 
   it('resumes a floating session in its pinned folder after the floating setting changed', async () => {
     const original = await directory('floating-a')
     const changed = await directory('floating-b')
-    const record = await reserve(FLOATING, { workspacePath: original })
+    const record = await reserve(FLOATING, original)
     const resolveWorkspacePath = vi.fn(async () => changed)
 
     await expect(
       resolveAgentSessionLaunchDirectory({ store, resolveWorkspacePath }, record)
     ).resolves.toBe(original)
     expect(resolveWorkspacePath).not.toHaveBeenCalled()
-    expect(store.getRecord(SESSION)?.workspacePath).toBe(original)
+    expect(store.getRecord(SESSION)?.launchDirectory).toBe(original)
   })
 
   it('refuses a floating resume whose pinned folder is gone instead of substituting one', async () => {
     const gone = join(root, 'deleted-floating')
-    const record = await reserve(FLOATING, { workspacePath: gone })
+    const record = await reserve(FLOATING, gone)
     const fallback = await directory('app-owned-floating')
     const resolveWorkspacePath = vi.fn(async () => fallback)
 
     const failure = resolveAgentSessionLaunchDirectory({ store, resolveWorkspacePath }, record)
 
-    await expect(failure).rejects.toBeInstanceOf(AgentSessionWorkspaceMissingError)
-    await expect(failure).rejects.toMatchObject({
-      code: 'agent_session_operation_invalid',
-      message: `The folder this chat ran in no longer exists: ${gone}. Restore it to continue.`
-    })
+    await expect(failure).rejects.toMatchObject(LAUNCH_FOLDER_MISSING)
     expect(resolveWorkspacePath).not.toHaveBeenCalled()
-    expect(store.getRecord(SESSION)?.workspacePath).toBe(gone)
+    expect(store.getRecord(SESSION)?.launchDirectory).toBe(gone)
   })
 
   it('refuses a floating resume whose pinned path is now a file', async () => {
     const file = join(root, 'not-a-folder')
     await writeFile(file, '')
-    const record = await reserve(FLOATING, { workspacePath: file })
+    const record = await reserve(FLOATING, file)
 
     await expect(
       resolveAgentSessionLaunchDirectory({ store, resolveWorkspacePath: async () => root }, record)
-    ).rejects.toBeInstanceOf(AgentSessionWorkspaceMissingError)
+    ).rejects.toMatchObject(LAUNCH_FOLDER_MISSING)
   })
 
   it('reports a pinned folder it cannot read as that failure, not as a missing folder', async () => {
     const pinned = await directory('floating-locked')
-    const record = await reserve(FLOATING, { workspacePath: pinned })
+    const record = await reserve(FLOATING, pinned)
     const denied = Object.assign(new Error(`EACCES: permission denied, stat '${pinned}'`), {
       code: 'EACCES'
     })
@@ -194,17 +180,17 @@ describe('agent session launch directory', () => {
     const record = await reserve(FLOATING)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const pinFailure = new Error('disk full')
-    const pinWorkspacePath = vi.fn(async () => {
+    const pinLaunchDirectory = vi.fn(async () => {
       throw pinFailure
     })
 
     await expect(
       resolveAgentSessionLaunchDirectory(
-        { store: { pinWorkspacePath }, resolveWorkspacePath: async () => configured },
+        { store: { pinLaunchDirectory }, resolveWorkspacePath: async () => configured },
         record
       )
     ).resolves.toBe(configured)
-    expect(pinWorkspacePath).toHaveBeenCalledExactlyOnceWith(SESSION, configured)
+    expect(pinLaunchDirectory).toHaveBeenCalledExactlyOnceWith(SESSION, configured)
     expect(warn).toHaveBeenCalledWith(
       '[agent-session] launch directory pin failed',
       SESSION,
@@ -216,7 +202,7 @@ describe('agent session launch directory', () => {
     ['git worktree', WORKTREE],
     ['folder', FOLDER]
   ])('keeps resolving a %s resume by id, not by its pin', async (_kind, location) => {
-    const record = await reserve(location, { workspacePath: '/where/it/first/ran' })
+    const record = await reserve(location, '/where/it/first/ran')
 
     await expect(
       resolveAgentSessionLaunchDirectory(
@@ -224,18 +210,22 @@ describe('agent session launch directory', () => {
         record
       )
     ).resolves.toBe(`/resolved/${location.workspaceId}`)
-    expect(store.getRecord(SESSION)?.workspacePath).toBe('/where/it/first/ran')
+    expect(store.getRecord(SESSION)?.launchDirectory).toBe('/where/it/first/ran')
   })
 
-  it('creates a replacement session already pinned to the folder it inherits', async () => {
+  it('founds a /clear replacement already pinned to the folder it inherits', async () => {
     const inherited = await directory('floating-cleared')
-    const record = await reserve(FLOATING, { workspacePath: inherited })
-    expect(record.workspacePath).toBe(inherited)
+    const source = await reserve(FLOATING, inherited)
+    const replacement = foundAgentSessionRecord(
+      { ...source, sessionId: 'clear-replacement' },
+      { claimKeyId: 'key-1', now: NOW }
+    )
+    expect(replacement.launchDirectory).toBe(inherited)
 
     await expect(
       resolveAgentSessionLaunchDirectory(
         { store, resolveWorkspacePath: async () => '/floating/current-setting' },
-        record
+        replacement
       )
     ).resolves.toBe(inherited)
   })
@@ -244,7 +234,7 @@ describe('agent session launch directory', () => {
     const current = await directory('floating-current')
     const later = await directory('floating-later')
     const legacy = await reserve(FLOATING)
-    expect(legacy.workspacePath).toBeUndefined()
+    expect(legacy.launchDirectory).toBeUndefined()
 
     await expect(
       resolveAgentSessionLaunchDirectory(
@@ -253,7 +243,7 @@ describe('agent session launch directory', () => {
       )
     ).resolves.toBe(current)
     const pinned = store.getRecord(SESSION)
-    expect(pinned?.workspacePath).toBe(current)
+    expect(pinned?.launchDirectory).toBe(current)
     if (!pinned) {
       throw new Error('the pinned record disappeared')
     }

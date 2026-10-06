@@ -433,8 +433,8 @@ describe('delivering a launch prompt to a terminal agent', () => {
 })
 
 /**
- * The kind is read off the resolved workspace id, so a workspace with nowhere to keep a session is
- * decided here rather than offered to a host probe that cannot answer for it.
+ * The kind is read off the resolved workspace id. Every kind, the floating workspace included, now
+ * has a directory a session can run in, so none downgrades a launch on its own.
  */
 describe('a launch into an existing workspace, by workspace kind', () => {
   it('opens a structured session in the floating workspace', async () => {

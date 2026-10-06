@@ -5,7 +5,7 @@ import { structuredSlashCommands } from '../../shared/structured-agent-session-c
 import { discoverSkills } from '../skills/discovery'
 import { scanClaudeCommandFolders } from './claude-command-folder-scan'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
-import { agentSessionPinnedLaunchDirectory } from '../runtime/agent-session-record-workspace-path'
+import { agentSessionPinnedLaunchDirectory } from '../runtime/agent-session-record-launch-directory'
 
 /** How long one scan answers for a workspace and account before the next read scans again. */
 export const CLAUDE_AT_REST_COMMANDS_TTL_MS = 10_000

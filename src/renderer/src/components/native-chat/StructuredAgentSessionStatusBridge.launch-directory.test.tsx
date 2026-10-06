@@ -7,13 +7,17 @@ import type {
   AgentSessionStatusSummary
 } from '../../../../shared/agent-session-wire'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
+import {
+  LOCAL_EXECUTION_HOST_ID,
+  toRuntimeExecutionHostId
+} from '../../../../shared/execution-host'
 import type { Tab } from '../../../../shared/tab-types'
 import type { AppState } from '@/store/types'
 import type * as RuntimeRpcClientModule from '@/runtime/runtime-rpc-client'
 
 type TestStore = {
   getState: () => AppState
-  setState: (state: Partial<AppState> & { testRuntimeOwner?: string | null }) => void
+  setState: (state: Partial<AppState>) => void
 }
 
 const mocks = vi.hoisted(() => {
@@ -37,11 +41,6 @@ vi.mock('@/store', async () => {
   mocks.store = useAppStore
   return { useAppStore }
 })
-
-vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
-    state.testRuntimeOwner ?? null
-}))
 
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
   ...(await importOriginal<typeof RuntimeRpcClientModule>()),
@@ -69,7 +68,8 @@ const floatingTab = {
   sortOrder: 0,
   createdAt: 0,
   isPinned: false,
-  agentSessionAgent: 'codex'
+  agentSessionAgent: 'codex',
+  executionHostId: LOCAL_EXECUTION_HOST_ID
 } satisfies Tab
 
 function summary(overrides: Partial<AgentSessionStatusSummary> = {}): AgentSessionStatusSummary {
@@ -93,19 +93,18 @@ function emit(event: AgentSessionStatusEvent): void {
   act(() => send(event))
 }
 
-function pins(): AppState['structuredSessionWorkspacePathByTabId'] {
-  return mocks.store?.getState().structuredSessionWorkspacePathByTabId ?? {}
+function pins(): AppState['structuredSessionLaunchDirectoryByTabId'] {
+  return mocks.store?.getState().structuredSessionLaunchDirectoryByTabId ?? {}
 }
 
-describe('StructuredAgentSessionStatusBridge pinned workspace path', () => {
+describe('StructuredAgentSessionStatusBridge pinned launch directory', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetStructuredAgentSessionStatusFeedsForTests()
     mocks.subscribeStatus.mockResolvedValue({ unsubscribe: mocks.unsubscribe })
     mocks.supportsCapability.mockResolvedValue(true)
     mocks.store?.setState({
-      structuredSessionWorkspacePathByTabId: {},
-      testRuntimeOwner: null,
+      structuredSessionLaunchDirectoryByTabId: {},
       unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] }
     })
   })
@@ -119,10 +118,10 @@ describe('StructuredAgentSessionStatusBridge pinned workspace path', () => {
     const view = render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    emit({ type: 'snapshot', sessions: [summary({ workspacePath: '/home/me/original' })] })
+    emit({ type: 'snapshot', sessions: [summary({ launchDirectory: '/home/me/original' })] })
 
     expect(pins()).toEqual({
-      [floatingTab.id]: { sessionId: 'session-1', workspacePath: '/home/me/original' }
+      [floatingTab.id]: { sessionId: 'session-1', launchDirectory: '/home/me/original' }
     })
 
     act(() => mocks.store?.setState({ unifiedTabsByWorktree: {} }))
@@ -140,11 +139,18 @@ describe('StructuredAgentSessionStatusBridge pinned workspace path', () => {
   })
 
   it('never records a path published by a remote runtime', async () => {
-    mocks.store?.setState({ testRuntimeOwner: 'env-1' })
+    // The tab records the paired host that owns the chat.
+    mocks.store?.setState({
+      unifiedTabsByWorktree: {
+        [FLOATING_TERMINAL_WORKTREE_ID]: [
+          { ...floatingTab, executionHostId: toRuntimeExecutionHostId('env-1') }
+        ]
+      }
+    })
     render(<StructuredAgentSessionStatusBridge />)
     await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
 
-    emit({ type: 'snapshot', sessions: [summary({ workspacePath: '/srv/remote/floating' })] })
+    emit({ type: 'snapshot', sessions: [summary({ launchDirectory: '/srv/remote/floating' })] })
 
     // The summary itself landed; only its path was withheld.
     expect(Object.keys(mocks.store?.getState().agentStatusByPaneKey ?? {})).toHaveLength(1)

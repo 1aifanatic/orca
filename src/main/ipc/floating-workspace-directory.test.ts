@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 
-
 import {
   ensureDefaultFloatingWorkspacePath,
   trustFloatingWorkspaceDirectory,

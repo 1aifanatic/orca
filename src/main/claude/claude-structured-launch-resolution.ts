@@ -111,7 +111,7 @@ export type ClaudeStructuredLaunch = {
 }
 
 export type ClaudeStructuredLaunchResolverDeps = {
-  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinWorkspacePath'>
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinLaunchDirectory'>
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCommand?: () => string
   resolveEnv?: () =>

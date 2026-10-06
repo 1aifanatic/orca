@@ -45,7 +45,7 @@ import type { FeedbackDraftSlice } from './slices/feedback-draft'
 import type { TaskCreationDraftsSlice } from './slices/task-creation-drafts'
 import type { RemoteServerUpdatesSlice } from './slices/remote-server-updates'
 import type { TerminalQuickCommandHostsSlice } from './slices/terminal-quick-command-hosts'
-import type { StructuredSessionWorkspacePathSlice } from './slices/structured-session-workspace-paths'
+import type { StructuredSessionLaunchDirectorySlice } from './slices/structured-session-launch-directories'
 
 export type AppState = RepoSlice &
   SparsePresetsSlice &
@@ -92,4 +92,4 @@ export type AppState = RepoSlice &
   TaskCreationDraftsSlice &
   RemoteServerUpdatesSlice &
   TerminalQuickCommandHostsSlice &
-  StructuredSessionWorkspacePathSlice
+  StructuredSessionLaunchDirectorySlice

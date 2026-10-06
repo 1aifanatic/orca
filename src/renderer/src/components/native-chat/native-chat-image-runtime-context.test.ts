@@ -127,8 +127,8 @@ describe('resolveNativeChatImageRuntimeContext', () => {
       resolveNativeChatImageRuntimeContext(
         {
           ...floatingState,
-          structuredSessionWorkspacePathByTabId: {
-            'floating-chat-1': { sessionId: 'session-1', workspacePath: '/home/me/pinned' }
+          structuredSessionLaunchDirectoryByTabId: {
+            'floating-chat-1': { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
           }
         },
         'floating-chat-1'

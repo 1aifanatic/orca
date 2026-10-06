@@ -176,8 +176,8 @@ describe('floating workspace native chat', () => {
   it('resolves file links against the pinned folder after the floating setting moved', () => {
     const pinned = {
       ...floatingState('/home/me/changed-setting'),
-      structuredSessionWorkspacePathByTabId: {
-        [floatingTab.id]: { sessionId: floatingTab.entityId, workspacePath: '/home/me/pinned' }
+      structuredSessionLaunchDirectoryByTabId: {
+        [floatingTab.id]: { sessionId: floatingTab.entityId, launchDirectory: '/home/me/pinned' }
       }
     }
     expect(resolveNativeChatFileLinkContext(pinned, floatingTab.id)).toEqual({

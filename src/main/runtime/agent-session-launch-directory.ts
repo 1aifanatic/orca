@@ -1,23 +1,22 @@
 import { stat } from 'node:fs/promises'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
-import { agentSessionPinnedLaunchDirectory } from './agent-session-record-workspace-path'
+import { agentSessionPinnedLaunchDirectory } from './agent-session-record-launch-directory'
 
 /** The floating folder a session ran in is gone; resuming anywhere else would be a different chat. */
-export class AgentSessionWorkspaceMissingError extends AgentSessionAcquisitionRefusal {
-  constructor(readonly workspacePath: string) {
-    super(
-      `The folder this chat ran in no longer exists: ${workspacePath}. Restore it to continue.`,
-      'agent_session_operation_invalid'
-    )
-    this.name = 'AgentSessionWorkspaceMissingError'
-  }
+export function agentSessionLaunchFolderMissing(
+  launchDirectory: string
+): AgentSessionPreSpawnError {
+  return new AgentSessionPreSpawnError(
+    new Error(`the folder this chat ran in no longer exists: ${launchDirectory}`),
+    { reason: 'launchFolderMissing' }
+  )
 }
 
 export type AgentSessionLaunchDirectoryDeps = {
-  store: Pick<AgentSessionRecordStore, 'pinWorkspacePath'>
+  store: Pick<AgentSessionRecordStore, 'pinLaunchDirectory'>
   /** Absolute path of a workspace on this host, by the workspace's current directory policy. */
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
 }
@@ -50,14 +49,14 @@ export async function resolveAgentSessionLaunchDirectory(
   const pinned = agentSessionPinnedLaunchDirectory(record)
   if (pinned !== undefined) {
     if (!(await isDirectory(pinned))) {
-      throw new AgentSessionWorkspaceMissingError(pinned)
+      throw agentSessionLaunchFolderMissing(pinned)
     }
     return pinned
   }
   const resolved = await deps.resolveWorkspacePath(record.location.workspaceId)
-  if (record.workspacePath === undefined) {
+  if (record.launchDirectory === undefined) {
     try {
-      await deps.store.pinWorkspacePath(record.sessionId, resolved)
+      await deps.store.pinLaunchDirectory(record.sessionId, resolved)
     } catch (error) {
       // Bookkeeping must not gate the launch; an unpinned record is pinned by its next launch.
       console.warn('[agent-session] launch directory pin failed', record.sessionId, error)

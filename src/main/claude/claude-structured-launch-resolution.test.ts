@@ -63,7 +63,7 @@ function resolverFor(
   hasTranscript: () => Promise<boolean> = async () => true
 ) {
   return createClaudeStructuredLaunchResolver({
-    store: { getRecord: () => value, pinWorkspacePath: vi.fn() },
+    store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveAuthPolicy: () => ({ stripAuthEnv }),
@@ -112,7 +112,7 @@ describe('claude structured launch resolution', () => {
     const pinned = mkdtempSync(join(tmpdir(), 'orca-claude-floating-'))
     const floating = record({
       location: { ...record().location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID },
-      workspacePath: pinned
+      launchDirectory: pinned
     })
 
     const launch = await resolverFor(floating)({ identity: IDENTITY })
@@ -365,7 +365,7 @@ describe('claude structured launch resolution', () => {
 
   it('builds on the supplied inherited env instead of Orca process env', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -377,7 +377,7 @@ describe('claude structured launch resolution', () => {
 
   it('drops an inherited CLAUDE_CONFIG_DIR so the record stays the only Claude home the pin sees', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -395,7 +395,7 @@ describe('claude structured launch resolution', () => {
 
   it('keeps a configured overlay CLAUDE_CONFIG_DIR over the dropped inherited one', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -408,7 +408,7 @@ describe('claude structured launch resolution', () => {
 
   it('still strips an inherited auth key under a managed account', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: true }),
@@ -445,7 +445,7 @@ describe('claude structured launch resolution', () => {
     makeExecutable(nodeCommand)
 
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record(), pinWorkspacePath: vi.fn() },
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => claudeCommand,
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -487,7 +487,7 @@ describe('claude structured launch resolution', () => {
   describe('managed-account gate on every acquisition', () => {
     function resolverWithGate(read: () => ClaudeManagedAccountGateSettings | null) {
       return createClaudeStructuredLaunchResolver({
-        store: { getRecord: () => RESUMABLE, pinWorkspacePath: vi.fn() },
+        store: { getRecord: () => RESUMABLE, pinLaunchDirectory: vi.fn() },
         resolveWorkspacePath: async (id) => `/repos/${id}`,
         resolveCommand: () => '/usr/local/bin/claude',
         // Derived, not a literal: the gate and the policy must read the SAME account state, so a

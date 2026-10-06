@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AgentSessionExecutionLocation } from '../../../shared/agent-session-record'
 import type { AgentSessionStatusEvent } from '../../../shared/agent-session-wire'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
-import { createTrackedJournalOpener } from '../agent-session-journal/journal-store-test-open'
-import { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { createTrackedJournalOpener } from '../agent-session-journal/journal-host-database-test-support'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
+import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { StructuredAgentSessionStatusFeed } from './structured-agent-session-status-feed'
 
 const SESSION = 'session-alpha'
@@ -30,7 +33,7 @@ const journals = createTrackedJournalOpener()
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-status-feed-workspace-path-'))
-  store = await AgentSessionRecordStore.open({ directory: join(root, 'store'), hostId: 'local' })
+  store = await openTestAgentSessionRecordStore(root)
 })
 
 afterEach(async () => {
@@ -44,7 +47,6 @@ async function feedFor(location: AgentSessionExecutionLocation) {
     location,
     provider: 'codex',
     accountHome: { variable: 'CODEX_HOME', path: '/home/dev/.codex' },
-    runtimeKind: 'native',
     expectedFence: null,
     spawnToken: 'spawn-a',
     claimKeyId: 'key-1',
@@ -63,11 +65,12 @@ async function feedFor(location: AgentSessionExecutionLocation) {
       workspaceId: location.workspaceId,
       hostId: 'local',
       agent: 'codex',
-      providerHandle: { kind: 'codex', threadId: 'thread-1' }
+      providerHandle: codexProviderHandle('thread-1')
     },
-    journalDir: join(root, 'journal')
+    stateDirectory: root
   })
   const feed = new StructuredAgentSessionStatusFeed({
+    logger: createStructuredAgentSessionLogger(),
     sessions: new Map([[SESSION, { journal, params: { location, provider: 'codex' } }]]),
     getRecord: (sessionId) => store.getRecord(sessionId),
     now: () => NOW
@@ -88,37 +91,37 @@ function lastSummary(events: readonly AgentSessionStatusEvent[]) {
   throw new Error('no status publication')
 }
 
-describe('status feed pinned workspace path', () => {
+describe('status feed pinned launch directory', () => {
   it('publishes a floating session its pinned folder once the launch pins it', async () => {
     const { feed, events } = await feedFor(FLOATING)
     expect(lastSummary(events)).toMatchObject({ sessionId: SESSION })
-    expect(lastSummary(events)).not.toHaveProperty('workspacePath')
+    expect(lastSummary(events)).not.toHaveProperty('launchDirectory')
 
-    await store.pinWorkspacePath(SESSION, '/home/me/original-floating')
+    await store.pinLaunchDirectory(SESSION, '/home/me/original-floating')
     feed.publish(SESSION)
 
     expect(events.at(-1)).toMatchObject({
       type: 'status',
-      session: { sessionId: SESSION, workspacePath: '/home/me/original-floating' }
+      session: { sessionId: SESSION, launchDirectory: '/home/me/original-floating' }
     })
   })
 
   it('carries the pin in the snapshot a later subscriber opens with, as after a restart', async () => {
     const { feed } = await feedFor(FLOATING)
-    await store.pinWorkspacePath(SESSION, '/home/me/original-floating')
+    await store.pinLaunchDirectory(SESSION, '/home/me/original-floating')
 
     const late: AgentSessionStatusEvent[] = []
     feed.subscribe({ id: 'reloaded-renderer', emit: (event) => late.push(event) })
 
-    expect(lastSummary(late)).toMatchObject({ workspacePath: '/home/me/original-floating' })
+    expect(lastSummary(late)).toMatchObject({ launchDirectory: '/home/me/original-floating' })
   })
 
   it('omits the pin for a worktree session, whose id is where it launches', async () => {
     const { feed, events } = await feedFor(WORKTREE)
-    await store.pinWorkspacePath(SESSION, '/repos/one')
+    await store.pinLaunchDirectory(SESSION, '/repos/one')
     feed.publish(SESSION)
 
     expect(lastSummary(events)).toMatchObject({ sessionId: SESSION })
-    expect(lastSummary(events)).not.toHaveProperty('workspacePath')
+    expect(lastSummary(events)).not.toHaveProperty('launchDirectory')
   })
 })

@@ -31,7 +31,7 @@ type NativeChatFileLinkState = Pick<
 > & {
   unifiedTabsByWorktree?: AppState['unifiedTabsByWorktree']
   floatingWorkspacePath?: AppState['floatingWorkspacePath']
-  structuredSessionWorkspacePathByTabId?: AppState['structuredSessionWorkspacePathByTabId']
+  structuredSessionLaunchDirectoryByTabId?: AppState['structuredSessionLaunchDirectoryByTabId']
 }
 
 export function findTerminalTabWorktreeId(

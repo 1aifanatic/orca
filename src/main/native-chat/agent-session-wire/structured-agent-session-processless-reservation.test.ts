@@ -17,7 +17,6 @@ import { performAttach } from './structured-agent-session-attach-flow'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
-import { AgentSessionWorkspaceMissingError } from '../../runtime/agent-session-launch-directory'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'session-alpha'
@@ -208,55 +207,6 @@ describe('processless structured session reservation', () => {
       refusal: { code: 'structured_agent_session_unsupported' }
     })
     expect(acquire).not.toHaveBeenCalled()
-  })
-
-  it('returns a missing pinned folder as a refusal the client can show', async () => {
-    root = await mkdtemp(join(tmpdir(), 'orca-missing-workspace-'))
-    const store = await AgentSessionRecordStore.open({
-      directory: join(root, 'store'),
-      hostId: 'local'
-    })
-    const adapter: StructuredAgentSessionAdapter = {
-      acquire: vi.fn(async () => {
-        throw new AgentSessionPreSpawnError(new AgentSessionWorkspaceMissingError('/gone/floating'))
-      }),
-      dispatch: vi.fn(),
-      cancelTurn: vi.fn(),
-      answerPrompt: vi.fn(),
-      setOption: vi.fn()
-    }
-    const message =
-      'The folder this chat ran in no longer exists: /gone/floating. Restore it to continue.'
-
-    await expect(
-      performAttach({
-        store,
-        adapter,
-        journalRoot: root,
-        authority: {
-          spawnToken: 'spawn-a',
-          claimKeyId: 'key-1',
-          handoffOperationId: OPERATION,
-          probe: { outcome: 'reservation-unused' }
-        },
-        callerKey: 'client-1',
-        params: attachParams(),
-        now: () => NOW,
-        onAttached: () => {}
-      })
-    ).resolves.toEqual({
-      ok: false,
-      refusal: { code: 'agent_session_operation_invalid', message }
-    })
-    expect(store.listOperationRows()[0]?.outcome).toEqual({
-      status: 'failed',
-      code: 'agent_session_operation_invalid',
-      message
-    })
-    expect(store.getRecord(SESSION)?.lease).toMatchObject({
-      claimStatus: 'released',
-      deathEvidence: { kind: 'pid-absent', detail: 'reservation failed before spawn' }
-    })
   })
 
   it('settles a pre-spawn failure and its processless evidence in one durable transaction', async () => {
