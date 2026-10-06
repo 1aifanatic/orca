@@ -132,8 +132,9 @@ async function finalizeClaudePublishedSession(
   }
   session.childWork.clear()
   session.backgroundTasks.clear()
-  // The exit is proven, so the session ends now. Saving its resume point is bookkeeping that
-  // follows, reported on failure; it never holds the close or reads as an unproven exit.
+  // The exit is proven, or Claude killed, so the session ends now. Saving its resume point is
+  // bookkeeping that follows, reported on failure; it never holds the close or reads as an
+  // unproven exit.
   session.closeFinalized = true
   input.sessions.delete(input.sessionId)
   let callbackError: unknown

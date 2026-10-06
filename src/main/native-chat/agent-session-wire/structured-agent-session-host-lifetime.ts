@@ -146,7 +146,7 @@ export async function stopStructuredAgentSessionAgentUnderSerialize(
       throw new StructuredAgentSessionEvictionError(
         'stop-provider-child',
         sessionId,
-        new Error('provider child exit was not proven')
+        new Error('provider child was neither proven exited nor killed')
       )
     }
   } finally {

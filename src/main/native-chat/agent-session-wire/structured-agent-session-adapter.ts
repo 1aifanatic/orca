@@ -273,7 +273,8 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   /** Reaps an acquired provider when the host cannot commit or prove its lease.
    *  Returns true only after provider child exit is proven. Throws
    *  `AgentSessionAcquisitionRootExitObservedError` when the provider root's own
-   *  exit was observed first-hand but its descendants were not proven gone. */
+   *  exit was observed first-hand but its descendants were not proven gone, and
+   *  `AgentSessionProviderKilledError` when its kill reached the provider unseen. */
   releaseAcquisition?(input: { sessionId: string }): Promise<boolean>
   dispatch(input: {
     sessionId: string

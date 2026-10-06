@@ -53,8 +53,8 @@ export function previousExitUnverifiableRefusal(): AgentSessionWireRefusal {
 }
 
 /** For an operation that reaches the provider: a child a stop began closing takes no input and
- *  none may start beside it, so the operation joins that close and is refused while it is still
- *  unproven. */
+ *  none may start beside it, so the operation joins that close and is refused while its provider
+ *  is neither proven gone nor killed. */
 export async function joinClosingStructuredAgentSessionChild(
   context: StructuredAgentSessionLifetimeContext,
   sessionId: string

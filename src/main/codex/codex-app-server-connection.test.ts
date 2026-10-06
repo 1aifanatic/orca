@@ -13,6 +13,8 @@ import {
 } from './codex-app-server-connection'
 import { SUPERVISED_PROVIDER_GRACEFUL_EXIT_MS } from '../provider-process/provider-process-supervisor'
 import { isCodexAppServerUnsupportedError } from './codex-app-server-session'
+import type * as PtyDescendantTermination from '../pty-descendant-termination'
+import type * as PtyDescendantExitVerification from '../pty-descendant-exit-verification'
 
 // close() waits out the supervisor's own stop before forcing the tree.
 const GRACEFUL_EXIT_MS = process.platform === 'win32' ? 1_500 : SUPERVISED_PROVIDER_GRACEFUL_EXIT_MS
@@ -30,11 +32,11 @@ const processTable = vi.hoisted(() => ({
   })
 }))
 vi.mock('../pty-descendant-termination', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../pty-descendant-termination')>()),
+  ...(await importOriginal<typeof PtyDescendantTermination>()),
   captureDescendantSnapshot: async (rootPid: number) => processTable.walk(rootPid)
 }))
 vi.mock('../pty-descendant-exit-verification', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../pty-descendant-exit-verification')>()),
+  ...(await importOriginal<typeof PtyDescendantExitVerification>()),
   terminateDescendantSnapshotWithVerdict: async () => 'exited'
 }))
 

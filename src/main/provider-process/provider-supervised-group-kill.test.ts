@@ -110,7 +110,12 @@ describe('killSupervisedProviderGroup', () => {
 
   it.each([
     ['the process table cannot be read', async () => null],
-    ['the read fails', async () => Promise.reject(new Error('ps timed out'))],
+    [
+      'the read fails',
+      async () => {
+        throw new Error('ps timed out')
+      }
+    ],
     [
       'the walk did not see the supervisor',
       async (): Promise<DescendantSnapshot> => ({
