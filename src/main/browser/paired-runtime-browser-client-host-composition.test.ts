@@ -5,8 +5,7 @@ import type {
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
 import { BrowserHostLeaseContactLostError } from './browser-host-lease-contact-loss'
-import { browserHostAnswer } from './browser-host-admission-recovery'
-import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
+import { BrowserHostAnswerError } from './browser-host-admission-recovery'
 import { BROWSER_CLIENT_HOST_AUTHORITY_MISMATCH_CODE } from '../../shared/browser-client-host-protocol'
 import { PairedRuntimeBrowserClientHostComposition } from './paired-runtime-browser-client-host-composition'
 
@@ -338,11 +337,11 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     ['an unknown local error', () => new Error('Stale browser host page command')],
     [
       'a host-sent recoverable code',
-      () => browserHostAnswer(new RemoteRuntimeClientError('runtime_unavailable', 'restarting'))
+      () => new BrowserHostAnswerError('runtime_unavailable', 'restarting')
     ],
     [
       'a host-sent capacity code',
-      () => browserHostAnswer(new RemoteRuntimeClientError('runtime_busy', 'lease capacity'))
+      () => new BrowserHostAnswerError('runtime_busy', 'lease capacity')
     ]
   ])('parks on %s instead of treating it as gone', async (_label, error) => {
     const rig = createRig()
@@ -811,7 +810,7 @@ function contactLostError(): Error {
 }
 
 function hostRefusal(): Error {
-  return browserHostAnswer(new RemoteRuntimeClientError('unauthorized', 'pairing revoked'))
+  return new BrowserHostAnswerError('unauthorized', 'pairing revoked')
 }
 
 function unreachableError(): Error {

@@ -13,7 +13,7 @@ import {
   type RemoteRuntimeSubscriptionCallbacks
 } from '../../shared/remote-runtime-client'
 import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
-import { browserHostAnswer } from './browser-host-admission-recovery'
+import { BrowserHostAnswerError } from './browser-host-admission-recovery'
 import { createBrowserClientHostAttachRequest } from './browser-client-host-attach-request'
 import { sameBrowserClientHostLeaseAuthority } from './browser-client-host-command-authority'
 import type { PairedRuntimeBrowserHostLeaseOptions } from './paired-runtime-browser-host-lease-options'
@@ -157,7 +157,7 @@ export class PairedRuntimeBrowserHostLeaseConnection {
     }
     if (!response.ok) {
       this.fail(
-        browserHostAnswer(new RemoteRuntimeClientError(response.error.code, response.error.message))
+        new BrowserHostAnswerError(response.error.code, response.error.message, response.error.data)
       )
       return
     }

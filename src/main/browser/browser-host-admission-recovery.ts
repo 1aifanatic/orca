@@ -72,18 +72,17 @@ export function isRecoverableBrowserHostLeaseError(error: unknown): boolean {
   )
 }
 
-// Why a set: a host-sent RPC failure and a locally built one share RemoteRuntimeClientError.
-const browserHostAnswers = new WeakSet<Error>()
-
-/** Marks an error the runtime itself answered with, as opposed to a transport or local failure. */
-export function browserHostAnswer<T extends Error>(error: T): T {
-  browserHostAnswers.add(error)
-  return error
+/** A failure the runtime itself answered with, as opposed to a transport or local one. */
+export class BrowserHostAnswerError extends RemoteRuntimeClientError {
+  constructor(code: string, message: string, data?: unknown) {
+    super(code, message, { data })
+    this.name = 'BrowserHostAnswerError'
+  }
 }
 
 /** Only the runtime's own non-recoverable answer is a refusal; anything else may be lost contact. */
 export function isBrowserHostRefusal(error: Error): boolean {
-  return browserHostAnswers.has(error) && !isRecoverableBrowserHostLeaseError(error)
+  return error instanceof BrowserHostAnswerError && !isRecoverableBrowserHostLeaseError(error)
 }
 
 function asError(error: unknown): Error {

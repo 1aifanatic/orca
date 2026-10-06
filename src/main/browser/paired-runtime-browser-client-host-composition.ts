@@ -5,7 +5,7 @@ import type {
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
 import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
-import { browserHostAnswer, isBrowserHostRefusal } from './browser-host-admission-recovery'
+import { BrowserHostAnswerError, isBrowserHostRefusal } from './browser-host-admission-recovery'
 import {
   asCompositionError,
   closeBrowserClientHostComposition,
@@ -169,7 +169,10 @@ export class PairedRuntimeBrowserClientHostComposition<
             authority.pageReconciliationProtocolVersion !== 1
           ) {
             // Read from the runtime's own ready answer, so it is as final as a refusal.
-            throw browserHostAnswer(new Error('browser_client_page_reconciliation_unsupported'))
+            throw new BrowserHostAnswerError(
+              'browser_client_page_reconciliation_unsupported',
+              'browser_client_page_reconciliation_unsupported'
+            )
           }
           this.routeSets.activate(input, authority)
           this.lastAuthority = authority
