@@ -80,6 +80,25 @@ describe('launchAgentSessionContinuation', () => {
     )
   })
 
+  it.each(['claude', 'codex'] as const)(
+    'describes confirmed %s continuation delivery accurately',
+    async (agent) => {
+      const { launchAgentSessionContinuation } = await import('./launch-agent-session-continuation')
+      await launchAgentSessionContinuation({
+        agent,
+        prompt: 'continue',
+        worktreeId: 'wt-1',
+        launchSource: 'sidebar'
+      })
+      launchAgentInNewTab.mock.calls[0][0].onPromptDelivered()
+      expect(toast.success).toHaveBeenCalledWith(
+        agent === 'claude'
+          ? 'Session context loaded as a draft in the new Claude session. Review it and press Enter to continue.'
+          : 'Session context sent to Codex in a new session.'
+      )
+    }
+  )
+
   it('detects the target Agent on the SSH host that owns the workspace', async () => {
     connectionId.value = 'ssh-1'
     const { detectAgentSessionContinuationAgents } =

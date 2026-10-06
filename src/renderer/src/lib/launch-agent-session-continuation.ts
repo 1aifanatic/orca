@@ -83,6 +83,7 @@ export async function launchAgentSessionContinuation({
   // Why: the paste helper writes blind when the agent's composer was never observed, so a
   // written prompt is not a delivered one. Claiming success there is how the whole handoff
   // could vanish silently (#22479).
+  const promptDelivery = agent === 'claude' ? 'draft' : 'submit-after-ready'
   let deliveryUnconfirmed = false
   const result = launchAgentInNewTab({
     requestId: newAgentLaunchRequestId(),
@@ -90,7 +91,7 @@ export async function launchAgentSessionContinuation({
     worktreeId,
     ...(groupId ? { groupId } : {}),
     prompt,
-    promptDelivery: agent === 'claude' ? 'draft' : 'submit-after-ready',
+    promptDelivery,
     launchSource,
     ...(initialCwd ? { initialCwd } : {}),
     onPromptDeliveryUnconfirmed: () => {
@@ -103,8 +104,12 @@ export async function launchAgentSessionContinuation({
       }
       toast.success(
         translate(
-          'components.agentSessionContinuation.sent',
-          'Session context sent to {{agent}} in a new session.',
+          promptDelivery === 'draft'
+            ? 'components.agentSessionContinuation.draftLoaded'
+            : 'components.agentSessionContinuation.sent',
+          promptDelivery === 'draft'
+            ? 'Session context loaded as a draft in the new {{agent}} session. Review it and press Enter to continue.'
+            : 'Session context sent to {{agent}} in a new session.',
           { agent: label }
         )
       )
