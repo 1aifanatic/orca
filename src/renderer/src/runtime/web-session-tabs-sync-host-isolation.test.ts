@@ -132,7 +132,7 @@ describe('session snapshot host isolation', () => {
           tabs: snapshot('mac').tabs.map((tab) => ({
             ...tab,
             status: 'pending-handle' as const,
-            terminal: ''
+            terminal: null
           }))
         },
         'mac'
