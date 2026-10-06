@@ -544,8 +544,7 @@ describe('readable Claude thinking', () => {
     command = '/usr/local/bin/claude'
   ) =>
     createClaudeStructuredLaunchResolver({
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: launch resolution reads only getRecord.
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => command,
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
