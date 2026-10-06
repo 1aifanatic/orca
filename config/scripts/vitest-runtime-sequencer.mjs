@@ -3,13 +3,18 @@ import { BaseSequencer } from 'vitest/node'
 import { rankFilesByDuration, readTimingBaseline } from './ci-shard-assignment.mjs'
 
 export default class RuntimeSequencer extends BaseSequencer {
+  constructor(ctx, timingBaseline = undefined) {
+    super(ctx)
+    this.timingBaseline = timingBaseline
+  }
+
   async sort(specifications) {
     const inherited = await super.sort(specifications)
     if (new Set(inherited.map((spec) => spec.project.name)).size < 2) {
       return inherited
     }
     // Start long contracts across both runtimes instead of leaving Node until the end.
-    const baseline = readTimingBaseline('unit')
+    const baseline = this.timingBaseline ?? readTimingBaseline('unit')
     const key = (spec) => relative(this.ctx.config.root, spec.moduleId).replaceAll('\\', '/')
     const { weighted } = rankFilesByDuration(
       [...new Set(inherited.map(key))],
