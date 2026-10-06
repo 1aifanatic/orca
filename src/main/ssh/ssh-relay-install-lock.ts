@@ -94,6 +94,8 @@ export async function acquireInstallLock(
     waitTimeoutMs?: number
     /** Written in the command that creates the lock, so a holder can prove the lock its own. */
     owner?: InstallLockOwnerFile
+    /** Runs before each stale check; it may age a lock it proves abandoned, so the check takes it. */
+    beforeStaleCheck?: (lockDir: string) => Promise<unknown>
   }
 ): Promise<void> {
   const lockDir = joinRemotePath(host, remoteRelayDir, options?.lockName ?? RELAY_INSTALL_LOCK_NAME)
@@ -163,6 +165,7 @@ export async function acquireInstallLock(
       Date.now() - lastStaleCheckAt >= INSTALL_LOCK_STALE_RECHECK_MS
     ) {
       lastStaleCheckAt = Date.now()
+      await options?.beforeStaleCheck?.(lockDir)
       // Why: recover an already-stale lock immediately, then keep checking in
       // case a fresh holder crosses the stale threshold while we are waiting.
       const steal = await execHostCommand(
