@@ -46,7 +46,7 @@ export function NativeChatTurnActivityLine({
       {/* One element for every state of the line, so a screen reader hears each new label. The
           trigger overlays it, rather than wrapping it, and the body sits outside it. */}
       <div
-        className="group/reasoning relative flex min-h-6 items-center gap-1.5 text-sm leading-relaxed text-muted-foreground"
+        className="group/reasoning relative flex min-h-6 items-center gap-1.5 text-sm native-chat-message-text leading-relaxed text-muted-foreground"
         data-native-chat-turn-activity="true"
         data-state={open ? 'open' : 'closed'}
         aria-live="polite"

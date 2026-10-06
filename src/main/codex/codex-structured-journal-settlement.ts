@@ -2,7 +2,8 @@ import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentJournalItemBody,
   type AgentJournalItemIdentity,
-  type AgentJournalTurnLifecycle
+  type AgentJournalTurnLifecycle,
+  type AgentJournalTurnLifecycleState
 } from '../../shared/agent-session-journal-types'
 import {
   journalLifecycleItemMutation,
@@ -54,10 +55,11 @@ export function settleCodexJournalSession(input: {
   const mutations: JournalLifecycleMutationInput[] = []
   const turnOrdinalsToForget: { threadId: string; turnId: string }[] = []
   for (const active of input.activeItems.values()) {
-    const body = interruptedCodexItemBody(
-      codexActiveItemBody(active, input.streams),
-      input.event.observedAt ?? input.now?.() ?? Date.now()
-    )
+    // The host saw the child go, so its work was cut short.
+    const body = interruptedCodexItemBody(codexActiveItemBody(active, input.streams), {
+      at: input.event.observedAt ?? input.now?.() ?? Date.now(),
+      call: 'interrupted'
+    })
     if (body) {
       mutations.push(settledRow(input.attributionFor, active, body))
     }
@@ -107,6 +109,8 @@ export function settleCodexJournalTurn(input: {
   turnLifecycle: AgentJournalTurnLifecycle | null
   /** Host clock when the turn's end arrived, which is also the end of anything it left open. */
   completedAt: number
+  /** How Codex ended the turn, on every thread: what a call it left running became. */
+  turnEnd: Extract<AgentJournalTurnLifecycleState, 'completed' | 'interrupted'>
   sink: StructuredAgentSessionEventSink
   streams: CodexStructuredItemStreams
   activeItems: Map<string, CodexActiveJournalItem>
@@ -127,10 +131,10 @@ export function settleCodexJournalTurn(input: {
     if (codexCommandOutlivesTurn(active.item)) {
       continue
     }
-    const body = interruptedCodexItemBody(
-      codexActiveItemBody(active, input.streams),
-      input.completedAt
-    )
+    const body = interruptedCodexItemBody(codexActiveItemBody(active, input.streams), {
+      at: input.completedAt,
+      call: input.turnEnd
+    })
     if (body) {
       mutations.push(settledRow(input.attributionFor, active, body))
     }

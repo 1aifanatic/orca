@@ -1,3 +1,7 @@
+import {
+  endedRunningAgentJournalToolCall,
+  type AgentJournalRunningCallEnd
+} from '../../shared/agent-journal-tool-call-lifecycle'
 import type { AgentJournalItemBody } from '../../shared/agent-session-journal-types'
 import { cancelledJournalPromptBody } from '../native-chat/agent-session-journal/journal-prompt-body-bounds'
 import {
@@ -40,20 +44,23 @@ export function codexCompletedItem(
   return { body: codexActiveItemBody(active, streams), handled: true }
 }
 
-/** The row an item that will never complete is left with: a running call failed, a patch said to be
- *  interrupted, a prompt cancelled, a message ended — at `endedAt` when the host saw the end. */
+/** The row an item that will never complete is left with: a running call ended as its turn or
+ *  session did (`end.call`; failed when nothing says), a patch said to be interrupted, a prompt
+ *  cancelled, a message ended — at `end.at` when the host saw the end. */
 export function interruptedCodexItemBody(
   body: AgentJournalItemBody | null,
-  endedAt?: number
+  end: { at?: number; call?: AgentJournalRunningCallEnd } = {}
 ): AgentJournalItemBody | null {
   if (!body) {
     return null
   }
   if (body.kind === 'tool-call') {
-    return { ...body, state: 'failed' }
+    return end.call
+      ? endedRunningAgentJournalToolCall(body, end.call)
+      : { ...body, state: 'failed' }
   }
   if (body.kind === 'message') {
-    return withJournalReasoningLifecycle(body, endedJournalReasoning(endedAt))
+    return withJournalReasoningLifecycle(body, endedJournalReasoning(end.at))
   }
   if (body.kind === 'diff') {
     return { kind: 'status', text: 'File changes were interrupted before completion.' }

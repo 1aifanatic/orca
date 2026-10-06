@@ -41,7 +41,9 @@ describe('reasoning disclosure', () => {
   })
 
   it('leads with the shared vocabulary brain, drawn exactly as a tool row draws a glyph', () => {
-    const { container } = render(<NativeChatToolRunIcon iconName="brain" />)
+    const { container } = render(
+      <NativeChatToolRunIcon iconName="brain" className="text-chat-foreground-faint" />
+    )
     const shared = container.innerHTML
     cleanup()
     render(

@@ -20,6 +20,7 @@ export function useNativeChatTranscriptSlots({
 }): { slots: NativeChatTranscriptSlot[]; liveLine: NativeChatLiveLine | null } {
   const {
     messages,
+    typography,
     turnKeys,
     liveTurnKey,
     receipts,
@@ -53,6 +54,7 @@ export function useNativeChatTranscriptSlots({
     () =>
       buildNativeChatTranscriptSlots({
         messages,
+        typography,
         turnKeys,
         liveTurnKey,
         receipts,
@@ -77,7 +79,8 @@ export function useNativeChatTranscriptSlots({
       subagentSections,
       turnDiffs,
       turnKeys,
-      turnStatuses
+      turnStatuses,
+      typography
     ]
   )
   return { slots, liveLine }

@@ -57,8 +57,8 @@ export function NativeChatReasoningRow({
             className="group/reasoning flex min-h-6 w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
           >
             {headline === label ? null : <span className="sr-only">{label}: </span>}
-            <NativeChatToolRunIcon iconName="brain" />
-            <span className="min-w-0 truncate leading-relaxed transition-colors group-hover/reasoning:text-foreground/80">
+            <NativeChatToolRunIcon iconName="brain" className="text-chat-foreground-faint" />
+            <span className="min-w-0 truncate text-sm native-chat-message-text leading-relaxed text-chat-foreground-faint transition-colors group-hover/reasoning:text-chat-foreground">
               {headline}
             </span>
             <NativeChatReasoningChevron />

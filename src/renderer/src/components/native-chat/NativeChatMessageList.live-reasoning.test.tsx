@@ -102,7 +102,6 @@ function list(
       journalItems={journal(rows)}
       isWorking
       expandSignal={false}
-      fontScale={1}
       {...props}
     />
   )

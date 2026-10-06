@@ -194,6 +194,7 @@ export class CodexJournalTurnBoundaries {
       turnId,
       turnLifecycle,
       completedAt,
+      turnEnd: codexTurnLifecycleState(status),
       streams: this.deps.items.streams,
       activeItems: this.deps.items.activeItems,
       pendingPrompts: this.deps.pendingPrompts,
