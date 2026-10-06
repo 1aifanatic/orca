@@ -43,8 +43,7 @@ export type ScriptedClaudeBehavior = {
   optionWritesHang?: boolean
   /** Startup's own settings read goes unanswered. */
   startupSettingsReadHangs?: boolean
-  /** Every option write loses its answer while the CLI keeps running (not a refusal), so a
-   *  start that restores one faults. */
+  /** Every option write loses its answer while the CLI keeps running (not a refusal). */
   optionWritesFail?: boolean
   /** The init frame names another provider session than the one launched. */
   initNamesForeignSession?: boolean

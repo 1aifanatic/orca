@@ -4,10 +4,8 @@ import { selectStructuredAgentContextUsage } from '../../shared/structured-agent
 import { assistantFrame, journal, userFrame } from './claude-context-usage-test-support'
 import { sessionFor } from './claude-structured-dispatch-test-support'
 import { createClaudeJournalTranslator } from './claude-structured-journal-translation'
-import {
-  restoreClaudeStructuredSessionOptions,
-  setClaudeStructuredOption
-} from './claude-structured-options'
+import { setClaudeStructuredOption } from './claude-structured-options'
+import { adoptClaudeStructuredSpawnOptions } from './claude-structured-spawn-options'
 import type { ClaudeSession } from './claude-structured-session-state'
 
 function ringSession(catalog: unknown[] = []) {
@@ -62,27 +60,32 @@ describe('the context ring after a session option write', () => {
     expect(s.modelMayHaveChanged).not.toHaveBeenCalled()
   })
 
-  it('keeps the ring through a restore that changes nothing', async () => {
+  it('keeps the ring through a launch that took the saved values', () => {
     const s = ringSession()
-    s.session.options.set('model', 'opusplan')
-    s.session.options.set('permissionMode', 'plan')
-    await restoreClaudeStructuredSessionOptions(s.session, undefined)
-    expect(s.setModel).toHaveBeenCalledWith('opusplan', { timeoutMs: undefined })
+    adoptClaudeStructuredSpawnOptions(s.session, {
+      options: new Map([
+        ['model', 'opusplan'],
+        ['permissionMode', 'plan']
+      ]),
+      skipped: []
+    })
+    expect(s.setModel).not.toHaveBeenCalled()
     expect(s.modelMayHaveChanged).not.toHaveBeenCalled()
   })
 
-  it('asks for the new window when a restore cannot put the stored model back', async () => {
-    const s = ringSession([{ value: 'sonnet', displayName: 'Sonnet' }])
-    s.session.options.set('model', 'retired-model')
-    await restoreClaudeStructuredSessionOptions(s.session, undefined)
+  it('asks for the new window when the launch left the stored model out', () => {
+    const s = ringSession()
+    adoptClaudeStructuredSpawnOptions(s.session, { options: new Map(), skipped: ['model'] })
     expect(s.session.restoreSkippedOptions).toEqual(new Set(['model']))
     expect(s.modelMayHaveChanged).toHaveBeenCalledTimes(1)
   })
 
-  it('sizes a new session from the model its restore applied', async () => {
-    const s = ringSession([{ value: 'opus[1m]', displayName: 'Opus (1M)' }])
-    s.session.options.set('model', 'opus[1m]')
-    await restoreClaudeStructuredSessionOptions(s.session, undefined)
+  it('sizes a new session from the model it was launched with', () => {
+    const s = ringSession()
+    adoptClaudeStructuredSpawnOptions(s.session, {
+      options: new Map([['model', 'opus[1m]']]),
+      skipped: []
+    })
     expect(s.respond('turn-a', 1_000)).toMatchObject({ windowTokens: 1_000_000, percentage: 10 })
   })
 
@@ -94,15 +97,14 @@ describe('the context ring after a session option write', () => {
     expect(s.respond('turn-b', 2_000)).toMatchObject({ windowTokens: 1_000_000, percentage: 10 })
   })
 
-  it('implies no window for a model the child refused or a restore could not put back', async () => {
+  it('implies no window for a model the child refused or the launch left out', async () => {
     const refused = ringSession()
     refused.setModel.mockRejectedValueOnce(new ClaudeControlRequestError('set_model', 'refused'))
     await expect(refused.write('model', 'opus[1m]')).rejects.toThrow()
     expect(refused.respond('turn-a', 1_000)).toBeNull()
 
-    const skipped = ringSession([{ value: 'sonnet', displayName: 'Sonnet' }])
-    skipped.session.options.set('model', 'retired-model[1m]')
-    await restoreClaudeStructuredSessionOptions(skipped.session, undefined)
+    const skipped = ringSession()
+    adoptClaudeStructuredSpawnOptions(skipped.session, { options: new Map(), skipped: ['model'] })
     expect(skipped.respond('turn-a', 1_000)).toBeNull()
   })
 

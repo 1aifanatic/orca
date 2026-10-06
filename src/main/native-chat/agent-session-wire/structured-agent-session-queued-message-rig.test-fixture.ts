@@ -58,9 +58,6 @@ export async function createQueuedMessageTestRig(
   const dispatch: Mock<StructuredAgentSessionAdapter['dispatch']> = vi.fn(async () => ({
     state: 'admitted' as const
   }))
-  const awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>> = vi.fn(
-    async () => undefined
-  )
   // The provider's receipt of a /compact; its end arrives later, as `finishCompact` writes it.
   const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
     state: 'accepted' as const,
@@ -103,7 +100,6 @@ export async function createQueuedMessageTestRig(
           }
         },
         dispatch,
-        awaitStarted,
         closeSession,
         releaseAcquisition: vi.fn(async () => true),
         compact,
@@ -324,7 +320,6 @@ export async function createQueuedMessageTestRig(
     dispatch,
     cancelTurn,
     closeSession,
-    awaitStarted,
     compact,
     finishCompact,
     providerEvents,
