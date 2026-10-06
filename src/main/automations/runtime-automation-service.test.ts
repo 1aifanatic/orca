@@ -9,6 +9,8 @@ const captured = vi.hoisted((): { dispatcher: unknown; observer: unknown } => ({
 
 vi.mock('./service', () => ({
   AutomationService: class {
+    start(): void {}
+    stop(): void {}
     constructor(
       _store: unknown,
       opts: { headlessDispatcher?: unknown; terminalObserver?: unknown }

@@ -7,6 +7,7 @@ import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
+import { createHeadlessRunTerminalRetention } from './headless-run-terminal-retention'
 import {
   getTuiAgentDetectCommands,
   isTuiAgent,
@@ -106,7 +107,59 @@ export function createRuntimeAutomationService(input: {
       : undefined
   })
   runtime.setAutomationService(service)
+  if (input.headless) {
+    bindHeadlessRunTerminalRetention(service, store, runtime)
+  }
   return service
+}
+
+/** A headless host has no renderer to close finished run terminals; its service does it. */
+function bindHeadlessRunTerminalRetention(
+  service: AutomationService,
+  store: Store,
+  runtime: OrcaRuntimeService
+): void {
+  const retention = createHeadlessRunTerminalRetention({
+    listRuns: () => store.listAutomationRuns(),
+    terminalClientUse: (run) =>
+      run.terminalPtyId ? runtime.readTerminalClientUse(run.terminalPtyId) : 'unknown',
+    closeRunTerminal: async (run) => {
+      const handle = run.terminalPaneKey
+        ? runtime.getTerminalHandleForPaneKey(run.terminalPaneKey)
+        : null
+      // Only the run's own process: a restarted pane holds a new PTY a user may be working in.
+      if (
+        !handle ||
+        !run.terminalPtyId ||
+        runtime.getTerminalPtyIdForHandle(handle) !== run.terminalPtyId
+      ) {
+        return false
+      }
+      // The run's pane only: a pane a user split into the same tab is theirs.
+      await runtime.closeTerminal(handle)
+      return true
+    },
+    forgetRunTerminal: async (run) => {
+      await service.markDispatchResult({
+        runId: run.id,
+        status: run.status,
+        error: run.error,
+        terminalSessionId: null,
+        terminalPaneKey: null,
+        terminalPtyId: null
+      })
+    }
+  })
+  const start = service.start.bind(service)
+  const stop = service.stop.bind(service)
+  service.start = () => {
+    start()
+    retention.start()
+  }
+  service.stop = () => {
+    retention.stop()
+    stop()
+  }
 }
 
 function automationAgentCommands(agentId: string | undefined): string[] {
