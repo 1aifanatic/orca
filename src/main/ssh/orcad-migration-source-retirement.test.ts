@@ -188,32 +188,43 @@ describe('retiring a migrated source', () => {
     expect(h.store.getFolderWorkspaces()).toEqual([])
   })
 
-  it('retires a session row a live writer adds while the retirement flushes', async () => {
-    const h = await setup({ sessionTab: true })
+  /** Runs `write` once, during retirement's first flush, as a save landing mid-retirement. */
+  function writeDuringFirstFlush(h: Awaited<ReturnType<typeof setup>>, write: () => void): void {
     const flush = h.store.flushPendingOrThrowAsync.bind(h.store)
     let wrote = false
     h.store.flushPendingOrThrowAsync = async (options) => {
       if (!wrote) {
         wrote = true
-        // A save that lands mid-flush, keyed the unqualified way the local partition stores it.
-        h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: [editorTab('tab-late')] } })
+        write()
       }
       return flush(options)
     }
+  }
+
+  it.each([
+    ['its own partition', `ssh:${TARGET.id}`],
+    ['the local partition', undefined]
+  ])('retires an exact stale replay of a moved row into %s', async (_label, hostId) => {
+    const h = await setup({ sessionTab: true })
+    writeDuringFirstFlush(h, () =>
+      h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: [editorTab('tab-1')] } }, hostId)
+    )
     await expect(h.retire()).resolves.toMatchObject({ phase: 'source-retired' })
-    expect(h.store.getWorkspaceSession().unifiedTabs?.[WORKTREE]).toBeUndefined()
+    expect(h.store.getWorkspaceSession(hostId).unifiedTabs?.[WORKTREE]).toBeUndefined()
   })
 
-  it('defers, naming the partition and owner, when a writer keeps restoring the row', async () => {
+  it.each([
+    ['a new tab', [editorTab('tab-1'), editorTab('tab-late')]],
+    ['a changed tab', [{ ...editorTab('tab-1'), customLabel: 'renamed after the move' }]]
+  ])('defers and keeps %s written mid-retirement, naming where it landed', async (_label, tabs) => {
     const h = await setup({ sessionTab: true })
-    const flush = h.store.flushPendingOrThrowAsync.bind(h.store)
-    h.store.flushPendingOrThrowAsync = async (options) => {
-      h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: [editorTab('tab-late')] } })
-      return flush(options)
-    }
+    writeDuringFirstFlush(h, () =>
+      h.store.patchWorkspaceSession({ unifiedTabs: { [WORKTREE]: tabs } })
+    )
     await expect(h.retire()).rejects.toThrow(
       `orcad_migration_source_workspace_session_reappeared:local|${WORKTREE}`
     )
+    expect(h.store.getWorkspaceSession().unifiedTabs?.[WORKTREE]).toEqual(tabs)
     expect(listOrcadMigrationSourceCutovers(h.userDataPath)[0]?.phase).toBe('destination-committed')
   })
 })

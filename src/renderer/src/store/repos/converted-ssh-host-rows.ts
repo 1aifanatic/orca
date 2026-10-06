@@ -1,18 +1,29 @@
 import type { AppState } from '../types'
 import { getRepoExecutionHostId, toSshExecutionHostId } from '../../../../shared/execution-host'
 
-type ConvertedHostRows = Pick<AppState, 'repos' | 'worktreesByRepo' | 'detectedWorktreesByRepo'>
+type ConvertedHostRows = Pick<
+  AppState,
+  'repos' | 'worktreesByRepo' | 'detectedWorktreesByRepo' | 'contestedPrimaryHostBySessionKey'
+>
 
 /**
  * Drops a converted SSH host's relay-era project and worktree rows from the renderer. Main already
  * hides them, but a local catalog refresh keeps SSH rows it no longer lists, so they would sit next
- * to the managed server's copies under the same ids. Session and terminal state are left alone.
+ * to the managed server's copies under the same ids. Session and terminal state are left alone, but
+ * pinned to the host's partition: with no catalog owner a save would route them to 'local', where
+ * they read as the moved source again and stall its retirement.
  */
 export function withoutConvertedSshHostRows(
   state: ConvertedHostRows,
   targetId: string
 ): Partial<ConvertedHostRows> {
   const hostId = toSshExecutionHostId(targetId)
+  const pinned = Object.values(state.worktreesByRepo)
+    .flat()
+    .filter(
+      (worktree) =>
+        worktree.hostId === hostId && !state.contestedPrimaryHostBySessionKey[worktree.id]
+    )
   const repos = state.repos.filter((repo) => getRepoExecutionHostId(repo) !== hostId)
   const worktreesByRepo = withoutHostRows(state.worktreesByRepo, hostId)
   let detectedChanged = false
@@ -29,7 +40,15 @@ export function withoutConvertedSshHostRows(
   return {
     ...(repos.length === state.repos.length ? {} : { repos }),
     ...(worktreesByRepo === state.worktreesByRepo ? {} : { worktreesByRepo }),
-    ...(detectedChanged ? { detectedWorktreesByRepo } : {})
+    ...(detectedChanged ? { detectedWorktreesByRepo } : {}),
+    ...(pinned.length > 0
+      ? {
+          contestedPrimaryHostBySessionKey: {
+            ...state.contestedPrimaryHostBySessionKey,
+            ...Object.fromEntries(pinned.map((worktree) => [worktree.id, hostId]))
+          }
+        }
+      : {})
   }
 }
 

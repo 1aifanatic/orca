@@ -20,6 +20,7 @@ import { resolveOrcadMigrationFence } from './orcad-migration-source-fence'
 export type OrcadMigrationRetirementStore = Pick<
   Store,
   | 'assertOrcadMigrationSourceRetired'
+  | 'collectOrcadMigrationRetirableSessionRows'
   | 'deleteRetiredOrcadMigrationScrollback'
   | 'flushPendingOrThrowAsync'
   | 'getSshRemotePtyLeases'
@@ -27,6 +28,7 @@ export type OrcadMigrationRetirementStore = Pick<
   | 'removeSshPtyConsumerRecovery'
   | 'removeSshRemotePtyLease'
   | 'retireOrcadMigrationSourceCatalog'
+  | 'retireStaleOrcadMigrationSessionReplay'
 >
 
 export async function retireOrcadMigrationSource(
@@ -64,16 +66,20 @@ export async function retireOrcadMigrationSource(
     ) {
       throw new Error('orcad_migration_source_fence_lost')
     }
+    const retiredSession = context.store.collectOrcadMigrationRetirableSessionRows(cutover.manifest)
     await retireAndFlush(context, cutover)
     try {
       context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
     } catch (error) {
-      if (!isReappeared(error)) {
+      // Why: a save landing during the flush can replay moved session state. Only an exact replay
+      // is removed again; a new or changed row is a user's write, so retirement defers and keeps it.
+      if (
+        !isSessionReappeared(error) ||
+        !context.store.retireStaleOrcadMigrationSessionReplay(cutover.manifest, retiredSession)
+      ) {
         throw error
       }
-      // Why once more: a save that lands during the flush can re-add a row the pass removed;
-      // the retirement is idempotent, so a second pass settles it. A row back again is real.
-      await retireAndFlush(context, cutover)
+      await flush(context)
       context.store.assertOrcadMigrationSourceRetired(cutover.manifest)
     }
     retired = {
@@ -100,14 +106,24 @@ async function retireAndFlush(
   retireProvenLeases(context.store, cutover)
   // The relay consumer's recovery record would only re-dial a relay this host no longer runs.
   await context.store.removeSshPtyConsumerRecovery(cutover.sshTargetId)
-  await context.store.flushPendingOrThrowAsync({
+  await flush(context)
+}
+
+function flush(context: {
+  store: OrcadMigrationRetirementStore
+  signal?: AbortSignal
+}): Promise<void> {
+  return context.store.flushPendingOrThrowAsync({
     signal: context.signal,
     drainToStableGeneration: false
   })
 }
 
-function isReappeared(error: unknown): boolean {
-  return error instanceof Error && /^orcad_migration_source_\w+_reappeared/.test(error.message)
+function isSessionReappeared(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.startsWith('orcad_migration_source_workspace_session_reappeared')
+  )
 }
 
 /** Leases the fence proved exited name a relay that no longer serves this host. */
