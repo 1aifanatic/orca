@@ -85,7 +85,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
     () =>
       projectQueuedMessageCards(queuedMessages, submissions, {
         hasPendingPrompt,
-        queuePaused: queuePause !== null
+        queuePause
       }),
     [hasPendingPrompt, queuePause, queuedMessages, submissions]
   )

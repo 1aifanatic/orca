@@ -4,7 +4,10 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
+import type {
+  AgentSessionQueuedMessage,
+  AgentSessionQueuePause
+} from '../../../../shared/agent-session-wire'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
   newestSteerableQueuedMessageCard,
@@ -56,6 +59,7 @@ function handOff(
 }
 
 const IDLE = { hasPendingPrompt: false }
+const STOPPED = { reason: 'stopped' } as const
 const QUEUEING = { capability: 'supported', enabled: true } as const
 
 describe('queued message cards', () => {
@@ -148,7 +152,7 @@ describe('queued message cards', () => {
         draft('behind', 4)
       ],
       [],
-      { hasPendingPrompt: true, queuePaused: true }
+      { hasPendingPrompt: true, queuePause: STOPPED }
     )
     expect(cards.map((card) => card.hold)).toEqual([
       'queue-paused',
@@ -161,10 +165,22 @@ describe('queued message cards', () => {
     ).toBe('awaiting-answer')
   })
 
+  // Another agent's mail runs when the stop lands, so only a person's card reads paused.
+  it("a person's Stop holds every card but mail; any other pause holds mail too", () => {
+    const mail = draft('mail', 2, { source: { kind: 'agent' } })
+    const project = (queuePause: AgentSessionQueuePause) =>
+      projectQueuedMessageCards([draft('typed', 1), mail], [], {
+        hasPendingPrompt: false,
+        queuePause
+      }).map((card) => card.hold)
+    expect(project(STOPPED)).toEqual(['queue-paused', 'turn'])
+    expect(project({ reason: 'cleared' })).toEqual(['queue-paused', 'queue-paused'])
+  })
+
   it('a paused queue holds every waiting card, in order: an answer does not drain it', () => {
     const cards = projectQueuedMessageCards([draft('held', 1), draft('typed-after', 2)], [], {
       hasPendingPrompt: true,
-      queuePaused: true
+      queuePause: STOPPED
     })
     expect(cards.map((card) => card.hold)).toEqual(['queue-paused', 'queue-paused'])
     // Still Steer: the header row, not the card, says it waits.
@@ -173,8 +189,11 @@ describe('queued message cards', () => {
 
   it("the header names the queue's pause while it holds a card, and none over cards Resume would not send", () => {
     const stopped = { reason: 'stopped' } as const
-    const project = (messages: AgentSessionQueuedMessage[], queuePaused = true) =>
-      projectQueuedMessageCards(messages, [], { hasPendingPrompt: false, queuePaused })
+    const project = (messages: AgentSessionQueuedMessage[], paused = true) =>
+      projectQueuedMessageCards(messages, [], {
+        hasPendingPrompt: false,
+        queuePause: paused ? stopped : null
+      })
     expect(queuedMessagesQueuePause(project([draft('held', 1)]), stopped)).toEqual(stopped)
     expect(queuedMessagesQueuePause(project([draft('held', 1)]), { reason: 'cleared' })).toEqual({
       reason: 'cleared'

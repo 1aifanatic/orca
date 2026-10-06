@@ -57,6 +57,7 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
       position: row.position,
       body: row.body,
       state: row.state,
+      source: { kind: row.source.kind },
       ...(held ? { paused: true as const } : {}),
       // The stored reason is a typed marker; an unknown one reads as a plain hold.
       ...(held && isPublishedPausedReason(row.holdReason) ? { pausedReason: row.holdReason } : {}),

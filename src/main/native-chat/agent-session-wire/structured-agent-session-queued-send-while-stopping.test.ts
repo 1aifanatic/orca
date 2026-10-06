@@ -164,6 +164,14 @@ describe('orchestration mail sent while Stopping', () => {
     )
     const typed = await queuedId(rig.send('typed while stopping', 'queue-if-active').result)
     expect((await rig.drafts()).map((draft) => draft.messageId)).toEqual([person, mail, typed])
+    // Each card names its sender's kind, so a client labels the mail as waiting, not paused; the
+    // senders and their mail stay host-only.
+    const page = await rig.host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.map((card) => card.source)).toEqual([
+      { kind: 'user' },
+      { kind: 'agent' },
+      { kind: 'user' }
+    ])
 
     await land()
     await eventually(async () => expect((await rig.handoff(mail))?.handedOverAt).toBeDefined())
