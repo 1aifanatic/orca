@@ -38,7 +38,7 @@ export async function compactPiRpcSession(
         agentSessionFailureFact('providerRejected', {
           detail: providerDiagnostic(error.message, 'person')
         }),
-        { provider: 'pi', agentName: 'Pi', surface: 'rejection' }
+        { agentName: 'Pi', surface: 'rejection' }
       )
     }
   }

@@ -138,7 +138,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
           error instanceof PiRpcPromptError || error instanceof ClaudeDispatchContentError
             ? error.failure
             : agentSessionFailureFact('attachmentUnreadable'),
-          { provider: 'pi', agentName: 'Pi', surface: 'rejection' }
+          { agentName: 'Pi', surface: 'rejection' }
         )
       }
     }

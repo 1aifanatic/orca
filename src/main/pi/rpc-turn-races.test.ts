@@ -21,7 +21,7 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-async function setup(request = vi.fn(async () => state())) {
+async function setup(request = vi.fn(async (_command: string): Promise<unknown> => state())) {
   const rig = await openProviderTimelineRig({ agent: 'pi', sessionId: 'session-timeline' })
   const accepted = vi.fn(),
     failed = vi.fn(),
@@ -102,7 +102,7 @@ describe('Pi turn settlement races', () => {
   it('invalidates an old idle probe when detached compaction starts after settlement', async () => {
     let release: ((value: unknown) => void) | undefined
     const request = vi.fn(
-      () =>
+      (_command: string) =>
         new Promise<unknown>((resolve) => {
           release = resolve
         })
@@ -128,7 +128,7 @@ describe('Pi turn settlement races', () => {
   it('keeps a busy generation open and rejects a probe made stale by new activity', async () => {
     let release: ((value: unknown) => void) | undefined
     const request = vi.fn(
-      () =>
+      (_command: string) =>
         new Promise<unknown>((resolve) => {
           release = resolve
         })

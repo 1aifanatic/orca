@@ -272,7 +272,7 @@ export class PiRpcTurns {
         body: {
           kind: 'status',
           tone: 'error',
-          ...agentSessionFailureWords(fact, { provider: 'pi', surface: 'row' })
+          ...agentSessionFailureWords(fact, { agentName: 'Pi', surface: 'row' })
         }
       })
     }

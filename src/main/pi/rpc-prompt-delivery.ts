@@ -50,7 +50,6 @@ export class PiRpcPromptDelivery {
       return {
         state: 'rejected',
         ...agentSessionFailureWords(agentSessionFailureFact('queueFull'), {
-          provider: 'pi',
           agentName: 'Pi',
           surface: 'rejection'
         })
@@ -127,7 +126,7 @@ export class PiRpcPromptDelivery {
       )
       this.deps.settled(submission.id, {
         state: 'rejected',
-        ...agentSessionFailureWords(fact, { provider: 'pi', agentName: 'Pi', surface: 'rejection' })
+        ...agentSessionFailureWords(fact, { agentName: 'Pi', surface: 'rejection' })
       })
       if (submission.accepted) {
         this.deps.rejectedAfterAcceptance(reply.error ?? 'Pi rejected the prompt')

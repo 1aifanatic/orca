@@ -16,7 +16,7 @@ export function piRpcRetryActivity(frame: JsonlRpcRecord): ProviderTimelineEvent
                   ? providerDiagnostic(frame.errorMessage, 'person')
                   : undefined
             }),
-            { provider: 'pi', agentName: 'Pi', surface: 'row' }
+            { agentName: 'Pi', surface: 'row' }
           ).text
         : null
   }
