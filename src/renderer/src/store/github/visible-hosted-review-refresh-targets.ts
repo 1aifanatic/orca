@@ -78,8 +78,9 @@ export function getVisibleHostedReviewRefreshTargets(
       revision: `${candidate.currentHeadOid ?? ''}|${linkedReviewHintKey(hints)}`,
       fetchedAt:
         usePR &&
-        prEntry.fetchedHeadOid != null &&
-        prEntry.fetchedHeadOid !== candidate.currentHeadOid
+        candidate.cachedHeadOid &&
+        candidate.currentHeadOid &&
+        candidate.cachedHeadOid !== candidate.currentHeadOid
           ? null
           : fetchedAt,
       selected,

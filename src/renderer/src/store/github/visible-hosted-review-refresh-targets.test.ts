@@ -309,6 +309,46 @@ describe('visible hosted review refresh targets', () => {
     expect(targets(store)[0]).toMatchObject({ fetchedAt: null, intervalMs: null })
   })
 
+  it('discovers a changed runtime HEAD from persisted metadata without a recorded request HEAD', () => {
+    const store = setup({ ...repo, executionHostId: 'runtime:owner-server' })
+    store.setState({
+      prCache: {
+        [`runtime:owner-server::${prKey}`]: {
+          data: makePR({ state: 'merged', checksStatus: 'success', headSha: 'older-head' }),
+          fetchedAt: Date.now()
+        }
+      }
+    })
+    expect(targets(store)[0]).toMatchObject({ fetchedAt: null, intervalMs: null })
+    store.setState({
+      prCache: {
+        [`runtime:owner-server::${prKey}`]: {
+          data: makePR({ state: 'merged', checksStatus: 'success', headSha: 'older-head' }),
+          fetchedAt: Date.now(),
+          fetchedHeadOid: worktree.head
+        }
+      }
+    })
+    expect(targets(store)[0]).toMatchObject({ fetchedAt: Date.now(), intervalMs: null })
+  })
+
+  it.each([
+    { head: '', headSha: 'older-head' },
+    { head: worktree.head, headSha: '' }
+  ])('preserves fresh settled metadata with an unknown HEAD: %j', ({ head, headSha }) => {
+    const store = setup({ ...repo, executionHostId: 'runtime:owner-server' })
+    store.setState({
+      worktreesByRepo: { [repo.id]: [{ ...worktree, head }] },
+      prCache: {
+        [`runtime:owner-server::${prKey}`]: {
+          data: makePR({ state: 'merged', checksStatus: 'success', headSha }),
+          fetchedAt: Date.now()
+        }
+      }
+    })
+    expect(targets(store)[0]).toMatchObject({ fetchedAt: Date.now(), intervalMs: null })
+  })
+
   it('includes only connected SSH branches and preserves their host scope', async () => {
     const store = setup({ ...repo, connectionId: 'ssh-1', executionHostId: 'ssh:ssh-1' })
     store.setState({
