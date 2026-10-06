@@ -2,27 +2,29 @@
 // in a known order against the delivery loop's handover.
 
 import { vi } from 'vitest'
-import { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
 import type { StructuredAgentSessionHost } from './structured-agent-session-host'
 
-/** Holds the delivery loop's next step at its first write, inside the session's lane, until
- *  `release`: a Stop or close asked for meanwhile runs ahead of the handover. `held` resolves
- *  once the step has reached the hold. */
+/** Holds the delivery loop's next step as it begins, inside the session's lane, until `release`:
+ *  a Stop or close asked for meanwhile runs ahead of the handover. `held` resolves once the step
+ *  has reached the hold. */
 export function holdDelivery(): { held: Promise<void>; release: () => void } {
   const gate = Promise.withResolvers<void>()
   const reached = Promise.withResolvers<void>()
-  const reject = AgentSessionJournal.prototype.rejectQueuedSubmissions
-  const step = vi
-    .spyOn(AgentSessionJournal.prototype, 'rejectQueuedSubmissions')
-    .mockImplementation(async function (this: AgentSessionJournal, ...args) {
-      // The step's leftover sweep, the one write every delivery step makes first.
-      if (args[1].rejection.kind === 'hostRestarted') {
-        step.mockRestore()
-        reached.resolve()
-        await gate.promise
-      }
-      return reject.apply(this, args)
-    })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: `prepare` is a prototype method whose privacy is compile-time only; the spy calls it unchanged.
+  const loop = StructuredAgentSessionDeliveryLoop.prototype as unknown as {
+    prepare: (...args: unknown[]) => Promise<unknown>
+  }
+  const prepare = loop.prepare
+  const step = vi.spyOn(loop, 'prepare').mockImplementation(async function (
+    this: unknown,
+    ...args: unknown[]
+  ) {
+    step.mockRestore()
+    reached.resolve()
+    await gate.promise
+    return prepare.apply(this, args)
+  })
   return { held: reached.promise, release: () => gate.resolve() }
 }
 

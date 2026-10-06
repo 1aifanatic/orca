@@ -153,9 +153,9 @@ function sendParams(text: string) {
   }
 }
 
-async function accept(text: string): Promise<string> {
+async function accept(text: string, options: { person?: true } = {}): Promise<string> {
   const params = sendParams(text)
-  const sent = await host.send(CALLER, params)
+  const sent = await host.send(CALLER, { ...params, ...(options.person ? { userSend: true } : {}) })
   expect(sent).toMatchObject({ ok: true, value: { submission: { dispatchState: 'pending' } } })
   return params.envelope.clientOperationId
 }
@@ -593,7 +593,13 @@ describe('another child indexed after a Stop ended the starting one', () => {
   })
 })
 
+// A quit settles nothing still queued: the next launch's open keeps a person's message as a held
+// card and rejects the rest, as a crash's would.
 describe('a quit with a message still queued', () => {
+  const HOST_RESTARTED = agentSessionFailureWords(agentSessionFailureFact('hostRestarted'), {
+    surface: 'rejection'
+  })
+
   /** Read by the next launch, through the same open any reader takes. */
   async function afterRelaunch(id: string): Promise<AgentJournalSubmission | undefined> {
     startHost()
@@ -601,17 +607,30 @@ describe('a quit with a message still queued', () => {
     return await submission(id)
   }
 
-  it('settles a message no child ever had the way a chat close does (R2)', async () => {
+  async function keptCards(): Promise<string[]> {
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    return page.ok ? (page.page.queuedMessages ?? []).map((card) => card.messageId) : []
+  }
+
+  it('keeps a person’s message no child ever had as a held card for the next launch (R2)', async () => {
     // Quit has begun — its first step stops the delivery loops — when this message is accepted.
     host['conversationDelivery'].loop.dispose()
-    const id = await accept('hello')
+    const id = await accept('hello', { person: true })
     expect(conversation()?.child).toBeNull()
     await host.flushAllStreamedEvents()
 
-    expect(await afterRelaunch(id)).toMatchObject({
-      dispatchState: 'rejected',
-      ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
-    })
+    expect(await afterRelaunch(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+    expect(await keptCards()).toEqual([id])
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it("rejects a message from Orca itself at the next launch, as a crash's would", async () => {
+    host['conversationDelivery'].loop.dispose()
+    const id = await accept('from orca')
+    await host.flushAllStreamedEvents()
+
+    expect(await afterRelaunch(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+    expect(await keptCards()).toEqual([])
   })
 
   it('waits for the start already in flight and stops the child it produced (R2)', async () => {
@@ -626,7 +645,7 @@ describe('a quit with a message still queued', () => {
       await starting.promise
       return resolveRecovery(sessionId)
     })
-    const id = await accept('hello')
+    const id = await accept('hello', { person: true })
     await eventually(() => expect(recovering).toHaveBeenCalled())
 
     const quit = host.flushAllStreamedEvents()
@@ -636,10 +655,8 @@ describe('a quit with a message still queued', () => {
     expect(closeSession).toHaveBeenCalledWith(SESSION)
     expect(store.getRecord(SESSION)?.lease).toMatchObject({ claimStatus: 'released' })
     expect(dispatch).not.toHaveBeenCalled()
-    expect(await afterRelaunch(id)).toMatchObject({
-      dispatchState: 'rejected',
-      ...agentSessionFailureWords(agentSessionFailureFact('chatClosed'), { surface: 'rejection' })
-    })
+    expect(await afterRelaunch(id)).toMatchObject({ dispatchState: 'rejected', ...HOST_RESTARTED })
+    expect(await keptCards()).toEqual([id])
   })
 })
 
@@ -748,16 +765,42 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
     expect(await statusRows()).toEqual([])
   })
 
+  it('keeps a person’s message the user closed as a held card, and starts no child for it', async () => {
+    const start = deferred<void>()
+    adapterExtras = { closeSession: vi.fn(async () => true) }
+    await restartHost()
+    // The start step holds the queue: the message is still queued when the close's stop runs.
+    acquire.mockImplementationOnce(async (input) => {
+      await start.promise
+      return spawnStartingChild(input)
+    })
+    const first = await accept('first', { person: true })
+    await eventually(() => expect(acquire).toHaveBeenCalledTimes(2))
+    let starts = 0
+    const closed = closeStopOnly().then(() => {
+      starts = acquire.mock.calls.length
+    })
+    start.resolve()
+    await closed
+    await settleLoop()
+
+    expect(await submission(first)).toMatchObject({ dispatchState: 'rejected', ...CHAT_CLOSED })
+    const page = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(page.ok && page.page.queuedMessages?.map((card) => card.messageId)).toEqual([first])
+    expect(acquire).toHaveBeenCalledTimes(starts)
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('starts no child when closing what was queued fails, and closes it on the next wake', async () => {
     const { first, starts } = await closedWhileStarting(() => {
       const journal = conversation()!.journal
-      const reject = journal.rejectQueuedSubmissions.bind(journal)
-      vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation(async (...args) => {
-        if (args[1].rejection.kind === 'chatClosed') {
-          vi.mocked(journal.rejectQueuedSubmissions).mockImplementation(reject)
+      const resolve = journal.resolveDispatch.bind(journal)
+      vi.spyOn(journal, 'resolveDispatch').mockImplementation(async (...args) => {
+        if (args[0].state === 'rejected' && args[0].rejection?.kind === 'chatClosed') {
+          vi.mocked(journal.resolveDispatch).mockImplementation(resolve)
           throw new Error('disk full')
         }
-        return reject(...args)
+        return resolve(...args)
       })
     })
 
