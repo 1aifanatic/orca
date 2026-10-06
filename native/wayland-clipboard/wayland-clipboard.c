@@ -67,7 +67,7 @@ static const struct wl_message offer_methods[] = {
 static const struct wl_message offer_events[] = { { "offer", "s", NULL } };
 
 static uint32_t ext_manager_name, wlr_manager_name, seat_name;
-static bool stopped;
+static bool stopped, source_cancelled, device_lost;
 static unsigned char *text;
 static size_t text_length;
 static struct {
@@ -92,7 +92,7 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
 
 static void registry_removed(void *data, struct wl_registry *registry, uint32_t name) {
     (void)data; (void)registry;
-    if (name == seat_name) stopped = true;
+    if (name == seat_name) device_lost = stopped = true;
 }
 
 static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t capabilities) {
@@ -119,7 +119,12 @@ static void device_selection(void *data, struct wl_proxy *device, struct wl_prox
 
 static void finished(void *data, struct wl_proxy *object) {
     (void)data; (void)object;
-    stopped = true;
+    device_lost = stopped = true;
+}
+
+static void cancelled(void *data, struct wl_proxy *object) {
+    (void)data; (void)object;
+    source_cancelled = stopped = true;
 }
 
 static void source_send(void *data, struct wl_proxy *source, const char *mime, int fd) {
@@ -245,7 +250,10 @@ static int serve(struct wl_display *display) {
             size_t remaining = text_length - transfers[i].offset;
             ssize_t count = write(transfers[i].fd, text + transfers[i].offset,
                                   remaining > 65536 ? 65536 : remaining);
-            if (count > 0) transfers[i].offset += (size_t)count;
+            if (count > 0) {
+                transfers[i].offset += (size_t)count;
+                transfers[i].deadline = now_ms() + TRANSFER_TIMEOUT_MS;
+            }
             if (transfers[i].offset == text_length ||
                 (count < 0 && errno != EAGAIN && errno != EINTR)) close_transfer(i);
         }
@@ -288,7 +296,7 @@ int main(int argc, char **argv) {
         (void (*)(void))device_offer, (void (*)(void))device_selection,
         (void (*)(void))finished, (void (*)(void))device_selection
     };
-    static void (*source_listener[])(void) = { (void (*)(void))source_send, (void (*)(void))finished };
+    static void (*source_listener[])(void) = { (void (*)(void))source_send, (void (*)(void))cancelled };
     api.listen(device, device_listener, NULL);
     api.listen(source, source_listener, NULL);
     if (read_text() < 0) return 65;
@@ -299,17 +307,30 @@ int main(int argc, char **argv) {
     }
     union wl_argument selection[] = { { .o = (struct wl_object *)source } };
     api.marshal(device, 0, selection);
-    if (api.roundtrip(display) < 0 || stopped) return 70;
-    // The acknowledged owner survives app exit and exits when its source is replaced.
+    if (api.roundtrip(display) < 0 || device_lost) return 70;
+    // An immediate external replacement is a completed copy, not a failed publication.
+    if (source_cancelled) return 0;
+    int ready[2];
+    if (pipe(ready) < 0) return 71;
     pid_t pid = fork();
     if (pid < 0) return 71;
-    if (pid > 0) _exit(0);
+    if (pid > 0) {
+        close(ready[1]);
+        char ack = 0;
+        ssize_t count;
+        do { count = read(ready[0], &ack, 1); } while (count < 0 && errno == EINTR);
+        _exit(count == 1 && ack == 1 ? 0 : 71);
+    }
+    close(ready[0]);
     signal(SIGHUP, SIG_IGN);
-    setsid();
+    if (setsid() < 0) return 71;
     int devnull = open("/dev/null", O_RDWR);
     if (devnull < 0) return 71;
-    for (int fd = 0; fd < 3; fd++) dup2(devnull, fd);
+    for (int fd = 0; fd < 3; fd++) if (dup2(devnull, fd) < 0) return 71;
     if (devnull > 2) close(devnull);
     if (chdir("/") < 0) return 71;
+    // Acknowledge only after the owner can survive app exit and serve pastes.
+    if (write(ready[1], "\1", 1) != 1) return 71;
+    close(ready[1]);
     return serve(display) < 0 ? 70 : 0;
 }

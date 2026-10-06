@@ -16,7 +16,10 @@ import { buildWaylandClipboard } from './build-wayland-clipboard.mjs'
 import glibcVerification from './verify-linux-glibc-floor.cjs'
 
 const require = createRequire(import.meta.url)
-const { ensureBundledWaylandClipboard } = require('../wayland-clipboard-resources.cjs')
+const {
+  ensureBundledWaylandClipboard,
+  finalizePackagedWaylandClipboard
+} = require('../wayland-clipboard-resources.cjs')
 const config = require('../electron-builder.config.cjs')
 const { copyFiles, FileMatcher } = require('app-builder-lib/out/fileMatcher')
 let root
@@ -93,6 +96,23 @@ describe('Wayland clipboard build', () => {
     expect(run).toHaveBeenCalledTimes(2)
   })
 
+  it.skipIf(process.platform === 'win32')(
+    'restores executable mode when reusing an extracted cached build',
+    () => {
+      const run = vi.fn((_program, args) => {
+        if (args[0] === 'run') {
+          writeExecutable('x64')
+        }
+        return { status: 0 }
+      })
+      buildWaylandClipboard({ root, arch: 'x64', run })
+      chmodSync(output(), 0o644)
+      buildWaylandClipboard({ root, arch: 'x64', run })
+      expect(statSync(output()).mode & 0o111).toBe(0o111)
+      expect(run).toHaveBeenCalledTimes(2)
+    }
+  )
+
   it('does not stamp a binary that failed architecture or glibc validation', () => {
     verify.mockImplementation(() => {
       throw new Error('wrong architecture')
@@ -147,6 +167,8 @@ describe('Wayland clipboard packaging', () => {
     const source = join(root, resource.from.replace('${arch}', arch))
     await copyFiles([new FileMatcher(source, target, (value) => value, ['**/*'])])
     expect(readFileSync(target)).toEqual(readFileSync(output(arch)))
+    chmodSync(target, 0o644)
+    finalizePackagedWaylandClipboard(join(root, 'packaged'))
     if (process.platform !== 'win32') {
       expect(statSync(target).mode & 0o111).toBe(0o111)
     }
@@ -154,6 +176,20 @@ describe('Wayland clipboard packaging', () => {
       expect(config[platform].extraResources.some((entry) => entry.to === resource.to)).toBe(false)
     }
   })
+
+  it.each(['missing', 'corrupt'])(
+    'rejects a %s helper in the actual packaged resources',
+    (state) => {
+      const resources = join(root, 'resources')
+      if (state === 'corrupt') {
+        mkdirSync(join(resources, 'bin'), { recursive: true })
+        writeFileSync(join(resources, 'bin', 'orca-wayland-clipboard'), 'not ELF')
+      }
+      expect(() => finalizePackagedWaylandClipboard(resources)).toThrow(
+        'missing its Wayland clipboard executable'
+      )
+    }
+  )
 
   it.each([0, 2])('rejects unsupported packaging architecture %s', (arch) => {
     expect(() => ensureBundledWaylandClipboard(arch, root, vi.fn())).toThrow('Unsupported')

@@ -1,4 +1,5 @@
 import array
+import fcntl
 import os
 import select
 import socket
@@ -23,8 +24,9 @@ def string(value):
 
 
 class DataControlServer:
-    def __init__(self, protocol):
+    def __init__(self, protocol, selection_event=None):
         self.protocol = protocol
+        self.selection_event = selection_event
         self.directory = tempfile.TemporaryDirectory(prefix="orca-clipboard-protocol-")
         self.socket = socket.socket(socket.AF_UNIX)
         self.socket.bind(os.path.join(self.directory.name, "wayland-test"))
@@ -124,20 +126,30 @@ class DataControlServer:
                 raise RuntimeError("Selection unexpectedly carries an input serial")
             self.source = struct.unpack("=I", body)[0]
             self.selected.set()
+            if self.selection_event == "cancelled":
+                self.send(self.source, 1)
+            elif self.selection_event == "finished":
+                self.send(self.device, 2)
+            elif self.selection_event == "seat removal":
+                self.send(self.registry, 1, number(10))
         elif kind == "offer" and opcode == 1:
             self.destroyed_offers.append(object_id)
         elif kind != "source":
             raise RuntimeError(f"Unexpected request {kind}/{opcode}")
 
-    def copy(self, text):
-        result = subprocess.run([BINARY], input=text, capture_output=True, env=self.environment(), timeout=5)
+    def copy(self, text, extra_env=None):
+        result = subprocess.run([BINARY], input=text, capture_output=True,
+                                env={**self.environment(), **(extra_env or {})}, timeout=5)
         if result.returncode == 0 and not self.selected.wait(2):
             raise RuntimeError("Helper exited without publishing a source")
         return result
 
-    def request_paste(self):
+    def request_paste(self, pipe_size=None):
         reader, writer = os.pipe()
         try:
+            if pipe_size:
+                # Python 3.8 omits this Linux UAPI constant.
+                fcntl.fcntl(writer, getattr(fcntl, "F_SETPIPE_SZ", 1031), pipe_size)
             self.send(self.source, 0, string("text/plain;charset=utf-8") + number(0), writer)
         finally:
             os.close(writer)
@@ -193,6 +205,51 @@ class ClipboardProtocolTests(unittest.TestCase):
             result = subprocess.run([BINARY, "--probe"], capture_output=True, env=server.environment(), timeout=3)
             self.assertEqual(result.returncode, 0)
             self.assertIsNone(server.source)
+
+    def test_replacement_during_ack_is_success_but_device_loss_is_failure(self):
+        for event, status in (("cancelled", 0), ("finished", 70), ("seat removal", 70)):
+            with self.subTest(event=event), DataControlServer("ext_data_control", event) as server:
+                self.assertEqual(server.copy(b"copy").returncode, status)
+                self.assertTrue(server.disconnected.wait(1))
+
+    def test_owner_startup_failure_reaches_the_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = os.path.join(directory, "failed-owner.c")
+            library = os.path.join(directory, "failed-owner.so")
+            with open(source, "w") as file:
+                file.write('''#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <unistd.h>
+pid_t fork(void) {
+    pid_t (*actual)(void) = dlsym(RTLD_NEXT, "fork");
+    pid_t pid = actual();
+    if (pid == 0) _exit(71);
+    return pid;
+}
+''')
+            subprocess.run(["cc", "-shared", "-fPIC", source, "-ldl", "-o", library], check=True, timeout=10)
+            with DataControlServer("ext_data_control") as server:
+                self.assertEqual(server.copy(b"copy", {"LD_PRELOAD": library}).returncode, 71)
+                self.assertTrue(server.disconnected.wait(1))
+
+    def test_slow_progressing_paste_is_not_truncated(self):
+        text = b"x" * (128 * 1024)
+        with DataControlServer("ext_data_control") as server:
+            self.assertEqual(server.copy(text).returncode, 0)
+            reader = server.request_paste(pipe_size=8192)
+            received = bytearray()
+            try:
+                while select.select([reader], [], [], 1)[0]:
+                    chunk = os.read(reader, 4096)
+                    if not chunk:
+                        break
+                    received.extend(chunk)
+                    time.sleep(.08)
+                self.assertEqual(received, text)
+            finally:
+                os.close(reader)
+            server.send(server.source, 1)
+            self.assertTrue(server.disconnected.wait(1))
 
     def test_stalled_receiver_does_not_block_cancellation(self):
         with DataControlServer("ext_data_control") as server:

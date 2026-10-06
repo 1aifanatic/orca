@@ -13,9 +13,9 @@ on supported desktops reject the copy rather than retry through Electron.
 X11, macOS and Windows retain their existing clipboard backend.
 
 The helper reads UTF-8 bytes from stdin, publishes the selection, and detaches
-after a compositor roundtrip. Its owner process serves subsequent paste requests,
+after a compositor roundtrip and owner-startup acknowledgement. Its owner process serves subsequent paste requests,
 survives Orca exit, and exits when replaced or disconnected. Paste requests are
-bounded and expire so a stalled receiver cannot keep an old owner alive.
+bounded and expire after two seconds without progress so a stalled receiver cannot keep an old owner alive.
 
 ## Building
 

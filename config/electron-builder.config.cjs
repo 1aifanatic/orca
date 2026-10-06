@@ -13,7 +13,10 @@ const {
   verifyPackagedMainRuntimeDeps
 } = require('./packaged-runtime-node-modules.cjs')
 const { verifyLinuxGlibcFloor } = require('./scripts/verify-linux-glibc-floor.cjs')
-const { ensureBundledWaylandClipboard } = require('./wayland-clipboard-resources.cjs')
+const {
+  ensureBundledWaylandClipboard,
+  finalizePackagedWaylandClipboard
+} = require('./wayland-clipboard-resources.cjs')
 const { writeMacBuildCompatibility } = require('./scripts/mac-build-compatibility.cjs')
 const {
   MOBILE_WEB_BUNDLE_DIR,
@@ -344,7 +347,7 @@ module.exports = {
       prepareWaylandClipboard(context.arch)
     }
   },
-  afterPack: async (context) => {
+  afterPack: async (context, finalizeClipboard = finalizePackagedWaylandClipboard) => {
     const resourcesDir =
       context.electronPlatformName === 'darwin'
         ? join(
@@ -389,6 +392,7 @@ module.exports = {
     // so an arm64 slice can still carry the x64 @parcel/watcher until
     // prunePackagedRuntimeNodeModules drops it.
     if (context.electronPlatformName === 'linux') {
+      finalizeClipboard(resourcesDir)
       // Why the arch is passed: symbol-version checks pass happily on a wrong-architecture binary,
       // so a cross-built slice could ship the host's pty.node and only fail at runtime.
       verifyLinuxGlibcFloor(context.appOutDir, {

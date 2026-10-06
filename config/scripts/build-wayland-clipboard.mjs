@@ -40,6 +40,7 @@ export function buildWaylandClipboard({
   }
   if (existsSync(output) && existsSync(stamp) && readFileSync(stamp, 'utf8') === fingerprint) {
     verifyOutput()
+    chmodSync(output, 0o755)
     return output
   }
   mkdirSync(outputDir, { recursive: true })

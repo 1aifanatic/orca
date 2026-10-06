@@ -95,6 +95,17 @@ describe('terminal clipboard writes', () => {
     expect(clearCache).not.toHaveBeenCalled()
   })
 
+  it('does not downgrade after a desktop has already accepted a data-control copy', async () => {
+    run.mockResolvedValueOnce(ok).mockResolvedValueOnce({ ...ok, code: 78 })
+    const copy = writer()
+    await copy('first')
+    await expect(copy('second')).rejects.toThrow('Wayland clipboard write failed')
+    expect(write).not.toHaveBeenCalled()
+    expect(clearCache).toHaveBeenCalledTimes(1)
+    await copy('third')
+    expect(run).toHaveBeenCalledTimes(3)
+  })
+
   it('rejects oversized text before either clipboard backend is invoked', async () => {
     await expect(writer()('x'.repeat(CLIPBOARD_TEXT_WRITE_MAX_BYTES + 1))).rejects.toThrow(
       'Clipboard text is too large'
@@ -102,6 +113,16 @@ describe('terminal clipboard writes', () => {
     expect(run).not.toHaveBeenCalled()
     expect(write).not.toHaveBeenCalled()
   })
+
+  it.each([null, 42, { length: 0 }])(
+    'rejects invalid payload %j before validation or queueing',
+    async (text) => {
+      const validate = vi.fn(async (value: string) => value)
+      await expect(writer(true, validate)(text)).rejects.toThrow('Clipboard text must be a string')
+      expect(validate).not.toHaveBeenCalled()
+      expect(run).not.toHaveBeenCalled()
+    }
+  )
 
   it('preserves request order across yielding validation and resumes after failure', async () => {
     let release: (text: string) => void = () => undefined
@@ -142,5 +163,31 @@ describe('terminal clipboard writes', () => {
     await Promise.all(queued)
     await copy('after flood')
     expect(run).toHaveBeenCalledTimes(33)
+  })
+
+  it('bounds the total text retained behind a stalled helper', async () => {
+    let release: (value: typeof ok) => void = () => undefined
+    run.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        })
+    )
+    const copy = writer(true, async (text) => text)
+    const text = 'x'.repeat(CLIPBOARD_TEXT_WRITE_MAX_BYTES / 2 + 1)
+    const first = copy(text)
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1))
+    let failure: unknown
+    void copy(text).catch((error: unknown) => {
+      failure = error
+    })
+    await vi.waitFor(
+      () => expect(failure).toEqual(new Error('Too many pending clipboard writes')),
+      { timeout: 200 }
+    )
+    release(ok)
+    await first
+    await copy(text)
+    expect(run).toHaveBeenCalledTimes(2)
   })
 })

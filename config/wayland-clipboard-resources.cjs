@@ -1,6 +1,7 @@
 const { spawnSync } = require('node:child_process')
-const { existsSync } = require('node:fs')
+const { chmodSync, existsSync } = require('node:fs')
 const { join } = require('node:path')
+const { collectNativeBinaries } = require('./scripts/verify-linux-glibc-floor.cjs')
 
 function ensureBundledWaylandClipboard(archEnum, root = join(__dirname, '..'), run = spawnSync) {
   const arch = { 1: 'x64', 3: 'arm64' }[archEnum]
@@ -21,4 +22,13 @@ function ensureBundledWaylandClipboard(archEnum, root = join(__dirname, '..'), r
   }
 }
 
-module.exports = { ensureBundledWaylandClipboard }
+function finalizePackagedWaylandClipboard(resourcesDir) {
+  const binDir = join(resourcesDir, 'bin')
+  const helper = join(binDir, 'orca-wayland-clipboard')
+  if (!existsSync(helper) || !collectNativeBinaries(binDir).includes(helper)) {
+    throw new Error('The Linux package is missing its Wayland clipboard executable.')
+  }
+  chmodSync(helper, 0o755)
+}
+
+module.exports = { ensureBundledWaylandClipboard, finalizePackagedWaylandClipboard }
