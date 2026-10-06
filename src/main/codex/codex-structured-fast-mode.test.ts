@@ -276,7 +276,9 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     const pending = Promise.withResolvers<unknown>()
     const codex = fakeCodex({ 'model/list': () => pending.promise })
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'first-turn')
-    const adapter = adapterFor(codex)
+    const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], {
+      modelCatalog: new AgentModelCatalogStore()
+    })
     await adapter.acquire({
       identity: identityFor('session-1'),
       fence: 7,
@@ -299,5 +301,74 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     expect(
       codex.connections[0].calls.filter((call) => call.method === 'turn/start')[1]?.params
     ).toMatchObject({ serviceTier: 'priority-live-v2' })
+  })
+
+  it('sends a tier another writer stored even when its own listing fails', async () => {
+    const pending = Promise.withResolvers<unknown>()
+    const codex = fakeCodex({ 'model/list': () => pending.promise })
+    codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
+    const modelCatalog = new AgentModelCatalogStore()
+    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], { modelCatalog })
+    await acquire(adapter)
+    await vi.waitFor(() =>
+      expect(codex.connections[0].calls.some((call) => call.method === 'model/list')).toBe(true)
+    )
+    modelCatalog.recordSuccess(access.fingerprint, 'codex', {
+      models: [{ id: 'gpt-live', label: 'GPT Live', isDefault: true, efforts: [] }],
+      fastModeTierByModel: new Map([['gpt-live', 'priority-probe']]),
+      origin: 'probe'
+    })
+    pending.reject(new Error('own listing failed'))
+    await vi.waitFor(() =>
+      expect(
+        codex.connections[0].calls.filter((call) => call.method === 'model/list')
+      ).toHaveLength(1)
+    )
+    await send(adapter, 'first')
+    expect(
+      codex.connections[0].calls.find((call) => call.method === 'turn/start')?.params
+    ).toMatchObject({ serviceTier: 'priority-probe' })
+  })
+
+  it('restores saved Fast against the saved model, not the resumed thread model', async () => {
+    const codex = fakeCodex()
+    codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
+    const modelCatalog = new AgentModelCatalogStore()
+    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const medium = [{ value: 'medium', label: 'Medium' }]
+    modelCatalog.recordSuccess(access.fingerprint, 'codex', {
+      models: [
+        {
+          id: 'gpt-live',
+          label: 'Live',
+          isDefault: true,
+          efforts: medium,
+          supportsFastMode: false
+        },
+        { id: 'gpt-next', label: 'Next', isDefault: false, efforts: medium, supportsFastMode: true }
+      ],
+      fastModeTierByModel: new Map([['gpt-next', 'priority-next']]),
+      origin: 'live-session'
+    })
+    const adapter = adapterFor(codex, { codexHome: '/codex/home', resumeThreadId: THREAD_ID }, [], {
+      modelCatalog
+    })
+    await adapter.acquire({
+      identity: identityFor('session-1'),
+      fence: 7,
+      spawnToken: 'spawn-resume',
+      options: { model: 'gpt-next', fastMode: 'true' }
+    })
+
+    expect(codex.connections[0].calls.some((call) => call.method === 'thread/resume')).toBe(true)
+    expect(adapter.readAcquisitionOptions({ sessionId: 'session-1', fence: 7 })).toEqual({
+      model: 'gpt-next',
+      fastMode: 'true'
+    })
+    await send(adapter, 'first')
+    const turn = codex.connections[0].calls.find((call) => call.method === 'turn/start')?.params
+    expect(turn).toMatchObject({ model: 'gpt-next', serviceTier: 'priority-next' })
+    expect(turn).not.toHaveProperty('effort')
   })
 })

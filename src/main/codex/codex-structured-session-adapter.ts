@@ -290,11 +290,17 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       ),
       ...Object.fromEntries(session.options)
     }
-    if (options.model === undefined && session.reportedOptions.model) {
-      options.model = session.reportedOptions.model
+    const reported = session.reportedOptions
+    // The thread's effort belongs to the thread's model, not to a different saved one.
+    if (
+      options.effort === undefined &&
+      reported.effort &&
+      (options.model === undefined || options.model === reported.model)
+    ) {
+      options.effort = reported.effort
     }
-    if (options.effort === undefined && session.reportedOptions.effort) {
-      options.effort = session.reportedOptions.effort
+    if (options.model === undefined && reported.model) {
+      options.model = reported.model
     }
     return Object.keys(options).length > 0 ? options : undefined
   }

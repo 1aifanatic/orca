@@ -9,6 +9,15 @@ export function listingFromEntry(entry: AgentModelCatalogEntry): CodexModelCatal
   }
 }
 
+/** The exact Fast tier the account's stored catalog names for a model; no I/O. */
+export function codexKnownFastModeTier(
+  catalogAccess: CodexSessionCatalogAccess | undefined,
+  model: string
+): string | undefined {
+  const tiers = catalogAccess?.store.get(catalogAccess.fingerprint)?.fastModeTierByModel
+  return tiers && Object.hasOwn(tiers, model) ? tiers[model] : undefined
+}
+
 /** Acquisition uses known choices only; picker reads discover new choices later. */
 export function codexAcquireCatalogListing(
   catalogAccess: CodexSessionCatalogAccess | undefined

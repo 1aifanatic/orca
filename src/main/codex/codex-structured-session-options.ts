@@ -165,6 +165,29 @@ export async function applyCodexStructuredSessionOption(
   }
 }
 
+/**
+ * With no listing known, a pick is kept as the next turn's intent rather than refused: catalog
+ * bookkeeping must not gate it. Codex judges the model on `turn/start`, and Fast without a
+ * known exact tier sends Standard there.
+ */
+function applyUnlistedCodexSessionOption(
+  session: CodexSession,
+  key: 'model' | 'effort' | 'fastMode',
+  value: string
+): Readonly<Record<string, string>> {
+  if (key === 'fastMode') {
+    session.options.delete('serviceTier')
+  } else if (
+    key === 'model' &&
+    value !== (session.options.get('model') ?? session.reportedOptions.model)
+  ) {
+    // An effort saved under another model is unverified for this one; its default applies.
+    session.options.delete('effort')
+  }
+  session.options.set(key, value)
+  return Object.fromEntries(session.options)
+}
+
 function applyValidatedCodexStructuredSessionOption(
   session: CodexSession,
   key: string,
@@ -190,12 +213,12 @@ function applyValidatedCodexStructuredSessionOption(
     session.options.set('fastMode', 'false')
     return Object.fromEntries(session.options)
   }
-  const priorModel = session.options.get('model') ?? session.reportedOptions.model
-  const priorEffort = session.options.get('effort') ?? session.reportedOptions.effort
   const listing = codexAcquireCatalogListing(session.catalogAccess)
   if (!listing) {
-    throw new Error('Model choices are not available yet. Reopen the model picker and try again.')
+    return applyUnlistedCodexSessionOption(session, key, value)
   }
+  const priorModel = session.options.get('model') ?? session.reportedOptions.model
+  const priorEffort = session.options.get('effort') ?? session.reportedOptions.effort
   const catalog = composeCodexSessionOptionCatalog(listing, {
     current: {
       ...(priorModel ? { model: priorModel } : {}),

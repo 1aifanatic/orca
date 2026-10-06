@@ -13,7 +13,17 @@ import { reportedCodexThreadOptions } from './codex-structured-fast-mode'
 import { CodexBackgroundTaskTracker } from './codex-background-task-tracker'
 import type { CodexSession } from './codex-structured-session-state'
 import { startCodexTurn } from './codex-structured-turn-start'
-import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import {
+  USER_MESSAGE,
+  adapterFor,
+  answerWithOpenedTurn,
+  fakeCodex,
+  identityFor
+} from './codex-structured-session-adapter-fixture'
+import {
+  AGENT_MODEL_CATALOG_FRESH_MS,
+  AgentModelCatalogStore
+} from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 function optionSession(request: CodexAppServerConnection['request']): CodexSession {
   return {
@@ -34,7 +44,6 @@ function optionSession(request: CodexAppServerConnection['request']): CodexSessi
     prompts: new CodexAcquisitionWindow().prompts,
     options: new Map(),
     reportedOptions: { model: 'gpt-live', effort: 'high' },
-    fastModeTierByModel: new Map(),
     dispatchEchoes: createCodexDispatchEchoes(),
     turnOpenWaits: createCodexTurnOpenWaits(),
     translator: null
@@ -52,17 +61,33 @@ async function primePicker(session: CodexSession): Promise<void> {
 
 describe('structured Codex session options', () => {
   it.each([
-    ['model', 'gpt-live'],
+    ['model', 'gpt-next'],
     ['effort', 'high'],
     ['fastMode', 'true']
-  ])('rejects a cold %s pick without starting a model request', async (key, value) => {
+  ])('keeps a cold %s pick as intent without starting a model request', async (key, value) => {
     const request = vi.fn(async () => ({ data: [] }))
     const session = optionSession(request)
+    session.options.set('serviceTier', 'priority-old')
 
-    await expect(applyCodexStructuredSessionOption(session, key, value)).rejects.toThrow(
-      'Model choices are not available yet'
-    )
+    await expect(applyCodexStructuredSessionOption(session, key, value)).resolves.toMatchObject({
+      [key]: value
+    })
+    expect(session.options.has('serviceTier')).toBe(key !== 'fastMode')
     expect(request).not.toHaveBeenCalled()
+  })
+
+  it('drops an effort saved under another model on a cold model change', async () => {
+    const session = optionSession(vi.fn(async () => ({ data: [] })))
+    session.options.set('model', 'gpt-live')
+    session.options.set('effort', 'xhigh')
+
+    await expect(applyCodexStructuredSessionOption(session, 'model', 'gpt-live')).resolves.toEqual({
+      model: 'gpt-live',
+      effort: 'xhigh'
+    })
+    await expect(applyCodexStructuredSessionOption(session, 'model', 'gpt-next')).resolves.toEqual({
+      model: 'gpt-next'
+    })
   })
 
   it('turns Fast off immediately even without a catalog', async () => {
@@ -374,6 +399,9 @@ describe('structured Codex session options', () => {
       }
     })
     const session = optionSession(request)
+    let now = 1_000
+    const store = new AgentModelCatalogStore({ now: () => now })
+    session.catalogAccess = { store, fingerprint: 'codex-test-account', accountHomePath: '/test' }
     session.options.set('fastMode', 'true')
 
     const unknown = await readLiveCodexSessionOptions(session, undefined)
@@ -393,6 +421,14 @@ describe('structured Codex session options', () => {
     expect(session.options.get('fastMode')).toBe('true')
 
     catalogRecovered = true
+    now += AGENT_MODEL_CATALOG_FRESH_MS
+    // Served from the aged entry; the refresh behind it names the tier.
+    await readLiveCodexSessionOptions(session, undefined)
+    await vi.waitFor(() =>
+      expect(store.get('codex-test-account')?.fastModeTierByModel['gpt-live']).toBe(
+        'priority-recovered'
+      )
+    )
     await expect(readLiveCodexSessionOptions(session, undefined)).resolves.toMatchObject({
       models: [expect.objectContaining({ supportsFastMode: true })],
       fastModeSupport: { supported: true },
@@ -517,5 +553,48 @@ describe('Codex service tier is not a settable option', () => {
     expect(Object.fromEntries(restoredCodexSessionOptions({ serviceTier: 'default' }))).toEqual({
       fastMode: 'false'
     })
+  })
+})
+
+describe('Codex option picks before the model list arrives', () => {
+  it('accepts launch-held model, effort and Fast picks while its own listing is held', async () => {
+    const pending = Promise.withResolvers<unknown>()
+    const codex = fakeCodex({ 'model/list': () => pending.promise })
+    codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-1')
+    const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], {
+      modelCatalog: new AgentModelCatalogStore()
+    })
+    await adapter.acquire({ identity: identityFor('session-1'), fence: 7, spawnToken: 'spawn-1' })
+    await vi.waitFor(() =>
+      expect(codex.connections[0].calls.some((call) => call.method === 'model/list')).toBe(true)
+    )
+    const pick = (key: string, value: string) =>
+      adapter.setOption({ sessionId: 'session-1', key, value, fence: 7 })
+
+    await expect(pick('model', 'gpt-next')).resolves.toMatchObject({ model: 'gpt-next' })
+    await expect(pick('effort', 'low')).resolves.toMatchObject({ model: 'gpt-next', effort: 'low' })
+    await expect(pick('fastMode', 'true')).resolves.toEqual({
+      model: 'gpt-next',
+      effort: 'low',
+      fastMode: 'true'
+    })
+    expect(adapter.readAcquisitionOptions({ sessionId: 'session-1', fence: 7 })).toEqual({
+      model: 'gpt-next',
+      effort: 'low',
+      fastMode: 'true'
+    })
+    await adapter.dispatch({
+      sessionId: 'session-1',
+      clientMessageId: 'first',
+      body: USER_MESSAGE,
+      fence: 7
+    })
+    expect(
+      codex.connections[0].calls.find((call) => call.method === 'turn/start')?.params
+    ).toMatchObject({ model: 'gpt-next', effort: 'low', serviceTier: 'default' })
+    expect(codex.connections[0].calls.filter((call) => call.method === 'model/list')).toHaveLength(
+      1
+    )
+    pending.resolve({ data: [], nextCursor: null })
   })
 })

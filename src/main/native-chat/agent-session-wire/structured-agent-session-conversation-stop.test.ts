@@ -37,6 +37,7 @@ import {
   identityFor
 } from '../../codex/codex-structured-session-adapter-fixture'
 import { AgentModelCatalogStore } from '../agent-model-catalog/agent-model-catalog-store'
+import { CodexAppServerRequestError } from '../../codex/codex-app-server-request-error'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -156,6 +157,23 @@ function stop(turnId?: string, clientOperationId = hostTestOperationId()) {
   })
 }
 
+function pickOption(key: string, value: string) {
+  const fields = { key, value }
+  return host.setOption(CALLER, {
+    envelope: {
+      sessionId: SESSION,
+      clientOperationId: hostTestOperationId(),
+      expectedRuntimeFence: 1,
+      payloadFingerprint: computeAgentSessionPayloadFingerprint({
+        method: 'agentSession.setOption',
+        sessionId: SESSION,
+        fields
+      })
+    },
+    ...fields
+  })
+}
+
 async function submission(id: string): Promise<AgentJournalSubmission | undefined> {
   return (await host.journalSnapshot(SESSION)).submissions.find(
     (entry) => entry.clientMessageId === id
@@ -169,7 +187,7 @@ async function statusRows(): Promise<string[]> {
 }
 
 describe('a Stop that names no turn', () => {
-  it('does not let a stalled catalog hold option refusal, steer, Stop, or replacement send', async () => {
+  it('does not let a stalled catalog hold an option pick, steer, Stop, or replacement send', async () => {
     const pending = Promise.withResolvers<unknown>()
     const codex = fakeCodex({ 'model/list': () => pending.promise })
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-1')
@@ -192,21 +210,10 @@ describe('a Stop that names no turn', () => {
     await eventually(() =>
       expect(codex.connections[0].calls.some((call) => call.method === 'turn/start')).toBe(true)
     )
-    const fields = { key: 'model', value: 'gpt-live' }
-    const option = await host.setOption(CALLER, {
-      envelope: {
-        sessionId: SESSION,
-        clientOperationId: hostTestOperationId(),
-        expectedRuntimeFence: 1,
-        payloadFingerprint: computeAgentSessionPayloadFingerprint({
-          method: 'agentSession.setOption',
-          sessionId: SESSION,
-          fields
-        })
-      },
-      ...fields
+    expect(await pickOption('model', 'gpt-next')).toMatchObject({
+      ok: true,
+      value: { options: { model: 'gpt-next', fastMode: 'true' } }
     })
-    expect(option).toMatchObject({ ok: false })
     expect(codex.connections[0].calls.filter((call) => call.method === 'model/list')).toHaveLength(
       1
     )
@@ -231,7 +238,56 @@ describe('a Stop that names no turn', () => {
     )
     expect(
       codex.connections[0].calls.filter((call) => call.method === 'turn/start')[1]?.params
-    ).toMatchObject({ serviceTier: 'default' })
+    ).toMatchObject({ model: 'gpt-next', serviceTier: 'default' })
+    pending.resolve({ data: [], nextCursor: null })
+  })
+
+  it('fails a turn Codex refuses for a model picked before the list, then sends again', async () => {
+    const pending = Promise.withResolvers<unknown>()
+    const codex = fakeCodex({ 'model/list': () => pending.promise })
+    codex.routes['turn/start'] = (params) => {
+      if (params?.model === 'gpt-missing') {
+        throw new CodexAppServerRequestError(
+          'turn/start',
+          -32602,
+          'codex app-server turn/start failed: unknown model gpt-missing',
+          'unknown model gpt-missing'
+        )
+      }
+      return answerWithOpenedTurn(codex, 'turn-ok')(params)
+    }
+    const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], {
+      modelCatalog: new AgentModelCatalogStore()
+    })
+    await adapter.acquire({ identity: identityFor(SESSION), fence: 1, spawnToken: 'spawn-bad' })
+    dispatch.mockImplementation((input) => adapter.dispatch(input))
+    setOption.mockImplementation((input) => adapter.setOption(input))
+
+    expect(await pickOption('model', 'gpt-missing')).toMatchObject({ ok: true })
+    const refused = send('first send')
+    await refused.result
+    await eventually(async () =>
+      expect(await submission(refused.id)).toMatchObject({
+        dispatchState: 'rejected',
+        reason: expect.stringContaining('unknown model gpt-missing'),
+        rejection: { kind: 'providerRejected' }
+      })
+    )
+
+    expect(await pickOption('model', 'gpt-live')).toMatchObject({ ok: true })
+    const retried = send('second send')
+    await retried.result
+    await eventually(() =>
+      expect(
+        codex.connections[0].calls.filter((call) => call.method === 'turn/start')
+      ).toHaveLength(2)
+    )
+    expect(
+      codex.connections[0].calls.filter((call) => call.method === 'turn/start')[1]?.params
+    ).toMatchObject({ model: 'gpt-live' })
+    await eventually(async () =>
+      expect((await submission(retried.id))?.dispatchState).not.toBe('rejected')
+    )
     pending.resolve({ data: [], nextCursor: null })
   })
 

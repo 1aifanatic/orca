@@ -23,9 +23,14 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
-import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
+import {
+  structuredAgentSessionStartFailure,
+  type StructuredAgentSessionStartFailureCause
+} from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
+  StructuredAgentSessionChildEndCause,
+  StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
@@ -33,14 +38,8 @@ import {
   oldestQueuedSubmission,
   recordStructuredAgentSessionStartFailure
 } from './structured-agent-session-start-failure-row'
-import {
-  startThatFailedWhileQueued,
-  structuredAgentSessionEndedChildFailure,
-  type StartFailure
-} from './structured-agent-session-ended-child-failure'
-export { structuredAgentSessionEndedChildFailure } from './structured-agent-session-ended-child-failure'
+import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
-import { closeWhatTheUserClosed } from './structured-agent-session-closed-queue'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
@@ -77,10 +76,10 @@ type Step = 'continue' | 'stop'
 type Prepared =
   | 'stop'
   | Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
-  | {
-      ok: true
-      awaited: StructuredAgentSessionProviderChildIdentity | null
-    }
+  | { ok: true; awaited: StructuredAgentSessionProviderChildIdentity | null }
+
+/** A failed start before it is worded; `fail` words it once, through the one wording point. */
+type StartFailure = { startKey: string | null; cause: StructuredAgentSessionStartFailureCause }
 
 export class StructuredAgentSessionDeliveryLoop {
   private readonly running = new Set<string>()
@@ -166,7 +165,7 @@ export class StructuredAgentSessionDeliveryLoop {
       // A handle closes only with nothing queued, so one an earlier handle wrote is a leftover.
       (submission) => session.journal.wroteBeforeOpen(submission.acceptedSequence)
     )
-    if (!(await closeWhatTheUserClosed(sessionId, session, this.deps.abandonQueued))) {
+    if (!(await this.closeWhatTheUserClosed(sessionId, session))) {
       // Never start an agent for a message the user closed; the next wake re-derives and retries.
       return this.stop(sessionId)
     }
@@ -287,9 +286,82 @@ export class StructuredAgentSessionDeliveryLoop {
     return this.stop(sessionId)
   }
 
+  /** A close of this chat that stopped its child and then did not complete still closed what was
+   *  queued before it, so no child starts for those. Ordered, not latched: a later send goes on.
+   *  False when those could not be closed. */
+  private async closeWhatTheUserClosed(
+    sessionId: string,
+    session: StructuredAgentSessionHostSession
+  ): Promise<boolean> {
+    const ended = session.lastEndedChild
+    if (session.child || ended?.cause !== 'user-close') {
+      return true
+    }
+    const { epoch } = session.journal.cursor()
+    return this.deps.abandonQueued(
+      sessionId,
+      (submission) =>
+        ended.endedAt.epoch === epoch &&
+        submission.acceptedSequence !== undefined &&
+        submission.acceptedSequence <= ended.endedAt.sequence
+    )
+  }
+
   /** Inside the serialized step that found nothing to do, so an accept after it wakes anew. */
   private stop(sessionId: string): 'stop' {
     this.running.delete(sessionId)
     return 'stop'
   }
+}
+
+/** A start that died while this message waited on it — a view's, say — is the message's failed
+ *  start: settled with it, under its key, rather than started again into the same failure. */
+function startThatFailedWhileQueued(
+  session: StructuredAgentSessionHostSession,
+  oldest: NonNullable<ReturnType<typeof oldestQueuedSubmission>>
+): StartFailure | null {
+  const ended = failedProviderChildStart(session)
+  if (
+    !ended ||
+    oldest.acceptedSequence === undefined ||
+    ended.endedAt.epoch !== session.journal.cursor().epoch ||
+    ended.endedAt.sequence < oldest.acceptedSequence
+  ) {
+    return null
+  }
+  const cause = structuredAgentSessionEndedChildFailure(ended)
+  return cause ? { startKey: ended.generation, cause } : null
+}
+
+function providerEndFailure(
+  ended: StructuredAgentSessionEndedChild
+): StructuredAgentSessionStartFailureCause {
+  if (ended.duringStartup) {
+    return { exit: ended.failure }
+  }
+  return { failure: ended.failure ?? agentSessionFailureFact('providerExited') }
+}
+
+// Every end cause, so a new one does not compile until it says whether it fails what is queued.
+const ENDED_CHILD_FAILURE = {
+  'user-stop': () => null,
+  // The user closing this chat closes what was queued before it; see `closeWhatTheUserClosed`.
+  'user-close': () => null,
+  // The host stopping the child is Orca's cause, never the provider's: a start that never finished.
+  'host-stop': () => ({ failure: agentSessionFailureFact('hostStopped') }),
+  exit: providerEndFailure,
+  // The attach records its own fault as the end's failure.
+  'attach-failed': providerEndFailure,
+  // Reached only when an eviction's stop landed and a later step failed, leaving the conversation.
+  evict: providerEndFailure
+} satisfies Record<
+  StructuredAgentSessionChildEndCause,
+  (ended: StructuredAgentSessionEndedChild) => StructuredAgentSessionStartFailureCause | null
+>
+
+/** Why a queued message the child never took is rejected; null when its end fails nothing. */
+export function structuredAgentSessionEndedChildFailure(
+  ended: StructuredAgentSessionEndedChild
+): StructuredAgentSessionStartFailureCause | null {
+  return ENDED_CHILD_FAILURE[ended.cause](ended)
 }

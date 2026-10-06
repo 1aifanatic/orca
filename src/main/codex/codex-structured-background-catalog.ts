@@ -14,23 +14,23 @@ type BackgroundCatalogInput = {
   logger: StructuredAgentSessionLogger | undefined
 }
 
+/** Turns read tiers from the store; only a legacy saved tier needs migrating here. */
 function applyListing(session: CodexSession, listing: CodexModelCatalogListing): void {
-  if (session.options.has('serviceTier')) {
-    const model =
-      session.options.get('model') ??
-      session.reportedOptions.model ??
-      listing.models.find((entry) => entry.isDefault)?.id ??
-      listing.models[0]?.id ??
-      ''
-    reconcileCodexFastModeOption(session, {
-      fastModeTierByModel: listing.fastModeTierByModel,
-      currentFastMode: undefined,
-      model,
-      modelFastModeSupport: undefined
-    })
+  if (!session.options.has('serviceTier')) {
     return
   }
-  session.fastModeTierByModel = listing.fastModeTierByModel
+  const model =
+    session.options.get('model') ??
+    session.reportedOptions.model ??
+    listing.models.find((entry) => entry.isDefault)?.id ??
+    listing.models[0]?.id ??
+    ''
+  reconcileCodexFastModeOption(session, {
+    fastModeTierByModel: listing.fastModeTierByModel,
+    currentFastMode: undefined,
+    model,
+    modelFastModeSupport: undefined
+  })
 }
 
 async function refresh(input: BackgroundCatalogInput): Promise<void> {

@@ -242,7 +242,6 @@ export async function acquireCodexStructuredSession(input: {
       prompts: acquisition.prompts,
       options,
       reportedOptions: reportedCodexThreadOptions(opened),
-      fastModeTierByModel: fastModeCatalog?.fastModeTierByModel ?? new Map(),
       ...(catalogAccess ? { catalogAccess } : {}),
       dispatchEchoes,
       translator,
@@ -257,7 +256,8 @@ export async function acquireCodexStructuredSession(input: {
       ...(unbindReadingControl ? { unbindReadingControl } : {})
     }
     if (fastModeCatalog) {
-      const model = opened.model ?? fastModeCatalog.result.current.model
+      // The model the next turn sends, as turn/start and the background refresh resolve it.
+      const model = options.get('model') ?? opened.model ?? fastModeCatalog.result.current.model
       reconcileCodexFastModeOption(session, {
         fastModeTierByModel: fastModeCatalog.fastModeTierByModel,
         currentFastMode: true,
