@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
@@ -39,10 +40,8 @@ import type {
 } from './native-chat-message-rail-items'
 import { useNativeChatRailHistoryJump } from './use-native-chat-rail-history-jump'
 import { nativeChatReaderScrollInputHandlers } from './native-chat-reader-scroll-input'
-import { NativeChatJumpControls } from './NativeChatJumpControls'
 import { useNativeChatReaderOpens } from './use-native-chat-reader-opens'
 import { useNativeChatMessageListHandle } from './use-native-chat-reveal-latest'
-import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 
 import type {
   AgentJournalRenderItem,
@@ -85,7 +84,7 @@ export function NativeChatMessageList({
   turnActivity,
   runtimeContext
 }: {
-  ref?: React.Ref<NativeChatMessageListHandle>
+  ref?: Parameters<typeof useNativeChatMessageListHandle>[0]
   session: NativeChatLiveSession
   journalItems?: readonly AgentJournalRenderItem[]
   /** With the items, what places each row in its turn (structured lane). */
@@ -223,7 +222,7 @@ export function NativeChatMessageList({
     // mutually exclusive things to be doing.
     revealIndex: nativeChatSlotIndexOf(slots, railJump?.messageId ?? revealedDiff?.messageId)
   })
-  const transcriptScroll = useNativeChatTranscriptScroll({
+  const { scrollToBottom, scrollMessageToTop, ...follow } = useNativeChatTranscriptScroll({
     scrollRef,
     contentRef,
     itemCount: slots.length,
@@ -271,7 +270,7 @@ export function NativeChatMessageList({
     subagentDisclosure,
     expandedTurnIds,
     setExpandedTurnIds,
-    follow: transcriptScroll,
+    follow,
     abortNavigation: beginNavigation
   })
   // Every navigation begins by aborting a history jump still paging, which would
@@ -302,12 +301,11 @@ export function NativeChatMessageList({
     },
     [beginNavigation, openSubagentSections]
   )
-  const { scrollToBottom, scrollMessageToTop } = transcriptScroll
   const jumpToLatest = useCallback(() => {
     beginNavigation()
     scrollToBottom()
   }, [beginNavigation, scrollToBottom])
-  useNativeChatMessageListHandle(ref, jumpToLatest, transcriptScroll.untilReaderActs)
+  useNativeChatMessageListHandle(ref, jumpToLatest, follow.untilReaderActs)
   const readerScrollInput = useMemo(
     () => nativeChatReaderScrollInputHandlers(beginNavigation),
     [beginNavigation]
@@ -371,7 +369,7 @@ export function NativeChatMessageList({
         <div className="relative min-h-0 flex-1">
           <div
             ref={scrollRef}
-            onScroll={transcriptScroll.onScroll}
+            onScroll={follow.onScroll}
             {...readerScrollInput}
             // Named so measurement can find the scroll root without depending on
             // which utility class happens to make it scroll.
@@ -424,11 +422,17 @@ export function NativeChatMessageList({
             onReaderScroll={beginNavigation}
             pendingId={railHistoryJump.pendingId}
           />
-          <NativeChatJumpControls
-            showLatest={transcriptScroll.showJump}
-            onLatest={jumpToLatest}
-            transcriptRef={scrollRef}
-          />
+          {follow.showJump ? (
+            <button
+              type="button"
+              onClick={jumpToLatest}
+              aria-label={translate('components.native-chat.jumpToLatest', 'Jump to latest')}
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ArrowDown className="size-3.5" />
+              <span>{translate('components.native-chat.jumpToLatest', 'Jump to latest')}</span>
+            </button>
+          ) : null}
         </div>
         {taskListState.list && taskListState.list.tasks.length > 0 ? (
           <div className="shrink-0 px-3 pb-2 sm:px-4">

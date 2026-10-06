@@ -120,8 +120,7 @@ function toggleRun(container: HTMLElement, toggle: HTMLElement, openRows: readon
 }
 
 function offersJumpToLatest(): boolean {
-  const jump = screen.queryByRole('button', { name: 'Jump to latest' })
-  return jump !== null && !jump.hasAttribute('inert')
+  return screen.queryByRole('button', { name: 'Jump to latest' }) !== null
 }
 
 describe('reader navigation', () => {
@@ -431,28 +430,9 @@ describe('reader navigation', () => {
     expect(scrollRoot(container)).toHaveAttribute('tabindex', '0')
   })
 
-  it('hands focus to the transcript when a focused jump button hides, and leaves it inert', () => {
-    const { container } = render(
-      <NativeChatMessageList
-        session={session(transcript)}
-        isWorking={false}
-        expandSignal={false}
-        fontScale={1}
-      />
-    )
-    paint(container)
-    scrollTranscript(container, 1000)
-    paint(container)
-    const latest = screen.getByRole('button', { name: 'Jump to latest' })
-    // Anti-vacuous: shown, so reachable.
-    expect(latest).not.toHaveAttribute('inert')
+  it('names the transcript as a region, so a focused scroll stop is announced', () => {
+    const { container } = render(list(transcript))
 
-    latest.focus()
-    fireEvent.click(latest)
-    paint(container)
-
-    expect(latest).toHaveAttribute('inert')
-    expect(document.activeElement).toBe(scrollRoot(container))
     expect(screen.getByRole('region', { name: 'Conversation' })).toBe(scrollRoot(container))
   })
 })
