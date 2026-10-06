@@ -21,7 +21,6 @@ import {
   agentSessionAttachmentStoreRoot
 } from './agent-session-attachment-references'
 import { claudeProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
-import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 
 const UPLOAD_A = '0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8c01'
 const UPLOAD_B = '7c2d9e10-3f4a-4b5c-8d6e-2f1a0b9c8d02'
@@ -219,7 +218,6 @@ describe('claims written with the message', () => {
         body: missing,
         fingerprint: 'fp',
         hostInstance: 'p',
-        source: USER_MESSAGE_SOURCE,
         requireAttachments: true
       })
       .catch((caught: unknown) => caught)
@@ -233,7 +231,6 @@ describe('claims written with the message', () => {
       body,
       fingerprint: 'fp',
       hostInstance: 'p',
-      source: USER_MESSAGE_SOURCE,
       requireAttachments: true
     })
     const replacement = await open('session-d')
@@ -242,7 +239,6 @@ describe('claims written with the message', () => {
       body,
       fingerprint: 'fp-d',
       hostInstance: 'p',
-      source: USER_MESSAGE_SOURCE,
       carriedFrom: IDENTITY.sessionId
     })
     expect(claims()).toEqual([
@@ -260,7 +256,6 @@ describe('claims written with the message', () => {
       body,
       fingerprint: 'fp',
       hostInstance: 'p',
-      source: USER_MESSAGE_SOURCE,
       requireAttachments: true
     })
     await rm(join(storeRoot, UPLOAD_A), { recursive: true })
