@@ -182,7 +182,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
     const imageBlock = nativeChatImageSendBlock(imageAttachments)
     const sendButtonDisabled = isWorking
-      ? !hasPty || !onStop || isStopping
+      ? !hasPty || !onStop
       : disabled || imageBlock.holdsSend || (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({

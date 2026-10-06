@@ -10,13 +10,12 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
-import { ArrowDown, ChevronsDownUp, ChevronsUpDown, Square } from 'lucide-react-native'
+import { ArrowDown, ChevronsDownUp, ChevronsUpDown } from 'lucide-react-native'
 import type { AskAnswerSelection, AskPrompt } from '../../../src/shared/native-chat-ask'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
-import {
-  NATIVE_CHAT_TURN_STATUS_COPY,
-  type NativeChatLiveTurnIndicator,
-  type NativeChatSettledTurns
+import type {
+  NativeChatLiveTurnIndicator,
+  NativeChatSettledTurns
 } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import { colors } from '../theme/mobile-theme'
@@ -35,6 +34,7 @@ import {
   useSettledMobileNativeChatInputLock
 } from './use-mobile-native-chat-input-lease'
 import { MobileNativeChatLiveLine } from './MobileNativeChatLiveLine'
+import { MobileNativeChatStopButton } from './MobileNativeChatStopButton'
 import { MobileAgentWorkingIndicator } from './MobileAgentWorkingIndicator'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import { MobileNativeChatComposer } from './MobileNativeChatComposer'
@@ -283,9 +283,6 @@ export function MobileNativeChatView({
   // three-dot indicator.
   // The display status, decided once in the session hook.
   const stopping = turnIndicator?.stopping === true
-  // Only this phone's own request holds Stop: a repeat is how a stuck stop escalates.
-  const stopHeld = agentWorking === true && turnIndicator?.stopRequestInFlight === true
-  const stoppingCopy = NATIVE_CHAT_TURN_STATUS_COPY.stopping
   const turns = useMobileNativeChatTurnDisclosure({
     messages: data,
     enabled: structuredActivityUi,
@@ -430,16 +427,11 @@ export function MobileNativeChatView({
           </Pressable>
         </View>
         {canStop ? (
-          <Pressable
-            style={({ pressed }) => [styles.stopButton, pressed && styles.pressed]}
-            onPress={onStop}
-            disabled={stopHeld}
-            hitSlop={8}
-            accessibilityLabel={stopHeld ? stoppingCopy : 'Stop the agent'}
-          >
-            <Square size={13} color={colors.statusRed} strokeWidth={2.4} fill={colors.statusRed} />
-            <Text style={styles.stopLabel}>{stopHeld ? stoppingCopy : 'Stop'}</Text>
-          </Pressable>
+          // Only this phone's own request holds Stop: a repeat is how a stuck stop escalates.
+          <MobileNativeChatStopButton
+            onStop={onStop}
+            held={agentWorking === true && turnIndicator?.stopRequestInFlight === true}
+          />
         ) : null}
       </View>
       {sendErrorMessage ? (

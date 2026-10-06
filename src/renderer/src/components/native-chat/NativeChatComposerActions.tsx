@@ -89,7 +89,7 @@ export function NativeChatComposerActions({
             : translate('components.native-chat.stop', 'Stop the agent')
           : (sendReason ?? translate('components.native-chat.composer.send', 'Send'))
       }
-      disabled={sendDisabled}
+      disabled={sendDisabled || (isWorking && isStopping)}
       onClick={handleCriticalAction}
       variant={isWorking ? 'secondary' : 'default'}
       size="icon"
