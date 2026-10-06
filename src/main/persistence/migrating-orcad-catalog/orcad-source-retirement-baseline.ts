@@ -81,9 +81,11 @@ function diffRows(before: PersistedState, after: PersistedState): OrcadRetiremen
     digests.add(digestOf(value))
     rows.set(path, digests)
   }
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    const left: unknown = Reflect.get(before, key)
-    const right: unknown = Reflect.get(after, key)
+  const beforeFields = new Map<string, unknown>(Object.entries(before))
+  const afterFields = new Map<string, unknown>(Object.entries(after))
+  for (const key of new Set([...beforeFields.keys(), ...afterFields.keys()])) {
+    const left = beforeFields.get(key)
+    const right = afterFields.get(key)
     if (key === 'workspaceSession') {
       // Why no partition in the path: a stale copy saved into another partition is the same row.
       diffValue('session', left, right, MAX_DEPTH, record)
