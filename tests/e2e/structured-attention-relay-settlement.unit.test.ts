@@ -30,7 +30,7 @@ import { useAppStore } from '@/store'
 import { StructuredAgentSessionAttentionBridge } from '@/components/native-chat/StructuredAgentSessionAttentionBridge'
 
 /** A remote-host chat this desktop relays to its own phones while the user is away. */
-async function mountRemoteRelay(options?: { promptStatus?: false }) {
+async function mountRemoteRelay(options?: { promptStatus?: false; raise?: false }) {
   const relayDirectory = join(fixture.directory, 'relay')
   const relay = new RuntimeMobileNotificationController()
   relay.configureDismissalStore(relayDirectory)
@@ -110,6 +110,9 @@ async function mountRemoteRelay(options?: { promptStatus?: false }) {
     new MobileNotificationDismissalStore(relayDirectory)
       .liveDeliveries()
       .filter((entry) => entry.structuredOrigin?.cause.kind === kind)
+  if (options?.raise === false) {
+    return { live }
+  }
   act(() => {
     addPrompt('A')
     if (options?.promptStatus !== false) {
@@ -131,10 +134,10 @@ function revise(update: (item: AgentJournalRenderItem) => AgentJournalRenderItem
   })
 }
 
-const resolveA =
-  (state: 'resolved' | 'cancelled') =>
+const resolvePrompt =
+  (id: string, state: 'resolved' | 'cancelled') =>
   (item: AgentJournalRenderItem): AgentJournalRenderItem =>
-    item.itemId === 'A' && item.body.kind === 'approval'
+    item.itemId === id && item.body.kind === 'approval'
       ? {
           ...item,
           body: {
@@ -148,6 +151,8 @@ const resolveA =
           }
         }
       : item
+
+const resolveA = (state: 'resolved' | 'cancelled') => resolvePrompt('A', state)
 
 const interrupt = (item: AgentJournalRenderItem): AgentJournalRenderItem =>
   item.body.kind === 'turn'
@@ -288,4 +293,62 @@ it('retries a settlement that failed on the next qualifying row', async () => {
   })
   await waitFor(() => expect(relay.live('prompt')).toEqual([]))
   expect(transport.settle).toHaveBeenCalledTimes(2)
+})
+
+it('settles a prompt answered while the previous settle call was still out', async () => {
+  const relay = await mountRemoteRelay()
+  const reconcile = transport.settle.getMockImplementation()
+  const replies: (() => void)[] = []
+  // Main reconciles on arrival; only the reply is late.
+  transport.settle.mockImplementation((scope: AgentSessionExecutionLocation, id: string) => {
+    void reconcile?.(scope, id)
+    return new Promise<void>((resolve) => replies.push(resolve))
+  })
+  act(() => {
+    revise(resolveA('resolved'))
+    fixture.hostFeed.observe(SESSION)
+    publishStatus()
+  })
+  await waitFor(() => expect(replies).toHaveLength(1))
+  act(() => {
+    addPrompt('B')
+    publishStatus()
+  })
+  await waitFor(() => expect(relay.live('prompt')).toHaveLength(1))
+  act(() => {
+    revise(resolvePrompt('B', 'resolved'))
+    fixture.hostFeed.observe(SESSION)
+    publishStatus()
+  })
+  await act(async () => {})
+  expect(replies).toHaveLength(1)
+  // The host goes quiet; the reply alone must re-judge the mirror.
+  await act(async () => replies[0]?.())
+  await waitFor(() => expect(relay.live('prompt')).toEqual([]))
+})
+
+it('settles a prompt whose edge arrives after its own resolution row', async () => {
+  const relay = await mountRemoteRelay({ raise: false })
+  const deliver = fixture.completion
+  const held: Parameters<NonNullable<typeof deliver>>[0][] = []
+  fixture.completion = (response) => held.push(response)
+  act(() => {
+    addPrompt('A')
+    publishStatus()
+    revise(resolveA('resolved'))
+    fixture.hostFeed.observe(SESSION)
+    publishStatus()
+  })
+  fixture.completion = deliver
+  act(() => held.forEach((response) => deliver?.(response)))
+  await waitFor(() =>
+    expect(
+      transport.dispatch.mock.calls.some(
+        ([request]: [NotificationDispatchRequest]) =>
+          request.structuredOrigin?.cause.kind === 'prompt'
+      )
+    ).toBe(true)
+  )
+  await waitFor(() => expect(relay.live('prompt')).toEqual([]))
+  expect(transport.settle).toHaveBeenCalledOnce()
 })

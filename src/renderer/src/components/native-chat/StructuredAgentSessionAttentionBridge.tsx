@@ -19,6 +19,7 @@ import { getStructuredAgentSessionStatusFeed } from '@/runtime/structured-agent-
 import { acknowledgeStructuredAgentSessionAttention } from '@/runtime/structured-agent-session-client'
 import type { AgentJournalCursor } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionExecutionLocation } from '../../../../shared/agent-session-record'
+import type { AgentSessionStatusSummary } from '../../../../shared/agent-session-wire'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import {
   dispatchStructuredPromptAttention,
@@ -63,6 +64,7 @@ function StructuredAgentSessionOwnedAttention({
   const relayedPrompt = useRef<
     { scope: AgentSessionExecutionLocation; raisedAt: number } | undefined
   >(undefined)
+  const settleRelayedPrompt = useRef<() => void>(() => {})
   useEffect(() => {
     let lastAttempt: { observationKey: string } | undefined
     const stopCapture = registerAgentSubjectReadCapture(paneKey, (intent) => {
@@ -166,6 +168,8 @@ function StructuredAgentSessionOwnedAttention({
                 ? read
                 : undefined
             })
+            // Its own resolution may already be mirrored; the relay above is already in main.
+            settleRelayedPrompt.current()
           }
         } else if (edge.completion.sessionId === tab.entityId) {
           dispatchStructuredTurnCompletionAttention(tab, edge.completion, target)
@@ -177,18 +181,19 @@ function StructuredAgentSessionOwnedAttention({
     if (target.kind !== 'environment') {
       return undefined
     }
-    // Status and edges ride separate sockets, so only a row the host dated after the prompt counts:
-    // `updatedAt` is the journal's latest row time and never decreases; `raisedAt` is the same
-    // host clock when the prompt was announced. Only a live mirror is evidence.
+    // Separate sockets: settle on a live row dated after the prompt; updatedAt only rises per epoch.
     const status = getStructuredAgentSessionStatusFeed(target)
     let settling = false
-    const stopListening = status.subscribe(() => {
+    // A rejected settle is retried only once the mirror holds a different row.
+    let rejectedRow: AgentSessionStatusSummary | undefined
+    const settle = (): void => {
       const owed = relayedPrompt.current
       const summary = status.getSnapshot().get(tab.entityId)
       if (
         settling ||
         !owed ||
         !summary ||
+        summary === rejectedRow ||
         summary.status === 'attention' ||
         summary.updatedAt <= owed.raisedAt ||
         status.getSessionObservation(tab.entityId) !== 'live'
@@ -201,23 +206,29 @@ function StructuredAgentSessionOwnedAttention({
       )
         .then(
           () => {
-            // A prompt relayed meanwhile keeps its own claim; a failure retries on the next row.
+            // A prompt relayed meanwhile keeps its own claim.
             if (relayedPrompt.current === owed) {
               relayedPrompt.current = undefined
             }
           },
           (error: unknown) => {
+            rejectedRow = summary
             console.warn('[structured-session-attention] relayed prompt settlement failed', error)
           }
         )
         .finally(() => {
           settling = false
+          // Rows that landed during the call were skipped; judge the mirror as it is now.
+          settle()
         })
-    })
+    }
+    settleRelayedPrompt.current = settle
+    const stopListening = status.subscribe(settle)
     const release = status.activate()
     return () => {
       stopListening()
       release()
+      settleRelayedPrompt.current = () => {}
       relayedPrompt.current = undefined
     }
   }, [tab.entityId, target])
