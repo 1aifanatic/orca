@@ -159,6 +159,7 @@ vi.mock('./use-native-chat-send-lifecycle', () => ({
 }))
 
 import { NativeChatComposer } from './NativeChatComposer'
+import { sendRuntimePtyInput } from '@/runtime/runtime-terminal-inspection'
 
 describe('NativeChatComposer', () => {
   beforeEach(() => {
@@ -266,6 +267,22 @@ describe('NativeChatComposer', () => {
     // Answered: Stop is back, and the placeholder says a message sent now runs after the stop.
     rerender(<NativeChatComposer {...props} afterStop="send" />)
     expect(mocks.fieldProps).toMatchObject({ sendButtonDisabled: false, afterStop: 'send' })
+  })
+
+  it('writes nothing from a composer hidden under a prompt card that still holds focus', () => {
+    render(
+      <NativeChatComposer
+        terminalTabId="tab-1"
+        paneKey="tab-1:leaf-1"
+        targetPtyId="pty-1"
+        agent="claude"
+        inputOwnedByCard
+      />
+    )
+    act(() => mocks.fieldProps?.onSend?.())
+    act(() => mocks.fieldProps?.onStop?.())
+    expect(mocks.sendNativeChatMessage).not.toHaveBeenCalled()
+    expect(sendRuntimePtyInput).not.toHaveBeenCalled()
   })
 
   it('associates a delayed submit with its optimistic cache entry', () => {
