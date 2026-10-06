@@ -33,8 +33,6 @@ export function writeNativeChatDraftCache(
   )
 }
 
-export { appendNativeChatDraftText } from './native-chat-composer-draft-addition'
-
 // Why: a composer mid-IME-composition keeps showing what it had, so it is told what was appended.
 const appendListeners = new Map<string, Set<(text: string, previous: string) => void>>()
 
@@ -47,33 +45,24 @@ export function appendNativeChatDraftCache(scopeKey: string, text: string): bool
   const previous = readNativeChatDraftCache(scopeKey)
   // Durable now: the copy it came from (an outbox entry, a queued card) goes right after this.
   const durable = appendToNativeChatComposerDraft(scopeKey, { text })
-  appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
+  // Why: a repeat adds nothing; told of it, a composer mid-composition would append it again.
+  if (readNativeChatDraftCache(scopeKey) !== previous) {
+    appendListeners.get(scopeKey)?.forEach((listener) => listener(text, previous))
+  }
   return durable
-}
-
-/** Whether the draft already ends with `returned` as its own paragraph. */
-function draftEndsWith(draft: string, returned: string): boolean {
-  const held = draft.trimEnd()
-  return held === returned || held.endsWith(`\n\n${returned}`)
 }
 
 /**
  * Hands text Orca could not deliver back to the person, with or without a composer showing it.
- * True when its addition is durable now, so the copy it came from may go; false leaves that to the
- * scope's next confirmed write (nothing was added, or the journal couldn't take it). Why skipped when the draft already ends
- * with it: a hand-back can repeat (a crash before its copy was removed, two windows settling one
- * message), and the person must see it once. Only the end counts, so text that merely appears
- * inside a longer draft still comes back; two identical messages returned one after the other come
- * back as one, as in the common pattern. Read against the loaded drafts: the caller waits for the
- * startup load, since an addition made before it is applied again to the loaded draft.
+ * True once the draft durably holds it, so the copy it came from may go; false leaves that to the
+ * scope's next confirmed write. The shared returned-text rule adds nothing when the draft already
+ * ends with it, so a repeated hand-back (a crash before its copy was removed, two windows settling
+ * one message) shows once. Read against the loaded drafts: the caller waits for the startup load.
  */
 export function returnNativeChatDraftText(scopeKey: string, text: string): boolean {
   // Only the end is trimmed, as a send trims it: a first line's indentation is part of the text.
   const returned = text.trimEnd()
-  if (returned.trim() === '' || draftEndsWith(readNativeChatDraftCache(scopeKey), returned)) {
-    return false
-  }
-  return appendNativeChatDraftCache(scopeKey, returned)
+  return returned.trim() === '' || appendNativeChatDraftCache(scopeKey, returned)
 }
 
 export function subscribeToNativeChatDraftAppend(

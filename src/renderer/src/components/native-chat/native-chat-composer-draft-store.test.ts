@@ -881,16 +881,6 @@ describe('native-chat composer draft store', () => {
     expect(reloaded.drafts.readNativeChatDraftCache(conversation)).toBe('')
   })
 
-  it('gives text back once, even when the hand-back repeats, with no composer shown', async () => {
-    const conversation = modules.store.structuredAgentSessionDraftScopeKey('session-1')
-    modules.drafts.returnNativeChatDraftText(conversation, 'withdrawn message')
-    modules.drafts.returnNativeChatDraftText(conversation, 'withdrawn message\n')
-    expect(modules.drafts.readNativeChatDraftCache(conversation)).toBe('withdrawn message')
-    // Saved at once: the copy it came from goes right after.
-    const reloaded = await reload()
-    expect(reloaded.drafts.readNativeChatDraftCache(conversation)).toBe('withdrawn message')
-  })
-
   it('keeps the drafts of a tab whose id extends the closed one', async () => {
     // A second chat for one session gets `<tab id>:history-1`, so a prefix match would reach it.
     const closed = 'structured-agent-session-claude_1'

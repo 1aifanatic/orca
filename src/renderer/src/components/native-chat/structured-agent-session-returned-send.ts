@@ -13,8 +13,8 @@ import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 
 /**
  * Gives a message's text and images back to its conversation's draft. The append skips text and
- * images already there, so a repeat adds nothing. True when everything the message holds was just
- * added durably; false leaves the copy's removal to the draft's next confirmed write.
+ * images already there, so a repeat adds nothing. True when the draft durably holds everything the
+ * message holds; false leaves the copy's removal to the draft's next confirmed write.
  */
 export function returnStructuredAgentSessionMessage(
   entry: StructuredAgentSessionOutboxEntry

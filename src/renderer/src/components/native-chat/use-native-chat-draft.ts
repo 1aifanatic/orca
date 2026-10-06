@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { appendReturnedDraftText } from '../../../../shared/returned-draft-text'
 import { subscribeToNativeChatComposerDraft } from './native-chat-composer-draft-store'
 import {
-  appendNativeChatDraftText,
   readNativeChatDraftCache,
   subscribeToNativeChatDraftAppend,
   writeNativeChatDraftCache
@@ -54,7 +54,7 @@ export function useNativeChatDraft(
         updateHold({
           scopeKey,
           shown: held ? held.shown : previous,
-          appended: held ? appendNativeChatDraftText(held.appended, text) : text
+          appended: held ? appendReturnedDraftText(held.appended, text) : text
         })
       }),
     [isComposing, scopeKey, updateHold]
@@ -71,7 +71,7 @@ export function useNativeChatDraft(
       }
       writeNativeChatDraftCache(
         scopeKey,
-        held ? appendNativeChatDraftText(resolved, held.appended) : resolved,
+        held ? appendReturnedDraftText(resolved, held.appended) : resolved,
         options
       )
     },

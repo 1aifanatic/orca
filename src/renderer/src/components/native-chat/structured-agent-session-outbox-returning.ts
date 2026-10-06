@@ -3,9 +3,9 @@
 // only then leaves and says it ended (which clears the notes it carried). Drafts are saved
 // asynchronously, so removing the copy first could lose the text in a crash. A returning entry is
 // never sent again: its id proved no record, so a resend would be a new first send. On load, one
-// still marked re-runs its hand-back, which the draft's suffix rule and image id check make safe to
-// repeat. A refused save keeps it until a later save of that draft lands in this run, or the next
-// load.
+// still marked re-runs its hand-back, which the shared returned-text rule and image id check make
+// safe to repeat. A refused save keeps it until a later save of that draft lands in this run, or
+// the next load.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {

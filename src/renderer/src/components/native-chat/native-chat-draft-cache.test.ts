@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   appendNativeChatDraftCache,
-  appendNativeChatDraftText,
   clearNativeChatDraftCacheForTests,
   readNativeChatDraftCache,
   returnNativeChatDraftText,
@@ -45,10 +44,12 @@ describe('native-chat draft cache', () => {
   })
 
   it('appends after a blank line, treating a whitespace-only draft as empty', () => {
-    expect(appendNativeChatDraftText('typed  \n', 'given back')).toBe('typed\n\ngiven back')
-    expect(appendNativeChatDraftText('', 'given back')).toBe('given back')
-    expect(appendNativeChatDraftText(' \n\t', 'given back')).toBe('given back')
-    writeNativeChatDraftCache('pane', '  ')
+    writeNativeChatDraftCache('typed', 'typed  \n')
+    appendNativeChatDraftCache('typed', 'given back')
+    expect(readNativeChatDraftCache('typed')).toBe('typed\n\ngiven back')
+    appendNativeChatDraftCache('empty', 'given back')
+    expect(readNativeChatDraftCache('empty')).toBe('given back')
+    writeNativeChatDraftCache('pane', ' \n\t')
     appendNativeChatDraftCache('pane', 'given back')
     expect(readNativeChatDraftCache('pane')).toBe('given back')
   })
@@ -76,6 +77,9 @@ describe('returnNativeChatDraftText', () => {
     expect(readNativeChatDraftCache('agent-session:s1')).toBe(
       'use the other algorithm and go\n\ngo'
     )
+    writeNativeChatDraftCache('agent-session:s1', 'please go')
+    returnNativeChatDraftText('agent-session:s1', 'go')
+    expect(readNativeChatDraftCache('agent-session:s1')).toBe('please go\n\ngo')
     writeNativeChatDraftCache('agent-session:s1', 'yes\n\nthen run the tests')
     returnNativeChatDraftText('agent-session:s1', 'yes')
     expect(readNativeChatDraftCache('agent-session:s1')).toBe('yes\n\nthen run the tests\n\nyes')
