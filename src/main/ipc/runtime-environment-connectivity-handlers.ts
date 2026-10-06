@@ -32,6 +32,7 @@ import {
   callRuntimeEnvironment,
   getRuntimeEnvironmentStatus
 } from './runtime-environment-transport-routing'
+import { publicRuntimeEnvironmentWithHostKey } from './runtime-environment-host-key'
 
 function manuallyDisconnectedResponse(
   environment: ReturnType<typeof resolveEnvironment>
@@ -64,7 +65,7 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
     getRuntimeEnvironmentStatusSnapshots()
   )
   ipcMain.handle('runtimeEnvironments:list', () =>
-    listEnvironments(getUserDataPath()).map(redactRuntimeEnvironment)
+    listEnvironments(getUserDataPath()).map(publicRuntimeEnvironmentWithHostKey)
   )
   ipcMain.handle(
     'runtimeEnvironments:addFromPairingCode',
