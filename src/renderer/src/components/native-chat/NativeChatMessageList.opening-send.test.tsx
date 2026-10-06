@@ -142,7 +142,6 @@ function frame(
       workingStartedAt={NOW}
       stopping={stopping}
       expandSignal={false}
-      fontScale={1}
     />
   )
 }
