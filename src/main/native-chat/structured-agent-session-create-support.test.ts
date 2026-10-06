@@ -81,6 +81,19 @@ describe('resolveStructuredAgentSessionCreateSupport', () => {
     })
   })
 
+  // Command values never change the selected chat surface.
+  it.each([
+    ['claude', 'claude-wrapper'],
+    ['codex', 'codex-nightly'],
+    ['claude', 'npx claude'],
+    ['codex', 'wrapper --arg'],
+    ['claude', '/missing/claude'],
+    ['codex', './codex']
+  ] as const)('supports %s when this host sets launch command %s', (agent, command) => {
+    const settings = { ...HOST_SELECTED, agentCmdOverrides: { [agent]: command } }
+    expect(support({ agent, getSettings: () => settings })).toEqual({ supported: true })
+  })
+
   it('supports Claude with System Default on the host while a WSL sign-in exists, under profiles', () => {
     const draft = { ...managedAccount('wsl-draft', 'wsl'), email: '', wslDistro: 'Ubuntu' }
     expect(

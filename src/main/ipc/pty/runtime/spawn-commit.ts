@@ -29,6 +29,7 @@ import { resolvePaneSpawnReservation } from '../pane/spawn-reservation'
 import { admitProviderReattachLaunchIdentity } from '../pane/launch-authority'
 import { spawnCommitBindingOrigin } from '../../../persistence/loading-store/pty-binding-span'
 import type { RuntimePtySpawnState } from './spawn-state'
+import { commitPtyWithOpenCodePromptIntent } from '../../../opencode/opencode-startup-prompt-owner'
 import {
   admitPtyReattachOwnership,
   discardUnpersistedPtySpawn,
@@ -36,6 +37,10 @@ import {
 } from '../pane/spawn-registration'
 
 export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
+  return commitPtyWithOpenCodePromptIntent(ctx, () => commitReservedRuntimePtySpawn(ctx))
+}
+
+async function commitReservedRuntimePtySpawn(ctx: RuntimePtySpawnState) {
   const args = ctx.args
   admitPtyReattachOwnership(ctx.deps.runtime, ctx.result, args.connectionId)
   const providerReattachLaunchIdentity = admitProviderReattachLaunchIdentity(ctx.result)
@@ -204,6 +209,7 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
   if (ctx.result.incarnationId) {
     ptyIncarnationById.set(ctx.result.id, ctx.result.incarnationId)
   }
+
   claimSshPaneLease({
     store: ctx.deps.store,
     connectionId: args.connectionId,
@@ -222,7 +228,6 @@ export async function commitRuntimePtySpawn(ctx: RuntimePtySpawnState) {
     isReattach: ctx.result.isReattach === true,
     pinnedByResume: ctx.codexResumeHomeSelected,
     launchCodexHomePath: ctx.selectedCodexHomePath,
-    launchEnv: args.env,
     target: ctx.codexSelectionTarget,
     settings: ctx.deps.getSettings?.()
   })

@@ -11,6 +11,10 @@ import {
   assertLegacyAiVaultResumeCommandAllowed,
   projectStructuredAiVaultSessions
 } from './structured-session-ownership'
+import {
+  claudeProviderHandle,
+  codexProviderHandle
+} from '../../shared/agent-session-provider-handle-encoding'
 
 const PROVIDER_SESSION = '019fd532-7c11-7a90-b6de-4e1a2c3d5f60'
 
@@ -26,6 +30,51 @@ describe('structured AI Vault ownership', () => {
       structuredSession: { sessionId: 'session-alpha', workspaceId: 'workspace-1' }
     })
   })
+
+  it('uses the owning record name while leaving an unowned row alone', () => {
+    installOwnership({ conversationName: 'auth/login' })
+    const result = listResult()
+    const unowned = { ...result.sessions[0]!, sessionId: 'different-session', title: 'Original' }
+    const projected = projectStructuredAiVaultSessions(
+      { ...result, sessions: [...result.sessions, unowned] },
+      true
+    )
+    expect(projected.sessions[0]?.title).toBe('auth/login')
+    expect(projected.sessions[1]).toBe(unowned)
+  })
+
+  it.each(['claude', 'codex'] as const)(
+    'keeps an unnamed %s chat at its ordinary label',
+    (provider) => {
+      installOwnership({ provider })
+      const result = listResult()
+      result.sessions = result.sessions.map((session) => ({
+        ...session,
+        agent: provider,
+        title: 'First prompt'
+      }))
+      expect(projectStructuredAiVaultSessions(result, true).sessions[0]?.title).toBe(
+        provider === 'claude' ? 'Claude Chat' : 'Codex Chat'
+      )
+    }
+  )
+
+  it.each(['ssh:remote', 'runtime:paired'] as const)(
+    'never applies local ownership to a same-ID %s row',
+    (executionHostId) => {
+      installOwnership({ conversationName: 'Local name' })
+      const local = listResult()
+      const remote = {
+        ...local.sessions[0]!,
+        id: 'remote-row',
+        executionHostId,
+        title: 'Remote name'
+      }
+      const merged = { ...local, sessions: [...local.sessions, remote] }
+      expect(projectStructuredAiVaultSessions(merged, true).sessions[1]).toBe(remote)
+      expect(projectStructuredAiVaultSessions(merged, false).sessions).toEqual([remote])
+    }
+  )
 
   it('derives typed refusals from the single writer predicate for live and proving leases', async () => {
     installOwnership()
@@ -93,6 +142,7 @@ function installOwnership(overrides: Partial<StructuredProviderSessionOwnership>
     ...overrides
   }
   const record = agentSessionRecordFixture(ownership.lease)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the ownership read touches only `deps.store.listRecords`; the rest of the host is never reached.
   setStructuredAgentSessionHost({
     deps: {
       store: {
@@ -105,10 +155,14 @@ function installOwnership(overrides: Partial<StructuredProviderSessionOwnership>
             providerHandleChain: [
               {
                 ...record.providerHandleChain[0]!,
-                handle: { provider: ownership.provider, threadId: ownership.providerSessionId }
+                handle:
+                  ownership.provider === 'claude'
+                    ? claudeProviderHandle(ownership.providerSessionId, null)
+                    : codexProviderHandle(ownership.providerSessionId)
               }
             ],
-            lease: { ...ownership.lease, sessionId: ownership.sessionId }
+            lease: { ...ownership.lease, sessionId: ownership.sessionId },
+            ...(ownership.conversationName ? { conversationName: ownership.conversationName } : {})
           }
         ]
       }

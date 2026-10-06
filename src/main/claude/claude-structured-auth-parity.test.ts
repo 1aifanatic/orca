@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { CLAUDE_AUTH_ENV_CONFLICT_MESSAGE } from '../claude-accounts/environment'
-import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { createClaudeStructuredLaunchResolver } from './claude-structured-launch-resolution'
 
 const SESSION_ID = 'orca-session-auth'
@@ -30,7 +29,8 @@ function resolverFor(options: {
   overlay?: Record<string, string>
 }): ReturnType<typeof createClaudeStructuredLaunchResolver> {
   return createClaudeStructuredLaunchResolver({
-    store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+    resolveLaunchArgs: () => [],
+    store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveAuthPolicy: () => ({ stripAuthEnv: options.stripAuthEnv }),

@@ -37,11 +37,17 @@ describe('account RPC methods', () => {
 
   it.each([
     ['accounts.addCodexFromHome', { sourceHome: join(tmpdir(), 'codex-login') }, /only available/],
+    [
+      'accounts.addDataFromHome',
+      { provider: 'opencode', sourceDataHome: join(tmpdir(), 'login'), label: 'Work' },
+      /only available/
+    ],
     ['accounts.beginClaudeSignIn', {}, /Sign in on the Orca execution host/],
     ['accounts.finishClaudeSignIn', { accountId: 'a' }, /Sign in on the Orca execution host/]
   ] as const)('rejects paired-device calls to %s', async (methodName, params, refusal) => {
     const runtime = {
       addCodexAccountFromHome: vi.fn(),
+      addDataAccountFromHome: vi.fn(),
       beginClaudeSignIn: vi.fn(),
       finishClaudeSignIn: vi.fn()
     }
@@ -58,6 +64,7 @@ describe('account RPC methods', () => {
       ).rejects.toThrow(refusal)
     }
     expect(runtime.addCodexAccountFromHome).not.toHaveBeenCalled()
+    expect(runtime.addDataAccountFromHome).not.toHaveBeenCalled()
     expect(runtime.beginClaudeSignIn).not.toHaveBeenCalled()
     expect(runtime.finishClaudeSignIn).not.toHaveBeenCalled()
   })
