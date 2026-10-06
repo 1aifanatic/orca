@@ -1,7 +1,6 @@
 // A Stop found with no turn running can wait for one to open and interrupt it. Taken, its note is
 // the turn the provider says it took; refused, the row stays with the conversation, as before.
 
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
