@@ -22,6 +22,11 @@ export function annotateJavascriptParityFiles(root, files) {
       .filter(([, entries]) => entries.size === 1)
       .map(([stem, entries]) => [[...entries][0], stem])
   )
+  const references = new RegExp(
+    [...replacements.keys()].map((name) => name.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&')).join('|') ||
+      '(?!)',
+    'g'
+  )
   return files.map((file) => {
     const name = basename(file.path)
     const comparablePath = replacements.has(name)
@@ -30,15 +35,28 @@ export function annotateJavascriptParityFiles(root, files) {
     if (!/\.(?:js|css|html|json)$/.test(file.path)) {
       return { ...file, comparablePath, comparableSha256: file.sha256 }
     }
-    const content = readFileSync(join(root, file.path), 'utf8').replace(
-      /[\w.-]+-[\w-]{8}\.(?:js|css)/g,
+    let content = readFileSync(join(root, file.path), 'utf8').replace(
+      references,
       (name) => replacements.get(name) ?? name
     )
+    const manifest = file.path === 'renderer/.vite/manifest.json'
+    if (manifest) {
+      content = JSON.stringify(JSON.parse(content), (_, value) =>
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? Object.fromEntries(
+              Object.entries(value).sort(([left], [right]) =>
+                left < right ? -1 : left > right ? 1 : 0
+              )
+            )
+          : value
+      )
+    }
     return {
       ...file,
       comparablePath,
       comparableSha256: createHash('sha256').update(content).digest('hex'),
-      ...(file.path.endsWith('.css') ? { css: content } : {})
+      ...(file.path.endsWith('.css') ? { css: content } : {}),
+      ...(manifest ? { manifest: content } : {})
     }
   })
 }

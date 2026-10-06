@@ -94,3 +94,23 @@ it('keeps ambiguous asset names and portable binary files exact', () => {
     )
   ).toEqual(['renderer/viewer.wasm'])
 })
+
+it('compares manifest keys without ordering differences while preserving import array order', () => {
+  const before = inventory({
+    'renderer/assets/index-AAAAAAAA.js': 'run()',
+    'renderer/.vite/manifest.json':
+      '{"_index-AAAAAAAA.js":{"imports":["a","b"],"file":"assets/index-AAAAAAAA.js"},"entry":1}'
+  })
+  const after = inventory({
+    'renderer/assets/index-BBBBBBBB.js': 'run()',
+    'renderer/.vite/manifest.json':
+      '{"entry":1,"_index-BBBBBBBB.js":{"file":"assets/index-BBBBBBBB.js","imports":["a","b"]}}'
+  })
+  expect(compareJavascriptParityFiles(before, after)).toEqual([])
+  const changed = inventory({
+    'renderer/assets/index-BBBBBBBB.js': 'run()',
+    'renderer/.vite/manifest.json':
+      '{"entry":1,"_index-BBBBBBBB.js":{"file":"assets/index-BBBBBBBB.js","imports":["b","a"]}}'
+  })
+  expect(compareJavascriptParityFiles(before, changed)).toEqual(['renderer/.vite/manifest.json'])
+})
