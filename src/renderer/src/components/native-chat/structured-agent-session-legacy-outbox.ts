@@ -1,7 +1,8 @@
 // Older builds kept each chat's unsent messages in localStorage and sent them on their own. Nothing
 // sends from that copy any more: the first time a chat opens, each message there that its host does
 // not hold goes back to the chat's composer, and the copy is deleted once that is saved.
-// Temporary: remove once builds that wrote the copy have aged out.
+// Temporary: builds up to v1.4.221 wrote the copy. In the first release on or after 2027-04-01,
+// replace this read with a one-time removal of every key under the prefix.
 
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type {

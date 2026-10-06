@@ -61,7 +61,6 @@ vi.mock('./use-structured-agent-session-sends', () => ({
   useStructuredAgentSessionSends: () => ({
     pending: [],
     error: null,
-    clearError: vi.fn(),
     send: mocks.outboxSend,
     stopSends: vi.fn()
   })

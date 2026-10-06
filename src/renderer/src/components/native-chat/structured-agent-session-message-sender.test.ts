@@ -613,6 +613,45 @@ describe('structured agent session message sender', () => {
     expect(mocks.handBack).not.toHaveBeenCalled()
   })
 
+  // A card owns the text from the moment the host holds it, whatever happens to the card after.
+  it.each([
+    ['refused', { rejection: { kind: 'notSignedIn' } }],
+    ['withdrawn by a Stop', { rejection: { kind: 'cancelled' } }]
+  ] as const)(
+    'never hands back a queue send whose card was handed off and then %s',
+    async (_how, fate) => {
+      const calls = deferredCalls()
+      const a = send('a', { delivery: 'queue-if-active' })
+      await flush()
+      settleStructuredAgentSessionSendsFromJournal(
+        SESSION,
+        [submission('hand-off', 'rejected', { queuedMessageId: a.clientMessageId, ...fate })],
+        []
+      )
+      expect(await a.outcome).toBe('recorded')
+      calls[0].reject(new Error('timeout'))
+      await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+      expect(mocks.handBack).not.toHaveBeenCalled()
+      expect(sendCalls()).toBe(1)
+    }
+  )
+
+  it('reads a replay naming a card the host withdrew as recorded, never handed back', async () => {
+    mocks.call.mockImplementation(async (_target, _method, params) => ({
+      ok: true,
+      replayed: true,
+      fence: 1,
+      cursor: { epoch: 'e', sequence: 1 },
+      value: {
+        clientMessageId: params.envelope.clientOperationId,
+        queued: { messageId: params.envelope.clientOperationId, position: 0, state: 'withdrawn' }
+      }
+    }))
+    const a = send('a', { delivery: 'queue-if-active' })
+    expect(await a.outcome).toBe('recorded')
+    expect(mocks.handBack).not.toHaveBeenCalled()
+  })
+
   it('keeps the queue request fixed across resends of one id', async () => {
     mocks.call.mockRejectedValueOnce(new Error('timeout')).mockResolvedValue({
       ok: true,

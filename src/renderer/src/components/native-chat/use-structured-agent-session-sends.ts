@@ -12,7 +12,6 @@ import {
   stopStructuredAgentSessionSends
 } from './structured-agent-session-message-sender'
 import {
-  clearStructuredAgentSessionSendNotice,
   getStructuredAgentSessionPendingSends,
   getStructuredAgentSessionSendNotice,
   subscribeToStructuredAgentSessionPendingSends
@@ -101,7 +100,6 @@ export function useStructuredAgentSessionSends(args: {
     pending,
     /** Why the last message came back to the composer, until the next send. */
     error: notice,
-    clearError: () => clearStructuredAgentSessionSendNotice(sessionId),
     send,
     stopSends: () => stopStructuredAgentSessionSends(sessionId)
   }

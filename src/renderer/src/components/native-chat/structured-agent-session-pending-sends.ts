@@ -102,12 +102,6 @@ export function setStructuredAgentSessionSendNotice(sessionId: string, notice: s
   publishStructuredAgentSessionSends(sessionId, { notice })
 }
 
-export function clearStructuredAgentSessionSendNotice(sessionId: string): void {
-  if (sessions.get(sessionId)?.notice) {
-    publishStructuredAgentSessionSends(sessionId, { notice: null })
-  }
-}
-
 export function subscribeToStructuredAgentSessionPendingSends(
   sessionId: string,
   listener: () => void
