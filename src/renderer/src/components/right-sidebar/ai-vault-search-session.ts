@@ -29,7 +29,8 @@ export function aiVaultSearchHitToSession(
     queuedMessageCount: 0,
     subagentTranscriptCount: 0,
     resumeCommand: hit.resumeCommand ?? '',
-    subagent: null
+    subagent: null,
+    ...(hit.structuredSession ? { structuredSession: hit.structuredSession } : {})
   }
 }
 

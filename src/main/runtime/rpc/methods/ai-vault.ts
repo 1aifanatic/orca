@@ -15,6 +15,7 @@ import { describeAiVaultScanError } from '../../../../shared/ai-vault-scan-error
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import {
   assertLegacyAiVaultResumeAllowed,
+  projectStructuredAiVaultSearchResponse,
   projectStructuredAiVaultSessions
 } from '../../../ai-vault/structured-session-ownership'
 import { ensureStructuredAgentSessionHostUnlessRefused } from '../../structured-agent-session-host-refusal'
@@ -29,8 +30,17 @@ export const AI_VAULT_METHODS = [
   defineMethod({
     name: 'aiVault.searchSessions',
     params: AiVaultSearchRequestSchema,
-    handler: (params, { clientKind }) =>
-      searchSessionService(params, clientKind ? 'relay' : 'runtime')
+    handler: async (params, { runtime, clientKind, clientCapabilities }) => {
+      await ensureStructuredAgentSessionHostUnlessRefused(() =>
+        runtime.ensureStructuredAgentSessionHost()
+      )
+      const response = await searchSessionService(params, clientKind ? 'relay' : 'runtime')
+      // A client that cannot open the native owner keeps the transcript hit, as before.
+      return clientKind === undefined ||
+        clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY)
+        ? projectStructuredAiVaultSearchResponse(response)
+        : response
+    }
   }),
   defineMethod({
     name: 'aiVault.searchStatus',

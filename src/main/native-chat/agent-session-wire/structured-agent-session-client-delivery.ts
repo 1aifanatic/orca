@@ -11,10 +11,8 @@ import type {
 } from './structured-agent-session-host-types'
 import { AGENT_SESSION_NOT_ATTACHED } from './structured-agent-session-mutation-admission'
 import { StructuredAgentSessionSendSettlement } from './structured-agent-session-send-settlement'
-import {
-  createStructuredAgentSessionHostStatusFeed,
-  type StructuredAgentSessionStatusSubscriber
-} from './structured-agent-session-status-feed'
+import type { StructuredAgentSessionStatusSubscriber } from './structured-agent-session-status-feed'
+import { createStructuredAgentSessionHostStatusFeed } from './structured-agent-session-host-status-feed'
 import {
   StructuredAgentSessionTurnCompletionFeed,
   type StructuredAgentSessionTurnCompletionSubscriber
@@ -85,6 +83,9 @@ export class StructuredAgentSessionClientDelivery {
   }
 
   publishStatus = (sessionId: string): void => this.statusFeed.publish(sessionId)
+
+  publishConversationName = (sessionId: string): void =>
+    this.statusFeed.publishConversationName(sessionId)
 
   publishChildWork = (sessionId: string, evidence: AgentChildWorkEvidence[]): void =>
     this.statusFeed.publishChildWork(sessionId, evidence)
