@@ -1,4 +1,3 @@
-import type { NativeChatRewindSurface } from './use-native-chat-rewind'
 import {
   NATIVE_CHAT_TRANSCRIPT_OUTER_CLASS,
   NATIVE_CHAT_TRANSCRIPT_COLUMN_CLASS
@@ -88,8 +87,7 @@ export function NativeChatMessageList({
   deliveryNotices,
   awaitingInput = null,
   turnActivity,
-  runtimeContext,
-  rewind
+  runtimeContext
 }: {
   session: NativeChatLiveSession
   journalItems?: readonly AgentJournalRenderItem[]
@@ -114,7 +112,6 @@ export function NativeChatMessageList({
   awaitingInput?: NativeChatAwaitingInput | null
   turnActivity?: NativeChatTurnActivity | null
   runtimeContext?: RuntimeFileOperationArgs | null
-  rewind?: NativeChatRewindSurface
 }): React.JSX.Element {
   const [navigationRequest, setNavigationRequest] = useState<NativeChatNavigationRequest | null>(
     null
@@ -348,11 +345,9 @@ export function NativeChatMessageList({
       onToggleExpandedTurn: toggleExpandedTurn,
       subagentDisclosure,
       onScrollMessageToTop: scrollMessageToTop,
-      onRevealDiff: revealDiff,
-      rewind
+      onRevealDiff: revealDiff
     }),
     [
-      rewind,
       allowFileUriLinks,
       expandSignal,
       expandedTurnIds,

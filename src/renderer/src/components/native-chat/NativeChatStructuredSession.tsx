@@ -3,7 +3,7 @@ import {
   NATIVE_CHAT_APPEARANCE_ROOT_CLASS,
   useNativeChatAppearanceStyle
 } from './native-chat-appearance-style'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { agentSessionPromptQuestions } from '../../../../shared/agent-session-question-answer'
 import { dispatchStructuredAgentSessionComposerCommand } from '../../../../shared/structured-agent-session-composer'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
@@ -29,10 +29,9 @@ import { NativeChatStructuredSessionStatus } from './NativeChatStructuredSession
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
-import {
-  useStructuredAgentSessionHostExecutionPhase,
-  useStructuredAgentSessionRewindBlockedReason
-} from './StructuredAgentSessionStatusBridge'
+import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
+import { useNativeChatRewindHost } from './use-native-chat-rewind-host'
+import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -52,10 +51,6 @@ export function NativeChatStructuredSession(
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
-  const rewindBlockedReason = useStructuredAgentSessionRewindBlockedReason(
-    props.sessionId,
-    props.target
-  )
   const paneKey = useMemo(
     () => structuredAgentSessionPaneKey(props.tabId, props.sessionId),
     [props.sessionId, props.tabId]
@@ -63,20 +58,14 @@ export function NativeChatStructuredSession(
   // Chat-wide: absent means on; only an explicit off keeps mid-turn sends immediate.
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
   const composerRef = useRef<NativeChatComposerHandle>(null)
-  const focusComposer = useCallback(() => {
-    composerRef.current?.focus()
-  }, [])
+  const { rewindHost, focusComposer } = useNativeChatRewindHost(props, composerRef)
   const controller = useStructuredAgentSession({
     ...props,
     // Why: Stop and a queued card's Edit give text back to the conversation's draft, as the composer keeps it.
     composerScopeKey: structuredAgentSessionDraftScopeKey(props.sessionId),
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
-    rewind: {
-      hostBlockedReason: rewindBlockedReason,
-      onMessageReturned: focusComposer,
-      isVisible: props.isVisible
-    },
+    rewind: rewindHost,
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
@@ -291,27 +280,28 @@ export function NativeChatStructuredSession(
         ) : viewState.kind === 'empty' ? (
           <NativeChatEmptyState kind="empty" agent={props.agent} />
         ) : (
-          <NativeChatMessageList
-            // A rewind replaces the conversation; nothing the old transcript held carries over.
-            key={controller.epoch ?? undefined}
-            rewind={controller.rewind.surface}
-            session={session}
-            journalItems={controller.journalItems}
-            journalSubmissions={controller.submissions}
-            subagentRoster={controller.subagentRoster}
-            railOutline={controller.railOutline}
-            isVisible={props.isVisible}
-            isWorking={controller.isWorking}
-            expandSignal={false}
-            workingStartedAt={controller.workingStartedAt}
-            settledTurns={controller.settledTurns}
-            awaitingInput={prompt === null ? null : 'shown'}
-            turnActivity={controller.turnActivity}
-            onLinkClick={onLinkClick}
-            allowFileUriLinks={onLinkClick !== undefined}
-            runtimeContext={imageRuntimeContext}
-            deliveryNotices={deliveryNotices}
-          />
+          <NativeChatRewindContext.Provider value={controller.rewind.surface}>
+            <NativeChatMessageList
+              // A rewind replaces the conversation; nothing the old transcript held carries over.
+              key={controller.epoch ?? undefined}
+              session={session}
+              journalItems={controller.journalItems}
+              journalSubmissions={controller.submissions}
+              subagentRoster={controller.subagentRoster}
+              railOutline={controller.railOutline}
+              isVisible={props.isVisible}
+              isWorking={controller.isWorking}
+              expandSignal={false}
+              workingStartedAt={controller.workingStartedAt}
+              settledTurns={controller.settledTurns}
+              awaitingInput={prompt === null ? null : 'shown'}
+              turnActivity={controller.turnActivity}
+              onLinkClick={onLinkClick}
+              allowFileUriLinks={onLinkClick !== undefined}
+              runtimeContext={imageRuntimeContext}
+              deliveryNotices={deliveryNotices}
+            />
+          </NativeChatRewindContext.Provider>
         )}
       </div>
       {readFailedFinally ? null : (

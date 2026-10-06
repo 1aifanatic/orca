@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useContext } from 'react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { cn } from '@/lib/utils'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
@@ -12,7 +12,7 @@ import type { NativeChatSubagentDisclosure } from './native-chat-subagent-sectio
 import type { NativeChatTaskListPredecessors } from './native-chat-task-list-history'
 import type { NativeChatTranscriptSlot } from './native-chat-transcript-slots'
 import type { NativeChatDiffReveal, NativeChatDiffTarget } from './native-chat-turn-diffs'
-import type { NativeChatRewindSurface } from './use-native-chat-rewind'
+import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { nativeChatRowOffersRewind } from './native-chat-rewind-eligibility'
 
 /** Everything a row needs that is the same for every row. Held as one memoized
@@ -31,8 +31,6 @@ export type NativeChatTranscriptRowContext = {
   subagentDisclosure: NativeChatSubagentDisclosure
   onScrollMessageToTop: (element: HTMLElement) => void
   onRevealDiff: (target: NativeChatDiffTarget) => void
-  /** Offered on the conversation's own turn-opening prompts (`nativeChatRowOffersRewind`). */
-  rewind?: NativeChatRewindSurface
 }
 
 /** One transcript row: the message (or the receipt standing in for it), the turn
@@ -48,6 +46,8 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
   slot: NativeChatTranscriptSlot
   context: NativeChatTranscriptRowContext
 }): React.JSX.Element {
+  // Offered only on the conversation's own turn-opening prompts (`nativeChatRowOffersRewind`).
+  const rewind = useContext(NativeChatRewindContext)
   // A subagent's section is set off from the conversation it sits in.
   const sectionClassName = cn(
     slot.depth > 0 && 'border-l-2 border-border/60 pl-3',
@@ -119,7 +119,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           runtimeContext={context.runtimeContext}
           rewind={
             nativeChatRowOffersRewind(message, slot, deliveryNotice !== undefined)
-              ? context.rewind
+              ? rewind
               : undefined
           }
         />

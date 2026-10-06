@@ -16,6 +16,7 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import { projectStructuredAgentSessionMessages } from '../../../../shared/structured-agent-session-message-projection'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { installNativeChatMessageListTestViewport } from './native-chat-message-list-test-viewport'
 
@@ -88,27 +89,27 @@ describe('which transcript rows offer Edit from here', () => {
     ]
     render(
       <TooltipProvider>
-        <NativeChatMessageList
-          session={{
-            messages: projectStructuredAgentSessionMessages(items, [], submissions, {
-              rejectedInPlace: true
-            }),
-            status: 'ready',
-            sessionId: 'session-1',
-            agent: 'codex',
-            hasMore: false,
-            loadingEarlier: false,
-            olderHistoryGeneration: 0,
-            loadEarlier: vi.fn(),
-            readPhase: 'ready'
-          }}
-          journalItems={items}
-          journalSubmissions={submissions}
-          isWorking={false}
-          expandSignal={false}
-          fontScale={1}
-          rewind={{ disabledReason: null, request: vi.fn() }}
-        />
+        <NativeChatRewindContext.Provider value={{ disabledReason: null, request: vi.fn() }}>
+          <NativeChatMessageList
+            session={{
+              messages: projectStructuredAgentSessionMessages(items, [], submissions, {
+                rejectedInPlace: true
+              }),
+              status: 'ready',
+              sessionId: 'session-1',
+              agent: 'codex',
+              hasMore: false,
+              loadingEarlier: false,
+              olderHistoryGeneration: 0,
+              loadEarlier: vi.fn(),
+              readPhase: 'ready'
+            }}
+            journalItems={items}
+            journalSubmissions={submissions}
+            isWorking={false}
+            expandSignal={false}
+          />
+        </NativeChatRewindContext.Provider>
       </TooltipProvider>
     )
     expect(screen.getByText('Make it four')).toBeInTheDocument()
