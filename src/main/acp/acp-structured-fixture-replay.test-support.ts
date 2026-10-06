@@ -17,7 +17,9 @@ const messageSchema = z.object({
   method: z.string().optional(),
   params: z.unknown().optional(),
   result: z.unknown().optional(),
-  error: z.unknown().optional()
+  error: z
+    .object({ code: z.number(), message: z.string(), data: z.unknown().optional() })
+    .optional()
 })
 
 function promptIdOf(params: unknown): string | undefined {
