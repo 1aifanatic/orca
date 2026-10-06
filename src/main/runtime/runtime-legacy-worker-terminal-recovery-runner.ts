@@ -172,7 +172,7 @@ export async function runLegacyWorkerTerminalRecovery(
   }
   ports.updateRetry(plan, deferredDispatchIds, options)
   // Why: releases may only finish after the owning provider's terminals are rediscovered.
-  if (!options.retry || pendingResolutions.length > 0) {
+  if (!options.retry || pendingResolutions.length > 0 || ports.hasRequestedReleases()) {
     void ports.reconcileRequestedReleases().catch((error) => {
       console.warn('[orchestration] worker terminal release reconciliation failed', { error })
     })

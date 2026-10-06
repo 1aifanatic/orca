@@ -73,6 +73,26 @@ describe('RuntimeLegacyWorkerTerminalRecoveryController retry loop', () => {
     expect(reconcile).toHaveBeenCalledTimes(1)
   })
 
+  it.each([true, false])(
+    'retries requested releases only when a backlog exists (%s)',
+    async (hasBacklog) => {
+      const fixture = missingWorkspaceRecoveryFixture()
+      vi.spyOn(fixture.ports, 'hasRequestedReleases').mockReturnValue(hasBacklog)
+      const release = vi.spyOn(fixture.ports, 'reconcileRequestedReleases')
+      await fixture.controller.reconcile()
+      expect(release).toHaveBeenCalledTimes(1)
+      release.mockClear()
+
+      await vi.advanceTimersByTimeAsync(7_000)
+
+      expect(fixture.reconcile).toHaveBeenCalledTimes(3)
+      expect(release).toHaveBeenCalledTimes(hasBacklog ? 3 : 0)
+      expect(fixture.persist).not.toHaveBeenCalled()
+      expect(fixture.reconcileMissing).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(1)
+    }
+  )
+
   it('stops a controller retry loop once its scopes are cancelled', async () => {
     const { controller, reconcile } = armedController()
 

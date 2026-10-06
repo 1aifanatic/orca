@@ -74,6 +74,7 @@ export type LegacyWorkerRecoveryPorts = {
   ) => void
   canRecoverPersistentLocalPtys: () => boolean
   isTerminalProvenAbsent?: (candidate: LegacyWorkerRecoveryCandidate) => Promise<boolean>
+  hasRequestedReleases: () => boolean
   reconcileRequestedReleases: () => Promise<unknown>
   reconcile: (options: LegacyWorkerRecoveryOptions) => Promise<LegacyWorkerTerminalRecoveryResult>
   updateRetry: (

@@ -82,6 +82,38 @@ describe('settled assignment worker recovery', () => {
     expect(db.getTask(taskId)?.status).toBe('completed')
   })
 
+  it('bounds the release backlog probe without truncating actual release reconciliation', () => {
+    const first = worker('term_first')
+    const second = worker('term_second')
+    worker('term_not_requested')
+    db.db
+      .prepare(
+        `UPDATE worker_terminal_resources SET release_state = ?, release_requested_at = ?
+         WHERE owner_dispatch_id = ?`
+      )
+      .run('requested', '2026-01-01', first.dispatchId)
+    db.db
+      .prepare(
+        `UPDATE worker_terminal_resources SET release_state = ?, release_requested_at = ?
+         WHERE owner_dispatch_id = ?`
+      )
+      .run('releasing', '2026-01-02', second.dispatchId)
+    const prepare = vi.spyOn(db.db, 'prepare')
+    expect(db.listWorkerTerminalReleaseBacklog(1).map((row) => row.owner_dispatch_id)).toEqual([
+      first.dispatchId
+    ])
+    expect(db.listWorkerTerminalReleaseBacklog().map((row) => row.owner_dispatch_id)).toEqual([
+      first.dispatchId,
+      second.dispatchId
+    ])
+    const query = prepare.mock.calls[0]?.[0]
+    if (typeof query !== 'string') {
+      throw new Error('Release backlog query was not prepared')
+    }
+    const plan = db.db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(1)
+    expect(JSON.stringify(plan)).toContain('idx_worker_terminal_resources_release')
+  })
+
   it('reads only requested recovery assignments through indexed lookups and one SQL shape', () => {
     const first = worker('term_first')
     const second = worker('term_second')

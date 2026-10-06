@@ -71,6 +71,7 @@ export function missingWorkspaceRecoveryFixture(
     reconcileMissing,
     notifyResolution: vi.fn(),
     canRecoverPersistentLocalPtys: () => true,
+    hasRequestedReleases: () => false,
     reconcileRequestedReleases: async () => undefined,
     reconcile,
     updateRetry: (plan, deferred, options) => controller.updateRetry(plan, deferred, options)

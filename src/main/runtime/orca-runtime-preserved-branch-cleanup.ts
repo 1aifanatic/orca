@@ -183,6 +183,8 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
       this.notifier?.resolveLegacyWorkerTerminalRecovery?.(candidate.paneKey, resolution),
     canRecoverPersistentLocalPtys: () => this.canRecoverPersistentLocalPtysFn(),
     isTerminalProvenAbsent: (candidate) => this.isLeafPtyProvenAbsent(candidate.ptyId),
+    hasRequestedReleases: () =>
+      this.getOrchestrationDb().listWorkerTerminalReleaseBacklog(1).length > 0,
     reconcileRequestedReleases: () =>
       reconcileRequestedWorkerTerminalReleases(this as RuntimeCommandSurfaceHost<this>),
     reconcile: (options) => this.reconcileLegacyWorkerTerminals(options),
