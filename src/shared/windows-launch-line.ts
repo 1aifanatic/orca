@@ -51,8 +51,11 @@ function launchesThroughCmdShim(line: string): boolean {
   return /\.(?:cmd|bat)$/i.test(target?.[1] ?? target?.[2] ?? target?.[3] ?? '')
 }
 
-function shellVerdict(line: string, shell: AgentStartupShell): WindowsLineVerdict {
-  const multiLine = line.includes('\n')
+function shellVerdict(
+  line: string,
+  shell: AgentStartupShell,
+  multiLine: boolean
+): WindowsLineVerdict {
   if (shell === 'cmd') {
     // A line feed submits early; `"`, `%NAME%` and a trailing `\` arrive.
     return multiLine || line.length > WINDOWS_CMD_LINE_MAX_CHARS ? 'damaged' : 'exact'
@@ -103,7 +106,10 @@ export function windowsLaunchLineVerdict(
   // Not measured: a non-ASCII prompt typed into cmd (Orca's cmd panes run `chcp 65001`, as main's
   // do, but no QA row carried one), so main's delivery decides.
   const unmeasured = keys.unmeasured || (shell === 'cmd' && hasNonAscii(line))
-  const verdict = withUnmeasuredKeys(shellVerdict(line, shell), unmeasured)
+  // Why the prompt too: PowerShell quotes a multi-line prompt onto one physical line (`n escapes,
+  // #23672), and the multi-line rows were measured by the prompt's line breaks, not the line's.
+  const multiLine = line.includes('\n') || prompt.includes('\n')
+  const verdict = withUnmeasuredKeys(shellVerdict(line, shell, multiLine), unmeasured)
   const legacyArgsDamage = prompt.includes('"') || prompt.endsWith('\\')
   if (shell === 'cmd' || !launchesThroughCmdShim(line)) {
     if (shell !== 'powershell' || verdict !== 'exact' || !legacyArgsDamage) {
@@ -123,7 +129,7 @@ export function windowsLaunchLineVerdict(
     return 'damaged'
   }
   // The shim's cmd.exe also caps the line and cuts at a line break; not measured through a shim.
-  return verdict === 'exact' && (line.includes('\n') || line.length > WINDOWS_CMD_LINE_MAX_CHARS)
+  return verdict === 'exact' && (multiLine || line.length > WINDOWS_CMD_LINE_MAX_CHARS)
     ? 'uncertain'
     : verdict
 }

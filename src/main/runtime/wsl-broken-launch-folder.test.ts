@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
+import { buildStartupCommandSubmission } from '../../shared/startup-command-submission'
 import { planLaunchPrompt } from '../../shared/tui-agent-startup'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { WslLaunchDirectory } from '../../shared/wsl-launch-directory'
@@ -136,6 +137,11 @@ async function spawnAgentLine(
   return { refused: null, typed: vi.mocked(sub.write).mock.calls.map(([data]) => data) }
 }
 
+/** What main types for `command` into a shell without bracketed paste. */
+function typedAsMain(command: string): string {
+  return buildStartupCommandSubmission(command, { bracketedPasteSafe: false })
+}
+
 async function launch(distro: string, agent: TuiAgent, prompt: string) {
   const planned = await planAgentLaunch(distro, agent, prompt)
   if (planned?.carry !== 'on-line') {
@@ -162,7 +168,7 @@ describe('agent.launch into a WSL workspace whose launch folder is unusable', ()
       const { command, refused, typed } = await launch(distro, agent, prompt)
       expect(command).toContain(prompt.split('\n')[0])
       expect(refused).toBeNull()
-      expect(typed).toEqual([expect.stringContaining(command)])
+      expect(typed).toEqual([typedAsMain(command)])
     }
   )
 
@@ -174,7 +180,7 @@ describe('agent.launch into a WSL workspace whose launch folder is unusable', ()
     const { command, refused, typed } = await launch('qa-before-p120k', 'claude', prompt)
     expect(command).toContain(prompt)
     expect(refused).toBeNull()
-    expect(typed).toEqual([expect.stringContaining(command)])
+    expect(typed).toEqual([typedAsMain(command)])
   })
 
   // Why: main pasted an AI button's or a note's prompt, so that caller asks to be refused rather
@@ -210,7 +216,7 @@ describe('agent.launch into a WSL workspace whose launch folder is unusable', ()
     for (const prompt of [P25K, ML5]) {
       const later = await launch(distro, 'claude', prompt)
       expect(later.refused).toBeNull()
-      expect(later.typed).toEqual([expect.stringContaining(later.command)])
+      expect(later.typed).toEqual([typedAsMain(later.command)])
     }
   })
 })

@@ -59,7 +59,7 @@ describePosix('daemon startup command staging', () => {
 
   it('types a short launch line and reports it typed', async () => {
     const { sub, result } = await create(`claude 'fix it'`)
-    expect(sub.write).toHaveBeenCalledWith(`claude 'fix it'\n`)
+    expect(sub.write).toHaveBeenCalledWith(`claude 'fix it'\r`)
     expect(result.isNew).toBe(true)
   })
 
@@ -69,14 +69,14 @@ describePosix('daemon startup command staging', () => {
     const [script] = readdirSync(tempDir)
     expect(script).toMatch(/^orca-launch-[0-9a-f]+\.sh$/)
     const scriptPath = join(tempDir, script)
-    expect(sub.write).toHaveBeenCalledWith(`. '${scriptPath}'\n`)
+    expect(sub.write).toHaveBeenCalledWith(`. '${scriptPath}'\r`)
     expect(readFileSync(scriptPath, 'utf8').split('\n')[1]).toBe(command)
     expect(result).not.toHaveProperty('startupDelivery')
   })
 
   it('stages a multi-line launch instead of bracket-pasting it', async () => {
     const { sub } = await create(`claude 'one\ntwo'`)
-    expect(vi.mocked(sub.write).mock.calls[0][0]).toMatch(/^\. '.*orca-launch-[0-9a-f]+\.sh'\n$/)
+    expect(vi.mocked(sub.write).mock.calls[0][0]).toMatch(/^\. '.*orca-launch-[0-9a-f]+\.sh'\r$/)
   })
 
   it('deletes a script the shell never sourced when the session exits', async () => {
@@ -144,7 +144,7 @@ describePosix('daemon startup command staging', () => {
       streamClient: { onData: vi.fn(), onExit: vi.fn() }
     })
     expect(result.isNew).toBe(true)
-    expect(sub.write).toHaveBeenCalledWith(`${command}\n`)
+    expect(sub.write).toHaveBeenCalledWith(`claude 'one\rtwo'\r`)
   })
 
   it('prints a notice in the terminal when it types a line it could not stage', async () => {
@@ -161,7 +161,7 @@ describePosix('daemon startup command staging', () => {
       shellReadySupported: false,
       streamClient: { onData, onExit: vi.fn() }
     })
-    expect(sub.write).toHaveBeenCalledWith(`${command}\n`)
+    expect(sub.write).toHaveBeenCalledWith(`${command}\r`)
     await vi.waitFor(() => {
       expect(onData.mock.calls.map(([data]) => String(data)).join('')).toContain(
         '[orca] Could not stage the launch command (ENOENT'

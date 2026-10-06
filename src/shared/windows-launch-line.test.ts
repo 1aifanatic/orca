@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { describeLaunchHost, type WindowsPowerShell } from './launch-host'
 import { planLaunchPrompt } from './tui-agent-startup'
 import { windowsLaunchLineVerdict } from './windows-launch-line'
-import type { AgentStartupShell } from './tui-agent-startup-shell'
+import { quoteStartupArg, type AgentStartupShell } from './tui-agent-startup-shell'
 import type { TuiAgent } from './tui-agent'
 
 // The stack QA's prompts (Windows lane, 2026-10-02), built the way its rig built them.
@@ -229,5 +229,29 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
       paste: 'once-agent-runs'
     })
     expect(planned?.carry).toBe(expected)
+  })
+})
+
+// Why: PowerShell quotes a multi-line prompt onto one physical line (#23672), so its line breaks
+// are in the prompt, not the line, and the measured multi-line rows must still apply.
+describe('a multi-line prompt PowerShell quotes onto one line', () => {
+  const line = (command: string, row: Row) =>
+    `${command} ${quoteStartupArg(PROMPTS[row], 'powershell')}`
+
+  const stub = 'node C:/Users/neil/orca-qa/stack-final/win/bin/stub.js --qa-as=claude'
+
+  it.each<[Row, 'exact' | 'damaged']>([
+    ['ml5', 'exact'],
+    ['ml9k', 'damaged']
+  ])('keeps %s at its measured verdict', (row, expected) => {
+    expect(line(stub, row)).not.toMatch(/[\r\n]/)
+    expect(windowsLaunchLineVerdict(PROMPTS[row], line(stub, row), 'powershell', null)).toBe(
+      expected
+    )
+  })
+
+  it('leaves it unmeasured through a .cmd shim, whose cmd.exe cuts at a line break', () => {
+    const shimLine = line('C:/Users/ada/AppData/Roaming/npm/claude.cmd', 'ml5')
+    expect(windowsLaunchLineVerdict(PROMPTS.ml5, shimLine, 'powershell', null)).toBe('uncertain')
   })
 })

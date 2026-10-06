@@ -135,10 +135,11 @@ describe('buildWorktreeStartupForAgent prompt carry', () => {
     expect(result.startup.command).not.toContain('xxxx')
   })
 
-  // Why: measured on PowerShell, a short multi-line line arrives and a 9 KB one does not.
+  // Why: measured on PowerShell, a short multi-line line arrives and a 9 KB one does not. PowerShell
+  // quotes it onto one physical line (#23672).
   it('keeps a short multi-line prompt on a Windows line and points a long one at a file', () => {
     expect(build('summarize the diff\nthen list the risks', 'win32').startup.command).toContain(
-      'summarize the diff\nthen list the risks'
+      '"summarize the diff`nthen list the risks"'
     )
     const long = Array.from({ length: 20 }, (_, i) => `step ${i} `.padEnd(500, 'x')).join('\n')
     const result = build(long, 'win32')

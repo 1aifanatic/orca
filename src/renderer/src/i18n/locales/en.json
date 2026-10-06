@@ -1084,7 +1084,8 @@
             "totalTooLarge": "{{fileName}} would bring the attachments over {{maxSize}} in total.",
             "dimensionsTooLarge": "{{fileName}} has dimensions that are too large to preview safely.",
             "invalidImage": "{{fileName}} is not a valid supported image.",
-            "additionalErrors": "{{count}} additional images could not be attached."
+            "additionalErrors": "{{count}} additional images could not be attached.",
+            "compressed": "{{fileName}} was compressed from {{originalSize}} to {{size}} to fit the attachment limit."
           }
         }
       },
@@ -1123,6 +1124,16 @@
         "tooLarge": "Too large to copy, so Orca couldn't hand it to the agent.",
         "storageFull": "Orca's storage for dropped files is full, so Orca couldn't hand it to the agent.",
         "generic": "Try the drop again."
+      },
+      "reveal": {
+        "in": {
+          "file": {
+            "manager": {
+              "notFound": "File not found. It may have been moved or deleted.",
+              "launchFailed": "Could not reveal the file."
+            }
+          }
+        }
       }
     },
     "hooks": {
@@ -3572,10 +3583,7 @@
             "1d04b1630b": "Split Down",
             "6b3efb106e": "Split Up",
             "fdd29eb669": "Pin Tab",
-            "8e9d603a09": "Unpin Tab",
-            "revealInFinder": "Reveal in Finder",
-            "openContainingFolder": "Open Containing Folder",
-            "revealInFileExplorer": "Reveal in File Explorer"
+            "8e9d603a09": "Unpin Tab"
           },
           "QuickLaunchButton": {
             "348a04c1ad": "Agent settings…",
@@ -6451,6 +6459,7 @@
         "SidebarFeedbackImageAttachments": {
           "screenshotsHint": "Attach up to {{count}} screenshots, {{maxSize}} total",
           "attachImages": "Attach",
+          "preparing": "Preparing attachments…",
           "removeImage": "Remove {{fileName}}"
         },
         "WorkspaceKanbanSearchField": {
@@ -15313,10 +15322,7 @@
           "f0fd4174b5": "Open file tab to use rich markdown editing",
           "a10d9b8337": "Open file",
           "2076ecfc9c": "Previous change",
-          "631dab0df3": "Next change",
-          "revealInFinder": "Reveal in Finder",
-          "openContainingFolder": "Open Containing Folder",
-          "revealInFileExplorer": "Reveal in File Explorer"
+          "631dab0df3": "Next change"
         },
         "EditorPanelMarkdownActionsMenu": {
           "3e0ce48c24": "Export as PDF",
@@ -16266,6 +16272,7 @@
             "effd75e330": "Nearby Context",
             "7d1480fbf1": "HTML",
             "9098b118ab": "Page",
+            "accessibleNameOpenQuote": "\"",
             "eb98a0971a": "\"",
             "d053db279d": "role=",
             "a759d8f866": "Selected Element",
@@ -16934,7 +16941,6 @@
           "showUnreadOnly": "Show unread only",
           "showChildAgents": "Show child agents",
           "activityOptions": "Activity options",
-          "threadListOptionsFiltered": "Thread list options, filters active",
           "showSearch": "Show search",
           "interrupted": "Interrupted",
           "state": {
@@ -16950,7 +16956,9 @@
             "permission": "Needs attention"
           },
           "filtersSection": "Filters",
-          "viewSection": "View"
+          "viewSection": "View",
+          "threadListOptionsActive": "Thread list options ({{value0}} active)",
+          "activityOptionsActive": "Activity options ({{value0}})"
         },
         "clearCompleted": {
           "clearedOne": "Cleared 1 completed agent",
@@ -16968,7 +16976,11 @@
         },
         "ActivityScopeFilterControls": {
           "hiddenCount": "{{value0}} hidden",
-          "resetScope": "Show all hosts and projects"
+          "resetScope": "Show all hosts and projects",
+          "hideAutomationCreated": "Hide automation-created",
+          "hideCliCreated": "Hide CLI-created",
+          "hideOtherClientsAria": "Hide agents in workspaces created from other Orca clients on shared remote servers",
+          "hideOtherClients": "Hide other-client agents"
         },
         "ActivityThreadHoverCard": {
           "pathCopied": "Path copied to clipboard",
@@ -16979,6 +16991,25 @@
         },
         "ActivityThreadRow": {
           "clearNotification": "Clear notification"
+        },
+        "ActivityThreadContextMenu": {
+          "copyTitle": "Copy Title",
+          "copyPath": "Copy Path",
+          "open": "Open",
+          "markRead": "Mark Read",
+          "markUnread": "Mark Unread",
+          "goToWorkspace": "Go to Workspace",
+          "clear": "Clear from List",
+          "agentSection": "Agent",
+          "markManyRead_one": "Mark {{count}} Agent Read",
+          "markManyRead_other": "Mark {{count}} Agents Read",
+          "markManyUnread_one": "Mark {{count}} Agent Unread",
+          "markManyUnread_other": "Mark {{count}} Agents Unread",
+          "clearMany_one": "Clear {{count}} Agent from List",
+          "clearMany_other": "Clear {{count}} Agents from List",
+          "markManyRead": "Mark {{count}} Agents Read",
+          "markManyUnread": "Mark {{count}} Agents Unread",
+          "clearMany": "Clear {{count}} Agents from List"
         }
       },
       "confirmation": {
@@ -17364,6 +17395,7 @@
           "tool": {
             "arrow": "Arrow",
             "ellipse": "Ellipse",
+            "eraser": "Eraser",
             "highlight": "Highlighter",
             "pen": "Pen",
             "rect": "Rectangle",
@@ -17733,6 +17765,7 @@
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
         "runCommandAgain": "Run /{{command}} again.",
         "sendToTryAgain": "Send your message to try again.",
+        "sendAgainToTryOnceMore": "Send your message again to try once more.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
@@ -17786,7 +17819,7 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "{{agent}} from before may still be running. Your messages will send once it stops."
+        "previousExitUnverifiable": "Couldn't stop {{agent}} from before."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17910,6 +17943,13 @@
         "localAttachmentUnsupported": "Local attachments are not available for remote sessions.",
         "removeAttachment": "Remove attachment",
         "pastedImageLabel": "Pasted image",
+        "draftNotSaved": "This draft couldn't be saved yet. Orca keeps trying.",
+        "imageNotBroughtBack": "{{name}} couldn't be brought back with this draft. Attach it again or remove it.",
+        "pastedImageNotBroughtBack": "This pasted image couldn't be brought back with this draft. Remove it, and paste it again if you still need it.",
+        "removeImageToSend": "An image couldn't be brought back. Remove it to send.",
+        "removeImagesToSend": "Some images couldn't be brought back. Remove them to send.",
+        "imageAttachAgainLabel": "Attach again",
+        "pastedImageNotKeptLabel": "Not kept",
         "imagePasteFailed": "Image paste failed.",
         "imageSaving": "Saving pasted image…",
         "worktreeNotReady": "Worktree not ready — try again in a moment.",
@@ -18166,6 +18206,12 @@
         "subtitle": "Files are added to your message as paths the agent can read."
       },
       "copyCode": "Copy code",
+      "context": {
+        "unavailable": "Context usage is not known yet. It becomes available after the agent next responds.",
+        "summary": "Context: {{used}} / {{window}} tokens ({{percent}}%), estimated from the last response.",
+        "used": "Context: {{used}} tokens used, estimated from the last response.",
+        "unreported": "Context usage is not available for this session."
+      },
       "goal": {
         "placeholder": "Describe your goal, define measurable outcomes for best results",
         "clear": "Clear goal",
@@ -19052,5 +19098,21 @@
   },
   "fileSearch": {
     "failed": "Search failed. Try again."
+  },
+  "worktree": {
+    "nestedRemoval": {
+      "refreshFailed": "Could not refresh the workspace list",
+      "review": "Delete with nested worktrees…",
+      "title": "Delete workspace and nested worktrees?",
+      "description": "This permanently deletes \"{{name}}\", every nested worktree listed below, and all files inside them, including uncommitted changes. Their terminals and agents will be stopped.",
+      "detached": "Detached HEAD",
+      "loading": "Checking nested worktrees…",
+      "order": "Nested worktrees are deleted first. If one fails, deletion stops and the parent is kept. Branches follow your existing deletion settings.",
+      "cancel": "Cancel",
+      "retry": "Review again",
+      "deleting": "Deleting…",
+      "confirm": "Delete all listed worktrees",
+      "preservedBranches": "Some nested worktree branches were kept"
+    }
   }
 }

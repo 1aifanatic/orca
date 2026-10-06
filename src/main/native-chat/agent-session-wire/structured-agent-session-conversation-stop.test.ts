@@ -27,6 +27,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -77,7 +78,7 @@ beforeEach(async () => {
           acquisitionGeneration: 'generation-1',
           link: {
             linkId: `link-${fence}`,
-            handle: { provider: 'codex' as const, threadId: THREAD },
+            handle: codexProviderHandle(THREAD),
             origin: 'created' as const,
             mintedAtFence: fence,
             observedAt: NOW
@@ -311,9 +312,10 @@ describe('a Stop that names no turn', () => {
     expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
 
     expect(closeSession).toHaveBeenCalledExactlyOnceWith(SESSION)
+    // Bookkeeping after the proven exit: reported, never the Stop's failure.
     expect(log.entries).toContainEqual(
       expect.objectContaining({
-        fields: expect.objectContaining({ scope: 'stop-child', sessionId: SESSION })
+        fields: expect.objectContaining({ scope: 'exit-wind-down', sessionId: SESSION })
       })
     )
     expect((await submission(id))?.dispatchState).toBe('rejected')

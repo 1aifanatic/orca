@@ -1061,14 +1061,10 @@ export class PtyHandler {
     if (heldBytes) {
       managed.startupIngress?.accept(heldBytes)
     }
-    const submit = process.platform === 'win32' ? '\r' : '\n'
     // Why: only the shell-ready wrapper arms bracketed-paste; other shells use raw submit so ESC[200~ markers aren't echoed.
     const payload = buildStartupCommandSubmission(
       managed.stagedStartupCommand?.command ?? startup.command,
-      {
-        submit,
-        bracketedPasteSafe: startup.waitForShellReady
-      }
+      { bracketedPasteSafe: startup.waitForShellReady }
     )
     managed.startupCommand = undefined
     managed.pty.write(payload)
