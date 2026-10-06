@@ -29,6 +29,14 @@ import { openTestJournalHostDatabase } from '../agent-session-journal/journal-ho
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
+import {
+  THREAD_ID,
+  adapterFor,
+  answerWithOpenedTurn,
+  fakeCodex,
+  identityFor
+} from '../../codex/codex-structured-session-adapter-fixture'
+import { AgentModelCatalogStore } from '../agent-model-catalog/agent-model-catalog-store'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -39,6 +47,7 @@ let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']>
 let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
 let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
+let setOption: Mock<StructuredAgentSessionAdapter['setOption']>
 let acknowledgeSessionRelease: Mock<
   NonNullable<StructuredAgentSessionAdapter['acknowledgeSessionRelease']>
 >
@@ -59,6 +68,7 @@ beforeEach(async () => {
   cancelTurn = vi.fn(async () => ({ cancelled: true }))
   awaitStarted = vi.fn(async () => undefined)
   closeSession = vi.fn(async () => true)
+  setOption = vi.fn(async () => undefined)
   acknowledgeSessionRelease = vi.fn()
   stopEndsSession = false
   log = recordingStructuredAgentSessionLogger()
@@ -95,7 +105,7 @@ beforeEach(async () => {
       cancelTurn,
       stopEndsSession: () => stopEndsSession,
       answerPrompt: vi.fn(async () => undefined),
-      setOption: vi.fn(async () => undefined)
+      setOption
     },
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
@@ -159,6 +169,85 @@ async function statusRows(): Promise<string[]> {
 }
 
 describe('a Stop that names no turn', () => {
+  it('does not let a stalled catalog hold option refusal, steer, Stop, or replacement send', async () => {
+    const pending = Promise.withResolvers<unknown>()
+    const codex = fakeCodex({ 'model/list': () => pending.promise })
+    codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-1')
+    codex.routes['turn/steer'] = () => ({ turn: { id: 'turn-1' } })
+    const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], {
+      modelCatalog: new AgentModelCatalogStore()
+    })
+    await adapter.acquire({
+      identity: identityFor(SESSION),
+      fence: 1,
+      spawnToken: 'spawn-catalog',
+      options: { fastMode: 'true' }
+    })
+    dispatch.mockImplementation((input) => adapter.dispatch(input))
+    cancelTurn.mockImplementation((input) => adapter.cancelTurn(input))
+    setOption.mockImplementation((input) => adapter.setOption(input))
+
+    const first = send('first send')
+    await first.result
+    await eventually(() =>
+      expect(codex.connections[0].calls.some((call) => call.method === 'turn/start')).toBe(true)
+    )
+    const fields = { key: 'model', value: 'gpt-live' }
+    const option = await host.setOption(CALLER, {
+      envelope: {
+        sessionId: SESSION,
+        clientOperationId: hostTestOperationId(),
+        expectedRuntimeFence: 1,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.setOption',
+          sessionId: SESSION,
+          fields
+        })
+      },
+      ...fields
+    })
+    expect(option).toMatchObject({ ok: false })
+    expect(codex.connections[0].calls.filter((call) => call.method === 'model/list')).toHaveLength(
+      1
+    )
+
+    const followUp = send('follow-up')
+    await followUp.result
+    await eventually(() =>
+      expect(codex.connections[0].calls.some((call) => call.method === 'turn/steer')).toBe(true)
+    )
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    codex.connections[0].handlers.onNotification?.('turn/completed', {
+      threadId: THREAD_ID,
+      turn: { id: 'turn-1', status: 'interrupted' }
+    })
+    codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-2')
+    const replacement = send('replacement')
+    await replacement.result
+    await eventually(() =>
+      expect(
+        codex.connections[0].calls.filter((call) => call.method === 'turn/start')
+      ).toHaveLength(2)
+    )
+    expect(
+      codex.connections[0].calls.filter((call) => call.method === 'turn/start')[1]?.params
+    ).toMatchObject({ serviceTier: 'default' })
+    pending.resolve({ data: [], nextCursor: null })
+  })
+
+  it('delivers a newly accepted message after Stop withdraws the prior send', async () => {
+    const first = send('first send')
+    await first.result
+    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+
+    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
+    const replacement = send('replacement send')
+    await replacement.result
+
+    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+    expect(dispatch.mock.calls[1]![0].clientMessageId).toBe(replacement.id)
+  })
+
   it('is a valid cancel, and only a plain Stop may omit the turn', () => {
     const envelope = {
       sessionId: SESSION,

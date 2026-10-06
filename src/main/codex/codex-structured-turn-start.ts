@@ -81,7 +81,7 @@ function codexTurnOptions(host: CodexTurnHost): Record<string, string> {
   )
   const encodedFastMode = host.options.get('fastMode')
   if (encodedFastMode === undefined) {
-    return options
+    return host.options.has('serviceTier') ? { ...options, serviceTier: 'default' } : options
   }
   const fastMode = decodeStructuredAgentSessionOptionValue('fastMode', encodedFastMode)
   if (typeof fastMode !== 'boolean') {
