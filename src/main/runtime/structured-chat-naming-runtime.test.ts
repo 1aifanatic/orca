@@ -39,11 +39,21 @@ function rig() {
     settings,
     runtime,
     logger,
-    deps: structuredChatNamingDeps({ getSettings: () => settings }, runtime, logger)
+    deps: structuredChatNamingDeps(() => ({ getSettings: () => settings }), runtime, logger)
   }
 }
 
 describe('structured chat naming runtime', () => {
+  it('defers the settings store lookup until naming needs it', () => {
+    const state = rig()
+    const unavailableStore = vi.fn(() => {
+      throw new Error('runtime_unavailable')
+    })
+    const deps = structuredChatNamingDeps(unavailableStore, state.runtime, state.logger)
+    expect(unavailableStore).not.toHaveBeenCalled()
+    expect(() => deps.getSettings()).toThrow('runtime_unavailable')
+  })
+
   it('re-reads the selected agent and template for the next chat', async () => {
     const state = rig()
     await state.deps.generate(agentSessionRecordFixture(), 'Repair login')
@@ -86,7 +96,7 @@ describe('structured chat naming runtime', () => {
   it('refuses an SSH workspace instead of spawning on the client', async () => {
     const state = rig()
     const remote = structuredChatNamingDeps(
-      { getSettings: () => state.settings },
+      () => ({ getSettings: () => state.settings }),
       {
         ...state.runtime,
         resolveWorkspace: async () => ({

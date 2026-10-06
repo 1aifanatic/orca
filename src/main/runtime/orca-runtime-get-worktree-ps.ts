@@ -145,7 +145,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
     const logger = createStructuredAgentSessionLogger()
     const nameChat = createStructuredChatNamingHandler(
       structuredChatNamingDeps(
-        this.requireStore(),
+        () => this.requireStore(),
         {
           resolveWorkspace: async (workspaceId) => {
             const target = await this.resolveRuntimeFileTarget(`id:${workspaceId}`)

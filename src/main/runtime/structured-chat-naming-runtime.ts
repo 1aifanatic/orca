@@ -22,13 +22,13 @@ type StructuredChatNamingRuntime = {
 }
 
 export function structuredChatNamingDeps(
-  store: Pick<Store, 'getSettings'>,
+  getStore: () => Pick<Store, 'getSettings'>,
   runtime: StructuredChatNamingRuntime,
   logger: StructuredAgentSessionLogger
 ): StructuredChatNamingDeps {
   return {
     getStore: () => getStructuredAgentSessionHost()?.deps.store ?? null,
-    getSettings: () => store.getSettings(),
+    getSettings: () => getStore().getSettings(),
     readFirstPrompt: async (sessionId) => {
       const host = getStructuredAgentSessionHost()
       return host
@@ -38,7 +38,7 @@ export function structuredChatNamingDeps(
     hasOpenDispatch: runtime.hasOpenDispatch,
     generate: async (record, firstPrompt) => {
       const settings = resolveTextGenerationParams(
-        store.getSettings(),
+        getStore().getSettings(),
         LOCAL_COMMIT_MESSAGE_HOST_KEY,
         'conversationName',
         null
