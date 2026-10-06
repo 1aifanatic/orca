@@ -12537,6 +12537,8 @@
           "terminalsLiveUncounted": "Runs the relay until its open terminals are closed, then moves to a managed server.",
           "refusedBlocked": "Not moved to a managed server: something on this host stops the move.",
           "terminalsElsewhere": "Runs the relay while {{count}} terminals another Orca desktop or session opened on this host are running.",
+          "terminalsElsewhere_one": "Runs the relay while {{count}} terminal another Orca desktop or session opened on this host is running.",
+          "terminalsElsewhere_other": "Runs the relay while {{count}} terminals another Orca desktop or session opened on this host are running.",
           "terminalsElsewhereUncounted": "Runs the relay while terminals another Orca desktop or session opened on this host are running."
         },
         "ZcodePlanAccountsSection": {
