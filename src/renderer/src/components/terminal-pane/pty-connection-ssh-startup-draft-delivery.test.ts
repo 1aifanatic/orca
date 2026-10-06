@@ -261,6 +261,7 @@ describe('connectPanePty', () => {
     })
     vi.mocked(window.api.pty.getForegroundProcess).mockResolvedValue('codex')
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixtures implement the connection fields exercised here without a real terminal or DOM.
     const binding = connectPanePty(pane as never, manager as never, deps as never)
     await vi.advanceTimersByTimeAsync(VISIBLE_PTY_SETTLE_MS)
     await flushAsyncTicks()
