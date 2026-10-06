@@ -16,12 +16,23 @@ export function acquireInstallLockParentCommand(
   )
 }
 
-export function tryCreateInstallLockCommand(host: RemoteHostPlatform, lockDir: string): string {
+/** A file the holder writes inside the lock in the same command that creates it. */
+export type InstallLockOwnerFile = { fileName: string; token: string }
+
+export function tryCreateInstallLockCommand(
+  host: RemoteHostPlatform,
+  lockDir: string,
+  owner?: InstallLockOwnerFile
+): string {
   if (!isWindowsRemoteHost(host)) {
+    const ownerPath = owner ? `${lockDir.replace(/\/+$/u, '')}/${owner.fileName}` : null
     return [
       `if mkdir ${shellEscape(lockDir)} 2>/dev/null; then`,
       posixCurrentBootIdentityAssignment(host, 'current_boot_id'),
       posixWriteBootIdentity(lockDir, 'current_boot_id'),
+      ...(owner && ownerPath
+        ? [`printf %s ${shellEscape(owner.token)} > ${shellEscape(ownerPath)};`]
+        : []),
       'echo OK;',
       'else echo BUSY; fi'
     ].join(' ')
@@ -40,6 +51,11 @@ export function tryCreateInstallLockCommand(host: RemoteHostPlatform, lockDir: s
       '$stream = [System.IO.File]::Open($owner, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)',
       ...windowsCurrentBootIdentityStatements('$currentBootId'),
       windowsWriteBootIdentityStatement('$lock', '$currentBootId'),
+      ...(owner
+        ? [
+            `[System.IO.File]::WriteAllText((Join-Path $lock ${powerShellLiteral(owner.fileName)}), ${powerShellLiteral(owner.token)})`
+          ]
+        : []),
       "'OK'",
       '}',
       `} catch { 'BUSY' } finally { if ($null -ne $stream) { $stream.Dispose() } }`

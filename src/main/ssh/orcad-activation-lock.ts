@@ -19,7 +19,8 @@ import {
 } from './ssh-relay-install-lock'
 import {
   orphanInstallLockCommand,
-  probeInstallLockExistsCommand
+  probeInstallLockExistsCommand,
+  type InstallLockOwnerFile
 } from './ssh-relay-install-lock-commands'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
 import { removeRemoteFileCommand, removeRemoteTreeCommand } from './ssh-remote-commands'
@@ -75,7 +76,8 @@ const ORCAD_ACTIVATION_FENCE_WAIT_MS = 5_000
 export async function withOrcadActivationLock<T>(
   options: OrcadActivationLockOptions,
   run: (control: OrcadActivationLockControl) => Promise<T>,
-  held: () => T | Promise<T>
+  held: () => T | Promise<T>,
+  owner?: InstallLockOwnerFile
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
   try {
@@ -84,7 +86,8 @@ export async function withOrcadActivationLock<T>(
       relayGcClaim: false,
       // A retained fence means state ownership is unresolved. Age cannot make it safe.
       allowStaleTakeover: false,
-      waitTimeoutMs: ORCAD_ACTIVATION_FENCE_WAIT_MS
+      waitTimeoutMs: ORCAD_ACTIVATION_FENCE_WAIT_MS,
+      owner
     })
   } catch (error) {
     if (error instanceof RemoteInstallLockBusyError) {

@@ -12,10 +12,7 @@ import {
   releaseOrcadActivationFence,
   withOrcadActivationLock
 } from './orcad-activation-lock'
-import {
-  readBoundedOrcadRemoteRecord,
-  writeAtomicOrcadRemoteRecord
-} from './orcad-remote-record-file'
+import { readBoundedOrcadRemoteRecord } from './orcad-remote-record-file'
 import { RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
 import { joinRemotePath } from './ssh-remote-platform'
 
@@ -37,9 +34,33 @@ export type OrcadManagedWake =
   | { outcome: 'started'; readiness: ServeReadiness }
 
 /** Launches the active slot only on proven exit; a live or unprovable process is left alone. */
-export async function wakeStoppedManagedOrcad(
+export function wakeStoppedManagedOrcad(
   options: OrcadSlotOptions,
   onStarting: () => void = () => {}
+): Promise<OrcadManagedWake> {
+  const host = wakeHostKey(options)
+  // Registered before any remote step: a wake on a dropped connection settles first, so a
+  // reconnected wake never races it to the fence and finds its fence unexplained.
+  const prior = runningWakes.get(host)
+  const wake = (async (): Promise<OrcadManagedWake> => {
+    await prior?.catch(() => {})
+    return wakeAfterPrior(options, host, onStarting)
+  })()
+  runningWakes.set(host, wake)
+  void wake
+    .catch(() => {})
+    .finally(() => {
+      if (runningWakes.get(host) === wake) {
+        runningWakes.delete(host)
+      }
+    })
+  return wake
+}
+
+async function wakeAfterPrior(
+  options: OrcadSlotOptions,
+  host: string,
+  onStarting: () => void
 ): Promise<OrcadManagedWake> {
   const before = await readOrcadActivationRecord(options)
   if (!before.active) {
@@ -49,29 +70,25 @@ export async function wakeStoppedManagedOrcad(
   if (liveness !== 'DEAD') {
     return { outcome: liveness === 'LIVE' ? 'serving' : 'unverifiable' }
   }
-  const host = wakeHostKey(options)
-  // A wake this client began on a connection that has since dropped settles first, so a fence
-  // it still holds is known to be this client's before this wake looks at it.
-  await runningWakes.get(host)?.catch(() => {})
   if (!(await orcadActivationFenceExists(options))) {
     // The fence this client left is gone by some other route; any later one belongs to another run.
     interruptedWakes.delete(host)
   } else if (!(await releaseOwnInterruptedWakeFence(options, host))) {
     return { outcome: 'fenced' }
   }
-  const wake: Promise<OrcadManagedWake> = withOrcadActivationLock(
+  // Claimed before the fence and written by the command that creates it: a drop at any point
+  // after the fence lands leaves one this client can prove its own.
+  const token = randomUUID()
+  interruptedWakes.set(host, token)
+  const settle = (): void => {
+    if (interruptedWakes.get(host) === token) {
+      interruptedWakes.delete(host)
+    }
+  }
+  return withOrcadActivationLock(
     options,
     async (): Promise<OrcadManagedWake> => {
-      // Claimed before the write lands, so a drop after it still leaves a fence this client can prove.
-      const token = randomUUID()
-      interruptedWakes.set(host, token)
-      const settle = (): void => {
-        if (interruptedWakes.get(host) === token) {
-          interruptedWakes.delete(host)
-        }
-      }
       try {
-        await writeAtomicOrcadRemoteRecord(options, wakeOwnerPath(options), token)
         // Re-read under the fence: another client may have activated or started a slot meanwhile.
         const active = (await readOrcadActivationRecord(options)).active
         if (!active) {
@@ -91,17 +108,18 @@ export async function wakeStoppedManagedOrcad(
         throw error
       }
     },
-    (): OrcadManagedWake => ({ outcome: 'fenced' })
-  )
-  runningWakes.set(host, wake)
-  void wake
-    .catch(() => {})
-    .finally(() => {
-      if (runningWakes.get(host) === wake) {
-        runningWakes.delete(host)
-      }
-    })
-  return wake
+    (): OrcadManagedWake => {
+      settle()
+      return { outcome: 'fenced' }
+    },
+    { fileName: WAKE_OWNER_FILENAME, token }
+  ).catch((error: unknown) => {
+    // Never acquired, or released: only a lost connection can leave this token's fence behind.
+    if (!isUnconfirmedSshCommandTermination(error)) {
+      settle()
+    }
+    throw error
+  })
 }
 
 const runningWakes = new Map<string, Promise<OrcadManagedWake>>()
