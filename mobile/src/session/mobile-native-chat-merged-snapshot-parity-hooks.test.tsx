@@ -61,7 +61,7 @@ vi.mock('lucide-react-native', () => ({
   Square: 'Square'
 }))
 vi.mock('./MobileNativeChatMessage', () => ({ MobileNativeChatMessage: 'ChatMessage' }))
-vi.mock('./MobileNativeChatTurnStatus', () => ({ MobileNativeChatTurnActivity: 'LiveStatus' }))
+vi.mock('./MobileNativeChatLiveLine', () => ({ MobileNativeChatLiveLine: 'LiveStatus' }))
 vi.mock('./MobileNativeChatComposer', () => ({ MobileNativeChatComposer: 'Composer' }))
 vi.mock('./MobileNativeChatQueuedMessages', () => ({ MobileNativeChatQueuedMessages: 'Queued' }))
 vi.mock('../components/ActionSheetModal', () => ({ ActionSheetModal: 'ActionSheetModal' }))

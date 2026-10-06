@@ -145,7 +145,7 @@ describe('conversation outline parity with the loaded rail', () => {
       agentJournalSubmissionKey('client-stopped')
     )
     expect(
-      projectStructuredAgentSessionMessages(journal, [], [REJECTED, stopped], NO_CARDS).map(
+      projectStructuredAgentSessionMessages(journal, [], [REJECTED, stopped]).map(
         (message) => message.id
       )
     ).toContain(agentJournalSubmissionKey('client-stopped'))
