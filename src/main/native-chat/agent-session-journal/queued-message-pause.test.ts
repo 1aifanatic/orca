@@ -528,6 +528,7 @@ describe("a restart's pause", () => {
       body: message('kept across a restart'),
       fingerprint: 'fp-kept',
       hostInstance: 'proc-0',
+      source: { kind: 'user' },
       holdReason: QUEUED_MESSAGE_PAUSED_KEPT
     })
     expect(kept.holdReason).toBe(QUEUED_MESSAGE_PAUSED_KEPT)

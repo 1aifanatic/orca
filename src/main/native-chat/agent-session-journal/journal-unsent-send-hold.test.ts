@@ -29,7 +29,10 @@ import {
 import type { AgentSessionJournal } from './journal-store'
 import {
   closeTestJournalHostDatabases,
-  createTrackedJournalOpener
+  createTrackedJournalOpener,
+  liveTestJournalRows,
+  openTestJournalHostDatabase,
+  updateTestJournalRowJson
 } from './journal-host-database-test-support'
 
 const IDENTITY: AgentSessionJournalIdentity = {
@@ -114,6 +117,23 @@ async function afterRestart(
   await write(earlier)
   await earlier.close()
   return open()
+}
+
+/** Rewrites a stored submission's `source` as another build would have written it. */
+function storeSubmissionSourceAs(journal: AgentSessionJournal, id: string, source: unknown): void {
+  const seq = journal.submission(id)?.submittedSequence
+  const { db } = openTestJournalHostDatabase(root)
+  const stored = liveTestJournalRows(db, IDENTITY.sessionId).find((row) => row.seq === seq)
+  if (!stored) {
+    throw new Error(`no stored row for ${id}`)
+  }
+  const row: unknown = JSON.parse(stored.rowJson)
+  updateTestJournalRowJson(
+    db,
+    IDENTITY.sessionId,
+    stored.seq,
+    JSON.stringify({ ...(typeof row === 'object' ? row : {}), source })
+  )
 }
 
 function cardOrder(journal: AgentSessionJournal): string[] {
@@ -274,9 +294,9 @@ describe('which sends an earlier host process left unsent are kept', () => {
         fence: 0,
         handoverRecorded: true,
         origin: 'client',
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a newer build's kind, which this build's type cannot name.
-        source: { kind: 'a-newer-kind' } as AgentSessionMessageSource
+        source: USER_MESSAGE_SOURCE
       })
+      storeSubmissionSourceAs(earlier, 'future', { kind: 'a-newer-kind' })
     })
     expect(journal.submission('future')?.source).toEqual({ kind: 'a-newer-kind' })
     await hold(journal)
@@ -294,9 +314,9 @@ describe('which sends an earlier host process left unsent are kept', () => {
         fence: 0,
         handoverRecorded: true,
         origin: 'client',
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stored source with no kind, which this build's type cannot name.
-        source: {} as AgentSessionMessageSource
+        source: USER_MESSAGE_SOURCE
       })
+      storeSubmissionSourceAs(earlier, 'unreadable', {})
     })
     expect(journal.submission('unreadable')?.source).toEqual({ kind: '' })
     await hold(journal)
@@ -370,6 +390,7 @@ describe('where kept sends go in the queue', () => {
             body: message('text of A'),
             fingerprint: fingerprint(message('text of A')),
             hostInstance: HOST,
+            source: USER_MESSAGE_SOURCE,
             holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
             queuedAt: {
               epoch: 'epoch-1',

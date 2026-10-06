@@ -139,7 +139,8 @@ test('an older build lists a kept card first and never sends it, even after a pe
       messageId: 'queued-card',
       body: message('queued-card'),
       fingerprint: 'fp-queued-card',
-      hostInstance: 'host-a'
+      hostInstance: 'host-a',
+      source: USER_MESSAGE_SOURCE
     })
     await acceptPersonSend(earlier, 'kept')
     await journals.closeAll()
