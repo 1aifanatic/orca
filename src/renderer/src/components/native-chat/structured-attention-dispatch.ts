@@ -22,9 +22,8 @@
  * lane alerts on a blocked or waiting row. The wording rule is `agentSessionAttentionNews`, shared
  * with the host's own phone push.
  *
- * Unread and delivery come out of ONE `resolveAgentAttention` decision. "Do not alert me about
- * something I am watching" is already answered by focus, in the surface adapter's viewed gates and
- * in main's `suppressWhenFocused`; there is no second suppression path here.
+ * Prompt news already covered by an actual read is quiet, even when its attention frame arrives
+ * later. Unread and delivery otherwise share the existing `resolveAgentAttention` decision.
  */
 import { notificationSourceForOwner } from '../../../../shared/notification-source'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
@@ -36,8 +35,10 @@ import type {
 import {
   agentSessionAttentionKey,
   agentSessionAttentionNews,
+  attentionOriginWasRead,
   structuredAttentionOrigin,
-  type AgentSessionAttentionEdge
+  type AgentSessionAttentionEdge,
+  type StructuredAttentionRead
 } from '../../../../shared/agent-session-attention'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
 import { applyAgentAttention, resolveAgentAttention } from '@/attention/agent-attention-policy'
@@ -61,15 +62,17 @@ export function dispatchStructuredTurnCompletionAttention(
 export function dispatchStructuredPromptAttention(
   tab: StructuredTab,
   prompt: AgentSessionPromptAttention,
-  subscriptionTarget?: RuntimeClientTarget
+  subscriptionTarget?: RuntimeClientTarget,
+  readFrontier?: () => StructuredAttentionRead | undefined
 ): void {
-  dispatchStructuredAttention(tab, { type: 'prompt', prompt }, subscriptionTarget)
+  dispatchStructuredAttention(tab, { type: 'prompt', prompt }, subscriptionTarget, readFrontier)
 }
 
 function dispatchStructuredAttention(
   tab: StructuredTab,
   edge: AgentSessionAttentionEdge,
-  subscriptionTarget: RuntimeClientTarget | undefined
+  subscriptionTarget: RuntimeClientTarget | undefined,
+  readFrontier?: () => StructuredAttentionRead | undefined
 ): void {
   // 'done' and 'blocked' are what the host told us, not the row's state: the row can still read
   // 'working' when the edge outruns the status re-projection. ABSENT OUTCOME IS UNKNOWN AND LIGHTS
@@ -83,6 +86,14 @@ function dispatchStructuredAttention(
   // rebound to something else would mark the NEW session's key with the OLD session's news. Checked
   // here rather than only at the subscription, because the key is minted here.
   if (sessionId !== tab.entityId) {
+    return
+  }
+  const origin = structuredAttentionOrigin(edge)
+  const promptWasRead = (): boolean => {
+    const read = readFrontier?.()
+    return edge.type === 'prompt' && read !== undefined && attentionOriginWasRead(origin, read)
+  }
+  if (promptWasRead()) {
     return
   }
   const attentionKey = agentSessionAttentionKey(edge)
@@ -120,6 +131,10 @@ function dispatchStructuredAttention(
       markSurfaceUnread: state.markTerminalPaneUnread
     },
     requestDelivery: (request) => {
+      // Unread writes can synchronously cause a genuine read before delivery.
+      if (promptWasRead()) {
+        return
+      }
       deliverAgentAttentionNotification(
         {
           source: 'agent-task-complete',
@@ -128,7 +143,7 @@ function dispatchStructuredAttention(
           // shared id lets it retire the phone notification the host pushed under the same id.
           notificationId: attentionKey,
           attentionKey,
-          structuredOrigin: structuredAttentionOrigin(edge),
+          structuredOrigin: origin,
           // A local session's host is this app's own main, which already pushed its phones.
           ...(subscriptionTarget?.kind === 'local' ? { mobileDeliveredByHost: true } : {}),
           worktreeId: request.workspaceId,

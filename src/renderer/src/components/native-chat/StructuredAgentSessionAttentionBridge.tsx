@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   registerAgentSubjectReadCapture,
   subscribeAgentSubjectReads,
-  sameStructuredReadTarget
+  sameStructuredReadTarget,
+  type StructuredSubjectRead
 } from '@/attention/agent-subject-read-actions'
 import { findStructuredAgentSessionReadOwner } from './structured-agent-session-read-owner'
 import { structuredAttentionReadObservation } from './structured-attention-read-observation'
@@ -52,6 +53,7 @@ function StructuredAgentSessionOwnedAttention({
   const feed = useMemo(() => getStructuredAgentSessionTurnCompletionFeed(target), [target])
   useEffect(() => feed.activate(), [feed])
   const paneKey = structuredAgentSessionPaneKey(tab.id, tab.entityId)
+  const readFrontier = useRef<StructuredSubjectRead | undefined>(undefined)
   useEffect(() => {
     let lastAttempt: { observationKey: string } | undefined
     const stopCapture = registerAgentSubjectReadCapture(paneKey, () => {
@@ -71,9 +73,21 @@ function StructuredAgentSessionOwnedAttention({
       if (
         !read ||
         read.sessionId !== tab.entityId ||
-        !sameStructuredReadTarget(read.target, target) ||
-        read.observationKey === lastAttempt?.observationKey
+        !sameStructuredReadTarget(read.target, target)
       ) {
+        return
+      }
+      const previous = readFrontier.current?.observedCursor
+      if (
+        previous?.epoch !== read.observedCursor.epoch ||
+        previous.sequence < read.observedCursor.sequence
+      ) {
+        readFrontier.current = {
+          ...read,
+          observedCursor: { ...read.observedCursor }
+        }
+      }
+      if (read.observationKey === lastAttempt?.observationKey) {
         return
       }
       const attempt = { observationKey: read.observationKey }
@@ -104,6 +118,7 @@ function StructuredAgentSessionOwnedAttention({
     return () => {
       stopRead()
       stopCapture()
+      readFrontier.current = undefined
     }
   }, [paneKey, tab.entityId, target])
   useEffect(
@@ -111,7 +126,13 @@ function StructuredAgentSessionOwnedAttention({
       feed.subscribe((edge) => {
         if (edge.type === 'prompt') {
           if (edge.prompt.sessionId === tab.entityId) {
-            dispatchStructuredPromptAttention(tab, edge.prompt, target)
+            dispatchStructuredPromptAttention(tab, edge.prompt, target, () => {
+              const read = readFrontier.current
+              return read?.sessionId === tab.entityId &&
+                sameStructuredReadTarget(read.target, target)
+                ? read
+                : undefined
+            })
           }
         } else if (edge.completion.sessionId === tab.entityId) {
           dispatchStructuredTurnCompletionAttention(tab, edge.completion, target)
