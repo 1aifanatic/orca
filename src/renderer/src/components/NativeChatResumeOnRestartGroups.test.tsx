@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
+import type { SshConnectionStatus } from '../../../shared/ssh-types'
+import { worktreeCardTitleXSignature } from './sidebar/worktree-card-title-geometry.test-support'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { Worktree } from '../../../shared/worktree/types'
 import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
@@ -54,7 +56,7 @@ function candidate(sessionId: string, workspace: Worktree): ResumeCandidate {
     trigger: 'quit',
     latestPrompt: `Prompt ${sessionId}`,
     recordedAt: 1_800_000_000_000,
-    executionHostId: 'local',
+    executionHostId: workspace.hostId ?? 'local',
     workspaceKind: 'git-worktree'
   }
 }
@@ -65,7 +67,8 @@ function render(
     parent: 'local',
     child: 'local'
   },
-  compactCards = false
+  compactCards = false,
+  sshStatus?: SshConnectionStatus
 ): void {
   const parent = worktree('parent', { hostId: hosts.parent })
   const child = worktree('child', { hostId: hosts.child })
@@ -81,8 +84,32 @@ function render(
       compactWorktreeCards: compactCards
     },
     repos: [
-      { id: 'repo-1', path: '/repo', displayName: 'orca', badgeColor: '#999999', addedAt: 1 }
+      {
+        id: 'repo-1',
+        path: '/repo',
+        displayName: 'orca',
+        badgeColor: '#999999',
+        addedAt: 1,
+        connectionId: sshStatus ? 'build-server' : undefined
+      }
     ],
+    sshConnectionStates: new Map(
+      sshStatus
+        ? [
+            [
+              'build-server',
+              {
+                targetId: 'build-server',
+                status: sshStatus,
+                error: null,
+                reconnectAttempt: 0,
+                remotePlatform: 'linux'
+              }
+            ]
+          ]
+        : []
+    ),
+    sshTargetLabels: new Map([['build-server', 'build-server']]),
     worktreesByRepo: { 'repo-1': [parent, child] },
     worktreeLineageById: {
       [child.id]: {
@@ -164,49 +191,11 @@ it.each([
   }
 )
 
-// Why: ancestor spacing and earlier flex items determine the title's horizontal offset.
-const X_GEOMETRY = /^-?(m[lrx]?|p[lrx]?|gap|w|size|space-x)-/
-
-function describeX(element: Element | null): string {
-  if (!(element instanceof HTMLElement)) {
-    return ''
-  }
-  const classes = [...element.classList].filter((name) => X_GEOMETRY.test(name)).toSorted()
-  // Why the raw attribute: the DOM shim drops values like max(), which the card's padding uses.
-  const styles = (element.getAttribute('style') ?? '')
-    .split(';')
-    .map((declaration) => declaration.trim())
-    .filter((declaration) => /^(padding-left|margin-left|width):/.test(declaration))
-  return [...classes, ...styles].join(' ')
-}
-
-function isRow(element: Element | null): boolean {
-  const classes = element?.classList
-  return (
-    Boolean(classes && (classes.contains('flex') || classes.contains('inline-flex'))) &&
-    !classes?.contains('flex-col')
-  )
-}
-
 function titleXSignature(title: string, stopAt: Element): string[] {
-  const titleElement = cardTitled(title).querySelector('[data-worktree-title-inline-rename]')
-  const signature: string[] = []
-  for (let node = titleElement; node && node !== stopAt; node = node.parentElement) {
-    signature.push(describeX(node))
-    // Why: only a row's earlier items (the status lane, chips) push the title sideways.
-    if (!isRow(node.parentElement)) {
-      continue
-    }
-    for (let before = node.previousElementSibling; before; before = before.previousElementSibling) {
-      let box: Element | null = before
-      while (box && describeX(box) === '' && box.firstElementChild) {
-        box = box.firstElementChild
-      }
-      signature.push(`before: ${describeX(box)}`)
-    }
-  }
-  // Why: a plain wrapper (context-menu trigger, sleep dim) moves nothing.
-  return signature.filter((entry) => entry !== '' && entry !== 'before: ')
+  return worktreeCardTitleXSignature(
+    cardTitled(title).querySelector('[data-worktree-title-inline-rename]'),
+    stopAt
+  )
 }
 
 function surfaceClasses(title: string): string[] {
@@ -281,14 +270,26 @@ function renderLiveSidebarRows(): HTMLElement {
   return live
 }
 
-it.each([
-  ['legacy', false, false],
-  ['compact', false, true],
-  ['new', true, false]
-] as const)(
-  '%s: places parent and child titles where the live sidebar does',
-  (_style, newCardStyle, compactCards) => {
-    render(newCardStyle, undefined, compactCards)
+it.each(
+  [
+    { style: 'legacy', newCardStyle: false, compactCards: false },
+    { style: 'compact', newCardStyle: false, compactCards: true },
+    { style: 'new', newCardStyle: true, compactCards: false }
+  ].flatMap((style) =>
+    ([undefined, 'connected', 'disconnected'] as const).map((sshStatus) => ({
+      ...style,
+      sshStatus
+    }))
+  )
+)(
+  '$style/$sshStatus: places parent and child titles where the live sidebar does',
+  ({ newCardStyle, compactCards, sshStatus }) => {
+    render(
+      newCardStyle,
+      sshStatus ? { parent: 'ssh:build-server', child: 'ssh:build-server' } : undefined,
+      compactCards,
+      sshStatus
+    )
     const dialogList = cardTitled('parent').parentElement?.parentElement
     if (!dialogList) {
       throw new Error('Missing dialog list')
@@ -312,6 +313,21 @@ it.each([
 
     expect(dialog.parent.length).toBeGreaterThan(3)
     expect(dialog).toEqual(sidebar)
+    if (sshStatus) {
+      const identity = cardTitled('parent').querySelector('[data-ssh-target-label="build-server"]')
+      expect(identity?.tagName).toBe('SPAN')
+      expect(cardTitled('parent').textContent).toContain('build-server')
+      expect(identity?.matches('button, [tabindex], [role="button"]')).toBe(false)
+      expect(dialog.parent).toContain('gaps-before: 1')
+      if (sshStatus === 'connected') {
+        expect(identity?.querySelector('svg')?.classList.contains('size-3')).toBe(true)
+        expect(dialog.parent).toContain('before: size-3 width=24')
+      } else if (newCardStyle || compactCards) {
+        expect(identity?.querySelector('svg')?.classList.contains('size-2.5')).toBe(true)
+      } else {
+        expect(identity?.textContent).toContain('Connect')
+      }
+    }
   }
 )
 
@@ -349,3 +365,65 @@ it('counts only listed child workspaces in the passive chip', () => {
   expect(cardTitled('parent').textContent).toContain('1 child')
   expect(cardTitled('parent').textContent).not.toContain('2 children')
 })
+
+it.each([
+  ['legacy', false, false, true],
+  ['legacy, host disabled', false, false, false],
+  ['compact', false, true, true],
+  ['new', true, false, true],
+  ['new, host disabled', true, false, false]
+] as const)(
+  '%s: keeps a remote folder identifiable when its host chip is enabled',
+  async (_style, newCardStyle, compactCards, showHost) => {
+    useAppStore.setState({
+      settings: {
+        ...getDefaultSettings(''),
+        experimentalNewWorktreeCardStyle: newCardStyle,
+        compactWorktreeCards: compactCards
+      },
+      worktreeCardProperties: showHost ? ['status', 'host'] : ['status'],
+      folderWorkspaces: [
+        {
+          id: 'remote-folder',
+          projectGroupId: 'folder-project',
+          name: 'Remote folder',
+          folderPath: '/remote/folder',
+          connectionId: 'build-server',
+          executionHostId: 'ssh:build-server',
+          linkedTask: null,
+          comment: '',
+          isArchived: false,
+          isUnread: false,
+          isPinned: false,
+          sortOrder: 0,
+          lastActivityAt: 1,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]
+    })
+    const entry: ResumeCandidate = {
+      ...candidate('folder-chat', worktree('folder')),
+      workspaceId: 'folder:remote-folder',
+      executionHostId: 'ssh:build-server',
+      workspaceKind: 'folder'
+    }
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <ResumeOnRestartGroups
+            candidates={[entry]}
+            listedAt={entry.recordedAt}
+            busy={false}
+            selected={new Set([entry.sessionId])}
+            onToggle={() => {}}
+          />
+        </TooltipProvider>
+      )
+    )
+    const card = cardTitled('Remote folder')
+    expect(card.textContent?.includes('build-server')).toBe(showHost && !compactCards)
+    expect(card.querySelector('[data-ssh-target-label]')).toBeNull()
+    expect(card.querySelector('button:not([role="checkbox"]), [tabindex]')).toBeNull()
+  }
+)

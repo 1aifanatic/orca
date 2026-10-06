@@ -155,6 +155,42 @@ it('opens with focus on the resume action', async () => {
   expect(document.activeElement?.textContent?.trim()).toBe('Resume 2 chats')
 })
 
+it('keeps initial focus inside the dialog with no resumable chats', async () => {
+  rpc.mockResolvedValue({ sessions: [], failed: [failure('b')] })
+  await mount(<NativeChatResumeOnRestartModal />)
+  await act(async () => requestNativeChatResumeOnRestartDialog())
+  const dialog = document.querySelector('[role="dialog"]')
+  expect(button('Resume 0 chats').disabled).toBe(true)
+  expect(dialog).not.toBeNull()
+  expect(dialog?.contains(document.activeElement)).toBe(true)
+})
+
+it('keeps initial focus inside the dialog when reopened during resume', async () => {
+  const continued = Promise.withResolvers<unknown>()
+  rpc.mockImplementation((_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? Promise.resolve({ sessions: offered })
+      : continued.promise
+  )
+  await mount(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <NativeChatResumeStatusSegment iconOnly={false} />
+    </>
+  )
+  await act(async () => button('Resume 2 chats').click())
+  const opener = button('Resuming 2 chats')
+  await act(async () => {
+    opener.focus()
+    opener.click()
+  })
+  const dialog = document.querySelector('[role="dialog"]')
+  expect(button('Resuming…').disabled).toBe(true)
+  expect(dialog).not.toBeNull()
+  expect(dialog?.contains(document.activeElement)).toBe(true)
+  await act(async () => continued.resolve({ sessions: [], failed: [], resumed: [], continued: [] }))
+})
+
 // One primary action and one way out of it; the body copy carries the transparency.
 it('offers exactly Dismiss all and the resume action', async () => {
   rpc.mockResolvedValue({ sessions: offered })
