@@ -21,7 +21,7 @@ import type {
   AgentJournalItemIdentity,
   AgentJournalMessageItem
 } from '../../shared/agent-session-journal-types'
-import { AcpAgentError } from './acp-errors'
+import { AcpAgentError, AcpConnectionClosedError } from './acp-errors'
 import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { AcpStructuredLane } from './acp-structured-lane'
 import type { ContentBlock } from './generated/acp-protocol.generated'
@@ -171,12 +171,21 @@ export class AcpStructuredTurns {
         this.finish(send)
       },
       (error: unknown) => {
-        if (this.active !== send) {
+        if (this.active !== send || error instanceof AcpConnectionClosedError) {
+          // A lost connection: the session's end settles the send, as unknown.
           return
         }
         if (!(error instanceof AcpAgentError)) {
-          // No answer from the agent, so neither a refusal nor an end: the send stays running here
-          // until a Stop or the session's end settles it.
+          // Answered, but not in a way Orca can read: the turn failed and the next send may go.
+          lane.apply(
+            lane.translator.promptFailed(
+              send.clientMessageId,
+              error instanceof Error ? error : new Error(String(error)),
+              this.deps.now()
+            )
+          )
+          this.accept(send.clientMessageId)
+          this.finish(send)
           return
         }
         const refusal = lane.translator.promptRefused(send.clientMessageId, error)

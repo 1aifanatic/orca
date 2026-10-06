@@ -249,19 +249,31 @@ describe('ACP connection loss', () => {
     expect(rig.child().closes).toBe(1)
   })
 
-  it('leaves the turn running on an answer Orca cannot read, until a Stop ends Grok', async () => {
+  it('ends the turn as failed on an answer Orca cannot read, and sends the next message', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'garbled')
     const prompt = await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:garbled', 'partial'))
-    rig.child().agent.reply(prompt, { stopReason: 42 })
+    // Usage without the totals the schema requires: the answer fails to parse.
+    rig.child().agent.reply(prompt, {
+      stopReason: 'end_turn',
+      usage: { inputTokens: 10, outputTokens: 2 }
+    })
     await rig.settle()
-    expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'running' })
+    expect((await journalTurns(rig)).at(-1)).toMatchObject({
+      state: 'completed',
+      outcome: 'failure'
+    })
+    await sendHello(rig, 'next')
+    const next = await rig.frame('session/prompt', 1)
+    expect(rig.sent('session/cancel')).toEqual([])
+    rig.child().agent.notify('session/update', replyChunk('prompt:next', 'ok'))
+    rig.child().agent.reply(next, { stopReason: 'end_turn' })
+    await rig.settle()
+    expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['garbled', 'next'])
     expect(rig.child().closes).toBe(0)
     expect(rig.lifecycle).toEqual([])
-    await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
-    expect(rig.child().exited).toBe(true)
   })
 
   it('leaves Grok running when it ends its stdout but can still be written to', async () => {
