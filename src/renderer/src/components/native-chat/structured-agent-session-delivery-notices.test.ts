@@ -17,7 +17,8 @@ import {
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionDeliveryNotices,
-  structuredAgentSessionStartFailureFacts
+  structuredAgentSessionStartFailureFacts,
+  type StatedStartFailure
 } from './structured-agent-session-delivery-notices'
 
 function entry(
@@ -43,7 +44,7 @@ const SENDING = 'Sending…'
 function texts(
   outbox: StructuredAgentSessionOutboxEntry[],
   submissions: readonly AgentJournalSubmission[] = [],
-  startFailures: readonly AgentSessionFailureFact[] = []
+  startFailures: readonly StatedStartFailure[] = []
 ): Record<string, string> {
   // Every failure seen while the chat was open, so each words its whole cause.
   const notices = structuredAgentSessionDeliveryNotices(
@@ -757,7 +758,7 @@ describe('the notice on each message that did not go through', () => {
           statusRow(startRowKey, startFailed),
           statusRow(agentJournalSubmissionKey('exit-row'), { kind: 'providerExited' })
         ])
-      ).toEqual([startFailed])
+      ).toEqual([{ itemId: startRowKey, fact: startFailed, observedAt: 1 }])
     })
 
     it('says only that each was not sent, and words any other rejection in full', () => {
@@ -790,12 +791,34 @@ describe('the notice on each message that did not go through', () => {
 
     it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
       const shown = "Claude couldn't start. Start a new chat to continue."
-      expect(texts([rejected('first', startFailed)], [], [startFailed])).toEqual({
+      const stated = { itemId: startRowKey, fact: startFailed, observedAt: 1 }
+      expect(texts([rejected('first', startFailed)], [], [stated])).toEqual({
         [agentJournalSubmissionKey('first')]: 'Written by the host.'
       })
       expect(texts([rejected('first', startFailed)], [recorded('first', startFailed)], [])).toEqual(
         { [agentJournalSubmissionKey('first')]: shown }
       )
+    })
+
+    // A newer host writes no start row: a later failure equal to an older row's is its own start's.
+    it("words in full a later failure equal to an older start's row, which speaks only for its batch", () => {
+      const facts = structuredAgentSessionStartFailureFacts([statusRow(startRowKey, startFailed)])
+      const later = { ...recorded('later', startFailed), submittedAt: 5, resolvedAt: 6 }
+      expect(
+        texts(
+          [
+            rejected('first', startFailed),
+            rejected('second', startFailed),
+            rejected('later', startFailed)
+          ],
+          [recorded('first', startFailed), recorded('second', startFailed), later],
+          facts
+        )
+      ).toEqual({
+        [agentJournalSubmissionKey('first')]: 'Your message was not sent.',
+        [agentJournalSubmissionKey('second')]: 'Your message was not sent.',
+        [agentJournalSubmissionKey('later')]: "Claude couldn't start. Start a new chat to continue."
+      })
     })
   })
 })

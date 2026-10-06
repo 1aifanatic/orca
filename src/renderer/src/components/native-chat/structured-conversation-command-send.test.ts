@@ -155,7 +155,7 @@ describe('the line under the composer after a conversation command failed', () =
         agentName: 'Claude',
         pending: { current: false },
         blocked: false,
-        startFailures: () => [START_FAILED],
+        startFailures: () => [{ itemId: 'orca:start-failure', fact: START_FAILED, observedAt: 1 }],
         send: async () => ({ kind: 'done', value: result })
       })
     ).toEqual({ accepted: false, error })

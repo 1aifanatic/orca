@@ -12,9 +12,9 @@
 //
 // A message the host recorded and then rejected is drawn from the host's history, worded from the
 // journal's own fact, with no Retry: sending it again is a new message. A rejection that is a
-// failed start's, the fact its loaded row states, says only that it was not sent: the row already
-// says why. Until its row loads, the outbox draws it from its smaller copy, which leaves on the batch
-// or page that loads the row.
+// failed start's, the fact a loaded start row from an older host states for that same batch, says
+// only that it was not sent: the row already says why. Until its row loads, the outbox draws it from
+// its smaller copy, which leaves on the batch or page that loads the row.
 
 import {
   readAgentSessionFailureFact,
@@ -54,20 +54,27 @@ const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { se
 const NO_COMMANDS: ReadonlySet<string> = new Set()
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
-/** The facts the chat's loaded start-failure rows state. */
+/** A loaded start-failure row an older host wrote: the failure it states, and when. */
+export type StatedStartFailure = {
+  itemId: string
+  fact: AgentSessionFailureFact
+  observedAt: number
+}
+
+/** What the chat's loaded start-failure rows state. */
 export function structuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[]
-): AgentSessionFailureFact[] {
-  const facts: AgentSessionFailureFact[] = []
+): StatedStartFailure[] {
+  const stated: StatedStartFailure[] = []
   for (const item of items) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
       if (fact) {
-        facts.push(fact)
+        stated.push({ itemId: item.itemId, fact, observedAt: item.observedAt })
       }
     }
   }
-  return facts
+  return stated
 }
 
 /** Whether two facts are one failure: a start's row and the messages it rejected share one. */
@@ -88,15 +95,35 @@ export function sameAgentSessionFailureFact(
   )
 }
 
-/** Whether a loaded start-failure row already states this failure. Matching is identity, not
+/** Whether one of these start-failure rows already states this failure. Matching is identity, not
  *  wording: what this build can read is enough. */
 export function agentSessionFailureStatedByStartRow(
   failure: unknown,
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly StatedStartFailure[]
 ): boolean {
   const fact = readAgentSessionFailureFact(failure)
   return (
-    fact !== undefined && startFailures.some((stated) => sameAgentSessionFailureFact(stated, fact))
+    fact !== undefined &&
+    startFailures.some((stated) => sameAgentSessionFailureFact(stated.fact, fact))
+  )
+}
+
+/** Whether the row of the start that rejected this message already says why: the same failure,
+ *  written after the message was sent and no later than its rejection, as the older host wrote
+ *  both. An equal failure in another row is another start's, so the message keeps its words. */
+function rejectionStatedByItsStartRow(
+  recorded: AgentJournalSubmission,
+  startFailures: readonly StatedStartFailure[]
+): boolean {
+  const { resolvedAt } = recorded
+  return (
+    resolvedAt !== null &&
+    agentSessionFailureStatedByStartRow(
+      recorded.rejection,
+      startFailures.filter(
+        ({ observedAt }) => observedAt >= recorded.submittedAt && observedAt <= resolvedAt
+      )
+    )
   )
 }
 
@@ -136,9 +163,9 @@ function deliveryNoticeText(
 function hostRejectionNoticeText(
   submission: AgentJournalSubmission,
   agentName: string,
-  startFailures: readonly AgentSessionFailureFact[]
+  startFailures: readonly StatedStartFailure[]
 ): string {
-  if (agentSessionFailureStatedByStartRow(submission.rejection, startFailures)) {
+  if (rejectionStatedByItsStartRow(submission, startFailures)) {
     return agentSessionWriteNoticeText(agentSessionWriteNotDoneParts('send'))
   }
   return agentSessionWriteNoticeText(
@@ -161,7 +188,7 @@ export function structuredAgentSessionDeliveryNotices(
    *  message with no pending or accepted one is still sending. */
   submissions: readonly AgentJournalSubmission[],
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
-  startFailures: readonly AgentSessionFailureFact[],
+  startFailures: readonly StatedStartFailure[],
   /** Ids whose send failed or was refused while this chat was open: only they word their cause. */
   failedHere: ReadonlySet<string>,
   /** The queue's live cards, which the transcript leaves a rejected message to. */
