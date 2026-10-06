@@ -8,7 +8,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
@@ -142,7 +142,7 @@ describe('ClaudeProfileRouter', () => {
   })
 
   it('injects the account with its twin, and nothing over the user’s own System default', () => {
-    const f = fixture({ CLAUDE_CONFIG_DIR: '/user/own' })
+    const f = fixture({ CLAUDE_CONFIG_DIR: resolve('/user/own') })
     mkdirSync(f.home('a'), { recursive: true })
     expect(f.router.preparation()).toMatchObject({
       configDir: f.home('a'),
@@ -155,7 +155,7 @@ describe('ClaudeProfileRouter', () => {
     })
     f.settings.activeClaudeManagedAccountId = null
     expect(f.router.preparation()).toMatchObject({
-      configDir: '/user/own',
+      configDir: resolve('/user/own'),
       stripAuthEnv: false,
       envPatch: { ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath }
     })
