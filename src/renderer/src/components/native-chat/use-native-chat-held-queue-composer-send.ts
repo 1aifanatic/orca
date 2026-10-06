@@ -11,6 +11,7 @@ import {
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import { readNativeChatComposerDraft } from './native-chat-composer-draft-store'
 import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
+import type { NativeChatQueueHold } from './native-chat-composer-types'
 
 type StructuredComposerSend = (
   text: string,
@@ -33,8 +34,8 @@ export type NativeChatQueueSendConfirm = {
 type PendingSend = {
   text: string
   attachments: readonly NativeChatComposerImageAttachment[] | undefined
-  count: number
-  clear: () => Promise<boolean>
+  /** The hold it was asked under: the question stands only while that hold does. */
+  hold: NativeChatQueueHold
   /** The draft as it was when the message was asked for. */
   sentFrom: NativeChatComposerDraft
 }
@@ -51,12 +52,14 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
   // The send a choice may still take, taken once: the closing dialog stays clickable for its exit
   // animation, and a double-click or a held Enter lands twice before any re-render.
   const untakenRef = useRef<PendingSend | null>(null)
+  // A pause lifted under the open dialog (Orca's mail, another client's Resume) voids the choice:
+  // nothing is sent, and the draft stays for the next Enter, which then sends as usual.
   const take = useCallback((): PendingSend | null => {
     const taken = untakenRef.current
     untakenRef.current = null
     setOpen(false)
-    return taken
-  }, [])
+    return taken?.hold === queueHold ? taken : null
+  }, [queueHold])
   // Clear queue sends once its deletes settle, through the send of that render.
   const sendNowRef = useRef<NativeChatStructuredComposerSend>(sendNow)
   useLayoutEffect(() => {
@@ -79,8 +82,7 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
         const asked = {
           text,
           attachments,
-          count: queueHold.count,
-          clear: queueHold.clear,
+          hold: queueHold,
           sentFrom: readNativeChatComposerDraft(args.draftScopeKey)
         }
         untakenRef.current = asked
@@ -107,7 +109,7 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
     clearingRef.current = true
     void (async () => {
       try {
-        if (await taken.clear()) {
+        if (await taken.hold.clear()) {
           // Text typed during the deletes stays: the message was taken from what came before.
           await sendNowRef.current(taken.text, taken.attachments, taken.sentFrom)
         }
@@ -120,6 +122,14 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
     take()
   }, [take])
 
-  const confirm = pending ? { open, count: pending.count, clearQueue, sendMessage, dismiss } : null
+  const confirm = pending
+    ? {
+        open: open && pending.hold === queueHold,
+        count: pending.hold.count,
+        clearQueue,
+        sendMessage,
+        dismiss
+      }
+    : null
   return { send, confirm }
 }

@@ -71,7 +71,8 @@ function TestField({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   return (
     <NativeChatComposerField
-      composerScopeKey="pane-test"
+      dropScopeKey="pane-test"
+      draftScopeKey="pane-test"
       textareaRef={textareaRef}
       draft={draft}
       disabled={disabled}

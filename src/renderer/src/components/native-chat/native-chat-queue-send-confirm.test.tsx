@@ -326,13 +326,13 @@ describe('sending while the queue is held', () => {
       expect(structured.send).toHaveBeenCalledTimes(1)
     })
 
-    it('text typed meanwhile stays in the composer once the message is accepted', async () => {
+    it('only the sent message leaves the composer; text typed meanwhile stays', async () => {
       const { deleted, structured, input } = await clearingQueue('start over')
       changePrompt(input, 'start over, and also check the tests')
       await act(async () => deleted.resolve(true))
       await waitFor(() => expect(structured.send).toHaveBeenCalledWith('start over', []))
       await act(async () => {})
-      expect(promptValue(input)).toBe('start over, and also check the tests')
+      expect(promptValue(input)).toBe(', and also check the tests')
     })
 
     it('an unchanged draft is cleared once the message is accepted', async () => {
@@ -357,5 +357,38 @@ describe('sending while the queue is held', () => {
     await act(async () => pressEnter(commandInput))
     await waitFor(() => expect(held.dispatchCommand).toHaveBeenCalledWith('/compact'))
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes when the pause lifts under it: nothing is sent, the draft stays, and the next Enter sends', async () => {
+    const held = transport(heldQueue(2))
+    const composer = (structuredTransport: NativeChatStructuredComposerTransport) => (
+      <NativeChatComposer
+        terminalTabId="tab-lifted"
+        paneKey="tab-lifted:structured"
+        targetPtyId={null}
+        agent="codex"
+        structuredTransport={structuredTransport}
+      />
+    )
+    const view = render(composer(held))
+    const input = screen.getByRole('textbox')
+    changePrompt(input, 'a new instruction')
+    await act(async () => pressEnter(input))
+    await screen.findByRole('dialog')
+    // Orca's mail or another client's Resume lifts the pause: the host stops publishing the hold.
+    const { queueHold: _lifted, ...lifted } = held
+    view.rerender(composer(lifted))
+    await act(async () => {})
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(held.send).not.toHaveBeenCalled()
+    expect(promptValue(input)).toBe('a new instruction')
+    // A later pause does not bring the old question back.
+    view.rerender(composer({ ...lifted, queueHold: heldQueue(1) }))
+    await act(async () => {})
+    expect(screen.queryByRole('dialog')).toBeNull()
+    view.rerender(composer(lifted))
+    await act(async () => pressEnter(input))
+    await waitFor(() => expect(held.send).toHaveBeenCalledWith('a new instruction', []))
+    expect(held.send).toHaveBeenCalledTimes(1)
   })
 })
