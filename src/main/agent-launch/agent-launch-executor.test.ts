@@ -436,24 +436,21 @@ describe('delivering a launch prompt to a terminal agent', () => {
 })
 
 /**
- * The kind is read off the resolved workspace id, so a workspace with nowhere to keep a session is
- * decided here rather than offered to a host probe that cannot answer for it.
+ * The kind is read off the resolved workspace id. Every kind, the floating workspace included, now
+ * has a directory a session can run in, so none downgrades a launch on its own.
  */
 describe('a launch into an existing workspace, by workspace kind', () => {
-  it('runs the floating workspace as a terminal, never a structured session', async () => {
+  it('opens a structured session in the floating workspace', async () => {
     const h = harness({})
     const result = await h.run({
       agent: 'claude',
       target: { kind: 'existing', worktree: FLOATING_TERMINAL_WORKTREE_ID }
     })
 
-    // The invariant, not the call order: the floating sentinel has no session store to open into.
-    expect(h.createStructuredSession).not.toHaveBeenCalled()
-    expect(result.outcome).toEqual({ kind: 'terminal', handle: 'term_1' })
-    expect(result.receipt).toMatchObject({
-      mode: 'terminal',
-      reason: 'structured_unsupported_on_host'
-    })
+    // Why this changed: the floating workspace resolves to its configured directory, so a session
+    // has somewhere to run and be filed under. Kind alone no longer downgrades a launch.
+    expect(h.createStructuredSession).toHaveBeenCalled()
+    expect(result.outcome).toMatchObject({ kind: 'structured' })
   })
 
   it('still opens a structured session in a folder workspace', async () => {
@@ -510,10 +507,14 @@ describe('caller-supplied launch inputs', () => {
     expect(h.createStructuredSession).not.toHaveBeenCalled()
   })
 
-  // A custom launch command applies to terminal launches only; native chat ignores it.
+  // Command values never change the selected chat surface.
   it.each([
     ['claude', 'claude-wrapper'],
-    ['codex', 'codex-nightly']
+    ['codex', 'codex-nightly'],
+    ['claude', 'npx claude'],
+    ['codex', 'wrapper --arg'],
+    ['claude', '/missing/claude'],
+    ['codex', './codex']
   ] as const)('opens a structured %s session despite launch command %s', async (agent, command) => {
     const h = harness({
       settings: { ...STRUCTURED_PREFERENCE, agentCmdOverrides: { [agent]: command } }
@@ -593,7 +594,7 @@ describe('caller-supplied launch inputs', () => {
     const result = await h.run({ agent: 'claude', target: EXISTING, agentArgs: '--model opus' })
 
     expect(result.outcome.kind).toBe('structured')
-    expect(result.warning).toContain('does not apply launch arguments')
+    expect(result.warning).toContain('per-launch argument override was ignored')
   })
 
   it('warns when a structured session ignored an explicit "no arguments" too', async () => {
@@ -603,7 +604,7 @@ describe('caller-supplied launch inputs', () => {
     // The structured path reads the bypass-permissions bit from the user's SETTINGS default, so a
     // caller that asked for no arguments can still get a session with more permission than it asked
     // for. Staying silent about that is the failure mode worth a test.
-    expect(result.warning).toContain('does not apply launch arguments')
+    expect(result.warning).toContain('per-launch argument override was ignored')
   })
 
   it('leaves a structured launch unwarned when it carried no arguments at all', async () => {

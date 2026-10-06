@@ -69,6 +69,8 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
   logger: StructuredAgentSessionLogger
   record: (sessionId: string) => AgentSessionRecord | null
   readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
+  /** A person's Stop is still ending the session's work: the status feed's own reading. */
+  stopping: (sessionId: string) => boolean
   now: () => number
 }
 
@@ -233,6 +235,12 @@ export class StructuredAgentSessionDeliveryLoop {
           { failure: startFailure ?? agentSessionFailureFact('startFailed') }
       })
     }
+    // Never steer into a turn a person's Stop is ending: the message runs after it, as its own
+    // turn, and the turn's end is a commit that wakes the loop again. Read here, at the handover,
+    // because a Stop can land while this step waits on the child's start.
+    if (this.deps.stopping(sessionId)) {
+      return this.stop(sessionId)
+    }
     const next = oldestQueuedSubmission(session)
     if (!next) {
       return this.stop(sessionId)
@@ -258,7 +266,11 @@ export class StructuredAgentSessionDeliveryLoop {
   /** A start the session refused, as the failure every queued message it was for is rejected with. */
   private refusedStart(
     sessionId: string,
-    { refusal, diagnostic }: Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+    {
+      refusal,
+      diagnostic,
+      argumentProblem
+    }: Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
   ): StartFailure {
     // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
     const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
@@ -267,6 +279,7 @@ export class StructuredAgentSessionDeliveryLoop {
       cause: {
         refusal,
         ...(diagnostic ? { diagnostic } : {}),
+        ...(argumentProblem ? { argumentProblem } : {}),
         ...(newSession ? { newSession: true as const } : {})
       }
     }
