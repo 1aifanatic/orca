@@ -16,9 +16,13 @@ export type StructuredPromptDeliveryResult = {
   inComposer?: true
   /** Nobody could confirm it went: the host may hold it. */
   unconfirmed?: true
+  /** Another send of the chat held its one slot, so this one never went. */
+  busy?: true
 }
 
-type StagedDelivery = { delivered: boolean; inComposer: boolean; unconfirmed?: true }
+type StagedDelivery = Omit<StructuredPromptDeliveryResult, 'inComposer' | 'failureNotified'> & {
+  inComposer: boolean
+}
 
 export type StructuredLaunchPromptOptions = {
   prompt?: string
@@ -126,7 +130,7 @@ function sendStagedPrompt(
     if (!sent) {
       // Another send of the chat holds its slot: the launch text waits in the composer instead.
       unstage(prompt)
-      return { delivered: false, inComposer: handBackStagedPrompt(prompt) }
+      return { delivered: false, inComposer: handBackStagedPrompt(prompt), busy: true }
     }
     try {
       const outcome = await sent.outcome
@@ -160,7 +164,7 @@ export function settleStructuredAgentLaunchPrompt(args: {
       if (!prompt || prompt.discarded) {
         return { delivered: false, failureNotified: true }
       }
-      const { delivered, inComposer, unconfirmed } = await sendStagedPrompt(
+      const { delivered, inComposer, unconfirmed, busy } = await sendStagedPrompt(
         prompt,
         receipt,
         args.target
@@ -172,7 +176,8 @@ export function settleStructuredAgentLaunchPrompt(args: {
         delivered,
         failureNotified: false,
         ...(inComposer ? { inComposer: true as const } : {}),
-        ...(unconfirmed ? { unconfirmed } : {})
+        ...(unconfirmed ? { unconfirmed } : {}),
+        ...(busy ? { busy } : {})
       }
     },
     (error: unknown) => {

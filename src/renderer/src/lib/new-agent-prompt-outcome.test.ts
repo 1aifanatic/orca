@@ -201,6 +201,22 @@ describe('notes sent to a new agent', () => {
     expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe('')
   })
 
+  // The notes own the text, so they are the one place that says it did not go.
+  it('report the refusal once, as a send to a chat does', async () => {
+    mocks.launch.mockResolvedValue({ sessionId: chat.sessionId, fence: 1 })
+    mocks.callRuntimeRpc.mockResolvedValue({
+      ok: false,
+      refusal: { code: 'agent_session_checkpoint_stale', message: 'stale' }
+    })
+    const { launch } = sendNotesToNewAgent()
+    await expect(
+      newAgentPromptOutcome({ delivery: launch.promptDeliveryResult! })
+    ).resolves.toEqual({
+      delivered: false,
+      failure: { status: 'not-writable', code: 'session-send-refused' }
+    })
+  })
+
   it("come back to the shelf when the start fails, and only there, not in that chat's composer", async () => {
     mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
     const { onDelivered } = sendNotesToNewAgent()
@@ -245,5 +261,41 @@ describe('notes sent to a new agent', () => {
 
     expect(isNoteInFlight('note-a')).toBe(false)
     expect(onDelivered).not.toHaveBeenCalled()
+  })
+})
+
+describe('why notes sent to a new agent did not go', () => {
+  it.each([
+    [
+      'nobody could confirm it',
+      { delivered: false, failureNotified: false, unconfirmed: true as const },
+      { status: 'unconfirmed', code: 'runtime-unverifiable' }
+    ],
+    [
+      "the chat's one send was taken",
+      { delivered: false, failureNotified: false, busy: true as const },
+      { status: 'not-ready', code: 'session-send-refused' }
+    ],
+    [
+      'the host refused it',
+      { delivered: false, failureNotified: false },
+      { status: 'not-writable', code: 'session-send-refused' }
+    ]
+  ])('says so once when %s', async (_why, result, failure) => {
+    await expect(newAgentPromptOutcome({ delivery: Promise.resolve(result) })).resolves.toEqual({
+      delivered: false,
+      failure
+    })
+  })
+
+  it('leaves a failure the new chat already shows to that chat', async () => {
+    await expect(
+      newAgentPromptOutcome({
+        delivery: Promise.resolve({ delivered: false, failureNotified: true })
+      })
+    ).resolves.toEqual({ delivered: false })
+    await expect(
+      newAgentPromptOutcome({ delivery: Promise.reject(new Error('start failed')) })
+    ).resolves.toEqual({ delivered: false })
   })
 })
