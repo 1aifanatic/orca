@@ -27,6 +27,7 @@ export function projectStructuredAiVaultSessions(
     return [
       {
         ...session,
+        title: ownership.conversationName ?? session.title,
         structuredSession: {
           sessionId: ownership.sessionId,
           workspaceId: ownership.workspaceId

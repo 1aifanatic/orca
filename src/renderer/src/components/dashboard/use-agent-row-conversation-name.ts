@@ -1,5 +1,6 @@
 import { getAgentRowConversationName } from '../../../../shared/agent-row-conversation-name'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
+import { structuredChatRowName } from '../../../../shared/structured-chat-row-name'
 import { resolveAgentRowPaneLiveTitle } from './agent-row-pane-live-title'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
@@ -40,6 +41,15 @@ export function useAgentRowConversationName(agent: DashboardAgentRow): string | 
       ? undefined
       : getIndexedTab(s.tabsByWorktree[agent.tab.worktreeId], agent.tab.id)
   )
+  const structuredName = useAppStore((s) =>
+    cannotOwnTabName
+      ? null
+      : structuredChatRowName(
+          s.unifiedTabsByWorktree?.[agent.tab.worktreeId]?.find(
+            (tab) => tab.contentType === 'agent-session' && tab.id === agent.tab.id
+          )
+        )
+  )
   // Why: parsed per render rather than inside the selector, which runs on every
   // store update and must stay allocation-free.
   const ownLeafId = cannotOwnTabName ? null : parsePaneKey(agent.paneKey)?.leafId
@@ -58,6 +68,9 @@ export function useAgentRowConversationName(agent: DashboardAgentRow): string | 
   // Why: synthetic and same-tab child rows do not own the parent tab's name.
   if (cannotOwnTabName) {
     return null
+  }
+  if (structuredName) {
+    return structuredName
   }
   // Why: retained row snapshots need a fallback after their live tab disappears.
   return getAgentRowConversationName(

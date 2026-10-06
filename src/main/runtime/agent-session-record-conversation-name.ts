@@ -11,8 +11,12 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 export function setAgentSessionRecordConversationName(
   record: AgentSessionRecord,
   name: string | null,
-  now: number
+  now: number,
+  options?: { expected?: string | null }
 ): AgentSessionRecord {
+  if (options && 'expected' in options && (record.conversationName ?? null) !== options.expected) {
+    return record
+  }
   const normalized = name === null ? null : normalizeAgentSessionConversationName(name)
   if ((record.conversationName ?? null) === normalized) {
     return record

@@ -31,6 +31,18 @@ describe('structured AI Vault ownership', () => {
     })
   })
 
+  it('uses the owning record name while leaving an unowned row alone', () => {
+    installOwnership({ conversationName: 'auth/login' })
+    const result = listResult()
+    const unowned = { ...result.sessions[0]!, sessionId: 'different-session', title: 'Original' }
+    const projected = projectStructuredAiVaultSessions(
+      { ...result, sessions: [...result.sessions, unowned] },
+      true
+    )
+    expect(projected.sessions[0]?.title).toBe('auth/login')
+    expect(projected.sessions[1]).toBe(unowned)
+  })
+
   it('derives typed refusals from the single writer predicate for live and proving leases', async () => {
     installOwnership()
     expect(() =>
@@ -116,7 +128,8 @@ function installOwnership(overrides: Partial<StructuredProviderSessionOwnership>
                     : codexProviderHandle(ownership.providerSessionId)
               }
             ],
-            lease: { ...ownership.lease, sessionId: ownership.sessionId }
+            lease: { ...ownership.lease, sessionId: ownership.sessionId },
+            ...(ownership.conversationName ? { conversationName: ownership.conversationName } : {})
           }
         ]
       }

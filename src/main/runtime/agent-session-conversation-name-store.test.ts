@@ -87,6 +87,38 @@ describe('AgentSessionRecordStore.setConversationName', () => {
     expect(store.getRecord(SESSION)?.conversationName).toBeUndefined()
   })
 
+  it('compares against the committed name before applying a generated title', async () => {
+    const store = await reservedStore()
+    await store.setConversationName(SESSION, 'First prompt', { expected: null })
+    const named = await store.setConversationName(SESSION, 'Manual name')
+    const stale = await store.setConversationName(SESSION, 'Late generated name', {
+      expected: 'First prompt'
+    })
+    expect(stale).toBe(named)
+    expect(store.getRecord(SESSION)?.conversationName).toBe('Manual name')
+    await store.setConversationName(SESSION, 'Generated name', { expected: 'Manual name' })
+    expect(store.getRecord(SESSION)?.conversationName).toBe('Generated name')
+    const stillNamed = await store.setConversationName(SESSION, 'Another placeholder', {
+      expected: null
+    })
+    expect(stillNamed.conversationName).toBe('Generated name')
+  })
+
+  it('reports a failed seed even when another writer stored the same placeholder', async () => {
+    const store = await reservedStore()
+    const placeholder = 'First prompt'
+    expect(await store.compareAndSetConversationName(SESSION, placeholder, null)).toMatchObject({
+      conversationName: placeholder
+    })
+    expect(await store.compareAndSetConversationName(SESSION, placeholder, null)).toBeNull()
+    expect(
+      await store.compareAndSetConversationName(SESSION, 'Generated name', placeholder)
+    ).toMatchObject({ conversationName: 'Generated name' })
+    expect(
+      await store.compareAndSetConversationName(SESSION, 'Stale generation', placeholder)
+    ).toBeNull()
+  })
+
   it('refuses a session it has no record for', async () => {
     const store = await reservedStore()
 

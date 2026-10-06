@@ -27,6 +27,10 @@ import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire
 import { replaceConversationInSnapshot } from './structured-conversation-tab-replacement'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { structuredWorkerAgentStatus } from './orchestration/structured-worker-group-addressing'
+import {
+  retitleStructuredConversationTab,
+  titleStructuredConversationTabs
+} from './structured-conversation-tab-title'
 
 export class OrcaRuntimeWithPruneMobileSessionTabGroupLayout extends OrcaRuntimeWithScheduleMobileSessionTabsChanged {
   protected pruneMobileSessionTabGroupLayout(
@@ -81,7 +85,26 @@ export class OrcaRuntimeWithPruneMobileSessionTabGroupLayout extends OrcaRuntime
     for (const replacement of getStructuredAgentSessionHost()?.conversationReplacements?.() ?? []) {
       snapshot = replaceConversationInSnapshot(snapshot, replacement)
     }
+    const host = getStructuredAgentSessionHost()
+    snapshot = titleStructuredConversationTabs(snapshot, (sessionId) => {
+      const record = host?.deps?.store?.getRecord(sessionId)
+      return record?.location.workspaceId === snapshot.worktree ? record.conversationName : null
+    })
     return projectRuntimeMobileSessionTabs(snapshot, this.getMobileSessionProjectionHost())
+  }
+
+  refreshStructuredConversationTabTitle(workspaceId: string, sessionId: string): void {
+    const snapshot = this.mobileSessionTabsByWorktree.get(workspaceId)
+    if (!snapshot) {
+      return
+    }
+    const record = getStructuredAgentSessionHost()?.deps?.store?.getRecord(sessionId)
+    const name = record?.location.workspaceId === workspaceId ? record.conversationName : null
+    const next = retitleStructuredConversationTab(snapshot, sessionId, name)
+    if (!next) {
+      return
+    }
+    this.emitMobileSessionTabsSnapshot(this.storeMobileSessionSnapshot(workspaceId, next))
   }
 
   protected getMobileSessionProjectionHost(): RuntimeMobileSessionProjectionHost {
