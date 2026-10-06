@@ -30,7 +30,7 @@ export function NativeChatHostOutageNotice({
       {outage ? (
         <div
           className={cn(
-            'mx-auto flex w-full max-w-4xl items-center gap-2 px-4 py-1 text-xs',
+            'mx-auto flex w-full max-w-(--chat-content-max-width) items-center gap-2 px-4 py-1 text-xs',
             offline ? 'text-status-warning' : 'text-muted-foreground'
           )}
         >

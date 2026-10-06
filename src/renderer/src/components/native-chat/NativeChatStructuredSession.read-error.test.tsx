@@ -11,7 +11,7 @@ vi.mock('@/runtime/structured-agent-session-client', () =>
   moduleFactories.structuredAgentSessionClient()
 )
 vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAgentSession())
-vi.mock('./use-native-chat-font-scale', () => moduleFactories.useNativeChatFontScale())
+vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())
@@ -104,7 +104,7 @@ it("says a code's own words that the history didn't load, and nothing under them
 })
 
 // "This isn't available in this chat." would name nothing the reader asked for.
-it('says only that the history did not load for a chat its host cannot run', () => {
+it('says why the history did not load for a chat its host cannot run', () => {
   mocks.status = 'error'
   mocks.readRefusal = {
     code: 'structured_agent_session_unsupported',
@@ -114,7 +114,11 @@ it('says only that the history did not load for a chat its host cannot run', () 
 
   renderPane()
 
-  expect(screen.getAllByText("This chat's history couldn't be loaded.")).toHaveLength(1)
+  expect(
+    screen.getAllByText(
+      "Orca can't run this agent in a chat here. This chat's history couldn't be loaded."
+    )
+  ).toHaveLength(1)
   expect(screen.queryByText(/isn't available|newer Orca/)).toBeNull()
 })
 

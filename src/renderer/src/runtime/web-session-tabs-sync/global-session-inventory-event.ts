@@ -1,4 +1,13 @@
+import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
+import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
+import {
+  getWebSessionTabsTrackingGeneration,
+  acceptReplayedWebSessionTabsSnapshot
+} from './tracking-lifecycle'
+import { recoverAiVaultStructuredTitles } from '@/components/right-sidebar/ai-vault-structured-title-recovery'
+import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
+import { recheckUnconfirmedStructuredAgentLaunches } from '../../lib/structured-agent-session-launch-unconfirmed-recheck'
 import { useAppStore } from '../../store'
 import { recoverWebSessionTerminalOrphansBeforeApply } from '../web-session-terminal-orphan-recovery'
 import { queueAcceptedWebSessionTerminalSnapshot } from '../web-session-terminal-handle-events'
@@ -11,7 +20,6 @@ import {
   decideWebSessionTabsSnapshot,
   WEB_SESSION_TABS_FRAME_OUTRANKED
 } from './tracking-decisions'
-import { acceptReplayedWebSessionTabsSnapshot } from './tracking-lifecycle'
 import { applyWebSessionTabsSnapshots } from './snapshot-api'
 import {
   latestSessionTabsSnapshotByWorktree,
@@ -134,6 +142,7 @@ export function handleGlobalSessionInventoryEvent({
           frames: applicable.map(({ snapshot }, index) => ({
             environmentId,
             worktreeId: snapshot.worktree,
+            snapshot,
             decision: decisions[index]!,
             expectedEnvironmentConnectionGeneration,
             expectedEnvironmentPairingRevision,
@@ -171,6 +180,18 @@ export function handleGlobalSessionInventoryEvent({
     .finally(() => {
       if (isCurrent()) {
         settleHydration?.()
+        void recoverAiVaultStructuredTitles(
+          toRuntimeExecutionHostId(environmentId),
+          () =>
+            isCurrent() &&
+            getRuntimeEnvironmentConnectionGeneration(environmentId) ===
+              expectedEnvironmentConnectionGeneration &&
+            getRuntimeEnvironmentRevision(environmentId) === expectedEnvironmentPairingRevision &&
+            getWebSessionTabsTrackingGeneration(environmentId) === expectedTrackingGeneration
+        )
       }
     })
+  // Each subscription opens with one census: the host is reachable again. Chats it lists were
+  // already settled as published above, before any recovery await.
+  recheckUnconfirmedStructuredAgentLaunches(toRuntimeExecutionHostId(environmentId))
 }

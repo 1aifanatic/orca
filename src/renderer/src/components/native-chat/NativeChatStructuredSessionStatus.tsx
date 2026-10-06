@@ -59,7 +59,7 @@ export function NativeChatStructuredSessionStatus(props: {
   return (
     <>
       {props.error || props.composerError ? (
-        <p className="mx-auto w-full max-w-4xl px-4 py-1 text-xs text-destructive">
+        <p className="mx-auto w-full max-w-(--chat-content-max-width) px-4 py-1 text-xs text-destructive">
           {props.error ?? props.composerError}
         </p>
       ) : null}
