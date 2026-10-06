@@ -102,7 +102,7 @@ describe('verifyManagedOrcadTunnelIdentity', () => {
     verifyRuntimePairingIdentity.mockReset()
   })
 
-  it('proves the server by runtime id, not by a saved device id a racing reply may have staled', async () => {
+  it('proves the server by its pinned key and token, not a per-process runtime id or a stale device id', async () => {
     const { verifyManagedOrcadTunnelIdentity } = await import('./orcad-managed-tunnel-identity')
     verifyRuntimePairingIdentity.mockResolvedValue({})
     const environment = {
@@ -125,6 +125,6 @@ describe('verifyManagedOrcadTunnelIdentity', () => {
     await expect(verifyManagedOrcadTunnelIdentity(environment as never)).resolves.toEqual({
       verdict: 'verified'
     })
-    expect(verifyRuntimePairingIdentity.mock.calls[0]?.[1]).toEqual({ runtimeId: 'runtime-1' })
+    expect(verifyRuntimePairingIdentity.mock.calls[0]?.[1]).toEqual({ runtimeId: null })
   })
 })
