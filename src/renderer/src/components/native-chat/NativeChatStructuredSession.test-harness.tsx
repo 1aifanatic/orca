@@ -10,6 +10,7 @@ import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
+import type { NativeChatFileLinkContext } from './native-chat-file-link'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
 import type { StructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
@@ -22,6 +23,10 @@ type StopBackgroundTaskSpy = (sessionId: string, taskId?: string) => unknown
 
 function nullable<T>(): T | null {
   return null
+}
+
+function widened<T>(value: T): T {
+  return value
 }
 
 function absent<T>(): T | undefined {
@@ -89,9 +94,16 @@ type StructuredSessionMessageListProps = {
   onLinkClick?: (...args: unknown[]) => void
   awaitingInput?: 'shown' | 'unshown' | null
   isWorking?: boolean
+  stopping?: boolean
   runtimeContext?: unknown
   session?: { hasMore: boolean; loadingEarlier: boolean; loadEarlier: () => Promise<void> }
   deliveryNotices?: ReadonlyMap<string, NativeChatDeliveryNotice>
+}
+
+const DEFAULT_FILE_LINK_CONTEXT: NativeChatFileLinkContext = {
+  worktreeId: 'wt-1',
+  worktreePath: '/repo',
+  runtimeEnvironmentId: null
 }
 
 const initialMessageListProps: StructuredSessionMessageListProps | null = null
@@ -107,6 +119,9 @@ export function createStructuredSessionMocks() {
     call: vi.fn<(...args: never[]) => unknown>(),
     fileLinkClick: vi.fn<(...args: never[]) => unknown>(),
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
+    ownerWorktreeId: widened<string | null>('wt-1'),
+    fileLinkContext: widened<NativeChatFileLinkContext | null>(DEFAULT_FILE_LINK_CONTEXT),
+    lifecycleLookup: vi.fn<(worktreeId: string, sessionId: string) => void>(),
     launchFailure: nullable<AgentSessionWriteRefusal>(),
     launchResumes: false,
     retryLaunch: vi.fn<(worktreeId: string, sessionId: string) => unknown>(),
@@ -120,6 +135,9 @@ export function createStructuredSessionMocks() {
       launchSeed?: NativeChatLaunchSeed
       structuredTransport?: Record<string, unknown>
       isWorking?: boolean
+      isStopping?: boolean
+      afterStop?: 'queue' | 'send'
+      steerQueued?: () => boolean
       onStop?: () => void
     }>(),
     approvalCardProps: initialApprovalCardProps,
@@ -138,6 +156,8 @@ export function createStructuredSessionMocks() {
     turnId: null as string | null,
     // Unset: Stop follows the turn, as against an older host.
     canStop: nullable<boolean>(),
+    stopPressed: false,
+    sendsQueue: false,
     supportsBackgroundTaskStop: false,
     supportsBackgroundTaskStopAll: true,
     backgroundTasks: [] as AgentSessionBackgroundTask[],
@@ -209,6 +229,8 @@ export function createStructuredSessionMocks() {
             epoch: 'epoch-1',
             rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,
+            stopPressed: mocks.stopPressed,
+            sendsQueue: mocks.sendsQueue,
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
@@ -259,18 +281,20 @@ export function createStructuredSessionMocks() {
       getStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
       getStructuredAgentSessionLaunchResumes: () => mocks.launchResumes,
       useStructuredAgentSessionLaunchSelection: () => null,
-      useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
+      useStructuredAgentSessionLaunchLifecycle: (worktreeId: string, sessionId: string) => {
+        mocks.lifecycleLookup(worktreeId, sessionId)
+        return mocks.launchLifecycle
+      },
       useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
     useNativeChatFontSize: () => ({
       useNativeChatFontSize: () => undefined
     }),
     useNativeChatFileLinkContext: () => ({
-      useNativeChatFileLinkContext: () => ({
-        worktreeId: 'wt-1',
-        worktreePath: '/repo',
-        runtimeEnvironmentId: null
-      })
+      useNativeChatFileLinkContext: () => mocks.fileLinkContext
+    }),
+    useNativeChatTabOwner: () => ({
+      useNativeChatTabOwnerWorktreeId: () => mocks.ownerWorktreeId
     }),
     useNativeChatFileLinkClick: () => ({
       useNativeChatFileLinkClick: (context: unknown) => (context ? mocks.fileLinkClick : undefined)
@@ -317,9 +341,12 @@ export function createStructuredSessionMocks() {
   const resetStructuredSessionMocks = (): void => {
     mocks.call.mockReset()
     mocks.launchLifecycle = null
+    mocks.ownerWorktreeId = 'wt-1'
+    mocks.fileLinkContext = DEFAULT_FILE_LINK_CONTEXT
     mocks.launchFailure = null
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
+    mocks.lifecycleLookup.mockReset()
     mocks.controllerProps = null
     mocks.send.mockClear()
     mocks.status = 'ready'
@@ -342,6 +369,8 @@ export function createStructuredSessionMocks() {
     mocks.isWorking = false
     mocks.turnId = null
     mocks.canStop = null
+    mocks.stopPressed = false
+    mocks.sendsQueue = false
     mocks.supportsBackgroundTaskStop = false
     mocks.supportsBackgroundTaskStopAll = true
     mocks.stopBackgroundTask.mockReset()

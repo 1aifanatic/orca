@@ -20,6 +20,8 @@ export type StructuredAgentSessionPendingSend = {
   issued: boolean
   /** A sender outside the chat keeps its own copy, so nothing goes to the chat's composer. */
   callerKeepsText?: true
+  /** Made while the chat read Stopping: drawn after that turn until the host records it. */
+  sentWhileStopping?: true
   /** Each image's SSH connection, in body order, so a returned image still opens remotely. */
   imageConnectionIds?: readonly (string | null)[]
 }

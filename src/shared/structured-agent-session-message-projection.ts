@@ -15,6 +15,8 @@ export type StructuredAgentSessionOptimisticMessage = {
   clientMessageId: string
   body: AgentJournalMessageItem
   queuedAt: number
+  /** Sent while the chat read Stopping: drawn after the turn being stopped. */
+  sentWhileStopping?: true
 }
 
 export type StructuredAgentSessionMessageProjectionOptions = {
@@ -146,7 +148,8 @@ export function projectStructuredAgentSessionMessages(
         role: 'user',
         source: 'transcript',
         timestamp: entry.queuedAt,
-        blocks: entry.body.blocks
+        blocks: entry.body.blocks,
+        ...(entry.sentWhileStopping ? { sentWhileStopping: true as const } : {})
       }))
   ]
 }

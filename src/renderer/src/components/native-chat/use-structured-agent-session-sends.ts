@@ -2,7 +2,10 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionAttachment } from '../../../../shared/structured-agent-session-send-mutation'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
-import type { StructuredAgentSessionHostCapabilityState } from '@/runtime/structured-agent-session-host-capability'
+import {
+  structuredAgentSessionQueueRequest,
+  type StructuredAgentSessionQueueDelivery
+} from './structured-agent-session-queue-request'
 import {
   sendStructuredAgentSessionMessage,
   settleStructuredAgentSessionSendsFromJournal,
@@ -17,17 +20,6 @@ import {
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
 import { recoverLegacyStructuredAgentSessionOutbox } from './structured-agent-session-legacy-outbox'
 
-/** Whether the host holds a send as a card while the agent works: only a host that says it queues,
- *  with the setting on, and only text, which is all its queue takes. */
-function queueRequest(
-  queue: { capability: StructuredAgentSessionHostCapabilityState; enabled: boolean },
-  attachments: readonly StructuredAgentSessionAttachment[]
-): 'queue-if-active' | undefined {
-  return queue.capability === 'supported' && queue.enabled && attachments.length === 0
-    ? 'queue-if-active'
-    : undefined
-}
-
 /** The open chat's view of its sends: they live in the sender, which works without this view. */
 export function useStructuredAgentSessionSends(args: {
   sessionId: string
@@ -35,11 +27,22 @@ export function useStructuredAgentSessionSends(args: {
   fence: number | null
   submissions: readonly AgentJournalSubmission[]
   queuedMessageIds: readonly string[]
-  queue: { capability: StructuredAgentSessionHostCapabilityState; enabled: boolean }
+  queue: StructuredAgentSessionQueueDelivery
   /** The chat's history has loaded, so its rows and cards can answer for a legacy copy. */
   historyLoaded: boolean
+  /** The chat reads Stopping: a send made now is drawn after the turn being stopped. */
+  stopping?: boolean
 }) {
-  const { fence, historyLoaded, queue, queuedMessageIds, sessionId, submissions, target } = args
+  const {
+    fence,
+    historyLoaded,
+    queue,
+    queuedMessageIds,
+    sessionId,
+    stopping,
+    submissions,
+    target
+  } = args
   const subscribe = useCallback(
     (listener: () => void) => subscribeToStructuredAgentSessionPendingSends(sessionId, listener),
     [sessionId]
@@ -78,7 +81,7 @@ export function useStructuredAgentSessionSends(args: {
       if (!text.trim() && attachments.length === 0) {
         return false
       }
-      const delivery = queueRequest(queue, attachments)
+      const delivery = structuredAgentSessionQueueRequest(queue, attachments)
       // Refused while the chat's send is out: the text stays in the box.
       return (
         sendStructuredAgentSessionMessage({
@@ -86,11 +89,12 @@ export function useStructuredAgentSessionSends(args: {
           target,
           text,
           attachments,
-          ...(delivery ? { delivery } : {})
+          ...(delivery ? { delivery } : {}),
+          ...(stopping ? { sentWhileStopping: true as const } : {})
         }) !== null
       )
     },
-    [queue, sessionId, target]
+    [queue, sessionId, stopping, target]
   )
 
   return {

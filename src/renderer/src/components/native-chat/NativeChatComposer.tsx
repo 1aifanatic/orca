@@ -59,6 +59,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       agent,
       canSend = true,
       isWorking = false,
+      isStopping = false,
+      afterStop,
       onStop,
       onOptimisticSend,
       optimisticSendOutcome,
@@ -179,12 +181,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setNotice
     })
     const imageBlock = nativeChatImageSendBlock(imageAttachments)
+    const sendHeld = disabled || structuredTransport?.sendOut === true || imageBlock.holdsSend
     const sendButtonDisabled = isWorking
       ? !hasPty || !onStop
-      : disabled ||
-        structuredTransport?.sendOut === true ||
-        imageBlock.holdsSend ||
-        (draft.trim() === '' && imageAttachments.length === 0)
+      : sendHeld || (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
       terminalTabId,
@@ -219,7 +219,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setNotice
     })
 
-    const { pickAttachment } = useNativeChatFileAttachmentActions(paneKey, attachExternalPaths)
+    const { pickAttachments } = useNativeChatFileAttachmentActions(paneKey, attachExternalPaths)
     const dictation = useNativeChatDictation(textareaRef)
     const { dispatch: dispatchSessionOptionCommand, isDispatching: isDispatchingSessionOption } =
       useNativeChatSessionOptionCommand({
@@ -374,6 +374,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         sendButtonDisabled={sendButtonDisabled}
         sendBlockedReason={imageBlock.reason}
         isWorking={isWorking}
+        isStopping={isStopping}
+        afterStop={afterStop}
         attachDisabled={disabled}
         dictationDisabled={dictation.dictationDisabled}
         isDictating={dictation.isDictating}
@@ -410,7 +412,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
           requestAnimationFrame(() => textarea?.setSelectionRange(result.caret, result.caret))
         }}
         onRemoveImageAttachment={(id) => removeImageAttachment(id)}
-        onAttach={pickAttachment}
+        onAttach={pickAttachments}
         onDictationToggle={dictation.toggleDictation}
         onDictationHoldStart={dictation.startHoldDictation}
         onDictationHoldEnd={dictation.stopHoldDictation}

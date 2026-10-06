@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionSends } from './use-structured-agent-session-sends'
+import { structuredAgentSessionNewSendsQueue } from './structured-agent-session-queue-request'
 import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
@@ -13,10 +14,7 @@ import {
   supportsStructuredAgentSessionPromptCancel,
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
-import {
-  useStructuredAgentSessionHostQueuesMessagesState,
-  useStructuredAgentSessionHostStopsConversation
-} from '@/runtime/structured-agent-session-host-capability'
+import { useStructuredAgentSessionHostQueuesMessagesState } from '@/runtime/structured-agent-session-host-capability'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -27,6 +25,7 @@ import {
 } from './structured-agent-session-message-projection'
 import { useStructuredAgentSessionMessages } from './use-structured-agent-session-messages'
 import { useStructuredAgentSessionTransportState } from './use-structured-agent-session-transport-state'
+import { useStructuredAgentSessionStop } from './use-structured-agent-session-stop'
 import { useStructuredAgentSessionTransport } from './use-structured-agent-session-transport'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 import type { StructuredAgentSessionLaunchView } from './use-native-chat-provisional-launch'
@@ -60,12 +59,15 @@ export function useStructuredAgentSession(args: {
   composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
+  /** The host says a person's Stop is still ending this session's work. */
+  hostStopping?: boolean
   /** The host's rewind latch and what follows a message returned by a rewind. */
   rewind?: NativeChatRewindHost
 }) {
   const {
     agent,
     composerScopeKey,
+    hostStopping = false,
     isVisible,
     launch,
     providerStarting = false,
@@ -120,6 +122,13 @@ export function useStructuredAgentSession(args: {
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
   )
+  const stopControl = useStructuredAgentSessionStop({
+    sessionId,
+    target,
+    transportState,
+    hostStopping,
+    mutate
+  })
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
   // answer: the send must start a turn, after which the card's cancel works.
@@ -136,7 +145,8 @@ export function useStructuredAgentSession(args: {
     submissions: transportState.submissions,
     queuedMessageIds,
     queue,
-    historyLoaded: transportEnabled && state.status === 'ready'
+    historyLoaded: transportEnabled && state.status === 'ready',
+    stopping: stopControl.stopping
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
@@ -177,12 +187,9 @@ export function useStructuredAgentSession(args: {
     blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
     write
   })
-  // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
-  // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
-  const stopsConversation =
-    useStructuredAgentSessionHostStopsConversation(target) && transportState.fence !== null
   const canStop =
-    transportState.turnId !== null || (stopsConversation && (transportState.isWorking || sending))
+    transportState.turnId !== null ||
+    (stopControl.stopsConversation && (transportState.isWorking || sending))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptPending = useMemo(
@@ -264,21 +271,12 @@ export function useStructuredAgentSession(args: {
     backgroundTasks: transportState.backgroundTasks,
     turnId: transportState.turnId,
     canStop,
-    stop: () => {
-      // A message that has not gone out goes back to its composer instead of starting a turn, and
-      // one that has is never sent again. Host-held cards are never withdrawn by a Stop: the host
-      // pauses them and they stay visible, on every device, until the user acts on one.
-      if (stopsConversation) {
-        sends.stopSends()
-        return mutate('agentSession.cancel', 'agentSession.cancel', {})
-      }
-      if (!transportState.turnId) {
-        return Promise.resolve(null)
-      }
-      sends.stopSends()
-      return mutate('agentSession.cancel', 'agentSession.cancel', { turnId: transportState.turnId })
-    },
+    stopPressed: stopControl.pressed,
+    stop: () => stopControl.stop(transportState.turnId, sends.stopSends),
     queuedMessages: queuedController,
+    /** A send made now while the agent works is held as a queued card: the host queues, and this
+     *  send asks it to (the setting is on and no pending prompt blocks the queue). */
+    sendsQueue: structuredAgentSessionNewSendsQueue(queue),
     cancel: async (turnId: string, prompt?: StructuredPromptCancelTarget) => {
       // Capability negotiation must complete before mutate fingerprints the payload:
       // older hosts reject the strict prompt field.

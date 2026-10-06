@@ -205,6 +205,8 @@ export function sendStructuredAgentSessionMessage(input: {
   delivery?: 'queue-if-active'
   /** The caller keeps the text if it comes back, instead of the chat's composer. */
   callerKeepsText?: true
+  /** Made while the chat read Stopping: drawn after that turn until the host records it. */
+  sentWhileStopping?: true
   now?: number
 }): { clientMessageId: string; outcome: Promise<StructuredAgentSessionSendOutcome> } | null {
   if (structuredAgentSessionSendOut(input.sessionId)) {
@@ -220,6 +222,7 @@ export function sendStructuredAgentSessionMessage(input: {
     queuedAt: input.now ?? Date.now(),
     ...(input.delivery ? { delivery: input.delivery } : {}),
     ...(input.callerKeepsText ? { callerKeepsText: true as const } : {}),
+    ...(input.sentWhileStopping ? { sentWhileStopping: true as const } : {}),
     ...(attachments.some((attachment) => attachment.connectionId)
       ? { imageConnectionIds: attachments.map((attachment) => attachment.connectionId ?? null) }
       : {}),
