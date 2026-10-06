@@ -14,6 +14,7 @@ import {
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { agentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 import type { CodexStructuredSessionAdapter } from './codex-structured-session-adapter'
+import { CODEX_STRUCTURED_AGENT } from './codex-structured-agent-definition'
 
 function listing(tier = 'priority-live-v2') {
   return {
@@ -72,7 +73,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     const codex = fakeCodex()
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
     const modelCatalog = new AgentModelCatalogStore()
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     modelCatalog.recordSuccess(access.fingerprint, 'codex', {
       models: [{ id: 'gpt-live', label: 'GPT Live', isDefault: true, efforts: [] }],
       fastModeTierByModel: new Map([['gpt-live', 'priority-live-v2']]),
@@ -104,7 +109,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     finishTurn(codex, 'first-turn')
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'second-turn')
     pending.resolve(listing())
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     await vi.waitFor(() =>
       expect(modelCatalog.get(access.fingerprint)?.fastModeTierByModel['gpt-live']).toBe(
         'priority-live-v2'
@@ -168,7 +177,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     const codex = fakeCodex({ 'model/list': listModels })
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-standard')
     const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], { modelCatalog })
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     try {
       await acquire(adapter)
       await vi.waitFor(() => expect(modelCatalog.hasActiveFailure(access.fingerprint)).toBe(true))
@@ -197,7 +210,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
     const modelCatalog = new AgentModelCatalogStore()
     const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], { modelCatalog })
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     await acquire(adapter)
     await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
     await expect(
@@ -226,7 +243,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
     const modelCatalog = new AgentModelCatalogStore()
     const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], { modelCatalog })
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     await acquire(adapter)
     await acquire(adapter)
     oldListing.resolve(listing('priority-old'))
@@ -249,7 +270,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
       origin: 'probe'
     }>()
     const modelCatalog = new AgentModelCatalogStore()
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     const pendingProbe = () => probe.promise
     const probing = modelCatalog.refresh(access.fingerprint, 'codex', pendingProbe, pendingProbe)
     const codex = fakeCodex({ 'model/list': () => listing('priority-own') })
@@ -308,7 +333,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     const codex = fakeCodex({ 'model/list': () => pending.promise })
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
     const modelCatalog = new AgentModelCatalogStore()
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     const adapter = adapterFor(codex, { codexHome: '/codex/home' }, [], { modelCatalog })
     await acquire(adapter)
     await vi.waitFor(() =>
@@ -335,7 +364,11 @@ describe('Codex structured Fast mode without send-path catalog waits', () => {
     const codex = fakeCodex()
     codex.routes['turn/start'] = answerWithOpenedTurn(codex, 'turn-fast')
     const modelCatalog = new AgentModelCatalogStore()
-    const access = agentModelCatalogSessionAccess(modelCatalog, 'codex', '/codex/home')!
+    const access = agentModelCatalogSessionAccess(
+      modelCatalog,
+      CODEX_STRUCTURED_AGENT,
+      '/codex/home'
+    )!
     const medium = [{ value: 'medium', label: 'Medium' }]
     modelCatalog.recordSuccess(access.fingerprint, 'codex', {
       models: [

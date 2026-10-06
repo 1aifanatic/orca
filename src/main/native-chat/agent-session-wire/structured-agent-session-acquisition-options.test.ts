@@ -401,6 +401,7 @@ describe('structured session acquisition options', () => {
     }
 
     const created = await performAttach({
+      agents: NO_STRUCTURED_AGENTS,
       logger: createStructuredAgentSessionLogger(),
       store,
       adapter: sessionAdapter,
@@ -436,6 +437,7 @@ describe('structured session acquisition options', () => {
     const options = { model: 'gpt-saved', effort: 'medium' }
 
     const created = await performAttach({
+      agents: NO_STRUCTURED_AGENTS,
       logger: createStructuredAgentSessionLogger(),
       store,
       adapter: sessionAdapter,
