@@ -49,7 +49,7 @@ export function NativeChatStructuredSession(
   const ownerWorktreeId = useNativeChatTabOwnerWorktreeId(props.tabId)
   const fileLinkContext = useNativeChatFileLinkContext(props.tabId)
   const provisionalLaunch = useNativeChatProvisionalLaunch(ownerWorktreeId, props.sessionId)
-  const { sendThroughRelaunch } = provisionalLaunch
+  const { sendThroughLaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const hostExecution = useStructuredAgentSessionHostExecution(props.sessionId, props.target)
   const paneKey = useMemo(
@@ -182,7 +182,7 @@ export function NativeChatStructuredSession(
       : null
     return {
       send: (text: string, attachments: readonly NativeChatComposerImageAttachment[]): boolean =>
-        sendThroughRelaunch(() =>
+        sendThroughLaunch(text, attachments.length > 0, () =>
           controller.send(
             text,
             attachments.map(({ path, connectionId }) => ({
@@ -206,7 +206,7 @@ export function NativeChatStructuredSession(
           ...(setThreadGoalObjective ? { setThreadGoalObjective } : {})
         }),
       ...(setThreadGoalObjective ? { threadGoal: { setObjective: setThreadGoalObjective } } : {}),
-      sendOut: controller.sendOut,
+      sendOut: controller.sendOut || provisionalLaunch.starting,
       optionsSurface: controller.optionSurface,
       conversationCommands: controller.conversationCommands,
       optionSnapshot: controller.optionSnapshot,
@@ -227,7 +227,8 @@ export function NativeChatStructuredSession(
     props.agent,
     props.sessionId,
     props.target,
-    sendThroughRelaunch
+    provisionalLaunch.starting,
+    sendThroughLaunch
   ])
 
   return (

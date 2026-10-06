@@ -11,6 +11,9 @@ const { mocks, moduleFactories, resetStructuredSessionMocks } = await vi.hoisted
 vi.mock('@/lib/structured-agent-session-launch', () =>
   moduleFactories.structuredAgentSessionLaunch()
 )
+vi.mock('@/lib/structured-agent-session-launch-message', () =>
+  moduleFactories.structuredAgentSessionLaunchMessage()
+)
 vi.mock('@/runtime/structured-agent-session-client', () =>
   moduleFactories.structuredAgentSessionClient()
 )
@@ -172,24 +175,34 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(screen.getByText('Chat connection could not be confirmed.')).toBeTruthy()
   })
 
-  it('relaunches a failed start on send, and hands the message to the sender', () => {
+  // The message rides the restart as its first message, held until the chat exists.
+  it('relaunches a failed start on send, with the message as its first message', () => {
     mocks.launchLifecycle = 'failed'
     render(sessionView())
 
     expect(composerSend()('restart and say hi', [])).toBe(true)
     // The relaunch is launch Retry's own: a new create operation under the same session.
     expect(mocks.retryLaunch).toHaveBeenCalledExactlyOnceWith('wt-1', 'session-1')
-    expect(mocks.send).toHaveBeenCalledOnce()
+    expect(mocks.relaunchWithMessage).toHaveBeenCalledWith(
+      'wt-1',
+      'session-1',
+      'restart and say hi'
+    )
+    expect(mocks.send).not.toHaveBeenCalled()
   })
 
-  it('leaves a send into an unconfirmed start to the sender without relaunching', () => {
-    mocks.launchLifecycle = 'visibility-unknown'
-    render(sessionView())
+  it.each(['pending', 'visibility-unknown'] as const)(
+    'takes no send while the chat is %s: Send is off and the text stays',
+    (lifecycle) => {
+      mocks.launchLifecycle = lifecycle
+      render(sessionView())
 
-    expect(composerSend()('sent while unconfirmed', [])).toBe(true)
-    expect(mocks.retryLaunch).not.toHaveBeenCalled()
-    expect(mocks.send).toHaveBeenCalledOnce()
-  })
+      expect(composerSend()('sent while starting', [])).toBe(false)
+      expect(mocks.composerProps?.structuredTransport?.sendOut).toBe(true)
+      expect(mocks.retryLaunch).not.toHaveBeenCalled()
+      expect(mocks.send).not.toHaveBeenCalled()
+    }
+  )
 
   it.each([null, 'published'] as const)(
     'enables provider transport for lifecycle %s',

@@ -125,6 +125,7 @@ export function createStructuredSessionMocks() {
     launchFailure: nullable<AgentSessionWriteRefusal>(),
     launchResumes: false,
     retryLaunch: vi.fn<(worktreeId: string, sessionId: string) => unknown>(),
+    relaunchWithMessage: vi.fn<(worktreeId: string, sessionId: string, text: string) => void>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
     send: vi.fn<(text: string, attachments?: unknown[]) => boolean>(() => true),
     status: 'ready' as 'idle' | 'loading' | 'ready' | 'error',
@@ -287,6 +288,20 @@ export function createStructuredSessionMocks() {
       },
       useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
+    structuredAgentSessionLaunchMessage: () => ({
+      relaunchFailedStructuredAgentSessionWithMessage: (
+        worktreeId: string,
+        sessionId: string,
+        text: string
+      ) => {
+        if (mocks.launchLifecycle !== 'failed') {
+          return null
+        }
+        mocks.retryLaunch(worktreeId, sessionId)
+        mocks.relaunchWithMessage(worktreeId, sessionId, text)
+        return new Promise(() => {})
+      }
+    }),
     useNativeChatFontSize: () => ({
       useNativeChatFontSize: () => undefined
     }),
@@ -346,6 +361,7 @@ export function createStructuredSessionMocks() {
     mocks.launchFailure = null
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
+    mocks.relaunchWithMessage.mockReset()
     mocks.lifecycleLookup.mockReset()
     mocks.controllerProps = null
     mocks.send.mockClear()

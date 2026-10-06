@@ -11,7 +11,9 @@ import { createUIStore } from './ui-slice-test-harness'
 const mocks = vi.hoisted(() => ({
   sendNotesToActiveAgentSession: vi.fn(),
   sendStructuredAgentSessionMessage: vi.fn(),
-  relaunchFailedStructuredAgentSessionForMessage: vi.fn(),
+  relaunchFailedStructuredAgentSessionWithMessage: vi.fn(
+    (): Promise<{ delivered: boolean }> | null => null
+  ),
   track: vi.fn(),
   toastMessage: vi.fn(),
   toastSuccess: vi.fn(),
@@ -43,9 +45,9 @@ vi.mock('@/runtime/structured-agent-session-owner', () => ({
   structuredAgentSessionTargetForTab: () => ({ kind: 'local' })
 }))
 
-vi.mock('@/lib/structured-agent-session-launch', () => ({
-  relaunchFailedStructuredAgentSessionForMessage:
-    mocks.relaunchFailedStructuredAgentSessionForMessage
+vi.mock('@/lib/structured-agent-session-launch-message', () => ({
+  relaunchFailedStructuredAgentSessionWithMessage:
+    mocks.relaunchFailedStructuredAgentSessionWithMessage
 }))
 
 vi.mock('@/lib/telemetry', () => ({
@@ -73,7 +75,7 @@ beforeEach(() => {
     clientMessageId: 'sent',
     outcome: Promise.resolve('recorded')
   })
-  mocks.relaunchFailedStructuredAgentSessionForMessage.mockReset()
+  mocks.relaunchFailedStructuredAgentSessionWithMessage.mockClear()
   mocks.track.mockReset()
   mocks.toastMessage.mockReset()
   mocks.toastSuccess.mockReset()
@@ -433,9 +435,11 @@ describe('createUISlice agent send target mode', () => {
       text: 'Review this',
       callerKeepsText: true
     })
-    expect(mocks.relaunchFailedStructuredAgentSessionForMessage).toHaveBeenCalledWith(
+    expect(mocks.relaunchFailedStructuredAgentSessionWithMessage).toHaveBeenCalledWith(
       worktreeId,
-      'claude_1'
+      'claude_1',
+      'Review this',
+      { callerKeepsText: true }
     )
     expect(mocks.sendNotesToActiveAgentSession).not.toHaveBeenCalled()
     expect(onPromptDelivered).toHaveBeenCalledTimes(1)

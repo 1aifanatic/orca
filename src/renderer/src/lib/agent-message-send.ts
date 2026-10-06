@@ -1,7 +1,8 @@
 import type { ActiveAgentNotesSendResult } from './active-agent-note-send-result'
 import type { AgentMessageTarget } from './agent-message-target'
 import { sendNotesToActiveAgentSession } from './active-agent-note-send'
-import { relaunchFailedStructuredAgentSessionForMessage } from './structured-agent-session-launch'
+import { relaunchFailedStructuredAgentSessionWithMessage } from './structured-agent-session-launch-message'
+import { getStructuredAgentSessionLaunchLifecycle } from './structured-agent-session-launch-registry'
 import { sendStructuredAgentSessionMessage } from '@/components/native-chat/structured-agent-session-message-sender'
 import { structuredAgentSessionTargetForTab } from '@/runtime/structured-agent-session-owner'
 import { useAppStore } from '@/store'
@@ -35,7 +36,23 @@ export async function sendMessageToAgent(args: {
   if (!runtime) {
     return { status: 'not-writable', code: 'session-send-refused' }
   }
-  relaunchFailedStructuredAgentSessionForMessage(worktreeId, target.sessionId)
+  const lifecycle = getStructuredAgentSessionLaunchLifecycle(worktreeId, target.sessionId)
+  // A chat still starting takes no send yet: the notes wait, as its composer would.
+  if (lifecycle === 'pending' || lifecycle === 'visibility-unknown') {
+    return { status: 'not-ready', code: 'session-send-refused' }
+  }
+  // A failed start restarts, with the notes as its first message.
+  const relaunched = relaunchFailedStructuredAgentSessionWithMessage(
+    worktreeId,
+    target.sessionId,
+    prompt,
+    { callerKeepsText: true }
+  )
+  if (relaunched) {
+    return (await relaunched).delivered
+      ? { status: 'sent' }
+      : { status: 'not-writable', code: 'session-send-refused' }
+  }
   // Sent as its composer would, so it shows in the chat; reported only once the host answers.
   const sent = sendStructuredAgentSessionMessage({
     sessionId: target.sessionId,

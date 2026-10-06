@@ -1,9 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
-  send: vi.fn(),
-  relaunch: vi.fn()
-}))
+const mocks = vi.hoisted(() => {
+  const launch: { lifecycle: string | null } = { lifecycle: null }
+  return {
+    send: vi.fn(),
+    relaunch: vi.fn((): Promise<{ delivered: boolean }> | null => null),
+    launch
+  }
+})
 
 vi.mock('@/store', () => ({
   useAppStore: {
@@ -17,8 +21,11 @@ vi.mock('@/store', () => ({
 vi.mock('@/runtime/structured-agent-session-owner', () => ({
   structuredAgentSessionTargetForTab: () => ({ kind: 'local' })
 }))
-vi.mock('./structured-agent-session-launch', () => ({
-  relaunchFailedStructuredAgentSessionForMessage: mocks.relaunch
+vi.mock('./structured-agent-session-launch-message', () => ({
+  relaunchFailedStructuredAgentSessionWithMessage: mocks.relaunch
+}))
+vi.mock('./structured-agent-session-launch-registry', () => ({
+  getStructuredAgentSessionLaunchLifecycle: () => mocks.launch.lifecycle
 }))
 vi.mock('./active-agent-note-send', () => ({ sendNotesToActiveAgentSession: vi.fn() }))
 vi.mock('@/components/native-chat/structured-agent-session-message-sender', () => ({
@@ -38,6 +45,8 @@ function sendNotes() {
 
 beforeEach(() => {
   mocks.send.mockReset()
+  mocks.relaunch.mockClear()
+  mocks.launch.lifecycle = null
 })
 
 // Notes clear only when their message is recorded; any other end keeps them with the caller.
@@ -67,4 +76,27 @@ it('keeps the notes while the chat has a send out', async () => {
     status: 'not-ready',
     code: 'session-send-refused'
   })
+})
+
+it.each(['pending', 'visibility-unknown'])(
+  'keeps the notes while the chat is %s',
+  async (lifecycle) => {
+    mocks.launch.lifecycle = lifecycle
+    await expect(sendNotes()).resolves.toEqual({
+      status: 'not-ready',
+      code: 'session-send-refused'
+    })
+    expect(mocks.send).not.toHaveBeenCalled()
+  }
+)
+
+// The notes ride the restart of a chat whose start failed, and stay with their sender meanwhile.
+it('restarts a failed chat with the notes as its first message', async () => {
+  mocks.launch.lifecycle = 'failed'
+  mocks.relaunch.mockReturnValue(Promise.resolve({ delivered: true }))
+  await expect(sendNotes()).resolves.toEqual({ status: 'sent' })
+  expect(mocks.relaunch).toHaveBeenCalledWith('wt-1', 'session-1', 'the notes', {
+    callerKeepsText: true
+  })
+  expect(mocks.send).not.toHaveBeenCalled()
 })

@@ -33,6 +33,8 @@ export type StagedStructuredLaunchPrompt = {
   sessionId: string
   text: string
   slot: StructuredAgentSessionReservedSend | null
+  /** Its sender keeps the text if it comes back (notes), instead of the chat's composer. */
+  callerKeepsText?: true
   delivery?: Promise<StagedDelivery>
   /** Its launch was cancelled: never sent, never given back. */
   discarded?: true
@@ -45,7 +47,8 @@ const staged = new Map<string, Set<StagedStructuredLaunchPrompt>>()
 
 export function stageStructuredLaunchPrompt(
   sessionId: string,
-  text: string
+  text: string,
+  options: { callerKeepsText?: true } = {}
 ): StagedStructuredLaunchPrompt {
   let discard = (): void => {}
   const whenDiscarded = new Promise<void>((resolve) => {
@@ -54,7 +57,8 @@ export function stageStructuredLaunchPrompt(
   const prompt: StagedStructuredLaunchPrompt = {
     sessionId,
     text,
-    slot: reserveStructuredAgentSessionSend({ sessionId, text }),
+    slot: reserveStructuredAgentSessionSend({ sessionId, text, ...options }),
+    ...options,
     whenDiscarded,
     discard
   }
@@ -94,6 +98,19 @@ export function hasStagedStructuredLaunchPrompt(sessionId: string): boolean {
   return (staged.get(sessionId)?.size ?? 0) > 0
 }
 
+/** Puts a launch's text in its chat's composer, unless its sender keeps it. True when it did. */
+function handBackStagedPrompt(prompt: StagedStructuredLaunchPrompt): boolean {
+  if (prompt.callerKeepsText) {
+    return false
+  }
+  handBackStructuredAgentSessionMessage(
+    prompt.sessionId,
+    `launch-${prompt.sessionId}`,
+    structuredAgentSessionSendBody(prompt.text, [])
+  )
+  return true
+}
+
 function sendStagedPrompt(
   prompt: StagedStructuredLaunchPrompt,
   receipt: LaunchReceipt,
@@ -107,18 +124,13 @@ function sendStagedPrompt(
     if (!sent) {
       // Another send of the chat holds its slot: the launch text waits in the composer instead.
       unstage(prompt)
-      handBackStructuredAgentSessionMessage(
-        prompt.sessionId,
-        `launch-${prompt.sessionId}`,
-        structuredAgentSessionSendBody(prompt.text, [])
-      )
-      return { delivered: false, inComposer: true }
+      return { delivered: false, inComposer: handBackStagedPrompt(prompt) }
     }
     try {
       const outcome = await sent.outcome
       return {
         delivered: outcome === 'recorded',
-        inComposer: outcome === 'returned' || outcome === 'unconfirmed'
+        inComposer: !prompt.callerKeepsText && (outcome === 'returned' || outcome === 'unconfirmed')
       }
     } finally {
       unstage(prompt)
@@ -159,11 +171,7 @@ export function settleStructuredAgentLaunchPrompt(args: {
       if (prompt && !prompt.discarded && !prompt.delivery) {
         unstage(prompt)
         prompt.discarded = true
-        handBackStructuredAgentSessionMessage(
-          prompt.sessionId,
-          `launch-${prompt.sessionId}`,
-          structuredAgentSessionSendBody(prompt.text, [])
-        )
+        handBackStagedPrompt(prompt)
       }
       throw error
     }
