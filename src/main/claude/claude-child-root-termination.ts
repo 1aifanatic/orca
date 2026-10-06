@@ -43,7 +43,7 @@ type WindowsRootTerminationInput = {
  */
 export async function terminateClaudeWindowsRoot(
   input: WindowsRootTerminationInput
-): Promise<{ rootVerified: boolean }> {
+): Promise<{ rootVerified: boolean; rootKilled: boolean }> {
   const { snapshot, exited, verifyRoot, terminateTree, killRoot } = input
   let rootVerified = false
   if (!exited() && snapshot) {
@@ -52,6 +52,5 @@ export async function terminateClaudeWindowsRoot(
       await terminateTree(snapshot.root).catch(() => {})
     }
   }
-  killRoot()
-  return { rootVerified }
+  return { rootVerified, rootKilled: killRoot() }
 }
