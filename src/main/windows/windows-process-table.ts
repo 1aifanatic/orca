@@ -4,6 +4,7 @@ import { createProcessTableSnapshotReader } from '../../shared/process-table-sna
 import { RELAY_WINDOWS_PROCESS_TREE_FILENAME } from '../../shared/relay-artifacts'
 import { reportWindowsCommandLineRecoveryHealth } from './windows-command-line-recovery-health'
 import { readWindowsProcessRowsWithCim } from './windows-process-table-cim-scan'
+import { WindowsProcessTableTimeoutError } from './windows-process-table-timeout-error'
 
 /**
  * The only place Orca reads the Windows process table.
@@ -394,7 +395,9 @@ function readOneSnapshot<Row>(projection: ProcessRowProjection<Row>): Promise<Ro
   }
   if (unreturnedReads.size > 0) {
     return Promise.reject(
-      new Error('windows process table is wedged: an earlier read has not returned')
+      new WindowsProcessTableTimeoutError(
+        'windows process table is wedged: an earlier read has not returned'
+      )
     )
   }
   const readId = ++readSequence
@@ -411,7 +414,7 @@ function readOneSnapshot<Row>(projection: ProcessRowProjection<Row>): Promise<Ro
         if (readerEpoch === nativeReaderEpoch) {
           unreturnedReads.add(readId)
         }
-        reject(new Error('windows process table timed out'))
+        reject(new WindowsProcessTableTimeoutError('windows process table timed out'))
       }, WINDOWS_PROCESS_QUERY_TIMEOUT_MS)
       deadline.unref?.()
       native.getAllProcesses((processes) => {

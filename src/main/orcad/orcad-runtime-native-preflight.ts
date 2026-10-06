@@ -12,8 +12,10 @@ import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import {
   isWindowsProcessTableAvailable,
   isWindowsProcessStartTimeAvailable,
+  readWindowsProcessCreationTime,
   readWindowsProcessIdentityTableFresh
 } from '../windows/windows-process-table'
+import { WindowsProcessTableTimeoutError } from '../windows/windows-process-table-timeout-error'
 
 // A cold first conpty spawn on a slow (arm64, AV-scanned) Windows host can outlast the steady-state budget.
 const WINDOWS_FIRST_PTY_PROBE_TIMEOUT_MS = 15_000
@@ -95,10 +97,29 @@ async function preflightWindowsProcessIdentity(): Promise<void> {
   if (!isWindowsProcessTableAvailable() || !isWindowsProcessStartTimeAvailable()) {
     throw new Error('The bundled Windows process table must support process creation times')
   }
-  const rows = await readWindowsProcessIdentityTableFresh()
-  const self = rows.find((row) => row.pid === process.pid)
-  const created = self?.creationTimeMs
-  if (created === undefined || !Number.isFinite(created) || created <= 0 || created > Date.now()) {
+  let created: number | null | undefined
+  try {
+    const rows = await readWindowsProcessIdentityTableFresh()
+    created = rows.find((row) => row.pid === process.pid)?.creationTimeMs
+  } catch (error) {
+    // Only slowness falls back: an unreadable table (EDR hook, restricted token) must still
+    // fail qualification, or every later liveness verdict on this host reads unverifiable.
+    if (!(error instanceof WindowsProcessTableTimeoutError)) {
+      throw error
+    }
+    // The addon's one-PID query proves this runtime can identify a process without a snapshot.
+    created = readWindowsProcessCreationTime(process.pid)
+    if (created === null) {
+      throw error
+    }
+  }
+  if (
+    created === undefined ||
+    created === null ||
+    !Number.isFinite(created) ||
+    created <= 0 ||
+    created > Date.now()
+  ) {
     throw new Error('The bundled Windows process table could not identify this process')
   }
 }
