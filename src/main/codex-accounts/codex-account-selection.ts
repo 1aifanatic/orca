@@ -19,6 +19,7 @@ import {
   setSelectedCodexAccountIdForTarget,
   type CodexAccountSelectionTarget
 } from './runtime-selection'
+import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 type CodexAccountSelectionDependencies = {
   store: Store
@@ -133,6 +134,8 @@ export class CodexAccountSelection {
     })
     this.dependencies.configMirror.safeSyncToManagedHomes()
     this.dependencies.runtimeHome.syncForCurrentSelection(effectiveTarget)
+    // A sign-in verdict the catalog holds is re-derived for the account now in use.
+    agentModelCatalogStore.failures.recheck('codex')
     if (
       accountId === null &&
       normalizeCodexAccountSelectionTarget(effectiveTarget).runtime === 'host'

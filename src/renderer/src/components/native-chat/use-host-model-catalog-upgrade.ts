@@ -3,7 +3,6 @@ import {
   type AgentSessionUnavailable
 } from '../../../../shared/agent-session-availability'
 import { useAppStore } from '@/store'
-import { useShallow } from 'zustand/react/shallow'
 import { runtimeHostContactForEntry } from '../../../../shared/runtime-host-contact'
 import { useEffect, useState, useSyncExternalStore, type MutableRefObject } from 'react'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
@@ -24,20 +23,32 @@ import {
   subscribeHostModelListingWaits
 } from './host-model-listing-waits'
 
-// Each account switch gets its own wait slot, so a switch never joins the old account's read
-// while every mount under the same accounts still joins the one in flight.
-let lastAccountInputs: readonly unknown[] = []
-let accountRevision = 0
+type AccountSettings = ReturnType<typeof useAppStore.getState>['settings']
 
-function accountRevisionOf(inputs: readonly unknown[]): number {
-  if (
-    inputs.length !== lastAccountInputs.length ||
-    inputs.some((input, index) => input !== lastAccountInputs[index])
-  ) {
-    lastAccountInputs = inputs
-    accountRevision += 1
+/** The account inputs a launch resolves its home from, by value: a re-fetched settings copy with
+ *  equal values keeps the key, and a switch or a fresh sign-in changes it. Hashed, since the agent
+ *  env can hold secrets. */
+function accountKeyOf(settings: AccountSettings): string {
+  const text = JSON.stringify([
+    settings?.activeClaudeManagedAccountId,
+    settings?.activeCodexManagedAccountId,
+    settings?.activeClaudeManagedAccountIdsByRuntime,
+    settings?.activeCodexManagedAccountIdsByRuntime,
+    settings?.agentDefaultEnv,
+    settings?.claudeManagedAccounts?.map((account) => [account.id, account.lastAuthenticatedAt]),
+    settings?.codexManagedAccounts?.map((account) => [account.id, account.lastAuthenticatedAt])
+  ])
+  let hash = 0x811c9dc5
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193)
   }
-  return accountRevision
+  return (hash >>> 0).toString(36)
+}
+
+type CatalogObservation = {
+  key: string
+  unavailable: AgentSessionUnavailable | null
+  accountVerified: boolean
 }
 
 /**
@@ -63,11 +74,18 @@ export function useHostModelCatalogUpgrade(args: {
   /** Where the launch runs: the host names no default its config could replace. */
   worktree?: string
   fence: number | null
+  /** Changes when the chat records a start that failed for a sign-in or CLI reason. */
+  startFailureKey?: string | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
   ) => void
-}): { awaitingListing: boolean; unavailable: AgentSessionUnavailable | null } {
+}): {
+  awaitingListing: boolean
+  unavailable: AgentSessionUnavailable | null
+  /** The host re-checked the account after a start failure and found it fine. */
+  accountVerified: boolean
+} {
   const {
     activeOptionRecordRef,
     agent,
@@ -76,19 +94,12 @@ export function useHostModelCatalogUpgrade(args: {
     namesDefault,
     optionCatalog,
     sessionId,
+    startFailureKey,
     target,
     updateOptionState,
     worktree
   } = args
-  const accountInputs = useAppStore(
-    useShallow((state) => [
-      state.settings?.activeClaudeManagedAccountId,
-      state.settings?.activeCodexManagedAccountId,
-      state.settings?.activeClaudeManagedAccountIdsByRuntime,
-      state.settings?.activeCodexManagedAccountIdsByRuntime,
-      state.settings?.agentDefaultEnv
-    ])
-  )
+  const accountKey = useAppStore((state) => accountKeyOf(state.settings))
   // A paired host known out of contact answers nothing; its evidence is unknown until it is back.
   const hostLive = useAppStore((state) => {
     const entry =
@@ -97,26 +108,24 @@ export function useHostModelCatalogUpgrade(args: {
         : state.runtimeStatusByEnvironmentId.get(target.environmentId)
     return !entry || runtimeHostContactForEntry(entry).verdict === 'live'
   })
-  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}\u0000${accountRevisionOf(accountInputs)}`
+  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}\u0000${accountKey}`
   const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
     isHostModelListingWaitInFlight(waitKey)
   )
-  const [observation, setObservation] = useState<{
-    key: string
-    unavailable: AgentSessionUnavailable
-  } | null>(null)
+  const [observation, setObservation] = useState<CatalogObservation | null>(null)
   // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- The replaceable expiry handle is cleared before rearming and by the returned cleanup.
   useEffect(() => {
-    if (!enabled || !hostLive || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
+    if (!hostLive) {
+      // Out of contact the host's evidence is unknown, never the last thing it said.
+      setObservation(null)
+      return
+    }
+    if (!enabled || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
       return
     }
     let stale = false
     let generation = 0
     let expiry: ReturnType<typeof setTimeout> | undefined
-    const clear = (): void => {
-      clearTimeout(expiry)
-      setObservation(null)
-    }
     const params = { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
     const read = (
       wait?: 'waitForListing' | 'waitForAvailability'
@@ -126,18 +135,28 @@ export function useHostModelCatalogUpgrade(args: {
         'agentSession.modelCatalog',
         wait ? { ...params, [wait]: true } : params
       )
+    // An answer replaces the last one; nothing clears it before the next answer arrives.
     const apply = (catalog: AgentSessionModelCatalogResult | null): void => {
-      clear()
+      clearTimeout(expiry)
+      const unavailable = catalog ? readAgentSessionUnavailable(catalog.unavailable) : null
+      const accountVerified = !unavailable && catalog?.accountVerified === true
+      setObservation((previous) =>
+        previous?.key === waitKey &&
+        previous.accountVerified === accountVerified &&
+        previous.unavailable?.reason === unavailable?.reason &&
+        (previous.unavailable?.reason !== 'notSignedIn' ||
+          (unavailable?.reason === 'notSignedIn' &&
+            previous.unavailable.account === unavailable.account))
+          ? previous
+          : unavailable || accountVerified
+            ? { key: waitKey, unavailable, accountVerified }
+            : null
+      )
       if (!catalog) {
         return
       }
-      const unavailable = readAgentSessionUnavailable(catalog.unavailable)
       if (unavailable) {
-        setObservation({ key: waitKey, unavailable })
-        expiry = setTimeout(() => {
-          clear()
-          refresh()
-        }, unavailable.expiresInMs)
+        expiry = setTimeout(refresh, unavailable.expiresInMs)
       }
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
@@ -204,7 +223,7 @@ export function useHostModelCatalogUpgrade(args: {
           })
           .catch(() => {
             if (!stale && generation === requestGeneration) {
-              clear()
+              apply(null)
             }
           })
       }
@@ -213,12 +232,10 @@ export function useHostModelCatalogUpgrade(args: {
       if (document.visibilityState === 'hidden') {
         generation += 1
         leave()
-        clear()
       } else {
         refresh()
       }
     }
-    clear()
     refresh()
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
@@ -238,14 +255,16 @@ export function useHostModelCatalogUpgrade(args: {
     namesDefault,
     optionCatalog,
     sessionId,
+    startFailureKey,
     target,
     updateOptionState,
     waitKey,
     worktree
   ])
+  const current = enabled && hostLive && observation?.key === waitKey ? observation : null
   return {
     awaitingListing,
-    unavailable:
-      enabled && hostLive && observation?.key === waitKey ? observation.unavailable : null
+    unavailable: current?.unavailable ?? null,
+    accountVerified: current?.accountVerified ?? false
   }
 }

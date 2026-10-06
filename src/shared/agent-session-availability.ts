@@ -10,6 +10,9 @@ export type AgentSessionModelCatalogObservation = {
   unavailable?: AgentSessionUnavailableObservation
   /** A waiting catalog read joins the host's current listing. Optional for older hosts. */
   listingInProgress?: true
+  /** The host's last probe found this account signed in with its CLI present, so an earlier
+   *  sign-in or missing-CLI start failure is superseded. Absent: no such check (unknown). */
+  accountVerified?: true
 }
 
 /** The longest this client holds a host's verdict before reading again; a longer host lifetime

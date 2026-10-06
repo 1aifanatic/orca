@@ -68,7 +68,7 @@ export async function readClaudeStartupFacts(input: {
   providerSessionId: string
   resumesTranscript: boolean
   account?: AgentSessionAccountKind
-  /** The account's catalog, re-probed after this CLI refuses the start as signed out. */
+  /** The account's catalog, which takes this CLI's signed-out refusal as its verdict. */
   catalogAccess?: AgentModelCatalogSessionAccess
   inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
@@ -78,7 +78,11 @@ export async function readClaudeStartupFacts(input: {
     input.connection.initializationResult().then((result) => {
       const authError = claudeInitializationAuthError(result, input.account)
       if (authError) {
-        input.catalogAccess?.store.markStale(input.catalogAccess.fingerprint)
+        input.catalogAccess?.store.failures.recordStartRefusal(
+          input.catalogAccess.fingerprint,
+          'claude',
+          { reason: 'notSignedIn', ...(input.account ? { account: input.account } : {}) }
+        )
         throw authError
       }
       return result

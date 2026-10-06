@@ -24,6 +24,11 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
 import { useAppStore } from '@/store'
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import { agentJournalItemKey } from '../../../../shared/agent-session-journal-item-key'
+import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
+import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
+import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 
 const PAIRED_TARGET = { kind: 'environment', environmentId: 'server-1' } as const
@@ -43,6 +48,7 @@ type Props = {
   attached?: boolean
   sessionId?: string
   agent?: 'claude' | 'codex'
+  journalItems?: AgentJournalRenderItem[]
 }
 
 // A chat's waiting read outlives its mounts, so each test gets its own chat.
@@ -63,7 +69,8 @@ function renderOptions(initial: Props = {}) {
         turnId: null,
         unloadedTurnRevisions: undefined,
         mutate,
-        launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} }
+        launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} },
+        ...(props.journalItems ? { journalItems: props.journalItems } : {})
       }),
     { initialProps: initial }
   )
@@ -395,16 +402,21 @@ describe('Send availability follows the current catalog', () => {
       expect(catalogReads()).toHaveLength(2)
     }
   )
-  it('releases a blocker at expiry before a hanging refresh answers', async () => {
-    answerCatalog([() => Promise.resolve(blocked), () => new Promise(() => {})])
+  it('keeps a blocker through its expiry until the re-read answers', async () => {
+    const reread = deferred()
+    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
     const { result } = renderOptions()
     await flush()
     expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn', account: 'system' })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30000)
     })
-    expect(result.current.unavailable).toBeNull()
+    // No gap while the host re-checks: Send stays disabled with its reason.
     expect(catalogReads()).toHaveLength(2)
+    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
+    reread.resolve(UNKNOWN)
+    await flush()
+    expect(result.current.unavailable).toBeNull()
   })
   it('a focus refresh with an unknown answer clears the blocker', async () => {
     answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
@@ -461,13 +473,18 @@ describe('Send availability follows the current catalog', () => {
     expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
   })
-  it('hiding and revealing the pane cannot resurrect its old blocker', async () => {
-    answerCatalog([() => Promise.resolve(blocked), () => new Promise(() => {})])
+  it('keeps the blocker across hiding and revealing the pane until the re-read answers', async () => {
+    const reread = deferred()
+    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
     const { result, rerender } = renderOptions()
     await flush()
     rerender({ hidden: true })
+    // A hidden pane gates nothing; its last answer is not dropped.
     expect(result.current.unavailable).toBeNull()
     rerender({ hidden: false })
+    await flush()
+    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
+    reread.resolve(UNKNOWN)
     await flush()
     expect(result.current.unavailable).toBeNull()
   })
@@ -508,6 +525,70 @@ describe('Send availability follows the current catalog', () => {
     expect(catalogReads()).toHaveLength(2)
     unmount()
     useAppStore.setState({ settings: previous })
+  })
+  it('reads the verdict once when a start fails for a sign-in reason', async () => {
+    answerCatalog([() => Promise.resolve(UNKNOWN), () => Promise.resolve(blocked)])
+    const { result, rerender } = renderOptions()
+    await flush()
+    expect(catalogReads()).toHaveLength(1)
+    const failedStart: AgentJournalRenderItem = {
+      itemId: agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('start-1')),
+      revision: 1,
+      sequence: 1,
+      observedAt: 1,
+      body: {
+        kind: 'status',
+        tone: 'error',
+        ...agentSessionFailureWords(agentSessionFailureFact('notSignedIn'), {
+          agentName: 'Codex',
+          surface: 'row'
+        })
+      }
+    }
+    rerender({ journalItems: [failedStart] })
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    rerender({ journalItems: [failedStart] })
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+  })
+  it('keeps the account key across a re-fetched copy of equal settings', async () => {
+    const previous = useAppStore.getState().settings
+    const settings = {
+      ...previous!,
+      activeCodexManagedAccountId: 'account-1',
+      activeCodexManagedAccountIdsByRuntime: { host: 'account-1', wsl: {} },
+      agentDefaultEnv: { codex: { OPENAI_BASE_URL: 'https://gateway.example' } }
+    }
+    useAppStore.setState({ settings })
+    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
+    const { result, unmount } = renderOptions()
+    await flush()
+    // A settings fetch replaces every object with an equal copy.
+    act(() => useAppStore.setState({ settings: structuredClone(settings) }))
+    await flush()
+    expect(catalogReads()).toHaveLength(1)
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    unmount()
+    useAppStore.setState({ settings: previous })
+  })
+  it('keeps the blocker while the window is hidden and until the re-read on return answers', async () => {
+    const reread = deferred()
+    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
+    const { result } = renderOptions()
+    await flush()
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
+    vi.restoreAllMocks()
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
+    reread.resolve(UNKNOWN)
+    await flush()
+    expect(result.current.unavailable).toBeNull()
   })
   it('ignores a late reply after the document hides and refreshes on visibility', async () => {
     const first = deferred()

@@ -4,6 +4,10 @@ import type { AgentType } from '../../../../shared/agent-status-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { nativeChatImageSendBlock } from './native-chat-image-reattach'
+import {
+  nativeChatGateReason,
+  type NativeChatGateReason
+} from './native-chat-start-failure-presentation'
 
 /** The one rule for when the host's verdict blocks Send: only a send that starts the agent. While
  *  a turn runs, Send is Stop and a follow-up queues behind it as it always has. Applied once, where
@@ -14,6 +18,15 @@ export function nativeChatComposerSendGate(
   isWorking: boolean
 ): AgentSessionUnavailable | null {
   return isWorking ? null : (unavailable ?? null)
+}
+
+/** The session's verdict as its composer gates on it, and what that says about a start failure. */
+export function nativeChatComposerVerdict(
+  options: { unavailable: AgentSessionUnavailable | null; accountVerified: boolean },
+  isWorking: boolean
+): { unavailable: AgentSessionUnavailable | null; gated: NativeChatGateReason } {
+  const unavailable = nativeChatComposerSendGate(options.unavailable, isWorking)
+  return { unavailable, gated: nativeChatGateReason(unavailable, options.accountVerified) }
 }
 
 export function nativeChatComposerSendState(

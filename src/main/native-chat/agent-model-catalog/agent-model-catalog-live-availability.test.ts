@@ -186,7 +186,12 @@ describe('availability beside a live model listing', () => {
       at += 20000
       expect(store.unavailable(fingerprint)).toBeUndefined()
       signedIn = true
-      expect((await service.read(params)).unavailable).toBeUndefined()
+      // The aged verdict stands while its re-probe runs; the probe's answer then clears it.
+      await service.read(params)
+      expect(
+        (await service.read({ agent, sessionId: record.sessionId, waitForAvailability: true }))
+          .unavailable
+      ).toBeUndefined()
       expect(probe).toHaveBeenCalledTimes(2)
     }
   )

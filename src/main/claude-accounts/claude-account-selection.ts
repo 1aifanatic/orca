@@ -17,6 +17,7 @@ import {
   setSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
+import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 export class ClaudeAccountSelection {
   constructor(
@@ -106,6 +107,8 @@ export class ClaudeAccountSelection {
     })
     try {
       await this.syncRuntimeAuth(effectiveTarget)
+      // A sign-in verdict the catalog holds is re-derived for the account now in use.
+      agentModelCatalogStore.failures.recheck('claude')
       await this.rateLimits.refreshForClaudeAccountChange(outgoingAccountId, effectiveTarget)
       return this.snapshot()
     } catch (error) {

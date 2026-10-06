@@ -53,6 +53,10 @@ export class AgentModelCatalogUnavailableError extends Error {
   }
 }
 
+function isProbeLister(lister: AgentModelCatalogLister): lister is AgentModelCatalogProbe {
+  return typeof lister === 'function'
+}
+
 type InFlightListings = Map<AgentModelCatalogLister, Promise<AgentModelCatalogEntry | null>>
 
 /** A live session's handle into the store, pinned at spawn to the account home
@@ -95,7 +99,8 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
-  private readonly failures: AgentModelCatalogFailures
+  /** Each account's last failure and the probe's verdict on it; see `AgentModelCatalogFailures`. */
+  readonly failures: AgentModelCatalogFailures
   private readonly refreshes = new Map<string, InFlightListings>()
   private readonly listingWaiters = new Map<string, Set<() => void>>()
   private readonly latestWrittenOrder = new Map<string, number>()
@@ -142,17 +147,6 @@ export class AgentModelCatalogStore {
     return this.now() - entry.fetchedAt >= AGENT_MODEL_CATALOG_FRESH_MS
   }
 
-  /** Ages the entry out so the next read re-probes; the entry itself still serves. */
-  markStale(fingerprint: string): void {
-    const entry = this.entries.get(fingerprint)
-    if (entry && !this.isStale(entry)) {
-      this.entries.set(fingerprint, {
-        ...entry,
-        fetchedAt: this.now() - AGENT_MODEL_CATALOG_FRESH_MS
-      })
-    }
-  }
-
   failureDetail(fingerprint: string): string | null {
     return this.failures.active(fingerprint)?.detail ?? null
   }
@@ -161,8 +155,11 @@ export class AgentModelCatalogStore {
     return this.failures.active(fingerprint) !== null
   }
 
+  /** The verdict, kept past its TTL while the probe re-deriving it runs. */
   unavailable(fingerprint: string): AgentSessionUnavailableObservation | undefined {
-    return this.failures.unavailable(fingerprint)
+    const listers = this.refreshes.get(fingerprint)
+    const reprobing = listers !== undefined && [...listers.keys()].some(isProbeLister)
+    return this.failures.unavailable(fingerprint, reprobing)
   }
 
   recordSuccess(
@@ -249,7 +246,7 @@ export class AgentModelCatalogStore {
       this.notifyListingWaiters(fingerprint)
     }
     const order = ++this.nextListingOrder
-    const byProbe = typeof lister === 'function'
+    const byProbe = isProbeLister(lister)
     let listing: Promise<AgentModelCatalogSuccess>
     try {
       listing = listModels()
@@ -271,7 +268,12 @@ export class AgentModelCatalogStore {
         // Recorded before settling so a waiting picker sees the verdict.
         if (byProbe) {
           const typed = error instanceof AgentModelCatalogUnavailableError
-          this.failures.recordProbe(fingerprint, detail, typed ? error.unavailable : undefined)
+          this.failures.recordProbe(
+            fingerprint,
+            agent,
+            detail,
+            typed ? error.unavailable : undefined
+          )
         } else {
           this.failures.recordListing(fingerprint, detail)
         }
@@ -311,7 +313,11 @@ export class AgentModelCatalogStore {
       }
       const check = (): void => {
         const entry = this.get(fingerprint)
-        if (entry || this.unavailable(fingerprint) || !this.refreshes.has(fingerprint)) {
+        if (
+          entry ||
+          this.failures.unavailable(fingerprint, false) ||
+          !this.refreshes.has(fingerprint)
+        ) {
           finish(entry)
         }
       }
@@ -331,14 +337,14 @@ export class AgentModelCatalogStore {
     }
   }
 
-  /** True when a read should kick a background refresh: nothing known, the entry aged
-   *  out, or a probe verdict aged out, and no failure is still inside its TTL. */
+  /** True when a read should kick a background refresh: nothing known or the
+   *  entry aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {
     if (this.refreshes.has(fingerprint) || this.hasActiveFailure(fingerprint)) {
       return false
     }
     const entry = this.entries.get(fingerprint)
-    return !entry || this.isStale(entry) || this.failures.awaitsProbe(fingerprint)
+    return !entry || this.isStale(entry)
   }
 
   private evictOverCap(): void {

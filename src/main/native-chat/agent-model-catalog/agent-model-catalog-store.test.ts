@@ -438,18 +438,37 @@ describe('probe verdict on the failure record', () => {
     expect(store.unavailable('fp-1')).toBeUndefined()
   })
 
-  it('re-probes once the verdict ages out, however fresh the catalog', async () => {
+  it('marks an aged-out verdict for the probe alone, however fresh the catalog', async () => {
     const at = { now: 1_000 }
     const { store, block } = blockedStore(at)
     store.recordSuccess('fp-1', 'codex', success('gpt-a'))
     await block()
-    expect(store.shouldRefresh('fp-1')).toBe(false)
+    expect(store.failures.awaitsProbe('fp-1')).toBe(false)
     at.now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
     expect(store.unavailable('fp-1')).toBeUndefined()
-    expect(store.shouldRefresh('fp-1')).toBe(true)
+    expect(store.failures.awaitsProbe('fp-1')).toBe(true)
+    // A chat's own picker never re-lists for the mark: only the service's probe answers it.
+    expect(store.shouldRefresh('fp-1')).toBe(false)
     // A chat's listing after expiry does not stand in for the re-probe.
     store.recordSuccess('fp-1', 'codex', success('gpt-a'))
-    expect(store.shouldRefresh('fp-1')).toBe(true)
+    expect(store.failures.awaitsProbe('fp-1')).toBe(true)
+  })
+
+  it('serves an aged-out verdict until the probe re-deriving it answers', async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    await block()
+    at.now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    let answer!: (value: AgentModelCatalogSuccess) => void
+    const reprobe: AgentModelCatalogProbe = () =>
+      new Promise<AgentModelCatalogSuccess>((resolve) => (answer = resolve))
+    const running = store.refresh('fp-1', 'codex', reprobe, () => reprobe('/homes/a'))
+    expect(store.unavailable('fp-1')).toMatchObject({ reason: 'notSignedIn' })
+    expect(store.failures.accountVerified('fp-1')).toBe(false)
+    answer({ ...success('gpt-a'), origin: 'probe' })
+    await running
+    expect(store.unavailable('fp-1')).toBeUndefined()
+    expect(store.failures.accountVerified('fp-1')).toBe(true)
   })
 
   it('never re-probes a healthy fresh catalog inside the fresh window', async () => {
@@ -461,12 +480,29 @@ describe('probe verdict on the failure record', () => {
     expect(store.shouldRefresh('fp-1')).toBe(false)
   })
 
-  it('a refused start ages the entry so the next read re-probes', () => {
-    const store = new AgentModelCatalogStore({ now: () => 1_000_000 })
-    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
-    store.markStale('fp-1')
-    expect(store.get('fp-1')!.models.map((model) => model.id)).toEqual(['gpt-a'])
-    expect(store.shouldRefresh('fp-1')).toBe(true)
+  it("takes a refused start as the verdict, which a chat's listing cannot undo", async () => {
+    const at = { now: 1_000 }
+    const store = new AgentModelCatalogStore({ now: () => at.now })
+    const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
+    await store.refresh('fp-1', 'claude', listed, () => listed('/homes/a'))
+    expect(store.failures.accountVerified('fp-1')).toBe(true)
+    store.failures.recordStartRefusal('fp-1', 'claude', {
+      reason: 'notSignedIn',
+      account: 'system'
+    })
+    store.recordSuccess('fp-1', 'claude', success('gpt-a'))
+    expect(store.unavailable('fp-1')).toMatchObject({ reason: 'notSignedIn', account: 'system' })
+    expect(store.failures.accountVerified('fp-1')).toBe(false)
+  })
+
+  it('a sign-in change for the agent re-derives its verdicts at the next read', async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    await block()
+    store.failures.recheck('claude')
+    expect(store.failures.awaitsProbe('fp-1')).toBe(false)
+    store.failures.recheck('codex')
+    expect(store.failures.awaitsProbe('fp-1')).toBe(true)
   })
 
   it('a synchronous probe fault never rejects the catalog read', async () => {

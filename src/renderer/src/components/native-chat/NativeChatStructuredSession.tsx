@@ -41,6 +41,7 @@ import { structuredAgentSessionReadFailureNotice } from './structured-agent-sess
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
+import { nativeChatGateReason } from './native-chat-start-failure-presentation'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -127,7 +128,7 @@ export function NativeChatStructuredSession(
   )
   const agentLabel = structuredAgentLabel(props.agent)
   // The controller's verdict is already the composer's gate; only that hides a line.
-  const gateReason = controller.unavailable?.reason ?? null
+  const gateReason = nativeChatGateReason(controller.unavailable, controller.accountVerified)
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
     submissions: controller.submissions,

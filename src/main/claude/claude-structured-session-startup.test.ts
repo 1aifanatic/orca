@@ -209,7 +209,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     })
   })
 
-  it("re-probes the account's catalog once the CLI refuses the start as signed out", async () => {
+  it("takes the CLI's signed-out start refusal as the account's catalog verdict", async () => {
     const store = new AgentModelCatalogStore({ now: () => 1_700_000_000_000 })
     const fingerprint = agentModelCatalogFingerprint({
       agent: 'claude',
@@ -222,7 +222,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
       fastModeTierByModel: new Map(),
       origin: 'probe'
     })
-    expect(store.shouldRefresh(fingerprint)).toBe(false)
+    expect(store.unavailable(fingerprint)).toBeUndefined()
     const claude = fakeClaude({ initAccount: { apiProvider: 'firstParty', tokenSource: 'none' } })
     const events: ClaudeStructuredSessionEvent[] = []
     const adapter = adapterAtPublishFor(
@@ -239,7 +239,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     await adapter.acquire(ACQUIRE)
     await adapter.awaitStarted('session-1')
     await adapter.drainObservedExits()
-    expect(store.shouldRefresh(fingerprint)).toBe(true)
+    expect(store.unavailable(fingerprint)).toMatchObject({ reason: 'notSignedIn' })
   })
 
   // Accounts as Claude 2.1.280 reports them at initialize; the /login key row is from its source.

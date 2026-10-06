@@ -55,6 +55,19 @@ describe('structured option state from the host model catalog', () => {
     expect(model.valueSource).toBe('default')
   })
 
+  it('keeps the same state for a re-read that brings the same catalog', () => {
+    const once = applyStructuredAgentSessionModelCatalog(
+      createStructuredAgentSessionOptionState('codex', SEED),
+      SEED,
+      HOST_CATALOG,
+      LAUNCH
+    )
+    const again = { ...HOST_CATALOG, models: HOST_CATALOG.models.map((model) => ({ ...model })) }
+    expect(applyStructuredAgentSessionModelCatalog(once, SEED, again, LAUNCH)).toBe(once)
+    const changed = { ...again, models: [{ ...again.models[0]!, label: 'Renamed' }] }
+    expect(applyStructuredAgentSessionModelCatalog(once, SEED, changed, LAUNCH)).not.toBe(once)
+  })
+
   it('lists host models but names no value for a session it did not launch', () => {
     // A reopened session may run a model picked in it, not the listing's default.
     const state = applyStructuredAgentSessionModelCatalog(

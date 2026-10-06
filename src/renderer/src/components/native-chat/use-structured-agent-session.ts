@@ -41,7 +41,7 @@ import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-sess
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
-import { nativeChatComposerSendGate } from './native-chat-composer-send-state'
+import { nativeChatComposerVerdict } from './native-chat-composer-send-state'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -105,6 +105,7 @@ export function useStructuredAgentSession(args: {
   } = useStructuredAgentSessionOptions({
     agent,
     sessionId,
+    journalItems: transportState.journalItems,
     target,
     transportEnabled,
     isVisible,
@@ -193,8 +194,7 @@ export function useStructuredAgentSession(args: {
       (transportState.isWorking ||
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
   // The verdict as the composer's Send gate states it; a start-failure row it states is hidden.
-  const unavailable = nativeChatComposerSendGate(sessionOptions.unavailable, canStop)
-  const gated = unavailable?.reason ?? null
+  const { unavailable, gated } = nativeChatComposerVerdict(sessionOptions, canStop)
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(

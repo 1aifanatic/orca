@@ -288,11 +288,12 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
       expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
 
+      // Signed in: the host's probe found the account fine, so the old line is not current.
       mocks.unavailable = null
+      mocks.accountVerified = true
       rerender(sessionView(agent))
       expect(mocks.composerProps?.structuredTransport?.unavailable).toBeNull()
-      // With Send no longer saying it, the start's own line is back until the relaunch.
-      expect(screen.getByText(/Chat could not be started/)).toBeTruthy()
+      expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()
       expect(composerSend()('hello after signing in', [])).toBe(true)
       expect(mocks.retryLaunch).toHaveBeenCalledExactlyOnceWith('wt-1', 'session-1')
       expect(mocks.call).not.toHaveBeenCalled()

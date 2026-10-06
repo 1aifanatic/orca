@@ -18,6 +18,7 @@ import {
   normalizeClaudeRuntimeSelection
 } from './runtime-selection'
 import type { ClaudeAccountSelection } from './claude-account-selection'
+import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 
 type ClaudeAccountRegistrationDependencies = {
   store: Store
@@ -130,6 +131,8 @@ export class ClaudeAccountRegistration {
       this.dependencies.rateLimits.evictInactiveClaudeCache(accountId)
       const target = getClaudeSelectionTargetForAccount(account)
       await this.dependencies.selection.syncRuntimeAuth(target)
+      // The account just signed in again: re-derive the catalog's sign-in verdict for it.
+      agentModelCatalogStore.failures.recheck('claude')
       await this.dependencies.rateLimits.refreshForClaudeAccountChange(undefined, target)
       return this.dependencies.selection.snapshot()
     } catch (error) {

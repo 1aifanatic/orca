@@ -65,10 +65,16 @@ describe('CodexAccountService config sync', () => {
       { onHostSystemDefaultSelected }
     )
 
+    const { agentModelCatalogStore } =
+      await import('../native-chat/agent-model-catalog/agent-model-catalog-store')
+    const recheck = vi.spyOn(agentModelCatalogStore.failures, 'recheck')
+
     const result = await service.selectAccount(null)
 
     expect(result.activeAccountId).toBe(null)
     expect(runtimeHome.syncForCurrentSelection).toHaveBeenCalled()
+    // The chat's sign-in verdict is re-derived for the account now in use.
+    expect(recheck).toHaveBeenCalledWith('codex')
     expect(rateLimits.refreshForCodexAccountChange).toHaveBeenCalled()
     expect(onHostSystemDefaultSelected).toHaveBeenCalledOnce()
   })

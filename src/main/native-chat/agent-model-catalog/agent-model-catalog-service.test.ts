@@ -436,7 +436,7 @@ describe('agent model catalog service', () => {
         resolveAccountHome: async () => CODEX_HOME('/homes/selected'),
         probes: { codex: probe }
       })
-      const result = await service.read({ agent: 'codex' })
+      const result = await service.read({ agent: 'codex', waitForListing: true })
       expect(result.origin === 'unknown' ? null : result.models[0]!.id).toBe('gpt-old')
       expect(probe).toHaveBeenCalledTimes(1)
     })
@@ -525,8 +525,9 @@ describe('catalog availability evidence', () => {
     expect((await service.read({ agent: 'codex' })).unavailable?.expiresInMs).toBe(20000)
     expect(probe).toHaveBeenCalledTimes(1)
     at += 20000
+    // Aged out, the verdict stands while the probe re-deriving it runs: no gap for Send.
     const next = await service.read({ agent: 'codex' })
-    expect(next.unavailable).toBeUndefined()
+    expect(next.unavailable?.reason).toBe('notSignedIn')
     expect(next.listingInProgress).toBe(true)
     expect(probe).toHaveBeenCalledTimes(2)
   })
@@ -543,8 +544,11 @@ describe('catalog availability evidence', () => {
     expect(probe).toHaveBeenCalledTimes(1)
     at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
     const aged = await service.read({ agent: 'codex' })
-    expect(aged).toMatchObject({ origin: 'probe', listingInProgress: true })
-    expect(aged.unavailable).toBeUndefined()
+    expect(aged).toMatchObject({
+      origin: 'probe',
+      listingInProgress: true,
+      unavailable: { reason: 'notSignedIn' }
+    })
     const verdict = await service.read({ agent: 'codex', waitForAvailability: true })
     expect(verdict).toMatchObject({
       models: [{ id: 'gpt-a' }],
@@ -552,6 +556,20 @@ describe('catalog availability evidence', () => {
     })
     expect(verdict.listingInProgress).toBeUndefined()
     expect(probe).toHaveBeenCalledTimes(2)
+  })
+
+  it('says the account was checked and found fine once a probe lists for it', async () => {
+    let at = 1000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const fingerprint = selectedHomeFingerprint('/homes/a')
+    await store.refresh(fingerprint, 'codex', signedOut, () => signedOut('/homes/a'))
+    at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    const service = availabilityService(store, async () => listing('gpt-a'))
+    expect(await service.read({ agent: 'codex' })).not.toHaveProperty('accountVerified')
+    expect(await service.read({ agent: 'codex', waitForAvailability: true })).toMatchObject({
+      models: [{ id: 'gpt-a' }],
+      accountVerified: true
+    })
   })
 
   it('an untyped probe failure clears the verdict and keeps the cached models', async () => {

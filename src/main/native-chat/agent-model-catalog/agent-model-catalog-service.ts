@@ -127,7 +127,11 @@ export function createAgentModelCatalogService(
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
       if (probe && home) {
-        if (entry && deps.store.shouldRefresh(fingerprint)) {
+        // An aged-out verdict is re-derived only here, by the probe; no chat's own listing can.
+        if (
+          entry &&
+          (deps.store.shouldRefresh(fingerprint) || deps.store.failures.awaitsProbe(fingerprint))
+        ) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
@@ -147,12 +151,15 @@ export function createAgentModelCatalogService(
         entry = deps.store.get(fingerprint) ?? listed
       }
       const unavailable = home ? deps.store.unavailable(fingerprint) : undefined
-      // A catalog can land before the probe's verdict, which one more read then waits for.
+      // A catalog or a held verdict can land before the probe's answer, which one more read waits for.
       const inProgress = params.waitForAvailability
         ? false
-        : (!params.waitForListing && listing !== null) || (!unavailable && probeRunning())
+        : (!params.waitForListing && listing !== null) || probeRunning()
       const observation = {
         ...(unavailable ? { unavailable } : {}),
+        ...(!unavailable && home && deps.store.failures.accountVerified(fingerprint)
+          ? { accountVerified: true as const }
+          : {}),
         ...(inProgress ? { listingInProgress: true as const } : {})
       }
       if (!entry) {

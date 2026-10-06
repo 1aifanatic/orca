@@ -157,17 +157,21 @@ export function applyStructuredAgentSessionModelCatalog(
   if (models.length === 0) {
     return state
   }
-  return {
-    ...state,
-    // `isDefault` came from a real listing, so a launch's CLI default is nameable —
-    // as a provisional `default`-source value, never a confirmed one.
-    catalog: {
-      ...seed,
-      models,
-      ...(options.namesDefault ? { defaultModelIsCliDefault: true } : {})
-    },
-    catalogSource: 'host'
+  // `isDefault` came from a real listing, so a launch's CLI default is nameable —
+  // as a provisional `default`-source value, never a confirmed one.
+  const catalogFromHost: AgentSessionOptionCatalog = {
+    ...seed,
+    models,
+    ...(options.namesDefault ? { defaultModelIsCliDefault: true } : {})
   }
+  // An unchanged re-read keeps the state, so a focus re-read re-renders nothing.
+  if (
+    state.catalogSource === 'host' &&
+    JSON.stringify(state.catalog) === JSON.stringify(catalogFromHost)
+  ) {
+    return state
+  }
+  return { ...state, catalog: catalogFromHost, catalogSource: 'host' }
 }
 
 export function applyStructuredAgentSessionOptions(
