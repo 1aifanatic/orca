@@ -129,6 +129,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 export function NativeChatQueuedMessageCard({
   card,
   showsSteerShortcut,
+  steerHeld = false,
   onSteer,
   onDelete,
   onEdit,
@@ -137,6 +138,8 @@ export function NativeChatQueuedMessageCard({
   card: QueuedMessageCard
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
+  /** The chat reads Stopping: the card waits for the stop (`NativeChatQueuedMessageList`). */
+  steerHeld?: boolean
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
@@ -181,7 +184,13 @@ export function NativeChatQueuedMessageCard({
           {card.waitsForAgent ? null : (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={onSteer}
+                  disabled={steerHeld}
+                >
                   {sendNow.steers ? (
                     <CornerDownRight className="size-3" />
                   ) : (

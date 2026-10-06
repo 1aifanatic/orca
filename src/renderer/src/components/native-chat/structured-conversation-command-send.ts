@@ -212,8 +212,9 @@ export function structuredConversationCommandRunner(args: {
   items: () => readonly AgentJournalRenderItem[]
   write: StructuredAgentSessionWrite
 }): {
-  run: (command: AgentSessionConversationCommand) => Promise<CommandOutcome>
-  causes: StructuredConversationCommandCauses
+  runConversationCommand: (command: AgentSessionConversationCommand) => Promise<CommandOutcome>
+  /** What a refusal's line stands on, as the chat shows it now. */
+  commandRefusalCauses: StructuredConversationCommandCauses
 } {
   const promptPending = args.prompts.length > 0
   const agentWorking = args.chat.turnId !== null || args.chat.isWorking
@@ -262,7 +263,7 @@ export function structuredConversationCommandRunner(args: {
         )
     })
   }
-  return { run, causes }
+  return { runConversationCommand: run, commandRefusalCauses: causes }
 }
 
 /** What this window's own messages offer on their rows: a Retry, or nothing while still on

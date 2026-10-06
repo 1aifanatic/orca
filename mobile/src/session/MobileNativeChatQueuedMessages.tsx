@@ -34,6 +34,8 @@ export type MobileNativeChatQueuedMessagesProps = {
   /** The whole queue's pause: the box's first row, with Resume. */
   pause?: MobileQueuePause
   onResume?: () => Promise<boolean>
+  /** The chat reads Stopping: no card steers into the turn a Stop is ending. */
+  steerHeld?: boolean
 }
 
 /** The host-held queued drafts, as one box of compact rows between transcript and
@@ -44,7 +46,8 @@ export function MobileNativeChatQueuedMessages({
   onDelete,
   onEdit,
   pause,
-  onResume
+  onResume,
+  steerHeld = false
 }: MobileNativeChatQueuedMessagesProps): React.JSX.Element | null {
   // One in-flight action per card; a second tap must not double-consume. The ref
   // closes the same-frame double tap the disabled state cannot.
@@ -138,7 +141,7 @@ export function MobileNativeChatQueuedMessages({
               {card.waitsForAgent ? null : (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityState={{ disabled: busy }}
+                  accessibilityState={{ disabled: busy || steerHeld }}
                   accessibilityLabel={
                     returned
                       ? 'Send this message again'
@@ -149,9 +152,9 @@ export function MobileNativeChatQueuedMessages({
                   style={({ pressed }) => [
                     styles.textAction,
                     pressed && styles.pressed,
-                    busy && styles.disabled
+                    (busy || steerHeld) && styles.disabled
                   ]}
-                  disabled={busy}
+                  disabled={busy || steerHeld}
                   onPress={() => void run(card.messageId, onSend)}
                 >
                   {steers ? (
