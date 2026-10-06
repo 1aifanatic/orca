@@ -33,8 +33,8 @@ export type ChatAssigneeObservation =
   | { status: 'unverifiable'; reason: string }
 
 /**
- * A chat at rest is live: the send that reaches it starts its agent. Only a closed or lost
- * conversation has exited; not being able to look, or another host, is unverifiable.
+ * A chat at rest is live: the send that reaches it starts its agent. Only a closed chat has
+ * exited; a record this host lacks, or another host, is unverifiable: missing evidence is no exit.
  */
 export function observeChatAssignee(
   sessionId: OrcaSessionId,
@@ -58,12 +58,22 @@ export function observeChatAssignee(
     case 'other-host':
       return { status: 'unverifiable', reason: 'The chat runs on another host.' }
     case 'ended':
-      return {
-        status: 'exited',
-        reason:
-          reach.reason === 'closed'
-            ? 'The chat was closed.'
-            : 'The chat was cleared, and this host has no record of the session that continues it.'
+      switch (reach.reason) {
+        case 'closed':
+          return { status: 'exited', reason: 'The chat was closed.' }
+        case 'continuation-missing':
+          return {
+            status: 'unverifiable',
+            reason:
+              'The chat was cleared, and this host has no record of the session that continues it.'
+          }
+        case 'worker-identity-lost':
+          // Not reachable for a chat today (its Dispatch records no worker incarnation); still no exit.
+          return {
+            status: 'unverifiable',
+            reason:
+              'The session that continues this chat is a worker whose identity this host lost.'
+          }
       }
   }
 }

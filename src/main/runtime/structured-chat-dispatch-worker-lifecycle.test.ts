@@ -181,6 +181,29 @@ describe("a chat assignee's liveness, stop and close", () => {
     })
   })
 
+  it('reads unverifiable, and keeps its Dispatch, when the session that continues the chat is unknown', async () => {
+    const { dispatchId } = await dispatchToChat()
+    const successor = await clearChat(PEER_CHAT)
+    const getRecord = host.deps.store.getRecord.bind(host.deps.store)
+    vi.spyOn(host.deps.store, 'getRecord').mockImplementation((sessionId) =>
+      sessionId === successor ? null : getRecord(sessionId)
+    )
+
+    expect(await call('orchestration.workerShow', { dispatch: dispatchId })).toMatchObject({
+      observation: {
+        status: 'unverifiable',
+        reason: expect.stringContaining('no record of the session that continues it')
+      },
+      projection: { liveness: { verdict: 'unverifiable' } }
+    })
+    expect(await call('orchestration.workerList', {})).toMatchObject({
+      workers: [{ dispatchId, projection: { liveness: { verdict: 'unverifiable' } } }]
+    })
+    // Another chat's close re-derives every chat worker; a missing record is not an exit.
+    await host.setSessionTabVisibility(COORDINATOR, false)
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
+  })
+
   it("reads the chat's transcript for worker-read", async () => {
     const { dispatchId, worker } = await dispatchToChat()
     expect(await sendUserMessage(PEER_CHAT, 'working on it')).toMatchObject({ ok: true })
