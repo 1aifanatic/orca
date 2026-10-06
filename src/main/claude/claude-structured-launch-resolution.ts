@@ -33,8 +33,10 @@ import {
 import { resolveClaudeCommand } from '../codex-cli/command'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
+import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
 import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-support'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import { CLAUDE_STRUCTURED_AGENT } from './claude-structured-agent-definition'
 
 export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project', 'local'] as const
@@ -47,6 +49,7 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'settingSources'
   | 'supportedDialogKinds'
   | 'extraArgs'
+  | 'additionalDirectories'
   | 'model'
   | 'effort'
   | 'permissionMode'
@@ -112,7 +115,8 @@ export type ClaudeStructuredLaunch = {
 }
 
 export type ClaudeStructuredLaunchResolverDeps = {
-  store: AgentSessionRecordStore
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinLaunchDirectory'>
+  resolveLaunchArgs: () => Promise<string[]> | string[]
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCommand?: () => string
   resolveEnv?: () =>
@@ -325,7 +329,7 @@ export function createClaudeStructuredLaunchResolver(
       ? head.nativeId
       : claudeSessionIdForOrcaSession(identity.sessionId)
     const continuesChain = head !== null
-    const cwd = await deps.resolveWorkspacePath(record.location.workspaceId)
+    const cwd = await resolveAgentSessionLaunchDirectory(deps, record)
     const sources = await resolveClaudeChildEnvSources(deps)
     // Asked as soon as the spawn's cwd and PATH are known, so it overlaps what is left to resolve.
     const thinkingDisplay = deps.thinkingDisplay?.argsFor({
@@ -342,8 +346,8 @@ export function createClaudeStructuredLaunchResolver(
           providerSessionId,
           claudeConfigDir: record.accountHome.path
         })))
-    // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
-    // concern, and the permission mode they used to smuggle in is an owned provider option now.
+    const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
+    const { additionalDirectories } = configured
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
@@ -365,7 +369,9 @@ export function createClaudeStructuredLaunchResolver(
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
+        ...(additionalDirectories.length ? { additionalDirectories } : {}),
         extraArgs: {
+          ...configured.extraArgs,
           ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,
           ...permission.extraArgs,
           ...thinkingDisplayArgs

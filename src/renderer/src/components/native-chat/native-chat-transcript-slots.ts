@@ -134,6 +134,7 @@ export function buildNativeChatTranscriptSlots(
     turnKey: turnKeys[index],
     role: message.role,
     rendersProse: nativeChatRowRendersProse(message),
+    draws: receipts.has(message.id) || nativeChatRowRendersContent(message.blocks),
     // The raw blocks, not the renderable ones: a childless roster draws no row
     // and its plain-text twin is then the only record the spawn happened.
     outlivesTurn: message.blocks.some(
@@ -272,11 +273,13 @@ export function nativeChatSlotIndexOf(
  *  that the journal holds no place for: they draw after the live activity, not inside it. */
 export function splitNativeChatSlotsWaitingBehindLiveTurn(
   slots: readonly NativeChatTranscriptSlot[],
-  journalItems: readonly AgentJournalRenderItem[] | undefined
+  journalItems: readonly AgentJournalRenderItem[] | undefined,
+  stopping = false
 ): { slots: NativeChatTranscriptSlot[]; waitingSlots: NativeChatTranscriptSlot[] } {
   const waiting = nativeChatMessagesWaitingBehindLiveTurn(
     slots.flatMap((slot) => (slot.kind === 'message' ? [slot.message] : [])),
-    journalItems
+    journalItems,
+    stopping
   )
   const isWaiting = (slot: NativeChatTranscriptSlot): boolean =>
     slot.kind === 'message' &&
