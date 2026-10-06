@@ -37,6 +37,7 @@ import { codexProviderHandle } from '../../../shared/agent-session-provider-hand
 import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 const caller = { callerKey: 'desktop' }
+let clock = HOST_TEST_NOW
 let directory: string
 let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
@@ -47,6 +48,7 @@ const rewind = vi.fn<NonNullable<StructuredAgentSessionAdapter['rewind']>>()
 const recoverRewind = vi.fn<NonNullable<StructuredAgentSessionAdapter['recoverRewind']>>()
 
 beforeEach(async () => {
+  clock = HOST_TEST_NOW
   resetHostTestOperationIds()
   rewind.mockReset().mockResolvedValue({ ok: true })
   recoverRewind.mockReset().mockResolvedValue({
@@ -104,7 +106,7 @@ beforeEach(async () => {
     adapter,
     journalDatabase: openTestJournalHostDatabase(directory),
     claimKeyId: 'key',
-    now: () => HOST_TEST_NOW,
+    now: () => clock,
     probeOwner: async () => ({ outcome: 'exit-observed' })
   })
 })
@@ -269,6 +271,20 @@ describe('host rewind', () => {
     expect(await host.rewind(caller, request)).toMatchObject({ ok: true, replayed: true })
     expect(rewind).toHaveBeenCalledTimes(1)
   })
+  it('keeps when each kept message was first seen, not when the rewind re-read it', async () => {
+    const target = await seed()
+    const kept = (await host.journalSnapshot(HOST_TEST_SESSION)).items[0]!
+    const identity = { provider: 'codex' as const, threadId: HOST_TEST_THREAD, turnId: 'kept' }
+    rewind.mockResolvedValueOnce({
+      ok: true,
+      items: [{ identity: { ...identity, ordinal: 0 }, body: kept.body }]
+    })
+    clock = HOST_TEST_NOW + 60_000
+    expect(await host.rewind(caller, await params(target))).toMatchObject({ ok: true })
+    const [after] = (await host.journalSnapshot(HOST_TEST_SESSION)).items
+    expect(after).toMatchObject({ itemId: kept.itemId, observedAt: kept.observedAt })
+    expect(after!.observedAt).not.toBe(clock)
+  })
   // The stream's failure is the stream's to recover from; its stale error is not the rewind's.
   it("rewinds after the chat's event sink failed, its error never failing the rewind", async () => {
     const target = await seed()
@@ -306,28 +322,25 @@ describe('host rewind', () => {
     const target = await seed()
     const body = hostTestMessage('unanswered')
     const clientOperationId = hostTestOperationId()
-    expect(
-      await host.send(caller, {
-        body,
-        envelope: {
-          ...(await params(target)).envelope,
-          clientOperationId,
-          payloadFingerprint: computeAgentSessionPayloadFingerprint({
-            method: 'agentSession.send',
-            sessionId: HOST_TEST_SESSION,
-            fields: { body }
-          })
-        }
-      })
-    ).toMatchObject({ ok: true })
+    // Accepted: the wait below sees its submission settle in doubt.
+    await host.send(caller, {
+      body,
+      envelope: {
+        ...(await params(target)).envelope,
+        clientOperationId,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.send',
+          sessionId: HOST_TEST_SESSION,
+          fields: { body }
+        })
+      }
+    })
     // The adapter's reply is lost: a live doubt, which the chat shows as working.
-    await vi.waitFor(async () =>
-      expect(
-        (await host.journalSnapshot(HOST_TEST_SESSION)).submissions.find(
-          (entry) => entry.clientMessageId === clientOperationId
-        )?.dispatchState
-      ).toBe('unknown')
-    )
+    const sent = async () =>
+      (await host.journalSnapshot(HOST_TEST_SESSION)).submissions.find(
+        (entry) => entry.clientMessageId === clientOperationId
+      )
+    await vi.waitFor(async () => expect((await sent())?.dispatchState).toBe('unknown'))
     expect(await host.rewind(caller, await params(target))).toMatchObject({
       ok: false,
       refusal: { rewindReason: 'busy' }
@@ -357,7 +370,7 @@ describe('host rewind', () => {
     })
     expect(rewind).not.toHaveBeenCalled()
   })
-  it('keeps a failed hydration epoch intact and blocks sends and duplicate rewind', async () => {
+  it('keeps a failed hydration epoch intact and blocks sends and duplicate rewind while it stays unknown', async () => {
     const target = await seed()
     const request = await params(target)
     const before = await host.journalSnapshot(HOST_TEST_SESSION)
@@ -368,6 +381,8 @@ describe('host rewind', () => {
       ok: false,
       refusal: { code: 'agent_session_operation_unknown' }
     })
+    // The send asks the provider first; it still cannot say.
+    recoverRewind.mockResolvedValueOnce({ ok: false, reason: 'outcome-unknown' })
     const body = hostTestMessage('new prompt')
     const envelope = {
       ...(await params(target)).envelope,

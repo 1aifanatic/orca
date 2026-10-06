@@ -65,11 +65,10 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
   hasPendingPrompt: boolean
-  /** The chat shows the agent working: a command card offers no send then. */
-  agentWorking?: boolean
   /** Background tasks run: a /clear next in line says it waits them out. */
   backgroundTasksRunning?: boolean
-  /** This pane's outbox, whose queue sends the host has no record of yet show as sending. */
+  /** This pane's outbox, whose queue sends the host has no record of yet show as sending, and
+   *  the chat's Working rule. */
   sending?: {
     outbox: readonly StructuredAgentSessionOutboxEntry[]
     isWorking: boolean
@@ -79,10 +78,11 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
-  const agentWorking = args.agentWorking === true
   const backgroundTasksRunning = args.backgroundTasksRunning === true
   const pause = args.queuePause
   const { outbox = NO_SENDS, isWorking = false, queueDelivery = NO_DELIVERY } = args.sending ?? {}
+  // The chat's Working rule, a running turn included: a command card offers no send then.
+  const agentWorking = isWorking
 
   const cards = useMemo(
     () => [

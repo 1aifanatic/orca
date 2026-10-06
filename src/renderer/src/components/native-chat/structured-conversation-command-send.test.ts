@@ -240,7 +240,11 @@ describe('a /compact the host holds in line', () => {
   it('against a host that cannot hold it, and for /clear, keeps every check in true words', () => {
     expect(structuredConversationCommandHold(idle)).toBeNull()
     expect(structuredConversationCommandHold({ ...idle, agentWorking: true })).toBe('working')
-    expect(structuredConversationCommandHold({ ...idle, outboxUnsent: true })).toBe('working')
+    // The agent idle, only this window's own message still on its way: it is still being sent.
+    expect(structuredConversationCommandHold({ ...idle, outboxUnsent: true })).toBe('sending')
+    expect(
+      structuredConversationCommandHold({ ...idle, agentWorking: true, outboxUnsent: true })
+    ).toBe('working')
     expect(structuredConversationCommandHold({ ...idle, promptPending: true })).toBe('prompt')
     // Only a failed message waits for its Retry: the agent is not working.
     expect(structuredConversationCommandHold({ ...idle, outboxRetry: true })).toBe('retry')
