@@ -181,6 +181,7 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
       previousVerifiedStatus != null &&
       previousVerifiedStatus.runtimeId !== status.status.runtimeId
     )
+    const reconnectedAfterLostContact = status.status !== null && previous?.status === null
     // Why: a non-null status proves the runtime just answered, so drop any stale
     // "offline" compat failure before this online transition fires the
     // reuse-flagged background refetches — a recovered host must re-probe.
@@ -215,7 +216,6 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
       // mirror is keyed on. It still needs its own "the host is back" edge: the streams died with
       // the transport, an 'end' frame resubscribes nothing, and the parking layer retries only a
       // rejected subscribe. This counter is that edge, read only as a subscription-effect dep.
-      const reconnectedAfterLostContact = status.status !== null && previous?.status === null
       const hostContactEpoch =
         (previous?.hostContactEpoch ?? status.hostContactEpoch ?? 0) +
         (reconnectedAfterLostContact ? 1 : 0)
@@ -253,12 +253,12 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
       }
     })
     // A same-runtime return re-attaches a parked browser host; a restart replaces its authority.
-    if (runtimeRestarted || (previous?.status === null && status.status !== null)) {
+    if (runtimeRestarted || reconnectedAfterLostContact) {
       void ensureBrowserClientHostForReturningRuntime(get(), environmentId)
     }
     if (options?.suppressDisconnectToast) {
       dismissRuntimeDisconnectedToast(environmentId)
-    } else if (previous?.status === null && status.status !== null) {
+    } else if (reconnectedAfterLostContact) {
       dismissRuntimeDisconnectedToast(environmentId)
     } else if (previous && previous.status !== null && status.status === null) {
       showRuntimeDisconnectedToast(environmentId, get)

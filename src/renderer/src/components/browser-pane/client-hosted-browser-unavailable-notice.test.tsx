@@ -3,10 +3,12 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { resetBrowserClientHostIdForTests } from '@/runtime/browser-client-host-identity'
+import { resetRestoredBrowserClientHostAttachForTests } from '@/runtime/restored-client-hosted-browser-host-attach'
 import { installClientHostedPaneApi } from './client-hosted-browser-pane-test-rig'
 import { ClientHostedBrowserAvailabilityNotice } from './client-hosted-browser-unavailable-notice'
 
-const retryConnectionsNow = vi.fn(async () => {})
+const retryControlConnection = vi.fn(async () => {})
+const prepareBrowserClientHostPlacement = vi.fn(async () => ({ kind: 'client' }))
 
 function renderNotice(
   props: Partial<Parameters<typeof ClientHostedBrowserAvailabilityNotice>[0]> = {}
@@ -24,9 +26,14 @@ function renderNotice(
   )
 }
 
+const clientHostedPage = { environmentId: 'env-a', placement: { kind: 'client' } }
+// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the attach reads only environmentId and placement.
+const CLIENT_HOSTED_PAGE_HANDLES = { 'page-a': clientHostedPage } as never
+
 function setHostOffline(offline: boolean): void {
   useAppStore.setState({
     runtimeStatusByEnvironmentId: offline ? new Map([['env-a', { status: null }]]) : new Map(),
+    remoteBrowserPageHandlesByPageId: CLIENT_HOSTED_PAGE_HANDLES,
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the notice reads only id and name.
     runtimeEnvironments: [{ id: 'env-a', name: 'Build box' }] as never
   })
@@ -35,10 +42,12 @@ function setHostOffline(offline: boolean): void {
 describe('ClientHostedBrowserAvailabilityNotice', () => {
   beforeEach(() => {
     resetBrowserClientHostIdForTests()
-    retryConnectionsNow.mockClear()
+    resetRestoredBrowserClientHostAttachForTests()
+    retryControlConnection.mockClear()
+    prepareBrowserClientHostPlacement.mockClear()
     installClientHostedPaneApi({
       browser: { readClientHostId: () => 'this-desktop' },
-      runtimeEnvironments: { retryConnectionsNow }
+      runtimeEnvironments: { retryControlConnection, prepareBrowserClientHostPlacement }
     })
   })
   afterEach(() => {
@@ -53,13 +62,17 @@ describe('ClientHostedBrowserAvailabilityNotice', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('marks a live page whose host is offline, and a click asks for a re-attach', () => {
+  it('marks a live page whose host is offline, and a click retries that host and its browser host', () => {
     setHostOffline(true)
     renderNotice()
 
     expect(screen.getByRole('status').textContent).toContain('Build box is offline')
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect now' }))
-    expect(retryConnectionsNow).toHaveBeenCalled()
+    expect(retryControlConnection).toHaveBeenCalledWith({ selector: 'env-a' })
+    expect(prepareBrowserClientHostPlacement).toHaveBeenCalledWith({
+      selector: 'env-a',
+      preference: 'auto'
+    })
   })
 
   it('waits for an offline host instead of calling a missing guest unavailable', () => {
@@ -80,9 +93,14 @@ describe('ClientHostedBrowserAvailabilityNotice', () => {
     expect(screen.queryByText(/different desktop/)).toBeNull()
   })
 
-  it('asks a parked host to re-attach when the tab is opened', () => {
+  it('asks only its own environment to re-attach when the tab is opened', () => {
+    setHostOffline(false)
     renderNotice({ isActive: true })
 
-    expect(retryConnectionsNow).toHaveBeenCalled()
+    expect(prepareBrowserClientHostPlacement).toHaveBeenCalledWith({
+      selector: 'env-a',
+      preference: 'auto'
+    })
+    expect(retryControlConnection).not.toHaveBeenCalled()
   })
 })

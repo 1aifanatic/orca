@@ -3,6 +3,7 @@ import type { BrowserClientPageExecutionHostGrant } from './browser-host-client-
 import type { BrowserHostLeaseState } from './browser-host-lease-records'
 import type { RuntimeBrowserPlacement } from './browser-host-page-placement'
 import type { BrowserHostRuntimePageIntent } from './browser-host-page-reconciliation-plan'
+import type { BrowserHostPageAdoptionOptions } from './browser-host-page-reconciliation-orchestration'
 
 /**
  * An inventory entry a restarted runtime may take back over. `workspaceId` is narrowed to present
@@ -105,20 +106,13 @@ export function buildClientPageAdoptionIntents(input: {
   })
 }
 
-type ReconciliationOptions = {
-  maxConcurrency?: number
-  actionTimeoutMs?: number
-  signal?: AbortSignal
-}
-
 export type BrowserHostClientPageAdoptionDependencies = {
   state: BrowserHostLeaseState
   reconciliations: {
     adopt(
       state: BrowserHostLeaseState,
       intents: readonly BrowserHostRuntimePageIntent[],
-      options: ReconciliationOptions,
-      releasedPageIds: readonly string[]
+      options: BrowserHostPageAdoptionOptions
     ): Promise<unknown>
   }
   placements: { getPlacement(browserPageId: string): RuntimeBrowserPlacement | undefined }
@@ -135,11 +129,10 @@ export type BrowserHostClientPageAdoptionDependencies = {
  */
 export async function adoptBrowserHostClientPages(
   intents: readonly BrowserHostRuntimePageIntent[],
-  options: ReconciliationOptions,
-  dependencies: BrowserHostClientPageAdoptionDependencies,
-  releasedPageIds: readonly string[] = []
+  options: BrowserHostPageAdoptionOptions,
+  dependencies: BrowserHostClientPageAdoptionDependencies
 ): Promise<readonly string[]> {
-  if (intents.length === 0 && releasedPageIds.length === 0) {
+  if (intents.length === 0 && !options.releasedPageIds?.length) {
     return []
   }
   const grants = intents.map((intent) => ({
@@ -147,7 +140,7 @@ export async function adoptBrowserHostClientPages(
     grant: dependencies.state.executionHostGrants.retain(intent.executionHostKey)
   }))
   await dependencies.reconciliations
-    .adopt(dependencies.state, intents, options, releasedPageIds)
+    .adopt(dependencies.state, intents, options)
     .catch(() => undefined)
   const adopted: string[] = []
   for (const { intent, grant } of grants) {

@@ -292,7 +292,7 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     rig.hostOptions.onError?.(contactLostError())
 
     // Losing contact says nothing about the pages: they stay live and their routes stay suspended.
-    expect(composition.parked).toBe(true)
+    expect(composition.isParked).toBe(true)
     expect(rig.onError).not.toHaveBeenCalled()
     expect(rig.executor.close).not.toHaveBeenCalled()
     expect(rig.routes.close).not.toHaveBeenCalled()
@@ -310,7 +310,7 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
       rig.hostOptions.onError?.(authorityReplacedError())
       vi.advanceTimersByTime(10 * 60_000)
 
-      expect(composition.parked).toBe(true)
+      expect(composition.isParked).toBe(true)
       expect(rig.onError).not.toHaveBeenCalled()
       expect(rig.order).not.toContain('closing')
       await composition.close()
@@ -327,12 +327,12 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
 
     rig.hostOptions.onError?.(fatal)
 
-    expect(composition.parked).toBe(false)
+    expect(composition.isParked).toBe(false)
     expect(rig.onError).toHaveBeenCalledWith(fatal)
     await composition.whenClosed()
   })
 
-  it('re-attaches a parked composition once per trigger, sharing concurrent triggers', async () => {
+  it('re-attaches a parked composition in place when the runtime can rekey kept guests', async () => {
     const rig = createRig({
       initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
     })
@@ -340,13 +340,9 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     await composition.start()
     rig.hostOptions.onError?.(contactLostError())
 
-    const first = composition.resume()
-    const second = composition.resume()
-
-    expect(second).toBe(first)
-    await first
+    await composition.resume()
     expect(rig.hosts).toHaveLength(2)
-    expect(composition.parked).toBe(false)
+    expect(composition.isParked).toBe(false)
     // A runtime that can rekey kept guests gets them back in place: nothing is released or closed.
     expect(rig.executor.retirePage).not.toHaveBeenCalled()
     expect(rig.executor.close).not.toHaveBeenCalled()
@@ -359,6 +355,24 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     ])
   })
 
+  it('re-attaches straight away after a dark route parks a healthy lease', async () => {
+    const rig = createRig({
+      initialAuthority: { ...authority, returningHostReclaimProtocolVersion: 1 }
+    })
+    const composition = rig.createComposition()
+    await composition.start()
+
+    // The route owner parks and then asks for one resume; a lease that still answers takes it.
+    composition.park(new Error('browser network route stayed unavailable'))
+    expect(rig.routes.suspend).toHaveBeenCalled()
+    await composition.resume()
+
+    expect(composition.isParked).toBe(false)
+    expect(rig.hosts).toHaveLength(2)
+    expect(rig.onError).not.toHaveBeenCalled()
+    expect(rig.executor.retirePage).not.toHaveBeenCalled()
+  })
+
   it('leaves a live composition alone when a trigger fires', async () => {
     const rig = createRig()
     const composition = rig.createComposition()
@@ -369,18 +383,24 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     expect(rig.hosts).toHaveLength(1)
   })
 
-  it('frees kept guests before re-attaching to a runtime that cannot rekey them', async () => {
+  it('frees kept guests only once a re-attach shows the runtime cannot rekey them', async () => {
     const rig = createRig()
     const composition = rig.createComposition()
     await composition.start()
     rig.hostOptions.onError?.(contactLostError())
+    rig.failNextStart(unreachableError())
+
+    await expect(composition.resume()).rejects.toThrow('remote runtime unavailable')
+    // No answer is no evidence about the runtime's version: the guests stay.
+    expect(rig.executor.retirePage).not.toHaveBeenCalled()
 
     await composition.resume()
 
     // The older runtime recreates each page at its last URL; a kept guest would be placed nowhere.
-    expect(rig.order.indexOf('retire-executor-page')).toBeLessThan(
-      rig.order.indexOf('complete-authority-transition')
+    expect(rig.order.indexOf('retire-executor-page')).toBeGreaterThan(
+      rig.order.lastIndexOf('activate-routes')
     )
+    expect(rig.hosts.at(-1)!.refreshPageInventory).toHaveBeenCalledOnce()
     expect(rig.executor.close).not.toHaveBeenCalled()
   })
 
@@ -391,17 +411,17 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
     const composition = rig.createComposition()
     await composition.start()
     rig.hostOptions.onError?.(contactLostError())
-    rig.failNextStart(new Error('remote runtime unavailable'))
+    rig.failNextStart(unreachableError())
 
     await expect(composition.resume()).rejects.toThrow('remote runtime unavailable')
 
-    expect(composition.parked).toBe(true)
+    expect(composition.isParked).toBe(true)
     expect(rig.onError).not.toHaveBeenCalled()
     expect(rig.executor.close).not.toHaveBeenCalled()
     await expect(composition.resume()).resolves.toEqual(
       expect.objectContaining({ authorityRuntimeId: 'runtime-a' })
     )
-    expect(composition.parked).toBe(false)
+    expect(composition.isParked).toBe(false)
     expect(rig.hosts).toHaveLength(3)
   })
 
@@ -418,8 +438,47 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
       vi.advanceTimersByTime(1)
 
       expect(rig.executor.retirePage).toHaveBeenCalledWith('page-a', 7)
-      expect(composition.parked).toBe(true)
+      expect(composition.isParked).toBe(true)
       expect(rig.executor.close).not.toHaveBeenCalled()
+      await composition.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes a parked composition when the runtime refuses the re-attach', async () => {
+    const rig = createRig()
+    const composition = rig.createComposition()
+    await composition.start()
+    rig.hostOptions.onError?.(contactLostError())
+    const refusal = Object.assign(new Error('pairing revoked'), { code: 'unauthorized' })
+    rig.failNextStart(refusal)
+
+    await expect(composition.resume()).rejects.toThrow('pairing revoked')
+
+    // A clear answer is final: the guests go with the composition rather than waiting forever.
+    expect(composition.isParked).toBe(false)
+    expect(rig.onError).toHaveBeenCalledWith(refusal)
+    await composition.whenClosed()
+    expect(rig.executor.close).toHaveBeenCalledOnce()
+  })
+
+  it('pauses the discard timer during a re-attach and restarts it when that fails', async () => {
+    vi.useFakeTimers()
+    try {
+      const rig = createRig({ parkedGuestDiscardMs: 60_000 })
+      const composition = rig.createComposition()
+      await composition.start()
+      rig.hostOptions.onError?.(contactLostError())
+      vi.advanceTimersByTime(50_000)
+      rig.failNextStart(unreachableError())
+
+      await expect(composition.resume()).rejects.toThrow('remote runtime unavailable')
+      vi.advanceTimersByTime(59_999)
+      expect(rig.executor.retirePage).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+
+      expect(rig.executor.retirePage).toHaveBeenCalledWith('page-a', 7)
       await composition.close()
     } finally {
       vi.useRealTimers()
@@ -457,7 +516,7 @@ describe('PairedRuntimeBrowserClientHostComposition', () => {
       await composition.close()
       vi.advanceTimersByTime(120_000)
 
-      expect(composition.parked).toBe(false)
+      expect(composition.isParked).toBe(false)
       expect(rig.executor.close).toHaveBeenCalledOnce()
       expect(rig.executor.retirePage).not.toHaveBeenCalled()
       await expect(composition.resume()).rejects.toThrow('composition_closed')
@@ -724,6 +783,12 @@ function contactLostError(): Error {
   return new BrowserHostLeaseContactLostError(
     new Error('Browser host lease reconnect grace expired.')
   )
+}
+
+function unreachableError(): Error {
+  return Object.assign(new Error('remote runtime unavailable'), {
+    code: 'remote_runtime_unavailable'
+  })
 }
 
 function authorityReplacedError(): Error {

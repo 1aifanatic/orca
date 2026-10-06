@@ -37,7 +37,10 @@ import {
 } from './browser-host-client-page-creation'
 import { adoptBrowserHostClientPages } from './browser-host-client-page-adoption'
 import { snapshotBrowserHostPageInventory } from './browser-host-page-inventory-snapshot'
-import { BrowserHostPageReconciliationOrchestrator } from './browser-host-page-reconciliation-orchestration'
+import {
+  BrowserHostPageReconciliationOrchestrator,
+  type BrowserHostPageAdoptionOptions
+} from './browser-host-page-reconciliation-orchestration'
 import type { BrowserHostRuntimePageIntent } from './browser-host-page-reconciliation-plan'
 import { BrowserHostLeaseReconnectController } from './browser-host-lease-reconnect'
 import {
@@ -224,20 +227,14 @@ export class BrowserHostLeaseRegistry {
   adoptClientPages(
     identity: BrowserHostLeaseIdentity,
     intents: readonly BrowserHostRuntimePageIntent[],
-    options: { maxConcurrency?: number; actionTimeoutMs?: number; signal?: AbortSignal } = {},
-    releasedPageIds: readonly string[] = []
+    options: BrowserHostPageAdoptionOptions = {}
   ): Promise<readonly string[]> {
-    return adoptBrowserHostClientPages(
-      intents,
-      options,
-      {
-        state: this.requireLeaseState(identity),
-        reconciliations: this.pageReconciliations,
-        placements: this.pagePlacements,
-        executionHostGrants: this.clientPageExecutionHostGrants
-      },
-      releasedPageIds
-    )
+    return adoptBrowserHostClientPages(intents, options, {
+      state: this.requireLeaseState(identity),
+      reconciliations: this.pageReconciliations,
+      placements: this.pagePlacements,
+      executionHostGrants: this.clientPageExecutionHostGrants
+    })
   }
 
   /** The lowest page generation a new placement may still take. */

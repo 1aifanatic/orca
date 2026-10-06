@@ -87,11 +87,13 @@ const browserClientHosts =
         onClosing: routes.release,
         parkedGuestDiscardMs: e2eParkedGuestDiscardMs(),
         initialInput: input,
-        // Why park, not retire: a route that stayed dark is lost contact, not lost pages.
+        // Why park, not retire: a route that stayed dark is lost contact, not lost pages. The
+        // immediate resume keeps a healthy lease from sitting parked behind a live status.
         createRoutes: (next, authority) =>
           createNetworkRoutes(next.pairing, authority, next.storageScope, (error) => {
             reportBrowserClientHostError(error)
             composition.park(error)
+            void browserClientHosts.resume(input.environmentId)
           }),
         createExecutor: (next, { retainNetworkRoute, onPageUnavailable }) => {
           executor = new BrowserClientPageCommandExecutor({
@@ -234,13 +236,6 @@ export function retirePairedRuntimeBrowserClientHostEnvironment(
 ): Promise<boolean> {
   clientHostRouteIdentities.delete(environmentId)
   return browserClientHosts.retireEnvironment(environmentId, error)
-}
-
-/** Asks each parked environment the caller allows for a single re-attach. */
-export function resumeParkedPairedRuntimeBrowserClientHosts(
-  allows: (environmentId: string) => boolean
-): Promise<void> {
-  return browserClientHosts.resumeParked(allows)
 }
 
 export function shutdownPairedRuntimeBrowserClientHosts(): Promise<void> {

@@ -9,6 +9,7 @@ import {
 } from './browser-client-page-command-admission'
 import { sameBrowserClientPageAuthority } from './browser-client-host-command-authority'
 import { BrowserClientPageCommandError } from './browser-client-page-command-failure'
+import { navigateBrowserClientPageCommand } from './browser-client-page-command-execution'
 import {
   createBrowserClientPageInventory,
   updateBrowserClientPageInventoryCurrentUrl
@@ -34,7 +35,6 @@ type BrowserClientPageReconciliationContext = {
     signal: AbortSignal
   ): Promise<BrowserClientPageNetworkRoute>
   routeSessions: Pick<BrowserRouteSessionRegistry, 'retargetPartitionProxy'>
-  navigate: (event: BrowserClientHostCommandEvent, signal: AbortSignal) => Promise<void>
   retirePage: (browserPageId: string, pageHostGeneration: number) => Promise<boolean>
   cleanupPage: (
     page: BrowserClientRetainedPage,
@@ -225,7 +225,9 @@ async function restorePage(
     return
   }
   try {
-    await context.navigate(
+    await navigateBrowserClientPageCommand(
+      context.pages,
+      context.routeWebContents,
       { ...event, command: { type: 'navigate', url: event.command.url } },
       signal
     )

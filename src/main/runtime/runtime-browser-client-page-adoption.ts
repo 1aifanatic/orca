@@ -160,8 +160,10 @@ export async function adoptRuntimeBrowserClientPagesFromInventory(
         pairedDeviceId: options.lease.pairedDeviceId
       },
       [...intents, ...returningIntents],
-      options.signal ? { signal: options.signal } : {},
-      returning.releasedPageIds
+      {
+        ...(options.signal ? { signal: options.signal } : {}),
+        releasedPageIds: returning.releasedPageIds
+      }
     )
   )
   const reclaimedPageIds = republishReturningClientPages(options, returning, adoptedPageIds)

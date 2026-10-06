@@ -66,3 +66,43 @@ export async function closeBrowserClientHostComposition(
 export function asCompositionError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
+
+/** How long a parked desktop keeps its live guests before freeing them; the tabs stay either way. */
+const PARKED_GUEST_DISCARD_MS = 60 * 60 * 1000
+
+type ReleasableGuests = {
+  snapshotPageInventory(): readonly { browserPageId: string; pageHostGeneration: number }[]
+  retirePage(browserPageId: string, pageHostGeneration: number): Promise<boolean>
+}
+
+/** Frees memory after a long absence only; it decides nothing about whether a page exists. */
+export function scheduleParkedGuestDiscard(
+  executor: ReleasableGuests,
+  discardMs = PARKED_GUEST_DISCARD_MS
+): ReturnType<typeof setTimeout> {
+  const timer = setTimeout(
+    () => void releaseBrowserClientGuests(executor).catch(warnParkedCleanup),
+    discardMs
+  )
+  timer.unref?.()
+  return timer
+}
+
+/** Frees every live guest; the runtime recreates each page at its last URL when it can. */
+export async function releaseBrowserClientGuests(executor: ReleasableGuests): Promise<void> {
+  const results = await Promise.allSettled(
+    executor
+      .snapshotPageInventory()
+      .map((page) => executor.retirePage(page.browserPageId, page.pageHostGeneration))
+  )
+  const failures = results.flatMap((result) =>
+    result.status === 'rejected' ? [result.reason] : []
+  )
+  if (failures.length > 0) {
+    throw new AggregateError(failures, 'Browser client guest release failed')
+  }
+}
+
+export function warnParkedCleanup(error: unknown): void {
+  console.warn('[browser-client-host] parked cleanup failed:', asCompositionError(error).message)
+}

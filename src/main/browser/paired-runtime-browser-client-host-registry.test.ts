@@ -80,13 +80,12 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
     expect(replacement.start).toHaveBeenCalledOnce()
   })
 
-  it('asks a parked environment to re-attach when a start names its current runtime', async () => {
+  it('routes a start that names the current runtime through resume', async () => {
     const composition = createComposition()
     const registry = new PairedRuntimeBrowserClientHostRegistry({
       createComposition: vi.fn(() => composition)
     })
     await registry.start(input(11))
-    composition.parked = true
 
     await expect(registry.start(input(11))).resolves.toEqual(authority)
 
@@ -97,7 +96,7 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
   it('keeps a parked environment registered when its re-attach fails', async () => {
     const composition = createComposition()
     composition.replaceAuthority.mockImplementationOnce(async () => {
-      composition.parked = true
+      composition.isParked = true
       throw new Error('remote runtime unavailable')
     })
     const registry = new PairedRuntimeBrowserClientHostRegistry({
@@ -117,7 +116,7 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
     )
   })
 
-  it('resumes only parked environments when a trigger fires', async () => {
+  it('re-attaches only the named environment, and only while it is parked', async () => {
     const parked = createComposition()
     const live = createComposition()
     const registry = new PairedRuntimeBrowserClientHostRegistry({
@@ -125,10 +124,11 @@ describe('PairedRuntimeBrowserClientHostRegistry', () => {
     })
     await registry.start(input(11))
     await registry.start({ ...input(11), environmentId: 'environment-b' })
-    parked.parked = true
+    parked.isParked = true
 
-    await registry.resumeParked(() => true)
-    await registry.resumeParked((environmentId) => environmentId !== 'environment-a')
+    await registry.resume('environment-a')
+    await registry.resume('environment-b')
+    await registry.resume('environment-missing')
 
     expect(parked.resume).toHaveBeenCalledOnce()
     expect(live.resume).not.toHaveBeenCalled()
@@ -223,7 +223,7 @@ function createComposition(
   closed = Promise.resolve()
 ) {
   return {
-    parked: false,
+    isParked: false,
     start: vi.fn(async () => {
       if (order && startLabel) {
         order.push(startLabel)

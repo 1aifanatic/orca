@@ -20,6 +20,11 @@ export type BrowserHostPageReconciliationOptions = {
   signal?: AbortSignal
 }
 
+export type BrowserHostPageAdoptionOptions = BrowserHostPageReconciliationOptions & {
+  /** Entries naming this runtime whose pages it has since released: the one orphan it can name. */
+  releasedPageIds?: readonly string[]
+}
+
 export class BrowserHostPageReconciliationOrchestrator {
   private readonly attempts = new Map<symbol, BrowserHostPageReconciliationActions>()
   private readonly consumedInventories = new WeakSet<object>()
@@ -44,9 +49,7 @@ export class BrowserHostPageReconciliationOrchestrator {
   adopt(
     state: BrowserHostLeaseState,
     intents: readonly BrowserHostRuntimePageIntent[],
-    options: BrowserHostPageReconciliationOptions = {},
-    /** Entries naming this runtime whose pages it has since released: the one orphan it can name. */
-    releasedPageIds: readonly string[] = []
+    { releasedPageIds = [], ...options }: BrowserHostPageAdoptionOptions = {}
   ): Promise<BrowserHostPageReconciliationResult> {
     const claimed = new Set([...intents.map((intent) => intent.browserPageId), ...releasedPageIds])
     return this.run(state, intents, options, (inventory) =>
