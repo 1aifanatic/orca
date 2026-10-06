@@ -8,7 +8,6 @@
 
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
-  requireInstalledStructuredHost,
   requireStructuredCapability,
   requireStructuredHost as requireHost
 } from './structured-agent-session-gate'
@@ -20,22 +19,18 @@ import { structuredAgentSessionTurnCompletionSubscriptionId } from './structured
 import { bindStructuredAgentSessionStream } from './structured-agent-session-status-stream'
 
 export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
-  // Retire only deliveries whose journal cause was included in the client's accepted read.
+  // Retire only deliveries whose journal cause the client's accepted read covered: the session and
+  // its journal epoch already name them, so no host is installed to answer. True: the read applied.
   defineMethod({
     name: 'agentSession.acknowledgeAttention',
     params: AcknowledgeAttentionParams,
-    handler: async (params, ctx) => {
+    handler: (params, ctx) => {
       requireStructuredCapability(ctx)
-      // Built if need be: after a restart the first read can arrive before any chat is opened.
-      const host = await requireInstalledStructuredHost(ctx)
-      const prefix = host.attentionSubjectPrefix(params.sessionId)
-      if (prefix) {
-        ctx.runtime.retireStructuredAttention(
-          { sessionId: params.sessionId, observedCursor: params.observedCursor },
-          prefix
-        )
-      }
-      return { acknowledged: prefix !== null }
+      ctx.runtime.retireStructuredAttention({
+        sessionId: params.sessionId,
+        observedCursor: params.observedCursor
+      })
+      return { acknowledged: true }
     }
   }),
   defineStreamingMethod({

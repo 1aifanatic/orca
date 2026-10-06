@@ -15,7 +15,6 @@ import {
   structuredAgentSessionPaneKey,
   projectStructuredAgentSessionStatusState
 } from '../../src/shared/structured-agent-session-projection'
-import { agentSessionAttentionSubjectPrefix } from '../../src/shared/agent-session-attention'
 import { StructuredAgentSessionTurnCompletionFeed } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
 import {
   RuntimeMobileNotificationController,
@@ -24,7 +23,6 @@ import {
 import { createStructuredAttentionMobileDelivery } from '../../src/main/runtime/structured-agent-session-mobile-attention'
 import {
   call,
-  hostCalls,
   installStructuredHostStub,
   clearStructuredHostStub,
   STRUCTURED_CLIENT,
@@ -163,7 +161,7 @@ export function ReadSurface({
   return null
 }
 export function AttentionPolicy(): null {
-  useAutoAckViewedAgent(false)
+  useAutoAckViewedAgent()
   return null
 }
 export function readCalls(): number {
@@ -182,9 +180,6 @@ beforeEach(() => {
   vi.spyOn(document, 'hasFocus').mockReturnValue(true)
   const directory = mkdtempSync(join(tmpdir(), 'orca-renderer-read-'))
   installStructuredHostStub()
-  hostCalls.attentionSubjectPrefix.mockReturnValue(
-    agentSessionAttentionSubjectPrefix(SCOPE, SESSION)
-  )
   const controller = new RuntimeMobileNotificationController()
   controller.configureDismissalStore(directory)
   const events: MobileNotificationEvent[] = []

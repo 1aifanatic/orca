@@ -1,13 +1,10 @@
 import { expect, vi } from 'vitest'
 import { RuntimeSubscriptionRegistry } from '../../../src/main/runtime/runtime-subscription-registry'
-import { agentSessionAttentionSubjectPrefix } from '../../../src/shared/agent-session-attention'
 import {
   attachParams,
   ATTENTION_READ,
   paramsFor,
-  SESSION,
-  STRUCTURED_CALLS,
-  WORKSPACE
+  STRUCTURED_CALLS
 } from './structured-agent-session-surface-manifest'
 import type {
   AgentSessionWireBuild,
@@ -73,16 +70,6 @@ export async function expectDeclaredSurfaceExecutes(
   hostCalls: Record<string, ReturnType<typeof vi.fn>>,
   clientCapabilities: readonly string[]
 ): Promise<void> {
-  const prefix = agentSessionAttentionSubjectPrefix(
-    {
-      executionHostId: 'local',
-      wslDistro: null,
-      workspaceId: WORKSPACE,
-      workspaceKind: 'git-worktree'
-    },
-    SESSION
-  )
-  hostCalls.attentionSubjectPrefix.mockReturnValue(prefix)
   const retirement = vi.fn()
   const runtime = runtimeStub({ retireStructuredAttention: retirement })
   for (const { method, hostMethod, result } of STRUCTURED_CALLS) {
@@ -103,7 +90,7 @@ export async function expectDeclaredSurfaceExecutes(
       ).toBe(1)
     }
     if (method === 'agentSession.acknowledgeAttention') {
-      expect(retirement).toHaveBeenCalledExactlyOnceWith(ATTENTION_READ, prefix)
+      expect(retirement).toHaveBeenCalledExactlyOnceWith(ATTENTION_READ)
     }
     for (const reply of replies) {
       expect(

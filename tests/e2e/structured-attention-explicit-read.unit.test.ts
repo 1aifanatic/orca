@@ -19,10 +19,7 @@ import {
   agentSessionAttentionSubjectPrefix,
   agentSessionPromptAttentionKey
 } from '../../src/shared/agent-session-attention'
-import {
-  hostCalls,
-  SESSION
-} from '../../src/main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
+import { SESSION } from '../../src/main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
 import {
   projectStructuredAgentSessionStatusState,
   structuredAgentSessionPaneKey
@@ -139,9 +136,6 @@ it('Mark read never covers a prompt raised after the click', async () => {
 it('Mark all read covers every chat it marks, viewed earlier or never opened', async () => {
   const OTHER = 'session-beta'
   const otherSubject = structuredAgentSessionPaneKey('chat-2', OTHER)
-  hostCalls.attentionSubjectPrefix.mockImplementation((id: string) =>
-    agentSessionAttentionSubjectPrefix(SCOPE, id)
-  )
   useAppStore.setState({
     unifiedTabsByWorktree: {
       [WORKSPACE]: [

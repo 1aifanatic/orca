@@ -27,7 +27,8 @@ import type {
   AgentJournalResetReason,
   AgentJournalResolution,
   AgentJournalSubmission,
-  AgentJournalThreadGoal
+  AgentJournalThreadGoal,
+  AgentJournalTurnLifecycle
 } from './agent-session-journal-types'
 import type { AgentTurnOutcome } from './agent-turn-outcome'
 import type { AgentSessionHandoffStage, AgentSessionRecord } from './agent-session-record'
@@ -56,6 +57,18 @@ export { agentSessionBackgroundTasksEqual } from './agent-session-background-tas
 export type AgentSessionTurnActivity = {
   turnId: string
   text: string
+}
+
+/** The session's newest turn record over the WHOLE journal. A page windows the timeline and a
+ *  turn's record keeps the place it opened at, so a long turn's record falls off the page; this is
+ *  what tells a client a turn is running. Present null: the journal records no turn. Absent: an
+ *  older host, whose clients still read the loaded rows. */
+export type AgentSessionLatestTurn = {
+  /** The record's journal key, which rows of the turn name as their scope. */
+  itemId: string
+  /** Host clock at the record's creation, as on its own row; a revision does not move it. */
+  observedAt: number
+  turn: AgentJournalTurnLifecycle
 }
 
 export const AGENT_SESSION_ID_MAX_LENGTH = 512
@@ -127,6 +140,8 @@ export type AgentSessionHistoryPage = {
   /** Names the subagents with rows on the page whose roster row is older than it; bounded.
    *  Absent from older hosts, and when every such roster row is on the page. */
   subagentRoster?: AgentSessionSubagentRosterEntry[]
+  /** As of the page's read; a client applies it only from a page that replaces its state. */
+  latestTurn?: AgentSessionLatestTurn | null
 }
 
 export type AgentSessionHistoryResult =
@@ -186,6 +201,9 @@ export type AgentSessionSubscribeEvent =
       commands?: AgentSessionSlashCommand[] | null
       /** Additive ephemeral state; it never creates or advances journal rows. */
       activity?: AgentSessionTurnActivity | null
+      /** Rides every batch that carries rows, removals or submissions, so absent there means an
+       *  older host; absent on one that carries none, which changes no turn. */
+      latestTurn?: AgentSessionLatestTurn | null
     } & AgentSessionHostClockField)
   | ({
       type: 'reset'
@@ -236,6 +254,11 @@ export type AgentSessionStatusSummary = {
    *  UNKNOWN, never success. Optional for mixed-version hosts; an older client reads an arm it
    *  does not know as no verdict. The agent-status row publishes it as `mainAgent.outcome`. */
   turnOutcome?: AgentTurnOutcome
+  /** Present only while `status` is 'working' and a person's Stop is still ending that work: while
+   *  the Stop settles, then until the turn it stopped or failed to stop ends. A Stop that settles
+   *  having stopped nothing clears it. Derived by the host, never stored. Absent from older hosts;
+   *  an older client ignores it. */
+  stopping?: true
   /** Live provider-owned background tasks, so session lists can render
    *  subagent children without holding a journal reader open. Optional for
    *  mixed-version hosts. Derived from `children` on hosts that publish it. */
@@ -247,6 +270,9 @@ export type AgentSessionStatusSummary = {
    *  the background-task channel. */
   children?: AgentChildWorkView[]
   providerSession?: AgentProviderSessionMetadata
+  /** Host-path directory the session is held to regardless of its workspace's current directory
+   *  (a floating chat's pinned folder). Absent means resolve the workspace id; older hosts omit it. */
+  launchDirectory?: string
   updatedAt: number
   /** When the session's own agent entered `status`, dated by its own lifecycle edges and never by
    *  row activity: `updatedAt` also moves for a subagent's rows. Absent from older hosts, and when

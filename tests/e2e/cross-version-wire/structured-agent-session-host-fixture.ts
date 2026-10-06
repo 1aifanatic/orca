@@ -94,8 +94,6 @@ export function structuredHostStub(
     // No opening emit, unlike the status feed above: a completion is an edge, so this stream
     // opens empty and a subscriber that was away has missed what passed.
     subscribeTurnCompletions: vi.fn(() => () => undefined),
-    // No session subject, so an acknowledgement retires nothing and needs no runtime push stub.
-    attentionSubjectPrefix: vi.fn(() => null),
     unsubscribe: vi.fn(),
     agentDefinitions: vi.fn(() => [CODEX_STRUCTURED_AGENT]),
     knownAgentIds: vi.fn(() => [CODEX_STRUCTURED_AGENT.agent])
@@ -111,7 +109,8 @@ export function installableHost(
 ): StructuredAgentSessionHost {
   const host = {
     ...hostCalls,
-    deps: { modelCatalog: { read: hostCalls.modelCatalog } },
+    // The catalog read checks the session's record for a floating chat's own folder; none here.
+    deps: { modelCatalog: { read: hostCalls.modelCatalog }, store: { getRecord: () => null } },
     restartResume: {
       list: hostCalls.restartResumableList,
       listFailures: hostCalls.restartResumableFailures,

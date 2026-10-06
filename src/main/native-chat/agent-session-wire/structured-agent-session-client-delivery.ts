@@ -1,5 +1,4 @@
 import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
-import { agentSessionAttentionSubjectPrefix } from '../../../shared/agent-session-attention'
 import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
@@ -52,7 +51,8 @@ export class StructuredAgentSessionClientDelivery {
     this.turnCompletionFeed = new StructuredAgentSessionTurnCompletionFeed({
       sessions,
       now,
-      readStatusState: (sessionId, journal) => this.statusFeed.statusState(sessionId, journal)
+      readStatusState: (sessionId, journal) =>
+        this.statusFeed.journalProjection(sessionId, journal)?.state ?? null
     })
     this.sendSettlement = new StructuredAgentSessionSendSettlement((sessionId) =>
       this.requireJournal(sessionId)
@@ -90,6 +90,12 @@ export class StructuredAgentSessionClientDelivery {
   publishChildWork = (sessionId: string, evidence: AgentChildWorkEvidence[]): void =>
     this.statusFeed.publishChildWork(sessionId, evidence)
 
+  /** What the feed publishes as `stopping`: only a working session is still being stopped. */
+  readStopping = (sessionId: string): boolean => {
+    const projection = this.statusFeed.journalProjection(sessionId)
+    return projection?.stopping === true && projection.state.summary.status === 'working'
+  }
+
   readChildWork = (sessionId: string): AgentChildWorkView[] | undefined =>
     this.statusFeed.readChildWork(sessionId)
 
@@ -112,15 +118,6 @@ export class StructuredAgentSessionClientDelivery {
 
   readStatusSummary = (sessionId: string): AgentSessionStatusSummary | undefined =>
     this.statusFeed.readPublished(sessionId)
-
-  /** What every attention key minted for the session starts with, from the live session or, for
-   *  one no longer held, its record; null for a session this host never had. */
-  attentionSubjectPrefix = (sessionId: string): string | null => {
-    const location =
-      this.sessions.get(sessionId)?.params.location ??
-      this.deps().store.getRecord(sessionId)?.location
-    return location ? agentSessionAttentionSubjectPrefix(location, sessionId) : null
-  }
 
   subscribeTurnCompletions = (
     subscriber: StructuredAgentSessionTurnCompletionSubscriber

@@ -228,14 +228,16 @@ export const AGENT_SESSION_ACCEPTED_SEND_RUNTIME_CAPABILITY =
 export const AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY =
   'agent-session.send-answers-proof.v1' as const
 // Why: `agentSession.send`'s params are strict, so an older host rejects `delivery`; and only a
-// capable client can render the `queued` result arm, the draft list, and returned cards. DARK ON
-// PURPOSE — not in RUNTIME_CAPABILITIES: advertising still requires the integrated Codex steer
-// matrix (#21062) in the shipped host, and the desktop and phone clients that render the queue.
+// capable client can render the `queued` result arm. It gates `delivery: 'queue-if-active'` and
+// the client's queueing setting and chord, never the published draft list or its card actions: a
+// host without it still publishes a message it kept unsent across a restart or a close, and both
+// clients show that card and call its actions. DARK ON PURPOSE — not in RUNTIME_CAPABILITIES:
+// advertising still requires the integrated Codex steer matrix (#21062) in the shipped host.
 // v1 includes `submission.queuedMessageId` on every draft hand-off: a client reads that link and
 // never compares a draft id with a submission id. It also publishes the queue's pause once, as
 // `queuePause` beside the list, lifted by `agentSession.queuedMessagesResume` or the user's next
-// turn; cards carry a hold of their own only when their conversion failed. The host mechanism lands first; the constant
-// gates the rollout.
+// turn; a card carries a hold of its own when its conversion failed (`send_failed`) or the host
+// kept it unsent (`kept`). The host mechanism lands first; the constant gates the rollout.
 export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
   'agent-session.queued-messages.v1' as const
 // Why: paired clients advertise Claude-structured support so the host can gate its agent-specific
@@ -248,6 +250,8 @@ export const AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY =
   'agent-session.conversation-outline.v1' as const
 // The RPC is registered unconditionally; per-session rewind support is a separate check.
 export const AGENT_SESSION_REWIND_RUNTIME_CAPABILITY = 'agent-session.rewind.v1' as const
+// Why: the rewind UI relies on the next send settling an in-doubt rewind, even with the agent up.
+export const AGENT_SESSION_REWIND_RECOVERY_CAPABILITY = 'agent-session.rewind-recovery.v1' as const
 // Readers must understand a monitoring roster with no available stop control.
 // Why: a `turn` journal item replaced the status row that used to carry a turn's lifecycle. A
 // client that predates it would render the unknown kind as text, so the host publishes the legacy
@@ -382,6 +386,7 @@ export const RUNTIME_CAPABILITIES = [
   ...STRUCTURED_AGENT_SESSION_SURFACE_RUNTIME_CAPABILITIES,
   ...AGENT_SESSION_ATTENTION_RUNTIME_CAPABILITIES,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
+  AGENT_SESSION_REWIND_RECOVERY_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_BACKGROUND_TASK_STOP_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,

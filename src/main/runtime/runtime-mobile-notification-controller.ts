@@ -170,8 +170,8 @@ export class RuntimeMobileNotificationController {
     })
   }
 
-  retireStructuredAttention(read: StructuredAttentionRead, prefix = ''): void {
-    for (const delivery of this.dismissalStore?.liveDeliveries(prefix) ?? []) {
+  retireStructuredAttention(read: StructuredAttentionRead): void {
+    for (const delivery of this.dismissalStore?.liveDeliveries() ?? []) {
       if (attentionOriginWasRead(delivery.structuredOrigin, read)) {
         this.retireDelivery(delivery)
       }

@@ -101,10 +101,11 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
       [
         STATUS_SESSION,
         {
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt() and snapshot() of a journal.
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt(), stopMarks and snapshot() of a journal.
           journal: {
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
             lastActivityAt: () => 2,
+            stopMarks: { latest: () => null, revision: () => 0 },
             snapshot: () => ({ items: STATUS_ITEMS, submissions: [] })
           } as unknown as AgentSessionJournal,
           params: {
@@ -208,7 +209,6 @@ export function hostStub(): StructuredAgentSessionHost {
       statusFeed().subscribe(subscriber)
     ),
     subscribeTurnCompletions: vi.fn(() => () => undefined),
-    attentionSubjectPrefix: vi.fn(() => null),
     unsubscribe: vi.fn()
   })
   // Not a call: the logger the host hands a runtime caller that reports for it.

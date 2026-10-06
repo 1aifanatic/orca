@@ -3,10 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../src/shared/agent-session-journal-types'
-import {
-  agentSessionAttentionSubjectPrefix,
-  agentSessionPromptAttentionKey
-} from '../../src/shared/agent-session-attention'
+import { agentSessionPromptAttentionKey } from '../../src/shared/agent-session-attention'
 import { projectStructuredAgentSessionStatusState } from '../../src/shared/structured-agent-session-projection'
 import { AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY } from '../../src/shared/protocol-version'
 import { StructuredAgentSessionTurnCompletionFeed } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
@@ -22,7 +19,6 @@ import {
 } from '../../src/main/runtime/push/push-dispatcher.test-fixture'
 import {
   call,
-  hostCalls,
   installStructuredHostStub,
   clearStructuredHostStub,
   STRUCTURED_CLIENT,
@@ -134,9 +130,6 @@ beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'orca-bounded-read-'))
   installStructuredHostStub()
   vi.clearAllMocks()
-  hostCalls.attentionSubjectPrefix.mockReturnValue(
-    agentSessionAttentionSubjectPrefix(SCOPE, SESSION)
-  )
 })
 afterEach(() => {
   clearStructuredHostStub()
