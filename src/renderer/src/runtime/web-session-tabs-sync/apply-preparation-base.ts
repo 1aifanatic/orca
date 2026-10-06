@@ -41,7 +41,8 @@ export function prepareWebSessionTabsSnapshotBase(
   now: number,
   batchContext: WebSessionTabsBatchContext | undefined,
   options: WebSessionTabsSnapshotApplyOptions | undefined,
-  terminalHostById: ReadonlyMap<string, ExecutionHostId>
+  terminalHostById: ReadonlyMap<string, ExecutionHostId>,
+  terminalLocalIdByHostId: ReadonlyMap<string, string>
 ) {
   const snapshotHostTabId = (tab: RuntimeMobileSessionTabsResult['tabs'][number]): string =>
     tab.type === 'terminal' ? tab.parentTabId : tab.id
@@ -113,7 +114,10 @@ export function prepareWebSessionTabsSnapshotBase(
     readyTerminalTabs.map((tab) => toRemoteRuntimePtyId(tab.terminal, environmentId))
   )
   const nextMirroredTerminalIds = new Set(
-    terminalSurfaceTabs.map((tab) => toWebTerminalSurfaceTabId(tab.parentTabId))
+    terminalSurfaceTabs.map(
+      (tab) =>
+        terminalLocalIdByHostId.get(tab.parentTabId) ?? toWebTerminalSurfaceTabId(tab.parentTabId)
+    )
   )
   const nextHostTerminalTabIds = new Set(terminalSurfaceTabs.map((tab) => tab.parentTabId))
   const provisionalHandoffHostTabIds = new Map<string, string>()
@@ -169,7 +173,8 @@ export function prepareWebSessionTabsSnapshotBase(
           leafId: callerFocusIntentTab.leafId
         }
       : undefined,
-    options?.terminalPtyMode
+    options?.terminalPtyMode,
+    terminalLocalIdByHostId
   )
   const mirroredTerminalTabEntries = mirroredTerminalTabs.map((entry) => entry.tab)
   const retainedTerminalIds = new Set(retainedTerminalTabs.map((tab) => tab.id))
@@ -227,6 +232,7 @@ export function prepareWebSessionTabsSnapshotBase(
     existingTerminalById,
     reconcilesNonAgentTabs,
     terminalSurfaceTabs,
+    terminalLocalIdByHostId,
     readyTerminalTabs,
     nextRemotePtyIds,
     nextMirroredTerminalIds,

@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makePaneKey } from '../../../shared/stable-pane-id'
+import { resolveHostSessionTabIdForWebSessionTab } from './web-session-tabs-sync/tracking-mappings'
+import { toHostSessionTabId } from '../../../shared/terminal-surface-id'
 import { createStore } from 'zustand/vanilla'
 import { applyWebSessionTabsSnapshot, type WebSessionTabsSyncState } from './web-session-tabs-sync'
 import {
@@ -63,20 +66,86 @@ describe('session snapshot host isolation', () => {
     expect(next.ptyIdsByTabId).toEqual(wsl.ptyIdsByTabId)
   })
 
-  it('rejects a snapshot that reuses a different server’s terminal identity', () => {
+  it('isolates colliding terminal IDs and independently closes and reopens each host', () => {
     const wsl = apply(makeState(), terminalSnapshot('shared-tab'), 'wsl')
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const patch = applyWebSessionTabsSnapshot(wsl, terminalSnapshot('shared-tab'), 'mac', NOW)
-      expect(patch).toBe(wsl)
-      expect(warning).toHaveBeenCalledWith(
-        '[web-session-tabs-sync] snapshot conflicts with another host’s terminal:',
-        expect.objectContaining({ environmentId: 'mac', worktreeId: WT })
-      )
-    } finally {
-      warning.mockRestore()
-    }
+    const both = apply(wsl, terminalSnapshot('shared-tab'), 'mac')
+    const macTab = both.unifiedTabsByWorktree[WT]!.find(
+      (tab) => tab.executionHostId === 'runtime:mac'
+    )!
+    expect(both.tabsByWorktree[WT]).toHaveLength(2)
+    expect(macTab.id).not.toBe(wsl.tabsByWorktree[WT]![0]!.id)
+    expect(toHostSessionTabId(macTab.id)).toBe('shared-tab')
+    expect(both.ptyIdsByTabId).toMatchObject(wsl.ptyIdsByTabId)
+    expect(both.ptyIdsByTabId[macTab.id]).toEqual(['remote:mac@@shared-tab-pty'])
+    const wslClosed = apply(both, makeSnapshot([]), 'wsl')
+    expect(wslClosed.tabsByWorktree[WT]?.map((tab) => tab.id)).toEqual([macTab.id])
+    const reopened = apply(wslClosed, terminalSnapshot('shared-tab'), 'wsl')
+    expect(reopened.unifiedTabsByWorktree[WT]?.map((tab) => tab.executionHostId)).toEqual([
+      'runtime:mac',
+      'runtime:wsl'
+    ])
+    expect(reopened.ptyIdsByTabId[macTab.id]).toEqual(both.ptyIdsByTabId[macTab.id])
+    const macClosed = apply(reopened, makeSnapshot([]), 'mac')
+    expect(macClosed.unifiedTabsByWorktree[WT]?.map((tab) => tab.executionHostId)).toEqual([
+      'runtime:wsl'
+    ])
   })
+
+  it.each(['repo::/worktree', 'folder:same', 'repo::C:/worktrees/other'])(
+    'keeps same-leaf statuses and pending bindings isolated in %s',
+    (worktree) => {
+      const snapshot = (host: string) => ({
+        ...terminalSnapshot('shared-tab'),
+        worktree,
+        tabs: terminalSnapshot('shared-tab').tabs.map((tab) => ({
+          ...tab,
+          agentStatus: {
+            paneKey: makePaneKey('shared-tab', LEAF_ID),
+            tabId: 'shared-tab',
+            worktreeId: worktree,
+            agentType: 'omp' as const,
+            state: 'working' as const,
+            prompt: host,
+            updatedAt: NOW,
+            stateStartedAt: NOW,
+            stateHistory: []
+          }
+        }))
+      })
+      const first = apply(makeState(), snapshot('wsl'), 'wsl')
+      const both = apply(first, snapshot('mac'), 'mac')
+      const macTab = both.tabsByWorktree[worktree]![1]!
+      const wslTab = first.tabsByWorktree[worktree]![0]!
+      expect(both.agentStatusByPaneKey[makePaneKey(wslTab.id, LEAF_ID)]?.prompt).toBe('wsl')
+      expect(both.agentStatusByPaneKey[makePaneKey(macTab.id, LEAF_ID)]?.prompt).toBe('mac')
+      expect(
+        resolveHostSessionTabIdForWebSessionTab(both, {
+          environmentId: 'mac',
+          worktreeId: worktree,
+          tabId: macTab.id
+        })
+      ).toBe('shared-tab')
+      const pending = apply(
+        both,
+        {
+          ...snapshot('mac'),
+          tabs: snapshot('mac').tabs.map((tab) => ({
+            ...tab,
+            status: 'pending-handle' as const,
+            terminal: ''
+          }))
+        },
+        'mac'
+      )
+      expect(pending.tabsByWorktree[worktree]![1]!.id).toBe(macTab.id)
+      expect(pending.ptyIdsByTabId).toEqual(both.ptyIdsByTabId)
+      const closed = apply(pending, { ...makeSnapshot([]), worktree }, 'wsl')
+      expect(closed.agentStatusByPaneKey[makePaneKey(wslTab.id, LEAF_ID)]).toBeUndefined()
+      expect(closed.agentStatusByPaneKey[makePaneKey(macTab.id, LEAF_ID)]?.prompt).toBe('mac')
+      const resumed = apply(closed, snapshot('mac'), 'mac')
+      expect(resumed.tabsByWorktree[worktree]![0]!.id).toBe(macTab.id)
+    }
+  )
 
   it('keeps a foreign pending terminal even without a live PTY binding', () => {
     const hydrated = apply(makeState(), terminalSnapshot('wsl-tab'), 'wsl')
@@ -94,30 +163,19 @@ describe('session snapshot host isolation', () => {
   })
 
   it.each([true, false])(
-    'rejects a foreign terminal ID in another workspace (bound: %s)',
+    'isolates a colliding terminal ID in another workspace (bound: %s)',
     (bound) => {
       const hydrated = apply(makeState(), terminalSnapshot('shared-tab'), 'wsl')
       const wsl = bound
         ? hydrated
-        : {
-            ...hydrated,
-            tabsByWorktree: {},
-            ptyIdsByTabId: {},
-            terminalLayoutsByTabId: {}
-          }
-      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      try {
-        expect(
-          applyWebSessionTabsSnapshot(
-            wsl,
-            { ...terminalSnapshot('shared-tab'), worktree: 'repo::/another-worktree' },
-            'mac',
-            NOW
-          )
-        ).toBe(wsl)
-      } finally {
-        warning.mockRestore()
-      }
+        : { ...hydrated, tabsByWorktree: {}, ptyIdsByTabId: {}, terminalLayoutsByTabId: {} }
+      const otherWorktree = 'repo::/another-worktree'
+      const both = apply(wsl, { ...terminalSnapshot('shared-tab'), worktree: otherWorktree }, 'mac')
+      expect(both.unifiedTabsByWorktree[WT]).toEqual(wsl.unifiedTabsByWorktree[WT])
+      const macTab = both.tabsByWorktree[otherWorktree]![0]!
+      expect(macTab.id).not.toBe(hydrated.tabsByWorktree[WT]![0]!.id)
+      expect(both.ptyIdsByTabId[macTab.id]).toEqual(['remote:mac@@shared-tab-pty'])
+      expect(both.ptyIdsByTabId).toMatchObject(wsl.ptyIdsByTabId)
     }
   )
 
@@ -144,14 +202,10 @@ describe('session snapshot host isolation', () => {
         }))
       }
     }
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      expect(
-        applyWebSessionTabsSnapshot(provisional, terminalSnapshot('wsl-tab'), 'mac', NOW)
-      ).toBe(provisional)
-    } finally {
-      warning.mockRestore()
-    }
+    const both = apply(provisional, terminalSnapshot('wsl-tab'), 'mac')
+    expect(both.tabsByWorktree[WT]).toContainEqual(provisional.tabsByWorktree[WT]![0])
+    expect(both.unifiedTabsByWorktree[WT]).toContainEqual(provisional.unifiedTabsByWorktree[WT]![0])
+    expect(both.tabsByWorktree[WT]).toHaveLength(2)
   })
 
   it('does not wake subscribers when an unrelated host repeatedly publishes empty frames', () => {
