@@ -11647,9 +11647,13 @@
         "https://github.com/stablyai/orca/issues/8652",
         "https://github.com/stablyai/orca/pull/10625"
       ],
-      "invariant": "A host advertising terminal.paired-parking.v1 keeps the PTY and bounded authoritative history alive while an ordinary hidden-view park destroys the client xterm and releases its raw per-PTY stream. Reveal must restore up to the requested 5,000 rows, parked-time side effects/output, the same PTY identity, and continued input/output. Parked watcher synchronization compares parking semantics rather than fresh object identity, owns setup and cleanup across StrictMode replay, reconciles real PTY/layout changes, and performs no terminal-state scan when nothing is parked. After a host main-process relaunch, unknown local delivery-sync state must not be treated as proof that a surviving daemon PTY is already foregrounded. An empty headed session-tab inventory is authoritative only after the current renderer graph generation publishes a complete inventory and every execution host answers the PTY census; unpublished, resync-pending, transport-failed, and partially scoped inventories remain unverifiable, while genuinely authoritative empty and non-empty inventories settle and a scope-less legacy empty keeps its pre-authority best-effort settle so outdated hosts retain agent auto-resume. The unpublished-empty regression must keep the resume dispatch parked with exactly one daemon process/writer; restoring unconditional empty hydration must release one dispatch and create two live writers. If subscription precedes provider readiness, authoritative inventory must reconsider that existing subscriber without spawning, resizing, or changing reconnect state. A snapshot without an output high-water must keep it unknown rather than borrowing a layout version that can suppress newer live output. Hosts without the capability must gate hidden raw output before xterm scheduling and repaint from the authoritative snapshot on reveal while retaining the existing limit/TTL force-parking fallback. After the first semantic title state, decorative spinner frequency must add zero paired client-event frames and zero full session-tabs work between status-freshness leases regardless of hidden worktree count. Continuous working or permission evidence may refresh each affected worktree once per 15 minutes through one globally spaced FIFO so current and legacy viewers do not decay before 30 minutes; sibling PTYs share that worktree refresh, while local title animation, raw output, and semantic title, status, bell, completion, and query facts remain intact. A paired terminal stream whose delivery credits stop progressing must replace only that stream; command silence first probes authoritative state and replaces the stream if the probe times out or proves the PTY advanced beyond the client's delivered output sequence. When no comparable delivery high-water exists, the first sequenced probe establishes a baseline and only later advancement proves staleness. A same-sequence snapshot remains valid proof of a responsive silent command. A successful status probe may replace a pre-ready shared-control socket without rejecting or duplicating calls already waiting for that transport. Manual disconnect must retain pairing while preventing queued or passive calls and subscriptions from recreating transport until explicit Connect.",
+      "invariant": "A host advertising terminal.paired-parking.v1 keeps the PTY and bounded authoritative history alive while an ordinary hidden-view park destroys the client xterm and releases its raw per-PTY stream. Reveal must restore up to the requested 5,000 rows, parked-time side effects/output, the same PTY identity, and continued input/output. Parked watcher synchronization compares parking semantics rather than fresh object identity, owns setup and cleanup across StrictMode replay, reconciles real PTY/layout changes, and performs no terminal-state scan when nothing is parked. After a host main-process relaunch, unknown local delivery-sync state must not be treated as proof that a surviving daemon PTY is already foregrounded. An empty headed session-tab inventory is authoritative only after the current renderer graph generation publishes a complete inventory and every execution host answers the PTY census; unpublished, resync-pending, transport-failed, and partially scoped inventories remain unverifiable, while genuinely authoritative empty and non-empty inventories settle and a scope-less legacy empty keeps its pre-authority best-effort settle so outdated hosts retain agent auto-resume. The unpublished-empty regression must keep the resume dispatch parked with exactly one daemon process/writer; restoring unconditional empty hydration must release one dispatch and create two live writers. If subscription precedes provider readiness, authoritative inventory must reconsider that existing subscriber without spawning, resizing, or changing reconnect state. A snapshot without an output high-water must keep it unknown rather than borrowing a layout version that can suppress newer live output. Hosts without the capability must gate hidden raw output before xterm scheduling and repaint from the authoritative snapshot on reveal while retaining the existing limit/TTL force-parking fallback. After the first semantic title state, decorative spinner frequency must add zero paired client-event frames and zero full session-tabs work between status-freshness leases regardless of hidden worktree count. Continuous working or permission evidence may refresh each affected worktree once per 15 minutes through one globally spaced FIFO so current and legacy viewers do not decay before 30 minutes; sibling PTYs share that worktree refresh, while local title animation, raw output, and semantic title, status, bell, completion, and query facts remain intact. A paired terminal stream whose delivery credits stop progressing must replace only that stream; command silence first probes authoritative state and replaces the stream if the probe times out or proves the PTY advanced beyond the client's delivered output sequence. When no comparable delivery high-water exists, the first sequenced probe establishes a baseline and only later advancement proves staleness. A same-sequence snapshot remains valid proof of a responsive silent command. A successful status probe may replace a pre-ready shared-control socket without rejecting or duplicating calls already waiting for that transport. Manual disconnect must retain pairing while preventing queued or passive calls and subscriptions from recreating transport until explicit Connect. A paired pane reconnecting to a relaunched host that has not yet published its window graph (an unpublished frame, bare or client-projected) must stay in recovery rather than retire, and the host's first published snapshot carrying the surface must reattach it; a published frame lacking the surface still retires it. The placeholder is only ever sent before the host's graph first publishes; afterwards a worktree with no tabs gets a real empty answer, pushed once to any client that asked during startup, so a paired client opening a never-opened host worktree still gets its first terminal.",
       "oracle": "Run one byte-identical six-terminal oracle against an isolated headed desktop host and an isolated headless `orca serve` host. Stage at least 1,000,000 xterm cells, hide all six warm managers, emit an initial working title followed by 30 timed real-PTY spinner frames and a final idle title per worktree, and observe a second real session-tabs subscription plus the production renderer store. Require exactly two transport envelopes and two title mutations per worktree, no decorative title crossing either boundary, and positive decoded-envelope bytes. Enable ordinary parking with the lossy retention budget disabled, require exactly one mounted manager and five parked tabs, at most 45% retained cells, no more than 16 MiB heap growth, and under 500 ms timer drift. In headed mode, require the host renderer to remain on its original workspace with zero target terminal managers mounted throughout client park, reveal, and live I/O. While a tab is parked, require authoritative terminal.read to observe new PTY output; reveal it and require the original PTY, a marker within the requested 5,000-row history, the parked marker, and post-reveal input/output. Drive 24 real PTY title trackers in distinct worktrees through 40 decorative spinner frames each, then 40 spinner frames alternating with Cursor's bare native identity redraw, using fake clocks. Require all 2,880 raw chunks exactly and zero host session-tabs publications, serialized bytes, renderer apply calls, and renderer store mutations. Continue decorative evidence beyond 30 minutes, require exactly one refresh per worktree per 15-minute lease through a FIFO spaced by at least 50 ms, and require all 24 viewer statuses to remain working and fresh; then require one exact semantic idle transition and one visible-output chunk per PTY. Require ordinary and interior-Braille title changes to publish. Drive 64 host PTYs through ten 80 ms synthetic title frames, require zero paired client events after the first frame per PTY while all 640 local frames remain observable, attach a late client and require one current frame per PTY, then require semantic bell and idle transitions on both clients. Reconstruct a legacy subscribed stream with no outputPause capability, hide a chatty pane, require no hidden xterm writes, reveal it, and require one authoritative snapshot plus continued live output. Drop and acknowledge output only for one original paired-client stream, prove the fixture process consumed input while the host model advanced and the client stayed stale, then require the command snapshot probe to replace that stream, repaint exact fixture output, preserve authoritative PTY identity and target-tab cardinality, and resume live I/O. For a client without a delivered sequence, require the first numeric probe to establish a baseline without replacement, a same-sequence probe to remain attached, and a later advanced probe to replace only that stream. Withhold the first encrypted shared-control ready frame, start one RPC, trigger a status-probe refresh, and require two connections, one host delivery, successful response, and zero retained request bytes. Admit 128 active streams, reject the 129th as retryable, release one stream, then require the retry to attach and publish a snapshot without multiplying retained subscribers. Disable terminal.paired-parking.v1 and require the same oracle to fail before parking, while the legacy limit-one fallback separately passes. Also preserve truncated first paint, ACK-starved same-PTY recovery, responsive silent-command snapshot probes, dead-stream probe timeout recovery, and queued manual-disconnect fencing.",
       "commands": [
+        "pnpm exec vitest run --config config/vitest.config.ts src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-unpublished-host-graph.test.ts src/renderer/src/runtime/web-session-terminal-handle-events.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/paired-remote-terminal-host-quit-reconnect-input.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1",
+        "pnpm exec vitest run --config config/vitest.config.ts src/main/runtime/session-tabs-empty-worktree-publication.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/paired-client-first-terminal-unopened-host-worktree.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1",
         "pnpm exec vitest run --config config/vitest.config.ts src/main/runtime/mobile-session-tabs-agent-status-heartbeat.test.ts src/main/runtime/orca-runtime-hook-agent-status-projection.test.ts tests/e2e/session-tabs-decorative-title-fanout.unit.test.ts tests/e2e/session-tabs-rich-status-boundaries.unit.test.ts --maxWorkers=1",
         "pnpm exec vitest run --config config/vitest.config.ts src/renderer/src/components/terminal-pane/terminal-cold-park-pre-gate-loop.react185.test.tsx src/renderer/src/components/terminal-pane/use-parked-terminal-watcher-synchronization.react185.test.tsx src/renderer/src/components/terminal-pane/terminal-cold-park-verdict-loop.test.tsx src/renderer/src/components/terminal-pane/use-terminal-tab-cold-parking.test.ts --maxWorkers=1",
         "pnpm exec vitest run --config config/vitest.config.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/terminal-multiplex-initial-snapshot-buffering.test.ts src/main/runtime/rpc/terminal-multiplex-snapshot-serialization.test.ts src/main/runtime/rpc/terminal-multiplex-pty-wait-capacity.test.ts src/main/runtime/rpc/terminal-subscribe-buffer.test.ts src/renderer/src/components/terminal-pane/parked-terminal-byte-watcher.test.ts src/renderer/src/components/terminal-pane/terminal-side-effect-facts-handler.test.ts src/renderer/src/components/terminal-pane/pty-connection-hidden-output-restore.test.ts src/renderer/src/components/terminal-pane/pty-connection-parked-ssh-snapshot.test.ts src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-activation-inventory-fallback.test.ts src/renderer/src/components/terminal-pane/terminal-hidden-view-parking.test.ts src/renderer/src/components/terminal-pane/terminal-hidden-worktree-retention.test.ts src/renderer/src/components/terminal-pane/terminal-parked-tab-watchers.test.ts src/renderer/src/components/terminal-pane/terminal-parked-watcher-reconciliation.test.ts src/renderer/src/components/terminal-pane/terminal-parked-watcher-partial-reconciliation.test.ts src/renderer/src/components/terminal-pane/terminal-parking-e2e-overrides.test.ts src/renderer/src/runtime/remote-runtime-terminal-stall-recovery.test.ts src/renderer/src/runtime/runtime-client-events.test.ts src/renderer/src/web/web-preload-api-runtime-environment.test.ts src/main/ipc/runtime-environments-pairing.test.ts",
@@ -11718,7 +11722,11 @@
         "tests/e2e/paired-remote-terminal-retention-memory.spec.ts",
         "tests/e2e/headless-paired-remote-terminal-retention-memory.spec.ts",
         "tests/e2e/terminal-parked-memory.spec.ts",
-        "tests/e2e/paired-remote-terminal-host-restart-background-sync.spec.ts"
+        "tests/e2e/paired-remote-terminal-host-restart-background-sync.spec.ts",
+        "src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-unpublished-host-graph.test.ts",
+        "tests/e2e/paired-remote-terminal-host-quit-reconnect-input.spec.ts",
+        "src/main/runtime/session-tabs-empty-worktree-publication.test.ts",
+        "tests/e2e/paired-client-first-terminal-unopened-host-worktree.spec.ts"
       ],
       "assertionRefs": [
         {
@@ -21630,6 +21638,203 @@
         "Collect CI soak with zero unexplained GC flakes and retain callback-order, overflow-carry and reentrancy assertions."
       ],
       "demotionRule": "Keep experimental; investigate delivery, coalescing, error-path or pending-reference regressions without weakening the retention or fidelity oracle."
+    },
+    {
+      "id": "orchestration.worker-recovery-convergence",
+      "title": "Settled assignments leave recovery while unresolved workers retain automatic recovery",
+      "maturity": "experimental",
+      "protection": "partial",
+      "owner": "orchestration",
+      "layer": "sqlite-runtime-provider-contract",
+      "surfaces": [
+        "worker and assignment settlement",
+        "historical worker repair",
+        "deleted git and folder workspaces",
+        "recovery retry scheduling",
+        "durable session retirement"
+      ],
+      "platforms": ["macos", "linux", "windows"],
+      "providers": ["local", "daemon", "ssh", "wsl", "remote-runtime"],
+      "coveredPlatforms": ["macos"],
+      "coveredProviders": ["local", "daemon", "ssh"],
+      "coverageNotes": "Temporary SQLite databases and fake-clock/provider contracts cover assignment repair, uncertain starts/stops, missing git/folder workspaces, owning SSH inventories, and rejection of foreign paired-runtime PTYs. Hidden macOS Electron journeys retain real daemon PTYs. A macOS client against a Debian ARM64 Docker SSH host proves historical repair preserves terminal ownership, the same live shell and background child, input and rendered output through app restart and SSH reconnect. Native Linux/Windows desktop, WSL and active-worker remote absence/deleted-folder journeys remain gaps; no execution commands or wire payloads change.",
+      "motivatingLinks": [
+        "https://stablygroup.slack.com/archives/C0AK2T3JEF4/p1791225819076759",
+        "https://github.com/stablyai/orca/pull/11271",
+        "https://github.com/stablyai/orca/pull/22612"
+      ],
+      "invariant": "Completing an assignment settles its active worker bookkeeping in the same transaction without asserting process exit or releasing a terminal. Historical settled assignments converge on database open; an additive active-worker index excludes finished history, and healthy checks do not take a writer lock. Missing workspaces require owning-provider evidence before exact-incarnation retirement; a restarted relay's empty inventory and loss of contact are unverifiable. Automatic retries retain unresolved assignments without revisiting settled workers or persisting empty batches; late availability converges without user intervention.",
+      "oracle": "Reopen historical completed/failed/circuit-broken PTY, structured and handle-less assignments and require no active recovery rows; preserve genuine report outcomes, pending unknown workers, diagnostics and terminal resources. Inject settlement failure and require complete transaction rollback. Resolve each workspace once per pass, recheck it on later passes, and query 100 missing-workspace candidates once per provider, preserve live/unidentified PTYs and wrong-host SSH evidence. Advance fake time ten minutes and require zero persistence for unresolved passes and no repeated settlement. Make a host verifiable after two minutes and require automatic convergence and timer cleanup. Require indexed SQL lookups for only the requested assignments, one query shape across batch sizes, and recovery after a failed SQL read. Require the actual startup query to use the active-worker partial index, let healthy repair finish under a competing writer lock, and repair stale rows introduced by an older SQL writer after the first repair. Check all 45 assignment/worker state combinations and idempotent reopen; inject failure on the second startup repair and require complete rollback. Measure 100,000 historical assignments with 1,000 stale workers and require zero writes on the next repair pass. On a real SSH host, require settled worker bookkeeping with unchanged terminal ownership, shell PID, background child PID, environment and working directory through restart and reconnect, with rendered input/output proof.",
+      "commands": [
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts tests/e2e/cross-version-wire/orchestration-delivery-downgrade.unit.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/orchestration/worker-dispatch-repair-safety.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/profile-state-terminal-restart-persistence.spec.ts tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1",
+        "ORCA_BACKGROUND_LAUNCH=1 ORCA_E2E_SSH_DOCKER=1 pnpm exec playwright test tests/e2e/ssh-cold-activation-restore.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1 -g 'repairs a settled worker'",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-repair-safety.test.ts"
+      ],
+      "testFiles": [
+        "src/main/runtime/orchestration/worker-dispatch-settlement.test.ts",
+        "src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts",
+        "src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts",
+        "src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
+        "src/main/runtime/orca-runtime.test.ts",
+        "tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts",
+        "src/main/runtime/orchestration/worker-dispatch-repair-safety.test.ts",
+        "tests/e2e/ssh-cold-activation-restore.spec.ts"
+      ],
+      "assertionRefs": [
+        {
+          "file": "src/main/runtime/orchestration/worker-dispatch-settlement.test.ts",
+          "assertions": [
+            "repairs historical settled PTY, structured and handle-less assignments on reopen",
+            "preserves genuine report outcomes and pending unknown workers",
+            "rolls back all assignments when worker settlement fails",
+            "reads only requested recovery assignments through indexed lookups and one SQL shape",
+            "a failed SQL read remains a retry failure and recovery resumes after reopen"
+          ]
+        },
+        {
+          "file": "src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts",
+          "assertions": [
+            "late provider availability recovers automatically after two minutes",
+            "ten minutes of unresolved retries never revisit settled workers or persist empty batches",
+            "every host timer remains cancellable during extended recovery"
+          ]
+        },
+        {
+          "file": "src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts",
+          "assertions": [
+            "100 deleted git or folder workspace candidates use one owning-provider inventory",
+            "100 workers sharing a workspace resolve it once per pass; the next pass rechecks both git and folder workspaces",
+            "live PTYs without scoped membership or verified incarnation remain deferred",
+            "local inventory and restarted relay inventory never prove SSH worker exit",
+            "SSH cleanup requires an explicit owning-host absence verdict; probe failures preserve uncertainty",
+            "foreign provider identities do not start local recovery timers"
+          ]
+        },
+        {
+          "file": "src/main/runtime/orca-runtime.test.ts",
+          "assertions": [
+            "recovery starts zero foreground-process probes while an explicit status refresh still reads its requested terminal"
+          ]
+        },
+        {
+          "file": "src/main/runtime/orchestration/worker-dispatch-repair-safety.test.ts",
+          "assertions": [
+            "all 45 assignment and worker state combinations preserve genuine outcomes, pending work and terminal ownership",
+            "historical repair uses an active-worker partial index and primary-key assignment lookups without scanning settled history",
+            "second repair failure rolls back the first repair and leaves no partial state",
+            "healthy repair remains read-only while another connection holds the writer lock",
+            "an older SQL writer can reintroduce stale bookkeeping after repair and the next open still settles it",
+            "second open and repair perform zero worker mutations with 100,000 historical assignments"
+          ]
+        },
+        {
+          "file": "tests/e2e/ssh-cold-activation-restore.spec.ts",
+          "assertions": [
+            "historical assignment repair preserves a real SSH shell and its live background child through app restart and reconnect",
+            "rendered terminal output and host-side process proof retain the same identity, environment and working directory"
+          ]
+        }
+      ],
+      "evidenceRuns": [
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 ORCA_E2E_SSH_DOCKER=1 pnpm exec playwright test tests/e2e/ssh-cold-activation-restore.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1 -g 'repairs a settled worker'",
+          "result": "passed",
+          "durationSeconds": 42.4,
+          "summary": "Rebuilt hidden Electron with the active-worker partial index and read-only repair preflight. The real Debian ARM64 SSH journey preserves the same live shell and background child, terminal ownership, input and rendered output through app restart and reconnect."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts tests/e2e/cross-version-wire/orchestration-delivery-downgrade.unit.test.ts",
+          "result": "passed",
+          "durationSeconds": 27.41,
+          "summary": "2,587 tests passed across 151 files; seven tests and one file skipped. Includes all 45 state combinations, rollback, historical upgrade migrations, SQL downgrade compatibility, active-worker index query plans, old-writer reintroduction, and read-only repair with a competing writer. The 50 focused tests passed separately. Reverting the index and read-only preflight produces two failures."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts tests/e2e/cross-version-wire/orchestration-delivery-downgrade.unit.test.ts",
+          "result": "passed",
+          "durationSeconds": 21.07,
+          "summary": "48 focused tests passed after worker-first startup lookups and per-pass workspace deduplication. Reverting both optimizations produces four failures. The broader lifecycle command also passed 2,585 tests across 151 files in 21.07s, with seven tests and one file skipped."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts tests/e2e/cross-version-wire/orchestration-delivery-downgrade.unit.test.ts",
+          "result": "passed",
+          "durationSeconds": 56.25,
+          "summary": "2,581 tests passed across 150 files; seven tests and one file skipped. Includes SQLite lifecycle, runtime recovery, federation, CLI and SQL downgrade contracts."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/profile-state-terminal-restart-persistence.spec.ts tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1",
+          "result": "passed",
+          "durationSeconds": 66,
+          "summary": "Six hidden Electron journeys passed, including legacy/current worker PTY retention and four SQL restart/profile-transfer journeys."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/orchestration/worker-dispatch-repair-safety.test.ts",
+          "result": "passed",
+          "durationSeconds": 1.58,
+          "summary": "47 focused settlement, automatic retry, indexed SQL, missing-workspace, durable host-routing and historical-repair safety regressions passed. Includes all 45 state combinations and 100,000 historical assignments."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-repair-safety.test.ts",
+          "result": "passed",
+          "durationSeconds": 2.29,
+          "summary": "Three safety and scale tests pass. One local run with 100,000 assignments and 1,000 stale workers: repair 38.83ms, no-op repair 25.07ms, complete subsequent database open 38.52ms. These are observations, not a CI latency bound."
+        },
+        {
+          "date": "2026-10-05",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 ORCA_E2E_SSH_DOCKER=1 pnpm exec playwright test tests/e2e/ssh-cold-activation-restore.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1 -g 'repairs a settled worker'",
+          "result": "passed",
+          "durationSeconds": 32.1,
+          "summary": "A rebuilt hidden macOS Electron client against Debian ARM64 Docker SSH repairs historical settled worker bookkeeping while retaining terminal ownership, the same live shell and background child, environment, working directory, input and rendered output through app restart and SSH reconnect. Removing startup repair fails the worker-state assertion; restoring it passes."
+        }
+      ],
+      "runtimeBudget": {
+        "p95Seconds": 60,
+        "scope": "Deterministic unit/provider contracts; Electron restart journeys are separate and CI p95 is not established."
+      },
+      "flakeHistory": {
+        "status": "not-started",
+        "evidence": "Local validation; cross-platform soak pending."
+      },
+      "redGreenEvidence": {
+        "status": "partial",
+        "evidence": "Reverting settlement and recovery entry points produced 16 failing and 11 passing regressions. Separate reversions reproduced failures for indexed SQL scope, uncertain SSH absence, late automatic recovery and five unnecessary foreground probes. Candidate and broader runtime tests pass; no soak history yet. Removing startup repair makes the 45-state reopen regression fail and the rebuilt real-SSH journey fail because the worker remains ready instead of abandoned; restoring repair passes the focused safety checks. The restored rebuilt SSH journey also passes with host-side child liveness and rendered input/output checks. Reverting the worker-first query and per-pass workspace deduplication produces four failures: the actual SQL query plan and 100-worker lookup counts. Restoring them passes all 48 focused tests. Reverting the active-worker index and read-only preflight causes two failures: the actual query plan and a healthy repair attempted while another connection holds the writer lock."
+      },
+      "performanceBudget": {
+        "required": true,
+        "evidence": "One startup SQL repair, one inventory query for 100 deleted-workspace candidates, one durable batch flush, and at most two full rollback snapshots per changed host. Timer passes query only still-deferred assignments through primary-key indexes with a stable parameterized SQL shape, perform zero foreground-process or foreground-agent probes, and skip empty persistence and release reconciliation. Explicit foreground status reads still work. Ten minutes of unchanged retries cause zero session writes and never revisit settled workers. Existing backoff remains capped at 30 seconds so late availability recovers automatically; timers stop on convergence or cancellation, and foreign identities never arm local timers. An additive partial index contains only the five potentially active worker states and is maintained by SQLite for old writers too. Repair queries avoid scanning finished history and return without a write transaction when no stale worker exists; actual repairs re-read under the writer lock and remain atomic. The index is built once per database and adds maintenance on worker-state changes. One recovery pass resolves each workspace once and keeps no lookup cache between passes. A same-machine 100,000-assignment before/after run observed repair 37.75ms to 17.89ms, no-op scan 25.62ms to 4.35ms with zero mutations, and subsequent database open 37.42ms to 17.11ms; The later partial-index/read-only revision observed no-op repair 0.016ms, complete healthy database open 12.44ms, and first index-build plus repair/open 63.14ms for 100,000 assignments and 1,000 stale workers. These local observations are not latency guarantees; index maintenance and fallback metadata work remain. Original customer latency and CI p95 remain unmeasured."
+      },
+      "knownGaps": [
+        "Native Linux/Windows desktop and WSL worker journeys, active-worker SSH absence/deleted-folder recovery, and stranded old-relay process discovery remain untested locally.",
+        "No latency claim against the original customer profile; deterministic counts and one synthetic scale measurement cover the identified work."
+      ],
+      "promotionCriteria": [
+        "Collect cross-platform and provider soak evidence with no weakened identity, transaction or bounded-work assertions."
+      ],
+      "demotionRule": "Keep experimental until soak and platform evidence; investigate failures without weakening ownership, late recovery, or zero-write retry evidence."
     }
   ]
 }
