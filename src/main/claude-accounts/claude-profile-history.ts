@@ -8,7 +8,7 @@ import {
   symlinkSync
 } from 'node:fs'
 import { join } from 'node:path'
-import { assertOutsideDefaultClaudeHomes, resolveClaudeDefaultHome } from './claude-profile-paths'
+import { resolveClaudeDefaultHome } from './claude-profile-paths'
 import {
   ClaudeProfileSurfaceError,
   createClaudeProfileReport,
@@ -148,7 +148,8 @@ function mergeDirectory(
 }
 
 /**
- * Pools a profile's sessions and prompt history into the default home. Execution-host paths only.
+ * Pools a profile's sessions and prompt history into the default home. Execution-host paths only;
+ * callers go through provisionClaudeAccountProfile, which gates and creates the profile.
  * Windows keeps each profile's history private: its links are junctions and hardlinks.
  */
 export async function shareClaudeProfileHistory(args: {
@@ -158,13 +159,11 @@ export async function shareClaudeProfileHistory(args: {
   userConfigDir?: string
   platform?: NodeJS.Platform
 }): Promise<ClaudeProfileReport> {
-  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome, args.userConfigDir)
   const report = createClaudeProfileReport()
   if ((args.platform ?? process.platform) === 'win32') {
     return report
   }
   const defaultHome = resolveClaudeDefaultHome(args.userHome, args.userConfigDir)
-  mkdirSync(args.profileHome, { recursive: true, mode: 0o700 })
   mkdirSync(defaultHome, { recursive: true, mode: 0o700 })
   for (const name of CLAUDE_PROFILE_HISTORY_DIRS) {
     await runClaudeProfileSurface(report, name, () =>

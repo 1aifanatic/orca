@@ -378,28 +378,27 @@ describe('dormant Claude profile provisioning', () => {
     expect(fs.readFileSync(join(f.profileHome, 'CLAUDE.md'), 'utf8')).toBe('custom instructions')
     expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'custom' })
     expect(f.read(join(f.profileHome, '.claude.json')).theme).toBe('custom')
-    await expect(
-      provisionClaudeProfile({ profileHome: userConfigDir, userHome: f.userHome, userConfigDir })
-    ).rejects.toThrow('separate directories')
+  })
+  it("links to the default home's own entry, not where a user link of it points", async () => {
+    const f = fixture()
+    fs.mkdirSync(join(f.root, 'dotfiles-skills'))
+    fs.symlinkSync(join(f.root, 'dotfiles-skills'), join(f.source, 'skills'))
+    expect((await provision(f)).surfaces.skills).toBe('linked')
+    expect(fs.readlinkSync(join(f.profileHome, 'skills'))).toBe(join(f.source, 'skills'))
+    expect((await provision(f)).surfaces.skills).toBe('unchanged')
   })
   it('uses Windows junctions through platform injection (native Windows remains unverified)', async () => {
     const f = fixture()
     fs.mkdirSync(join(f.source, 'skills'))
     await provisionClaudeProfile({ ...f, platform: 'win32' })
     expect(fs.symlinkSync).toHaveBeenCalledWith(
-      fs.realpathSync(join(f.source, 'skills')),
+      join(f.source, 'skills'),
       join(f.profileHome, 'skills'),
       'junction'
     )
   })
-  it('refuses default-home aliases and nesting, and leaves malformed profile state unchanged', async () => {
+  it('leaves malformed profile state unchanged', async () => {
     const f = fixture()
-    for (const profileHome of [f.source, join(f.source, 'inner'), f.userHome]) {
-      await expect(provisionClaudeProfile({ profileHome, userHome: f.userHome })).rejects.toThrow(
-        'separate directories'
-      )
-    }
-    expect(fs.existsSync(join(f.source, 'inner'))).toBe(false)
     fs.writeFileSync(join(f.profileHome, '.claude.json'), '{bad')
     expect((await provision(f)).warnings).toContainEqual(
       expect.objectContaining({ surface: '.claude.json', code: 'unreadable' })

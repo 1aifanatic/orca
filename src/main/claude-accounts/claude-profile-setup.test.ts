@@ -38,7 +38,7 @@ function fixture() {
   mkdirSync(defaultHome, { recursive: true })
   mkdirSync(dataRoot)
   const service = new ClaudeHookService()
-  const installHooks = (target: { configDir: string; userHome: string }) =>
+  const installHooks = (target: { configDir: string }) =>
     service.install({ claudeVersion: '2.1.261', ...target })
   const setup = () =>
     provisionClaudeAccountProfile({

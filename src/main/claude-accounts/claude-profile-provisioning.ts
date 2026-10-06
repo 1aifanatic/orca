@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
@@ -6,11 +6,7 @@ import {
   resolveClaudeGlobalConfigFile,
   updateClaudeGlobalConfig
 } from '../claude/claude-folder-trust-file'
-import {
-  assertOutsideDefaultClaudeHomes,
-  readClaudeProfileObject,
-  resolveClaudeDefaultHome
-} from './claude-profile-paths'
+import { readClaudeProfileObject, resolveClaudeDefaultHome } from './claude-profile-paths'
 import { lstatIfPresent } from './claude-profile-prompt-history'
 import {
   ClaudeProfileSurfaceError,
@@ -155,7 +151,10 @@ async function mergeState(args: {
   return outcome === 'updated' ? 'merged' : 'unchanged'
 }
 
-/** Shares the default home's config into a profile. Execution-host paths; never touches credentials. */
+/**
+ * Shares the default home's config into a profile. Execution-host paths; never touches credentials.
+ * Callers go through provisionClaudeAccountProfile, which gates and creates the profile.
+ */
 export async function provisionClaudeProfile(args: {
   profileHome: string
   userHome: string
@@ -164,8 +163,6 @@ export async function provisionClaudeProfile(args: {
   platform?: NodeJS.Platform
   trustKeys?: readonly string[]
 }): Promise<ClaudeProfileReport> {
-  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome, args.userConfigDir)
-  mkdirSync(args.profileHome, { recursive: true, mode: 0o700 })
   const platform = args.platform ?? process.platform
   const defaultHome = resolveClaudeDefaultHome(args.userHome, args.userConfigDir)
   const report = createClaudeProfileReport()
