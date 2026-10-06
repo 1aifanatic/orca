@@ -101,7 +101,6 @@ export function useMobileStructuredAgentSession(args: {
   const queueCapable = hostSupport?.queuedMessages === true
   const promptCancelSupported = hostSupport?.promptCancel ?? null
   const hostAnswersRepeatedStops = hostSupport?.quietRepeatedStop ?? null
-  const hostStopsConversation = hostSupport?.conversationStop === true
   const sessionKey = encodeNativeChatTranscriptIdentity([sourceIdentity, agent, sessionId])
   const commandPendingRef = useRef(false)
   // Against a host that predates the quiet repeated Stop, a Stop of a turn still being stopped joins it.
@@ -216,7 +215,6 @@ export function useMobileStructuredAgentSession(args: {
         client,
         enabled,
         hostAnswersRepeatedStops,
-        hostStopsConversation,
         inFlight: inFlightStopsRef.current,
         onSendError,
         prompt,
@@ -228,7 +226,6 @@ export function useMobileStructuredAgentSession(args: {
       client,
       enabled,
       hostAnswersRepeatedStops,
-      hostStopsConversation,
       onSendError,
       promptCancelSupported,
       sessionId,

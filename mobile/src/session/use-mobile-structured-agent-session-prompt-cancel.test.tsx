@@ -109,12 +109,10 @@ const client: RpcClient = {
 
 function Harness({
   promptCancelSupported,
-  questionAnswersSupported = false,
-  conversationStop = false
+  questionAnswersSupported = false
 }: {
   promptCancelSupported: boolean
   questionAnswersSupported?: boolean
-  conversationStop?: boolean
 }): null {
   hook = useMobileStructuredAgentSession({
     client,
@@ -127,8 +125,7 @@ function Harness({
       promptCancel: promptCancelSupported,
       questionAnswers: questionAnswersSupported,
       queuedMessages: false,
-      quietRepeatedStop: false,
-      conversationStop
+      quietRepeatedStop: false
     },
     onSendError: vi.fn()
   })
@@ -290,25 +287,11 @@ describe('mobile structured prompt cancellation', () => {
     )
   })
 
-  it('stops the conversation before a turn opens, on a host that takes that Stop', async () => {
-    state = { ...state, items: [], latestTurn: null }
-    act(() => {
-      renderer = create(
-        createElement(Harness, { promptCancelSupported: true, conversationStop: true })
-      )
-    })
-    await act(async () => {
-      hook.cancel()
-    })
-    const call = mocks.sendRequest.mock.calls.find(([method]) => method === 'agentSession.cancel')
-    expect(call?.[1]).not.toHaveProperty('turnId')
-    expect(call?.[1]).not.toHaveProperty('prompt')
-  })
-
-  it('still names the host turn for a card cancel, which the host requires', async () => {
+  it("names the host's running turn for a plain Stop when its record is not loaded", async () => {
     state = {
       ...state,
-      items: [pendingApproval()],
+      hasOlder: true,
+      items: [],
       latestTurn: {
         itemId: 'turn-status',
         observedAt: 1,
@@ -316,20 +299,15 @@ describe('mobile structured prompt cancellation', () => {
       }
     }
     act(() => {
-      renderer = create(
-        createElement(Harness, { promptCancelSupported: true, conversationStop: true })
-      )
+      renderer = create(createElement(Harness, { promptCancelSupported: true }))
     })
+    expect(hook.turnId).toBe('turn-1')
     await act(async () => {
-      expect(await hook.cancelPrompt()).toBe(true)
+      hook.cancel()
     })
-    expect(mocks.sendRequest).toHaveBeenCalledWith(
-      'agentSession.cancel',
-      expect.objectContaining({
-        turnId: 'turn-1',
-        prompt: { itemId: 'approval-1', expectedRevision: 4 }
-      }),
-      expect.any(Object)
-    )
+    const call = mocks.sendRequest.mock.calls.find(([method]) => method === 'agentSession.cancel')
+    expect(call).toBeDefined()
+    expect(call?.[1]).toMatchObject({ turnId: 'turn-1' })
+    expect(call?.[1]).not.toHaveProperty('prompt')
   })
 })
