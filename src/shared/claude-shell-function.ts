@@ -94,7 +94,7 @@ function Global:claude {
     try {
         $orcaClaudeHome = ''
         if ($env:ORCA_CLAUDE_PROFILE_POINTER -and (Test-Path -LiteralPath $env:ORCA_CLAUDE_PROFILE_POINTER -PathType Leaf)) {
-            $orcaClaudeHome = [IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER)
+            $orcaClaudeHome = [IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER).TrimEnd()
         }
         if ($env:CLAUDE_CONFIG_DIR -and $env:CLAUDE_CONFIG_DIR -ne $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR) {
             if ($orcaClaudeHome -and $orcaClaudeHome -ne $env:CLAUDE_CONFIG_DIR) { [Console]::Error.WriteLine('${OVERRIDE_NOTE}') }

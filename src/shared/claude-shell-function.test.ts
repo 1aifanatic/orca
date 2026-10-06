@@ -135,3 +135,9 @@ it('restores PowerShell process env without creating empty variables', () => {
   // .NET 9+ turns a $null/'' SetEnvironmentVariable into an empty variable, not a removal.
   expect(script).not.toMatch(/SetEnvironmentVariable\([^)]*,\s*(\$null|''|"")\s*,/)
 })
+
+it('trims the PowerShell pointer read as POSIX command substitution does', () => {
+  expect(getPowerShellClaudeShellFunction()).toContain(
+    '[IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER).TrimEnd()'
+  )
+})
