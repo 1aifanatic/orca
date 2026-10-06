@@ -207,8 +207,13 @@ describe('activation fence', () => {
       relayGcClaim: false
     })
     const [release] = removals()
+    // Only while the lock still carries this run's token; the journal goes before the lock.
+    expect(release).toMatch(
+      /^\[ "\$\(cat '[^']*\.orca-fence-owner' 2>\/dev\/null\)" = '[^']+' \] \|\| \{ echo SUPERSEDED; exit 0; \};/u
+    )
     expect(release?.indexOf('transaction.json')).toBeLessThan(
-      release?.indexOf("rm -rf '/home/u/.orca-remote/.orcad-activation-transaction'") ?? -1
+      release?.indexOf("mv '/home/u/.orca-remote/.orcad-activation-transaction/.install-lock'") ??
+        -1
     )
   })
 

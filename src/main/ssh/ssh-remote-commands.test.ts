@@ -224,6 +224,18 @@ describe('ssh remote command builders', () => {
     )
   })
 
+  it('writes the new holder token when a stale lock is taken over', () => {
+    const owner = { fileName: '.orca-fence-owner', token: 'gen-2' }
+    expect(tryStealInstallLockCommand(posix, '/home/u/t/.install-lock', 1200, owner)).toContain(
+      "printf %s 'gen-2' > '/home/u/t/.install-lock/.orca-fence-owner';"
+    )
+    expect(
+      decodePowerShellCommand(
+        tryStealInstallLockCommand(windows, 'C:/Users/me/t/.install-lock', 1200, owner)
+      )
+    ).toContain("[System.IO.File]::WriteAllText((Join-Path $lock '.orca-fence-owner'), 'gen-2');")
+  })
+
   it('uses a legacy-visible Windows lock directory with an exclusive owner file', () => {
     const mkdirScript = decodePowerShellCommand(
       makeRemoteDirectoryCommand(windows, 'C:/Users/me/.orca-remote')

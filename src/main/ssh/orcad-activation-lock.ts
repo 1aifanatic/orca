@@ -6,6 +6,7 @@
  * ownerless; only recovery may take a retained fence over, and it waits out the install lock's
  * stale window only for a fence whose holder may still be working.
  */
+import { randomUUID } from 'node:crypto'
 import {
   execOrcadRemote,
   withoutAbortSignal,
@@ -19,11 +20,16 @@ import {
 } from './ssh-relay-install-lock'
 import {
   orphanInstallLockCommand,
-  probeInstallLockExistsCommand,
-  type InstallLockOwnerFile
+  probeInstallLockExistsCommand
 } from './ssh-relay-install-lock-commands'
 import { RELAY_REMOTE_DIR } from './relay-protocol'
-import { removeRemoteFileCommand, removeRemoteTreeCommand } from './ssh-remote-commands'
+import { shellEscape } from './ssh-connection-utils'
+import {
+  ORCAD_FENCE_OWNER_FILENAME,
+  posixOrcadFenceOwnedTest,
+  runWithOrcadFence,
+  type OrcadFence
+} from './orcad-activation-fence-scope'
 import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import {
@@ -72,12 +78,15 @@ export function resolveOrcadActivationReadinessTimeout(
 // Long enough for a brief hold (a wake, a retried lock command), short beside a lifecycle queue.
 const ORCAD_ACTIVATION_FENCE_WAIT_MS = 5_000
 
-/** A fence still held after a short wait answers `held()`: a retained one never clears by waiting. */
+/**
+ * A fence still held after a short wait answers `held()`: a retained one never clears by waiting.
+ * `token` names this run's generation; a wake passes its own so it can prove an interrupted fence.
+ */
 export async function withOrcadActivationLock<T>(
   options: OrcadActivationLockOptions,
   run: (control: OrcadActivationLockControl) => Promise<T>,
   held: () => T | Promise<T>,
-  owner?: InstallLockOwnerFile
+  token: string = randomUUID()
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
   try {
@@ -87,7 +96,7 @@ export async function withOrcadActivationLock<T>(
       // A retained fence means state ownership is unresolved. Age cannot make it safe.
       allowStaleTakeover: false,
       waitTimeoutMs: ORCAD_ACTIVATION_FENCE_WAIT_MS,
-      owner
+      owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token }
     })
   } catch (error) {
     if (error instanceof RemoteInstallLockBusyError) {
@@ -95,27 +104,30 @@ export async function withOrcadActivationLock<T>(
     }
     throw error
   }
+  const fence = activationFence(options, token)
   let retainOnError = false
   let retain = false
   try {
-    const result = await run({
-      retainOnError: () => {
-        retainOnError = true
-      },
-      retain: () => {
-        retain = true
-      },
-      recovered: () => {
-        retainOnError = false
-      }
-    })
-    await (retain ? orphanRetainedFence(options) : releaseActivationFence(options, lockRoot))
+    const result = await runWithOrcadFence(fence, () =>
+      run({
+        retainOnError: () => {
+          retainOnError = true
+        },
+        retain: () => {
+          retain = true
+        },
+        recovered: () => {
+          retainOnError = false
+        }
+      })
+    )
+    await (retain ? orphanRetainedFence(options, fence) : releaseActivationFence(options, fence))
     return result
   } catch (error) {
     // A remote mutation whose teardown is unconfirmed may still be running: keep its fence fresh.
     if (!isUnconfirmedSshCommandTermination(error)) {
       await (
-        retainOnError ? orphanRetainedFence(options) : releaseActivationFence(options, lockRoot)
+        retainOnError ? orphanRetainedFence(options, fence) : releaseActivationFence(options, fence)
       ).catch((releaseError: unknown) => {
         console.warn(
           `[orcad] Failed to release activation lock after an error: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
@@ -132,42 +144,52 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
   run: (control: Pick<OrcadActivationLockControl, 'retain'>) => Promise<T>
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
+  const token = randomUUID()
+  // The takeover writes this run's token, so the holder it replaced can no longer act or release.
   await acquireInstallLock(options.conn, lockRoot, options.host, {
     signal: options.signal,
     relayGcClaim: false,
     allowStaleTakeover: true,
-    waitTimeoutMs: 0
+    waitTimeoutMs: 0,
+    owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token }
   })
+  const fence = activationFence(options, token)
   let retain = false
   let result: T
   try {
-    result = await run({ retain: () => (retain = true) })
+    result = await runWithOrcadFence(fence, () => run({ retain: () => (retain = true) }))
   } catch (error) {
     // Any throw keeps the fence: recovery failed to prove one serving slot.
     if (!isUnconfirmedSshCommandTermination(error)) {
-      await orphanRetainedFence(options).catch(() => undefined)
+      await orphanRetainedFence(options, fence).catch(() => undefined)
     }
     throw error
   }
-  await (retain ? orphanRetainedFence(options) : releaseActivationFence(options, lockRoot))
+  await (retain ? orphanRetainedFence(options, fence) : releaseActivationFence(options, fence))
   return result
+}
+
+function activationFence(options: OrcadActivationLockOptions, token: string): OrcadFence {
+  const root = orcadActivationTransactionRoot(options.host, options.remoteHome)
+  return { lockDir: joinRemotePath(options.host, root, RELAY_INSTALL_LOCK_NAME), token }
 }
 
 /**
  * A fence this run keeps after it is done: nothing of ours still works under it, so the next
  * recovery may take it over at once. Left fresh, every failed recovery would restart the stale
- * window it waits out, and the host could never be recovered.
+ * window it waits out, and the host could never be recovered. Guarded, so a superseded run
+ * never ages its successor's fence.
  */
-async function orphanRetainedFence(options: OrcadActivationLockOptions): Promise<void> {
-  const lockDir = joinRemotePath(
-    options.host,
-    orcadActivationTransactionRoot(options.host, options.remoteHome),
-    RELAY_INSTALL_LOCK_NAME
-  )
+async function orphanRetainedFence(
+  options: OrcadActivationLockOptions,
+  fence: OrcadFence
+): Promise<void> {
   try {
-    await execOrcadRemote(
-      withoutAbortSignal(options),
-      orphanInstallLockCommand(options.host, lockDir)
+    await runWithOrcadFence(fence, () =>
+      execOrcadRemote(
+        withoutAbortSignal(options),
+        orphanInstallLockCommand(options.host, fence.lockDir)
+      )
     )
   } catch (error) {
     // Best effort: the fence still holds; recovery then waits out the stale window as before.
@@ -195,37 +217,46 @@ export async function orcadActivationFenceExists(
   return answer === 'LOCKED'
 }
 
-/** Drops a fence this client knows it left behind; never a fence another run may own. */
-export function releaseOrcadActivationFence(options: OrcadActivationLockOptions): Promise<void> {
-  return releaseActivationFence(
-    options,
-    orcadActivationTransactionRoot(options.host, options.remoteHome)
-  )
+/** Drops the fence `token` names, and nothing else: a successor's fence carries its own token. */
+export function releaseOrcadActivationFence(
+  options: OrcadActivationLockOptions,
+  token: string
+): Promise<void> {
+  return releaseActivationFence(options, activationFence(options, token))
 }
 
-function releaseActivationFence(
+/**
+ * Conditional on the host: only while the lock still carries this run's token, journal first,
+ * then the lock renamed aside and removed, so a successor's fresh lock is never what goes.
+ */
+async function releaseActivationFence(
   options: OrcadActivationLockOptions,
-  lockRoot: string
+  fence: OrcadFence
 ): Promise<void> {
-  // Journal first: a release cut short must leave a lock without a journal, never the reverse.
+  const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
   const journal = joinRemotePath(options.host, lockRoot, ORCAD_ACTIVATION_TRANSACTION_FILENAME)
   // Why no signal: a cancelled run must still be able to drop a fence it proved unnecessary.
   const target = withoutAbortSignal(options)
-  if (isWindowsRemoteHost(options.host)) {
-    // `&&` does not parse under a PowerShell DefaultShell, so the two steps are two execs.
-    const baseDir = orcadRemoteBaseDir(options.host, options.remoteHome)
-    return execOrcadRemote(
-      target,
-      orcadWindowsHostOpCommand(options.host, baseDir, 'remove-file', [journal])
-    ).then(() =>
-      execOrcadRemote(
-        target,
-        orcadWindowsHostOpCommand(options.host, baseDir, 'remove-tree', [lockRoot])
-      ).then(() => undefined)
-    )
+  const command = isWindowsRemoteHost(options.host)
+    ? orcadWindowsHostOpCommand(
+        options.host,
+        orcadRemoteBaseDir(options.host, options.remoteHome),
+        'fence-release',
+        [fence.lockDir, journal, fence.token]
+      )
+    : posixReleaseFenceCommand(fence, journal, lockRoot)
+  const answer = (await execOrcadRemote(target, command)).trim()
+  if (answer.endsWith('SUPERSEDED')) {
+    console.warn('[orcad] A newer run had taken this activation fence over; it was left in place.')
   }
-  return execOrcadRemote(
-    target,
-    `${removeRemoteFileCommand(options.host, journal)} && ${removeRemoteTreeCommand(options.host, lockRoot)}`
-  ).then(() => undefined)
+}
+
+function posixReleaseFenceCommand(fence: OrcadFence, journal: string, lockRoot: string): string {
+  const lock = shellEscape(fence.lockDir)
+  return [
+    `${posixOrcadFenceOwnedTest(fence)} || { echo SUPERSEDED; exit 0; };`,
+    `rm -f ${shellEscape(journal)} &&`,
+    `aside=${lock}.released.$$ && mv ${lock} "$aside" && rm -rf "$aside";`,
+    `rmdir ${shellEscape(lockRoot)} 2>/dev/null; echo RELEASED`
+  ].join(' ')
 }

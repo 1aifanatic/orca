@@ -3,6 +3,7 @@
  * that stopped itself after idling. A stopped server is just "not running": it is neither a
  * failure nor evidence about terminals, which the daemon owns and which outlive orcad.
  */
+import { ORCAD_FENCE_OWNER_FILENAME } from './orcad-activation-fence-scope'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { readOrcadActivationRecord } from './orcad-activation-record-store'
 import { randomUUID } from 'node:crypto'
@@ -16,7 +17,6 @@ import { readBoundedOrcadRemoteRecord } from './orcad-remote-record-file'
 import { RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
 import { joinRemotePath } from './ssh-remote-platform'
 
-const WAKE_OWNER_FILENAME = '.orca-wake-owner'
 import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import { isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
 import {
@@ -112,7 +112,7 @@ async function wakeAfterPrior(
       settle()
       return { outcome: 'fenced' }
     },
-    { fileName: WAKE_OWNER_FILENAME, token }
+    token
   ).catch((error: unknown) => {
     // Never acquired, or released: only a lost connection can leave this token's fence behind.
     if (!isUnconfirmedSshCommandTermination(error)) {
@@ -132,7 +132,7 @@ function wakeOwnerPath(options: OrcadSlotOptions): string {
     options.host,
     orcadActivationTransactionRoot(options.host, options.remoteHome),
     RELAY_INSTALL_LOCK_NAME,
-    WAKE_OWNER_FILENAME
+    ORCAD_FENCE_OWNER_FILENAME
   )
 }
 
@@ -158,7 +158,7 @@ async function releaseOwnInterruptedWakeFence(
     interruptedWakes.delete(host)
     return false
   }
-  await releaseOrcadActivationFence(options)
+  await releaseOrcadActivationFence(options, token)
   interruptedWakes.delete(host)
   return true
 }

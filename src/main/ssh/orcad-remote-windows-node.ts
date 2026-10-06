@@ -9,6 +9,8 @@
  * `powershell.exe -Command`, which both shells pass through intact. Anything else is refused
  * rather than encoded (docs/reference/windows-edr-posture.md).
  */
+import { currentOrcadFence } from './orcad-activation-fence-scope'
+import { ORCAD_WINDOWS_FENCE_ARG } from './orcad-windows-host-fence-ops'
 import {
   ORCAD_NODE_RUNTIME_DIR_PREFIX,
   ORCAD_NODE_RUNTIME_WINDOWS_EXECUTABLE,
@@ -110,8 +112,11 @@ export function orcadWindowsHostOpCommand(
   op: OrcadWindowsHostOp,
   args: readonly string[]
 ): string {
+  // Under a held fence, the host script checks it still owns it before running the op.
+  const fence = currentOrcadFence()
   return orcadWindowsNodeCommandLine(orcadWindowsPinnedNodePath(host, baseDir), [
     orcadWindowsHostScriptPath(host, baseDir),
+    ...(fence ? [ORCAD_WINDOWS_FENCE_ARG, fence.lockDir, fence.token] : []),
     op,
     ...args
   ])

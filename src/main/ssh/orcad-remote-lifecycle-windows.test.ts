@@ -101,7 +101,7 @@ function scriptWindowsHost(log: string[], activeRecord: string | null = null): v
   mockExec.mockImplementation(async (_conn, command: string) => {
     const text = String(command)
     log.push(text)
-    const op = /\.js ([a-z-]+)(?: |$)/u.exec(text)?.[1] ?? ''
+    const op = /\.js (?:--fence \S+ \S+ )?([a-z-]+)(?: |$)/u.exec(text)?.[1] ?? ''
     switch (op) {
       case 'record-read':
         return activeRecord && text.includes('orcad-active.json')
@@ -128,6 +128,10 @@ function scriptWindowsHost(log: string[], activeRecord: string | null = null): v
       case 'remove-file':
       case 'remove-tree':
         return ''
+      case 'fence-check':
+        return 'OK'
+      case 'fence-release':
+        return 'RELEASED'
       default:
         break
     }
@@ -187,7 +191,9 @@ describe('deployOrcad on a Windows host', () => {
     for (const command of orcadOps) {
       expect(command).not.toMatch(/EncodedCommand|nohup|kill |head -c|tar |\bsh -c\b/u)
     }
-    const ops = orcadOps.map((command) => /\.js ([a-z-]+)/u.exec(command)?.[1] ?? command)
+    const ops = orcadOps.map(
+      (command) => /\.js (?:--fence \S+ \S+ )?([a-z-]+)/u.exec(command)?.[1] ?? command
+    )
     expect(ops).toContain('owner-admission')
     expect(ops).toContain('snapshot-capture')
     expect(ops.indexOf('slot-runtime')).toBeLessThan(
@@ -223,7 +229,9 @@ describe('deployOrcad on a Windows host', () => {
       targetDaemonProtocol: { protocolVersion: 3, previousProtocolVersions: [1, 2] }
     })
     expect(result).toMatchObject({ outcome: 'rolled-back', target: TARGET })
-    const ops = log.map((command) => /\.js ([a-z-]+)/u.exec(command)?.[1] ?? command)
+    const ops = log.map(
+      (command) => /\.js (?:--fence \S+ \S+ )?([a-z-]+)/u.exec(command)?.[1] ?? command
+    )
     // The target starts only after its state is back.
     expect(ops).toEqual([
       'record-read',
@@ -233,11 +241,12 @@ describe('deployOrcad on a Windows host', () => {
       'snapshot-capture',
       'snapshot-restore',
       'slot-runtime',
+      // A command the host script does not run is fence-checked by one op just before it.
+      'fence-check',
       '--windows-breakaway-launch',
       'readiness-wait',
       'record-read',
-      'remove-file',
-      'remove-tree'
+      'fence-release'
     ])
     for (const command of log) {
       expect(command).not.toMatch(/EncodedCommand|kill |tar |nohup/u)

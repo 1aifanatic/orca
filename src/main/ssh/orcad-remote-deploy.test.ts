@@ -419,7 +419,7 @@ describe('deployOrcad', () => {
       if (text.includes('echo LOCKED || echo OPEN')) {
         return fenced ? 'LOCKED\n' : 'OPEN\n'
       }
-      if (text.includes("rm -rf '/home/u/.orca-remote/.orcad-activation-transaction'")) {
+      if (text.includes('echo RELEASED')) {
         fenced = false
       }
       return text.includes('__ORCAD_RECORD_ABSENT__') ? '__ORCAD_RECORD_ABSENT__\n' : ''

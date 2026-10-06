@@ -62,7 +62,7 @@ describe('decommissioning a Windows orcad', () => {
     mockExec.mockImplementation(async (_conn, command: string) => {
       const text = String(command)
       log.push(text)
-      const op = /\.js ([a-z-]+)(?: |$)/u.exec(text)?.[1] ?? ''
+      const op = /\.js (?:--fence \S+ \S+ )?([a-z-]+)(?: |$)/u.exec(text)?.[1] ?? ''
       if (op === 'record-read') {
         if (text.includes('orcad-active.json')) {
           return encoded('__ORCAD_RECORD_PRESENT__', JSON.stringify(record))
@@ -79,6 +79,12 @@ describe('decommissioning a Windows orcad', () => {
       }
       if (op === 'slot-runtime') {
         return encoded('__ORCAD_RUNTIME__', SLOT_NODE)
+      }
+      if (op === 'fence-check') {
+        return 'OK'
+      }
+      if (op === 'fence-release') {
+        return 'RELEASED'
       }
       if (op === 'remove-file' || op === 'remove-tree') {
         return ''

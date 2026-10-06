@@ -168,7 +168,7 @@ export async function acquireInstallLock(
       const steal = await execHostCommand(
         conn,
         host,
-        tryStealInstallLockCommand(host, lockDir, INSTALL_LOCK_STALE_SECONDS),
+        tryStealInstallLockCommand(host, lockDir, INSTALL_LOCK_STALE_SECONDS, options?.owner),
         { signal: options?.signal }
       ).catch((err) => {
         if (isUnconfirmedSshCommandTermination(err)) {
