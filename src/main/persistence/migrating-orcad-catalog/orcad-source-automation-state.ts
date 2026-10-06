@@ -12,13 +12,13 @@ import type {
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { TaskSourceContext, WorkspaceRunContext } from '../../../shared/task-source-context'
 import {
-  compareKeys,
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
   orcadMigrationOwnsRepoId,
   type OrcadMigrationSourceScope,
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
+import { compareKeys } from './orcad-source-key-order'
 
 export type OrcadMigrationSourceAutomationInspection = {
   automations: Automation[]

@@ -1,7 +1,6 @@
-import {
-  serializeOrcadMigrationValue,
-  type OrcadMigrationDormantStatePayload,
-  type OrcadMigrationManifest
+import type {
+  OrcadMigrationDormantStatePayload,
+  OrcadMigrationManifest
 } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { SparsePreset } from '../../../shared/worktree/create-types'
@@ -9,6 +8,7 @@ import type { WorkspaceLineage, WorktreeLineage } from '../../../shared/worktree
 import type { WorktreeMeta } from '../../../shared/worktree/meta-types'
 import { omitDefaultWorktreeMetaFields } from '../../../shared/worktree/meta-persisted-defaults'
 import { assertOrcadDestinationCanonicalMetadata } from './orcad-destination-worktree-metadata'
+import { assertSameValue } from './orcad-catalog-row-identity'
 import {
   mergeRetiredNameRegistries,
   type RetiredNameRegistry
@@ -180,31 +180,6 @@ function selectNewKeyedRows<T>(
     assertSameValue(canonicalize(current), canonicalize(entry.value), `${label}:${entry.key}`)
     return false
   })
-}
-
-/** Incoming rows whose id is new; an id already present must carry the identical row. */
-export function selectNewRows<T extends { id: string }>(
-  incoming: T[],
-  existing: T[],
-  conflictError: (id: string) => string
-): T[] {
-  const existingById = new Map(existing.map((row) => [row.id, row]))
-  return incoming.filter((row) => {
-    const current = existingById.get(row.id)
-    if (!current) {
-      return true
-    }
-    if (serializeOrcadMigrationValue(current) !== serializeOrcadMigrationValue(row)) {
-      throw new Error(conflictError(row.id))
-    }
-    return false
-  })
-}
-
-export function assertSameValue(left: unknown, right: unknown, label: string): void {
-  if (serializeOrcadMigrationValue(left) !== serializeOrcadMigrationValue(right)) {
-    throw new Error(`orcad_migration_dormant_id_conflict:${label}`)
-  }
 }
 
 const sparsePresetKey = (preset: Pick<SparsePreset, 'id' | 'repoId'>): string =>

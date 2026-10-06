@@ -14,13 +14,13 @@ import { collectOrcadMigrationRetiredWorktreeNamespaces } from './orcad-source-r
 import { collectOrcadMigrationSourceAutomationState } from './orcad-source-automation-state'
 import { collectOrcadMigrationSourceWorkspaceSession } from './orcad-source-workspace-session'
 import {
-  compareKeys,
   createOrcadMigrationSourceScope,
   orcadMigrationOwnerMatchesScope,
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 import { collectOrcadMigrationSourceClientState } from './orcad-source-client-state'
 import { inspectOrcadSourceWorktreeMetadata } from './orcad-source-worktree-metadata'
+import { compareKeys } from './orcad-source-key-order'
 
 export const ORCAD_MIGRATION_TRANSFERRED_DORMANT_KINDS = [
   'worktree-metadata',

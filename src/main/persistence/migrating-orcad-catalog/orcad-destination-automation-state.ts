@@ -5,7 +5,7 @@ import {
   type AutomationRun
 } from '../../../shared/automations-types'
 import type { PersistedState } from '../../../shared/persisted-state-types'
-import { selectNewRows } from './orcad-dormant-state-records'
+import { selectNewRows } from './orcad-catalog-row-identity'
 
 export type PreparedOrcadMigrationAutomationState = {
   incomingAutomations: Automation[]

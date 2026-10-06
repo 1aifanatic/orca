@@ -21,9 +21,9 @@ import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
 import {
   applyPreparedOrcadMigrationDormantState,
   prepareOrcadMigrationDormantState,
-  type PreparedOrcadMigrationDormantState,
-  selectNewRows
+  type PreparedOrcadMigrationDormantState
 } from './orcad-dormant-state-records'
+import { selectNewRows } from './orcad-catalog-row-identity'
 
 export type PreparedOrcadMigrationCatalog = {
   repositories: Repo[]

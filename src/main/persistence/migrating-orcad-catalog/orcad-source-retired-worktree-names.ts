@@ -16,7 +16,7 @@ import {
   retirementHostIdentity,
   retirementNamespaceKeysToRead
 } from '../../worktree-retirement-namespace'
-import { compareKeys } from './orcad-source-scope'
+import { compareKeys } from './orcad-source-key-order'
 
 const EMPTY_REGISTRY: RetiredNameRegistry = { exhaustedTiers: 0, names: [] }
 
