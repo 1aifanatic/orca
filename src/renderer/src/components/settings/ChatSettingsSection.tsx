@@ -8,6 +8,8 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { SourceControlAiSettingsPatch } from '../../../../shared/source-control-ai-types'
 import type { SettingsSearchEntry } from './settings-search'
 import { useAppStore } from '../../store'
+import { Card, CardContent } from '../ui/card'
+import { getChatAppearanceSearchEntries } from './chat-appearance-search'
 
 export function ChatSettingsSection({
   settings,
@@ -46,29 +48,40 @@ export function ChatSettingsSection({
       )}
       searchEntries={searchEntries}
       forceVisible={hasUnsavedChatPromptChanges}
+      bodyClassName="rounded-none border-0 bg-transparent p-0 shadow-none"
     >
       {isMounted ? (
-        <div id="chat-appearance" className="space-y-3">
-          <SettingsSubsectionHeader title={appearanceTitle} />
-          <AppearanceChatSection
-            settings={settings}
-            updateSettings={updateSettings}
-            forceVisiblePrimary={matchesSettingsSearch(query, [
-              { title },
-              { title: appearanceTitle }
-            ])}
-          />
+        <div className="space-y-5">
+          {matchesSettingsSearch(query, [{ title }, ...getChatAppearanceSearchEntries()]) ? (
+            <section id="chat-appearance" className="space-y-3">
+              <SettingsSubsectionHeader title={appearanceTitle} />
+              <Card>
+                <CardContent>
+                  <AppearanceChatSection
+                    settings={settings}
+                    updateSettings={updateSettings}
+                    forceVisiblePrimary={matchesSettingsSearch(query, [
+                      { title },
+                      { title: appearanceTitle }
+                    ])}
+                  />
+                </CardContent>
+              </Card>
+            </section>
+          ) : null}
+          {showDesktopOnlySettings ? (
+            <ChatNamingSetting
+              key={chatPromptDiscardSignal}
+              settings={settings}
+              updateSettings={updateSettings}
+              writeSourceControlAiSettings={writeSourceControlAiSettings}
+              onDirtyChange={onChatPromptDirtyChange}
+              forceVisible={
+                matchesSettingsSearch(query, [{ title }]) || hasUnsavedChatPromptChanges
+              }
+            />
+          ) : null}
         </div>
-      ) : null}
-      {isMounted && showDesktopOnlySettings ? (
-        <ChatNamingSetting
-          key={chatPromptDiscardSignal}
-          settings={settings}
-          updateSettings={updateSettings}
-          writeSourceControlAiSettings={writeSourceControlAiSettings}
-          onDirtyChange={onChatPromptDirtyChange}
-          forceVisible={matchesSettingsSearch(query, [{ title }]) || hasUnsavedChatPromptChanges}
-        />
       ) : null}
     </SettingsSection>
   )

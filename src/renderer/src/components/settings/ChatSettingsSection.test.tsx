@@ -28,7 +28,11 @@ beforeEach(() => {
   state.settings = null
 })
 
-function renderChat(enabled: boolean | undefined, showDesktopOnlySettings = true) {
+function renderChat(
+  enabled: boolean | undefined,
+  showDesktopOnlySettings = true,
+  hasUnsavedChatPromptChanges = false
+) {
   const settings = { ...getDefaultSettings('/tmp'), experimentalStructuredNativeChat: enabled }
   state.settings = settings
   const updateSettings = vi.fn(async (updates: Partial<GlobalSettings>) => {
@@ -45,6 +49,7 @@ function renderChat(enabled: boolean | undefined, showDesktopOnlySettings = true
         searchEntries={[...getChatAppearanceSearchEntries(), getChatNamingSearchEntry()]}
         showDesktopOnlySettings={showDesktopOnlySettings}
         isMounted
+        hasUnsavedChatPromptChanges={hasUnsavedChatPromptChanges}
       />
     </ActiveSettingsSectionProvider>
   )
@@ -94,6 +99,30 @@ describe('Chat settings page', () => {
     )
   })
 
+  it('renders Appearance and Chat names as peer sections with separate cards', () => {
+    const { container } = renderChat(true)
+    const appearance = container.querySelector('#chat-appearance')
+    const names = container.querySelector('#chat-names')
+    expect(screen.getByRole('heading', { name: 'Chat names', level: 3 })).toBeTruthy()
+    expect(appearance).toBeTruthy()
+    expect(names).toBeTruthy()
+    expect(appearance?.parentElement).toBe(names?.parentElement)
+    expect(appearance?.closest('[data-slot="card"]')).toBeNull()
+    expect(names?.closest('[data-slot="card"]')).toBeNull()
+    const appearanceCard = screen
+      .getByRole('spinbutton', { name: 'Text size' })
+      .closest('[data-slot="card"]')
+    const namesCard = screen
+      .getByRole('switch', { name: 'Name chats automatically' })
+      .closest('[data-slot="card"]')
+    expect(appearanceCard).toBeTruthy()
+    expect(namesCard).toBeTruthy()
+    expect(appearanceCard).not.toBe(namesCard)
+    expect(appearance?.contains(appearanceCard)).toBe(true)
+    expect(names?.contains(namesCard)).toBe(true)
+    expect(container.querySelectorAll('#chat-names')).toHaveLength(1)
+  })
+
   it('unmounts the page when the opt-in is disabled while it is selected', () => {
     const { container, rerender } = renderChat(true)
     rerender(
@@ -136,28 +165,48 @@ describe('Chat settings page', () => {
     )
   })
 
-  it('finds Chat names and resolves its deep link to the naming controls', () => {
-    state.settingsSearchQuery = 'Chat names'
-    const { container } = renderChat(true)
-    expect(screen.getByRole('switch', { name: 'Name chats automatically' })).toBeTruthy()
-    expect(screen.getByText('Command template')).toBeTruthy()
-    expect(screen.queryByRole('spinbutton', { name: 'Text size' })).toBeNull()
-    const sections = buildSettingsNavigationMetadata({
-      isMac: false,
-      isWindows: true,
-      isWebClient: false,
-      experimentalStructuredNativeChat: true,
-      repos: []
-    })
-    const result = buildCmdJSettingsResults(sections).find(
-      (entry) => entry.sectionId === 'chat' && entry.title === 'Chat names'
-    )
-    expect(result?.targetSectionId).toBe('chat-names')
-    const target = { pane: 'chat', repoId: null, sectionId: result?.targetSectionId } as const
-    expect(isSettingsNavigationTarget(target)).toBe(true)
-    expect(getSettingsScrollTarget(target.sectionId ?? '', container)).toBe(
-      container.querySelector('#chat-names')
-    )
+  it.each(['chat names', 'name', 'Name chats automatically'])(
+    'finds %s and resolves its deep link to the naming section',
+    (query) => {
+      state.settingsSearchQuery = query
+      const { container } = renderChat(true)
+      expect(screen.getByRole('switch', { name: 'Name chats automatically' })).toBeTruthy()
+      expect(screen.getByText('Command template')).toBeTruthy()
+      expect(screen.queryByRole('spinbutton', { name: 'Text size' })).toBeNull()
+      expect(container.querySelector('#chat-appearance')).toBeNull()
+      const sections = buildSettingsNavigationMetadata({
+        isMac: false,
+        isWindows: true,
+        isWebClient: false,
+        experimentalStructuredNativeChat: true,
+        repos: []
+      })
+      const result = buildCmdJSettingsResults(sections).find(
+        (entry) => entry.sectionId === 'chat' && entry.title === 'Chat names'
+      )
+      expect(result?.targetSectionId).toBe('chat-names')
+      expect(result?.configKeywords).toContain('name chats automatically')
+      const target = { pane: 'chat', repoId: null, sectionId: result?.targetSectionId } as const
+      expect(isSettingsNavigationTarget(target)).toBe(true)
+      expect(getSettingsScrollTarget(target.sectionId ?? '', container)).toBe(
+        container.querySelector('#chat-names')
+      )
+    }
+  )
+
+  it('retains the unsaved naming draft when search no longer matches Chat', () => {
+    const { element, rerender, container } = renderChat(true, true, true)
+    const template = screen.getByText('Command template').nextElementSibling
+    if (!(template instanceof HTMLTextAreaElement)) {
+      throw new Error('Command template textarea is missing')
+    }
+    fireEvent.change(template, { target: { value: 'Unsaved: {firstPrompt}' } })
+    state.settingsSearchQuery = 'unrelated setting'
+    rerender(element())
+    expect(screen.getByDisplayValue('Unsaved: {firstPrompt}')).toBe(template)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy()
+    expect(container.querySelector('#chat-names')).toBeTruthy()
+    expect(container.querySelector('#chat-appearance')).toBeNull()
   })
 
   it('searches a moved row and resolves its deep link within the Chat page', () => {

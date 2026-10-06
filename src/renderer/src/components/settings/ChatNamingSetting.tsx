@@ -11,6 +11,7 @@ import { CUSTOM_AGENT_ID } from '../../../../shared/commit-message-agent-spec'
 import { isTuiAgent } from '../../../../shared/tui-agent-config'
 import { translate } from '@/i18n/i18n'
 import { Switch } from '../ui/switch'
+import { Card, CardContent } from '../ui/card'
 import { SourceControlActionRecipeRow } from './SourceControlActionRecipeRow'
 import { CustomAgentCommandField } from './CustomAgentCommandField'
 import { SettingsSubsectionHeader } from './SettingsFormControls'
@@ -132,62 +133,68 @@ export function ChatNamingSetting({
       {...searchEntry}
       id="chat-names"
       forceVisible={forceVisible || dirty}
-      className="mt-6 space-y-3 border-t border-border/60 pt-6"
+      className="max-w-none space-y-3"
     >
       <SettingsSubsectionHeader title={searchEntry.title} />
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">{searchEntry.description}</p>
-        </div>
-        <Switch
-          aria-label={translate('settings.chat.names.enable', 'Name chats automatically')}
-          checked={settings.nativeChatAutoName !== false}
-          onCheckedChange={(checked) => updateSettings({ nativeChatAutoName: checked })}
-        />
-      </div>
-      {settings.nativeChatAutoName !== false || dirty ? (
-        <>
-          {recipe?.agentId === CUSTOM_AGENT_ID || customCommandDirty ? (
-            <CustomAgentCommandField
-              id="chat-name-custom-command"
-              value={customCommand}
-              onChange={updateCustomCommandDraft}
-              description={translate(
-                'settings.chat.names.customCommandDescription',
-                'Command line shared by recipes that select Custom command. Use {prompt} to pass the input as an argument; otherwise it is piped to stdin.'
-              )}
-            />
-          ) : null}
-          <SourceControlActionRecipeRow
-            actionId="conversationName"
-            selectedAgent={recipe?.agentId ?? null}
-            draftValue={value}
-            baseValue={persisted}
-            hasUnsavedChanges={dirty}
-            defaultTuiAgent={settings.defaultTuiAgent}
-            isSavingTemplate={isSaving}
-            onAgentChange={(_id, selected) => void saveAgent(selected)}
-            onTemplateChange={(_id, template) =>
-              updateDraft({ ...value, commandInputTemplate: template })
-            }
-            onAgentArgsChange={(_id, agentArgs) => updateDraft({ ...value, agentArgs })}
-            onAppendVariable={(_id, variable) => {
-              const template = value.commandInputTemplate
-              const separator = template.endsWith('\n') || template.length === 0 ? '' : ' '
-              updateDraft({
-                ...value,
-                commandInputTemplate: `${template}${separator}{${variable}}`
-              })
-            }}
-            onDiscard={() => {
-              setDraft(null)
-              setCustomCommandDraft(null)
-              onDirtyChange?.(false)
-            }}
-            onSave={() => void save()}
-          />
-        </>
-      ) : null}
+      <Card>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">{searchEntry.description}</p>
+              </div>
+              <Switch
+                aria-label={translate('settings.chat.names.enable', 'Name chats automatically')}
+                checked={settings.nativeChatAutoName !== false}
+                onCheckedChange={(checked) => updateSettings({ nativeChatAutoName: checked })}
+              />
+            </div>
+            {settings.nativeChatAutoName !== false || dirty ? (
+              <>
+                {recipe?.agentId === CUSTOM_AGENT_ID || customCommandDirty ? (
+                  <CustomAgentCommandField
+                    id="chat-name-custom-command"
+                    value={customCommand}
+                    onChange={updateCustomCommandDraft}
+                    description={translate(
+                      'settings.chat.names.customCommandDescription',
+                      'Command line shared by recipes that select Custom command. Use {prompt} to pass the input as an argument; otherwise it is piped to stdin.'
+                    )}
+                  />
+                ) : null}
+                <SourceControlActionRecipeRow
+                  actionId="conversationName"
+                  selectedAgent={recipe?.agentId ?? null}
+                  draftValue={value}
+                  baseValue={persisted}
+                  hasUnsavedChanges={dirty}
+                  defaultTuiAgent={settings.defaultTuiAgent}
+                  isSavingTemplate={isSaving}
+                  onAgentChange={(_id, selected) => void saveAgent(selected)}
+                  onTemplateChange={(_id, template) =>
+                    updateDraft({ ...value, commandInputTemplate: template })
+                  }
+                  onAgentArgsChange={(_id, agentArgs) => updateDraft({ ...value, agentArgs })}
+                  onAppendVariable={(_id, variable) => {
+                    const template = value.commandInputTemplate
+                    const separator = template.endsWith('\n') || template.length === 0 ? '' : ' '
+                    updateDraft({
+                      ...value,
+                      commandInputTemplate: `${template}${separator}{${variable}}`
+                    })
+                  }}
+                  onDiscard={() => {
+                    setDraft(null)
+                    setCustomCommandDraft(null)
+                    onDirtyChange?.(false)
+                  }}
+                  onSave={() => void save()}
+                />
+              </>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
       <span ref={clearDirtyOnUnmount} />
     </SearchableSetting>
   )
