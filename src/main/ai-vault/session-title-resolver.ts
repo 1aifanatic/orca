@@ -1,10 +1,10 @@
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import { listStructuredProviderSessionOwnership } from '../native-chat/agent-session-wire/structured-provider-session-ownership'
-import type { AiVaultSessionTitle } from '../../shared/ai-vault-session-title'
 import { extname } from 'node:path'
 import { hasUnsafeProviderSessionIdChars } from '../../shared/agent-session-resume'
 import {
   AI_VAULT_SESSION_TITLE_REQUEST_MAX_COUNT,
+  type AiVaultSessionTitle,
   type AiVaultSessionTitleRequest,
   type AiVaultSessionTitlesResult
 } from '../../shared/ai-vault-session-title'

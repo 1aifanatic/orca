@@ -1,6 +1,9 @@
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
-import { getWebSessionTabsTrackingGeneration } from './tracking-lifecycle'
+import {
+  getWebSessionTabsTrackingGeneration,
+  acceptReplayedWebSessionTabsSnapshot
+} from './tracking-lifecycle'
 import { recoverAiVaultStructuredTitles } from '@/components/right-sidebar/ai-vault-structured-title-recovery'
 import { toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
@@ -17,7 +20,6 @@ import {
   decideWebSessionTabsSnapshot,
   WEB_SESSION_TABS_FRAME_OUTRANKED
 } from './tracking-decisions'
-import { acceptReplayedWebSessionTabsSnapshot } from './tracking-lifecycle'
 import { applyWebSessionTabsSnapshots } from './snapshot-api'
 import {
   latestSessionTabsSnapshotByWorktree,

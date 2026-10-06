@@ -8,17 +8,22 @@ import {
   resolveSourceControlAiForOperation
 } from '../../../../shared/source-control-ai'
 import { useAppStore } from '../../store'
-import { renderChatSettingsSection } from './settings-interface-secondary-section-renderers'
-import type { SettingsRenderContext } from './settings-render-context'
+import {
+  renderChatSettingsSection,
+  type ChatSettingsRenderContext
+} from './settings-interface-secondary-section-renderers'
 import { getChatNamingSearchEntry } from './chat-naming-search'
 import { useSettingsInteractionController } from './use-settings-interaction-controller'
-import type { SettingsStoreModel } from './use-settings-store-model'
-import { persist, settingsModel } from './settings-persistence-test-fixture'
+import {
+  persist,
+  settingsModel,
+  type SettingsPersistenceModel
+} from './settings-persistence-test-fixture'
 import { ActiveSettingsSectionProvider } from './SettingsSection'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
 
-function ChatPersistenceHarness({ model }: { model: SettingsStoreModel }) {
+function ChatPersistenceHarness({ model }: { model: SettingsPersistenceModel }) {
   const settings = useAppStore((state) => state.settings)
   const controller = useSettingsInteractionController(model)
   if (!settings) {
@@ -29,14 +34,8 @@ function ChatPersistenceHarness({ model }: { model: SettingsStoreModel }) {
     interactions: controller,
     navigation: { getSectionSearchEntries: () => [getChatNamingSearchEntry()] },
     view: { isSectionMounted: () => true }
-  } satisfies {
-    model: SettingsRenderContext['model']
-    interactions: SettingsRenderContext['interactions']
-    navigation: Pick<SettingsRenderContext['navigation'], 'getSectionSearchEntries'>
-    view: Pick<SettingsRenderContext['view'], 'isSectionMounted'>
-  }
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The actual Chat renderer reads only these checked context fields; terminal and navigation actions are unused.
-  const section = renderChatSettingsSection(context as SettingsRenderContext)
+  } satisfies ChatSettingsRenderContext
+  const section = renderChatSettingsSection(context)
   return <ActiveSettingsSectionProvider value="chat">{section}</ActiveSettingsSectionProvider>
 }
 
@@ -51,6 +50,7 @@ it('passes the existing paired-web capability through the actual Chat renderer',
 
 it('keeps the Chat draft and guard after actual persistence fails, then saves it on retry', async () => {
   const model = settingsModel()
+  const savedRecipe = model.settings?.sourceControlAi?.actions?.conversationName
   persist.mockRejectedValueOnce(new Error('Settings disk is unavailable'))
   render(<ChatPersistenceHarness model={model} />)
   const template = screen.getByText('Command template').nextElementSibling
@@ -67,9 +67,9 @@ it('keeps the Chat draft and guard after actual persistence fails, then saves it
   expect(screen.getByDisplayValue('Keep: {firstPrompt}')).toBeTruthy()
   expect(screen.getByDisplayValue('--model fast')).toBeTruthy()
   expect(model.setHasUnsavedChatPromptChanges).toHaveBeenLastCalledWith(true)
-  expect(
-    useAppStore.getState().settings?.sourceControlAi?.actions?.conversationName
-  ).toBeUndefined()
+  expect(useAppStore.getState().settings?.sourceControlAi?.actions?.conversationName).toEqual(
+    savedRecipe
+  )
   fireEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() =>
     expect(useAppStore.getState().settings?.sourceControlAi?.actions?.conversationName).toEqual({
@@ -233,7 +233,7 @@ it('preserves a shared command changed elsewhere while a Chat recipe is being ed
     }
     await settingsModel().updateSettingsOrThrow({
       sourceControlAi: {
-        ...settings.sourceControlAi,
+        ...normalizeSourceControlAiSettings(settings.sourceControlAi),
         customAgentCommand: 'changed-elsewhere'
       }
     })

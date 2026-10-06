@@ -4,6 +4,8 @@ import { getDefaultSettings } from '../../../../shared/constants'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { useAppStore } from '../../store'
 import type { SettingsStoreModel } from './use-settings-store-model'
+import type { SettingsInteractionModel } from './use-settings-interaction-controller'
+import { normalizeSourceControlAiSettings } from '../../../../shared/source-control-ai'
 
 const originalState = useAppStore.getState()
 const originalApi = window.api
@@ -16,10 +18,11 @@ beforeEach(() => {
     settings: {
       ...getDefaultSettings('/synthetic'),
       experimentalStructuredNativeChat: true,
-      sourceControlAi: {
+      sourceControlAi: normalizeSourceControlAiSettings({
+        ...normalizeSourceControlAiSettings(undefined),
         enabled: false,
         actions: { commitMessage: { commandInputTemplate: 'Keep the Git recipe' } }
-      }
+      })
     },
     settingsSearchQuery: 'Chat names'
   })
@@ -43,13 +46,20 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-export function settingsModel(): SettingsStoreModel {
+export type SettingsPersistenceModel = SettingsInteractionModel &
+  Pick<
+    SettingsStoreModel,
+    'showDesktopOnlySettings' | 'sourceControlAiPromptDiscardSignal' | 'updateSettings'
+  >
+
+export function settingsModel(): SettingsPersistenceModel {
   const state = useAppStore.getState()
   const model = {
     settings: state.settings,
     updateSettings: state.updateSettings,
     updateSettingsOrThrow: state.updateSettingsOrThrow,
     showDesktopOnlySettings: true,
+    sourceControlAiPromptDiscardSignal: 0,
     closeSettingsPage: vi.fn(),
     confirm: vi.fn(async () => false),
     hasUnsavedBranchPromptChanges: false,
@@ -63,7 +73,6 @@ export function settingsModel(): SettingsStoreModel {
     setHighlightedSettingsTargetId: vi.fn(),
     setSettingsSearchQuery: vi.fn(),
     setSourceControlAiPromptDiscardSignal: vi.fn()
-  } satisfies Partial<SettingsStoreModel>
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The tested controller reads only these supplied fields; persistence uses the actual store actions.
-  return model as SettingsStoreModel
+  } satisfies SettingsPersistenceModel
+  return model
 }

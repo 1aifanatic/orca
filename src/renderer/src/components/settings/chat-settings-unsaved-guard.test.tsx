@@ -2,8 +2,10 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
-import { useSettingsInteractionController } from './use-settings-interaction-controller'
-import type { SettingsStoreModel } from './use-settings-store-model'
+import {
+  useSettingsInteractionController,
+  type SettingsInteractionModel
+} from './use-settings-interaction-controller'
 import { useSettingsNavigationActions } from './settings-view-model'
 
 afterEach(cleanup)
@@ -24,20 +26,18 @@ function createModel(shouldDiscard = false, dirty = true) {
     setSettingsSearchQuery: vi.fn(),
     setSourceControlAiPromptDiscardSignal: vi.fn(),
     settings: getDefaultSettings('/tmp'),
-    updateSettings: vi.fn(),
+    updateSettingsOrThrow: vi.fn(async () => {}),
     activeSectionId: 'chat',
     setActiveSectionId: vi.fn(),
     setPendingNavRequestTick: vi.fn(),
     settingsSearchQuery: ''
-  } satisfies Partial<SettingsStoreModel>
+  } satisfies SettingsInteractionModel & Parameters<typeof useSettingsNavigationActions>[0]
 }
 
 function renderController(model: ReturnType<typeof createModel>) {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Both tested hooks read only the supplied model fields; unrelated settings services are not used.
-  const settingsModel = model as SettingsStoreModel
   return renderHook(() => {
-    const interactions = useSettingsInteractionController(settingsModel)
-    const navigation = useSettingsNavigationActions(settingsModel, interactions)
+    const interactions = useSettingsInteractionController(model)
+    const navigation = useSettingsNavigationActions(model, interactions)
     return { ...interactions, ...navigation }
   })
 }

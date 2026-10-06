@@ -1,10 +1,10 @@
 import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
-import { subscribeAiVaultStructuredTitles } from './ai-vault-session-result-cache'
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { AiVaultSessionTitlesResult } from '../../../../shared/ai-vault-session-title'
 import {
+  subscribeAiVaultStructuredTitles,
   cacheAiVaultSessionResult,
   readAiVaultSessionResultSnapshot
 } from './ai-vault-session-result-cache'

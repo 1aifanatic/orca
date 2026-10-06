@@ -1,6 +1,5 @@
 import type { AiVaultListResult } from '../../../../shared/ai-vault-types'
-import type { ExecutionHostScope } from '../../../../shared/execution-host'
-import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { ExecutionHostScope, ExecutionHostId } from '../../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import {
   aiVaultSessionDepthCovers,

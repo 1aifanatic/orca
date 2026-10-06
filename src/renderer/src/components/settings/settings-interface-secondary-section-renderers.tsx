@@ -37,7 +37,22 @@ export function renderAppearanceSettingsSection(context: SettingsRenderContext):
   )
 }
 
-export function renderChatSettingsSection(context: SettingsRenderContext): React.JSX.Element {
+export type ChatSettingsRenderContext = {
+  model: Pick<
+    SettingsRenderContext['model'],
+    | 'settings'
+    | 'updateSettings'
+    | 'setHasUnsavedChatPromptChanges'
+    | 'sourceControlAiPromptDiscardSignal'
+    | 'hasUnsavedChatPromptChanges'
+    | 'showDesktopOnlySettings'
+  >
+  interactions: Pick<SettingsRenderContext['interactions'], 'writeSourceControlAiSettingsOrThrow'>
+  navigation: Pick<SettingsRenderContext['navigation'], 'getSectionSearchEntries'>
+  view: Pick<SettingsRenderContext['view'], 'isSectionMounted'>
+}
+
+export function renderChatSettingsSection(context: ChatSettingsRenderContext): React.JSX.Element {
   const { model, interactions, navigation, view } = context
   return (
     <ChatSettingsSection

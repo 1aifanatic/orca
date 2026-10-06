@@ -2,19 +2,19 @@ import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useAiVaultSessionRefresh } from '@/components/right-sidebar/ai-vault-session-refresh'
 import { DEFAULT_AI_VAULT_SESSION_LIMIT } from '@/components/right-sidebar/ai-vault-session-limit'
-import type { AiVaultListResult } from '../../../shared/ai-vault-types'
+import type { AiVaultListResult } from '../../src/shared/ai-vault-types'
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { subscribeSessionTabsInventory } from '../../../main/runtime/rpc/methods/session-tabs-inventory'
-import type { OrcaRuntimeService } from '../../../main/runtime/orca-runtime'
-import { resolveLocalAiVaultSessionTitles } from '../../../main/ai-vault/session-title-resolver'
-import { setStructuredAgentSessionHost } from '../../../main/native-chat/agent-session-wire/structured-agent-session-registry'
-import { agentSessionRecordFixture } from '../../../shared/agent-session-record.test-fixture'
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
-import type { AiVaultSessionTitlesArgs } from '../../../shared/ai-vault-session-title'
-import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
+import { subscribeSessionTabsInventory } from '../../src/main/runtime/rpc/methods/session-tabs-inventory'
+import type { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
+import { resolveLocalAiVaultSessionTitles } from '../../src/main/ai-vault/session-title-resolver'
+import { setStructuredAgentSessionHost } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-registry'
+import { agentSessionRecordFixture } from '../../src/shared/agent-session-record.test-fixture'
+import { codexProviderHandle } from '../../src/shared/agent-session-provider-handle-encoding'
+import type { AiVaultSessionTitlesArgs } from '../../src/shared/ai-vault-session-title'
+import type { RuntimeMobileSessionTabsResult } from '../../src/shared/runtime-types'
+import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../src/shared/protocol-version'
 import { useAppStore } from '@/store'
 import { session, result } from '@/components/right-sidebar/ai-vault-structured-title-fixtures'
 import {
@@ -25,18 +25,18 @@ import {
 import {
   startLocalStructuredSessionTabsSync,
   resetLocalStructuredSessionVersionForTests
-} from './local-structured-session-tabs-sync'
-import { handleGlobalSessionInventoryEvent } from './web-session-tabs-sync/global-session-inventory-event'
-import { getWebSessionTabsTrackingGeneration } from './web-session-tabs-sync/tracking-lifecycle'
+} from '../../src/renderer/src/runtime/local-structured-session-tabs-sync'
+import { handleGlobalSessionInventoryEvent } from '../../src/renderer/src/runtime/web-session-tabs-sync/global-session-inventory-event'
+import { getWebSessionTabsTrackingGeneration } from '../../src/renderer/src/runtime/web-session-tabs-sync/tracking-lifecycle'
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
-import { getRuntimeEnvironmentRevision } from './runtime-environment-revision'
-import { VisibilityResumeCoordinator } from './web-session-tabs-sync/visibility-resume-coordinator'
-import { resetWebSessionTabsSnapshotFreshnessForTests } from './web-session-tabs-sync'
+import { getRuntimeEnvironmentRevision } from '../../src/renderer/src/runtime/runtime-environment-revision'
+import { VisibilityResumeCoordinator } from '../../src/renderer/src/runtime/web-session-tabs-sync/visibility-resume-coordinator'
+import { resetWebSessionTabsSnapshotFreshnessForTests } from '../../src/renderer/src/runtime/web-session-tabs-sync'
 
-vi.mock('../../../main/ai-vault/session-scanner-background', () => ({
+vi.mock('../../src/main/ai-vault/session-scanner-background', () => ({
   resolveAiVaultSessionTitlesInBackground: vi.fn(async () => ({ titles: [] }))
 }))
-vi.mock('../lib/structured-agent-session-launch-unconfirmed-recheck', () => ({
+vi.mock('../../src/renderer/src/lib/structured-agent-session-launch-unconfirmed-recheck', () => ({
   recheckUnconfirmedStructuredAgentLaunches: vi.fn()
 }))
 const initial = useAppStore.getInitialState()

@@ -75,10 +75,11 @@ describe('Chat names setting', () => {
 
   it('saves CLI arguments and a template through the shared writer', async () => {
     const { settings, writeSourceControlAiSettings, onDirtyChange } = renderSetting({
-      sourceControlAi: {
+      sourceControlAi: normalizeSourceControlAiSettings({
+        ...normalizeSourceControlAiSettings(undefined),
         enabled: false,
         actions: { commitMessage: { commandInputTemplate: 'Keep this Git recipe' } }
-      }
+      })
     })
     changeTemplate('Name: {firstPrompt}')
     changeAgentArgs('--model fast')
@@ -98,9 +99,10 @@ describe('Chat names setting', () => {
 
   it('persists the selected agent without replacing a Git recipe', async () => {
     const { settings } = renderSetting({
-      sourceControlAi: {
+      sourceControlAi: normalizeSourceControlAiSettings({
+        ...normalizeSourceControlAiSettings(undefined),
         actions: { commitMessage: { commandInputTemplate: 'Keep this' } }
-      }
+      })
     })
     fireEvent.click(screen.getByRole('combobox'))
     fireEvent.click(screen.getByRole('option', { name: 'Custom command' }))
@@ -119,7 +121,12 @@ describe('Chat names setting', () => {
   })
 
   it('keeps naming independent of Git AI enablement and exposes only its variables', () => {
-    renderSetting({ sourceControlAi: { enabled: false } })
+    renderSetting({
+      sourceControlAi: normalizeSourceControlAiSettings({
+        ...normalizeSourceControlAiSettings(undefined),
+        enabled: false
+      })
+    })
     expect(screen.getAllByRole('combobox')).toHaveLength(1)
     expect(screen.getByText('Command template')).toBeTruthy()
     expect(screen.getByRole('button', { name: '{basePrompt}' })).toBeTruthy()

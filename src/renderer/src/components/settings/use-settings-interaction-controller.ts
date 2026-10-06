@@ -12,7 +12,26 @@ import {
   SETTINGS_TARGET_HIGHLIGHT_MS
 } from './settings-navigation-foundations'
 
-export function useSettingsInteractionController(model: SettingsStoreModel) {
+export type SettingsInteractionModel = Pick<
+  SettingsStoreModel,
+  | 'closeSettingsPage'
+  | 'confirm'
+  | 'hasUnsavedBranchPromptChanges'
+  | 'hasUnsavedChatPromptChanges'
+  | 'hasUnsavedCommitPromptChanges'
+  | 'highlightedSettingsTargetId'
+  | 'setFontSuggestions'
+  | 'setHasUnsavedBranchPromptChanges'
+  | 'setHasUnsavedChatPromptChanges'
+  | 'setHasUnsavedCommitPromptChanges'
+  | 'setHighlightedSettingsTargetId'
+  | 'setSettingsSearchQuery'
+  | 'setSourceControlAiPromptDiscardSignal'
+  | 'settings'
+  | 'updateSettingsOrThrow'
+>
+
+export function useSettingsInteractionController(model: SettingsInteractionModel) {
   const {
     closeSettingsPage,
     confirm,

@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type { AiVaultListResult } from '../../../../shared/ai-vault-types'
+import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { AiVaultPendingTitleProjection } from './ai-vault-pending-title-projection'
 import { publishAiVaultSavedTitle } from './ai-vault-session-result-cache'
 import { result, session } from './ai-vault-structured-title-fixtures'
@@ -23,23 +24,21 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 function publish(index = 0, host: 'local' | 'runtime:paired-host' = 'local'): void {
-  publishAiVaultSavedTitle(
-    {
-      worktree: 'folder-workspace',
-      publicationEpoch: 'host:one',
-      snapshotVersion: 1,
-      activeGroupId: null,
-      activeTabId: null,
-      activeTabType: null,
-      tabs: [],
-      structuredConversationTitle: {
-        agent: 'codex',
-        sessionId: `native-${index}`,
-        title: `Name ${index}`
-      }
-    },
-    host
-  )
+  const snapshot: RuntimeMobileSessionTabsResult = {
+    worktree: 'folder-workspace',
+    publicationEpoch: 'host:one',
+    snapshotVersion: 1,
+    activeGroupId: null,
+    activeTabId: null,
+    activeTabType: null,
+    tabs: [],
+    structuredConversationTitle: {
+      agent: 'codex',
+      sessionId: `native-${index}`,
+      title: `Name ${index}`
+    }
+  }
+  publishAiVaultSavedTitle(snapshot, host)
 }
 it('limits pending names, filters host scope, and releases request-owned publications', () => {
   const pending = new AiVaultPendingTitleProjection('local')

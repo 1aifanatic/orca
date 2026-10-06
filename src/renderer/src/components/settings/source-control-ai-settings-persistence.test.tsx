@@ -5,15 +5,18 @@ import { useAppStore } from '../../store'
 import { ChatNamingSetting } from './ChatNamingSetting'
 import { CommitMessageAiPane } from './CommitMessageAiPane'
 import { useSettingsInteractionController } from './use-settings-interaction-controller'
-import type { SettingsStoreModel } from './use-settings-store-model'
-import { persist, settingsModel } from './settings-persistence-test-fixture'
+import {
+  persist,
+  settingsModel,
+  type SettingsPersistenceModel
+} from './settings-persistence-test-fixture'
 import { normalizeSourceControlAiSettings } from '../../../../shared/source-control-ai'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
 
 beforeEach(() => useAppStore.setState({ settingsSearchQuery: '' }))
 
-function GitPersistenceHarness({ model }: { model: SettingsStoreModel }) {
+function GitPersistenceHarness({ model }: { model: SettingsPersistenceModel }) {
   const settings = useAppStore((state) => state.settings)
   const controller = useSettingsInteractionController(model)
   if (!settings) {
