@@ -6,10 +6,23 @@ import { afterEach, expect, it } from 'vitest'
 import {
   annotateJavascriptParityFiles,
   compareJavascriptParityFiles,
-  equivalentStylesheets
+  equivalentStylesheets,
+  normalizeManifestSourcePaths
 } from './release-javascript-parity.mjs'
 
 const directories = []
+
+it('normalizes pnpm store path shortening without collapsing distinct source records', () => {
+  const shortened = '../../node_modules/.pnpm/package@1_hash/node_modules/package/index.js'
+  const full =
+    '../../node_modules/.pnpm/package@1.0.0_patch_hash=long/node_modules/package/index.js'
+  expect(
+    normalizeManifestSourcePaths({ [shortened]: { src: shortened, imports: [shortened] } })
+  ).toEqual(normalizeManifestSourcePaths({ [full]: { src: full, imports: [full] } }))
+  expect(() => normalizeManifestSourcePaths({ [shortened]: 1, [full]: 2 })).toThrow(
+    'Ambiguous manifest source paths'
+  )
+})
 afterEach(() =>
   directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true }))
 )

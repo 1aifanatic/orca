@@ -16,6 +16,27 @@ function createAssetReferenceNormalizer(replacements) {
   return (content) => content.replace(references, (name) => replacements.get(name) ?? name)
 }
 
+export function normalizeManifestSourcePaths(value) {
+  if (typeof value === 'string') {
+    return value.replace(/node_modules\/\.pnpm\/[^/]+\/node_modules\//g, 'node_modules/')
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalizeManifestSourcePaths)
+  }
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+  const entries = Object.entries(value)
+    .map(([key, child]) => [normalizeManifestSourcePaths(key), normalizeManifestSourcePaths(child)])
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+  assert.equal(
+    new Set(entries.map(([key]) => key)).size,
+    entries.length,
+    'Ambiguous manifest source paths'
+  )
+  return Object.fromEntries(entries)
+}
+
 export function annotateJavascriptParityFiles(root, files) {
   const names = new Map()
   for (const file of files) {
@@ -71,15 +92,7 @@ export function annotateJavascriptParityFiles(root, files) {
     let content = normalizeReferences(contents.get(file.path))
     const manifest = file.path === 'renderer/.vite/manifest.json'
     if (manifest) {
-      content = JSON.stringify(JSON.parse(content), (_, value) =>
-        value && typeof value === 'object' && !Array.isArray(value)
-          ? Object.fromEntries(
-              Object.entries(value).sort(([left], [right]) =>
-                left < right ? -1 : left > right ? 1 : 0
-              )
-            )
-          : value
-      )
+      content = JSON.stringify(normalizeManifestSourcePaths(JSON.parse(content)))
     }
     return {
       ...file,
@@ -139,6 +152,12 @@ export function compareJavascriptParityFiles(before, after) {
     }
     if (left.comparableSha256 === right.comparableSha256) {
       return false
+    }
+    if (left.manifest && right.manifest) {
+      return (
+        JSON.stringify(normalizeManifestSourcePaths(JSON.parse(left.manifest))) !==
+        JSON.stringify(normalizeManifestSourcePaths(JSON.parse(right.manifest)))
+      )
     }
     return !left.css || !right.css || !equivalentStylesheets(left.css, right.css)
   })
