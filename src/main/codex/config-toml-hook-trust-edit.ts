@@ -78,9 +78,6 @@ export function moveHookTrustContent(
     ...moves.map(({ oldKey }) => oldKey),
     ...moves.map(({ newKey }) => newKey)
   ])
-  if (bodies.length === 0) {
-    return updated
-  }
   if (
     bodies.some(({ newKey }) =>
       usesWindowsCodexPathSeparators(parseCodexTrustKey(newKey)?.sourcePath ?? '')
@@ -88,14 +85,14 @@ export function moveHookTrustContent(
   ) {
     updated = ensureHooksStateParentTable(updated)
   }
-  const blocks = bodies.flatMap(({ newKey, body }) =>
-    getTrustKeyWriteVariants(newKey).map(
-      (key) => `[hooks.state.${formatHookStateTableKey(key)}]${body ? `\n${body}` : ''}`
+  return appendHookTrustBlocks(
+    updated,
+    bodies.flatMap(({ newKey, body }) =>
+      getTrustKeyWriteVariants(newKey).map(
+        (key) => `[hooks.state.${formatHookStateTableKey(key)}]${body ? `\n${body}` : ''}`
+      )
     )
   )
-  const separator =
-    updated.length === 0 || updated.endsWith('\n\n') ? '' : updated.endsWith('\n') ? '\n' : '\n\n'
-  return `${updated}${separator}${blocks.join('\n\n')}\n`
 }
 
 /** Each key's trust tables as they are written, header included. */
@@ -110,17 +107,22 @@ export function restoreHookTrustBlockContent(
   content: string,
   restores: readonly { key: string; blocks: readonly string[] }[]
 ): string {
-  const updated = removeHookTrustContent(
-    content,
-    restores.map(({ key }) => key)
+  return appendHookTrustBlocks(
+    removeHookTrustContent(
+      content,
+      restores.map(({ key }) => key)
+    ),
+    restores.flatMap(({ blocks }) => blocks)
   )
-  const blocks = restores.flatMap(({ blocks: texts }) => texts)
+}
+
+function appendHookTrustBlocks(content: string, blocks: readonly string[]): string {
   if (blocks.length === 0) {
-    return updated
+    return content
   }
   const separator =
-    updated.length === 0 || updated.endsWith('\n\n') ? '' : updated.endsWith('\n') ? '\n' : '\n\n'
-  return `${updated}${separator}${blocks.join('\n\n')}\n`
+    content.length === 0 || content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n'
+  return `${content}${separator}${blocks.join('\n\n')}\n`
 }
 
 function upsertTrustBlocks(
@@ -134,7 +136,7 @@ function upsertTrustBlocks(
     new Set(keys.map(normalizeCodexHookTrustLookupKey))
   )
   if (ranges.length === 0) {
-    return appendTrustBlocks(content, keys, hash, explicitEnabled ?? true)
+    return appendHookTrustBlocks(content, [buildTrustBlocks(keys, hash, explicitEnabled ?? true)])
   }
   const enabled = explicitEnabled ?? !ranges.some((range) => isBlockDisabled(content, range))
   const block = buildTrustBlocks(keys, hash, enabled)
@@ -154,20 +156,6 @@ function isBlockDisabled(content: string, range: HookTrustBlockRange): boolean {
   const block = content.slice(range.headerLineEnd, range.end)
   const enabledMatch = /^[ \t]*enabled[ \t]*=[ \t]*(true|false)[ \t\r]*(?:#.*)?$/m.exec(block)
   return enabledMatch?.[1] === 'false'
-}
-
-function appendTrustBlocks(
-  content: string,
-  keys: readonly string[],
-  hash: string,
-  enabled: boolean
-): string {
-  const block = buildTrustBlocks(keys, hash, enabled)
-  if (content.length === 0) {
-    return `${block}\n`
-  }
-  const separator = content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n'
-  return `${content}${separator}${block}\n`
 }
 
 function buildTrustBlocks(keys: readonly string[], hash: string, enabled: boolean): string {
