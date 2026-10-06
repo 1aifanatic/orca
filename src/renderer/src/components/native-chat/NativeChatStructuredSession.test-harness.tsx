@@ -234,7 +234,8 @@ export function createStructuredSessionMocks() {
               working: mocks.turnId !== null || mocks.isWorking,
               prompt: mocks.promptItems.length > 0,
               background: mocks.showBackgroundTasks || mocks.monitoringBackgroundTasks,
-              outbox: outbox.outbox.length > 0
+              sending: outbox.outbox.length > 0,
+              retry: false
             },
             epoch: 'epoch-1',
             rewind: { surface: undefined },

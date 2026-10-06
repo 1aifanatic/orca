@@ -553,14 +553,14 @@ describe('a /compact against a host that holds commands in line', () => {
     expect(outcome).toEqual({
       accepted: false,
       error: 'Your earlier message is still being sent. Run /clear once it has gone.',
-      refusedWhile: 'outbox'
+      refusedWhile: 'sending'
     })
   })
 
   it('/clear with the agent idle behind its own unsent message says it is still being sent', async () => {
     items = []
     outboxEntries = [unsent('on-its-way')]
-    const { result } = render()
+    const { result, rerender } = render()
     let outcome: unknown
     await act(async () => {
       outcome = await result.current.runConversationCommand('clear')
@@ -568,15 +568,19 @@ describe('a /compact against a host that holds commands in line', () => {
     expect(outcome).toEqual({
       accepted: false,
       error: 'Your earlier message is still being sent. Run /clear once it has gone.',
-      refusedWhile: 'outbox'
+      refusedWhile: 'sending'
     })
     expect(commandCalls()).toHaveLength(0)
+    // Its send fails: no longer being sent, so that line goes; the row now offers Retry.
+    outboxEntries = [unsent('on-its-way', { lastAttemptAt: 2, lastFailure: { kind: 'failed' } })]
+    rerender()
+    expect(result.current.commandRefusalCauses).toMatchObject({ sending: false, retry: true })
   })
 
   it('/clear behind only a failed message names its Retry, not the agent working', async () => {
     items = []
     outboxEntries = [unsent('failed', { lastAttemptAt: 2, lastFailure: { kind: 'failed' } })]
-    const { result } = render()
+    const { result, rerender } = render()
     let outcome: unknown
     await act(async () => {
       outcome = await result.current.runConversationCommand('clear')
@@ -584,9 +588,13 @@ describe('a /compact against a host that holds commands in line', () => {
     expect(outcome).toEqual({
       accepted: false,
       error: 'Retry your earlier message, then run /clear.',
-      refusedWhile: 'outbox'
+      refusedWhile: 'retry'
     })
     expect(commandCalls()).toHaveLength(0)
+    // Retried: on its way again, it offers no Retry, so that line goes.
+    outboxEntries = [unsent('failed')]
+    rerender()
+    expect(result.current.commandRefusalCauses).toMatchObject({ sending: true, retry: false })
   })
 
   it('/clear mid-turn is still refused here, and never asks to wait', async () => {
