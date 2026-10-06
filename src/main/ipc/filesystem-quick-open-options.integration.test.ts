@@ -28,8 +28,9 @@ it('honors inherited ignores, opt-in links, cycles, retargets and relay parity i
   await writeFile(join(root, 'ignored.txt'), 'ignored')
   await writeFile(join(root, 'apps', 'api', '.env'), 'api')
   await writeFile(join(external, 'linked.md'), 'external')
-  await symlink(external, join(root, 'linked'), 'dir')
-  await symlink(root, join(root, 'cycle'), 'dir')
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+  await symlink(external, join(root, 'linked'), linkType)
+  await symlink(root, join(root, 'cycle'), linkType)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: listing authorization only reads these store methods.
   const store = {
     getRepos: () => [{ id: 'fixture', path: root }],
@@ -81,7 +82,7 @@ it('honors inherited ignores, opt-in links, cycles, retargets and relay parity i
     )
   ).toContain('linked/fresh.md')
   await rm(join(root, 'linked'))
-  await symlink(join(root, 'apps'), join(root, 'linked'), 'dir')
+  await symlink(join(root, 'apps'), join(root, 'linked'), linkType)
   const reopened = await listQuickOpenFiles(
     root,
     store,
