@@ -35,7 +35,8 @@ import {
 import {
   getStructuredAgentSessionPendingSends,
   getStructuredAgentSessionSendNotice,
-  structuredAgentSessionSendOut
+  structuredAgentSessionSendOut,
+  subscribeToStructuredAgentSessionPendingSends
 } from './structured-agent-session-pending-sends'
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
 
@@ -170,6 +171,71 @@ describe('structured agent session message sender', () => {
     expect(sendCalls()).toBe(2)
   })
 
+  it('paces a send whose checks fail before its request goes out, never a tight loop', async () => {
+    mocks.compatible.mockRejectedValue(new Error('incompatible server'))
+    const a = send('a', { target: { kind: 'environment', environmentId: 'env-1' } })
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    expect(await a.outcome).toBe('returned')
+    // At 0, 1, 3, 7, 15 and 23 s: the same pace as resends after a request went out.
+    expect(mocks.compatible.mock.calls.length).toBeLessThanOrEqual(6)
+    expect(sendCalls()).toBe(0)
+  })
+
+  it("keeps the host's reason when it refused every resend by throwing, without saying not sent", async () => {
+    const thrown = Object.assign(new Error('refused'), {
+      response: {
+        error: {
+          data: {
+            refusal: {
+              code: 'structured_agent_session_unsupported',
+              message: 'off',
+              details: { reason: 'hostDisabled' }
+            }
+          }
+        }
+      }
+    })
+    mocks.call.mockRejectedValue(thrown)
+    const a = send('a')
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    expect(await a.outcome).toBe('unconfirmed')
+    const notice = getStructuredAgentSessionSendNotice(SESSION) ?? ''
+    expect(notice).toContain("Orca couldn't confirm your message reached the agent")
+    expect(notice.length).toBeGreaterThan(
+      "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed."
+        .length
+    )
+    expect(notice).not.toContain('was not sent')
+  })
+
+  it('keeps an open chat drawing a recorded send until its row arrives', async () => {
+    const stop = subscribeToStructuredAgentSessionPendingSends(SESSION, () => {})
+    const calls = deferredCalls()
+    const a = send('a')
+    await flush()
+    calls[0].resolve(okSubmission(a.clientMessageId, 'accepted'))
+    expect(await a.outcome).toBe('recorded')
+    // The reply beat the history: the bubble stays, without blocking the next send.
+    expect(phases()).toEqual(['a:recorded'])
+    expect(structuredAgentSessionSendOut(SESSION)).toBe(false)
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [submission(a.clientMessageId, 'accepted')],
+      []
+    )
+    expect(phases()).toEqual([])
+    stop()
+  })
+
+  it('keeps nothing for a chat nobody is watching once its send is recorded', async () => {
+    const calls = deferredCalls()
+    const a = send('a')
+    await flush()
+    calls[0].resolve(okSubmission(a.clientMessageId, 'accepted'))
+    expect(await a.outcome).toBe('recorded')
+    expect(phases()).toEqual([])
+  })
+
   it('keeps a pending send only to give back what a Stop withdraws', async () => {
     const calls = deferredCalls()
     const a = send('a')
@@ -297,7 +363,7 @@ describe('structured agent session message sender', () => {
       expect(call[2]).toMatchObject({ envelope: { clientOperationId: a.clientMessageId } })
     }
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     expect(phases()).toEqual([])
     expect(mocks.handBack).toHaveBeenCalledTimes(1)
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
@@ -342,7 +408,7 @@ describe('structured agent session message sender', () => {
     const a = send('a')
     await flush()
     await vi.advanceTimersByTimeAsync(1_000)
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     // Given back, but worded as unconfirmed: the earlier attempt may have landed, so check first.
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
@@ -374,7 +440,7 @@ describe('structured agent session message sender', () => {
     await flush()
     // The first attempt went out and its answer was lost: a same-id resend is due.
     stopStructuredAgentSessionSends(SESSION)
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
     )
@@ -389,7 +455,7 @@ describe('structured agent session message sender', () => {
     await flush()
     stopStructuredAgentSessionSends(SESSION)
     calls[0].reject(new Error('timeout'))
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
     )
@@ -414,7 +480,7 @@ describe('structured agent session message sender', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     stopStructuredAgentSessionSends(SESSION)
     ready()
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
     )
@@ -592,7 +658,7 @@ describe('a send whose fate is unknown never freezes the chat', () => {
     expect(phases()).toEqual(['a:sending'])
     expect(structuredAgentSessionSendOut(SESSION)).toBe(true)
     await vi.advanceTimersByTimeAsync(1)
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     expect(structuredAgentSessionSendOut(SESSION)).toBe(false)
     // The next message goes out at once.
     mocks.call.mockReset()
@@ -616,7 +682,7 @@ describe('a send whose fate is unknown never freezes the chat', () => {
     await flush()
     const calls = deferredCalls()
     await vi.advanceTimersByTimeAsync(1_000)
-    expect(await a.outcome).toBe('returned')
+    expect(await a.outcome).toBe('unconfirmed')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
     )

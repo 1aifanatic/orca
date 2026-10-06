@@ -184,6 +184,22 @@ describe('notes sent to a new agent', () => {
     expect(isNoteInFlight('note-a')).toBe(false)
   })
 
+  // One owner of the text: the new chat's composer has it, so the notes let it go.
+  it('leave the shelf when the new chat gives them back to its composer', async () => {
+    mocks.launch.mockResolvedValue({ sessionId: chat.sessionId, fence: 1 })
+    mocks.callRuntimeRpc.mockResolvedValue({
+      ok: false,
+      refusal: { code: 'agent_session_checkpoint_stale', message: 'stale' }
+    })
+    const { onDelivered } = sendNotesToNewAgent()
+
+    await vi.waitFor(() => expect(onDelivered).toHaveBeenCalledOnce())
+    expect(isNoteInFlight('note-a')).toBe(false)
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe(
+      NOTES
+    )
+  })
+
   it("come back to the shelf when the start fails, and wait in that chat's composer", async () => {
     mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
     const { onDelivered } = sendNotesToNewAgent()

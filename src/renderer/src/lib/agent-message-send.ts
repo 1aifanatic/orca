@@ -48,7 +48,10 @@ export async function sendMessageToAgent(args: {
     return { status: 'not-ready', code: 'session-send-refused' }
   }
   // Anything else leaves the text with the caller, which keeps its notes.
-  return (await sent.outcome) === 'recorded'
+  const outcome = await sent.outcome
+  return outcome === 'recorded'
     ? { status: 'sent' }
-    : { status: 'not-writable', code: 'session-send-refused' }
+    : outcome === 'unconfirmed'
+      ? { status: 'unconfirmed', code: 'runtime-unverifiable' }
+      : { status: 'not-writable', code: 'session-send-refused' }
 }

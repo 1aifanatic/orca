@@ -83,6 +83,11 @@ export function getStructuredAgentSessionPendingSends(
   return sessions.get(sessionId)?.entries ?? EMPTY_STRUCTURED_AGENT_SESSION_SENDS
 }
 
+/** A view of this chat is mounted, so something draws its sends. */
+export function structuredAgentSessionSendsWatched(sessionId: string): boolean {
+  return (sessions.get(sessionId)?.listeners.size ?? 0) > 0
+}
+
 /** A send of this chat is out and not yet settled: the chat takes no other until it is. */
 export function structuredAgentSessionSendOut(sessionId: string): boolean {
   return getStructuredAgentSessionPendingSends(sessionId).some((entry) => entry.phase === 'sending')

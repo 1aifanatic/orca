@@ -92,8 +92,8 @@ export function newestSteerableQueuedMessageCard(
 
 /**
  * The sends the transcript draws as pending bubbles. One the host holds as a card (same id) is a
- * card, and so is one on its way asking to be queued while the agent works, which would otherwise
- * paint in the transcript until its card appears. One the host recorded is its row's to draw.
+ * card, and so is one asking to be queued while the agent works, which would otherwise paint in the
+ * transcript until its card appears. A recorded one stays drawn until its row arrives.
  */
 export function pendingSendsOutsideQueuedCards(
   pending: readonly StructuredAgentSessionPendingSend[],
@@ -103,9 +103,7 @@ export function pendingSendsOutsideQueuedCards(
   const held = new Set(heldIds)
   const next = pending.filter(
     (entry) =>
-      entry.phase !== 'recorded' &&
-      !held.has(entry.clientMessageId) &&
-      !(isWorking && entry.delivery === 'queue-if-active')
+      !held.has(entry.clientMessageId) && !(isWorking && entry.delivery === 'queue-if-active')
   )
   return next.length === pending.length ? pending : next
 }

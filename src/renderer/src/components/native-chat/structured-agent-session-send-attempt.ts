@@ -20,6 +20,11 @@ import {
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
+import {
+  agentSessionThrownFailure,
+  readAgentSessionErrorRefusal,
+  type AgentSessionWriteFailure
+} from '../../../../shared/agent-session-write-failure'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import {
   ensureLocalRuntimeCapabilities,
@@ -85,6 +90,8 @@ export type StructuredAgentSessionSendAttempt = {
   evidence: StructuredAgentSessionSendEvidence
   /** The host's row, when its answer carried one. */
   submission: AgentJournalSubmission | null
+  /** The refusal a thrown answer carried: what the host said, though it proves nothing. */
+  thrownRefusal: AgentSessionWriteFailure | null
 }
 
 /** Null when the attempt stopped before its request went out, or was abandoned meanwhile. */
@@ -140,6 +147,10 @@ export async function attemptStructuredAgentSessionSend(args: {
   const value = answer.kind === 'result' && answer.result.ok ? answer.result.value : null
   return {
     evidence: structuredAgentSessionSendEvidence(answer, { answersWithProof, firstAttempt }),
-    submission: value && 'submission' in value ? value.submission : null
+    submission: value && 'submission' in value ? value.submission : null,
+    thrownRefusal:
+      answer.kind === 'thrown' && readAgentSessionErrorRefusal(answer.error)
+        ? agentSessionThrownFailure(answer.error, answer.rpcCode)
+        : null
   }
 }

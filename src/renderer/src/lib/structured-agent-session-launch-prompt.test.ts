@@ -24,6 +24,7 @@ import {
   readNativeChatDraftCache
 } from '@/components/native-chat/native-chat-draft-cache'
 import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
+import { getStructuredAgentSessionPendingSends } from '@/components/native-chat/structured-agent-session-pending-sends'
 import {
   discardStructuredLaunchPrompts,
   hasStagedStructuredLaunchPrompt,
@@ -58,6 +59,13 @@ function accepted(clientMessageId: string) {
 
 function sends(): unknown[][] {
   return mocks.call.mock.calls.filter(([, method]) => method === 'agentSession.send')
+}
+
+function pendingTexts(): string[] {
+  return getStructuredAgentSessionPendingSends(SESSION).map(
+    (entry) =>
+      `${entry.body.blocks.map((block) => (block.type === 'text' ? block.text : '')).join('')}:${entry.phase}`
+  )
 }
 
 function draft(): string {
@@ -177,31 +185,43 @@ describe('settleStructuredAgentLaunchPrompt', () => {
         options: { prompt: 'review this', onPromptDelivered },
         stagedPrompt
       })
-    ).resolves.toEqual({ delivered: false, failureNotified: false })
+    ).resolves.toEqual({ delivered: false, failureNotified: false, inComposer: true })
 
     expect(onPromptDelivered).not.toHaveBeenCalled()
     expect(draft()).toBe('review this')
   })
 
-  it('waits in the composer when the person sent a message of their own first', async () => {
+  // The launch prompt is the chat's first message: drawn as sending from the click, nothing typed
+  // while the chat starts goes out ahead of it, and it goes out once the chat exists.
+  it('holds the chat for its prompt from the click, then sends that prompt first, once', async () => {
     const stagedPrompt = stageStructuredLaunchPrompt(SESSION, 'review this')
-    mocks.call.mockImplementation(() => new Promise(() => {}))
+    expect(pendingTexts()).toEqual(['review this:sending'])
     expect(
-      sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'mine first' })
+      sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'typed meanwhile' })
+    ).toBeNull()
+    expect(sends()).toHaveLength(0)
+
+    let receive = (_receipt: { sessionId: string; fence: number }): void => {}
+    const settled = settleStructuredAgentLaunchPrompt({
+      launchResult: new Promise((resolve) => (receive = resolve)),
+      target,
+      options: { prompt: 'review this' },
+      stagedPrompt
+    })
+    receive({ sessionId: SESSION, fence: 1 })
+    await expect(settled).resolves.toEqual({ delivered: true, failureNotified: false })
+    expect(sends()).toHaveLength(1)
+    expect(JSON.stringify(sends()[0])).toContain('review this')
+    expect(
+      sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'typed after' })
     ).not.toBeNull()
+  })
 
-    await expect(
-      settleStructuredAgentLaunchPrompt({
-        launchResult: Promise.resolve({ sessionId: SESSION, fence: 1 }),
-        target,
-        options: { prompt: 'review this' },
-        stagedPrompt
-      })
-    ).resolves.toEqual({ delivered: false, failureNotified: false })
-
-    expect(draft()).toBe('review this')
-    expect(hasStagedStructuredLaunchPrompt(SESSION)).toBe(false)
-    expect(JSON.stringify(sends())).not.toContain('review this')
+  it('gives the chat back its send slot when the launch is cancelled, sending nothing', () => {
+    stageStructuredLaunchPrompt(SESSION, 'review this')
+    discardStructuredLaunchPrompts(SESSION)
+    expect(pendingTexts()).toEqual([])
+    expect(sends()).toHaveLength(0)
   })
 
   it('reports nothing for a draft, which the composer adopts instead', () => {
