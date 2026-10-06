@@ -22,10 +22,13 @@ import {
   ORCAD_SNAPSHOT_MEMBERS,
   ORCAD_STATE_MUTATION_BUSY,
   ORCAD_STATE_MUTATION_DEADLINE,
+  ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME
 } from './orcad-state-snapshot-members'
 import { orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
+import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
+import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 
 /**
  * The member names go into the command unquoted (see `captureOrcadStateSnapshotCommand`), so
@@ -63,10 +66,17 @@ export const ORCAD_STATE_MUTATION_DEADLINE_SECONDS = 15 * 60
  * pty-less command running after its channel closes, so a client that stops waiting has not
  * stopped the work, and a rerun beside it would mix two restores in one stage.
  */
-function serializedStateMutationCommand(baseDir: string, script: string): string {
+export function serializedStateMutationCommand(
+  baseDir: string,
+  script: string,
+  heartbeatSeconds = ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS
+): string {
   const lock = shellEscape(`${baseDir}/${ORCAD_STATE_MUTATION_LOCK_DIRNAME}`)
+  const fence = shellEscape(
+    `${baseDir}/${ORCAD_ACTIVATION_TRANSACTION_DIRNAME}/${RELAY_INSTALL_LOCK_NAME}`
+  )
   const guarded = [
-    `lock=${lock};`,
+    `lock=${lock}; fence=${fence};`,
     `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
     'if ! mkdir "$lock" 2>/dev/null; then',
     'holder=$(cat "$lock/pid" 2>/dev/null);',
@@ -75,7 +85,11 @@ function serializedStateMutationCommand(baseDir: string, script: string): string
     '{ [ -z "$holder" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }; then',
     `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; fi;`,
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; }; fi;`,
-    `echo $$ > "$lock/pid"; trap 'rm -rf "$lock"' EXIT;`,
+    'echo $$ > "$lock/pid";',
+    // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
+    'touch -c -m "$fence" 2>/dev/null;',
+    `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do touch -c -m "$fence" 2>/dev/null; done ) >/dev/null 2>&1 & beat=$!;`,
+    `trap 'kill "$beat" 2>/dev/null; rm -rf "$lock"' EXIT;`,
     script
   ].join(' ')
   const run = `sh -c ${shellEscape(guarded)}`

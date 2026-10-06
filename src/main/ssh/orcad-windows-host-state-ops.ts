@@ -10,9 +10,12 @@
  */
 import { PRIMARY_RUNTIME_METADATA_FILE } from '../../shared/runtime-bootstrap'
 import { ORCAD_LOCK_FILE_NAME } from '../orcad/orcad-instance-lock'
+import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
+import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
 import {
   ORCAD_SNAPSHOT_MEMBERS,
   ORCAD_STATE_MUTATION_BUSY,
+  ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME,
   ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME
@@ -36,6 +39,16 @@ const MEMBERS = ${text(ORCAD_SNAPSHOT_MEMBERS)}
 const STATE_DIR = ${text(ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME)}
 const RESTORE_STAGE = ${text(ORCAD_STATE_RESTORE_STAGE_DIRNAME)}
 const MUTATION_LOCK = path.join(__dirname, ${text(ORCAD_STATE_MUTATION_LOCK_DIRNAME)})
+const FENCE = path.join(__dirname, ${text(ORCAD_ACTIVATION_TRANSACTION_DIRNAME)}, ${text(RELAY_INSTALL_LOCK_NAME)})
+
+// The fence goes stale by age; a live mutation keeps it fresh, and a dead process stops.
+function refreshFence() {
+  try {
+    if (!lstatOrNull(FENCE)?.isDirectory()) return
+    const now = new Date()
+    fs.utimesSync(FENCE, now, now)
+  } catch {}
+}
 
 function processAlive(pid) {
   try { process.kill(pid, 0); return true } catch (error) { return error.code === 'EPERM' }
@@ -44,7 +57,7 @@ function processAlive(pid) {
 // One capture, restore or clear at a time: a client that stopped waiting has not stopped the
 // last one, and a rerun beside it would mix two restores in one stage.
 function withStateMutationLock(run) {
-  return (...opArgs) => {
+  return async (...opArgs) => {
     try { fs.mkdirSync(MUTATION_LOCK) } catch (error) {
       if (error.code !== 'EEXIST') return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
       let holder = NaN
@@ -53,10 +66,14 @@ function withStateMutationLock(run) {
       if (Number.isInteger(holder) && holder > 0 ? processAlive(holder) : !aged) return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
       try { removeTree(MUTATION_LOCK); fs.mkdirSync(MUTATION_LOCK) } catch { return answer(${text(ORCAD_STATE_MUTATION_BUSY)}) }
     }
+    refreshFence()
+    // Why async ops: a synchronous copy would block this timer for the whole mutation.
+    const beat = setInterval(refreshFence, ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000})
     try {
       fs.writeFileSync(path.join(MUTATION_LOCK, 'pid'), String(process.pid))
-      return run(...opArgs)
+      return await run(...opArgs)
     } finally {
+      clearInterval(beat)
       try { removeTree(MUTATION_LOCK) } catch {}
     }
   }
@@ -106,9 +123,10 @@ function renameWithRetry(from, to) {
 }
 
 const removeTree = (target) => fs.rmSync(target, { recursive: true, force: true, maxRetries: 5 })
+const removeTreeAsync = (target) => fs.promises.rm(target, { recursive: true, force: true, maxRetries: 5 })
 
 Object.assign(ops, {
-  'snapshot-capture': withStateMutationLock((root, snapshotDir) => {
+  'snapshot-capture': withStateMutationLock(async (root, snapshotDir) => {
     let present
     try {
       present = MEMBERS.filter((member) => lstatOrNull(path.join(root, member)))
@@ -117,15 +135,15 @@ Object.assign(ops, {
     if (present.length === 0) return answer('EMPTY')
     const partial = path.join(snapshotDir, STATE_DIR + '.partial-' + process.pid)
     try {
-      removeTree(partial)
+      await removeTreeAsync(partial)
       fs.mkdirSync(partial, { recursive: true })
       for (const member of present) {
-        fs.cpSync(path.join(root, member), path.join(partial, member), { recursive: true, errorOnExist: true })
+        await fs.promises.cp(path.join(root, member), path.join(partial, member), { recursive: true, errorOnExist: true })
       }
-      removeTree(path.join(snapshotDir, STATE_DIR))
+      await removeTreeAsync(path.join(snapshotDir, STATE_DIR))
       renameWithRetry(partial, path.join(snapshotDir, STATE_DIR))
     } catch {
-      try { removeTree(partial) } catch {}
+      try { await removeTreeAsync(partial) } catch {}
       return answer('FAILED')
     }
     answer('CAPTURED')
@@ -138,37 +156,37 @@ Object.assign(ops, {
   },
 
   // Copy into a stage first, so an unreadable snapshot fails before live state is touched.
-  'snapshot-restore': withStateMutationLock((root, snapshotDir) => {
+  'snapshot-restore': withStateMutationLock(async (root, snapshotDir) => {
     const state = path.join(snapshotDir, STATE_DIR)
     const stats = lstatOrNull(state)
     if (!stats || !stats.isDirectory()) return answer('MISSING')
     const stage = path.join(root, RESTORE_STAGE)
     try {
       fs.mkdirSync(root, { recursive: true })
-      removeTree(stage)
-      fs.cpSync(state, stage, { recursive: true })
+      await removeTreeAsync(stage)
+      await fs.promises.cp(state, stage, { recursive: true })
       if (!MEMBERS.some((member) => lstatOrNull(path.join(stage, member)))) {
-        removeTree(stage)
+        await removeTreeAsync(stage)
         return answer('FAILED')
       }
     } catch {
-      try { removeTree(stage) } catch {}
+      try { await removeTreeAsync(stage) } catch {}
       return answer('FAILED')
     }
     try {
-      for (const member of MEMBERS) removeTree(path.join(root, member))
+      for (const member of MEMBERS) await removeTreeAsync(path.join(root, member))
       for (const member of MEMBERS) {
         if (lstatOrNull(path.join(stage, member))) renameWithRetry(path.join(stage, member), path.join(root, member))
       }
-      removeTree(stage)
+      await removeTreeAsync(stage)
     } catch { return answer('FAILED') }
     answer('RESTORED')
   }),
 
-  'snapshot-clear': withStateMutationLock((root) => {
+  'snapshot-clear': withStateMutationLock(async (root) => {
     try {
       fs.mkdirSync(root, { recursive: true })
-      for (const member of MEMBERS) removeTree(path.join(root, member))
+      for (const member of MEMBERS) await removeTreeAsync(path.join(root, member))
     } catch { return answer('FAILED') }
     answer('RESTORED')
   }),

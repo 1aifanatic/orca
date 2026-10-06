@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync
@@ -152,5 +153,19 @@ describe('the Windows state-mutation lock', () => {
     expect(await op('snapshot-restore', root, snapshot)).toBe('RESTORED')
     expect(readFileSync(join(root, 'orca-profile-index.json'), 'utf8')).toBe('{"v":"before"}')
     expect(existsSync(lock)).toBe(false)
+  })
+})
+
+describe('the Windows state-mutation fence heartbeat', () => {
+  it('refreshes a held activation fence when a mutation starts, and never creates one', async () => {
+    const fence = join(dir, '.orcad-activation-transaction', '.install-lock')
+    mkdirSync(fence, { recursive: true })
+    utimesSync(fence, new Date(0), new Date(0))
+    expect(await op('snapshot-capture', root, snapshot)).toBe('CAPTURED')
+    expect(Date.now() - statSync(fence).mtimeMs).toBeLessThan(60_000)
+
+    rmSync(fence, { recursive: true })
+    expect(await op('snapshot-restore', root, snapshot)).toBe('RESTORED')
+    expect(existsSync(fence)).toBe(false)
   })
 })

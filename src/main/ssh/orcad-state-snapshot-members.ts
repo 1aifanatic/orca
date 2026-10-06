@@ -21,6 +21,13 @@ export const ORCAD_STATE_RESTORE_STAGE_DIRNAME = '.orcad-state-restore-stage'
 /** Under `~/.orca-remote`: held by one snapshot capture, restore or clear at a time. */
 export const ORCAD_STATE_MUTATION_LOCK_DIRNAME = 'orcad-state-mutation.lock'
 
+/**
+ * How often a running mutation refreshes the activation fence's mtime. Why: the fence goes
+ * stale by age (INSTALL_LOCK_STALE_MS), and a mutation may outlast that, so a live run keeps
+ * it fresh while a dead one stops within a beat.
+ */
+export const ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS = 60
+
 /** A state mutation found another still running, so it did nothing. */
 export const ORCAD_STATE_MUTATION_BUSY = 'STATE_MUTATION_BUSY'
 /** The host-side deadline killed a state mutation part way through. */
