@@ -5,6 +5,7 @@ import { buildWorkspaceSessionPayload } from '@/lib/workspace-session'
 import { buildWorkspaceSessionPatch } from '@/lib/workspace-session-patch'
 import { parseWorkspaceSession } from '../../../../shared/workspace-session-schema'
 import { parkRecoveredEditorDrafts } from './editor/actions/parked-recovered-editor-drafts'
+import { captureWorktreeOperationGenerationSnapshot } from '@/lib/worktree-operation-generation'
 import type { ClosedEditorTabSnapshot } from './editor/types/open-file'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }))
@@ -26,6 +27,59 @@ function draft(index: number): ClosedEditorTabSnapshot {
 }
 
 describe('durable editor recovery', () => {
+  it.each([false, true])('does not reuse a captured SSH rival when dirty=%s', (isDirty) => {
+    const store = createTestStore()
+    const snapshot = { ...draft(1), runtimeEnvironmentId: null, externalSshTargetId: 'target-a' }
+    const rival = {
+      ...snapshot,
+      id: 'rival',
+      isDirty,
+      externalSshTargetId: undefined,
+      operationProvenance: {
+        ownershipProjection: 'explicit' as const,
+        generation: captureWorktreeOperationGenerationSnapshot({
+          executionHostId: 'ssh:target-b',
+          runtimeEnvironmentId: null
+        })
+      }
+    }
+    const open = vi.fn(() => 'rival')
+    store.setState({
+      openFiles: [rival],
+      editorDrafts: isDirty ? { rival: 'rival text' } : {},
+      recentlyClosedEditorTabsByWorktree: { [WORKSPACE]: [snapshot] },
+      openFile: open
+    })
+    expect(store.getState().reopenClosedEditorTab(WORKSPACE)).toBe(true)
+    expect(open).not.toHaveBeenCalled()
+    expect(store.getState().openFiles).toEqual([rival])
+    expect(store.getState().recentlyClosedEditorTabsByWorktree[WORKSPACE]).toContainEqual(snapshot)
+  })
+
+  it('persists a recovered draft under its captured SSH owner rather than stale fields', () => {
+    const store = createTestStore()
+    const snapshot = {
+      ...draft(1),
+      operationProvenance: {
+        ownershipProjection: 'explicit' as const,
+        generation: captureWorktreeOperationGenerationSnapshot({
+          executionHostId: 'ssh:target',
+          runtimeEnvironmentId: 'hub'
+        })
+      }
+    }
+    store.setState(parkRecoveredEditorDrafts(store.getState(), WORKSPACE, [snapshot]))
+    expect(
+      buildWorkspaceSessionPayload(store.getState()).recoveredEditorDraftsByWorktree?.[
+        WORKSPACE
+      ]?.[0]
+    ).toMatchObject({
+      runtimeEnvironmentId: 'hub',
+      externalSshTargetId: 'target',
+      dirtyDraftContent: snapshot.dirtyDraftContent
+    })
+  })
+
   it('retains every buffer and its authority through serialization and fresh-store hydration', () => {
     const store = createTestStore()
     const originals = Array.from({ length: 42 }, (_value, index) => draft(index))

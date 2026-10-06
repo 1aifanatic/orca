@@ -1,3 +1,4 @@
+import { getPersistedEditorOwnerFields } from './editor-file-operation-owner'
 import type { PersistedOpenFile } from '../../../shared/workspace-session-state-types'
 import type { ClosedEditorTabSnapshot } from '../store/slices/editor/types/open-file'
 
@@ -18,8 +19,7 @@ export function buildPersistedRecoveredEditorDrafts(
       worktreeId,
       language: snapshot.language,
       isPreview: false,
-      runtimeEnvironmentId: snapshot.runtimeEnvironmentId,
-      externalSshTargetId: snapshot.externalSshTargetId,
+      ...getPersistedEditorOwnerFields(snapshot),
       dirtyDraftContent: snapshot.dirtyDraftContent,
       lastKnownDiskSignature: snapshot.lastKnownDiskSignature
     }))

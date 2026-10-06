@@ -1,3 +1,4 @@
+import { getPersistedEditorOwnerFields } from '@/lib/editor-file-operation-owner'
 import { toast } from 'sonner'
 import type { EditorGet, EditorSet } from '../types/editor-set-get'
 import { restoreRecentlyClosedTabPosition } from '../../recently-closed-tabs'
@@ -5,7 +6,12 @@ import { buildEditorActiveResult } from '../tabs/editor-open-target-group'
 import { deferRecoveredEditorDraft } from './parked-recovered-editor-drafts'
 import { editorDocumentPathOwnerKey } from '../file-ids/editor-document-identity'
 import { recoveredDraftBlockedMessage } from './recovered-draft-block-notice'
-import { getReusableOpenFileModes, matchesEditorMode } from '../file-ids/editor-file-ids'
+import {
+  canReuseLocalWslAlias,
+  getReusableOpenFileModes,
+  isSameEditorOwner,
+  matchesEditorMode
+} from '../file-ids/editor-file-ids'
 
 export function reopenRecoveredEditorTab(
   set: EditorSet,
@@ -23,7 +29,8 @@ export function reopenRecoveredEditorTab(
       [worktreeId]: (s.recentlyClosedEditorTabsByWorktree[worktreeId] ?? []).slice(1)
     }
   }))
-  const { position, reopenId, dirtyDraftContent, ...file } = next
+  const { position, reopenId, dirtyDraftContent, ...snapshotFile } = next
+  const file = { ...snapshotFile, ...getPersistedEditorOwnerFields(snapshotFile) }
   const collisionToast = (): void => {
     toast.info(recoveredDraftBlockedMessage('unsaved-rival', file))
   }
@@ -58,9 +65,32 @@ export function reopenRecoveredEditorTab(
     // snapshot whose identity key differs from a live read-only log still lands on that record.
     const identity = editorDocumentPathOwnerKey(file)
     const modes = getReusableOpenFileModes(file.mode)
+    const candidateIdentity = (
+      candidate: (typeof beforeCollisionCheck.openFiles)[number]
+    ): string =>
+      editorDocumentPathOwnerKey({ ...candidate, ...getPersistedEditorOwnerFields(candidate) })
+    // The normal open path can reuse an unstamped SSH tab; protect its captured owner first.
+    const rivalOwner = beforeCollisionCheck.openFiles.find(
+      (candidate) =>
+        matchesEditorMode(candidate, modes) &&
+        isSameEditorOwner(candidate, file.worktreeId, file.runtimeEnvironmentId) &&
+        (candidate.filePath === file.filePath ||
+          canReuseLocalWslAlias(
+            beforeCollisionCheck,
+            candidate,
+            file,
+            file.runtimeEnvironmentId
+          )) &&
+        candidateIdentity({ ...candidate, filePath: file.filePath }) !== identity
+    )
+    if (rivalOwner) {
+      set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
+      toast.info(recoveredDraftBlockedMessage('other-owner', file))
+      return true
+    }
     const matches = beforeCollisionCheck.openFiles.filter(
       (candidate) =>
-        matchesEditorMode(candidate, modes) && editorDocumentPathOwnerKey(candidate) === identity
+        matchesEditorMode(candidate, modes) && candidateIdentity(candidate) === identity
     )
     // Why writable first: a read-only twin only blocks the draft when nothing writable can hold it.
     const live = matches.find((candidate) => candidate.readOnly !== true) ?? matches[0]
