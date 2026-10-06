@@ -17996,7 +17996,8 @@
         "imagePreviewUnavailable": "Preview unavailable",
         "workspaceAttachmentMismatch": "Files can only be attached to their source workspace.",
         "attachmentOwnerChanged": "This workspace changed hosts while attaching — drop the files again.",
-        "attachmentUnreadable": "Couldn't read the dropped files."
+        "attachmentUnreadable": "Couldn't read the dropped files.",
+        "tooManyAttachments": "Attach {{value0}} or fewer files at a time."
       },
       "tool": {
         "exitCode": "exit {{value0}}",
@@ -18098,6 +18099,9 @@
       "status": {
         "responding": "Agent is responding",
         "working": "Working…",
+        "stopping": "Stopping…",
+        "queueAfterStop": "Queue a message to run after the stop",
+        "sendAfterStop": "Send a message to run after the stop",
         "thinking": "Thinking",
         "workingFor": "Working for {{value0}}",
         "workedFor": "Worked for {{value0}}",

@@ -20,6 +20,7 @@ import type {
 } from '../../../../shared/agent-session-attachments'
 import type { AppState } from '@/store/types'
 import { reportTerminalDropUploadSkipsAndFailures } from '../terminal-pane/terminal-drop-upload-report'
+import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
 import {
   findTerminalTabWorktreeId,
   resolveNativeChatFileLinkContext
@@ -175,6 +176,14 @@ export function nativeChatAttachFailedNotice(names: readonly string[], cause = '
     : translate('components.native-chat.composer.attachFailed', "Couldn't attach {{files}}.", {
         files
       })
+}
+
+export function nativeChatTooManyAttachmentsNotice(): string {
+  return translate(
+    'components.native-chat.composer.tooManyAttachments',
+    'Attach {{value0}} or fewer files at a time.',
+    { value0: NATIVE_FILE_DROP_MAX_PATHS }
+  )
 }
 
 export { nativeChatLocalAttachmentUnsupportedNotice } from './native-chat-composer-target'

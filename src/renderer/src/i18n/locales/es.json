@@ -17736,7 +17736,8 @@
         "imagePreview": "Vista previa de la imagen a tamaño completo",
         "workspaceAttachmentMismatch": "Los archivos solo se pueden adjuntar a su espacio de trabajo de origen.",
         "attachmentOwnerChanged": "Este espacio de trabajo cambió de host durante la conexión; vuelve a soltar los archivos.",
-        "attachmentUnreadable": "No se pudieron leer los archivos soltados."
+        "attachmentUnreadable": "No se pudieron leer los archivos soltados.",
+        "tooManyAttachments": "Adjunta {{value0}} archivos o menos a la vez."
       },
       "tool": {
         "running": "Ejecutando…",
@@ -17834,6 +17835,9 @@
       },
       "status": {
         "responding": "El agente está respondiendo",
+        "stopping": "Deteniendo…",
+        "queueAfterStop": "Pon en cola un mensaje para que se ejecute después de detenerse",
+        "sendAfterStop": "Envía un mensaje para que se ejecute después de detenerse",
         "interruptedAfter": "Interrumpido tras {{value0}}",
         "failedAfter": "Falló tras {{value0}}",
         "working": "Trabajando…",

@@ -17835,7 +17835,8 @@
         "imagePreviewUnavailable": "Aperçu indisponible",
         "workspaceAttachmentMismatch": "Les fichiers ne peuvent être joints qu'à leur espace de travail source.",
         "attachmentOwnerChanged": "Cet espace de travail a changé d'hôte lors de la connexion : supprimez à nouveau les fichiers.",
-        "attachmentUnreadable": "Impossible de lire les fichiers supprimés."
+        "attachmentUnreadable": "Impossible de lire les fichiers supprimés.",
+        "tooManyAttachments": "Joignez {{value0}} fichiers maximum à la fois."
       },
       "tool": {
         "running": "En cours…",
@@ -17934,6 +17935,9 @@
       "status": {
         "responding": "L'agent répond",
         "working": "Fonctionnement…",
+        "stopping": "Arrêt en cours…",
+        "queueAfterStop": "Mettez un message en file d'attente pour l'exécuter après l'arrêt",
+        "sendAfterStop": "Envoyez un message pour l'exécuter après l'arrêt",
         "thinking": "Réflexion",
         "workingFor": "En cours depuis {{value0}}",
         "workedFor": "A travaillé pendant {{value0}}",

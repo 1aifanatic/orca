@@ -17771,7 +17771,8 @@
         "imagePreviewUnavailable": "プレビューは利用できません",
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
-        "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。"
+        "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
+        "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。"
       },
       "tool": {
         "running": "実行中…",
@@ -17870,6 +17871,9 @@
       "status": {
         "responding": "Agent が応答中です",
         "working": "処理中…",
+        "stopping": "停止中…",
+        "queueAfterStop": "停止後に実行するメッセージをキューに追加",
+        "sendAfterStop": "停止後に実行するメッセージを送信",
         "thinking": "考え",
         "workingFor": "{{value0}} 処理中",
         "workedFor": "{{value0}} で完了",
