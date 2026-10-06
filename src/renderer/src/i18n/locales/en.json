@@ -233,7 +233,15 @@
         "wide": "Wide",
         "full": "Full",
         "pixels": "px",
-        "reset": "Reset"
+        "reset": "Reset",
+        "matchTerminalInterface": "Match terminal interface",
+        "matchTerminalInterfaceDescription": "Use your terminal interface's font and colors for the whole chat. Stays in sync if you change your terminal theme later.",
+        "contrast": "Contrast",
+        "contrastDescription": "How bright chat text is against the background. The right end matches the older, brighter look.",
+        "softer": "Softer",
+        "sharper": "Sharper",
+        "terminalControlledHint": "Set by terminal interface.",
+        "terminalControlledTooltip": "Matching your terminal interface. Turn off Match terminal interface to change this."
       }
     },
     "browser": {
@@ -7385,7 +7393,7 @@
             "defaultViewNative": "Chat UI",
             "structuredTitle": "Use updated structured native chat",
             "structuredCopy": "Open new Codex and Claude agents as structured chats. Off opens them in the terminal-backed chat. Chats that already exist stay as they are.",
-            "structuredScope": "Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat, and Windows falls back to it unless Orca can read process start times.",
+            "structuredScope": "Runs on this machine and on paired Orca servers running a version that supports it; older servers keep terminal chat. WSL and SSH hosts continue to use terminal chat.",
             "structuredToggleLabel": "Toggle updated structured native chat",
             "resumeTitle": "Resume working chats automatically after a restart",
             "resumeCopy": "When Orca quits or installs an update, chats that were working are automatically resumed when Orca is reopened.",
@@ -18085,6 +18093,9 @@
       "status": {
         "responding": "Agent is responding",
         "working": "Working…",
+        "stopping": "Stopping…",
+        "queueAfterStop": "Queue a message to run after the stop",
+        "sendAfterStop": "Send a message to run after the stop",
         "thinking": "Thinking",
         "workingFor": "Working for {{value0}}",
         "workedFor": "Worked for {{value0}}",

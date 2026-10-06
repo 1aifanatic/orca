@@ -2,11 +2,10 @@ import {
   NATIVE_CHAT_TRANSCRIPT_OUTER_CLASS,
   NATIVE_CHAT_TRANSCRIPT_COLUMN_CLASS
 } from './native-chat-appearance-style'
+import { NativeChatJumpToLatest } from './NativeChatJumpToLatest'
 import { useNativeChatRowTypography } from './use-native-chat-row-typography'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown } from 'lucide-react'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
-import { translate } from '@/i18n/i18n'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { useNativeChatTranscriptProjection } from './use-native-chat-transcript-projection'
 import { structuredQuestionTranscript } from './structured-agent-question-projection'
@@ -84,6 +83,7 @@ export function NativeChatMessageList({
   deliveryNotices,
   awaitingInput = null,
   turnActivity,
+  stopping = false,
   runtimeContext
 }: {
   session: NativeChatLiveSession
@@ -110,6 +110,8 @@ export function NativeChatMessageList({
   /** Set while the turn waits on the reader; the live activity line yields to it. */
   awaitingInput?: NativeChatAwaitingInput | null
   turnActivity?: NativeChatTurnActivity | null
+  /** A person's Stop is ending the live turn: its tail line reads "Stopping…". */
+  stopping?: boolean
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element {
   const [navigationRequest, setNavigationRequest] = useState<NativeChatNavigationRequest | null>(
@@ -203,13 +205,14 @@ export function NativeChatMessageList({
     line: {
       draws: tailRow === 'activity',
       thinking: turnStatuses.active?.thinking === true,
+      stopping,
       activityText: turnActivity?.text
     }
   })
   // A message waiting behind the live turn draws after that turn's live activity, not inside it.
   const { slots, waitingSlots } = useMemo(
-    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, journalItems),
-    [allSlots, journalItems]
+    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, journalItems, stopping),
+    [allSlots, journalItems, stopping]
   )
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,
@@ -404,17 +407,7 @@ export function NativeChatMessageList({
             onReaderScroll={beginNavigation}
             pendingId={railHistoryJump.pendingId}
           />
-          {showJump ? (
-            <button
-              type="button"
-              onClick={jumpToLatest}
-              aria-label={translate('components.native-chat.jumpToLatest', 'Jump to latest')}
-              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ArrowDown className="size-3.5" />
-              <span>{translate('components.native-chat.jumpToLatest', 'Jump to latest')}</span>
-            </button>
-          ) : null}
+          <NativeChatJumpToLatest visible={showJump} onJump={jumpToLatest} />
         </div>
         {taskListState.list && taskListState.list.tasks.length > 0 ? (
           <div className="shrink-0 px-3 pb-2 sm:px-4">
