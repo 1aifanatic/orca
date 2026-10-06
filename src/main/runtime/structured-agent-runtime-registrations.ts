@@ -11,7 +11,6 @@ import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definiti
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { PI_RPC_AGENT } from '../pi/rpc-agent-definition'
 import { PiRpcSessionAdapter } from '../pi/rpc-session-adapter'
 import { createPiRpcLaunchResolver } from '../pi/rpc-launch-resolution'
@@ -246,8 +245,7 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
           onIdle: context.followUps.releaseUnansweredDispatches,
           logger: context.deps.logger
         }),
-      supportsLocation: (location) =>
-        location.executionHostId === LOCAL_EXECUTION_HOST_ID && location.wslDistro === null,
+      supportsLocation: supportsSupervisedProviderChildLocation,
       resolveAccountHomePath: async ({ launchEnv }) =>
         launchEnv.PI_CODING_AGENT_DIR?.trim() || join(homedir(), '.pi', 'agent')
     },

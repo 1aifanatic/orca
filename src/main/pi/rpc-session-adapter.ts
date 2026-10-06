@@ -19,7 +19,7 @@ import { piRpcProviderLink, type PiRpcResolvedLaunch } from './rpc-launch-resolu
 import { PiRpcSession, type PiRpcSessionDeps, type PiRpcConnection } from './rpc-session'
 import { PiRpcPromptError, preparePiRpcPrompt } from './rpc-prompt'
 import { applyPiRpcSessionOption, readPiRpcSessionOptions } from './rpc-options'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import { ClaudeDispatchContentError } from '../claude/claude-structured-dispatch-content'
 
 export type PiRpcSessionAdapterDeps = PiRpcSessionDeps & {
@@ -36,8 +36,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
   private readonly retiring = new Set<Promise<void>>()
   constructor(private readonly deps: PiRpcSessionAdapterDeps) {}
 
-  supportsLocation: NonNullable<StructuredAgentSessionAdapter['supportsLocation']> = (location) =>
-    location.executionHostId === LOCAL_EXECUTION_HOST_ID && location.wslDistro === null
+  supportsLocation = supportsSupervisedProviderChildLocation
   supportsCreate: NonNullable<StructuredAgentSessionAdapter['supportsCreate']> = (
     location,
     agent
