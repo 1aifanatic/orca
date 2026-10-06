@@ -44,6 +44,7 @@ vi.mock('lucide-react-native', () =>
     [
       'ArrowDown',
       'ArrowUp',
+      'ChevronDown',
       'ChevronsDownUp',
       'ChevronsUpDown',
       'ShieldQuestion',
@@ -202,7 +203,7 @@ describe('terminal prompt presentation with the production view, card and compos
   })
 
   it.each(['toggle', 'hold'])(
-    'keeps stopping active %s dictation available when a prompt arrives',
+    'keeps %s dictation and attachments available while a prompt blocks Send',
     async (dictationMode) => {
       const onMicPress = vi.fn()
       const onMicPressOut = vi.fn()
@@ -214,8 +215,12 @@ describe('terminal prompt presentation with the production view, card and compos
         ;(dictationMode === 'hold' ? stop.props.onPressOut : stop.props.onPress)()
       })
       expect(dictationMode === 'hold' ? onMicPressOut : onMicPress).toHaveBeenCalledOnce()
-      await render({ permission, onMicPress, dictationMode })
-      expect(tree!.root.findByProps({ accessibilityLabel: 'Dictate' }).props.disabled).toBe(true)
+      await render({ permission, onMicPress, dictationMode, onAttachImage: vi.fn() })
+      expect(tree!.root.findByProps({ accessibilityLabel: 'Dictate' }).props.disabled).toBe(false)
+      expect(tree!.root.findByProps({ accessibilityLabel: 'Attach image' }).props.disabled).toBe(
+        false
+      )
+      expect(sendButton().props.disabled).toBe(true)
     }
   )
 })

@@ -16,6 +16,7 @@ export function MobileNativeChatPromptCard({
   onAnswerAsk,
   onCancelAsk,
   onCancelPrompt,
+  onHidePrompt,
   permission,
   onRespondPermission,
   question,
@@ -27,6 +28,8 @@ export function MobileNativeChatPromptCard({
   onAnswerAsk?: (prompt: AskPrompt, selections: AskAnswerSelection[]) => Promise<boolean>
   onCancelAsk?: () => Promise<boolean>
   onCancelPrompt?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
+  /** Hide the permission/question occurrence and free Send, writing nothing. */
+  onHidePrompt?: () => void
   permission?: MobileChatPermission | null
   onRespondPermission?: (send: string) => Promise<boolean>
   question?: MobileChatQuestion | null
@@ -51,6 +54,7 @@ export function MobileNativeChatPromptCard({
           }
           return accepted
         }}
+        onHide={onDismissAsk}
       />
     )
   }
@@ -61,6 +65,7 @@ export function MobileNativeChatPromptCard({
         permission={permission}
         onRespond={async (send) => (await onRespondPermission?.(send)) ?? false}
         onCancel={onCancelPrompt}
+        onHide={onHidePrompt}
       />
     )
   }
@@ -71,6 +76,7 @@ export function MobileNativeChatPromptCard({
         question={question}
         onAnswer={async (text) => (await onAnswerQuestion?.(text)) ?? false}
         onCancel={onCancelPrompt}
+        onHide={onHidePrompt}
       />
     )
   }

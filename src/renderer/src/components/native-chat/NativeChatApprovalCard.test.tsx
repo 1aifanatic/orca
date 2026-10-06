@@ -131,6 +131,22 @@ describe('NativeChatApprovalCard', () => {
     outside.remove()
   })
 
+  it('does not take focus from text being typed when it appears', () => {
+    const draft = document.createElement('textarea')
+    document.body.appendChild(draft)
+    draft.focus()
+    render(
+      <NativeChatApprovalCard
+        approval={{ title: 'Allow command?', options: [{ label: 'Allow', send: 'allow' }] }}
+        onChoose={() => {}}
+        onHide={() => {}}
+        shouldFocus
+      />
+    )
+    expect(document.activeElement).toBe(draft)
+    draft.remove()
+  })
+
   it('keeps all oversized provider context in one bounded scroller above the actions', () => {
     const description = `Read access outside the workspace ${'description '.repeat(400)}`
     const decisionReason = `The path is outside the allowed root. ${'reason '.repeat(400)}`

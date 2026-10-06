@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { ShieldQuestion, X } from 'lucide-react'
+import { ChevronDown, ShieldQuestion, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isEditableTarget } from '@/lib/editable-target'
 import { translate } from '@/i18n/i18n'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { NativeChatMarkdown } from './NativeChatMarkdown'
@@ -17,8 +18,8 @@ export type NativeChatApprovalCardProps = {
   onChoose: (option: string) => void
   /** Cancel the active provider turn while this card owns the composer region. */
   onCancel?: () => void
-  /** Escape's action when there is no `onCancel` (and so no cancel button), e.g. Deny. */
-  onEscape?: () => void
+  /** Without `onCancel`: hide the card and give the input back, writing nothing; Escape does too. */
+  onHide?: () => void
   /** A choice is being delivered: the options wait for its answer. */
   isSubmitting?: boolean
   shouldFocus?: boolean
@@ -36,7 +37,7 @@ export function NativeChatApprovalCard({
   approval,
   onChoose,
   onCancel,
-  onEscape,
+  onHide,
   isSubmitting = false,
   shouldFocus = false,
   onLinkClick,
@@ -54,10 +55,24 @@ export function NativeChatApprovalCard({
     approval.detail
   )
   useEffect(() => {
-    if (shouldFocus) {
+    // Why: a card arriving mid-typing must not take the keyboard from the composer.
+    if (shouldFocus && !isEditableTarget(document.activeElement)) {
       cardRef.current?.focus()
     }
   }, [shouldFocus])
+  const headerAction = onCancel
+    ? {
+        run: onCancel,
+        Icon: X,
+        label: translate('components.native-chat.approval.cancel', 'Cancel')
+      }
+    : onHide
+      ? {
+          run: onHide,
+          Icon: ChevronDown,
+          label: translate('components.native-chat.approval.hide', 'Hide')
+        }
+      : null
 
   return (
     <div className="min-h-0 shrink overflow-hidden bg-chat-canvas">
@@ -69,11 +84,10 @@ export function NativeChatApprovalCard({
           aria-label={approval.title}
           tabIndex={-1}
           onKeyDown={(event) => {
-            const escape = onCancel ?? onEscape
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing && escape) {
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing && headerAction) {
               event.preventDefault()
               event.stopPropagation()
-              escape()
+              headerAction.run()
             }
           }}
           className="flex min-h-0 w-full flex-1 flex-col gap-2 overflow-hidden rounded-lg border border-input bg-card px-4 py-3 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -85,14 +99,14 @@ export function NativeChatApprovalCard({
                 {approval.title}
               </p>
             </div>
-            {onCancel ? (
+            {headerAction ? (
               <button
                 type="button"
-                onClick={onCancel}
-                aria-label={translate('components.native-chat.approval.cancel', 'Cancel')}
+                onClick={headerAction.run}
+                aria-label={headerAction.label}
                 className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <X className="size-4" />
+                <headerAction.Icon className="size-4" />
               </button>
             ) : null}
           </div>

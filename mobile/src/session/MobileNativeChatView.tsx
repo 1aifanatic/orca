@@ -134,6 +134,7 @@ type Props = MobileQueuedSlotProps & {
   onCancelAsk?: () => Promise<boolean>
   /** Cancel a structured approval/question with exact item identity when supported. */
   onCancelPrompt?: (prompt?: { itemId: string; expectedRevision: number }) => Promise<boolean>
+  onHidePrompt?: () => void
   question?: MobileChatQuestion | null
   onAnswerQuestion?: (text: string) => Promise<boolean>
   permission?: MobileChatPermission | null
@@ -194,6 +195,7 @@ export function MobileNativeChatView({
   onAnswerAsk,
   onCancelAsk,
   onCancelPrompt,
+  onHidePrompt,
   question,
   onAnswerQuestion,
   permission,
@@ -315,10 +317,6 @@ export function MobileNativeChatView({
   const showLoading = status === 'loading' && messages.length === 0
 
   const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
-  // Why terminal-backed only: a send there types into the agent's prompt and can answer it; a
-  // structured send never does (the host queues it behind the prompt).
-  const promptCardOwnsInput =
-    !structuredActivityUi && (ask != null || permission != null || question != null)
   const emptyStateView = emptyState ? (
     <View style={styles.center}>
       <Text style={styles.emptyTitle}>{emptyState.title}</Text>
@@ -396,16 +394,8 @@ export function MobileNativeChatView({
       {queuedCards}
       <MobileNativeChatPromptCard
         key={promptKey ?? undefined}
-        ask={ask}
-        askKey={askKey}
-        onDismissAsk={onDismissAsk}
-        onAnswerAsk={onAnswerAsk}
-        onCancelAsk={onCancelAsk}
-        onCancelPrompt={onCancelPrompt}
-        permission={permission}
-        onRespondPermission={onRespondPermission}
-        question={question}
-        onAnswerQuestion={onAnswerQuestion}
+        {...{ ask, askKey, onDismissAsk, onAnswerAsk, onCancelAsk, onCancelPrompt, onHidePrompt }}
+        {...{ permission, onRespondPermission, question, onAnswerQuestion }}
       />
       <View style={styles.chromeRow}>
         <View style={styles.chromeLeft}>
@@ -465,8 +455,13 @@ export function MobileNativeChatView({
         dictationMode={dictationMode}
         onMicPressIn={onMicPressIn}
         onMicPressOut={onMicPressOut}
-        disabled={lockReason !== null || promptCardOwnsInput}
-        placeholder={mobileNativeChatComposerPlaceholder(lockReason, promptCardOwnsInput)}
+        disabled={lockReason !== null}
+        // Why only Send, terminal-backed only: that send types into the agent's prompt and can
+        // answer it, while drafting never does; the host queues a structured send behind it.
+        sendDisabled={
+          !structuredActivityUi && (ask != null || permission != null || question != null)
+        }
+        placeholder={mobileNativeChatComposerPlaceholder(lockReason)}
         filePaths={filePaths}
         onNeedFiles={onNeedFiles}
       />

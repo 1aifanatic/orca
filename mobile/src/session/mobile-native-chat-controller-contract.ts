@@ -63,6 +63,8 @@ export type MobileNativeChatController = {
     selections: AskAnswerSelection[]
   ) => Promise<boolean>
   handleNativeChatCancelAsk: () => Promise<boolean>
+  /** Terminal lane: hide the permission/question occurrence and free Send, writing nothing. */
+  hideNativeChatPrompt?: () => void
   handleNativeChatCancelPrompt?: (prompt?: {
     itemId: string
     expectedRevision: number

@@ -1,8 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import {
-  NATIVE_CHAT_APPROVAL_DENY_SEND,
-  type InteractivePromptCard
-} from './native-chat-interactive-prompt'
+import type { InteractivePromptCard } from './native-chat-interactive-prompt'
 import { NativeChatQuestionCard } from './NativeChatQuestionCard'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import type { NativeChatInteractiveSend } from './use-native-chat-interactive-send'
@@ -14,8 +11,8 @@ import type { NativeChatInteractiveSend } from './use-native-chat-interactive-se
  * cancel/deny as ESC. Unmount cancels scheduled writes and ignores late results; writes already
  * issued to the transport cannot be recalled.
  *
- * The card hides (`onDismiss`) only once its answer was delivered: a refused or unconfirmed
- * answer keeps the choices up, so the user can answer again here or in the terminal.
+ * The card hides (`onDismiss`) once its answer was delivered, or when the user hides it (writing
+ * nothing): a refused or unconfirmed answer keeps the choices up to answer again.
  */
 export function NativeChatInteractiveCard({
   card,
@@ -26,7 +23,7 @@ export function NativeChatInteractiveCard({
 }: {
   card: NonNullable<InteractivePromptCard>
   send: NativeChatInteractiveSend
-  /** Hide this occurrence after its answer write was acknowledged. */
+  /** Hide this occurrence: after its answer was acknowledged, or when the user hides it. */
   onDismiss: () => void
   /** Move focus to an approval card, which has no text input of its own. */
   shouldFocus?: boolean
@@ -90,6 +87,7 @@ export function NativeChatInteractiveCard({
           }
           setSubmitting(true)
         }}
+        onHide={onDismiss}
         onCancel={() => {
           if (cancellingRef.current) {
             return
@@ -134,16 +132,13 @@ export function NativeChatInteractiveCard({
         }
       })
   }
-  const deny = card.approval.options.find(
-    (option) => option.send === NATIVE_CHAT_APPROVAL_DENY_SEND
-  )
   return (
     <NativeChatApprovalCard
       approval={card.approval}
       shouldFocus={shouldFocus}
       isSubmitting={submitting}
       onChoose={choose}
-      {...(deny ? { onEscape: () => choose(deny.send) } : {})}
+      onHide={onDismiss}
     />
   )
 }

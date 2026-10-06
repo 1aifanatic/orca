@@ -246,12 +246,24 @@ describe('NativeChatInteractiveCard approvals', () => {
     expect(composerShown()).toBe(false)
   })
 
-  it('answers Escape with Deny', () => {
-    mocks.sendRawVerified.mockResolvedValue(true)
-    render(cardElement())
-    fireEvent.keyDown(screen.getByRole('group'), { key: 'Escape' })
-    expect(mocks.sendRawVerified).toHaveBeenCalledWith('\x1b')
-  })
+  it.each(['Escape', 'Hide'])(
+    'hides the approval on %s without writing, until a new wait shows it again',
+    (gesture) => {
+      const rendered = render(cardElement())
+      if (gesture === 'Escape') {
+        fireEvent.keyDown(screen.getByRole('group'), { key: 'Escape' })
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+      }
+      expect(composerShown()).toBe(true)
+      expect(mocks.sendRawVerified).not.toHaveBeenCalled()
+      expect(mocks.sendRaw).not.toHaveBeenCalled()
+
+      status.stateStartedAt = 20
+      rendered.rerender(cardElement())
+      expect(screen.getByText('Allow Bash?')).toBeInTheDocument()
+    }
+  )
 
   it('shows a second approval with the same text once it is a new wait', async () => {
     mocks.sendRawVerified.mockResolvedValue(true)
@@ -288,6 +300,18 @@ describe('NativeChatInteractiveCard answer lifecycle', () => {
     expect(mocks.cancel).not.toHaveBeenCalled()
     expect(screen.queryByTestId('native-chat-question-card-title')).not.toBeInTheDocument()
     expect(composerShown()).toBe(true)
+  })
+
+  it.each(['Escape', 'Hide'])('hides the question on %s without writing', (gesture) => {
+    render(cardElement())
+    if (gesture === 'Escape') {
+      fireEvent.keyDown(screen.getByTestId('native-chat-question-card-title'), { key: 'Escape' })
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    }
+    expect(composerShown()).toBe(true)
+    expect(mocks.cancelAsk).not.toHaveBeenCalled()
+    expect(mocks.sendAnswer).not.toHaveBeenCalled()
   })
 
   it('keeps the question when its Cancel was not delivered', async () => {

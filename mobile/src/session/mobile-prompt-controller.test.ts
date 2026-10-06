@@ -19,7 +19,9 @@ import {
   getController,
   askCancel,
   askAnswer,
-  sendError
+  askHide,
+  sendError,
+  getTree
 } from './__mocks__/mobile-prompt-controller'
 
 const client: RpcClient = {
@@ -223,6 +225,42 @@ describe('prompt cards through the production controller, send contract and view
       expect(sendButton().props.disabled).toBe(false)
     }
   )
+
+  it('hides a permission without writing and shows the next occurrence again', async () => {
+    await render({ tab: permissionTab })
+    act(() => {
+      getTree().root.findByProps({ accessibilityLabel: 'Hide' }).props.onPress()
+    })
+    expect(getController().nativeChatPermission).toBe(null)
+    expect(sendButton().props.disabled).toBe(false)
+    expect(client.sendRequest).not.toHaveBeenCalled()
+    await render({
+      tab: { ...permissionTab, agentStatus: { ...permissionTab.agentStatus, stateStartedAt: 20 } }
+    })
+    expect(getController().nativeChatPermission).not.toBe(null)
+    expect(sendButton().props.disabled).toBe(true)
+  })
+
+  it('hides an ask without writing', async () => {
+    await render({
+      tab: {
+        ...baseTab,
+        agentStatus: {
+          ...baseTab.agentStatus,
+          lastAssistantMessage: '',
+          toolName: 'AskUserQuestion',
+          interactivePrompt: JSON.stringify({
+            questions: [{ question: 'Pick?', options: [{ label: 'East' }] }]
+          })
+        }
+      }
+    })
+    act(() => {
+      askHide()
+    })
+    expect(getController().nativeChatAsk).toBe(null)
+    expect(client.sendRequest).not.toHaveBeenCalled()
+  })
 
   it('keeps an acknowledged Deny hidden after the chat screen remounts on a lingering status', async () => {
     await render({ tab: permissionTab })

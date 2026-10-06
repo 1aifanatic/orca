@@ -93,16 +93,13 @@ export function useSettledMobileNativeChatInputLock(
   return lockHeld ? (rawLockReason ?? 'waiting') : null
 }
 
-/** What the composer says while it cannot send, or its normal prompt. */
+/** What the composer says while the input lease blocks it, or its normal prompt. */
 export function mobileNativeChatComposerPlaceholder(
-  lockReason: MobileNativeChatInputLockReason | null,
-  promptCardOwnsInput: boolean
+  lockReason: MobileNativeChatInputLockReason | null
 ): string {
-  if (lockReason === 'disconnected') {
-    return 'Reconnecting…'
-  }
-  if (lockReason === 'waiting') {
-    return 'Waiting for terminal…'
-  }
-  return promptCardOwnsInput ? 'Answer the prompt above' : 'Message, @files, /commands'
+  return lockReason === 'disconnected'
+    ? 'Reconnecting…'
+    : lockReason === 'waiting'
+      ? 'Waiting for terminal…'
+      : 'Message, @files, /commands'
 }

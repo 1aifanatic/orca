@@ -6,7 +6,7 @@ import type { useMobileStructuredAgentSession } from './use-mobile-structured-ag
 import { useNativeChatAcceptedAction } from './use-native-chat-action-outcomes'
 import { useMobileNativeChatPromptDismiss } from './use-mobile-native-chat-prompt-dismiss'
 
-/** Acknowledged terminal answers hide their card without changing the host's status. */
+/** Acknowledged answers, or the user's Hide, hide a terminal card without changing host status. */
 export function useMobileNativeChatPromptPresentation({
   permission,
   question,
@@ -67,6 +67,7 @@ export function useMobileNativeChatPromptPresentation({
     occurrenceKey: promptKey === null ? null : JSON.stringify([scopeKey, sessionKey, promptKey]),
     permission: showPrompt ? permission : null,
     question: showPrompt ? question : null,
+    hidePrompt: dismissPrompt,
     respondPermission: respond,
     answerQuestion: answer
   }
@@ -92,6 +93,7 @@ export function useMobileNativeChatPromptCards({
   | 'handleNativeChatRespondPermission'
   | 'handleNativeChatQuestionAnswer'
   | 'handleNativeChatCancelPrompt'
+  | 'hideNativeChatPrompt'
 > {
   const respond = useNativeChatAcceptedAction(
     structured?.respondPermission ?? terminal.respondPermission,
@@ -113,6 +115,7 @@ export function useMobileNativeChatPromptCards({
     handleNativeChatQuestionAnswer: structured
       ? structured.respondQuestion
       : presentation.answerQuestion,
-    handleNativeChatCancelPrompt: structured ? cancel : undefined
+    handleNativeChatCancelPrompt: structured ? cancel : undefined,
+    hideNativeChatPrompt: structured ? undefined : presentation.hidePrompt
   }
 }

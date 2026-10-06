@@ -1,6 +1,6 @@
 import { ImeInput } from '@/lib/ime-text-field'
 import { useState, type RefObject } from 'react'
-import { Check, Pencil, X } from 'lucide-react'
+import { Check, ChevronDown, Pencil, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { AskAnswerSelection, AskPrompt } from './native-chat-interactive-prompt'
@@ -15,6 +15,8 @@ export type NativeChatQuestionCardProps = {
   allowOther?: boolean | readonly boolean[]
   /** Dismiss the prompt (sends Escape to the agent). */
   onCancel: () => void
+  /** Hide the card and give the input back, writing nothing; Escape does too. */
+  onHide?: () => void
   /** Exposes the free-text row so pane-level Paste can target it while the
    *  card replaces the composer. */
   answerInputRef?: RefObject<HTMLInputElement | null>
@@ -39,6 +41,7 @@ export function NativeChatQuestionCard({
   onAnswer,
   allowOther = true,
   onCancel,
+  onHide,
   answerInputRef
 }: NativeChatQuestionCardProps): React.JSX.Element {
   const [index, setIndex] = useState(0)
@@ -160,7 +163,17 @@ export function NativeChatQuestionCard({
     // Part of the composer: docked in the bottom input region, matching the
     // composer's width and padding, rendered as the "ask" dialog card directly
     // above the text input. Its free-text row is the answer input.
-    <div className="shrink-0 bg-chat-canvas" aria-busy={isSubmitting}>
+    <div
+      className="shrink-0 bg-chat-canvas"
+      aria-busy={isSubmitting}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !event.nativeEvent.isComposing && onHide) {
+          event.preventDefault()
+          event.stopPropagation()
+          onHide()
+        }
+      }}
+    >
       <div className="mx-auto w-full max-w-(--chat-content-max-width) px-3 pt-2 pb-4 sm:px-4">
         {total > 1 ? (
           <div className="mb-2 flex gap-1 overflow-x-auto pb-1 scrollbar-sleek">
@@ -199,6 +212,16 @@ export function NativeChatQuestionCard({
             >
               {q.question}
             </p>
+            {onHide ? (
+              <button
+                type="button"
+                onClick={onHide}
+                aria-label={translate('components.native-chat.question.hide', 'Hide')}
+                className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronDown className="size-4" />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onCancel}
