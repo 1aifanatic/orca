@@ -20,6 +20,10 @@ export const SESSION = 'session-alpha'
 export const WORKSPACE = 'workspace-1'
 export const THREAD = '019fd532-7c11-7a90-b6de-4e1a2c3d5f60'
 export const NOW = 1_800_000_000_000
+export const ATTENTION_READ = {
+  sessionId: SESSION,
+  observedCursor: { epoch: 'attention-epoch', sequence: 7 }
+} as const
 export const REWIND_METHOD = 'agentSession.rewind'
 export const CONVERSATION_OUTLINE_METHOD = 'agentSession.conversationOutline'
 export const STATUS_FEED_METHOD = 'agentSession.subscribeStatus'
@@ -311,6 +315,8 @@ export function paramsFor(method: string): unknown {
     }
     case 'agentSession.history':
       return { sessionId: SESSION, direction: 'tail' }
+    case 'agentSession.acknowledgeAttention':
+      return { ...ATTENTION_READ, observedCursor: { ...ATTENTION_READ.observedCursor } }
     case 'agentSession.modelCatalog':
       return { agent: 'codex', sessionId: SESSION }
     case 'agentSession.hold':

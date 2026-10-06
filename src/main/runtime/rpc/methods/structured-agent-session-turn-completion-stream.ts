@@ -9,6 +9,7 @@
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
   requireInstalledStructuredHost,
+  requireStructuredCapability,
   requireStructuredHost as requireHost
 } from './structured-agent-session-gate'
 import {
@@ -24,6 +25,7 @@ export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
     name: 'agentSession.acknowledgeAttention',
     params: AcknowledgeAttentionParams,
     handler: async (params, ctx) => {
+      requireStructuredCapability(ctx)
       if (!params.observedCursor) {
         return { acknowledged: false }
       }
