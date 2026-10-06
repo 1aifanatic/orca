@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
+import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type {
   Options as ClaudeAgentSdkOptions,
   PermissionMode
@@ -251,9 +252,10 @@ export function createClaudeStructuredLaunchResolver(
         `claude structured sessions run on the local host, not ${record.location.executionHostId}`
       )
     }
+    const accountHome = requireLegacyAgentSessionAccountHome(record.accountHome)
     const pinned = CLAUDE_STRUCTURED_AGENT.accountHomeVariable
-    if (record.accountHome.variable !== pinned) {
-      throw new Error(`claude sessions pin ${pinned}, not ${record.accountHome.variable}`)
+    if (accountHome.variable !== pinned) {
+      throw new Error(`claude sessions pin ${pinned}, not ${accountHome.variable}`)
     }
     // Every acquisition, not just the first: the account state can change under a live session, and
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
@@ -287,7 +289,7 @@ export function createClaudeStructuredLaunchResolver(
       (claudeProviderHandleLeafUuid(head) !== null ||
         (await (deps.hasTranscript ?? claudeTranscriptExists)({
           providerSessionId,
-          claudeConfigDir: record.accountHome.path
+          claudeConfigDir: accountHome.path
         })))
     // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
     // concern, and the permission mode they used to smuggle in is an owned provider option now.
@@ -313,7 +315,7 @@ export function createClaudeStructuredLaunchResolver(
       },
       cwd: await deps.resolveWorkspacePath(record.location.workspaceId),
       env,
-      claudeConfigDir: record.accountHome.path,
+      claudeConfigDir: accountHome.path,
       providerSessionId,
       resumeLeafUuid: resumesTranscript && head ? claudeProviderHandleLeafUuid(head) : null,
       resumesTranscript,

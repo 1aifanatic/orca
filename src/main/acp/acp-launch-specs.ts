@@ -9,6 +9,12 @@ import {
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../ipc/pty/host-env/spawn-env-keys'
 import type { AcpDialect } from './acp-dialects/acp-dialect'
 import { GROK_ACP_DIALECT } from './acp-dialects/grok-dialect'
+import { OPENCODE_ACP_DIALECT } from './acp-dialects/opencode-dialect'
+import { directoryAccountBinding, type AcpAccountBinding } from './acp-account-binding'
+import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-account-home'
+import { scrubOpenCodeAcpEnvironment } from '../opencode/opencode-acp-environment'
+import { openCodeStoredUserMessagesReader } from '../opencode/opencode-acp-stored-messages'
+import type { AcpStoredUserMessagesReader } from './acp-recovery-history'
 
 export type AcpLaunchSpec = {
   /** The Orca agent id (a `TuiAgent`), which names the agent's records and its catalog label. */
@@ -16,8 +22,11 @@ export type AcpLaunchSpec = {
   command: string
   /** Built per launch: `fullAccess` is the Agent Permissions setting's bypass posture. */
   args(input: { fullAccess: boolean }): string[]
-  /** Overlaid on the child's environment. */
+  /** Laid over the child's environment last, after the account and the user's own variables. */
   env: Readonly<Record<string, string>>
+  /** Rewrites what the child would inherit from Orca's own plumbing; returns the keys it must not
+   *  inherit at all. `inherited` is the environment the child process starts from. */
+  scrubEnvironment?(env: Record<string, string>, inherited: NodeJS.ProcessEnv): string[]
   dialect: AcpDialect
   /** The agent's own sign-in command, for a person to run when it reports auth required. */
   loginCommand: readonly string[]
@@ -27,12 +36,14 @@ export type AcpLaunchSpec = {
     advertised: readonly string[]
     env: Readonly<Record<string, string>>
   }): string | undefined
-  /** Variable naming the agent's config directory, pinned as each record's account home. */
-  accountHomeVariable: string
-  /** The config directory the agent uses when the variable is unset, under the user's home. */
-  defaultAccountHome(homePath: string): string
+  /** The account each chat pins, and how a launch points the agent at it. */
+  account: AcpAccountBinding
   /** Where the agent installs its own binary, searched after PATH. */
-  installDirectories(accountHomePath: string): string[]
+  installDirectories(input: { env: Readonly<Record<string, string>>; homePath: string }): string[]
+  /** Images go to the agent when it also advertises them; off sends text prompts only. */
+  imagePrompts?: true
+  /** The agent's own store of a session's user messages, read for restart recovery only. */
+  readStoredUserMessages?: AcpStoredUserMessagesReader
 }
 
 const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
@@ -50,12 +61,35 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
       : advertised.includes('cached_token')
         ? 'cached_token'
         : undefined,
-  accountHomeVariable: 'GROK_HOME',
-  defaultAccountHome: (homePath) => join(homePath, '.grok'),
-  installDirectories: (accountHomePath) => [join(accountHomePath, 'bin')]
+  account: directoryAccountBinding('GROK_HOME', (homePath) => join(homePath, '.grok')),
+  installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
 }
 
-export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [GROK_LAUNCH_SPEC]
+/** OpenCode 1.x (`opencode`) and 2.x (`opencode2`) both serve ACP through `acp`. */
+function openCodeLaunchSpec(agent: 'opencode' | 'opencode2'): AcpLaunchSpec {
+  return {
+    agent,
+    command: agent,
+    // OpenCode has no bypass flag: full access answers each permission request yes.
+    args: () => ['acp'],
+    // Applied last: the client name ACP sessions report, and no question tool, which ACP cannot
+    // answer (it would wait forever).
+    env: { OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
+    scrubEnvironment: scrubOpenCodeAcpEnvironment,
+    dialect: OPENCODE_ACP_DIALECT,
+    loginCommand: [agent, 'auth', 'login'],
+    account: openCodeAcpAccountBinding(),
+    installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
+    imagePrompts: true,
+    readStoredUserMessages: openCodeStoredUserMessagesReader()
+  }
+}
+
+export const ACP_LAUNCH_SPECS: readonly AcpLaunchSpec[] = [
+  GROK_LAUNCH_SPEC,
+  openCodeLaunchSpec('opencode'),
+  openCodeLaunchSpec('opencode2')
+]
 
 export function acpLaunchSpecFor(agent: string): AcpLaunchSpec | null {
   return ACP_LAUNCH_SPECS.find((spec) => spec.agent === agent) ?? null

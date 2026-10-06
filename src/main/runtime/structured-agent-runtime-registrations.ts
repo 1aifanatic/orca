@@ -6,6 +6,10 @@ import { supportsClaudeStructuredLocation } from '../claude/claude-structured-lo
 import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
+import {
+  agentSessionAccountHome,
+  type AgentSessionAccountHome
+} from '../../shared/agent-session-account-home'
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
@@ -27,7 +31,6 @@ import { createStructuredClaudeRuntimeAdapter } from './structured-claude-runtim
 import {
   resolveStructuredClaudeAccountHomePath,
   resolveStructuredCodexAccountHomePath,
-  resolveStructuredEnvAccountHomePath,
   type StructuredClaudeAccountHomeDeps,
   type StructuredCodexAccountHomeDeps
 } from './structured-agent-account-home'
@@ -73,6 +76,8 @@ export type StructuredAgentAccountHomeServices = {
   /** Codex's home for a launch, prepared for it; and the same answer with no side effects. */
   prepareCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
   readCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
+  /** The environment a launch inherits on this host, before any agent's own variables. */
+  resolveBaseEnvironment: () => Promise<Record<string, string>>
   workspaceTrustSettings: () => Parameters<typeof applyStructuredCodexWorkspaceTrust>[0]['settings']
 }
 
@@ -81,11 +86,11 @@ export type StructuredAgentRuntimeRegistration = {
   createAdapter: (context: StructuredAgentAdapterContext) => StructuredAgentRuntimeAdapter
   /** Whether this agent's chats can run at `location`; answered without building the host. */
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
-  /** The account home a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
-  resolveAccountHomePath: (
+  /** The account a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
+  resolveAccountHome: (
     request: StructuredAgentAccountHomeRequest,
     services: StructuredAgentAccountHomeServices
-  ) => Promise<string>
+  ) => Promise<AgentSessionAccountHome>
 }
 
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
@@ -153,19 +158,18 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
   return {
     definition: acpStructuredAgentDefinition(spec),
     supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
-    resolveAccountHomePath: async ({ launchEnv }) =>
-      resolveStructuredEnvAccountHomePath({
-        launchEnv,
-        variable: spec.accountHomeVariable,
-        defaultPath: spec.defaultAccountHome
-      }),
+    resolveAccountHome: ({ launchEnv }, services) =>
+      spec.account.resolve({ launchEnv, baseEnvironment: services.resolveBaseEnvironment }),
     createAdapter: (context) => {
       const { deps, store, followUps } = context
+      const readJournal = (sessionId: string) =>
+        replayJournal(context.journalDatabase.db, sessionId)
       return new AcpStructuredSessionAdapter({
         spec,
+        readJournal,
         resolveLaunch: createAcpStructuredLaunchResolver(spec, {
           store,
-          readJournal: (sessionId) => replayJournal(context.journalDatabase.db, sessionId),
+          readJournal,
           resolveWorkspacePath: deps.resolveWorkspacePath,
           resolveEnvironment: context.environment.resolveBaseEnvironment,
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
@@ -211,18 +215,25 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
       definition: CODEX_STRUCTURED_AGENT,
       createAdapter: createCodexAdapter,
       supportsLocation: (location) => supportsCodexStructuredLocation(location),
-      resolveAccountHomePath: resolveCodexAccountHomePath
+      resolveAccountHome: async (request, services) =>
+        agentSessionAccountHome(
+          CODEX_STRUCTURED_AGENT,
+          await resolveCodexAccountHomePath(request, services)
+        )
     },
     {
       definition: CLAUDE_STRUCTURED_AGENT,
       createAdapter: createClaudeAdapter,
       supportsLocation: supportsClaudeStructuredLocation,
-      resolveAccountHomePath: async ({ launchEnv, location }, services) =>
-        resolveStructuredClaudeAccountHomePath({
-          launchEnv,
-          wslDistro: location?.wslDistro ?? null,
-          getClaudeConfigDirectory: services.getClaudeConfigDirectory
-        })
+      resolveAccountHome: async ({ launchEnv, location }, services) =>
+        agentSessionAccountHome(
+          CLAUDE_STRUCTURED_AGENT,
+          resolveStructuredClaudeAccountHomePath({
+            launchEnv,
+            wslDistro: location?.wslDistro ?? null,
+            getClaudeConfigDirectory: services.getClaudeConfigDirectory
+          })
+        )
     },
     ...ACP_LAUNCH_SPECS.map(acpRegistration)
   ]

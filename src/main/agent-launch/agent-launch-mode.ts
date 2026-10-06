@@ -269,3 +269,10 @@ export function readAgentLaunchModeSettings(
     return null
   }
 }
+
+/** Whether a launch on this runtime opens a structured chat unless something downgrades it. */
+export function runtimePrefersStructuredLaunch(
+  runtime: Pick<OrcaRuntimeService, 'getClientSettings'>
+): boolean {
+  return prefersStructuredNativeChatByDefault(readAgentLaunchModeSettings(runtime))
+}

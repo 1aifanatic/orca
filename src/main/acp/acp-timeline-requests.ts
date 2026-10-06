@@ -16,7 +16,10 @@ export const pendingAcpResolution = {
   resolvedAt: null
 } as const
 
-export function acpPermissionPresentation(params: unknown): AcpRequestPresentation {
+export function acpPermissionPresentation(
+  params: unknown,
+  dialect: AcpDialect
+): AcpRequestPresentation {
   // The runtime already read this request and reported any field it dropped.
   const request = readAcpPermissionRequest(params, () => {})
   if (!request) {
@@ -28,7 +31,10 @@ export function acpPermissionPresentation(params: unknown): AcpRequestPresentati
       kind: 'approval',
       title: toolCall.title ?? 'Permission requested',
       detail: null,
-      options: options.map((option) => ({ id: option.optionId, label: option.name })),
+      options: options.map((option) => ({
+        id: option.optionId,
+        label: dialect.permissionOptionLabel?.(option) ?? option.name
+      })),
       resolution: pendingAcpResolution
     },
     reply: (response) => {
@@ -102,7 +108,7 @@ export function translateAcpRequest(
   }
   const presentation =
     method === 'session/request_permission'
-      ? acpPermissionPresentation(params)
+      ? acpPermissionPresentation(params, options.dialect)
       : options.dialect.request?.(method, params)
   if (!presentation) {
     return {

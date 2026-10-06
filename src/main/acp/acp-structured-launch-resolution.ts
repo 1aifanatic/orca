@@ -32,6 +32,8 @@ export type AcpStructuredLaunch = {
   args: string[]
   cwd: string
   env: Record<string, string>
+  /** Keys the child must not inherit from this process's own environment. */
+  envToDelete: string[]
   fullAccess: boolean
   /** The provider session to load; null starts a new one. */
   resume: {
@@ -60,6 +62,8 @@ export type AcpStructuredLaunchResolverDeps = {
   resolveFullAccess?: (agent: string) => boolean
   resolveCommand?: typeof resolveCliCommand
   homePath?: string
+  /** The environment the child process inherits at spawn; this process's own by default. */
+  inheritedEnv?: NodeJS.ProcessEnv
 }
 
 export function createAcpStructuredLaunchResolver(
@@ -82,25 +86,18 @@ export function createAcpStructuredLaunchResolver(
         `${spec.agent} structured sessions run on this runtime's host, not ${location.executionHostId}`
       )
     }
-    if (accountHome.variable !== spec.accountHomeVariable) {
-      throw new Error(
-        `${spec.agent} sessions pin ${spec.accountHomeVariable}, not ${accountHome.variable}`
-      )
-    }
     const base = await deps.resolveEnvironment()
-    const env: Record<string, string> = {
+    const env: Record<string, string> = spec.account.environment(accountHome, {
       ...base,
-      ...deps.resolveLaunchEnv?.(spec.agent),
-      ...spec.env,
-      [spec.accountHomeVariable]: accountHome.path
-    }
-    const pathEnv = [env.PATH ?? env.Path, ...spec.installDirectories(accountHome.path)]
+      ...deps.resolveLaunchEnv?.(spec.agent)
+    })
+    const envToDelete = spec.scrubEnvironment?.(env, deps.inheritedEnv ?? process.env) ?? []
+    Object.assign(env, spec.env)
+    const homePath = env.HOME ?? env.USERPROFILE ?? deps.homePath ?? homedir()
+    const pathEnv = [env.PATH ?? env.Path, ...spec.installDirectories({ env, homePath })]
       .filter((entry): entry is string => Boolean(entry))
       .join(delimiter)
-    const command = (deps.resolveCommand ?? resolveCliCommand)(spec.command, {
-      pathEnv,
-      homePath: env.HOME ?? env.USERPROFILE ?? deps.homePath ?? homedir()
-    })
+    const command = (deps.resolveCommand ?? resolveCliCommand)(spec.command, { pathEnv, homePath })
     const fullAccess = deps.resolveFullAccess?.(spec.agent) ?? false
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
     return {
@@ -109,6 +106,7 @@ export function createAcpStructuredLaunchResolver(
       args: spec.args({ fullAccess }),
       cwd: await deps.resolveWorkspacePath(location.workspaceId),
       env,
+      envToDelete,
       fullAccess,
       resume: head
         ? {
