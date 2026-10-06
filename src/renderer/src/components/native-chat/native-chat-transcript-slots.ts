@@ -70,6 +70,9 @@ export type NativeChatMessageSlot = {
   /** This row is behind its turn's folded status row: it draws no prose and no
    *  tool activity, only work that outlives the turn. */
   folded: boolean
+  /** Whether the message itself draws. False when the slot is here only for its turn's bar or diff
+   *  rollup: a folded or empty row, or the open block the live line shows. */
+  drawsMessage: boolean
   /** Whether this row's turn hides anything, so its status row offers a caret. */
   turnFolds: boolean
   turnDiff: NativeChatTurnDiff | undefined
@@ -207,6 +210,7 @@ export function buildNativeChatTranscriptSlots(
         status: status ?? undefined,
         statusAbove: bar?.above === true && status !== undefined,
         folded,
+        drawsMessage: drawsRow,
         turnFolds: turnKey !== undefined && foldableTurnKeys.has(turnKey),
         turnDiff,
         subagentRoster: roster,

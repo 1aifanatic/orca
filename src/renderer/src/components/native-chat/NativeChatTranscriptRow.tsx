@@ -90,7 +90,7 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
     <div className={cn('flex flex-col gap-5', sectionClassName)}>
       {/* A turn with no user bubble carries its bar above its first row. */}
       {slot.statusAbove ? statusRow : null}
-      {receipt ? (
+      {!slot.drawsMessage ? null : receipt ? (
         <NativeChatResolutionReceipt body={receipt} disclosureId={message.id} />
       ) : (
         <MessageRow
@@ -107,7 +107,6 @@ export const NativeChatTranscriptRow = memo(function NativeChatTranscriptRow({
           onLinkClick={context.onLinkClick}
           allowFileUriLinks={context.allowFileUriLinks}
           deliveryNotice={context.deliveryNotices?.get(message.id)}
-          folded={slot.folded}
           subagentRoster={slot.subagentRoster}
           subagentDisclosure={context.subagentDisclosure}
           inSubagentSection={slot.depth > 0}

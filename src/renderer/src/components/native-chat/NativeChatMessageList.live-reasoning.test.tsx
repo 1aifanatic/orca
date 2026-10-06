@@ -78,12 +78,9 @@ function journal(rows: readonly NativeChatMessage[]): AgentJournalRenderItem[] {
   ]
 }
 
-function list(
-  rows: readonly NativeChatMessage[],
-  props: Partial<React.ComponentProps<typeof NativeChatMessageList>> = {}
-): React.JSX.Element {
-  const session: NativeChatLiveSession = {
-    messages: [prompt, ...rows],
+function sessionOf(messages: NativeChatMessage[]): NativeChatLiveSession {
+  return {
+    messages,
     status: 'working',
     sessionId: 'session-1',
     agent: 'claude',
@@ -93,9 +90,15 @@ function list(
     loadEarlier: vi.fn(),
     readPhase: 'ready'
   }
+}
+
+function list(
+  rows: readonly NativeChatMessage[],
+  props: Partial<React.ComponentProps<typeof NativeChatMessageList>> = {}
+): React.JSX.Element {
   return (
     <NativeChatMessageList
-      session={session}
+      session={sessionOf([prompt, ...rows])}
       journalItems={journal(rows)}
       isWorking
       expandSignal={false}
@@ -182,5 +185,82 @@ describe('live reasoning, read through the one live line', () => {
       'aria-expanded',
       'false'
     )
+  })
+
+  // The open block can sit on a slot kept for its turn's bar or diff rollup; only the slot stays.
+  it('draws no row for the open block under a diff rollup on its turn', () => {
+    const edit: NativeChatMessage = {
+      id: 'edit-1',
+      role: 'assistant',
+      blocks: [
+        { type: 'tool-call', name: 'Diff', input: { path: 'a.ts' }, state: 'completed' },
+        { type: 'tool-result', output: '@@ -1 +1 @@\n-old\n+new' }
+      ],
+      timestamp: STARTED,
+      source: 'transcript'
+    }
+    render(
+      list([
+        edit,
+        reasoning('r-1', 'Weighing two approaches', 'running', { timestamp: STARTED + 50 })
+      ])
+    )
+    expect(screen.queryByRole('button', { name: /Reasoning/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking' }))
+    expect(screen.getAllByText('Weighing two approaches')).toHaveLength(1)
+  })
+
+  it('draws no row for the open block that carries a provider-opened turn bar', () => {
+    const asked: NativeChatMessage = { ...prompt, id: 'u1', timestamp: 1 }
+    const done: NativeChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'Done.' }],
+      timestamp: 2,
+      source: 'transcript'
+    }
+    const woke = reasoning('r-w', 'Checking the background build', 'running', { timestamp: 3 })
+    const thread = { kind: 'thread' as const }
+    const inTurn = (turnItemId: string) => ({ kind: 'turn' as const, turnItemId })
+    const item = (
+      itemId: string,
+      sequence: number,
+      body: AgentJournalRenderItem['body'],
+      turnScope: AgentJournalRenderItem['turnScope']
+    ): AgentJournalRenderItem => ({
+      itemId,
+      revision: 0,
+      sequence,
+      observedAt: sequence,
+      turnScope,
+      body
+    })
+    const items = [
+      item('u1', 1, { kind: 'message', role: 'user', blocks: asked.blocks }, thread),
+      item('t1', 2, { kind: 'turn', turnId: 't1', state: 'completed', userItemId: 'u1' }, thread),
+      item('a1', 3, { kind: 'message', role: 'assistant', blocks: done.blocks }, inTurn('t1')),
+      item(
+        'wake',
+        4,
+        { kind: 'turn', turnId: 'wake', state: 'running', userItemId: 'claude:wake' },
+        thread
+      ),
+      item(
+        'r-w',
+        5,
+        { kind: 'message', role: 'reasoning', blocks: woke.blocks, state: 'running' },
+        inTurn('wake')
+      )
+    ]
+    render(
+      list([], {
+        session: sessionOf([asked, done, woke]),
+        journalItems: items
+      })
+    )
+    expect(screen.getByText(/Working for/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reasoning/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Thinking' }))
+    expect(screen.getAllByText('Checking the background build')).toHaveLength(1)
   })
 })

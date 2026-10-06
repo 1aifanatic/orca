@@ -87,7 +87,6 @@ export const MessageRow = memo(function MessageRow({
   onLinkClick,
   allowFileUriLinks = false,
   deliveryNotice,
-  folded = false,
   subagentRoster,
   subagentDisclosure,
   inSubagentSection = false,
@@ -106,8 +105,6 @@ export const MessageRow = memo(function MessageRow({
   onLinkClick?: CommentMarkdownLinkClickHandler
   allowFileUriLinks?: boolean
   deliveryNotice?: NativeChatDeliveryNotice
-  /** Behind a folded turn: the row keeps only what outlives the turn. */
-  folded?: boolean
   /** On a roster row: its list's state and the subagents whose rows open below it. */
   subagentRoster?: NativeChatSubagentRosterState
   subagentDisclosure?: NativeChatSubagentDisclosure
@@ -141,12 +138,6 @@ export const MessageRow = memo(function MessageRow({
     subagentGroups.length === 0 &&
     backgroundTasks.length === 0
   ) {
-    return null
-  }
-
-  // Behind a folded turn this row is the work, not the answer. Rows that outlive
-  // their turn never reach here — the fold leaves them out.
-  if (folded) {
     return null
   }
 
