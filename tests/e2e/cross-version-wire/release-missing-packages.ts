@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isBuiltin } from 'node:module'
+import { dirname, join } from 'node:path'
 
 export type PackageManifest = {
   dependencies?: Record<string, string>
@@ -7,29 +9,19 @@ export type PackageManifest = {
   optionalDependencies?: Record<string, string>
 }
 
-/** Specifier (package or package subpath) to the names release source imports from it. */
-export type DroppedImports = Map<string, Set<string>>
+/** Bare specifier (package or package subpath) to the names release source imports from it. */
+export type PackageImports = Map<string, Set<string>>
 
-// Clause stops at quotes so it cannot swallow an earlier import's specifier.
-const STATIC_IMPORT = /\b(?:import|export)\s+(?:type\s+)?([^;'"]*?)\s*\bfrom\s*(['"])([^'"]+)\2/g
-const BARE_IMPORT = /\bimport\s*(?:\(\s*)?(['"])([^'"]+)\1/g
+// Anchored to a line start, with only import-clause characters, so prose in comments never matches.
+// Type-only imports are erased and never load, so they need no stand-in.
+const STATIC_IMPORT =
+  /^\s*(?:import|export)\s+(?!type\s)([\w$*{},\s]*?)\s*\bfrom\s*(['"])([^'"\s]+)\2/gm
+const BARE_IMPORT = /(?:^\s*import\s*|(?<![.\w$])import\s*\(\s*)(['"])([^'"\s]+)\1/gm
+const PACKAGE_SPECIFIER = /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*(?:\/[\w.@/-]*)?$/i
 const EXPORT_NAME = /^[A-Za-z_$][\w$]*$/
 
-function declaredPackages(manifest: PackageManifest): Set<string> {
-  return new Set([
-    ...Object.keys(manifest.dependencies ?? {}),
-    ...Object.keys(manifest.devDependencies ?? {}),
-    ...Object.keys(manifest.optionalDependencies ?? {})
-  ])
-}
-
-/** Packages the release declares that the current tree no longer declares. */
-export function droppedReleasePackages(
-  releaseManifest: PackageManifest,
-  currentManifest: PackageManifest
-): Set<string> {
-  const current = declaredPackages(currentManifest)
-  return new Set([...declaredPackages(releaseManifest)].filter((name) => !current.has(name)))
+function isPackageSpecifier(specifier: string): boolean {
+  return PACKAGE_SPECIFIER.test(specifier) && !isBuiltin(specifier)
 }
 
 function packageNameOf(specifier: string): string {
@@ -60,22 +52,15 @@ function importedNames(clause: string): string[] {
   return names
 }
 
-/** Record what one release source file imports from dropped packages. */
-export function collectDroppedImports(
-  source: string,
-  dropped: ReadonlySet<string>,
-  imports: DroppedImports
-): void {
-  if (![...dropped].some((name) => source.includes(name))) {
-    return
-  }
+/** Record what one release source file imports from packages. */
+export function collectPackageImports(source: string, imports: PackageImports): void {
   for (const [, , specifier] of source.matchAll(BARE_IMPORT)) {
-    if (dropped.has(packageNameOf(specifier!)) && !imports.has(specifier!)) {
+    if (isPackageSpecifier(specifier!) && !imports.has(specifier!)) {
       imports.set(specifier!, new Set())
     }
   }
   for (const [, clause, , specifier] of source.matchAll(STATIC_IMPORT)) {
-    if (!dropped.has(packageNameOf(specifier!))) {
+    if (!isPackageSpecifier(specifier!)) {
       continue
     }
     const names = imports.get(specifier!) ?? new Set()
@@ -86,10 +71,30 @@ export function collectDroppedImports(
   }
 }
 
+/** Node's package lookup: the nearest `node_modules/<name>` walking up from `root`. */
+function resolvesFrom(root: string, name: string): boolean {
+  for (let directory = root; ; directory = dirname(directory)) {
+    if (existsSync(join(directory, 'node_modules', name, 'package.json'))) {
+      return true
+    }
+    if (dirname(directory) === directory) {
+      return false
+    }
+  }
+}
+
+function declaredPackages(manifest: PackageManifest): Set<string> {
+  return new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+    ...Object.keys(manifest.optionalDependencies ?? {})
+  ])
+}
+
 function standInModule(release: string, specifier: string, names: Set<string>): string {
   const reason =
-    `Cross-version harness: release ${release} imports '${specifier}', which it declares ` +
-    'but the current tree no longer installs, so this release code path cannot run here.'
+    `Cross-version harness: release ${release} imports '${specifier}', which the current ` +
+    'tree does not install, so this release code path cannot run here.'
   const lines = [
     `const reason = ${JSON.stringify(reason)}`,
     'function unavailable(name) {',
@@ -114,20 +119,31 @@ function standInModule(release: string, specifier: string, names: Set<string>): 
 
 /**
  * Why: release source runs against the current install, and the release's RPC dispatcher
- * imports its whole method table, so one package the current tree dropped fails every wire
- * suite at import time. Each such package gets a stand-in in the checkout's own
- * `node_modules` that loads but refuses any use, naming the package. A package the release
- * never declared is left to fail loudly.
+ * imports its whole method table, so one package the current tree no longer has fails every
+ * wire suite at import time. Each package that does not resolve from the checkout and that
+ * the current tree does not declare gets a stand-in in the checkout's own `node_modules`:
+ * it loads, but any use throws naming the package, so a wire path that needs it still fails.
+ * A package the current tree declares but cannot resolve is a broken install; it stays loud.
  */
-export async function installDroppedDependencyStandIns(
+export async function installMissingPackageStandIns(
   root: string,
   release: string,
-  imports: DroppedImports
+  imports: PackageImports,
+  currentManifest: PackageManifest
 ): Promise<string[]> {
+  const declared = declaredPackages(currentManifest)
   const byPackage = new Map<string, string[]>()
   for (const specifier of imports.keys()) {
     const name = packageNameOf(specifier)
-    byPackage.set(name, [...(byPackage.get(name) ?? []), specifier])
+    if (declared.has(name)) {
+      continue
+    }
+    const specifiers = byPackage.get(name)
+    if (specifiers) {
+      specifiers.push(specifier)
+    } else if (!resolvesFrom(root, name)) {
+      byPackage.set(name, [specifier])
+    }
   }
   for (const [name, specifiers] of byPackage) {
     const directory = join(root, 'node_modules', ...name.split('/'))

@@ -300,11 +300,10 @@ describe('release checkout materialization', () => {
     expect(relative(cacheRoot, checkout.root)).not.toMatch(/^\.\./)
   }, 180_000)
 
-  // v1.4.221 imports @streamparser/json, which the current tree dropped.
+  // v1.4.221 imports @streamparser/json, which the current tree no longer installs.
+  // Default cache root: package resolution must walk up into the repo's node_modules.
   it('loads release source that imports a package the current tree dropped', async () => {
-    const checkout = await materializeReleaseCheckout('v1.4.221', {
-      cacheRoot: temporaryCacheRoot()
-    })
+    const checkout = await materializeReleaseCheckout('v1.4.221')
     const ripgrep = await importReleaseCheckoutModule(
       checkout,
       '/src/shared/ripgrep-dense-match-json.ts'
@@ -322,7 +321,7 @@ describe('release checkout materialization', () => {
       type: 'match'
     })
     expect(() => callExport('parseDenseRipgrepMatchJson', '{"type":"match"}', 1, 8)).toThrow(
-      /imports '@streamparser\/json'.*no longer installs/
+      /imports '@streamparser\/json'.*does not install/
     )
   }, 180_000)
 
