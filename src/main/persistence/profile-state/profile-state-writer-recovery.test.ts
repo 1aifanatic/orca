@@ -86,18 +86,20 @@ describe('profile state writer recovery', () => {
       await createRecoveryFixture([], { timeoutMs: 30_000 })
     const before = readMeta().revision
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const write = authority.writeSerializedDomains(marker('late'))
-    // The timer expires first, but the final check must let the queued reply drain.
-    awaitQueuedReplies(2)
-    vi.advanceTimersByTime(30_000)
-    await expect(write).resolves.toBeUndefined()
-    expect(readMeta().revision).toBe(before + 1)
-    expect(log()).toEqual(['0:write-domains'])
+    for (let cycle = 0; cycle <= PROFILE_STATE_WRITER_RECOVERY_LIMIT; cycle += 1) {
+      const write = authority.writeSerializedDomains(marker(`late-${cycle}`))
+      // Exceed the recovery budget with healthy replies queued behind their deadlines.
+      awaitQueuedReplies(cycle + 2)
+      vi.advanceTimersByTime(30_000)
+      await expect(write).resolves.toBeUndefined()
+    }
+    expect(readMeta().revision).toBe(before + 4)
+    expect(log()).toEqual(Array.from({ length: 4 }, () => '0:write-domains'))
     expect(instances()).toBe(1)
     expect(recoveryBreadcrumbs()).toEqual([])
     vi.useRealTimers()
     await authority.writeSerializedDomains(marker('next'))
-    expect(readMeta().revision).toBe(before + 2)
+    expect(readMeta().revision).toBe(before + 5)
     expect(onFailure).not.toHaveBeenCalled()
   })
 

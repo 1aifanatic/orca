@@ -33,6 +33,7 @@ class RecoveryRefusal extends ProfileStateWriterError {
  */
 export class ProfileStateWriterSupervisor {
   private writer: ProfileStateWriteWorkerClient
+  private replacement: ProfileStateWriteWorkerClient | undefined
   private readonly recoveries = new WeakMap<
     ProfileStateWriteWorkerClient,
     Promise<RecoveryOutcome>
@@ -90,16 +91,16 @@ export class ProfileStateWriterSupervisor {
   /** Waits out an in-flight recovery, which cannot install a writer once closing. */
   close(): Promise<void> {
     this.stopAdmission()
+    const closeWriters = () =>
+      Promise.all([this.writer.close(), this.replacement?.close()]).then(() => {})
     // Close synchronously when idle so already-admitted commands keep their ordering.
-    this.closed ??= this.recovering
-      ? this.recovering.then(() => this.writer.close())
-      : this.writer.close()
+    this.closed ??= this.recovering ? this.recovering.then(closeWriters) : closeWriters()
     return this.closed
   }
 
-  abort(): Promise<void> {
+  async abort(): Promise<void> {
     this.closing = true
-    return this.writer.abort()
+    await Promise.all([this.writer.abort(), this.replacement?.abort(), this.recovering])
   }
 
   private async execute<T>(
@@ -205,6 +206,8 @@ export class ProfileStateWriterSupervisor {
         revision: acknowledgedRevision,
         ...(operationId !== undefined && { interruptedOperation: operationId })
       })
+      // Failed startup still owns a thread until close or abort confirms its exit.
+      this.replacement = replacement
       try {
         await replacement.ready
       } catch (cause) {
@@ -229,6 +232,7 @@ export class ProfileStateWriterSupervisor {
         this.assertNotClosing(outcome)
       }
       this.writer = replacement
+      this.replacement = undefined
       recordProfileStateWriterRecovery('succeeded', { ...details, committed })
       return { committed }
     } catch (cause) {

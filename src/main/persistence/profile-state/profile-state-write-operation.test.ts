@@ -63,3 +63,27 @@ it('refuses a foreign revision even when it is exactly one ahead', () => {
   )
   expect(assertProfileStateRevisionOnDisk(path, 'operation-test', 2, 'ours:2')).toBe(2)
 })
+
+it('rolls back the payload and revision when recording the operation fails', () => {
+  const { db, write, close } = database()
+  write('{"a":1}', 0, 'ours:1')
+  db.exec(`CREATE TRIGGER reject_operation BEFORE INSERT ON profile_state_meta
+    WHEN NEW.key = 'last_write_operation'
+    BEGIN SELECT RAISE(ABORT, 'operation rejected'); END`)
+  expect(() => write('{"a":2}', 1, 'ours:2')).toThrow('operation rejected')
+  expect(readProfileStateRevisionOperation(db)).toEqual({ revision: 1, operationId: 'ours:1' })
+  expect(
+    db.prepare("SELECT payload FROM profile_state_documents WHERE domain = 'ui'").get()
+  ).toEqual({ payload: '{"a":1}' })
+  close()
+})
+
+it('refuses a matching operation at an unexpected revision', () => {
+  const { path, write, close } = database()
+  write('{"a":1}', 0, 'ours:1')
+  write('{"a":2}', 1, 'ours:2')
+  close()
+  expect(() => assertProfileStateRevisionOnDisk(path, 'operation-test', 0, 'ours:2')).toThrow(
+    expect.objectContaining({ code: 'profile-state-revision-conflict' })
+  )
+})
