@@ -193,6 +193,7 @@ export function getEditorFileOperationContext(
   expectedSshTargetId?: string
   expectedSshConnectionGeneration?: number
   expectedExecutionHostId: 'local' | `ssh:${string}`
+  expectedRuntimeEnvironmentId: string | null
 } {
   const provenance =
     file.operationProvenance ??
@@ -221,7 +222,7 @@ export function getEditorFileOperationContext(
   if (
     externalSshTargetId &&
     (host.kind !== 'ssh' ||
-      route.runtimeEnvironmentId !== null ||
+      (file.runtimeEnvironmentId?.trim() || null) !== route.runtimeEnvironmentId ||
       host.targetId !== externalSshTargetId)
   ) {
     throw new Error(OWNER_CHANGED_MESSAGE)
@@ -235,6 +236,7 @@ export function getEditorFileOperationContext(
     worktreeId: file.worktreeId,
     worktreePath: resolvedWorktreePath,
     expectedExecutionHostId: host.kind === 'ssh' ? host.id : 'local',
+    expectedRuntimeEnvironmentId: route.runtimeEnvironmentId,
     ...(route.runtimeEnvironmentId === null && host?.kind === 'ssh'
       ? { connectionId: host.targetId }
       : {}),
