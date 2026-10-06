@@ -254,9 +254,8 @@ describe('a /compact that waits in line', () => {
       throw new Error('expected a queued receipt')
     }
     await rig.settleAccepted(working, 'a')
-    await eventually(async () =>
-      expect(await rig.handoff(later.value.queued.messageId)).toBeDefined()
-    )
+    const laterId = later.value.queued.messageId
+    await eventually(async () => expect(await rig.handoff(laterId)).toBeDefined())
     const { failures, cards } = await failureRowsAndCards()
     expect(failures).toHaveLength(1)
     expect(JSON.stringify(failures[0]!.body)).toContain('Not enough messages to compact.')
@@ -277,9 +276,8 @@ describe('a /compact that waits in line', () => {
     }
     tasks = [BACKGROUND_TASK]
     await rig.settleAccepted(working, 'a')
-    await eventually(async () =>
-      expect(await rig.handoff(later.value.queued.messageId)).toBeDefined()
-    )
+    const laterId = later.value.queued.messageId
+    await eventually(async () => expect(await rig.handoff(laterId)).toBeDefined())
     expect(rig.compact).not.toHaveBeenCalled()
     expect(await rig.handoff(compactId)).toMatchObject({ dispatchState: 'rejected' })
     const { failures, cards } = await failureRowsAndCards()
