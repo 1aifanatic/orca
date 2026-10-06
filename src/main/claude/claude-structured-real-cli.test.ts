@@ -34,7 +34,8 @@ function realAdapter(
   events: ClaudeStructuredSessionEvent[] = [],
   cwd = process.cwd(),
   onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate'],
-  env = realClaudeLaunchHome().env
+  env = realClaudeLaunchHome().env,
+  waitsForStartup = true
 ): ClaudeStructuredSessionAdapter {
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
@@ -53,6 +54,9 @@ function realAdapter(
     readProcessStartTime: async () => 1,
     now: () => 2
   })
+  if (!waitsForStartup) {
+    return adapter
+  }
   // These proofs read startup facts, which land after the session is published.
   const acquire = adapter.acquire
   adapter.acquire = async (input) => {
@@ -332,6 +336,65 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
       }
     },
     90_000
+  )
+
+  // The contract a chat's first message depends on: saved options ride the launch, and the
+  // message is written as soon as the child is published, before the CLI answers initialize.
+  it.skipIf(!realClaudeAuthenticated)(
+    'runs a message written before initialize answers, under the saved options it was launched with',
+    async () => {
+      const providerSessionId = randomUUID()
+      const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+      const events: ClaudeStructuredSessionEvent[] = []
+      const adapter = realAdapter(
+        providerSessionId,
+        claudeConfigDir,
+        events,
+        process.cwd(),
+        undefined,
+        realClaudeLaunchHome().env,
+        false
+      )
+      const messages = (): Record<string, unknown>[] =>
+        events.flatMap((event) => (event.type === 'message' ? [event.message] : []))
+
+      try {
+        await adapter.acquire({
+          identity: identity(providerSessionId),
+          fence: 1,
+          spawnToken: 'real-cli-saved-options',
+          options: { model: 'sonnet', permissionMode: 'plan', effort: 'low' }
+        })
+        await expect(
+          adapter.dispatch({
+            sessionId: 'real-cli-handshake',
+            clientMessageId: 'real-cli-saved-options-1',
+            body: {
+              kind: 'message',
+              role: 'user',
+              blocks: [{ type: 'text', text: 'Reply with exactly: OK. Do not use any tools.' }]
+            },
+            fence: 1
+          })
+        ).resolves.toEqual({ state: 'admitted' })
+        const deadline = Date.now() + 90_000
+        while (!messages().some((m) => m.type === 'result') && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+
+        // The echo of the message Orca wrote, then a turn that ended in success.
+        expect(messages()).toContainEqual(expect.objectContaining({ type: 'user', isReplay: true }))
+        expect(messages().find((m) => m.type === 'result')).toMatchObject({ is_error: false })
+        // The turn's own init names what the child was launched with.
+        expect(messages().find((m) => m.type === 'system' && m.subtype === 'init')).toMatchObject({
+          model: 'claude-sonnet-5',
+          permissionMode: 'plan'
+        })
+      } finally {
+        await adapter.closeAll()
+      }
+    },
+    120_000
   )
 
   // The window a Stop naming no turn exists for: Orca has written the message, and Claude has not

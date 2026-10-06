@@ -8,7 +8,6 @@ import { stopAgentSessionProviderRoot } from '../native-chat/agent-session-wire/
 import { withAgentSessionCreatePhase } from '../observability/agent-session-instrumentation'
 import type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
 import { claudeStructuredSpawnOptions } from './claude-structured-spawn-options'
-import { agentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 import {
   cancelClaudeAcquisitionAttempt,
   type ClaudeAcquisitionAttempt,
@@ -94,16 +93,7 @@ export async function resolveClaudeAcquisitionLaunch(args: {
           : new AgentSessionPreSpawnError(error)
       })
     acquisitions.assertCurrent(sessionId, attempt)
-    const access = agentModelCatalogSessionAccess(
-      deps.modelCatalog,
-      'claude',
-      launch.claudeConfigDir
-    )
-    const spawn = claudeStructuredSpawnOptions({
-      launch,
-      saved: input.options,
-      catalog: access?.store.get(access.fingerprint) ?? null
-    })
+    const spawn = claudeStructuredSpawnOptions({ launch, saved: input.options })
     return {
       ...launch,
       options: spawn.sdkOptions,

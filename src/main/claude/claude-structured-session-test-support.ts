@@ -162,10 +162,12 @@ export function fakeClaude(
       getSettings: async () => {
         connection.calls.push({ subtype: 'get_settings' })
         // Shape measured from Claude Code 2.1.258: {applied, effective, sources},
-        // and the only place the session's current effort is reported.
+        // and the only place the session's current effort is reported. A launch `--effort`
+        // shows only in `applied`; `effective` holds the settings files' own (2.1.280).
+        const effort = launch.options.effort ?? 'high'
         return (
           options.settings ?? {
-            applied: { model: 'claude-sonnet-5', effort: 'high', advisor: null, ultracode: false },
+            applied: { model: 'claude-sonnet-5', effort, advisor: null, ultracode: false },
             effective: { model: 'claude-sonnet-5', effortLevel: 'high', env: {} },
             sources: {}
           }

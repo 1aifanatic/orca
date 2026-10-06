@@ -106,11 +106,12 @@ describe('ClaudeStructuredSessionAdapter.acquire', () => {
     ).toEqual([])
   })
 
-  it('does not carry a saved Fast opt-in into a new conversation', async () => {
+  it('does not carry a saved Fast into a new conversation whose settings opt in per session', async () => {
     const claude = fakeClaude({
       settings: { effective: { fastMode: false, fastModePerSessionOptIn: true } }
     })
-    const adapter = adapterFor(claude)
+    const events: ClaudeStructuredSessionEvent[] = []
+    const adapter = adapterFor(claude, {}, events)
 
     await adapter.acquire({
       identity: identityFor(),
@@ -123,8 +124,64 @@ describe('ClaudeStructuredSessionAdapter.acquire', () => {
     expect(
       claude.connections[0].calls.filter((call) => call.subtype === 'apply_flag_settings')
     ).toEqual([])
-    // Left out, not refused: the record keeps the provider's own Fast, as before.
+    // Left out, not refused: the record takes the provider's own Fast, as before.
     expect(adapter.readOptionRestoreFailures('session-1')).toEqual([])
+    expect(events.find((event) => event.type === 'started')).toMatchObject({
+      reportedOptions: { fastMode: false }
+    })
+  })
+
+  // No message waits on it: the launch carries no Fast, and the start applies it once the CLI's
+  // settings show no per-session opt-in, as the live CLI reports with no settings file at all.
+  it('applies a saved Fast on to a new conversation once its settings allow it, and keeps the pick', async () => {
+    const claude = fakeClaude({
+      settings: { applied: {}, effective: {}, sources: {} },
+      initModels: [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }]
+    })
+    const events: ClaudeStructuredSessionEvent[] = []
+    const adapter = adapterFor(claude, {}, events)
+
+    await adapter.acquire({
+      identity: identityFor(),
+      fence: 7,
+      spawnToken: 'spawn-9',
+      options: { model: 'opus', fastMode: 'true' }
+    })
+
+    expect(claude.connections[0].launch.options.settings).toBeUndefined()
+    expect(claude.connections[0].calls.map((call) => call.subtype)).toEqual([
+      'initialize',
+      'get_settings',
+      'apply_flag_settings'
+    ])
+    expect(claude.connections[0].calls.at(-1)).toEqual({
+      subtype: 'apply_flag_settings',
+      params: { settings: { fastMode: true } }
+    })
+    expect(events.find((event) => event.type === 'started')).toMatchObject({
+      reportedOptions: { fastMode: true },
+      restoreSkippedOptions: []
+    })
+  })
+
+  it('drops a saved Fast on from a new conversation whose model the CLI lists without it', async () => {
+    const claude = fakeClaude({
+      settings: { applied: {}, effective: {}, sources: {} },
+      initModels: [{ value: 'opus', displayName: 'Opus', supportsFastMode: false }]
+    })
+    const adapter = adapterFor(claude)
+
+    await adapter.acquire({
+      identity: identityFor(),
+      fence: 7,
+      spawnToken: 'spawn-9',
+      options: { model: 'opus', fastMode: 'true' }
+    })
+
+    expect(
+      claude.connections[0].calls.filter((call) => call.subtype === 'apply_flag_settings')
+    ).toEqual([])
+    expect(adapter.readOptionRestoreFailures('session-1')).toEqual(['fastMode'])
   })
 
   it.each([

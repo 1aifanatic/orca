@@ -104,7 +104,7 @@ export type ClaudeControlSurface = {
   ) => Promise<void>
   stopTask: (taskId: string, options?: ClaudeControlOptions) => Promise<void>
   supportedModels: (options?: ClaudeControlOptions) => Promise<unknown[]>
-  /** Untimed here: startup's own deadline bounds it, and the child's exit closes the query. */
+  /** Untimed: a slow start is still a start, and the child's exit closes the query under it. */
   initializationResult: () => Promise<unknown>
   getSettings: (options?: ClaudeControlOptions) => Promise<unknown>
   /** The `/context` breakdown; older CLIs reject the request and the caller shows nothing. */

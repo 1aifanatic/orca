@@ -201,6 +201,8 @@ export type StructuredAgentSessionEndedEvent = {
   observedAt?: number
   /** The provider ended before it finished starting, so resuming it would repeat the failure. */
   startupUnproven?: true
+  /** The provider ended before it answered its start, so it ran nothing it was handed. */
+  startupUnanswered?: true
 }
 
 /** The child a publish-first acquire handed over has now proven its start: startup facts applied.
@@ -217,9 +219,20 @@ export type StructuredAgentSessionStartedEvent = {
   restoreSkippedOptions: readonly string[]
 }
 
+/** A running child showed saved options it cannot run, as a model the provider reports missing.
+ *  The record drops them, so the next start uses the provider's own. */
+export type StructuredAgentSessionOptionsSkippedEvent = {
+  type: 'options-skipped'
+  sessionId: string
+  fence: number
+  acquisitionGeneration: string
+  keys: readonly string[]
+}
+
 export type StructuredAgentSessionLifecycleEvent =
   | StructuredAgentSessionEndedEvent
   | StructuredAgentSessionStartedEvent
+  | StructuredAgentSessionOptionsSkippedEvent
 
 /** Whether the provider child behind an acquisition has proven its start. A publish-first
  *  acquire hands over a `starting` child, which already takes input, and the `started` lifecycle
@@ -362,6 +375,9 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   ): Promise<void | Readonly<Record<string, string>>>
   /** Resolves once a live session can take an option write, or after a bound; never rejects. */
   awaitOptionWritable?(sessionId: string): Promise<void>
+  /** False while the live child has not answered its start, so it has run nothing it was handed.
+   *  Absent or undefined reads as answered. */
+  startAnswered?(sessionId: string): boolean | undefined
   readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
   /** Option keys skipped after a provider rejected their persisted restore value. */
   readOptionRestoreFailures?(sessionId: string): readonly string[]

@@ -100,18 +100,22 @@ export function claudeStructuredOptionsBypassPermissions(
   return options.extraArgs?.['dangerously-skip-permissions'] !== undefined
 }
 
-/** `options` launched in `mode` instead of the mode they carry. */
+/** `options` launched in `mode` instead of the mode they carry; never more than they allow. */
 export function claudeStructuredOptionsWithPermissionMode(
   options: ClaudeStructuredSdkOptions,
   mode: PermissionMode
 ): ClaudeStructuredSdkOptions {
-  const { 'dangerously-skip-permissions': _bypass, ...extraArgs } = options.extraArgs ?? {}
-  const { permissionMode: _mode, ...rest } = options
+  if (mode === 'bypassPermissions') {
+    return options
+  }
+  const { 'dangerously-skip-permissions': bypass, ...extraArgs } = options.extraArgs ?? {}
   return {
-    ...rest,
-    // The bypass flag starts the child in bypass; any other mode is named outright.
-    ...(mode === 'bypassPermissions' ? {} : { permissionMode: mode }),
-    extraArgs: { ...extraArgs, ...claudeStructuredPermissionOptions(mode).extraArgs }
+    ...options,
+    permissionMode: mode,
+    // The bypass flag would start the child in bypass. The allow flag starts it in `mode` and
+    // keeps bypass reachable, as the Agent Permissions setting grants (verified on 2.1.280).
+    ...(bypass !== undefined ? { allowDangerouslySkipPermissions: true } : {}),
+    extraArgs
   }
 }
 

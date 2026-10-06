@@ -9,6 +9,8 @@ import type { ClaudeSession } from './claude-structured-session-state'
 
 export type ClaudeSessionStartup = {
   state: 'pending' | 'proven' | 'failed'
+  /** The CLI answered initialize: it may have run what it was handed. Before that it ran nothing. */
+  answered: boolean
   failure: Error | null
   /** Resolves once startup has landed or faulted, or the child exited or was closed; never
    *  rejects. A close must end it: an option write waits here. */
@@ -21,7 +23,7 @@ export function createClaudeSessionStartup(): ClaudeSessionStartup {
   const ended = new Promise<void>((resolve) => {
     end = resolve
   })
-  return { state: 'pending', failure: null, settled: ended, end }
+  return { state: 'pending', answered: false, failure: null, settled: ended, end }
 }
 
 export function claudeStartupFailureFact(session: ClaudeSession): SubmissionRejectionFact | null {

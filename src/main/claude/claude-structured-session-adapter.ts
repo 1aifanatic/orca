@@ -44,6 +44,7 @@ import {
   settleClaudePromptFreeingChild
 } from './claude-structured-prompt-ownership'
 import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
+import { retireClaudeLaunchedModel } from './claude-structured-retired-model'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
 export type {
@@ -160,6 +161,15 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     }
     session?.translator?.handle(event)
     this.deps.onEvent?.(event)
+    if (event.type === 'message' && session && retireClaudeLaunchedModel(session, event.message)) {
+      this.deps.onEvent?.({
+        type: 'options-skipped',
+        sessionId: event.sessionId,
+        fence: session.fence,
+        acquisitionGeneration: session.acquisitionGeneration,
+        keys: ['model']
+      })
+    }
     this.publishChildWork(event.sessionId, session, event.type === 'message' ? event.message : null)
     // A subagent's card holds it waiting only once its row is written: its wait goes out after.
     void claudePromptCardWritten(session, event)?.then(() => this.publishChildWork(event.sessionId))
@@ -245,6 +255,8 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
       input,
       this.deps.requestTimeoutMs
     )
+  startAnswered = (sessionId: string): boolean | undefined =>
+    this.sessions.get(sessionId)?.startup.answered
   awaitOptionWritable = (sessionId: string): Promise<void> =>
     claudeStartupSettledWithin(
       this.sessions.get(sessionId),

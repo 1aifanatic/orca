@@ -3,7 +3,6 @@
 // a control request to apply each one.
 
 import type { EffortLevel, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentModelCatalogEntry } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
 import {
   claudeStructuredOptionsBypassPermissions,
@@ -11,14 +10,8 @@ import {
   type ClaudeStructuredLaunch,
   type ClaudeStructuredSdkOptions
 } from './claude-structured-launch-resolution'
-import type { ListedModel } from './claude-structured-model-catalog'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { restoredClaudeStructuredSessionOptions } from './claude-structured-options'
-import {
-  claudeCatalogAdmitsModel,
-  claudeModelEffortLevels,
-  claudeModelFastModeSupport
-} from './claude-structured-session-options'
 
 const EFFORT_LEVELS: ReadonlySet<string> = new Set<EffortLevel>([
   'low',
@@ -46,44 +39,33 @@ function isPermissionMode(value: string): value is PermissionMode {
 
 export type ClaudeStructuredSpawnOptions = {
   sdkOptions: ClaudeStructuredSdkOptions
-  /** What the child was launched with, as the session's options. */
+  /** The chat's options as the session holds them: what was launched, and a Fast the start applies. */
   options: Map<string, string>
   /** Saved options left out: the provider's own value wins and is re-persisted. */
   skipped: readonly string[]
 }
 
 /**
- * Checked against the account's cached catalog only, since nothing has been asked yet: a value
- * the cache rules out is left out, and with no cache entry every value passes. A value the CLI
- * itself would refuse at launch never passes: the start would fail on every reopen.
+ * Every saved value is passed as the user chose it; the CLI's own answer (a turn's error, the
+ * settings readback) says what it ran. Only a value no Claude version can parse is left out, by
+ * the SDK's types, not the installed binary's: one that binary rejects fails its start.
  */
 export function claudeStructuredSpawnOptions(input: {
   launch: Pick<ClaudeStructuredLaunch, 'options' | 'resumesTranscript'>
   saved: Readonly<Record<string, string>> | undefined
-  catalog: AgentModelCatalogEntry | null
 }): ClaudeStructuredSpawnOptions {
   const saved = restoredClaudeStructuredSessionOptions(input.saved)
-  const listed: ListedModel[] = (input.catalog?.models ?? []).map((model) => ({
-    ...model,
-    resolvedModel: null
-  }))
   const options = new Map<string, string>()
   const skipped: string[] = []
   let sdkOptions: ClaudeStructuredSdkOptions = { ...input.launch.options }
   const model = saved.get('model')
   if (model !== undefined) {
-    if (claudeCatalogAdmitsModel(listed, model)) {
-      options.set('model', model)
-      sdkOptions.model = model
-    } else {
-      skipped.push('model')
-    }
+    options.set('model', model)
+    sdkOptions.model = model
   }
   const effort = saved.get('effort')
   if (effort !== undefined) {
-    // With no saved model the CLI picks one this launch cannot name, so there is nothing to check.
-    const { levels } = claudeModelEffortLevels(listed, options.get('model'))
-    if (isEffortLevel(effort) && (!levels || levels.has(effort))) {
+    if (isEffortLevel(effort)) {
       options.set('effort', effort)
       sdkOptions.effort = effort
     } else {
@@ -93,18 +75,15 @@ export function claudeStructuredSpawnOptions(input: {
   const fastMode = saved.get('fastMode')
   if (fastMode !== undefined) {
     const decoded = decodeStructuredAgentSessionOptionValue('fastMode', fastMode)
-    const support = claudeModelFastModeSupport(listed, options.get('model'))
-    if (decoded === true && !input.launch.resumesTranscript) {
-      // A fresh CLI session may be one whose settings opt in to Fast per session, which only the
-      // CLI can say; it starts with Fast off rather than carry an opt-in it never made.
-    } else if (
-      typeof decoded !== 'boolean' ||
-      (decoded && listed.length > 0 && support.supported !== true)
-    ) {
+    if (typeof decoded !== 'boolean') {
       skipped.push('fastMode')
     } else {
       options.set('fastMode', fastMode)
-      sdkOptions.settings = { fastMode: decoded }
+      // A new CLI session may opt in to Fast per session, which only its settings say: the start
+      // applies a saved Fast on there once it has read them (`applyClaudeFreshSessionFastMode`).
+      if (!decoded || input.launch.resumesTranscript) {
+        sdkOptions.settings = { fastMode: decoded }
+      }
     }
   }
   const permissionMode = saved.get('permissionMode')
@@ -126,9 +105,10 @@ export function claudeStructuredSpawnOptions(input: {
 
 /** The published session takes on what its child was launched with. */
 export function adoptClaudeStructuredSpawnOptions(
-  session: Pick<ClaudeSession, 'restoreSkippedOptions' | 'translator'>,
+  session: Pick<ClaudeSession, 'restoreSkippedOptions' | 'translator' | 'launchedModel'>,
   spawn: Pick<ClaudeStructuredSpawnOptions, 'options' | 'skipped'>
 ): void {
+  session.launchedModel = spawn.options.get('model') ?? null
   for (const key of spawn.skipped) {
     session.restoreSkippedOptions.add(key)
   }

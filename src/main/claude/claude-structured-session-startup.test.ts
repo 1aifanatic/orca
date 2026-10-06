@@ -179,6 +179,21 @@ describe('Claude structured session publishes before the CLI answers initialize'
     await unconfirmed.closeAll()
   })
 
+  // Measured on Claude Code 2.1.280: `--effort xhigh` reads back as `applied.effort: 'xhigh'` with
+  // `effective` empty, since `effective` holds only the settings files.
+  it('confirms a launched effort the CLI reports only as applied', async () => {
+    const claude = fakeClaude({
+      settings: { applied: { model: 'claude-opus-5', effort: 'xhigh' }, effective: {}, sources: {} }
+    })
+    const { adapter } = startingAdapter(claude)
+    await adapter.acquire({ ...ACQUIRE, options: { effort: 'xhigh' } })
+    await claudeStartupSettled(adapter, 'session-1')
+
+    const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+    expect(options.current).toMatchObject({ effort: 'xhigh', confirmed: ['effort'] })
+    await adapter.closeAll()
+  })
+
   it('ends the session with the exit reason when the CLI dies before init', async () => {
     const claude = fakeClaude({
       initDelayMs: SLOW_INIT_MS,

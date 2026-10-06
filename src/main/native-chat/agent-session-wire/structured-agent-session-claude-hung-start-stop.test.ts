@@ -36,6 +36,8 @@ let host: StructuredAgentSessionHost
 let adapter: ClaudeStructuredSessionAdapter
 let store: AgentSessionRecordStore
 let claude: ReturnType<typeof fakeClaude>
+/** Answers initialize, which the CLI otherwise never does; it echoes nothing either way. */
+let answerInitialize: () => void = () => {}
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'orca-claude-hung-start-stop-'))
@@ -65,7 +67,9 @@ beforeEach(async () => {
       const connection = await openConnection(...args)
       connection.initializationResult = () => {
         connection.calls.push({ subtype: 'initialize' })
-        return new Promise(() => {})
+        return new Promise((resolve) => {
+          answerInitialize = () => resolve({ models: [] })
+        })
       }
       return connection
     },
@@ -152,4 +156,55 @@ it('writes the message to a start that never answers, and a Stop ends it: stoppe
     ).toMatchObject({ dispatchState: 'rejected', reason: DISPATCH_REJECTED_CANCELLED })
   )
   expect(await readsWorking()).toBe(false)
+})
+
+async function sendHello(): Promise<string> {
+  const body = hostTestMessage('hello')
+  const sent = await host.send(CALLER, { envelope: envelope('agentSession.send', { body }), body })
+  if (!sent.ok) {
+    throw new Error('send refused')
+  }
+  await vi.waitFor(() =>
+    expect(
+      claude.connections[0]!.sent.some((message) => JSON.stringify(message).includes('hello'))
+    ).toBe(true)
+  )
+  return sent.value.clientMessageId
+}
+
+async function submission(id: string) {
+  return (await host.journalSnapshot(SESSION)).submissions.find(
+    (entry) => entry.clientMessageId === id
+  )
+}
+
+// A CLI that never answered initialize ran nothing it was handed, however its child ends.
+it.each([
+  ['user-close', 'The chat closed before this message was sent.'],
+  ['evict', 'This message was not delivered. Send it again to continue.']
+] as const)(
+  'settles a message written to a start that never answered as not sent when a %s ends it',
+  async (cause, reason) => {
+    const id = await sendHello()
+
+    await host.close(SESSION, cause)
+
+    await vi.waitFor(async () =>
+      expect(await submission(id)).toMatchObject({ dispatchState: 'rejected', reason })
+    )
+  }
+)
+
+// Once it answered, the CLI may have taken the message without echoing it yet: a close leaves it in
+// doubt, as for any running child.
+it('leaves a message in doubt when the start answered and the chat closes before the echo', async () => {
+  answerInitialize()
+  await adapter['sessions'].get(SESSION)?.startup.settled
+  const id = await sendHello()
+
+  await host.close(SESSION, 'user-close')
+
+  await vi.waitFor(async () =>
+    expect(await submission(id)).toMatchObject({ dispatchState: 'unknown' })
+  )
 })

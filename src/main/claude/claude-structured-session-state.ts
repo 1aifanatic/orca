@@ -6,7 +6,10 @@ import type {
   AgentSessionJournalIdentity
 } from '../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import type { StructuredAgentSessionStartedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type {
+  StructuredAgentSessionOptionsSkippedEvent,
+  StructuredAgentSessionStartedEvent
+} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type {
   ClaudeStreamJsonConnection,
   openClaudeStreamJsonConnection
@@ -67,6 +70,7 @@ export type ClaudeStructuredSessionEvent =
   | { type: 'auth-diagnostic'; sessionId: string; diagnostic: ClaudeAuthDiagnostic }
   /** Startup facts applied and saved options restored; held prompts are about to be written. */
   | StructuredAgentSessionStartedEvent
+  | StructuredAgentSessionOptionsSkippedEvent
   | {
       type: 'ended'
       sessionId: string
@@ -80,6 +84,8 @@ export type ClaudeStructuredSessionEvent =
       observedAt?: number
       /** The child ended before proving startup, so reacquiring would repeat the same start. */
       startupUnproven?: true
+      /** The child ended before it answered initialize, so it ran nothing it was handed. */
+      startupUnanswered?: true
     }
 
 export type ClaudeLateDispatchOutcome =
@@ -179,6 +185,8 @@ export type ClaudeSession = {
   /** Options whose recorded value the provider reported, not merely accepted. */
   confirmedOptions: Set<string>
   restoreSkippedOptions: Set<string>
+  /** The model the child was launched with, as `--model`; null when it runs the CLI's own. */
+  launchedModel: string | null
   /** Absent when the adapter runs without a host catalog store (tests). */
   catalogAccess?: AgentModelCatalogSessionAccess
   /** CLI-advertised protocol capabilities from init; gates interrupt-receipt handling. */

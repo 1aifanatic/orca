@@ -40,6 +40,7 @@ export type StructuredAgentSessionChildExit = {
   /** Host receipt of the exit: the end time of a turn it interrupted. */
   observedAt?: number
   startupUnproven?: true
+  startupUnanswered?: true
 }
 
 export type StructuredAgentSessionChildExitSession = Pick<
@@ -84,7 +85,8 @@ export function settleStructuredAgentSessionChildExit<
       reason: event.reason,
       ...(event.failure ? { failure: event.failure } : {}),
       ...(event.observedAt === undefined ? {} : { observedAt: event.observedAt }),
-      ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {})
+      ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {}),
+      ...(event.startupUnanswered ? { startupUnanswered: event.startupUnanswered } : {})
     })
   })
 }
@@ -117,6 +119,14 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
       ? agentSessionFailureFact('hostStopped')
       : undefined
     : exit.failure
+  // What a close settles a send the child was handed and never echoed as, when that send cannot
+  // have run: a person's Stop of a start, or any close before the child answered its start.
+  const unrunRejection =
+    startClose === 'user-stop'
+      ? agentSessionFailureFact('cancelled')
+      : expected && exit.startupUnanswered && close?.cause !== 'host-stop'
+        ? agentSessionFailureFact(close?.cause === 'user-close' ? 'chatClosed' : 'notDelivered')
+        : undefined
   const endChild = (): void => {
     endProviderChild(session, {
       generation: child.generation,
@@ -182,7 +192,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
       ...(startFailed && child.generation
         ? { exitedDuringStartup: { generation: child.generation } }
         : {}),
-      ...(startClose === 'user-stop' ? { stoppedDuringStartup: true as const } : {})
+      ...(unrunRejection ? { unrunRejection } : {})
     })
     if (!settled.ok) {
       logExitFailure(context, sessionId, 'exit-settlement', settled.error)

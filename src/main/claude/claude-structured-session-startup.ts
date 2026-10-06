@@ -18,12 +18,17 @@ import {
   prepareClaudeStructuredSessionAcquisitionOptions,
   readClaudeStructuredSessionSettings
 } from './claude-structured-session-acquisition-options'
+import { listedModels } from './claude-structured-model-catalog'
 import {
+  claudeModelFastModeSupport,
   claudeStructuredSessionOptionsFrom,
   observeClaudeSettingsApplied,
   readClaudeSettingsEffort
 } from './claude-structured-session-options'
-import { failClaudeStartup } from './claude-structured-session-startup-state'
+import {
+  failClaudeStartup,
+  type ClaudeSessionStartup
+} from './claude-structured-session-startup-state'
 import type { ClaudeSession, ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 
 /** The CLI's own frame naming the session it runs (system/init or a SessionStart hook). Only a
@@ -92,6 +97,8 @@ export type ClaudeStartupFacts = {
   initialization: unknown
   settings: unknown
   prepared: ReturnType<typeof prepareClaudeStructuredSessionAcquisitionOptions>
+  resumesTranscript: boolean
+  requestTimeoutMs: number | undefined
 }
 
 /** Settles on the CLI's initialize answer, or on its exit or a refused proof. */
@@ -100,12 +107,15 @@ export async function readClaudeStartupFacts(input: {
   initProof: ClaudeInitProof
   sessionId: string
   providerSessionId: string
+  startup: Pick<ClaudeSessionStartup, 'answered'>
+  resumesTranscript: boolean
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
   // The CLI's first answer has no request deadline of its own; the reads after it do.
   const initialization = await Promise.race([
     input.connection.initializationResult().then((result) => {
+      input.startup.answered = true
       const authError = claudeInitializationAuthError(result)
       if (authError) {
         throw authError
@@ -139,8 +149,41 @@ export async function readClaudeStartupFacts(input: {
     initProof: input.initProof,
     initialization,
     settings,
-    prepared: prepareClaudeStructuredSessionAcquisitionOptions({ settings, initialization })
+    prepared: prepareClaudeStructuredSessionAcquisitionOptions({ settings, initialization }),
+    resumesTranscript: input.resumesTranscript,
+    requestTimeoutMs: input.requestTimeoutMs
   }
+}
+
+/** A new conversation is launched without a saved Fast on, which its settings may opt in to per
+ *  session. Those settings now read: an opt-in drops it, as before; otherwise it is applied, and
+ *  no message waits on that. */
+function applyClaudeFreshSessionFastMode(session: ClaudeSession, facts: ClaudeStartupFacts): void {
+  if (facts.resumesTranscript || session.options.get('fastMode') !== 'true') {
+    return
+  }
+  if (facts.prepared.fastModePerSessionOptIn === true) {
+    session.options.delete('fastMode')
+    return
+  }
+  // The guards a live Fast write takes, over the listing this start already holds.
+  const listed = listedModels({ models: readClaudeModels(facts.initialization) })
+  const blocked =
+    session.fastModeDisabledReason !== undefined &&
+    !['preference', 'sdk_opt_in_required'].includes(session.fastModeDisabledReason)
+  if (
+    blocked ||
+    (listed.length > 0 && claudeModelFastModeSupport(session, listed).supported !== true)
+  ) {
+    session.options.delete('fastMode')
+    session.restoreSkippedOptions.add('fastMode')
+    return
+  }
+  void session.connection
+    .applyFlagSettings({ fastMode: true }, { timeoutMs: facts.requestTimeoutMs })
+    .catch((error: unknown) =>
+      console.warn('[claude-structured] applying a saved Fast on to a new session failed:', error)
+    )
 }
 
 function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFacts): void {
@@ -161,6 +204,11 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
     if (agrees('effort', effort)) {
       session.confirmedOptions.add('effort')
     }
+  }
+  // A launch `--effort` shows only in `applied`, never in `effective` (measured on 2.1.280).
+  const launchedEffort = session.options.get('effort')
+  if (launchedEffort !== undefined && session.appliedOptions?.effort === launchedEffort) {
+    session.confirmedOptions.add('effort')
   }
   if (published.fastMode !== null) {
     session.reportedOptions.fastMode = published.fastMode
@@ -226,6 +274,7 @@ export async function settleClaudeSessionStartup(input: {
       }
     }
     applyClaudeStartupFacts(session, facts)
+    applyClaudeFreshSessionFastMode(session, facts)
     if (!superseded()) {
       input.onStarted({
         // `list_models` is answered from this same initialize result, so nothing is re-read.

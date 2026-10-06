@@ -110,7 +110,7 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
           events: sink
         })
         await claudeStartupSettled(adapter, SESSION_ID)
-        // Startup proved from the SessionStart hook frame, with no init yet.
+        // Startup landed on the initialize answer, with no turn and so no init yet.
         expect(
           events.some(
             (event) =>

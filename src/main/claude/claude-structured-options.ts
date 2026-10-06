@@ -103,7 +103,7 @@ export async function setClaudeStructuredOption(
   // every later model switch, so refuse before the write rather than read the
   // acceptance back as adoption.
   if (input.key === 'effort') {
-    const { modelId, levels } = claudeModelEffortLevels(listed, readClaudeCurrentModel(session).id)
+    const { modelId, levels } = claudeModelEffortLevels(session, listed)
     if (levels && !levels.has(input.value)) {
       throw new AgentSessionOptionRejectedError(
         `claude model ${modelId} does not accept effort ${input.value}`
@@ -114,7 +114,7 @@ export async function setClaudeStructuredOption(
     if (typeof fastMode !== 'boolean') {
       throw new AgentSessionOptionRejectedError('claude fast mode must be encoded as true or false')
     }
-    const support = claudeModelFastModeSupport(listed, readClaudeCurrentModel(session).id)
+    const support = claudeModelFastModeSupport(session, listed)
     // A catalog that identified nothing is not evidence against this model, the same
     // rule the admit-check below applies — otherwise a CLI that cannot answer has Fast
     // refused on every model. A catalog that did list the model and stayed silent
@@ -142,7 +142,7 @@ export async function setClaudeStructuredOption(
   }
   const modelFastModeSupport =
     input.key === 'model' && session.options.get('fastMode') === 'true'
-      ? claudeModelFastModeSupport(listed, input.value)
+      ? claudeModelFastModeSupport(session, listed, input.value)
       : null
   const modelWasConfirmed = readClaudeCurrentModel(session).confirmed
   const mutationSequence = ++session.optionMutationSequence
