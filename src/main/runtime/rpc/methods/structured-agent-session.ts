@@ -25,6 +25,7 @@ import {
   requireStructuredCleanupHost,
   requireStructuredCreateSupportAdmission,
   requireStructuredHost as requireHost,
+  requireStructuredSessionHost as requireSessionHost,
   structuredCallerFor as callerFor
 } from './structured-agent-session-gate'
 import type { AgentSessionAttachParams } from '../../../native-chat/agent-session-wire/structured-agent-session-attach'
@@ -57,7 +58,6 @@ import {
   CreateParams,
   CreateSupportParams,
   HistoryParams,
-  HandoffStatusParams,
   OptionsParams,
   RespondParams,
   RespondToQuestionParams,
@@ -107,7 +107,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
       await ensureHostInstalled(ctx)
-      return requireHost(ctx).rewind(callerFor(ctx), params)
+      return requireSessionHost(ctx, params.envelope.sessionId).rewind(callerFor(ctx), params)
     }
   }),
   defineMethod({
@@ -116,7 +116,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     handler: async (params, ctx) => {
       requireStructuredCapability(ctx)
       await ensureHostInstalled(ctx)
-      const host = requireHost(ctx)
+      const host = requireSessionHost(ctx, params.envelope.sessionId)
       await host.revealSession(params.envelope.sessionId)
       const result = await host.conversationCommand(callerFor(ctx), params)
       if (result.ok && result.value.command === 'clear' && result.value.replacementSessionId) {
@@ -232,29 +232,25 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     name: 'agentSession.respondToApproval',
     params: RespondParams,
     handler: async (params, ctx) =>
-      requireHost(ctx).respondToPrompt(callerFor(ctx), { ...params, kind: 'approval' })
+      requireSessionHost(ctx, params.envelope.sessionId).respondToPrompt(callerFor(ctx), {
+        ...params,
+        kind: 'approval'
+      })
   }),
   defineMethod({
     name: 'agentSession.respondToQuestion',
     params: RespondToQuestionParams,
     handler: async (params, ctx) =>
-      requireHost(ctx).respondToPrompt(callerFor(ctx), { ...params, kind: 'question' })
+      requireSessionHost(ctx, params.envelope.sessionId).respondToPrompt(callerFor(ctx), {
+        ...params,
+        kind: 'question'
+      })
   }),
   defineMethod({
     name: 'agentSession.setOption',
     params: SetOptionParams,
-    handler: async (params, ctx) => requireHost(ctx).setOption(callerFor(ctx), params)
-  }),
-  defineMethod({
-    name: 'agentSession.handoffStatus',
-    params: HandoffStatusParams,
     handler: async (params, ctx) =>
-      (await requireInstalledHost(ctx)).handoffStatus(params.sessionId)
-  }),
-  defineMethod({
-    name: 'agentSession.commands',
-    params: OptionsParams,
-    handler: async (params, ctx) => (await requireInstalledHost(ctx)).readCommands(params.sessionId)
+      requireSessionHost(ctx, params.envelope.sessionId).setOption(callerFor(ctx), params)
   }),
   defineMethod({
     name: 'agentSession.history',

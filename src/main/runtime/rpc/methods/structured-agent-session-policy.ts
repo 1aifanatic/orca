@@ -46,6 +46,18 @@ export function clientRendersStructuredAgent(
   )
 }
 
+/** Preserve the existing session audience for every agent except Pi. */
+export function clientReadsStructuredSessionAgent(
+  context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>,
+  agent: string
+): boolean {
+  return (
+    agent !== 'pi' ||
+    context.clientKind === undefined ||
+    clientRendersStructuredAgent(context.clientCapabilities, agent)
+  )
+}
+
 /** The agents this client reads rows of, among those registered or saved here; undefined when it
  *  reads every one, so an action for it is exactly the unscoped one (one fence for every offer). */
 export function structuredAgentsReadBy(

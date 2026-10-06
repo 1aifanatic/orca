@@ -9,6 +9,7 @@ import { defineStreamingMethod } from '../core'
 import { requireStructuredHost as requireHost } from './structured-agent-session-gate'
 import { structuredAgentSessionTurnCompletionSubscriptionId } from './structured-agent-session-subscription-id'
 import { bindStructuredAgentSessionStream } from './structured-agent-session-status-stream'
+import { clientReadsStructuredSessionAgent } from './structured-agent-session-policy'
 
 export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
   defineStreamingMethod({
@@ -22,7 +23,20 @@ export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
       if (stream.isClosed()) {
         return
       }
-      dispose = host.subscribeTurnCompletions({ id: subscriptionId, emit })
+      dispose = host.subscribeTurnCompletions({
+        id: subscriptionId,
+        emit: (event) => {
+          if (
+            event.type !== 'completion' ||
+            clientReadsStructuredSessionAgent(
+              ctx,
+              host.sessionAgent(event.completion.sessionId) ?? ''
+            )
+          ) {
+            emit(event)
+          }
+        }
+      })
       if (stream.isClosed()) {
         dispose()
       }

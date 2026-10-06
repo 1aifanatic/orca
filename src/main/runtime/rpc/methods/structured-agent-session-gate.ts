@@ -16,7 +16,7 @@ import type { RpcContext } from '../core'
 import { structuredAgentSessionHostRefusal } from '../../structured-agent-session-host-refusal'
 import {
   createSupportFollowsHostSetting,
-  clientRendersStructuredAgent,
+  clientReadsStructuredSessionAgent,
   isStructuredNativeChatEnabled,
   supportsStructuredAgentSessions
 } from './structured-agent-session-policy'
@@ -39,11 +39,7 @@ export function requireStructuredCapability(ctx: RpcContext): void {
 
 export function requireStructuredAgentAudience(ctx: RpcContext, agent: string): void {
   requireStructuredCapability(ctx)
-  if (
-    agent === 'pi' &&
-    ctx.clientKind !== undefined &&
-    !clientRendersStructuredAgent(ctx.clientCapabilities, agent)
-  ) {
+  if (!clientReadsStructuredSessionAgent(ctx, agent)) {
     throw agentSessionRefusalError('structured_agent_session_unsupported', {
       reason: 'clientCapabilityMissing'
     })
@@ -66,6 +62,15 @@ export function requireStructuredCreateSupportAdmission(ctx: RpcContext, agent?:
 export function requireStructuredHost(ctx: RpcContext, agent?: string): StructuredAgentSessionHost {
   requireStructuredAgentAudience(ctx, agent ?? '')
   return requireHostOrRefusal()
+}
+
+export function requireStructuredSessionHost(
+  ctx: RpcContext,
+  sessionId: string
+): StructuredAgentSessionHost {
+  const host = requireStructuredHost(ctx)
+  requireStructuredAgentAudience(ctx, host.sessionAgent(sessionId) ?? '')
+  return host
 }
 
 /**
@@ -122,11 +127,7 @@ export async function requireInstalledStructuredHost(
   sessionId?: string
 ): Promise<StructuredAgentSessionHost> {
   await ensureStructuredHostInstalled(ctx)
-  const host = requireStructuredHost(ctx)
-  if (sessionId) {
-    requireStructuredAgentAudience(ctx, host.sessionAgent(sessionId) ?? '')
-  }
-  return host
+  return sessionId ? requireStructuredSessionHost(ctx, sessionId) : requireStructuredHost(ctx)
 }
 
 /** Mirrors the existing agent-session host-authority derivation so one client
