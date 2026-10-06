@@ -101,7 +101,9 @@ async function openHost(): Promise<void> {
     journalDatabase: openTestJournalHostDatabase(directory),
     claimKeyId: 'key',
     now: () => HOST_TEST_NOW,
-    mintSpawnToken: () => `spawn-${acquisitions}`
+    mintSpawnToken: () => `spawn-${acquisitions}`,
+    // As the runtime wires it: a committed /clear moves the tab through the runtime's snapshot.
+    onConversationReplaced: (replacement) => runtime.replaceStructuredAgentSessionTab(replacement)
   })
   setStructuredAgentSessionHost(host)
 }
