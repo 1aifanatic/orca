@@ -248,9 +248,7 @@ export class OrcaRuntimeWithRuntimeId {
     this.intentionalPtyStops.noteSpawnCommit(commit.id)
   }
 
-  // Why: coalesces title/status-driven session.tabs emits so spinner churn
-  // doesn't fan out (and per-client JSON.stringify) a snapshot several times a
-  // second. Emit reads the latest snapshot, so only the freshest version ships.
+  // Coalesce title/status notifications and emit the latest session snapshot.
   protected readonly mobileSessionTabsNotifyCoalescer: MobileSessionTabsNotifyCoalescer =
     createMobileSessionTabsNotifyCoalescer((worktreeId) =>
       this.flushScheduledMobileSessionTabsChanged(worktreeId)
@@ -262,10 +260,7 @@ export class OrcaRuntimeWithRuntimeId {
       (worktreeId) => this.touchMobileSessionTabsForWorktree(worktreeId)
     )
 
-  // Why: concurrent host terminal.focus storms (CLI switch fan-out / bulk open)
-  // each await a full host reveal; only one terminal can be focused, so latest-wins
-  // single-flight bounds host work. Does not replace cheaper activation or
-  // reconnect-scan bounding for sequential soft freezes.
+  // Concurrent focus requests share one host reveal; the latest pane wins.
   protected readonly terminalFocusNavigationCoalescer =
     new TerminalFocusNavigationCoalescer<RuntimeTerminalFocus>()
 
