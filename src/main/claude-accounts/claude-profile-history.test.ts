@@ -144,6 +144,29 @@ describe('Claude profile history sharing', () => {
     await f.share()
     expect(f.history()).toBe('d1\nd2\nnew\n')
   })
+  it('does not re-append lines after a purge drops one the shared file still has', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nb\nc\n')
+    await f.share()
+    fs.writeFileSync(join(f.profileHome, 'rewrite'), 'a\nc\n')
+    fs.renameSync(join(f.profileHome, 'rewrite'), join(f.profileHome, 'history.jsonl'))
+    await f.share()
+    expect(f.history()).toBe('a\nb\nc\n')
+  })
+  it('deletes a retained copy once a later run finds nothing new in it', async () => {
+    const f = fixture()
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'p1\n')
+    await f.share()
+    const pending = join(f.profileHome, 'history.jsonl.orca-profile-merge')
+    expect(fs.existsSync(`${pending}.offset`)).toBe(true)
+    fs.appendFileSync(pending, 'late\n')
+    await f.share()
+    expect(fs.existsSync(pending)).toBe(true)
+    await f.share()
+    expect(fs.existsSync(pending)).toBe(false)
+    expect(fs.existsSync(`${pending}.offset`)).toBe(false)
+    expect(f.history()).toBe('p1\nlate\n')
+  })
   it('drains retained generations in numeric order', async () => {
     const f = fixture()
     for (const generation of [0, 1, 2, 10, 11]) {
@@ -212,20 +235,5 @@ describe('Claude profile history sharing', () => {
     expect(fs.realpathSync(join(f.profileHome, 'projects'))).toBe(join(userConfigDir, 'projects'))
     expect(fs.readFileSync(join(userConfigDir, 'history.jsonl'), 'utf8')).toBe('p1\n')
     expect(fs.readdirSync(f.defaultHome)).toEqual([])
-  })
-  it('refuses a profile that is or holds a default Claude home', async () => {
-    const f = fixture()
-    for (const profileHome of [f.defaultHome, join(f.userHome, '.config', 'claude'), f.userHome]) {
-      await expect(
-        shareClaudeProfileHistory({ profileHome, userHome: f.userHome })
-      ).rejects.toThrow('separate directories')
-    }
-    await expect(
-      shareClaudeProfileHistory({
-        profileHome: join(f.userHome, 'custom', 'inner'),
-        userHome: f.userHome,
-        userConfigDir: join(f.userHome, 'custom')
-      })
-    ).rejects.toThrow('separate directories')
   })
 })

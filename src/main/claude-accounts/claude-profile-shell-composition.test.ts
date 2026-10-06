@@ -33,7 +33,14 @@ async function composed(enabled: boolean) {
   const powershell = await import('../powershell-osc133-bootstrap')
   const localBash = await import('../providers/local-pty-shell-ready-bash-rcfile')
   const daemonBash = await import('../daemon/daemon-bash-shell-ready-rcfile')
+  const zsh = await import('../zsh-startup-wrapper-builder')
+  const localZsh = await import('../providers/local-pty-shell-ready-wrapper-fileset')
+  const daemonZsh = await import('../daemon/daemon-zsh-shell-ready-wrapper-spec')
   return {
+    zsh: [
+      zsh.buildZshStartupHook(localZsh.getLocalZshWrapperSpec()),
+      zsh.buildZshStartupHook(daemonZsh.getDaemonZshWrapperSpec())
+    ],
     bash: [
       localBash.getBashShellReadyRcfileContent(),
       daemonBash.getDaemonBashShellReadyRcfileContent()
@@ -46,15 +53,16 @@ async function composed(enabled: boolean) {
   }
 }
 
-it('keeps the composed fish and PowerShell startup text dormant with the gate off', async () => {
+it('keeps the composed bash, zsh, fish and PowerShell startup text dormant with the gate off', async () => {
   const off = await composed(false)
   for (const text of [...off.fish, off.powershell]) {
     expect(text).not.toContain('claude')
   }
-  for (const text of off.bash) {
+  for (const text of [...off.bash, ...off.zsh]) {
     expect(text).not.toContain('ORCA_CLAUDE')
   }
-  for (const text of (await composed(true)).bash) {
+  const on = await composed(true)
+  for (const text of [...on.bash, ...on.zsh]) {
     expect(text).toContain('ORCA_CLAUDE_INJECTED_CONFIG_DIR')
   }
 })

@@ -37,7 +37,8 @@ export type ClaudeProfileRouterSettings = Pick<
 export const CLAUDE_PROFILE_SETUP_FAILED_MESSAGE =
   'The selected Claude account could not be set up. Try again or choose another account.'
 
-// Written by setup's ownership gate, so its absence means this folder was never set up.
+// Written by setup's ownership gate when setup starts, not when it completes: its absence means
+// setup never started here, and its presence does not prove setup finished.
 function profileMarkerPath(profile: ClaudeProfileDescriptor): string {
   return join(dirname(profile.home), 'profile.json')
 }
