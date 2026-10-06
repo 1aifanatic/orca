@@ -1,6 +1,11 @@
+import { join } from 'node:path'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { shareClaudeProfileHistory } from './claude-profile-history'
-import { prepareClaudeProfileDirectory, type ClaudeProfileDescriptor } from './claude-profile-paths'
+import {
+  prepareClaudeProfileDirectory,
+  readClaudeProfileObject,
+  type ClaudeProfileDescriptor
+} from './claude-profile-paths'
 import { provisionClaudeProfile } from './claude-profile-provisioning'
 import {
   ClaudeProfileSurfaceError,
@@ -9,6 +14,27 @@ import {
   warnClaudeProfile,
   type ClaudeProfileReport
 } from './claude-profile-report'
+import {
+  claudeProfileLedgerPath,
+  readClaudeProfileLedger,
+  writeClaudeProfileLedger
+} from './claude-profile-sharing'
+
+/** Without this the installed `hooks` look like a profile edit, so the user's own hooks never arrive. */
+function recordInstalledHooks(home: string): void {
+  const settings = readClaudeProfileObject(join(home, 'settings.json'))
+  if (settings.kind !== 'present' || !('hooks' in settings.value)) {
+    return
+  }
+  const ledgerPath = claudeProfileLedgerPath(home)
+  const ledger = readClaudeProfileLedger(ledgerPath)
+  const written = (ledger.keys['settings.json'] ??= {})
+  const hooks = JSON.stringify(settings.value.hooks)
+  if (written.hooks !== hooks) {
+    written.hooks = hooks
+    writeClaudeProfileLedger(ledgerPath, ledger)
+  }
+}
 
 /** `refused`: the profile failed its ownership gate and no surface was touched. */
 export type ClaudeProfileSetupReport = ClaudeProfileReport & { outcome: 'refused' | 'prepared' }
@@ -63,6 +89,7 @@ export async function provisionClaudeAccountProfile(args: {
     if (status.state !== 'installed') {
       throw new Error(status.detail ?? `Claude hooks ${status.state}`)
     }
+    recordInstalledHooks(home)
     return 'merged'
   })
   return { outcome: 'prepared', ...report }

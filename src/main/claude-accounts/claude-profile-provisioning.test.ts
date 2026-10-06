@@ -47,8 +47,11 @@ afterEach(() => {
   }
 })
 
+// Why: these create real symlinks, which Windows needs privilege for.
+const itLinks = it.skipIf(process.platform === 'win32')
+
 describe('dormant Claude profile provisioning', () => {
-  it('links resources, keeps private directories and sees later global installs', async () => {
+  itLinks('links resources, keeps private directories and sees later global installs', async () => {
     const f = fixture()
     const linked = [
       'skills',
@@ -78,29 +81,34 @@ describe('dormant Claude profile provisioning', () => {
       expect(fs.readFileSync(join(f.profileHome, name, 'mine.md'), 'utf8')).toBe('private')
     }
   })
-  it('shares personal rules, themes and workflows that later appear in the default home', async () => {
-    const f = fixture()
-    await provision(f)
-    fs.mkdirSync(join(f.source, 'rules'))
-    fs.writeFileSync(join(f.source, 'rules/style.md'), 'use tabs')
-    fs.mkdirSync(join(f.source, 'themes'))
-    fs.writeFileSync(join(f.source, 'themes/dusk.json'), '{"base":"dark"}')
-    fs.mkdirSync(join(f.source, 'workflows'))
-    fs.writeFileSync(join(f.source, 'workflows/review.js'), 'export const meta = {}')
-    const report = await provision(f)
-    expect(report.surfaces).toMatchObject({
-      rules: 'linked',
-      themes: 'linked',
-      workflows: 'linked'
-    })
-    expect(fs.readFileSync(join(f.profileHome, 'rules/style.md'), 'utf8')).toBe('use tabs')
-    expect(fs.readFileSync(join(f.profileHome, 'themes/dusk.json'), 'utf8')).toBe('{"base":"dark"}')
-    expect(fs.readFileSync(join(f.profileHome, 'workflows/review.js'), 'utf8')).toBe(
-      'export const meta = {}'
-    )
-    fs.writeFileSync(join(f.profileHome, 'workflows/saved.js'), 'saved in profile')
-    expect(fs.readFileSync(join(f.source, 'workflows/saved.js'), 'utf8')).toBe('saved in profile')
-  })
+  itLinks(
+    'shares personal rules, themes and workflows that later appear in the default home',
+    async () => {
+      const f = fixture()
+      await provision(f)
+      fs.mkdirSync(join(f.source, 'rules'))
+      fs.writeFileSync(join(f.source, 'rules/style.md'), 'use tabs')
+      fs.mkdirSync(join(f.source, 'themes'))
+      fs.writeFileSync(join(f.source, 'themes/dusk.json'), '{"base":"dark"}')
+      fs.mkdirSync(join(f.source, 'workflows'))
+      fs.writeFileSync(join(f.source, 'workflows/review.js'), 'export const meta = {}')
+      const report = await provision(f)
+      expect(report.surfaces).toMatchObject({
+        rules: 'linked',
+        themes: 'linked',
+        workflows: 'linked'
+      })
+      expect(fs.readFileSync(join(f.profileHome, 'rules/style.md'), 'utf8')).toBe('use tabs')
+      expect(fs.readFileSync(join(f.profileHome, 'themes/dusk.json'), 'utf8')).toBe(
+        '{"base":"dark"}'
+      )
+      expect(fs.readFileSync(join(f.profileHome, 'workflows/review.js'), 'utf8')).toBe(
+        'export const meta = {}'
+      )
+      fs.writeFileSync(join(f.profileHome, 'workflows/saved.js'), 'saved in profile')
+      expect(fs.readFileSync(join(f.source, 'workflows/saved.js'), 'utf8')).toBe('saved in profile')
+    }
+  )
   it('copies keybindings, keeps a profile edit and follows the default while unedited', async () => {
     const f = fixture()
     const source = join(f.source, 'keybindings.json')
@@ -159,20 +167,23 @@ describe('dormant Claude profile provisioning', () => {
     })
     expect(fs.readFileSync(join(f.profileHome, 'CLAUDE.md'), 'utf8')).toBe('private instructions')
   })
-  it('re-adds a shared key the profile deleted and leaves a linked settings file alone', async () => {
-    const f = fixture()
-    f.json(join(f.source, 'settings.json'), { model: 'a', theme: 'x' })
-    await provision(f)
-    f.json(join(f.profileHome, 'settings.json'), { theme: 'x' })
-    await provision(f)
-    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'a', theme: 'x' })
-    const elsewhere = join(f.root, 'elsewhere.json')
-    f.json(elsewhere, { mine: true })
-    fs.rmSync(join(f.profileHome, 'settings.json'))
-    fs.symlinkSync(elsewhere, join(f.profileHome, 'settings.json'))
-    expect((await provision(f)).surfaces['settings.json']).toBe('user-owned')
-    expect(f.read(elsewhere)).toEqual({ mine: true })
-  })
+  itLinks(
+    're-adds a shared key the profile deleted and leaves a linked settings file alone',
+    async () => {
+      const f = fixture()
+      f.json(join(f.source, 'settings.json'), { model: 'a', theme: 'x' })
+      await provision(f)
+      f.json(join(f.profileHome, 'settings.json'), { theme: 'x' })
+      await provision(f)
+      expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'a', theme: 'x' })
+      const elsewhere = join(f.root, 'elsewhere.json')
+      f.json(elsewhere, { mine: true })
+      fs.rmSync(join(f.profileHome, 'settings.json'))
+      fs.symlinkSync(elsewhere, join(f.profileHome, 'settings.json'))
+      expect((await provision(f)).surfaces['settings.json']).toBe('user-owned')
+      expect(f.read(elsewhere)).toEqual({ mine: true })
+    }
+  )
   it('removes a key the default dropped unless the profile changed it, and only keys Orca shared', async () => {
     const f = fixture()
     const settings = join(f.source, 'settings.json')
@@ -320,7 +331,7 @@ describe('dormant Claude profile provisioning', () => {
     expect((await provision(f)).surfaces['settings.json']).toBe('merged')
     expect(f.read(join(f.profileHome, 'settings.json')).theme).toBe('light')
   })
-  it('resets an unreadable ledger instead of blocking every surface', async () => {
+  itLinks('resets an unreadable ledger instead of blocking every surface', async () => {
     const f = fixture()
     fs.mkdirSync(join(f.source, 'skills'))
     f.json(join(f.source, 'settings.json'), { model: 'a' })
@@ -333,25 +344,28 @@ describe('dormant Claude profile provisioning', () => {
       'settings.json': { model: '"a"' }
     })
   })
-  it('keys shared values by surface, so another spelling of the profile keeps sharing', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.source, 'keybindings.json'), 'v1')
-    f.json(join(f.source, 'settings.json'), { model: 'a' })
-    await provision(f)
-    fs.writeFileSync(join(f.source, 'keybindings.json'), 'v2')
-    f.json(join(f.source, 'settings.json'), { model: 'b' })
-    const aliasRoot = fs.mkdtempSync(join(tmpdir(), 'claude-profile-alias-'))
-    roots.push(aliasRoot)
-    const alias = join(aliasRoot, 'link')
-    fs.symlinkSync(f.root, alias)
-    const report = await provisionClaudeProfile({
-      profileHome: join(alias, 'profile'),
-      userHome: f.userHome,
-      platform: 'linux'
-    })
-    expect(report.surfaces['keybindings.json']).toBe('synced')
-    expect(f.read(join(f.profileHome, 'settings.json')).model).toBe('b')
-  })
+  itLinks(
+    'keys shared values by surface, so another spelling of the profile keeps sharing',
+    async () => {
+      const f = fixture()
+      fs.writeFileSync(join(f.source, 'keybindings.json'), 'v1')
+      f.json(join(f.source, 'settings.json'), { model: 'a' })
+      await provision(f)
+      fs.writeFileSync(join(f.source, 'keybindings.json'), 'v2')
+      f.json(join(f.source, 'settings.json'), { model: 'b' })
+      const aliasRoot = fs.mkdtempSync(join(tmpdir(), 'claude-profile-alias-'))
+      roots.push(aliasRoot)
+      const alias = join(aliasRoot, 'link')
+      fs.symlinkSync(f.root, alias)
+      const report = await provisionClaudeProfile({
+        profileHome: join(alias, 'profile'),
+        userHome: f.userHome,
+        platform: 'linux'
+      })
+      expect(report.surfaces['keybindings.json']).toBe('synced')
+      expect(f.read(join(f.profileHome, 'settings.json')).model).toBe('b')
+    }
+  )
   it('imports the personal CLAUDE.md instead of copying it, so Claude loads it once', async () => {
     const f = fixture()
     await provision(f)
@@ -364,22 +378,25 @@ describe('dormant Claude profile provisioning', () => {
     fs.writeFileSync(join(f.source, 'CLAUDE.md'), 'edited personal instructions')
     expect((await provision(f)).surfaces['CLAUDE.md']).toBe('unchanged')
   })
-  it("shares from the user's own CLAUDE_CONFIG_DIR, copying its CLAUDE.md and state", async () => {
-    const f = fixture()
-    const userConfigDir = join(f.userHome, 'custom-claude')
-    fs.mkdirSync(join(userConfigDir, 'skills'), { recursive: true })
-    fs.writeFileSync(join(userConfigDir, 'CLAUDE.md'), 'custom instructions')
-    f.json(join(userConfigDir, 'settings.json'), { model: 'custom' })
-    f.json(join(userConfigDir, '.claude.json'), { theme: 'custom' })
-    f.json(join(f.userHome, '.claude.json'), { theme: 'home' })
-    f.json(join(f.profileHome, '.claude.json'), { userID: 'p' })
-    await provisionClaudeProfile({ ...f, userConfigDir, platform: 'linux' })
-    expect(fs.realpathSync(join(f.profileHome, 'skills'))).toBe(join(userConfigDir, 'skills'))
-    expect(fs.readFileSync(join(f.profileHome, 'CLAUDE.md'), 'utf8')).toBe('custom instructions')
-    expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'custom' })
-    expect(f.read(join(f.profileHome, '.claude.json')).theme).toBe('custom')
-  })
-  it("links to the default home's own entry, not where a user link of it points", async () => {
+  itLinks(
+    "shares from the user's own CLAUDE_CONFIG_DIR, copying its CLAUDE.md and state",
+    async () => {
+      const f = fixture()
+      const userConfigDir = join(f.userHome, 'custom-claude')
+      fs.mkdirSync(join(userConfigDir, 'skills'), { recursive: true })
+      fs.writeFileSync(join(userConfigDir, 'CLAUDE.md'), 'custom instructions')
+      f.json(join(userConfigDir, 'settings.json'), { model: 'custom' })
+      f.json(join(userConfigDir, '.claude.json'), { theme: 'custom' })
+      f.json(join(f.userHome, '.claude.json'), { theme: 'home' })
+      f.json(join(f.profileHome, '.claude.json'), { userID: 'p' })
+      await provisionClaudeProfile({ ...f, userConfigDir, platform: 'linux' })
+      expect(fs.realpathSync(join(f.profileHome, 'skills'))).toBe(join(userConfigDir, 'skills'))
+      expect(fs.readFileSync(join(f.profileHome, 'CLAUDE.md'), 'utf8')).toBe('custom instructions')
+      expect(f.read(join(f.profileHome, 'settings.json'))).toEqual({ model: 'custom' })
+      expect(f.read(join(f.profileHome, '.claude.json')).theme).toBe('custom')
+    }
+  )
+  itLinks("links to the default home's own entry, not where a user link of it points", async () => {
     const f = fixture()
     fs.mkdirSync(join(f.root, 'dotfiles-skills'))
     fs.symlinkSync(join(f.root, 'dotfiles-skills'), join(f.source, 'skills'))

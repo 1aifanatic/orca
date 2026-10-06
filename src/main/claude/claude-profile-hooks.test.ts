@@ -82,6 +82,9 @@ const sync = async (f: ReturnType<typeof fixture>) => {
   return report
 }
 
+// Why: these create real symlinks, which Windows needs privilege for.
+const itLinks = it.skipIf(process.platform === 'win32')
+
 describe('Claude hooks at an explicit profile', () => {
   it('installs managed hooks at a profile without editing default settings or adding a statusline', () => {
     const f = fixture()
@@ -131,7 +134,7 @@ describe('Claude hooks at an explicit profile', () => {
     expect(old.settings(old.defaultDir).statusLine).toBeUndefined()
     expect(old.settings(old.profile).statusLine).toBeUndefined()
   })
-  it('refuses a profile destination that is or links into the default home', () => {
+  itLinks('refuses a profile destination that is or links into the default home', () => {
     const f = fixture()
     f.service.install(CURRENT)
     const defaults = readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')

@@ -51,8 +51,11 @@ function fixture() {
   return { root, defaultHome, dataRoot, service, setup }
 }
 
+// Why: setup runs as 'linux', so it creates real symlinks, which Windows needs privilege for.
+const itLinks = it.skipIf(process.platform === 'win32')
+
 describe('Claude account profile setup', () => {
-  it('prepares, shares history, provisions and installs hooks in one call', async () => {
+  itLinks('prepares, shares history, provisions and installs hooks in one call', async () => {
     const f = fixture()
     mkdirSync(join(f.defaultHome, 'skills'))
     writeFileSync(join(f.defaultHome, 'settings.json'), '{"model":"opus"}')
@@ -80,7 +83,23 @@ describe('Claude account profile setup', () => {
     expect(existsSync(join(home, '.credentials.json'))).toBe(false)
     expect((await f.setup()).warnings).toEqual([])
   })
-  it('refuses another account in the same slot without creating anything', async () => {
+  itLinks("brings the user's later hooks into an account set up while they had none", async () => {
+    const f = fixture()
+    const settings = join(f.defaultHome, 'settings.json')
+    writeFileSync(settings, '{"model":"opus"}')
+    await f.setup()
+    const home = join(f.dataRoot, 'claude-profiles/a/home')
+    const read = (file: string) => JSON.parse(readFileSync(file, 'utf8'))
+    const orca = read(join(home, 'settings.json')).hooks
+    expect(orca).toBeDefined()
+    const mine = { matcher: '', hooks: [{ type: 'command', command: 'notify-me' }] }
+    writeFileSync(settings, JSON.stringify({ model: 'opus', hooks: { Notification: [mine] } }))
+    expect((await f.setup()).warnings).toEqual([])
+    const hooks = read(join(home, 'settings.json')).hooks
+    expect(hooks.Notification).toContainEqual(mine)
+    expect(hooks.Stop).toEqual(orca.Stop)
+  })
+  itLinks('refuses another account in the same slot without creating anything', async () => {
     const f = fixture()
     await f.setup()
     writeFileSync(
@@ -95,7 +114,7 @@ describe('Claude account profile setup', () => {
     ])
     expect(existsSync(join(f.dataRoot, 'claude-profiles/a/home'))).toBe(false)
   })
-  it('refuses a data root linked into the default home before writing there', async () => {
+  itLinks('refuses a data root linked into the default home before writing there', async () => {
     const f = fixture()
     mkdirSync(join(f.defaultHome, 'inner'))
     symlinkSync(join(f.defaultHome, 'inner'), join(f.dataRoot, 'claude-profiles'))
@@ -120,7 +139,7 @@ describe('Claude account profile setup', () => {
       expect.objectContaining({ surface: 'profile', code: 'invalid-profile' })
     ])
   })
-  it('reports skipped and failed hook installs without failing the rest', async () => {
+  itLinks('reports skipped and failed hook installs without failing the rest', async () => {
     const f = fixture()
     const skipped = await provisionClaudeAccountProfile({
       dataRoot: f.dataRoot,

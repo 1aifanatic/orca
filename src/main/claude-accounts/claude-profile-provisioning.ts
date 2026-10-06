@@ -17,11 +17,13 @@ import {
   type ClaudeProfileSurfaceOutcome
 } from './claude-profile-report'
 import {
+  claudeProfileLedgerPath,
   dropClaudeProfileKeys,
   linkClaudeProfileDirectory,
   mergeClaudeProfileKeys,
   readClaudeProfileLedger,
   syncClaudeProfileFile,
+  writeClaudeProfileLedger,
   type ClaudeProfileLedger
 } from './claude-profile-sharing'
 
@@ -166,7 +168,7 @@ export async function provisionClaudeProfile(args: {
   const platform = args.platform ?? process.platform
   const defaultHome = resolveClaudeDefaultHome(args.userHome, args.userConfigDir)
   const report = createClaudeProfileReport()
-  const ledgerPath = join(args.profileHome, '.orca-profile.json')
+  const ledgerPath = claudeProfileLedgerPath(args.profileHome)
   const ledger = readClaudeProfileLedger(ledgerPath)
   const recorded = JSON.stringify(ledger)
   for (const name of CLAUDE_PROFILE_RESOURCE_DIRS) {
@@ -216,7 +218,7 @@ export async function provisionClaudeProfile(args: {
     if (JSON.stringify(ledger) === recorded) {
       return 'unchanged'
     }
-    writeFileAtomically(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 })
+    writeClaudeProfileLedger(ledgerPath, ledger)
     return 'synced'
   })
   return report
