@@ -198,6 +198,13 @@ describe('remote runtime pty transport against a relaunched host that has not pu
       // Republishing the fenced handle is not the replacement it waits for, so no new inventory loop.
       expect(listCalls()).toBe(listCallsWhileParked)
       expect(runtimeSubscribe).toHaveBeenCalledTimes(1)
+
+      // The retry is still parked, so coming back online starts a fresh inventory attempt.
+      const { retryAllRemoteRuntimePtyRecoveriesNow } =
+        await import('./remote-runtime-pty-recovery-state')
+      expect(retryAllRemoteRuntimePtyRecoveriesNow()).toBe(1)
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(listCalls()).toBeGreaterThan(listCallsWhileParked)
       expect(onPtyExit).not.toHaveBeenCalled()
       expect(transport.getPtyId()).toBe('remote:env-1@@terminal-1')
     } finally {

@@ -216,7 +216,7 @@ export type RuntimeSessionTabCloseReason = 'user' | 'pty-exit' | 'cleanup'
  * The publication epoch a runtime answers with for a worktree it has published nothing for yet —
  * the state every worktree is in for a moment after the host process restarts.
  *
- * Always sent at `snapshotVersion: 0`, it marks a synthesized placeholder, not a host answer: the
+ * Bare or with a paired client's navigation suffix, it marks a synthesized placeholder, not a host answer: the
  * runtime is saying "ask me later", not "those tabs are gone". Clients must not read absence from
  * such a frame as evidence a tab was closed.
  */

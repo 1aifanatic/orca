@@ -1647,8 +1647,10 @@ export function createRemoteRuntimePtyTransport(
             return
           }
           if (!autoRecoveryWindowSpent) {
-            // Why: a published surface is the evidence a parked inventory wait is waiting for.
-            recovery.retryNow()
+            // Why: a published surface is the evidence a parked inventory wait is waiting for, unless that wait needs a replacement handle.
+            if (getRecoveryReplacementPolicy(previousHandle) !== 'require-replacement') {
+              recovery.retryNow()
+            }
             return
           }
           // Why: once the auto-recovery window is spent, a host still publishing this surface is evidence the fenced handle outlived the stale error.
@@ -1789,6 +1791,8 @@ export function createRemoteRuntimePtyTransport(
         }
         // Why: liveness is unknown, so auto-retry stops here; keep an unarmed retry parked for online/resume/reconnect to fire.
         recovery.parkRetryForExternalTrigger(recoveryEpoch, (nextEpoch) => {
+          // Why: an external trigger is a fresh attempt, not a repeated stale send, so it takes over this epoch's snapshot wait.
+          clearPublishedHandleWait()
           scheduleResubscribeAfterTransportClose(
             handle ? getRecoveryReplacementPolicy(handle) : 'reuse',
             nextEpoch
