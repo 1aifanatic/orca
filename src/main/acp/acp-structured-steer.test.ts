@@ -106,6 +106,32 @@ describe('a send while a Grok prompt runs', () => {
     expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['first', 'steer-1'])
   })
 
+  it('asks again on the next steer when the first cancel was never written', async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    await sendHello(rig, 'first')
+    await rig.frame('session/prompt')
+    await rig.settle()
+    const child = rig.child()
+    const cancel = child.cancel.bind(child)
+    let failNext = true
+    child.cancel = (options) => {
+      if (failNext) {
+        failNext = false
+        return Promise.reject(new Error('write failed'))
+      }
+      return cancel(options)
+    }
+    await sendHello(rig, 'steer-1')
+    await rig.settle()
+    expect(rig.sent('session/cancel')).toHaveLength(0)
+    await sendHello(rig, 'steer-2')
+    await sendHello(rig, 'steer-3')
+    await rig.settle()
+    // The failed write freed the running prompt's one cancel; the next steer used it.
+    expect(rig.sent('session/cancel')).toHaveLength(1)
+  })
+
   it('withdraws a steer a Stop reaches before its cancel lands', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
@@ -130,7 +156,7 @@ describe('a send while a Grok prompt runs', () => {
   })
 
   it('waits as long as Grok takes to answer a steer cancel, and a Stop then still ends it', async () => {
-    const rig = await openAcpAdapterRig({ deps: { cancelTimeoutMs: 30 } })
+    const rig = await openAcpAdapterRig()
     await rig.acquire()
     await sendHello(rig, 'first')
     await rig.frame('session/prompt')
@@ -143,7 +169,7 @@ describe('a send while a Grok prompt runs', () => {
     expect(rig.lifecycle).toEqual([])
     expect(rig.child().closes).toBe(0)
     expect(rig.settled.map((settled) => settled.clientMessageId)).toEqual(['first'])
-    // The Stop's own cancel keeps its bound.
+    // A Stop sends its own cancel; the host's grace, not the cancel, ends Grok.
     await rig.adapter.cancelTurn({ sessionId: ADAPTER_SESSION, fence: 1 })
     expect(rig.sent('session/cancel')).toHaveLength(2)
     expect(rig.settled).toEqual(
@@ -179,7 +205,7 @@ describe('a send while a turn Grok began itself runs', () => {
   })
 
   it("cuts Grok's turn on a second send and runs both messages, never ending Grok", async () => {
-    const rig = await openAcpAdapterRig({ deps: { cancelTimeoutMs: 30 } })
+    const rig = await openAcpAdapterRig()
     await rig.acquire()
     const { agent } = rig.child()
     agent.notify('session/update', replyChunk(GROK_TURN, 'Build finished; now'))
@@ -194,7 +220,7 @@ describe('a send while a turn Grok began itself runs', () => {
     await sendHello(rig, 'b')
     await rig.settle()
     expect(rig.sent('session/cancel')).toHaveLength(1)
-    // `a` runs a whole turn, well past the Stop bound: a steer's cancel never ends Grok.
+    // `a` runs a whole turn: a steer's cancel never ends Grok.
     await new Promise((resolve) => setTimeout(resolve, 120))
     await rig.settle()
     expect(rig.lifecycle).toEqual([])

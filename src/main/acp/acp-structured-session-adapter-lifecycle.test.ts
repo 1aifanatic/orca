@@ -164,7 +164,7 @@ describe('ACP connection loss', () => {
     await sendHello(rig, 'lost')
     await rig.frame('session/prompt')
     await sendHello(rig, 'held')
-    rig.child().stdin.destroy()
+    rig.child().agent.stdin.destroy()
     await rig.settle()
     await waitFor(() =>
       expect(rig.lifecycle).toMatchObject([
@@ -187,7 +187,7 @@ describe('ACP connection loss', () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     rig.child().stderr = 'panic: out of memory'
-    rig.child().stdout.end()
+    rig.child().agent.stdout.end()
     await rig.settle()
     expect(rig.lifecycle).toEqual([])
     rig.child().exit()
@@ -204,10 +204,7 @@ describe('ACP connection loss', () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     const child = rig.child()
-    child.close = async () => {
-      child.closes += 1
-      return false
-    }
+    child.proveClose = async () => false
     child.stderr = 'panic: late'
     child.agent.close()
     await rig.settle()
@@ -245,7 +242,7 @@ describe('ACP connection loss', () => {
     await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:lost', 'partial'))
     await rig.settle()
-    rig.child().stdin.destroy()
+    rig.child().agent.stdin.destroy()
     await waitFor(async () =>
       expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'unverifiable' })
     )
@@ -274,7 +271,7 @@ describe('ACP connection loss', () => {
     await rig.frame('session/prompt')
     rig.child().agent.notify('session/update', replyChunk('prompt:quiet', 'partial'))
     await rig.settle()
-    rig.child().stdout.end()
+    rig.child().agent.stdout.end()
     await rig.settle()
     expect((await journalTurns(rig)).at(-1)).toMatchObject({ state: 'running' })
     expect(rig.child().closes).toBe(0)
@@ -384,7 +381,7 @@ describe('ACP startup that never answers', () => {
     const failed = rig.acquire({ signal: start.signal }).catch((error: unknown) => error)
     await rig.frame('initialize')
     const child = rig.child()
-    child.close = vi.fn(async () => false)
+    child.proveClose = vi.fn(async () => false)
     start.abort()
     expect(await failed).toMatchObject({ name: 'AgentSessionAcquisitionExitUnprovenError' })
     // Every later stop asks the child again, and none answers for it.

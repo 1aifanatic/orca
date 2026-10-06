@@ -1,7 +1,7 @@
-// Making a reservation real for an ACP agent: spawn the child, record it before any handshake,
-// initialize with the client's file system and terminals off, then reattach the session this chat
-// proved with `session/load` (`session/resume` only for an agent that cannot load) or start a new
-// one; a saved session the agent cannot reopen is replaced by a new one, with a warning row. The
+// Making a reservation real for an ACP agent: open its connection (which spawns and owns the
+// process), record it before any handshake, initialize with the client's file system and terminals
+// off, then reattach the session this chat proved with `session/load` (`session/resume` only for an
+// agent that cannot load) or start a new one; a saved session the agent cannot reopen is replaced by a new one, with a warning row. The
 // journal already holds a reattached chat, so whatever the agent sends while it reattaches is not
 // written, except context usage. The handshake has no time bound: the acquire's abort signal
 // (Close, Stop, quit) stops it at any point.
@@ -28,8 +28,8 @@ import {
   acpReopenTakeover,
   acpSessionNotRestoredRow
 } from './acp-session-reopen-failure'
-import { AcpSessionRuntime, type AcpSessionEvent } from './acp-session-runtime'
-import type { AcpStructuredChild } from './acp-structured-child'
+import type { AcpSessionEvent } from './acp-session-runtime'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 import { ACP_HANDLE_TRANSPORT } from './acp-structured-agent-definitions'
 import { AcpStructuredLane } from './acp-structured-lane'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
@@ -40,10 +40,7 @@ import {
   routeAcpSessionEvent,
   type AcpStructuredSession
 } from './acp-structured-session'
-import {
-  ACP_CANCEL_TIMEOUT_MS,
-  type AcpStructuredSessionAdapterDeps
-} from './acp-structured-session-adapter-deps'
+import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
 import { AcpStructuredTurns, type AcpStructuredTurnsDeps } from './acp-structured-turns'
 import { RequestPermissionResponseSchema } from './generated/acp-protocol.generated'
 
@@ -57,13 +54,13 @@ export async function acquireAcpStructuredSession(input: {
   acquire: StructuredAgentSessionAcquireInput
   deps: AcpStructuredSessionAdapterDeps
   generation: string
-  /** The acquire was aborted; checked until the spawn, after which `track` hands it the child. */
+  /** The acquire was aborted; checked until the spawn, after which `track` hands it the connection. */
   abandoned: () => boolean
-  /** Registers the child so a close during the acquire can stop it. */
-  track: (child: AcpStructuredChild) => void
-  /** The child's exit, observed while or after the session exists. */
+  /** Registers the connection so a close during the acquire can stop it. */
+  track: (connection: AcpStructuredConnection) => void
+  /** The process's exit, observed while or after the session exists. */
   onExit: (session: AcpStructuredSession | null) => void
-  /** The connection broke with the child perhaps still running. Null while starting: then the
+  /** The protocol broke with the process perhaps still running. Null while starting: then the
    *  start itself fails. */
   onConnectionLost: (session: AcpStructuredSession | null, error: Error) => void
   onSettled: AcpStructuredTurnsDeps['settle']
@@ -92,17 +89,6 @@ export async function acquireAcpStructuredSession(input: {
       throw new AgentSessionPreSpawnError(error)
     })
   closedBeforeSpawn()
-  const child = deps.spawnChild({
-    command: launch.command,
-    args: launch.args,
-    cwd: launch.cwd,
-    env: {
-      ...structuredSessionChildIdentityEnv(sessionId, launch.env),
-      [PROVIDER_SPAWN_TOKEN_ENV]: acquire.spawnToken
-    },
-    envToDelete: ACP_CHILD_ENV_TO_DELETE
-  })
-  input.track(child)
   let session: AcpStructuredSession | null = null
   // A slot rather than a `let`: closures read it, and control-flow narrowing cannot see them write.
   const slot: { lane: AcpStructuredLane | null; reattaching: boolean } = {
@@ -112,7 +98,6 @@ export async function acquireAcpStructuredSession(input: {
   const options = new AcpStructuredOptions()
   const prompts = new AcpStructuredPrompts(() => slot.lane)
   const early: (() => void)[] = []
-  const connection = { closed: false }
   const whenLane = (deliver: () => void): void => {
     if (slot.lane) {
       deliver()
@@ -120,74 +105,70 @@ export async function acquireAcpStructuredSession(input: {
       early.push(deliver)
     }
   }
-  const runtime = new AcpSessionRuntime(child.stdout, child.stdin, {
-    clientInfo: { name: 'orca', version: '1' },
-    cancelTimeoutMs: deps.cancelTimeoutMs ?? ACP_CANCEL_TIMEOUT_MS,
-    onPermission: (request, context) => {
-      if (!session?.turns.running) {
-        // No prompt of Orca's runs (a turn the agent began itself): nobody is there to ask.
-        return { outcome: { outcome: 'cancelled' } }
-      }
-      if (launch.fullAccess) {
-        // Full access: Orca answers yes for the person, as the agent's own bypass flag would.
-        const allow = request.options.find((option) => option.kind === 'allow_once')
-        if (allow) {
-          return { outcome: { outcome: 'selected', optionId: allow.optionId } }
-        }
-      }
-      return prompts
-        .handle('session/request_permission', request, context)
-        .then((reply) => RequestPermissionResponseSchema.parse(reply))
+  const connection = deps.connect(
+    {
+      command: launch.command,
+      args: launch.args,
+      cwd: launch.cwd,
+      env: {
+        ...structuredSessionChildIdentityEnv(sessionId, launch.env),
+        [PROVIDER_SPAWN_TOKEN_ENV]: acquire.spawnToken
+      },
+      envToDelete: ACP_CHILD_ENV_TO_DELETE
     },
-    onRequest: (method, params, context) => prompts.handle(method, params, context),
-    onExtensionNotification: (method, params) =>
-      whenLane(() =>
-        slot.lane?.apply(
-          slot.lane.translator.notification(
-            method,
-            slot.reattaching ? asReattachHistory(params) : params,
-            now()
+    {
+      clientInfo: { name: 'orca', version: '1' },
+      onPermission: (request, context) => {
+        if (!session?.turns.running) {
+          // No prompt of Orca's runs (a turn the agent began itself): nobody is there to ask.
+          return { outcome: { outcome: 'cancelled' } }
+        }
+        if (launch.fullAccess) {
+          // Full access: Orca answers yes for the person, as the agent's own bypass flag would.
+          const allow = request.options.find((option) => option.kind === 'allow_once')
+          if (allow) {
+            return { outcome: { outcome: 'selected', optionId: allow.optionId } }
+          }
+        }
+        return prompts
+          .handle('session/request_permission', request, context)
+          .then((reply) => RequestPermissionResponseSchema.parse(reply))
+      },
+      onRequest: (method, params, context) => prompts.handle(method, params, context),
+      onExtensionNotification: (method, params) =>
+        whenLane(() =>
+          slot.lane?.apply(
+            slot.lane.translator.notification(
+              method,
+              slot.reattaching ? asReattachHistory(params) : params,
+              now()
+            )
           )
-        )
-      ),
-    onDiagnostic: (message) =>
-      deps.logger?.warn('ACP agent protocol diagnostic', {
-        scope: 'acp-diagnostic',
-        sessionId,
-        message
-      }),
-    onClose: (error) => {
-      connection.closed = true
-      // An agent that ended its stdout but can still be written to may still run: Stop or its exit
-      // ends it. Any other close (a broken stdin, or Orca's own) loses the agent.
-      const outputOnlyEnded =
-        child.stdout.readableEnded && child.stdin.writable && !child.stdin.destroyed
-      if (!outputOnlyEnded) {
-        input.onConnectionLost(session, error)
-      }
+        ),
+      onDiagnostic: (message) =>
+        deps.logger?.warn('ACP agent protocol diagnostic', {
+          scope: 'acp-diagnostic',
+          sessionId,
+          message
+        }),
+      // The protocol broke while the process may still run; the connection is already ending it.
+      // Its stdout ending alone is not this: the agent may still answer Stop's cancel or exit.
+      onClose: (error) => input.onConnectionLost(session, error),
+      // A crash usually ends stdout first; the session's end still reads the agent's last words at
+      // this proven exit.
+      onExit: () => input.onExit(session)
     }
-  })
-  // An abort fails whatever the agent left unanswered at once, as a kill does, whether or not the
-  // child's exit is proven yet.
-  const abandon = () =>
-    runtime.close(new Error(`${acpAgentName(spec.agent)} was closed while starting`))
-  acquire.signal?.addEventListener('abort', abandon, { once: true })
-  if (acquire.signal?.aborted) {
-    abandon()
-  }
-  runtime.subscribe((event: AcpSessionEvent) =>
+  )
+  // From here an abort closes this connection (the start's one canceller): whatever the agent left
+  // unanswered fails at once and the process ends, whether or not its exit is proven yet.
+  input.track(connection)
+  connection.subscribe((event: AcpSessionEvent) =>
     whenLane(
       () =>
         slot.lane &&
         routeAcpSessionEvent({ lane: slot.lane, options }, event, now(), slot.reattaching)
     )
   )
-  child.onExit(() => {
-    // A crash usually ends stdout first, so the connection's loss may already have closed the
-    // journal; the session's end still reads the agent's last words at this proven exit.
-    input.onExit(session)
-    runtime.close(new Error(child.stderrTail() || `${spec.command} exited`))
-  })
   const identity = providerSpawnedProcessIdentity(
     acquire,
     `${spec.agent} ACP agent`,
@@ -216,25 +197,26 @@ export async function acquireAcpStructuredSession(input: {
     }
     return lane
   }
-  await child.spawned
-  if (child.pid === undefined) {
+  await connection.spawned
+  const pid = connection.pid
+  if (pid === undefined) {
     throw new AgentSessionPreSpawnError(
-      new Error(child.stderrTail() || `${launch.command} could not be started`)
+      new Error(connection.stderrTail() || `${launch.command} could not be started`)
     )
   }
-  await identity.onSpawned(child.pid)
+  await identity.onSpawned(pid)
   const agentName = acpAgentName(spec.agent)
   try {
-    await runtime.initialize()
+    await connection.initialize()
     const resume = launch.resume
-    let started: Awaited<ReturnType<AcpSessionRuntime['start']>> | null = null
+    let started: Awaited<ReturnType<AcpStructuredConnection['start']>> | null = null
     let liveLane: AcpStructuredLane | null = null
     let takeover: ReturnType<typeof acpReopenTakeover> | null = null
     if (resume) {
       const attaching = makeLane(resume.sessionId, true)
       liveLane = attaching
       try {
-        started = await runtime.start({
+        started = await connection.start({
           cwd: launch.cwd,
           mcpServers: [],
           sessionId: resume.sessionId
@@ -254,13 +236,13 @@ export async function acquireAcpStructuredSession(input: {
     if (!started || !liveLane) {
       liveLane?.dispose()
       slot.lane = null
-      started = await runtime.start({ cwd: launch.cwd, mcpServers: [] })
+      started = await connection.start({ cwd: launch.cwd, mcpServers: [] })
       liveLane = makeLane(started.sessionId)
     }
     options.adoptSession(started.response)
     liveLane.apply(liveLane.translator.contextModels(started.response.models, now()))
-    const restoreSkipped = await restoreAcpSessionOptions(runtime, options, acquire.options)
-    const process = await identity.read(child.pid)
+    const restoreSkipped = await restoreAcpSessionOptions(connection, options, acquire.options)
+    const process = await identity.read(pid)
     const link: AgentSessionProviderHandleLink = {
       linkId:
         deps.mintLinkId?.() ?? `${spec.agent}-${acquire.fence}-${started.sessionId}`.slice(0, 128),
@@ -275,13 +257,13 @@ export async function acquireAcpStructuredSession(input: {
       fence: acquire.fence,
       acquisitionGeneration: generation,
       spec,
-      child,
-      runtime,
+      connection,
       lane: liveLane,
       prompts,
       options,
       turns: new AcpStructuredTurns({
-        runtime,
+        connection,
+        withdrawRequests: () => prompts.withdrawAll(),
         lane: liveLane,
         agentName,
         now,
@@ -295,17 +277,17 @@ export async function acquireAcpStructuredSession(input: {
     }
     const reading = liveLane
     const unbind = events?.bindReadingControl?.({
-      pauseReading: () => child.stdout.pause(),
+      pauseReading: () => connection.pauseReading(),
       resumeReading: () => {
-        child.stdout.resume()
+        connection.resumeReading()
         reading.retry()
       }
     })
     if (unbind) {
       session.unbindReadingControl = unbind
     }
-    if (child.exited || connection.closed) {
-      throw new Error(child.stderrTail() || `${spec.command} exited while starting`)
+    if (connection.exited || connection.closed) {
+      throw new Error(connection.stderrTail() || `${spec.command} exited while starting`)
     }
     if (takeover?.replaces) {
       liveLane.apply(acpSessionNotRestoredRow(started.sessionId, agentName))
@@ -321,7 +303,5 @@ export async function acquireAcpStructuredSession(input: {
       )
     }
     throw error
-  } finally {
-    acquire.signal?.removeEventListener('abort', abandon)
   }
 }

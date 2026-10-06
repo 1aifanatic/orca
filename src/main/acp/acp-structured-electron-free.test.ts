@@ -11,7 +11,7 @@ describe('ACP structured lane', () => {
       entryPoints: [
         resolve(__dirname, 'acp-structured-session-adapter.ts'),
         resolve(__dirname, 'acp-structured-launch-resolution.ts'),
-        resolve(__dirname, 'acp-structured-child.ts')
+        resolve(__dirname, 'acp-agent-connection.ts')
       ],
       bundle: true,
       write: false,

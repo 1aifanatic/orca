@@ -283,7 +283,7 @@ describe('ACP structured session adapter: requests a Stop cancels', () => {
     expect(agent.frames.filter((frame) => frame.id === 5)).toHaveLength(1)
   })
 
-  it('reports a permission answer whose save outlived the Stop as unconfirmed, not given', async () => {
+  it('sends a permission answer whose save was under way when the Stop landed', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
     await send(rig, 'send-1')
@@ -309,8 +309,12 @@ describe('ACP structured session adapter: requests a Stop cancels', () => {
       // The Stop lands while the person's answer is being saved.
       commit: () => rig.adapter.cancelTurn({ sessionId: SESSION, fence: 1 }).then(() => {})
     })
-    await expect(answering).rejects.toThrow(/stopped waiting/)
-    expect(await permission).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
+    // The Stop withdraws only what no answer has claimed.
+    await expect(answering).resolves.toBeUndefined()
+    expect(await permission).toMatchObject({
+      result: { outcome: { outcome: 'selected', optionId: 'allow-once' } }
+    })
+    expect(rig.sent('session/cancel')).toHaveLength(1)
   })
 })
 
@@ -362,7 +366,7 @@ describe('ACP structured session adapter: close and exit', () => {
   it('reports a close whose root exited but whose process tree was not proven gone', async () => {
     const rig = await openAcpAdapterRig()
     await rig.acquire()
-    rig.child().treeUnproven = true
+    rig.child().processTreeUnproven = true
     await expect(rig.adapter.closeSession(SESSION)).rejects.toBeInstanceOf(
       AgentSessionAcquisitionRootExitObservedError
     )

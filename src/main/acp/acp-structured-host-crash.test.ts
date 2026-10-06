@@ -90,7 +90,7 @@ describe('a Grok crash whose pipes close before its exit is seen', () => {
     const rig = await midReply()
     // The child outlives its stream until Orca's close of it is proven.
     let exitNow: () => void = () => undefined
-    rig.child.close = () =>
+    rig.child.proveClose = () =>
       new Promise((resolve) => {
         exitNow = () => {
           rig.child.exit()

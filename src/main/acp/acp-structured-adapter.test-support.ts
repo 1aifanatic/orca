@@ -1,8 +1,9 @@
-// A scripted ACP agent behind the real adapter: a fake child over in-memory stdio, the real
+// A scripted ACP agent behind the real adapter: a fake connection over in-memory stdio, the real
 // protocol runtime, translator and assembler, and a real on-disk journal to read back.
 
 import { vi } from 'vitest'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
+import type { ProviderProcessExit } from '../provider-process/managed-provider-process'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { StructuredAgentSessionLifecycleEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
@@ -12,7 +13,10 @@ import {
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { acpLaunchSpecFor } from './acp-launch-specs'
 import { AcpScriptedAgent, tick, type FakeFrame } from './acp-scripted-agent.test-support'
-import type { AcpStructuredChild } from './acp-structured-child'
+import type { AcpAgentConnectionOptions } from './acp-agent-connection'
+import { AcpConnectionClosedError } from './acp-errors'
+import { AcpSessionRuntime } from './acp-session-runtime'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import { AcpStructuredSessionAdapter } from './acp-structured-session-adapter'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
@@ -46,53 +50,90 @@ export const GROK_CONFIG_OPTIONS = [
   }
 ]
 
-export class FakeAcpChild implements AcpStructuredChild {
-  readonly agent = new AcpScriptedAgent()
+/** A scripted agent behind the connection surface: the real protocol runtime over in-memory stdio,
+ *  with the process lifecycle `AcpAgentConnection` gives it (stdout EOF is not exit; the exit closes
+ *  the protocol with the agent's last words; a protocol failure while it runs is `onClose`). */
+export class FakeAcpChild extends AcpSessionRuntime implements AcpStructuredConnection {
+  readonly agent: AcpScriptedAgent
   readonly pid: number | undefined = PID
   readonly spawned = Promise.resolve()
   stderr = ''
-  treeUnproven = false
-  private listeners: (() => void)[] = []
+  processTreeUnproven = false
+  private exitListeners: ((exit: ProviderProcessExit) => void)[] = []
   private gone = false
+  private closing = false
+  private lostWith: Error | undefined
   closes = 0
 
-  constructor(readonly launch: ProviderProcessLaunch) {}
+  constructor(
+    readonly launch: ProviderProcessLaunch,
+    private readonly connectionOptions: AcpAgentConnectionOptions,
+    agent = new AcpScriptedAgent()
+  ) {
+    const lifecycle: { child: FakeAcpChild | null } = { child: null }
+    super(agent.stdout, agent.stdin, {
+      ...connectionOptions,
+      peer: { ...connectionOptions.peer, closeOnInputEnd: false },
+      onClose: (error) => lifecycle.child?.lost(error)
+    })
+    lifecycle.child = this
+    this.agent = agent
+  }
 
-  get stdout() {
-    return this.agent.stdout
-  }
-  get stdin() {
-    return this.agent.stdin
-  }
   get exited() {
     return this.gone
   }
-  onExit(listener: () => void): void {
+  onExit(listener: (exit: ProviderProcessExit) => void): void {
     if (this.gone) {
-      listener()
+      listener(FAKE_EXIT)
     } else {
-      this.listeners.push(listener)
+      this.exitListeners.push(listener)
     }
   }
   stderrTail(): string {
     return this.stderr
   }
-  async close(): Promise<boolean> {
-    this.closes += 1
+  pauseReading(): void {
+    this.agent.stdout.pause()
+  }
+  resumeReading(): void {
+    this.agent.stdout.resume()
+  }
+  /** What a close proves once the protocol is closed; replace it to leave the exit unproven. */
+  proveClose = async (): Promise<boolean> => {
     this.exit()
     return true
   }
-  /** The agent process ends on its own. */
+  override close(error?: Error): Promise<boolean> {
+    this.closes += 1
+    this.closing ||= !this.gone
+    super.close(error)
+    return this.proveClose()
+  }
+  /** The agent process ends on its own (or Orca's close landed). */
   exit(): void {
     if (this.gone) {
       return
     }
     this.gone = true
-    for (const listener of this.listeners.splice(0)) {
-      listener()
+    const error =
+      this.lostWith ?? new AcpConnectionClosedError(this.stderr || `${this.launch.command} exited`)
+    super.close(error)
+    this.connectionOptions.onExit?.(error, { expected: this.closing, exit: FAKE_EXIT })
+    for (const listener of this.exitListeners.splice(0)) {
+      listener(FAKE_EXIT)
     }
   }
+  private lost(error: Error): void {
+    this.lostWith ??= error
+    if (this.closing || this.gone) {
+      return
+    }
+    this.connectionOptions.onClose?.(error)
+  }
 }
+
+const FAKE_EXIT: ProviderProcessExit = { code: 0, signal: null, processless: false }
 
 export type AcpAdapterRig = {
   rig: ProviderTimelineRig
@@ -138,9 +179,9 @@ export async function openAcpAdapterRig(
       resume: null,
       ...options.launch
     }),
-    spawnChild: (launch) => {
+    connect: (launch, connectionOptions) => {
       spawned.push('spawn')
-      const child = new FakeAcpChild(launch)
+      const child = new FakeAcpChild(launch, connectionOptions)
       current = child
       const { agent } = child
       agent.on('initialize', (frame) => {
@@ -164,7 +205,6 @@ export async function openAcpAdapterRig(
     onDispatchSettledLate: (settlement) => settled.push(settlement),
     mintGeneration: () => 'gen-acp',
     now: () => 5_000,
-    cancelTimeoutMs: 1_000,
     ...options.deps
   })
   const frames = () => current?.agent.frames ?? []

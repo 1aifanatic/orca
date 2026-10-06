@@ -1,5 +1,5 @@
-// One live ACP child and what Orca keeps beside it, and how its traffic and its exit reach the
-// journal and the host.
+// One live ACP agent connection and what Orca keeps beside it, and how its traffic and its
+// process's exit reach the journal and the host.
 
 import { agentSessionFailureFact, providerDiagnostic } from '../../shared/agent-session-failure'
 import type { StructuredAgentSessionEndedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -8,8 +8,8 @@ import {
   type StructuredAgentSessionTurnVerdict
 } from '../native-chat/agent-session-wire/structured-agent-session-stale-turn-verdict'
 import type { AcpLaunchSpec } from './acp-launch-specs'
-import type { AcpSessionEvent, AcpSessionRuntime } from './acp-session-runtime'
-import type { AcpStructuredChild } from './acp-structured-child'
+import type { AcpSessionEvent } from './acp-session-runtime'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { AcpStructuredLane } from './acp-structured-lane'
 import type { AcpStructuredOptions } from './acp-structured-options'
 import type { AcpStructuredPrompts } from './acp-structured-prompts'
@@ -20,8 +20,8 @@ export type AcpStructuredSession = {
   fence: number
   acquisitionGeneration: string
   spec: AcpLaunchSpec
-  child: AcpStructuredChild
-  runtime: AcpSessionRuntime
+  /** The agent's process and its protocol, one owner. */
+  connection: AcpStructuredConnection
   lane: AcpStructuredLane
   prompts: AcpStructuredPrompts
   options: AcpStructuredOptions
@@ -98,7 +98,6 @@ export function closeAcpSessionJournal(
   session.lane.flush()
   session.lane.dispose()
   session.unbindReadingControl?.()
-  session.runtime.close(new Error(reason))
 }
 
 /** The child's proven exit, once: the journal closes if it has not, and the host hears `ended` so
@@ -113,7 +112,7 @@ export function endAcpStructuredSession(
   }
   session.ended = true
   session.exitObservedAt = observedAt
-  const stderr = session.child.stderrTail()
+  const stderr = session.connection.stderrTail()
   // Read at the proven exit: a crash usually ends the agent's stdout before its exit is observed,
   // so the connection's close comes first, but the agent's own last words are what explain it.
   const reason = session.closeRequested

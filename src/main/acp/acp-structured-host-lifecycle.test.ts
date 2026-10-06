@@ -124,8 +124,7 @@ describe('a Grok crash whose exit is not proven yet', () => {
     child.agent.notify('session/update', replyChunk(promptIdOf(prompt), 'partial'))
     await rig.settle()
     let proves = false
-    child.close = async () => {
-      child.closes += 1
+    child.proveClose = async () => {
       if (proves) {
         child.exit()
       }
@@ -177,15 +176,15 @@ describe('closing or stopping a Grok chat while it starts', () => {
     const attaching = host.attach(CALLER, attachParams()).catch((error: unknown) => error)
     await rig.frame('initialize')
     const child = rig.child()
-    child.close = vi.fn(async () => false)
+    child.proveClose = vi.fn(async () => false)
     await host.close(SESSION, 'user-close')
     expect(await attaching).toMatchObject({ name: 'AgentSessionAcquisitionExitUnprovenError' })
-    child.close = vi.fn(async () => {
+    child.proveClose = vi.fn(async () => {
       child.exit()
       return true
     })
     await host.close(SESSION, 'user-close')
-    expect(child.close).not.toHaveBeenCalled()
+    expect(child.proveClose).not.toHaveBeenCalled()
     expect(child.exited).toBe(false)
     // As Claude's: the next start asks the child again before it spawns another.
     await host.send(CALLER, {

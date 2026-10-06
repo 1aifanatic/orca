@@ -2,9 +2,10 @@
 // JSON-RPC call it is until a person answers it, a Stop cancels it, or the agent withdraws it.
 // An answer claims the request, commits the journal compare-and-set while the claim is held, and
 // only then replies, so a second client loses the commit and the agent hears exactly one answer.
-// Each request is this module's to answer: once the agent or a Stop cancels it, an unclaimed one is
-// answered with the agent's own cancelled reply, and a claimed one still sends the committed answer
-// — except a permission, which the protocol answers `cancelled` itself the moment it is cancelled.
+// Each request is this module's to answer: once the agent cancels it, or a Stop or steer withdraws
+// what is open (`withdrawAll`), an unclaimed one is answered with the agent's own cancelled reply
+// and a claimed one still sends the committed answer — except a permission the agent itself
+// cancelled, which the protocol answers `cancelled` the moment it is cancelled.
 
 import type { AgentSessionPromptResponse } from '../../shared/agent-session-question-answer'
 import {
@@ -23,6 +24,8 @@ type OpenRequest = {
   permission: boolean
   signal: AbortSignal
   claimed: boolean
+  /** A Stop or steer withdrew it while an answer was being saved: a failed save withdraws it. */
+  withdrawing: boolean
   settle: (reply: unknown) => void
 }
 
@@ -56,6 +59,7 @@ export class AcpStructuredPrompts {
         permission: method === 'session/request_permission',
         signal: context.signal,
         claimed: false,
+        withdrawing: false,
         settle: (reply) => {
           if (this.open.get(key) === entry) {
             this.open.delete(key)
@@ -100,7 +104,7 @@ export class AcpStructuredPrompts {
       await input.commit()
     } catch (error) {
       entry.claimed = false
-      if (entry.signal.aborted) {
+      if (entry.signal.aborted || entry.withdrawing) {
         this.withdraw(entry)
       }
       throw error
@@ -109,6 +113,17 @@ export class AcpStructuredPrompts {
     if (entry.permission && entry.signal.aborted) {
       // Cancelled while the answer was saved: the agent already heard `cancelled`, not this answer.
       throw new Error(`the agent stopped waiting for the answer to ${input.itemId}`)
+    }
+  }
+
+  /** A Stop or steer: the agent hears its own cancelled reply to everything no answer has claimed. */
+  withdrawAll(): void {
+    for (const entry of this.open.values()) {
+      if (entry.claimed) {
+        entry.withdrawing = true
+      } else {
+        this.withdraw(entry)
+      }
     }
   }
 

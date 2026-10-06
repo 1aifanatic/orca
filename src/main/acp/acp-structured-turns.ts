@@ -1,8 +1,9 @@
 // The sends of one ACP session. ACP runs one prompt at a time, so a message sent while Orca's prompt
 // runs steers: that prompt is cancelled (the session stays) and the message goes as the next prompt
-// once the agent answers the cancel, however long that takes. A steer waits here until then; one
-// behind it cancels it in turn, so the last one runs, and a Stop withdraws what waits. A turn the agent began itself is not Orca's
-// to cut short: a message sent during it goes to the agent at once. Each send is settled exactly once:
+// once the agent answers the cancel, however long that takes. Each running prompt gets one cancel,
+// however many steers arrive; steers wait here, the last one runs, and a Stop withdraws what waits.
+// A turn the agent began itself is not Orca's to cut short: a message sent during it goes to the
+// agent at once. Each send is settled exactly once:
 // accepted when the agent's first event for its turn (or its answer) arrives, rejected when the
 // agent refused it or it never left Orca, unknown when the agent died with it or its connection
 // broke before it answered.
@@ -21,7 +22,7 @@ import type {
   AgentJournalMessageItem
 } from '../../shared/agent-session-journal-types'
 import { AcpAgentError } from './acp-errors'
-import type { AcpSessionRuntime } from './acp-session-runtime'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 import type { AcpStructuredLane } from './acp-structured-lane'
 import type { ContentBlock } from './generated/acp-protocol.generated'
 
@@ -47,7 +48,9 @@ export function acpPromptBlocks(body: AgentJournalMessageItem): ContentBlock[] |
 type Send = { clientMessageId: string; prompt: ContentBlock[]; requestedAt: number }
 
 export type AcpStructuredTurnsDeps = {
-  runtime: Pick<AcpSessionRuntime, 'prompt' | 'requestSteerCancel'>
+  connection: Pick<AcpStructuredConnection, 'prompt' | 'cancel'>
+  /** Answers the agent's open requests cancelled, as a steer's cancel ends what they belong to. */
+  withdrawRequests: () => void
   lane: AcpStructuredLane
   agentName: string
   now: () => number
@@ -56,6 +59,8 @@ export type AcpStructuredTurnsDeps = {
 
 export class AcpStructuredTurns {
   private active: Send | null = null
+  /** The running send a steer already cancelled: one cancel per prompt, retried if its write failed. */
+  private steerCancelled: Send | null = null
   /** Steers waiting for the prompt ahead of them to answer its cancel. */
   private readonly steers: Send[] = []
   private readonly unsettled = new Set<string>()
@@ -116,6 +121,7 @@ export class AcpStructuredTurns {
       this.deps.settle({ clientMessageId: active.clientMessageId, state: 'unknown', reason })
     }
     this.active = null
+    this.steerCancelled = null
     this.notifyIdle()
   }
 
@@ -126,7 +132,7 @@ export class AcpStructuredTurns {
     lane.apply(opened.events)
     // The agent echoes this id on every event of the turn, so its rows join the turn Orca opened.
     const meta = { promptId: opened.promptId, requestId: opened.promptId }
-    const answered = this.deps.runtime.prompt(send.prompt, meta)
+    const answered = this.deps.connection.prompt(send.prompt, meta)
     if (this.steers.length > 0) {
       this.cancelForSteer()
     }
@@ -168,6 +174,9 @@ export class AcpStructuredTurns {
     if (this.active === send) {
       this.active = null
     }
+    if (this.steerCancelled === send) {
+      this.steerCancelled = null
+    }
     const next = this.ended ? undefined : this.steers.shift()
     if (next) {
       this.start(next)
@@ -176,10 +185,24 @@ export class AcpStructuredTurns {
     }
   }
 
-  /** Answers the agent's open requests cancelled and asks once to end the running prompt; never
-   *  bounded, so a slow answer only delays the steer, and a Stop still ends the session. */
+  /** Asks once per running prompt to end it; never bounded, so a slow answer only delays the steer,
+   *  and a Stop still ends the session. */
   private cancelForSteer(): void {
-    void this.deps.runtime.requestSteerCancel().catch(() => undefined)
+    const send = this.active
+    if (!send) {
+      return
+    }
+    this.deps.withdrawRequests()
+    if (this.steerCancelled === send) {
+      return
+    }
+    this.steerCancelled = send
+    this.deps.connection.cancel().catch(() => {
+      // Never written: the next steer may ask again.
+      if (this.steerCancelled === send) {
+        this.steerCancelled = null
+      }
+    })
   }
 
   private notifyIdle(): void {

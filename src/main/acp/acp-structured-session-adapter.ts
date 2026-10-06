@@ -28,7 +28,7 @@ import {
   type AcpStructuredSession
 } from './acp-structured-session'
 import { AcpStructuredStarts, type AcpStartAttempt } from './acp-structured-starts'
-import { waitForAcpChildExit } from './acp-structured-child'
+import { waitForAcpExit } from './acp-structured-connection'
 import { AcpConnectionClosedError } from './acp-errors'
 import { acpPromptBlocks } from './acp-structured-turns'
 import {
@@ -78,7 +78,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         deps: this.deps,
         generation,
         abandoned: () => attempt.signal.aborted,
-        track: (child) => this.starts.track(attempt, child),
+        track: (connection) => this.starts.track(attempt, connection),
         onExit: (session) => {
           if (session && this.sessions.get(sessionId) === session) {
             this.finish(session, this.now())
@@ -95,16 +95,17 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       this.sessions.set(sessionId, session)
       return acquisition
     } catch (error) {
-      const { child } = attempt
-      if (child && error instanceof AcpConnectionClosedError) {
-        // A dying agent's stdout ends before its exit is seen: wait (bounded) for that exit, so
-        // the failure carries its last words, as a running session's end does.
-        await waitForAcpChildExit(child, this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS, attempt.signal)
+      const { connection } = attempt
+      if (connection && error instanceof AcpConnectionClosedError) {
+        // A protocol that broke before the exit was seen: wait (bounded) for that exit, so the
+        // failure carries the agent's last words, as a running session's end does.
+        await waitForAcpExit(connection, this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS, attempt.signal)
       }
       // Checked before the close below, which would make any exit look like one Orca asked for.
-      const exitedOnItsOwn = child?.exited === true && !attempt.signal.aborted
-      if (child && !(await child.close().catch(() => false))) {
-        this.starts.retainFailed(sessionId, child)
+      const exitedOnItsOwn = connection?.exited === true && !attempt.signal.aborted
+      if (connection && !(await connection.close().catch(() => false))) {
+        // Kept, so the next start or quit closes this same process again; no second one spawns.
+        this.starts.retainFailed(sessionId, connection)
         throw new AgentSessionAcquisitionExitUnprovenError(error)
       }
       if (attempt.signal.aborted) {
@@ -112,12 +113,14 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
           `${acpAgentName(this.deps.spec.agent)} was closed while starting`,
           { cause: error }
         )
-        throw child ? closed : new AgentSessionPreSpawnError(closed)
+        throw connection ? closed : new AgentSessionPreSpawnError(closed)
       }
-      if (child && exitedOnItsOwn && !isAgentSessionPreSpawnError(error)) {
+      if (connection && exitedOnItsOwn && !isAgentSessionPreSpawnError(error)) {
         // The agent's own last words are what a person can act on.
         throw new AgentSessionAcquisitionExitProvenError(
-          withObservedProviderExit(new Error(child.stderrTail() || String(error), { cause: error }))
+          withObservedProviderExit(
+            new Error(connection.stderrTail() || String(error), { cause: error })
+          )
         )
       }
       throw error
@@ -167,9 +170,11 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
         ? { cancelled: true }
         : { cancelled: false, refusal: { turnNotRunning: true } }
     }
-    // Answers every open request cancelled and lets the agent end its turn its own way; the host
-    // ends the child once that lands or the grace runs out (`awaitStoppedRequestEnd`).
-    void session.runtime.cancel().catch(() => undefined)
+    // The agent hears its own cancelled reply to what it asked, then may end its turn its own way;
+    // the host ends the process once that lands or the grace runs out (`awaitStoppedRequestEnd`),
+    // never waiting on this write.
+    session.prompts.withdrawAll()
+    void session.connection.cancel().catch(() => undefined)
     return { cancelled: true }
   }
 
@@ -214,7 +219,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       throw new Error(`${session.spec.agent} offers no session option named ${input.key}`)
     }
     // Bounded, and abandoned by a close or Stop: the session's queue waits on it.
-    await writeAcpSessionOption(session.runtime, session.options, write, {
+    await writeAcpSessionOption(session.connection, session.options, write, {
       agent: session.spec.agent,
       timeoutMs: this.deps.optionWriteTimeoutMs ?? ACP_OPTION_WRITE_TIMEOUT_MS,
       ...(input.signal ? { signal: input.signal } : {})
@@ -254,9 +259,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   /** A requested close: proven by the root's exit; a tree not proven gone is the caller's to report. */
   private async close(sessionId: string): Promise<boolean> {
-    const child = this.sessions.get(sessionId)?.child
+    const connection = this.sessions.get(sessionId)?.connection
     const closed = await this.stop(sessionId, true)
-    if (closed && child?.treeUnproven) {
+    if (closed && connection?.processTreeUnproven) {
       throw new AgentSessionAcquisitionRootExitObservedError(
         new Error(
           `${this.deps.spec.agent} ACP agent exited, but its process tree was not proven gone`
@@ -286,7 +291,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       session.closeRequested ||= requested
       session.lane.flush()
     }
-    const proven = await session.child.close()
+    const proven = await session.connection.close()
     if (proven) {
       this.finish(session, session.exitObservedAt ?? this.now())
     }

@@ -1,6 +1,7 @@
-// A real child (plain Node, never an agent CLI) that stops talking mid-turn by closing its stdout
-// while the process itself keeps running: nothing exited and Orca can still write to it, so, as in
-// the common pattern, the turn runs on until a Stop or close ends the agent.
+// Real children (plain Node, never an agent CLI) behind the real connection. One stops talking
+// mid-turn by closing its stdout while the process keeps running: nothing exited and Orca can still
+// write to it, so, as in the common pattern, the turn runs on until a Stop or close ends the agent.
+// The other exits while a process it started still holds its stdout open: the exit alone ends it.
 
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,14 +18,14 @@ import {
   PROVIDER_SESSION,
   sendHello
 } from './acp-structured-adapter.test-support'
-import { spawnAcpStructuredChild } from './acp-structured-child'
+import { createAcpAgentConnection } from './acp-agent-connection'
 
 afterEach(async () => {
   await closeProviderTimelineRigs()
 })
 
-// Answers the handshake, echoes one reply chunk for the prompt, then closes fd 1 and stays alive.
-const CLOSES_STDOUT_MID_TURN = String.raw`
+// Answers the handshake and echoes one reply chunk for the prompt, then runs `onPrompt`.
+const agentScript = (onPrompt: string): string => String.raw`
   const fs = require('node:fs')
   fs.writeFileSync(process.env.ORCA_TEST_PID_FILE, String(process.pid))
   const send = (frame) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...frame }) + '\n')
@@ -45,12 +46,25 @@ const CLOSES_STDOUT_MID_TURN = String.raw`
           method: 'session/update',
           params: { sessionId: frame.params.sessionId, update, _meta: frame.params._meta }
         })
-        process.stdout.write('', () => fs.closeSync(1))
+        process.stdout.write('', () => {
+          ${onPrompt}
+        })
       }
     }
   })
   setInterval(() => {}, 60000)
 `
+const CLOSES_STDOUT_MID_TURN = agentScript('fs.closeSync(1)')
+// Starts a process that inherits its stdout and outlives it, records that process, then exits.
+const EXITS_HOLDING_STDOUT = agentScript(String.raw`
+  const held = require('node:child_process').spawn(
+    process.execPath,
+    ['-e', 'setInterval(() => {}, 60000)'],
+    { stdio: ['ignore', 'inherit', 'ignore'] }
+  )
+  fs.writeFileSync(process.env.ORCA_TEST_PID_FILE + '.held', String(held.pid))
+  process.exit(3)
+`)
 
 function alive(pid: number): boolean {
   try {
@@ -66,19 +80,22 @@ describe('ACP agent that closes its stdout but keeps running', () => {
     const pidFile = join(mkdtempSync(join(tmpdir(), 'orca-acp-broken-stream-')), 'pid')
     const rig = await openAcpAdapterRig({
       deps: {
-        spawnChild: () =>
-          spawnAcpStructuredChild({
-            command: process.execPath,
-            args: ['-e', CLOSES_STDOUT_MID_TURN],
-            cwd: process.cwd(),
-            env: {
-              ORCA_TEST_PID_FILE: pidFile,
-              ORCA_TEST_SESSION: JSON.stringify({
-                sessionId: PROVIDER_SESSION,
-                configOptions: GROK_CONFIG_OPTIONS
-              })
-            }
-          })
+        connect: (_launch, options) =>
+          createAcpAgentConnection(
+            {
+              command: process.execPath,
+              args: ['-e', CLOSES_STDOUT_MID_TURN],
+              cwd: process.cwd(),
+              env: {
+                ORCA_TEST_PID_FILE: pidFile,
+                ORCA_TEST_SESSION: JSON.stringify({
+                  sessionId: PROVIDER_SESSION,
+                  configOptions: GROK_CONFIG_OPTIONS
+                })
+              }
+            },
+            options
+          )
       }
     })
     onTestFinished(async () => {
@@ -101,5 +118,45 @@ describe('ACP agent that closes its stdout but keeps running', () => {
     await expect(rig.adapter.closeSession(SESSION)).resolves.toBe(true)
     expect(alive(pid)).toBe(false)
     expect(rig.lifecycle).toMatchObject([{ type: 'ended', cause: 'requested-close' }])
+  }, 30_000)
+})
+
+describe('ACP agent that exits while a process it started holds its stdout open', () => {
+  it('ends the session at the exit, with the turn interrupted', async () => {
+    const pidFile = join(mkdtempSync(join(tmpdir(), 'orca-acp-held-stdout-')), 'pid')
+    const rig = await openAcpAdapterRig({
+      deps: {
+        connect: (_launch, options) =>
+          createAcpAgentConnection(
+            {
+              command: process.execPath,
+              args: ['-e', EXITS_HOLDING_STDOUT],
+              cwd: process.cwd(),
+              env: {
+                ORCA_TEST_PID_FILE: pidFile,
+                ORCA_TEST_SESSION: JSON.stringify({
+                  sessionId: PROVIDER_SESSION,
+                  configOptions: GROK_CONFIG_OPTIONS
+                })
+              }
+            },
+            options
+          )
+      }
+    })
+    onTestFinished(async () => {
+      await rig.adapter.closeAll().catch(() => {})
+      const held = Number(readFileSync(`${pidFile}.held`, 'utf8'))
+      if (alive(held)) {
+        process.kill(held)
+      }
+    })
+    await rig.acquire()
+    await sendHello(rig, 'held')
+    await vi.waitFor(() => expect(rig.lifecycle).toHaveLength(1), { timeout: 10_000, interval: 20 })
+    expect(rig.lifecycle[0]).toMatchObject({ type: 'ended', cause: 'unexpected-exit' })
+    expect(alive(Number(readFileSync(pidFile, 'utf8')))).toBe(false)
+    const turns = (await rig.rig.rows()).flatMap((row) => readAgentJournalTurn(row.body) ?? [])
+    expect(turns.at(-1)).toMatchObject({ state: 'interrupted' })
   }, 30_000)
 })

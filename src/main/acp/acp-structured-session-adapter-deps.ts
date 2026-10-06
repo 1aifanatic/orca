@@ -6,11 +6,9 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import type { AgentJournalDispatchRejection } from '../../shared/agent-session-failure-words'
 import type { AcpLaunchSpec } from './acp-launch-specs'
-import type { SpawnAcpStructuredChild } from './acp-structured-child'
+import type { ConnectAcpAgent } from './acp-structured-connection'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 
-/** How long a cancel waits for the agent to answer its prompt before the connection closes. */
-export const ACP_CANCEL_TIMEOUT_MS = 10_000
 /** How long a Stop, counted from its cancel, lets the agent end its turn before the child goes. */
 export const ACP_STOP_GRACE_MS = 4_000
 /** How long a model or effort pick waits for the agent's answer, as Claude's and Codex's do. */
@@ -19,7 +17,8 @@ export const ACP_OPTION_WRITE_TIMEOUT_MS = 30_000
 export type AcpStructuredSessionAdapterDeps = {
   spec: AcpLaunchSpec
   resolveLaunch: (input: { identity: AgentSessionJournalIdentity }) => Promise<AcpStructuredLaunch>
-  spawnChild: SpawnAcpStructuredChild
+  /** Starts the agent's process and owns its protocol: `createAcpAgentConnection` in production. */
+  connect: ConnectAcpAgent
   readProcessStartTime?: (pid: number) => Promise<number | null>
   /** Every exit, expected or not: the host ends that child's record. */
   onEvent?: (event: StructuredAgentSessionLifecycleEvent) => void
@@ -35,8 +34,6 @@ export type AcpStructuredSessionAdapterDeps = {
   now?: () => number
   mintGeneration?: () => string
   mintLinkId?: () => string
-  /** Bounds a cancel's wait for the agent to answer its prompt; past it the connection closes. */
-  cancelTimeoutMs?: number
   /** Bounds a Stop's wait for the agent to end its turn; past it the child is closed. */
   stopGraceMs?: number
   /** Bounds a pick's wait for the agent's answer; past it the pick fails. */

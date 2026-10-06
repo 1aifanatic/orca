@@ -31,7 +31,7 @@ import {
 } from './structured-agent-account-home'
 import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
 import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
-import { spawnAcpStructuredChild } from '../acp/acp-structured-child'
+import { createAcpAgentConnection } from '../acp/acp-agent-connection'
 import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
 import { AcpStructuredSessionAdapter } from '../acp/acp-structured-session-adapter'
 
@@ -167,7 +167,7 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
           ...(deps.resolveAgentFullAccess ? { resolveFullAccess: deps.resolveAgentFullAccess } : {})
         }),
-        spawnChild: deps.spawnAcpChild ?? ((launch) => spawnAcpStructuredChild(launch)),
+        connect: (launch, options) => createAcpAgentConnection(launch, options),
         ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
         onDispatchSettledLate: followUps.onDispatchSettledLate,
         logger: deps.logger,

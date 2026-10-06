@@ -1,63 +1,64 @@
 // The adapter's starts: each acquire under way, stopped when the host aborts its signal (a close,
-// a Stop that must not wait behind it, or quit), and each failed start's child until its exit is
-// proven, so the next start or quit retries it instead of answering for a child it no longer knows.
+// a Stop that must not wait behind it, or quit), and each failed start's connection until its
+// process's exit is proven, so the next start or quit retries that same connection's close instead
+// of answering for a process it no longer knows (and never spawns a second one meanwhile).
 
-import type { AcpStructuredChild } from './acp-structured-child'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 
 export type AcpStartAttempt = {
   /** The host's: the start's one canceller. */
   readonly signal: AbortSignal
-  child: AcpStructuredChild | null
+  connection: AcpStructuredConnection | null
   /** What the signal's abort does while the start runs; detached once it ends. */
-  readonly stopChild: () => void
+  readonly stopConnection: () => void
 }
 
 export class AcpStructuredStarts {
-  private readonly failed = new Map<string, AcpStructuredChild>()
+  private readonly failed = new Map<string, AcpStructuredConnection>()
 
   /** Registered before anything awaits, so an abort from here on stops this start. */
   begin(signal: AbortSignal | undefined): AcpStartAttempt {
     const attempt: AcpStartAttempt = {
       signal: signal ?? new AbortController().signal,
-      child: null,
-      stopChild: () => void attempt.child?.close().catch(() => false)
+      connection: null,
+      stopConnection: () => void attempt.connection?.close().catch(() => false)
     }
-    attempt.signal.addEventListener('abort', attempt.stopChild, { once: true })
+    attempt.signal.addEventListener('abort', attempt.stopConnection, { once: true })
     return attempt
   }
 
-  /** The start has its child; one already aborted goes as soon as it exists. */
-  track(attempt: AcpStartAttempt, child: AcpStructuredChild): void {
-    attempt.child = child
+  /** The start has its connection; one already aborted goes as soon as it exists. */
+  track(attempt: AcpStartAttempt, connection: AcpStructuredConnection): void {
+    attempt.connection = connection
     if (attempt.signal.aborted) {
-      void child.close().catch(() => false)
+      void connection.close().catch(() => false)
     }
   }
 
-  /** A child the start handed over is the session's: an abort after this goes through its stop,
-   *  which knows the close was asked for, not this listener, which would read as a crash. */
+  /** A connection the start handed over is the session's: an abort after this goes through its
+   *  stop, which knows the close was asked for, not this listener, which would read as a crash. */
   end(attempt: AcpStartAttempt): void {
-    attempt.signal.removeEventListener('abort', attempt.stopChild)
+    attempt.signal.removeEventListener('abort', attempt.stopConnection)
   }
 
-  /** A failed start whose child is not proven gone keeps it until its exit is. */
-  retainFailed(sessionId: string, child: AcpStructuredChild): void {
-    this.failed.set(sessionId, child)
-    child.onExit(() => {
-      if (this.failed.get(sessionId) === child) {
+  /** A failed start whose process is not proven gone keeps its connection until its exit is. */
+  retainFailed(sessionId: string, connection: AcpStructuredConnection): void {
+    this.failed.set(sessionId, connection)
+    connection.onExit(() => {
+      if (this.failed.get(sessionId) === connection) {
         this.failed.delete(sessionId)
       }
     })
   }
 
-  /** Asks a failed start's child to stop again: true once none is left unproven. */
+  /** Asks a failed start's connection to close again: true once none is left unproven. */
   async stopFailed(sessionId: string): Promise<boolean> {
-    const child = this.failed.get(sessionId)
-    if (!child) {
+    const connection = this.failed.get(sessionId)
+    if (!connection) {
       return true
     }
-    const proven = await child.close().catch(() => false)
-    if (proven && this.failed.get(sessionId) === child) {
+    const proven = await connection.close().catch(() => false)
+    if (proven && this.failed.get(sessionId) === connection) {
       this.failed.delete(sessionId)
     }
     return proven

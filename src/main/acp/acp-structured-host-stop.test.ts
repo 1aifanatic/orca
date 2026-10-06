@@ -64,6 +64,26 @@ describe('a Grok chat Stop', () => {
     await host.close(SESSION, 'user-close')
   })
 
+  it('ends Grok at the grace when Grok never reads the cancel, never waiting on its write', async () => {
+    const { rig, host, turns } = await openAttachedHostRig({ stopGraceMs: 30 })
+    const first = rig.child()
+    await send(host, 'hello')
+    const prompt = await rig.frame('session/prompt')
+    first.agent.notify('session/update', replyChunk(promptIdOf(prompt), 'partial'))
+    await rig.settle()
+    await host.flushStreamedEvents(SESSION)
+    // A write that never completes, as a full pipe to a Grok that stopped reading.
+    let cancels = 0
+    first.cancel = () => {
+      cancels += 1
+      return new Promise(() => {})
+    }
+    expect(await stop(host)).toMatchObject({ ok: true, value: { cancelled: true } })
+    await waitFor(() => expect(first.exited).toBe(true))
+    expect(cancels).toBe(1)
+    expect((await turns()).at(-1)).toMatchObject({ state: 'interrupted' })
+  })
+
   it('ends Grok on a Stop of a turn it began itself, once that turn ends', async () => {
     const { rig, host, turns } = await openAttachedHostRig()
     const { agent } = rig.child()

@@ -10,7 +10,7 @@ import type {
 } from '../../shared/agent-session-wire'
 import { isAcpStructuredOptionKey } from './acp-structured-agent-definitions'
 import { AcpRpcError } from './acp-errors'
-import type { AcpSessionRuntime } from './acp-session-runtime'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 import {
   SessionConfigSelectGroupSchema,
   SessionConfigSelectOptionSchema,
@@ -161,7 +161,7 @@ export class AcpStructuredOptions {
 /** Sends a pick and adopts the agent's answer, even one that lands after the wait gave up: that is
  *  still what the agent runs. The wait fails at `timeoutMs`, or once `signal` aborts. */
 export function writeAcpSessionOption(
-  runtime: Pick<AcpSessionRuntime, 'setConfigOption' | 'setModel'>,
+  connection: Pick<AcpStructuredConnection, 'setConfigOption' | 'setModel'>,
   options: AcpStructuredOptions,
   write: AcpOptionWrite,
   bound: { agent: string; timeoutMs: number; signal?: AbortSignal }
@@ -172,10 +172,10 @@ export function writeAcpSessionOption(
   }
   const applied =
     write.method === 'config'
-      ? runtime
+      ? connection
           .setConfigOption(write.configId, write.value)
           .then((result) => options.adoptConfigOptions(result.configOptions))
-      : runtime.setModel(write.modelId).then(() => options.adoptModel(write.modelId))
+      : connection.setModel(write.modelId).then(() => options.adoptModel(write.modelId))
   return new Promise<void>((resolve, reject) => {
     const fail = (error: Error): void => {
       settle()
@@ -201,7 +201,7 @@ export function writeAcpSessionOption(
 /** Re-applies the chat's saved picks to the agent's new session; a pick it refuses is skipped and
  *  reported, never retried. */
 export async function restoreAcpSessionOptions(
-  runtime: Pick<AcpSessionRuntime, 'setConfigOption' | 'setModel'>,
+  connection: Pick<AcpStructuredConnection, 'setConfigOption' | 'setModel'>,
   options: AcpStructuredOptions,
   saved: Readonly<Record<string, string>> | undefined
 ): Promise<string[]> {
@@ -215,10 +215,10 @@ export async function restoreAcpSessionOptions(
     try {
       if (write?.method === 'config') {
         options.adoptConfigOptions(
-          (await runtime.setConfigOption(write.configId, value)).configOptions
+          (await connection.setConfigOption(write.configId, value)).configOptions
         )
       } else if (write?.method === 'model') {
-        await runtime.setModel(write.modelId)
+        await connection.setModel(write.modelId)
         options.adoptModel(write.modelId)
       } else {
         skipped.push(key)
