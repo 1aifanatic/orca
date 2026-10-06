@@ -22,7 +22,7 @@ const initial = useAppStore.getState()
 
 function worktree(name: string, host: 'paired' | 'local' = 'paired'): Worktree {
   const worktreePath = path.join('workspace', name)
-  const owner =
+  const owner: Pick<Worktree, 'hostId' | 'runtimeOwnerEnvironmentId'> =
     host === 'paired'
       ? { hostId: 'runtime:server-1', runtimeOwnerEnvironmentId: 'server-1' }
       : { hostId: 'local' }
