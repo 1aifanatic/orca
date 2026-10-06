@@ -32,7 +32,8 @@ export async function collectManagedTerminalCensus(
   userDataPath: string,
   environment: KnownRuntimeEnvironment,
   record: OrcadActivationRecord,
-  timeoutMs = 15_000
+  timeoutMs = 15_000,
+  options: { releaseFinishedAutomationTerminals?: boolean } = {}
 ): Promise<OrcadTerminalCensus> {
   if (!record.active) {
     return { liveSessions: 0, startedSinceActivation: 0, daemonProtocolVersion: null }
@@ -48,7 +49,12 @@ export async function collectManagedTerminalCensus(
     const response = await sendRemoteRuntimeRequestWithStatusPreflight<unknown>(
       getPreferredPairingOffer(environment),
       ORCAD_TERMINAL_CENSUS_METHOD,
-      { activatedAt },
+      {
+        activatedAt,
+        ...(options.releaseFinishedAutomationTerminals
+          ? { releaseFinishedAutomationTerminals: true }
+          : {})
+      },
       timeoutMs,
       (status) => {
         if (

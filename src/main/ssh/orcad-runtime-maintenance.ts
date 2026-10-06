@@ -94,10 +94,14 @@ export async function runManagedOrcadUpdate(
   context: OrcadRemoteContext,
   args: { force?: boolean; signal?: AbortSignal; localOrcadDir?: string }
 ): Promise<OrcadManagedDeployResult> {
+  // Why release: finished automation shells would otherwise defer every update on a host with
+  // schedules; the update restarts the server anyway.
   const census = await collectManagedTerminalCensus(
     userDataPath,
     environment,
-    context.activationRecord
+    context.activationRecord,
+    undefined,
+    { releaseFinishedAutomationTerminals: true }
   )
   const localOrcadDir =
     args.localOrcadDir ??
@@ -165,7 +169,15 @@ export function rollbackManagedOrcadEnvironment(
       if (crossing) {
         return crossing
       }
-      const census = await collectManagedTerminalCensus(userDataPath, environment, record)
+      const census = await collectManagedTerminalCensus(
+        userDataPath,
+        environment,
+        record,
+        undefined,
+        {
+          releaseFinishedAutomationTerminals: true
+        }
+      )
       // Why idle only: this client cannot read the older build's daemon protocol, so it cannot show
       // that build would reach terminals that are still running.
       if (census.liveSessions !== 0) {
