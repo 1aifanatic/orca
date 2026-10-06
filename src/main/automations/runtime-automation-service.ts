@@ -7,6 +7,7 @@ import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
+import { createHeadlessRunTerminalRetention } from './headless-run-terminal-retention'
 import {
   getTuiAgentDetectCommands,
   isTuiAgent,
@@ -106,7 +107,49 @@ export function createRuntimeAutomationService(input: {
       : undefined
   })
   runtime.setAutomationService(service)
+  if (input.headless) {
+    bindHeadlessRunTerminalRetention(service, store, runtime)
+  }
   return service
+}
+
+/** A headless host has no renderer to close finished run terminals; its service does it. */
+function bindHeadlessRunTerminalRetention(
+  service: AutomationService,
+  store: Store,
+  runtime: OrcaRuntimeService
+): void {
+  const retention = createHeadlessRunTerminalRetention({
+    listRuns: () => store.listAutomationRuns(),
+    closeRunTerminal: async (paneKey) => {
+      const handle = runtime.getTerminalHandleForPaneKey(paneKey)
+      if (!handle) {
+        return false
+      }
+      await runtime.closeTerminalTab(handle)
+      return true
+    },
+    forgetRunTerminal: async (run) => {
+      await service.markDispatchResult({
+        runId: run.id,
+        status: run.status,
+        error: run.error,
+        terminalSessionId: null,
+        terminalPaneKey: null,
+        terminalPtyId: null
+      })
+    }
+  })
+  const start = service.start.bind(service)
+  const stop = service.stop.bind(service)
+  service.start = () => {
+    start()
+    retention.start()
+  }
+  service.stop = () => {
+    retention.stop()
+    stop()
+  }
 }
 
 function automationAgentCommands(agentId: string | undefined): string[] {
