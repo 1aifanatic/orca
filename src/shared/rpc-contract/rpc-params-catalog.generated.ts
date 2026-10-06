@@ -479,6 +479,7 @@ import {
 } from './speech-params'
 import { SshTarget } from './ssh-params'
 import {
+  AcknowledgeAttentionParams,
   AgentsParams,
   AttachParams,
   CancelParams,
@@ -500,6 +501,7 @@ import {
   SendParams,
   SetOptionParams,
   SubscribeParams,
+  SubscribeTurnCompletionsParams,
   ThreadGoalParams,
   UnsubscribeParams
 } from './structured-agent-session-params'
@@ -593,6 +595,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agent.launch': AgentLaunch,
   'agent.launchReplay': AgentLaunchReplay,
   'agentHooks.prepareCodexForWslPane': PrepareCodexForWslPaneParams,
+  'agentSession.acknowledgeAttention': AcknowledgeAttentionParams,
   'agentSession.agents': AgentsParams,
   'agentSession.cancel': CancelParams,
   'agentSession.close': OptionsParams,
@@ -623,7 +626,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agentSession.setOption': SetOptionParams,
   'agentSession.subscribe': SubscribeParams,
   'agentSession.subscribeStatus': null,
-  'agentSession.subscribeTurnCompletions': null,
+  'agentSession.subscribeTurnCompletions': SubscribeTurnCompletionsParams,
   'agentSession.threadGoal': ThreadGoalParams,
   'agentSession.unsubscribe': UnsubscribeParams,
   'agentSessionAttachment.read': AttachmentReadParams,
