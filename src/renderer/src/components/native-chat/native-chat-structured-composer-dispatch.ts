@@ -10,6 +10,9 @@ export async function dispatchNativeChatStructuredComposerText(
   if (command.handled) {
     return { accepted: command.accepted, error: command.error }
   }
-  if (transport.unavailable) {return { accepted: false, error: null }}
+  // The transport carries the one send gate (`nativeChatComposerSendGate`); Send already says why.
+  if (transport.unavailable) {
+    return { accepted: false, error: null }
+  }
   return { accepted: transport.send(text, attachments), error: null }
 }

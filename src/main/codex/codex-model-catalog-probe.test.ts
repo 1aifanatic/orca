@@ -166,6 +166,49 @@ describe('Codex catalog availability', () => {
       expect(error.unavailable).not.toHaveProperty('account')
     }
   })
+  it('lists models while the account check is still answering', async () => {
+    let answerAccount!: (value: unknown) => void
+    const methods: string[] = []
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({}),
+      resolveCommand: () => 'codex',
+      runSession: async (_invocation, body) =>
+        body({
+          request: async (method) => {
+            methods.push(method)
+            if (method === 'account/read') {
+              return new Promise((resolve) => (answerAccount = resolve))
+            }
+            return { data: [MODEL_ROW], nextCursor: null }
+          },
+          notify: () => {}
+        })
+    })
+    const pending = probe('/homes/a')
+    await vi.waitFor(() => expect(methods).toContain('model/list'))
+    expect(methods).toContain('account/read')
+    answerAccount({ account: { type: 'chatgpt' }, requiresOpenaiAuth: true })
+    expect((await pending).models).toHaveLength(1)
+  })
+  it('a signed-out verdict wins over a model listing that failed', async () => {
+    const probe = createCodexModelCatalogProbe({
+      resolveEnvironment: async () => ({}),
+      resolveCommand: () => 'codex',
+      runSession: async (_invocation, body) =>
+        body({
+          request: async (method) => {
+            if (method === 'account/read') {
+              return { account: null, requiresOpenaiAuth: true }
+            }
+            throw new Error('401 Unauthorized')
+          },
+          notify: () => {}
+        })
+    })
+    await expect(probe('/homes/a')).rejects.toMatchObject({
+      unavailable: { reason: 'notSignedIn' }
+    })
+  })
   it.each(['ENOENT', 'EACCES'])('classifies only missing executable errors: %s', async (code) => {
     const probe = createCodexModelCatalogProbe({
       resolveEnvironment: async () => ({}),

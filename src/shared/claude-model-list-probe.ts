@@ -2,13 +2,16 @@ import { claudeInitializationSignedOut } from './agent-session-availability'
 import { assertJsonTextStructureWithinLimits } from './json-text-structure-limit'
 
 // Why: the Claude CLI has no model-listing subcommand (`claude models` starts a
-// chat session). One `list_models` control request over --print stream-json
-// returns the CLI's /model picker catalog without starting an API turn. CLIs
-// that predate the request answer `{"subtype":"error"}` and still exit 0, so
-// parsing yields no models and callers keep their seed list.
+// chat session). A `list_models` control request over --print stream-json
+// returns the CLI's /model picker catalog without starting an API turn; the
+// catalog probe sends `initialize` before it in the same child, so the listing
+// is read only from the reply to its own request id. CLIs that predate the
+// request answer `{"subtype":"error"}` and still exit 0, so parsing yields no
+// models and callers keep their seed list.
+export const CLAUDE_MODEL_LIST_REQUEST_ID = 'orca-model-discovery'
 export const CLAUDE_MODEL_LIST_STDIN = `${JSON.stringify({
   type: 'control_request',
-  request_id: 'orca-model-discovery',
+  request_id: CLAUDE_MODEL_LIST_REQUEST_ID,
   request: { subtype: 'list_models' }
 })}\n`
 
@@ -43,6 +46,7 @@ type RawControlResponse = {
   type?: unknown
   response?: {
     subtype?: unknown
+    request_id?: unknown
     response?: { models?: unknown }
   }
 }
@@ -98,7 +102,11 @@ export function parseClaudeModelList(stdout: string): ClaudeListedModel[] {
     } catch {
       continue
     }
-    if (parsed.type !== 'control_response' || parsed.response?.subtype !== 'success') {
+    if (
+      parsed.type !== 'control_response' ||
+      parsed.response?.subtype !== 'success' ||
+      parsed.response.request_id !== CLAUDE_MODEL_LIST_REQUEST_ID
+    ) {
       continue
     }
     const models = parsed.response.response?.models

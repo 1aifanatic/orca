@@ -19,10 +19,12 @@ import {
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire-refusals'
 import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
+import { providerExecutableMissing } from '../../provider-process/provider-executable-missing'
 
 /** Start refusals whose situation is itself what the person reads, with its own next step. */
 const TYPED_START_REFUSALS = [
   'notSignedIn',
+  'cliMissing',
   'historyTooLarge',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
@@ -72,6 +74,9 @@ export function providerStartupFailureFact(cause?: unknown): SubmissionRejection
       typed,
       cause instanceof AgentSessionAcquisitionRefusal ? { account: cause.account } : {}
     )
+  }
+  if (providerExecutableMissing(cause)) {
+    return agentSessionFailureFact('cliMissing')
   }
   return agentSessionFailureFact(
     providerExitObserved(cause) ? 'providerStartFailed' : 'startFailed',

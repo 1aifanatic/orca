@@ -180,6 +180,21 @@ describe('Claude catalog initialize observation', () => {
       ).toBe(signedOut)
     }
   )
+  it("never reads the initialize reply's models as the catalog", () => {
+    const initialize = JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: 'orca-catalog-initialize',
+        response: { models: [{ value: 'from-initialize', displayName: 'From initialize' }] }
+      }
+    })
+    const listed = controlResponseLine([{ value: 'opus', displayName: 'Opus' }])
+    expect(parseClaudeModelList(`${initialize}\n${listed}`).map((model) => model.id)).toEqual([
+      'opus'
+    ])
+    expect(parseClaudeModelList(initialize)).toEqual([])
+  })
   it.each([
     '',
     '{"orca-catalog-initialize":',

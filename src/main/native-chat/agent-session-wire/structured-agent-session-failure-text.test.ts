@@ -9,7 +9,11 @@ import {
   refuse,
   refuseUnclassified
 } from '../../../shared/agent-session-wire-refusals'
-import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapter'
+import {
+  AgentSessionAcquisitionExitProvenError,
+  AgentSessionAcquisitionRefusal
+} from './structured-agent-session-adapter'
+import { withMissingProviderExecutable } from '../../provider-process/provider-executable-missing'
 import { MAX_UNEXPECTED_EXIT_REASON_CHARS } from './structured-agent-session-dead-generation-settlement'
 import {
   structuredAgentSessionStartFailure,
@@ -37,6 +41,26 @@ describe('structuredAgentSessionStartFailure', () => {
       structuredAgentSessionStartFailure({ error: new Error('Not logged in. Run /login.') })
         .rejection
     ).toEqual({ kind: 'startFailed' })
+  })
+
+  it("says a CLI that was never found isn't installed, with the disabled Send's own sentence", () => {
+    const missing = new AgentSessionAcquisitionExitProvenError(
+      withObservedProviderExit(
+        withMissingProviderExecutable(new Error('claude stream-json exited (code 127)'))
+      )
+    )
+    expect(structuredAgentSessionStartFailure({ error: missing }, { agentName: 'Claude' })).toEqual(
+      {
+        reason: "Claude isn't installed on the computer running this chat.",
+        rejection: { kind: 'cliMissing' }
+      }
+    )
+    expect(
+      structuredAgentSessionStartFailure(
+        { error: missing },
+        { agentName: 'Codex', command: 'compact' }
+      ).reason
+    ).toBe("Codex isn't installed on the computer running this chat. Run /compact again.")
   })
 
   it('keeps a start refusal the adapter typed', () => {

@@ -3,7 +3,10 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatComposerFieldProps } from './NativeChatComposerField'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
-import { nativeChatComposerSendState } from './native-chat-composer-send-state'
+import {
+  nativeChatComposerSendGate,
+  nativeChatComposerSendState
+} from './native-chat-composer-send-state'
 import {
   clearNativeChatComposerDraftsForTests,
   readNativeChatComposerDraft,
@@ -99,33 +102,35 @@ afterEach(() => {
 })
 
 describe('structured composer Send availability', () => {
+  const send = vi.fn(() => true)
+  const dispatchCommand = vi.fn(async () => ({ handled: false, accepted: false, error: null }))
+  const onError = vi.fn()
+  const composer = (unavailable: NativeChatStructuredComposerTransport['unavailable']) => (
+    <NativeChatComposer
+      terminalTabId="tab-1"
+      paneKey="tab-1:structured"
+      targetPtyId={null}
+      agent="codex"
+      structuredTransport={{
+        unavailable,
+        send,
+        dispatchCommand,
+        optionsSurface: {
+          getSnapshot: () => [],
+          setOption: vi.fn(),
+          invokeAction: vi.fn(),
+          subscribe: () => () => {}
+        },
+        optionSnapshot: [],
+        onError,
+        runtime: 'local',
+        sessionId: 'session-test',
+        runtimeEnvironmentId: null
+      }}
+    />
+  )
+
   it('blocks signed-out click and keyboard sends, retains the draft, and sends after recovery', async () => {
-    const send = vi.fn(() => true)
-    const dispatchCommand = vi.fn(async () => ({ handled: false, accepted: false, error: null }))
-    const composer = (unavailable: NativeChatStructuredComposerTransport['unavailable']) => (
-      <NativeChatComposer
-        terminalTabId="tab-1"
-        paneKey="tab-1:structured"
-        targetPtyId={null}
-        agent="codex"
-        structuredTransport={{
-          unavailable,
-          send,
-          dispatchCommand,
-          optionsSurface: {
-            getSnapshot: () => [],
-            setOption: vi.fn(),
-            invokeAction: vi.fn(),
-            subscribe: () => () => {}
-          },
-          optionSnapshot: [],
-          onError: vi.fn(),
-          runtime: 'local',
-          sessionId: 'session-test',
-          runtimeEnvironmentId: null
-        }}
-      />
-    )
     const view = render(composer({ reason: 'notSignedIn', account: 'managed' }))
     expect(mocks.fieldProps?.sendButtonDisabled).toBe(true)
     expect(mocks.fieldProps?.sendBlockedReason).toContain('Codex Accounts settings.')
@@ -149,6 +154,15 @@ describe('structured composer Send availability', () => {
     expect(send).toHaveBeenCalledWith('hello', [])
     expect(mocks.sendPty).not.toHaveBeenCalled()
     expect(mocks.setDraft).toHaveBeenCalledWith('')
+  })
+})
+
+describe('one send gate rule', () => {
+  it('blocks only a send that starts the agent', () => {
+    const verdict = { reason: 'cliMissing' } as const
+    expect(nativeChatComposerSendGate(verdict, false)).toBe(verdict)
+    expect(nativeChatComposerSendGate(verdict, true)).toBeNull()
+    expect(nativeChatComposerSendGate(undefined, false)).toBeNull()
   })
 })
 

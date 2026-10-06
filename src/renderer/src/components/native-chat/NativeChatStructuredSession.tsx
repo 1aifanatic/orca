@@ -126,6 +126,8 @@ export function NativeChatStructuredSession(
     [controller, historyPhase, props.agent, props.sessionId]
   )
   const agentLabel = structuredAgentLabel(props.agent)
+  // The controller's verdict is already the composer's gate; only that hides a line.
+  const gateReason = controller.unavailable?.reason ?? null
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
     submissions: controller.submissions,
@@ -133,7 +135,7 @@ export function NativeChatStructuredSession(
     failedHere: controller.failedHere,
     retry: controller.retry,
     agentName: agentLabel,
-    gateReason: controller.unavailable?.reason ?? null
+    gateReason: gateReason
   })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
   const loadingPane = historyPhase === 'unread' ? null : <NativeChatLoadingCue />
@@ -299,7 +301,7 @@ export function NativeChatStructuredSession(
             lifecycle={provisionalLaunch.lifecycle}
             failure={provisionalLaunch.failure}
             agentLabel={agentLabel}
-            gateReason={controller.unavailable?.reason ?? null}
+            gateReason={gateReason}
             hasUnsentMessage={hasUnsentStructuredAgentSessionOutboxEntry(
               controller.outbox,
               controller.submissions

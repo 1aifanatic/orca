@@ -41,6 +41,7 @@ import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-sess
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
+import { nativeChatComposerSendGate } from './native-chat-composer-send-state'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -191,6 +192,9 @@ export function useStructuredAgentSession(args: {
     (stopControl.stopsConversation &&
       (transportState.isWorking ||
         hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
+  // The verdict as the composer's Send gate states it; a start-failure row it states is hidden.
+  const unavailable = nativeChatComposerSendGate(sessionOptions.unavailable, canStop)
+  const gated = unavailable?.reason ?? null
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
@@ -209,7 +213,7 @@ export function useStructuredAgentSession(args: {
     transcriptItems,
     transcriptOutbox,
     transportState.submissions,
-    sessionOptions.unavailable?.reason ?? null
+    gated
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -230,11 +234,7 @@ export function useStructuredAgentSession(args: {
         agentName: structuredAgentLabel(agent),
         pending: commandPending,
         blocked: conversationBusy || rewind.blockedRef.current,
-        startFailures: () =>
-          structuredAgentSessionStartFailureFacts(
-            stateRef.current.items,
-            sessionOptions.unavailable?.reason ?? null
-          ),
+        startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items, gated),
         send: (command) =>
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',
@@ -325,6 +325,7 @@ export function useStructuredAgentSession(args: {
       )
     },
     ...sessionOptions,
+    unavailable,
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,
     threadGoal,
     contextUsage

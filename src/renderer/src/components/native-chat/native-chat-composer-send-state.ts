@@ -5,6 +5,17 @@ import type { NativeChatComposerImageAttachment } from './NativeChatComposerFiel
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
 import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 
+/** The one rule for when the host's verdict blocks Send: only a send that starts the agent. While
+ *  a turn runs, Send is Stop and a follow-up queues behind it as it always has. Applied once, where
+ *  the session hands the verdict to its composer, so the button, Enter, goal mode and the hidden
+ *  start-failure line all read the same value. */
+export function nativeChatComposerSendGate(
+  unavailable: AgentSessionUnavailable | null | undefined,
+  isWorking: boolean
+): AgentSessionUnavailable | null {
+  return isWorking ? null : (unavailable ?? null)
+}
+
 export function nativeChatComposerSendState(
   input: {
     agent: AgentType
@@ -15,8 +26,10 @@ export function nativeChatComposerSendState(
   },
   draft: string,
   attachments: readonly NativeChatComposerImageAttachment[],
-  unavailable: AgentSessionUnavailable | null | undefined
+  /** The transport's verdict, already gated by `nativeChatComposerSendGate`. */
+  gate: AgentSessionUnavailable | null
 ): { sendButtonDisabled: boolean; sendBlockedReason: string | undefined } {
+  const unavailable = gate
   const imageBlock = nativeChatImageSendBlock(attachments)
   const sendButtonDisabled = input.isWorking
     ? !input.hasPty || !input.onStop

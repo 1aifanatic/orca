@@ -1,5 +1,5 @@
 import type { AgentSessionUnavailable } from '../../shared/agent-session-availability'
-import { isMissingCatalogExecutable } from '../native-chat/agent-model-catalog/agent-model-catalog-executable'
+import { isMissingProviderExecutable } from '../provider-process/provider-executable-missing'
 import { mergeCommandEnvironment } from '../../shared/command-environment'
 import type { CommandTemplateBackslash } from '../../shared/commit-message-prompt'
 import type { CommitMessagePlan } from '../../shared/commit-message-plan'
@@ -68,7 +68,7 @@ export async function discoverModelsLocal(input: {
   const couldNotStart = `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
   const startFailure = (error: unknown): DiscoverCommitMessageModelsResult => ({
     success: false,
-    ...(isMissingCatalogExecutable(error, binary)
+    ...(isMissingProviderExecutable(error, binary)
       ? { unavailable: { reason: 'cliMissing' as const } }
       : {}),
     error: couldNotStart
@@ -158,7 +158,7 @@ export async function discoverModelsLocal(input: {
         }
         finish({
           success: false,
-          ...(isMissingCatalogExecutable(error, binary)
+          ...(isMissingProviderExecutable(error, binary)
             ? { unavailable: { reason: 'cliMissing' as const } }
             : {}),
           error:

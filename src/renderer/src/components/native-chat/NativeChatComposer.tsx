@@ -370,7 +370,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
           { agent, isWorking, hasPty, onStop, disabled },
           draft,
           imageAttachments,
-          goalMode.active ? null : structuredTransport?.unavailable
+          structuredTransport?.unavailable ?? null
         )}
         isWorking={isWorking}
         isStopping={isStopping}

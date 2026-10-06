@@ -114,7 +114,15 @@ describe('the words written beside a failure fact', () => {
         command: 'compact'
       })
     expect(compact('notSignedIn')).toBe(
-      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings."
+      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings. Run /compact again."
+    )
+    expect(
+      agentSessionFailureSentence({ kind: 'notSignedIn', account: 'managed' }, 'rejection', {
+        agentName: 'Codex',
+        command: 'compact'
+      })
+    ).toBe(
+      "This Codex account isn't signed in. Sign in again in Codex Accounts settings. Run /compact again."
     )
     expect(compact('startFailed')).toBe("Claude couldn't start. Run /compact again.")
     expect(compact('restartFailed')).toBe("Claude couldn't restart. Run /compact again.")

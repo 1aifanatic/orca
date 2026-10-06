@@ -1,6 +1,6 @@
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
-import { isMissingCatalogExecutable } from '../native-chat/agent-model-catalog/agent-model-catalog-executable'
+import { isMissingProviderExecutable } from '../provider-process/provider-executable-missing'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { resolve } from 'node:path'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
@@ -59,16 +59,13 @@ export function createCodexModelCatalogProbe(
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS
       },
       async (rpc) => {
-        let response: unknown
-        try {
-          response = await rpc.request(
-            'account/read',
-            { refreshToken: false },
-            { timeoutMs: 2_000 }
-          )
-        } catch {
-          /* Unknown account status cannot block sending. */
-        }
+        // Both at once, so the account check adds no latency; its signed-out verdict still wins.
+        const listed = fetchCodexModelCatalogListing({ connection: rpc })
+        void listed.catch(() => {})
+        const response: unknown = await rpc
+          .request('account/read', { refreshToken: false }, { timeoutMs: 2_000 })
+          // Unknown account status cannot block sending.
+          .catch(() => undefined)
         if (
           typeof response === 'object' &&
           response !== null &&
@@ -88,10 +85,10 @@ export function createCodexModelCatalogProbe(
             ...(account ? { account } : {})
           })
         }
-        return fetchCodexModelCatalogListing({ connection: rpc })
+        return listed
       }
     ).catch((error: unknown) => {
-      if (isMissingCatalogExecutable(error, command)) {
+      if (isMissingProviderExecutable(error, command)) {
         throw new AgentModelCatalogUnavailableError({ reason: 'cliMissing' })
       }
       throw error

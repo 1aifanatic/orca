@@ -119,7 +119,8 @@ export function useNativeChatComposerSubmit(args: {
       setCaret(0)
       setEntered(true)
     } else if (active) {
-      if (!disabled) {
+      // Setting a goal starts the agent like a send, so the same gate holds it.
+      if (!disabled && !structuredTransport?.unavailable) {
         setGoal()
       }
     } else if (!structuredTransport) {

@@ -20,6 +20,8 @@ export const AGENT_SESSION_FAILURE_KINDS = [
   /** A start that did not land, with no one to blame: Orca's fault, a failed spawn, a close. */
   'startFailed',
   'notSignedIn',
+  /** The agent's CLI is not installed where the chat runs: its spawn found no such file. */
+  'cliMissing',
   'historyTooLarge',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',

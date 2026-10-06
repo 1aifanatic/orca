@@ -28,6 +28,7 @@ import {
   structuredAgentSessionStartFailure
 } from './structured-agent-session-failure-text'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
+import { providerExecutableMissing } from '../../provider-process/provider-executable-missing'
 
 /** Who a failed acquisition's sentence names, and whether it was the session's first start. */
 export type FailedAcquisitionWording = {
@@ -109,6 +110,9 @@ function failedAcquisitionDetails(
   }
   if (isAgentSessionPreSpawnError(error) && error.reason) {
     return { reason: error.reason }
+  }
+  if (isExitProvenAcquisitionFailure(error) && providerExecutableMissing(error)) {
+    return { reason: 'cliMissing' }
   }
   if (isExitProvenAcquisitionFailure(error) && providerExitObserved(error)) {
     return { reason: 'providerStartFailed' }

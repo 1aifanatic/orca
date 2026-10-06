@@ -213,8 +213,20 @@ const FAILURE_SENTENCES = {
         : context.agentName === 'Claude'
           ? 'claude'
           : (context.provider ?? 'claude')
-    return say(agentSessionSignInCopyId(provider, fact.account))
+    const signIn = say(agentSessionSignInCopyId(provider, fact.account))
+    // Signing in is the step; a command the start was for still has to be run again after it.
+    return context.command && !context.retryControl
+      ? joinSentences([signIn, say('runCommandAgain', { command: context.command })])
+      : signIn
   },
+  // The disabled Send's own sentence; a command the start was for is still run again after.
+  cliMissing: (context, _fact, _surface, say) =>
+    joinSentences([
+      say('cliMissing', agent(say, context)),
+      ...(context.command && !context.retryControl
+        ? [say('runCommandAgain', { command: context.command })]
+        : [])
+    ]),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),

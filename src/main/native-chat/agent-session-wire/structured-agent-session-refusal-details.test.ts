@@ -19,6 +19,7 @@ import {
   failedAcquisitionSettlement
 } from './structured-agent-session-failed-create-refusal'
 import { withObservedProviderExit } from './structured-agent-session-failure-text'
+import { withMissingProviderExecutable } from '../../provider-process/provider-executable-missing'
 import { resolveAgentSessionReplayOutcome } from './structured-agent-session-replay-outcome'
 
 const CLAUDE_CREATE = {
@@ -44,7 +45,14 @@ describe('a ledger replay names the details its first answer did', () => {
       'providerStartFailed'
     ],
     // Gone now, with no exit observed: no situation, on the first answer or the replay.
-    [new AgentSessionAcquisitionExitProvenError(new Error('spawn codex ENOENT')), undefined]
+    [new AgentSessionAcquisitionExitProvenError(new Error('spawn codex ENOENT')), undefined],
+    // Its own spawn found no executable: the CLI is not installed.
+    [
+      new AgentSessionAcquisitionExitProvenError(
+        withObservedProviderExit(withMissingProviderExecutable(new Error('exited (code 127)')))
+      ),
+      'cliMissing'
+    ]
   ])('for a failed create: %s', (error, reason) => {
     const first = failedAcquisitionRefusal(error, CLAUDE_CREATE)
     const replayed = replay(failedAcquisitionSettlement(error, CLAUDE_CREATE).outcome)
