@@ -86,7 +86,10 @@ export function annotateJavascriptParityFiles(root, files) {
       comparablePath,
       comparableSha256: createHash('sha256').update(content).digest('hex'),
       ...(file.path.endsWith('.css') ? { css: content } : {}),
-      ...(manifest ? { manifest: content } : {})
+      ...(manifest ? { manifest: content } : {}),
+      ...(/(?:\/assets\/(?:App|Settings|ghostty|shell-icons)-.*\.js|\/[^/]+\.html)$/.test(file.path)
+        ? { text: content }
+        : {})
     }
   })
 }
