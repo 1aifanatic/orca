@@ -714,7 +714,9 @@ describe('useNativeChatExternalAttachments', () => {
       await act(async () => probe.latest().attachExternalPaths(['/local/a.txt']))
       expect(mocks.resolveNativeChatAttachmentOwnerForWorktree).toHaveBeenCalled()
       expect(mocks.prepareNativeChatSessionAttachmentUpload).not.toHaveBeenCalled()
-      expect(attachResolvedPaths).toHaveBeenCalledWith(['/local/a.txt'])
+      expect(attachResolvedPaths).toHaveBeenCalledWith(['/local/a.txt'], undefined, {
+        destinationIsCurrent: expect.any(Function)
+      })
     })
   })
 })
