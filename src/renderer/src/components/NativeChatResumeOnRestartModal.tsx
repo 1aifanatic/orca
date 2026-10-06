@@ -234,7 +234,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             'Chats that would be resumed'
           )}
           // The sidebar's own surface, so its cards read here as they do there.
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md border bg-worktree-sidebar p-1.5"
+          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar p-1.5"
         >
           <ResumeOnRestartGroups
             candidates={rows}

@@ -155,6 +155,15 @@ it('opens with focus on the resume action', async () => {
   expect(document.activeElement?.textContent?.trim()).toBe('Resume 2 chats')
 })
 
+it('uses the sidebar surface without a border around the resume list', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  const list = document.querySelector('[aria-label="Chats that would be resumed"]')
+  expect(list).not.toBeNull()
+  expect(list?.classList.contains('bg-worktree-sidebar')).toBe(true)
+  expect(list?.classList.contains('border')).toBe(false)
+})
+
 it('keeps initial focus inside the dialog with no resumable chats', async () => {
   rpc.mockResolvedValue({ sessions: [], failed: [failure('b')] })
   await mount(<NativeChatResumeOnRestartModal />)
