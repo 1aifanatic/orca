@@ -23,6 +23,8 @@ import { AgentSessionRecoveryCapsule } from './agent-session-recovery-capsule'
 import type { CodexStructuredPermissionPolicy } from '../codex/codex-structured-permission-policy'
 import type { CodexStructuredSessionAdapterDeps } from '../codex/codex-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
+import type { OpenCodeStructuredSessionAdapterDeps } from '../opencode/opencode-structured-session-adapter'
+import type { OpenCodeStructuredLaunchResolverDeps } from '../opencode/opencode-structured-launch-resolution'
 import {
   StructuredAgentSessionHost,
   type StructuredAgentSessionHostDeps
@@ -96,6 +98,11 @@ export type StructuredAgentSessionRuntimeDeps = {
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
+  openOpenCodeServer?: OpenCodeStructuredSessionAdapterDeps['openServer']
+  resolveOpenCodeCommand?: OpenCodeStructuredLaunchResolverDeps['resolveCommand']
+  resolveOpenCodeLaunchEnv?: OpenCodeStructuredLaunchResolverDeps['resolveLaunchEnv']
+  resolveOpenCodePermissionRules?: OpenCodeStructuredLaunchResolverDeps['resolvePermissionRules']
+  resolveOpenCodePinnedEnvironment?: OpenCodeStructuredLaunchResolverDeps['resolvePinnedEnvironment']
   /** Scripted app-servers carry fake pids the real start-time read cannot answer for. */
   readProcessStartTime?: CodexStructuredSessionAdapterDeps['readProcessStartTime']
   resolveLaunchArgs?: (provider: AgentSessionRecord['provider']) => Promise<string[]> | string[]

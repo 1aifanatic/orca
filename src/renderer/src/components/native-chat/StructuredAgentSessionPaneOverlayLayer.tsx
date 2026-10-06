@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Tab, TabGroup } from '../../../../shared/tab-types'
-import { isAgentSessionHandleProvider } from '../../../../shared/agent-session-provider-handle'
+import { isStructuredAgentId } from '../../../../shared/agent-session-provider-handle'
 import { useAppStore } from '@/store'
 import {
   structuredAgentSessionOwnerForTab,
@@ -87,8 +87,7 @@ const StructuredAgentSessionPaneOverlayLayer = memo(
       () =>
         unifiedTabs.filter(
           (tab): tab is StructuredAgentSessionTab =>
-            tab.contentType === 'agent-session' &&
-            isAgentSessionHandleProvider(tab.agentSessionAgent)
+            tab.contentType === 'agent-session' && isStructuredAgentId(tab.agentSessionAgent)
         ),
       [unifiedTabs]
     )

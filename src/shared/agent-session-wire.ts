@@ -1,4 +1,12 @@
 import type {
+  AgentSessionModelOption,
+  AgentSessionOptionChoice
+} from './agent-session-provider-models'
+export type {
+  AgentSessionModelOption,
+  AgentSessionOptionChoice
+} from './agent-session-provider-models'
+import type {
   AgentSessionBackgroundTask,
   AgentSessionBackgroundTaskState
 } from './agent-session-background-task-wire'
@@ -398,23 +406,6 @@ export type AgentSessionOptionResult = {
   options?: Record<string, string>
 }
 
-export type AgentSessionOptionChoice = {
-  value: string
-  label: string
-  description?: string
-}
-
-export type AgentSessionModelOption = {
-  id: string
-  label: string
-  description?: string
-  isDefault: boolean
-  defaultEffort?: string
-  efforts: AgentSessionOptionChoice[]
-  /** Provider catalog fact. Absent means the host could not determine support. */
-  supportsFastMode?: boolean
-}
-
 export type AgentSessionFastModeState = 'off' | 'cooldown' | 'on'
 
 export type AgentSessionFastModeSupport = {
@@ -482,6 +473,8 @@ export type AgentSessionThreadGoalResult = {
 /** Provider-reported choices and effective next-turn values. Additive read-only
  *  surface so older hosts can reject it without changing structured v1 writes. */
 export type AgentSessionOptionsResult = {
+  /** Provider-reported primary agents available for the next turn. */
+  modes?: AgentSessionOptionChoice[]
   rewind?: AgentSessionRewindSupport
   conversationCommands?: readonly AgentSessionConversationCommand[]
   /** Present only where this session can change its goal, so a host without
@@ -499,6 +492,7 @@ export type AgentSessionOptionsResult = {
   current: {
     model: string
     effort?: string
+    mode?: string
     /** Canonical preference for the next turn. Explicit false is meaningful. */
     fastMode?: boolean
     /** Provider-reported effective routing, distinct from the next-turn preference. */

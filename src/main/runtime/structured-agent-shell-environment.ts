@@ -89,6 +89,7 @@ export type StructuredAgentEnvironmentSources = {
 export function createStructuredAgentEnvironmentResolvers(
   sources: StructuredAgentEnvironmentSources
 ): {
+  resolveProviderEnvironment: () => Promise<Record<string, string>>
   resolveCodexEnvironment: () => Promise<NodeJS.ProcessEnv>
   resolveClaudeInheritedEnv: () => Promise<Record<string, string>>
 } {
@@ -99,6 +100,7 @@ export function createStructuredAgentEnvironmentResolvers(
       policy: sources.resolveShellEnvironmentPolicy?.() ?? nativeChatShellEnvironmentPolicy(null)
     })
   return {
+    resolveProviderEnvironment: resolveBase,
     resolveCodexEnvironment: async () => ({
       ...(await resolveBase()),
       ...(await sources.resolveLaunchEnv?.()),

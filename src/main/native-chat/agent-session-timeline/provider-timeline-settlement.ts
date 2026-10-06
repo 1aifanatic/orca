@@ -65,7 +65,10 @@ export function endedProviderTimelineTurn(
 }
 
 /** Which open rows a settlement covers: one turn's, or every row when the session ends. */
-export type ProviderTimelineSettlementScope = { turnItemId: string } | 'session'
+export type ProviderTimelineSettlementScope =
+  | { turnItemId: string }
+  | { producerAgentId: string }
+  | 'session'
 
 /** The turns a settlement ends, and how; absent when another writer already ended the turn, which
  *  settles only its prompts: its tool calls are the provider's to finish. */
@@ -85,7 +88,9 @@ export function providerTimelineSettlement(
     const turnScope = attribution.turnScope ?? AGENT_JOURNAL_THREAD_SCOPE
     const covered =
       scope === 'session' ||
-      (turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
+      ('producerAgentId' in scope
+        ? turnScope.kind === 'thread' && attribution.agentId === scope.producerAgentId
+        : turnScope.kind === 'turn' && turnScope.turnItemId === scope.turnItemId)
     const end =
       covered && ending && body.kind === 'tool-call' && body.state === 'running'
         ? runningCallEnd(turnScope, (turnItemId) => journal.itemBody(turnItemId), ending.end.state)

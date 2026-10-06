@@ -4,6 +4,7 @@ import type {
 } from '../../../shared/agent-session-record'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type { StructuredAgentRegistry } from './structured-agent-registry'
+import { isLegacyAgentSessionAccountHome } from '../../../shared/agent-session-account-home'
 
 export function adapterSupportsCreate(
   adapter: StructuredAgentSessionAdapter,
@@ -41,7 +42,11 @@ export function agentDrivesSession(
   const definition = agents.definition(session.provider)
   return (
     definition !== null &&
-    session.accountHome.variable === definition.accountHomeVariable &&
+    (isLegacyAgentSessionAccountHome(session.accountHome)
+      ? session.accountHome.variable === definition.accountHomeVariable &&
+        session.provider !== 'opencode' &&
+        session.provider !== 'opencode2'
+      : session.provider === 'opencode' || session.provider === 'opencode2') &&
     session.providerHandleChain.every(
       ({ handle }) =>
         handle.transport === definition.handleTransport && handle.agent === definition.agent

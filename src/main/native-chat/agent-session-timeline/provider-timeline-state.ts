@@ -43,6 +43,7 @@ export type ProviderTimelineOpenItem = {
   row: ProviderTimelineRowId | null
   /** The turn whose end settles it; null for a row in no turn. */
   turnItemId: string | null
+  producerAgentId?: string
   bytes: number
   /** Closed here: holds no budget; a repeat close is dropped and an open reopens it. */
   closed: boolean
@@ -151,6 +152,14 @@ export class ProviderTimelineState {
     this.open = null
     this.stopped = null
     this.items.clear()
+  }
+
+  endProducer(agentId: string): void {
+    for (const [key, entry] of this.items) {
+      if (entry.turnItemId === null && entry.producerAgentId === agentId) {
+        this.items.delete(key)
+      }
+    }
   }
 
   private forget(

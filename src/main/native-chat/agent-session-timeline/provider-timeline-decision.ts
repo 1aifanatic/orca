@@ -24,6 +24,7 @@ import {
 } from './provider-timeline-item-decisions'
 import type { ProviderTimelineTurnRef } from './provider-timeline-rows'
 import type { ProviderTimelineState } from './provider-timeline-state'
+import { providerTimelineSettlement } from './provider-timeline-settlement'
 import {
   decideContextUsage,
   decideInput,
@@ -124,5 +125,18 @@ export function decideProviderTimelineEvent(
       return decideFrame(input, event)
     case 'session.ended':
       return decideSessionEnd(input, event)
+    case 'producer.ended':
+      return {
+        settle: {
+          what: 'producer-end',
+          resolve: (journal) =>
+            providerTimelineSettlement(
+              journal,
+              { producerAgentId: event.agentId },
+              { turns: [], end: { state: event.state, completedAt: event.at } }
+            )
+        },
+        commit: (next) => next.endProducer(event.agentId)
+      }
   }
 }

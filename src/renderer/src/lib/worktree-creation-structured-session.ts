@@ -1,6 +1,6 @@
 import { useAppStore } from '@/store'
 import { activateAndRevealWorktree, type ActivateAndRevealResult } from '@/lib/worktree-activation'
-import { isAgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import { isStructuredAgentId } from '../../../shared/agent-session-provider-handle'
 import { adoptAgentSessionLaunchVerdict } from '@/lib/agent-session-launch-plan'
 import type { AgentLaunchRoute } from '@/lib/agent-launch-routing'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
@@ -49,7 +49,7 @@ export async function launchStructuredWorktreeSession(
   let { activation, primaryTabId } = args
   const settled = { accepted: true, cancelled: false }
   const { agent } = args.request
-  if (!isAgentSessionHandleProvider(agent)) {
+  if (!isStructuredAgentId(agent)) {
     return { ...settled, activation, primaryTabId }
   }
   const isCancelled = (): boolean =>

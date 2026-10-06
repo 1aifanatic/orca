@@ -45,6 +45,7 @@ export function openCodeServerLaunch(input: OpenCodeServerLaunchInput): Provider
     throw new Error('OpenCode server requires a command, workspace and password')
   }
   let env = { ...input.environment }
+  delete env.ELECTRON_RUN_AS_NODE
   for (const key of CALLER_ENV) {
     delete env[key]
   }
@@ -76,6 +77,7 @@ export function openCodeServerLaunch(input: OpenCodeServerLaunchInput): Provider
     // Overlay removal must also win over the supervisor's inherited environment.
     envToDelete: [
       ...PANE_ENV,
+      'ELECTRON_RUN_AS_NODE',
       ...CALLER_ENV.filter((key) => env[key] === undefined),
       ...(env.OPENCODE_CONFIG_DIR ? [] : ['OPENCODE_CONFIG_DIR'])
     ]

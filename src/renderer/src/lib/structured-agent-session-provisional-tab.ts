@@ -12,8 +12,8 @@ import type {
 import { useAppStore } from '@/store'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import {
-  isAgentSessionHandleProvider,
-  type AgentSessionHandleProvider
+  isStructuredAgentId,
+  type StructuredAgentId
 } from '../../../shared/agent-session-provider-handle'
 import {
   beginPairedStructuredLaunch,
@@ -40,7 +40,7 @@ export function openStructuredAgentSessionProvisionalTab(args: {
   /** The host the chat is created on; every later operation on the tab reads it. */
   executionHostId: ExecutionHostId
   sessionId: string
-  agent: AgentSessionHandleProvider
+  agent: StructuredAgentId
   targetGroupId?: string
   activate?: boolean
 }): Tab {
@@ -116,10 +116,10 @@ export function beginStructuredAgentSessionProvisionalLaunch(
   const worktreeId = args.target?.worktreeId ?? args.plan.worktreeId
   const agent = args.plan.agent
   const paired =
-    worktreeId && isAgentSessionHandleProvider(agent)
+    worktreeId && isStructuredAgentId(agent)
       ? structuredLaunchPairedOwner(args.plan, worktreeId, args.target)
       : null
-  if (!paired || !worktreeId || !isAgentSessionHandleProvider(agent)) {
+  if (!paired || !worktreeId || !isStructuredAgentId(agent)) {
     return beginLocalProvisionalLaunch(args)
   }
   if (args.beforeOpen?.() === false) {
@@ -164,7 +164,7 @@ function beginLocalProvisionalLaunch(args: ProvisionalLaunchArgs): LocalProvisio
   if (!handle) {
     return null
   }
-  if (!worktreeId || !isAgentSessionHandleProvider(args.plan.agent)) {
+  if (!worktreeId || !isStructuredAgentId(args.plan.agent)) {
     throw new Error('A provisional structured launch needs its workspace and provider.')
   }
   try {

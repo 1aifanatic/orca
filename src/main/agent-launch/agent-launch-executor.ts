@@ -26,6 +26,7 @@
  */
 
 import { assertOpenCodeModelLaunchPreferencesAbsent } from '../opencode/opencode-model-startup-plan'
+import { structuredAgentRuntimeRegistration } from '../runtime/structured-agent-runtime-registrations'
 import { parsePaneKey } from '../../shared/stable-pane-id'
 import type {
   AgentLaunchIntent,
@@ -81,10 +82,10 @@ export async function executeAgentLaunch(
   execution: AgentLaunchExecution
 ): Promise<AgentLaunchResult> {
   const { intent, runtime } = execution
-  if (intent.reuseTerminal || intent.target.kind === 'create-worktree') {
+  const vocabulary = execution.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
+  if (intent.reuseTerminal) {
     assertOpenCodeModelLaunchPreferencesAbsent(intent.agent, intent.sessionOptions)
   }
-  const vocabulary = execution.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
   const settings = readAgentLaunchModeSettings(runtime)
   const preflight = decideAgentLaunchMode({
     placement: {
@@ -99,6 +100,12 @@ export async function executeAgentLaunch(
     settings,
     vocabulary
   })
+  if (
+    preflight.mode === 'terminal' &&
+    (intent.reuseTerminal || intent.target.kind === 'create-worktree')
+  ) {
+    assertOpenCodeModelLaunchPreferencesAbsent(intent.agent, intent.sessionOptions)
+  }
 
   // A reused terminal already downgraded in the pre-flight; there is nothing to create. Its agent
   // was running before this launch existed, so argv is unreachable and the PTY is the only way in.
@@ -371,8 +378,8 @@ function combineLaunchWarnings(
   return `${create} Also ${surface[0].toLowerCase()}${surface.slice(1)}`
 }
 
-function isStructuredProvider(agent: TuiAgent): agent is 'claude' | 'codex' {
-  return agent === 'claude' || agent === 'codex'
+function isStructuredProvider(agent: TuiAgent): boolean {
+  return structuredAgentRuntimeRegistration(agent) !== null
 }
 
 function existingWorktreeId(target: AgentLaunchTarget): string {

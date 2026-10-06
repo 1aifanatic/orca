@@ -22,7 +22,11 @@ import {
 import type { NativeChatLaunchPromptDelivery } from '@/lib/native-chat-initial-view-mode'
 import { isNativeChatTranscriptLocalReadable } from '@/lib/native-chat-transcript-readability'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
-import { readLocalRuntimeCapabilitiesOrUnknown } from '@/runtime/local-runtime-capabilities'
+import {
+  readLocalRuntimeCapabilitiesOrUnknown,
+  readLocalStructuredAgents
+} from '@/runtime/local-runtime-capabilities'
+import { decodeAgentSessionAgentsResult } from '../../../shared/agent-session-registered-agents'
 import { resolveStructuredAgentSessionOwner } from '@/runtime/structured-agent-session-owner'
 import { pairedHostClientCapabilities } from '@/runtime/paired-host-client-capabilities'
 import { lastVerifiedRuntimeStatus } from '../../../shared/runtime-host-status'
@@ -135,11 +139,23 @@ export function buildAgentLaunchRouteInput(
     ? resolveStructuredAgentSessionOwner(store, workspace.worktreeId)
     : undefined
   const executionHostId = owner ?? resolveExecutionHostId(store, workspace)
+  const host = parseExecutionHostId(executionHostId)
+  const structuredAgents =
+    host?.kind === 'runtime'
+      ? decodeAgentSessionAgentsResult({
+          agents: lastVerifiedRuntimeStatus(
+            store.runtimeStatusByEnvironmentId?.get(host.environmentId)
+          )?.structuredAgents
+        })?.map((row) => row.agent)
+      : host?.kind === 'local'
+        ? readLocalStructuredAgents()
+        : null
   return {
     agent,
     settings: store.settings,
     executionHostId,
     hostCapabilities: owner === null ? null : resolveHostCapabilities(store, executionHostId),
+    ...(structuredAgents ? { hostStructuredAgents: structuredAgents } : {}),
     ...(parseExecutionHostId(executionHostId)?.kind === 'runtime'
       ? { clientCapabilities: pairedHostClientCapabilities() }
       : {}),

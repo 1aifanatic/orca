@@ -42,6 +42,22 @@ export function planProviderTimelineBarrier(
     streams.planRelease(plan, () => true)
     return
   }
+  if (event.type === 'producer.ended') {
+    for (const stream of streams.open) {
+      if (
+        stream.named &&
+        stream.scope.kind === 'thread' &&
+        stream.producer?.agentId === event.agentId
+      ) {
+        plan.onAdmitted(() => state.close(stream.key, null))
+      }
+    }
+    streams.planRelease(
+      plan,
+      (stream) => stream.scope.kind === 'thread' && stream.producer?.agentId === event.agentId
+    )
+    return
+  }
   if (event.type === 'turn.end' || event.type === 'turn.open' || event.type === 'turn.settled') {
     const ending =
       decision.ends?.turnItemId ?? (event.type === 'turn.open' ? state.open?.itemId : undefined)

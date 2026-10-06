@@ -56,6 +56,15 @@ describe('OpenCode server launch', () => {
     expect(environment.OPENCODE_CONFIG_DIR).toBe(overlay)
   })
 
+  it('removes Electron interpreter mode even from inherited supervisor environment', () => {
+    const environment = { ELECTRON_RUN_AS_NODE: '1' }
+    const child = resolveProviderChildEnv(
+      openCodeServerLaunch({ ...launchInput, environment }),
+      environment
+    )
+    expect(child.ELECTRON_RUN_AS_NODE).toBeUndefined()
+  })
+
   it('drops an overlay without a source and preserves explicit user config', () => {
     const overlay = join('orca', 'overlay')
     const environment = { OPENCODE_CONFIG_DIR: overlay, ORCA_OPENCODE_CONFIG_DIR: overlay }

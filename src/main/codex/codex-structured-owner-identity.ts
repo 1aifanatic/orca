@@ -5,7 +5,10 @@ import {
 } from '../../shared/agent-session-provider-handle'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionProcessIdentity } from '../../shared/agent-session-record'
-import { readProcessStartTimeMs } from '../runtime/agent-session-process-identity-probe'
+import {
+  STRUCTURED_PROVIDER_SPAWN_TOKEN_ENV,
+  structuredProviderProcessIdentity
+} from '../provider-process/structured-process-identity'
 
 // What the lease records about the child Codex just handed back: the process it
 // will later re-prove, and the provider handle link the journal binds to. Both
@@ -14,9 +17,7 @@ import { readProcessStartTimeMs } from '../runtime/agent-session-process-identit
 
 /** The child echoes its spawn token here so the owner probe can tell a live
  *  child of THIS reservation from a same-pid stranger. */
-export const CODEX_SPAWN_TOKEN_ENV = 'ORCA_AGENT_SESSION_SPAWN_TOKEN'
-
-const START_TIME_READ_ATTEMPTS = 3
+export const CODEX_SPAWN_TOKEN_ENV = STRUCTURED_PROVIDER_SPAWN_TOKEN_ENV
 
 /**
  * The child's identity, read once. The real connection reports its spawn before the handshake, and
@@ -50,30 +51,12 @@ export async function codexProcessIdentity(
     spawnToken: string
     pid: number | undefined
   },
-  readStartTime: (pid: number) => Promise<number | null> = readProcessStartTimeMs
+  readStartTime?: (pid: number) => Promise<number | null>
 ): Promise<AgentSessionProcessIdentity> {
-  if (input.pid === undefined) {
-    throw new Error('codex app-server started without a pid')
-  }
-  let processStartTimeMs: number | null = null
-  for (
-    let attempt = 0;
-    attempt < START_TIME_READ_ATTEMPTS && processStartTimeMs === null;
-    attempt += 1
-  ) {
-    processStartTimeMs = await readStartTime(input.pid)
-  }
-  if (processStartTimeMs === null) {
-    // Why: recording null makes every later owner probe indeterminate — a durable latch.
-    // Failing here reaps the child and leaves a retryable refusal instead.
-    throw new Error(`codex app-server start time for pid ${input.pid} could not be read`)
-  }
-  return {
-    hostId: input.identity.hostId,
-    pid: input.pid,
-    processStartTimeMs,
-    spawnToken: input.spawnToken
-  }
+  return structuredProviderProcessIdentity(
+    { ...input, processName: 'codex app-server' },
+    readStartTime
+  )
 }
 
 type CodexProviderHandleLinkInput = {

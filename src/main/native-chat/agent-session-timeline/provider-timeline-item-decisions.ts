@@ -114,7 +114,14 @@ export function decideItem(
       if (change === 'close') {
         next.close(key, placed)
       } else if (obligation) {
-        next.items.set(key, { kind: 'item', row, turnItemId: placed, bytes, closed: false })
+        next.items.set(key, {
+          kind: 'item',
+          row,
+          turnItemId: placed,
+          bytes,
+          closed: false,
+          ...(event.producer?.agentId ? { producerAgentId: event.producer.agentId } : {})
+        })
       } else if (change === 'open' || next.items.get(key)?.closed !== true) {
         next.items.delete(key)
       }
@@ -147,7 +154,8 @@ export function decideRequest(
     row: null,
     turnItemId: turn,
     bytes,
-    closed: false
+    closed: false,
+    ...(event.producer?.agentId ? { producerAgentId: event.producer.agentId } : {})
   }
   return {
     hold: { key, bytes },

@@ -1,9 +1,15 @@
 import type { RuntimeCapability } from '../../../shared/protocol-version'
+import { decodeAgentSessionAgentsResult } from '../../../shared/agent-session-registered-agents'
 
 // `null` while no successful probe has landed. "Not asked yet" and "host says no" are
 // different answers, and a caller that routes on them must be able to tell them apart.
 let localRuntimeCapabilities: readonly RuntimeCapability[] | null = null
 let refreshPromise: Promise<readonly RuntimeCapability[]> | null = null
+let localStructuredAgents: readonly string[] | null = null
+
+export function readLocalStructuredAgents(): readonly string[] | null {
+  return localStructuredAgents
+}
 
 export function readLocalRuntimeCapabilities(): readonly RuntimeCapability[] {
   return localRuntimeCapabilities ?? []
@@ -48,12 +54,17 @@ export function refreshLocalRuntimeCapabilities(): Promise<readonly RuntimeCapab
   refreshPromise ??= startLocalRuntimeCapabilityProbe()
     .then((status) => {
       localRuntimeCapabilities = [...(status.capabilities ?? [])]
+      localStructuredAgents =
+        decodeAgentSessionAgentsResult({ agents: status.structuredAgents })?.map(
+          (row) => row.agent
+        ) ?? null
       return localRuntimeCapabilities
     })
     .catch(() => {
       // Stays unknown rather than becoming an empty (== unsupported) list: a failed probe
       // is not evidence about the host.
       localRuntimeCapabilities = null
+      localStructuredAgents = null
       return []
     })
     .finally(() => {
@@ -67,4 +78,5 @@ export function setLocalRuntimeCapabilitiesForTests(
 ): void {
   localRuntimeCapabilities = capabilities === null ? null : [...capabilities]
   refreshPromise = null
+  localStructuredAgents = null
 }

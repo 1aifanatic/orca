@@ -15,6 +15,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 import type {
   AgentSessionExecutionLocation,
   AgentSessionRecord
@@ -45,7 +46,7 @@ export type StructuredWorkerIdentity = {
   handle: string
   sessionId: string
   /** Null when the entry was rehydrated from the durable row, which does not carry the provider. */
-  agent: 'claude' | 'codex' | null
+  agent: StructuredAgentId | null
   paneKey: string
   processIncarnation: string
   worktreeId: string

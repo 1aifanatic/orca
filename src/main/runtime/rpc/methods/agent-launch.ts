@@ -32,6 +32,8 @@ import {
   WORKTREE_CREATE_COLLISION_CODE
 } from '../../../../shared/new-workspace/worktree-create-collision'
 import { assertOpenCodeModelLaunchPreferencesAbsent } from '../../../opencode/opencode-model-startup-plan'
+import { prefersStructuredNativeChatByDefault } from '../../../../shared/structured-native-chat-launch-route'
+import { readAgentLaunchModeSettings } from '../../../agent-launch/agent-launch-mode'
 import { executeAgentLaunch } from '../../../agent-launch/agent-launch-executor'
 import {
   trackTerminalSpawnDispatch,
@@ -138,7 +140,11 @@ async function resolveUnlaunchedIntent(
   params: AgentLaunchParams,
   runtime: OrcaRuntimeService
 ): Promise<AgentLaunchIntent> {
-  if (params.reuseTerminal || params.target.kind === 'create-worktree') {
+  if (
+    params.reuseTerminal ||
+    (params.target.kind === 'create-worktree' &&
+      !prefersStructuredNativeChatByDefault(readAgentLaunchModeSettings(runtime)))
+  ) {
     assertOpenCodeModelLaunchPreferencesAbsent(params.agent, params.sessionOptions)
   }
   const intent = await agentLaunchIntent(params, runtime)

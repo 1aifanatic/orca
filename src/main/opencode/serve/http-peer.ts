@@ -44,7 +44,7 @@ export class OpenCodeHttpPeer {
     this.authorization = `Basic ${Buffer.from(`opencode:${options.password}`, 'utf8').toString('base64')}`
     this.fetchImpl = options.fetch ?? fetch
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000
-    this.maxResponseBytes = options.maxResponseBytes ?? 16 * 1024 * 1024
+    this.maxResponseBytes = options.maxResponseBytes ?? 32 * 1024 * 1024
     this.maxPendingRequests = options.maxPendingRequests ?? 64
     this.consumerTimeoutMs = options.consumerTimeoutMs ?? 120_000
     for (const limit of [this.maxResponseBytes, this.maxPendingRequests, this.consumerTimeoutMs]) {

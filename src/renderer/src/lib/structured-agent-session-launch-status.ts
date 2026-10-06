@@ -1,4 +1,4 @@
-import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 import { structuredLaunchesHoldingIdentity } from './structured-agent-session-launch-holders'
 import {
   structuredLaunchIdentity,
@@ -8,7 +8,7 @@ import {
 /** Whether a chat for this pair is being created here: its own first create, or an adoption. */
 export function getStructuredAgentLaunchStatus(
   worktreeId: string,
-  agent: AgentSessionHandleProvider
+  agent: StructuredAgentId
 ): StructuredAgentLaunchStatus {
   // Any launch holding an identity for this pair, adopted conversations included, is starting here.
   // A failed chat is not, nor an unconfirmed or retried blank one: a new launch opens its own chat.

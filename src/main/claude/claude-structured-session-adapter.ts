@@ -1,4 +1,5 @@
 import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
+import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import { dispatchClaudeCommand } from './claude-structured-command-dispatch'
 import type {
   AgentSessionAcquisition,
@@ -140,7 +141,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   ) =>
     resolveClaudeProviderHistoryWindow({
       identity: input.identity,
-      accountHomePath: input.accountHome.path,
+      accountHomePath: requireLegacyAgentSessionAccountHome(input.accountHome).path,
       hasLiveSession:
         this.sessions.has(input.identity.sessionId) || this.exits.has(input.identity.sessionId)
     })

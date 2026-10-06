@@ -5,6 +5,7 @@ import type { OrcaRuntimeService } from '../../../../orca-runtime'
 import type { OrchestrationDb } from '../../../../orchestration/db'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { createStructuredWorkerSession } from '../../orchestration-structured-worker-session'
+import { structuredAgentRuntimeRegistration } from '../../../../structured-agent-runtime-registrations'
 
 export type WorkerEffect = {
   kind: 'worktree' | 'terminal' | 'setup' | 'dispatch_input'
@@ -102,10 +103,10 @@ export async function createStructuredWorkerSessionForWorktree(args: {
   launchPreferences?: AgentLaunchPreferences
   effects: WorkerEffect[]
 }): Promise<Awaited<ReturnType<typeof createStructuredWorkerSession>>> {
-  if (args.agent !== 'claude' && args.agent !== 'codex') {
+  if (!structuredAgentRuntimeRegistration(args.agent)) {
     throw new OrchestrationError(
       'agent_unconfigured',
-      `Structured workers support claude and codex; ${args.agent} has no structured session.`
+      `${args.agent} has no structured session on this host.`
     )
   }
   const options = narrowStructuredLaunchSeedOptions(args.launchPreferences)

@@ -54,11 +54,11 @@ const creating: AgentLaunchIntent = {
 
 describe('OpenCode model preferences on unsupported launch placements', () => {
   it.each([reused, creating])(
-    'refuses before reading settings or creating or delivering',
+    'refuses terminal model preferences before creating or delivering',
     async (intent) => {
       const h = harness()
       await expect(h.run(intent)).rejects.toMatchObject({ code: 'capability_unsupported' })
-      expect(h.readSettings).not.toHaveBeenCalled()
+      expect(h.readSettings).toHaveBeenCalledTimes(intent.reuseTerminal ? 0 : 1)
       expect(h.createTerminal).not.toHaveBeenCalled()
       expect(h.createWorktree).not.toHaveBeenCalled()
       expect(h.deliverPrompt).not.toHaveBeenCalled()

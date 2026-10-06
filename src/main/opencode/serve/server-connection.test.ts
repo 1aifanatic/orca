@@ -1,68 +1,9 @@
-import { EventEmitter } from 'node:events'
-import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type {
-  spawnManagedProviderProcess,
-  ManagedProviderProcess,
-  ProviderProcessExit
-} from '../../provider-process/managed-provider-process'
-import type { ProviderProcessCloseResult } from '../../provider-process/provider-process-close'
+import type { spawnManagedProviderProcess } from '../../provider-process/managed-provider-process'
+import { openCodeManagedProcessFixture as managedChild } from './server-process-test-fixture'
 import { OpenCodeServerConnection, openOpenCodeServer } from './server-connection'
 
 afterEach(() => vi.useRealTimers())
-
-function managedChild() {
-  const child = Object.assign(new EventEmitter(), {
-    pid: 9999999,
-    stdin: new PassThrough(),
-    stdout: new PassThrough(),
-    stderr: new PassThrough(),
-    kill: vi.fn(() => true)
-  })
-  let resolveExit = (): void => {}
-  const exitPromise = new Promise<void>((resolve) => {
-    resolveExit = resolve
-  })
-  const listeners = new Set<(exit: ProviderProcessExit) => void>()
-  let exited = false
-  const close = vi.fn<() => Promise<ProviderProcessCloseResult>>(async () => ({
-    root: 'unverifiable',
-    tree: null
-  }))
-  const process: ManagedProviderProcess = {
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This fixture provides exactly the pid, stdio and events the server connection consumes.
-    child: child as unknown as ManagedProviderProcess['child'],
-    supervised: true,
-    processless: false,
-    get rootVerdict() {
-      return exited ? 'exited' : 'live'
-    },
-    get rootExitObserved() {
-      return exited
-    },
-    lastCloseResult: null,
-    exitPromise,
-    stderrTail: () => 'fixture diagnostic',
-    onExit(listener) {
-      listeners.add(listener)
-    },
-    terminateTree: async () => 'unverifiable',
-    close
-  }
-  return {
-    process,
-    child,
-    close,
-    exit() {
-      exited = true
-      resolveExit()
-      for (const listener of listeners) {
-        listener({ code: 1, signal: null, processless: false })
-      }
-      listeners.clear()
-    }
-  }
-}
 
 describe('chat-owned OpenCode server connection', () => {
   it('spawns through the shared provider owner and returns before probing for a durable identity', async () => {

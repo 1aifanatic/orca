@@ -5,9 +5,22 @@ import { supportsCodexStructuredLocation } from '../codex/codex-structured-locat
 import { supportsClaudeStructuredLocation } from '../claude/claude-structured-location-support'
 import { applyStructuredCodexWorkspaceTrust } from '../agent-workspace-trust-spawn'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
+import {
+  agentSessionAccountHome,
+  type AgentSessionAccountHome
+} from '../../shared/agent-session-account-home'
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
+import {
+  OPENCODE_STRUCTURED_AGENT,
+  OPENCODE2_STRUCTURED_AGENT
+} from '../opencode/opencode-structured-agent-definition'
+import { OpenCodeStructuredSessionAdapter } from '../opencode/opencode-structured-session-adapter'
+import { createOpenCodeStructuredLaunchResolver } from '../opencode/opencode-structured-launch-resolution'
+import { resolveStructuredOpenCodeAccountHome } from '../opencode/opencode-structured-account-home'
+import { getManagedDataAccountService } from '../managed-data-accounts/service'
+import { supportsProviderProcessLocation } from '../provider-process/provider-location-support'
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionLifecycleEvent
@@ -16,6 +29,7 @@ import type { StructuredAgentDefinition } from '../native-chat/agent-session-wir
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { agentModelCatalogFingerprintForRecord } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type { createStructuredAgentSessionDispatchFollowUps } from './structured-agent-session-dispatch-followups'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
@@ -63,6 +77,7 @@ export type StructuredAgentAccountHomeServices = {
   /** Codex's home for a launch, prepared for it; and the same answer with no side effects. */
   prepareCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
   readCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
+  resolveProviderEnvironment: () => Promise<Record<string, string>>
   workspaceTrustSettings: () => Parameters<typeof applyStructuredCodexWorkspaceTrust>[0]['settings']
 }
 
@@ -72,10 +87,10 @@ export type StructuredAgentRuntimeRegistration = {
   /** Whether this agent's chats can run at `location`; answered without building the host. */
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
   /** The account home a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
-  resolveAccountHomePath: (
+  resolveAccountHome: (
     request: StructuredAgentAccountHomeRequest,
     services: StructuredAgentAccountHomeServices
-  ) => Promise<string>
+  ) => Promise<AgentSessionAccountHome>
 }
 
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
@@ -158,25 +173,91 @@ async function resolveCodexAccountHomePath(
   })
 }
 
+function createOpenCodeAdapter(
+  context: StructuredAgentAdapterContext
+): StructuredAgentRuntimeAdapter {
+  const { deps, store, followUps, host } = context
+  return new OpenCodeStructuredSessionAdapter({
+    resolveLaunch: createOpenCodeStructuredLaunchResolver({
+      store,
+      resolveWorkspacePath: deps.resolveWorkspacePath,
+      resolveEnvironment: context.environment.resolveProviderEnvironment,
+      ...(deps.resolveOpenCodeCommand ? { resolveCommand: deps.resolveOpenCodeCommand } : {}),
+      ...(deps.resolveOpenCodeLaunchEnv ? { resolveLaunchEnv: deps.resolveOpenCodeLaunchEnv } : {}),
+      ...(deps.resolveOpenCodePermissionRules
+        ? { resolvePermissionRules: deps.resolveOpenCodePermissionRules }
+        : {}),
+      ...(deps.resolveOpenCodePinnedEnvironment
+        ? { resolvePinnedEnvironment: deps.resolveOpenCodePinnedEnvironment }
+        : {})
+    }),
+    ...(deps.openOpenCodeServer ? { openServer: deps.openOpenCodeServer } : {}),
+    ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
+    onEvent: context.deliverLifecycle,
+    onCatalog: (sessionId, models) => {
+      const record = store.getRecord(sessionId)
+      if (record) {
+        agentModelCatalogStore.recordSuccess(
+          agentModelCatalogFingerprintForRecord(record),
+          record.provider,
+          { models, fastModeTierByModel: new Map(), origin: 'live-session' }
+        )
+      }
+    },
+    onChildWorkEvidence: (sessionId, evidence) =>
+      host()?.publishChildWorkEvidence(sessionId, evidence),
+    onDispatchSettledLate: followUps.onDispatchSettledLate,
+    onPrimaryThreadStoppedRunning: followUps.releaseUnansweredDispatches,
+    logger: deps.logger
+  })
+}
+
+function openCodeRegistration(
+  definition: StructuredAgentDefinition
+): StructuredAgentRuntimeRegistration {
+  return {
+    definition,
+    createAdapter: createOpenCodeAdapter,
+    supportsLocation: supportsProviderProcessLocation,
+    resolveAccountHome: async ({ launchEnv }, services) => {
+      const managedAccounts = getManagedDataAccountService()
+      return resolveStructuredOpenCodeAccountHome({
+        baseEnvironment: await services.resolveProviderEnvironment(),
+        launchEnv,
+        managedAccounts
+      })
+    }
+  }
+}
+
 export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRuntimeRegistration[] =
   [
     {
       definition: CODEX_STRUCTURED_AGENT,
       createAdapter: createCodexAdapter,
       supportsLocation: (location) => supportsCodexStructuredLocation(location),
-      resolveAccountHomePath: resolveCodexAccountHomePath
+      resolveAccountHome: async (request, services) =>
+        agentSessionAccountHome(
+          CODEX_STRUCTURED_AGENT,
+          await resolveCodexAccountHomePath(request, services)
+        )
     },
     {
       definition: CLAUDE_STRUCTURED_AGENT,
       createAdapter: createClaudeAdapter,
       supportsLocation: supportsClaudeStructuredLocation,
-      resolveAccountHomePath: async ({ launchEnv, location }, services) =>
-        resolveStructuredClaudeAccountHomePath({
-          launchEnv,
-          wslDistro: location?.wslDistro ?? null,
-          getClaudeConfigDirectory: services.getClaudeConfigDirectory
-        })
-    }
+      resolveAccountHome: async ({ launchEnv, location }, services) =>
+        agentSessionAccountHome(
+          CLAUDE_STRUCTURED_AGENT,
+          resolveStructuredClaudeAccountHomePath({
+            launchEnv,
+            wslDistro: location?.wslDistro ?? null,
+            getClaudeConfigDirectory: services.getClaudeConfigDirectory
+          })
+        )
+    },
+    openCodeRegistration(OPENCODE_STRUCTURED_AGENT),
+    openCodeRegistration(OPENCODE2_STRUCTURED_AGENT)
   ]
 
 /** The registration of `agent`; null for an agent this runtime does not drive. */

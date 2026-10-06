@@ -1,6 +1,6 @@
 import {
-  isAgentSessionHandleProvider,
-  type AgentSessionHandleProvider
+  isStructuredAgentId,
+  type StructuredAgentId
 } from '../../../shared/agent-session-provider-handle'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import { parseStructuredLaunchSeedOptions } from '../../../shared/native-chat-session-option-defaults'
@@ -18,7 +18,7 @@ export type StructuredAgentLaunchPersistedRecord = {
   /** The host the chat was created on. Records written before paired hosts could hold a chat lack
    *  it and load as local, the only host a chat could then be launched on. */
   executionHostId: ExecutionHostId
-  agent: AgentSessionHandleProvider
+  agent: StructuredAgentId
   lifecycle: StructuredAgentLaunchPersistedLifecycle
   clientOperationId: string
   payloadFingerprint: string
@@ -96,7 +96,7 @@ function validRecord(value: unknown): value is Omit<
       (typeof executionHostId === 'string' && parseExecutionHostId(executionHostId) !== null)) &&
     typeof sessionId === 'string' &&
     sessionId.length > 0 &&
-    isAgentSessionHandleProvider(agent) &&
+    isStructuredAgentId(agent) &&
     (lifecycle === 'pending' || lifecycle === 'visibility-unknown' || lifecycle === 'failed') &&
     typeof clientOperationId === 'string' &&
     typeof payloadFingerprint === 'string' &&

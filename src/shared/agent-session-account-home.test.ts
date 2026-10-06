@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { agentSessionAccountHome } from './agent-session-account-home'
+import {
+  agentSessionAccountHome,
+  agentSessionAccountHomesEqual
+} from './agent-session-account-home'
 import { isPersistedAgentSessionRecord } from './agent-session-record'
 import { agentSessionRecordFixture } from './agent-session-record.test-fixture'
 import { encodeAgentSessionRecord } from './agent-session-record-stored-form'
@@ -24,5 +27,44 @@ describe('agent session account home', () => {
     for (const malformed of ['', 'A B', '1HOME', 'HOME=x', 'X'.repeat(129)]) {
       expect(withVariable(malformed)).toBe(false)
     }
+  })
+
+  it('validates tagged OpenCode locators without saving a duplicate managed path', () => {
+    const record = encodeAgentSessionRecord(agentSessionRecordFixture())
+    const managed = {
+      kind: 'opencode',
+      locator: { kind: 'managed', managedProfileId: '123e4567-e89b-42d3-a456-426614174000' }
+    } as const
+    const unmanaged = {
+      kind: 'opencode',
+      locator: {
+        kind: 'unmanaged',
+        dataHome: '/home/user/data',
+        stateHome: '/home/user/state',
+        databaseSelection: { kind: 'override', value: 'custom.db' }
+      }
+    } as const
+    expect(isPersistedAgentSessionRecord({ ...record, accountHome: managed })).toBe(true)
+    expect(isPersistedAgentSessionRecord({ ...record, accountHome: unmanaged })).toBe(true)
+    expect(agentSessionAccountHomesEqual(managed, unmanaged)).toBe(false)
+    expect(agentSessionAccountHomesEqual(managed, { ...managed })).toBe(true)
+    expect(
+      isPersistedAgentSessionRecord({
+        ...record,
+        accountHome: { ...managed, path: '/fake/home' }
+      })
+    ).toBe(false)
+    expect(
+      isPersistedAgentSessionRecord({
+        ...record,
+        accountHome: { ...unmanaged, locator: { ...unmanaged.locator, secret: 'key' } }
+      })
+    ).toBe(false)
+    expect(
+      isPersistedAgentSessionRecord({
+        ...record,
+        accountHome: { ...unmanaged, locator: { ...unmanaged.locator, dataHome: 'relative/data' } }
+      })
+    ).toBe(false)
   })
 })
