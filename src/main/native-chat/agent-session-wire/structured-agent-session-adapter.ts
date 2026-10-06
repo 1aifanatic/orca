@@ -97,8 +97,9 @@ export class AgentSessionAcquisitionRootExitObservedError extends Error {
   }
 }
 
-/** The provider child failed and cleanup proved its whole tree gone. As with a root exit, the
- *  provider's own diagnostic is the message. */
+/** The provider child failed and cleanup proved its whole tree gone — on Windows, that its root
+ *  left on its own after stdin end (descendants not addressed, as with Codex) or taskkill reported
+ *  the tree terminated. As with a root exit, the provider's own diagnostic is the message. */
 export class AgentSessionAcquisitionExitProvenError extends Error {
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause), { cause })

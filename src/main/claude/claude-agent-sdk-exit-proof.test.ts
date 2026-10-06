@@ -136,12 +136,16 @@ function mockChild(
 }
 
 /** A tree whose verdict is scripted per reap, recording when it was armed. */
-function mockTree(verdicts: DescendantTreeVerdict[]): ClaudeChildTreeReaper & {
+function mockTree(
+  verdicts: DescendantTreeVerdict[],
+  forcedReapAttempted = false
+): ClaudeChildTreeReaper & {
   capture: ReturnType<typeof vi.fn>
   reap: ReturnType<typeof vi.fn>
 } {
   let treeVerdict: DescendantTreeVerdict = 'unverifiable'
   return {
+    forcedReapAttempted,
     capture: vi.fn(async () => {}),
     reap: vi.fn(async () => {
       treeVerdict = verdicts.shift() ?? treeVerdict
@@ -267,7 +271,10 @@ describe('claude child exit proof', () => {
       exitedWhenArmed = exit.exited()
     })
 
-    await expect(proveClaudeChildExit({ child, ...exit, tree })).resolves.toBe(true)
+    // POSIX: on Windows a root that leaves on its own after stdin end is the close itself.
+    await expect(proveClaudeChildExit({ child, ...exit, tree, platform: 'linux' })).resolves.toBe(
+      true
+    )
     // The snapshot is the only proof that survives the root: taken while it lived,
     // verified once it left. A reap before the exit would have been the forced ladder.
     expect(exitedWhenArmed).toBe(false)
@@ -333,8 +340,31 @@ describe('claude child exit proof', () => {
     const tree = mockTree(['exited'])
 
     await expect(
-      proveClaudeChildExit({ child, exitPromise: Promise.resolve(), exited: () => true, tree })
+      proveClaudeChildExit({
+        child,
+        exitPromise: Promise.resolve(),
+        exited: () => true,
+        tree,
+        platform: 'linux'
+      })
     ).resolves.toBe(true)
+    expect(tree.reap).toHaveBeenCalledTimes(1)
+  })
+
+  it('on Windows re-asks the tree on a retried close once a forced reap has run', async () => {
+    const child = mockChild()
+    // The earlier close forced a reap whose taskkill failed; the root has since exited.
+    const tree = mockTree(['unverifiable'], true)
+
+    await expect(
+      proveClaudeChildExit({
+        child,
+        exitPromise: Promise.resolve(),
+        exited: () => true,
+        tree,
+        platform: 'win32'
+      })
+    ).resolves.toBe(false)
     expect(tree.reap).toHaveBeenCalledTimes(1)
   })
 
@@ -350,7 +380,13 @@ describe('claude child exit proof', () => {
     })
 
     await expect(
-      proveClaudeChildExit({ child, exitPromise: Promise.resolve(), exited: () => true, tree })
+      proveClaudeChildExit({
+        child,
+        exitPromise: Promise.resolve(),
+        exited: () => true,
+        tree,
+        platform: 'darwin'
+      })
     ).resolves.toBe(false)
     // A dead root's descendants have reparented: walking its pid now could only
     // sweep a stranger, so no walk is attempted and nothing is proven.

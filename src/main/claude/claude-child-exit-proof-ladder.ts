@@ -49,8 +49,14 @@ export async function proveClaudeChildExitWithReaper(
     }
   }
   // On Windows, as with the Codex close, Claude leaving on its own after its stdin ends is the
-  // close: Orca makes no claim about processes Claude started, and no reap could address them.
-  if (!reaped && input.exited() && (input.platform ?? process.platform) === 'win32') {
+  // close: Orca makes no claim about processes Claude started, and no reap could address them. An
+  // exit after any forced reap on this tree, here or on an earlier close, keeps taskkill's verdict.
+  if (
+    !reaped &&
+    !tree.forcedReapAttempted &&
+    input.exited() &&
+    (input.platform ?? process.platform) === 'win32'
+  ) {
     return true
   }
   if (!reaped && input.exited() && tree.treeVerdict !== 'exited') {

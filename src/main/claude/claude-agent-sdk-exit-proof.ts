@@ -72,6 +72,8 @@ export type ClaudeChildTreeReaper = {
    * seen still running, which no later caller may collapse into "unknown".
    */
   readonly treeVerdict: DescendantTreeVerdict
+  /** A reap has reached the root while it lived: its exit since then is no longer its own. */
+  readonly forcedReapAttempted: boolean
 }
 
 /**
@@ -101,6 +103,7 @@ export function createClaudeChildTreeReaper(
   let queuedRefresh: Promise<void> | null = null
   let inFlight: Promise<DescendantTreeVerdict> | null = null
   let treeVerdict: DescendantTreeVerdict = 'unverifiable'
+  let forcedReapAttempted = false
 
   function captureOnce(): Promise<void> {
     if (!snapshots) {
@@ -256,6 +259,9 @@ export function createClaudeChildTreeReaper(
       // Never spawned, so the OS never created a tree to orphan.
       return 'exited'
     }
+    if (!exited()) {
+      forcedReapAttempted = true
+    }
     if (!snapshots) {
       return judgeWindowsTree(rootPid)
     }
@@ -313,6 +319,9 @@ export function createClaudeChildTreeReaper(
     },
     get treeVerdict() {
       return treeVerdict
+    },
+    get forcedReapAttempted() {
+      return forcedReapAttempted
     }
   }
 }
@@ -323,8 +332,8 @@ export function createClaudeChildTreeReaper(
  *
  * Resolves true only after the child actually emitted exit and, on POSIX, its
  * snapshotted descendants were observed gone; on Windows, after it left on its
- * own once its stdin ended, or a forced `taskkill /T /F` reported its tree
- * terminated. False is unproven. On POSIX a root that left on its own before a
+ * own once its stdin ended with no forced reap before, or a forced
+ * `taskkill /T /F` reported its tree terminated. False is unproven. On POSIX a root that left on its own before a
  * snapshot could be armed stays unproven: its descendants had already
  * reparented out of reach when the ladder first looked.
  */

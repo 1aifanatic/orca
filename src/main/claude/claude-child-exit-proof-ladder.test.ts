@@ -11,7 +11,8 @@ function fakeTree(): ClaudeChildTreeReaper & { reap: ReturnType<typeof vi.fn> } 
     capture: vi.fn(async () => {}),
     refresh: vi.fn(async () => {}),
     reap: vi.fn(async () => 'exited' as const),
-    treeVerdict: 'exited'
+    treeVerdict: 'exited',
+    forcedReapAttempted: false
   }
 }
 
@@ -44,8 +45,9 @@ function rootStoppedBySigterm(stopMs: number) {
   }
 }
 
-/** A Windows root that leaves on stdin end when `leavesOnStdinEnd`, otherwise only once killed. */
-function windowsRoot(leavesOnStdinEnd: boolean) {
+/** A Windows root that leaves on stdin end when `leavesOnStdinEnd`, otherwise only once killed
+ *  (or, with `leavesOnKill` false, only when the test calls `leave`). */
+function windowsRoot(leavesOnStdinEnd: boolean, leavesOnKill = true) {
   let exited = false
   let settle = (): void => {}
   const exitPromise = new Promise<void>((resolve) => {
@@ -56,7 +58,9 @@ function windowsRoot(leavesOnStdinEnd: boolean) {
     settle()
   }
   const kill = vi.fn(() => {
-    leave()
+    if (leavesOnKill) {
+      leave()
+    }
     return true
   })
   const stdin = {
@@ -72,6 +76,7 @@ function windowsRoot(leavesOnStdinEnd: boolean) {
       typeof proveClaudeChildExitWithReaper
     >[0]['child'],
     kill,
+    leave,
     exitPromise,
     exited: () => exited
   }
@@ -180,4 +185,41 @@ describe('Claude child exit proof ladder', () => {
     await expect(proveClaudeChildExitWithReaper(input, () => tree)).resolves.toBe(false)
     expect(tree.reap).toHaveBeenCalledOnce()
   })
+
+  it('on Windows a retried close after a failed taskkill stays unproven once the root exits', async () => {
+    const root = windowsRoot(false, false)
+    const terminateWindowsTree = vi.fn(async () => false)
+    const { tree } = windowsTree(root, terminateWindowsTree)
+    const close = () =>
+      proveClaudeChildExitWithReaper({ ...root, tree, platform: 'win32' }, () => tree)
+
+    await expect(close()).resolves.toBe(false)
+    // The exit lands only after the forced wait: it is not Claude leaving on its own.
+    root.leave()
+    await expect(close()).resolves.toBe(false)
+
+    expect(terminateWindowsTree).toHaveBeenCalledOnce()
+    expect(tree.forcedReapAttempted).toBe(true)
+    expect(tree.treeVerdict).toBe('unverifiable')
+  }, 10_000)
+
+  it.each([
+    { taskkill: true, proven: true },
+    { taskkill: false, proven: false }
+  ])(
+    'on Windows a reap outside a close keeps taskkill as the verdict: taskkill $taskkill',
+    async ({ taskkill, proven }) => {
+      // The transport-failure reap (stdin error, reader failure) kills the live tree itself.
+      const root = windowsRoot(false)
+      const terminateWindowsTree = vi.fn(async () => taskkill)
+      const { tree } = windowsTree(root, terminateWindowsTree)
+      await tree.reap()
+      expect(root.exited()).toBe(true)
+
+      await expect(
+        proveClaudeChildExitWithReaper({ ...root, tree, platform: 'win32' }, () => tree)
+      ).resolves.toBe(proven)
+      expect(terminateWindowsTree).toHaveBeenCalledOnce()
+    }
+  )
 })
