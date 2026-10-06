@@ -7,8 +7,8 @@ import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-n
 import { isStructuredAgentSessionMainAgentWorking } from '../../../src/shared/structured-agent-session-main-agent-working'
 import { isFinalAgentSessionReadRefusal } from '../../../src/shared/structured-agent-session-read-refusal'
 import {
-  activeStructuredAgentSessionTurnId,
-  isStructuredAgentSessionThinking
+  isStructuredAgentSessionThinking,
+  runningStructuredAgentSessionTurnId
 } from '../../../src/shared/structured-agent-session-live-turn'
 import { selectStructuredAgentTurnActivity } from '../../../src/shared/native-chat-turn-activity'
 import {
@@ -61,7 +61,7 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
     respondPermission: (optionId: string) => Promise<boolean>
     respondQuestion: (answer: string) => Promise<boolean>
     cancelPrompt: (prompt?: { itemId: string; expectedRevision: number }) => Promise<boolean>
-    /** The queued-draft cards and their actions; empty and inert off capable hosts. */
+    /** The queued-draft cards and their actions, from any host that publishes them. */
     queued: MobileStructuredQueuedMessageControls
   }
 
@@ -97,7 +97,7 @@ export function useMobileStructuredAgentSession(args: {
     onSendError,
     hostSupport
   } = args
-  // Old host ⇒ exactly today's behavior: no delivery field, no cards, plain Stop.
+  // Only a host that queues sends gets the delivery field; any host's published cards show.
   const queueCapable = hostSupport?.queuedMessages === true
   const promptCancelSupported = hostSupport?.promptCancel ?? null
   const hostAnswersRepeatedStops = hostSupport?.quietRepeatedStop ?? null
@@ -177,14 +177,14 @@ export function useMobileStructuredAgentSession(args: {
       }),
     [transcriptItems, state.submissions]
   )
-  const turnId = activeStructuredAgentSessionTurnId(state.items)
+  const turnId = runningStructuredAgentSessionTurnId(state)
   const turnTiming = useMobileStructuredAgentTurnTiming(
     { ...state, items: transcriptItems },
     turnId
   )
   const activityText =
     selectStructuredAgentTurnActivity(state.items, turnId, state.activity)?.text ?? null
-  const thinking = isStructuredAgentSessionThinking(state.items)
+  const thinking = isStructuredAgentSessionThinking(state)
   const turnIndicator = useMemo(() => ({ thinking, activityText }), [thinking, activityText])
   const status = state.status === 'idle' ? 'idle' : state.status
   const approvalPrompt = useMemo(
@@ -196,7 +196,6 @@ export function useMobileStructuredAgentSession(args: {
     [state.items]
   )
   const queued = useMobileStructuredQueuedMessageControls({
-    queueCapable,
     sessionKey,
     queuedMessages,
     queuePause,

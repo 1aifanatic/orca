@@ -77,6 +77,20 @@ export function useStructuredAgentSessionHostExecutionPhase(
   )
 }
 
+/** Only the host's rewind recovery latch, so a chat re-renders when that changes, not on every status. */
+export function useStructuredAgentSessionRewindBlockedReason(
+  sessionId: string,
+  target: RuntimeClientTarget
+): NonNullable<AgentSessionStatusSummary['rewindBlockedReason']> | null {
+  const feed = useMemo(() => getStructuredAgentSessionStatusFeed(target), [target])
+  useEffect(() => feed.activate(), [feed])
+  return useSyncExternalStore(
+    feed.subscribe,
+    () => feed.getSnapshot().get(sessionId)?.rewindBlockedReason ?? null,
+    () => null
+  )
+}
+
 /** The host's child records for the row, and the legacy roster readers of `subagents` keep. A host
  *  that publishes views is copied verbatim; only an older host's task list is converted here. */
 function childWorkFor(summary: AgentSessionStatusSummary): {
@@ -275,6 +289,21 @@ function StructuredAgentSessionOwnedStatusProjection({
   useEffect(() => {
     projectStatus(tab, summary, observation, launchFailedAt)
   }, [summary, observation, tab, launchFailedAt])
+  const launchDirectory = summary?.launchDirectory
+  useEffect(() => {
+    // Why local only: a remote host's path is in its syntax, and floating chats only run locally.
+    useAppStore
+      .getState()
+      .setStructuredSessionLaunchDirectory(
+        tab.id,
+        tab.entityId,
+        target.kind === 'local' ? launchDirectory : undefined
+      )
+  }, [launchDirectory, target.kind, tab.id, tab.entityId])
+  useEffect(
+    () => () => useAppStore.getState().clearStructuredSessionLaunchDirectory(tab.id, tab.entityId),
+    [tab.entityId, tab.id]
+  )
   useEffect(
     () => () =>
       useAppStore.getState().removeAgentStatus(structuredAgentSessionPaneKey(tab.id, tab.entityId)),

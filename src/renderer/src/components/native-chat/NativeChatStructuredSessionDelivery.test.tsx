@@ -94,6 +94,8 @@ vi.mock('./use-structured-agent-session', async () => {
         supportsBackgroundTaskStopAll: mocks.supportsBackgroundTaskStopAll,
         backgroundTasks: mocks.backgroundTasks,
         turnId: null,
+        epoch: 'epoch-1',
+        rewind: { surface: undefined },
         cancel: vi.fn(),
         queuedMessages: {
           cards: [],
@@ -140,6 +142,10 @@ vi.mock('./use-native-chat-file-link-context', () => ({
     worktreePath: '/repo',
     runtimeEnvironmentId: null
   })
+}))
+
+vi.mock('./use-native-chat-tab-owner', () => ({
+  useNativeChatTabOwnerWorktreeId: () => 'wt-1'
 }))
 
 vi.mock('./use-native-chat-file-link-click', () => ({
