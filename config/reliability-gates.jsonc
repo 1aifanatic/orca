@@ -28,10 +28,10 @@
       "coveredProviders": ["local", "daemon", "ssh", "remote-runtime", "mobile-relay"],
       "coverageNotes": "Production mobile controller, parser, presentation, overlay, view, question, permission and composer run with native surfaces mocked on macOS. Desktop selector groups traverse the real observed-write queue, verified helper, IPC chunker, SSH provider and transport callbacks; paired sends traverse the real dispatcher and runtime writer into that provider. Local/daemon contracts and released-version terminal codecs are covered. Provider labels describe contracts, not physical deployments; physical WSL/Linux/Windows remain gaps.",
       "motivatingLinks": ["https://github.com/stablyai/orca/pull/25761"],
-      "invariant": "Only provider-acknowledged replies may hide their observed prompt occurrence; view-only toggles preserve the occurrence while real clear/replacement supersedes it; obsolete results cannot change replacements; selector groups wait for complete writes before pacing; legacy whole-write handoff permits remaining groups exactly once without acknowledging dismissal; refusal or unknown handoff never causes replay; cancellation stops unsent groups and active dictation can stop.",
-      "oracle": "After acknowledged phone replies with stale host status, the exact card disappears and Send is enabled; unknown/refused/missing-proof replies retain enabled choices; a same-occurrence view toggle retains pending acknowledgment and real replacements discard it. A slow 32 KiB SSH answer completes all chunks before Enter; cancellation preserves issued bytes but omits remaining groups. Paired settlement invokes the actual provider, lost callbacks remain unknown, and older hosts finish ordinary messages, launch and selector groups once without claiming prompt acknowledgment.",
+      "invariant": "Only accepted replies may hide their observed prompt occurrence: a current host's provider acknowledgment, or an older host's whole-write acceptance as before; view toggles and remounts preserve the answered occurrence while real clear/replacement supersedes it; obsolete results cannot change replacements; selector groups wait for complete writes before pacing; refusal or unknown handoff never causes replay; a card retires an unsubmitted composer send without losing its text; cancellation stops unsent groups and active dictation can stop.",
+      "oracle": "After acknowledged phone replies with stale host status, the exact card disappears and Send is enabled; unknown/refused/missing-proof replies retain enabled choices; a same-occurrence view toggle retains pending acknowledgment and real replacements discard it. A slow 32 KiB SSH answer completes all chunks before Enter; cancellation preserves issued bytes but omits remaining groups. Paired settlement invokes the actual provider and lost callbacks remain unknown; older hosts deliver ordinary messages, launch and selector groups once and their accepted answers dismiss as before. An answered card stays hidden across a view remount, and a composer send caught by a new card keeps its bubble without submitting into it.",
       "commands": [
-        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts src/main/runtime/runtime-terminal-writer.test.ts src/main/runtime/rpc/terminal-send.test.ts src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts src/main/runtime/terminal-send-stale-leaf-liveness.test.ts src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts tests/e2e/native-chat-ssh-delivery.unit.test.ts --maxWorkers=2",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-composer.test.tsx src/renderer/src/components/native-chat/use-native-chat-prompt-card-presentation.test.ts src/renderer/src/runtime/runtime-terminal-verified-input.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts src/main/runtime/runtime-terminal-writer.test.ts src/main/runtime/rpc/terminal-send.test.ts src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts src/main/runtime/terminal-send-stale-leaf-liveness.test.ts src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts tests/e2e/native-chat-ssh-delivery.unit.test.ts --maxWorkers=2",
         "ORCA_BACKGROUND_LAUNCH=1 mobile/node_modules/.bin/vitest run --config mobile/vitest.config.ts mobile/src/session/MobileNativeChatView.prompt-presentation.test.ts mobile/src/session/use-mobile-native-chat-controller.test.ts mobile/src/session/use-mobile-native-chat-ask-dismiss.test.ts mobile/src/session/MobileNativeChatView.test.ts mobile/src/session/mobile-prompt-controller.test.ts mobile/src/session/mobile-native-chat-permission-send.test.ts mobile/src/session/use-mobile-native-chat-cancel-ask.test.ts mobile/src/session/use-mobile-native-chat-answer-send.test.ts mobile/src/session/use-mobile-native-chat-message-send.test.ts mobile/src/session/mobile-native-chat-send.test.ts --maxWorkers=2",
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts --maxWorkers=1",
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts --maxWorkers=2",
@@ -44,6 +44,9 @@
         "src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts",
         "src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts",
         "src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx",
+        "src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-composer.test.tsx",
+        "src/renderer/src/components/native-chat/use-native-chat-prompt-card-presentation.test.ts",
+        "src/renderer/src/runtime/runtime-terminal-verified-input.test.ts",
         "src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx",
         "src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx",
         "src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts",
@@ -96,16 +99,19 @@
           "file": "src/main/ipc/pty/ipc/write-input-acceptance.test.ts",
           "assertions": [
             "reports proven refusal and unknown acknowledgment separately",
-            "waits for each chunk and stops a paste after refusal"
+            "waits for each chunk and stops a paste after refusal",
+            "asks a pane awaiting daemon recovery to remount on either route"
           ]
         },
         {
           "file": "mobile/src/session/mobile-prompt-controller.test.ts",
           "assertions": [
-            "keeps a question actionable after lost, legacy or unverifiable acknowledgment",
+            "keeps a question actionable after lost or unverifiable acknowledgment",
             "acknowledges the same pending permission or Ask after a view-only toggle",
+            "keeps an acknowledged Deny hidden after the chat screen remounts on a lingering status",
             "drops an accepted result after real prompt/session/PTY/tab/clear replacement",
-            "finishes an older-host selector once without dismissing its unacknowledged card"
+            "finishes an older-host selector once and dismisses it like an acknowledged answer",
+            "dismisses older-host approval choices like an acknowledged answer and restores Send"
           ]
         },
         {
@@ -114,9 +120,21 @@
             "serializes every chunk of a healthy large SSH answer before Enter and dismissal",
             "cancels remaining paced groups while an already-issued body still settles",
             "paired terminal.send uses provider settlement for accepted and lost acknowledgment",
-            "older paired hosts stay unconfirmed while ordinary sequences finish without repeating bytes",
-            "finishes every older-host selector group once while leaving its answer unacknowledged"
+            "older paired hosts keep their whole-write verdict for answers and ordinary sequences",
+            "older paired hosts confirm ordinary chat sends and pasted answers as before",
+            "finishes every older-host selector group once and settles the answer as delivered"
           ]
+        },
+        {
+          "file": "src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-composer.test.tsx",
+          "assertions": [
+            "keeps an in-flight message visible and never submits it into the approval",
+            "routes no typing to the hidden composer until the card is answered"
+          ]
+        },
+        {
+          "file": "src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx",
+          "assertions": ["keeps an answered approval hidden across a chat view remount and a PTY rebind"]
         },
         {
           "file": "src/main/runtime/runtime-terminal-writer.test.ts",
@@ -151,10 +169,10 @@
           "date": "2026-10-06",
           "runner": "local",
           "platform": "macos",
-          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts src/main/runtime/runtime-terminal-writer.test.ts src/main/runtime/rpc/terminal-send.test.ts src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts src/main/runtime/terminal-send-stale-leaf-liveness.test.ts src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts tests/e2e/native-chat-ssh-delivery.unit.test.ts --maxWorkers=2",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-composer.test.tsx src/renderer/src/components/native-chat/use-native-chat-prompt-card-presentation.test.ts src/renderer/src/runtime/runtime-terminal-verified-input.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts src/main/runtime/runtime-terminal-writer.test.ts src/main/runtime/rpc/terminal-send.test.ts src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts src/main/runtime/terminal-send-stale-leaf-liveness.test.ts src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts tests/e2e/native-chat-ssh-delivery.unit.test.ts --maxWorkers=2",
           "result": "passed",
-          "durationSeconds": 20.74,
-          "summary": "335 tests passed across 25 explicit files, including production selector-to-SSH and paired runtime delivery composition."
+          "durationSeconds": 59.82,
+          "summary": "353 tests passed across 28 explicit files after the round-1 review fixes, including older-host acceptance, the hidden composer under a card, remount-surviving dismissal and the pane remount signal."
         },
         {
           "date": "2026-10-06",
@@ -162,8 +180,8 @@
           "platform": "macos",
           "command": "ORCA_BACKGROUND_LAUNCH=1 mobile/node_modules/.bin/vitest run --config mobile/vitest.config.ts mobile/src/session/MobileNativeChatView.prompt-presentation.test.ts mobile/src/session/use-mobile-native-chat-controller.test.ts mobile/src/session/use-mobile-native-chat-ask-dismiss.test.ts mobile/src/session/MobileNativeChatView.test.ts mobile/src/session/mobile-prompt-controller.test.ts mobile/src/session/mobile-native-chat-permission-send.test.ts mobile/src/session/use-mobile-native-chat-cancel-ask.test.ts mobile/src/session/use-mobile-native-chat-answer-send.test.ts mobile/src/session/use-mobile-native-chat-message-send.test.ts mobile/src/session/mobile-native-chat-send.test.ts --maxWorkers=2",
           "result": "passed",
-          "durationSeconds": 2.18,
-          "summary": "178 tests passed across 10 explicit files, including 15 actual controller-to-card/send composition scenarios and older-host selector completion without dismissal."
+          "durationSeconds": 2.25,
+          "summary": "179 tests passed across 10 explicit files after the round-1 review fixes, including older-host answers dismissing like acknowledged ones and an answered Deny surviving a chat screen remount."
         },
         {
           "date": "2026-10-06",
@@ -196,7 +214,8 @@
         "Rendered Electron and physical mobile/microphone behavior require remote QA; native surfaces are mocked in these unit tests.",
         "Physical WSL, Linux/Windows, paired mixed-version deployment and network fault campaigns have not been exercised.",
         "Heuristic questions retain their existing content key until a real clear/replacement observation.",
-        "Older hosts provide whole-write handoff only: selector groups finish without replay, but the prompt stays unacknowledged until a real observation supersedes it.",
+        "Older hosts provide whole-write handoff only; their accepted answers dismiss the card as before, without provider acknowledgment.",
+        "An identical question asked again while the chat view is unmounted can stay hidden until the pane observes the prompt clear.",
         "Cancelling a paced answer stops future groups; bytes already handed to the provider, including pending chunks, can still settle."
       ],
       "promotionCriteria": [
