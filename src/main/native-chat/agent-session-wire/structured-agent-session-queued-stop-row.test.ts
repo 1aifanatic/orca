@@ -195,16 +195,23 @@ describe("Stop's event", () => {
 })
 
 describe("a restart's hold over a card queued after a Stop", () => {
-  it('a card queued after a Stop over an empty queue, before a restart, waits unshown', async () => {
+  // Mail, which a person's Stop never holds: only the restart can hold it.
+  it('mail queued after a Stop over an empty queue, before a restart, waits unshown', async () => {
     const working = await rig.workingSend()
     await rig.stop()
     await rig.settleAccepted(working, 'stopped')
     const mail = await mailTurn()
-    const typed = await queuedDraft('typed during the mail turn')
+    const queued = await rig.send('mail queued during the mail turn', 'queue-if-active', {
+      source: RIG_MAIL
+    }).result
+    if (!queued.ok || !('queued' in queued.value)) {
+      throw new Error('expected a queued receipt')
+    }
+    const typed = queued.value.queued.messageId
     // The process dies with no close: a quit writes no Stop event, so only a turn ends the pauses.
     rig.crashRestartHostProcess()
     await rig.settleAccepted(mail, 'mail')
-    // The new host opens the conversation for its first reader. The card came after the Stop, so
+    // The new host opens the conversation for its first reader. The Stop's pause passes mail, so
     // only the restart holds it, and a restart's hold is never published.
     await rig.queuePause()
     expect(structuredQueuePauses(journal()).map((pause) => pause.reason)).toEqual([

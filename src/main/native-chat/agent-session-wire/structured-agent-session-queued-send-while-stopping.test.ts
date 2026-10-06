@@ -82,9 +82,7 @@ function holdLane(): () => void {
   return () => held.resolve()
 }
 
-async function queuedId(
-  sent: ReturnType<QueuedMessageTestRig['send']>['result']
-): Promise<string> {
+async function queuedId(sent: ReturnType<QueuedMessageTestRig['send']>['result']): Promise<string> {
   const queued = await sent
   if (!queued.ok || !('queued' in queued.value)) {
     throw new Error(`expected a queued receipt: ${JSON.stringify(queued)}`)
@@ -240,18 +238,20 @@ describe('the card written beside the lane', () => {
     const getRecord = rig.store.getRecord.bind(rig.store)
     vi.spyOn(rig.store, 'getRecord').mockImplementation((sessionId): AgentSessionRecord | null => {
       const record = getRecord(sessionId)
-      return record && {
-        ...record,
-        conversationCommand: {
-          command: 'clear',
-          runtimeFence: 1,
-          operationId: 'clear-1',
-          callerKey: QUEUED_RIG_CALLER.callerKey,
-          phase: 'committed',
-          state: 'completed',
-          replacementSessionId: 'clear-replacement-1'
+      return (
+        record && {
+          ...record,
+          conversationCommand: {
+            command: 'clear',
+            runtimeFence: 1,
+            operationId: 'clear-1',
+            callerKey: QUEUED_RIG_CALLER.callerKey,
+            phase: 'committed',
+            state: 'completed',
+            replacementSessionId: 'clear-replacement-1'
+          }
         }
-      }
+      )
     })
     admission.release()
 

@@ -15,9 +15,10 @@ export type AgentSessionQueuedMessagePausedReason =
   | typeof QUEUED_MESSAGE_PAUSED_SEND_FAILED
   | typeof QUEUED_MESSAGE_PAUSED_KEPT
 
-/** The whole queue is paused and sends nothing on its own: 'stopped' — the user
- *  interrupted ("Queue paused because you interrupted") — or 'cleared' — a /clear
- *  carried the cards into a fresh conversation. Resume (`agentSession.queuedMessagesResume`),
+/** The queue is paused and sends nothing on its own: 'stopped' — the user
+ *  interrupted ("Queue paused because you interrupted"); it holds every card but
+ *  orchestration mail — or 'cleared' — a /clear carried the cards into a fresh
+ *  conversation. Resume (`agentSession.queuedMessagesResume`),
  *  or any turn starting, lifts it; Send-now on one card sends that card and leaves the
  *  rest paused until its turn starts. A client treats an unknown reason as a
  *  plain pause, so a newer host can add one. */
