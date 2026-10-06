@@ -25,6 +25,7 @@ import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 import { buildNotificationOptions } from '../ipc/notification-options'
 import type { MobileNotificationDispatchEvent } from './runtime-mobile-notification-controller'
 import type { RuntimeStore } from './runtime-store-contract'
+import { getRuntimeDesktopSurface } from './runtime-desktop-surface'
 
 export type StructuredAttentionWorkspaceLabels = { repoLabel?: string; worktreeLabel?: string }
 
@@ -96,7 +97,10 @@ export function createStructuredAttentionMobileDelivery(
           ? { agentLastAssistantMessage: summary.lastAssistantMessage }
           : {})
       }
-      const { title, body } = buildNotificationOptions(request)
+      const { title, body } = buildNotificationOptions(
+        request,
+        getRuntimeDesktopSurface().translateNotification
+      )
       const settings = deps.readNotificationSettings()
       // The same eligibility the desktop's own fan-out applies: these preferences gate the phone too.
       const desktopAllowed = settings.enabled && settings.agentTaskComplete

@@ -13,6 +13,7 @@ import type {
 } from '../../shared/notification-settings-types'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { buildNotificationOptions } from '../ipc/notification-options'
+import { translateMain } from '../i18n/main-i18n'
 import { reserveNotificationCooldown } from '../ipc/notification-burst-cooldown'
 
 export type NotificationDeliveryDependencies = {
@@ -90,7 +91,7 @@ export function createNotificationDeliveryService(
         (request.source !== 'agent-task-complete' || settings.agentTaskComplete) &&
         (request.source !== 'terminal-bell' || settings.terminalBell)
 
-      const notificationOptions = buildNotificationOptions(request)
+      const notificationOptions = buildNotificationOptions(request, translateMain)
 
       // Why: desktop focus only means this computer sees the worktree; the paired phone may still need the alert.
       // The execution host pushed its own phones and retires them itself on acknowledgement.
