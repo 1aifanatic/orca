@@ -369,8 +369,19 @@ describe('runtime create PR conflict probe', () => {
       expect(mocks.githubPr).toHaveBeenCalledOnce()
       const [repoPath, branch, options] = mocks.githubPr.mock.calls[0] ?? []
       expect(repoPath).toBe('/repo')
-      expect(branch).not.toBe('app')
+      expect(branch).toBe('app-2')
       expect(options).toEqual(routing)
     }
   )
+
+  it('skips a later name that already has a PR', async () => {
+    mocks.branchName.mockImplementation(async (_path, _override, name: string) => name)
+    mocks.branchConflict.mockResolvedValueOnce('local').mockResolvedValue(null)
+    mocks.githubPr.mockResolvedValueOnce({ number: 7, state: 'closed' }).mockResolvedValue(null)
+
+    await createWorktree()
+
+    expect(mocks.githubPr.mock.calls.map(([, branch]) => branch)).toEqual(['app-2', 'app-3'])
+    expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ branch: 'app-3' }))
+  })
 })

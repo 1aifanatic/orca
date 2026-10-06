@@ -207,12 +207,12 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
-  it('suffixes an existing PR when a matching push target lacks selected PR metadata', async () => {
+  it('keeps a free push target branch without a PR lookup when no PR is selected', async () => {
     const runtime = new OrcaRuntimeService(store)
     const createdWorktree = {
-      path: '/tmp/workspaces/fix-title-2',
+      path: '/tmp/workspaces/fix-title',
       head: 'abc123',
-      branch: 'refs/heads/feature/fix-2',
+      branch: 'refs/heads/feature/fix',
       isBare: false,
       isMainWorktree: false
     }
@@ -235,9 +235,6 @@ describe('OrcaRuntimeService', () => {
       if (args[0] === 'rev-parse' && args.includes('refs/heads/feature/fix^{commit}')) {
         throw new Error('missing local branch')
       }
-      if (args[0] === 'rev-parse' && args.includes('refs/heads/feature/fix-2^{commit}')) {
-        throw new Error('missing local branch')
-      }
       return { stdout: '', stderr: '' }
     })
 
@@ -250,11 +247,13 @@ describe('OrcaRuntimeService', () => {
         pushTarget: { remoteName: 'origin', branchName: 'feature/fix' }
       })
 
-      expect(getPRForBranchMock).toHaveBeenCalledWith(TEST_REPO_PATH, 'feature/fix')
+      // Why: as on desktop, the PR lookup only runs after a branch collision, so a
+      // name free of local and fetched branches is kept even if a PR used it.
+      expect(getPRForBranchMock).not.toHaveBeenCalled()
       expect(addWorktree).toHaveBeenCalledWith(
         TEST_REPO_PATH,
         createdWorktree.path,
-        'feature/fix-2',
+        'feature/fix',
         'abc123',
         false,
         false,
