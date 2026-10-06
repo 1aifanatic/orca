@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type * as AppServerSession from './codex-app-server-session'
 
@@ -22,6 +23,7 @@ import {
   deriveCodexHookHashes,
   probeCodexVersion,
   readCodexHookHashes,
+  sweepStaleCodexScratchHomes,
   type CodexHookAnswer
 } from './codex-hook-trust-derivation'
 import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
@@ -210,6 +212,44 @@ describe('deriveCodexHookHashes', () => {
     expect(derived.kind).toBe('pending')
   })
 
+  it.each([
+    ['an empty listing', { data: [] }],
+    ['a result with no data array', { unexpected: true }]
+  ])(
+    'keeps %s pending, so it is asked again and never saved as a refusal',
+    async (_name, result) => {
+      mocks.runCodexAppServerSession.mockResolvedValue(result)
+
+      const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.150.1')
+
+      expect(derived.kind).toBe('pending')
+    }
+  )
+
+  it("refuses a version that loaded the scratch home and did not list Orca's entry", async () => {
+    answerHooksList((scratch) => [
+      { ...listed(join(scratch.home, 'hooks.json'), 'stop', 1), command: 'exit 0' }
+    ])
+
+    const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.150.1')
+
+    expect(derived).toEqual({
+      kind: 'refused',
+      codexVersion: 'codex-cli 0.150.1',
+      failure: "Codex 0.150.1 did not recognize Orca's status hook"
+    })
+  })
+
+  it('kills the whole `codex --version` tree when it times out', async () => {
+    mocks.runProcess.mockResolvedValue({ code: 0, stdout: 'codex-cli 0.150.1', stderr: '' })
+
+    await probeCodexVersion('/bin/codex')
+
+    expect(mocks.runProcess).toHaveBeenCalledWith(
+      expect.objectContaining({ terminationBarrier: true })
+    )
+  })
+
   it('reads no version from a `codex --version` that timed out', async () => {
     mocks.runProcess.mockResolvedValue({ code: null, stdout: '', stderr: '', timedOut: true })
 
@@ -274,7 +314,45 @@ describe('readCodexHookHashes', () => {
     expect(hashes).toEqual({ stop: 'sha256:stop' })
   })
 
-  it('is null when Codex lists none of them', () => {
-    expect(readCodexHookHashes({ ...scratch, listings: [] }, COMMAND)).toBeNull()
+  it("is null when Codex loaded the scratch home, listing its dummy hook but none of Orca's", () => {
+    const dummy = { ...listed('/s/home/hooks.json', 'stop', 1), command: 'exit 0' }
+    expect(readCodexHookHashes({ ...scratch, listings: [dummy] }, COMMAND)).toBeNull()
+  })
+
+  it('reads an empty listing as the scratch home not loaded, not as a verdict', () => {
+    expect(readCodexHookHashes({ ...scratch, listings: [] }, COMMAND)).toBe('unloaded')
+  })
+})
+
+describe('sweepStaleCodexScratchHomes', () => {
+  it('removes scratch homes older than an hour that a quit left, and nothing else', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-sweep-test-'))
+    vi.stubEnv('TMPDIR', root)
+    vi.stubEnv('TEMP', root)
+    vi.stubEnv('TMP', root)
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60_000)
+    const dir = (name: string, at: Date) => {
+      mkdirSync(join(root, name, 'home'), { recursive: true })
+      utimesSync(join(root, name), at, at)
+      return join(root, name)
+    }
+    try {
+      const staleTrust = dir('orca-codex-hook-trust-old', hoursAgo(2))
+      const staleVersion = dir('orca-codex-version-old', hoursAgo(2))
+      const live = dir('orca-codex-hook-trust-live', new Date())
+      const unrelated = dir('someone-else-old', hoursAgo(2))
+
+      await sweepStaleCodexScratchHomes()
+
+      expect([staleTrust, staleVersion, live, unrelated].map(existsSync)).toEqual([
+        false,
+        false,
+        true,
+        true
+      ])
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

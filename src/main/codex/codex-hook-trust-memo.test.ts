@@ -109,15 +109,41 @@ describe('Codex hook trust memo', () => {
     expect(readMemoizedVersionAnswer('codex-cli 0.0.0', COMMAND)).toBeNull()
   })
 
-  it('drops hashes that are not Codex hash strings', () => {
+  it('drops hashes that are not strings, and events Orca does not hook', () => {
     writeFileSync(
       getCodexHookTrustMemoPath(),
       JSON.stringify({
         binaries: {},
-        versions: { 'codex-cli 0.150.1': { command: COMMAND, hashes: { stop: 42, bogus: 'x' } } }
+        versions: {
+          'codex-cli 0.150.1': {
+            command: COMMAND,
+            hashes: { stop: '', session_start: 42, bogus: 'x' }
+          }
+        }
       })
     )
 
     expect(readMemoizedVersionAnswer('codex-cli 0.150.1', COMMAND)).toBeNull()
+  })
+
+  it('keeps a hash in any form Codex lists, as the derivation takes it', () => {
+    remember(codexPath, 'codex-cli 0.150.1', { stop: 'blake3:stop' })
+
+    expect(read()).toEqual({
+      kind: 'hashes',
+      codexVersion: 'codex-cli 0.150.1',
+      hashes: { stop: 'blake3:stop' }
+    })
+  })
+
+  it('leaves the file alone when the answer is already saved', () => {
+    remember()
+    const memoPath = getCodexHookTrustMemoPath()
+    writeFileSync(memoPath, readFileSync(memoPath, 'utf-8').replace('\n', '\n '))
+    const saved = readFileSync(memoPath, 'utf-8')
+
+    remember()
+
+    expect(readFileSync(memoPath, 'utf-8')).toBe(saved)
   })
 })

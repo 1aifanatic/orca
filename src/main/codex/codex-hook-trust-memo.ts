@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { isPlainObject } from '../agent-hooks/hooks-json-read'
@@ -90,7 +91,8 @@ function readHashes(value: unknown): CodexHookHashes | null {
   const hashes: Partial<Record<CodexEventLabel, string | null>> = {}
   for (const label of CODEX_MANAGED_EVENT_LABELS) {
     const hash = value[label]
-    if (hash === null || (typeof hash === 'string' && hash.startsWith('sha256:'))) {
+    // Why any non-empty string: the derivation takes whatever hash Codex lists.
+    if (hash === null || (typeof hash === 'string' && hash !== '')) {
       hashes[label] = hash
     }
   }
@@ -145,13 +147,21 @@ export function memoizeCodexHookAnswer(
   try {
     const memo = readMemo()
     const key = codexBinaryKey(codexPath)
-    const binaries = withoutKey(memo.binaries, key)
-    binaries[key] = { fingerprint, codexVersion: answer.codexVersion }
-    const versions = withoutKey(memo.versions, answer.codexVersion)
-    versions[answer.codexVersion] =
+    const binary = { fingerprint, codexVersion: answer.codexVersion }
+    const version: VersionRecord =
       answer.kind === 'hashes'
         ? { command, hashes: answer.hashes }
         : { command, failure: answer.failure }
+    if (
+      isDeepStrictEqual(memo.binaries[key], binary) &&
+      isDeepStrictEqual(memo.versions[answer.codexVersion], version)
+    ) {
+      return
+    }
+    const binaries = withoutKey(memo.binaries, key)
+    binaries[key] = binary
+    const versions = withoutKey(memo.versions, answer.codexVersion)
+    versions[answer.codexVersion] = version
     writeFileAtomically(
       getCodexHookTrustMemoPath(),
       `${JSON.stringify({ binaries: newest(binaries), versions: newest(versions) }, null, 2)}\n`

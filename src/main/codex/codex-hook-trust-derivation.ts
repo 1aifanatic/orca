@@ -1,5 +1,5 @@
 import { realpathSync, statSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
@@ -38,6 +38,10 @@ const DERIVE_TIMEOUT_MS = 30_000
 // Why a second group: the copy after it shows whether Codex's hash depends on position.
 const SCRATCH_DUMMY_HOOK = { type: 'command', command: 'exit 0' }
 const SCRATCH_ORCA_GROUP_INDEXES = [0, 2] as const
+const SCRATCH_DUMMY_GROUP_INDEX = 1
+const SCRATCH_PREFIXES = ['orca-codex-hook-trust-', 'orca-codex-version-'] as const
+// Why an hour: no ask lives that long, so an older scratch home is one a quit left behind.
+const STALE_SCRATCH_MS = 60 * 60_000
 
 type CodexHookScratchListing = {
   listings: CodexListedHook[]
@@ -70,6 +74,13 @@ export async function deriveCodexHookHashes(
       return refused(
         `${describeCodexVersion(codexVersion)} hashes Orca's status hook differently by its file or position, so Orca does not approve it`
       )
+    }
+    if (hashes === 'unloaded') {
+      // Why pending: an empty or reshaped answer says nothing about this version.
+      return {
+        kind: 'pending',
+        failure: `${describeCodexVersion(codexVersion)} listed no hooks from Orca's test home`
+      }
     }
     if (!hashes) {
       return refused(`${describeCodexVersion(codexVersion)} did not recognize Orca's status hook`)
@@ -122,7 +133,7 @@ async function listScratchHomeHooks(
   codexPath: string,
   hookCommand: string
 ): Promise<CodexHookScratchListing> {
-  const root = await mkdtemp(join(tmpdir(), 'orca-codex-hook-trust-'))
+  const root = await mkdtemp(join(tmpdir(), SCRATCH_PREFIXES[0]))
   try {
     // Why resolved: Codex keys hooks and project trust by the real path (macOS /var is /private/var).
     const resolvedRoot = await realpath(root)
@@ -151,20 +162,30 @@ async function listScratchHomeHooks(
 
 /**
  * Codex's hash per event it lists Orca's scratch entry at group 0 for;
- * 'inconsistent' when a copy elsewhere hashes differently, null when none is
- * listed. Only the scratch files count, never a hook from another source.
+ * 'inconsistent' when a copy elsewhere hashes differently; null when Codex
+ * loaded the scratch home (its dummy hook is listed) but none of Orca's
+ * entries; 'unloaded' when it listed neither. Only the scratch files count.
  */
 export function readCodexHookHashes(
   scratch: CodexHookScratchListing,
   hookCommand: string
-): CodexHookHashes | 'inconsistent' | null {
+): CodexHookHashes | 'inconsistent' | 'unloaded' | null {
   const byKey = new Map(
-    scratch.listings
-      .filter((listing) => listing.command === hookCommand)
-      .map((listing) => [normalizeHookTrustKeyForLookup(listing.key), listing])
+    scratch.listings.map((listing) => [normalizeHookTrustKeyForLookup(listing.key), listing])
   )
+  const listedCommand = (
+    command: string,
+    sourcePath: string,
+    label: CodexEventLabel,
+    groupIndex: number
+  ) => {
+    const listing = byKey.get(
+      normalizeHookTrustKeyForLookup(`${sourcePath}:${label}:${groupIndex}:0`)
+    )
+    return listing?.command === command ? listing : undefined
+  }
   const listed = (sourcePath: string, label: CodexEventLabel, groupIndex: number) =>
-    byKey.get(normalizeHookTrustKeyForLookup(`${sourcePath}:${label}:${groupIndex}:0`))
+    listedCommand(hookCommand, sourcePath, label, groupIndex)
   const hashes: Partial<Record<CodexEventLabel, string | null>> = {}
   for (const eventName of CODEX_EVENTS) {
     const label = CODEX_EVENT_LABEL[eventName]
@@ -183,7 +204,15 @@ export function readCodexHookHashes(
   }
   const labels = Object.keys(hashes)
   if (labels.length === 0) {
-    return null
+    const loaded = CODEX_EVENTS.some((eventName) =>
+      listedCommand(
+        SCRATCH_DUMMY_HOOK.command,
+        scratch.homeHooksPath,
+        CODEX_EVENT_LABEL[eventName],
+        SCRATCH_DUMMY_GROUP_INDEX
+      )
+    )
+    return loaded ? null : 'unloaded'
   }
   // Why drop hash-less events when others have one: on a Codex with approvals they would wait for review.
   return Object.values(hashes).some((hash) => hash !== null)
@@ -211,16 +240,31 @@ export function fingerprintCodex(codexPath: string): string | null {
 /** `codex --version`'s output; null when it reports none. */
 export async function probeCodexVersion(codexCommand: string): Promise<string | null> {
   // Why a throwaway home: even `--version` leaves a tmp/arg0 folder in its CODEX_HOME.
-  const scratchHome = await mkdtemp(join(tmpdir(), 'orca-codex-version-'))
+  const scratchHome = await mkdtemp(join(tmpdir(), SCRATCH_PREFIXES[1]))
   try {
     const result = await runProcess({
       program: codexCommand,
       args: ['--version'],
       env: withCliRuntimeOnPath(codexCommand, { ...process.env, CODEX_HOME: scratchHome }),
-      timeoutMs: VERSION_TIMEOUT_MS
+      timeoutMs: VERSION_TIMEOUT_MS,
+      // Why the tree: a hung Windows wrapper's codex child would outlive a root-only kill.
+      terminationBarrier: true
     })
     return (result.code === 0 && result.stdout.trim()) || null
   } finally {
     await rm(scratchHome, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
+  }
+}
+
+/** Removes the scratch homes an earlier process left when it quit mid-ask. Never throws. */
+export async function sweepStaleCodexScratchHomes(): Promise<void> {
+  const root = tmpdir()
+  const names = await readdir(root).catch(() => [])
+  for (const name of names.filter((n) => SCRATCH_PREFIXES.some((p) => n.startsWith(p)))) {
+    const path = join(root, name)
+    const info = await stat(path).catch(() => null)
+    if (info && Date.now() - info.mtimeMs > STALE_SCRATCH_MS) {
+      await rm(path, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
+    }
   }
 }

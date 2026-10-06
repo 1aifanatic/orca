@@ -38,7 +38,8 @@ function startProcess(): void {
 }
 
 /** Stands in for Codex's app-server, listing Stop with `movedHash` for the copy after the dummy group. */
-function listHashedHooks(movedHash = 'sha256:stop'): void {
+/** Codex listing the scratch home: its dummy hook and, unless `listsOrca` is false, Orca's copies. */
+function listHashedHooks(movedHash = 'sha256:stop', listsOrca = true): void {
   mocks.runCodexAppServerSession.mockImplementation(
     async (invocation: { env?: Record<string, string> }, body: (rpc: unknown) => unknown) => {
       let project = ''
@@ -52,11 +53,12 @@ function listHashedHooks(movedHash = 'sha256:stop'): void {
       const listing = (sourcePath: string, groupIndex: number, hash = 'sha256:stop') => ({
         key: `${sourcePath}:stop:${groupIndex}:0`,
         eventName: 'stop',
-        command: COMMAND,
+        command: groupIndex === 1 ? 'exit 0' : COMMAND,
         sourcePath,
         currentHash: hash
       })
-      const hooks = [listing(home, 0), listing(home, 2, movedHash), listing(projectHooks, 0)]
+      const orca = [listing(home, 0), listing(home, 2, movedHash), listing(projectHooks, 0)]
+      const hooks = [listing(home, 1, 'sha256:dummy'), ...(listsOrca ? orca : [])]
       return { data: [{ cwd: project, hooks }] }
     }
   )
@@ -116,11 +118,7 @@ describe("Codex's definitive answer", () => {
           new CodexAppServerUnsupportedError('method not found: hooks/list')
         )
     ],
-    [
-      "it does not list Orca's entry",
-      1,
-      () => mocks.runCodexAppServerSession.mockResolvedValue({ data: [{ cwd: '', hooks: [] }] })
-    ],
+    ["it does not list Orca's entry", 1, () => listHashedHooks('sha256:stop', false)],
     ['it hashes a moved copy differently, twice', 2, () => listHashedHooks('sha256:moved')]
   ])('is refused and saved for the version when %s', async (_, asks, answer) => {
     answer()
