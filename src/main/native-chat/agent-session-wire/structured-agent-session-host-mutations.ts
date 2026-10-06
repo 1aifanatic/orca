@@ -39,7 +39,7 @@ import {
 } from './structured-agent-session-mutation-plans'
 import { agentSessionMutationAdmitsNow } from './structured-agent-session-mutation-admits-now'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 import { performSetOption } from './structured-agent-session-turns-options'
@@ -64,9 +64,10 @@ export function sendStructuredAgentSessionTurn(
      *  Orchestration mail, a restart continuation and `agent.launch`'s host-sent
      *  prompt never set it. */
     userSend?: true
-    /** Host-local, never on the wire: who a host-side `queue-if-active` send queues for, recorded
-     *  on its card. A client's send is always its person's (`userSend`). */
-    source?: AgentMessageSource
+    /** Host-local, never on the wire: who a host-side send is from. A queued one records it on
+     *  its card, a direct one its kind on the submission. A client's send is always its person's
+     *  (`userSend`). */
+    source?: AgentSessionMessageSource
     beforeRun?: () => void
   },
   arrival?: Parameters<typeof sendPreparation>[2]
