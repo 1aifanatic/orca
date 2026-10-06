@@ -27,6 +27,7 @@ import {
 } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
+import { queuedCardSenderLine } from './native-chat-agent-message-sender-label'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
@@ -115,6 +116,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 export function NativeChatQueuedMessageCard({
   card,
   showsSteerShortcut,
+  steerHeld = false,
   onSteer,
   onDelete,
   onEdit,
@@ -123,6 +125,8 @@ export function NativeChatQueuedMessageCard({
   card: QueuedMessageCard
   /** Only the newest card answers Cmd/Ctrl+Enter; only it may show the chord. */
   showsSteerShortcut: boolean
+  /** The chat reads Stopping: the card waits for the stop (`NativeChatQueuedMessageList`). */
+  steerHeld?: boolean
   onSteer: () => void
   onDelete: () => void
   onEdit: () => void
@@ -145,6 +149,11 @@ export function NativeChatQueuedMessageCard({
         <ListEnd className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       )}
       <div className="min-w-0 flex-1">
+        {card.from ? (
+          <p className="truncate text-xs text-muted-foreground">
+            {queuedCardSenderLine(card.from)}
+          </p>
+        ) : null}
         <p className="truncate text-sm" title={card.text}>
           {card.text}
         </p>
@@ -162,7 +171,7 @@ export function NativeChatQueuedMessageCard({
       </div>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button type="button" variant="ghost" size="xs" onClick={onSteer}>
+          <Button type="button" variant="ghost" size="xs" onClick={onSteer} disabled={steerHeld}>
             {sendNow.steers ? <CornerDownRight className="size-3" /> : <Send className="size-3" />}
             {sendNow.label}
           </Button>
