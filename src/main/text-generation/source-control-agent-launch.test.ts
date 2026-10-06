@@ -118,8 +118,11 @@ describe.runIf(process.platform !== 'win32')('supervised agent processes', () =>
   })
 
   it.each([
-    ['an executable that is not a program', 'garbage', (path: string) => path],
-    ['a path through a file', 'file', (path: string) => join(path, 'agent')]
+    // Only macOS throws ENOEXEC; glibc's execvp hands such a file to /bin/sh, direct or supervised.
+    ...(process.platform === 'darwin'
+      ? [['an executable that is not a program', 'garbage', (path: string) => path] as const]
+      : []),
+    ['a path through a file', 'file', (path: string) => join(path, 'agent')] as const
   ])('reports %s as not startable, as a direct spawn does', async (_, name, commandFor) => {
     const file = join(folder, name)
     writeFileSync(file, Buffer.from([0, 1, 2, 3]), { mode: 0o755 })
