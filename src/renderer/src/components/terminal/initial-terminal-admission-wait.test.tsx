@@ -49,7 +49,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
 
 import { useTerminalWatcherEffects } from '../use-terminal-watcher-effects'
 import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/structured-agent-session-provisional-tab'
-import { getStructuredAgentLaunchStatus } from '@/lib/structured-agent-session-launch'
+import { isEmptyWorkspaceDefaultSurfacePending } from '@/lib/empty-workspace-default-surface-claims'
 import type { AgentSessionLaunchPlan } from '@/lib/agent-session-launch-plan'
 import type { Tab } from '../../../../shared/tab-types'
 
@@ -146,7 +146,7 @@ describe('a local chat launch waiting on its host', () => {
       hooks: {},
       beforeOpen: () => true
     })
-    expect(getStructuredAgentLaunchStatus('wt-1', 'claude')).toBe('pending')
+    expect(isEmptyWorkspaceDefaultSurfacePending('wt-1')).toBe(true)
 
     root = createRoot(document.createElement('div'))
     await act(async () => root?.render(createElement(Watcher)))
@@ -183,11 +183,11 @@ describe('a local chat launch waiting on its host', () => {
       hooks: {},
       onHostDeclined
     })
-    expect(getStructuredAgentLaunchStatus('wt-1', 'claude')).toBe('pending')
+    expect(isEmptyWorkspaceDefaultSurfacePending('wt-1')).toBe(true)
 
     await act(async () => mocks.answers[0]?.({ supported: false }))
     await expect(launch?.settlement).resolves.toEqual({ kind: 'terminal' })
     expect(onHostDeclined).toHaveBeenCalledOnce()
-    expect(getStructuredAgentLaunchStatus('wt-1', 'claude')).toBe('idle')
+    expect(isEmptyWorkspaceDefaultSurfacePending('wt-1')).toBe(false)
   })
 })

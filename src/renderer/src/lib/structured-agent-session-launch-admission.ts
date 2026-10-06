@@ -12,7 +12,7 @@ import {
   admitStructuredLaunchOnHost,
   type StructuredLaunchAdmission
 } from '@/lib/structured-agent-session-host-admission'
-import { holdStructuredLaunchAwaitingHost } from '@/lib/structured-agent-session-launch-awaiting-host'
+import { holdEmptyWorkspaceDefaultSurfaceForLaunch } from '@/lib/empty-workspace-default-surface-claims'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/structured-agent-session-launch-errors'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import type {
@@ -160,7 +160,7 @@ export function beginHostAdmittedStructuredLaunch(args: {
       })
     : undefined
   // Released once the surface that answers the launch has opened, or nothing will.
-  const releaseHold = holdStructuredLaunchAwaitingHost(args.worktreeId, plan.agent)
+  const releaseHold = holdEmptyWorkspaceDefaultSurfaceForLaunch(args.worktreeId)
   const settlement = (async (): Promise<StructuredAgentLaunchSettlement> => {
     try {
       const asked = await admitStructuredLaunchOnHost(
