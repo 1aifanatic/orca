@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
   type AgentSessionJournalIdentity
