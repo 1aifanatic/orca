@@ -121,7 +121,7 @@ describe('first-turn chat naming eligibility', () => {
   })
 
   it.each(['completed', 'interrupted', 'unverifiable'] as const)(
-    'expires after a %s first turn',
+    'keeps a captured first working event eligible after a %s first turn',
     (turnState) => {
       const state = snapshot()
       state.items.push(
@@ -135,11 +135,11 @@ describe('first-turn chat naming eligibility', () => {
           }
         })
       )
-      expect(firstStructuredChatNamingPrompt(state, 100)).toBe('')
+      expect(firstStructuredChatNamingPrompt(state, 100)).toBe('Repair login')
     }
   )
 
-  it('reads legacy lifecycle rows and the user item’s explicit turn scope', () => {
+  it('does not cancel a captured first working event for a settled legacy lifecycle row', () => {
     const state = snapshot()
     state.items[0] = message('Repair login', { turnScope: { kind: 'turn', turnItemId: 'turn' } })
     state.items.push(
@@ -152,7 +152,7 @@ describe('first-turn chat naming eligibility', () => {
         }
       })
     )
-    expect(firstStructuredChatNamingPrompt(state, 100)).toBe('')
+    expect(firstStructuredChatNamingPrompt(state, 100)).toBe('Repair login')
   })
 
   it('allows a running first turn and ignores a settled child turn', () => {

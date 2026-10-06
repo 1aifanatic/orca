@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../shared/agent-session-journal-types'
 import type { StructuredChatNamingDeps } from './structured-chat-naming'
 import { createStructuredChatNamingHandler } from './structured-chat-naming'
 import { firstStructuredChatNamingPrompt } from '../../shared/structured-chat-naming-eligibility'
@@ -18,9 +19,14 @@ import {
 } from './agent-session-wire/structured-agent-session-host-test-data'
 
 describe.each(['claude', 'codex'] as const)('%s first-message naming status hook', (provider) => {
-  it.each(['accepted', 'admitted'] as const)(
-    'names a live %s send without awaiting generation',
-    async (outcome) => {
+  it.each([
+    { outcome: 'accepted', completesDuringRead: false },
+    { outcome: 'admitted', completesDuringRead: false },
+    { outcome: 'accepted', completesDuringRead: true },
+    { outcome: 'admitted', completesDuringRead: true }
+  ] as const)(
+    'names a live $outcome send (first turn completes during journal read: $completesDuringRead)',
+    async ({ outcome, completesDuringRead }) => {
       const { host, store, acquire, dispatch, log } = hostTestState()
       const handle =
         provider === 'claude'
@@ -58,13 +64,17 @@ describe.each(['claude', 'codex'] as const)('%s first-message naming status hook
       const generation = new Promise<string | null>((resolve) => {
         finish = resolve
       })
+      const journalRead = Promise.withResolvers<void>()
+      const readFirstPrompt = vi.fn(async (sessionId: string, hostStartedAt: number) => {
+        await journalRead.promise
+        return firstStructuredChatNamingPrompt(await host.journalSnapshot(sessionId), hostStartedAt)
+      })
       const generate = vi.fn(() => generation)
       const deps: StructuredChatNamingDeps = {
         getStore: () => store,
         getSettings: () => ({}),
         hasOpenDispatch: () => false,
-        readFirstPrompt: async (sessionId, hostStartedAt) =>
-          firstStructuredChatNamingPrompt(await host.journalSnapshot(sessionId), hostStartedAt),
+        readFirstPrompt,
         generate,
         onNamed: vi.fn(),
         logger: log.logger
@@ -97,6 +107,40 @@ describe.each(['claude', 'codex'] as const)('%s first-message naming status hook
         }
       )
       expect(sent).toMatchObject({ ok: true })
+      await vi.waitFor(() => expect(readFirstPrompt).toHaveBeenCalledTimes(1))
+      expect(generate).not.toHaveBeenCalled()
+      if (completesDuringRead) {
+        await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+        const events = acquire.mock.calls.at(-1)?.[0].events
+        const first = (await host.journalSnapshot(HOST_TEST_SESSION)).items.find(
+          (item) => item.body.kind === 'message' && item.body.role === 'user'
+        )
+        if (!events || !first) {
+          throw new Error('Missing acquired first turn')
+        }
+        events.appendItem(
+          provider === 'claude'
+            ? { provider: 'claude', sessionId: HOST_TEST_THREAD, uuid: 'turn-1' }
+            : { provider: 'codex', threadId: HOST_TEST_THREAD, turnId: 'turn-1', ordinal: 1 },
+          body,
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
+        events.appendItem(
+          provider === 'claude'
+            ? { provider: 'claude', sessionId: HOST_TEST_THREAD, uuid: 'turn-completion' }
+            : { provider: 'codex', threadId: HOST_TEST_THREAD, turnId: 'turn-1', ordinal: 2 },
+          { kind: 'turn', turnId: 'turn-1', userItemId: first.itemId, state: 'completed' },
+          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+        )
+        events.publish()
+        await host.flushStreamedEvents(HOST_TEST_SESSION)
+        await vi.waitFor(() =>
+          expect(status.mock.calls.at(-1)?.[0]).toMatchObject({ status: 'idle' })
+        )
+        expect(generate).not.toHaveBeenCalled()
+        expect(store.getRecord(HOST_TEST_SESSION)?.conversationName).toBeUndefined()
+      }
+      journalRead.resolve()
       await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
       expect(
         status.mock.calls.some(
