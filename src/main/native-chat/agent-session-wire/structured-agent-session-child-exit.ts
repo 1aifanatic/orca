@@ -3,7 +3,10 @@
 // every step after it is bookkeeping: each is attempted and reported, none keeps the child on
 // record, and the record ends in `finally`. `expected` changes only what the chat is told.
 
-import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
+import {
+  agentSessionFailureFact,
+  type SubmissionRejectionFact
+} from '../../../shared/agent-session-failure'
 import { PROVIDER_EXIT_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -106,6 +109,14 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
   // The host's own phase decides, so a provider that omits the flag still gets a start that
   // failed told as one: the row says so.
   const exitedDuringStartup = exit.startupUnproven === true || child.phase === 'starting'
+  // A close during startup settles what the child was handed, never echoed, by who asked: a
+  // person's Stop stops it; the host's stop fails the start, as an exit of its own would.
+  const startClose = expected && exitedDuringStartup ? close?.cause : undefined
+  const startFailure = expected
+    ? startClose === 'host-stop'
+      ? agentSessionFailureFact('hostStopped')
+      : undefined
+    : exit.failure
   const endChild = (): void => {
     endProviderChild(session, {
       generation: child.generation,
@@ -139,6 +150,10 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
       logExitFailure(context, sessionId, 'exit-lifecycle-barrier', error)
     }
     const unfinishedWork = captureUnfinishedStructuredAgentSessionWork(session.journal)
+    // The host's stop fails only a start something was handed to; an idle one goes quietly.
+    const startFailed =
+      exitedDuringStartup &&
+      (!expected || (startClose === 'host-stop' && unfinishedWork.hadUnsettledSubmissions))
     // Folded before the fallback's end is built, so the end reads it (`turnEndAfterStop`).
     await close?.recorded
     const generation = child.generation ?? 'unknown'
@@ -156,20 +171,18 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
       failureTextContext: structuredAgentSessionFailureWordsContext(record, session.journal),
       // A failed start always says why: no response was running to carry the reason.
       showUnexpectedExitOutcome:
-        !expected &&
-        (exitedDuringStartup ||
+        startFailed ||
+        (!expected &&
           unfinishedStructuredAgentSessionWorkWasInterrupted(
             unfinishedWork,
             session.journal,
             observedAt
           )),
-      ...(!expected && exit.failure ? { exitFailure: exit.failure } : {}),
-      ...(!expected && exitedDuringStartup && child.generation
+      ...(startFailure ? { exitFailure: startFailure } : {}),
+      ...(startFailed && child.generation
         ? { exitedDuringStartup: { generation: child.generation } }
         : {}),
-      ...(expected && exitedDuringStartup && close?.cause === 'user-stop'
-        ? { stoppedDuringStartup: true as const }
-        : {})
+      ...(startClose === 'user-stop' ? { stoppedDuringStartup: true as const } : {})
     })
     if (!settled.ok) {
       logExitFailure(context, sessionId, 'exit-settlement', settled.error)
