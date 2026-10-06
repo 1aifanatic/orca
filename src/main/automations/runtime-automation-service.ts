@@ -40,9 +40,10 @@ export function createRuntimeAutomationService(input: {
     codexUsage,
     terminalObserver: {
       ...observer,
+      // This host's own launch handle first: it names the run's terminal without a lookup.
       resolveRunTerminal: (run) =>
-        observer.resolveRunTerminal(run) ??
-        (run.terminalPaneKey ? (launchedHandles.get(run.terminalPaneKey) ?? null) : null)
+        (run.terminalPaneKey ? launchedHandles.get(run.terminalPaneKey) : undefined) ??
+        observer.resolveRunTerminal(run)
     },
     onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
     allowRemoteHostScheduling: input.headless,
