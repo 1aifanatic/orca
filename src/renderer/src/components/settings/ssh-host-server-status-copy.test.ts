@@ -112,9 +112,30 @@ describe('SSH host server status line', () => {
       }
     })
     expect(line?.text).toBe(
-      'Runs the relay while 1 terminals another Orca desktop or session opened on this host are running.'
+      'Runs the relay while 1 terminal another Orca desktop or session opened on this host is running.'
     )
     expect(line).not.toHaveProperty('action')
+  })
+
+  it('counts terminals in singular and plural on the status line', () => {
+    const live = (terminals: number, terminalsElsewhere?: boolean) =>
+      sshHostServerStatusLine(plain, {
+        managedServer: {
+          kind: 'relay',
+          reason: 'relay_terminals_live',
+          terminals,
+          ...(terminalsElsewhere ? { terminalsElsewhere } : {})
+        }
+      })?.text
+    expect(live(1)).toBe(
+      'Runs the relay until its 1 open terminal is closed, then moves to a managed server.'
+    )
+    expect(live(2)).toBe(
+      'Runs the relay until its 2 open terminals are closed, then moves to a managed server.'
+    )
+    expect(live(3, true)).toBe(
+      'Runs the relay while 3 terminals another Orca desktop or session opened on this host are running.'
+    )
   })
 
   it('keeps durable reasons visible without a live state', () => {

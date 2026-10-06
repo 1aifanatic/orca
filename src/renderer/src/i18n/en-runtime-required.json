@@ -1808,6 +1808,8 @@
           }
         },
         "sshHostServer": {
+          "terminalsElsewhere_one": "Runs the relay while {{count}} terminal another Orca desktop or session opened on this host is running.",
+          "terminalsElsewhere_other": "Runs the relay while {{count}} terminals another Orca desktop or session opened on this host are running.",
           "terminalsLive_one": "Runs the relay until its {{count}} open terminal is closed, then moves to a managed server.",
           "terminalsLive_other": "Runs the relay until its {{count}} open terminals are closed, then moves to a managed server."
         },
