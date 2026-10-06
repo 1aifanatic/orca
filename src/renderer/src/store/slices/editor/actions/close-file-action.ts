@@ -28,7 +28,7 @@ export function createCloseFileAction(
       const hasUnsavedWork = (file: OpenFile): boolean =>
         file.isDirty === true || preCloseState.editorDrafts[file.id] !== undefined
       const documentFileIds = preClose
-        ? collectSameDocumentOpenFileIds(preCloseState.openFiles, preClose)
+        ? collectSameDocumentOpenFileIds(preCloseState.openFiles, preClose, preCloseState)
         : new Set<string>()
       const documentFiles = preCloseState.openFiles.filter(
         (file) => file.worktreeId === preClose?.worktreeId && documentFileIds.has(file.id)
