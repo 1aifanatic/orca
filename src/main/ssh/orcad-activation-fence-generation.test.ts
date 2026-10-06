@@ -22,7 +22,8 @@ vi.mock('./ssh-relay-deploy-helpers', async (importOriginal) => {
     execCommand: async (_conn: unknown, command: string) => {
       const result = await runProcess({ program: '/bin/sh', args: ['-c', command], env: shell.env })
       if (result.code !== 0) {
-        throw new Error(`failed (exit ${result.code}): ${result.stdout}`)
+        const { sshCommandExitError } = await import('./ssh-relay-exec-command')
+        throw sshCommandExitError(command, result.code ?? 1, result.stdout)
       }
       return result.stdout
     }

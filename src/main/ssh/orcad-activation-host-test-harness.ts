@@ -9,6 +9,7 @@ import {
   withActivatedVersion,
   type OrcadActivationRecord
 } from './orcad-activation-record'
+import { sshCommandExitError } from './ssh-relay-exec-command'
 
 export const OLD = '0.1.0+aa01'
 export const NEW = '0.2.0+bb01'
@@ -152,7 +153,7 @@ export class FakeOrcadHost {
           : 'SUPERSEDED'
       }
       if (!owned) {
-        throw new Error('failed (exit 75): __ORCAD_FENCE_LOST__')
+        throw sshCommandExitError(command, 75, '__ORCAD_FENCE_LOST__\n')
       }
       return this.execInner(command.slice(guard[0].length))
     }

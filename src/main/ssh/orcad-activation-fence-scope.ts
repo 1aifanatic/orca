@@ -9,6 +9,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { shellEscape } from './ssh-connection-utils'
+import { isSshCommandExitError } from './ssh-relay-exec-command'
 
 export const ORCAD_FENCE_OWNER_FILENAME = '.orca-fence-owner'
 export const ORCAD_FENCE_LOST_MARKER = '__ORCAD_FENCE_LOST__'
@@ -46,6 +47,15 @@ export function posixOrcadFenceGuard(fence: OrcadFence): string {
   return `${posixOrcadFenceOwnedTest(fence)} || { echo ${ORCAD_FENCE_LOST_MARKER}; exit ${ORCAD_FENCE_LOST_EXIT}; };`
 }
 
+/**
+ * Classified from the exit status and the step's own stdout, never the message: the message
+ * quotes the command, and every fenced command carries the guard's marker text.
+ */
 export function isOrcadFenceLost(error: unknown): boolean {
-  return error instanceof Error && error.message.includes(ORCAD_FENCE_LOST_MARKER)
+  if (!isSshCommandExitError(error)) {
+    return false
+  }
+  // `powershell -Command` reports any nonzero native exit as 1.
+  const exited = error.exitCode === ORCAD_FENCE_LOST_EXIT || error.exitCode === 1
+  return exited && error.stdout.trim().split(/\r?\n/u).at(-1) === ORCAD_FENCE_LOST_MARKER
 }

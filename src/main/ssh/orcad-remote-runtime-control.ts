@@ -67,6 +67,9 @@ export async function execOrcadRemote(
     }
     return await run(command)
   } catch (error) {
+    if (isUnconfirmedSshCommandTermination(error)) {
+      throw error
+    }
     throw isOrcadFenceLost(error) ? new OrcadFenceLostError() : error
   }
 }
