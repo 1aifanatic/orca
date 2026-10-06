@@ -36,12 +36,12 @@ async function wiredSession() {
       submissions.map((submission) => ({ ...submission })),
     item: (itemId: string): ReturnType<Journal['item']> => {
       const item = run.journalItems.get(itemId)
-      return item ? { ...item, revision: 1 } : null
+      return item ? { ...item, revision: 1, observedAt: run.now() } : null
     },
     snapshot: () => ({
       items: [...run.journalItems.values()]
         .sort((a, b) => a.sequence - b.sequence)
-        .map((item) => ({ ...item, revision: 1 })),
+        .map((item) => ({ ...item, revision: 1, observedAt: run.now() })),
       submissions: submissions.map((submission) => ({ ...submission }))
     })
   }
