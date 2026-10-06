@@ -19,6 +19,7 @@ import { getRequiredStringFlag } from '../flags'
 import { printResult } from '../format'
 import { RuntimeClientError, type RuntimeRpcSuccess } from '../runtime-client'
 import { formatManagedServerStatus } from './managed-server-format'
+import { reportAfterClosedConnection } from './managed-server-reconnect'
 
 const UNSUPPORTED_MESSAGE =
   'This Orca runtime cannot manage servers over SSH. Run this on the computer whose Orca desktop app deployed the server, after updating Orca there.'
@@ -60,6 +61,23 @@ async function callManagedServer<TResult>(
       )
     }
     throw error
+  }
+}
+
+/** Null once the restart's outcome was reported from status instead. */
+async function callExpectingRestart<TResult>(
+  context: HandlerContext,
+  method: string,
+  params: { selector: string } & Record<string, unknown>
+): Promise<RuntimeRpcSuccess<TResult> | null> {
+  try {
+    return await callManagedServer<TResult>(context, method, params)
+  } catch (error) {
+    if (!(error instanceof RuntimeClientError) || error.code !== 'runtime_unavailable') {
+      throw error
+    }
+    await reportAfterClosedConnection(context, { selector: params.selector })
+    return null
   }
 }
 
@@ -111,11 +129,14 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
   },
   'environment update': async (context) => {
     const params = { ...selectorOf(context), force: context.flags.get('force') === true }
-    const response = await callManagedServer<OrcadManagedDeployResult>(
+    const response = await callExpectingRestart<OrcadManagedDeployResult>(
       context,
       'managedServer.update',
       params
     )
+    if (!response) {
+      return
+    }
     report(response, context.json, ['created', 'updated', 'already-current'], (result) =>
       result.outcome === 'already-current'
         ? `Already on ${result.activeVersion}.`
@@ -123,11 +144,14 @@ export const MANAGED_SERVER_HANDLERS: Record<string, CommandHandler> = {
     )
   },
   'environment rollback': async (context) => {
-    const response = await callManagedServer<OrcadManagedRollbackResult>(
+    const response = await callExpectingRestart<OrcadManagedRollbackResult>(
       context,
       'managedServer.rollback',
       selectorOf(context)
     )
+    if (!response) {
+      return
+    }
     report(
       response,
       context.json,
