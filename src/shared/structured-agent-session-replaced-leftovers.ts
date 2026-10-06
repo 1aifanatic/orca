@@ -71,8 +71,11 @@ export function classifyReplacedLeftover(
     return cause ? { kind: 'handBack', cause } : { kind: 'inDoubt' }
   }
   if (failure?.kind === 'failed') {
-    // It failed before the host ran it: a save that failed, or a request never written.
-    return { kind: 'handBack', cause: 'notSent' }
+    // Only a save that failed proves nothing went out; a failure after the request was written
+    // (an answer that timed out) may have landed, so only asking again can tell.
+    return entry.lastAttemptAt === null
+      ? { kind: 'handBack', cause: 'notSent' }
+      : { kind: 'inDoubt' }
   }
   if (failure === undefined && entry.lastAttemptAt === null) {
     // It never left this window, so the clear is why it never went out.

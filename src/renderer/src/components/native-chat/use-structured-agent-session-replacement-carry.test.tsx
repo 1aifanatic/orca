@@ -15,7 +15,10 @@ import {
   stageStructuredAgentSessionOutboxEntryForSend,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import { disposeStructuredAgentSessionSendResult } from '../../../../shared/structured-agent-session-send-disposition'
+import {
+  disposeStructuredAgentSessionSendFailure,
+  disposeStructuredAgentSessionSendResult
+} from '../../../../shared/structured-agent-session-send-disposition'
 import type { AgentSessionWireRefusal } from '../../../../shared/agent-session-wire'
 
 const mocks = vi.hoisted(() => ({
@@ -125,6 +128,17 @@ function refusedSend(
     createOperationId: () => `${id}-again`
   })
   return disposition.entries[0]!
+}
+
+/** A send whose request went out, then failed with an error the dispatcher can't read as "delivery
+ *  unknown" (a remote "Timed out waiting…"): saved as a plain failure on an attempted entry. */
+function failedAfterSend(id: string, text: string) {
+  return disposeStructuredAgentSessionSendFailure({
+    entries: [stageStructuredAgentSessionOutboxEntryForSend(entry(id, text), 5)],
+    entry: entry(id, text),
+    cause: new Error('Timed out waiting for the remote Orca runtime to respond.'),
+    isDeliveryUnknown: () => false
+  }).entries[0]!
 }
 
 describe('the /clear the composer sent', () => {
@@ -249,6 +263,56 @@ describe('messages this window held for the chat a /clear replaced', () => {
     expect(result.current.error).toBe(NOT_SENT)
   })
 
+  it.each([
+    {
+      host: 'recorded it',
+      answer: {
+        ok: true,
+        replayed: true,
+        fence: 1,
+        cursor: { epoch: 'e', sequence: 1 },
+        value: { clientMessageId: 'm1', submission: { clientMessageId: 'm1' } }
+      },
+      draft: '',
+      error: null
+    },
+    {
+      host: 'never recorded it',
+      answer: {
+        ok: false,
+        refusal: {
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'conversationCleared' },
+          message: 'This conversation has been cleared. Use the current conversation.'
+        }
+      },
+      draft: 'maybe ran there',
+      error: CLEARED
+    }
+  ])(
+    'one that failed after its request went out is asked under its own id: the host $host',
+    async ({ answer, draft, error }) => {
+      const failed = failedAfterSend('m1', 'maybe ran there')
+      expect(failed).toMatchObject({
+        state: 'queued',
+        lastAttemptAt: 5,
+        lastFailure: { kind: 'failed' }
+      })
+      mocks.call.mockResolvedValue(answer)
+      commitStructuredAgentSessionOutbox('old', [failed])
+      const { result, rerender } = pane('new', { replaces: 'old' })
+      await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
+      expect(mocks.call).toHaveBeenCalledOnce()
+      expect(mocks.call.mock.calls[0]![2]).toMatchObject({
+        envelope: { sessionId: 'old', clientOperationId: 'm1' }
+      })
+      await waitFor(() => expect(readNativeChatDraftCache(scope('new'))).toBe(draft))
+      expect(result.current.error).toBe(error)
+      rerender()
+      expect(readNativeChatDraftCache(scope('new'))).toBe(draft)
+    }
+  )
+
   it('a saved refusal that proves nothing (a resend refused as expired) is asked about, not handed back', async () => {
     const doubtful = refusedSend(
       'm1',
@@ -317,7 +381,7 @@ describe('messages this window held for the chat a /clear replaced', () => {
     expect(mocks.call.mock.calls[0]![2]).toMatchObject({
       envelope: { sessionId: 'old', clientOperationId: 'm1' }
     })
-    expect(result.current.transcriptRows).toMatchObject([
+    expect(result.current.askedRows).toMatchObject([
       { clientMessageId: 'm1', state: 'dispatching' }
     ])
     // Only drawn: Stop here can't end it, so this chat's own outbox stays empty.
@@ -334,7 +398,7 @@ describe('messages this window held for the chat a /clear replaced', () => {
     await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
     expect(result.current.error).toBeNull()
-    expect(result.current.transcriptRows).toEqual([])
+    expect(result.current.askedRows).toEqual([])
   })
 
   it('one whose answer was lost and did NOT run is asked again, and comes back once', async () => {

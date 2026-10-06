@@ -9,7 +9,10 @@ import {
   createStructuredAgentSessionOutboxEntry,
   stageStructuredAgentSessionOutboxEntryForSend
 } from './structured-agent-session-outbox'
-import { disposeStructuredAgentSessionSendResult } from './structured-agent-session-send-disposition'
+import {
+  disposeStructuredAgentSessionSendFailure,
+  disposeStructuredAgentSessionSendResult
+} from './structured-agent-session-send-disposition'
 
 const fresh = createStructuredAgentSessionOutboxEntry({
   clientMessageId: 'm1',
@@ -91,10 +94,19 @@ describe("the one proof rule for a cleared chat's leftovers", () => {
     }
   })
 
-  it('a failed save is never-sent; a never-attempted message never left', () => {
+  it('a failed save is never-sent, a failure after sending is in doubt; a never-attempted message never left', () => {
     expect(
       classifyReplacedLeftover({ ...fresh, lastFailure: { kind: 'failed' } }, new Set())
     ).toEqual({ kind: 'handBack', cause: 'notSent' })
+    // A failure after the request went out (an answer that timed out) may have landed.
+    const failedAfterSend = disposeStructuredAgentSessionSendFailure({
+      entries: [stageStructuredAgentSessionOutboxEntryForSend(fresh, 5)],
+      entry: fresh,
+      cause: new Error('Timed out waiting for the remote Orca runtime to respond.'),
+      isDeliveryUnknown: () => false
+    }).entries[0]!
+    expect(failedAfterSend).toMatchObject({ lastAttemptAt: 5, lastFailure: { kind: 'failed' } })
+    expect(classifyReplacedLeftover(failedAfterSend, new Set())).toEqual({ kind: 'inDoubt' })
     expect(classifyReplacedLeftover(fresh, new Set())).toEqual({
       kind: 'handBack',
       cause: 'cleared'
