@@ -208,6 +208,7 @@ async function sendLine(
 }
 
 /** Host Node is hidden on the lane, so the listener is Windows PowerShell's own TcpListener. */
+// Why no `$`: the managed terminal's shell may be PowerShell, which would expand it before the child sees it.
 const DETECTED_PORT = 4317
 
 async function expectWorkspacePortDetected(
@@ -231,7 +232,7 @@ async function expectWorkspacePortDetected(
     userData,
     environmentId,
     listener.terminal.handle,
-    `powershell -NoProfile -Command "$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,${DETECTED_PORT});$l.Start();Write-Output ORCA_PORT_LISTENING;Start-Sleep 900"`
+    `powershell -NoProfile -Command "[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,${DETECTED_PORT}) | Tee-Object -Variable keep | ForEach-Object Start; Write-Output ORCA_PORT_LISTENING; Start-Sleep 900"`
   )
   await waitForEchoedLine(userData, environmentId, listener.terminal.handle, 'ORCA_PORT_LISTENING')
   let last = ''
