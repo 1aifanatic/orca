@@ -34,7 +34,7 @@ export function createQueuedRigProvider(
     state: 'admitted' as const
   }))
   // Every start the host asks for; one `holdNextStart` holds stays in its spawn until released.
-  const starts = vi.fn()
+  const starts: Mock<() => void> = vi.fn()
   let startHold: Promise<void> | null = null
   // The provider's receipt of a /compact; its end arrives later, as `finishCompact` writes it.
   const compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>> = vi.fn(async () => ({
