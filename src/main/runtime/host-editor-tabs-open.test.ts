@@ -119,6 +119,49 @@ describe('host-owned editor tabs with no desktop window', () => {
     }
   })
 
+  it("moves only the host's focus for a phone's open, as the window route does", async () => {
+    const { runtime, worktreeId, writeWorktreeFile } = await createHeadlessEditorHarness()
+    await writeWorktreeFile('first.md', 'a')
+    await writeWorktreeFile('second.md', 'b')
+    await runtime.openMobileFile(`id:${worktreeId}`, 'first.md')
+    const firstTabId = (await runtime.listMobileSessionTabs(`id:${worktreeId}`)).tabs[0]!.id
+    await runtime.activateMobileSessionTab(`id:${worktreeId}`, firstTabId, undefined, {
+      notifyClients: false,
+      clientNavigationId: 'phone',
+      navigation: 'caller'
+    })
+    const phone = vi.fn()
+    runtime.onMobileSessionTabsChanged(phone, 'phone')
+
+    // Phones send no navigation on files.open / files.openDiff.
+    await runtime.openMobileFile(`id:${worktreeId}`, 'second.md')
+    await runtime.openMobileDiff(`id:${worktreeId}`, 'second.md', false)
+
+    const activePath = (tabs: readonly { isActive: boolean; relativePath?: string }[]) =>
+      tabs.find((tab) => tab.isActive)?.relativePath
+    const host = await runtime.listMobileSessionTabs(`id:${worktreeId}`)
+    expect(host.tabs.find((tab) => tab.isActive)).toMatchObject({ mode: 'diff' })
+    expect(
+      activePath((await runtime.listMobileSessionTabs(`id:${worktreeId}`, 'phone')).tabs)
+    ).toBe('first.md')
+    expect(phone).toHaveBeenCalled()
+    for (const [snapshot] of phone.mock.calls) {
+      expect(snapshot.navigationIntent).toBeUndefined()
+      expect(activePath(snapshot.tabs)).toBe('first.md')
+    }
+
+    const editor = attachEditorWindow(runtime)
+    await runtime.openMobileFile(`id:${worktreeId}`, 'second.md')
+    expect(editor.openFile).toHaveBeenCalledWith(
+      worktreeId,
+      expect.any(String),
+      'second.md',
+      undefined,
+      undefined
+    )
+    detachEditorWindow(runtime)
+  })
+
   it('keeps the window route unchanged while a desktop window owns editors', async () => {
     const { runtime, worktreeId, writeWorktreeFile, getSession } =
       await createHeadlessEditorHarness()
