@@ -12,6 +12,7 @@ import {
   PEER_CHAT,
   WAIT,
   call,
+  clearChat,
   coordinatorRunAndTask,
   db,
   dispatcher,
@@ -19,7 +20,8 @@ import {
   openChat,
   request,
   sendUserMessage,
-  settleTurn
+  settleTurn,
+  startSuccessor
 } from './structured-chat-coordinator-mail-rig.test-fixture'
 
 const WORKER = formatOrcaSessionAddress(testOrcaSessionId(PEER_CHAT))
@@ -63,6 +65,17 @@ describe("a chat assignee's report", () => {
 
     expect(db.getDispatchContextById(dispatchId)?.status).toBe('completed')
     expect(db.getTask(taskId)?.status).toBe('completed')
+  })
+
+  it('is admitted from the session a /clear continued the chat in, which keeps its Dispatch', async () => {
+    const { taskId, dispatchId } = await dispatchToChat()
+    const successor = await clearChat(PEER_CHAT)
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
+    await startSuccessor(successor)
+
+    await call('orchestration.send', workerDone(taskId, dispatchId), { sessionId: successor })
+
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('completed')
   })
 
   it('is refused from a terminal that names the chat as its caller', async () => {
