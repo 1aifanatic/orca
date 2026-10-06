@@ -203,8 +203,8 @@ export type StructuredAgentSessionEndedEvent = {
   startupUnproven?: true
 }
 
-/** The child a publish-first acquire handed over has now proven its start: startup facts applied
- *  and saved options restored. What it reports from here on is fact, not a catalog guess. */
+/** The child a publish-first acquire handed over has now proven its start: startup facts applied.
+ *  What it reports from here on is fact, not a catalog guess. */
 export type StructuredAgentSessionStartedEvent = {
   type: 'started'
   sessionId: string
@@ -213,7 +213,7 @@ export type StructuredAgentSessionStartedEvent = {
   /** What the child proved, snapshotted by the adapter from what startup already read. The host
    *  handles this inside the session's serialized step, so it must not ask the CLI. */
   reportedOptions: AgentSessionOptionsResult['current']
-  /** Saved options the restore could not apply; the host drops them rather than persist them. */
+  /** Saved options the child could not take; the host drops them rather than persist them. */
   restoreSkippedOptions: readonly string[]
 }
 
@@ -222,7 +222,8 @@ export type StructuredAgentSessionLifecycleEvent =
   | StructuredAgentSessionStartedEvent
 
 /** Whether the provider child behind an acquisition has proven its start. A publish-first
- *  acquire hands over a `starting` child and the `started` lifecycle event flips it. */
+ *  acquire hands over a `starting` child, which already takes input, and the `started` lifecycle
+ *  event flips it. */
 export type StructuredAgentSessionProviderChildPhase = 'starting' | 'ready'
 
 export type StructuredAgentSessionAcquireInput = {
@@ -361,10 +362,6 @@ export type StructuredAgentSessionAdapter = StructuredAgentSessionAdapterStop & 
   ): Promise<void | Readonly<Record<string, string>>>
   /** Resolves once a live session can take an option write, or after a bound; never rejects. */
   awaitOptionWritable?(sessionId: string): Promise<void>
-  /** Resolves once a session published before it proved its start has proven it, failed, or been
-   *  closed; at once for any other. A start that did not land resolves with the chat's words for
-   *  why. Never rejects. */
-  awaitStarted?(sessionId: string): Promise<void | SubmissionRejectionFact>
   readOptions?(input: { sessionId: string; fence: number }): Promise<AgentSessionOptionsResult>
   /** Option keys skipped after a provider rejected their persisted restore value. */
   readOptionRestoreFailures?(sessionId: string): readonly string[]

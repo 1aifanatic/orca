@@ -17,7 +17,8 @@ import { AgentHookServer, _internals } from '../../agent-hooks/server'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import {
   fakeClaude,
-  PROVIDER_SESSION_ID
+  PROVIDER_SESSION_ID,
+  claudeStartupSettled
 } from '../../claude/claude-structured-session-test-support'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
@@ -185,7 +186,7 @@ describe('a Claude chat whose CLI is still starting', () => {
     expect(await dispatchState(held)).toBe('pending')
 
     landInit()
-    await adapter.awaitStarted(SESSION)
+    await claudeStartupSettled(adapter, SESSION)
 
     await vi.waitFor(
       () => expect(claude.connections[0].sent).toEqual([expect.objectContaining({ type: 'user' })]),
@@ -208,7 +209,7 @@ describe('a Claude chat whose CLI is still starting', () => {
 
     // Startup lands just before the window closes; the handover's publish starts it again.
     landInit()
-    await adapter.awaitStarted(SESSION)
+    await claudeStartupSettled(adapter, SESSION)
     await Promise.all(lifecycle)
     await untilSent(connection)
     expect(connection.sent).toEqual([expect.objectContaining({ type: 'user' })])
@@ -227,7 +228,7 @@ describe('a Claude chat whose CLI is still starting', () => {
   it('stops the agent and closes the conversation once its turn has finished and it idled', async () => {
     await attachStarting()
     landInit()
-    await adapter.awaitStarted(SESSION)
+    await claudeStartupSettled(adapter, SESSION)
     const answered = await send('answered')
     await vi.waitFor(async () => expect(await dispatchState(answered)).toBe('accepted'))
     claude.connections[0].handlers.onMessage?.({
@@ -265,7 +266,7 @@ describe('a chat whose settled lead still has background work running', () => {
   async function settleTurnLeavingTask(taskType: string): Promise<void> {
     await attachStarting()
     landInit()
-    await adapter.awaitStarted(SESSION)
+    await claudeStartupSettled(adapter, SESSION)
     const fanOut = await send('fan out')
     await vi.waitFor(async () => expect(await dispatchState(fanOut)).toBe('accepted'))
     frame({

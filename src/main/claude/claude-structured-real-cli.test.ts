@@ -22,6 +22,7 @@ import {
   type ClaudeStructuredSessionEvent
 } from './claude-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from './claude-structured-session-state'
+import { claudeStartupSettled } from './claude-structured-session-test-support'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
 const command = realClaudeCommand
@@ -56,7 +57,7 @@ function realAdapter(
   const acquire = adapter.acquire
   adapter.acquire = async (input) => {
     const acquisition = await acquire(input)
-    await adapter.awaitStarted(input.identity.sessionId)
+    await claudeStartupSettled(adapter, input.identity.sessionId)
     return acquisition
   }
   return adapter

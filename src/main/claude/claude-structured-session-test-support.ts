@@ -241,6 +241,15 @@ export function fakeClaude(
   return { connections, openConnection, routes }
 }
 
+/** Resolves once the session's background startup read has landed, faulted, or been ended. */
+export async function claudeStartupSettled(
+  adapter: ClaudeStructuredSessionAdapter,
+  sessionId: string
+): Promise<void> {
+  // Element access reaches the adapter's private map, which no production caller needs.
+  await adapter['sessions'].get(sessionId)?.startup.settled
+}
+
 /** Acquisition resolves only once startup has landed, as suites written before
  *  publish-first expect; `adapterAtPublishFor` observes the published window itself. */
 export function adapterFor(
@@ -250,7 +259,7 @@ export function adapterFor(
   const acquire = adapter.acquire
   adapter.acquire = async (input) => {
     const acquisition = await acquire(input)
-    await adapter.awaitStarted(input.identity.sessionId)
+    await claudeStartupSettled(adapter, input.identity.sessionId)
     return acquisition
   }
   return adapter

@@ -7,6 +7,8 @@ import {
 import { stopAgentSessionProviderRoot } from '../native-chat/agent-session-wire/structured-agent-session-provider-exit-proof'
 import { withAgentSessionCreatePhase } from '../observability/agent-session-instrumentation'
 import type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
+import { claudeStructuredSpawnOptions } from './claude-structured-spawn-options'
+import { agentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 import {
   cancelClaudeAcquisitionAttempt,
   type ClaudeAcquisitionAttempt,
@@ -21,6 +23,11 @@ import {
   closeClaudePublishedSessionForDeps
 } from './claude-structured-session-close'
 
+/** The launch with the chat's saved options in its spawn options. */
+export type ClaudeAcquisitionLaunch = ClaudeStructuredLaunch & {
+  savedOptions: { options: Map<string, string>; skipped: readonly string[] }
+}
+
 export async function resolveClaudeAcquisitionLaunch(args: {
   input: StructuredAgentSessionAcquireInput
   deps: ClaudeStructuredSessionAdapterDeps
@@ -30,7 +37,7 @@ export async function resolveClaudeAcquisitionLaunch(args: {
   callbacks: ClaudeAcquireCallbacks
   previous: ClaudeAcquisitionAttempt | undefined
   attempt: ClaudeAcquisitionAttempt
-}): Promise<ClaudeStructuredLaunch> {
+}): Promise<ClaudeAcquisitionLaunch> {
   const { input, deps, sessions, acquisitions, exits, callbacks, previous, attempt } = args
   const sessionId = input.identity.sessionId
   return withAgentSessionCreatePhase('auth_settle', input.recordPhase, async () => {
@@ -87,6 +94,20 @@ export async function resolveClaudeAcquisitionLaunch(args: {
           : new AgentSessionPreSpawnError(error)
       })
     acquisitions.assertCurrent(sessionId, attempt)
-    return launch
+    const access = agentModelCatalogSessionAccess(
+      deps.modelCatalog,
+      'claude',
+      launch.claudeConfigDir
+    )
+    const spawn = claudeStructuredSpawnOptions({
+      launch,
+      saved: input.options,
+      catalog: access?.store.get(access.fingerprint) ?? null
+    })
+    return {
+      ...launch,
+      options: spawn.sdkOptions,
+      savedOptions: { options: spawn.options, skipped: spawn.skipped }
+    }
   })
 }

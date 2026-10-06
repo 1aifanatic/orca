@@ -27,6 +27,7 @@ import {
   realClaudeCommand,
   realClaudeLaunchHome
 } from './claude-real-cli-availability-test-support'
+import { claudeStartupSettled } from './claude-structured-session-test-support'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
 const SESSION_ID = 'real-cli-fold'
@@ -108,7 +109,7 @@ describe.skipIf(!realClaudeAvailable)('Claude structured real CLI fold', () => {
           spawnToken: 'real-cli-fold',
           events: sink
         })
-        await adapter.awaitStarted(SESSION_ID)
+        await claudeStartupSettled(adapter, SESSION_ID)
         // Startup proved from the SessionStart hook frame, with no init yet.
         expect(
           events.some(

@@ -1,7 +1,7 @@
-// Where a Claude start stands. A session is published once its child is spawned, before the CLI
-// has answered initialize. Nothing is written to it until startup lands (init facts read and saved
-// options restored): the host's delivery loop waits on `settled` before it hands a message over,
-// so a first turn never runs under defaults the restore was about to replace.
+// Where a Claude start stands. A session is published once its child is spawned, launched with the
+// chat's saved options, before the CLI has answered initialize. Messages are written to it at once
+// (the CLI queues them behind its start); only an option write, a control request initialize must
+// answer first, waits for startup to land.
 
 import type { SubmissionRejectionFact } from '../../shared/agent-session-failure'
 import { providerStartupFailureFact } from '../native-chat/agent-session-wire/structured-agent-session-failure-text'
@@ -11,8 +11,7 @@ export type ClaudeSessionStartup = {
   state: 'pending' | 'proven' | 'failed'
   failure: Error | null
   /** Resolves once startup has landed or faulted, or the child exited or was closed; never
-   *  rejects. A close must end it: the delivery loop waits here, and a start Stop cut short
-   *  would otherwise hold that loop forever. */
+   *  rejects. A close must end it: an option write waits here. */
   settled: Promise<void>
   end: () => void
 }

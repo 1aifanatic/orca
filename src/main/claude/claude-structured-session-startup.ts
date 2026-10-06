@@ -1,12 +1,9 @@
-// What Claude reports at initialize, read after the session is already published. None of it
-// gates the create: a slow start is still a start, and every way it can fail (exit, auth,
-// a foreign session id, no initialize answer within the startup deadline) faults the published
-// session through its exit path.
+// What Claude reports at initialize, read in the background once the session is published. None of
+// it gates the create or a message: the child was launched with the chat's saved options and takes
+// input at once. Every way the start can fail (exit, auth, a foreign session id) faults the
+// published session through its exit path; a CLI that never answers is ended by a Stop or a close.
 
-import type {
-  StructuredAgentSessionAcquireInput,
-  StructuredAgentSessionStartedEvent
-} from '../native-chat/agent-session-wire/structured-agent-session-adapter'
+import type { StructuredAgentSessionStartedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeStreamJsonConnection } from './claude-stream-json-connection'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import {
@@ -16,7 +13,6 @@ import {
   readClaudeModels,
   type ClaudeInitObservation
 } from './claude-structured-init-proof'
-import { restoreClaudeStructuredSessionOptions } from './claude-structured-options'
 import {
   claudeStructuredSessionPublicationOptions,
   prepareClaudeStructuredSessionAcquisitionOptions,
@@ -28,7 +24,6 @@ import {
   readClaudeSettingsEffort
 } from './claude-structured-session-options'
 import { failClaudeStartup } from './claude-structured-session-startup-state'
-import { STRUCTURED_AGENT_SESSION_START_WAIT_MS } from '../native-chat/agent-session-wire/structured-agent-session-send-settlement'
 import type { ClaudeSession, ClaudeStructuredSessionEvent } from './claude-structured-session-state'
 
 /** The CLI's own frame naming the session it runs (system/init or a SessionStart hook). Only a
@@ -44,8 +39,6 @@ export type ClaudeInitProof = {
   seen: () => ClaudeInitObservation | null
   /** Set once startup has read the proof: a later refusal ends the session. */
   onRefusal: ((error: Error) => void) | null
-  /** Each proof frame, while startup waits on initialize. */
-  onFrame: (() => void) | null
 }
 
 export function createClaudeInitProof(): ClaudeInitProof {
@@ -66,7 +59,6 @@ export function createClaudeInitProof(): ClaudeInitProof {
     resolve: (init) => {
       outcome ??= { init }
       resolvePromise(init)
-      proof.onFrame?.()
     },
     reject,
     refuse: () => {
@@ -84,8 +76,7 @@ export function createClaudeInitProof(): ClaudeInitProof {
       }
       return outcome?.init ?? null
     },
-    onRefusal: null,
-    onFrame: null
+    onRefusal: null
   }
   return proof
 }
@@ -103,67 +94,17 @@ export type ClaudeStartupFacts = {
   prepared: ReturnType<typeof prepareClaudeStructuredSessionAcquisitionOptions>
 }
 
-/** How long the CLI may go silent before answering initialize. Generous for a slow machine or a
- *  first run; a CLI that stays alive but never answers would otherwise hold the chat's messages
- *  forever. A CLI silent from launch fails inside the host's start wait, so a command waiting on
- *  this start hears its failure rather than "not started yet". */
-export const CLAUDE_STARTUP_DEADLINE_MS = STRUCTURED_AGENT_SESSION_START_WAIT_MS - 30_000
-
-/** The e2e rig shortens the deadline to capture its failure; production always uses the default. */
-function claudeStartupDeadlineMs(): number {
-  const configured = Number(process.env.ORCA_E2E_CLAUDE_STARTUP_DEADLINE_MS)
-  return Number.isFinite(configured) && configured >= 1 && configured <= CLAUDE_STARTUP_DEADLINE_MS
-    ? configured
-    : CLAUDE_STARTUP_DEADLINE_MS
-}
-
-/** The initialize answer, or a rejection once the CLI has sent no start frame for `deadlineMs`; a
- *  late answer is then ignored. Claude answers only after its SessionStart hooks finish, and each
- *  hook's start and end frames buy another `deadlineMs`, so hooks that run in turn are not cut off;
- *  one hook running past the deadline (Claude's own hook timeout is 60 s by default) still is. A
- *  refused proof fails it at once. */
-function withinClaudeStartupDeadline<T>(
-  answer: Promise<T>,
-  proof: ClaudeInitProof,
-  deadlineMs: number
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let expire = (_error: Error): void => {}
-  const expired = new Promise<never>((_resolve, reject) => {
-    expire = reject
-  })
-  const arm = (): void => {
-    clearTimeout(timer)
-    timer = setTimeout(
-      () =>
-        expire(
-          new Error(`claude did not answer initialize within ${Math.round(deadlineMs / 1000)}s`)
-        ),
-      deadlineMs
-    )
-  }
-  arm()
-  proof.onFrame = arm
-  const refused = proof.promise.then(() => new Promise<never>(() => {}))
-  return Promise.race([answer, refused, expired]).finally(() => {
-    clearTimeout(timer)
-    proof.onFrame = null
-  })
-}
-
-/** Settles on the CLI's initialize answer, on its exit, or at the startup deadline. */
+/** Settles on the CLI's initialize answer, or on its exit or a refused proof. */
 export async function readClaudeStartupFacts(input: {
   connection: ClaudeStreamJsonConnection
   initProof: ClaudeInitProof
   sessionId: string
   providerSessionId: string
-  resumesTranscript: boolean
-  inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
 }): Promise<ClaudeStartupFacts> {
   // The CLI's first answer has no request deadline of its own; the reads after it do.
-  const initialization = await withinClaudeStartupDeadline(
+  const initialization = await Promise.race([
     input.connection.initializationResult().then((result) => {
       const authError = claudeInitializationAuthError(result)
       if (authError) {
@@ -171,9 +112,8 @@ export async function readClaudeStartupFacts(input: {
       }
       return result
     }),
-    input.initProof,
-    claudeStartupDeadlineMs()
-  )
+    input.initProof.promise.then(() => new Promise<never>(() => {}))
+  ])
   if (input.connection.closed) {
     throw new Error('claude session closed before startup completed')
   }
@@ -199,12 +139,7 @@ export async function readClaudeStartupFacts(input: {
     initProof: input.initProof,
     initialization,
     settings,
-    prepared: prepareClaudeStructuredSessionAcquisitionOptions({
-      settings,
-      initialization,
-      inputOptions: input.inputOptions,
-      resumesTranscript: input.resumesTranscript
-    })
+    prepared: prepareClaudeStructuredSessionAcquisitionOptions({ settings, initialization })
   }
 }
 
@@ -218,20 +153,26 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
     session.reportedModelMutation = session.optionMutationSequence
   }
   observeClaudeSettingsApplied(session, settings)
+  // The readback vouches for a value the child was launched with only when it reports that value.
+  const agrees = (key: string, reported: string): boolean =>
+    !session.options.has(key) || session.options.get(key) === reported
   if (effort) {
     session.reportedOptions.effort = effort
-    session.confirmedOptions.add('effort')
+    if (agrees('effort', effort)) {
+      session.confirmedOptions.add('effort')
+    }
   }
   if (published.fastMode !== null) {
     session.reportedOptions.fastMode = published.fastMode
-    session.confirmedOptions.add('fastMode')
+    if (agrees('fastMode', String(published.fastMode))) {
+      session.confirmedOptions.add('fastMode')
+    }
   }
   if (published.fastModePerSessionOptIn !== null) {
     session.fastModePerSessionOptIn = published.fastModePerSessionOptIn
   }
   session.fastModeState ??= published.fastModeState
   session.fastModeDisabledReason ??= published.fastModeDisabledReason
-  session.options = prepared.options
   session.capabilities = readClaudeCapabilities(session.capabilities, initialization, init?.message)
   // A catalog frame that streamed in after publish is newer than the initialize answer.
   if (session.commands.commands === undefined) {
@@ -254,13 +195,12 @@ function claudeStartedReportedOptions(
   return persisted
 }
 
-/** Applies startup facts to the published session and restores saved options; only then does the
- *  session take input. Any failure faults the session so the user sees why it never started. */
+/** Applies startup facts to the published session, which already takes input. Any failure faults
+ *  the session so the user sees why it never started. */
 export async function settleClaudeSessionStartup(input: {
   session: ClaudeSession
   facts: Promise<ClaudeStartupFacts>
   isCurrent: () => boolean
-  requestTimeoutMs: number | undefined
   fault: (error: Error) => void
   /** Startup has proven; `options` is what the child now reports, snapshotted from memory. */
   onStarted: (options: StructuredAgentSessionStartedOptions) => void
@@ -286,7 +226,6 @@ export async function settleClaudeSessionStartup(input: {
       }
     }
     applyClaudeStartupFacts(session, facts)
-    await restoreClaudeStructuredSessionOptions(session, input.requestTimeoutMs)
     if (!superseded()) {
       input.onStarted({
         // `list_models` is answered from this same initialize result, so nothing is re-read.

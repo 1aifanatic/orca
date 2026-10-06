@@ -122,14 +122,6 @@ export function readClaudeCurrentModel(session: ClaudeSession): {
   }
 }
 
-/**
- * The effort levels the session's current model advertises, with the catalog id
- * that matched so a refusal names the model the pill shows. Levels are null when
- * nothing identified the model: `apply_flag_settings` accepts and stores any
- * level for a model with no effort control, so the catalog is the only evidence
- * of a refusal — and an absent or unlisted one is not evidence, or a live CLI
- * that predates `list_models` would have every effort refused under it.
- */
 /** One catalog read serves a whole option write. The admit check, the effort guard
  *  and the Fast guard all ask about the same list; each taking its own read made a
  *  single model write pay for two `list_models` round trips and let two guards answer
@@ -143,11 +135,18 @@ export async function readClaudeListedModels(
   return catalog ? listedModels({ models: catalog }) : []
 }
 
+/**
+ * The effort levels the session's current model advertises, with the catalog id
+ * that matched so a refusal names the model the pill shows. Levels are null when
+ * nothing identified the model: `apply_flag_settings` accepts and stores any
+ * level for a model with no effort control, so the catalog is the only evidence
+ * of a refusal — and an absent or unlisted one is not evidence, or a live CLI
+ * that predates `list_models` would have every effort refused under it.
+ */
 export function claudeModelEffortLevels(
-  session: ClaudeSession,
-  models: readonly ListedModel[]
+  models: readonly ListedModel[],
+  modelId: string | undefined
 ): { modelId: string | undefined; levels: ReadonlySet<string> | null } {
-  const modelId = readClaudeCurrentModel(session).id
   const matched = modelId
     ? models.find((model) => model.id === modelId || model.resolvedModel === modelId)
     : undefined
@@ -157,12 +156,11 @@ export function claudeModelEffortLevels(
   }
 }
 
+/** Fast support for `reportedModelId`; none means the listing's default. */
 export function claudeModelFastModeSupport(
-  session: ClaudeSession,
   models: readonly ListedModel[],
-  requestedModel?: string
+  reportedModelId: string | undefined
 ): { modelId: string | undefined; supported: boolean | null } {
-  const reportedModelId = requestedModel ?? readClaudeCurrentModel(session).id
   const modelId = reportedModelId ?? models.find((model) => model.isDefault)?.id
   const matched = modelId ? matchListedModel(models, modelId) : undefined
   return {

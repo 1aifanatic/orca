@@ -13,10 +13,7 @@
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
-import {
-  agentSessionFailureFact,
-  type SubmissionRejectionFact
-} from '../../../shared/agent-session-failure'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
@@ -119,11 +116,8 @@ export class StructuredAgentSessionDeliveryLoop {
           )
           return
         }
-        // A child published before it proved its start takes no input yet; waited for outside
-        // the queue so a Stop can reach it meanwhile.
-        const failure = await this.deps.adapter.awaitStarted?.(sessionId)
         const handed = await this.deps.serialize(sessionId, () =>
-          this.handOver(sessionId, prepared.awaited, failure || null)
+          this.handOver(sessionId, prepared.awaited)
         )
         if (handed === 'stop') {
           return
@@ -196,8 +190,7 @@ export class StructuredAgentSessionDeliveryLoop {
 
   private async handOver(
     sessionId: string,
-    awaited: StructuredAgentSessionProviderChildIdentity | null,
-    startFailure: SubmissionRejectionFact | null
+    awaited: StructuredAgentSessionProviderChildIdentity | null
   ): Promise<Step> {
     const session = this.deps.sessions.get(sessionId)
     if (!session || this.disposed) {
@@ -210,10 +203,9 @@ export class StructuredAgentSessionDeliveryLoop {
       child && awaited && child.generation === awaited.generation && child.fence === awaited.fence
         ? child
         : null
-    // The host's `starting` trails the adapter's `started` by one serialized step, so for the child
-    // waited on, the adapter's own answer decides whether its start landed.
-    if (!awaitedChild || (awaitedChild.phase === 'starting' && startFailure !== null)) {
-      // The child waited on is gone, replaced by another, or settled its start without proving it.
+    // A child still starting takes input: the provider queues it behind its own start.
+    if (!awaitedChild) {
+      // The child started for this message is gone or replaced by another.
       const ended = awaitedChild ? undefined : session.lastEndedChild
       const endedFailure = ended ? structuredAgentSessionEndedChildFailure(ended) : undefined
       // A user's Stop or close is not a failure: the next step starts, or waits on, a child for
@@ -225,7 +217,7 @@ export class StructuredAgentSessionDeliveryLoop {
         startKey: awaited?.generation ?? null,
         cause: endedFailure ??
           // Gone with no end observed: nothing says the provider stopped.
-          { failure: startFailure ?? agentSessionFailureFact('startFailed') }
+          { failure: agentSessionFailureFact('startFailed') }
       })
     }
     const next = oldestQueuedSubmission(session)

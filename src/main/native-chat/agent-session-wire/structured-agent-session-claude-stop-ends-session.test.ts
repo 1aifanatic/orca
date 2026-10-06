@@ -24,7 +24,8 @@ import type { ClaudeStructuredSessionEvent } from '../../claude/claude-structure
 import {
   fakeClaude,
   PROVIDER_SESSION_ID,
-  type FakeConnection
+  type FakeConnection,
+  claudeStartupSettled
 } from '../../claude/claude-structured-session-test-support'
 import { invokeCanUseTool } from '../../claude/claude-can-use-tool-test-support'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -129,7 +130,7 @@ beforeEach(async () => {
     providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION_ID, leafUuid: null }
   })
   expect(await host.attach(CALLER, params)).toMatchObject({ ok: true })
-  await adapter.awaitStarted(SESSION)
+  await claudeStartupSettled(adapter, SESSION)
   await Promise.all(lifecycle)
 })
 

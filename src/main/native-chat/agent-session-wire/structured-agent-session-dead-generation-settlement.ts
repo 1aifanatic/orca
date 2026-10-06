@@ -122,6 +122,8 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** The provider never finished starting: the start that failed, keyed by the child's
    *  generation. Its row is the one the delivery loop writes for the same start. */
   exitedDuringStartup?: { generation: string | null }
+  /** A person's Stop ended a child that never finished starting: what it was handed is stopped. */
+  stoppedDuringStartup?: true
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
@@ -129,18 +131,21 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     if (!showUnexpectedExitOutcome && !hasUnfinishedWork) {
       return { ok: true }
     }
-    // A queued message is the delivery loop's to settle: it was never handed to this child. A
-    // child that never proved its start accepted nothing either — input is written only after it
-    // initializes — so every send it was handed is rejected with the child's own diagnostic. A
-    // proven child's handed-over sends stay in doubt.
+    // A queued message is the delivery loop's to settle: it was never handed to this child. A send
+    // a child still starting was handed and never echoed did not run, and its root is gone: it is
+    // rejected, with the child's own diagnostic or as the Stop that ended it. A proven child's
+    // handed-over sends stay in doubt.
     const startupFailure = input.exitedDuringStartup
       ? structuredAgentSessionStartFailure({ exit: input.exitFailure }, input.failureTextContext)
       : null
-    if (!startupFailure) {
+    const stopped = input.stoppedDuringStartup ? agentSessionFailureFact('cancelled') : null
+    const unrun =
+      startupFailure ?? (stopped && agentSessionFailureWords(stopped, { surface: 'rejection' }))
+    if (!unrun) {
       await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
     }
-    await (startupFailure
-      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
+    await (unrun
+      ? input.journal.rejectPendingSubmissions(input.fence, unrun)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []

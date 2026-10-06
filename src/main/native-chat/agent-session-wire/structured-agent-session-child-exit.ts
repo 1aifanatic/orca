@@ -166,6 +166,9 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
       ...(!expected && exit.failure ? { exitFailure: exit.failure } : {}),
       ...(!expected && exitedDuringStartup && child.generation
         ? { exitedDuringStartup: { generation: child.generation } }
+        : {}),
+      ...(expected && exitedDuringStartup && close?.cause === 'user-stop'
+        ? { stoppedDuringStartup: true as const }
         : {})
     })
     if (!settled.ok) {

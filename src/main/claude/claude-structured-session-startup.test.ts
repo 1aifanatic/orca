@@ -6,7 +6,8 @@ import {
   fakeClaude,
   identityFor,
   PROVIDER_SESSION_ID,
-  USER_MESSAGE
+  USER_MESSAGE,
+  claudeStartupSettled
 } from './claude-structured-session-test-support'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
 import { CLAUDE_STARTUP_DEADLINE_MS } from './claude-structured-session-startup'
@@ -57,7 +58,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     expect(adapter.readCommands('session-1')).toBeUndefined()
 
     await vi.advanceTimersByTimeAsync(SLOW_INIT_MS)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
 
     expect(events.find((event) => event.type === 'options')).toMatchObject({
       models: [{ value: 'claude-sonnet' }]
@@ -79,7 +80,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     expect(events.some((event) => event.type === 'started')).toBe(false)
 
     await vi.advanceTimersByTimeAsync(SLOW_INIT_MS)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
 
     const startedAt = events.findIndex((event) => event.type === 'started')
     expect(events[startedAt]).toEqual({
@@ -141,7 +142,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     const { adapter } = startingAdapter(claude)
     await adapter.acquire(ACQUIRE)
     let started = false
-    const waited = adapter.awaitStarted('session-1').then(() => {
+    const waited = claudeStartupSettled(adapter, 'session-1').then(() => {
       started = true
     })
 
@@ -164,7 +165,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     await adapter.acquire(ACQUIRE)
 
     await vi.advanceTimersByTimeAsync(SLOW_INIT_MS)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
     await adapter.drainObservedExits()
 
     expect(events.find((event) => event.type === 'ended')).toMatchObject({
@@ -186,7 +187,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     await adapter.acquire(ACQUIRE)
 
     await vi.advanceTimersByTimeAsync(SLOW_INIT_MS)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
     await adapter.drainObservedExits()
 
     // A failed start is released on the same evidence a failed create is.
@@ -202,7 +203,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     await adapter.acquire(ACQUIRE)
 
     await vi.advanceTimersByTimeAsync(CLAUDE_STARTUP_DEADLINE_MS)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
 
     expect(events.some((event) => event.type === 'started')).toBe(true)
     expect(events.some((event) => event.type === 'ended')).toBe(false)
@@ -220,7 +221,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     expect(events.some((event) => event.type === 'ended')).toBe(false)
     expect(claude.connections[0].closeCount).toBe(0)
     await vi.advanceTimersByTimeAsync(1)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
     await adapter.drainObservedExits()
 
     // Orca ended it, so the chat says Claude couldn't start, not that it stopped on its own.
@@ -255,7 +256,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
       session_id: PROVIDER_SESSION_ID
     })
     await vi.advanceTimersByTimeAsync(SLOW_INIT_MS + 1)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
 
     expect(events.some((event) => event.type === 'started')).toBe(true)
     expect(events.some((event) => event.type === 'ended')).toBe(false)
@@ -275,7 +276,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
       session_id: 'foreign-session'
     })
     await vi.advanceTimersByTimeAsync(0)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
     await adapter.drainObservedExits()
 
     expect(events.find((event) => event.type === 'ended')).toMatchObject({
@@ -291,7 +292,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     const claude = fakeClaude({ initProof: 'none' })
     const { adapter, events } = startingAdapter(claude)
     await adapter.acquire(ACQUIRE)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
 
     expect(events.some((event) => event.type === 'started')).toBe(true)
     await expect(adapter.dispatch(PROMPT)).resolves.toEqual({ state: 'admitted' })
@@ -303,7 +304,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     const claude = fakeClaude({ initProof: 'none' })
     const { adapter, events } = startingAdapter(claude)
     await adapter.acquire(ACQUIRE)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
 
     claude.connections[0].handlers.onMessage?.({
       type: 'system',
@@ -323,7 +324,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     const claude = fakeClaude({ initAccount: { apiProvider: 'firstParty', tokenSource: 'none' } })
     const { adapter, events } = startingAdapter(claude)
     await adapter.acquire(ACQUIRE)
-    await adapter.awaitStarted('session-1')
+    await claudeStartupSettled(adapter, 'session-1')
     await adapter.drainObservedExits()
 
     expect(events.find((event) => event.type === 'ended')).toMatchObject({
@@ -339,7 +340,7 @@ describe('Claude structured session publishes before the CLI answers initialize'
     const { adapter, events } = startingAdapter(claude)
     await adapter.acquire(ACQUIRE)
     let ended = false
-    const waited = adapter.awaitStarted('session-1').then(() => {
+    const waited = claudeStartupSettled(adapter, 'session-1').then(() => {
       ended = true
     })
 
