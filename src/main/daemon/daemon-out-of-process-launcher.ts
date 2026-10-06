@@ -40,7 +40,7 @@ import { prepareDaemonReplacement } from './daemon-replacement-preflight'
 let attributedReplaceReason: DaemonReplaceReason | null = null
 
 // The fork fallback's readiness wait plus the lease and adapter connects must still fit the gate.
-export const MAC_STABLE_LAUNCH_HANDOFF_MS =
+const MAC_STABLE_LAUNCH_HANDOFF_MS =
   LOCAL_PTY_STARTUP_FAIL_OPEN_TIMEOUT_MS - DAEMON_CHILD_STARTUP_TIMEOUT_MS - 5_000
 
 export function attributeNextDaemonReplacement(reason: DaemonReplaceReason): void {
@@ -138,7 +138,6 @@ export function createOutOfProcessLauncher(
         macHandle = await launchMacDaemonFromStableBundle(
           {
             entryPath,
-            forkEntryPath: entryPath,
             userDataPath,
             socketPath,
             tokenPath,

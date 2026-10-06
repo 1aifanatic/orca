@@ -15,8 +15,11 @@ import {
 import { readMacDaemonJobState, stopMacDaemonJob } from './macos-daemon-job-state'
 import type { DaemonProcessHandle } from './daemon-spawner'
 
+type MacDaemonLaunchOptions = Omit<DaemonChildSpawnOptions, 'forkEntryPath' | 'relocatedExecPath'>
+
 const BOOTSTRAP_TIMEOUT_MS = 10_000
 const STARTUP_TIMEOUT_MS = 10_000
+const JOB_EXIT_CHECK_INTERVAL_MS = 500
 
 /** No job from this attempt can still claim the endpoint, so the app's own fork launcher may run. */
 export class MacDaemonStableLaunchUnavailableError extends Error {
@@ -27,7 +30,7 @@ export class MacDaemonStableLaunchUnavailableError extends Error {
 }
 
 function buildMacDaemonLaunchJob(
-  options: DaemonChildSpawnOptions,
+  options: MacDaemonLaunchOptions,
   execPath: string,
   entryPath: string,
   label: string
@@ -56,7 +59,7 @@ function buildMacDaemonLaunchJob(
 
 /** A launchd child owns Orca's signed identity independently of the replaceable UI process. */
 export async function launchMacDaemonFromStableBundle(
-  options: DaemonChildSpawnOptions,
+  options: MacDaemonLaunchOptions,
   deadlineMs: number
 ): Promise<DaemonProcessHandle | null> {
   if (process.platform !== 'darwin' || !options.macosLoginSessionWatch) {
@@ -156,6 +159,7 @@ export async function launchMacDaemonFromStableBundle(
   }
   const client = new DaemonClient({ socketPath: options.socketPath, tokenPath: options.tokenPath })
   const deadline = Date.now() + STARTUP_TIMEOUT_MS
+  let nextJobCheckMs = Date.now() + JOB_EXIT_CHECK_INTERVAL_MS
   try {
     while (true) {
       try {
@@ -165,6 +169,14 @@ export async function launchMacDaemonFromStableBundle(
         client.disconnect()
         if (Date.now() >= deadline) {
           await abandonUnlessLive(error)
+        }
+        // A copy refused at exec (e.g. by Gatekeeper) never answers; hand off now, not at the deadline.
+        if (Date.now() >= nextJobCheckMs) {
+          nextJobCheckMs = Date.now() + JOB_EXIT_CHECK_INTERVAL_MS
+          const state = await readMacDaemonJobState(service)
+          if (state === 'stopped' || state === 'missing') {
+            await abandonUnlessLive(error)
+          }
         }
         await delay(50)
       }

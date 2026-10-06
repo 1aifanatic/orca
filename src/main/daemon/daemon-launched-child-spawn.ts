@@ -19,7 +19,7 @@ export type DaemonChildSpawnOptions = {
 }
 
 export function buildDaemonScriptArgs(
-  options: DaemonChildSpawnOptions,
+  options: Omit<DaemonChildSpawnOptions, 'forkEntryPath' | 'relocatedExecPath'>,
   spawnerExecPath = process.execPath
 ): string[] {
   const { socketPath, tokenPath, pidPath, launchNonce, entryPath, macosLoginSessionWatch } = options

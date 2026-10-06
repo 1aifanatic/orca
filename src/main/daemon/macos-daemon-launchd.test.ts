@@ -57,14 +57,15 @@ let options: DaemonChildSpawnOptions
 const roomyDeadline = (): number => Date.now() + 60_000
 
 /** Lets a readiness timeout elapse without waiting for it in real time. */
-function elapseOnEachConnectAttempt(error: Error): void {
+function elapseOnEachConnectAttempt(error: Error, stepMs = 6_000): () => number {
   const realNow = Date.now()
   let elapsedMs = 0
   vi.spyOn(Date, 'now').mockImplementation(() => realNow + elapsedMs)
   ensureWithinMock.mockImplementation(async () => {
-    elapsedMs += 6_000
+    elapsedMs += stepMs
     throw error
   })
+  return () => elapsedMs
 }
 let job: unknown
 let jobMode: number
@@ -306,6 +307,26 @@ it('unregisters a daemon that exited before answering and lets the fork launcher
   expect(runProcessMock).toHaveBeenCalledWith(
     expect.objectContaining({ args: ['bootout', expect.stringContaining('owned-launch')] })
   )
+})
+
+it('hands off as soon as the job exits instead of waiting out the readiness deadline', async () => {
+  routeLaunchctl({ print: notRunning })
+  const elapsed = elapseOnEachConnectAttempt(new Error('ECONNREFUSED'), 200)
+  const error = await launchFailure()
+  expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(elapsed()).toBeLessThan(1_000)
+  expect(runProcessMock).toHaveBeenCalledWith(
+    expect.objectContaining({ args: ['bootout', expect.stringContaining('owned-launch')] })
+  )
+})
+
+it('keeps waiting for a job that is still running', async () => {
+  routeLaunchctl({ print: running })
+  const elapsed = elapseOnEachConnectAttempt(new Error('ECONNREFUSED'), 200)
+  const error = await launchFailure()
+  expect(error).not.toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(elapsed()).toBeGreaterThanOrEqual(10_000)
+  expect(runProcessMock.mock.calls.some(([spec]) => spec.args?.[0] === 'bootout')).toBe(false)
 })
 
 it('never starts another daemon while a silent job is still running', async () => {
