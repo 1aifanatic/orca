@@ -104,7 +104,6 @@ function renderCollapsed(journal: readonly AgentJournalRenderItem[], represent =
       workingStartedAt={null}
       settledTurns={selectStructuredAgentSettledTurns(items)}
       expandSignal={false}
-      fontScale={1}
     />
   )
   expect(screen.getByRole('button', { name: 'Toggle turn details' })).toHaveAttribute(
