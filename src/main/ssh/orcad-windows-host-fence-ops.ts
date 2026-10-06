@@ -17,8 +17,11 @@ export const ORCAD_WINDOWS_FENCE_PRELUDE = `
 function fenceOwner(lockDir) {
   try { return fs.readFileSync(path.join(lockDir, ${text(ORCAD_FENCE_OWNER_FILENAME)}), 'utf8') } catch { return null }
 }
+// The token this op runs under; null outside a fence, so nothing refreshes a fence it does not own.
+let FENCE_TOKEN = null
 function fencedArgv(argv) {
   if (argv[0] !== ${text(ORCAD_WINDOWS_FENCE_ARG)}) return argv
+  FENCE_TOKEN = argv[2]
   if (fenceOwner(argv[1]) !== argv[2]) {
     process.stdout.write(${text(`${ORCAD_FENCE_LOST_MARKER}\n`)}, () => process.exit(${ORCAD_FENCE_LOST_EXIT}))
     return ['fence-lost']

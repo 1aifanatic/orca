@@ -18,6 +18,7 @@ import { runProcess, spawnProcess } from '../../shared/child-process/run-process
 import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
 import { serializedStateMutationCommand } from './orcad-state-snapshot'
+import { ORCAD_FENCE_OWNER_FILENAME } from './orcad-activation-fence-scope'
 import { tryStealInstallLockCommand } from './ssh-relay-install-lock-commands'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 
@@ -39,7 +40,11 @@ describe.skipIf(process.platform === 'win32')(
       base = mkdtempSync(join(tmpdir(), 'orcad-fence-beat-'))
       fence = join(base, ORCAD_ACTIVATION_TRANSACTION_DIRNAME, RELAY_INSTALL_LOCK_NAME)
       mkdirSync(fence, { recursive: true })
+      writeFileSync(join(fence, ORCAD_FENCE_OWNER_FILENAME), 'holder-1')
     })
+    // The mutation runs under the fence its run holds, generation `holder-1`.
+    const mutation = (script: string): string =>
+      serializedStateMutationCommand(base, script, 1, { lockDir: fence, token: 'holder-1' })
     afterEach(() => {
       rmSync(base, { recursive: true, force: true })
     })
@@ -52,7 +57,7 @@ describe.skipIf(process.platform === 'win32')(
       // Stands in for a restore that outlasts the stale window.
       const run = spawnProcess({
         program: '/bin/sh',
-        args: ['-c', serializedStateMutationCommand(base, 'sleep 30', 1)]
+        args: ['-c', mutation('sleep 30')]
       })
       try {
         const pidFile = join(base, 'orcad-state-mutation.lock', 'pid')
@@ -77,22 +82,36 @@ describe.skipIf(process.platform === 'win32')(
       }
     }, 20_000)
 
-    it('leaves a wake’s fence to age, and keeps its token', async () => {
-      writeFileSync(join(fence, '.orca-wake-owner'), 'wake-1')
-      await backdate()
-      await sh(serializedStateMutationCommand(base, 'sleep 2', 1))
-      expect(age()).toBeGreaterThan(STALE_SECONDS)
-      expect(readFileSync(join(fence, '.orca-wake-owner'), 'utf8')).toBe('wake-1')
+    it('stops refreshing a fence another run took over mid-mutation, and keeps its token', async () => {
+      const run = spawnProcess({ program: '/bin/sh', args: ['-c', mutation('sleep 6')] })
+      try {
+        await pause(1_500)
+        writeFileSync(join(fence, ORCAD_FENCE_OWNER_FILENAME), 'successor')
+        await backdate()
+        await pause(2_500)
+        expect(age()).toBeGreaterThan(STALE_SECONDS)
+        expect(readFileSync(join(fence, ORCAD_FENCE_OWNER_FILENAME), 'utf8')).toBe('successor')
+      } finally {
+        run.kill('SIGKILL')
+      }
+    }, 20_000)
+
+    it('never starts a mutation once its run no longer owns the fence', async () => {
+      writeFileSync(join(fence, ORCAD_FENCE_OWNER_FILENAME), 'successor')
+      const marker = join(base, 'mutated')
+      expect(await sh(mutation(`touch '${marker}'`))).toBe('__ORCAD_FENCE_LOST__')
+      expect(existsSync(marker)).toBe(false)
+      expect(existsSync(join(base, 'orcad-state-mutation.lock'))).toBe(false)
     }, 20_000)
 
     it('stops refreshing once the mutation finishes, and never creates a missing fence', async () => {
-      await sh(serializedStateMutationCommand(base, 'sleep 2', 1))
+      await sh(mutation('sleep 2'))
       await backdate()
       await pause(2_500)
       expect(age()).toBeGreaterThan(STALE_SECONDS)
 
       rmSync(fence, { recursive: true })
-      await sh(serializedStateMutationCommand(base, 'sleep 2', 1))
+      await sh(serializedStateMutationCommand(base, 'sleep 2', 1, null))
       expect(existsSync(fence)).toBe(false)
     }, 20_000)
   }
