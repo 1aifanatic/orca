@@ -1,3 +1,4 @@
+import { useNativeChatComposerNotice } from './use-native-chat-composer-notice'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { forwardRef, useCallback, useState } from 'react'
 import { useNativeChatComposerInterrupt } from './use-native-chat-composer-interrupt'
@@ -73,7 +74,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       launchSeed,
       structuredTransport,
       steerQueued,
-      inputOwnedByCard = false
+      inputOwnedByCard = false,
+      notices: chatNotices
     },
     ref
   ): React.JSX.Element {
@@ -99,7 +101,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     })
     const [history, setHistory] = useState<HistoryState>(EMPTY_HISTORY)
     const [activeSuggestion, setActiveSuggestion] = useState(0)
-    const [notice, setNotice] = useState<string | null>(null)
+    const { notices, setNotice } = useNativeChatComposerNotice(chatNotices)
     const { textareaRef } = useNativeChatComposerAppMenuSelection(imeEnterGesture.isComposing)
     const { cancelPendingSends, trackPendingSend } = useNativeChatSendLifecycle(
       terminalTabId,
@@ -363,7 +365,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         canSend={canSend}
         autocomplete={autocomplete}
         activeSuggestion={activeSuggestion}
-        notice={notice}
+        notices={notices}
         imageAttachments={imageAttachments}
         sendButtonDisabled={sendButtonDisabled}
         sendBlockedReason={imageBlock.reason}
