@@ -1,5 +1,6 @@
 import type { RuntimeCreateAgentSessionRequest } from '../../../shared/agent-session-host-authority'
 import { createAgentSessionOperationId } from './agent-session-operation-id'
+import { isRemoteCreateOutcomeUnknown } from './remote-create-outcome'
 import { RuntimeRpcCallError } from './runtime-rpc-client'
 
 const MAX_AMBIGUOUS_CREATE_ATTEMPTS = 2
@@ -10,12 +11,12 @@ export type AgentSessionCreateOperation = {
 }
 
 function isAmbiguousCreateFailure(error: unknown): boolean {
-  // Why: an RPC failure proves the host answered; only transport loss leaves
-  // creation unknown and is safe to replay under the same operation ID.
-  return (
-    !(error instanceof RuntimeRpcCallError) &&
-    !(error instanceof Error && error.name === 'AbortError')
-  )
+  // Why: an RPC failure proves the host answered unless it carries a transport code, which is how
+  // the desktop bridge reports a lost reply. Other transport loss is safe to replay under one ID.
+  if (error instanceof RuntimeRpcCallError) {
+    return isRemoteCreateOutcomeUnknown(error)
+  }
+  return !(error instanceof Error && error.name === 'AbortError')
 }
 
 export function createAgentSessionCreateOperation(): AgentSessionCreateOperation {

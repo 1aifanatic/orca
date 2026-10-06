@@ -1,7 +1,5 @@
 import { buildDefaultTerminalOptions } from '@/lib/pane-manager/pane-terminal-options'
 import { createAgentSessionKeyboardOptions } from './agent-session-keyboard-capability'
-import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
-import type { RuntimeMobileSessionCreateTerminalResult } from '../../../shared/runtime-types'
 import { toRuntimeExecutionHostId } from '../../../shared/execution-host'
 import { translate } from '../i18n/i18n'
 import { useAppStore } from '../store'
@@ -20,7 +18,6 @@ import {
   recordWebSessionTerminalPlacement,
   webTerminalPlacementParentTabId
 } from './web-session-terminal-placement'
-import { toHostSessionTabId } from './web-terminal-surface-id'
 import {
   captureRuntimeEnvironmentCall,
   captureWebSessionIntentOwner,
@@ -44,6 +41,10 @@ import {
   readCreatedAgentTerminalIdentity
 } from './web-runtime-terminal-identity'
 import { settleWebRuntimeTerminalPlacement } from './web-runtime-terminal-placement-settlement'
+import { formatAgentTypeLabel } from '../../../shared/agent-type-label'
+import { isRemoteCreateOutcomeUnknown } from './remote-create-outcome'
+import { beginPendingWebRuntimeTerminalCreate } from './pending-web-runtime-terminal-creates'
+import { createSessionTabsTerminalWithReplay } from './web-runtime-session-tabs-create-replay'
 
 export async function createWebRuntimeSessionTerminalResult(
   args: CreateWebRuntimeSessionTerminalArgs
@@ -78,11 +79,19 @@ export async function createWebRuntimeSessionTerminalResult(
       }
     }
   }
+  const pendingAgent = args.launchAgent ?? args.agent
+  const endPending = beginPendingWebRuntimeTerminalCreate({
+    worktreeId: args.worktreeId,
+    groupId: args.targetGroupId ?? null,
+    label: pendingAgent
+      ? formatAgentTypeLabel(pendingAgent)
+      : translate('runtime.webRuntimeSession.pendingTerminalLabel', 'Terminal')
+  })
   let hostCreated = false
   let createdTabId: string | undefined
   let createdLeafId: string | undefined
   try {
-    const agent = args.launchAgent ?? args.agent
+    const agent = pendingAgent
     const agentArgsOverride =
       args.agentArgs !== undefined ? args.agentArgs : args.launchConfig?.agentArgs
     if (agent) {
@@ -166,31 +175,10 @@ export async function createWebRuntimeSessionTerminalResult(
           ? { hostAuthorityCapability: resumeHostAuthorityCapability }
           : {}),
         legacy: async () => {
-          const response = await callEnvironment({
-            method: 'session.tabs.createTerminal',
-            params: {
-              worktree: toRuntimeWorktreeSelector(args.worktreeId),
-              afterTabId: args.afterTabId ? toHostSessionTabId(args.afterTabId) : undefined,
-              targetGroupId: args.targetGroupId,
-              command: args.command,
-              cwd: args.cwd,
-              ...(args.env ? { env: args.env } : {}),
-              ...(args.envToDelete ? { envToDelete: args.envToDelete } : {}),
-              startupCommandDelivery: args.startupCommandDelivery,
-              ...(args.launchConfig ? { launchConfig: args.launchConfig } : {}),
-              ...(args.launchToken ? { launchToken: args.launchToken } : {}),
-              ...(args.agent ? { agent: args.agent } : {}),
-              ...(args.launchAgent ? { launchAgent: args.launchAgent } : {}),
-              ...(args.viewMode ? { viewMode: args.viewMode } : {}),
-              // Why: old hosts understand activate:false; new hosts use select/navigation for caller-local focus.
-              activate: false,
-              select: args.activate !== false,
-              navigation: 'caller'
-            },
-            timeoutMs: 15_000
-          })
-          const legacyCreated = unwrapRuntimeRpcResult(
-            response as RuntimeRpcResponse<RuntimeMobileSessionCreateTerminalResult>
+          const legacyCreated = await createSessionTabsTerminalWithReplay(
+            environmentId,
+            callEnvironment,
+            args
           )
           legacyAlreadyPlacedInGroup = true
           return {
@@ -219,29 +207,10 @@ export async function createWebRuntimeSessionTerminalResult(
         })
       }
     } else {
-      const response = await callEnvironment({
-        method: 'session.tabs.createTerminal',
-        params: {
-          worktree: toRuntimeWorktreeSelector(args.worktreeId),
-          afterTabId: args.afterTabId ? toHostSessionTabId(args.afterTabId) : undefined,
-          targetGroupId: args.targetGroupId,
-          command: args.command,
-          cwd: args.cwd,
-          ...(args.env ? { env: args.env } : {}),
-          ...(args.envToDelete ? { envToDelete: args.envToDelete } : {}),
-          startupCommandDelivery: args.startupCommandDelivery,
-          ...(args.launchConfig ? { launchConfig: args.launchConfig } : {}),
-          ...(args.launchToken ? { launchToken: args.launchToken } : {}),
-          ...(args.viewMode ? { viewMode: args.viewMode } : {}),
-          // Why: old hosts understand activate:false; new hosts use select/navigation for caller-local focus.
-          activate: false,
-          select: args.activate !== false,
-          navigation: 'caller'
-        },
-        timeoutMs: 15_000
-      })
-      const created = unwrapRuntimeRpcResult(
-        response as RuntimeRpcResponse<RuntimeMobileSessionCreateTerminalResult>
+      const created = await createSessionTabsTerminalWithReplay(
+        environmentId,
+        callEnvironment,
+        args
       )
       hostCreated = true
       createdTabId = created.tab.id
@@ -304,14 +273,23 @@ export async function createWebRuntimeSessionTerminalResult(
         hostTabId: webTerminalPlacementParentTabId(createdTabId)
       })
     }
-    if (!hostCreated && workspaceSelectionRollback) {
+    if (hostCreated) {
+      // Why: once the host accepted creation, reporting failure invites the user
+      // to retry with a new operation ID and can duplicate a fresh agent.
+      return {
+        outcome: { status: 'created' },
+        ...(createdTabId ? { hostTabId: createdTabId } : {})
+      }
+    }
+    // Why: a lost reply is not a failure; the host may have created it, so keep the selection too.
+    if (isRemoteCreateOutcomeUnknown(error)) {
+      return { outcome: { status: 'unconfirmed', message } }
+    }
+    if (workspaceSelectionRollback) {
       restoreActiveWorkspaceSelection(workspaceSelectionRollback)
     }
-    // Why: once the host accepted creation, reporting failure invites the user
-    // to retry with a new operation ID and can duplicate a fresh agent.
-    return {
-      outcome: hostCreated ? { status: 'created' } : { status: 'failed', message },
-      ...(createdTabId ? { hostTabId: createdTabId } : {})
-    }
+    return { outcome: { status: 'failed', message } }
+  } finally {
+    endPending()
   }
 }

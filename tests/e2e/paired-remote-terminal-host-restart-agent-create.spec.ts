@@ -19,7 +19,7 @@ import {
 } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ElectronApplication, Page } from '@stablyai/playwright-test'
+import type { ElectronApplication, Locator, Page } from '@stablyai/playwright-test'
 import { expect, test } from './helpers/orca-app'
 import { TEST_REPO_PATH_FILE } from './global-setup'
 import {
@@ -221,7 +221,7 @@ async function showWorktree(page: Page, worktreeId: string): Promise<void> {
 }
 
 async function launchClaudeFromNewTabMenu(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'New tab' }).first().click()
+  await openNewTabMenu(page)
   const claude = page.getByRole('menuitem', { name: /^Claude$/ }).first()
   try {
     await claude.waitFor({ timeout: 15_000 })
@@ -394,9 +394,23 @@ test('a Claude tab launched from the client after a host relaunch appears on the
   }
 })
 
-test('a Claude launch the host accepted over a dead return path is not reported as failed', async (// oxlint-disable-next-line no-empty-pattern -- This test owns its host launch.
-{}, testInfo) => {
-  test.setTimeout(300_000)
+type DeadReturnPath = {
+  host: Page
+  client: PairedElectronClient
+  proxy: FreezableTcpProxy
+  worktreeId: string
+  settled: Census
+}
+
+/**
+ * Pairs a client through a proxy, settles it, then silently drops every host→client byte on the
+ * live socket (sleep, NAT, Wi-Fi change) while client→host still delivers.
+ */
+async function runOverDeadReturnPath(
+  testInfo: Parameters<Parameters<typeof test>[2]>[1],
+  label: string,
+  body: (path: DeadReturnPath) => Promise<void>
+): Promise<void> {
   const repoPath = seededRepoPathOrSkip()
   const session = createRestartSession(testInfo, {
     PATH: SANITIZED_PATH,
@@ -409,8 +423,8 @@ test('a Claude launch the host accepted over a dead return path is not reported 
     const launched = await session.launch()
     host = launched.app
     const worktreeId = await attachRepoAndOpenTerminal(launched.page, repoPath)
-    // Why a proxy: it can silently drop host→client bytes on the live socket (sleep/NAT/Wi-Fi
-    // change) while client→host still delivers, which no in-process fault can express.
+    // Why a proxy: it can silently drop host→client bytes on the live socket while client→host
+    // still delivers, which no in-process fault can express.
     const offer = await createRuntimeDesktopPairingOffer(launched.page)
     const decoded = decodePairingOffer(offer.pairingUrl)
     const endpoint = new URL(decoded.endpoint)
@@ -419,7 +433,7 @@ test('a Claude launch the host accepted over a dead return path is not reported 
     client = await launchPairedElectronClient(
       { pairingUrl: encodePairingOffer({ ...decoded, endpoint: endpoint.toString() }) },
       testInfo,
-      'dead-return-path-agent-create'
+      label
     )
     await showWorktree(client.page, worktreeId)
     await expect(client.page.locator('[data-testid="sortable-tab"]').first()).toBeVisible({
@@ -436,32 +450,9 @@ test('a Claude launch the host accepted over a dead return path is not reported 
         { timeout: 30_000 }
       )
       .toBe(true)
-
-    // Why an observer: toasts auto-dismiss, so a point-in-time count can miss one.
-    await client.page.evaluate(() => {
-      const seen: { type: string | null; text: string }[] = []
-      Reflect.set(window, '__e2eToasts', seen)
-      new MutationObserver(() => {
-        for (const toast of document.querySelectorAll('[data-sonner-toast]')) {
-          const text = toast.textContent ?? ''
-          if (!seen.some((entry) => entry.text === text)) {
-            seen.push({ type: toast.getAttribute('data-type'), text })
-          }
-        }
-      }).observe(document.body, { childList: true, subtree: true })
-    })
+    await observeToasts(client.page)
     expect(proxy.freezeExisting('to-client'), 'client must hold a live socket').toBeGreaterThan(0)
-    await launchClaudeFromNewTabMenu(client.page)
-    // The host accepts the launch, and the tab mirrors once the client replaces the dead socket.
-    await expectLaunchMirrored(launched.page, client, worktreeId, settled, 'dead return path', {
-      timeoutMs: 120_000,
-      launchEvidenceOnly: true
-    })
-    expect(fakeClaudeLaunchCount()).toBe(settled.launches + 1)
-    // A launch the host performed must never be reported to the user as failed: that invites a
-    // second click, which starts a second agent.
-    const toasts = await client.page.evaluate(() => Reflect.get(window, '__e2eToasts') as unknown)
-    expect(toasts, 'client reported a host-accepted launch as failed').toEqual([])
+    await body({ host: launched.page, client, proxy, worktreeId, settled })
   } finally {
     await proxy?.close()
     if (client) {
@@ -472,4 +463,116 @@ test('a Claude launch the host accepted over a dead return path is not reported 
     }
     await session.dispose()
   }
+}
+
+// Why an observer: toasts auto-dismiss, so a point-in-time count can miss one.
+async function observeToasts(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const seen: { type: string | null; text: string }[] = []
+    Reflect.set(window, '__e2eToasts', seen)
+    new MutationObserver(() => {
+      for (const toast of document.querySelectorAll('[data-sonner-toast]')) {
+        const text = toast.textContent ?? ''
+        if (!seen.some((entry) => entry.text === text)) {
+          seen.push({ type: toast.getAttribute('data-type'), text })
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+}
+
+async function seenToasts(page: Page): Promise<unknown> {
+  return page.evaluate((): unknown => Reflect.get(window, '__e2eToasts'))
+}
+
+const pendingTabs = (page: Page): Locator => page.locator('[data-pending-remote-terminal-tab]')
+
+async function clickNewTerminalFromNewTabMenu(page: Page): Promise<void> {
+  await openNewTabMenu(page)
+  await page
+    .getByRole('menuitem', { name: /^New Terminal/ })
+    .first()
+    .click()
+}
+
+// Why retry: a second click right after the first can land while the previous menu is closing.
+async function openNewTabMenu(page: Page): Promise<void> {
+  await expect(page.getByRole('menu')).toHaveCount(0)
+  await expect(async () => {
+    if ((await page.getByRole('menu').count()) === 0) {
+      await page.getByRole('button', { name: 'New tab' }).first().click()
+    }
+    await expect(page.getByRole('menu')).toHaveCount(1, { timeout: 2_000 })
+  }).toPass({ timeout: 15_000 })
+}
+
+/**
+ * What the user sees over a dead return path: a pending tab on each click, one host create per
+ * click (a second click during the gap included), each settling into its real tab, and no error.
+ */
+async function expectCreatesSettleOverDeadReturnPath(
+  path: DeadReturnPath,
+  create: (page: Page) => Promise<void>,
+  hostCreates: () => Promise<number>
+): Promise<void> {
+  const { client, worktreeId, settled } = path
+  const hostBefore = await hostCreates()
+  const clickedAt = Date.now()
+  await create(client.page)
+  // 1. Feedback right after the click, not after the host round-trip.
+  await expect(pendingTabs(client.page)).toHaveCount(1, { timeout: 1_000 })
+  await expect(pendingTabs(client.page).first()).toBeVisible({ timeout: 1_000 })
+  // The user clicks again while nothing has appeared yet; that is a second create, not a retry.
+  await create(client.page)
+  await expect(pendingTabs(client.page)).toHaveCount(2, { timeout: 1_000 })
+
+  // 2 + 3. Exactly one host create per click, and both settle into their real tabs.
+  await expect
+    .poll(
+      async () => ({
+        hostCreates: (await hostCreates()) - hostBefore,
+        clientTabs:
+          (await client.page.evaluate(
+            (id) => window.__store?.getState().tabsByWorktree[id]?.length ?? 0,
+            worktreeId
+          )) - settled.clientTabs,
+        pending: await pendingTabs(client.page).count()
+      }),
+      { timeout: 60_000 }
+    )
+    .toEqual({ hostCreates: 2, clientTabs: 2, pending: 0 })
+  const settledAfterMs = Date.now() - clickedAt
+  test.info().annotations.push({ type: 'settledAfterMs', description: String(settledAfterMs) })
+  // Why: before the send probe the reply waited out the 15s request timeout plus 25s liveness.
+  expect(settledAfterMs, `settled after ${settledAfterMs}ms`).toBeLessThan(20_000)
+  // A late replay would show up as a third create.
+  await client.page.waitForTimeout(3_000)
+  expect((await hostCreates()) - hostBefore).toBe(2)
+  // 4. A create the host performed is never reported as failed or unconfirmed.
+  expect(await seenToasts(client.page), 'client reported a host-accepted create').toEqual([])
+}
+
+test('a Claude launch the host accepted over a dead return path is not reported as failed', async (// oxlint-disable-next-line no-empty-pattern -- This test owns its host launch.
+{}, testInfo) => {
+  test.setTimeout(300_000)
+  await runOverDeadReturnPath(testInfo, 'dead-return-path-agent-create', async (path) => {
+    await expectCreatesSettleOverDeadReturnPath(path, launchClaudeFromNewTabMenu, async () =>
+      fakeClaudeLaunchCount()
+    )
+  })
+})
+
+test('a plain terminal created over a dead return path shows pending and settles once', async (// oxlint-disable-next-line no-empty-pattern -- This test owns its host launch.
+{}, testInfo) => {
+  test.setTimeout(300_000)
+  await runOverDeadReturnPath(testInfo, 'dead-return-path-terminal-create', async (path) => {
+    await expectCreatesSettleOverDeadReturnPath(path, clickNewTerminalFromNewTabMenu, () =>
+      path.host.evaluate(
+        (id) => window.__store?.getState().tabsByWorktree[id]?.length ?? 0,
+        path.worktreeId
+      )
+    )
+    // Plain shells must not start an agent.
+    expect(fakeClaudeLaunchCount()).toBe(path.settled.launches)
+  })
 })
