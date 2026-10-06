@@ -365,7 +365,7 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     expect(refreshDir).toHaveBeenCalledTimes(2)
   })
 
-  it('purges distinct cached directory renames with two bounded cache scans', () => {
+  it('purges distinct cached directory renames with bounded batch cache scans', () => {
     const root = '/repo'
     const worktreeId = 'watch-reconcile-perf'
     const entries: Record<string, DirCache> = { [root]: cacheWithChildren([]) }
@@ -431,7 +431,7 @@ describe('processFileExplorerFsPayload update reconciliation', () => {
     }
 
     expect(setDirCache).toHaveBeenCalledOnce()
-    // Symlink detection builds one index; purging scans once more, regardless of rename count.
+    // One index scan for linked-directory detection, then one purge scan for the entire batch.
     expect(keyVisits).toBe(entryCount * 2)
     expect(expandedPathReads).toBe(expandedPaths.length)
     expect(remainingExpanded).toEqual(new Set())
