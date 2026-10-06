@@ -220,8 +220,8 @@ export function NativeChatResolvedView({
     messages: sessionAfterCommandBoundaries.messages,
     transcriptSettled: session.readPhase === 'ready'
   })
-  // Why one derived value: an answerable card replaces the composer, which would type into the
-  // agent's selector; card and composer never share a commit.
+  // Why one derived value: an answerable card takes the input region from the composer, which
+  // would type into the agent's selector; both are never visible in one commit.
   const promptCardPresentation = useNativeChatPromptCardPresentation({
     paneKey,
     targetPtyId,
@@ -389,9 +389,6 @@ export function NativeChatResolvedView({
           />
         )}
       </div>
-      {/* canSend reflects the mobile presence-lock: when a mobile client holds
-          the pty, the composer shows its guarded state instead of racing the
-          mobile driver (R8). */}
       {shownPromptCard ? (
         <NativeChatInteractiveCard
           key={promptCardPresentation.occurrenceKey ?? 'prompt'}
@@ -401,9 +398,15 @@ export function NativeChatResolvedView({
           shouldFocus={isVisible && isFocusedGroup}
           answerInputRef={questionAnswerInputRef}
         />
-      ) : (
+      ) : null}
+      {/* canSend reflects the mobile presence-lock: when a mobile client holds
+          the pty, the composer shows its guarded state instead of racing the
+          mobile driver (R8). Under a card it stays mounted but hidden, so its state survives;
+          detaching the ref keeps root typing, paste and reveal focus off it. */}
+      <div hidden={shownPromptCard !== null} className="contents">
         <NativeChatComposer
-          ref={composerRef}
+          ref={shownPromptCard ? undefined : composerRef}
+          inputOwnedByCard={shownPromptCard !== null}
           terminalTabId={terminalTabId}
           paneKey={paneKey}
           targetPtyId={targetPtyId}
@@ -420,7 +423,7 @@ export function NativeChatResolvedView({
           readTerminalScreen={readTerminalScreen}
           launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft }}
         />
-      )}
+      </div>
       {contextMenu.menu}
       <LinkActionPopover request={linkActionRequest} onClose={closeLinkActions} />
     </div>

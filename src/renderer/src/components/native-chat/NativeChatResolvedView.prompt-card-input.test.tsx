@@ -11,7 +11,7 @@ import type * as RuntimeTerminalInspectionModule from '@/runtime/runtime-termina
 
 type RuntimeTerminalInspection = typeof RuntimeTerminalInspectionModule
 
-// The composer is a marker that counts its mounts, so the test sees whether the view ever drew it.
+// The composer is a marker that counts its mounts, so the test sees whether the view remounted it.
 const retained = vi.hoisted((): { session: NativeChatLiveSession | null } => ({ session: null }))
 const composer = vi.hoisted(() => ({ mounts: 0 }))
 const ptyInput = vi.hoisted(() => ({ verified: vi.fn<() => Promise<boolean>>() }))
@@ -112,7 +112,7 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     expect(screen.getByTestId('native-chat-composer')).toBeInTheDocument()
   })
 
-  it('never mounts the composer under an approval, and brings it back once Allow lands', async () => {
+  it('hides the composer under an approval, and shows it again once Allow lands', async () => {
     ptyInput.verified.mockResolvedValue(true)
     setStatus({
       state: 'waiting',
@@ -123,8 +123,8 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
 
     const card = document.querySelector('[data-native-chat-approval-card="true"]')
     expect(card).not.toBeNull()
-    expect(composer.mounts).toBe(0)
-    // No text field remains, so keyboard focus lands on the card's choices.
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).not.toBeNull()
+    // No text field is visible, so keyboard focus lands on the card's choices.
     expect(document.activeElement).toBe(card)
 
     await act(async () => {
@@ -132,7 +132,8 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     })
 
     expect(ptyInput.verified).toHaveBeenCalledOnce()
-    expect(screen.getByTestId('native-chat-composer')).toBeInTheDocument()
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).toBeNull()
+    expect(composer.mounts).toBe(1)
   })
 
   it('keeps the approval up when its choice was not delivered', async () => {
@@ -148,10 +149,10 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled()
-    expect(composer.mounts).toBe(0)
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).not.toBeNull()
   })
 
-  it('replaces the composer with a question card', () => {
+  it('hides the composer behind a question card', () => {
     setStatus({
       state: 'waiting',
       toolName: 'AskUserQuestion',
@@ -169,6 +170,6 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
     renderPane()
 
     expect(screen.getAllByText('Which folder?').length).toBeGreaterThan(0)
-    expect(composer.mounts).toBe(0)
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).not.toBeNull()
   })
 })

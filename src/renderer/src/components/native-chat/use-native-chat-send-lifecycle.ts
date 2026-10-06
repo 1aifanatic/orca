@@ -9,7 +9,13 @@ export type NativeChatSendLifecycle = {
 export function useNativeChatSendLifecycle(
   terminalTabId: string,
   targetPtyId: string | null,
-  onPendingSendCanceled?: (pendingId: string) => void
+  onPendingSendCanceled?: (pendingId: string) => void,
+  cardOwnership?: {
+    /** A prompt card owns the agent's input while the composer stays mounted. */
+    inputOwnedByCard: boolean
+    /** Settles the echo of a send the card retired; it keeps the user's text visible. */
+    onPendingSendRetired?: (pendingId: string) => void
+  }
 ): NativeChatSendLifecycle {
   const pendingSendHandlesRef = useRef(
     new Map<
@@ -17,7 +23,7 @@ export function useNativeChatSendLifecycle(
       { cleanupTimer: ReturnType<typeof setTimeout> | null; pendingId?: string }
     >()
   )
-  const cancelPendingSends = useCallback(() => {
+  const settlePendingSends = useCallback((onSettled?: (pendingId: string) => void) => {
     for (const [handle, entry] of pendingSendHandlesRef.current) {
       const { cleanupTimer, pendingId } = entry
       if (cleanupTimer !== null) {
@@ -25,11 +31,15 @@ export function useNativeChatSendLifecycle(
       }
       handle.cancel()
       if (pendingId) {
-        onPendingSendCanceled?.(pendingId)
+        onSettled?.(pendingId)
       }
     }
     pendingSendHandlesRef.current.clear()
-  }, [onPendingSendCanceled])
+  }, [])
+  const cancelPendingSends = useCallback(
+    () => settlePendingSends(onPendingSendCanceled),
+    [settlePendingSends, onPendingSendCanceled]
+  )
   const trackPendingSend = useCallback((handle: NativeChatSendHandle, pendingId?: string) => {
     const entry = {
       cleanupTimer: null as ReturnType<typeof setTimeout> | null,
@@ -52,6 +62,15 @@ export function useNativeChatSendLifecycle(
   // Why: delayed Enter/image writes belong to the exact PTY target. A pane
   // swap or unmount must cancel them before that PTY can close or be reused.
   useLayoutEffect(() => cancelPendingSends, [cancelPendingSends, targetPtyId, terminalTabId])
+
+  const inputOwnedByCard = cardOwnership?.inputOwnedByCard === true
+  const onPendingSendRetired = cardOwnership?.onPendingSendRetired ?? onPendingSendCanceled
+  // Why: once a card owns the agent's input, an unsubmitted Enter would answer it.
+  useLayoutEffect(() => {
+    if (inputOwnedByCard) {
+      settlePendingSends(onPendingSendRetired)
+    }
+  }, [inputOwnedByCard, onPendingSendRetired, settlePendingSends])
 
   return { cancelPendingSends, trackPendingSend }
 }

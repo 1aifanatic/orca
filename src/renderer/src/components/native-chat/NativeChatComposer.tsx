@@ -69,7 +69,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       readTerminalScreen,
       launchSeed,
       structuredTransport,
-      steerQueued
+      steerQueued,
+      inputOwnedByCard = false
     },
     ref
   ): React.JSX.Element {
@@ -100,7 +101,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const { cancelPendingSends, trackPendingSend } = useNativeChatSendLifecycle(
       terminalTabId,
       targetPtyId,
-      onOptimisticSendCanceled
+      onOptimisticSendCanceled,
+      { inputOwnedByCard, onPendingSendRetired: optimisticSendOutcome?.reject }
     )
 
     const { agentCommands, sessionSkillNames } = useNativeChatComposerCatalog(
