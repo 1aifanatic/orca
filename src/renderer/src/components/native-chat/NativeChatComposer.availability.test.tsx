@@ -3,6 +3,12 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatComposerFieldProps } from './NativeChatComposerField'
 import type { NativeChatStructuredComposerTransport } from './native-chat-composer-types'
+import { nativeChatComposerSendState } from './native-chat-composer-send-state'
+import {
+  clearNativeChatComposerDraftsForTests,
+  readNativeChatComposerDraft,
+  updateNativeChatComposerDraft
+} from './native-chat-composer-draft-store'
 
 const mocks = vi.hoisted(() => {
   function emptyField(): NativeChatComposerFieldProps | null {
@@ -77,12 +83,20 @@ import { NativeChatComposer } from './NativeChatComposer'
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.fieldProps = null
+  clearNativeChatComposerDraftsForTests()
+  updateNativeChatComposerDraft('tab-1:structured', { text: 'hello' }, 'immediate')
+  mocks.setDraft.mockImplementation((text: string) => {
+    updateNativeChatComposerDraft('tab-1:structured', { text }, 'immediate')
+  })
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: { ui: { onFileDrop: () => vi.fn() } }
   })
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  clearNativeChatComposerDraftsForTests()
+})
 
 describe('structured composer Send availability', () => {
   it('blocks signed-out click and keyboard sends, retains the draft, and sends after recovery', async () => {
@@ -114,7 +128,7 @@ describe('structured composer Send availability', () => {
     )
     const view = render(composer({ reason: 'notSignedIn', account: 'managed' }))
     expect(mocks.fieldProps?.sendButtonDisabled).toBe(true)
-    expect(mocks.fieldProps?.sendDisabledReason).toContain('Codex Accounts settings.')
+    expect(mocks.fieldProps?.sendBlockedReason).toContain('Codex Accounts settings.')
     await act(async () => mocks.fieldProps?.onSend?.())
     await act(async () => {
       fireEvent.keyDown(view.getByTestId('composer-field'), { key: 'Enter' })
@@ -126,13 +140,65 @@ describe('structured composer Send availability', () => {
     })
     expect(send).not.toHaveBeenCalled()
     expect(mocks.setDraft).not.toHaveBeenCalledWith('')
+    expect(readNativeChatComposerDraft('tab-1:structured').text).toBe('hello')
     view.rerender(composer(null))
     expect(mocks.fieldProps?.sendButtonDisabled).toBe(false)
-    expect(mocks.fieldProps?.sendDisabledReason).toBeUndefined()
+    expect(mocks.fieldProps?.sendBlockedReason).toBeUndefined()
     await act(async () => mocks.fieldProps?.onSend?.())
     expect(dispatchCommand).toHaveBeenCalledWith('hello')
     expect(send).toHaveBeenCalledWith('hello', [])
     expect(mocks.sendPty).not.toHaveBeenCalled()
     expect(mocks.setDraft).toHaveBeenCalledWith('')
+  })
+})
+
+describe('combined attachment and account Send state', () => {
+  const input = { agent: 'codex', isWorking: false, hasPty: true, disabled: false } as const
+  const image = { id: 'image-1', path: '', unavailableName: 'photo.png' }
+
+  it('keeps an unavailable image blocked after sign-in recovers, until it is removed', () => {
+    const signedOut = nativeChatComposerSendState(input, 'hello', [image], {
+      reason: 'notSignedIn',
+      account: 'managed'
+    })
+    expect(signedOut.sendButtonDisabled).toBe(true)
+    expect(signedOut.sendBlockedReason).toContain('Codex Accounts settings.')
+    const signedIn = nativeChatComposerSendState(input, 'hello', [image], null)
+    expect(signedIn.sendButtonDisabled).toBe(true)
+    expect(signedIn.sendBlockedReason).toBe("An image couldn't be brought back. Remove it to send.")
+    expect(nativeChatComposerSendState(input, 'hello', [], null)).toEqual({
+      sendButtonDisabled: false,
+      sendBlockedReason: undefined
+    })
+  })
+
+  it('still requires sign-in after the unavailable image is removed', () => {
+    const state = nativeChatComposerSendState(input, 'hello', [], {
+      reason: 'notSignedIn',
+      account: 'managed'
+    })
+    expect(state.sendButtonDisabled).toBe(true)
+    expect(state.sendBlockedReason).toContain('Codex Accounts settings.')
+  })
+
+  it('keeps pending images blocked without an action tooltip', () => {
+    expect(
+      nativeChatComposerSendState(
+        input,
+        'hello',
+        [{ id: 'pending', path: '', pending: true }],
+        null
+      )
+    ).toEqual({ sendButtonDisabled: true, sendBlockedReason: undefined })
+  })
+
+  it('allows Stop while an image and the account are unavailable', () => {
+    const state = nativeChatComposerSendState(
+      { ...input, isWorking: true, onStop: vi.fn() },
+      'hello',
+      [image],
+      { reason: 'notSignedIn', account: 'managed' }
+    )
+    expect(state.sendButtonDisabled).toBe(false)
   })
 })

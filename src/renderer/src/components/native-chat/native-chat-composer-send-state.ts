@@ -3,6 +3,7 @@ import { agentSessionSignInCopyId } from '../../../../shared/agent-session-avail
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-text'
+import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 
 export function nativeChatComposerSendState(
   input: {
@@ -15,16 +16,15 @@ export function nativeChatComposerSendState(
   draft: string,
   attachments: readonly NativeChatComposerImageAttachment[],
   unavailable: AgentSessionUnavailable | null | undefined
-): { sendButtonDisabled: boolean; sendDisabledReason: string | undefined } {
-  // A pending image has no agent-readable path yet.
-  const hasPendingAttachment = attachments.some((attachment) => attachment.pending)
+): { sendButtonDisabled: boolean; sendBlockedReason: string | undefined } {
+  const imageBlock = nativeChatImageSendBlock(attachments)
   const sendButtonDisabled = input.isWorking
     ? !input.hasPty || !input.onStop
     : input.disabled ||
-      hasPendingAttachment ||
+      imageBlock.holdsSend ||
       (draft.trim() === '' && attachments.length === 0) ||
       Boolean(unavailable)
-  const sendDisabledReason = unavailable
+  const sendBlockedReason = unavailable
     ? unavailable.reason === 'cliMissing'
       ? sayAgentSessionFailureTranslated('cliMissing', {
           agent: input.agent === 'codex' ? 'Codex' : 'Claude'
@@ -35,6 +35,6 @@ export function nativeChatComposerSendState(
             unavailable.account
           )
         )
-    : undefined
-  return { sendButtonDisabled, sendDisabledReason }
+    : (imageBlock.reason ?? undefined)
+  return { sendButtonDisabled, sendBlockedReason }
 }
