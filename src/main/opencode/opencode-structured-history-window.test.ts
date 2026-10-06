@@ -37,7 +37,7 @@ function fixture(agent: 'opencode' | 'opencode2' = 'opencode') {
     agent
   }
   const readHistoryPage: NonNullable<OpenCodeStructuredSessionAdapterDeps['readHistoryPage']> =
-    vi.fn(async () => ({
+    vi.fn<NonNullable<OpenCodeStructuredSessionAdapterDeps['readHistoryPage']>>(async () => ({
       items: [
         {
           rowid: 1,
@@ -46,6 +46,7 @@ function fixture(agent: 'opencode' | 'opencode2' = 'opencode') {
             id: agent === 'opencode' ? 'msg_receipt' : 'opencode:msg_receipt',
             role: 'user',
             timestamp: 100,
+            source: 'transcript',
             blocks: [{ type: 'text', text: 'Do this once' }]
           }
         }

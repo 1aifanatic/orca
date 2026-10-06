@@ -200,7 +200,7 @@ function createOpenCodeAdapter(
         agentModelCatalogStore.recordSuccess(
           agentModelCatalogFingerprintForRecord(record),
           record.provider,
-          { models, fastModeTierByModel: new Map(), origin: 'live-session' }
+          { models: [...models], fastModeTierByModel: new Map(), origin: 'live-session' }
         )
       }
     },

@@ -32,7 +32,7 @@ it('does not publish a child after its generation closes during lookup', async (
   let release = (_response: Response): void => {}
   const fetchImpl = vi.fn<typeof fetch>(
     () =>
-      new Promise((resolve) => {
+      new Promise<Response>((resolve) => {
         release = resolve
       })
   )

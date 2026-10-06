@@ -5,6 +5,7 @@ import type {
 import type { OpenCodePendingRequest } from './timeline-contract'
 import { redactString } from '../../observability/redactor'
 import { OpenCodeHttpError } from './http-response'
+import { isRecord } from '../../../shared/agent-status-child-work-value-guards'
 
 export const MAX_TEXT = 64 * 1024
 export const MAX_PARTS = 512
@@ -12,7 +13,7 @@ export const MAX_SESSIONS = 256
 export const MAX_REQUESTS = 128
 
 export function object(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined
+  return isRecord(value) ? value : undefined
 }
 
 export function string(value: unknown): string | undefined {

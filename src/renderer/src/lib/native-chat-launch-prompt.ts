@@ -1,4 +1,5 @@
 import type { TuiAgent } from '../../../shared/tui-agent'
+import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 
 export type NativeChatLaunchPrompt = {
   tabId: string
@@ -15,7 +16,7 @@ export type NativeChatLaunchPrompt = {
  */
 export type NativeChatLaunchDraft = {
   tabId: string
-  agent: TuiAgent
+  agent: StructuredAgentId
   text: string
   createdAt: number
   /** Set once a composer copied the text into its draft; blocks re-adoption after the user clears it. */
