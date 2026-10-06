@@ -8,7 +8,6 @@ import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent
 
 afterEach(cleanup)
 
-const NO_CARDS: readonly string[] = []
 const EMPTY: never[] = []
 
 function rejected(
@@ -63,7 +62,6 @@ it('keeps the same notices across batches in a chat whose only rejection a Stop 
         pending: EMPTY,
         submissions,
         journalItems: EMPTY,
-        queuedMessageIds: NO_CARDS,
         agentName: 'Claude'
       }),
     { initialProps: { submissions: [withdrawn('stopped')] } }
@@ -83,7 +81,6 @@ function renderNotices(submissions: readonly AgentJournalSubmission[]) {
         pending: EMPTY,
         submissions: current,
         journalItems: EMPTY,
-        queuedMessageIds: NO_CARDS,
         agentName: 'Claude'
       }),
     { initialProps: { submissions } }

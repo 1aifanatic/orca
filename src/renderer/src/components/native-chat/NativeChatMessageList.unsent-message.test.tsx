@@ -22,8 +22,6 @@ import { structuredAgentSessionDeliveryNotices } from './structured-agent-sessio
 import { installNativeChatMessageListTestViewport } from './native-chat-message-list-test-viewport'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
 
-const NO_CARDS: readonly string[] = []
-
 let restoreViewport = (): void => {}
 beforeAll(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
@@ -154,7 +152,7 @@ describe('a message the host rejected after a crash, with no outbox entry left',
     return (
       <NativeChatMessageList
         session={{
-          messages: projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS),
+          messages: projectStructuredAgentSessionMessages(items, [], submissions),
           status: phase === 'done' ? 'ready' : 'working',
           sessionId: 'session-1',
           agent: 'claude',

@@ -34,12 +34,9 @@ function optimisticMessage(args: {
   }
 }
 
-const NO_CARDS: readonly string[] = []
-
 function deliveryNotices(
   submissions: readonly AgentJournalSubmission[],
   startFailures: { kind: 'notSignedIn' }[] = [],
-  queuedMessageIds: readonly string[] = NO_CARDS,
   commandItemIds?: ReadonlySet<string>
 ) {
   return structuredAgentSessionDeliveryNotices({
@@ -47,7 +44,6 @@ function deliveryNotices(
     submissions,
     agentName: 'Claude',
     startFailures,
-    queuedMessageIds,
     ...(commandItemIds ? { commandItemIds } : {})
   })
 }
@@ -142,8 +138,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     const messages = projectStructuredAgentSessionMessages(
       items,
       [],
-      [SEED, restartRejected('lost', 'fix the parser', 3)],
-      NO_CARDS
+      [SEED, restartRejected('lost', 'fix the parser', 3)]
     )
 
     expect(rows(messages)).toEqual([
@@ -163,8 +158,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     const messages = projectStructuredAgentSessionMessages(
       items,
       [],
-      [SEED, restartRejected('waited', 'fix the parser', 3)],
-      NO_CARDS
+      [SEED, restartRejected('waited', 'fix the parser', 3)]
     )
 
     expect(
@@ -207,7 +201,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       submission('resent', 'retry me', 4)
     ]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('resent'), text: 'retry me', unsent: false }
     ])
@@ -222,7 +216,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       submission('again', 'continue', 4)
     ]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('again'), text: 'continue', unsent: false },
       // Listed after the delivered rows; its journal position keeps its place.
@@ -239,7 +233,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       restartRejected('b', 'pointer', 5)
     ]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('b'), text: 'pointer', unsent: true }
     ])
@@ -259,7 +253,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       withdrawn('stopped', 'again', 5)
     ]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
       { id: agentJournalSubmissionKey('first'), text: 'again', unsent: false },
       { id: agentJournalSubmissionKey('failed'), text: 'again', unsent: true }
@@ -275,16 +269,13 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     const submissions = [SEED, restartRejected('compact', '/compact', 3)]
 
     expect(
-      rows(
-        projectStructuredAgentSessionMessages([...SEED_ROWS, compact], [], submissions, NO_CARDS)
-      )
+      rows(projectStructuredAgentSessionMessages([...SEED_ROWS, compact], [], submissions))
     ).toEqual([{ id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }])
     // One rule decides for the rows and the notices.
     expect(
       deliveryNotices(
         submissions,
         [],
-        NO_CARDS,
         structuredAgentSessionCommandItemIds([...SEED_ROWS, compact])
       ).size
     ).toBe(0)
@@ -294,7 +285,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
     const items = [...SEED_ROWS, userItem('stopped', 3, 'never mind')]
     const submissions = [SEED, withdrawn('stopped', 'never mind', 3)]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false }
     ])
     expect(deliveryNotices(submissions).size).toBe(0)
@@ -313,8 +304,7 @@ describe("one row per rejected message, the host's", () => {
     const messages = projectStructuredAgentSessionMessages(
       items,
       [sent],
-      [SEED, restartRejected('held', 'host copy', 3)],
-      NO_CARDS
+      [SEED, restartRejected('held', 'host copy', 3)]
     )
     expect(rows(messages)).toEqual([
       { id: agentJournalSubmissionKey('seed'), text: 'seed', unsent: false },
@@ -334,24 +324,43 @@ describe('a rejected message the queue holds', () => {
       { ...restartRejected('handoff', 'queued text', 3), queuedMessageId: 'card-1' }
     ]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, NO_CARDS))).toEqual([
-      seedRow
-    ])
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([seedRow])
     expect(deliveryNotices(submissions).size).toBe(0)
   })
 
-  // A send kept across a restart comes back as a paused card under its own id.
-  it('is not drawn while a card holds it under its id, and is drawn once that card is gone', () => {
+  // A send kept across a restart comes back as a paused card; the send itself records that card.
+  // The card's Edit and Delete remove it, so nothing but that record may hide the send.
+  it('is never drawn once kept as a card, with the card there, deleted, or edited and sent', () => {
     const items = [...SEED_ROWS, userItem('kept', 3, 'kept text')]
-    const submissions = [SEED, restartRejected('kept', 'kept text', 3)]
+    const kept = { ...restartRejected('kept', 'kept text', 3), keptAsQueuedMessageId: 'kept' }
+    const submissions = [SEED, kept]
 
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, ['kept']))).toEqual([
-      seedRow
-    ])
-    expect(deliveryNotices(submissions, [], ['kept']).size).toBe(0)
-    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions, []))).toEqual([
+    // The card is there, or Delete took it: the transcript reads only the send.
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([seedRow])
+    expect(deliveryNotices(submissions).size).toBe(0)
+    // Edit put the text in the composer and the person sent it as a new message.
+    const edited = submission('edited', 'kept text, edited', 5)
+    expect(
+      rows(
+        projectStructuredAgentSessionMessages(
+          [...items, userItem('edited', 5, 'kept text, edited')],
+          [],
+          [...submissions, edited]
+        )
+      )
+    ).toEqual([
       seedRow,
-      { id: agentJournalSubmissionKey('kept'), text: 'kept text', unsent: true }
+      { id: agentJournalSubmissionKey('edited'), text: 'kept text, edited', unsent: false }
+    ])
+  })
+
+  it('is drawn as not sent when it was rejected without being kept', () => {
+    const items = [...SEED_ROWS, userItem('lost', 3, 'lost text')]
+    const submissions = [SEED, restartRejected('lost', 'lost text', 3)]
+
+    expect(rows(projectStructuredAgentSessionMessages(items, [], submissions))).toEqual([
+      seedRow,
+      { id: agentJournalSubmissionKey('lost'), text: 'lost text', unsent: true }
     ])
   })
 })

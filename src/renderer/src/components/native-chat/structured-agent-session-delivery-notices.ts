@@ -99,15 +99,18 @@ export function structuredAgentSessionDeliveryNotices(args: {
   agentName: string
   /** What the loaded start-failure rows state, from `structuredAgentSessionStartFailureFacts`. */
   startFailures: readonly AgentSessionFailureFact[]
-  /** The queue's live cards, which the transcript leaves a rejected message to. */
-  queuedMessageIds?: readonly string[]
   /** The loaded commands, from `structuredAgentSessionCommandItemIds`: they report their own. */
   commandItemIds?: ReadonlySet<string>
 }): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const { agentName, submissions } = args
   const notices = new Map<string, NativeChatDeliveryNotice>()
+  // A row under the id is the host's to describe, before the sender settles from it.
+  const recorded = new Set(submissions.map((submission) => submission.clientMessageId))
   for (const entry of args.pending) {
-    if (entry.phase === 'waiting' || entry.phase === 'sending') {
+    if (
+      (entry.phase === 'waiting' || entry.phase === 'sending') &&
+      !recorded.has(entry.clientMessageId)
+    ) {
       notices.set(
         agentJournalSubmissionKey(entry.clientMessageId),
         STRUCTURED_AGENT_SESSION_DELIVERY_SENDING
@@ -116,7 +119,6 @@ export function structuredAgentSessionDeliveryNotices(args: {
   }
   const shown = structuredAgentSessionRejectedShownInPlace(
     submissions,
-    args.queuedMessageIds ?? [],
     args.commandItemIds ?? NO_COMMANDS
   )
   for (const submission of submissions) {

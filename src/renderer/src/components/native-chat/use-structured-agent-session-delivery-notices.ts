@@ -17,10 +17,9 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
   pending: readonly StructuredAgentSessionPendingSend[]
   submissions: readonly AgentJournalSubmission[]
   journalItems: readonly AgentJournalRenderItem[]
-  queuedMessageIds: readonly string[]
   agentName: string
 }): ReadonlyMap<string, NativeChatDeliveryNotice> {
-  const { agentName, pending, queuedMessageIds, submissions } = args
+  const { agentName, pending, submissions } = args
   // Only a chat with a message shown as not sent reads the journal's rows and loaded items, so in a
   // chat with none a streaming turn rebuilds no notice.
   const hasRejected = submissions.some(
@@ -36,10 +35,9 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
         submissions: journalRows,
         agentName,
         startFailures,
-        queuedMessageIds,
         commandItemIds
       }),
-    [pending, journalRows, agentName, startFailures, queuedMessageIds, commandItemIds]
+    [pending, journalRows, agentName, startFailures, commandItemIds]
   )
   // A submission batch rebuilds the map; one that says the same keeps the old, so no row re-renders.
   const previousRef = useRef(notices)
