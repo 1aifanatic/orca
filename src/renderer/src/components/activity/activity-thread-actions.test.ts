@@ -256,7 +256,7 @@ describe('activity thread host routing', () => {
 
     makeActions().jumpToWorkspace(thread)
 
-    expect(acknowledgeAgents).toHaveBeenCalledWith([thread.paneKey])
+    expect(acknowledgeAgents).toHaveBeenCalledWith([thread.paneKey], undefined, 'explicit')
     expect(mocks.activateAndRevealWorkspace).toHaveBeenCalledWith(thread.worktree.id, {
       navigationIntent: 'user-open',
       showWorkspaceList: true,
@@ -280,7 +280,7 @@ describe('activity thread host routing', () => {
     // The handler keeps one identity while the set changes underneath it.
     markAllSet = [thread, readThread]
     actions.markAllThreadsRead()
-    expect(acknowledgeAgents).toHaveBeenCalledWith([thread.paneKey])
+    expect(acknowledgeAgents).toHaveBeenCalledWith([thread.paneKey], undefined, 'explicit')
   })
 
   it('marks a batch of threads read or unread in one store update', () => {
@@ -295,7 +295,11 @@ describe('activity thread host routing', () => {
 
     actions.markThreadsRead([thread, other])
     actions.markThreadsUnread([thread, other])
-    expect(acknowledgeAgents).toHaveBeenCalledExactlyOnceWith([thread.paneKey, other.paneKey])
+    expect(acknowledgeAgents).toHaveBeenCalledExactlyOnceWith(
+      [thread.paneKey, other.paneKey],
+      undefined,
+      'explicit'
+    )
     expect(unacknowledgeAgents).toHaveBeenCalledExactlyOnceWith([thread.paneKey, other.paneKey])
   })
 })

@@ -84,7 +84,7 @@ it('Mark read on a chat never opened withdraws the prompt alert it surfaced', as
   await waitFor(() => expect(fixture.completion).toBeTypeOf('function'))
   act(() => addPrompt('A'))
   await waitFor(() => expect(transport.dispatch).toHaveBeenCalledTimes(1))
-  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT], undefined, 'explicit'))
   await flush()
   expect(useAppStore.getState().unreadAgentCompletionPanes[SUBJECT]).toBeUndefined()
   expect(dismissIds()).toEqual([promptKey('A')])
@@ -96,7 +96,7 @@ it('Mark read on a chat never opened withdraws its completion alert, as before p
   await waitFor(() => expect(fixture.completion).toBeTypeOf('function'))
   act(() => settleTurn())
   await waitFor(() => expect(transport.dispatch).toHaveBeenCalledTimes(1))
-  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT], undefined, 'explicit'))
   await flush()
   expect(dismissIds()).toEqual([`${agentSessionAttentionSubjectPrefix(SCOPE, SESSION)}turn:turn-1`])
 })
@@ -114,7 +114,7 @@ it('Mark read on a chat hidden since an earlier view covers the newer prompt it 
   transport.dispatch.mockClear()
   act(() => addPrompt('B'))
   await waitFor(() => expect(transport.dispatch).toHaveBeenCalledTimes(1))
-  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT]))
+  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT], undefined, 'explicit'))
   await flush()
   expect(useAppStore.getState().unreadAgentCompletionPanes[SUBJECT]).toBeUndefined()
   expect(dismissIds()).toEqual([promptKey('A'), promptKey('B')])
@@ -127,7 +127,7 @@ it('Mark read never covers a prompt raised after the click', async () => {
   act(() => addPrompt('A'))
   await waitFor(() => expect(transport.dispatch).toHaveBeenCalledTimes(1))
   act(() => {
-    useAppStore.getState().acknowledgeAgents([SUBJECT])
+    useAppStore.getState().acknowledgeAgents([SUBJECT], undefined, 'explicit')
     addPrompt('B')
   })
   await flush()
@@ -216,7 +216,9 @@ it('Mark all read covers every chat it marks, viewed earlier or never opened', a
     otherFeed.observe(OTHER)
   })
   await waitFor(() => expect(transport.dispatch).toHaveBeenCalledTimes(2))
-  act(() => useAppStore.getState().acknowledgeAgents([SUBJECT, otherSubject]))
+  act(() =>
+    useAppStore.getState().acknowledgeAgents([SUBJECT, otherSubject], undefined, 'explicit')
+  )
   await flush()
   expect(dismissIds()).toEqual([
     promptKey('A'),

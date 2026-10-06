@@ -22,8 +22,8 @@ type ActivityActions = Pick<
 export function createUiActivityActions(set: UISliceSet, _get: UISliceGet): ActivityActions {
   return {
     acknowledgedAgentsByPaneKey: {},
-    acknowledgeAgents: (paneKeys, reads) => {
-      emitAgentSubjectReads(paneKeys, reads)
+    acknowledgeAgents: (paneKeys, reads, intent) => {
+      emitAgentSubjectReads(paneKeys, reads, intent)
       const notificationIdsToDismiss = new Set<string>()
       set((s) => {
         if (paneKeys.length === 0) {

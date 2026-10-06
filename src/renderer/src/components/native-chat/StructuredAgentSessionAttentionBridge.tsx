@@ -60,7 +60,9 @@ function StructuredAgentSessionOwnedAttention({
   // Where the newest edge this tab was handed sits in the journal: what lit its row.
   const surfaced = useRef<AgentJournalCursor | undefined>(undefined)
   // A remote prompt this desktop relayed to its phones, until the host says none is pending.
-  const relayedPromptScope = useRef<AgentSessionExecutionLocation | undefined>(undefined)
+  const relayedPrompt = useRef<
+    { scope: AgentSessionExecutionLocation; raisedAt: number } | undefined
+  >(undefined)
   useEffect(() => {
     let lastAttempt: { observationKey: string } | undefined
     const stopCapture = registerAgentSubjectReadCapture(paneKey, (intent) => {
@@ -152,7 +154,10 @@ function StructuredAgentSessionOwnedAttention({
         if (edge.type === 'prompt') {
           if (edge.prompt.sessionId === tab.entityId) {
             if (target.kind === 'environment') {
-              relayedPromptScope.current = edge.prompt.scope
+              relayedPrompt.current = {
+                scope: edge.prompt.scope,
+                raisedAt: Math.max(edge.prompt.raisedAt, relayedPrompt.current?.raisedAt ?? 0)
+              }
             }
             dispatchStructuredPromptAttention(tab, edge.prompt, target, () => {
               const read = readFrontier.current
@@ -172,30 +177,48 @@ function StructuredAgentSessionOwnedAttention({
     if (target.kind !== 'environment') {
       return undefined
     }
-    // The host publishes a commit's status before its prompt edge, so status read after the edge
-    // that set the scope is never older than that prompt. Only a live mirror is evidence.
+    // Status and edges ride separate sockets, so only a row the host dated after the prompt counts:
+    // `updatedAt` is the journal's latest row time and never decreases; `raisedAt` is the same
+    // host clock when the prompt was announced. Only a live mirror is evidence.
     const status = getStructuredAgentSessionStatusFeed(target)
+    let settling = false
     const stopListening = status.subscribe(() => {
-      const scope = relayedPromptScope.current
+      const owed = relayedPrompt.current
       const summary = status.getSnapshot().get(tab.entityId)
       if (
-        !scope ||
+        settling ||
+        !owed ||
         !summary ||
         summary.status === 'attention' ||
+        summary.updatedAt <= owed.raisedAt ||
         status.getSessionObservation(tab.entityId) !== 'live'
       ) {
         return
       }
-      relayedPromptScope.current = undefined
-      window.api?.notifications?.settleStructuredPrompts?.(scope, tab.entityId)?.catch((error) => {
-        console.warn('[structured-session-attention] relayed prompt settlement failed', error)
-      })
+      settling = true
+      void Promise.resolve(
+        window.api?.notifications?.settleStructuredPrompts?.(owed.scope, tab.entityId)
+      )
+        .then(
+          () => {
+            // A prompt relayed meanwhile keeps its own claim; a failure retries on the next row.
+            if (relayedPrompt.current === owed) {
+              relayedPrompt.current = undefined
+            }
+          },
+          (error: unknown) => {
+            console.warn('[structured-session-attention] relayed prompt settlement failed', error)
+          }
+        )
+        .finally(() => {
+          settling = false
+        })
     })
     const release = status.activate()
     return () => {
       stopListening()
       release()
-      relayedPromptScope.current = undefined
+      relayedPrompt.current = undefined
     }
   }, [tab.entityId, target])
   return null

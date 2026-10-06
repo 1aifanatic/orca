@@ -43,7 +43,7 @@ function AgentDashboardDrawerBody({
   // In-window ack/reveal act on the local store directly — the pop-out's IPC
   // relay is gated to the pop-out renderer and would reject calls from here.
   const handleAckAgent = useCallback((paneKey: string) => {
-    useAppStore.getState().acknowledgeAgents([paneKey])
+    useAppStore.getState().acknowledgeAgents([paneKey], undefined, 'explicit')
   }, [])
   const handleRevealAgent = useCallback(
     (args: AgentRevealArgs) => {

@@ -154,6 +154,26 @@ const interrupt = (item: AgentJournalRenderItem): AgentJournalRenderItem =>
     ? { ...item, body: { ...item.body, state: 'interrupted', outcome: 'cancellation' } }
     : item
 
+/** A frame the status socket queued before A's commit: another session's row. */
+function otherSessionStatus(): void {
+  fixture.status?.({
+    id: 'status',
+    ok: true,
+    _meta: { runtimeId: 'h' },
+    result: {
+      type: 'status',
+      session: {
+        sessionId: 'other-session',
+        workspaceId: WORKSPACE,
+        agent: 'claude',
+        status: 'working',
+        latestPrompt: '',
+        updatedAt: 1
+      }
+    }
+  })
+}
+
 function endStatusStream(): void {
   fixture.status?.({ id: 'status', ok: true, _meta: { runtimeId: 'h' }, result: { type: 'end' } })
 }
@@ -226,4 +246,46 @@ it('settles once per relayed prompt, not on every later status update', async ()
   })
   await act(async () => {})
   expect(transport.settle).toHaveBeenCalledOnce()
+})
+
+// Status and edges ride separate sockets: the pre-prompt row can still be draining after the edge.
+it('keeps the pending prompt alert when the edge outruns its status and another frame lands', async () => {
+  const relay = await mountRemoteRelay({ promptStatus: false })
+  act(() => otherSessionStatus())
+  await act(async () => {})
+  act(() => publishStatus())
+  await act(async () => {})
+  expect(transport.settle).not.toHaveBeenCalled()
+  expect(relay.live('prompt')).toHaveLength(1)
+})
+
+it('keeps it when a queued frame lands in the same task as the edge', async () => {
+  const relay = await mountRemoteRelay({ promptStatus: false })
+  act(() => {
+    addPrompt('B')
+    otherSessionStatus()
+  })
+  await act(async () => {})
+  expect(transport.settle).not.toHaveBeenCalled()
+  expect(relay.live('prompt')).toHaveLength(2)
+})
+
+it('retries a settlement that failed on the next qualifying row', async () => {
+  const relay = await mountRemoteRelay()
+  const settle = transport.settle.getMockImplementation()
+  transport.settle.mockRejectedValueOnce(new Error('main unavailable'))
+  act(() => {
+    revise(resolveA('resolved'))
+    fixture.hostFeed.observe(SESSION)
+    publishStatus()
+  })
+  await waitFor(() => expect(transport.settle).toHaveBeenCalledOnce())
+  expect(relay.live('prompt')).toHaveLength(1)
+  transport.settle.mockImplementation(settle ?? (async () => {}))
+  act(() => {
+    revise((item) => item)
+    publishStatus()
+  })
+  await waitFor(() => expect(relay.live('prompt')).toEqual([]))
+  expect(transport.settle).toHaveBeenCalledTimes(2)
 })

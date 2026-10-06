@@ -44,12 +44,12 @@ export function captureAgentSubjectReads(
 
 export function emitAgentSubjectReads(
   subjectKeys: readonly string[],
-  captured?: readonly AgentSubjectRead[]
+  captured?: readonly AgentSubjectRead[],
+  intent: AgentSubjectReadIntent = 'view'
 ): void {
-  // Viewed acknowledgements always arrive with their captured reads; none means a user action.
   const reads =
     captured === undefined
-      ? captureAgentSubjectReads(subjectKeys, 'explicit')
+      ? captureAgentSubjectReads(subjectKeys, intent)
       : captured.filter((read) => subjectKeys.includes(read.subjectKey))
   for (const listener of listeners) {
     try {

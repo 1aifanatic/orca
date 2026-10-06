@@ -125,6 +125,10 @@ export function publishView(): void {
     result: { type: 'snapshot', sessionId: SESSION, page: history(), fence: 1 }
   })
 }
+/** The host's clock: each journal commit lands one second later. */
+export function hostClock(): number {
+  return fixture.sequence * 1_000
+}
 /** The host's status row for this commit, from the same projection its status feed publishes. */
 export function publishStatus(): void {
   fixture.status?.({
@@ -138,7 +142,7 @@ export function publishStatus(): void {
         workspaceId: WORKSPACE,
         agent: 'claude',
         ...projectStructuredAgentSessionStatusState(fixture.items).summary,
-        updatedAt: fixture.sequence
+        updatedAt: hostClock()
       }
     }
   })
@@ -223,7 +227,7 @@ beforeEach(() => {
       ]
     ]),
     readStatusState: () => projectStructuredAgentSessionStatusState(fixture.items),
-    now: () => 42
+    now: hostClock
   })
   fixture = {
     directory,
