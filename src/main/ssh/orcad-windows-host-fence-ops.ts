@@ -19,8 +19,10 @@ function fenceOwner(lockDir) {
 }
 // The token this op runs under; null outside a fence, so nothing refreshes a fence it does not own.
 let FENCE_TOKEN = null
+let FENCE_DIR = null
 function fencedArgv(argv) {
   if (argv[0] !== ${text(ORCAD_WINDOWS_FENCE_ARG)}) return argv
+  FENCE_DIR = argv[1]
   FENCE_TOKEN = argv[2]
   if (fenceOwner(argv[1]) !== argv[2]) {
     process.stdout.write(${text(`${ORCAD_FENCE_LOST_MARKER}\n`)}, () => process.exit(${ORCAD_FENCE_LOST_EXIT}))

@@ -33,8 +33,6 @@ import {
   ORCAD_STATE_RESTORE_STAGE_DIRNAME
 } from './orcad-state-snapshot-members'
 import { orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
-import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
-import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 
 /**
  * The member names go into the command unquoted (see `captureOrcadStateSnapshotCommand`), so
@@ -88,16 +86,14 @@ export function serializedStateMutationCommand(
   baseDir: string,
   script: string,
   heartbeatSeconds = ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
+  // The holder's fence; null (a call outside any fence's run) refreshes no fence at all.
   owned: OrcadFence | null = currentOrcadFence()
 ): string {
   const lock = shellEscape(`${baseDir}/${ORCAD_STATE_MUTATION_LOCK_DIRNAME}`)
-  const fence = shellEscape(
-    `${baseDir}/${ORCAD_ACTIVATION_TRANSACTION_DIRNAME}/${RELAY_INSTALL_LOCK_NAME}`
-  )
   const busy = `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0;`
   const staleMinutes = Math.max(1, Math.ceil((3 * heartbeatSeconds) / 60))
   const guarded = [
-    `lock=${lock}; fence=${fence};`,
+    `lock=${lock};`,
     `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
     'if ! mkdir "$lock" 2>/dev/null; then',
     'holder=$(cat "$lock/pid" 2>/dev/null); group=$(cat "$lock/pgid" 2>/dev/null);',
@@ -118,7 +114,9 @@ export function serializedStateMutationCommand(
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
     // Only a fence this run still owns: a superseded or foreign one ages toward takeover.
     `beat_fence() { touch -c -m "$lock" 2>/dev/null; ${
-      owned ? `${posixOrcadFenceOwnedTest(owned)} && touch -c -m "$fence" 2>/dev/null;` : ':;'
+      owned
+        ? `${posixOrcadFenceOwnedTest(owned)} && touch -c -m ${shellEscape(owned.lockDir)} 2>/dev/null;`
+        : ':;'
     } };`,
     'beat_fence;',
     `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do beat_fence; done ) >/dev/null 2>&1 & beat=$!;`,
