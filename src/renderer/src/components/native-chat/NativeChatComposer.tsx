@@ -218,7 +218,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setNotice
     })
 
-    const { pickAttachment } = useNativeChatFileAttachmentActions(paneKey, attachExternalPaths)
+    const { pickAttachments } = useNativeChatFileAttachmentActions(paneKey, attachExternalPaths)
     const dictation = useNativeChatDictation(textareaRef)
     const { dispatch: dispatchSessionOptionCommand, isDispatching: isDispatchingSessionOption } =
       useNativeChatSessionOptionCommand({
@@ -243,7 +243,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const contextUsageSummary = useNativeChatContextUsageSummary(structuredTransport)
     const sessionOptionsSnapshot = structuredTransport?.optionSnapshot ?? ptySessionOptionsSnapshot
 
-    const { send: sendStructured, confirm: queueSendConfirm } = useNativeChatHeldQueueComposerSend({
+    const { send: sendStructured, fieldProps: queue } = useNativeChatHeldQueueComposerSend({
       agent,
       draftScopeKey,
       imageAttachments,
@@ -411,14 +411,13 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
           requestAnimationFrame(() => textarea?.setSelectionRange(result.caret, result.caret))
         }}
         onRemoveImageAttachment={(id) => removeImageAttachment(id)}
-        onAttach={pickAttachment}
+        onAttach={pickAttachments}
         onDictationToggle={dictation.toggleDictation}
         onDictationHoldStart={dictation.startHoldDictation}
         onDictationHoldEnd={dictation.stopHoldDictation}
         onSend={send}
         onStop={interrupt}
-        queueResume={structuredTransport?.queueResume}
-        queueSendConfirm={queueSendConfirm}
+        {...queue}
         sessionOptionsSurface={sessionOptionsSurface}
         sessionOptionsSnapshot={sessionOptionsSnapshot}
         contextUsage={contextUsageSummary}

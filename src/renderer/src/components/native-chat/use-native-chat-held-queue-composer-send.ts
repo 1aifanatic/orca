@@ -12,6 +12,7 @@ import type { NativeChatComposerImageAttachment } from './NativeChatComposerFiel
 import { readNativeChatComposerDraft } from './native-chat-composer-draft-store'
 import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
 import type { NativeChatQueueHold } from './native-chat-composer-types'
+import type { NativeChatQueueResume } from './native-chat-composer-primary-action'
 
 type StructuredComposerSend = (
   text: string,
@@ -42,7 +43,11 @@ type PendingSend = {
 
 export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructuredComposerSendArgs): {
   send: StructuredComposerSend
-  confirm: NativeChatQueueSendConfirm | null
+  /** The message field's queue controls: the composer's Resume and the "Send message?" choice. */
+  fieldProps: {
+    queueResume: NativeChatQueueResume | undefined
+    queueSendConfirm: NativeChatQueueSendConfirm | null
+  }
 } {
   const sendNow = useNativeChatStructuredComposerSend(args)
   const { agent, structuredTransport } = args
@@ -131,5 +136,8 @@ export function useNativeChatHeldQueueComposerSend(args: UseNativeChatStructured
         dismiss
       }
     : null
-  return { send, confirm }
+  return {
+    send,
+    fieldProps: { queueResume: structuredTransport?.queueResume, queueSendConfirm: confirm }
+  }
 }
