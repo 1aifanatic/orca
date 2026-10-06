@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { remoteRuntimeUnavailableError } from './remote-runtime-request-frames'
 import { admitSharedControlSubscription } from './remote-runtime-shared-control-admission'
 import { createSharedControlSubscription } from './remote-runtime-shared-control-subscriptions'
-import { finishSharedControlSubscription } from './remote-runtime-shared-control-state'
 import type {
   RemoteRuntimeSharedSubscription,
   SharedControlLogicalSubscription,
@@ -41,11 +40,7 @@ export async function startSharedControlSubscription<TResult>(args: {
     await args.ensureReady()
     throwIfSignalAborted(args.signal)
   } catch (error) {
-    finishSharedControlSubscription(
-      args.subscriptions,
-      subscription as SharedControlLogicalSubscription<unknown>,
-      false
-    )
+    args.closeSubscription(requestId)
     throw error
   }
   if (args.subscriptions.get(requestId) !== subscription) {

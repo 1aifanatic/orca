@@ -117,6 +117,36 @@ describe('RuntimeFileCommands', () => {
     )
   })
 
+  it('keeps runtime result paths canonical when its authorized root differs from the workspace path', async () => {
+    const { commands } = createRuntimeFileCommands()
+    const child = createRuntimeSearchChild()
+    resolveAuthorizedPathMock.mockResolvedValue('/canonical/repo')
+    wslAwareSpawnMock.mockReturnValue(child)
+    const pending = commands.searchRuntimeFiles('id:wt-1', { query: 'needle' })
+    await flushRuntimeSearchMicrotasks()
+    child.stdout.emit(
+      'data',
+      JSON.stringify({
+        type: 'match',
+        data: {
+          path: { text: './example.txt' },
+          lines: { text: 'needle\n' },
+          line_number: 1,
+          submatches: [{ match: { text: 'needle' }, start: 0, end: 6 }]
+        }
+      })
+    )
+    child.emit('close', 0, null)
+    await expect(pending).resolves.toMatchObject({
+      files: [{ filePath: '/canonical/repo/example.txt', relativePath: 'example.txt' }]
+    })
+    expect(wslAwareSpawnMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ cwd: '/canonical/repo' })
+    )
+  })
+
   it('keeps byte-budgeted legacy listings count-bounded across an SSH hop', async () => {
     const listFiles = vi.fn().mockResolvedValue(['src/index.ts'])
     getSshFilesystemProviderMock.mockReturnValue({ listFiles })
