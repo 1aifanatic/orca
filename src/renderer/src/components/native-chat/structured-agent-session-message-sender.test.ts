@@ -333,40 +333,35 @@ describe('structured agent session message sender', () => {
     expect(phases()).toEqual([])
   })
 
-  it('keeps a pending send only to give back what a Stop withdraws', async () => {
+  // The host's row draws it, with its stop row; the composer is left alone.
+  it('leaves a message the host recorded and a Stop then withdrew in the chat', async () => {
     const calls = deferredCalls()
     const a = send('a')
     await flush()
     calls[0].resolve(okSubmission(a.clientMessageId, 'pending'))
-    await flush()
-    expect(phases()).toEqual(['a:recorded'])
+    expect(await a.outcome).toBe('recorded')
     settleStructuredAgentSessionSendsFromJournal(
       SESSION,
       [submission(a.clientMessageId, 'rejected', { rejection: { kind: 'cancelled' } })],
       []
     )
-    expect(mocks.handBack).toHaveBeenCalledTimes(1)
+    expect(mocks.handBack).not.toHaveBeenCalled()
     expect(phases()).toEqual([])
   })
 
-  it("gives a Stop-withdrawn note to the chat's draft once its sender heard it was recorded", async () => {
+  // Its sender cleared the notes at `recorded`; the chat still shows the message, so nothing is lost.
+  it('keeps a note a Stop withdrew visible in the chat, never in a draft', async () => {
     const calls = deferredCalls()
     const note = send('notes', { callerKeepsText: true })
     await flush()
     calls[0].resolve(okSubmission(note.clientMessageId, 'pending'))
-    // The notes sender clears its notes here.
     expect(await note.outcome).toBe('recorded')
     settleStructuredAgentSessionSendsFromJournal(
       SESSION,
       [submission(note.clientMessageId, 'rejected', { rejection: { kind: 'cancelled' } })],
       []
     )
-    expect(mocks.handBack).toHaveBeenCalledWith(
-      SESSION,
-      note.clientMessageId,
-      expect.anything(),
-      undefined
-    )
+    expect(mocks.handBack).not.toHaveBeenCalled()
   })
 
   it('leaves a note its sender still holds with the sender when it comes back', async () => {
@@ -645,7 +640,7 @@ describe('structured agent session message sender', () => {
     expect(sendCalls()).toBe(2)
   })
 
-  it('hands back silently a send whose own reply says a Stop withdrew it', async () => {
+  it('leaves in the chat a send whose own reply says a Stop withdrew it', async () => {
     mocks.call.mockImplementation(async (_target, _method, params) => ({
       ok: true,
       replayed: false,
@@ -659,8 +654,8 @@ describe('structured agent session message sender', () => {
       }
     }))
     const a = send('a')
-    expect(await a.outcome).toBe('returned')
-    expect(mocks.handBack).toHaveBeenCalledTimes(1)
+    expect(await a.outcome).toBe('recorded')
+    expect(mocks.handBack).not.toHaveBeenCalled()
     expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
   })
 
@@ -674,7 +669,7 @@ describe('structured agent session message sender', () => {
     expect(await a.outcome).toBe('recorded')
   })
 
-  it('reads a pending row in the journal as the host holding it, kept only for a Stop', async () => {
+  it('reads a pending row in the journal as the host holding it, drawn from then on by that row', async () => {
     deferredCalls()
     const a = send('a')
     await flush()
@@ -686,7 +681,7 @@ describe('structured agent session message sender', () => {
     expect(await a.outcome).toBe('recorded')
     send('b')
     await flush()
-    expect(phases()).toEqual(['a:recorded', 'b:sending'])
+    expect(phases()).toEqual(['b:sending'])
   })
 
   it('reads a send the host left in doubt at a Stop as its record, and sends the next', async () => {

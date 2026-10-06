@@ -12,8 +12,7 @@ export type StructuredAgentSessionPendingSend = {
   delivery?: 'queue-if-active'
   /**
    * `sending`: out, or its same-id resend is due; the chat takes no other send meanwhile.
-   * `recorded`: the host holds it and its row draws it; kept only so a Stop that withdraws it gives
-   * the text back.
+   * `recorded`: the host holds it; an open chat draws it until the host's row or card arrives.
    */
   phase: 'sending' | 'recorded'
   /** An attempt under this id may have reached the host. */

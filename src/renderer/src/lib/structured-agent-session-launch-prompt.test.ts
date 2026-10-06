@@ -229,7 +229,7 @@ describe('settleStructuredAgentLaunchPrompt', () => {
   })
 
   // Once sent, the prompt's entry is the sender's: what it keeps after settling stays.
-  it('gives back a launch prompt the host recorded as pending and a Stop then withdrew', async () => {
+  it('leaves in the chat a launch prompt the host recorded and a Stop then withdrew', async () => {
     const stagedPrompt = stageStructuredLaunchPrompt(SESSION, 'review this')
     mocks.call.mockImplementation(async (_target, _method, params) => {
       const answer = accepted(params.envelope.clientOperationId)
@@ -244,14 +244,15 @@ describe('settleStructuredAgentLaunchPrompt', () => {
         stagedPrompt
       })
     ).resolves.toEqual({ delivered: true, failureNotified: false })
-    const [entry] = getStructuredAgentSessionPendingSends(SESSION)
-    expect(pendingTexts()).toEqual(['review this:recorded'])
+    const promptId: string = mocks.call.mock.calls.find(
+      ([, method]) => method === 'agentSession.send'
+    )?.[2].envelope.clientOperationId
 
     settleStructuredAgentSessionSendsFromJournal(
       SESSION,
       [
         {
-          clientMessageId: entry!.clientMessageId,
+          clientMessageId: promptId,
           fence: 1,
           payloadFingerprint: 'fingerprint',
           dispatchState: 'rejected',
@@ -264,7 +265,9 @@ describe('settleStructuredAgentLaunchPrompt', () => {
       ],
       []
     )
-    expect(draft()).toBe('review this')
+    // The host's row draws it, with its stop row; the composer is left alone.
+    expect(draft()).toBe('')
+    expect(pendingTexts()).toEqual([])
   })
 
   it("keeps an open chat drawing its launch prompt until the prompt's row arrives", async () => {

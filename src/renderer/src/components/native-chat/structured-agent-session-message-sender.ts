@@ -93,8 +93,7 @@ function handBack(
   entry: StructuredAgentSessionPendingSend,
   notice: readonly AgentSessionWriteNoticePart[] | null
 ): void {
-  // A caller told `recorded` let go of its copy, so a later Stop's withdrawal returns it to the chat.
-  const chatTakesText = !entry.callerKeepsText || entry.phase === 'recorded'
+  const chatTakesText = !entry.callerKeepsText
   if (chatTakesText) {
     handBackStructuredAgentSessionMessage(
       entry.sessionId,
@@ -117,16 +116,13 @@ function settleRecorded(
   submission: AgentJournalSubmission | null,
   from: 'reply' | 'journal'
 ): void {
-  if (submission && dispatchWasWithdrawn(submission) && submission.queuedMessageId === undefined) {
-    // A Stop took it back before the agent had it: the text goes back where it was typed.
-    handBack(entry, null)
-    return
-  }
-  // Kept while a Stop may still withdraw it, and, for an open chat, drawn until its row or card
-  // arrives, which can trail the reply.
+  // A message a Stop took back stays in the chat with its stop row, drawn by the host's row; the
+  // composer is left alone. An open chat draws a recorded one until its row arrives, which can
+  // trail the reply.
   const keep =
-    submission?.dispatchState === 'pending' ||
-    (from === 'reply' && structuredAgentSessionSendsWatched(entry.sessionId))
+    from === 'reply' &&
+    !(submission && dispatchWasWithdrawn(submission)) &&
+    structuredAgentSessionSendsWatched(entry.sessionId)
   finish(entry, 'recorded', keep ? { phase: 'recorded', issued: true } : undefined)
 }
 
@@ -306,9 +302,6 @@ export function settleStructuredAgentSessionSendsFromJournal(
     if (cards.has(entry.clientMessageId)) {
       finish(entry, 'recorded')
     } else if (submission) {
-      if (entry.phase === 'recorded' && submission.dispatchState === 'pending') {
-        continue
-      }
       settleRecorded(entry, submission, 'journal')
     }
   }
