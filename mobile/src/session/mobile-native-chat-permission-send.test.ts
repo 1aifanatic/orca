@@ -28,7 +28,14 @@ describe('sendMobileNativeChatPermissionResponse', () => {
   it('writes an approval as raw bytes without appending Return', async () => {
     const sendRequest = vi.fn().mockResolvedValue({
       ok: true,
-      result: { send: { handle: 'terminal', accepted: true, bytesWritten: 1 } }
+      result: {
+        send: {
+          handle: 'terminal',
+          accepted: true,
+          writeSettlement: { outcome: 'accepted' },
+          bytesWritten: 1
+        }
+      }
     })
 
     await expect(
@@ -45,6 +52,7 @@ describe('sendMobileNativeChatPermissionResponse', () => {
         terminal: 'terminal',
         text: '1',
         enter: false,
+        requireWriteSettlement: true,
         client: { id: 'phone', type: 'mobile' }
       },
       { timeoutMs: MOBILE_NATIVE_CHAT_SEND_TIMEOUT_MS, budgetSpansConnect: true }
@@ -85,7 +93,14 @@ describe('useMobileNativeChatPermissionSend', () => {
   it('keeps the marker for a permission choice, which never submits the composer', async () => {
     const sendRequest = vi.fn().mockResolvedValue({
       ok: true,
-      result: { send: { handle: 'terminal', accepted: true, bytesWritten: 1 } }
+      result: {
+        send: {
+          handle: 'terminal',
+          accepted: true,
+          writeSettlement: { outcome: 'accepted' },
+          bytesWritten: 1
+        }
+      }
     })
     function Harness(): null {
       respond = useMobileNativeChatPermissionSend({
@@ -117,7 +132,14 @@ describe('useMobileNativeChatPermissionSend', () => {
     const onSendError = vi.fn()
     const sendRequest = vi.fn().mockResolvedValue({
       ok: true,
-      result: { send: { handle: 'terminal', accepted: true, bytesWritten: 1 } }
+      result: {
+        send: {
+          handle: 'terminal',
+          accepted: true,
+          writeSettlement: { outcome: 'accepted' },
+          bytesWritten: 1
+        }
+      }
     })
     function Harness(): null {
       respond = useMobileNativeChatPermissionSend({

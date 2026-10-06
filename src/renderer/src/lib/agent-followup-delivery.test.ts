@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendFollowupPromptWhenAgentReady } from './agent-followup-delivery'
 import {
   inspectRuntimeTerminalProcess,
-  sendRuntimePtyInputVerified
+  sendRuntimePtyInputForSequence
 } from '@/runtime/runtime-terminal-inspection'
 import { TUI_AGENT_CONFIG } from '../../../shared/tui-agent-config'
 
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({
   inspectRuntimeTerminalProcess: vi.fn(),
-  sendRuntimePtyInputVerified: vi.fn()
+  sendRuntimePtyInputForSequence: vi.fn()
 }))
 
 // The interpreter-wrapped agents that deliver their prompt over stdin after the
@@ -24,7 +24,7 @@ describe('sendFollowupPromptWhenAgentReady — interpreter-wrapped agents', () =
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     vi.stubGlobal('globalThis', globalThis)
     // Deliver the prompt write eagerly so the test does not depend on retries.
-    vi.mocked(sendRuntimePtyInputVerified).mockResolvedValue(true)
+    vi.mocked(sendRuntimePtyInputForSequence).mockResolvedValue(true)
   })
 
   afterEach(() => {
@@ -52,7 +52,12 @@ describe('sendFollowupPromptWhenAgentReady — interpreter-wrapped agents', () =
       const delivered = await delivery
 
       expect(delivered).toBe(true)
-      expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(null, 'pty-1', 'ship it\r', 'launch')
+      expect(sendRuntimePtyInputForSequence).toHaveBeenCalledWith(
+        null,
+        'pty-1',
+        'ship it\r',
+        'launch'
+      )
     })
 
     it(`still refuses to type into a bare ${agent} shell foreground`, async () => {
@@ -74,7 +79,7 @@ describe('sendFollowupPromptWhenAgentReady — interpreter-wrapped agents', () =
       const delivered = await delivery
 
       expect(delivered).toBe(false)
-      expect(sendRuntimePtyInputVerified).not.toHaveBeenCalled()
+      expect(sendRuntimePtyInputForSequence).not.toHaveBeenCalled()
     })
 
     it(`refuses to type into a ${agent} wrapper without a live child`, async () => {
@@ -94,7 +99,7 @@ describe('sendFollowupPromptWhenAgentReady — interpreter-wrapped agents', () =
       const delivered = await delivery
 
       expect(delivered).toBe(false)
-      expect(sendRuntimePtyInputVerified).not.toHaveBeenCalled()
+      expect(sendRuntimePtyInputForSequence).not.toHaveBeenCalled()
     })
   }
 
@@ -114,6 +119,11 @@ describe('sendFollowupPromptWhenAgentReady — interpreter-wrapped agents', () =
     })
 
     expect(delivered).toBe(true)
-    expect(sendRuntimePtyInputVerified).toHaveBeenCalledWith(null, 'pty-1', 'ship it\r', 'launch')
+    expect(sendRuntimePtyInputForSequence).toHaveBeenCalledWith(
+      null,
+      'pty-1',
+      'ship it\r',
+      'launch'
+    )
   })
 })

@@ -21,7 +21,7 @@ const testState = vi.hoisted(() => ({
   subscribeToPtyData: vi.fn(),
   replayPreHandlerPtyData: vi.fn(),
   isRemoteRuntimePtyId: vi.fn(),
-  sendRuntimePtyInputVerified: vi.fn(),
+  sendRuntimePtyInputForSequence: vi.fn(),
   inspectRuntimeTerminalProcess: vi.fn(),
   subscribeToRuntimeTerminalData: vi.fn()
 }))
@@ -43,7 +43,7 @@ vi.mock('@/components/terminal-pane/pty-pre-handler-buffer', () => ({
 
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({
   isRemoteRuntimePtyId: testState.isRemoteRuntimePtyId,
-  sendRuntimePtyInputVerified: testState.sendRuntimePtyInputVerified,
+  sendRuntimePtyInputForSequence: testState.sendRuntimePtyInputForSequence,
   inspectRuntimeTerminalProcess: testState.inspectRuntimeTerminalProcess
 }))
 
@@ -82,8 +82,8 @@ describe('post-paste submit retry Enter', () => {
     testState.replayPreHandlerPtyData.mockReset()
     testState.isRemoteRuntimePtyId.mockReset()
     testState.isRemoteRuntimePtyId.mockReturnValue(false)
-    testState.sendRuntimePtyInputVerified.mockReset()
-    testState.sendRuntimePtyInputVerified.mockResolvedValue(true)
+    testState.sendRuntimePtyInputForSequence.mockReset()
+    testState.sendRuntimePtyInputForSequence.mockResolvedValue(true)
     testState.inspectRuntimeTerminalProcess.mockReset()
     testState.subscribeToRuntimeTerminalData.mockReset()
   })
@@ -105,7 +105,7 @@ describe('post-paste submit retry Enter', () => {
 
     await expect(promise).resolves.toBe(true)
     expect(enterWrites()).toHaveLength(2)
-    expect(testState.sendRuntimePtyInputVerified).toHaveBeenLastCalledWith(
+    expect(testState.sendRuntimePtyInputForSequence).toHaveBeenLastCalledWith(
       {},
       'pty-1',
       '\r',
@@ -134,7 +134,7 @@ describe('post-paste submit retry Enter', () => {
 
   it('holds the PTY input transaction across the retry Enter', async () => {
     const writes: string[] = []
-    testState.sendRuntimePtyInputVerified.mockImplementation(
+    testState.sendRuntimePtyInputForSequence.mockImplementation(
       async (_settings: unknown, _ptyId: string, data: string) => {
         writes.push(data)
         return true
@@ -163,7 +163,7 @@ describe('post-paste submit retry Enter', () => {
   })
 
   it('keeps a successful submit successful when the retry Enter is rejected', async () => {
-    testState.sendRuntimePtyInputVerified
+    testState.sendRuntimePtyInputForSequence
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error('terminal_not_writable'))
@@ -178,7 +178,7 @@ describe('post-paste submit retry Enter', () => {
 })
 
 function enterWrites(): unknown[][] {
-  return testState.sendRuntimePtyInputVerified.mock.calls.filter((call) => call[2] === '\r')
+  return testState.sendRuntimePtyInputForSequence.mock.calls.filter((call) => call[2] === '\r')
 }
 
 function startCodexSubmit(): Promise<boolean> {

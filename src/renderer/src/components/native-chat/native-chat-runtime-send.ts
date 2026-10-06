@@ -5,7 +5,7 @@
 import { sendNativeChatObservedWrites } from './native-chat-observed-send'
 import {
   sendRuntimePtyInput,
-  sendRuntimePtyInputVerified
+  sendRuntimePtyInputForSequence
 } from '@/runtime/runtime-terminal-inspection'
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import type { AskAnswerKeyGroup } from './native-chat-interactive-prompt'
@@ -143,7 +143,7 @@ export async function sendNativeChatMessageVerified(
 
   // Why: option commands await remote/SSH acceptance so the Enter cannot race
   // ahead of the body while a model-change observer is already armed.
-  const bodyAccepted = await sendRuntimePtyInputVerified(
+  const bodyAccepted = await sendRuntimePtyInputForSequence(
     settings,
     ptyId,
     buildNativeChatPasteBytes(text),
@@ -152,7 +152,7 @@ export async function sendNativeChatMessageVerified(
   if (!bodyAccepted || signal?.aborted || !(await waitForNativeChatSubmit(signal))) {
     return false
   }
-  return sendRuntimePtyInputVerified(settings, ptyId, NATIVE_CHAT_SUBMIT, 'driving')
+  return sendRuntimePtyInputForSequence(settings, ptyId, NATIVE_CHAT_SUBMIT, 'driving')
 }
 
 /** Types a slash command as individual keys so Codex opens its command palette. */
@@ -168,7 +168,9 @@ export async function typeNativeChatCommand(
     command,
     signal,
     write: async (key) =>
-      (await sendRuntimePtyInputVerified(settings, ptyId, key, 'driving')) ? 'accepted' : 'rejected'
+      (await sendRuntimePtyInputForSequence(settings, ptyId, key, 'driving'))
+        ? 'accepted'
+        : 'rejected'
   })
   return outcome === 'accepted'
 }
@@ -197,7 +199,7 @@ export function sendNativeChatTypedCommand(
           if (isCancelled()) {
             return 'rejected'
           }
-          return (await sendRuntimePtyInputVerified(settings, ptyId, key, 'driving'))
+          return (await sendRuntimePtyInputForSequence(settings, ptyId, key, 'driving'))
             ? 'accepted'
             : 'rejected'
         }
@@ -232,48 +234,18 @@ export function sendNativeChatAskAnswer(
   if (groups.length === 0) {
     return { cancel: () => {}, settleAfterMs: 0 }
   }
-  const timers: ReturnType<typeof setTimeout>[] = []
-  const verifiedWrites: Promise<boolean>[] = []
-  let cancelled = false
-  groups.forEach((group, index) => {
-    timers.push(
-      setTimeout(() => {
-        const bytes = 'raw' in group ? group.raw : buildNativeChatPasteBytes(group.text)
-        if (onSettled) {
-          // Why: inference must use the remote host's acceptance result, not
-          // the fire-and-forget renderer dispatch result.
-          verifiedWrites.push(
-            sendRuntimePtyInputVerified(settings, ptyId, bytes, 'driving').catch(() => false)
-          )
-        } else {
-          sendRuntimePtyInput(settings, ptyId, bytes, 'driving')
-        }
-      }, index * NATIVE_CHAT_QUESTION_STEP_MS)
-    )
-  })
-  const settleAfterMs =
-    (groups.length - 1) * NATIVE_CHAT_QUESTION_STEP_MS + NATIVE_CHAT_SUBMIT_DELAY_MS
-  if (onSettled) {
-    // Why: status inference must wait for every paced write and must not run
-    // after cancellation or a rejected runtime write.
-    timers.push(
-      setTimeout(() => {
-        void Promise.all(verifiedWrites).then((results) => {
-          if (!cancelled) {
-            onSettled(results.every(Boolean))
-          }
-        })
-      }, settleAfterMs)
-    )
-  }
-  return {
-    cancel: () => {
-      cancelled = true
-      for (const timer of timers) {
-        clearTimeout(timer)
-      }
-    },
-    // Hold the card until the last keystroke has fired and its submit gap passed.
-    settleAfterMs
-  }
+  return sendNativeChatObservedWrites(
+    settings,
+    ptyId,
+    groups.map((group, index) => ({
+      data: 'raw' in group ? group.raw : buildNativeChatPasteBytes(group.text),
+      delayBeforeMs: index === 0 ? 0 : NATIVE_CHAT_QUESTION_STEP_MS
+    })),
+    {
+      clearInput: '',
+      stopOnUnconfirmed: !!onSettled,
+      settleDelayMs: NATIVE_CHAT_SUBMIT_DELAY_MS,
+      onDeliverySettled: onSettled
+    }
+  )
 }

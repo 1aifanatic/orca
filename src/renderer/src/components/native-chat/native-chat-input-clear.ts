@@ -42,6 +42,9 @@ export function clearUnsubmittedAgentInput(
   ptyId: string,
   options?: NativeChatSendOptions
 ): void {
+  if (options?.clearInput === '') {
+    return
+  }
   sendRuntimePtyInput(
     settings,
     ptyId,

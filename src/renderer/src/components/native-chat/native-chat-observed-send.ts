@@ -1,4 +1,5 @@
 import { sendRuntimePtyInputVerified } from '@/runtime/runtime-terminal-inspection'
+import { TerminalSendAcknowledgmentUnavailableError } from '../../../../shared/terminal-send-acknowledgment'
 import type { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { enqueueNativeChatPtySend } from './native-chat-pty-send-queue'
 import {
@@ -13,12 +14,13 @@ export function sendNativeChatObservedWrites(
   settings: ReturnType<typeof getSettingsForAgentTabRuntimeOwner>,
   ptyId: string,
   writes: readonly { data: string; delayBeforeMs: number }[],
-  options: NativeChatSendOptions
+  options: NativeChatSendOptions & { stopOnUnconfirmed?: boolean; settleDelayMs?: number }
 ) {
   return enqueueNativeChatPtySend(
     ptyId,
     writes.reduce((total, write) => total + write.delayBeforeMs, 0) +
-      clearConfirmDurationMs(options),
+      clearConfirmDurationMs(options) +
+      (options.settleDelayMs ?? 0),
     ({ isCancelled, delay, markSubmitted }) => {
       let reportedUnconfirmed = false
       let acknowledged = true
@@ -28,8 +30,15 @@ export function sendNativeChatObservedWrites(
         }
         const write = writes[index]
         if (!write) {
-          options.onDeliverySettled?.(acknowledged)
-          markSubmitted()
+          const finish = (): void => {
+            options.onDeliverySettled?.(acknowledged)
+            markSubmitted()
+          }
+          if (options.settleDelayMs) {
+            delay(options.settleDelayMs, finish)
+          } else {
+            finish()
+          }
           return
         }
         const send = (): void => {
@@ -49,9 +58,8 @@ export function sendNativeChatObservedWrites(
               }
               writeAt(index + 1)
             })
-            // A lost acknowledgment is not a refusal: never re-send these bytes, but still submit
-            // a body that may have landed, as the unobserved path does.
-            .catch(() => {
+            // Legacy handoff can advance the sequence without acknowledging the answer.
+            .catch((error) => {
               if (isCancelled()) {
                 return
               }
@@ -59,6 +67,17 @@ export function sendNativeChatObservedWrites(
               if (!reportedUnconfirmed) {
                 reportedUnconfirmed = true
                 options.onWriteUnconfirmed?.()
+              }
+              if (
+                options.stopOnUnconfirmed &&
+                !(
+                  error instanceof TerminalSendAcknowledgmentUnavailableError &&
+                  error.legacyHandoffCompleted
+                )
+              ) {
+                options.onDeliverySettled?.(false)
+                markSubmitted()
+                return
               }
               writeAt(index + 1)
             })

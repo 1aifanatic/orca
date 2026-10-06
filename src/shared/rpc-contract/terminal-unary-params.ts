@@ -105,6 +105,8 @@ export const TerminalSend = TerminalHandle.extend({
   interrupt: z.unknown().optional(),
   // Why: older hosts strip this optional intent and retain their direct-send behavior.
   agentPrompt: z.literal(true).optional(),
+  // Older hosts omit the response proof; callers keep that delivery unconfirmed.
+  requireWriteSettlement: z.literal(true).optional(),
   // Why: waiting observes the same prompt receipt; it never authorizes a second write.
   waitSubmitMs: z.number().int().min(0).max(3_600_000).optional(),
   resolvedLaunchDraft: z

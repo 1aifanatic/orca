@@ -26,24 +26,54 @@
       "providers": ["local", "daemon", "ssh", "wsl", "remote-runtime", "mobile-relay"],
       "coveredPlatforms": ["macos"],
       "coveredProviders": ["local", "daemon", "ssh", "remote-runtime", "mobile-relay"],
-      "coverageNotes": "Production desktop and mobile components/hooks run with native surfaces mocked on macOS; provider settlement, paired owner routing, SSH callback and daemon recovery have contract tests. Covered provider labels describe contracts, not physical host deployments. WSL uses the unchanged local/daemon boundary; physical WSL and Linux/Windows execution remain gaps.",
+      "coverageNotes": "Production mobile controller, parser, presentation, overlay, view, question, permission and composer run with native surfaces mocked on macOS. Desktop selector groups traverse the real observed-write queue, verified helper, IPC chunker, SSH provider and transport callbacks; paired sends traverse the real dispatcher and runtime writer into that provider. Local/daemon contracts and released-version terminal codecs are covered. Provider labels describe contracts, not physical deployments; physical WSL/Linux/Windows remain gaps.",
       "motivatingLinks": ["https://github.com/stablyai/orca/pull/25761"],
-      "invariant": "Only an acknowledged answer may hide its prompt occurrence; obsolete replies cannot alter a replacement occurrence/session; one cancellation is in flight while Cancel remains available during paced answers; a prompt never prevents stopping active dictation; verified refusal never duplicates input.",
-      "oracle": "After accepted phone Deny with unchanged host status the card disappears and Send is enabled; refusal/unknown retains enabled choices; reversed completions cannot reopen an answered replacement or dismiss a rebound session; repeated Cancel writes Escape once; active dictation can stop; accepted SSH answers reach Enter, and unknown ordinary messages never repeat their body.",
+      "invariant": "Only provider-acknowledged replies may hide their observed prompt occurrence; view-only toggles preserve the occurrence while real clear/replacement supersedes it; obsolete results cannot change replacements; selector groups wait for complete writes before pacing; legacy whole-write handoff permits remaining groups exactly once without acknowledging dismissal; refusal or unknown handoff never causes replay; cancellation stops unsent groups and active dictation can stop.",
+      "oracle": "After acknowledged phone replies with stale host status, the exact card disappears and Send is enabled; unknown/refused/missing-proof replies retain enabled choices; a same-occurrence view toggle retains pending acknowledgment and real replacements discard it. A slow 32 KiB SSH answer completes all chunks before Enter; cancellation preserves issued bytes but omits remaining groups. Paired settlement invokes the actual provider, lost callbacks remain unknown, and older hosts finish ordinary messages, launch and selector groups once without claiming prompt acknowledgment.",
       "commands": [
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts src/main/runtime/runtime-terminal-writer.test.ts src/main/runtime/rpc/terminal-send.test.ts src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts src/main/runtime/terminal-send-stale-leaf-liveness.test.ts src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts tests/e2e/native-chat-ssh-delivery.unit.test.ts --maxWorkers=2",
+        "ORCA_BACKGROUND_LAUNCH=1 mobile/node_modules/.bin/vitest run --config mobile/vitest.config.ts mobile/src/session/MobileNativeChatView.prompt-presentation.test.ts mobile/src/session/use-mobile-native-chat-controller.test.ts mobile/src/session/use-mobile-native-chat-ask-dismiss.test.ts mobile/src/session/MobileNativeChatView.test.ts mobile/src/session/mobile-prompt-controller.test.ts mobile/src/session/mobile-native-chat-permission-send.test.ts mobile/src/session/use-mobile-native-chat-cancel-ask.test.ts mobile/src/session/use-mobile-native-chat-answer-send.test.ts mobile/src/session/use-mobile-native-chat-message-send.test.ts mobile/src/session/mobile-native-chat-send.test.ts --maxWorkers=2",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts --maxWorkers=1",
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts --maxWorkers=2",
         "ORCA_BACKGROUND_LAUNCH=1 mobile/node_modules/.bin/vitest run --config mobile/vitest.config.ts mobile/src/session/MobileNativeChatView.prompt-presentation.test.ts mobile/src/session/use-mobile-native-chat-controller.test.ts mobile/src/session/use-mobile-native-chat-ask-dismiss.test.ts mobile/src/session/MobileNativeChatView.test.ts --maxWorkers=2"
       ],
       "testFiles": [
         "src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx",
-        "src/renderer/src/components/native-chat/native-chat-observed-send.test.ts",
         "src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx",
+        "src/renderer/src/components/native-chat/native-chat-observed-send.test.ts",
+        "src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts",
+        "src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts",
+        "src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx",
+        "src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx",
+        "src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx",
+        "src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts",
         "src/renderer/src/runtime/runtime-terminal-inspection.test.ts",
+        "src/renderer/src/lib/agent-paste-draft.test.ts",
+        "src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts",
+        "src/renderer/src/lib/agent-followup-delivery.test.ts",
         "src/main/ipc/pty/ipc/write-input-acceptance.test.ts",
+        "src/main/ipc/pty/ipc/write-input-user-input.test.ts",
+        "src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts",
+        "src/main/ipc/pty-write-ipc-validation.test.ts",
+        "src/main/providers/ssh-pty-write.test.ts",
+        "src/main/daemon/daemon-pty-write-settlement-recovery.test.ts",
+        "src/main/runtime/runtime-terminal-writer.test.ts",
+        "src/main/runtime/rpc/terminal-send.test.ts",
+        "src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts",
+        "src/main/runtime/terminal-send-stale-leaf-liveness.test.ts",
+        "src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts",
+        "tests/e2e/native-chat-ssh-delivery.unit.test.ts",
         "mobile/src/session/MobileNativeChatView.prompt-presentation.test.ts",
         "mobile/src/session/use-mobile-native-chat-controller.test.ts",
         "mobile/src/session/use-mobile-native-chat-ask-dismiss.test.ts",
-        "mobile/src/session/MobileNativeChatView.test.ts"
+        "mobile/src/session/MobileNativeChatView.test.ts",
+        "mobile/src/session/mobile-prompt-controller.test.ts",
+        "mobile/src/session/mobile-native-chat-permission-send.test.ts",
+        "mobile/src/session/use-mobile-native-chat-cancel-ask.test.ts",
+        "mobile/src/session/use-mobile-native-chat-answer-send.test.ts",
+        "mobile/src/session/use-mobile-native-chat-message-send.test.ts",
+        "mobile/src/session/mobile-native-chat-send.test.ts",
+        "tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts"
       ],
       "assertionRefs": [
         {
@@ -68,6 +98,34 @@
             "reports proven refusal and unknown acknowledgment separately",
             "waits for each chunk and stops a paste after refusal"
           ]
+        },
+        {
+          "file": "mobile/src/session/mobile-prompt-controller.test.ts",
+          "assertions": [
+            "keeps a question actionable after lost, legacy or unverifiable acknowledgment",
+            "acknowledges the same pending permission or Ask after a view-only toggle",
+            "drops an accepted result after real prompt/session/PTY/tab/clear replacement",
+            "finishes an older-host selector once without dismissing its unacknowledged card"
+          ]
+        },
+        {
+          "file": "tests/e2e/native-chat-ssh-delivery.unit.test.ts",
+          "assertions": [
+            "serializes every chunk of a healthy large SSH answer before Enter and dismissal",
+            "cancels remaining paced groups while an already-issued body still settles",
+            "paired terminal.send uses provider settlement for accepted and lost acknowledgment",
+            "older paired hosts stay unconfirmed while ordinary sequences finish without repeating bytes",
+            "finishes every older-host selector group once while leaving its answer unacknowledged"
+          ]
+        },
+        {
+          "file": "src/main/runtime/runtime-terminal-writer.test.ts",
+          "assertions": [
+            "waits for complete body settlement before Enter",
+            "does not send the suffix after refusal or unknown settlement",
+            "returns unknown after an acknowledged prefix followed by refusal or bookkeeping failure",
+            "preserves legacy raw body and Enter writes"
+          ]
         }
       ],
       "evidenceRuns": [
@@ -88,6 +146,33 @@
           "result": "passed",
           "durationSeconds": 10.32,
           "summary": "73 tests passed across four explicit files after the controller extraction, covering the production view/card/composer, occurrence dismissal, controller session scoping, unknown/refused replies and stopping active dictation."
+        },
+        {
+          "date": "2026-10-06",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/NativeChatInteractiveCard.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/native-chat-observed-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send.test.ts src/renderer/src/components/native-chat/native-chat-runtime-send-launch-draft.test.ts src/renderer/src/components/native-chat/NativeChatResolvedView.prompt-card-input.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.turn-status.test.tsx src/renderer/src/components/native-chat/NativeChatApprovalCard.test.tsx src/renderer/src/components/native-chat/native-chat-interactive-prompt.test.ts src/renderer/src/runtime/runtime-terminal-inspection.test.ts src/renderer/src/lib/agent-paste-draft.test.ts src/renderer/src/lib/agent-paste-draft-submit-retry.test.ts src/renderer/src/lib/agent-followup-delivery.test.ts src/main/ipc/pty/ipc/write-input-acceptance.test.ts src/main/ipc/pty/ipc/write-input-user-input.test.ts src/main/ipc/pty/ipc/write-input-chunk-yield.test.ts src/main/ipc/pty-write-ipc-validation.test.ts src/main/providers/ssh-pty-write.test.ts src/main/daemon/daemon-pty-write-settlement-recovery.test.ts src/main/runtime/runtime-terminal-writer.test.ts src/main/runtime/rpc/terminal-send.test.ts src/main/runtime/rpc/terminal-send-launch-draft-resolution.test.ts src/main/runtime/terminal-send-stale-leaf-liveness.test.ts src/renderer/src/lib/agent-paste-draft-readiness-budget.test.ts tests/e2e/native-chat-ssh-delivery.unit.test.ts --maxWorkers=2",
+          "result": "passed",
+          "durationSeconds": 20.74,
+          "summary": "335 tests passed across 25 explicit files, including production selector-to-SSH and paired runtime delivery composition."
+        },
+        {
+          "date": "2026-10-06",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 mobile/node_modules/.bin/vitest run --config mobile/vitest.config.ts mobile/src/session/MobileNativeChatView.prompt-presentation.test.ts mobile/src/session/use-mobile-native-chat-controller.test.ts mobile/src/session/use-mobile-native-chat-ask-dismiss.test.ts mobile/src/session/MobileNativeChatView.test.ts mobile/src/session/mobile-prompt-controller.test.ts mobile/src/session/mobile-native-chat-permission-send.test.ts mobile/src/session/use-mobile-native-chat-cancel-ask.test.ts mobile/src/session/use-mobile-native-chat-answer-send.test.ts mobile/src/session/use-mobile-native-chat-message-send.test.ts mobile/src/session/mobile-native-chat-send.test.ts --maxWorkers=2",
+          "result": "passed",
+          "durationSeconds": 2.18,
+          "summary": "178 tests passed across 10 explicit files, including 15 actual controller-to-card/send composition scenarios and older-host selector completion without dismissal."
+        },
+        {
+          "date": "2026-10-06",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test tests/e2e/cross-version-wire/cross-version-terminal-wire.unit.test.ts --maxWorkers=1",
+          "result": "passed",
+          "durationSeconds": 25.68,
+          "summary": "10 terminal wire codec compatibility cases passed against current and two supported released source versions; this is a codec/RPC-reader contract, not a physical mixed-version paired deployment."
         }
       ],
       "runtimeBudget": {
@@ -100,17 +185,19 @@
       },
       "redGreenEvidence": {
         "status": "partial",
-        "evidence": "The fixes follow captured failing outcomes and exercise production components/contracts. Full change-reverted execution of this gate is not recorded."
+        "evidence": "Immutable 8b2538 baseline reproduced Enter overtaking the SSH body and paired raw acceptance without provider settlement. Desired-behavior ablations replacing only baseline mobile sender/occurrence modules fail five of fourteen cases; replacing selector scheduling fails one of six; replacing paired runtime writer fails two of six. The entire gate has not been reverted, and rendered/platform soak remains absent."
       },
       "performanceBudget": {
         "required": true,
-        "evidence": "No polling, subprocess, startup await or new dismissal timer. Presentation retains one observation/dismissal per existing tab scope and retires it on real observations; refs suppress obsolete callbacks. Duplicate cancellation and chunk-order/yield tests bound writes and preserve yielding between large paste chunks."
+        "evidence": "No polling, subprocess, startup await, new status producer or dismissal timer. Reuses the existing bounded per-tab committed observation and per-PTY queue; waits for each group before its existing pacing timer. Duplicate-cancel and yielding chunk tests bound writes. Optional paired proof reuses provider settlement only for requesting clients; legacy requests keep their raw path."
       },
       "knownGaps": [
         "Provider acknowledgment proves handoff, not agent consumption or prompt closure; a host prompt gate remains deferred pending captured closing lifecycles.",
         "Rendered Electron and physical mobile/microphone behavior require remote QA; native surfaces are mocked in these unit tests.",
         "Physical WSL, Linux/Windows, paired mixed-version deployment and network fault campaigns have not been exercised.",
-        "Heuristic questions retain their existing content key until a real clear/replacement observation."
+        "Heuristic questions retain their existing content key until a real clear/replacement observation.",
+        "Older hosts provide whole-write handoff only: selector groups finish without replay, but the prompt stays unacknowledged until a real observation supersedes it.",
+        "Cancelling a paced answer stops future groups; bytes already handed to the provider, including pending chunks, can still settle."
       ],
       "promotionCriteria": [
         "Record change-reverted red/green evidence and repeatable remote rendered approval/question/dictation journeys.",

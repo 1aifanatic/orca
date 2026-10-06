@@ -30,7 +30,7 @@ import {
 export type MobileNativeChatAnswerSend = {
   /** Answer the current question(s) from the card's per-question selections. */
   answerAsk: (prompt: AskPrompt, selections: AskAnswerSelection[]) => Promise<boolean>
-  /** Drop any in-flight per-keystroke writes (call on Stop). */
+  /** Cancel unsent groups; an already-issued write may still settle. */
   cancelPending: () => void
 }
 
@@ -49,8 +49,8 @@ function sanitizeAskFreeText(text: string): string {
  * `terminal.send` passthrough (raw text, no enter) — same contract the
  * permission card already uses, so old runtimes replay them verbatim (no new
  * RPC; keystrokes are built client-side). The scheduled wait chain is cancelled
- * on a new answer, on `cancelPending` (Stop), and on unmount / session swap — so
- * a detached chain can never write PTY bytes to a stale pane.
+ * on a new answer, on `cancelPending` (Stop), and on unmount / session swap.
+ * Cancellation prevents later groups; already-issued writes retain their verdict.
  */
 export function useMobileNativeChatAnswerSend(args: {
   client: RpcClient | null
@@ -170,11 +170,16 @@ export function useMobileNativeChatAnswerSend(args: {
           ) {
             return false
           }
+          let legacyHandoffCompleted = false
           const outcome = await sendMobileNativeChatMessageWithOutcome({
             client,
             terminal: handle,
             text: body,
             enter,
+            requireWriteSettlement: true,
+            onUnconfirmedHandoff: () => {
+              legacyHandoffCompleted = true
+            },
             deadline,
             ...(deviceTokenRef.current
               ? { mobileClient: { id: deviceTokenRef.current, type: 'mobile' } }
@@ -186,7 +191,7 @@ export function useMobileNativeChatAnswerSend(args: {
           if (outcome === 'accepted') {
             sawAcceptedGroup = true
           }
-          return outcome === 'accepted'
+          return outcome === 'accepted' || legacyHandoffCompleted
         }
         const wait = (ms: number): Promise<boolean> => {
           // Already superseded: don't hold the successor for a full pacing step
@@ -256,6 +261,9 @@ export function useMobileNativeChatAnswerSend(args: {
           // Stop, ask-cancel and a dropped lease all bump the generation with no
           // successor, and there a landed answer IS a success.
           const sent = (await sendTerminal(formatAskAnswer(prompt, selections), true)) || fail()
+          if (sawUnknownOutcome) {
+            return fail()
+          }
           return sent && writeTurnsRef.current.get(handle) === turn
         }
         const groups =
@@ -278,6 +286,9 @@ export function useMobileNativeChatAnswerSend(args: {
             // Pacing is deliberate, not transport latency — don't charge it to the budget.
             deadline += MOBILE_NATIVE_CHAT_QUESTION_STEP_MS
           }
+        }
+        if (sawUnknownOutcome) {
+          return fail()
         }
         // Taken over on the last key: same as above, the successor owns the surface.
         return groups.length > 0 && writeTurnsRef.current.get(handle) === turn

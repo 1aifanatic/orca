@@ -17,11 +17,13 @@ export function useMobileNativeChatPromptDismiss({
   sessionKey: string | null
   observing: boolean
 }): { showPrompt: boolean; dismissPrompt: () => void } {
-  const observation = useMemo(
-    () => ({ sessionKey, promptKey: detectedPromptKey }),
-    [sessionKey, detectedPromptKey, scopeKey]
-  )
   const detectedByScopeRef = useRef(new Map<string | null, DetectedPrompt>())
+  const observation = useMemo(() => {
+    const previous = detectedByScopeRef.current.get(scopeKey)
+    return previous?.sessionKey === sessionKey && previous.promptKey === detectedPromptKey
+      ? previous
+      : { sessionKey, promptKey: detectedPromptKey }
+  }, [sessionKey, detectedPromptKey, scopeKey])
   const [dismissedByScope, setDismissedByScope] = useState<Map<string | null, PromptDismissal>>(
     () => new Map()
   )
