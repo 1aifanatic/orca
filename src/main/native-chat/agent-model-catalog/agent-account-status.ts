@@ -23,7 +23,7 @@ export class AgentModelCatalogUnavailableError extends Error {
 /** When evidence was taken: `order` says which is newer, whatever the clock does; `at` ages it. */
 export type AgentAccountEvidence = { order: number; at: number }
 
-type AgentAccountStatus = AgentSessionAvailabilityState & {
+export type AgentAccountStatus = AgentSessionAvailabilityState & {
   agent: string
   /** The probe's start, or the refused start. */
   taken: AgentAccountEvidence
@@ -79,12 +79,12 @@ export class AgentAccountStatuses {
 
   /** The answer held now, as a handle `blockedAfter` compares against. Every write replaces the
    *  object and `recheck` mutates it in place, so identity means "no newer answer". */
-  held(fingerprint: string): object | undefined {
+  held(fingerprint: string): AgentAccountStatus | undefined {
     return this.statuses.get(fingerprint)
   }
 
   /** A blocked answer arrived after `held` was taken. */
-  blockedAfter(fingerprint: string, held: object | undefined): boolean {
+  blockedAfter(fingerprint: string, held: AgentAccountStatus | undefined): boolean {
     const status = this.statuses.get(fingerprint)
     return status !== undefined && status !== held && status.state !== 'ready'
   }
