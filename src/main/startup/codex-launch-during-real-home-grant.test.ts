@@ -36,6 +36,12 @@ vi.mock('node:os', async (importOriginal) => {
   return { ...actual, homedir: homedirMock }
 })
 vi.mock('../codex-cli/command', () => ({ resolveCodexCommand: resolveCodexCommandMock }))
+// Why: stands in for asking a real Codex for its hook hashes.
+vi.mock('../codex/codex-hook-trust-derivation', async (importOriginal) =>
+  (await import('../codex/codex-hook-trust-derivation.test-fixture')).answeringCodexForTests(
+    await importOriginal()
+  )
+)
 vi.mock('../wsl', () => ({ getDefaultWslDistro: () => 'Ubuntu' }))
 vi.mock('../codex/codex-legacy-session-resume', () => ({
   prepareLegacySharedCodexSessionResume: async () => ({ useRealCodexHome: false })
@@ -95,7 +101,8 @@ const {
 const { isAgentStatusHooksEnabledForAgent } =
   await import('../../shared/agent-status-hooks-setting')
 const { getOrcaManagedCodexHomePath } = await import('../codex/codex-home-paths')
-const { _internals: lookupInternals } = await import('../codex/codex-hook-hash-lookup')
+const { deriveCodexHookHashes } = await import('../codex/codex-hook-trust-derivation')
+const { startCodexHookHashLookup } = await import('../codex/codex-hook-hash-lookup')
 const { prepareCodexRuntimeHomeForLaunch } = await import('./codex-launch-preparation')
 const { applyAgentWorkspaceTrust } = await import('../agent-workspace-trust')
 const { prepareCodexSessionResumeForLaunch } = await import('./codex-session-resume-launch')
@@ -110,6 +117,10 @@ const { createCodexHookTrustEntry } = await import('../codex/codex-hook-identity
 const { readOrcaEntryTrust } = await import('../codex/codex-real-home-entry-trust')
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
+// Why started: lets the lookup ask the stand-in Codex, as the app does.
+beforeEach(() => {
+  startCodexHookHashLookup({ pathReady: Promise.resolve(), isEnabled: () => false })
+})
 
 function settlesWithin<T>(promise: Promise<T>, ms: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -310,7 +321,7 @@ describe('a Codex launch while the real-home approval hangs', () => {
       throw new Error('codex app-server exited before completing the session')
     })
     // Why: a cold Codex answers long after a launch may wait.
-    lookupInternals.setHashResolverForTesting(() => new Promise(() => {}))
+    vi.mocked(deriveCodexHookHashes).mockReturnValueOnce(new Promise(() => {}))
 
     try {
       let settled = false

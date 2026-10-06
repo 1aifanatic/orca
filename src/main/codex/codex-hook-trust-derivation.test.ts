@@ -14,12 +14,21 @@ vi.mock('./codex-app-server-session', async (importOriginal) => ({
 }))
 vi.mock('../../shared/child-process/run-process', () => ({ runProcess: mocks.runProcess }))
 
-import { CodexAppServerUnsupportedError } from './codex-app-server-session'
-import { deriveCodexHookHashes, readCodexHookHashes } from './codex-hook-trust-derivation'
+import {
+  CodexAppServerTimeoutError,
+  CodexAppServerUnsupportedError
+} from './codex-app-server-session'
+import {
+  deriveCodexHookHashes,
+  probeCodexVersion,
+  readCodexHookHashes,
+  type CodexHookAnswer
+} from './codex-hook-trust-derivation'
 import { CODEX_EVENTS, CODEX_EVENT_LABEL } from './codex-hook-definition'
 
 const COMMAND = '/home/u/.orca/agent-hooks/codex-hook.sh'
 const LABELS = CODEX_EVENTS.map((eventName) => CODEX_EVENT_LABEL[eventName])
+const hashesOf = (answer: CodexHookAnswer) => (answer.kind === 'hashes' ? answer.hashes : null)
 
 type Scratch = { home: string; project: string }
 type ListedHook = Record<string, unknown>
@@ -112,9 +121,9 @@ describe('deriveCodexHookHashes', () => {
 
     const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.150.1')
 
-    expect(derived).toMatchObject({ codexVersion: 'codex-cli 0.150.1', failure: null })
-    expect(derived.hashes?.stop).toBe('sha256:stop')
-    expect(derived.hashes?.interrupt).toBe('sha256:interrupt')
+    expect(derived).toMatchObject({ kind: 'hashes', codexVersion: 'codex-cli 0.150.1' })
+    expect(hashesOf(derived)?.stop).toBe('sha256:stop')
+    expect(hashesOf(derived)?.interrupt).toBe('sha256:interrupt')
     expect(mocks.runCodexAppServerSession).toHaveBeenCalledTimes(1)
     expect(existsSync(scratches[0]!.home)).toBe(false)
     expect(existsSync(scratches[0]!.project)).toBe(false)
@@ -131,11 +140,10 @@ describe('deriveCodexHookHashes', () => {
     expect(scratches).toHaveLength(2)
     expect(scratches[0]!.home).not.toBe(scratches[1]!.home)
     expect(derived).toEqual({
+      kind: 'refused',
       codexVersion: 'codex-cli 0.170.0',
-      hashes: null,
       failure:
-        "Codex 0.170.0 hashes Orca's status hook differently by its file or position, so Orca does not approve it",
-      transient: false
+        "Codex 0.170.0 hashes Orca's status hook differently by its file or position, so Orca does not approve it"
     })
   })
 
@@ -151,7 +159,7 @@ describe('deriveCodexHookHashes', () => {
     const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.160.1')
 
     expect(calls).toBe(2)
-    expect(derived.hashes?.stop).toBe('sha256:stop')
+    expect(hashesOf(derived)?.stop).toBe('sha256:stop')
   })
 
   it('answers that Codex 0.128 needs no approval when it lists the entry with no hash', async () => {
@@ -171,8 +179,7 @@ describe('deriveCodexHookHashes', () => {
 
     const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.128.0')
 
-    expect(derived.failure).toBeNull()
-    expect(derived.hashes).toEqual(
+    expect(hashesOf(derived)).toEqual(
       Object.fromEntries(
         LABELS.filter((label) => label !== 'interrupt').map((label) => [label, null])
       )
@@ -187,20 +194,26 @@ describe('deriveCodexHookHashes', () => {
     const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.127.0')
 
     expect(derived).toEqual({
+      kind: 'refused',
       codexVersion: 'codex-cli 0.127.0',
-      hashes: null,
-      failure: 'Codex 0.127.0 is too old for Orca status; update Codex',
-      transient: false
+      failure: 'Codex 0.127.0 is too old for Orca status; update Codex'
     })
   })
 
-  it('reports a version probe that timed out as worth asking again', async () => {
+  it('reports an app-server that timed out as worth asking again', async () => {
+    mocks.runCodexAppServerSession.mockRejectedValue(
+      new CodexAppServerTimeoutError('hooks/list timed out')
+    )
+
+    const derived = await deriveCodexHookHashes('/bin/codex', COMMAND, 'codex-cli 0.150.1')
+
+    expect(derived.kind).toBe('pending')
+  })
+
+  it('reads no version from a `codex --version` that timed out', async () => {
     mocks.runProcess.mockResolvedValue({ code: null, stdout: '', stderr: '', timedOut: true })
 
-    const derived = await deriveCodexHookHashes('/bin/codex', COMMAND)
-
-    expect(derived).toMatchObject({ hashes: null, transient: true })
-    expect(mocks.runCodexAppServerSession).not.toHaveBeenCalled()
+    expect(await probeCodexVersion('/bin/codex')).toBeNull()
   })
 
   it('gives `codex --version` a throwaway CODEX_HOME of its own', async () => {
@@ -210,13 +223,9 @@ describe('deriveCodexHookHashes', () => {
       expect(existsSync(versionHome)).toBe(true)
       return { code: 0, stdout: 'codex-cli 0.150.1\n', stderr: '', timedOut: false }
     })
-    answerHooksList((scratch) => everyCopy(scratch, (label) => `sha256:${label}`))
 
-    const derived = await deriveCodexHookHashes('/bin/codex', COMMAND)
-
-    expect(derived.codexVersion).toBe('codex-cli 0.150.1')
+    expect(await probeCodexVersion('/bin/codex')).toBe('codex-cli 0.150.1')
     expect(existsSync(versionHome)).toBe(false)
-    expect(mocks.runCodexAppServerSession.mock.calls[0]![0].env.CODEX_HOME).not.toBe(versionHome)
   })
 })
 

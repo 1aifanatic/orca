@@ -12,8 +12,7 @@ import {
   findOrcaEntrySlots,
   getManagedCodexHookHome
 } from './codex-hook-orca-approvals'
-import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
-import { isDefinitiveCodexHookAnswer } from './codex-hook-hash-lookup'
+import type { CodexHookAnswer } from './codex-hook-trust-derivation'
 
 /**
  * Codex hook status for a managed home, read from its files: Orca's entry in
@@ -22,7 +21,7 @@ import { isDefinitiveCodexHookAnswer } from './codex-hook-hash-lookup'
  */
 export function readCodexHookHomeStatus(
   runtimeHomePath: string,
-  answer: CodexHookTrustAnswer | null
+  answer: CodexHookAnswer | null
 ): AgentHookInstallStatus {
   const home = getManagedCodexHookHome(runtimeHomePath)
   const configPath = home.hooksJsonPath
@@ -47,12 +46,12 @@ export function readCodexHookHomeStatus(
     trustReadError = error instanceof Error ? error.message : String(error)
   }
   const approvals = approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)
-  if (!answer?.hashes) {
+  if (answer?.kind !== 'hashes') {
     const reason = answer?.failure ?? 'Orca has not asked Codex yet'
     if (slots.size === 0) {
       return status('not_installed', false, reason)
     }
-    if (isDefinitiveCodexHookAnswer(answer)) {
+    if (answer?.kind === 'refused') {
       return status('partial', true, `Orca's hook entry is installed, but ${reason}`)
     }
     // Why not an error: until Codex answers, the approval is the home's earlier one or Orca's own hash.

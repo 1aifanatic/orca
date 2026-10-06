@@ -153,7 +153,7 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
         ACCOUNT_HOME,
         undefined,
         codexHooksOn,
-        3_000
+        true
       )
     }
   )
@@ -186,7 +186,7 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       expect(mocks.ensureRealHomeCodexHookState).not.toHaveBeenCalled()
       expect(mocks.awaitRealHomeCodexHookTrust).not.toHaveBeenCalled()
       if (codexHooksOn) {
-        expect(mocks.installForLaunchPrep).toHaveBeenCalledWith(ACCOUNT_HOME, 3_000)
+        expect(mocks.installForLaunchPrep).toHaveBeenCalledWith(ACCOUNT_HOME, true)
         expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()
       } else {
         expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
@@ -203,8 +203,8 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
     await prepareCodexRuntimeHomeForLaunch(undefined, undefined, { launchesCodex: false })
 
     expect(mocks.prepareRuntimeHomeForLaunch.mock.calls).toEqual([
-      [ACCOUNT_HOME, undefined, true, 0],
-      [ACCOUNT_HOME, undefined, true, 0]
+      [ACCOUNT_HOME, undefined, true, false],
+      [ACCOUNT_HOME, undefined, true, false]
     ])
   })
 })

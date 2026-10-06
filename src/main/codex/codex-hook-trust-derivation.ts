@@ -1,3 +1,4 @@
+import { realpathSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,13 +23,16 @@ import {
  */
 export type CodexHookHashes = Readonly<Partial<Record<CodexEventLabel, string | null>>>
 
-export type CodexHookTrustDerivation =
-  | { codexVersion: string; hashes: CodexHookHashes; failure: null; transient: false }
-  | { codexVersion: string | null; hashes: null; failure: string; transient: boolean }
+/** What Codex said about Orca's entry. */
+export type CodexHookAnswer =
+  | { kind: 'hashes'; codexVersion: string; hashes: CodexHookHashes }
+  /** Codex answered, and its answer cannot approve Orca's entry: too old, unrecognized, inconsistent. */
+  | { kind: 'refused'; codexVersion: string; failure: string }
+  /** No answer yet (not asked, timed out, not found); asking again may get one. */
+  | { kind: 'pending'; failure: string }
 
-const VERSION_TIMEOUT_MS = 5_000
-// Why longer off the launch path: macOS assesses a new codex on its first run, measured at 10-12 s.
-const DERIVE_VERSION_TIMEOUT_MS = 30_000
+// Why this long off the launch path: macOS assesses a new codex on its first run, measured at 10-12 s.
+const VERSION_TIMEOUT_MS = 30_000
 // Why: an app-server start with a cold sqlite takes ~4 s; this bounds a hung binary.
 const DERIVE_TIMEOUT_MS = 30_000
 // Why a second group: the copy after it shows whether Codex's hash depends on position.
@@ -50,23 +54,10 @@ export type CodexHookScratchListing = {
 export async function deriveCodexHookHashes(
   codexPath: string,
   hookCommand: string,
-  knownVersion?: string
-): Promise<CodexHookTrustDerivation> {
-  let codexVersion: string | null = knownVersion ?? null
-  const failed = (failure: string, transient = false): CodexHookTrustDerivation => ({
-    codexVersion,
-    hashes: null,
-    failure,
-    transient
-  })
+  codexVersion: string
+): Promise<CodexHookAnswer> {
+  const refused = (failure: string): CodexHookAnswer => ({ kind: 'refused', codexVersion, failure })
   try {
-    if (!codexVersion) {
-      const probe = await probeCodexVersion(codexPath, DERIVE_VERSION_TIMEOUT_MS)
-      codexVersion = probe.version
-      if (!codexVersion) {
-        return failed(`${codexPath} did not report its version`, probe.timedOut)
-      }
-    }
     let hashes = readCodexHookHashes(
       await listScratchHomeHooks(codexPath, hookCommand),
       hookCommand
@@ -76,22 +67,23 @@ export async function deriveCodexHookHashes(
       hashes = readCodexHookHashes(await listScratchHomeHooks(codexPath, hookCommand), hookCommand)
     }
     if (hashes === 'inconsistent') {
-      return failed(
+      return refused(
         `${describeCodexVersion(codexVersion)} hashes Orca's status hook differently by its file or position, so Orca does not approve it`
       )
     }
     if (!hashes) {
-      return failed(`${describeCodexVersion(codexVersion)} did not recognize Orca's status hook`)
+      return refused(`${describeCodexVersion(codexVersion)} did not recognize Orca's status hook`)
     }
-    return { codexVersion, hashes, failure: null, transient: false }
+    return { kind: 'hashes', codexVersion, hashes }
   } catch (error) {
     if (isCodexAppServerUnsupportedError(error)) {
-      return failed(
-        `${codexVersion ? describeCodexVersion(codexVersion) : codexPath} is too old for Orca status; update Codex`
+      return refused(
+        `${describeCodexVersion(codexVersion)} is too old for Orca status; update Codex`
       )
     }
     console.warn('[codex-hook-trust] could not derive Codex hook hashes:', error)
-    return failed(error instanceof Error ? error.message : String(error), isTransient(error))
+    const failure = error instanceof Error ? error.message : String(error)
+    return isTransient(error) ? { kind: 'pending', failure } : refused(failure)
   }
 }
 
@@ -213,10 +205,20 @@ export function describeCodexVersion(codexVersion: string): string {
   return codexVersion.replace(/^codex-cli\s+/, 'Codex ')
 }
 
-export async function probeCodexVersion(
-  codexCommand: string,
-  timeoutMs = VERSION_TIMEOUT_MS
-): Promise<{ version: string | null; timedOut: boolean }> {
+// Why these fields: they change when an update or reinstall replaces the binary behind the path.
+/** The identity of the binary at `codexPath` as it is on disk now; null when there is none. */
+export function fingerprintCodex(codexPath: string): string | null {
+  try {
+    const realPath = realpathSync(codexPath)
+    const info = statSync(realPath)
+    return `${realPath}:${info.size}:${info.mtimeMs}:${info.ino}`
+  } catch {
+    return null
+  }
+}
+
+/** `codex --version`'s output; null when it reports none. */
+export async function probeCodexVersion(codexCommand: string): Promise<string | null> {
   // Why a throwaway home: even `--version` leaves a tmp/arg0 folder in its CODEX_HOME.
   const scratchHome = await mkdtemp(join(tmpdir(), 'orca-codex-version-'))
   try {
@@ -224,10 +226,9 @@ export async function probeCodexVersion(
       program: codexCommand,
       args: ['--version'],
       env: withCliRuntimeOnPath(codexCommand, { ...process.env, CODEX_HOME: scratchHome }),
-      timeoutMs
+      timeoutMs: VERSION_TIMEOUT_MS
     })
-    const version = result.code === 0 ? result.stdout.trim() : ''
-    return { version: version || null, timedOut: result.timedOut === true }
+    return (result.code === 0 && result.stdout.trim()) || null
   } finally {
     await rm(scratchHome, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
   }

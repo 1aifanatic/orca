@@ -11,13 +11,18 @@ import {
   CODEX_EVENT_LABEL,
   getCodexManagedHookInstallMaterial
 } from './codex-hook-definition'
+import type * as CodexCommand from '../codex-cli/command'
 import {
   buildScratchHooksJson,
   deriveCodexHookHashes,
+  fingerprintCodex,
   listCodexHooks,
+  probeCodexVersion,
+  type CodexHookAnswer,
   type CodexHookHashes
 } from './codex-hook-trust-derivation'
-import { _internals as lookupInternals } from './codex-hook-hash-lookup'
+import { _internals as lookupInternals, startCodexHookHashLookup } from './codex-hook-hash-lookup'
+import { memoizeCodexHookAnswer } from './codex-hook-trust-memo'
 import {
   getCodexExplicitHomeHookSourcePath,
   computeTrustKey,
@@ -26,6 +31,10 @@ import {
   upsertProjectTrustLevelInContent
 } from './config-toml-trust'
 
+vi.mock('../codex-cli/command', async (importOriginal) => ({
+  ...(await importOriginal<typeof CodexCommand>()),
+  resolveCodexCommand: () => process.env.ORCA_CODEX_HOOK_CONTRACT_BINARY ?? 'codex'
+}))
 vi.mock('electron', () => ({
   app: {
     getPath: () => {
@@ -60,6 +69,7 @@ describe.runIf(process.env.ORCA_CODEX_HOOK_CONTRACT_REQUIRED === '1' && !binary)
 describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_000 }, () => {
   let root: string
   let home: string
+  let answer: Extract<CodexHookAnswer, { kind: 'hashes' }>
   let hashes: CodexHookHashes
 
   beforeAll(async () => {
@@ -84,9 +94,14 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
     vi.stubEnv('USERPROFILE', home)
     vi.stubEnv('CODEX_HOME', join(root, 'never-used-codex-home'))
     vi.stubEnv('ORCA_USER_DATA_PATH', join(home, 'user-data'))
-    const derived = await deriveCodexHookHashes(binary!, command())
-    expect(derived.failure).toBeNull()
-    hashes = derived.hashes!
+    const codexVersion = await probeCodexVersion(binary!)
+    expect(codexVersion).not.toBeNull()
+    const derived = await deriveCodexHookHashes(binary!, command(), codexVersion!)
+    if (derived.kind !== 'hashes') {
+      throw new Error(`Codex gave no hashes: ${derived.failure}`)
+    }
+    answer = derived
+    hashes = derived.hashes
   })
 
   afterEach(() => {
@@ -100,12 +115,10 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
   /** Orca's entry installed into a managed account home, approved with the derived hashes. */
   async function installManagedHome(): Promise<void> {
     mkdirSync(join(home, '.codex'), { recursive: true })
-    lookupInternals.setHashResolverForTesting(async () => ({
-      codexVersion: 'contract',
-      hashes,
-      failure: null
-    }))
-    expect((await new CodexHookService().install(accountHome(), 0)).state).toBe('installed')
+    // Why saved: the app's lookup then re-probes the version and finds the answer, with no second hooks/list.
+    memoizeCodexHookAnswer(binary!, fingerprintCodex(binary!)!, command(), answer)
+    startCodexHookHashLookup({ pathReady: Promise.resolve(), isEnabled: () => false })
+    expect((await new CodexHookService().install(accountHome())).state).toBe('installed')
   }
 
   async function orcaListings(codexHome: string): Promise<CodexListedHook[]> {

@@ -9,7 +9,6 @@ import {
 } from '../codex/codex-legacy-session-resume'
 import { ManagedCodexHomeTemporarilyUnavailableError } from '../codex-accounts/host-codex-managed-home-ownership'
 import { codexHookService } from '../codex/hook-service'
-import { CODEX_HOOK_LAUNCH_WAIT_MS } from '../codex/codex-hook-hash-lookup'
 import {
   awaitRealHomeCodexHookTrust,
   ensureRealHomeCodexHookState
@@ -106,7 +105,7 @@ export async function prepareCodexSessionResumeForLaunch(args: {
           // and only the grant's own settle cannot race Codex's approval write.
           await awaitRealHomeCodexHookTrust()
         } else if (hooksEnabled) {
-          await codexHookService.installForLaunchPrep(resumeHome, CODEX_HOOK_LAUNCH_WAIT_MS)
+          await codexHookService.installForLaunchPrep(resumeHome, true)
         } else {
           await codexHookService.refreshRuntimeUserHooksForLaunchPrep(resumeHome)
         }

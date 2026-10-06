@@ -1,17 +1,23 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import type * as InstallerUtils from '../agent-hooks/installer-utils'
+import type * as TrustDerivation from './codex-hook-trust-derivation'
 import { isCodexManagedCommand, setupCodexHookHomes } from './hook-service-test-harness'
 
-const { getPathMock, homedirMock, hooks } = vi.hoisted(() => {
+const { getPathMock, homedirMock, hooks, codex } = vi.hoisted(() => {
   const hooks: { beforeHooksJsonWrite: (() => void) | null } = { beforeHooksJsonWrite: null }
   return {
     getPathMock: vi.fn<(name: string) => string>(),
     homedirMock: vi.fn<() => string>(),
-    hooks
+    hooks,
+    codex: {
+      fingerprintCodex: vi.fn<(codexPath: string) => string | null>(),
+      probeCodexVersion: vi.fn<(codexPath: string) => Promise<string | null>>(),
+      deriveCodexHookHashes: vi.fn()
+    }
   }
 })
 
@@ -19,6 +25,11 @@ vi.mock('electron', () => ({ app: { getPath: getPathMock } }))
 vi.mock('os', async (importOriginal) => ({
   ...(await importOriginal<typeof Os>()),
   homedir: homedirMock
+}))
+// Why: stands in for the codex on PATH; each test says what it answers.
+vi.mock('./codex-hook-trust-derivation', async (importOriginal) => ({
+  ...(await importOriginal<typeof TrustDerivation>()),
+  ...codex
 }))
 vi.mock('../agent-hooks/installer-utils', async (importOriginal) => {
   const actual = await importOriginal<typeof InstallerUtils>()
@@ -32,9 +43,9 @@ vi.mock('../agent-hooks/installer-utils', async (importOriginal) => {
 })
 
 import { CodexHookService } from './hook-service'
-import { _internals as lookupInternals } from './codex-hook-hash-lookup'
-import { fingerprintCodex, memoizeCodexHookTrust } from './codex-hook-trust-memo'
-import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
+import { _internals as lookupInternals, startCodexHookHashLookup } from './codex-hook-hash-lookup'
+import { memoizeCodexHookAnswer } from './codex-hook-trust-memo'
+import type { CodexHookAnswer } from './codex-hook-trust-derivation'
 import {
   computeTrustKey,
   getCodexExplicitHomeHookSourcePath,
@@ -56,6 +67,10 @@ import { CODEX_DAEMON_OVERRIDE_MARKER } from './codex-daemon-socket-path-guard'
 // own hash, not one Orca computes, and is written before the entry.
 
 const homes = setupCodexHookHomes(homedirMock, getPathMock)
+// Why started: lets the lookup ask the stand-in Codex, as the app does.
+beforeEach(() => {
+  startCodexHookHashLookup({ pathReady: Promise.resolve(), isEnabled: () => false })
+})
 
 const CODEX_HASHES = {
   session_start: 'sha256:codex-session_start',
@@ -108,13 +123,21 @@ function seedSystemUserStopHook(): void {
   ])
 }
 
-function useAnswer(answer: CodexHookTrustAnswer): void {
-  lookupInternals.setHashResolverForTesting(async () => answer)
+let codexBinaries = 0
+
+/** From now on the codex on PATH is a new binary that gives `answer`, as after an update. */
+function useAnswer(answer: CodexHookAnswer | Promise<CodexHookAnswer>): void {
+  codexBinaries += 1
+  codex.fingerprintCodex.mockReturnValue(`codex-${codexBinaries}`)
+  codex.probeCodexVersion.mockResolvedValue(`codex-cli 0.${codexBinaries}.0`)
+  codex.deriveCodexHookHashes.mockReturnValue(Promise.resolve(answer))
 }
 
 function useCodexHashes(): void {
-  useAnswer({ codexVersion: 'codex-cli 0.131.0', hashes: CODEX_HASHES, failure: null })
+  useAnswer({ kind: 'hashes', codexVersion: 'codex-cli 0.131.0', hashes: CODEX_HASHES })
 }
+
+const timedOut: CodexHookAnswer = { kind: 'pending', failure: 'timed out' }
 
 const command = (): string => getManagedCommand(getManagedScriptPath())
 
@@ -186,8 +209,8 @@ describe('managed-home Codex hook approval', () => {
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
     useAnswer({
+      kind: 'refused',
       codexVersion: 'codex-cli 0.127.0',
-      hashes: null,
       failure: 'Codex 0.127.0 is too old for Orca status; update Codex'
     })
 
@@ -212,9 +235,9 @@ describe('managed-home Codex hook approval', () => {
   it('writes the entry with no approval in each listed event when Codex 0.128 has no approvals', async () => {
     seedSystemUserStopHook()
     useAnswer({
+      kind: 'hashes',
       codexVersion: 'codex-cli 0.128.0',
-      hashes: { stop: null, session_start: null },
-      failure: null
+      hashes: { stop: null, session_start: null }
     })
 
     expect((await new CodexHookService().install()).state).toBe('installed')
@@ -247,7 +270,7 @@ describe('managed-home Codex hook approval', () => {
       { ...userInterrupt, sourcePath: join(systemHome, 'hooks.json') }
     ])
     // Why: a Codex before 0.150 does not know Interrupt, so Orca's entry does not lead that event.
-    useAnswer({ codexVersion: 'codex-cli 0.149.0', hashes: CODEX_HASHES, failure: null })
+    useAnswer({ kind: 'hashes', codexVersion: 'codex-cli 0.149.0', hashes: CODEX_HASHES })
 
     expect((await new CodexHookService().install()).state).toBe('installed')
 
@@ -268,12 +291,7 @@ describe('managed-home Codex hook approval', () => {
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
     // Why: before the shell PATH is hydrated, the codex a pane runs may not be found yet.
-    useAnswer({
-      codexVersion: null,
-      hashes: null,
-      failure: 'Orca could not find Codex at codex',
-      transient: true
-    })
+    codex.fingerprintCodex.mockReturnValue(null)
 
     const status = await service.install()
 
@@ -303,21 +321,14 @@ describe('managed-home Codex hook approval', () => {
   })
 
   it("turning hooks off removes an approval from an older Codex version's hash", async () => {
-    const codexPath = join(homes.userDataDir, 'codex')
-    writeFileSync(codexPath, 'codex 0.150.1')
-    memoizeCodexHookTrust(codexPath, fingerprintCodex(codexPath), command(), {
-      codexVersion: 'codex-cli 0.150.1',
-      hashes: CODEX_HASHES,
-      failure: null
-    })
     useCodexHashes()
     expect((await new CodexHookService().install()).state).toBe('installed')
     // Why: Codex updated since; the current binary's version hashes the entry differently.
-    writeFileSync(codexPath, 'codex 0.160.0')
-    memoizeCodexHookTrust(codexPath, fingerprintCodex(codexPath), command(), {
+    lookupInternals.resetForTesting()
+    memoizeCodexHookAnswer(join(homes.userDataDir, 'codex'), 'codex-0.160', command(), {
+      kind: 'hashes',
       codexVersion: 'codex-cli 0.160.0',
-      hashes: { stop: 'sha256:codex-0.160-stop' },
-      failure: null
+      hashes: { stop: 'sha256:codex-0.160-stop' }
     })
 
     await new CodexHookService().remove()
@@ -341,19 +352,17 @@ describe('managed-home Codex hook approval', () => {
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
     // Why: a Codex update makes the answer for the new binary slower than the launch may wait.
-    lookupInternals.resetForTesting()
-    lookupInternals.setHashResolverForTesting(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(
-            () =>
-              resolve({ codexVersion: 'codex-cli 0.160.0', hashes: CODEX_HASHES, failure: null }),
-            200
-          )
-        })
+    useAnswer(
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({ kind: 'hashes', codexVersion: 'codex-cli 0.160.0', hashes: CODEX_HASHES }),
+          200
+        )
+      })
     )
 
-    await service.install(undefined, 10)
+    await service.install(undefined, false)
 
     expect(listedEventApprovals()).toEqual(CODEX_HASHES)
     expect(
@@ -397,16 +406,9 @@ describe('managed-home Codex hook approval', () => {
     useCodexHashes()
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
-    lookupInternals.resetForTesting()
-    // Why a version: the app-server timed out after `codex --version` answered.
-    lookupInternals.setHashResolverForTesting(async () => ({
-      codexVersion: 'codex-cli 0.160.0',
-      hashes: null,
-      failure: 'Codex app-server timed out',
-      transient: true
-    }))
+    useAnswer({ kind: 'pending', failure: 'Codex app-server timed out' })
 
-    await service.install(undefined, 3_000)
+    await service.install()
 
     expect(listedEventApprovals()).toEqual(CODEX_HASHES)
     expect(
@@ -419,7 +421,9 @@ describe('managed-home Codex hook approval', () => {
     useCodexHashes()
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
-    useAnswer({ codexVersion: null, hashes: null, failure: 'Orca has not asked Codex yet' })
+    // Why: a new process that may not ask, and a codex it has no saved answer for.
+    lookupInternals.resetForTesting()
+    codex.fingerprintCodex.mockReturnValue('codex-unknown-to-the-cli')
 
     await service.install()
 
@@ -479,17 +483,16 @@ describe('managed-home Codex hook approval', () => {
     })
   })
 
-  it('asks Codex afresh once hooks are turned off', async () => {
+  it("keeps Codex's answer when hooks are turned off, so turning them on asks nothing", async () => {
     useCodexHashes()
     const service = new CodexHookService()
     expect((await service.install()).state).toBe('installed')
 
     await service.remove()
+    expect(service.getStatus()).toMatchObject({ state: 'not_installed', detail: null })
+    expect((await service.install()).state).toBe('installed')
 
-    expect(service.getStatus()).toMatchObject({
-      state: 'not_installed',
-      detail: 'Orca has not asked Codex yet'
-    })
+    expect(codex.deriveCodexHookHashes).toHaveBeenCalledTimes(1)
   })
 
   describe("Orca's own hash until Codex answers, as main wrote it", () => {
@@ -501,9 +504,9 @@ describe('managed-home Codex hook approval', () => {
     }
 
     it("approves a fresh home with Orca's hash when Codex answers after the launch's wait", async () => {
-      lookupInternals.setHashResolverForTesting(() => new Promise(() => {}))
+      useAnswer(new Promise(() => {}))
 
-      const status = await new CodexHookService().install(undefined, 10)
+      const status = await new CodexHookService().install(undefined, false)
 
       const runtimeHooks = JSON.parse(
         readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')
@@ -522,12 +525,7 @@ describe('managed-home Codex hook approval', () => {
     })
 
     it("approves a fresh home with Orca's hash while Codex is not found", async () => {
-      useAnswer({
-        codexVersion: null,
-        hashes: null,
-        failure: 'Orca could not find Codex at codex',
-        transient: true
-      })
+      codex.fingerprintCodex.mockReturnValue(null)
 
       expect((await new CodexHookService().install()).state).toBe('installed')
 
@@ -535,7 +533,7 @@ describe('managed-home Codex hook approval', () => {
     })
 
     it('reports an entry left without any approval while Codex has not answered', async () => {
-      useAnswer({ codexVersion: null, hashes: null, failure: 'timed out', transient: true })
+      useAnswer(timedOut)
       const service = new CodexHookService()
       await service.install()
       writeFileSync(join(managedHome(), 'config.toml'), '')
@@ -548,13 +546,13 @@ describe('managed-home Codex hook approval', () => {
 
     it("keeps each event's approval and gives Orca's hash to the rest until Codex answers", async () => {
       useAnswer({
+        kind: 'hashes',
         codexVersion: 'codex-cli 0.131.0',
-        hashes: { stop: CODEX_HASHES.stop },
-        failure: null
+        hashes: { stop: CODEX_HASHES.stop }
       })
       const service = new CodexHookService()
       await service.install()
-      useAnswer({ codexVersion: null, hashes: null, failure: 'timed out', transient: true })
+      useAnswer(timedOut)
 
       await service.install()
 
@@ -570,7 +568,7 @@ describe('managed-home Codex hook approval', () => {
     })
 
     it("replaces Orca's hash with Codex's once Codex answers", async () => {
-      useAnswer({ codexVersion: null, hashes: null, failure: 'timed out', transient: true })
+      useAnswer(timedOut)
       const service = new CodexHookService()
       await service.install()
       expect(stopApproval()).toBe(orcaStop())
@@ -583,8 +581,8 @@ describe('managed-home Codex hook approval', () => {
 
     it('uses no fallback when Codex answered that it has no hooks/list', async () => {
       useAnswer({
+        kind: 'refused',
         codexVersion: 'codex-cli 0.127.0',
-        hashes: null,
         failure: 'Codex 0.127.0 is too old for Orca status; update Codex'
       })
 
@@ -602,7 +600,7 @@ describe('managed-home Codex hook approval', () => {
       // Why reset: no resolver stub and no permission to ask, as in the CLI's process.
       lookupInternals.resetForTesting()
 
-      expect((await new CodexHookService().install(undefined, 0)).state).toBe('installed')
+      expect((await new CodexHookService().install()).state).toBe('installed')
 
       expect(stopApproval()).toBe(orcaStop())
     })

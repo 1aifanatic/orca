@@ -7,8 +7,7 @@ import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
-import type { CodexHookTrustAnswer } from './codex-hook-trust-memo'
-import type { CodexHookHashes } from './codex-hook-trust-derivation'
+import type { CodexHookAnswer, CodexHookHashes } from './codex-hook-trust-derivation'
 
 const { getPathMock, homedirMock, installExclusivelyMock, refreshExclusivelyMock, answerMock } =
   vi.hoisted(() => ({
@@ -19,7 +18,7 @@ const { getPathMock, homedirMock, installExclusivelyMock, refreshExclusivelyMock
         (runtimeHomePath: string, hashes: CodexHookHashes) => Promise<AgentHookInstallStatus>
       >(),
     refreshExclusivelyMock: vi.fn<(runtimeHomePath: string) => Promise<AgentHookInstallStatus>>(),
-    answerMock: vi.fn<(waitMs: number) => Promise<CodexHookTrustAnswer | null>>()
+    answerMock: vi.fn<(waitMs: number) => Promise<CodexHookAnswer | null>>()
   }))
 
 vi.mock('electron', () => ({ app: { getPath: getPathMock } }))
@@ -101,7 +100,7 @@ describe('launch-prep Codex hook install sharing', () => {
     const home = join(userDataDir, 'managed')
 
     const statuses = await Promise.all(
-      Array.from({ length: 7 }, () => service.installForLaunchPrep(home))
+      Array.from({ length: 7 }, () => service.installForLaunchPrep(home, false))
     )
 
     expect(statuses.every((status) => status.state === 'installed')).toBe(true)
@@ -116,13 +115,13 @@ describe('launch-prep Codex hook install sharing', () => {
     answerMock.mockImplementation(async (waitMs) => {
       await delay(Math.min(waitMs, 20))
       return waitMs > 0
-        ? { codexVersion: 'codex-cli 0.160.1', hashes: codexHashes, failure: null }
+        ? { kind: 'hashes', codexVersion: 'codex-cli 0.160.1', hashes: codexHashes }
         : null
     })
 
     await Promise.all([
-      service.installForLaunchPrep(home, 0),
-      service.installForLaunchPrep(home, 3_000)
+      service.installForLaunchPrep(home, false),
+      service.installForLaunchPrep(home, true)
     ])
 
     // Why: the plain terminal goes ahead on Orca's own hash; the Codex launch still gets Codex's.
@@ -135,8 +134,8 @@ describe('launch-prep Codex hook install sharing', () => {
     const service = new CodexHookService()
     const home = join(userDataDir, 'managed')
 
-    await Promise.all(Array.from({ length: 3 }, () => service.installForLaunchPrep(home)))
-    await service.installForLaunchPrep(home)
+    await Promise.all(Array.from({ length: 3 }, () => service.installForLaunchPrep(home, false)))
+    await service.installForLaunchPrep(home, false)
 
     expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
   })
@@ -146,8 +145,8 @@ describe('launch-prep Codex hook install sharing', () => {
     const home = join(userDataDir, 'managed')
     installExclusivelyMock.mockRejectedValueOnce(new Error('hooks.json unreadable'))
 
-    await expect(service.installForLaunchPrep(home)).rejects.toThrow('hooks.json unreadable')
-    await expect(service.installForLaunchPrep(home)).resolves.toMatchObject({
+    await expect(service.installForLaunchPrep(home, false)).rejects.toThrow('hooks.json unreadable')
+    await expect(service.installForLaunchPrep(home, false)).resolves.toMatchObject({
       state: 'installed'
     })
     expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
@@ -157,8 +156,8 @@ describe('launch-prep Codex hook install sharing', () => {
     const service = new CodexHookService()
 
     await Promise.all([
-      service.installForLaunchPrep(join(userDataDir, 'managed')),
-      service.installForLaunchPrep(join(userDataDir, 'per-account'))
+      service.installForLaunchPrep(join(userDataDir, 'managed'), false),
+      service.installForLaunchPrep(join(userDataDir, 'per-account'), false)
     ])
 
     expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
@@ -173,7 +172,7 @@ describe('launch-prep Codex hook install sharing', () => {
     const home = join(userDataDir, 'managed')
 
     await Promise.all([
-      service.installForLaunchPrep(home),
+      service.installForLaunchPrep(home, false),
       service.refreshRuntimeUserHooksForLaunchPrep(home)
     ])
 

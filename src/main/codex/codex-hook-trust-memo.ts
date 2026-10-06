@@ -1,63 +1,41 @@
-import { readFileSync, realpathSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-path'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { isPlainObject } from '../agent-hooks/hooks-json-read'
 import { getOrcaUserDataPath } from './codex-home-paths'
-import type { CodexHookHashes } from './codex-hook-trust-derivation'
+import type { CodexHookAnswer, CodexHookHashes } from './codex-hook-trust-derivation'
 import { CODEX_MANAGED_EVENT_LABELS } from './codex-hook-definition'
 import type { CodexEventLabel } from './config-toml-trust'
 
 /**
- * Orca's record of what each Codex binary answered about its hook: the
- * `codex --version` behind a binary fingerprint, and Codex's hashes per
- * version and hook command. Kept in this process and in Orca's own file under
- * userData, so a launch that finds nothing new spawns nothing and the CLI's
- * status can read what the app learned. Any read failure reads as empty, so
- * it is only ever re-derived.
+ * Orca's file of what Codex answered about its hook: the `codex --version`
+ * behind each binary fingerprint, and per version and hook command, Codex's
+ * hashes or why it gives none. Under userData, so a launch that finds nothing
+ * new spawns nothing and the CLI's status can read what the app learned. Any
+ * read failure reads as empty, so it is only ever re-derived.
  */
-type BinaryRecord = {
-  fingerprint: string
-  codexVersion: string | null
-  /** Why this binary gives no hashes; only failures that recur with the same bytes. */
-  failure: string | null
-}
+type BinaryRecord = { fingerprint: string; codexVersion: string }
 
-type VersionRecord = { command: string; hashes: CodexHookHashes }
+type VersionRecord = { command: string } & ({ hashes: CodexHookHashes } | { failure: string })
 
 type MemoFile = {
   binaries: Record<string, BinaryRecord>
   versions: Record<string, VersionRecord>
 }
 
-export type CodexHookTrustAnswer =
-  | { codexVersion: string; hashes: CodexHookHashes; failure: null }
-  /** `transient`: the failure may pass on its own (a timeout, no binary yet), so it says nothing about the binary. */
-  | { codexVersion: string | null; hashes: null; failure: string; transient?: boolean }
+/** An answer Codex itself gave, which holds for every binary of its version. */
+export type MemoizedCodexHookAnswer = Exclude<CodexHookAnswer, { kind: 'pending' }>
 
 // Why a cap: one record per Codex version or path ever seen would otherwise accumulate.
 const MAX_RECORDS = 8
-export const MISSING_CODEX_FINGERPRINT = 'missing'
-
-// Why in-process too: a persisted record from an earlier process is only trusted after this one re-probed the version.
-const processAnswers = new Map<
-  string,
-  { fingerprint: string; command: string; answer: CodexHookTrustAnswer }
->()
 
 export function getCodexHookTrustMemoPath(): string {
   return join(getOrcaUserDataPath(), 'codex-hook-trust.json')
 }
 
-// Why these fields: they change when an update or reinstall replaces the binary behind the path.
-export function fingerprintCodex(codexPath: string): string {
-  try {
-    const realPath = realpathSync(codexPath)
-    const info = statSync(realPath)
-    return `${realPath}:${info.size}:${info.mtimeMs}:${info.ino}`
-  } catch {
-    return MISSING_CODEX_FINGERPRINT
-  }
+export function codexBinaryKey(codexPath: string): string {
+  return normalizeRuntimePathForComparison(codexPath)
 }
 
 function readMemo(): MemoFile {
@@ -76,18 +54,10 @@ function readBinaries(value: unknown): Record<string, BinaryRecord> {
   return isPlainObject(value)
     ? Object.fromEntries(
         Object.entries(value).flatMap(([key, record]) =>
-          isPlainObject(record) && typeof record.fingerprint === 'string'
-            ? [
-                [
-                  key,
-                  {
-                    fingerprint: record.fingerprint,
-                    codexVersion:
-                      typeof record.codexVersion === 'string' ? record.codexVersion : null,
-                    failure: typeof record.failure === 'string' ? record.failure : null
-                  }
-                ]
-              ]
+          isPlainObject(record) &&
+          typeof record.fingerprint === 'string' &&
+          typeof record.codexVersion === 'string'
+            ? [[key, { fingerprint: record.fingerprint, codexVersion: record.codexVersion }]]
             : []
         )
       )
@@ -97,10 +67,16 @@ function readBinaries(value: unknown): Record<string, BinaryRecord> {
 function readVersions(value: unknown): Record<string, VersionRecord> {
   return isPlainObject(value)
     ? Object.fromEntries(
-        Object.entries(value).flatMap(([key, record]) => {
-          const hashes = isPlainObject(record) ? readHashes(record.hashes) : null
-          return isPlainObject(record) && typeof record.command === 'string' && hashes
-            ? [[key, { command: record.command, hashes }]]
+        Object.entries(value).flatMap(([key, record]): [string, VersionRecord][] => {
+          if (!isPlainObject(record) || typeof record.command !== 'string') {
+            return []
+          }
+          const hashes = readHashes(record.hashes)
+          if (hashes) {
+            return [[key, { command: record.command, hashes }]]
+          }
+          return typeof record.failure === 'string'
+            ? [[key, { command: record.command, failure: record.failure }]]
             : []
         })
       )
@@ -121,129 +97,67 @@ function readHashes(value: unknown): CodexHookHashes | null {
   return Object.keys(hashes).length > 0 ? hashes : null
 }
 
-function binaryKey(codexPath: string): string {
-  return normalizeRuntimePathForComparison(codexPath)
-}
-
-/** What this process already learned for this binary as it is on disk now; null when it must be asked. */
-export function readProcessCodexHookTrust(
-  codexPath: string,
-  command: string,
-  fingerprint: string = fingerprintCodex(codexPath)
-): CodexHookTrustAnswer | null {
-  const known = processAnswers.get(binaryKey(codexPath))
-  return known?.fingerprint === fingerprint && known.command === command ? known.answer : null
-}
-
 /**
- * The persisted answer for this binary as it is on disk now. In the app it is
- * only a hint: a shim keeps its bytes when the codex behind it changes, so the
- * app re-probes the version first (readPersistedCodexHookFailure).
+ * The saved answer for this binary as it is on disk now. In the app it is only
+ * a hint: a shim keeps its bytes when the codex behind it changes, so the app
+ * re-probes the version and reads readMemoizedVersionAnswer instead.
  */
-export function readMemoizedCodexHookTrust(
+export function readMemoizedCodexHookAnswer(
   codexPath: string,
   command: string,
-  fingerprint: string = fingerprintCodex(codexPath)
-): CodexHookTrustAnswer | null {
-  const inProcess = readProcessCodexHookTrust(codexPath, command, fingerprint)
-  if (inProcess) {
-    return inProcess
-  }
+  fingerprint: string
+): MemoizedCodexHookAnswer | null {
   const memo = readMemo()
-  const binary = memo.binaries[binaryKey(codexPath)]
-  if (!binary || binary.fingerprint !== fingerprint) {
-    return null
-  }
-  if (binary.failure !== null) {
-    return { codexVersion: binary.codexVersion, hashes: null, failure: binary.failure }
-  }
-  return binary.codexVersion !== null
-    ? readMemoizedVersionHashes(binary.codexVersion, command, memo)
+  const binary = memo.binaries[codexBinaryKey(codexPath)]
+  return binary?.fingerprint === fingerprint
+    ? readMemoizedVersionAnswer(binary.codexVersion, command, memo)
     : null
 }
 
-/** A persisted failure for this binary, when the version it was recorded for is still the one it reports. */
-export function readPersistedCodexHookFailure(
-  codexPath: string,
-  fingerprint: string,
-  codexVersion: string
-): string | null {
-  const binary = readMemo().binaries[binaryKey(codexPath)]
-  return binary?.fingerprint === fingerprint && binary.codexVersion === codexVersion
-    ? binary.failure
-    : null
-}
-
-export function readMemoizedVersionHashes(
+export function readMemoizedVersionAnswer(
   codexVersion: string,
   command: string,
   memo: MemoFile = readMemo()
-): CodexHookTrustAnswer | null {
+): MemoizedCodexHookAnswer | null {
   const record = memo.versions[codexVersion]
-  return record?.command === command ? { codexVersion, hashes: record.hashes, failure: null } : null
+  if (record?.command !== command) {
+    return null
+  }
+  return 'hashes' in record
+    ? { kind: 'hashes', codexVersion, hashes: record.hashes }
+    : { kind: 'refused', codexVersion, failure: record.failure }
 }
 
-/** Every hash set this process or the file holds, for any version: what Orca may have approved its entry with. */
+/** Every saved version's hashes: what Orca may have approved its entry with. */
 export function readEveryMemoizedCodexHookHashes(): CodexHookHashes[] {
-  return [
-    ...[...processAnswers.values()].flatMap(({ answer }) => (answer.hashes ? [answer.hashes] : [])),
-    ...Object.values(readMemo().versions).map(({ hashes }) => hashes)
-  ]
+  return Object.values(readMemo().versions).flatMap((record) =>
+    'hashes' in record ? [record.hashes] : []
+  )
 }
 
-/** Records a binary's answer, and its version's hashes when it has some. Never throws. */
-export function memoizeCodexHookTrust(
+/** Records the version behind a binary, and Codex's answer for that version. Never throws. */
+export function memoizeCodexHookAnswer(
   codexPath: string,
   fingerprint: string,
   command: string,
-  answer: CodexHookTrustAnswer
+  answer: MemoizedCodexHookAnswer
 ): void {
-  processAnswers.set(binaryKey(codexPath), { fingerprint, command, answer })
   try {
     const memo = readMemo()
-    const binaries = withoutKey(memo.binaries, binaryKey(codexPath))
-    binaries[binaryKey(codexPath)] = {
-      fingerprint,
-      codexVersion: answer.codexVersion,
-      failure: answer.failure
-    }
-    let versions = memo.versions
-    if (answer.hashes) {
-      versions = withoutKey(versions, answer.codexVersion)
-      versions[answer.codexVersion] = { command, hashes: answer.hashes }
-    }
+    const key = codexBinaryKey(codexPath)
+    const binaries = withoutKey(memo.binaries, key)
+    binaries[key] = { fingerprint, codexVersion: answer.codexVersion }
+    const versions = withoutKey(memo.versions, answer.codexVersion)
+    versions[answer.codexVersion] =
+      answer.kind === 'hashes'
+        ? { command, hashes: answer.hashes }
+        : { command, failure: answer.failure }
     writeFileAtomically(
       getCodexHookTrustMemoPath(),
       `${JSON.stringify({ binaries: newest(binaries), versions: newest(versions) }, null, 2)}\n`
     )
   } catch (error) {
     console.warn('[codex-hook-trust] could not record Codex hook hashes:', error)
-  }
-}
-
-/**
- * Forgets a binary's answer and its version's hashes, so the next lookup
- * asks Codex again from scratch. Never throws.
- */
-export function forgetCodexHookTrust(codexPath: string): void {
-  const key = binaryKey(codexPath)
-  const versions = [processAnswers.get(key)?.answer.codexVersion]
-  processAnswers.delete(key)
-  try {
-    const memo = readMemo()
-    versions.push(memo.binaries[key]?.codexVersion)
-    let nextVersions = memo.versions
-    for (const version of versions) {
-      if (version) {
-        nextVersions = withoutKey(nextVersions, version)
-      }
-    }
-    writeFileAtomically(
-      getCodexHookTrustMemoPath(),
-      `${JSON.stringify({ binaries: withoutKey(memo.binaries, key), versions: nextVersions }, null, 2)}\n`
-    )
-  } catch (error) {
-    console.warn('[codex-hook-trust] could not forget Codex hook hashes:', error)
   }
 }
 
@@ -256,10 +170,4 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
 // Why insertion order: a record is re-inserted on every write, so the oldest go first.
 function newest<T>(record: Record<string, T>): Record<string, T> {
   return Object.fromEntries(Object.entries(record).slice(-MAX_RECORDS))
-}
-
-export const _internals = {
-  resetForTesting(): void {
-    processAnswers.clear()
-  }
 }

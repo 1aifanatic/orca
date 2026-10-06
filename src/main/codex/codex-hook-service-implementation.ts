@@ -21,15 +21,11 @@ import { getManagedScript } from './codex-hook-script'
 import { readCodexHookHomeStatus } from './codex-hook-status'
 import {
   CODEX_HOOK_LAUNCH_WAIT_MS,
-  forgetCodexHookAnswer,
-  isDefinitiveCodexHookAnswer,
+  readEveryKnownCodexHookHashes,
   readKnownCodexHookAnswer,
   resolveCodexHookAnswerForLaunch
 } from './codex-hook-hash-lookup'
-import {
-  readEveryMemoizedCodexHookHashes,
-  type CodexHookTrustAnswer
-} from './codex-hook-trust-memo'
+import type { CodexHookAnswer } from './codex-hook-trust-derivation'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -44,8 +40,14 @@ import {
   type WslCanonicalPathSettlement
 } from './codex-wsl-hook-install-plan'
 
-/** Lane-scoped so the hooks-on install never joins the hooks-off refresh. */
-function launchPrepKey(lane: 'install' | 'refresh', runtimeHomePath: string): string {
+/**
+ * Lane-scoped so the hooks-on install never joins the hooks-off refresh, and a
+ * Codex launch never joins a plain terminal's run that went ahead without Codex's answer.
+ */
+function launchPrepKey(
+  lane: 'install' | 'codex-launch' | 'refresh',
+  runtimeHomePath: string
+): string {
   return `${lane}\0${normalizeRuntimePathForComparison(runtimeHomePath)}`
 }
 
@@ -172,15 +174,14 @@ export class CodexHookService {
     runtimeHomePath: string | null | undefined,
     target: CodexWslRuntimeHookTarget | undefined,
     hooksEnabled: boolean,
-    /** How long a Codex launch may wait for Codex's answer; other spawns go ahead with what is known. */
-    answerWaitMs = 0
+    launchesCodex: boolean
   ): Promise<AgentHookInstallStatus> {
     if (hooksEnabled) {
       // Why: a managed account's launch home is its self-contained CODEX_HOME,
       // so hooks/trust must install there rather than the shared mirror.
       return (
         (await this.installForRuntimeHomeSerialized(runtimeHomePath, target)) ??
-        (await this.installForLaunchPrep(runtimeHomePath ?? undefined, answerWaitMs))
+        (await this.installForLaunchPrep(runtimeHomePath ?? undefined, launchesCodex))
       )
     }
     return (
@@ -206,25 +207,29 @@ export class CodexHookService {
   // Why: runtimeHomePath defaults to the shared managed mirror, but a managed
   // account launching against its own self-contained CODEX_HOME passes that
   // per-account home so hooks.json/config.toml/trust land where codex reads.
+  // Only a plain terminal's launch prep skips waiting for Codex's answer.
   async install(
     runtimeHomePath: string = getOrcaManagedCodexHomePath(),
-    answerWaitMs = CODEX_HOOK_LAUNCH_WAIT_MS
+    waitsForCodex = true
   ): Promise<AgentHookInstallStatus> {
-    const answer = await resolveCodexHookAnswerForLaunch(answerWaitMs)
+    const answer = await resolveCodexHookAnswerForLaunch(
+      waitsForCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0
+    )
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () => {
       // Why each event keeps the home's approval, else gets Orca's own hash (main's fallback):
       // an answer still on its way must never leave a managed home worse than main.
       const hashes =
-        answer?.hashes ??
-        (isDefinitiveCodexHookAnswer(answer)
-          ? null
-          : {
-              ...computeOrcaCodexHookHashes(),
-              ...readApprovedOrcaHashes(
-                getManagedCodexHookHome(runtimeHomePath),
-                getManagedCommand(getManagedScriptPath())
-              )
-            })
+        answer?.kind === 'hashes'
+          ? answer.hashes
+          : answer?.kind === 'refused'
+            ? null
+            : {
+                ...computeOrcaCodexHookHashes(),
+                ...readApprovedOrcaHashes(
+                  getManagedCodexHookHome(runtimeHomePath),
+                  getManagedCommand(getManagedScriptPath())
+                )
+              }
       if (!hashes) {
         // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
         return this.refreshRuntimeUserHooksExclusively(runtimeHomePath, answer)
@@ -249,14 +254,14 @@ export class CodexHookService {
    * managed script can all change between spawns, and only a fresh run sees them.
    */
   installForLaunchPrep(
-    runtimeHomePath?: string,
-    answerWaitMs = 0
+    runtimeHomePath: string | undefined,
+    launchesCodex: boolean
   ): Promise<AgentHookInstallStatus> {
     const homePath = runtimeHomePath ?? getOrcaManagedCodexHomePath()
-    // Why a lane per wait: a Codex launch must not join a plain terminal's run that went ahead without Codex's answer.
-    const key = `${launchPrepKey('install', homePath)}${answerWaitMs > 0 ? '\0waits' : ''}`
-    return dedupeInFlightRun(this.launchPrepInFlight, key, () =>
-      this.install(homePath, answerWaitMs)
+    return dedupeInFlightRun(
+      this.launchPrepInFlight,
+      launchPrepKey(launchesCodex ? 'codex-launch' : 'install', homePath),
+      () => this.install(homePath, launchesCodex)
     )
   }
 
@@ -285,7 +290,7 @@ export class CodexHookService {
 
   private refreshRuntimeUserHooksExclusively(
     runtimeHomePath: string,
-    answer?: CodexHookTrustAnswer | null
+    answer?: CodexHookAnswer | null
   ): Promise<AgentHookInstallStatus> {
     return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, (homePath) =>
       answer === undefined ? this.getStatus(homePath) : readCodexHookHomeStatus(homePath, answer)
@@ -298,13 +303,8 @@ export class CodexHookService {
     )
   }
 
-  private async removeExclusively(): Promise<AgentHookInstallStatus> {
+  private removeExclusively(): Promise<AgentHookInstallStatus> {
     // Why every saved version: the mirror may still hold an approval from a Codex since updated.
-    const status = await removeCodexHooksExclusively(readEveryMemoizedCodexHookHashes(), () =>
-      this.getStatus()
-    )
-    // Why: turning hooks back on asks Codex afresh.
-    forgetCodexHookAnswer()
-    return status
+    return removeCodexHooksExclusively(readEveryKnownCodexHookHashes(), () => this.getStatus())
   }
 }

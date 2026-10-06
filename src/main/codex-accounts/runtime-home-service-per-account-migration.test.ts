@@ -11,6 +11,12 @@ import { writeCodexStateDbBackfillStatus } from '../codex/codex-state-db-test-fi
 const testState = { userData: '', home: '' }
 const previousEnv: Record<string, string | undefined> = {}
 
+// Why: stands in for asking a real Codex for its hook hashes.
+vi.mock('../codex/codex-hook-trust-derivation', async (importOriginal) =>
+  (await import('../codex/codex-hook-trust-derivation.test-fixture')).answeringCodexForTests(
+    await importOriginal()
+  )
+)
 vi.mock('electron', () => ({ app: { getPath: () => testState.userData } }))
 vi.mock('node:os', async () => {
   const actual = await vi.importActual<typeof NodeOs>('node:os')
@@ -86,10 +92,8 @@ describe('CodexRuntimeHomeService per-account takeover composition', () => {
     const { settings, store } = createStore([accountOne, accountTwo], accountOne.id)
     const { CodexRuntimeHomeService } = await import('./runtime-home-service')
     const { CodexHookService } = await import('../codex/hook-service')
-    // Why: stands in for asking a real Codex for its hook hashes on these fixture homes.
-    const { codexHookAnswerForTests } = await import('../codex/hook-service-test-harness')
-    const { _internals: lookupInternals } = await import('../codex/codex-hook-hash-lookup')
-    lookupInternals.setHashResolverForTesting(async () => codexHookAnswerForTests())
+    const { startCodexHookHashLookup } = await import('../codex/codex-hook-hash-lookup')
+    startCodexHookHashLookup({ pathReady: Promise.resolve(), isEnabled: () => false })
     const service = new CodexRuntimeHomeService(store as never)
     const hookService = new CodexHookService()
 
