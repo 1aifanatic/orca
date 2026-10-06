@@ -79,7 +79,7 @@ describe('ACP structured session adapter: acquire', () => {
 
   it('replaces a created session the agent never saved with a new one', async () => {
     const rig = await openAcpAdapterRig({
-      launch: { resume: { sessionId: 'lost', replaceableKey: 'old-key' } },
+      launch: { resume: { sessionId: 'lost', key: 'old-key', mayBeUnsaved: true } },
       script: (agent) =>
         agent.on('session/load', (frame) => agent.fail(frame, -32002, 'Session not found'))
     })

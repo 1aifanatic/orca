@@ -26,8 +26,10 @@ export type AcpStructuredLaunch = {
   /** The provider session to load; null starts a new one. */
   resume: {
     sessionId: string
-    /** Only a session this chat created may be one the agent never saved, and so be replaced. */
-    replaceableKey: string | null
+    /** The chain key of the session to load, which a fresh session names if it takes over. */
+    key: string
+    /** Only a session this chat created may be one the agent never saved, and so be superseded. */
+    mayBeUnsaved: boolean
   } | null
 }
 
@@ -95,8 +97,8 @@ export function createAcpStructuredLaunchResolver(
       resume: head
         ? {
             sessionId: head.handle.nativeId,
-            replaceableKey:
-              head.origin === 'created' ? agentSessionProviderHandleKey(head.handle) : null
+            key: agentSessionProviderHandleKey(head.handle),
+            mayBeUnsaved: head.origin === 'created'
           }
         : null
     }

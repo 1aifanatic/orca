@@ -238,6 +238,12 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
         'components.native-chat.failureWords.previousExitUnverifiable',
         COPY.previousExitUnverifiable,
         values
+      ),
+    sessionNotRestored: (values) =>
+      translate(
+        'components.native-chat.failureWords.sessionNotRestored',
+        COPY.sessionNotRestored,
+        values
       )
   }
 

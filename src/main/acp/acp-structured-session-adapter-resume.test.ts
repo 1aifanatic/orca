@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
+import { readAgentSessionFailureFact } from '../../shared/agent-session-failure'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import {
   closeProviderTimelineRigs,
   messageText,
   SESSION
 } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
+import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import type { AcpScriptedAgent } from './acp-scripted-agent.test-support'
@@ -30,7 +32,9 @@ const hello: AgentJournalMessageItem = {
 
 /** Grok's own capabilities: it loads and resumes sessions; Orca reopens with `session/load`. */
 const RESUMES = { agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } } }
-const resume = { launch: { resume: { sessionId: PROVIDER_SESSION, replaceableKey: null } } }
+const resume = {
+  launch: { resume: { sessionId: PROVIDER_SESSION, key: 'acp:grok:saved', mayBeUnsaved: false } }
+}
 
 /** Everything Grok may send while it reattaches: its saved exchange marked as replay, a task the
  *  dead process left running ended by the restart, and its context usage. */
@@ -70,6 +74,13 @@ async function exchange(rig: AcpAdapterRig, reply: string, end: boolean): Promis
 
 const texts = async (rig: AcpAdapterRig) =>
   (await rig.rig.rows()).flatMap((row) => messageText(row.body) ?? [])
+
+const notRestoredRows = async (rig: AcpAdapterRig) =>
+  (await rig.rig.rows()).filter(
+    (row) =>
+      row.body.kind === 'status' &&
+      readAgentSessionFailureFact(row.body.failure)?.kind === 'sessionNotRestored'
+  )
 
 /** What Grok might send while it resumes with no replay mark: an old reply and its turn's end. */
 function sendsUnmarkedWhileAttaching(agent: AcpScriptedAgent): void {
@@ -265,7 +276,9 @@ describe('reattaching a Grok chat the journal holds', () => {
 
   it('starts a new session in place of a created one that session/load reports missing', async () => {
     const rig = await openAcpAdapterRig({
-      launch: { resume: { sessionId: 'never-saved', replaceableKey: 'acp:grok:never-saved' } },
+      launch: {
+        resume: { sessionId: 'never-saved', key: 'acp:grok:never-saved', mayBeUnsaved: true }
+      },
       initialize: RESUMES,
       script: (agent) =>
         agent.on('session/load', (frame) => agent.fail(frame, -32002, 'Resource not found'))
@@ -279,6 +292,50 @@ describe('reattaching a Grok chat the journal holds', () => {
     // The failed load left the translator taking prompts.
     await exchange(rig, 'hi', true)
     expect(await texts(rig)).toEqual(['hello', 'hi'])
+    // Nothing was forgotten: the agent never saved that session.
+    expect(await notRestoredRows(rig)).toEqual([])
+  })
+
+  it.each([
+    ['a saved session', false, -32603, 'session file is corrupt'],
+    ['a created session that fails for another reason', true, -32603, 'session file is corrupt'],
+    ['a saved session the agent reports missing', false, -32002, 'Resource not found']
+  ])(
+    'continues %s it cannot reopen in a new one, says so once, and keeps working',
+    async (_label, mayBeUnsaved, code, message) => {
+      const rig = await openAcpAdapterRig({
+        launch: { resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved } },
+        initialize: RESUMES,
+        script: (agent) => agent.on('session/load', (frame) => agent.fail(frame, code, message))
+      })
+      const acquired = await rig.acquire()
+      expect(acquired.link).toMatchObject({
+        origin: 'created',
+        handle: { nativeId: PROVIDER_SESSION },
+        replaces: { key: 'acp-key-saved-1', reason: 'restore-failed', replacedAt: 5_000 }
+      })
+      expect(acquired.link.supersedesKey).toBeUndefined()
+      expect(rig.sent('session/new')).toHaveLength(1)
+      const rows = await notRestoredRows(rig)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.body).toMatchObject({ kind: 'status', tone: 'warning' })
+      await exchange(rig, 'hi', true)
+      expect(await texts(rig)).toEqual(['hello', 'hi'])
+      expect(await notRestoredRows(rig)).toHaveLength(1)
+    }
+  )
+
+  it('refuses a signed-out agent at reopen rather than replacing its session', async () => {
+    const rig = await openAcpAdapterRig({
+      launch: { resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: false } },
+      initialize: RESUMES,
+      script: (agent) =>
+        agent.on('session/load', (frame) => agent.fail(frame, -32000, 'Authentication required'))
+    })
+    const failure = await rig.acquire().catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(AgentSessionAcquisitionRefusal)
+    expect(failure).toMatchObject({ reason: 'notSignedIn' })
+    expect(rig.sent('session/new')).toEqual([])
   })
 
   it('keeps the slash commands Grok reports while it loads', async () => {

@@ -1,7 +1,7 @@
 // Making a reservation real for an ACP agent: spawn the child, record it before any handshake,
 // initialize with the client's file system and terminals off, then reattach the session this chat
 // proved with `session/load` (`session/resume` only for an agent that cannot load) or start a new
-// one. The journal already holds a reattached chat, so whatever the agent sends while it reattaches
+// one; a saved session the agent cannot reopen is replaced by a new one, with a warning row. The journal already holds a reattached chat, so whatever the agent sends while it reattaches
 // is not written, except context usage. The handshake has no time bound: the acquire's abort signal
 // (Close, Stop, quit) stops it at any point.
 
@@ -20,8 +20,13 @@ import {
   PROVIDER_SPAWN_TOKEN_ENV
 } from '../provider-process/provider-spawned-process-identity'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
-import { AcpAuthRequiredError, AcpRpcError } from './acp-errors'
+import { AcpAuthRequiredError } from './acp-errors'
 import { ACP_CHILD_ENV_TO_DELETE } from './acp-launch-specs'
+import {
+  ACP_REOPEN_FAILED,
+  acpReopenTakeover,
+  acpSessionNotRestoredRow
+} from './acp-session-reopen-failure'
 import { AcpSessionRuntime, type AcpSessionEvent } from './acp-session-runtime'
 import type { AcpStructuredChild } from './acp-structured-child'
 import { ACP_HANDLE_TRANSPORT } from './acp-structured-agent-definitions'
@@ -41,8 +46,6 @@ import {
 import { AcpStructuredTurns, type AcpStructuredTurnsDeps } from './acp-structured-turns'
 import { RequestPermissionResponseSchema } from './generated/acp-protocol.generated'
 
-/** ACP's "resource not found": the agent holds no session under the id this chat proved. */
-const ACP_RESOURCE_NOT_FOUND = -32002
 /** Frames an agent may send before its session exists; past this they are dropped. */
 const MAX_EARLY_FRAMES = 2_048
 export function acpAgentName(agent: string): string {
@@ -225,7 +228,7 @@ export async function acquireAcpStructuredSession(input: {
     const resume = launch.resume
     let started: Awaited<ReturnType<AcpSessionRuntime['start']>> | null = null
     let liveLane: AcpStructuredLane | null = null
-    let supersedesKey: string | undefined
+    let takeover: ReturnType<typeof acpReopenTakeover> | null = null
     if (resume) {
       const attaching = makeLane(resume.sessionId, true)
       liveLane = attaching
@@ -238,13 +241,13 @@ export async function acquireAcpStructuredSession(input: {
         slot.reattaching = false
         attaching.translator.finishLoad()
       } catch (error) {
-        const notFound = error instanceof AcpRpcError && error.code === ACP_RESOURCE_NOT_FOUND
-        if (!notFound || resume.replaceableKey === null) {
-          throw error
-        }
-        // A session this chat created and the agent never saved: a new one takes its place, with a
-        // new lane, so nothing of the failed attach's window outlives it.
-        supersedesKey = resume.replaceableKey
+        takeover = acpReopenTakeover(error, resume, {
+          over: connection.closed || acquire.signal?.aborted === true,
+          now: now(),
+          warn: (fields) => deps.logger?.warn(ACP_REOPEN_FAILED, { ...fields, sessionId })
+        })
+        // A new session takes the old one's place, with a new lane, so nothing of the failed
+        // attach's window outlives it.
       }
     }
     if (!started || !liveLane) {
@@ -264,7 +267,7 @@ export async function acquireAcpStructuredSession(input: {
       origin: started.kind === 'new' ? 'created' : 'resumed',
       mintedAtFence: acquire.fence,
       observedAt: now(),
-      ...(supersedesKey ? { supersedesKey } : {})
+      ...takeover
     }
     session = {
       sessionId,
@@ -302,6 +305,9 @@ export async function acquireAcpStructuredSession(input: {
     }
     if (child.exited || connection.closed) {
       throw new Error(child.stderrTail() || `${spec.command} exited while starting`)
+    }
+    if (takeover?.replaces) {
+      liveLane.apply(acpSessionNotRestoredRow(started.sessionId, agentName))
     }
     return { acquisition: { process, link, acquisitionGeneration: generation }, session }
   } catch (error) {

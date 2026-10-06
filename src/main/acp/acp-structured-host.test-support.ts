@@ -4,6 +4,7 @@
 import { expect } from 'vitest'
 import { z } from 'zod'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
+import { agentSessionProviderHandleKey } from '../../shared/agent-session-provider-handle'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import { agentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
@@ -32,7 +33,10 @@ import {
   replyChunk,
   type FakeAcpChild
 } from './acp-structured-adapter.test-support'
-import { acpStructuredAgentDefinition } from './acp-structured-agent-definitions'
+import {
+  ACP_HANDLE_TRANSPORT,
+  acpStructuredAgentDefinition
+} from './acp-structured-agent-definitions'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import type { AcpStructuredSessionAdapterDeps } from './acp-structured-session-adapter-deps'
 
@@ -59,7 +63,17 @@ export function launch(resume: () => boolean): () => Promise<AcpStructuredLaunch
     cwd: '/workspace',
     env: {},
     fullAccess: false,
-    resume: resume() ? { sessionId: PROVIDER_SESSION, replaceableKey: null } : null
+    resume: resume()
+      ? {
+          sessionId: PROVIDER_SESSION,
+          key: agentSessionProviderHandleKey({
+            transport: ACP_HANDLE_TRANSPORT,
+            agent: 'grok',
+            nativeId: PROVIDER_SESSION
+          }),
+          mayBeUnsaved: false
+        }
+      : null
   })
 }
 

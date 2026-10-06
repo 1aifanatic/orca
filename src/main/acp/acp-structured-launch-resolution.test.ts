@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import {
+  agentSessionProviderHandleKey,
+  type AgentSessionProviderHandle
+} from '../../shared/agent-session-provider-handle'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
@@ -65,7 +69,7 @@ describe('ACP launch resolution', () => {
     expect(launch.args).toContain('--always-approve')
   })
 
-  it('resumes the chain head, replaceable only when this chat created it', async () => {
+  it('resumes the chain head by its key, possibly unsaved only when this chat created it', async () => {
     const link = (origin: 'created' | 'resumed') => ({
       linkId: `link-${origin}`,
       origin,
@@ -76,12 +80,17 @@ describe('ACP launch resolution', () => {
     const created = await resolver(grokRecord({ providerHandleChain: [link('created')] })).resolve({
       identity
     })
-    expect(created.resume).toMatchObject({ sessionId: 'acp-1' })
-    expect(created.resume?.replaceableKey).toEqual(expect.any(String))
+    const handle: AgentSessionProviderHandle = {
+      transport: 'acp',
+      agent: 'grok',
+      nativeId: 'acp-1'
+    }
+    const key = agentSessionProviderHandleKey(handle)
+    expect(created.resume).toEqual({ sessionId: 'acp-1', key, mayBeUnsaved: true })
     const resumed = await resolver(
       grokRecord({ providerHandleChain: [link('created'), link('resumed')] })
     ).resolve({ identity })
-    expect(resumed.resume).toEqual({ sessionId: 'acp-1', replaceableKey: null })
+    expect(resumed.resume).toEqual({ sessionId: 'acp-1', key, mayBeUnsaved: false })
   })
 
   it('refuses a record pinned to another host or another agent', async () => {
