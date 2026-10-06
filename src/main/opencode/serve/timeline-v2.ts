@@ -108,9 +108,10 @@ export function translateV2(
     }
   }
   if (event.type === 'session.reasoning.delta' || event.type === 'session.text.delta') {
+    const ordinal = number(d.ordinal)
     const id =
-      assistantId && number(d.ordinal) !== undefined
-        ? `${assistantId}:${event.type.includes('reasoning') ? 'reasoning' : 'text'}:${d.ordinal}`
+      assistantId && ordinal !== undefined
+        ? `${assistantId}:${event.type.includes('reasoning') ? 'reasoning' : 'text'}:${ordinal}`
         : undefined
     return {
       events: id
@@ -124,9 +125,10 @@ export function translateV2(
     }
   }
   if (event.type === 'session.reasoning.ended' || event.type === 'session.text.ended') {
+    const ordinal = number(d.ordinal)
     const id =
-      assistantId && number(d.ordinal) !== undefined
-        ? `${assistantId}:${event.type.includes('reasoning') ? 'reasoning' : 'text'}:${d.ordinal}`
+      assistantId && ordinal !== undefined
+        ? `${assistantId}:${event.type.includes('reasoning') ? 'reasoning' : 'text'}:${ordinal}`
         : undefined
     return {
       events: id
