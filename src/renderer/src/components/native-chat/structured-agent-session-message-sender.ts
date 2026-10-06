@@ -87,7 +87,9 @@ function handBack(
   entry: StructuredAgentSessionPendingSend,
   notice: readonly AgentSessionWriteNoticePart[] | null
 ): void {
-  if (!entry.callerKeepsText) {
+  // A caller told `recorded` let go of its copy, so a later Stop's withdrawal returns it to the chat.
+  const chatTakesText = !entry.callerKeepsText || entry.phase === 'recorded'
+  if (chatTakesText) {
     handBackStructuredAgentSessionMessage(
       entry.sessionId,
       entry.clientMessageId,
@@ -95,7 +97,7 @@ function handBack(
       entry.imageConnectionIds
     )
   }
-  if (notice && !entry.callerKeepsText) {
+  if (notice && chatTakesText) {
     publishStructuredAgentSessionSends(entry.sessionId, {
       notice: agentSessionWriteNoticeText([...notice])
     })

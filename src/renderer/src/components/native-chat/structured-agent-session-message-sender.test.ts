@@ -186,6 +186,34 @@ describe('structured agent session message sender', () => {
     expect(phases()).toEqual([])
   })
 
+  it("gives a Stop-withdrawn note to the chat's draft once its sender heard it was recorded", async () => {
+    const calls = deferredCalls()
+    const note = send('notes', { callerKeepsText: true })
+    await flush()
+    calls[0].resolve(okSubmission(note.clientMessageId, 'pending'))
+    // The notes sender clears its notes here.
+    expect(await note.outcome).toBe('recorded')
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [submission(note.clientMessageId, 'rejected', { rejection: { kind: 'cancelled' } })],
+      []
+    )
+    expect(mocks.handBack).toHaveBeenCalledWith(
+      SESSION,
+      note.clientMessageId,
+      expect.anything(),
+      undefined
+    )
+  })
+
+  it('leaves a note its sender still holds with the sender when it comes back', async () => {
+    mocks.call.mockResolvedValue(refusedFirst)
+    const note = send('notes', { callerKeepsText: true })
+    expect(await note.outcome).toBe('returned')
+    expect(mocks.handBack).not.toHaveBeenCalled()
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
+  })
+
   it('never hands back a message the host recorded and then rejected: its row says not sent', async () => {
     const calls = deferredCalls()
     const a = send('a')
