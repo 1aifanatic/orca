@@ -41,11 +41,7 @@ import {
   resolveJournalItemId,
   type JournalReducerState
 } from './journal-reducer'
-import {
-  journalDispatchRowBuilder,
-  journalSubmissionRowBuilder,
-  journalTombstoneRowBuilder
-} from './journal-row-builders'
+import { journalTombstoneRowBuilder } from './journal-row-builders'
 import type {
   AgentSessionJournalOptions,
   JournalAppendResult,
@@ -59,13 +55,17 @@ import type {
   ResolveDispatchInput
 } from './journal-store-contracts'
 import type { JournalQueuedMessages } from './journal-queued-messages'
-import { journalSubmissionHook } from './journal-submission-hook'
 import {
   journalQueueResumeRowBuilder,
   journalStopEventRowBuilder
 } from './journal-stop-and-resume-rows'
 import type { AgentJournalEpochReason, JournalStopEvent } from './journal-row-schema'
-import type { JournalOperationReceipt, JournalRowWriter } from './journal-row-writer'
+import type {
+  JournalOperationReceipt,
+  JournalRowTransactionHook,
+  JournalRowWriter
+} from './journal-row-writer'
+import type { JournalSubmissionWriter } from './journal-submission-writer'
 import type { JournalEpochController } from './journal-epoch-controller'
 import { JournalWriteQueue } from './journal-write-queue'
 import { createJournalStoreCollaborators } from './journal-store-collaborators'
@@ -90,6 +90,7 @@ export class AgentSessionJournal {
   private readonly epochController: JournalEpochController
   private readonly itemAppender: JournalItemAppender
   private readonly lifecycleBatchAppender: JournalLifecycleBatchAppender
+  private readonly submissionWriter: JournalSubmissionWriter
   private readonly stepWriter: JournalStepWriter
   private readonly restore: () => Promise<void>
   /** Draft rows queued while the agent works; never reducer input or owed work. */
@@ -133,6 +134,7 @@ export class AgentSessionJournal {
     this.epochController = collaborators.epochController
     this.itemAppender = collaborators.itemAppender
     this.lifecycleBatchAppender = collaborators.lifecycleBatchAppender
+    this.submissionWriter = collaborators.submissionWriter
     this.stepWriter = collaborators.stepWriter
     this.queuedMessages = collaborators.queuedMessages
     this.stopMarks = collaborators.stopMarks
@@ -314,35 +316,21 @@ export class AgentSessionJournal {
   /** Several writes as one turn in the queue; see `JournalStepWriter`. */
   appendSteps: JournalStepWriter['append'] = (steps) => this.stepWriter.append(steps)
 
-  /**
-   * Write-ahead submission row. It is durable before the caller dispatches
-   * anything, and it doubles as the optimistic user bubble so an accepted echo
-   * reconciles into an existing slot instead of appending a second copy.
-   */
+  /** The write-ahead submission row (`JournalSubmissionWriter.append`). */
   appendSubmission(
     input: JournalSubmissionInput,
-    /** Present: this submission is a queued draft's conversion, and the draft's
-     *  state transition commits in the SAME transaction — exactly-once consume. */
     consume?: JournalSubmissionConsume,
-    /** The send's ledger answer, committed with this row. */
     receipt?: JournalOperationReceipt
   ): Promise<AgentJournalCursor> {
-    return this.rowWriter.append(
-      journalSubmissionRowBuilder(() => this.state, this.identity, input, consume),
-      journalSubmissionHook(this.queuedMessages, input, consume),
-      receipt
-    )
+    return this.submissionWriter.append(input, consume, receipt)
   }
 
-  /**
-   * Record a dispatch transition, including a proven retry returning to pending.
-   *
-   * Accepting REQUIRES the provider identity rather than a free-form id: the
-   * adopted key is what the provider's echo will upsert into, so a mismatched
-   * string here would silently give the user a second copy of their own message.
-   */
-  resolveDispatch(input: ResolveDispatchInput): Promise<AgentJournalCursor> {
-    return this.rowWriter.append(journalDispatchRowBuilder(() => this.state, input))
+  /** A dispatch transition (`JournalSubmissionWriter.resolveDispatch`). */
+  resolveDispatch(
+    input: ResolveDispatchInput,
+    hook?: JournalRowTransactionHook
+  ): Promise<AgentJournalCursor> {
+    return this.submissionWriter.resolveDispatch(input, hook)
   }
 
   /** Retire unanswered sends after their execution owner ended, without assuming delivery. */

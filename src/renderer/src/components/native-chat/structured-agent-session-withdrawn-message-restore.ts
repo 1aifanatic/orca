@@ -1,5 +1,8 @@
 import { useMemo } from 'react'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
@@ -23,25 +26,25 @@ function attachmentExpiredRefusal(
 }
 
 /** Puts each message's text and images into the composer, after whatever is there. */
-function giveBackToComposer(
+/** Puts a message's text and images into a composer, after whatever is there. */
+export function returnMessageToComposer(
   composerScopeKey: string,
-  entries: readonly StructuredAgentSessionOutboxEntry[]
+  /** Unique to this message, so its images never collide with ones already attached. */
+  attachmentIdPrefix: string,
+  blocks: AgentJournalMessageItem['blocks']
 ): void {
-  for (const entry of entries) {
-    const blocks = entry.body.blocks
-    appendNativeChatDraftCache(
-      composerScopeKey,
-      blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
+  appendNativeChatDraftCache(
+    composerScopeKey,
+    blocks.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n')
+  )
+  appendNativeChatAttachmentCache(
+    composerScopeKey,
+    blocks.flatMap((block, index) =>
+      block.type === 'image-ref' && block.path
+        ? [{ id: `${attachmentIdPrefix}-${index}`, path: block.path }]
+        : []
     )
-    appendNativeChatAttachmentCache(
-      composerScopeKey,
-      blocks.flatMap((block, index) =>
-        block.type === 'image-ref' && block.path
-          ? [{ id: `withdrawn-${entry.clientMessageId}-${index}`, path: block.path }]
-          : []
-      )
-    )
-  }
+  )
 }
 
 /**
@@ -62,10 +65,16 @@ function restoreWithdrawnMessages(
   const held = new Set(
     getStructuredAgentSessionOutbox(sessionId).map((entry) => entry.clientMessageId)
   )
-  giveBackToComposer(
-    composerScopeKey,
-    withdrawn.filter((entry) => held.has(entry.clientMessageId))
-  )
+  for (const entry of withdrawn) {
+    if (!held.has(entry.clientMessageId)) {
+      continue
+    }
+    returnMessageToComposer(
+      composerScopeKey,
+      `withdrawn-${entry.clientMessageId}`,
+      entry.body.blocks
+    )
+  }
 }
 
 export function useStructuredAgentSessionWithdrawnRestore(
@@ -116,7 +125,13 @@ export function useStructuredAgentSessionWithdrawnRestore(
           return disposition
         }
         // Only the send's own view applies its outcome, so nothing else gives these back.
-        giveBackToComposer(composerScopeKey, returned)
+        for (const entry of returned) {
+          returnMessageToComposer(
+            composerScopeKey,
+            `withdrawn-${entry.clientMessageId}`,
+            entry.body.blocks
+          )
+        }
         return {
           entries: disposition.entries.filter((entry) => !returned.includes(entry)),
           error: agentSessionWriteNoticeParts(refusal, 'send')

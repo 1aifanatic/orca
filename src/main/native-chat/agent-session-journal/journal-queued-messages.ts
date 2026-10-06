@@ -35,6 +35,7 @@ import {
 } from './queued-message-table'
 import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { draftsDeliveredByAppliedEcho } from './queued-message-delivered-echo'
+import { moveQueuedMessages, type QueuedMessagePositionMove } from './queued-message-positions'
 import { pruneQueuedMessages, retainedSubmissionVerdict } from './queued-message-retention'
 import {
   queuedMessageSettlementOwed,
@@ -42,7 +43,7 @@ import {
   settleQueuedMessagesForRow
 } from './queued-message-settlement'
 import { AgentSessionJournalError, assertJournalWritable } from './journal-write-guards'
-import { claimAgentSessionAttachmentsInTransaction } from '../agent-session-attachments/agent-session-attachment-claims'
+import type { JournalAttachmentClaim } from './journal-submission-hook'
 import type { JournalWriteBody, JournalWriteResult } from './journal-write-queue'
 
 /** Tombstones must outlive the window in which their operation id could still be admitted as new. */
@@ -64,6 +65,7 @@ export type JournalQueuedMessagesDeps = {
    *  does — no call site can forget. In-transaction consume and the returned
    *  transition already ride their row's own commit. */
   committed: () => void
+  claimAttachments: JournalAttachmentClaim
 }
 
 export class JournalQueuedMessages {
@@ -72,6 +74,10 @@ export class JournalQueuedMessages {
   private listed: { revision: number; rows: readonly QueuedMessageRow[] } | null = null
 
   constructor(private readonly deps: JournalQueuedMessagesDeps) {}
+
+  get sessionId(): string {
+    return this.deps.sessionId
+  }
 
   revision(): number {
     return this.changeRevision
@@ -103,7 +109,8 @@ export class JournalQueuedMessages {
     return queuedMessagesSettledByOp(this.deps.database().db, this.deps.sessionId, settledByOp)
   }
 
-  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused.
+  /** `carriedFrom`: a /clear's carry. The card is its own 'cleared' pause, so it lands paused;
+   *  `holdReason` carries a hold of its own over with it.
    *  `requireAttachments`: a client's own draft, refused whole when an attachment it names is no
    *  longer stored; the host's own writes (the carry) claim best effort.
    *  `receipt`: the send's ledger answer, committed with the draft only when this inserts it. */
@@ -116,6 +123,7 @@ export class JournalQueuedMessages {
       carriedFrom?: string
       requireAttachments?: true
       source: AgentSessionMessageSource
+      holdReason?: QueuedMessageHoldReason
     },
     receipt?: JournalOperationReceipt
   ): Promise<QueuedMessageRow> {
@@ -130,7 +138,7 @@ export class JournalQueuedMessages {
           // gets here, so an existing row is the same accept landing twice.
           return existing
         }
-        this.claimAttachmentsInTransaction(db, input.body, requireAttachments === true)
+        this.deps.claimAttachments(db, input.body, requireAttachments === true)
         inserted = true
         const { epoch, lastSequence } = this.deps.state()
         const row = insertQueuedMessage(db, {
@@ -197,6 +205,26 @@ export class JournalQueuedMessages {
       (db) => adoptQueuedMessages(db, { sessionId, hostInstance }),
       (changed) => changed > 0
     ).then((changed) => changed > 0)
+  }
+
+  /** Inside the caller's journal-row transaction (`journal-unsent-send-hold.ts`): one kept send
+   *  becomes a card, and the cards ahead of the queue take the positions given. False when a card
+   *  by that id already exists, which then stands. */
+  holdInTransaction(
+    db: Database.Database,
+    input: {
+      card: Omit<Parameters<typeof insertQueuedMessage>[1], 'sessionId' | 'now'> | null
+      positions: readonly QueuedMessagePositionMove[]
+    }
+  ): boolean {
+    const { sessionId } = this.deps
+    this.changeRevision += moveQueuedMessages(db, sessionId, input.positions)
+    if (!input.card || getQueuedMessage(db, sessionId, input.card.messageId)) {
+      return false
+    }
+    insertQueuedMessage(db, { ...input.card, sessionId, now: this.deps.now() })
+    this.changeRevision++
+    return true
   }
 
   /** Compare-and-transition waiting ∪ returned rows to op-stamped tombstones,
@@ -281,22 +309,6 @@ export class JournalQueuedMessages {
       throw new QueuedMessageNotConsumableError(input.messageId, input.expect)
     }
     this.changeRevision++
-  }
-
-  /** Claims the stored chat attachments a message written here names, in the write's own
-   *  transaction; `required` refuses the whole write when one is no longer stored. */
-  claimAttachmentsInTransaction(
-    db: Database.Database,
-    body: AgentJournalMessageItem,
-    required: boolean
-  ): void {
-    claimAgentSessionAttachmentsInTransaction(db, {
-      stateDirectory: this.deps.database().stateDirectory,
-      sessionId: this.deps.sessionId,
-      body,
-      required,
-      now: this.deps.now()
-    })
   }
 
   /** A skipped live settlement the journal already decided (`queued-message-settlement.ts`). */
