@@ -9,6 +9,7 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import {
   newestSteerableQueuedMessageCard,
   outboxOutsideQueuedCards,
+  outboxQueueSendsOnTheirWay,
   projectQueuedMessageCards
 } from './structured-agent-session-queued-cards'
 
@@ -226,6 +227,28 @@ describe('queued message cards', () => {
     expect(ids(outboxOutsideQueuedCards(unconfirmed, [], true, QUEUEING))).toEqual(['a', 'b'])
     // Once the host visibly holds it, it is a card whatever this queue last heard.
     expect(ids(outboxOutsideQueuedCards(unconfirmed, ['a'], true, QUEUEING))).toEqual(['b'])
+  })
+
+  it('a queue send is on its way only while the host has no record of it', () => {
+    const entry: StructuredAgentSessionOutboxEntry = {
+      clientMessageId: 'a',
+      sessionId: 'session-1',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'a' }] },
+      previewUris: [],
+      state: 'dispatching',
+      queuedAt: 1,
+      lastAttemptAt: 2,
+      retryAfterUnknownSubmittedAt: null,
+      sentDelivery: 'queue-if-active'
+    }
+    const onItsWay = (submissions: AgentJournalSubmission[]) =>
+      outboxQueueSendsOnTheirWay([entry], [], true, QUEUEING, submissions).map(
+        (candidate) => candidate.clientMessageId
+      )
+    expect(onItsWay([])).toEqual(['a'])
+    // Taken straight through, or handed off from its card: the journal draws it now.
+    expect(onItsWay([submission('a')])).toEqual([])
+    expect(onItsWay([handOff('a')])).toEqual([])
   })
 
   it('hides a send only by what its request carries: a plain one is always a bubble', () => {

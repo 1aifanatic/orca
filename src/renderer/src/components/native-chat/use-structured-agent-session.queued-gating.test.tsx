@@ -9,7 +9,10 @@
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import {
   createStructuredAgentSessionOutboxEntry,
@@ -26,6 +29,7 @@ const mocks = vi.hoisted(() => ({
 }))
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
+let submissions: AgentJournalSubmission[] = []
 let outboxEntries: StructuredAgentSessionOutboxEntry[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -38,7 +42,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
     state: {
       fence: 3,
       items,
-      submissions: [],
+      submissions,
       status: 'ready',
       error: null,
       hasOlder: false,
@@ -131,6 +135,7 @@ beforeEach(() => {
   )
   items = [RUNNING_TURN]
   queuedMessages = undefined
+  submissions = []
   outboxEntries = []
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
@@ -481,6 +486,35 @@ describe('a /compact against a host that holds commands in line', () => {
       })
     })
     expect(commandCalls()).toHaveLength(0)
+  })
+
+  it('an idle send the host has recorded is its transcript row only, never a sending card too', () => {
+    items = []
+    outboxEntries = [
+      unsent('recorded', {
+        state: 'dispatching',
+        lastAttemptAt: 2,
+        sentDelivery: 'queue-if-active'
+      })
+    ]
+    // The host took it straight through: its own submission, unanswered, makes the chat working.
+    submissions = [
+      {
+        clientMessageId: 'recorded',
+        fence: 3,
+        payloadFingerprint: 'fingerprint',
+        dispatchState: 'pending',
+        providerItemId: null,
+        reason: null,
+        submittedAt: 2,
+        resolvedAt: null,
+        handoverRecorded: true,
+        handedOverAt: 3
+      }
+    ]
+    const { result } = render()
+    expect(result.current.isWorking).toBe(true)
+    expect(result.current.queuedMessages.cards).toEqual([])
   })
 
   it('/clear right after a Stop kept a send on its way names no Retry it does not show', async () => {

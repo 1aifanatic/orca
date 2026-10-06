@@ -105,6 +105,16 @@ export function isStructuredAgentSessionComposerCommand(
   )
 }
 
+/** `/clear` or `/compact` alone: a conversation command with nothing after it. */
+export function isLoneStructuredAgentSessionConversationCommand(text: string): boolean {
+  const command = commandParts(text.trim())
+  return Boolean(
+    command &&
+    command.argument === '' &&
+    CONVERSATION_COMMANDS.some((entry) => entry.name === command.name)
+  )
+}
+
 /** `/goal …`, which the host answers only where it can set this session's goal. */
 export function isStructuredAgentSessionGoalCommand(text: string): boolean {
   return commandParts(text)?.name === 'goal'

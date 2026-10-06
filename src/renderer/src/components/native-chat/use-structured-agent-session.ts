@@ -194,8 +194,15 @@ export function useStructuredAgentSession(args: {
   const isWorking = transportState.isWorking
   // Hidden from the transcript, a queue send on its way reads as sending among the cards.
   const queueSendsOnTheirWay = useMemo(
-    () => outboxQueueSendsOnTheirWay(outbox, queuedMessageIds, isWorking, queueDelivery),
-    [isWorking, outbox, queueDelivery, queuedMessageIds]
+    () =>
+      outboxQueueSendsOnTheirWay(
+        outbox,
+        queuedMessageIds,
+        isWorking,
+        queueDelivery,
+        transportState.submissions
+      ),
+    [isWorking, outbox, queueDelivery, queuedMessageIds, transportState.submissions]
   )
   const transcriptOutbox = useMemo(
     () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, queueDelivery),
