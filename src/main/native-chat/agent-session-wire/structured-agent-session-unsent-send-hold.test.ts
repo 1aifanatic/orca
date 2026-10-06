@@ -370,14 +370,12 @@ describe('the queue at a quit', () => {
       let reached = (): void => undefined
       const inStep = new Promise<void>((resolve) => (reached = resolve))
       let blocked = false
-      const inDrainStep = (): boolean =>
-        (new Error('which caller').stack ?? '').includes('QueuedMessageDrain.step')
       // Holds the drain step at its one await, past its first dispose check, until quit has begun.
-      const owed = vi
-        .spyOn(queuedMessages, 'settlementOwed')
-        .mockImplementation(() => !blocked && inDrainStep())
+      // Only the drain step heals owed bookkeeping, so no caller check is needed (nor a stack read,
+      // which runtimes format differently).
+      const owed = vi.spyOn(queuedMessages, 'settlementOwed').mockImplementation(() => !blocked)
       const healing = vi.spyOn(queuedMessages, 'settleOwed').mockImplementation(async () => {
-        if (!blocked && inDrainStep()) {
+        if (!blocked) {
           blocked = true
           reached()
           await held
