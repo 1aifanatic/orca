@@ -136,6 +136,7 @@ async function settledTurn(reader = host) {
 async function settledTurnAfterQuit() {
   const state = hostTestState()
   const reader = new StructuredAgentSessionHost({
+    agents: NO_STRUCTURED_AGENTS,
     logger: createStructuredAgentSessionLogger(),
     store: state.store,
     adapter: adapter(),
