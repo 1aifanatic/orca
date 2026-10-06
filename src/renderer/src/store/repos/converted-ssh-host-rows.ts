@@ -1,5 +1,9 @@
 import type { AppState } from '../types'
-import { getRepoExecutionHostId, toSshExecutionHostId } from '../../../../shared/execution-host'
+import {
+  getRepoExecutionHostId,
+  parseExecutionHostId,
+  toSshExecutionHostId
+} from '../../../../shared/execution-host'
 
 type ConvertedHostRows = Pick<
   AppState,
@@ -11,7 +15,7 @@ type ConvertedHostRows = Pick<
  * hides them, but a local catalog refresh keeps SSH rows it no longer lists, so they would sit next
  * to the managed server's copies under the same ids. Session and terminal state are left alone, but
  * pinned to the host's partition: with no catalog owner a save would route them to 'local', where
- * they read as the moved source again and stall its retirement.
+ * they read as the moved source again. A primary already on a runtime host is the server's; keep it.
  */
 export function withoutConvertedSshHostRows(
   state: ConvertedHostRows,
@@ -22,7 +26,9 @@ export function withoutConvertedSshHostRows(
     .flat()
     .filter(
       (worktree) =>
-        worktree.hostId === hostId && !state.contestedPrimaryHostBySessionKey[worktree.id]
+        worktree.hostId === hostId &&
+        parseExecutionHostId(state.contestedPrimaryHostBySessionKey[worktree.id])?.kind !==
+          'runtime'
     )
   const repos = state.repos.filter((repo) => getRepoExecutionHostId(repo) !== hostId)
   const worktreesByRepo = withoutHostRows(state.worktreesByRepo, hostId)

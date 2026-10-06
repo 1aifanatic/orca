@@ -8,28 +8,24 @@ import {
   orcadMigrationPartitionScope,
   type OrcadMigrationSourceScope
 } from './orcad-source-scope'
-import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host'
-import {
-  collectSessionOwnerKeys,
-  sessionPartitions
-} from './orcad-source-workspace-session-fragments'
+import { LOCAL_EXECUTION_HOST_ID, parseExecutionHostId } from '../../../shared/execution-host'
+import { collectSessionOwnerKeys } from './orcad-source-workspace-session-fragments'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
-import { collectOrcadMigrationSourceWorkspaceSession } from './orcad-source-workspace-session'
-import { isOrcadRuntimeHostFocus } from './orcad-source-client-focus-retarget'
 
-export function retireOrcadMigrationSourceWorkspaceSession(
+/** On a copy of the profile only, like every subtraction the delta view runs. */
+export function subtractOrcadMigrationSourceWorkspaceSession(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
   if (!manifest.payload.dormantState?.workspaceSession) {
     return
   }
-  removeOrcadMigrationScopeWorkspaceSession(state, manifest)
+  subtractOrcadMigrationScopeWorkspaceSession(state, manifest)
 }
 
 /** Every partition's session state for the manifest's catalog, whether or not it could move. */
-export function removeOrcadMigrationScopeWorkspaceSession(
+export function subtractOrcadMigrationScopeWorkspaceSession(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
@@ -55,56 +51,7 @@ export function removeOrcadMigrationScopeWorkspaceSession(
   }
 }
 
-/** The census lets this hint through, so retirement drops it: a restart must not dial a managed host. */
-export function retireOrcadSourceReconnectHint(state: PersistedState, targetId: string): void {
-  const sessions = [state.workspaceSession, ...Object.values(state.workspaceSessionsByHostId ?? {})]
-  for (const session of sessions) {
-    if (!session?.activeConnectionIdsAtShutdown?.includes(targetId)) {
-      continue
-    }
-    const remaining = session.activeConnectionIdsAtShutdown.filter((id) => id !== targetId)
-    session.activeConnectionIdsAtShutdown = remaining.length > 0 ? remaining : undefined
-  }
-}
-
-export function assertOrcadMigrationSourceWorkspaceSessionRetired(
-  state: PersistedState,
-  manifest: OrcadMigrationManifest
-): void {
-  if (!manifest.payload.dormantState?.workspaceSession) {
-    return
-  }
-  const current = collectOrcadMigrationSourceWorkspaceSession(
-    state,
-    manifest.source,
-    manifest.payload
-  )
-  if (current.payload || current.blockedCount > 0) {
-    throw new Error(
-      `orcad_migration_source_workspace_session_reappeared:${reappearedOwners(state, manifest)};blocked=${current.blockedCount}`
-    )
-  }
-}
-
-/** Which partition holds which owner key, so a failure names its writer's footprint. */
-function reappearedOwners(state: PersistedState, manifest: OrcadMigrationManifest): string {
-  const scope = createOrcadMigrationSourceScope({
-    source: manifest.source,
-    catalog: manifest.payload,
-    repos: state.repos
-  })
-  return sessionPartitions(state, LOCAL_EXECUTION_HOST_ID)
-    .flatMap(([hostId, session]) =>
-      [...collectSessionOwnerKeys(session)]
-        .filter((ownerKey) =>
-          orcadMigrationOwnerMatchesScope(ownerKey, orcadMigrationPartitionScope(scope, hostId))
-        )
-        .map((ownerKey) => `${hostId}|${ownerKey}`)
-    )
-    .join(',')
-}
-
-export function removeOwnedSessionState(
+function removeOwnedSessionState(
   session: WorkspaceSessionState,
   scope: OrcadMigrationSourceScope
 ): WorkspaceSessionState {
@@ -134,7 +81,7 @@ export function removeOwnedSessionState(
       }
     : null
   const next = removeWorkspaceSessionOwners(session, ownerKeys) ?? session
-  // Selection-only sessions and canonical workspace keys need the same scoped retirement.
+  // Selection-only sessions and canonical workspace keys need the same scoped subtraction.
   const retired = next === session ? structuredClone(session) : next
   if (retargetedFocus) {
     Object.assign(retired, retargetedFocus)
@@ -165,4 +112,9 @@ export function removeOwnedSessionState(
     }
   }
   return retired
+}
+
+/** Focus already on a runtime host names that host's workspace, never the SSH source's. */
+function isOrcadRuntimeHostFocus(session: WorkspaceSessionState): boolean {
+  return parseExecutionHostId(session.activeWorkspaceExecutionHostId)?.kind === 'runtime'
 }

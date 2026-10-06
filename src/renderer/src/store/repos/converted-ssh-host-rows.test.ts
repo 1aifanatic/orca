@@ -26,4 +26,30 @@ describe('dropping a converted SSH host from the renderer', () => {
     // The terminal tabs it still holds must not land in 'local' as moved source state.
     expect(buildHostIdByWorktreeId(after)(WORKTREE_ID)).toBe(SSH_HOST)
   })
+
+  it.each([
+    ['local', 'local' as const, SSH_HOST],
+    ['the same host', SSH_HOST, SSH_HOST],
+    ['a runtime host', 'runtime:env-1' as const, 'runtime:env-1']
+  ])(
+    'repins a boot primary of %s unless the server already owns it',
+    (_label, primary, expected) => {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: routing reads only id and host fields.
+      const repo = { id: 'repo-1', connectionId: 'target-1' } as Repo
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: routing reads only id, repoId and hostId.
+      const worktree = {
+        id: WORKTREE_ID,
+        repoId: 'repo-1',
+        hostId: SSH_HOST
+      } as unknown as Worktree
+      const before = {
+        repos: [repo],
+        worktreesByRepo: { 'repo-1': [worktree] },
+        detectedWorktreesByRepo: {},
+        contestedPrimaryHostBySessionKey: { [WORKTREE_ID]: primary }
+      }
+      const after = { ...before, ...withoutConvertedSshHostRows(before, 'target-1') }
+      expect(after.contestedPrimaryHostBySessionKey[WORKTREE_ID]).toBe(expected)
+    }
+  )
 })

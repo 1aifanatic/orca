@@ -5,7 +5,7 @@ import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Repo } from '../../../shared/repo-types'
 import { orcadMigrationCutoverFixture } from '../../ssh/orcad-migration-cutover-fixture'
 import { collectOrcadMigrationSourceCatalog } from './orcad-source-catalog'
-import { retireOrcadSourceCatalogState } from './orcad-source-catalog-retirement'
+import { subtractOrcadSourceCatalogState } from './orcad-source-catalog-subtraction'
 import { orcadSourceFolderWorkspaceIds, repoBelongsToOrcadSource } from './orcad-source-ownership'
 
 const TARGET = 'ssh-win'
@@ -99,7 +99,7 @@ describe('orcad migration source ownership on a Windows SSH host', () => {
     const catalog = windowsCatalog()
     const state = { ...getDefaultPersistedState('C:/Users/Ann'), ...catalog }
     const fixture = orcadMigrationCutoverFixture('migration-1', TARGET)
-    retireOrcadSourceCatalogState(state, {
+    subtractOrcadSourceCatalogState(state, {
       ...fixture.manifest,
       payload: {
         repositories: catalog.repos.slice(0, 2),

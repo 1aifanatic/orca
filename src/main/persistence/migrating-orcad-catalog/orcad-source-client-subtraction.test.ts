@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { getDefaultPersistedState } from '../../../shared/constants'
 import type { OrcadMigrationManifest } from '../../../shared/orcad-migration-manifest'
 import { orcadMigrationCutoverFixture } from '../../ssh/orcad-migration-cutover-fixture'
-import { retireOrcadMigrationClientState } from './orcad-source-client-retirement'
+import { subtractOrcadMigrationClientState } from './orcad-source-client-subtraction'
 
 const worktreeId = 'repo-1::/srv/worktree'
 
@@ -42,11 +42,11 @@ describe('retiring client-hosted browser close intents', () => {
         { browserPageId: 'page-2', worktreeId, closedAt: 43 }
       ]
     }
-    retireOrcadMigrationClientState(state, manifest())
+    subtractOrcadMigrationClientState(state, manifest())
     const moved = structuredClone(
       state.workspaceSession.clientHostedBrowserCloseIntentsByEnvironment
     )
-    expect(() => retireOrcadMigrationClientState(state, manifest())).not.toThrow()
+    expect(() => subtractOrcadMigrationClientState(state, manifest())).not.toThrow()
     expect(state.workspaceSession.clientHostedBrowserCloseIntentsByEnvironment).toEqual(moved)
   })
 
@@ -56,7 +56,7 @@ describe('retiring client-hosted browser close intents', () => {
       old: [{ browserPageId: 'page-2', worktreeId, closedAt: 43 }],
       'environment-1': [{ browserPageId: 'page-1', worktreeId, closedAt: 99 }]
     }
-    expect(() => retireOrcadMigrationClientState(state, manifest())).toThrow(
+    expect(() => subtractOrcadMigrationClientState(state, manifest())).toThrow(
       'orcad_migration_source_close_intent_changed'
     )
   })

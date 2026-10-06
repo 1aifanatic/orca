@@ -17,8 +17,7 @@ export const ROLLOUT_FLAG_NAMES = [
   'serve-on-orcad-default',
   'legacy-npm-rung-retired',
   'legacy-relay-dir-sweep',
-  'windows-relay-wmi-fallback-retired',
-  'orcad-source-retirement'
+  'windows-relay-wmi-fallback-retired'
 ] as const
 export type RolloutFlagName = (typeof ROLLOUT_FLAG_NAMES)[number]
 
@@ -29,10 +28,7 @@ export const BAKED_ROLLOUT_FLAGS: Readonly<Record<RolloutFlagName, boolean>> = {
   'serve-on-orcad-default': false,
   'legacy-npm-rung-retired': false,
   'legacy-relay-dir-sweep': false,
-  'windows-relay-wmi-fallback-retired': false,
-  // Off until two releases after the first auto-converting one: until then a downgraded build
-  // still finds a converted host's projects in the profile.
-  'orcad-source-retirement': false
+  'windows-relay-wmi-fallback-retired': false
 }
 
 const versionString = z.string().refine(isValidVersion)

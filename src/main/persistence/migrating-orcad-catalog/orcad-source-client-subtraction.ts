@@ -16,81 +16,8 @@ import {
   unqualifyOrcadMigrationOwnerKey
 } from './orcad-source-scope'
 
-export function assertOrcadMigrationClientStateRetired(
-  state: PersistedState,
-  manifest: OrcadMigrationManifest
-): void {
-  const clientState = manifest.payload.dormantState?.clientState
-  if (!clientState) {
-    return
-  }
-  const source = manifest.source
-  const scope = createOrcadMigrationSourceScope({
-    source,
-    catalog: manifest.payload,
-    repos: state.repos
-  })
-  for (const [deviceId, selections] of Object.entries(
-    clientState.mobileClientTabSelectionsByDeviceId ?? {}
-  )) {
-    for (const ownerKey of Object.keys(selections)) {
-      if (state.mobileClientTabSelectionsByDeviceId?.[deviceId]?.[ownerKey] !== undefined) {
-        throw new Error('orcad_migration_source_mobile_selection_reappeared')
-      }
-    }
-  }
-  const ui = state.ui
-  if (
-    clientState.uiRouting?.lastActiveWorktreeId &&
-    orcadMigrationOwnerMatchesScope(ui.lastActiveWorktreeId, scope)
-  ) {
-    throw new Error('orcad_migration_source_ui_routing_reappeared')
-  }
-  const target = state.sshTargets.find((entry) => entry.id === source.sshTargetId)
-  if (
-    clientState.savedPortForwards &&
-    (!target ||
-      serializeOrcadMigrationValue(target.portForwards ?? []) !==
-        serializeOrcadMigrationValue(clientState.savedPortForwards))
-  ) {
-    throw new Error('orcad_migration_source_saved_port_forwards_changed')
-  }
-  for (const intent of clientState.clientHostedBrowserCloseIntents ?? []) {
-    const sourceIntents =
-      state.workspaceSession.clientHostedBrowserCloseIntentsByEnvironment?.[
-        intent.sourceEnvironmentId
-      ]
-    if (
-      sourceIntents?.some(
-        (entry) =>
-          entry.browserPageId === intent.browserPageId && entry.worktreeId === intent.worktreeId
-      )
-    ) {
-      throw new Error('orcad_migration_source_close_intent_reappeared')
-    }
-    const destinationIntents =
-      state.workspaceSession.clientHostedBrowserCloseIntentsByEnvironment?.[
-        manifest.destinationEnvironmentId ?? ''
-      ]
-    const transferred = destinationIntents?.find(
-      (entry) =>
-        entry.browserPageId === intent.browserPageId && entry.worktreeId === intent.worktreeId
-    )
-    if (
-      !transferred ||
-      serializeOrcadMigrationValue(transferred) !==
-        serializeOrcadMigrationValue({
-          browserPageId: intent.browserPageId,
-          worktreeId: intent.worktreeId,
-          closedAt: intent.closedAt
-        })
-    ) {
-      throw new Error('orcad_migration_source_close_intent_missing')
-    }
-  }
-}
-
-export function retireOrcadMigrationClientState(
+/** On a copy of the profile only: the client state an earlier migration moved. */
+export function subtractOrcadMigrationClientState(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
@@ -124,11 +51,11 @@ export function retireOrcadMigrationClientState(
   if (target && clientState.savedPortForwards) {
     target.portForwards = structuredClone(clientState.savedPortForwards)
   }
-  retireCloseIntents(state, clientState.clientHostedBrowserCloseIntents ?? [], manifest)
+  subtractCloseIntents(state, clientState.clientHostedBrowserCloseIntents ?? [], manifest)
   rewriteDesktopUiForDestination(state, manifest, scope)
 }
 
-function retireCloseIntents(
+function subtractCloseIntents(
   state: PersistedState,
   captured: readonly NonNullable<
     OrcadMigrationClientStatePayload['clientHostedBrowserCloseIntents']

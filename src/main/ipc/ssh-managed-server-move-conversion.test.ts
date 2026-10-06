@@ -176,8 +176,7 @@ function moveDeps() {
         listRelayPtyIds: null,
         censusHost: hostIdle,
         destinationFor: () => destination,
-        releaseDirectSession: async () => {},
-        retireSource: () => false
+        releaseDirectSession: async () => {}
       })
       status =
         result.outcome === 'converted'

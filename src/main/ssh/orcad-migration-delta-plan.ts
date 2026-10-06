@@ -2,7 +2,7 @@
  * Planning a delta move for a host an older build changed after it was converted: what the move
  * adds, what the server keeps as it is, and the source view every later check of the move reads.
  *
- * The view retires what the host's earlier migrations already moved, re-exported as it is today,
+ * The view subtracts what the host's earlier migrations already moved, re-exported as it is today,
  * so the delta manifest carries only rows and dormant state no earlier migration owns. Nothing
  * that overlaps an earlier migration is merged into the server.
  */

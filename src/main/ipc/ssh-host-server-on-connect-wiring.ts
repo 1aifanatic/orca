@@ -5,11 +5,7 @@ import { listEnvironments } from '../../shared/runtime-environment-store'
 import { findOrcadMigrationSourceCutoverForTarget } from '../ssh/orcad-migration-cutover-journal'
 import { orcadMigrationRelayPtyLister } from '../ssh/orcad-migration-relay-pty-lister'
 import { abandonOrcadConversion } from '../ssh/orcad-conversion-abandon'
-import {
-  isOrcadSourceRetirementEnabled,
-  retainOrcadMigrationSource
-} from '../ssh/orcad-migration-source-retention'
-import { retireRetainedOrcadSourceChain } from '../ssh/orcad-retained-source-retirement'
+import { retainOrcadMigrationSource } from '../ssh/orcad-migration-source-retention'
 import { hasOrcadTemplate } from '../ssh/orcad-artifact-materializer'
 import { managedServerUpdateDeps } from '../ssh/managed-server-update-deps'
 import { ensureOrcadManagedTunnel } from '../ssh/orcad-managed-tunnel'
@@ -36,7 +32,6 @@ import { releaseUnreachableOrcadSetup } from '../ssh/orcad-unreachable-setup-rel
 import { getCurrentMainWindow } from './ssh-ipc-context'
 import { broadcastSshState } from './ssh-renderer-broadcast'
 import { disconnectRegisteredSshTarget } from './ssh-session-teardown'
-import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 import { connectInFlight } from './ssh-connect-attempt-registry'
 
 export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConnectDeps {
@@ -56,12 +51,7 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
       await ensureOrcadManagedTunnel(userDataPath, environmentId)
     },
     ensureServing: (environmentId) => verifyOrcadManagedServing(userDataPath, environmentId),
-    retireRetainedSource: async (target) => {
-      if (isOrcadSourceRetirementEnabled()) {
-        await retireRetainedOrcadSourceChain(userDataPath, store, target, runTargetLifecycle)
-        return
-      }
-      // A commit whose reply outlived the move: finished, so its rows are kept like any other.
+    retainCommittedSource: (target) => {
       const head = findOrcadMigrationSourceCutoverForTarget(userDataPath, target.id)
       if (head?.phase === 'destination-committed') {
         retainOrcadMigrationSource(userDataPath, head.migrationId)

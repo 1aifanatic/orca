@@ -21,7 +21,7 @@ export type OrcadMigrationSourceScope = {
   folderWorkspaceKeys: ReadonlySet<string>
   /**
    * Catalog repo ids another host registers too. A legacy unqualified key, or a bare repo id, for
-   * one of these cannot say whose it is, so it never matches: it is neither moved nor retired.
+   * one of these cannot say whose it is, so it never matches: it is neither moved nor subtracted.
    */
   sharedRepoIds: ReadonlySet<string>
   /** The session partition being read: an unqualified key there belongs to that partition's host. */

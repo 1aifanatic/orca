@@ -1,7 +1,7 @@
 /**
  * The source as a delta move sees it: a copy of the profile with everything earlier migrations of
- * the host already moved retired from it, the same way source retirement would. What is left is
- * what an older build added, and only that is exported, censused and later committed.
+ * the host already moved subtracted from it. What is left is what an older build added, and only
+ * that is exported, censused and later committed.
  */
 import type {
   OrcadMigrationCatalogPayload,
@@ -13,14 +13,14 @@ import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import type { ProjectGroup } from '../../../shared/project-group-types'
 import type { Repo } from '../../../shared/repo-types'
 import type { StoreRuntimeState } from '../loading-store/store-runtime-state'
-import { retireOrcadSourceCatalogState } from './orcad-source-catalog-retirement'
+import { subtractOrcadSourceCatalogState } from './orcad-source-catalog-subtraction'
 import {
   collectOrcadMigrationUntransferredDependencyCensus,
   type OrcadMigrationSourceDependencyCensus
 } from './orcad-source-dependency-census'
-import { retireOrcadMigrationSourceDormantState } from './orcad-source-dormant-retirement'
+import { subtractOrcadMigrationSourceDormantState } from './orcad-source-dormant-subtraction'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
-import { removeOrcadMigrationScopeWorkspaceSession } from './orcad-source-workspace-session-retirement'
+import { subtractOrcadMigrationScopeWorkspaceSession } from './orcad-source-workspace-session-subtraction'
 
 export type OrcadMigrationDeltaView = {
   getRepos: () => Repo[]
@@ -42,10 +42,10 @@ export function createOrcadMigrationDeltaView(
   moved: OrcadMigrationManifest
 ): OrcadMigrationDeltaView {
   const state = structuredClone(runtime.state)
-  retireOrcadSourceCatalogState(state, moved)
-  retireOrcadMigrationSourceDormantState(state, moved)
+  subtractOrcadSourceCatalogState(state, moved)
+  subtractOrcadMigrationSourceDormantState(state, moved)
   // The server owns the moved projects' tabs now, even ones the older build left unmovable.
-  removeOrcadMigrationScopeWorkspaceSession(state, moved)
+  subtractOrcadMigrationScopeWorkspaceSession(state, moved)
   const storage = runtime.terminalScrollbackSnapshotStorage
   return {
     getRepos: () => state.repos,
