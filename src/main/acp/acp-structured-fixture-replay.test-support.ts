@@ -92,7 +92,7 @@ export class GrokFixtureReplay {
     }
   }
 
-  private rewrite(message: AcpFixtureFrame['message']): AcpFixtureFrame['message'] {
+  private rewrite(message: AcpFixtureFrame['message']): z.infer<typeof messageSchema> {
     let text = JSON.stringify(message).replaceAll(
       RECORDED_SESSION,
       JSON.stringify(PROVIDER_SESSION)
