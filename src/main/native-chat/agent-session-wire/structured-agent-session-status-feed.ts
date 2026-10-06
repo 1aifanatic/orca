@@ -74,6 +74,7 @@ export class StructuredAgentSessionStatusFeed {
     this.deps.statusSink?.()
   )
   private readonly subscribers = new Map<string, StructuredAgentSessionStatusSubscriber>()
+  // Never evicted: chats are named only while in here, and AI Vault reads closed ones' names here.
   private readonly published = new Map<
     string,
     {
