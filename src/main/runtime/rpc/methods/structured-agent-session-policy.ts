@@ -44,17 +44,17 @@ export function clientRendersStructuredAgent(
   )
 }
 
-/** The agents this client reads rows of, among those this host `registered`; undefined when it
+/** The agents this client reads rows of, among those registered or saved here; undefined when it
  *  reads every one, so an action for it is exactly the unscoped one (one fence for every offer). */
 export function structuredAgentsReadBy(
   context: Pick<RpcContext, 'clientCapabilities' | 'clientKind'>,
-  registered: readonly { agent: string }[]
+  agents: readonly string[]
 ): ((agent: string) => boolean) | undefined {
   if (context.clientKind === undefined) {
     return undefined
   }
   const reads = (agent: string) => clientRendersStructuredAgent(context.clientCapabilities, agent)
-  return registered.every(({ agent }) => reads(agent)) ? undefined : reads
+  return agents.every(reads) ? undefined : reads
 }
 
 /**

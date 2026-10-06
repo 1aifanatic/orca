@@ -1,8 +1,4 @@
-// The structured agents this runtime registers, in one list. Each entry's definition decides which
-// agents' records the store admits, its factory builds the adapter the router drives that agent with
-// once the store is open, and its location rule and account resolver answer the picker and create
-// before any host exists, so none of them can disagree about which agents exist or where they run.
-// Adding an agent is one more entry.
+// Each runtime registration owns its adapter, location support and account resolution at start.
 
 import { createCodexStructuredLaunchResolver } from '../codex/codex-structured-launch-resolution'
 import { supportsCodexStructuredLocation } from '../codex/codex-structured-location-support'
@@ -13,10 +9,6 @@ import type { AgentSessionExecutionLocation } from '../../shared/agent-session-r
 import { CodexStructuredSessionAdapter } from '../codex/codex-structured-session-adapter'
 import { CODEX_STRUCTURED_AGENT } from '../codex/codex-structured-agent-definition'
 import { CLAUDE_STRUCTURED_AGENT } from '../claude/claude-structured-agent-definition'
-import {
-  agentSessionStoredAgents,
-  type AgentSessionStoredAgents
-} from '../../shared/agent-session-stored-agent'
 import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionLifecycleEvent
@@ -240,8 +232,3 @@ export function structuredAgentRuntimeRegistration(
     null
   )
 }
-
-/** What the record store admits: the ids of exactly the agents registered here. */
-export const STRUCTURED_AGENT_STORAGE: AgentSessionStoredAgents = agentSessionStoredAgents(
-  STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map((registration) => registration.definition)
-)

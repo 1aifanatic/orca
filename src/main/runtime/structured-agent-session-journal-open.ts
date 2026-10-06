@@ -9,7 +9,6 @@ import {
   type LegacyAgentSessionRecordImportReport
 } from './agent-session-legacy-record-import'
 import { recordStructuredAgentSessionHostInstallRefusal } from './structured-agent-session-host-refusal'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 
 // Every chat request retries a failed open, so each distinct failure is logged once, with its stack.
@@ -35,16 +34,13 @@ function logOpenFailureOnce(logger: StructuredAgentSessionLogger, error: unknown
 export async function openStructuredAgentSessionJournalDatabase(args: {
   stateDirectory: string
   hostId: string
-  /** The registered agents: a legacy record of any other agent is imported verbatim, unread. */
-  agents: AgentSessionStoredAgents
   logger: StructuredAgentSessionLogger
 }): Promise<JournalHostDatabase> {
   try {
     const opened = await JournalHostDatabase.open(args.stateDirectory, async () =>
       legacyAgentSessionRecordImport(
-        await readLegacyAgentSessionRecords(args.stateDirectory, args.hostId, args.agents),
+        await readLegacyAgentSessionRecords(args.stateDirectory, args.hostId),
         args.hostId,
-        args.agents,
         (report) => reportLegacyRecordImport(args.logger, report)
       )
     )

@@ -18,7 +18,6 @@ import {
   encodePersistedAgentSessionProviderHandle
 } from './agent-session-provider-handle-encoding'
 import { isPersistedAgentSessionRecord } from './agent-session-record'
-import { CLAUDE_AND_CODEX_STORED_AGENTS } from './agent-session-stored-agent.test-fixture'
 import {
   decodePersistedAgentSessionRecord,
   encodeAgentSessionRecord
@@ -104,8 +103,8 @@ describe('a record row older builds wrote', () => {
     ['Codex', STORED_CODEX_ROW]
   ])('reads a %s row and writes it back byte for byte', (_name, row) => {
     const stored: unknown = JSON.parse(row)
-    expect(isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)).toBe(true)
-    if (!isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)) {
+    expect(isPersistedAgentSessionRecord(stored)).toBe(true)
+    if (!isPersistedAgentSessionRecord(stored)) {
       return
     }
     const { record, normalized } = decodePersistedAgentSessionRecord(stored)
@@ -115,7 +114,7 @@ describe('a record row older builds wrote', () => {
 
   it('hands shared code only the neutral handle', () => {
     const stored: unknown = JSON.parse(STORED_CLAUDE_ROW)
-    if (!isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)) {
+    if (!isPersistedAgentSessionRecord(stored)) {
       throw new Error('fixture row must be readable')
     }
     const { record } = decodePersistedAgentSessionRecord(stored)
@@ -248,8 +247,8 @@ describe('what this build writes', () => {
     stored.providerHandleChain[0].handle.laterHandleField = 'x'
     stored.providerHandleChain[0].laterLinkField = 'y'
     stored.laterRecordField = 'z'
-    expect(isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)).toBe(true)
-    if (!isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)) {
+    expect(isPersistedAgentSessionRecord(stored)).toBe(true)
+    if (!isPersistedAgentSessionRecord(stored)) {
       return
     }
     const written = JSON.parse(
@@ -278,7 +277,7 @@ describe('what this build writes', () => {
       nativeId: 'acp-thread',
       resumeCursor: 'resume-token'
     })
-    expect(isPersistedAgentSessionRecord(stored, CLAUDE_AND_CODEX_STORED_AGENTS)).toBe(false)
+    expect(isPersistedAgentSessionRecord(stored)).toBe(false)
   })
 })
 

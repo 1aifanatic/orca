@@ -24,7 +24,7 @@ import type {
   AgentLaunchModeReceipt
 } from '../../shared/agent-launch-intent'
 import { RUNTIME_CAPABILITIES } from '../../shared/protocol-version'
-import { STRUCTURED_AGENT_STORAGE } from '../runtime/structured-agent-runtime-registrations'
+import { STRUCTURED_AGENT_RUNTIME_REGISTRATIONS } from '../runtime/structured-agent-runtime-registrations'
 import {
   prefersStructuredNativeChatByDefault,
   resolveStructuredNativeChatSupport,
@@ -83,7 +83,9 @@ export type AgentLaunchModePlacement = {
   callerRendersStructured?: boolean
 }
 
-const REGISTERED_STRUCTURED_AGENTS: readonly string[] = [...STRUCTURED_AGENT_STORAGE.keys()]
+const REGISTERED_STRUCTURED_AGENTS: readonly string[] = STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map(
+  ({ definition }) => definition.agent
+)
 
 const DOWNGRADE_DETAIL: Record<Exclude<AgentLaunchModeReason, 'user_default'>, string> = {
   remote_execution_host: 'this launch runs on a remote execution host',

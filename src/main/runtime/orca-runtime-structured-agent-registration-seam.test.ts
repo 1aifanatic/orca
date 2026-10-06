@@ -4,11 +4,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
-import {
-  STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
-  STRUCTURED_AGENT_STORAGE,
-  structuredAgentRuntimeRegistration
-} from './structured-agent-runtime-registrations'
+import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -35,12 +31,6 @@ function runtimeAt(location = LOCAL) {
 }
 
 describe('the structured agent registration list', () => {
-  it('is what the record store admits', () => {
-    expect([...STRUCTURED_AGENT_STORAGE.keys()]).toEqual(
-      STRUCTURED_AGENT_RUNTIME_REGISTRATIONS.map(({ definition }) => definition.agent)
-    )
-  })
-
   it("answers createSupport from the agent's own location rule", async () => {
     const codex = structuredAgentRuntimeRegistration('codex')!
     const { runtime, installHost } = runtimeAt()

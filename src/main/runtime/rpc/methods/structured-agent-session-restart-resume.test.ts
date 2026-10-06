@@ -74,7 +74,7 @@ function installRestartHost() {
   setStructuredAgentSessionHost(
     Object.assign(hostStub(), {
       restartResume,
-      agentDefinitions: () => [{ agent: 'claude' }, { agent: 'codex' }, { agent: 'grok' }]
+      knownAgentIds: () => ['claude', 'codex', 'grok']
     })
   )
   return { restartResume, offers: () => offers }

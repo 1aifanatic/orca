@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
-  STRUCTURED_AGENT_STORAGE,
   structuredAgentRuntimeRegistration,
   type StructuredAgentAccountHomeServices
 } from './structured-agent-runtime-registrations'
@@ -24,10 +23,6 @@ describe('ACP agents in the runtime registrations', () => {
         approvalEnforcement: 'orca'
       }
     })
-  })
-
-  it("admits Grok's records", () => {
-    expect(STRUCTURED_AGENT_STORAGE.has('grok')).toBe(true)
   })
 
   it('takes model and effort picks at rest, and keeps no model list of its own', () => {

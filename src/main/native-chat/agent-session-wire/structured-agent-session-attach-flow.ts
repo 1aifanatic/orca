@@ -109,7 +109,8 @@ export async function performAttach(
   // transport or account variable is not its agent's) is refused; reading it never is.
   const supported = (record: AgentSessionRecord | null) =>
     record === null
-      ? adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)
+      ? input.agents.definition(params.agent) !== null &&
+        adapterSupportsCreateIfDeclared(input.adapter, params.location, params.agent)
       : hostCanStartRecord(input, record)
   // Ensure/recovery bypass create-intent, so recheck before reserving or spawning.
   if (!supported(store.getRecord(sessionId))) {

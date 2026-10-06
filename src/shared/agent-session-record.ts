@@ -24,9 +24,11 @@ import {
   decodePersistedAgentSessionProviderHandleChain,
   type AgentSessionProviderHandleLink
 } from './agent-session-provider-handle'
-import { isAgentSessionProviderHandleInNamespace } from './agent-session-provider-handle-encoding'
+import {
+  isAgentSessionProviderHandleInNamespace,
+  isStructuredAgentId
+} from './agent-session-provider-handle-encoding'
 import type { AgentSessionAccountHome } from './agent-session-account-home'
-import type { AgentSessionStoredAgents } from './agent-session-stored-agent'
 
 export type { AgentSessionAccountHome } from './agent-session-account-home'
 
@@ -131,7 +133,7 @@ export type AgentSessionRecord = {
   schemaVersion: typeof AGENT_SESSION_RECORD_SCHEMA_VERSION
   sessionId: string
   location: AgentSessionExecutionLocation
-  /** The registered agent this session runs; its definition decides what the record may store. */
+  /** The agent this session names, whether this build can run it or not. */
   provider: string
   providerHandleChain: AgentSessionProviderHandleLink[]
   accountHome: AgentSessionAccountHome
@@ -338,14 +340,9 @@ function isPersistedAgentSessionLease(value: unknown): value is PersistedAgentSe
   )
 }
 
-/** The on-disk shape, which still admits the removed terminal handoff's lease values and stores
- *  handles in their typed form. Decode through `decodePersistedAgentSessionRecord` before use.
- *  `agents` are the host's registered agents: a record of any other agent is not readable here. A
- *  registered agent's record is readable when it agrees with itself; whether this build can drive
- *  its transport and account variable is decided only when its agent would start. */
+/** Stored identity is independent of registrations; availability is checked only at start. */
 export function isPersistedAgentSessionRecord(
-  value: unknown,
-  agents: AgentSessionStoredAgents
+  value: unknown
 ): value is PersistedAgentSessionRecord {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -355,8 +352,7 @@ export function isPersistedAgentSessionRecord(
     record.schemaVersion === AGENT_SESSION_RECORD_SCHEMA_VERSION &&
     isAgentSessionId(record.sessionId) &&
     isAgentSessionExecutionLocation(record.location) &&
-    typeof record.provider === 'string' &&
-    agents.has(record.provider) &&
+    isStructuredAgentId(record.provider) &&
     isAgentSessionAccountHome(record.accountHome) &&
     (record.options === undefined || isAgentSessionOptions(record.options)) &&
     (record.rewind === undefined || isAgentSessionRewindRecord(record.rewind)) &&

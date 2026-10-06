@@ -1,6 +1,6 @@
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import {
   readClaudeManagedAccountGateSettings,
   structuredClaudeMatchesActiveManagedAccount,

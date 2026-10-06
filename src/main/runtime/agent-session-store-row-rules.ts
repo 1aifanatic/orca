@@ -12,17 +12,15 @@ import {
 import { isAgentSessionId, isPersistedAgentSessionRecord } from '../../shared/agent-session-record'
 import type { PersistedAgentSessionRecord } from '../../shared/agent-session-legacy-handoff-lease'
 import { isAgentSessionSurfaceTabId } from '../../shared/agent-session-surface-tab-id'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import type { RetiredAgentSessionClaimKey } from './agent-session-record-store-file'
 import type { PersistedAgentSessionTab } from './agent-session-tab-table'
 
-/** A record row a load keeps in `records` rather than quarantining: one of a registered agent. */
+/** Valid stored identity, independent of provider availability. */
 export function isReadableAgentSessionStoreRecord(
   sessionId: string,
-  value: unknown,
-  agents: AgentSessionStoredAgents
+  value: unknown
 ): value is PersistedAgentSessionRecord {
-  return isPersistedAgentSessionRecord(value, agents) && value.sessionId === sessionId
+  return isPersistedAgentSessionRecord(value) && value.sessionId === sessionId
 }
 
 export function isReadableAgentSessionStoreOperation(

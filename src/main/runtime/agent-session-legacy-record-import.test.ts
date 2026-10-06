@@ -25,7 +25,6 @@ import { AgentSessionRecordStore } from './agent-session-record-store'
 import { legacyAgentSessionStorePath } from './agent-session-record-store-file'
 import { openStructuredAgentSessionJournalDatabase } from './structured-agent-session-journal-open'
 import { recordingStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
-import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../shared/agent-session-stored-agent.test-fixture'
 
 const NOW = 1_800_000_000_000
 const ALPHA = 'session-alpha'
@@ -125,8 +124,7 @@ async function install(): Promise<{
   const database = await openStructuredAgentSessionJournalDatabase({
     logger: log.logger,
     stateDirectory: root,
-    hostId: 'local',
-    agents: CLAUDE_AND_CODEX_STORED_AGENTS
+    hostId: 'local'
   })
   opened.push(database)
   // Each report reaches the log as one entry under its scope, its kind as the outcome.
@@ -137,8 +135,7 @@ async function install(): Promise<{
     database,
     store: AgentSessionRecordStore.open({
       journalDatabase: database,
-      hostId: 'local',
-      agents: CLAUDE_AND_CODEX_STORED_AGENTS
+      hostId: 'local'
     }),
     reports
   }
@@ -416,8 +413,7 @@ describe('the tab index from before the table', () => {
       .run(BETA, JSON.stringify(storedForm(record(BETA))))
     await AgentSessionRecordStore.open({
       journalDatabase: owed.database,
-      hostId: 'local',
-      agents: CLAUDE_AND_CODEX_STORED_AGENTS
+      hostId: 'local'
     }).setSessionTabVisibility(BETA, true)
     owed.database.close()
     await rm(legacyPath(), { recursive: true })

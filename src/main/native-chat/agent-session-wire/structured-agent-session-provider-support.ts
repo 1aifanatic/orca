@@ -30,17 +30,6 @@ export function adapterSupportsCreateIfDeclared(
   return adapterSupportsCreate(adapter, location, agent)
 }
 
-export function adapterSupportsRecord(
-  adapter: StructuredAgentSessionAdapter,
-  record: AgentSessionRecord
-): boolean {
-  if (adapter.supportsCreate) {
-    return adapter.supportsCreate(record.location, record.provider)
-  }
-  // A record stays readable unless the adapter explicitly rejects its location.
-  return adapter.supportsLocation?.(record.location) ?? true
-}
-
 /** Whether this build can start the agent of `session`: the agent is registered here, its account
  *  variable is that agent's own (it becomes the child's environment), and every handle it holds is
  *  in the transport the agent's adapter speaks. A record failing this stays readable (tab, history);
@@ -62,7 +51,7 @@ export function agentDrivesSession(
 
 /** Whether this host can start `record`'s agent: the adapter runs its location and this build
  *  drives it. The restart offer, a retry, the pre-send check and the start itself all ask this, so
- *  none offers what the start refuses; reading the chat asks only `adapterSupportsRecord`. */
+ *  none offers what the start refuses. Reading the stored chat needs no adapter. */
 export function hostCanStartRecord(
   deps: {
     adapter: StructuredAgentSessionAdapter
@@ -70,5 +59,8 @@ export function hostCanStartRecord(
   },
   record: AgentSessionRecord
 ): boolean {
-  return adapterSupportsRecord(deps.adapter, record) && agentDrivesSession(deps.agents, record)
+  return (
+    adapterSupportsCreateIfDeclared(deps.adapter, record.location, record.provider) &&
+    agentDrivesSession(deps.agents, record)
+  )
 }

@@ -26,7 +26,6 @@ import {
   type AgentSessionStoreImportRows
 } from './agent-session-record-rows'
 import { isReadableAgentSessionStoreRecord } from './agent-session-store-row-rules'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 export type LegacyAgentSessionRecords =
   | { kind: 'absent' }
@@ -53,15 +52,10 @@ function readFailedTransiently(error: unknown): boolean {
 /** Never throws. */
 export async function readLegacyAgentSessionRecords(
   stateDirectory: string,
-  hostId: string,
-  agents: AgentSessionStoredAgents
+  hostId: string
 ): Promise<LegacyAgentSessionRecords> {
   try {
-    const loaded = await loadAgentSessionStore(
-      legacyAgentSessionStorePath(stateDirectory),
-      hostId,
-      agents
-    )
+    const loaded = await loadAgentSessionStore(legacyAgentSessionStorePath(stateDirectory), hostId)
     return loaded.storeFound
       ? { kind: 'loaded', state: loaded.state, fromBackup: loaded.recoveredFromBackup }
       : { kind: 'absent' }
@@ -102,8 +96,7 @@ function withFloorAboveSetAsideCopy(record: AgentSessionRecord, raw: unknown): A
 
 function importRows(
   state: AgentSessionStoreState,
-  fromBackup: boolean,
-  agents: AgentSessionStoredAgents
+  fromBackup: boolean
 ): AgentSessionStoreImportRows {
   const records = new Map(state.records)
   if (fromBackup) {
@@ -120,7 +113,7 @@ function importRows(
     // A record the load rules refuse is kept as its bytes, which every load then sets aside.
     rows.push([
       sessionId,
-      isReadableAgentSessionStoreRecord(sessionId, JSON.parse(json), agents)
+      isReadableAgentSessionStoreRecord(sessionId, JSON.parse(json))
         ? json
         : JSON.stringify(encodeAgentSessionRecord(loaded))
     ])
@@ -144,7 +137,6 @@ function importRows(
 export function legacyAgentSessionRecordImport(
   legacy: LegacyAgentSessionRecords,
   hostId: string,
-  agents: AgentSessionStoredAgents,
   report: (report: LegacyAgentSessionRecordImportReport) => void
 ): JournalLegacyRecordImport {
   switch (legacy.kind) {
@@ -161,7 +153,7 @@ export function legacyAgentSessionRecordImport(
   }
   let rows: AgentSessionStoreImportRows
   try {
-    rows = importRows(legacy.state, legacy.fromBackup, agents)
+    rows = importRows(legacy.state, legacy.fromBackup)
   } catch (error) {
     report({ kind: 'unusable', error })
     return NO_LEGACY_JOURNAL_RECORDS

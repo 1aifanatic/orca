@@ -163,7 +163,7 @@ export class AgentModelCatalogStore {
 
   private entryFromSuccess(
     fingerprint: string,
-    agent: 'claude' | 'codex',
+    agent: string,
     success: AgentModelCatalogSuccess
   ): AgentModelCatalogEntry | null {
     if (success.models.length === 0) {
@@ -184,7 +184,7 @@ export class AgentModelCatalogStore {
 
   private writeSuccess(
     fingerprint: string,
-    agent: 'claude' | 'codex',
+    agent: string,
     success: AgentModelCatalogSuccess,
     order: number
   ): AgentModelCatalogEntry | null {

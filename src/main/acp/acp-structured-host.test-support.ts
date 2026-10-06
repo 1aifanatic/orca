@@ -6,7 +6,6 @@ import { z } from 'zod'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleKey } from '../../shared/agent-session-provider-handle'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
-import { agentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 import { openTestJournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database-test-support'
 import { messageText } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
@@ -85,9 +84,7 @@ export async function openHostRig(
   } = {}
 ) {
   const state = hostTestState()
-  const store = await openTestAgentSessionRecordStore(state.root, {
-    agents: agentSessionStoredAgents([{ agent: 'grok' }])
-  })
+  const store = await openTestAgentSessionRecordStore(state.root)
   let generation = 0
   // As the runtime wires it: every exit and late send settlement the adapter observes reaches the host.
   const hosted: { host: StructuredAgentSessionHost | null } = { host: null }
