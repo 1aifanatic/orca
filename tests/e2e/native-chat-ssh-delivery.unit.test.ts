@@ -1,6 +1,6 @@
 import '../../src/main/runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createSshDelivery, createPairedRuntime, io } from './native-chat-ssh-delivery.test-fixture'
+import { createSshDelivery, createPairedRuntime, io } from './__mocks__/native-chat-ssh-delivery'
 import {
   sendNativeChatAskAnswer,
   sendNativeChatMessage,

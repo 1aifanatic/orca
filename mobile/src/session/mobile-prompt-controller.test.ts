@@ -18,7 +18,7 @@ import {
   questionOption,
   getController,
   askCancel
-} from './mobile-prompt-controller.test-fixture'
+} from './__mocks__/mobile-prompt-controller'
 
 const client: RpcClient = {
   sendRequest: vi.fn<RpcClient['sendRequest']>(),

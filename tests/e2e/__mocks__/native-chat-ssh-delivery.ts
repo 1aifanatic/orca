@@ -1,13 +1,17 @@
 import { vi } from 'vitest'
-import { SshChannelMultiplexer } from '../../src/main/ssh/ssh-channel-multiplexer'
-import { SshPtyProvider } from '../../src/main/providers/ssh-pty-provider'
-import { HEADER_LENGTH, MessageType, parseJsonRpcMessage } from '../../src/main/ssh/relay-protocol'
-import { createPtyWriteInput } from '../../src/main/ipc/pty/ipc/write-input'
-import type { IPtyProvider } from '../../src/main/providers/types'
-import type * as PtyProviderRegistry from '../../src/main/ipc/pty/provider/registry'
-import { ptyOwnership } from '../../src/main/ipc/pty/provider/ownership-state'
-import { OrcaRuntimeService } from '../../src/main/runtime/orca-runtime'
-import { makeStore } from '../../src/main/runtime/runtime-rpc-worktree-store-fixtures'
+import { SshChannelMultiplexer } from '../../../src/main/ssh/ssh-channel-multiplexer'
+import { SshPtyProvider } from '../../../src/main/providers/ssh-pty-provider'
+import {
+  HEADER_LENGTH,
+  MessageType,
+  parseJsonRpcMessage
+} from '../../../src/main/ssh/relay-protocol'
+import { createPtyWriteInput } from '../../../src/main/ipc/pty/ipc/write-input'
+import type { IPtyProvider } from '../../../src/main/providers/types'
+import type * as PtyProviderRegistry from '../../../src/main/ipc/pty/provider/registry'
+import { ptyOwnership } from '../../../src/main/ipc/pty/provider/ownership-state'
+import { OrcaRuntimeService } from '../../../src/main/runtime/orca-runtime'
+import { makeStore } from '../../../src/main/runtime/runtime-rpc-worktree-store-fixtures'
 
 const io = vi.hoisted(() => ({
   getProvider: (): IPtyProvider => {
@@ -16,7 +20,7 @@ const io = vi.hoisted(() => ({
   rpc: vi.fn()
 }))
 export { io }
-vi.mock('../../src/main/ipc/pty/provider/registry', async (importOriginal) => {
+vi.mock('../../../src/main/ipc/pty/provider/registry', async (importOriginal) => {
   const original = await importOriginal<typeof PtyProviderRegistry>()
   return {
     ...original,
