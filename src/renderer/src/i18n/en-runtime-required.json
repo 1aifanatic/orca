@@ -2781,6 +2781,8 @@
         "compactionUnconfirmed": "Compaction completion is unconfirmed.",
         "couldNotRestart": "{{agent}} couldn't restart.",
         "couldNotStart": "{{agent}} couldn't start.",
+        "customCommandConflict": "The custom command conflicts with this chat’s model or effort. Remove model or effort flags in Settings → Agents → Command.",
+        "customCommandInvalid": "{{agent}} couldn't start with your custom command. Use a program and its arguments in Settings → Agents → Command, or clear it.",
         "emptyMessage": "This message is empty, so it was not sent.",
         "historyTooLarge": "This conversation's history is too large to restore here.",
         "hostFault": "Orca ran into a problem, so this didn't go through.",
