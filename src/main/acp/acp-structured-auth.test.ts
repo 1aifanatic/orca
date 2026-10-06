@@ -2,6 +2,7 @@
 // environment, else the sign-in it already cached; with neither, the chat reports it signed out.
 
 import { afterEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { closeProviderTimelineRigs } from '../native-chat/agent-session-timeline/provider-timeline-assembler-test-support'
 import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AcpScriptedAgent } from './acp-scripted-agent.test-support'
@@ -14,6 +15,8 @@ import {
 afterEach(async () => {
   await closeProviderTimelineRigs()
 })
+
+const METHOD = z.object({ methodId: z.string() })
 
 const BOTH = [
   { id: 'xai.api_key', name: 'API key' },
@@ -51,9 +54,7 @@ async function signInWith(options: {
     script: requiresSignIn
   })
   const acquired = await rig.acquire().catch((error: unknown) => error)
-  const methods = rig
-    .sent('authenticate')
-    .map((frame) => (frame.params as { methodId: string }).methodId)
+  const methods = rig.sent('authenticate').map((frame) => METHOD.parse(frame.params).methodId)
   return { rig, acquired, methods }
 }
 
