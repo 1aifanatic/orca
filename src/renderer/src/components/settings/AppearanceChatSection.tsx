@@ -13,6 +13,7 @@ import { SearchableSetting } from './SearchableSetting'
 import { NumberField, SettingsRow, SettingsSegmentedControl } from './SettingsFormControls'
 import {
   chatTerminalControlledHint,
+  chatTerminalControlledTooltip,
   getChatAppearanceEntriesByKey,
   getChatWidthOptions
 } from './chat-appearance-search'
@@ -60,6 +61,7 @@ export function AppearanceChatSection({
           value={appearance.fontSize}
           defaultValue={matching ? undefined : 14}
           disabled={matching}
+          disabledReason={chatTerminalControlledTooltip()}
           min={12}
           max={20}
           integer
@@ -78,6 +80,7 @@ export function AppearanceChatSection({
           value={appearance.codeFontSize}
           defaultValue={matching ? undefined : 12}
           disabled={matching}
+          disabledReason={chatTerminalControlledTooltip()}
           min={10}
           max={18}
           integer

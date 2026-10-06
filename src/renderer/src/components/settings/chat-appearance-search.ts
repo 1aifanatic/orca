@@ -7,6 +7,13 @@ export function chatTerminalControlledHint(): string {
   return translate('settings.appearance.chat.terminalControlledHint', 'Set by terminal interface.')
 }
 
+export function chatTerminalControlledTooltip(): string {
+  return translate(
+    'settings.appearance.chat.terminalControlledTooltip',
+    'Matching your terminal interface. Turn off Match terminal interface to change this.'
+  )
+}
+
 export const getChatContrastEntriesByKey = createLocalizedCatalog(
   () =>
     ({

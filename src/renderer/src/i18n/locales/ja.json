@@ -77,7 +77,8 @@
         "contrastDescription": "背景に対するチャットの文字の明るさを調整します。右端にすると、以前の明るい表示になります。",
         "softer": "柔らかく",
         "sharper": "くっきり",
-        "terminalControlledHint": "ターミナルの外観設定に従います。"
+        "terminalControlledHint": "ターミナルの外観設定に従います。",
+        "terminalControlledTooltip": "ターミナルの外観に合わせています。変更するには「ターミナルの外観に合わせる」をオフにしてください。"
       }
     },
     "browser": {

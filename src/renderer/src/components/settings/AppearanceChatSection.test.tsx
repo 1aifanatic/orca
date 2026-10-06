@@ -4,6 +4,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../../../shared/constants'
+import { TooltipProvider } from '../ui/tooltip'
 import { AppearanceChatSection } from './AppearanceChatSection'
 import {
   getChatAppearanceEntriesByKey,
@@ -176,7 +177,8 @@ describe('chat appearance settings controls', () => {
     }
     const updateSettings = persistInMock(settings)
     const { rerender } = render(
-      <AppearanceChatSection settings={settings} updateSettings={updateSettings} />
+      <AppearanceChatSection settings={settings} updateSettings={updateSettings} />,
+      { wrapper: TooltipProvider }
     )
     expect(screen.getAllByText('Set by terminal interface.')).toHaveLength(3)
     expect(screen.getByRole('spinbutton', { name: 'Text size' }).hasAttribute('disabled')).toBe(
@@ -217,5 +219,48 @@ describe('chat appearance settings controls', () => {
       '125'
     )
     expect(screen.getByRole('radio', { name: 'Wide' }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  const terminalTooltip =
+    'Matching your terminal interface. Turn off Match terminal interface to change this.'
+  const controlledControls = [
+    ['spinbutton', 'Text size'],
+    ['spinbutton', 'Code text size'],
+    ['slider', 'Contrast']
+  ] as const
+
+  it.each(controlledControls)(
+    'explains a matched %s "%s" on hover of its wrapper',
+    async (role, name) => {
+      const settings = {
+        ...getDefaultSettings('/tmp'),
+        nativeChatAppearance: { matchTerminalInterface: true }
+      }
+      render(
+        <AppearanceChatSection settings={settings} updateSettings={persistInMock(settings)} />,
+        { wrapper: TooltipProvider }
+      )
+      const trigger = screen.getByRole(role, { name }).closest('[data-slot="tooltip-trigger"]')
+      expect(trigger).not.toBeNull()
+      fireEvent.pointerMove(trigger!, { pointerType: 'mouse' })
+      expect((await screen.findByRole('tooltip')).textContent).toBe(terminalTooltip)
+      // Width stays editable and unexplained.
+      expect(
+        screen.getByRole('radio', { name: 'Wide' }).closest('[data-slot="tooltip-trigger"]')
+      ).toBeNull()
+    }
+  )
+
+  it('gives the controls no tooltip while matching is off', () => {
+    const settings = getDefaultSettings('/tmp')
+    render(<AppearanceChatSection settings={settings} updateSettings={persistInMock(settings)} />, {
+      wrapper: TooltipProvider
+    })
+    for (const [role, name] of controlledControls) {
+      const control = screen.getByRole(role, { name })
+      expect(control.closest('[data-slot="tooltip-trigger"]')).toBeNull()
+      fireEvent.pointerMove(control, { pointerType: 'mouse' })
+    }
+    expect(screen.queryByRole('tooltip')).toBeNull()
   })
 })

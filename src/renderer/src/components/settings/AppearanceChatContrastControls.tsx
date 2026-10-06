@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import type { NativeChatAppearanceSettings } from '../../../../shared/native-chat-appearance-settings'
-import { chatTerminalControlledHint, getChatContrastEntriesByKey } from './chat-appearance-search'
+import {
+  chatTerminalControlledHint,
+  chatTerminalControlledTooltip,
+  getChatContrastEntriesByKey
+} from './chat-appearance-search'
 import { translate } from '@/i18n/i18n'
 import { Slider } from '../ui/slider'
 import { SearchableSetting } from './SearchableSetting'
+import { SettingsDisabledControlTooltip } from './SettingsDisabledControlTooltip'
 import { SettingsRow, SettingsSwitchRow } from './SettingsFormControls'
 
 type ChatContrastControlsProps = {
@@ -68,18 +73,22 @@ function ChatContrastSlider({
       <span className="text-xs text-muted-foreground">
         {translate('settings.appearance.chat.softer', 'Softer')}
       </span>
-      <div className="w-40">
-        <Slider
-          disabled={disabled}
-          min={50}
-          max={150}
-          step={1}
-          value={[draft.value]}
-          thumbLabels={[translate('settings.appearance.chat.contrast', 'Contrast')]}
-          onValueChange={([value]) => setDraft({ savedContrast: contrast, value })}
-          onValueCommit={([value]) => onChange({ contrast: value })}
-        />
-      </div>
+      <SettingsDisabledControlTooltip
+        reason={disabled ? chatTerminalControlledTooltip() : undefined}
+      >
+        <div className="w-40">
+          <Slider
+            disabled={disabled}
+            min={50}
+            max={150}
+            step={1}
+            value={[draft.value]}
+            thumbLabels={[translate('settings.appearance.chat.contrast', 'Contrast')]}
+            onValueChange={([value]) => setDraft({ savedContrast: contrast, value })}
+            onValueCommit={([value]) => onChange({ contrast: value })}
+          />
+        </div>
+      </SettingsDisabledControlTooltip>
       <span className="text-xs text-muted-foreground">
         {translate('settings.appearance.chat.sharper', 'Sharper')}
       </span>

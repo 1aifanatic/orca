@@ -240,7 +240,8 @@
         "contrastDescription": "How bright chat text is against the background. The right end matches the older, brighter look.",
         "softer": "Softer",
         "sharper": "Sharper",
-        "terminalControlledHint": "Set by terminal interface."
+        "terminalControlledHint": "Set by terminal interface.",
+        "terminalControlledTooltip": "Matching your terminal interface. Turn off Match terminal interface to change this."
       }
     },
     "browser": {

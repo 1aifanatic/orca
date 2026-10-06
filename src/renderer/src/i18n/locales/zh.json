@@ -77,7 +77,8 @@
         "contrastDescription": "调整聊天文字相对于背景的亮度。滑到最右端可恢复以前更明亮的外观。",
         "softer": "更柔和",
         "sharper": "更清晰",
-        "terminalControlledHint": "由终端界面设置。"
+        "terminalControlledHint": "由终端界面设置。",
+        "terminalControlledTooltip": "正在匹配终端外观。要更改此项，请关闭“匹配终端外观”。"
       }
     },
     "browser": {
