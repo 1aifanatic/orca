@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { orcadNodePtyNativeArtifacts, orcadRipgrepArtifact } from '../../shared/orcad-artifacts'
 import { orcadAgentBrowserNativeName } from '../../shared/orcad-agent-browser-name'
 import type { NodeRuntimeTarget } from '../../shared/node-runtime-pin'
@@ -9,6 +10,9 @@ import type { SshConnection } from './ssh-connection'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import { ORCAD_INSTALL_MODEL } from './remote-install-model'
 import { acquireInstallLock } from './ssh-relay-install-lock'
+import { ORCAD_FENCE_OWNER_FILENAME } from './orcad-activation-fence-scope'
+import { forgetHeldOrcadFence, rememberHeldOrcadFence } from './orcad-held-fence-tokens'
+import { orphanExitedOwnLock } from './orcad-exited-own-lock'
 import { uploadRelayDirectory, writeRelayFile } from './ssh-relay-install-transfers'
 import {
   abandonInstall,
@@ -46,7 +50,22 @@ export async function installOrcadBundle(
   ) {
     return
   }
-  await acquireInstallLock(options.conn, remoteDir, options.host, { signal: options.signal })
+  // Its token lets a relaunch prove a lock its own quit left mid-upload (BUG-23).
+  const token = randomUUID()
+  rememberHeldOrcadFence(token)
+  try {
+    await acquireInstallLock(options.conn, remoteDir, options.host, {
+      signal: options.signal,
+      owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token },
+      // Nothing keeps writing once its client exited: uploads are SFTP and chmod is immediate.
+      beforeStaleCheck: (lockDir) => orphanExitedOwnLock(options, lockDir, null)
+    })
+  } catch (error) {
+    if (!isUnconfirmedSshCommandTermination(error)) {
+      forgetHeldOrcadFence(token)
+    }
+    throw error
+  }
   let preserveInstallLock = false
   try {
     // Re-probe under the lock: a sibling deploy may have finished while we waited.
@@ -86,7 +105,10 @@ export async function installOrcadBundle(
     throw error
   } finally {
     if (!preserveInstallLock) {
-      await abandonInstall(options.conn, remoteDir, options.host)
+      // A removal a quit cut short keeps the token, so the relaunch can prove the lock its own.
+      if (await abandonInstall(options.conn, remoteDir, options.host)) {
+        forgetHeldOrcadFence(token)
+      }
     }
   }
 }
