@@ -130,6 +130,9 @@ describe('mobileStructuredSendDelivery', () => {
   it('reports a send its own hook blocked as sent, never handing its text back', () => {
     // Drawn as a sent message on every client, so a restored draft would show it twice.
     const answer = structuredSendResultFixture('rejected')
+    if (!('submission' in answer)) {
+      throw new Error('the fixture answers with a submission')
+    }
     const blocked: StructuredAgentSessionMutationCallResult<AgentSessionSendResult> = {
       status: 'accepted',
       value: {
