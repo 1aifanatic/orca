@@ -9,7 +9,6 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
-import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import {
   agentJournalItemKey,
   agentJournalSubmissionKey
