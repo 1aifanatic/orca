@@ -124,7 +124,8 @@ try {
       $code=$global:LASTEXITCODE
     }
     # The relay's own log is the only record of why it closed a client.
-    foreach($log in @(Get-ChildItem -Path (Join-Path $account.home '.orca-remote\relay-*\relay*.log'),(Join-Path $account.home '.orca-remote\orcad-*\orcad.log') -File -ErrorAction SilentlyContinue)){Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $ReceiptRoot "$cell.$($log.Directory.Name).$($log.Name)")}
+    # orcad.log holds only the last launch on Windows; orcad.log.1 is the one before a restart.
+    foreach($log in @(Get-ChildItem -Path (Join-Path $account.home '.orca-remote\relay-*\relay*.log'),(Join-Path $account.home '.orca-remote\orcad-*\orcad.log'),(Join-Path $account.home '.orca-remote\orcad-*\orcad.log.1') -File -ErrorAction SilentlyContinue)){Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $ReceiptRoot "$cell.$($log.Directory.Name).$($log.Name)")}
     if(Test-Path -LiteralPath $Context.forbiddenToolLog){Copy-Item -LiteralPath $Context.forbiddenToolLog -Destination (Join-Path $ReceiptRoot "$cell.forbidden-tool-calls.log")}
     $summary.Add(@{cell=$cell;shell=$shell;account=$account.name;exitCode=$code})
     if($code -ne 0){$failed.Add($cell)}
