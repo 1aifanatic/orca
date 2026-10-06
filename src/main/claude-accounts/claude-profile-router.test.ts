@@ -11,7 +11,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
-import { CLAUDE_PROFILE_MISSING_MESSAGE, ClaudeProfileRouter } from './claude-profile-router'
+import {
+  CLAUDE_PROFILE_MISSING_MESSAGE,
+  ClaudeProfileRouter,
+  type ClaudeProfileRouterSettings
+} from './claude-profile-router'
 import {
   claudeProfileHistoryDirs,
   installClaudeProfileRouter
@@ -38,9 +42,9 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
     updatedAt: 0,
     lastAuthenticatedAt: 0
   })
-  const settings = {
+  const settings: ClaudeProfileRouterSettings = {
     claudeManagedAccounts: [account('a'), account('b')],
-    activeClaudeManagedAccountId: 'a' as string | null,
+    activeClaudeManagedAccountId: 'a',
     activeClaudeManagedAccountIdsByRuntime: undefined,
     // Hooks off: setup must not probe or touch a real Claude here.
     agentStatusHooksEnabled: false,

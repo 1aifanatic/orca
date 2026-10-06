@@ -5,7 +5,8 @@ import { afterEach, expect, it } from 'vitest'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
-  ClaudeProfileRouter
+  ClaudeProfileRouter,
+  type ClaudeProfileRouterSettings
 } from '../claude-accounts/claude-profile-router'
 import { installClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { createClaudeStructuredLaunchResolver } from './claude-structured-launch-resolution'
@@ -19,9 +20,9 @@ afterEach(() => {
 it('launches each acquisition under the current selection, not the account it was created under', async () => {
   const root = mkdtempSync(join(tmpdir(), 'claude-launch-routing-'))
   roots.push(root)
-  const settings = {
+  const settings: ClaudeProfileRouterSettings = {
     claudeManagedAccounts: [],
-    activeClaudeManagedAccountId: 'a' as string | null,
+    activeClaudeManagedAccountId: 'a',
     activeClaudeManagedAccountIdsByRuntime: undefined,
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
@@ -42,7 +43,7 @@ it('launches each acquisition under the current selection, not the account it wa
     store: { getRecord: () => record },
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
-    resolveInheritedEnv: () => ({ PATH: '/usr/bin' }),
+    resolveInheritedEnv: async () => ({ PATH: '/usr/bin' }),
     resolveAuthPolicy: () => ({ stripAuthEnv: false })
   })
   const identity = {

@@ -21,7 +21,7 @@ import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-t
 import { getSelectedClaudeAccountIdForTarget } from './runtime-selection'
 import { isDirectory, listClaudeProfileHomes } from './claude-profile-installed-router'
 
-type ClaudeProfileRouterSettings = Pick<
+export type ClaudeProfileRouterSettings = Pick<
   GlobalSettings,
   | 'claudeManagedAccounts'
   | 'activeClaudeManagedAccountId'
