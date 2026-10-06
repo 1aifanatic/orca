@@ -116,27 +116,7 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
   /** Public: a phone fit resizes the PTY, but an idle TUI sends no byte to hydrate on. Resolves
    *  true once the model holds the pane's screen reflowed onto the PTY's current grid. */
   hydrateHeadlessTerminalFromRenderer(ptyId: string): Promise<boolean> {
-    const priorHydration = this.headlessHydrationState.get(ptyId)
-    const seed = this.maybeHydrateHeadlessFromRenderer(ptyId)
-    if (seed) {
-      return seed
-    }
-    // Why: a resize repaint can run the on-data seed before this call; join its outcome instead.
-    return priorHydration ? this.readRendererSeedOutcome(ptyId) : Promise.resolve(false)
-  }
-
-  private async readRendererSeedOutcome(ptyId: string): Promise<boolean> {
-    const state = this.headlessTerminals.get(ptyId)
-    if (!state) {
-      return false
-    }
-    await state.writeChain
-    // Why: a failed seed also ends 'done'; treated as seeded, since that model is on the PTY grid.
-    return (
-      this.headlessHydrationState.get(ptyId) === 'done' &&
-      this.headlessTerminals.get(ptyId) === state &&
-      !this.providerSnapshotPreferredPtys.has(ptyId)
-    )
+    return this.maybeHydrateHeadlessFromRenderer(ptyId) ?? Promise.resolve(false)
   }
 
   // Why: seed-derived agent status reflects historical state. Orchestration

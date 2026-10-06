@@ -296,7 +296,6 @@ describe('terminal subscribe mount replay', () => {
     let generation = 0
     let headlessPresent = false
     const requestRendererTerminalTabMount = vi.fn(() => true)
-    let model = { data: 'suffix-only redraw', cols: 80, rows: 24, seq: 1 }
     const runtime = asRuntime({
       getRuntimeId: () => 'test-runtime',
       subscribeToPtyExit: vi.fn(() => vi.fn()),
@@ -312,12 +311,7 @@ describe('terminal subscribe mount replay', () => {
       getRendererTerminalSerializerGenerationForHandle: vi.fn(() => 0),
       getRendererTerminalSerializerGeneration: vi.fn(() => generation),
       getPtyOutputSequence: vi.fn(() => 0),
-      // The recovery seed replaces the suffix-only model with the mounted screen.
-      replaceHeadlessTerminalFromRendererSnapshotForRecovery: vi.fn(
-        async (_ptyId: string, snapshot: { data: string }) => {
-          model = { ...model, data: snapshot.data }
-        }
-      ),
+      replaceHeadlessTerminalFromRendererSnapshotForRecovery: vi.fn(),
       waitForRendererTerminalSerializer: vi.fn(async (_ptyId, afterGeneration) => {
         return generation > afterGeneration
       }),
@@ -326,7 +320,12 @@ describe('terminal subscribe mount replay', () => {
       subscribeToTerminalData: vi.fn().mockReturnValue(vi.fn()),
       registerRemoteTerminalViewSubscriber: vi.fn(() => vi.fn()),
       readTerminal: vi.fn().mockResolvedValue({ tail: [], truncated: false }),
-      serializeTerminalBuffer: vi.fn(async () => model),
+      serializeTerminalBuffer: vi.fn().mockResolvedValue({
+        data: 'suffix-only redraw',
+        cols: 80,
+        rows: 24,
+        seq: 1
+      }),
       // Baseline race: the pre-PTY mount settles between the attachment answer and the wait, so the
       // wait must still count that settle against the pre-mount generation.
       serializeRendererTerminalBuffer: vi

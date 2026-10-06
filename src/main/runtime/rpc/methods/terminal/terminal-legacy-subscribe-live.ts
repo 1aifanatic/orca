@@ -8,7 +8,6 @@ import {
   sendSnapshotFrames,
   serializeStableMobileRendererSnapshot
 } from './terminal-snapshot-publication'
-import { seedModelFromRendererScreen } from './terminal-renderer-screen-model-seed'
 import { updateViewportForClient } from './terminal-viewport-update'
 import type {
   LegacyBinarySubscriptionState,
@@ -48,42 +47,27 @@ export function activateLegacyBinarySubscription(
         if (recovery.seq !== runtime.getPtyOutputSequence(ptyId)) {
           return
         }
-        const published = await seedModelFromRendererScreen(
-          runtime,
-          ptyId,
-          recovery,
-          [],
-          mobileSnapshotByteBudget(params.snapshotByteBudget, state.streamId, recoveryFrame)
-        )
-        // Why: bytes that landed while the model was rebuilt already went live, so a later reset would repeat them.
-        if (
-          state.closed ||
-          !published?.data.length ||
-          published.seq !== recovery.seq ||
-          recovery.seq !== runtime.getPtyOutputSequence(ptyId)
-        ) {
-          return
-        }
+        runtime.replaceHeadlessTerminalFromRendererSnapshotForRecovery(ptyId, recovery)
         // Why: shipped mobile clients apply resized snapshots in place, so a blank xterm recovers without resubscribe.
         const recoveryStats = sendSnapshotFrames(state.sendFrame, {
           ...recoveryFrame,
-          cols: published.cols,
-          rows: published.rows,
+          cols: recovery.cols,
+          rows: recovery.rows,
           displayMode: state.displayMode,
-          source: published.source,
+          source: recovery.source,
           truncated: false,
-          truncatedByByteBudget: published.truncatedByByteBudget,
-          data: published.data
+          truncatedByByteBudget: recovery.truncatedByByteBudget,
+          data: recovery.data
         })
-        state.lastResizeCols = published.cols
+        state.lastResizeCols = recovery.cols
         console.log('[mobile-terminal-stream] recovery snapshot', {
           terminal: params.terminal,
           streamId: state.streamId,
           reason: 'renderer-mount-ready',
           bytes: recoveryStats.bytes,
           chunks: recoveryStats.chunks,
-          scrollbackRows: published.scrollbackRows,
-          truncatedByByteBudget: published.truncatedByByteBudget === true
+          scrollbackRows: recovery.scrollbackRows,
+          truncatedByByteBudget: recovery.truncatedByByteBudget === true
         })
       })
       .catch(() => {})

@@ -14,7 +14,6 @@ import type {
   LegacyBinarySubscriptionState,
   TerminalSubscriptionArgs
 } from './terminal-legacy-subscription-types'
-import { seedModelFromRendererScreen } from './terminal-renderer-screen-model-seed'
 
 const MOBILE_RENDERER_MOUNT_READY_TIMEOUT_MS = 3_000
 
@@ -146,17 +145,17 @@ export async function publishLegacyBinaryInitialSnapshot(
       stableRendererSnapshot?.data.length &&
       (typeof stableRendererSnapshot.seq === 'number' || state.pendingOutput.length === 0)
     ) {
-      const fromModel = await seedModelFromRendererScreen(
-        runtime,
+      serialized = stableRendererSnapshot
+      const trailingOutput = state.pendingOutput.flatMap((item) => {
+        const output = getOutputAfterSnapshotSeq(item, stableRendererSnapshot.seq)
+        const seq = item.meta?.seq
+        return output && typeof seq === 'number' ? [{ data: output.data, seq }] : []
+      })
+      runtime.replaceHeadlessTerminalFromRendererSnapshotForRecovery(
         ptyId,
         stableRendererSnapshot,
-        state.pendingOutput,
-        mobileSnapshotByteBudget(params.snapshotByteBudget, state.streamId, scrollbackFrame)
+        trailingOutput
       )
-      if (state.closed) {
-        return
-      }
-      serialized = fromModel ?? stableRendererSnapshot
     }
   }
   let initialOutputOverflowed = false

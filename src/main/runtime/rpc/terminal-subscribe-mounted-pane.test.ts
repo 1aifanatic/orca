@@ -50,8 +50,6 @@ function subscribeMobile(pane: PaneDouble) {
   const binaryFrames: Uint8Array<ArrayBufferLike>[] = []
   const registry = createSubscriptionRegistryDouble()
   let emitData: (data: string, meta: { seq: number; rawLength: number }) => void = () => {}
-  // The host model a recovery seed builds: the adopted screen plus the output it replays.
-  let model: { data: string; cols: number; rows: number; seq?: number } | null = null
   const runtime = {
     getRuntimeId: () => 'test-runtime',
     subscribeToPtyExit: vi.fn(() => vi.fn()),
@@ -62,20 +60,7 @@ function subscribeMobile(pane: PaneDouble) {
     getRendererTerminalSerializerGenerationForHandle: vi.fn(() => 1),
     getRendererTerminalSerializerGeneration: vi.fn(() => 1),
     getPtyOutputSequence: vi.fn(pane.outputSequence ?? (() => 4)),
-    replaceHeadlessTerminalFromRendererSnapshotForRecovery: vi.fn(
-      async (
-        _ptyId: string,
-        snapshot: { data: string; seq?: number },
-        trailing: { data: string; seq: number }[] = []
-      ) => {
-        model = {
-          data: snapshot.data + trailing.map((chunk) => chunk.data).join(''),
-          cols: 80,
-          rows: 24,
-          seq: trailing.at(-1)?.seq ?? snapshot.seq
-        }
-      }
-    ),
+    replaceHeadlessTerminalFromRendererSnapshotForRecovery: vi.fn(),
     waitForRendererTerminalSerializer: vi.fn(pane.waitForRendererTerminalSerializer),
     handleMobileSubscribe: vi.fn().mockResolvedValue(true),
     handleMobileUnsubscribe: vi.fn(),
@@ -87,9 +72,6 @@ function subscribeMobile(pane: PaneDouble) {
     readTerminal: vi.fn().mockResolvedValue({ tail: [], truncated: false }),
     // The restored provider snapshot wins the preference order over the live renderer.
     serializeTerminalBuffer: vi.fn(async () => {
-      if (model) {
-        return model
-      }
       if (pane.pendingOutput) {
         emitData(pane.pendingOutput, {
           seq: pane.pendingOutputSeq ?? 3,
@@ -189,8 +171,7 @@ describe('terminal subscribe for a pane the desktop already has mounted', () => 
   })
 
   it('adopts a renderer-ordered screen even while output is pending', async () => {
-    // The screen's seq (4) is an exact seam inside the pending chunk (offsets 3..5), so only `z`
-    // replays into the model, and the model's seq (5) keeps it from replaying to the phone again.
+    // The screen's seq (4) is an exact seam inside the pending chunk (offsets 3..5), so only `z` replays.
     const subscription = subscribeMobile({
       rendererScreen: () => 'ordered desktop prompt $ ',
       pendingOutput: 'Xz',
@@ -204,7 +185,7 @@ describe('terminal subscribe for a pane the desktop already has mounted', () => 
     await vi.advanceTimersByTimeAsync(100)
 
     expect(subscription.runtime.requestRendererTerminalTabMount).not.toHaveBeenCalled()
-    expect(subscription.snapshotText()).toContain('ordered desktop prompt $ z')
+    expect(subscription.snapshotText()).toContain('ordered desktop prompt $ ')
     expect(subscription.snapshotText()).not.toContain('restored provider history')
     expect(
       subscription.runtime.replaceHeadlessTerminalFromRendererSnapshotForRecovery
@@ -213,7 +194,7 @@ describe('terminal subscribe for a pane the desktop already has mounted', () => 
       expect.objectContaining({ data: 'ordered desktop prompt $ ', seq: 4 }),
       [{ data: 'z', seq: 5 }]
     )
-    expect(subscription.outputText()).toBe('')
+    expect(subscription.outputText()).toBe('z')
     await subscription.close()
   })
 

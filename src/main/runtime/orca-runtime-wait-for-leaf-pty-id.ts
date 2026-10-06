@@ -109,11 +109,11 @@ export class OrcaRuntimeWithWaitForLeafPtyId extends OrcaRuntimeWithRestoreLiveP
       oscLinks?: TerminalOscLinkRange[]
     },
     trailingOutput: { data: string; seq: number }[] = []
-  ): Promise<void> {
+  ): void {
     if (!snapshot.data) {
-      return Promise.resolve()
+      return
     }
-    // Why: a redraw byte can create a suffix-only model before the renderer settles; replace it with the renderer's full screen.
+    // Why: a redraw byte can create a suffix-only model before the renderer settles; replace it with the exact snapshot already sent mobile.
     this.providerSnapshotPreferredPtys.add(ptyId)
     this.disposeHeadlessTerminal(ptyId)
     this.seedHeadlessTerminal(
@@ -122,17 +122,11 @@ export class OrcaRuntimeWithWaitForLeafPtyId extends OrcaRuntimeWithRestoreLiveP
       { cols: snapshot.cols, rows: snapshot.rows },
       { cwd: snapshot.cwd, oscLinks: snapshot.oscLinks }
     )
-    // Why: a hidden pane answers at its own size; land the model on the grid later bytes paint.
-    const ptyGrid = this.getTerminalSize(ptyId)
-    if (ptyGrid) {
-      this.resizeHeadlessTerminal(ptyId, ptyGrid.cols, ptyGrid.rows)
-    }
     for (const chunk of trailingOutput) {
       this.trackHeadlessTerminalData(ptyId, chunk.data, chunk.seq)
     }
     // The seed's write chain owns subsequent live bytes; suppress on-data hydration from replacing this known-good seed.
     this.headlessHydrationState.set(ptyId, 'done')
-    return this.headlessTerminals.get(ptyId)?.writeChain ?? Promise.resolve()
   }
 
   waitForRendererTerminalSerializer(
