@@ -9,11 +9,15 @@ import { selectFloatingVisibleTabCount } from '@/store/selectors'
  * and run it once the close lands: removing the focused pane blurs it, so panel ownership has to be
  * read up front.
  */
-export function captureWorkspaceEmptiedReaction(worktreeId: string): () => void {
+export function captureWorkspaceEmptiedReaction(
+  worktreeId: string,
+  options?: { floatingPanelGuestOwned?: boolean }
+): () => void {
   // Why per workspace: an emptied worktree is left, but the floating panel is never the active
   // worktree — emptying it from inside instead keeps keyboard ownership for the next Cmd/Ctrl+T.
   if (worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
-    const panelOwned = isFloatingWorkspacePanelFocused()
+    const panelOwned =
+      options?.floatingPanelGuestOwned === true || isFloatingWorkspacePanelFocused()
     return () => {
       if (panelOwned && selectFloatingVisibleTabCount(useAppStore.getState()) === 0) {
         armFloatingPanelReclaimIntent()

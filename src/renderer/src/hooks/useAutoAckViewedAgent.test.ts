@@ -8,7 +8,7 @@ import {
   shouldClearWorkspaceAttention
 } from '@/attention/agent-attention-acknowledgement'
 import { createTerminalAttentionSurface } from '@/components/terminal-pane/terminal-attention-surface'
-import { createTestStore, makeTab } from '../store/slices/store-test-helpers'
+import { createTestStore, makeTab, makeUnifiedTab } from '../store/slices/store-test-helpers'
 import type { RetainedAgentEntry } from '../store/slices/agent-status'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import { makePaneKey } from '../../../shared/stable-pane-id'
@@ -406,13 +406,11 @@ describe('resolveAutoAckTabTargets', () => {
   const FLOATING_TAB_ID = 'tab-floating'
   const baseState = {
     activeView: 'terminal',
-    activeTabId: 'tab-1',
     activeWorktreeId: 'wt-1',
-    activeTabIdByWorktree: {
-      'wt-1': 'tab-1',
-      [FLOATING_TERMINAL_WORKTREE_ID]: FLOATING_TAB_ID
-    },
-    getActiveTab: () => null,
+    getActiveTab: (worktreeId: string) =>
+      worktreeId === FLOATING_TERMINAL_WORKTREE_ID
+        ? makeUnifiedTab({ id: FLOATING_TAB_ID, worktreeId, groupId: 'floating-group' })
+        : makeUnifiedTab({ id: 'tab-1', worktreeId, groupId: 'main-group' }),
     settings: { ...getDefaultSettings('/home/test'), floatingTerminalEnabled: true },
     floatingWorkspacePanelOpen: true
   }
@@ -455,7 +453,13 @@ describe('resolveAutoAckTabTargets', () => {
   })
 
   it('prefers the visible floating worktree when both worktrees claim one tab id', () => {
-    expect(resolveAutoAckTabTargets({ ...baseState, activeTabId: FLOATING_TAB_ID })).toEqual([
+    expect(
+      resolveAutoAckTabTargets({
+        ...baseState,
+        getActiveTab: (worktreeId: string) =>
+          makeUnifiedTab({ id: FLOATING_TAB_ID, worktreeId, groupId: 'group' })
+      })
+    ).toEqual([
       { tabId: FLOATING_TAB_ID, worktreeId: FLOATING_TERMINAL_WORKTREE_ID, surfaceKind: 'terminal' }
     ])
   })

@@ -113,4 +113,15 @@ describe('closing the last floating terminal pane', () => {
 
     expect(consumeFloatingPanelReclaimIntent()).toBe(false)
   })
+
+  it('keeps focus for a close requested from a floating browser guest', () => {
+    panel.focused = false
+    const whenEmptied = captureWorkspaceEmptiedReaction(FLOATING_TERMINAL_WORKTREE_ID, {
+      floatingPanelGuestOwned: true
+    })
+
+    whenEmptied()
+
+    expect(consumeFloatingPanelReclaimIntent()).toBe(true)
+  })
 })

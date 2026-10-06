@@ -30,6 +30,7 @@ export type WorkspaceTabCommand =
       context?: KeybindingContext
       skipEmptyCheck?: boolean
       bulk?: boolean
+      floatingPanelGuestOwned?: boolean
     }
   | { type: 'switch'; direction: number; scope: 'same-type' | 'all-types' | 'terminal' }
   | { type: 'previous-recent' }
@@ -149,7 +150,9 @@ export function dispatchWorkspaceTabCommand(command: WorkspaceTabCommand): boole
     const whenEmptied =
       command.bulk || command.skipEmptyCheck
         ? undefined
-        : captureWorkspaceEmptiedReaction(target.worktreeId)
+        : captureWorkspaceEmptiedReaction(target.worktreeId, {
+            floatingPanelGuestOwned: command.floatingPanelGuestOwned
+          })
     const close = () =>
       commands.closeItem(tab.id, { whenEmptied, skipRunningProcessConfirm: command.bulk })
     if (tab.contentType === 'terminal' || command.bulk) {

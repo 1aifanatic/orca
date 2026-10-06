@@ -6,7 +6,7 @@ import type * as AgentAutoAckPresence from './agent-auto-ack-presence'
 import { useAutoAckViewedAgent } from './useAutoAckViewedAgent'
 import { useAppStore } from '../store'
 import { selectFloatingWorkspaceHasUnread } from '../store/selectors'
-import { makeTab } from '../store/slices/store-test-helpers'
+import { makeTab, makeTabGroup, makeUnifiedTab } from '../store/slices/store-test-helpers'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../shared/constants'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 
@@ -35,6 +35,25 @@ function seedFloatingCompletion(): void {
     tabsByWorktree: {
       [FLOATING_TERMINAL_WORKTREE_ID]: [
         makeTab({ id: FLOATING_TAB_ID, worktreeId: FLOATING_TERMINAL_WORKTREE_ID })
+      ]
+    },
+    activeGroupIdByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-group' },
+    unifiedTabsByWorktree: {
+      [FLOATING_TERMINAL_WORKTREE_ID]: [
+        makeUnifiedTab({
+          id: FLOATING_TAB_ID,
+          worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+          groupId: 'floating-group'
+        })
+      ]
+    },
+    groupsByWorktree: {
+      [FLOATING_TERMINAL_WORKTREE_ID]: [
+        makeTabGroup({
+          id: 'floating-group',
+          worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+          activeTabId: FLOATING_TAB_ID
+        })
       ]
     },
     terminalLayoutsByTabId: {
@@ -86,6 +105,30 @@ describe('useAutoAckViewedAgent — floating workspace panel visibility', () => 
         'wt-1': [makeTab({ id: MAIN_TAB_ID, worktreeId: 'wt-1' })],
         [FLOATING_TERMINAL_WORKTREE_ID]: [
           makeTab({ id: FLOATING_TAB_ID, worktreeId: FLOATING_TERMINAL_WORKTREE_ID })
+        ]
+      },
+      activeGroupIdByWorktree: {
+        'wt-1': 'main-group',
+        [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-group'
+      },
+      unifiedTabsByWorktree: {
+        'wt-1': [makeUnifiedTab({ id: MAIN_TAB_ID, worktreeId: 'wt-1', groupId: 'main-group' })],
+        [FLOATING_TERMINAL_WORKTREE_ID]: [
+          makeUnifiedTab({
+            id: FLOATING_TAB_ID,
+            worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+            groupId: 'floating-group'
+          })
+        ]
+      },
+      groupsByWorktree: {
+        'wt-1': [makeTabGroup({ id: 'main-group', worktreeId: 'wt-1', activeTabId: MAIN_TAB_ID })],
+        [FLOATING_TERMINAL_WORKTREE_ID]: [
+          makeTabGroup({
+            id: 'floating-group',
+            worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+            activeTabId: FLOATING_TAB_ID
+          })
         ]
       },
       terminalLayoutsByTabId: {

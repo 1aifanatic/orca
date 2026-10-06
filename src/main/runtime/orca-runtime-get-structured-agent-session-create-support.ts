@@ -105,27 +105,45 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     agent: AgentSessionHandleProvider
     callerKey?: string
     resumeFrom?: { providerSessionId: string }
-  }): Promise<AgentSessionAttachParams> {
+  }): Promise<AgentSessionAttachParams & { hostLaunchDirectory?: string }> {
     if (input.agent === 'claude') {
-      return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv, location }) =>
-        resolveStructuredClaudeAccountHomePath({
-          launchEnv,
-          wslDistro: location.wslDistro,
-          getClaudeConfigDirectory: (target) => this.accounts.getClaudeConfigDirectory(target)
-        })
+      let hostLaunchDirectory: string | undefined
+      const resolved = await this.resolveStructuredAgentSessionIntent(
+        input,
+        async ({ launchEnv, location }) => {
+          if (isFloatingWorkspaceId(location.workspaceId)) {
+            hostLaunchDirectory = (await this.resolveRuntimeFileTarget(input.worktree)).worktree
+              .path
+          }
+          return resolveStructuredClaudeAccountHomePath({
+            launchEnv,
+            wslDistro: location.wslDistro,
+            getClaudeConfigDirectory: (target) => this.accounts.getClaudeConfigDirectory(target)
+          })
+        }
       )
+      return hostLaunchDirectory ? { ...resolved, hostLaunchDirectory } : resolved
     }
-    return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) => {
-      await applyStructuredCodexWorkspaceTrust({
-        workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
-        launchEnv,
-        settings: this.requireStore().getSettings()
-      })
-      return resolveStructuredCodexAccountHomePath({
-        launchEnv,
-        resolveLaunchHome: this.prepareCodexStructuredLaunchFn
-      })
-    })
+    let hostLaunchDirectory: string | undefined
+    const resolved = await this.resolveStructuredAgentSessionIntent(
+      input,
+      async ({ launchEnv, location }) => {
+        const workspacePath = (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path
+        if (isFloatingWorkspaceId(location.workspaceId)) {
+          hostLaunchDirectory = workspacePath
+        }
+        await applyStructuredCodexWorkspaceTrust({
+          workspacePath,
+          launchEnv,
+          settings: this.requireStore().getSettings()
+        })
+        return resolveStructuredCodexAccountHomePath({
+          launchEnv,
+          resolveLaunchHome: this.prepareCodexStructuredLaunchFn
+        })
+      }
+    )
+    return hostLaunchDirectory ? { ...resolved, hostLaunchDirectory } : resolved
   }
 
   /**

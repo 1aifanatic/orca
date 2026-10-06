@@ -76,8 +76,11 @@ function reserveRequest(location: AgentSessionExecutionLocation): AgentSessionRe
 
 /** A session reserved at `location`, pinned to `launchDirectory` when one is given. */
 async function reserve(location: AgentSessionExecutionLocation, launchDirectory?: string) {
-  const { record } = await store.reserveOwner(reserveRequest(location))
-  return launchDirectory === undefined ? record : store.pinLaunchDirectory(SESSION, launchDirectory)
+  const { record } = await store.reserveOwner({
+    ...reserveRequest(location),
+    ...(launchDirectory ? { launchDirectory } : {})
+  })
+  return record
 }
 
 async function directory(name: string): Promise<string> {
@@ -100,19 +103,18 @@ afterEach(async () => {
 describe('agent session launch directory', () => {
   it('pins a new floating session to the directory its first launch used', async () => {
     const configured = await directory('floating-a')
-    const record = await reserve(FLOATING)
+    const record = await reserve(FLOATING, configured)
+    const resolveWorkspacePath = vi.fn(() => directory('changed-setting'))
 
-    const cwd = await resolveAgentSessionLaunchDirectory(
-      { store, resolveWorkspacePath: async () => configured },
-      record
-    )
+    const cwd = await resolveAgentSessionLaunchDirectory({ store, resolveWorkspacePath }, record)
 
     expect(cwd).toBe(configured)
+    expect(resolveWorkspacePath).not.toHaveBeenCalled()
     const reopened = await openTestAgentSessionRecordStore(root)
     expect(reopened.getRecord(SESSION)?.launchDirectory).toBe(configured)
   })
 
-  it('pins a new worktree session to the path its id resolved to', async () => {
+  it('resolves a worktree session by id without storing a second path', async () => {
     const record = await reserve(WORKTREE)
 
     await expect(
@@ -121,7 +123,7 @@ describe('agent session launch directory', () => {
         record
       )
     ).resolves.toBe(`/resolved/${WORKTREE.workspaceId}`)
-    expect(store.getRecord(SESSION)?.launchDirectory).toBe(`/resolved/${WORKTREE.workspaceId}`)
+    expect(store.getRecord(SESSION)?.launchDirectory).toBeUndefined()
   })
 
   it('resumes a floating session in its pinned folder after the floating setting changed', async () => {

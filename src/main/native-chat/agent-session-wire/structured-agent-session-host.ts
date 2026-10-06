@@ -20,7 +20,10 @@ import {
 } from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
-import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
+import {
+  attachStructuredAgentSession,
+  type StructuredAgentSessionAttachOptions
+} from './structured-agent-session-attach-orchestration'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import * as agentStart from './structured-agent-session-agent-start'
 import {
@@ -241,9 +244,10 @@ export class StructuredAgentSessionHost {
 
   attach(
     caller: StructuredAgentSessionCaller,
-    params: AgentSessionAttachParams
+    params: AgentSessionAttachParams,
+    options?: StructuredAgentSessionAttachOptions
   ): Promise<SessionWire.AgentSessionMutationResult<SessionWire.AgentSessionAttachResult>> {
-    return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
+    return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params, options)
   }
 
   /** Test barrier: every write has landed by its call's return, so no production path needs it. */

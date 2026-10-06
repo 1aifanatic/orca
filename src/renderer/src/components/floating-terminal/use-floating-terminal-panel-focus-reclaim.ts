@@ -8,22 +8,18 @@ import {
 import { reportFloatingFocus } from './floating-terminal-focus-reporting'
 import type { FloatingWorkspaceChromeModel } from './use-floating-workspace-chrome-model'
 import type { FloatingTerminalPanelLocalState } from './use-floating-terminal-panel-local-state'
-import type { FloatingTerminalPanelStoreState } from './use-floating-terminal-panel-store-state'
 
 type FloatingTerminalPanelFocusReclaimInput = Pick<
   FloatingTerminalPanelLocalState,
-  'panelRef' | 'shortcutFocusFrameRef' | 'shortcutFocusTimeoutRef' | 'pendingReclaimArmByFileIdRef'
+  'panelRef' | 'shortcutFocusFrameRef' | 'shortcutFocusTimeoutRef'
 > &
-  Pick<FloatingWorkspaceChromeModel, 'hasVisibleFloatingTabs'> &
-  Pick<FloatingTerminalPanelStoreState, 'floatingFiles'>
+  Pick<FloatingWorkspaceChromeModel, 'hasVisibleFloatingTabs'>
 
 export function useFloatingTerminalPanelFocusReclaim({
   panelRef,
   shortcutFocusFrameRef,
   shortcutFocusTimeoutRef,
-  pendingReclaimArmByFileIdRef,
-  hasVisibleFloatingTabs,
-  floatingFiles
+  hasVisibleFloatingTabs
 }: FloatingTerminalPanelFocusReclaimInput) {
   const reclaimIntentArmed = useSyncExternalStore(
     subscribeFloatingPanelReclaimIntent,
@@ -91,19 +87,6 @@ export function useFloatingTerminalPanelFocusReclaim({
   const reportFloatingFocusFromTarget = useCallback((target: EventTarget | null): void => {
     reportFloatingFocus(target)
   }, [])
-
-  useEffect(() => {
-    const pending = pendingReclaimArmByFileIdRef.current
-    if (pending.size === 0) {
-      return
-    }
-    for (const [fileId, armIfEmptying] of pending) {
-      if (!floatingFiles.some((file) => file.id === fileId)) {
-        pending.delete(fileId)
-        armIfEmptying()
-      }
-    }
-  }, [floatingFiles, pendingReclaimArmByFileIdRef])
 
   useEffect(() => {
     if (hasVisibleFloatingTabs) {

@@ -3,7 +3,6 @@ import { createFloatingTerminalPanelDragActions } from './floating-terminal-pane
 import type { FloatingTerminalPanelProps } from './floating-terminal-panel-types'
 import { useFloatingTerminalCloseActions } from './use-floating-terminal-close-actions'
 import { useFloatingTerminalCreateActions } from './use-floating-terminal-create-actions'
-import { useFloatingTerminalEditorCloseQueue } from './use-floating-terminal-editor-close-queue'
 import { useFloatingTerminalFocusLifecycle } from './use-floating-terminal-focus-lifecycle'
 import { useFloatingTerminalGlobalShortcutListeners } from './use-floating-terminal-global-shortcut-listeners'
 import { useFloatingTerminalGuestBridge } from './use-floating-terminal-guest-bridge'
@@ -35,7 +34,6 @@ export function useFloatingTerminalPanelController({
     wasFeaturePreviouslyInteracted: tourInteractionSnapshot?.wasPreviouslyInteracted
   })
 
-  const editorCloseQueue = useFloatingTerminalEditorCloseQueue({ ...storeState, ...localState })
   const geometry = useFloatingTerminalPanelGeometry({ ...storeState, ...localState })
   useFloatingTerminalInitialFocusEffects({ ...items, ...localState, open })
   const orchestrationVisibility = useFloatingTerminalOrchestrationVisibility({
@@ -48,10 +46,7 @@ export function useFloatingTerminalPanelController({
     ...items
   })
   const closeActions = useFloatingTerminalCloseActions({
-    ...storeState,
-    ...localState,
-    ...items,
-    ...editorCloseQueue
+    ...items
   })
   const focusReclaim = useFloatingTerminalPanelFocusReclaim({
     ...storeState,
@@ -86,7 +81,6 @@ export function useFloatingTerminalPanelController({
     ...shortcutDetails,
     ...localState,
     ...items,
-    ...editorCloseQueue,
     ...geometry,
     ...orchestrationVisibility,
     ...createActions,

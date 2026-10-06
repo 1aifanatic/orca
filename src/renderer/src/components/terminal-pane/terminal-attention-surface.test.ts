@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createTerminalAttentionSurface } from './terminal-attention-surface'
-import { createTestStore, makeTab } from '@/store/slices/store-test-helpers'
+import {
+  createTestStore,
+  makeTab,
+  makeTabGroup,
+  makeUnifiedTab
+} from '@/store/slices/store-test-helpers'
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import { resolveAgentAttention } from '@/attention/agent-attention-policy'
@@ -17,6 +22,13 @@ function seedLiveTab(): TestStore {
   const store = createTestStore()
   store.setState({
     tabsByWorktree: { [WORKSPACE]: [makeTab({ id: TAB, worktreeId: WORKSPACE })] },
+    activeGroupIdByWorktree: { [WORKSPACE]: 'main-group' },
+    unifiedTabsByWorktree: {
+      [WORKSPACE]: [makeUnifiedTab({ id: TAB, worktreeId: WORKSPACE, groupId: 'main-group' })]
+    },
+    groupsByWorktree: {
+      [WORKSPACE]: [makeTabGroup({ id: 'main-group', worktreeId: WORKSPACE, activeTabId: TAB })]
+    },
     ptyIdsByTabId: { [TAB]: ['pty-1'] },
     terminalLayoutsByTabId: {
       [TAB]: {
@@ -182,6 +194,32 @@ describe('createTerminalAttentionSurface', () => {
           [WORKSPACE]: [makeTab({ id: TAB, worktreeId: WORKSPACE })],
           [FLOATING_TERMINAL_WORKTREE_ID]: [
             makeTab({ id: FLOATING_TAB, worktreeId: FLOATING_TERMINAL_WORKTREE_ID })
+          ]
+        },
+        activeGroupIdByWorktree: {
+          [WORKSPACE]: 'main-group',
+          [FLOATING_TERMINAL_WORKTREE_ID]: 'floating-group'
+        },
+        unifiedTabsByWorktree: {
+          [WORKSPACE]: [makeUnifiedTab({ id: TAB, worktreeId: WORKSPACE, groupId: 'main-group' })],
+          [FLOATING_TERMINAL_WORKTREE_ID]: [
+            makeUnifiedTab({
+              id: FLOATING_TAB,
+              worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+              groupId: 'floating-group'
+            })
+          ]
+        },
+        groupsByWorktree: {
+          [WORKSPACE]: [
+            makeTabGroup({ id: 'main-group', worktreeId: WORKSPACE, activeTabId: TAB })
+          ],
+          [FLOATING_TERMINAL_WORKTREE_ID]: [
+            makeTabGroup({
+              id: 'floating-group',
+              worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+              activeTabId: FLOATING_TAB
+            })
           ]
         },
         ptyIdsByTabId: { [FLOATING_TAB]: ['pty-floating'] },

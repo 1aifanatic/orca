@@ -43,6 +43,7 @@ import {
 } from '../../observability/agent-session-instrumentation'
 
 export type StructuredAgentSessionAttachOptions = {
+  hostLaunchDirectory?: string
   recordPhase?: AgentSessionCreatePhaseRecorder
   onAcquisitionFailed?: AttachFlowInput['onAcquisitionFailed']
   /** The queued message a start is for; see `StructuredAgentSessionProviderChild.startedFor`. */
@@ -69,14 +70,17 @@ export function attachStructuredAgentSessionUnderSerialize(
 export function attachStructuredAgentSession(
   context: StructuredAgentSessionAttachContext,
   callerKey: string,
-  params: AgentSessionAttachParams
+  params: AgentSessionAttachParams,
+  options: StructuredAgentSessionAttachOptions = {}
 ): Promise<AgentSessionMutationResult<AgentSessionAttachResult>> {
   const sessionId = params.envelope.sessionId
   // Tracked from enqueue, not from its turn on the queue: a quit drains a queued attach before it
   // evicts, so no child is spawned behind the eviction and orphaned.
   const run = (recordPhase?: AgentSessionCreatePhaseRecorder) =>
     context.tasks.trackAttach(
-      context.serialize(sessionId, () => runAttach(context, callerKey, params, { recordPhase }))
+      context.serialize(sessionId, () =>
+        runAttach(context, callerKey, params, { ...options, recordPhase })
+      )
     )
   if (params.envelope.expectedRuntimeFence !== null) {
     return run()
@@ -145,6 +149,7 @@ async function runAttach(
         }
       },
       authority: {
+        ...(options.hostLaunchDirectory ? { launchDirectory: options.hostLaunchDirectory } : {}),
         spawnToken: () => context.deps.mintSpawnToken?.() ?? randomUUID(),
         claimKeyId: context.deps.claimKeyId,
         handoffOperationId: params.envelope.clientOperationId,

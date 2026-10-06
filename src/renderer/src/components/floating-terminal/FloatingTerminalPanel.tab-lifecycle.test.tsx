@@ -19,12 +19,9 @@ import {
   runEffects
 } from './floating-terminal-panel-render-probe'
 
-const dispatchWorkspaceTabCommandMock = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/workspace-tab-commands', () => ({
-  dispatchWorkspaceTabCommand: dispatchWorkspaceTabCommandMock
-}))
-
-const closeWorkspaceBrowserTabMock = vi.hoisted(() => vi.fn())
+const closeWorkspaceBrowserTabMock = vi.hoisted(() =>
+  vi.fn(() => ({ closesLocally: true, localCloseReason: 'user' }))
+)
 vi.mock('@/lib/workspace-browser-tab-close', () => ({
   closeWorkspaceBrowserTab: closeWorkspaceBrowserTabMock
 }))
@@ -359,10 +356,7 @@ describe('FloatingTerminalPanel close behavior', () => {
     const tabBar = findByTypeName(element, 'TabBar')
     ;(tabBar.props.onCloseFile as (tabId: string) => void)(tab.id)
 
-    expect(dispatchWorkspaceTabCommandMock).toHaveBeenCalledWith({
-      type: 'close',
-      target: { kind: 'tab', worktreeId: FLOATING_TERMINAL_WORKTREE_ID, tabId: tab.id }
-    })
+    expect(mocks.closeUnifiedTab).toHaveBeenCalledWith(tab.id)
     expect(mocks.closeFile).not.toHaveBeenCalledWith(tab.entityId)
   })
 
@@ -445,6 +439,9 @@ describe('FloatingTerminalPanel close behavior', () => {
       ]
     }
     state.activeGroupIdByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: groupId }
+    state.layoutByWorktree = {
+      [FLOATING_TERMINAL_WORKTREE_ID]: { type: 'leaf', groupId }
+    }
     state.tabBarOrderByWorktree = {
       [FLOATING_TERMINAL_WORKTREE_ID]: [editorTab.id, simulatorTab.id]
     }
@@ -487,27 +484,47 @@ describe('FloatingTerminalPanel close behavior', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
-  it('reads the current tab list for bulk close actions', async () => {
+  it('uses the current tab list for bulk close actions after rerender', async () => {
     setFloatingTabs([makeTab({ id: 'old-left' }), makeTab({ id: 'old-keep' })])
 
-    const element = await renderPanel(true)
-    const tabBar = findByTypeName(element, 'TabBar')
+    await renderPanel(true)
     setFloatingTabs([
       makeTab({ id: 'new-left', sortOrder: 0 }),
       makeTab({ id: 'new-keep', sortOrder: 1 }),
       makeTab({ id: 'new-right', sortOrder: 2 })
     ])
 
+    const refreshed = await renderPanel(true)
+    const tabBar = findByTypeName(refreshed, 'TabBar')
     ;(tabBar.props.onCloseOthers as (tabId: string) => void)('new-keep')
-    expect(mocks.closeTab).toHaveBeenCalledWith('new-left', { reason: 'cleanup' })
-    expect(mocks.closeTab).toHaveBeenCalledWith('new-right', { reason: 'cleanup' })
-    expect(mocks.closeTab).not.toHaveBeenCalledWith('old-left')
+    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
+      'new-left',
+      expect.objectContaining({ skipRunningProcessConfirm: true })
+    )
+    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
+      'new-right',
+      expect.objectContaining({ skipRunningProcessConfirm: true })
+    )
+    expect(mocks.closeTerminalTab).not.toHaveBeenCalledWith('old-left', expect.anything())
 
-    mocks.closeTab.mockClear()
-    ;(tabBar.props.onCloseToRight as (tabId: string) => void)('new-left')
-    expect(mocks.closeTab).toHaveBeenCalledWith('new-keep', { reason: 'cleanup' })
-    expect(mocks.closeTab).toHaveBeenCalledWith('new-right', { reason: 'cleanup' })
-    expect(mocks.closeTab).not.toHaveBeenCalledWith('old-keep')
+    mocks.closeTerminalTab.mockClear()
+    setFloatingTabs([
+      makeTab({ id: 'new-left', sortOrder: 0 }),
+      makeTab({ id: 'new-keep', sortOrder: 1 }),
+      makeTab({ id: 'new-right', sortOrder: 2 })
+    ])
+    const next = await renderPanel(true)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the rendered TabBar stub supplies this close callback with a tab id.
+    ;(findByTypeName(next, 'TabBar').props.onCloseToRight as (tabId: string) => void)('new-left')
+    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
+      'new-keep',
+      expect.objectContaining({ skipRunningProcessConfirm: true })
+    )
+    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
+      'new-right',
+      expect.objectContaining({ skipRunningProcessConfirm: true })
+    )
+    expect(mocks.closeTerminalTab).not.toHaveBeenCalledWith('old-keep', expect.anything())
   })
 
   it('closes tabs to the right using visible tab order', async () => {
@@ -527,9 +544,15 @@ describe('FloatingTerminalPanel close behavior', () => {
     const tabBar = findByTypeName(element, 'TabBar')
     ;(tabBar.props.onCloseToRight as (tabId: string) => void)('tab-c')
 
-    expect(mocks.closeTab).toHaveBeenCalledWith('tab-a', { reason: 'cleanup' })
-    expect(mocks.closeTab).toHaveBeenCalledWith('tab-b', { reason: 'cleanup' })
-    expect(mocks.closeTab).not.toHaveBeenCalledWith('tab-c')
+    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
+      'tab-a',
+      expect.objectContaining({ skipRunningProcessConfirm: true })
+    )
+    expect(mocks.closeTerminalTab).toHaveBeenCalledWith(
+      'tab-b',
+      expect.objectContaining({ skipRunningProcessConfirm: true })
+    )
+    expect(mocks.closeTerminalTab).not.toHaveBeenCalledWith('tab-c', expect.anything())
   })
 })
 

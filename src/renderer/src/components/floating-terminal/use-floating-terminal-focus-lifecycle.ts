@@ -7,31 +7,26 @@ import type { FloatingWorkspaceChromeModel } from './use-floating-workspace-chro
 import type { FloatingTerminalPanelLocalState } from './use-floating-terminal-panel-local-state'
 
 type FloatingTerminalFocusLifecycleInput = Pick<FloatingWorkspaceChromeModel, 'activeTerminalId'> &
-  Pick<
-    FloatingTerminalPanelLocalState,
-    'pendingReclaimArmByFileIdRef' | 'panelRef' | 'reclaimTerminalInputOnWindowFocusRef'
-  > & { open: boolean }
+  Pick<FloatingTerminalPanelLocalState, 'panelRef' | 'reclaimTerminalInputOnWindowFocusRef'> & {
+    open: boolean
+  }
 
 export function useFloatingTerminalFocusLifecycle({
   activeTerminalId,
-  pendingReclaimArmByFileIdRef,
   panelRef,
   reclaimTerminalInputOnWindowFocusRef,
   open
 }: FloatingTerminalFocusLifecycleInput): void {
   useEffect(() => {
-    const pendingReclaimArms = pendingReclaimArmByFileIdRef.current
     if (!open) {
       reportFloatingFocus(null, true)
       clearFloatingPanelReclaimIntent()
-      pendingReclaimArms.clear()
     }
     return () => {
       reportFloatingFocus(null, true)
       clearFloatingPanelReclaimIntent()
-      pendingReclaimArms.clear()
     }
-  }, [open, pendingReclaimArmByFileIdRef])
+  }, [open])
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') {

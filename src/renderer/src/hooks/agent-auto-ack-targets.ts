@@ -15,9 +15,7 @@ export type AutoAckTabTarget = {
 
 export type AutoAckTargetState = FloatingWorkspacePanelVisibilityState & {
   activeView: string
-  activeTabId: string | null
   activeWorktreeId: string | null
-  activeTabIdByWorktree: Record<string, string | null>
   getActiveTab: (worktreeId: string) => Tab | null
 }
 
@@ -30,16 +28,15 @@ export type AutoAckTargetState = FloatingWorkspacePanelVisibilityState & {
  */
 function resolveWorkspaceAutoAckTarget(
   state: AutoAckTargetState,
-  worktreeId: string,
-  terminalTabId: string | null
+  worktreeId: string
 ): AutoAckTabTarget | null {
   const activeTab = state.getActiveTab(worktreeId)
   if (activeTab && isStructuredTab(activeTab)) {
     return { tabId: activeTab.id, worktreeId, surfaceKind: 'structured' }
   }
-  return terminalTabId === null
-    ? null
-    : { tabId: terminalTabId, worktreeId, surfaceKind: 'terminal' }
+  return activeTab?.contentType === 'terminal'
+    ? { tabId: activeTab.entityId, worktreeId, surfaceKind: 'terminal' }
+    : null
 }
 
 /**
@@ -53,11 +50,7 @@ function resolveWorkspaceAutoAckTarget(
 export function resolveAutoAckTabTargets(state: AutoAckTargetState): AutoAckTabTarget[] {
   const targets: AutoAckTabTarget[] = []
   if (selectFloatingWorkspacePanelVisible(state)) {
-    const floating = resolveWorkspaceAutoAckTarget(
-      state,
-      FLOATING_TERMINAL_WORKTREE_ID,
-      state.activeTabIdByWorktree[FLOATING_TERMINAL_WORKTREE_ID] ?? null
-    )
+    const floating = resolveWorkspaceAutoAckTarget(state, FLOATING_TERMINAL_WORKTREE_ID)
     // The floating pane is on top when two worktrees claim the same tab ID.
     if (floating) {
       targets.push(floating)
@@ -67,10 +60,8 @@ export function resolveAutoAckTabTargets(state: AutoAckTargetState): AutoAckTabT
     return targets
   }
   const active = state.activeWorktreeId
-    ? resolveWorkspaceAutoAckTarget(state, state.activeWorktreeId, state.activeTabId)
-    : state.activeTabId === null
-      ? null
-      : { tabId: state.activeTabId, worktreeId: null, surfaceKind: 'terminal' as const }
+    ? resolveWorkspaceAutoAckTarget(state, state.activeWorktreeId)
+    : null
   if (active && !targets.some((target) => target.tabId === active.tabId)) {
     targets.push(active)
   }

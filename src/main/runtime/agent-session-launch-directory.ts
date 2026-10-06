@@ -4,6 +4,7 @@ import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { agentSessionPinnedLaunchDirectory } from './agent-session-record-launch-directory'
+import { isFloatingWorkspaceId } from '../../shared/floating-workspace-worktree'
 
 /** The floating folder a session ran in is gone; resuming anywhere else would be a different chat. */
 export function agentSessionLaunchFolderMissing(
@@ -38,9 +39,8 @@ async function isDirectory(path: string): Promise<boolean> {
  *
  * The floating workspace id names a setting, not a place, so a floating session resumes in the
  * folder it was pinned to and refuses when that folder is gone. Worktree and folder ids name a
- * durable place and keep resolving by id. A record not yet pinned — a new session, or one written
- * before the pin existed — is pinned here with the directory this launch uses; a failed pin write
- * is logged and the launch proceeds.
+ * durable place and keep resolving by id. Old floating records without a pin are repaired on
+ * launch; new floating records receive the directory in their founding reservation.
  */
 export async function resolveAgentSessionLaunchDirectory(
   deps: AgentSessionLaunchDirectoryDeps,
@@ -54,7 +54,7 @@ export async function resolveAgentSessionLaunchDirectory(
     return pinned
   }
   const resolved = await deps.resolveWorkspacePath(record.location.workspaceId)
-  if (record.launchDirectory === undefined) {
+  if (isFloatingWorkspaceId(record.location.workspaceId) && record.launchDirectory === undefined) {
     try {
       await deps.store.pinLaunchDirectory(record.sessionId, resolved)
     } catch (error) {

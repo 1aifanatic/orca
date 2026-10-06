@@ -9,7 +9,6 @@ import { FloatingTerminalEmptyState } from './FloatingTerminalEmptyState'
 import { renderFloatingTerminalOrchestrationCard } from './FloatingTerminalOrchestrationCard'
 import { FloatingTerminalOrchestrationDialog } from './FloatingTerminalOrchestrationDialog'
 import { FloatingTerminalResizeHandles } from './FloatingTerminalResizeHandles'
-import { renderFloatingTerminalSaveDialog } from './FloatingTerminalSaveDialog'
 import { FloatingTerminalWindowControls } from './FloatingTerminalWindowControls'
 import type { useFloatingTerminalPanelController } from './use-floating-terminal-panel-controller'
 
@@ -70,12 +69,7 @@ export function renderFloatingTerminalPanelSurface({
   setOrchestrationDialogOpen,
   previewUserBounds,
   orchestrationDialogOpen,
-  refreshOrchestrationSetupVisibility,
-  saveDialogFileId,
-  saveDialogFile,
-  handleFloatingSaveDialogCancel,
-  handleFloatingSaveDialogDiscard,
-  handleFloatingSaveDialogSave
+  refreshOrchestrationSetupVisibility
 }: ReturnType<typeof useFloatingTerminalPanelController>): React.JSX.Element {
   return (
     // Why: sit above the z-40 notification cards so the floating workspace is
@@ -288,13 +282,6 @@ export function renderFloatingTerminalPanelSurface({
         onOpenChange={setOrchestrationDialogOpen}
         onSetupStateChange={() => void refreshOrchestrationSetupVisibility()}
       />
-      {renderFloatingTerminalSaveDialog({
-        saveDialogFileId,
-        saveDialogFile,
-        handleFloatingSaveDialogCancel,
-        handleFloatingSaveDialogDiscard,
-        handleFloatingSaveDialogSave
-      })}
     </div>
   )
 }
