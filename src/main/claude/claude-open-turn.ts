@@ -41,8 +41,6 @@ export class ClaudeOpenTurn {
    *  cycle's init (a background task finishing), so membership is read from the
    *  cycle's work, not from when the turn opened. */
   private cycleWorkObserved = false
-  /** The API error the open turn's own reply already said; its failed result repeats it. */
-  private apiErrorText: string | null = null
   private readonly opener: (
     frame: Record<string, unknown>,
     source: ClaudeTurnSource | null,
@@ -88,15 +86,6 @@ export class ClaudeOpenTurn {
     return this.current !== null
   }
 
-  get spokenApiError(): string | null {
-    return this.current ? this.apiErrorText : null
-  }
-
-  /** The open turn's reply was the CLI's own API error message. */
-  observeApiErrorReply(text: string): void {
-    this.apiErrorText = text
-  }
-
   /** Whether a turn is open inside a provider request cycle that has already
    *  done work — the state in which the CLI folds an arriving send into it. A
    *  cycle's first send is its opener, never a fold. */
@@ -129,7 +118,6 @@ export class ClaudeOpenTurn {
       })
     }
     this.current = turn
-    this.apiErrorText = null
     this.publish(turn)
     this.deps.sink.setActivity?.(null)
   }
@@ -147,7 +135,6 @@ export class ClaudeOpenTurn {
       })
     }
     this.current = turn
-    this.apiErrorText = null
     this.deps.sink.setActivity?.(null)
   }
 
@@ -185,7 +172,6 @@ export class ClaudeOpenTurn {
       this.publish(this.current, end, contextUsage)
       this.current = null
     }
-    this.apiErrorText = null
     this.deps.sink.setActivity?.(null)
   }
 

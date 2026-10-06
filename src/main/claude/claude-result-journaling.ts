@@ -60,7 +60,6 @@ export function journalClaudeResult(
   // person's cancellation is theirs to decide as the end is written (`turnEndAfterStop`).
   const turnId = settlesTurn ? turn.id : null
   const leftToStop = turnId !== null && sink.journalStopDecidesTurn?.(turnId, observedAt) === true
-  const spokenApiError = settlesTurn ? turn.spokenApiError : null
   if (settlesTurn) {
     prompts.retryPendingCancellations()
     turn.suppressReopenOnFailure(message.is_error === true)
@@ -76,9 +75,7 @@ export function journalClaudeResult(
   }
   const kind = claudeProviderFrameKind(message)
   const failure = claudeResultFailure(message, leftToStop)
-  // The turn's reply already said this error; a second row would say it twice.
-  const repeatsReply = failure?.text != null && failure.text === spokenApiError
-  if ((failure && !repeatsReply) || !isSettledClaudeResultKind(kind)) {
+  if (failure || !isSettledClaudeResultKind(kind)) {
     providerFallback.append(
       kind,
       message,

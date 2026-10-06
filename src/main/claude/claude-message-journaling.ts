@@ -114,14 +114,6 @@ export function journalClaudeMessage(
     ctx.turn.ensureOpen(message, source, observedAt)
     ctx.sink.appendItem(identity, body, stamp(identity, body))
     changed = true
-    if (source.assistant && !envelope.parentToolUseId && message.is_api_error_message === true) {
-      ctx.turn.observeApiErrorReply(
-        body.blocks
-          .flatMap((block) => (block.type === 'text' ? [block.text] : []))
-          .join('\n')
-          .trim()
-      )
-    }
   }
   for (const tool of claudeToolUses(outputEnvelope)) {
     ctx.turn.ensureOpen(message, source, observedAt)
