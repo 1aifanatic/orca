@@ -1,8 +1,8 @@
 // A Claude chat is published the moment its child spawns, before the CLI has answered initialize.
 // A send in that window — into a fresh start, or into the restart the delivery loop makes for a
 // send after a start that failed — is accepted and stays queued until the child proves its start.
-// When the CLI dies first, the queued message is rejected with the CLI's own diagnostic, and
-// nothing is left as a delivery nobody can confirm. Against the production runtime,
+// When the CLI dies first, the queued message is rejected with the CLI's own diagnostic, the chat
+// shows the cause once, and nothing is left as a delivery nobody can confirm. Against the production runtime,
 // adapter, record store and host, with only the CLI process scripted.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -79,14 +79,13 @@ async function failLatestStart(host: StructuredAgentSessionHost, count: number):
 }
 
 describe('a send into a Claude chat whose CLI keeps failing at startup', () => {
-  it('restarts once, rejects the held message with the diagnostic when that start dies too, then delivers a new one once the CLI is healthy', async () => {
+  it('restarts once, rejects the held message with the diagnostic when that start dies too, then delivers once the CLI is healthy', async () => {
     claude.behave(SESSION, { initHangs: true })
     const host = await claude.install()
     await expect(host.attach(CALLER, claude.attachParams(SESSION, null))).resolves.toMatchObject({
       ok: true
     })
     await failLatestStart(host, 1)
-    // No message waited on the open's start, so its exit's row says why.
     expect(await statusRows(host)).toEqual([STARTUP_TEXT])
     const releasedFence = fence(host)
 
@@ -99,22 +98,22 @@ describe('a send into a Claude chat whose CLI keeps failing at startup', () => {
     )
     await failLatestStart(host, 2)
 
-    // The cause is on the message, which is rejected: not left in doubt, and no row of its own.
+    // Rejected with the cause, not left in doubt; one row for this attempt names it.
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
         dispatchState: 'rejected',
-        // Worded for the user: the message's own notice shows it.
+        // Worded for the user: the red line under the composer shows it as it stands.
         reason: STARTUP_TEXT,
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await statusRows(host)).toEqual([STARTUP_TEXT])
+    expect(await statusRows(host)).toEqual([STARTUP_TEXT, STARTUP_TEXT])
     // The restart moved the fence twice: its acquisition, and the exit that released it.
     expect(fence(host)).toBe(releasedFence + 2)
     expect(claude.children(SESSION)).toHaveLength(2)
     expect(claude.child(SESSION).calls).not.toContain('send')
 
-    // The user signs in and sends again: one restart, proven, written to the CLI.
+    // The user signs in and retries: one restart, proven, written to the CLI.
     claude.behave(SESSION, {})
     await send(host, 'hello again')
     await vi.waitFor(() => expect(claude.children(SESSION)).toHaveLength(3))
@@ -123,7 +122,7 @@ describe('a send into a Claude chat whose CLI keeps failing at startup', () => {
     await vi.waitFor(() =>
       expect(host.deps.store.getRecord(SESSION)?.lease.claimStatus).toBe('live')
     )
-    expect(await statusRows(host)).toEqual([STARTUP_TEXT])
+    expect(await statusRows(host)).toHaveLength(2)
   })
 })
 
@@ -156,11 +155,12 @@ describe('a send while the first Claude start is still answering initialize', ()
     await vi.waitFor(async () =>
       expect(await submission(host, held)).toMatchObject({
         dispatchState: 'rejected',
+        // Worded for the user: the red line under the composer shows it as it stands.
         reason: STARTUP_TEXT,
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await statusRows(host)).toEqual([])
+    expect(await statusRows(host)).toEqual([STARTUP_TEXT])
     expect(fence(host)).toBe(startedFence + 1)
     expect(claude.children(SESSION)).toHaveLength(1)
     expect(claude.child(SESSION).calls).not.toContain('send')

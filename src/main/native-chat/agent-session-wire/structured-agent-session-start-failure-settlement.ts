@@ -1,35 +1,79 @@
-// The delivery loop's writer of a failed start: the one queued message the start was for. A message
-// handed to a child that never proved its start is the handover's or the exit's to settle; each
-// state has one writer, and `rejected` is terminal, so no message is failed twice.
+// The writer of a failed start's record: the message it failed, rejected, and the start's one row,
+// in one write, so a client that hides rejected messages still sees why. The delivery loop writes it
+// for the queued message a start was for, the handover for the message it was handing over; the
+// exit writes the row for a start no message carries. Each message state has one writer, and
+// `rejected` is terminal, so no message is failed twice.
 
-import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
-import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalDispatchRejection,
+  AgentSessionFailureWordsContext
+} from '../../../shared/agent-session-failure-words'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalSubmission
+} from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { isFailedStartOrHostFault } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { structuredAgentSessionStartFailureRowIdentity } from '../../../shared/structured-agent-session-start-failure-row-key'
+import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import { STRUCTURED_AGENT_SESSION_COMPACT_COMMAND } from './structured-agent-session-command-turn'
+import { structuredAgentSessionMessageCommand } from './structured-agent-session-command-turn'
 import {
   structuredAgentSessionStartFailure,
   type StructuredAgentSessionStartFailureCause
 } from './structured-agent-session-failure-text'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 
-type StartFailureJournal = Pick<AgentSessionJournal, 'submissions' | 'itemBody' | 'resolveDispatch'>
+type StartFailureJournal = Pick<
+  AgentSessionJournal,
+  'submissions' | 'itemBody' | 'appendLifecycleBatch'
+>
 
-/** Who the message's sentence names, and the command its own body sends, so the next step is to run
- *  that command again rather than to send a message. */
+/** The one row a failed start leaves in the chat: an error row keyed by the start, repeating the
+ *  sentence its message carries, so the reason outlives any client that hides that message. */
+export function structuredAgentSessionStartFailureRow(
+  startKey: string,
+  words: AgentJournalDispatchRejection
+): JournalLifecycleMutationInput {
+  return {
+    kind: 'item',
+    identity: structuredAgentSessionStartFailureRowIdentity(startKey),
+    body: { kind: 'status', text: words.reason, tone: 'error', failure: words.rejection },
+    // A start that failed opened no turn.
+    turnScope: AGENT_JOURNAL_THREAD_SCOPE
+  }
+}
+
+/** Rejects a message its start failed and writes that start's row with it, keyed by the message, in
+ *  one append. Writes nothing once `which` no longer holds for it: Stop withdrew it, or another
+ *  writer settled it. */
+export async function rejectWithStartFailureRow(
+  journal: Pick<AgentSessionJournal, 'appendLifecycleBatch'>,
+  input: {
+    clientMessageId: string
+    words: AgentJournalDispatchRejection
+    fence: number
+    which: (submission: AgentJournalSubmission) => boolean
+  }
+): Promise<void> {
+  const { clientMessageId, words, fence, which } = input
+  await journal.appendLifecycleBatch({
+    settlementId: `start-failure:${clientMessageId}`,
+    fence,
+    recovered: true,
+    mutations: [structuredAgentSessionStartFailureRow(clientMessageId, words)],
+    rejects: { clientMessageId, ...words, which }
+  })
+}
+
+/** Who the message's sentence names, and the command its own body sends. */
 function startFailureWordsContext(
   journal: Pick<AgentSessionJournal, 'itemBody'>,
   record: AgentSessionRecord | null,
   clientMessageId: string
 ): AgentSessionFailureWordsContext {
-  const body = journal.itemBody(agentJournalSubmissionKey(clientMessageId))
-  const command =
-    body?.kind === 'message' && body.command?.name === STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
-      ? STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
-      : undefined
+  const command = structuredAgentSessionMessageCommand(journal, clientMessageId)
   return {
     ...structuredAgentSessionFailureWordsContext(record),
     ...(command ? { command } : {})
@@ -47,24 +91,20 @@ export function isStillQueued(
   return submission !== undefined && isQueuedAgentJournalSubmission(submission)
 }
 
-/** Rejects the message a failed start was for. Writes nothing once it is no longer queued: Stop
- *  withdrew it, or another writer settled it. */
-export async function rejectStructuredAgentSessionStartFailure(
+/** The delivery loop's record of the queued message a failed start was for. */
+export function rejectStructuredAgentSessionStartFailure(
   writer: { journal: StartFailureJournal; fence: number; record: AgentSessionRecord | null },
   cause: StructuredAgentSessionStartFailureCause,
   clientMessageId: string
 ): Promise<void> {
-  if (!isStillQueued(writer.journal, clientMessageId)) {
-    return
-  }
-  await writer.journal.resolveDispatch({
+  return rejectWithStartFailureRow(writer.journal, {
     clientMessageId,
-    state: 'rejected',
-    ...structuredAgentSessionStartFailure(
+    words: structuredAgentSessionStartFailure(
       cause,
       startFailureWordsContext(writer.journal, writer.record, clientMessageId)
     ),
-    fence: writer.fence
+    fence: writer.fence,
+    which: isQueuedAgentJournalSubmission
   })
 }
 
@@ -79,7 +119,7 @@ export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence
   return (
     submission.dispatchState === 'rejected' &&
     submission.fence === fence &&
-    isFailedStartRejection({ reason: submission.reason ?? null, rejection: submission.rejection })
+    isFailedStartOrHostFault({ reason: submission.reason ?? null, rejection: submission.rejection })
   )
 }
 

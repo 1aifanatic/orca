@@ -8,6 +8,7 @@ import type {
   AgentJournalProducerLinkage,
   AgentJournalResetReason,
   AgentJournalRowAttribution,
+  AgentJournalSubmission,
   AgentJournalTurnScope,
   AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
@@ -74,9 +75,22 @@ export type JournalLifecycleBatchInput = {
   mutations: readonly JournalLifecycleMutationInput[]
   fence: number
   recovered?: true
+  /** Rejects that send first, in the same append: a failed start's row follows the message it
+   *  failed, and no reader meets one without the other. */
+  rejects?: JournalBatchRejection
 }
 
-export type JournalResolvedLifecycleBatchInput = Omit<JournalLifecycleBatchInput, 'mutations'> & {
+/** One send a batch rejects, when `which` still holds for it on the lane. When it no longer does —
+ *  a Stop withdrew it, another writer settled it — the batch is not written either. */
+export type JournalBatchRejection = AgentJournalDispatchRejection & {
+  clientMessageId: string
+  which: (submission: AgentJournalSubmission) => boolean
+}
+
+export type JournalResolvedLifecycleBatchInput = Omit<
+  JournalLifecycleBatchInput,
+  'mutations' | 'rejects'
+> & {
   /** Read from the fold with every earlier write landed; may return none. */
   resolve: () => readonly JournalLifecycleMutationInput[]
 }

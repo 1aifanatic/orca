@@ -31,6 +31,8 @@ import type {
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
+import { rejectWithStartFailureRow } from './structured-agent-session-start-failure-settlement'
+import { isFailedStartOrHostFault } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import {
   handOverStructuredAgentSessionCommand,
@@ -222,6 +224,16 @@ export async function handOverSubmission(
     return
   }
   try {
+    if (outcome.state === 'rejected' && isFailedStartOrHostFault(outcome)) {
+      // A start that failed under it: the message and that start's row, as any failed start leaves.
+      await rejectWithStartFailureRow(ctx.journal, {
+        clientMessageId,
+        words: { reason: outcome.reason, rejection: outcome.rejection },
+        fence: ctx.fence,
+        which: (entry) => entry.dispatchState === 'pending'
+      })
+      return
+    }
     await ctx.journal.resolveDispatch(
       outcome.state === 'accepted'
         ? {

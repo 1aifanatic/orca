@@ -27,7 +27,7 @@ import {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { RESTART_CONTINUATION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
-import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
+import { isFailedStartOrHostFault } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   AGENT_SESSION_RESTART_CONTINUATION_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
@@ -350,7 +350,7 @@ function refusedBy(sessionId: string, submission: ContinuationSubmission): Conti
     outcome: 'refused',
     reason: refusal?.code ?? reason ?? 'agent_session_dispatch_rejected',
     ...(refusal ? { refusal } : {}),
-    ...(isFailedStartRejection({ reason, rejection: submission.rejection })
+    ...(isFailedStartOrHostFault({ reason, rejection: submission.rejection })
       ? { saidOnMessage: true as const }
       : {})
   }

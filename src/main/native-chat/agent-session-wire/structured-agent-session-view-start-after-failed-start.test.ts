@@ -1,6 +1,6 @@
-// A Claude chat whose CLI exits before it finishes starting. A view opening, or coming back to, a
-// chat whose last start failed used to start the CLI again, so every look at the chat added an
-// identical row. Only a send retries a failed start: it is the user asking, and its message says why.
+// A Claude chat whose CLI exits before it finishes starting leaves one red row per start. A view
+// opening, or coming back to, a chat whose last start failed used to start the CLI again, so every
+// look at the chat added an identical row. Only a send retries a failed start: it is the user asking.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -154,7 +154,7 @@ describe('a fresh chat whose Claude start fails', () => {
     ['after the create already died', false],
     ['while the create is still starting', true]
   ] as const)(
-    'starts once for the open and once for a send, which says why on its message, when the view binds %s',
+    'starts once for the open and once for a send, one row each, when the view binds %s',
     async (_when, createStillStarting) => {
       // Released only once the views bound, so no runner is slow enough to let the create die first.
       let releaseCreate = (): void => {}
@@ -203,16 +203,16 @@ describe('a fresh chat whose Claude start fails', () => {
         ).toMatchObject({ dispatchState: 'rejected', reason: startFailure })
       )
       await settleExits()
-      // The send's own start, once; the message carries why, with no row beside it.
+      // The send's own start, once, and one row for it below the message.
       expect(claude.connections).toHaveLength(2)
-      expect(await timeline()).toEqual([startFailure, 'message'])
+      expect(await timeline()).toEqual([startFailure, 'message', startFailure])
 
       // Switching away and back re-subscribes; it starts nothing and adds no row.
       unsubscribe()
       await view(SURFACE)
       await settleExits()
       expect(claude.connections).toHaveLength(2)
-      expect(await timeline()).toEqual([startFailure, 'message'])
+      expect(await timeline()).toEqual([startFailure, 'message', startFailure])
     }
   )
 })

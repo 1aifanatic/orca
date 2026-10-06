@@ -21,6 +21,8 @@ import {
 } from '../../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionStartFailureRowIdentity } from '../../../shared/structured-agent-session-start-failure-row-key'
 import { openAgentSessionJournal } from '../agent-session-journal/journal-store-factory'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
@@ -181,6 +183,11 @@ async function submission(id: string): Promise<AgentJournalSubmission | undefine
   return (await host.journalSnapshot(SESSION)).submissions.find(
     (entry) => entry.clientMessageId === id
   )
+}
+
+/** The row a failed start leaves for the message it was for. */
+function startRowKey(clientMessageId: string): string {
+  return agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity(clientMessageId))
 }
 
 async function statusRows(): Promise<
@@ -416,7 +423,10 @@ describe('a published child that dies while it proves its start', () => {
 
       // The second goes on to a start of its own, which fails the same way.
       await rejected(second)
-      expect(await statusRows()).toEqual([])
+      // One row per failed start, keyed by the message it was for.
+      expect((await statusRows()).map((row) => row.itemId)).toEqual(
+        [first, second].map((id) => startRowKey(id))
+      )
       for (const id of [first, second]) {
         expect(await submission(id)).toMatchObject({
           dispatchState: 'rejected',
@@ -475,7 +485,8 @@ describe('a start another operation made that dies while a sent message waits on
     expect(acquire).toHaveBeenCalledTimes(3)
     expect(dispatch).not.toHaveBeenCalled()
     // A message was waiting, so the operation's exit adds no row saying the same thing.
-    expect(await statusRows()).toEqual([])
+    // The message's own start leaves its row; the operation's exit adds none beside it.
+    expect((await statusRows()).map((row) => row.itemId)).toEqual([startRowKey(id)])
   })
 
   it('leaves a message sent after that start failed to a fresh start (R2)', async () => {
@@ -554,7 +565,13 @@ describe('a child that ends before its message is handed over', () => {
         detail: { text: 'codex app-server crashed', audience: 'log' }
       }
     })
-    expect(await statusRows()).toEqual([])
+    expect(await statusRows()).toEqual([
+      expect.objectContaining({
+        itemId: startRowKey(id),
+        text: 'Codex stopped before this message was sent.',
+        tone: 'error'
+      })
+    ])
     expect(rejectedIn(events, id)).toBe(true)
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
     expect(acquire).toHaveBeenCalledTimes(2)
@@ -840,7 +857,7 @@ describe('how a stopped child ends the start its loop was waiting on', () => {
       reason: text,
       rejection: { kind: 'hostStopped' }
     })
-    expect(await statusRows()).toEqual([])
+    expect((await statusRows()).map((row) => row.text)).toEqual([text])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
   })
 })

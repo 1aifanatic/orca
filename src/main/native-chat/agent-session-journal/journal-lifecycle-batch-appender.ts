@@ -11,6 +11,7 @@ import type {
   JournalResolvedLifecycleBatchInput
 } from './journal-store-contracts'
 import type { JournalRow } from './journal-row-schema'
+import { journalBatchRejectionRowBuilders } from './journal-pending-submission-recovery'
 
 const SETTLEMENT_ALREADY_APPLIED = new Error('journal_settlement_already_applied')
 
@@ -20,10 +21,34 @@ export class JournalLifecycleBatchAppender {
       state: () => JournalReducerState
       cursor: () => AgentJournalCursor
       enqueue: (build: (seq: number, ts: number) => JournalRow) => Promise<JournalRow>
+      enqueueRows: (
+        plan: () => readonly ((seq: number, ts: number) => JournalRow)[]
+      ) => Promise<JournalRow[]>
     }
   ) {}
 
   append(input: JournalLifecycleBatchInput): Promise<AgentJournalCursor> {
+    const { rejects } = input
+    if (rejects) {
+      // Planned on the lane: the send if it is still `which` then, and this batch unless it already
+      // landed. With the send settled meanwhile it failed no one, so nothing is written.
+      return this.deps
+        .enqueueRows(() => {
+          const rejections = journalBatchRejectionRowBuilders(this.deps.state, input.fence, rejects)
+          return rejections.length === 0 || this.wasApplied(input.settlementId)
+            ? rejections
+            : [
+                ...rejections,
+                journalLifecycleBatchRowBuilder(
+                  this.deps.state,
+                  input.settlementId,
+                  input.mutations,
+                  input
+                )
+              ]
+        })
+        .then(() => this.deps.cursor())
+    }
     if (this.wasApplied(input.settlementId)) {
       return Promise.resolve(this.deps.cursor())
     }

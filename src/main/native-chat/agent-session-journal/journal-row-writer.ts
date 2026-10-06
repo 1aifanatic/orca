@@ -71,8 +71,15 @@ export class JournalRowWriter {
     })
   }
 
-  /** Several rows in ONE transaction, in order, for a caller already running at its own turn in
-   *  the queue: none is durable unless all are, so no reader ever meets some without the rest. */
+  /** Several rows in ONE transaction, in order, planned once the lane is this append's: none is
+   *  durable unless all are, so no reader ever meets some without the rest. */
+  enqueueRows(
+    plan: () => readonly ((seq: number, ts: number) => JournalRow)[]
+  ): Promise<JournalRow[]> {
+    return this.deps.serialize(() => this.writeRows(plan))
+  }
+
+  /** `enqueueRows`' write, for a caller already running at its own turn in the queue. */
   writeRows(plan: () => readonly ((seq: number, ts: number) => JournalRow)[]): JournalRow[] {
     assertJournalWritable(this.deps.readOnly(), this.deps.sessionId)
     const first = this.deps.nextSequence()

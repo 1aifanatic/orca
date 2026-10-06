@@ -23,11 +23,11 @@ import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
+import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import {
-  structuredAgentSessionStartFailure,
-  structuredAgentSessionStartFailureFact
-} from './structured-agent-session-failure-text'
-import { messageCarriesFailedStart } from './structured-agent-session-start-failure-settlement'
+  messageCarriesFailedStart,
+  structuredAgentSessionStartFailureRow
+} from './structured-agent-session-start-failure-settlement'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   endedByPersonsStop,
@@ -129,9 +129,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   exitFailure?: SubmissionRejectionFact
   /** Who a failed start's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
-  /** The provider never finished starting. `startedFor`: the queued message the start was for,
-   *  which carries the failure itself. */
-  exitedDuringStartup?: { startedFor?: string }
+  /** The provider never finished starting: the start that failed, keyed by the child's
+   *  generation, for the row a start no message carries leaves. */
+  exitedDuringStartup?: { generation: string | null }
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
@@ -149,22 +149,27 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     if (!startupFailure) {
       await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
     }
-    const rejectedUnstarted = startupFailure
-      ? await input.journal.rejectPendingSubmissions(input.fence, startupFailure)
-      : await input.journal.markPendingSubmissionsUnknown(
-          input.fence,
-          input.pendingSubmissionReason
-        )
+    const settled = await (startupFailure
+      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
+      : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
-    // A failed start a message carries is said there. A goal, rewind or command start with no
-    // message waiting has only this row to say why.
-    const failureOnAMessage =
-      input.exitedDuringStartup !== undefined &&
-      (rejectedUnstarted.length > 0 ||
-        input.exitedDuringStartup.startedFor !== undefined ||
-        messageCarriesFailedStart(input.journal.submissions?.() ?? [], input.fence))
-    if (showUnexpectedExitOutcome && !failureOnAMessage) {
+    if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
+      const startKey = input.exitedDuringStartup.generation ?? input.settlementId
+      // One row per failed start. A queued message is the delivery loop's to record with its own
+      // row, and one already rejected as this start's failure has its writer's; this row is for the
+      // messages handed to this child, or a command, goal or rewind start no message waited on.
+      const settledHere = new Set(settled)
+      const recordedElsewhere = messageCarriesFailedStart(
+        (input.journal.submissions?.() ?? []).filter(
+          (submission) => !settledHere.has(submission.clientMessageId)
+        ),
+        input.fence
+      )
+      if (!recordedElsewhere) {
+        mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
+      }
+    } else if (showUnexpectedExitOutcome) {
       // The turn the exit ended, and an error so no fold ever hides why it stopped.
       mutations.push({
         kind: 'item',
@@ -172,9 +177,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         body: {
           kind: 'status',
           ...agentSessionFailureWords(
-            input.exitedDuringStartup
-              ? structuredAgentSessionStartFailureFact({ exit: input.exitFailure })
-              : (input.exitFailure ?? agentSessionFailureFact('providerExited')),
+            input.exitFailure ?? agentSessionFailureFact('providerExited'),
             {
               ...input.failureTextContext,
               surface: 'row'

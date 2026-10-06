@@ -178,6 +178,16 @@ export function isFailedStartRejection(
   return category === 'startFailed' || kind === 'hostStopped' || kind === 'providerExited'
 }
 
+/** A failed start, or Orca's own fault on the way to one: either way the message never reached an
+ *  agent, and its record says why. */
+export function isFailedStartOrHostFault(
+  submission: Pick<AgentJournalSubmission, 'reason'> & { rejection?: unknown }
+): boolean {
+  return (
+    isFailedStartRejection(submission) || classifyDispatchRejection(submission).kind === 'hostFault'
+  )
+}
+
 /**
  * Whether a queued card holds every card behind it until the person acts: one returned for
  * something about it that only they can resolve — the provider or Orca refused its content or

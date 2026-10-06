@@ -4,13 +4,14 @@
 // message to the new owner, instead of parking it behind a lease nothing would ever re-acquire.
 //
 // A child is published before it has proven its start, and it owns the send from that moment: the
-// message is handed to it. When the child exits first, the exit settlement rejects the message with
-// the cause on it, and the next send is a fresh restart.
+// message is handed to it. When the child exits first, the exit settlement rejects the message and
+// writes the cause into the chat, once, and the next send is a fresh restart.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
@@ -22,6 +23,7 @@ import {
   HOST_TEST_SESSION as SESSION,
   HOST_TEST_THREAD as THREAD,
   hostTestAttachParams,
+  hostTestDrawnRowIds,
   hostTestMessage,
   hostTestOperationId,
   resetHostTestOperationIds
@@ -201,7 +203,7 @@ describe('a send into a published session whose child ended before startup', () 
     expect(dispatch).toHaveBeenCalledTimes(2)
   })
 
-  it('rejects the held message with the cause when the restarted child exits before proving its start', async () => {
+  it('retires the held message with the cause when the restarted child exits before proving its start', async () => {
     const releasedFence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const rowsBefore = (await journalStatuses()).length
 
@@ -209,8 +211,7 @@ describe('a send into a published session whose child ended before startup', () 
     await exitBeforeProof()
 
     // The child never proved its start, so it accepted nothing: the exit rejects the message this
-    // host admitted, so nothing pins the session and Retry stays offered. The message names the
-    // cause; the chat gets no row of its own for it.
+    // host admitted, so nothing pins the session and Retry stays offered, and one row names the cause.
     expect(await submission(held)).toMatchObject({
       dispatchState: 'rejected',
       reason: 'Codex stopped before it finished starting. Send your message to try again.',
@@ -220,7 +221,18 @@ describe('a send into a published session whose child ended before startup', () 
     expect(
       (await host.journalSnapshot(SESSION)).submissions.filter((e) => e.dispatchState === 'pending')
     ).toEqual([])
-    expect((await journalStatuses()).slice(rowsBefore)).toEqual([])
+    expect((await journalStatuses()).slice(rowsBefore)).toEqual([
+      'Codex stopped before it finished starting. Send your message to try again.'
+    ])
+    // Accepted before the restart it needed, so the chat draws it above the row naming the cause.
+    const snapshot = await host.journalSnapshot(SESSION)
+    const causeRow = snapshot.items.findLast((item) => item.body.kind === 'status')?.itemId
+    const shown = [agentJournalSubmissionKey(held), causeRow]
+    expect(
+      hostTestDrawnRowIds(snapshot, [
+        { clientMessageId: held, text: 'still not signed in' }
+      ]).filter((id) => shown.includes(id))
+    ).toEqual(shown)
     // The failed restart moved the fence twice: the acquisition, and the exit that released it.
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(releasedFence + 2)
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
@@ -231,7 +243,7 @@ describe('a send into a published session whose child ended before startup', () 
     await send('signed in now')
     expect(acquire).toHaveBeenCalledTimes(3)
     expect(dispatch).toHaveBeenCalledTimes(2)
-    expect((await journalStatuses()).slice(rowsBefore)).toEqual([])
+    expect((await journalStatuses()).slice(rowsBefore)).toHaveLength(1)
   })
 })
 
@@ -248,7 +260,7 @@ describe('a send while the child of the first start is still proving itself', ()
     expect(await journalStatuses()).toEqual([])
   })
 
-  it('is rejected with the cause when that child exits first, and restarts nothing', async () => {
+  it('is retired with the cause when that child exits first, and restarts nothing', async () => {
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? 0
     const held = await send('hello')
 
@@ -261,7 +273,9 @@ describe('a send while the child of the first start is still proving itself', ()
       recovered: true
     })
     expect(acquire).toHaveBeenCalledOnce()
-    expect(await journalStatuses()).toEqual([])
+    expect(await journalStatuses()).toEqual([
+      'Codex stopped before it finished starting. Send your message to try again.'
+    ])
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBe(fence + 1)
   })
 

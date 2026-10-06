@@ -2,7 +2,11 @@ import type { AgentJournalDispatchRejection } from '../../../shared/agent-sessio
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { DISPATCH_DOUBT_HOST_RESTARTED } from './journal-dispatch-doubt-reasons'
+import type { JournalReducerState } from './journal-reducer'
+import { journalDispatchRowBuilder } from './journal-row-builders'
+import type { JournalRow } from './journal-row-schema'
 import type { AgentSessionJournal } from './journal-store'
+import type { JournalBatchRejection } from './journal-store-contracts'
 
 /** Settles every submission a process fact left unanswerable. Doubt is never
  *  proof of non-delivery, so nothing here ever becomes re-deliverable. A queued
@@ -87,4 +91,24 @@ export async function rejectJournalQueuedSubmissions(
     )
   )
   return queued.map((entry) => entry.clientMessageId)
+}
+
+/** The row rejecting that one submission, read from `state` when called, or none when `which` no
+ *  longer holds for it: for an append that must carry it with what follows, in one transaction. */
+export function journalBatchRejectionRowBuilders(
+  state: () => JournalReducerState,
+  fence: number,
+  { clientMessageId, which, ...rejection }: JournalBatchRejection
+): ((seq: number, ts: number) => JournalRow)[] {
+  const submission = state().submissions.get(clientMessageId)
+  return submission && which(submission)
+    ? [
+        journalDispatchRowBuilder(state, {
+          clientMessageId,
+          state: 'rejected',
+          ...rejection,
+          fence
+        })
+      ]
+    : []
 }

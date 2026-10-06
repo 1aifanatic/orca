@@ -83,7 +83,16 @@ export function structuredAgentSessionAwaitedCommand(
       oldest = submission
     }
   }
-  const body = oldest && journal.itemBody(agentJournalSubmissionKey(oldest.clientMessageId))
+  return oldest && structuredAgentSessionMessageCommand(journal, oldest.clientMessageId)
+}
+
+/** The command a message's own body sends: a start that fails it leaves that command to run again,
+ *  not a message to send. */
+export function structuredAgentSessionMessageCommand(
+  journal: Pick<AgentSessionJournal, 'itemBody'>,
+  clientMessageId: string
+): AgentSessionConversationCommand | undefined {
+  const body = journal.itemBody(agentJournalSubmissionKey(clientMessageId))
   return body?.kind === 'message' && body.command?.name === STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
     ? STRUCTURED_AGENT_SESSION_COMPACT_COMMAND
     : undefined

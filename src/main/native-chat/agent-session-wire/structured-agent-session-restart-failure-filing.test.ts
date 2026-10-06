@@ -51,8 +51,8 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
 })
 
 // The continuation is accepted and its agent then fails to start: the message is rejected with the
-// cause and says so in the chat, as any message's failed start does, and the failure is filed. No
-// note says it a second time.
+// cause and its start's row says why, as for any message's failed start, and the failure is filed.
+// No note says it a second time; the cut keeps its own notice.
 it('says so on the continuation message when the agent cannot start for it', async () => {
   const { host, acquire } = await interruptedRestart()
   await host.restartResume.list()
@@ -71,7 +71,29 @@ it('says so on the continuation message when the agent cannot start for it', asy
   expect((await statusNotes(host)).map((note) => note.text)).not.toContain(
     AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE
   )
-  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
+  expect(await readerNotes(host)).toEqual([
+    QUIT_CUT_NOTICE,
+    { text: "Codex couldn't restart. Send your message to try again.", tone: 'error' }
+  ])
+})
+
+// Orca's own fault on the way to the continuation's start says so on the message, as any failed
+// start does, so no note repeats it.
+it("notes nothing beside a continuation that Orca's own fault kept from its agent", async () => {
+  const { host } = await interruptedRestart()
+  await host.restartResume.list()
+  vi.spyOn(host['conversationDelivery'].loop['deps'], 'ensureProviderChild').mockRejectedValueOnce(
+    new Error('spawn-token mint failed')
+  )
+
+  await host.restartResume.continueAfterRestart([SESSION], 'modal')
+
+  expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
+    { dispatchState: 'rejected', rejection: { kind: 'hostFault' } }
+  ])
+  expect((await statusNotes(host)).map((note) => note.text)).not.toContain(
+    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE
+  )
 })
 
 // A continuation that carries on, chosen in the prompt or automatically at launch, does not stand in

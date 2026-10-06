@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
+import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type {
@@ -333,8 +334,26 @@ describe('a start the chat needed and did not get', () => {
         refusal: { code: 'agent_session_operation_invalid', details: { ownerVerdict: 'exited' } }
       }
     })
-    expect(await errorRows()).toEqual([])
+    // The failed start's one row, which a client that hides rejected messages still shows.
+    expect(await errorRows()).toEqual(["Codex couldn't restart. Send your message to try again."])
     expect(dispatch.mock.calls.map(([input]) => input.clientMessageId)).toEqual([second])
+  })
+
+  // A client that hides rejected messages — a released desktop, any phone — still reads why.
+  it('leaves the failure in the transcript of a client that hides a rejected message sent elsewhere', async () => {
+    await host.close(SESSION, 'evict')
+    acquire.mockRejectedValueOnce(new Error('spawn codex ENOENT'))
+    const id = await accept('from another device')
+    await eventually(async () => expect((await submission(id))?.dispatchState).toBe('rejected'))
+
+    const snapshot = await host.journalSnapshot(SESSION)
+    const drawn = projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
+      rejectedInPlace: false
+    })
+    expect(drawn.map((message) => message.id)).not.toContain(agentJournalSubmissionKey(id))
+    expect(drawn.flatMap((message) => message.blocks)).toContainEqual(
+      expect.objectContaining({ text: "Codex couldn't restart. Send your message to try again." })
+    )
   })
 
   it('notifies once for queued messages whose starts all fail alike, each rejected on its own', async () => {
@@ -355,6 +374,8 @@ describe('a start the chat needed and did not get', () => {
       })
     }
     expect(acquire.mock.calls.length).toBeGreaterThanOrEqual(4)
+    // One row per failed start: each message's own.
+    expect(await errorRows()).toHaveLength(3)
     await host.flushAllStreamedEvents()
     expect(completions).toEqual([
       {
@@ -412,7 +433,7 @@ describe('a start the chat needed and did not get', () => {
       }
     ]
   ])(
-    'tells a live chat a %s refusal on the message it failed (W14)',
+    "tells a live chat a %s refusal on the message it failed, beside the start's one row (W14)",
     async (_source, arrange, expected) => {
       await host.close(SESSION, 'evict')
       arrange()
@@ -434,7 +455,7 @@ describe('a start the chat needed and did not get', () => {
           rejection: expected.failure
         })
       )
-      expect(await errorRows()).toEqual([])
+      expect(await errorRows()).toEqual([expected.text])
     }
   )
 
@@ -465,7 +486,7 @@ describe('a start the chat needed and did not get', () => {
       rejection: { kind: 'restartFailed' }
     })
     expect(settled?.reason).not.toContain('record store write failed')
-    expect(await errorRows()).toEqual([])
+    expect(await errorRows()).toEqual([settled?.reason])
   })
 })
 
@@ -578,7 +599,7 @@ describe('a child that exits before its message is handed over', () => {
 })
 
 describe('a start whose failure the delivery loop settles before the exit is published', () => {
-  it('rejects each message in the words of its own start, and the exit adds no row', async () => {
+  it('rejects each message in the words of its own start, one row each, and the exit adds none', async () => {
     // The adapter's startup answer and its later exit event word the same start differently.
     const awaitStarted = vi.fn(async () => agentSessionFailureFact('startFailed'))
     adapterExtras = { awaitStarted }
@@ -619,7 +640,8 @@ describe('a start whose failure the delivery loop settles before the exit is pub
         rejection: words.rejection
       })
     }
-    expect(await errorRows()).toEqual([])
+    // One row per failed start; the exit adds none.
+    expect(await errorRows()).toEqual([words.reason, words.reason])
   })
 })
 

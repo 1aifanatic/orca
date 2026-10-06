@@ -16,7 +16,11 @@ import { agentSessionFailureWords } from '../../../shared/agent-session-failure-
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
-import { isStructuredAgentSessionStartFailureRow } from '../../../shared/structured-agent-session-start-failure-row-key'
+import {
+  isStructuredAgentSessionStartFailureRow,
+  structuredAgentSessionStartFailureRowIdentity
+} from '../../../shared/structured-agent-session-start-failure-row-key'
+import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
@@ -24,7 +28,7 @@ import {
   type StructuredAgentSessionAdapter
 } from './structured-agent-session-adapter'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
-import type { ResolveDispatchInput } from '../agent-session-journal/journal-store-contracts'
+import type { JournalLifecycleBatchInput } from '../agent-session-journal/journal-store-contracts'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   HOST_TEST_NOW as NOW,
@@ -41,6 +45,7 @@ import { codexProviderHandle } from '../../../shared/agent-session-provider-hand
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 
 const CALLER = { callerKey: 'client-1' }
+const SETUP_ROW = agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-1'))
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
 // A situation that could clear on its own, seen after the child was spawned.
 const TRANSIENT = agentSessionFailureFact('accountSwitchInProgress')
@@ -162,10 +167,18 @@ async function submission(clientMessageId: string): Promise<AgentJournalSubmissi
   )
 }
 
+/** The start-failure rows written since setup, whose own failed start (generation-1) left one. */
 async function startRows(): Promise<string[]> {
   return (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
-    isStructuredAgentSessionStartFailureRow(item.itemId) ? [item.itemId] : []
+    isStructuredAgentSessionStartFailureRow(item.itemId) && item.itemId !== SETUP_ROW
+      ? [item.itemId]
+      : []
   )
+}
+
+/** The row a failed start leaves for the message it was for. */
+function rowFor(clientMessageId: string): string {
+  return agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity(clientMessageId))
 }
 
 /** Every dispatch state a subscriber was told for one message, in order. */
@@ -183,7 +196,7 @@ function dispatched(): string[] {
   return dispatch.mock.calls.map(([input]) => input.clientMessageId)
 }
 
-/** Records each rejection the journal is asked to write, in order; with `fail`, fails that
+/** Records each failed start's write the journal is asked for, in order; with `fail`, fails that
  *  message's first `times` (one by default), before they land or after. */
 function spyRejections(fail?: {
   clientMessageId: string
@@ -191,28 +204,28 @@ function spyRejections(fail?: {
   times?: number
 }): string[] {
   const order: string[] = []
-  const resolve = AgentSessionJournal.prototype.resolveDispatch
+  const append = AgentSessionJournal.prototype.appendLifecycleBatch
   let failures = 0
-  vi.spyOn(AgentSessionJournal.prototype, 'resolveDispatch').mockImplementation(async function (
-    this: AgentSessionJournal,
-    input: ResolveDispatchInput
-  ) {
-    if (input.state === 'rejected') {
-      order.push(`rejected ${input.clientMessageId}`)
+  vi.spyOn(AgentSessionJournal.prototype, 'appendLifecycleBatch').mockImplementation(
+    async function (this: AgentSessionJournal, input: JournalLifecycleBatchInput) {
+      const rejected = input.rejects?.clientMessageId
+      if (rejected !== undefined) {
+        order.push(`rejected ${rejected}`)
+      }
+      if (
+        failures >= (fail?.times ?? 1) ||
+        rejected === undefined ||
+        rejected !== fail?.clientMessageId
+      ) {
+        return append.call(this, input)
+      }
+      failures += 1
+      if (fail.when === 'after') {
+        await append.call(this, input)
+      }
+      throw new Error('journal write failed')
     }
-    if (
-      failures >= (fail?.times ?? 1) ||
-      input.state !== 'rejected' ||
-      input.clientMessageId !== fail?.clientMessageId
-    ) {
-      return resolve.call(this, input)
-    }
-    failures += 1
-    if (fail.when === 'after') {
-      await resolve.call(this, input)
-    }
-    throw new Error('journal write failed')
-  })
+  )
   return order
 }
 
@@ -256,7 +269,7 @@ describe('a queued message whose start fails', () => {
         ...TRANSIENT_WORDS
       })
     )
-    expect(await startRows()).toEqual([])
+    expect(await startRows()).toEqual([rowFor(queued)])
   })
 
   it('fails only itself: each message behind it gets its own start', async () => {
@@ -276,7 +289,8 @@ describe('a queued message whose start fails', () => {
     for (const id of [second, third]) {
       expect(framedStates(id)).not.toContain('rejected')
     }
-    expect(await startRows()).toEqual([])
+    // One row per failed start: the first's, and none for the messages that went on.
+    expect(await startRows()).toEqual([rowFor(first)])
   })
 
   it('ends a failed child still there when the next message comes, and starts afresh', async () => {
@@ -388,7 +402,7 @@ describe('a start that fails while its child exits', () => {
       })
     )
     expect(generation).toBe(2)
-    expect(await startRows()).toEqual([])
+    expect(await startRows()).toEqual([rowFor(queued)])
   })
 
   it('is recorded once when the exit lands before the loop sees the start fail', async () => {
@@ -407,7 +421,7 @@ describe('a start that fails while its child exits', () => {
     await host.flushStreamedEvents(SESSION)
 
     expect(await submission(queued)).toEqual(recorded)
-    expect(await startRows()).toEqual([])
+    expect(await startRows()).toEqual([rowFor(queued)])
   })
 
   it('is recorded once when the exit lands after the loop recorded it', async () => {
@@ -426,7 +440,7 @@ describe('a start that fails while its child exits', () => {
 
     // The exit's own reason never rewrites the failure the loop recorded.
     expect(await submission(queued)).toEqual(recorded)
-    expect(await startRows()).toEqual([])
+    expect(await startRows()).toEqual([rowFor(queued)])
   })
 
   it('rejects a message its unproven child was handed with the start, never in doubt', async () => {
@@ -448,6 +462,9 @@ describe('a start that fails while its child exits', () => {
     )
     // Never in doubt on the way: the child it was handed to took nothing.
     expect(framedStates(handed)).not.toContain('unknown')
-    expect(await startRows()).toEqual([])
+    // The exit rejected it, so the exit writes the start's one row.
+    expect(await startRows()).toEqual([
+      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
+    ])
   })
 })
