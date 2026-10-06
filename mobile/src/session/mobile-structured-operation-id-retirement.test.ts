@@ -254,11 +254,11 @@ describe('what a structured refusal says on the phone', () => {
       clientOperationId: `1900000000000-${'e'.repeat(32)}`
     })
 
+    // The phone hands a refused send's text back, so it says where that text is.
     expect(result).toEqual({
       status: 'refused',
       code: 'agent_session_operation_invalid',
-      message:
-        'This conversation has been cleared. Your message was not sent. Open the current conversation to continue.'
+      message: "The chat was cleared before your message went out. It's back in the composer."
     })
   })
 

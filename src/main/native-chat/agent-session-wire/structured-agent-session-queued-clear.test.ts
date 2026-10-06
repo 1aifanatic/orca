@@ -3,6 +3,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
+import { readWholeAgentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
+import { structuredAgentSessionAttemptFailureParts } from '../../../shared/structured-agent-session-send-disposition'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
 import {
   createQueuedMessageTestRig,
@@ -283,6 +286,16 @@ describe('a /clear card that cannot run', () => {
     expect(card?.returnedReason).toBe(
       'Background tasks are still running. Wait for the background tasks to finish.'
     )
+    // The caption a client draws from the card's fact, with its Send beside it, says the same.
+    expect(
+      agentSessionWriteNoticeEnglish(
+        structuredAgentSessionAttemptFailureParts(
+          { kind: 'rejected', reason: card?.returnedReason ?? null },
+          { retryControl: true },
+          readWholeAgentSessionFailureFact(card?.returnedRejection)
+        )
+      )
+    ).toBe('Background tasks are still running. Wait for the background tasks to finish.')
     // No status row repeats it, and the later card did not run in the uncleared chat.
     const snapshot = await rig.host.journalSnapshot(SESSION)
     expect(snapshot.items.filter((item) => item.body.kind === 'status')).toEqual([])

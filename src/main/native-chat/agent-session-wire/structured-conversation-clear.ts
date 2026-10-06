@@ -124,7 +124,8 @@ export async function runQueuedConversationClear(
       error
     })
   }
-  const words = agentSessionFailureWords(fact, { command: 'clear', surface: 'rejection' })
+  // Worded as the card's caption is: its own Send is the way to run it again.
+  const words = agentSessionFailureWords(fact, { retryControl: true, surface: 'rejection' })
   await ctx.journal.queuedMessages.returnUnsent({
     messageId: card.messageId,
     reason: words.reason,
