@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { ShieldQuestion, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
-import CommentMarkdown, {
-  type CommentMarkdownLinkClickHandler
-} from '@/components/sidebar/CommentMarkdown'
+import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
+import { NativeChatMarkdown } from './NativeChatMarkdown'
 import { approvalBlockedPathToShow } from '../../../../shared/agent-session-approval-blocked-path'
 import {
   isNewerApprovalSubject,
@@ -12,6 +11,8 @@ import {
 } from '../../../../shared/agent-session-approval-subject'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
 import type { ChatApproval } from './native-chat-interactive-prompt'
+import { NativeChatPromptCollapseToggle } from './NativeChatPromptCollapse'
+import { useNativeChatPromptCardFocus } from './use-native-chat-prompt-card-focus'
 
 export type NativeChatApprovalCardProps = {
   approval: ChatApproval
@@ -19,6 +20,10 @@ export type NativeChatApprovalCardProps = {
   onChoose: (option: string) => void
   /** Cancel the active provider turn while this card owns the composer region. */
   onCancel?: () => void
+  /** Without `onCancel`: fold the card to a strip and give the input back, writing nothing. */
+  onCollapse?: () => void
+  /** A choice is being delivered: the options wait for its answer. */
+  isSubmitting?: boolean
   shouldFocus?: boolean
   /** A plan body renders as markdown; these make its file paths clickable. */
   onLinkClick?: CommentMarkdownLinkClickHandler
@@ -34,6 +39,8 @@ export function NativeChatApprovalCard({
   approval,
   onChoose,
   onCancel,
+  onCollapse,
+  isSubmitting = false,
   shouldFocus = false,
   onLinkClick,
   allowFileUriLinks = false
@@ -49,15 +56,12 @@ export function NativeChatApprovalCard({
     approval.subject ||
     approval.detail
   )
-  useEffect(() => {
-    if (shouldFocus) {
-      cardRef.current?.focus()
-    }
-  }, [shouldFocus])
+  useNativeChatPromptCardFocus(cardRef, shouldFocus)
+  const escape = onCancel ?? (isSubmitting ? undefined : onCollapse)
 
   return (
-    <div className="min-h-0 shrink overflow-hidden bg-background">
-      <div className="mx-auto flex h-full min-h-0 max-h-full w-full max-w-4xl px-3 pt-2 pb-1 sm:px-4">
+    <div className="min-h-0 shrink overflow-hidden bg-chat-canvas">
+      <div className="mx-auto flex h-full min-h-0 max-h-full w-full max-w-(--chat-content-max-width) px-3 pt-2 pb-1 sm:px-4">
         <div
           ref={cardRef}
           data-native-chat-approval-card="true"
@@ -65,10 +69,10 @@ export function NativeChatApprovalCard({
           aria-label={approval.title}
           tabIndex={-1}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing && onCancel) {
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing && escape) {
               event.preventDefault()
               event.stopPropagation()
-              onCancel()
+              escape()
             }
           }}
           className="flex min-h-0 w-full flex-1 flex-col gap-2 overflow-hidden rounded-lg border border-input bg-card px-4 py-3 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -89,6 +93,12 @@ export function NativeChatApprovalCard({
               >
                 <X className="size-4" />
               </button>
+            ) : onCollapse ? (
+              <NativeChatPromptCollapseToggle
+                expanded
+                disabled={isSubmitting}
+                onToggle={onCollapse}
+              />
             ) : null}
           </div>
           {hasContext ? (
@@ -119,10 +129,10 @@ export function NativeChatApprovalCard({
               ) : null}
               {isPlanApprovalSubject(approval.subject) ? (
                 <div data-native-chat-approval-plan="true">
-                  <CommentMarkdown
+                  <NativeChatMarkdown
                     content={approval.subject.text}
                     variant="document"
-                    className="text-sm"
+                    className="text-sm text-chat-foreground"
                     renderCodeBlock={NativeChatCodeBlock}
                     {...(onLinkClick ? { onLinkClick } : {})}
                     allowFileUriLinks={allowFileUriLinks}
@@ -140,6 +150,7 @@ export function NativeChatApprovalCard({
               ) : approval.detail ? (
                 <div
                   data-native-chat-approval-detail="true"
+                  data-native-chat-code-content
                   className="whitespace-pre-wrap break-words font-mono"
                 >
                   {approval.detail}
@@ -160,7 +171,7 @@ export function NativeChatApprovalCard({
               <button
                 key={`${opt.label}-${i}`}
                 type="button"
-                disabled={newerSubject}
+                disabled={newerSubject || isSubmitting}
                 onClick={() => onChoose(opt.send)}
                 className={cn(
                   'rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',

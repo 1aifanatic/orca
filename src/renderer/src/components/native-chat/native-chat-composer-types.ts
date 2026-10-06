@@ -51,6 +51,9 @@ export type NativeChatComposerProps = {
   terminalTabId: string
   /** Stable split-leaf identity; unlike a PTY id, this survives reconnects. */
   paneKey: string
+  /** Owner of the unsent draft; defaults to `paneKey`. A structured chat's is its conversation,
+   *  shared by every composer showing it. */
+  draftScopeKey?: string
   /** Specific split-pane PTY this chat view owns. */
   targetPtyId: string | null
   agent: AgentType
@@ -66,6 +69,8 @@ export type NativeChatComposerProps = {
   optimisticSendOutcome?: NativeChatOptimisticSendOutcome
   /** Remove an optimistic echo when its delayed submit is canceled. */
   onOptimisticSendCanceled?: (pendingId: string) => void
+  /** A prompt card owns the input region; the composer stays mounted but hidden. */
+  inputOwnedByCard?: boolean
   /** Record a dispatched slash command that does not create a chat turn; `output`
    *  carries the host's answer when the agent never saw the command. */
   onSlashCommand?: (command: string, output?: string) => void

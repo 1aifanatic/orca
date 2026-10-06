@@ -1,7 +1,8 @@
 import { memo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { ShieldQuestion, X } from 'lucide-react-native'
+import { ShieldQuestion } from 'lucide-react-native'
 import { approvalBlockedPathToShow } from '../../../src/shared/agent-session-approval-blocked-path'
+import { MobileNativeChatCardHeaderAction } from './MobileNativeChatCardHeaderAction'
 import { MobileMarkdown } from '../components/MobileMarkdown'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import {
@@ -16,11 +17,14 @@ import type { MobileChatPermission } from './mobile-native-chat-permission'
 function MobileNativeChatPermissionImpl({
   permission,
   onRespond,
-  onCancel
+  onCancel,
+  onCollapse
 }: {
   permission: MobileChatPermission
   onRespond: (send: string) => Promise<boolean>
   onCancel?: (prompt?: NonNullable<MobileChatPermission['prompt']>) => Promise<boolean>
+  /** Fold the card to a strip and free Send, writing nothing. */
+  onCollapse?: () => void
 }): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
@@ -50,17 +54,12 @@ function MobileNativeChatPermissionImpl({
         >
           {permission.title}
         </Text>
-        {onCancel ? (
-          <Pressable
-            accessibilityLabel="Cancel"
-            hitSlop={8}
-            style={styles.cancel}
-            onPress={() => void onCancel(permission.prompt)}
-            disabled={submitting}
-          >
-            <X size={16} color={colors.textMuted} />
-          </Pressable>
-        ) : null}
+        <MobileNativeChatCardHeaderAction
+          prompt={permission.prompt}
+          onCancel={onCancel}
+          onCollapse={onCollapse}
+          disabled={submitting}
+        />
       </View>
       <MobileNativeChatPermissionContext permission={permission} newerSubject={newerSubject} />
       <View testID="native-chat-approval-actions" style={styles.options}>
@@ -172,12 +171,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: typography.bodySize,
     fontWeight: '600'
-  },
-  cancel: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center'
   },
   detail: {
     color: colors.textSecondary,
