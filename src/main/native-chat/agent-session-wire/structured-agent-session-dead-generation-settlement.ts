@@ -18,7 +18,6 @@ import { partitionJournalLifecycleMutations } from '../agent-session-journal/jou
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import {
   endedUnseenMessageBody,
-  requiresTerminalSettlement,
   runningCallEnd,
   terminalAgentJournalBody
 } from '../agent-session-journal/journal-terminal-settlement'
