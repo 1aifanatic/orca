@@ -69,10 +69,10 @@ export async function retireRuntimeSessionPartition(
     const snapshots: Record<string, string> = {}
     const missingSnapshots: string[] = []
     for (const ref of collectTerminalScrollbackSnapshotRefs(prior)) {
-      refs.add(ref)
       const buffer = readTerminalScrollbackSnapshotSync(
         ref,
-        runtime.terminalScrollbackSnapshotStorage
+        runtime.terminalScrollbackSnapshotStorage,
+        { purpose: 'archive' }
       )
       snapshotBytes +=
         Buffer.byteLength(ref, 'utf8') * 2 +
@@ -85,6 +85,7 @@ export async function retireRuntimeSessionPartition(
         missingSnapshots.push(ref)
       } else {
         snapshots[ref] = buffer
+        refs.add(ref)
       }
     }
     const archiveFile = `${randomUUID()}.json`

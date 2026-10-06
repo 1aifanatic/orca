@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isDefinitiveAbsence } from '../shared/definitive-filesystem-absence'
 import {
   closeSync,
   mkdirSync,
@@ -172,12 +173,27 @@ export async function writeTerminalScrollbackSnapshot(args: {
 
 export function readTerminalScrollbackSnapshotSync(
   ref: string,
-  storage?: TerminalScrollbackSnapshotStorage
+  storage?: TerminalScrollbackSnapshotStorage,
+  options?: { purpose: 'archive' }
 ): string | null {
   for (const path of snapshotReadPaths(ref, storage)) {
     try {
-      return readTrailingUtf8(path, TERMINAL_SCROLLBACK_REPLAY_BYTE_LIMIT)
-    } catch {
+      if (
+        options?.purpose === 'archive' &&
+        statSync(path).size > TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT
+      ) {
+        return null
+      }
+      return readTrailingUtf8(
+        path,
+        options?.purpose === 'archive'
+          ? TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT
+          : TERMINAL_SCROLLBACK_REPLAY_BYTE_LIMIT
+      )
+    } catch (error) {
+      if (options?.purpose === 'archive' && !isDefinitiveAbsence(error)) {
+        return null
+      }
       // Try the legacy/global fallback when a profile-local snapshot is absent.
     }
   }
