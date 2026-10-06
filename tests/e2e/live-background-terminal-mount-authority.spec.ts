@@ -85,18 +85,12 @@ const test = base.extend({
       ORCA_E2E_CANARY_LEDGER: canaryLedgerPath,
       ORCA_E2E_SIGNAL_LEDGER: signalLedgerPath
     },
-    { option: true }
+    { scope: 'test' }
   ]
 })
 
 function readSpawnLedger(): SpawnEvent[] {
-  if (!existsSync(spawnLedgerPath)) {
-    return []
-  }
-  return readFileSync(spawnLedgerPath, 'utf8')
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as SpawnEvent)
+  return readJsonLines<SpawnEvent>(spawnLedgerPath)
 }
 
 function readJsonLines<T>(filePath: string): T[] {
@@ -546,11 +540,14 @@ test('adopts runtime-owned agent and Setup PTYs on first mount', async ({
           const state = window.__store?.getState()
           await state?.fetchRepos()
           const repo = window.__store?.getState().repos.find((candidate) => candidate.id === repoId)
-          if (!repo) {
+          if (!repo?.hookSettings) {
             return false
           }
           await window.__store?.getState().updateRepo(repoId, {
-            hookSettings: { ...repo.hookSettings, setupAgentStartupPolicy: 'start-immediately' }
+            hookSettings: {
+              ...repo.hookSettings,
+              setupAgentStartupPolicy: 'start-immediately'
+            }
           })
           await window.__store?.getState().updateSettings({
             agentCmdOverrides: { codex: command },
