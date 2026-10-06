@@ -187,8 +187,9 @@ describe('a message sent while the turn ahead is still opening', () => {
     waitsAtTheTail('second')
   })
 
-  // A Stop withdraws what is still queued: B goes from the tail, never drawn above the live turn.
-  it('leaves the tail when a Stop withdraws it, with no frame above the live status', () => {
+  // A Stop takes back what is still queued: B stays after the live turn with its stop row, never
+  // drawn above it. Settled now, it sits with the transcript, above the live line.
+  it('stays after the live turn when a Stop takes it back, with no frame above the live status', () => {
     const { items, submissions } = openingFirst()
     const view = render(frame(items, submissions, [unrecorded('b', 'B')]))
     waitsAtTheTail('B')
@@ -208,7 +209,10 @@ describe('a message sent while the turn ahead is still opening', () => {
       ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
     })
     view.rerender(frame(queued, [...submissions, withdrawn], [], true))
-    expect(screen.queryByText('B')).toBeNull()
+    const stopRow = screen.getByText('Stopped before the agent started')
+    expect(follows(screen.getByText('B'), liveStatus())).toBe(true)
+    expect(follows(stopRow, screen.getByText('B'))).toBe(true)
+    expect(follows(liveActivity(), stopRow)).toBe(true)
   })
 
   // The Q2 frame: Stop pressed while the host has not recorded B yet, its lane still busy.

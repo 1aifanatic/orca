@@ -17,10 +17,8 @@ import {
   type NativeChatMessage
 } from '../../../../shared/native-chat-types'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
-import {
-  isNativeChatRowInLiveWorkingTurn,
-  nativeChatMessagesWaitingBehindLiveTurn
-} from '../../../../shared/native-chat-turn-membership'
+import { isNativeChatRowInLiveWorkingTurn } from '../../../../shared/native-chat-turn-membership'
+import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../../shared/native-chat-messages-waiting-behind-live-turn'
 import { nativeChatTurnBarRows } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnFold,

@@ -8,10 +8,10 @@ import {
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
 import {
   isNativeChatRowInLiveWorkingTurn,
-  nativeChatMessagesWaitingBehindLiveTurn,
   nativeChatTurnMembership,
   type NativeChatTurnJournal
 } from '../../../src/shared/native-chat-turn-membership'
+import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../src/shared/native-chat-messages-waiting-behind-live-turn'
 import {
   nativeChatRowsInDrawOrder,
   nativeChatTurnBarRows

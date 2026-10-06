@@ -199,7 +199,9 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
     ).toEqual([agentJournalSubmissionKey('b'), 'pending-1'])
   })
 
-  it('drops B from the wait when a Stop withdraws it, never listing it above the live status', () => {
+  // Taken back, B stays where it was sent with its stop row: listed after the live turn, no longer
+  // waiting.
+  it('lists B after the live turn when a Stop takes it back, never above the live status', () => {
     const queued = [...openingItems, userMessage('b', 4)]
     const stopping = frame(
       queued,
@@ -216,7 +218,11 @@ describe('a message sent while the turn ahead is still opening, on the phone', (
       ...agentSessionFailureWords(agentSessionFailureFact('cancelled'), { surface: 'rejection' })
     })
     expect(frame(queued, [...openingSubmissions, withdrawn], true)).toEqual({
-      listed: [agentJournalSubmissionKey('first')],
+      listed: [
+        agentJournalSubmissionKey('first'),
+        agentJournalSubmissionKey('b'),
+        `stopped-before-start:${agentJournalSubmissionKey('b')}`
+      ],
       waiting: [],
       liveOn: agentJournalSubmissionKey('first')
     })
