@@ -71,7 +71,7 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
     await this.serializeMutation(async () => {
       const router = getClaudeProfileRouter()
       if (router) {
-        await router.publish()
+        router.publish()
         return
       }
       const settings = this.store.getSettings()
