@@ -117,7 +117,7 @@ export function NativeChatStructuredSession(
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
   const { retryDelivery, revealLatest, holdRevealLatest } = submits
-  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
+  const agentLabel = structuredAgentLabel(props.agent)
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
     submissions: controller.submissions,
