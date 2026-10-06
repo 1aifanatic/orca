@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type {
@@ -7,7 +7,6 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
-import { agentSessionLaunchAccountHome } from '../runtime/agent-session-launch-account-home'
 import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
@@ -109,7 +108,7 @@ export type ClaudeStructuredLaunch = {
 }
 
 export type ClaudeStructuredLaunchResolverDeps = {
-  store: Pick<AgentSessionRecordStore, 'getRecord' | 'transitionHandoff'>
+  store: Pick<AgentSessionRecordStore, 'getRecord'>
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCommand?: () => string
   resolveEnv?: () =>
@@ -255,10 +254,8 @@ export function createClaudeStructuredLaunchResolver(
     // Every acquisition, not just the first: the account state can change under a live session, and
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
     // Codex has no gate here — it resolves its account on a different path.
-    const profiles = getClaudeProfileRoutingAuthority()
-    const prepared = profiles ? await profiles.prepare() : undefined
-    let launchHome = agentSessionLaunchAccountHome(record).path
-    const gate = profiles ? undefined : deps.readManagedAccountGate?.()
+    const router = getClaudeProfileRouter()
+    const gate = router ? undefined : deps.readManagedAccountGate?.()
     if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
       // Unreadable account state names no situation a person can act on, so only the log reads it.
       throw new AgentSessionPreSpawnError(
@@ -279,6 +276,30 @@ export function createClaudeStructuredLaunchResolver(
         ? head.handle.sessionId
         : claudeSessionIdForOrcaSession(identity.sessionId)
     const continuesChain = head?.handle.provider === 'claude'
+    // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
+    // concern, and the permission mode they used to smuggle in is an owned provider option now.
+    const permission = claudeStructuredPermissionOptions(
+      (await deps.resolvePermissionMode?.()) ?? 'default'
+    )
+    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) =>
+      // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
+      structuredSessionChildIdentityEnv(record.sessionId, {
+        ...base,
+        // The turn translator relies on Claude's authoritative idle frame when no result arrives.
+        [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
+      })
+    )
+    // With account routing every launch follows the current selection, as a typed `claude` does.
+    const launchHome = router
+      ? resolveStructuredClaudeAccountHomePath({
+          launchEnv: env,
+          wslDistro: null,
+          getClaudeConfigDirectory: () => router.systemDefaultHome()
+        })
+      : record.accountHome.path
+    if (router) {
+      applyClaudeEnvPatch(env, (await router.prepareLaunch()).envPatch)
+    }
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const resumesTranscript =
@@ -286,60 +307,8 @@ export function createClaudeStructuredLaunchResolver(
       (head.handle.leafUuid !== null ||
         (await (deps.hasTranscript ?? claudeTranscriptExists)({
           providerSessionId,
-          claudeConfigDir: record.accountHome.path
-        })))
-    // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
-    // concern, and the permission mode they used to smuggle in is an owned provider option now.
-    const permission = claudeStructuredPermissionOptions(
-      (await deps.resolvePermissionMode?.()) ?? 'default'
-    )
-    const { command, env } = await resolveClaudeStructuredInvocation(
-      prepared
-        ? { ...deps, resolveAuthPolicy: () => ({ stripAuthEnv: prepared.stripAuthEnv }) }
-        : deps,
-      (base) =>
-        // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
-        structuredSessionChildIdentityEnv(record.sessionId, {
-          ...base,
-          // The turn translator relies on Claude's authoritative idle frame when no result arrives.
-          [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-        })
-    )
-    if (profiles && prepared) {
-      const accountId = prepared.profileLaunch?.profile?.accountId ?? null
-      if ((profiles.resolve().profile?.accountId ?? null) !== accountId) {
-        throw new Error('Claude account changed before launch; retry')
-      }
-      // Why the create resolver: System Default keeps the Claude agent env's own CLAUDE_CONFIG_DIR.
-      launchHome = resolveStructuredClaudeAccountHomePath({
-        launchEnv: env,
-        wslDistro: null,
-        getClaudeConfigDirectory: () => prepared.configDir
-      })
-      if (
-        resumesTranscript &&
-        !(await (deps.hasTranscript ?? claudeTranscriptExists)({
-          providerSessionId,
           claudeConfigDir: launchHome
-        }))
-      ) {
-        throw new Error('Conversation history is not available in the selected Claude profile')
-      }
-      applyClaudeEnvPatch(env, prepared.envPatch, { stripAuthEnv: prepared.stripAuthEnv })
-      await deps.store.transitionHandoff(record.sessionId, (current) => {
-        if (current.lease.runtimeFence !== record.lease.runtimeFence) {
-          throw new Error('Claude session ownership changed before launch')
-        }
-        return {
-          ...current,
-          launchAccountHome: {
-            variable: 'CLAUDE_CONFIG_DIR',
-            path: launchHome,
-            accountId
-          }
-        }
-      })
-    }
+        })))
     return {
       pathToClaudeCodeExecutable: command,
       options: {

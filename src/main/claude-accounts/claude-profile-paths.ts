@@ -39,7 +39,11 @@ export function readClaudeProfileObject(file: string): ClaudeProfileRead<Record<
   }
 }
 
-/** dataRoot belongs to the execution host: for WSL it is the guest's Linux data root. */
+/**
+ * dataRoot belongs to the execution host: for WSL it is the guest's Linux data root. `home` is the
+ * one spelling (absolute, normalized, no trailing separator) sign-in and launch must pass as
+ * CLAUDE_CONFIG_DIR: Claude names the profile's Keychain entry from that exact text.
+ */
 export function describeClaudeProfile(
   dataRoot: string,
   accountId: string,
@@ -96,7 +100,8 @@ function readOwnershipMarker(file: string): string | null {
 export function prepareClaudeProfileDirectory(
   dataRoot: string,
   profile: ClaudeProfileDescriptor,
-  userHome: string
+  userHome: string,
+  userConfigDir?: string
 ): void {
   let expected: ClaudeProfileDescriptor
   try {
@@ -111,7 +116,7 @@ export function prepareClaudeProfileDirectory(
     )
   }
   assertClaudeProfileDescendant(dataRoot, profile.home)
-  assertOutsideDefaultClaudeHomes(profile.home, userHome)
+  assertOutsideDefaultClaudeHomes(profile.home, userHome, userConfigDir)
   const markerPath = join(dirname(profile.home), 'profile.json')
   const distro = profile.target.runtime === 'wsl' ? profile.target.distro : undefined
   const record = ownershipRecord(profile.version, profile.accountId, profile.target.runtime, distro)
@@ -189,8 +194,33 @@ export function assertDistinctClaudeProfile(profile: string, defaultHome: string
   }
 }
 
-/** Claude's default homes: a profile may never be, contain, or sit inside either one. */
-export function assertOutsideDefaultClaudeHomes(profileHome: string, userHome: string): void {
+/** Claude's default homes: a profile may never be, contain, or sit inside one. */
+export function assertOutsideDefaultClaudeHomes(
+  profileHome: string,
+  userHome: string,
+  userConfigDir?: string
+): void {
   assertDistinctClaudeProfile(profileHome, join(userHome, '.claude'))
   assertDistinctClaudeProfile(profileHome, join(userHome, '.config', 'claude'))
+  if (userConfigDir !== undefined) {
+    assertDistinctClaudeProfile(profileHome, userConfigDir)
+  }
+}
+
+/** Set beside every CLAUDE_CONFIG_DIR Orca injects, so its own value never reads as the user's. */
+export const CLAUDE_INJECTED_CONFIG_DIR_ENV = 'ORCA_CLAUDE_INJECTED_CONFIG_DIR'
+
+/** The user's own CLAUDE_CONFIG_DIR (their System default), or undefined for `~/.claude`. */
+export function readUserClaudeConfigDir(env: NodeJS.ProcessEnv): string | undefined {
+  const configDir = env.CLAUDE_CONFIG_DIR?.trim()
+  const injected = env[CLAUDE_INJECTED_CONFIG_DIR_ENV]?.trim()
+  if (!configDir || (injected && resolve(injected) === resolve(configDir))) {
+    return undefined
+  }
+  return resolve(configDir)
+}
+
+/** The folder profiles share from: the user's own CLAUDE_CONFIG_DIR, else `~/.claude`. */
+export function resolveClaudeDefaultHome(userHome: string, userConfigDir?: string): string {
+  return userConfigDir ?? join(userHome, '.claude')
 }

@@ -1,4 +1,4 @@
-import { claudeProfileReaderRoots } from './claude-accounts/claude-profile-reader-roots'
+import { claudeProfileHistoryDirs } from './claude-accounts/claude-profile-installed-router'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { isWslUncPath, parseWslUncPath } from '../shared/wsl-paths'
@@ -167,10 +167,10 @@ async function claudeProjectsSources(args: {
   let complete = true
   const hostParents = encodeParents(args.workspaceRoots)
   if (hostParents.length > 0) {
-    for (const projectsDir of claudeProfileReaderRoots(
-      [getClaudeProjectsDir(args.home ?? homedir(), args.env ?? process.env)],
-      'projects'
-    )) {
+    for (const projectsDir of [
+      getClaudeProjectsDir(args.home ?? homedir(), args.env ?? process.env),
+      ...claudeProfileHistoryDirs('projects')
+    ]) {
       sources.push({ projectsDir, encodedParents: hostParents })
     }
   }

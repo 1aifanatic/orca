@@ -59,7 +59,7 @@ const WORKER_THREAD_ENTRY_NAMES = [
   'main-thread-hang-watchdog-entry',
   'port-scan-command-worker-entry',
   'usage-scan-worker-entry',
-  'claude-profile-worker-entry',
+  'claude-profile-setup-worker-entry',
   'profile-state-backup-worker-entry',
   'profile-state-writer-worker-entry'
 ] as const

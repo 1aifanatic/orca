@@ -1,4 +1,3 @@
-import { claudeProfileRoutingEnabled } from '../../../../shared/claude-profile-routing'
 import { isRemoteAgentHooksEnabled } from '../../../../shared/agent-hook-relay'
 import type { AgentSessionOwnerBinding } from '../../../../shared/agent-session-host-authority'
 import { agentSessionOwnerBindingsEqual } from '../../../../shared/claimed-agent-pty-owner'
@@ -24,12 +23,6 @@ export function stripRemotePaneEnvWhenHooksDisabled(
   connectionId: string | null | undefined,
   env: Record<string, string> | undefined
 ): Record<string, string> | undefined {
-  if (connectionId && env?.ORCA_CLAUDE_PROFILE_POINTER && claudeProfileRoutingEnabled()) {
-    env = { ...env }
-    delete env.ORCA_CLAUDE_PROFILE_POINTER
-    delete env.ORCA_CLAUDE_INJECTED_CONFIG_DIR
-    delete env.CLAUDE_CONFIG_DIR
-  }
   if (!connectionId || isRemoteAgentHooksEnabled()) {
     return env
   }

@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import { agentSessionLaunchAccountHome } from '../../runtime/agent-session-launch-account-home'
 import type {
   AgentModelCatalogSessionAccess,
   AgentModelCatalogStore
@@ -36,19 +35,18 @@ export function agentModelCatalogFingerprint(identity: AgentModelCatalogIdentity
 /** The durable record pins the account home at launch, so this names the
  *  catalog THAT session lists from — not whichever account is selected now. */
 export function agentModelCatalogIdentityForRecord(
-  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location' | 'launchAccountHome'>
+  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
 ): AgentModelCatalogIdentity {
-  const home = agentSessionLaunchAccountHome(record)
   return {
     agent: record.provider,
-    accountHomeVariable: home.variable,
-    accountHomePath: home.path,
+    accountHomeVariable: record.accountHome.variable,
+    accountHomePath: record.accountHome.path,
     wslDistro: record.location.wslDistro
   }
 }
 
 export function agentModelCatalogFingerprintForRecord(
-  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location' | 'launchAccountHome'>
+  record: Pick<AgentSessionRecord, 'provider' | 'accountHome' | 'location'>
 ): string {
   return agentModelCatalogFingerprint(agentModelCatalogIdentityForRecord(record))
 }

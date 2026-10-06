@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
@@ -14,7 +14,6 @@ import {
 } from '../native-chat/structured-agent-session-history-adoption'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { configuredAdditionalCodexHomePaths } from '../ai-vault/cached-session-list'
-import { filterPathsToRunningWslDistrosAsync } from '../wsl-running-path-filter'
 import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from '../codex/codex-home-paths'
 
 type AdoptionSettings = {
@@ -84,7 +83,7 @@ export async function resolveStructuredAgentSessionAdoptionForCreate(input: {
   return resolveStructuredAgentSessionAdoption({
     agent: input.agent,
     providerSessionId: input.providerSessionId,
-    candidateAccountHomes: await structuredAdoptionAccountHomeCandidates(input),
+    candidateAccountHomes: structuredAdoptionAccountHomeCandidates(input),
     resolveTranscript: async ({ agent, providerSessionId, accountHomePath }) =>
       resolveSessionFilePath(
         agent,
@@ -97,17 +96,17 @@ export async function resolveStructuredAgentSessionAdoptionForCreate(input: {
 }
 
 /** Recognised adoption homes, most-preferred first. */
-async function structuredAdoptionAccountHomeCandidates(input: {
+function structuredAdoptionAccountHomeCandidates(input: {
   settings: AdoptionSettings
   agent: 'claude' | 'codex'
   selectedAccountHomePath: string
-}): Promise<string[]> {
+}): string[] {
   if (input.agent === 'claude') {
-    // Why filtered: a stopped distro's WSL profile root would boot or stall it on every adoption.
-    const roots = await filterPathsToRunningWslDistrosAsync(
-      getClaudeProfileRoutingAuthority()?.historyRoots() ?? [join(homedir(), '.claude')]
-    )
-    return [...new Set([input.selectedAccountHomePath, ...roots])]
+    return [
+      input.selectedAccountHomePath,
+      join(homedir(), '.claude'),
+      ...(getClaudeProfileRouter()?.accountHomes() ?? [])
+    ]
   }
   return [
     input.selectedAccountHomePath,

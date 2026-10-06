@@ -67,7 +67,7 @@ async function runScan(
         request.worktrees,
         request.previous,
         onFilesScanned,
-        request.transcriptRoots
+        request.profileDirs
       )
       return {
         providerId: 'claude',

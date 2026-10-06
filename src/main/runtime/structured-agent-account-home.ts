@@ -1,4 +1,4 @@
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { getSystemCodexHomePath } from '../codex/codex-home-paths'
@@ -19,12 +19,10 @@ export type StructuredClaudeAccountHomeDeps = {
 export function resolveStructuredClaudeAccountHomePath(
   deps: StructuredClaudeAccountHomeDeps
 ): string {
-  // Why only a profile: System Default keeps the inherited and launch-env homes below.
-  const profile = getClaudeProfileRoutingAuthority()?.resolve(
-    deps.wslDistro ? { runtime: 'wsl', wslDistro: deps.wslDistro } : { runtime: 'host' }
-  ).profile
-  if (profile) {
-    return profile.home
+  // Why only an account: System default keeps the launch-env and configured homes below.
+  const accountHome = deps.wslDistro ? null : getClaudeProfileRouter()?.selectedHome()
+  if (accountHome) {
+    return accountHome
   }
   return (
     deps.launchEnv.CLAUDE_CONFIG_DIR?.trim() ||

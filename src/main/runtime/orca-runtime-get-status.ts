@@ -1,5 +1,3 @@
-import { CLAUDE_PROFILE_ROUTING_CAPABILITY } from '../../shared/claude-profile-routing'
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
 import { OrcaRuntimeWithGetRuntimeId } from './orca-runtime-get-runtime-id'
 import type { RuntimeDegradation, RuntimeStatus } from '../../shared/runtime-types'
 import {
@@ -94,10 +92,6 @@ export class OrcaRuntimeWithGetStatus extends OrcaRuntimeWithGetRuntimeId {
         (capability !== TERMINAL_PROMPT_DELIVERY_RUNTIME_CAPABILITY ||
           supportsDurableTerminalPromptDelivery())
     )
-    // Why the installed owner, not the gate: a host with no account owner routes nothing.
-    if (getClaudeProfileRoutingAuthority()) {
-      capabilities.push(CLAUDE_PROFILE_ROUTING_CAPABILITY)
-    }
     if (hasOffscreen || hasHeadlessCommands) {
       capabilities.push(BROWSER_HEADLESS_RUNTIME_CAPABILITY)
     }

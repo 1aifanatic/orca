@@ -21,6 +21,8 @@ export async function provisionClaudeAccountProfile(args: {
   dataRoot: string
   profile: ClaudeProfileDescriptor
   userHome: string
+  /** The user's own CLAUDE_CONFIG_DIR (see readUserClaudeConfigDir); `~/.claude` when unset. */
+  userConfigDir?: string
   /** Null when Orca's Claude hooks are turned off. Runs after the settings merge so its entries survive it. */
   installHooks: ((target: { configDir: string; userHome: string }) => AgentHookInstallStatus) | null
   trustKeys?: readonly string[]
@@ -32,22 +34,17 @@ export async function provisionClaudeAccountProfile(args: {
     if (args.profile.target.runtime === 'wsl' && platform === 'win32') {
       throw new ClaudeProfileSurfaceError('invalid-profile', 'WSL profiles are set up in the guest')
     }
-    prepareClaudeProfileDirectory(args.dataRoot, args.profile, args.userHome)
+    prepareClaudeProfileDirectory(args.dataRoot, args.profile, args.userHome, args.userConfigDir)
   } catch (error) {
     report.surfaces.profile = 'failed'
     warnClaudeProfile(report, 'profile', error)
     return { outcome: 'refused', ...report }
   }
   const home = args.profile.home
+  const shared = { profileHome: home, userHome: args.userHome, userConfigDir: args.userConfigDir }
   for (const step of [
-    () => shareClaudeProfileHistory({ profileHome: home, userHome: args.userHome, platform }),
-    () =>
-      provisionClaudeProfile({
-        profileHome: home,
-        userHome: args.userHome,
-        platform,
-        trustKeys: args.trustKeys
-      })
+    () => shareClaudeProfileHistory({ ...shared, platform }),
+    () => provisionClaudeProfile({ ...shared, platform, trustKeys: args.trustKeys })
   ]) {
     try {
       const part = await step()

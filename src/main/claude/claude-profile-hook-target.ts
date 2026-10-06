@@ -1,18 +1,8 @@
 import { statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import type { AgentHookInstallStatus } from '../../shared/agent-hook-types'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { getConfigPath, type ClaudeCompatibleHookSettings } from './hook-settings'
-
-/** The default settings a profile follows; `userHome` comes from the caller so both halves agree on it. */
-export function getDefaultSettingsPath(
-  settings: ClaudeCompatibleHookSettings,
-  userHome?: string
-): string {
-  return getConfigPath(
-    settings,
-    userHome === undefined ? undefined : join(userHome, settings.configDirName)
-  )
-}
 
 function sameFile(left: string, right: string): boolean {
   if (resolve(left) === resolve(right)) {
@@ -30,14 +20,23 @@ function sameFile(left: string, right: string): boolean {
 }
 
 /** A profile destination that is, or links into, the default home would edit System Default's hooks. */
-export function profileTargetsDefaultHome(
-  settings: ClaudeCompatibleHookSettings,
-  configDir: string,
-  userHome?: string
-): boolean {
-  const defaultSettings = getDefaultSettingsPath(settings, userHome)
-  return (
-    sameFile(configDir, dirname(defaultSettings)) ||
-    sameFile(getConfigPath(settings, configDir), defaultSettings)
-  )
+export function refuseProfileAtDefaultHome(
+  service: { agent: AgentHookInstallStatus['agent']; settings: ClaudeCompatibleHookSettings },
+  configDir: string | undefined
+): AgentHookInstallStatus | null {
+  if (configDir === undefined) {
+    return null
+  }
+  const configPath = getConfigPath(service.settings, configDir)
+  const defaultSettings = getConfigPath(service.settings)
+  if (!sameFile(configDir, dirname(defaultSettings)) && !sameFile(configPath, defaultSettings)) {
+    return null
+  }
+  return {
+    agent: service.agent,
+    state: 'error',
+    configPath,
+    managedHooksPresent: false,
+    detail: 'Profile settings resolve to the default home'
+  }
 }

@@ -1,7 +1,6 @@
-import { selectedClaudeProfileHome } from '../claude-accounts/claude-profile-reader-roots'
 import { open, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, relative, sep } from 'node:path'
 import { summarizeSkillMarkdown } from '../../shared/skill-metadata'
 import type { Repo } from '../../shared/repo-types'
 import type {
@@ -273,21 +272,8 @@ export async function discoverSkills(args: {
   const startedAt = Date.now()
   const homeDir = args.homeDir ?? homedir()
   const refresh = args.refresh === true
-  // Why only without a caller root: install verification compares against the root it passed.
-  const profileHome = args.providerRootOverrides?.claude ? undefined : selectedClaudeProfileHome()
   const roots = [
-    ...buildSkillDiscoverySources({
-      ...args,
-      homeDir,
-      ...(profileHome
-        ? {
-            providerRootOverrides: {
-              ...args.providerRootOverrides,
-              claude: join(profileHome, 'skills')
-            }
-          }
-        : {})
-    }),
+    ...buildSkillDiscoverySources({ ...args, homeDir }),
     // Why: plugin discovery is native-chat data keyed to an explicit workspace.
     // Untargeted scans (Settings) keep their pre-picker inventory and cost.
     ...(args.cwd &&
