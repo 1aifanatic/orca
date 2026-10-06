@@ -135,7 +135,8 @@ export class FakeOrcadHost {
       return ''
     }
     // A wake's owner token lives inside the fence's lock dir, so the fence's release drops it.
-    if (command.includes(WAKE_OWNER)) {
+    // A state mutation's fence heartbeat names the token only to skip a wake's fence.
+    if (command.includes(WAKE_OWNER) && !command.includes('orcad-state-mutation.lock')) {
       const written = /printf %s '([^']*)'/u.exec(command)?.[1]
       if (written !== undefined) {
         this.wakeOwner = this.fence ? written : null

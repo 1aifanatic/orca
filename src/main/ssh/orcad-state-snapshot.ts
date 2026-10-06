@@ -20,9 +20,16 @@ import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './
 import type { OrcadWindowsHostStateOp } from './orcad-windows-host-state-ops'
 import {
   ORCAD_SNAPSHOT_MEMBERS,
+  ORCAD_STATE_MUTATION_BUSY,
+  ORCAD_STATE_MUTATION_DEADLINE,
+  ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
+  ORCAD_WAKE_OWNER_FILENAME,
+  ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME
 } from './orcad-state-snapshot-members'
 import { orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
+import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
+import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 
 /**
  * The member names go into the command unquoted (see `captureOrcadStateSnapshotCommand`), so
@@ -52,6 +59,76 @@ function windowsStateCommand(
   return orcadWindowsHostOpCommand(host, baseDir, op, args)
 }
 
+/** Past this the host kills a capture, restore or clear; the client waits a minute longer. */
+export const ORCAD_STATE_MUTATION_DEADLINE_SECONDS = 15 * 60
+
+/**
+ * Runs a state mutation under the host's lock and deadline. Why on the host: sshd keeps a
+ * pty-less command running after its channel closes, so a client that stops waiting has not
+ * stopped the work, and a rerun beside it would mix two restores in one stage.
+ */
+/**
+ * Prints `pid`'s process group. Why /proc first: BusyBox `ps` has no `-p`. The comm field
+ * may hold spaces and parens, so the fields are read after its last `)`.
+ */
+export function posixProcessGroupCommand(pid: string, procRoot = '/proc'): string {
+  const stat = `${procRoot}/${pid}/stat`
+  return [
+    `if [ -r ${stat} ]; then stat=$(cat ${stat} 2>/dev/null); set -- \${stat##*")"}; echo "$3";`,
+    `else ps -o pgid= -p ${pid} 2>/dev/null | tr -d " "; fi`
+  ].join(' ')
+}
+
+export function serializedStateMutationCommand(
+  baseDir: string,
+  script: string,
+  heartbeatSeconds = ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS
+): string {
+  const lock = shellEscape(`${baseDir}/${ORCAD_STATE_MUTATION_LOCK_DIRNAME}`)
+  const fence = shellEscape(
+    `${baseDir}/${ORCAD_ACTIVATION_TRANSACTION_DIRNAME}/${RELAY_INSTALL_LOCK_NAME}`
+  )
+  const busy = `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0;`
+  const staleMinutes = Math.max(1, Math.ceil((3 * heartbeatSeconds) / 60))
+  const guarded = [
+    `lock=${lock}; fence=${fence};`,
+    `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
+    'if ! mkdir "$lock" 2>/dev/null; then',
+    'holder=$(cat "$lock/pid" 2>/dev/null); group=$(cat "$lock/pgid" 2>/dev/null);',
+    // No pid yet: no work began, and the pid write is exclusive, so a late writer backs off.
+    'if [ -z "$holder" ]; then',
+    `[ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || { ${busy} };`,
+    // Why the group: a killed shell can leave its tar or rm running; any live member keeps it.
+    `elif [ -n "$group" ]; then kill -0 "-$group" 2>/dev/null && { ${busy} };`,
+    // No group recorded: a live pid, or a beat within three, still holds; past that it is gone.
+    `elif kill -0 "$holder" 2>/dev/null || [ -z "$(find "$lock" -maxdepth 0 -mmin +${staleMinutes} 2>/dev/null)" ]; then ${busy}`,
+    'fi;',
+    `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { ${busy} }; fi;`,
+    // Noclobber: a run that resumes after a takeover finds a pid already there and backs off.
+    `set -C; { echo $$ > "$lock/pid"; } 2>/dev/null || { ${busy} }; set +C;`,
+    'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
+    `group=$(${posixProcessGroupCommand('$$')});`,
+    'case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > "$lock/pgid";; esac; fi;',
+    // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
+    // A wake's fence ages toward takeover on its own, so its token stops the refresh.
+    `beat_fence() { touch -c -m "$lock" 2>/dev/null; [ -e "$fence/${ORCAD_WAKE_OWNER_FILENAME}" ] || touch -c -m "$fence" 2>/dev/null; };`,
+    'beat_fence;',
+    `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do beat_fence; done ) >/dev/null 2>&1 & beat=$!;`,
+    `trap 'kill "$beat" 2>/dev/null; rm -rf "$lock"' EXIT;`,
+    script
+  ].join(' ')
+  const run = `sh -c ${shellEscape(guarded)}`
+  return [
+    // Its own process group, so the lock can name every process the mutation started.
+    'orca_state_group() { if command -v setsid >/dev/null 2>&1; then ORCA_STATE_MUTATION_GROUP=1 setsid "$@";',
+    `elif command -v perl >/dev/null 2>&1; then ORCA_STATE_MUTATION_GROUP=1 perl -e ${shellEscape('setpgrp(0, 0); exec { $ARGV[0] } @ARGV or exit 127')} "$@";`,
+    'else "$@"; fi; };',
+    // Why timeout inside the group: KILL then reaches tar and rm, not only the shell.
+    `if command -v timeout >/dev/null 2>&1; then orca_state_group timeout -s KILL ${ORCAD_STATE_MUTATION_DEADLINE_SECONDS} ${run}; else orca_state_group ${run}; fi;`,
+    `status=$?; if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then echo ${ORCAD_STATE_MUTATION_DEADLINE}; fi`
+  ].join(' ')
+}
+
 function noSymlinkedStateCommand(path: string): string {
   return `links=$(find ${path} -type l -print) && [ -z "$links" ]`
 }
@@ -79,7 +156,7 @@ export function captureOrcadStateSnapshotCommand(
   host: RemoteHostPlatform,
   userDataDir: string,
   snapshotDir: string,
-  baseDir?: string
+  baseDir: string
 ): string {
   const windows = windowsStateCommand(host, baseDir, 'snapshot-capture', [userDataDir, snapshotDir])
   if (windows) {
@@ -101,17 +178,20 @@ export function captureOrcadStateSnapshotCommand(
       )
     }
   ).join(' ')
-  return [
-    `members=;`,
-    memberTests,
-    'if [ -z "$members" ]; then echo EMPTY; else',
-    // Umask first so the snapshot dir, not just the archive, is owner-only.
-    `umask 077 && mkdir -p ${dir} &&`,
-    // Why a temp name then mv: a deploy killed mid-tar must not leave a truncated archive
-    // that a later rollback would happily restore.
-    `tar -C ${root} -cf ${archive}.partial $members && mv ${archive}.partial ${archive} &&`,
-    'echo CAPTURED; fi'
-  ].join(' ')
+  return serializedStateMutationCommand(
+    baseDir,
+    [
+      `members=;`,
+      memberTests,
+      'if [ -z "$members" ]; then echo EMPTY; else',
+      // Umask first so the snapshot dir, not just the archive, is owner-only.
+      `umask 077 && mkdir -p ${dir} &&`,
+      // Why a temp name then mv: a deploy killed mid-tar must not leave a truncated archive
+      // that a later rollback would happily restore.
+      `tar -C ${root} -cf ${archive}.partial $members && mv ${archive}.partial ${archive} &&`,
+      'echo CAPTURED; fi'
+    ].join(' ')
+  )
 }
 
 export type OrcadSnapshotCapture = 'captured' | 'empty' | 'failed'
@@ -164,7 +244,7 @@ export function restoreOrcadStateSnapshotCommand(
   host: RemoteHostPlatform,
   userDataDir: string,
   snapshotDir: string,
-  baseDir?: string
+  baseDir: string
 ): string {
   const windows = windowsStateCommand(host, baseDir, 'snapshot-restore', [userDataDir, snapshotDir])
   if (windows) {
@@ -181,31 +261,37 @@ export function restoreOrcadStateSnapshotCommand(
   const stagedMemberChecks = ORCAD_SNAPSHOT_MEMBERS.map(
     (member) => `[ -e ${stage}/${shellEscape(member)} ]`
   ).join(' || ')
-  return [
-    `test -f ${archive} || { echo MISSING; exit 0; };`,
-    'umask 077;',
-    `test -d ${root} || mkdir -p ${root};`,
-    // Re-extracting from the intact archive makes an interrupted restore safe to rerun.
-    `rm -rf ${stage}; mkdir -p ${stage} || { echo FAILED; exit 0; };`,
-    // Extraction proves every archived byte is readable before live state is removed.
-    `tar -C ${stage} -xf ${archive} 2>/dev/null || { rm -rf ${stage}; echo FAILED; exit 0; };`,
-    `${stagedMemberChecks} || { rm -rf ${stage}; echo FAILED; exit 0; };`,
-    `if ${removals} && ${replacements}; then rm -rf ${stage}; echo RESTORED; else echo FAILED; fi`
-  ].join(' ')
+  return serializedStateMutationCommand(
+    baseDir,
+    [
+      `test -f ${archive} || { echo MISSING; exit 0; };`,
+      'umask 077;',
+      `test -d ${root} || mkdir -p ${root};`,
+      // Re-extracting from the intact archive makes an interrupted restore safe to rerun.
+      `rm -rf ${stage}; mkdir -p ${stage} || { echo FAILED; exit 0; };`,
+      // Extraction proves every archived byte is readable before live state is removed.
+      `tar -C ${stage} -xf ${archive} 2>/dev/null || { rm -rf ${stage}; echo FAILED; exit 0; };`,
+      `${stagedMemberChecks} || { rm -rf ${stage}; echo FAILED; exit 0; };`,
+      `if ${removals} && ${replacements}; then rm -rf ${stage}; echo RESTORED; else echo FAILED; fi`
+    ].join(' ')
+  )
 }
 
 /** Restore an originally empty state root after a candidate populated it. */
 export function clearOrcadStateSnapshotMembersCommand(
   host: RemoteHostPlatform,
   userDataDir: string,
-  baseDir?: string
+  baseDir: string
 ): string {
   const windows = windowsStateCommand(host, baseDir, 'snapshot-clear', [userDataDir])
   if (windows) {
     return windows
   }
   const root = shellEscape(userDataDir)
-  return `test -d ${root} || mkdir -p ${root}; if ${removeMembersCommand(root)}; then echo RESTORED; else echo FAILED; fi`
+  return serializedStateMutationCommand(
+    baseDir,
+    `test -d ${root} || mkdir -p ${root}; if ${removeMembersCommand(root)}; then echo RESTORED; else echo FAILED; fi`
+  )
 }
 
 function removeMembersCommand(root: string): string {

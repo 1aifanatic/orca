@@ -32,6 +32,7 @@ import {
 } from './orcad-activation-transaction-transitions'
 import { writeOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import { execOrcadRemoteOr, withoutAbortSignal } from './orcad-remote-runtime-control'
+import { execOrcadStateMutationOr } from './orcad-state-mutation-exec'
 import {
   orcadSlotDir,
   resolveOrcadSlotIdentity,
@@ -158,7 +159,7 @@ export async function rollbackOrcadLocked(
   await writeOrcadActivationTransaction(options, transaction)
 
   const rescue = parseOrcadSnapshotCapture(
-    await execOrcadRemoteOr(
+    await execOrcadStateMutationOr(
       options,
       captureOrcadStateSnapshotCommand(
         options.host,
@@ -183,7 +184,7 @@ export async function rollbackOrcadLocked(
 
   // Why between stop and start: the older build must never load the newer build's state.
   const restored = parseOrcadSnapshotRestore(
-    await execOrcadRemoteOr(
+    await execOrcadStateMutationOr(
       options,
       restoreOrcadStateSnapshotCommand(
         options.host,
