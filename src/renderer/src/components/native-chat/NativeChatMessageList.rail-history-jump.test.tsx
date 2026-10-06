@@ -195,7 +195,9 @@ describe('jumping from the rail while following the end', () => {
       configurable: true,
       get: () =>
         TOP_GUTTER_PX +
-        (screen.queryByRole('button', { name: /load earlier messages/i })?.closest('.max-w-4xl')
+        (screen
+          .queryByRole('button', { name: /load earlier messages/i })
+          ?.closest('[data-native-chat-transcript-column]')
           ? OLDER_HISTORY_ROW_PX
           : 0)
     })
@@ -539,7 +541,7 @@ describe('revealing a diff while a rail jump pages', () => {
     fireEvent.click(screen.getByRole('button', { name: /1 changed file/ }))
     fireEvent.click(screen.getByRole('button', { name: /src\/a.ts/ }))
     scrollTranscript(container, 6000)
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
     scrollTo.mockClear()
 
     await act(async () => {
@@ -550,6 +552,6 @@ describe('revealing a diff while a rail jump pages', () => {
     // The abandoned jump would have taken the pin and smooth-scrolled up to the oldest
     // prompt; the prepend's own anchoring is an instant write.
     expect(scrollTo.mock.calls.filter(([options]) => options?.behavior === 'smooth')).toEqual([])
-    expect(screen.getByText('Edited file')).toBeInTheDocument()
+    expect(screen.getByText('Edited')).toBeInTheDocument()
   })
 })

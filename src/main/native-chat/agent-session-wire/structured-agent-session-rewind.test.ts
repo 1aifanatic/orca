@@ -33,6 +33,8 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 const caller = { callerKey: 'desktop' }
 let directory: string
@@ -78,7 +80,7 @@ beforeEach(async () => {
           mintedAtFence: input.fence,
           observedAt: HOST_TEST_NOW,
           origin: acquires.length === 1 ? 'created' : 'resumed',
-          handle: { provider: 'codex', threadId: HOST_TEST_THREAD }
+          handle: codexProviderHandle(HOST_TEST_THREAD)
         }
       }
     },
@@ -96,6 +98,7 @@ beforeEach(async () => {
     closeSession: async () => true
   }
   host = new StructuredAgentSessionHost({
+    agents: claudeAndCodexDeclared(),
     logger: createStructuredAgentSessionLogger(),
     store,
     adapter,

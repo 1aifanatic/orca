@@ -5,6 +5,7 @@ import { structuredAgentSessionPaneKey } from '../../../../shared/structured-age
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
 import { NativeChatApprovalCard } from './NativeChatApprovalCard'
 import { NativeChatComposer, type NativeChatComposerHandle } from './NativeChatComposer'
+import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
@@ -51,7 +52,8 @@ export function NativeChatStructuredSession(
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
   const controller = useStructuredAgentSession({
     ...props,
-    composerScopeKey: paneKey,
+    // Why: Stop and a queued card's Edit give text back to the conversation's draft, as the composer keeps it.
+    composerScopeKey: structuredAgentSessionDraftScopeKey(props.sessionId),
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
     transportEnabled: provisionalLaunch.transportEnabled,
@@ -112,7 +114,7 @@ export function NativeChatStructuredSession(
     }),
     [controller, historyPhase, props.agent, props.sessionId]
   )
-  const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
+  const agentLabel = structuredAgentLabel(props.agent)
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
     submissions: controller.submissions,
@@ -246,7 +248,7 @@ export function NativeChatStructuredSession(
       onKeyUpCapture={paneCommands.onSelectionCapture}
       onKeyDownCapture={paneCommands.onKeyDownCapture}
       onContextMenuCapture={paneCommands.onContextMenuCapture}
-      className="flex h-full min-h-0 w-full flex-col bg-background focus:outline-none"
+      className="flex h-full min-h-0 w-full flex-col bg-chat-canvas focus:outline-none"
     >
       <div className="flex min-h-0 flex-1 flex-col">
         {viewState.kind === 'loading' ? (
@@ -375,6 +377,7 @@ export function NativeChatStructuredSession(
               ref={composerRef}
               terminalTabId={props.tabId}
               paneKey={paneKey}
+              draftScopeKey={structuredAgentSessionDraftScopeKey(props.sessionId)}
               targetPtyId={null}
               agent={props.agent}
               isWorking={controller.canStop}
