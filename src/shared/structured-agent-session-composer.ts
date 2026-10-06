@@ -43,6 +43,8 @@ export type StructuredAgentSessionComposerOptions = {
 }
 
 export type StructuredAgentSessionCommandOutcome = {
+  /** Picker actions produce no transcript content. This is local dispatch policy, never wire state. */
+  revealsTranscript?: boolean
   handled: boolean
   accepted: boolean
   error: string | null
@@ -182,6 +184,7 @@ export async function dispatchStructuredAgentSessionComposerCommand(
     return {
       handled: true,
       accepted: opened,
+      revealsTranscript: false,
       error: opened ? null : `Could not open the ${command.name} picker.`
     }
   }

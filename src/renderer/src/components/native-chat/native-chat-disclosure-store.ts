@@ -46,7 +46,7 @@ export function useNativeChatDisclosures(): NativeChatDisclosureStore {
 export type NativeChatDisclosure = {
   open: boolean
   /** A reader's choice: remembered past this row's lifetime when keyed. */
-  setOpen: (next: boolean) => void
+  setOpen: (next: boolean, readerInitiated?: boolean) => void
 }
 
 export function useNativeChatDisclosure(
@@ -64,12 +64,14 @@ export function useNativeChatDisclosure(
     local.key === key && local.initialOpen === initialOpen ? local.open : initialOpen
   const open = isStored ? (store.read(key) ?? localOpen) : localOpen
   const setOpen = useCallback(
-    (next: boolean) => {
+    (next: boolean, readerInitiated = true) => {
       setLocal({ key, initialOpen, open: next })
       if (key !== undefined && write) {
         write(key, next)
       }
-      onToggle?.(row, next)
+      if (readerInitiated) {
+        onToggle?.(row, next)
+      }
     },
     [initialOpen, key, onToggle, row, write]
   )

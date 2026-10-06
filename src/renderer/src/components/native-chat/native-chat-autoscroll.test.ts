@@ -1,15 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   distanceFromBottom,
-  FOLLOWING,
   isNearBottom,
   nextFollowingEnd,
-  nextFollowState,
   shouldShowJumpToLatest,
   NATIVE_CHAT_BOTTOM_THRESHOLD_PX,
   NATIVE_CHAT_FOLLOW_REARM_PX,
-  type FollowEvent,
-  type FollowState
+  readerGestureLeavesEnd
 } from './native-chat-autoscroll'
 
 const atBottom = { scrollTop: 952, scrollHeight: 1000, clientHeight: 48 }
@@ -80,8 +77,8 @@ describe('nextFollowingEnd', () => {
     expect(nextFollowingEnd({ ...following, programmatic: true, geometry: wellAway })).toBe(true)
   })
 
-  it('treats an unmarked offset away from the end as the reader leaving', () => {
-    expect(nextFollowingEnd({ ...following, geometry: wellAway })).toBe(false)
+  it('keeps following through unmarked passive layout offsets', () => {
+    expect(nextFollowingEnd({ ...following, geometry: wellAway })).toBe(true)
   })
 
   it.each([0, NATIVE_CHAT_FOLLOW_REARM_PX, 400])(
@@ -102,7 +99,7 @@ describe('nextFollowingEnd', () => {
   it('lets the reader park just inside the near-bottom band', () => {
     expect(NATIVE_CHAT_FOLLOW_REARM_PX).toBeLessThan(NATIVE_CHAT_BOTTOM_THRESHOLD_PX)
     const parked = parkedAbove(NATIVE_CHAT_BOTTOM_THRESHOLD_PX - 1)
-    expect(nextFollowingEnd({ ...following, geometry: parked })).toBe(false)
+    expect(nextFollowingEnd({ ...following, following: false, geometry: parked })).toBe(false)
     expect(isNearBottom(parked)).toBe(true)
     expect(shouldShowJumpToLatest(false, parked)).toBe(false)
   })
@@ -147,115 +144,16 @@ describe('nextFollowingEnd', () => {
   })
 })
 
-describe('nextFollowState', () => {
-  const opened = (...rows: string[]): FollowState => ({
-    kind: 'detached',
-    reason: 'open',
-    opens: new Set(rows)
-  })
-  const scrolled: FollowState = { kind: 'detached', reason: 'scroll' }
-  const navigated: FollowState = { kind: 'detached', reason: 'navigation' }
-  const scroll = (distance: number, programmatic = false): FollowEvent => ({
-    kind: 'scroll',
-    programmatic,
-    geometry: parkedAbove(distance),
-    previousDistanceFromEnd: 400
-  })
-  const events = {
-    'reader opens a': { kind: 'open', row: 'a' },
-    'reader opens c': { kind: 'open', row: 'c' },
-    'reader closes a': { kind: 'close', row: 'a' },
-    // Opened before this detach, so never one of its opens.
-    'reader closes c': { kind: 'close', row: 'c' },
-    'reader scrolls away': scroll(200),
-    'reader scrolls to the end': scroll(0),
-    'application scrolls away': scroll(200, true),
-    'application scrolls to the end': scroll(0, true),
-    'reader reveals the latest': { kind: 'reveal-latest' },
-    'reader navigates': { kind: 'navigate' }
-  } satisfies Record<string, FollowEvent>
-
-  const row = (
-    name: string,
-    state: FollowState,
-    after: Record<keyof typeof events, FollowState>
-  ): { name: string; state: FollowState; after: Map<string, FollowState> } => ({
-    name,
-    state,
-    after: new Map(Object.entries(after))
-  })
-  const table = [
-    row('following', FOLLOWING, {
-      'reader opens a': opened('a'),
-      'reader opens c': opened('c'),
-      'reader closes a': FOLLOWING,
-      'reader closes c': FOLLOWING,
-      'reader scrolls away': scrolled,
-      'reader scrolls to the end': FOLLOWING,
-      'application scrolls away': FOLLOWING,
-      'application scrolls to the end': FOLLOWING,
-      'reader reveals the latest': FOLLOWING,
-      'reader navigates': navigated
-    }),
-    row('scrolled away', scrolled, {
-      'reader opens a': scrolled,
-      'reader opens c': scrolled,
-      'reader closes a': scrolled,
-      'reader closes c': scrolled,
-      'reader scrolls away': scrolled,
-      'reader scrolls to the end': FOLLOWING,
-      'application scrolls away': scrolled,
-      'application scrolls to the end': scrolled,
-      'reader reveals the latest': FOLLOWING,
-      'reader navigates': navigated
-    }),
-    row('navigated away', navigated, {
-      'reader opens a': navigated,
-      'reader opens c': navigated,
-      'reader closes a': navigated,
-      'reader closes c': navigated,
-      'reader scrolls away': scrolled,
-      'reader scrolls to the end': FOLLOWING,
-      'application scrolls away': navigated,
-      'application scrolls to the end': navigated,
-      'reader reveals the latest': FOLLOWING,
-      'reader navigates': navigated
-    }),
-    row('opened a', opened('a'), {
-      'reader opens a': opened('a'),
-      'reader opens c': opened('a', 'c'),
-      'reader closes a': FOLLOWING,
-      'reader closes c': opened('a'),
-      'reader scrolls away': scrolled,
-      'reader scrolls to the end': FOLLOWING,
-      'application scrolls away': opened('a'),
-      'application scrolls to the end': opened('a'),
-      'reader reveals the latest': FOLLOWING,
-      'reader navigates': navigated
-    }),
-    row('opened a and b', opened('a', 'b'), {
-      'reader opens a': opened('a', 'b'),
-      'reader opens c': opened('a', 'b', 'c'),
-      'reader closes a': opened('b'),
-      'reader closes c': opened('a', 'b'),
-      'reader scrolls away': scrolled,
-      'reader scrolls to the end': FOLLOWING,
-      'application scrolls away': opened('a', 'b'),
-      'application scrolls to the end': opened('a', 'b'),
-      'reader reveals the latest': FOLLOWING,
-      'reader navigates': navigated
-    })
-  ]
-
-  const cases = table.flatMap(({ name, state, after }) =>
-    Object.entries(events).map(([eventName, event]) => ({
-      name: `${name}: ${eventName}`,
-      state,
-      event,
-      expected: after.get(eventName)
-    }))
+it('only detaches for gestures that can move away from the tail', () => {
+  expect(readerGestureLeavesEnd({ kind: 'wheel', deltaY: -10, zoom: false }, atBottom)).toBe(true)
+  expect(readerGestureLeavesEnd({ kind: 'wheel', deltaY: 10, zoom: false }, atBottom)).toBe(false)
+  expect(readerGestureLeavesEnd({ kind: 'wheel', deltaY: -10, zoom: true }, atBottom)).toBe(false)
+  expect(readerGestureLeavesEnd({ kind: 'key', key: 'Home' }, atBottom)).toBe(true)
+  expect(readerGestureLeavesEnd({ kind: 'key', key: 'End' }, atBottom)).toBe(false)
+  expect(readerGestureLeavesEnd({ kind: 'scrollbar-press' }, atBottom)).toBe(true)
+  expect(readerGestureLeavesEnd({ kind: 'touch-drag' }, parkedAbove(60))).toBe(true)
+  expect(readerGestureLeavesEnd({ kind: 'touch-drag' }, atBottom)).toBe(false)
+  expect(readerGestureLeavesEnd({ kind: 'wheel', deltaY: -10, zoom: false }, noOverflow)).toBe(
+    false
   )
-  it.each(cases)('$name', ({ state, event, expected }) => {
-    expect(nextFollowState(state, event)).toEqual(expected)
-  })
 })

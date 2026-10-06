@@ -1,8 +1,3 @@
-// Every transcript row a reader can open, routed so that opening one stops the
-// transcript following its end, and abandons a history jump still paging: either
-// would slide what they opened off the screen. Each is reported under its own
-// identity, so closing the last row that stopped the following resumes it.
-
 import { useCallback, useMemo, type Dispatch, type SetStateAction } from 'react'
 import {
   useNativeChatDisclosures,
@@ -14,15 +9,13 @@ import type { NativeChatTranscriptScroll } from './use-native-chat-transcript-sc
 
 export function useNativeChatReaderOpens({
   subagentDisclosure,
-  expandedTurnIds,
   setExpandedTurnIds,
   follow,
   abortNavigation
 }: {
   subagentDisclosure: NativeChatSubagentDisclosure
-  expandedTurnIds: ReadonlySet<string>
   setExpandedTurnIds: Dispatch<SetStateAction<ReadonlySet<string>>>
-  follow: Pick<NativeChatTranscriptScroll, 'readerOpened' | 'readerClosed'>
+  follow: Pick<NativeChatTranscriptScroll, 'holdDisclosurePosition'>
   abortNavigation: () => void
 }): {
   disclosures: NativeChatDisclosureStore
@@ -30,19 +23,11 @@ export function useNativeChatReaderOpens({
   toggleExpandedTurn: (turnKey: string) => void
 } {
   const disclosures = useNativeChatDisclosures()
-  // Taken apart: the scroll result is a new object each render, its callbacks are not.
-  const { readerOpened, readerClosed } = follow
-  const readerToggled = useCallback(
-    (row: string, open: boolean) => {
-      if (!open) {
-        readerClosed(row)
-        return
-      }
-      abortNavigation()
-      readerOpened(row)
-    },
-    [abortNavigation, readerClosed, readerOpened]
-  )
+  const { holdDisclosurePosition } = follow
+  const readerToggled = useCallback(() => {
+    abortNavigation()
+    holdDisclosurePosition()
+  }, [abortNavigation, holdDisclosurePosition])
   const readerDisclosures = useMemo(
     () => ({ ...disclosures, onToggle: readerToggled }),
     [disclosures, readerToggled]
@@ -50,11 +35,11 @@ export function useNativeChatReaderOpens({
   const readerSubagentDisclosure = useMemo<NativeChatSubagentDisclosure>(
     () => ({
       setSectionOpen: (agentId, open) => {
-        readerToggled(`section:${agentId}`, open)
+        readerToggled()
         subagentDisclosure.setSectionOpen(agentId, open)
       },
       setRosterOpen: (rosterRowId, open) => {
-        readerToggled(`roster:${rosterRowId}`, open)
+        readerToggled()
         subagentDisclosure.setRosterOpen(rosterRowId, open)
       }
     }),
@@ -62,10 +47,10 @@ export function useNativeChatReaderOpens({
   )
   const toggleExpandedTurn = useCallback(
     (turnKey: string) => {
-      readerToggled(`turn:${turnKey}`, !expandedTurnIds.has(turnKey))
+      readerToggled()
       setExpandedTurnIds((current) => toggleNativeChatExpandedKey(current, turnKey))
     },
-    [expandedTurnIds, readerToggled, setExpandedTurnIds]
+    [readerToggled, setExpandedTurnIds]
   )
   return {
     disclosures: readerDisclosures,

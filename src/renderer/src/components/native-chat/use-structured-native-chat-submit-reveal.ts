@@ -23,6 +23,7 @@ export function useStructuredNativeChatSubmitReveal(
   messageListRef: React.RefObject<NativeChatMessageListHandle | null>
   /** For the composer's transport, which knows when a send was accepted. */
   revealLatest: () => void
+  holdRevealLatest: () => () => void
   retryDelivery: (clientMessageId: string) => void
   retryLaunch: () => void
   respond: StructuredController['respond']
@@ -83,6 +84,7 @@ export function useStructuredNativeChatSubmitReveal(
   return {
     messageListRef,
     revealLatest,
+    holdRevealLatest,
     retryDelivery,
     retryLaunch: revealingRetryLaunch,
     respond: revealingRespond,

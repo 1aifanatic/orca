@@ -116,7 +116,7 @@ export function NativeChatStructuredSession(
     [controller, historyPhase, props.agent, props.sessionId]
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
-  const { retryDelivery, revealLatest } = submits
+  const { retryDelivery, revealLatest, holdRevealLatest } = submits
   const agentLabel = structuredAgentLabel(props.agent === 'codex' ? 'codex' : 'claude')
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
@@ -189,16 +189,23 @@ export function NativeChatStructuredSession(
       ? (objective: string) => threadGoal.change({ kind: 'set', objective })
       : null
     return {
-      send: (text: string, attachments: readonly { id: string; path: string }[]): boolean =>
-        sendThroughRelaunch(() =>
-          controller.send(
+      send: (
+        text: string,
+        attachments: readonly { id: string; path: string }[]
+      ): boolean | 'queued' => {
+        let admission: boolean | 'queued' = false
+        const accepted = sendThroughRelaunch(() => {
+          admission = controller.sendFromComposer(
             text,
             attachments.map((attachment) => ({
               path: attachment.path,
               previewUri: attachment.path
             }))
           )
-        ),
+          return admission !== false
+        })
+        return accepted ? admission : false
+      },
       dispatchCommand: (text: string) =>
         dispatchStructuredAgentSessionComposerCommand(text, {
           agent: props.agent,
@@ -222,6 +229,7 @@ export function NativeChatStructuredSession(
       worktreeId: fileLinkContext?.worktreeId,
       onError: setComposerError,
       onSubmitted: revealLatest,
+      holdRevealLatest,
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
@@ -235,6 +243,7 @@ export function NativeChatStructuredSession(
     props.sessionId,
     props.target,
     revealLatest,
+    holdRevealLatest,
     sendThroughRelaunch
   ])
 

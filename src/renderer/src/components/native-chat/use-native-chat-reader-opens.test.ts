@@ -6,26 +6,24 @@ import { useNativeChatReaderOpens } from './use-native-chat-reader-opens'
 
 function harness() {
   const spies = {
-    readerOpened: vi.fn(),
-    readerClosed: vi.fn(),
+    holdDisclosurePosition: vi.fn(),
     abortNavigation: vi.fn(),
     setSectionOpen: vi.fn(),
     setRosterOpen: vi.fn()
   }
   const { result } = renderHook(() => {
-    const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<string>>(new Set())
+    const [, setExpandedTurnIds] = useState<ReadonlySet<string>>(new Set())
     return useNativeChatReaderOpens({
       subagentDisclosure: {
         setSectionOpen: spies.setSectionOpen,
         setRosterOpen: spies.setRosterOpen
       },
-      expandedTurnIds,
       setExpandedTurnIds,
-      follow: { readerOpened: spies.readerOpened, readerClosed: spies.readerClosed },
+      follow: { holdDisclosurePosition: spies.holdDisclosurePosition },
       abortNavigation: spies.abortNavigation
     })
   })
-  const reacted = (): number => spies.readerOpened.mock.calls.length
+  const reacted = (): number => spies.holdDisclosurePosition.mock.calls.length
   return { result, spies, reacted }
 }
 
@@ -54,14 +52,14 @@ it.each([
     (opens: ReturnType<typeof useNativeChatReaderOpens>) =>
       opens.subagentDisclosure.setRosterOpen('r', true)
   ]
-])('reacts to the reader opening %s', (_kind, row, open) => {
+])('reacts to the reader opening %s', (_kind, _row, open) => {
   const { result, spies } = harness()
   act(() => open(result.current))
-  expect(spies.readerOpened).toHaveBeenCalledExactlyOnceWith(row)
+  expect(spies.holdDisclosurePosition).toHaveBeenCalledOnce()
   expect(spies.abortNavigation).toHaveBeenCalledOnce()
 })
 
-it('reports each close under the identity its open used, without stopping following again', () => {
+it('bounds both opening and closing layout transactions', () => {
   const { result, spies, reacted } = harness()
   act(() => result.current.toggleExpandedTurn('turn-1'))
   expect(reacted()).toBe(1)
@@ -72,13 +70,8 @@ it('reports each close under the identity its open used, without stopping follow
 
   act(() => result.current.disclosures.onToggle?.('run:1', false))
 
-  expect(reacted()).toBe(1)
-  expect(spies.readerClosed.mock.calls).toEqual([
-    ['turn:turn-1'],
-    ['section:a'],
-    ['roster:r'],
-    ['run:1']
-  ])
+  expect(reacted()).toBe(5)
+  expect(spies.abortNavigation).toHaveBeenCalledTimes(5)
   expect(spies.setSectionOpen).toHaveBeenCalledWith('a', false)
   expect(spies.setRosterOpen).toHaveBeenCalledWith('r', false)
 })

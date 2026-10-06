@@ -223,6 +223,7 @@ export function createStructuredSessionMocks() {
             failedHere: outbox.failedHere,
             submissions: mocks.submissions,
             send: outbox.send,
+            sendFromComposer: outbox.send,
             retry: outbox.retry,
             isWorking: mocks.isWorking,
             backgroundTasks: {

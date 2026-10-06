@@ -52,68 +52,63 @@ export type FollowIntent = {
   previousDistanceFromEnd: number
 }
 
-/** Whether the transcript should still follow the end after this offset.
- *
- *  Application writes preserve intent even when their delayed events arrive
- *  after the end moved. Reader events detach away from the end and reattach on
- *  arriving at it — against the re-arm band, never the wider near-bottom one.
- *  Arriving takes closing on the end: a smooth scroll leaving the end marks only
- *  its landing, and its first unmarked frames still sit inside the band. Measured
- *  against the end, not the offset, so content shrinking under a detached reader
- *  and clamping them onto the end still reattaches. */
+/** Passive offsets preserve following; detached views rearm only while closing on the actual tail. */
 export function nextFollowingEnd(intent: FollowIntent): boolean {
-  if (intent.programmatic) {
+  if (intent.following || intent.programmatic) {
     return intent.following
   }
-  if (!intent.following && distanceFromBottom(intent.geometry) > intent.previousDistanceFromEnd) {
+  if (distanceFromBottom(intent.geometry) > intent.previousDistanceFromEnd) {
     return false
   }
   return isNearBottom(intent.geometry, NATIVE_CHAT_FOLLOW_REARM_PX)
 }
 
-/** Whether the transcript follows its end, and if not, what the reader did to stop it. */
-export type FollowState =
-  | { kind: 'following' }
-  | { kind: 'detached'; reason: 'scroll' | 'navigation' }
-  /** Stopped only by opening rows, and not scrolled since: closing the last one follows again. */
-  | { kind: 'detached'; reason: 'open'; opens: ReadonlySet<string> }
+/** A reader input that can move the transcript, reduced to what decides following. */
+export type ReaderGesture =
+  | { kind: 'wheel'; deltaY: number; zoom: boolean }
+  | { kind: 'touch-drag'; deltaY?: number }
+  | { kind: 'scrollbar-press' }
+  | { kind: 'content-press' }
+  | { kind: 'key'; key: string; shift?: boolean }
 
-export type FollowEvent =
-  | { kind: 'open' | 'close'; row: string }
-  | ({ kind: 'scroll' } & Omit<FollowIntent, 'following'>)
-  | { kind: 'reveal-latest' }
-  | { kind: 'navigate' }
+const KEYS_AWAY_FROM_END = new Set(['PageUp', 'Home', 'ArrowUp'])
+const KEYS_TOWARD_END = new Set(['PageDown', 'End', 'ArrowDown'])
 
-export const FOLLOWING: FollowState = { kind: 'following' }
-
-export function nextFollowState(state: FollowState, event: FollowEvent): FollowState {
-  switch (event.kind) {
-    case 'open':
-      if (state.kind === 'following') {
-        return { kind: 'detached', reason: 'open', opens: new Set([event.row]) }
-      }
-      return state.reason === 'open' && !state.opens.has(event.row)
-        ? { ...state, opens: new Set([...state.opens, event.row]) }
-        : state
-    case 'close': {
-      // By identity: a row opened before this detach is not one of its opens.
-      if (state.kind === 'following' || state.reason !== 'open' || !state.opens.has(event.row)) {
-        return state
-      }
-      const opens = new Set(state.opens)
-      opens.delete(event.row)
-      return opens.size === 0 ? FOLLOWING : { ...state, opens }
+/** The direction a gesture scrolls: -1 up, 1 down, 0 when it does not scroll. */
+export function readerGestureDirection(gesture: ReaderGesture): -1 | 0 | 1 {
+  if (gesture.kind === 'wheel') {
+    return gesture.zoom || gesture.deltaY === 0 ? 0 : gesture.deltaY < 0 ? -1 : 1
+  }
+  if (gesture.kind === 'touch-drag' && gesture.deltaY !== undefined) {
+    return gesture.deltaY === 0 ? 0 : gesture.deltaY < 0 ? -1 : 1
+  }
+  if (gesture.kind === 'key') {
+    if (gesture.key === ' ') {
+      return gesture.shift ? -1 : 1
     }
-    case 'scroll':
-      if (event.programmatic) {
-        return state
-      }
-      return nextFollowingEnd({ ...event, following: state.kind === 'following' })
-        ? FOLLOWING
-        : { kind: 'detached', reason: 'scroll' }
-    case 'reveal-latest':
-      return FOLLOWING
-    case 'navigate':
-      return { kind: 'detached', reason: 'navigation' }
+    return KEYS_AWAY_FROM_END.has(gesture.key) ? -1 : KEYS_TOWARD_END.has(gesture.key) ? 1 : 0
+  }
+  return 0
+}
+
+/** Gestures that cannot leave the tail must not strand a following view without a scroll event. */
+export function readerGestureLeavesEnd(gesture: ReaderGesture, geometry: ScrollGeometry): boolean {
+  const contentAbove = geometry.scrollTop > 0
+  const awayFromEnd = !isNearBottom(geometry, NATIVE_CHAT_FOLLOW_REARM_PX)
+  switch (gesture.kind) {
+    case 'wheel':
+      return readerGestureDirection(gesture) < 0 && contentAbove
+    case 'scrollbar-press':
+      return contentAbove
+    case 'touch-drag':
+      return gesture.deltaY === undefined
+        ? awayFromEnd
+        : readerGestureDirection(gesture) < 0 && contentAbove
+    case 'content-press':
+      return awayFromEnd
+    case 'key': {
+      const direction = readerGestureDirection(gesture)
+      return direction < 0 ? contentAbove : direction > 0 && awayFromEnd
+    }
   }
 }

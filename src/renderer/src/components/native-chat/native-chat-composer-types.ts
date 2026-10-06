@@ -18,7 +18,10 @@ export type NativeChatOptionPickerRequest = {
 
 export type NativeChatStructuredComposerTransport = {
   conversationCommands?: readonly AgentSessionConversationCommand[]
-  send: (text: string, attachments: readonly NativeChatComposerImageAttachment[]) => boolean
+  send: (
+    text: string,
+    attachments: readonly NativeChatComposerImageAttachment[]
+  ) => boolean | 'queued'
   dispatchCommand: (text: string) => Promise<StructuredAgentSessionCommandOutcome>
   optionsSurface: SessionOptionsSurface
   optionSnapshot: SessionOptionDescriptor[]
@@ -34,6 +37,8 @@ export type NativeChatStructuredComposerTransport = {
   onError: (message: string | null) => void
   /** The host accepted a message, a command it runs itself, or a goal. */
   onSubmitted?: () => void
+  /** Capture this pane and reader position before waiting for acceptance. */
+  holdRevealLatest?: () => () => void
   runtime: 'local' | 'remote'
   /** The session behind this composer; a real user send relinquishes orchestration ownership. */
   sessionId: string
@@ -78,6 +83,8 @@ export type NativeChatComposerProps = {
   answerCommandLocally?: NativeChatLocalCommandAnswer
   /** Anything delivered to the terminal: a message, a command or a session option. */
   onSubmitted?: () => void
+  /** Capture this pane and reader position before waiting for acceptance. */
+  holdRevealLatest?: () => () => void
   /** Picker-only agent commands continue in the hosted TUI after dispatch. */
   onSwitchToTerminal?: () => void
   /** Reads the hosted TUI's current rendered screen when chat is entered. */

@@ -63,17 +63,17 @@ export function useNativeChatStructuredComposerSend({
         structuredTransport.onError('Remove attachments before using a chat-session command.')
         return
       }
+      const reveal = structuredTransport.holdRevealLatest?.() ?? structuredTransport.onSubmitted
       const submitted = readNativeChatComposerDraft(draftScopeKey)
       void dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
-        .then(({ accepted, error }) => {
+        .then(({ accepted, error, revealsTranscript }) => {
           structuredTransport.onError(error)
           if (!accepted) {
             return
           }
           emitNativeChatMessageSent({ agent, runtime: structuredTransport.runtime })
-          // An accepted command can still be one chat sessions don't run; nothing landed then.
-          if (!error) {
-            structuredTransport.onSubmitted?.()
+          if (revealsTranscript) {
+            reveal?.()
           }
           // A real user send is a takeover, exactly as typing into a worker's pane is. Only past
           // `accepted`, and only from this hook: the outbox dispatcher retries and would re-fire,

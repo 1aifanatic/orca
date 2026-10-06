@@ -71,6 +71,7 @@ export function useNativeChatPickerCommandDispatch(args: {
           answerCommandLocally,
           sessionOptionsSurface,
           onSlashCommand,
+          onSubmitted,
           setHistory,
           setDraft,
           setCaret,

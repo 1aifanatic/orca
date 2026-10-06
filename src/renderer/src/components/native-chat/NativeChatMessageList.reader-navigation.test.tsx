@@ -4,8 +4,9 @@ import '@testing-library/jest-dom/vitest'
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createRef } from 'react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
+import { routeNativeChatRootKeyToInput } from './native-chat-root-key-routing'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 import {
@@ -40,13 +41,14 @@ function paint(container: HTMLElement): void {
     let changed = false
     act(() => {
       changed = deliverResizes()
+      vi.advanceTimersByTime(16)
     })
     if (scroller.scrollTop !== lastScrollTop) {
       lastScrollTop = scroller.scrollTop
       fireEvent.scroll(scroller)
       changed = true
     }
-    if (!changed) {
+    if (!changed && pass >= 2) {
       return
     }
   }
@@ -126,6 +128,7 @@ function offersJumpToLatest(): boolean {
 describe('reader navigation', () => {
   let restore: (() => void)[] = []
   beforeEach(() => {
+    vi.useFakeTimers()
     restore = [stubLayout({ scrollGeometry: true, offsetChain: true }), stubResizeObserver()]
     layout.belowTranscriptPx = BELOW_TRANSCRIPT_PX
     layout.aboveTranscriptPx = 0
@@ -135,6 +138,7 @@ describe('reader navigation', () => {
       undo()
     }
     layout.measuredRowHeights = []
+    vi.useRealTimers()
   })
 
   it('brings a reader who scrolled up to what they just sent, and follows its reply', () => {
@@ -299,7 +303,7 @@ describe('reader navigation', () => {
     const withTool = [...transcript, toolMessage(toolIndex)]
     const streamedOn = [...withTool, marker(toolIndex + 1), marker(toolIndex + 2)]
 
-    it('returns to the end and follows it, however far the turn streamed meanwhile', () => {
+    it('closing the last open run preserves history when the tail is still distant', () => {
       const { container, rerender } = render(liveList(withTool))
       paint(container)
       const [run] = closedRuns(1)
@@ -310,14 +314,16 @@ describe('reader navigation', () => {
       expect(distanceFromBottom(container)).toBeGreaterThan(ROW_PX * 5)
       expect(offersJumpToLatest()).toBe(true)
 
+      const beforeClose = scrollRoot(container).scrollTop
       toggleRun(container, run.toggle, [])
-      expect(distanceFromBottom(container)).toBe(0)
-      expect(offersJumpToLatest()).toBe(false)
+      expect(scrollRoot(container).scrollTop).toBe(beforeClose)
+      expect(distanceFromBottom(container)).toBeGreaterThan(0)
+      expect(offersJumpToLatest()).toBe(true)
       rerender(liveList([...streamedOn, marker(toolIndex + 3)]))
       paint(container)
 
-      expect(distanceFromBottom(container)).toBe(0)
-      expect(screen.getByText(`marker-${toolIndex + 3}`)).toBeInTheDocument()
+      expect(scrollRoot(container).scrollTop).toBe(beforeClose)
+      expect(distanceFromBottom(container)).toBeGreaterThan(0)
     })
 
     it('stays where the reader scrolled to while it was open', () => {
@@ -337,7 +343,7 @@ describe('reader navigation', () => {
       expect(offersJumpToLatest()).toBe(true)
     })
 
-    it('follows again only once the last of two opened runs is closed', () => {
+    it('derives following from geometry rather than counting two open runs', () => {
       const twoTools = [...withTool, marker(toolIndex + 1), toolMessage(toolIndex + 2)]
       const { container, rerender } = render(liveList(twoTools))
       paint(container)
@@ -355,7 +361,7 @@ describe('reader navigation', () => {
       expect(distanceFromBottom(container)).toBeGreaterThan(0)
 
       toggleRun(container, second.toggle, [])
-      expect(distanceFromBottom(container)).toBe(0)
+      expect(distanceFromBottom(container)).toBeGreaterThan(0)
     })
 
     it('leaves a reader who had already scrolled away where they are', () => {
@@ -423,6 +429,80 @@ describe('reader navigation', () => {
 
     expect(scrollRoot(container).scrollTop).toBe(scrollTopBeforeOpen)
   })
+
+  it('replaces a pending numeric tail pin before a disclosure inserts earlier rows', () => {
+    const messages = [
+      userMessage(0, 'Earlier turn'),
+      ...Array.from({ length: 8 }, (_, i) => toolMessage(i + 1)),
+      marker(9),
+      userMessage(10, 'Current turn'),
+      marker(11)
+    ]
+    const { container } = render(
+      <NativeChatMessageList
+        session={session(messages)}
+        isWorking
+        expandSignal={false}
+        fontScale={1}
+        settledTurns={new Map([['message-0', { startedAt: 1, workedSeconds: 1 }]])}
+      />
+    )
+    const lastRow = screen.getByText('marker-11').closest<HTMLElement>('[data-index]')
+    if (!lastRow) {
+      throw new Error('The current answer is not mounted')
+    }
+    layout.measuredRowHeights = Array.from(
+      { length: Number(lastRow.dataset.index) + 1 },
+      (_, index) => (index === Number(lastRow.dataset.index) ? ROW_PX * 20 : ROW_PX)
+    )
+    paint(container)
+    const scroller = scrollRoot(container)
+    const toggle = screen.getByRole('button', { name: 'Toggle turn details' })
+    const window = container.querySelector<HTMLElement>('[data-native-chat-window]')
+    const beforeSlots = window?.querySelectorAll('[data-index]').length ?? 0
+    toggle.getBoundingClientRect = () => new DOMRect(0, -scroller.scrollTop, 100, 20)
+    // A pin created outside the painted frames is still waiting to reconcile by numeric index.
+    layout.belowTranscriptPx += 20
+    deliverResizes()
+    const before = scroller.scrollTop
+    expect(before).toBeGreaterThan(0)
+    fireEvent.click(toggle)
+    const expandedSlots = window?.querySelectorAll('[data-index]').length ?? 0
+    expect(expandedSlots).toBeGreaterThan(beforeSlots)
+    paint(container)
+    expect(scroller.scrollTop).toBe(before)
+    expect(distanceFromBottom(container)).toBeGreaterThan(0)
+    act(() => vi.advanceTimersByTime(160))
+    expect(scroller.scrollTop).toBe(before)
+  })
+
+  it.each([false, true])(
+    'keeps Space scrolling in the focused transcript (shift=%s)',
+    (shiftKey) => {
+      const insertTypedText = vi.fn(() => true)
+      const focus = vi.fn(() => true)
+      const composer = {
+        focus,
+        insertTypedText,
+        handlePasteEvent: vi.fn(),
+        pasteFromClipboard: vi.fn(),
+        contains: () => false
+      }
+      const { container } = render(
+        <div onKeyDownCapture={(event) => routeNativeChatRootKeyToInput(event, composer, null)}>
+          {list(transcript)}
+        </div>
+      )
+      const root = scrollRoot(container)
+      root.focus()
+      fireEvent.keyDown(root, { key: ' ', shiftKey })
+      expect(document.activeElement).toBe(root)
+      expect(insertTypedText).not.toHaveBeenCalled()
+      expect(focus).not.toHaveBeenCalled()
+      fireEvent.keyDown(root, { key: 'a' })
+      expect(insertTypedText).toHaveBeenCalledWith('a')
+    }
+  )
 
   it('makes the transcript a keyboard stop, so the scroll keys can reach it', () => {
     const { container } = render(list(transcript))

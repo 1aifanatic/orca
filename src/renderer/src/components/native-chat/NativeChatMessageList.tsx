@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown } from 'lucide-react'
+import { NativeChatJumpToLatest } from './NativeChatJumpToLatest'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { translate } from '@/i18n/i18n'
 import type { NativeChatLiveSession } from './use-native-chat-live-session'
@@ -39,7 +39,7 @@ import type {
   NativeChatRailOutlineEntry
 } from './native-chat-message-rail-items'
 import { useNativeChatRailHistoryJump } from './use-native-chat-rail-history-jump'
-import { nativeChatReaderScrollInputHandlers } from './native-chat-reader-scroll-input'
+import { useNativeChatReaderScrollInput } from './native-chat-reader-scroll-input'
 import { useNativeChatReaderOpens } from './use-native-chat-reader-opens'
 import { useNativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 
@@ -265,10 +265,14 @@ export function NativeChatMessageList({
     loadEarlier,
     jumpToLoaded: requestRailJump
   })
-  const { start: startHistoryJump, abort: beginNavigation } = railHistoryJump
+  const { readerActs, readerLeavesEnd } = follow
+  const { start: startHistoryJump, abort: abortHistoryJump } = railHistoryJump
+  const beginNavigation = useCallback(() => {
+    abortHistoryJump()
+    readerActs()
+  }, [abortHistoryJump, readerActs])
   const readerOpens = useNativeChatReaderOpens({
     subagentDisclosure,
-    expandedTurnIds,
     setExpandedTurnIds,
     follow,
     abortNavigation: beginNavigation
@@ -277,18 +281,20 @@ export function NativeChatMessageList({
   // otherwise land later and pull the reader away from where they just went.
   const selectRailItem = useCallback(
     (item: NativeChatRailItem) => {
+      beginNavigation()
+      readerLeavesEnd()
       if (item.slotIndex === null) {
         startHistoryJump(item)
         return
       }
-      beginNavigation()
       requestRailJump(item)
     },
-    [beginNavigation, requestRailJump, startHistoryJump]
+    [beginNavigation, readerLeavesEnd, requestRailJump, startHistoryJump]
   )
   const revealDiff = useCallback(
     (target: NativeChatDiffTarget) => {
       beginNavigation()
+      readerLeavesEnd()
       // A subagent's edit is revealed inside its section.
       if (target.subagentSections) {
         openSubagentSections(target.subagentSections)
@@ -299,26 +305,18 @@ export function NativeChatMessageList({
         target: { ...target, requestId: navigationSequence.current }
       })
     },
-    [beginNavigation, openSubagentSections]
+    [beginNavigation, readerLeavesEnd, openSubagentSections]
   )
   const jumpToLatest = useCallback(() => {
     beginNavigation()
     scrollToBottom()
   }, [beginNavigation, scrollToBottom])
   useNativeChatMessageListHandle(ref, jumpToLatest, follow.untilReaderActs)
-  const readerScrollInput = useMemo(
-    () => nativeChatReaderScrollInputHandlers(beginNavigation),
-    [beginNavigation]
-  )
-  // Pinning the target mounts it in the same commit, so the row exists by the time
-  // layout runs. Routed through `scrollMessageToTop` rather than the virtualizer
-  // because that is what releases the bottom pin — without it the next streamed
-  // token snaps the reader straight back down.
-  //
-  // Serviced once per request, then released. `slots` takes a new identity on
-  // every render, so an effect that merely depended on it would re-scroll to this
-  // row forever; and a request left standing would keep its pin, which outranks
-  // the diff reveal that shares it.
+  const readerScrollInput = useNativeChatReaderScrollInput(scrollRef, {
+    onReaderScroll: beginNavigation,
+    onLeaveEnd: readerLeavesEnd
+  })
+  // Service each pinned request once; a streaming render must not restart its scroll.
   useLayoutEffect(() => {
     if (railJump === null || servicedRailJumpRef.current === railJump.requestId) {
       return
@@ -370,19 +368,15 @@ export function NativeChatMessageList({
           <div
             ref={scrollRef}
             onScroll={follow.onScroll}
-            {...readerScrollInput}
+            {...readerScrollInput.scrollerProps}
+            onClickCapture={follow.captureDisclosureTarget}
             // Named so measurement can find the scroll root without depending on
             // which utility class happens to make it scroll.
             data-native-chat-scroll
             aria-label={translate('components.native-chat.transcriptLabel', 'Conversation')}
             // Browser anchoring would add unattributed movement beside the virtualizer's anchor.
             className="scrollbar-sleek relative h-full overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-            // Why: `zoom` scales the chat transcript's text and layout together,
-            // scoped to this pane so the rest of the app is untouched. It sits on
-            // the scroll container rather than the content inside it so that
-            // scroll offsets and row measurements share one coordinate space —
-            // measuring zoomed content against an unzoomed scroller misplaces the
-            // window by exactly `fontScale`. (Chromium/Electron only.)
+            // Zoom shares the scroll container's coordinate space with virtualized measurements.
             style={{ zoom: fontScale }}
           >
             {showOlderHistory ? (
@@ -419,20 +413,10 @@ export function NativeChatMessageList({
             rail={rail}
             scrollRef={scrollRef}
             onSelect={selectRailItem}
-            onReaderScroll={beginNavigation}
+            onReaderScroll={readerScrollInput.railWheel}
             pendingId={railHistoryJump.pendingId}
           />
-          {follow.showJump ? (
-            <button
-              type="button"
-              onClick={jumpToLatest}
-              aria-label={translate('components.native-chat.jumpToLatest', 'Jump to latest')}
-              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ArrowDown className="size-3.5" />
-              <span>{translate('components.native-chat.jumpToLatest', 'Jump to latest')}</span>
-            </button>
-          ) : null}
+          {follow.showJump ? <NativeChatJumpToLatest onClick={jumpToLatest} /> : null}
         </div>
         {taskListState.list && taskListState.list.tasks.length > 0 ? (
           <div className="shrink-0 px-3 pb-2 sm:px-4">

@@ -3,6 +3,7 @@
 import { useRef } from 'react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useNativeChatReaderScrollInput } from './native-chat-reader-scroll-input'
 import { useNativeChatTranscriptScroll } from './use-native-chat-transcript-scroll'
 
 function TranscriptHarness({
@@ -31,11 +32,21 @@ function TranscriptHarness({
     consumeProgrammaticScroll: () => false,
     reconcileReaderScroll: vi.fn()
   })
+  const input = useNativeChatReaderScrollInput(scrollRef, {
+    onReaderScroll: transcript.readerActs,
+    onLeaveEnd: transcript.readerLeavesEnd
+  })
   return (
-    <div ref={scrollRef} data-testid="scroll" onScroll={transcript.onScroll}>
+    <div
+      {...input.scrollerProps}
+      onClickCapture={transcript.captureDisclosureTarget}
+      ref={scrollRef}
+      data-testid="scroll"
+      onScroll={transcript.onScroll}
+    >
       <div ref={contentRef} />
-      <button onClick={() => transcript.readerOpened('row')}>open</button>
-      <button onClick={() => transcript.readerClosed('row')}>close</button>
+      <button onClick={() => transcript.holdDisclosurePosition()}>open</button>
+      <button onClick={() => transcript.holdDisclosurePosition()}>close</button>
     </div>
   )
 }
@@ -70,6 +81,7 @@ describe('native chat transcript visibility', () => {
       }
     })
 
+    fireEvent.wheel(scrollElement, { deltaY: -100 })
     scrollTop = 320
     fireEvent.scroll(scrollElement)
     view.rerender(
@@ -118,6 +130,7 @@ describe('native chat transcript follow', () => {
       }
     })
 
+    fireEvent.wheel(scrollElement, { deltaY: -50 })
     scrollTop = 850
     fireEvent.scroll(scrollElement)
     scrollToEnd.mockClear()
@@ -133,8 +146,7 @@ describe('native chat transcript follow', () => {
     expect(scrollToEnd).toHaveBeenCalled()
   })
 
-  // A close that resizes nothing reaches no observer, so the close itself has to pin.
-  it('pins to the end the moment the reader closes the row that stopped it following', () => {
+  it('does not force a distant reader to the tail on the last close', () => {
     let scrollTop = 900
     const scrollToEnd = vi.fn()
     const view = render(
@@ -161,6 +173,6 @@ describe('native chat transcript follow', () => {
 
     fireEvent.click(view.getByText('close'))
 
-    expect(scrollToEnd).toHaveBeenCalledOnce()
+    expect(scrollToEnd).not.toHaveBeenCalled()
   })
 })

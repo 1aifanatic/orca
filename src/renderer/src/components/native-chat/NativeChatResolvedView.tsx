@@ -123,7 +123,9 @@ export function NativeChatResolvedView({
     agent
   )
   // Every send this pane makes brings the latest into view, wherever the reader had scrolled.
-  const { messageListRef, revealLatest } = useNativeChatRevealLatest()
+  const revealScope = `${agent}:${sessionId}:${targetPtyId}`
+  const reveals = useNativeChatRevealLatest(revealScope, isVisible)
+  const { messageListRef, revealLatest, holdRevealLatest } = reveals
   const interactiveSend = useMemo<NativeChatInteractiveSend>(
     () => ({
       // Only what is written moves the reader: no terminal, or an empty answer, writes nothing.
@@ -180,9 +182,7 @@ export function NativeChatResolvedView({
     }
   })
 
-  // Optimistic "queued" sends (mobile parity): a composer send is echoed
-  // immediately and pruned once its real user turn lands in the transcript, so
-  // the message never vanishes between send and transcript catch-up.
+  // Keep the optimistic echo until its real transcript turn arrives.
   const commandMarkerScope = useMemo(
     () => ({ paneKey, agent, sessionId }),
     [paneKey, agent, sessionId]
@@ -392,6 +392,7 @@ export function NativeChatResolvedView({
           <NativeChatEmptyState kind="empty" agent={agent} />
         ) : (
           <NativeChatMessageList
+            key={`${agent}:${sessionId}`}
             ref={messageListRef}
             session={sessionWithPending}
             isVisible={isVisible}
@@ -434,6 +435,7 @@ export function NativeChatResolvedView({
           optimisticSendOutcome={delivery}
           onSlashCommand={onSlashCommand}
           onSubmitted={revealLatest}
+          holdRevealLatest={holdRevealLatest}
           answerCommandLocally={answerLocally}
           onSwitchToTerminal={onSwitchToTerminal}
           readTerminalScreen={readTerminalScreen}
