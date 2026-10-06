@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OrchestrationDb } from './db'
 import { reconcileSettledWorkerDispatches } from './db/worker-dispatch/worker-dispatch-settlement'
 
@@ -141,9 +141,18 @@ describe('historical worker repair safety', () => {
       db.db.exec('ROLLBACK')
       throw error
     }
+    const prepare = vi.spyOn(db.db, 'prepare')
     const repairStart = performance.now()
     reconcileSettledWorkerDispatches(db.db)
     const repairMs = performance.now() - repairStart
+    const repairSql = prepare.mock.calls.find(([sql]) => sql.includes('SELECT wd.dispatch_id'))?.[0]
+    prepare.mockRestore()
+    expect(repairSql).toBeDefined()
+    const queryPlan = db.db.prepare(`EXPLAIN QUERY PLAN ${repairSql}`).all()
+    expect(queryPlan).toContainEqual(expect.objectContaining({ detail: 'SCAN wd' }))
+    expect(queryPlan).toContainEqual(
+      expect.objectContaining({ detail: expect.stringMatching(/^SEARCH dc.*\(id=\?\)$/) })
+    )
     expect(
       db.db
         .prepare("SELECT COUNT(*) AS count FROM worker_dispatches WHERE state = 'abandoned'")

@@ -43,9 +43,12 @@ export function reconcileSettledWorkerDispatches(db: Database.Database): void {
     const rows = db
       .prepare(
         `SELECT wd.dispatch_id FROM worker_dispatches wd
-         JOIN dispatch_contexts dc ON dc.id = wd.dispatch_id
-         WHERE dc.status IN ('completed', 'failed', 'circuit_broken')
-           AND wd.state IN ('starting', 'ready', 'start_unknown', 'stopping', 'stop_unknown')`
+         WHERE wd.state IN ('starting', 'ready', 'start_unknown', 'stopping', 'stop_unknown')
+           AND EXISTS (
+             SELECT 1 FROM dispatch_contexts dc
+             WHERE dc.id = wd.dispatch_id
+               AND dc.status IN ('completed', 'failed', 'circuit_broken')
+           )`
       )
       .all()
     for (const row of rows) {

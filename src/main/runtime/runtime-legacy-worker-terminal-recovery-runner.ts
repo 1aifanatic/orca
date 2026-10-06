@@ -29,6 +29,7 @@ export async function runLegacyWorkerTerminalRecovery(
   const exitedDispatchIds: string[] = []
   const deferredDispatchIds = new Set(plan.ambiguousDispatchIds)
   const pendingResolutions: LegacyWorkerRecoveryResolution[] = []
+  const workspaceById = new Map<string, Promise<LegacyWorkerRecoveryWorkspace>>()
   const providers = new Map<
     string,
     {
@@ -55,7 +56,12 @@ export async function runLegacyWorkerTerminalRecovery(
       continue
     }
     try {
-      const workspace = await ports.resolveWorkspace(candidate)
+      let resolution = workspaceById.get(candidate.worktreeId)
+      if (!resolution) {
+        resolution = ports.resolveWorkspace(candidate)
+        workspaceById.set(candidate.worktreeId, resolution)
+      }
+      const workspace = await resolution
       if (workspace.scope.connectionId) {
         if (
           options.connectionId !== workspace.scope.connectionId ||

@@ -18,18 +18,40 @@ describe('worker recovery after workspace deletion', () => {
         missingWorkspaceWorker({ dispatchId: `dispatch-${index}`, worktreeId })
       )
       const fixture = missingWorkspaceRecoveryFixture(candidates, emptyLocalWorkerInventory())
+      const resolveWorkspace = vi.spyOn(fixture.ports, 'resolveWorkspace')
 
       const result = await fixture.controller.reconcile()
 
       expect(result.exitedDispatchIds).toHaveLength(100)
       expect(result.deferredDispatchIds).toEqual([])
       expect(fixture.refreshInventory).toHaveBeenCalledExactlyOnceWith([], null)
+      expect(resolveWorkspace).toHaveBeenCalledTimes(1)
       expect(fixture.persist).toHaveBeenCalledTimes(1)
       expect(fixture.persist.mock.calls[0][0][0]).toMatchObject({ hostId: 'local' })
       expect(fixture.reconcileMissing).toHaveBeenCalledTimes(100)
       expect(fixture.adopt).not.toHaveBeenCalled()
     }
   )
+
+  it('rechecks each workspace on the next pass without repeating a failed lookup per worker', async () => {
+    const candidates = Array.from({ length: 100 }, (_, index) =>
+      missingWorkspaceWorker({
+        dispatchId: `dispatch-${index}`,
+        worktreeId: index < 50 ? 'folder:deleted-folder' : 'repo-1::/deleted/worktree'
+      })
+    )
+    const fixture = missingWorkspaceRecoveryFixture(candidates)
+    const resolveWorkspace = vi.spyOn(fixture.ports, 'resolveWorkspace')
+
+    expect((await fixture.controller.reconcile()).deferredDispatchIds).toHaveLength(100)
+    expect(resolveWorkspace).toHaveBeenCalledTimes(2)
+    expect(fixture.persist).not.toHaveBeenCalled()
+
+    fixture.refreshInventory.mockResolvedValue(emptyLocalWorkerInventory())
+    expect((await fixture.controller.reconcile()).exitedDispatchIds).toHaveLength(100)
+    expect(resolveWorkspace).toHaveBeenCalledTimes(4)
+    expect(fixture.reconcileMissing).toHaveBeenCalledTimes(100)
+  })
 
   it('preserves a live PTY even when it has no workspace-scoped inventory entry', async () => {
     const candidate = missingWorkspaceWorker()
