@@ -7,7 +7,6 @@ import {
   type WebContents
 } from 'electron'
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import { open, stat } from 'node:fs/promises'
 import type { Store } from '../persistence'
 import { PATH_ACCESS_DENIED_MESSAGE } from '../ipc/filesystem-auth'
@@ -40,9 +39,7 @@ import {
   writeRemoteFileToClipboard
 } from './clipboard-remote-file-copy'
 import { saveClipboardImageBufferInRuntime } from './clipboard-runtime-image-upload'
-import { uploadBufferToAgentSessionAttachments } from '../ipc/agent-session-attachment-upload'
-import { agentSessionPastedImageName } from '../../shared/agent-session-attachments'
-import { resolveEnvironment } from '../../shared/runtime-environment-store'
+import { uploadPastedImageToAgentSessionAttachments } from '../ipc/agent-session-attachment-upload'
 import { readWindowsClipboardImageFileAsPng } from './clipboard-windows-image-file'
 import { readClipboardCopiedFilePaths } from './clipboard-copied-file-paths'
 import { buildClipboardImageThumbnail } from './clipboard-image-thumbnail'
@@ -65,17 +62,12 @@ async function saveClipboardImageBufferForTarget(
   const runtimeEnvironmentId = args?.runtimeEnvironmentId?.trim()
   // A structured chat on a paired server keeps its pasted images in that server's store.
   if (runtimeEnvironmentId && args?.agentSessionAttachment) {
-    const userDataPath = app.getPath('userData')
-    const stored = await uploadBufferToAgentSessionAttachments(
-      {
-        ...args.agentSessionAttachment,
-        environmentId: resolveEnvironment(userDataPath, runtimeEnvironmentId).id,
-        userDataPath
-      },
-      agentSessionPastedImageName(Date.now(), randomUUID()),
+    return uploadPastedImageToAgentSessionAttachments(
+      args.agentSessionAttachment,
+      runtimeEnvironmentId,
+      app.getPath('userData'),
       buffer
     )
-    return stored.path
   }
   // Why (#17679): with a runtime owner, a connectionId names one of the RUNTIME's SSH
   // connections (nested Remote Server -> SSH), not one this process dialed. Looking it up

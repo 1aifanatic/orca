@@ -29,7 +29,7 @@ export type AgentSessionAttachmentSweepFacts = {
   database: () => Database.Database | null
   /** Every chat this host holds a record for; null while that list is incomplete (records still
    *  owed their import), when no chat's claims can be judged orphaned. */
-  recordedSessionIds: () => ReadonlySet<string> | null
+  recordedSessionIds: () => Pick<ReadonlySet<string>, 'has'> | null
 }
 
 export type AgentSessionAttachmentSweepResult = { removed: string[] }

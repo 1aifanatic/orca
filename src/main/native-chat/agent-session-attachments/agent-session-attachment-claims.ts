@@ -172,7 +172,7 @@ export function finishUploadSweep(db: Database.Database, uploadId: string): void
  */
 export function pruneAgentSessionAttachmentClaims(
   db: Database.Database,
-  facts: { root: string; recordedSessionIds: ReadonlySet<string> | null }
+  facts: { root: string; recordedSessionIds: Pick<ReadonlySet<string>, 'has'> | null }
 ): number {
   const rows = db
     .prepare('SELECT upload_id, session_id FROM agent_session_attachment_claims')

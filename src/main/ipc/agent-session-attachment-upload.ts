@@ -2,16 +2,20 @@
 // the runtime socket, so it pumps the bytes into the server's attachment store and hands the
 // renderer only the server path.
 
+import { randomUUID } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import {
   AGENT_SESSION_ATTACHMENT_CHUNK_BYTES,
   AGENT_SESSION_ATTACHMENT_MAX_BYTES,
+  agentSessionPastedImageName,
+  type AgentSessionAttachmentClipboardTarget,
   type AgentSessionAttachmentPathUploadResult,
   type AgentSessionAttachmentUploadCommitResult,
   type AgentSessionAttachmentUploadStartResult,
   type AgentSessionAttachmentUploadTarget
 } from '../../shared/agent-session-attachments'
+import { resolveEnvironment } from '../../shared/runtime-environment-store'
 import { callRuntimeEnvironment } from './runtime-environment-transport-routing'
 import {
   isRuntimeEnvironmentManuallyDisconnected,
@@ -121,6 +125,25 @@ export function uploadBufferToAgentSessionAttachments(
       await appendSlice(slice.toString('base64'), offset)
     }
   })
+}
+
+/** A pasted image for a structured chat on a paired server, stored in that server's store. */
+export async function uploadPastedImageToAgentSessionAttachments(
+  target: AgentSessionAttachmentClipboardTarget,
+  runtimeEnvironmentId: string,
+  userDataPath: string,
+  buffer: Buffer
+): Promise<string> {
+  const stored = await uploadBufferToAgentSessionAttachments(
+    {
+      ...target,
+      environmentId: resolveEnvironment(userDataPath, runtimeEnvironmentId).id,
+      userDataPath
+    },
+    agentSessionPastedImageName(Date.now(), randomUUID()),
+    buffer
+  )
+  return stored.path
 }
 
 /**

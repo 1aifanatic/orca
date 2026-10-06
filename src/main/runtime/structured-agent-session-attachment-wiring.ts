@@ -20,7 +20,7 @@ let sweeper: AgentSessionAttachmentSweeper | null = null
 
 export function installAgentSessionAttachments(deps: {
   stateDirectory: string
-  store: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecordedSessionIds'>
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'isSessionUnreadable'>
   journalDatabase: Pick<
     JournalHostDatabase,
     'readOnly' | 'isClosed' | 'db' | 'legacyRecordImportOwed'
@@ -53,7 +53,12 @@ export function installAgentSessionAttachments(deps: {
       recordedSessionIds: () =>
         deps.journalDatabase.legacyRecordImportOwed
           ? null
-          : new Set(deps.store.listRecordedSessionIds())
+          : {
+              // Readable or not: an unreadable chat's claims still protect its uploads.
+              has: (sessionId) =>
+                deps.store.getRecord(sessionId) !== null ||
+                deps.store.isSessionUnreadable(sessionId)
+            }
     },
     {
       initialDelayMs: FIRST_SWEEP_DELAY_MS,

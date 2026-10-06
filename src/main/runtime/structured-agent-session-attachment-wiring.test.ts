@@ -26,9 +26,9 @@ afterEach(async () => {
 })
 
 function install(directory = stateDirectory): void {
-  const records: Pick<AgentSessionRecordStore, 'getRecord' | 'listRecordedSessionIds'> = {
+  const records: Pick<AgentSessionRecordStore, 'getRecord' | 'isSessionUnreadable'> = {
     getRecord: () => null,
-    listRecordedSessionIds: () => []
+    isSessionUnreadable: () => false
   }
   // Written by a newer Orca: the sweep reads no claims, so nothing here touches the connection.
   const journal: Pick<
