@@ -83,18 +83,30 @@ export function DeleteNestedWorktreesDialog({
       const result = await state.removeWorktree(target, true, { approvedNestedWorktrees: plan })
       if (!result.ok) {
         setPlan(null)
-        toast.error(translate('worktree.nestedRemoval.failed', 'Failed to delete workspace'), {
-          description: result.error
-        })
+        toast.error(
+          translate(
+            'auto.components.sidebar.delete.worktree.flow.ae57cbf6e4',
+            'Failed to delete workspace'
+          ),
+          {
+            description: result.error
+          }
+        )
         return
       }
       dismissToast()
       onDeleted?.()
     } catch (failure) {
       setPlan(null)
-      toast.error(translate('worktree.nestedRemoval.failed', 'Failed to delete workspace'), {
-        description: failure instanceof Error ? failure.message : String(failure)
-      })
+      toast.error(
+        translate(
+          'auto.components.sidebar.delete.worktree.flow.ae57cbf6e4',
+          'Failed to delete workspace'
+        ),
+        {
+          description: failure instanceof Error ? failure.message : String(failure)
+        }
+      )
     } finally {
       try {
         await useAppStore.getState().fetchAllWorktrees()
