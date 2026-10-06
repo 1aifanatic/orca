@@ -24,6 +24,7 @@ vi.mock('./daemon-mac-code-identity', () => ({ inspectMacProcessCodeIdentity: in
 import { materializeMacDaemonBundle } from './macos-daemon-bundle'
 
 const originalExecPath = process.execPath
+const LABEL = 'com.stablyai.orca.terminal.owned'
 const requirement = 'designated => identifier "com.stablyai.orca" and anchor apple generic'
 let root: string
 let source: string
@@ -82,17 +83,54 @@ afterEach(async () => {
 })
 
 it('copies the running parked bundle rather than the replacement at the recorded path', async () => {
-  const runtime = await materializeMacDaemonBundle(userData, entry)
+  const runtime = await materializeMacDaemonBundle(
+    userData,
+    entry,
+    LABEL,
+    new AbortController().signal
+  )
   await rm(source, { recursive: true })
   expect(await readFile(runtime.execPath, 'utf8')).toBe('signed-executable')
   expect(await readFile(runtime.entryPath, 'utf8')).toBe('daemon-code')
   expect(runtime.bundlePath).toBe(join(runtime.directory, 'Orca.app'))
   expect(runProcessMock.mock.calls[1]?.[0].args).toEqual(['-cR', source, runtime.bundlePath])
+  expect(JSON.parse(await readFile(join(runtime.directory, 'job.json'), 'utf8'))).toEqual({
+    label: LABEL,
+    producerPid: process.pid,
+    submitted: false
+  })
+})
+
+it('stops copying at the shared deadline and removes the partial runtime', async () => {
+  const controller = new AbortController()
+  const signed = runProcessMock.getMockImplementation()
+  if (!signed) {
+    throw new Error('No signing mock')
+  }
+  runProcessMock.mockImplementation(async (spec) => {
+    expect(spec.signal).toBe(controller.signal)
+    if (spec.program === '/bin/cp') {
+      controller.abort()
+    }
+    if (controller.signal.aborted) {
+      return { code: null, signal: null, stdout: '', stderr: '', timedOut: false }
+    }
+    return signed(spec)
+  })
+  await expect(
+    materializeMacDaemonBundle(userData, entry, LABEL, controller.signal)
+  ).rejects.toThrow('Could not copy the macOS terminal runtime')
+  expect(await readdir(join(userData, 'daemon-host', 'macos'))).toEqual([])
 })
 
 it('removes a partial clone before falling back to a regular copy', async () => {
   copyFailedOnce = true
-  const runtime = await materializeMacDaemonBundle(userData, entry)
+  const runtime = await materializeMacDaemonBundle(
+    userData,
+    entry,
+    LABEL,
+    new AbortController().signal
+  )
   expect(await readdir(runtime.bundlePath)).toEqual(['Contents'])
   expect(await readFile(runtime.entryPath, 'utf8')).toBe('daemon-code')
 })
@@ -104,7 +142,12 @@ it('copies the app behind a symbolic link rather than retaining a link to the up
     identity: 'resolved',
     executablePath: join(alias, 'Contents', 'MacOS', 'Orca')
   })
-  const runtime = await materializeMacDaemonBundle(userData, entry)
+  const runtime = await materializeMacDaemonBundle(
+    userData,
+    entry,
+    LABEL,
+    new AbortController().signal
+  )
   await rm(alias)
   await rm(source, { recursive: true })
   expect(await readFile(runtime.execPath, 'utf8')).toBe('signed-executable')
@@ -116,24 +159,29 @@ it.each(['verification', 'requirement'])(
   async (failure) => {
     verificationFails = failure === 'verification'
     requirementChanges = failure === 'requirement'
-    await expect(materializeMacDaemonBundle(userData, entry)).rejects.toThrow(
-      'preserve the app signature'
-    )
+    await expect(
+      materializeMacDaemonBundle(userData, entry, LABEL, new AbortController().signal)
+    ).rejects.toThrow('preserve the app signature')
     expect(await readdir(join(userData, 'daemon-host', 'macos'))).toEqual([])
   }
 )
 
 it('rejects an unresolvable running image before copying another installed build', async () => {
   inspectMock.mockResolvedValue({ identity: 'unresolvable', executablePath: null })
-  await expect(materializeMacDaemonBundle(userData, entry)).rejects.toThrow(
-    'running macOS app bundle'
-  )
+  await expect(
+    materializeMacDaemonBundle(userData, entry, LABEL, new AbortController().signal)
+  ).rejects.toThrow('running macOS app bundle')
   expect(runProcessMock).not.toHaveBeenCalled()
 })
 
 it('rejects an entry outside the signed app bundle', async () => {
-  await expect(materializeMacDaemonBundle(userData, join(root, 'daemon-entry.js'))).rejects.toThrow(
-    'outside the app bundle'
-  )
+  await expect(
+    materializeMacDaemonBundle(
+      userData,
+      join(root, 'daemon-entry.js'),
+      LABEL,
+      new AbortController().signal
+    )
+  ).rejects.toThrow('outside the app bundle')
   expect(runProcessMock).not.toHaveBeenCalled()
 })

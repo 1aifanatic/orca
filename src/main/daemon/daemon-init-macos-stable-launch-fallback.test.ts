@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as MacDaemonLaunchd from './macos-daemon-launchd'
 import type { DaemonLauncher } from './daemon-spawner'
+import { LOCAL_PTY_STARTUP_FAIL_OPEN_TIMEOUT_MS } from '../startup/first-window-startup-services'
+import { DAEMON_CHILD_STARTUP_TIMEOUT_MS } from './daemon-launched-child'
 
 const {
   stableLaunch,
@@ -11,7 +13,12 @@ const {
   installDefaultNetConnectStub,
   moduleFactories
 } = await vi.hoisted(async () => {
-  const stableLaunch: { failure: 'unavailable' | 'fatal' } = { failure: 'unavailable' }
+  const stableLaunch: {
+    failure: 'unavailable' | 'fatal'
+    deadlinesMs: number[]
+    /** Where the clock stands, relative to the handoff deadline, when the attempt fails. */
+    failAtDeadlineOffsetMs: number | null
+  } = { failure: 'unavailable', deadlinesMs: [], failAtDeadlineOffsetMs: null }
   return {
     stableLaunch,
     ...(await (await import('./daemon-init-test-harness')).createDaemonInitMocks())
@@ -39,7 +46,12 @@ vi.mock('./macos-daemon-launchd', async (importOriginal) => {
   const actual = await importOriginal<typeof MacDaemonLaunchd>()
   return {
     ...actual,
-    launchMacDaemonFromStableBundle: async () => {
+    launchMacDaemonFromStableBundle: async (_options: unknown, deadlineMs: number) => {
+      stableLaunch.deadlinesMs.push(deadlineMs)
+      if (stableLaunch.failAtDeadlineOffsetMs !== null) {
+        const failedAtMs = deadlineMs + stableLaunch.failAtDeadlineOffsetMs
+        vi.spyOn(Date, 'now').mockReturnValue(failedAtMs)
+      }
       throw stableLaunch.failure === 'unavailable'
         ? new actual.MacDaemonStableLaunchUnavailableError('Could not prepare the runtime')
         : new Error('Could not start the macOS terminal service')
@@ -68,6 +80,8 @@ function readyChild(): unknown {
 
 describe('daemon-init: macOS stable-bundle launch fallback', () => {
   beforeEach(() => {
+    stableLaunch.deadlinesMs = []
+    stableLaunch.failAtDeadlineOffsetMs = null
     installDefaultNetConnectStub()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
@@ -76,6 +90,8 @@ describe('daemon-init: macOS stable-bundle launch fallback', () => {
     vi.restoreAllMocks()
     vi.clearAllMocks()
   })
+
+  let launcherCalledAtMs = 0
 
   async function launchOnce(): Promise<unknown> {
     const mod = await importFresh()
@@ -87,6 +103,7 @@ describe('daemon-init: macOS stable-bundle launch fallback', () => {
     }
     forkMock.mockClear()
     forkMock.mockReturnValueOnce(readyChild())
+    launcherCalledAtMs = Date.now()
     return launcher('/fake/socket', '/fake/token')
   }
 
@@ -94,6 +111,27 @@ describe('daemon-init: macOS stable-bundle launch fallback', () => {
     stableLaunch.failure = 'unavailable'
     await expect(launchOnce()).resolves.toBeTruthy()
     expect(forkMock).toHaveBeenCalledOnce()
+  })
+
+  it('hands off to the fork early enough for its readiness wait and adapter to fit the gate', async () => {
+    stableLaunch.failure = 'unavailable'
+    stableLaunch.failAtDeadlineOffsetMs = 0
+    await expect(launchOnce()).resolves.toBeTruthy()
+    expect(forkMock).toHaveBeenCalledOnce()
+    const handoffMs = (stableLaunch.deadlinesMs[0] ?? Infinity) - launcherCalledAtMs
+    // Even a stable failure at the last allowed moment leaves the whole fork budget in the gate.
+    expect(handoffMs + DAEMON_CHILD_STARTUP_TIMEOUT_MS + 5_000).toBeLessThanOrEqual(
+      LOCAL_PTY_STARTUP_FAIL_OPEN_TIMEOUT_MS
+    )
+    // ...without starving the stable launch of its own bootstrap and readiness time.
+    expect(handoffMs).toBeGreaterThan(20_000)
+  })
+
+  it('reports a stable failure too late for any fork to finish inside the gate', async () => {
+    stableLaunch.failure = 'unavailable'
+    stableLaunch.failAtDeadlineOffsetMs = 1
+    await expect(launchOnce()).rejects.toThrow('Could not prepare the runtime')
+    expect(forkMock).not.toHaveBeenCalled()
   })
 
   it('never forks beside a stable-bundle job whose fate is unknown', async () => {

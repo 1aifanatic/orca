@@ -54,6 +54,18 @@ import {
 import type { DaemonChildSpawnOptions } from './daemon-launched-child-spawn'
 
 let options: DaemonChildSpawnOptions
+const roomyDeadline = (): number => Date.now() + 60_000
+
+/** Lets a readiness timeout elapse without waiting for it in real time. */
+function elapseOnEachConnectAttempt(error: Error): void {
+  const realNow = Date.now()
+  let elapsedMs = 0
+  vi.spyOn(Date, 'now').mockImplementation(() => realNow + elapsedMs)
+  ensureWithinMock.mockImplementation(async () => {
+    elapsedMs += 6_000
+    throw error
+  })
+}
 let job: unknown
 let jobMode: number
 const nativePlatform = process.platform
@@ -111,7 +123,7 @@ afterEach(async () => {
 it('launches the stable main executable and leaves no inherited credentials on disk', async () => {
   vi.stubEnv('ORCA_TEST_SECRET', 'test-value')
   vi.stubEnv('NODE_CHANNEL_FD', '3')
-  const handle = await launchMacDaemonFromStableBundle(options)
+  const handle = await launchMacDaemonFromStableBundle(options, roomyDeadline())
   if (nativePlatform !== 'win32') {
     expect(jobMode).toBe(0o600)
   }
@@ -158,7 +170,7 @@ function routeLaunchctl(handlers: { bootstrap?: ProcessResult; print?: ProcessRe
   })
 }
 
-async function launchFailure(deadlineMs?: number): Promise<unknown> {
+async function launchFailure(deadlineMs = roomyDeadline()): Promise<unknown> {
   return launchMacDaemonFromStableBundle(options, deadlineMs).then(
     () => null,
     (error: unknown) => error
@@ -195,7 +207,7 @@ it('preserves copied code after an uncertain bootstrap while removing the privat
       stderr: '',
       timedOut: true
     })
-  await expect(launchMacDaemonFromStableBundle(options)).rejects.toThrow(
+  await expect(launchMacDaemonFromStableBundle(options, roomyDeadline())).rejects.toThrow(
     'start the macOS terminal service'
   )
   await expect(access(join(state.root, 'runtime'))).resolves.toBeUndefined()
@@ -205,7 +217,7 @@ it('preserves copied code after an uncertain bootstrap while removing the privat
 
 it('retries a connection refusal while retaining the same launch attempt', async () => {
   ensureWithinMock.mockRejectedValueOnce(new Error('ECONNREFUSED'))
-  const handle = await launchMacDaemonFromStableBundle(options)
+  const handle = await launchMacDaemonFromStableBundle(options, roomyDeadline())
   expect(handle).not.toBeNull()
   expect(ensureWithinMock).toHaveBeenCalledTimes(2)
   expect(materializeMock).toHaveBeenCalledTimes(1)
@@ -214,12 +226,37 @@ it('retries a connection refusal while retaining the same launch attempt', async
   ).toHaveLength(1)
 })
 
-it('does not submit a daemon after the startup gate deadline expires', async () => {
-  const error = await launchFailure(Date.now() - 1)
+it('does not submit a job whose own readiness wait would overrun the deadline', async () => {
+  const error = await launchFailure(Date.now() + 19_000)
   expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
   expect(error).toHaveProperty('cause.message', expect.stringContaining('deadline expired'))
-  expect(runProcessMock).not.toHaveBeenCalled()
+  expect(runProcessMock.mock.calls.some(([spec]) => spec.args?.includes('bootstrap'))).toBe(false)
+  expect(materializeMock.mock.calls[0]?.[3]).toHaveProperty('aborted', true)
   await expect(access(join(state.root, 'runtime'))).rejects.toThrow()
+})
+
+it('names the deadline when it cut the runtime copy short', async () => {
+  materializeMock.mockRejectedValueOnce(new Error('Could not copy the macOS terminal runtime'))
+  const error = await launchFailure(Date.now() + 19_000)
+  expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
+  expect(error).toHaveProperty('message', 'The macOS terminal service startup deadline expired')
+  expect(runProcessMock).not.toHaveBeenCalled()
+})
+
+it('shares one preparation deadline across the copy and the plist conversion', async () => {
+  await launchMacDaemonFromStableBundle(options, Date.now() + 25_000)
+  const [userData, entry, label, signal] = materializeMock.mock.calls[0] ?? []
+  expect([userData, entry, label]).toEqual([
+    state.root,
+    options.entryPath,
+    'com.stablyai.orca.terminal.owned-launch'
+  ])
+  expect(signal).toHaveProperty('aborted', false)
+  const plutil = runProcessMock.mock.calls.find(([spec]) => spec.program === '/usr/bin/plutil')
+  expect(plutil?.[0].signal).toBe(signal)
+  // Bootstrap itself is never aborted: a killed launchctl leaves the job's fate unknown.
+  const bootstrap = runProcessMock.mock.calls.find(([spec]) => spec.args?.includes('bootstrap'))
+  expect(bootstrap?.[0]).not.toHaveProperty('signal')
 })
 
 it('removes a private runtime when plist preparation fails before bootstrap', async () => {
@@ -263,8 +300,8 @@ it.each([
 
 it('unregisters a daemon that exited before answering and lets the fork launcher run', async () => {
   routeLaunchctl({ print: notRunning })
-  ensureWithinMock.mockRejectedValue(new Error('ECONNREFUSED'))
-  const error = await launchFailure(Date.now() + 200)
+  elapseOnEachConnectAttempt(new Error('ECONNREFUSED'))
+  const error = await launchFailure()
   expect(error).toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
   expect(runProcessMock).toHaveBeenCalledWith(
     expect.objectContaining({ args: ['bootout', expect.stringContaining('owned-launch')] })
@@ -273,8 +310,8 @@ it('unregisters a daemon that exited before answering and lets the fork launcher
 
 it('never starts another daemon while a silent job is still running', async () => {
   routeLaunchctl({ print: running })
-  ensureWithinMock.mockRejectedValue(new Error('ECONNREFUSED'))
-  const error = await launchFailure(Date.now() + 200)
+  elapseOnEachConnectAttempt(new Error('ECONNREFUSED'))
+  const error = await launchFailure()
   expect(error).not.toBeInstanceOf(MacDaemonStableLaunchUnavailableError)
   expect(error).toHaveProperty('message', 'ECONNREFUSED')
   expect(runProcessMock.mock.calls.some(([spec]) => spec.args?.[0] === 'bootout')).toBe(false)
@@ -283,16 +320,16 @@ it('never starts another daemon while a silent job is still running', async () =
 
 it.each(['linux', 'win32'] as const)('keeps %s on the existing launcher', async (platform) => {
   vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-  await expect(launchMacDaemonFromStableBundle(options)).resolves.toBeNull()
+  await expect(launchMacDaemonFromStableBundle(options, roomyDeadline())).resolves.toBeNull()
   expect(materializeMock).not.toHaveBeenCalled()
   expect(runProcessMock).not.toHaveBeenCalled()
 })
 
 it('keeps Node/SSH hosts and unpackaged Electron on the existing launcher', async () => {
   await expect(
-    launchMacDaemonFromStableBundle({ ...options, macosLoginSessionWatch: false })
+    launchMacDaemonFromStableBundle({ ...options, macosLoginSessionWatch: false }, roomyDeadline())
   ).resolves.toBeNull()
   state.packaged = false
-  await expect(launchMacDaemonFromStableBundle(options)).resolves.toBeNull()
+  await expect(launchMacDaemonFromStableBundle(options, roomyDeadline())).resolves.toBeNull()
   expect(materializeMock).not.toHaveBeenCalled()
 })

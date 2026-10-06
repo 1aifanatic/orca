@@ -4,8 +4,7 @@ import { runProcess } from '../../shared/child-process/run-process'
 import { rm } from '../asar-transparent-fs'
 import { ensurePrivateDir } from './daemon-private-file-modes'
 import { inspectMacProcessCodeIdentity } from './daemon-mac-code-identity'
-import { retireAbandonedMacDaemonBundles } from './macos-daemon-bundle-retirement'
-import { remainingMacDaemonStartupMs } from './macos-daemon-startup-budget'
+import { writeMacDaemonJobRecord } from './macos-daemon-bundle-retirement'
 
 export type MacDaemonBundle = {
   directory: string
@@ -26,12 +25,13 @@ function appBundleForMainExecutable(executable: string): string {
   return bundle
 }
 
-async function codesignRequirement(bundlePath: string, deadlineMs: number): Promise<string> {
+async function codesignRequirement(bundlePath: string, signal: AbortSignal): Promise<string> {
   const result = await runProcess({
     program: '/usr/bin/codesign',
     args: ['--display', '-r-', bundlePath],
-    timeoutMs: remainingMacDaemonStartupMs(deadlineMs, 5_000),
-    maxOutputBytes: 8192
+    timeoutMs: 5_000,
+    maxOutputBytes: 8192,
+    signal
   })
   const requirement = `${result.stderr}\n${result.stdout}`
     .split(/\r?\n/)
@@ -42,7 +42,7 @@ async function codesignRequirement(bundlePath: string, deadlineMs: number): Prom
   return requirement
 }
 
-/** Private signed runtime copies; telemetry reads a daemon's launch method from this prefix. */
+/** Private signed runtime copies; telemetry classifies a daemon spawned from here as `stable-copy`. */
 export function getMacDaemonBundleRoot(userDataPath: string): string {
   return join(userDataPath, 'daemon-host', 'macos')
 }
@@ -51,9 +51,9 @@ export function getMacDaemonBundleRoot(userDataPath: string): string {
 export async function materializeMacDaemonBundle(
   userDataPath: string,
   entryPath: string,
-  deadlineMs = Date.now() + 55_000
+  label: string,
+  signal: AbortSignal
 ): Promise<MacDaemonBundle> {
-  remainingMacDaemonStartupMs(deadlineMs, 55_000)
   const running = await inspectMacProcessCodeIdentity(process.pid)
   if (!running.executablePath) {
     throw new Error('Could not resolve the running macOS app bundle')
@@ -68,19 +68,21 @@ export async function materializeMacDaemonBundle(
   ) {
     throw new Error('The terminal daemon entry is outside the app bundle')
   }
-  const requirement = await codesignRequirement(sourceBundle, deadlineMs)
+  const requirement = await codesignRequirement(sourceBundle, signal)
   const root = getMacDaemonBundleRoot(userDataPath)
   ensurePrivateDir(root)
-  void retireAbandonedMacDaemonBundles(root)
   const directory = await mkdtemp(join(root, 'runtime-'))
   const bundlePath = join(directory, basename(sourceBundle))
   try {
+    // Recorded before copying so a crash mid-copy leaves a copy retirement can still claim.
+    await writeMacDaemonJobRecord(directory, label, false)
     const copy = async (clone: boolean): Promise<boolean> => {
       const result = await runProcess({
         program: '/bin/cp',
         args: [clone ? '-cR' : '-R', sourceBundle, bundlePath],
-        timeoutMs: remainingMacDaemonStartupMs(deadlineMs, 45_000),
-        maxOutputBytes: 8192
+        timeoutMs: 45_000,
+        maxOutputBytes: 8192,
+        signal
       })
       return result.code === 0 && !result.timedOut
     }
@@ -94,13 +96,14 @@ export async function materializeMacDaemonBundle(
     const verified = await runProcess({
       program: '/usr/bin/codesign',
       args: ['--verify', '--deep', '--strict', bundlePath],
-      timeoutMs: remainingMacDaemonStartupMs(deadlineMs, 45_000),
-      maxOutputBytes: 8192
+      timeoutMs: 45_000,
+      maxOutputBytes: 8192,
+      signal
     })
     if (
       verified.code !== 0 ||
       verified.timedOut ||
-      (await codesignRequirement(bundlePath, deadlineMs)) !== requirement
+      (await codesignRequirement(bundlePath, signal)) !== requirement
     ) {
       throw new Error('The copied macOS terminal runtime did not preserve the app signature')
     }

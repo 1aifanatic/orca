@@ -7,7 +7,9 @@ import {
   holdDaemonAdoptionLease,
   reconcileDaemonPidOwnership
 } from './daemon-endpoint-adoption'
+import { LOCAL_PTY_STARTUP_FAIL_OPEN_TIMEOUT_MS } from '../startup/first-window-startup-services'
 import {
+  DAEMON_CHILD_STARTUP_TIMEOUT_MS,
   DaemonEndpointUnavailableError,
   launchDaemonChild,
   terminateLaunchedDaemonChild
@@ -18,6 +20,8 @@ import {
   launchMacDaemonFromStableBundle,
   MacDaemonStableLaunchUnavailableError
 } from './macos-daemon-launchd'
+import { getMacDaemonBundleRoot } from './macos-daemon-bundle'
+import { retireAbandonedMacDaemonBundles } from './macos-daemon-bundle-retirement'
 import { DAEMON_RECOVERY_BUDGET_MS, daemonRecoveryProbeTimeoutMs } from './daemon-recovery-budget'
 import { cleanupDaemonForProtocol } from './daemon-protocol-cleanup'
 import {
@@ -34,6 +38,10 @@ import { prepareDaemonReplacement } from './daemon-replacement-preflight'
 // there is nothing left to kill and the launcher's own confirmed-kill gate would report nothing.
 // The adapter hands the reason across so the launch it triggers reports what actually drove it.
 let attributedReplaceReason: DaemonReplaceReason | null = null
+
+// The fork fallback's readiness wait plus the lease and adapter connects must still fit the gate.
+export const MAC_STABLE_LAUNCH_HANDOFF_MS =
+  LOCAL_PTY_STARTUP_FAIL_OPEN_TIMEOUT_MS - DAEMON_CHILD_STARTUP_TIMEOUT_MS - 5_000
 
 export function attributeNextDaemonReplacement(reason: DaemonReplaceReason): void {
   attributedReplaceReason = reason
@@ -125,6 +133,7 @@ export function createOutOfProcessLauncher(
 
       const userDataPath = getAppEnvironment().getPath('userData')
       let macHandle: DaemonProcessHandle | null = null
+      const handoffDeadlineMs = launchStartedAtMs + MAC_STABLE_LAUNCH_HANDOFF_MS
       try {
         macHandle = await launchMacDaemonFromStableBundle(
           {
@@ -137,11 +146,15 @@ export function createOutOfProcessLauncher(
             launchNonce,
             macosLoginSessionWatch
           },
-          // Leave five seconds of the desktop's 60-second PTY gate for adapter installation.
-          launchStartedAtMs + 55_000
+          handoffDeadlineMs
         )
       } catch (error) {
-        if (!(error instanceof MacDaemonStableLaunchUnavailableError)) {
+        // Why the deadline: a fork that cannot finish inside the gate would only land after the
+        // app has already moved to local PTYs.
+        if (
+          !(error instanceof MacDaemonStableLaunchUnavailableError) ||
+          Date.now() > handoffDeadlineMs
+        ) {
           throw error
         }
         // Why: no job from that attempt can claim the endpoint, and a forked daemon keeps
@@ -150,6 +163,10 @@ export function createOutOfProcessLauncher(
           `[daemon] macOS stable-bundle launch unavailable (${error.message}); forking from the app`,
           error.cause
         )
+      } finally {
+        if (process.platform === 'darwin' && macosLoginSessionWatch) {
+          void retireAbandonedMacDaemonBundles(getMacDaemonBundleRoot(userDataPath))
+        }
       }
       if (macHandle) {
         return macHandle

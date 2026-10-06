@@ -40,12 +40,10 @@ afterEach(async () => {
 
 async function runtime(submitted = true): Promise<string> {
   const directory = await mkdtemp(join(root, 'runtime-'))
-  const bundlePath = join(directory, 'Orca.app')
-  await mkdir(bundlePath)
-  const bundle = { directory, bundlePath, execPath: '', entryPath: '' }
-  await writeMacDaemonJobRecord(bundle, 'com.stablyai.orca.terminal.owned', false)
+  await mkdir(join(directory, 'Orca.app'))
+  await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', false)
   if (submitted) {
-    await writeMacDaemonJobRecord(bundle, 'com.stablyai.orca.terminal.owned', true)
+    await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', true)
   }
   return directory
 }
@@ -58,8 +56,7 @@ it('writes private non-secret metadata and prunes only a stopped, unused runtime
   expect(JSON.parse(await readFile(join(directory, 'job.json'), 'utf8'))).toEqual({
     label: 'com.stablyai.orca.terminal.owned',
     producerPid: process.pid,
-    submitted: true,
-    bundleName: 'Orca.app'
+    submitted: true
   })
   run.mockImplementation(async (spec) =>
     spec.args?.[0] === 'print'
@@ -76,6 +73,8 @@ it('writes private non-secret metadata and prunes only a stopped, unused runtime
     '/bin/launchctl',
     '/usr/sbin/lsof'
   ])
+  // The whole runtime directory is the open-file scope, so no bundle name needs recording.
+  expect(run.mock.calls.at(-1)?.[0].args).toEqual(['-F', 'p', '+D', directory])
 })
 
 it('keeps a stopped runtime when its job could not be unregistered', async () => {
@@ -101,12 +100,42 @@ it.each([{ status: 'live' }, { status: 'unverifiable', reason: 'denied' }] as co
   }
 )
 
-it('retains a possibly in-flight submission when its job is absent', async () => {
+it('retires a never-submitted copy once its producer exited and its job is absent', async () => {
   const directory = await runtime(false)
-  run.mockResolvedValue({ ...result, code: 113, stderr: 'Could not find service "owned"' })
+  run.mockImplementation(async (spec) =>
+    spec.args?.[0] === 'print'
+      ? { ...result, code: 113, stderr: 'Could not find service "owned"' }
+      : result
+  )
   await retireAbandonedMacDaemonBundles(root)
-  await expect(access(directory)).resolves.toBeUndefined()
-  expect(run).toHaveBeenCalledTimes(1)
+  await expect(access(directory)).rejects.toThrow()
+  expect(run.mock.calls.map(([spec]) => spec.program)).toEqual(['/bin/launchctl', '/usr/sbin/lsof'])
+})
+
+it('retires a copy whose producer crashed before writing anything but its record', async () => {
+  const directory = await mkdtemp(join(root, 'runtime-'))
+  await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', false)
+  run.mockImplementation(async (spec) =>
+    spec.args?.[0] === 'print'
+      ? { ...result, code: 113, stderr: 'Could not find service "owned"' }
+      : result
+  )
+  await retireAbandonedMacDaemonBundles(root)
+  await expect(access(directory)).rejects.toThrow()
+})
+
+it('keeps a never-submitted copy that a running job or open file still uses', async () => {
+  const runningCopy = await runtime(false)
+  run.mockResolvedValue({ ...result, code: 0, stdout: '\tstate = running' })
+  await retireAbandonedMacDaemonBundles(root)
+  await expect(access(runningCopy)).resolves.toBeUndefined()
+  run.mockImplementation(async (spec) =>
+    spec.args?.[0] === 'print'
+      ? { ...result, code: 113, stderr: 'Could not find service "owned"' }
+      : { ...result, code: 0, stdout: 'p123' }
+  )
+  await retireAbandonedMacDaemonBundles(root)
+  await expect(access(runningCopy)).resolves.toBeUndefined()
 })
 
 it('prunes an absent submitted job and coalesces overlapping collections', async () => {
@@ -131,16 +160,22 @@ it.each([
 ])('retains code when open-file absence is unverified: %j', async (override) => {
   const directory = await runtime()
   run.mockResolvedValue({ ...result, ...override })
-  expect(await retireUnusedMacDaemonBundle(directory, join(directory, 'Orca.app'))).toBe(false)
+  await retireUnusedMacDaemonBundle(directory)
   await expect(access(directory)).resolves.toBeUndefined()
 })
 
-it('bounds expensive inspection to twenty copies per collection', async () => {
-  await Promise.all(Array.from({ length: 30 }, () => runtime()))
-  run.mockResolvedValue({ ...result, code: 0, stdout: '\tstate = running' })
+it('keeps scanning past copies it cannot retire', async () => {
+  const first = await runtime()
+  const second = await runtime()
+  run.mockImplementation(async (spec) => {
+    if (spec.args?.[0] === 'print') {
+      return { ...result, code: 0, stdout: '\tstate = not running' }
+    }
+    // Every bootout fails, so stopMacDaemonJob's follow-up print must not report the job missing.
+    return spec.args?.[0] === 'bootout' ? { ...result, code: 1 } : result
+  })
   await retireAbandonedMacDaemonBundles(root)
-  expect(run).toHaveBeenCalledTimes(20)
-  run.mockClear()
-  await retireAbandonedMacDaemonBundles(root)
-  expect(run).toHaveBeenCalledTimes(10)
+  await expect(access(first)).resolves.toBeUndefined()
+  await expect(access(second)).resolves.toBeUndefined()
+  expect(run.mock.calls.filter(([spec]) => spec.args?.[0] === 'bootout')).toHaveLength(2)
 })

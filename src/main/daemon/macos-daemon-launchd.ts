@@ -13,9 +13,9 @@ import {
   writeMacDaemonJobRecord
 } from './macos-daemon-bundle-retirement'
 import { readMacDaemonJobState, stopMacDaemonJob } from './macos-daemon-job-state'
-import { remainingMacDaemonStartupMs } from './macos-daemon-startup-budget'
 import type { DaemonProcessHandle } from './daemon-spawner'
 
+const BOOTSTRAP_TIMEOUT_MS = 10_000
 const STARTUP_TIMEOUT_MS = 10_000
 
 /** No job from this attempt can still claim the endpoint, so the app's own fork launcher may run. */
@@ -26,7 +26,7 @@ export class MacDaemonStableLaunchUnavailableError extends Error {
   }
 }
 
-export function buildMacDaemonLaunchJob(
+function buildMacDaemonLaunchJob(
   options: DaemonChildSpawnOptions,
   execPath: string,
   entryPath: string,
@@ -57,7 +57,7 @@ export function buildMacDaemonLaunchJob(
 /** A launchd child owns Orca's signed identity independently of the replaceable UI process. */
 export async function launchMacDaemonFromStableBundle(
   options: DaemonChildSpawnOptions,
-  startupDeadlineMs = Date.now() + 55_000
+  deadlineMs: number
 ): Promise<DaemonProcessHandle | null> {
   if (process.platform !== 'darwin' || !options.macosLoginSessionWatch) {
     return null
@@ -70,26 +70,30 @@ export async function launchMacDaemonFromStableBundle(
   if (uid === undefined) {
     throw new MacDaemonStableLaunchUnavailableError('Could not resolve the macOS login user')
   }
-  const bundle = await materializeMacDaemonBundle(
-    options.userDataPath,
-    options.entryPath,
-    startupDeadlineMs
-  ).catch((error: unknown) => {
-    throw new MacDaemonStableLaunchUnavailableError(
-      'Could not prepare the macOS terminal runtime',
-      {
-        cause: error
-      }
-    )
-  })
   const label = `com.stablyai.orca.terminal.${options.launchNonce}`
   const domain = `gui/${uid}`
   const service = `${domain}/${label}`
+  // Preparation ends early enough for bootstrap and this job's readiness wait to meet the deadline.
+  const prepareDeadlineMs = deadlineMs - BOOTSTRAP_TIMEOUT_MS - STARTUP_TIMEOUT_MS
+  const remainingMs = prepareDeadlineMs - Date.now()
+  const prepareSignal = remainingMs > 0 ? AbortSignal.timeout(remainingMs) : AbortSignal.abort()
+  const bundle = await materializeMacDaemonBundle(
+    options.userDataPath,
+    options.entryPath,
+    label,
+    prepareSignal
+  ).catch((error: unknown) => {
+    throw new MacDaemonStableLaunchUnavailableError(
+      prepareSignal.aborted
+        ? 'The macOS terminal service startup deadline expired'
+        : 'Could not prepare the macOS terminal runtime',
+      { cause: error }
+    )
+  })
   const jobPath = join(bundle.directory, 'launch.plist')
-  let attemptedBootstrap = false
   const shutdown = async (): Promise<void> => {
     await stopMacDaemonJob(service)
-    await retireUnusedMacDaemonBundle(bundle.directory, bundle.bundlePath)
+    await retireUnusedMacDaemonBundle(bundle.directory)
   }
   // Only a stopped or unregistered job proves no daemon from this attempt can appear later.
   const abandonUnlessLive = async (error: unknown): Promise<never> => {
@@ -101,13 +105,12 @@ export async function launchMacDaemonFromStableBundle(
     } else if (state !== 'missing') {
       throw error
     }
-    void retireUnusedMacDaemonBundle(bundle.directory, bundle.bundlePath)
+    void retireUnusedMacDaemonBundle(bundle.directory)
     throw new MacDaemonStableLaunchUnavailableError('The macOS terminal service did not start', {
       cause: error
     })
   }
   try {
-    await writeMacDaemonJobRecord(bundle, label, false)
     // The inherited environment can contain credentials; never leave it on disk after bootstrap.
     await writeFile(
       jobPath,
@@ -117,18 +120,28 @@ export async function launchMacDaemonFromStableBundle(
     const converted = await runProcess({
       program: '/usr/bin/plutil',
       args: ['-convert', 'xml1', jobPath],
-      timeoutMs: remainingMacDaemonStartupMs(startupDeadlineMs, 5_000),
-      maxOutputBytes: 8192
+      timeoutMs: 5_000,
+      maxOutputBytes: 8192,
+      signal: prepareSignal
     })
     if (converted.code !== 0 || converted.timedOut) {
       throw new Error('Could not prepare the macOS terminal service')
     }
-    const bootstrapTimeoutMs = remainingMacDaemonStartupMs(startupDeadlineMs, 10_000)
-    attemptedBootstrap = true
+    if (prepareSignal.aborted) {
+      throw new Error('The macOS terminal service startup deadline expired')
+    }
+  } catch (error) {
+    await rm(jobPath, { force: true }).catch(() => {})
+    await removeBundle(bundle.directory, { recursive: true, force: true }).catch(() => {})
+    throw new MacDaemonStableLaunchUnavailableError('Could not submit the macOS terminal service', {
+      cause: error
+    })
+  }
+  try {
     const result = await runProcess({
       program: '/bin/launchctl',
       args: ['bootstrap', domain, jobPath],
-      timeoutMs: bootstrapTimeoutMs,
+      timeoutMs: BOOTSTRAP_TIMEOUT_MS,
       maxOutputBytes: 8192
     })
     if (result.timedOut) {
@@ -137,23 +150,12 @@ export async function launchMacDaemonFromStableBundle(
     if (result.code !== 0) {
       await abandonUnlessLive(new Error('Could not start the macOS terminal service'))
     }
-    await writeMacDaemonJobRecord(bundle, label, true).catch(() => {})
-  } catch (error) {
-    if (!attemptedBootstrap) {
-      await removeBundle(bundle.directory, { recursive: true, force: true }).catch(() => {})
-      throw new MacDaemonStableLaunchUnavailableError(
-        'Could not submit the macOS terminal service',
-        {
-          cause: error
-        }
-      )
-    }
-    throw error
+    await writeMacDaemonJobRecord(bundle.directory, label, true).catch(() => {})
   } finally {
     await rm(jobPath, { force: true }).catch(() => {})
   }
   const client = new DaemonClient({ socketPath: options.socketPath, tokenPath: options.tokenPath })
-  const deadline = Math.min(startupDeadlineMs, Date.now() + STARTUP_TIMEOUT_MS)
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS
   try {
     while (true) {
       try {
@@ -172,7 +174,7 @@ export async function launchMacDaemonFromStableBundle(
       client.disconnect()
       // The fork launcher adopts an occupant normally rather than as a degraded endpoint.
       await stopMacDaemonJob(service)
-      void retireUnusedMacDaemonBundle(bundle.directory, bundle.bundlePath)
+      void retireUnusedMacDaemonBundle(bundle.directory)
       throw new MacDaemonStableLaunchUnavailableError('Another daemon owns the terminal endpoint', {
         cause: new DaemonEndpointOwnershipError('Another daemon owns the terminal endpoint')
       })
