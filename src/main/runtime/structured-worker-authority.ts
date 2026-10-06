@@ -27,6 +27,7 @@ import {
   type LineageRunningSession
 } from './orchestration/structured-session-lineage'
 import { structuredWorkerAddressable } from './structured-worker-custody'
+import { isAgentSessionHandleProvider } from '../../shared/agent-session-provider-handle'
 import {
   isStructuredWorkerHandle,
   structuredWorkerIdentities,
@@ -173,8 +174,10 @@ export function structuredWorkerAgent(identity: StructuredWorkerIdentity): 'clau
   if (identity.agent) {
     return identity.agent
   }
+  // Workers are Claude or Codex sessions only: dispatch refuses any other agent.
   const running = structuredWorkerSession(identity)
-  return running.kind === 'unverifiable' ? 'claude' : running.record.provider
+  const provider = running.kind === 'unverifiable' ? undefined : running.record.provider
+  return isAgentSessionHandleProvider(provider) ? provider : 'claude'
 }
 
 export type StructuredWorkerObservation = {
