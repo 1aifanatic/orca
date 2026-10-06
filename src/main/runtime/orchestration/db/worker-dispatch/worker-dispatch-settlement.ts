@@ -36,21 +36,24 @@ export function settleWorkerForCompletedDispatch(db: Database.Database, dispatch
   })
 }
 
-/** Repairs older PTY, structured and handle-less assignments once when the database opens. */
+/** Repairs stale assignments on open without scanning finished worker history. */
 export function reconcileSettledWorkerDispatches(db: Database.Database): void {
+  const candidates = db.prepare(
+    `SELECT wd.dispatch_id FROM worker_dispatches wd
+     WHERE wd.state IN ('starting', 'ready', 'start_unknown', 'stopping', 'stop_unknown')
+       AND EXISTS (
+         SELECT 1 FROM dispatch_contexts dc
+         WHERE dc.id = wd.dispatch_id
+           AND dc.status IN ('completed', 'failed', 'circuit_broken')
+       )`
+  )
+  if (candidates.get() === undefined) {
+    return
+  }
   const transaction = beginLifecycleWriteTransaction(db, 'reconcile_settled_workers')
   try {
-    const rows = db
-      .prepare(
-        `SELECT wd.dispatch_id FROM worker_dispatches wd
-         WHERE wd.state IN ('starting', 'ready', 'start_unknown', 'stopping', 'stop_unknown')
-           AND EXISTS (
-             SELECT 1 FROM dispatch_contexts dc
-             WHERE dc.id = wd.dispatch_id
-               AND dc.status IN ('completed', 'failed', 'circuit_broken')
-           )`
-      )
-      .all()
+    // Re-read after taking the writer lock; the preflight is only a no-op shortcut.
+    const rows = candidates.all()
     for (const row of rows) {
       if (
         typeof row !== 'object' ||

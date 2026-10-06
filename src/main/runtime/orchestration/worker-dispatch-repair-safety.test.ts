@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import Database from '../../sqlite/sync-database'
 import { OrchestrationDb } from './db'
 import { reconcileSettledWorkerDispatches } from './db/worker-dispatch/worker-dispatch-settlement'
 
@@ -121,6 +122,41 @@ describe('historical worker repair safety', () => {
     expect(db.db.isTransaction).toBe(false)
   })
 
+  it('does not take a writer lock for a healthy database while another writer is active', () => {
+    historicalWorker('completed', 'succeeded')
+    const writer = new Database(databasePath)
+    db.db.pragma('busy_timeout = 0')
+    writer.exec('BEGIN IMMEDIATE')
+    const exec = vi.spyOn(db.db, 'exec')
+    try {
+      expect(() => reconcileSettledWorkerDispatches(db.db)).not.toThrow()
+      expect(exec).not.toHaveBeenCalled()
+    } finally {
+      exec.mockRestore()
+      writer.exec('ROLLBACK')
+      writer.close()
+    }
+  })
+
+  it('repairs stale bookkeeping reintroduced by an older writer after an earlier repair', () => {
+    const worker = historicalWorker('completed', 'ready')
+    reconcileSettledWorkerDispatches(db.db)
+    expect(db.getWorkerDispatch(worker.id)?.state).toBe('abandoned')
+
+    const olderWriter = new Database(databasePath)
+    try {
+      olderWriter
+        .prepare("UPDATE worker_dispatches SET state = 'ready' WHERE dispatch_id = ?")
+        .run(worker.id)
+    } finally {
+      olderWriter.close()
+    }
+    db.close()
+    db = new OrchestrationDb(databasePath)
+    expect(db.getWorkerDispatch(worker.id)?.state).toBe('abandoned')
+    expect(db.getWorkerTerminalResourceByOwner(worker.id)).toEqual(worker.resource)
+  })
+
   it('measures repair and no-op reopen with 100,000 historical assignments', () => {
     const task = db.createTask({ runId, spec: 'large repair history' })
     const insertDispatch = db.db.prepare(
@@ -149,7 +185,11 @@ describe('historical worker repair safety', () => {
     prepare.mockRestore()
     expect(repairSql).toBeDefined()
     const queryPlan = db.db.prepare(`EXPLAIN QUERY PLAN ${repairSql}`).all()
-    expect(queryPlan).toContainEqual(expect.objectContaining({ detail: 'SCAN wd' }))
+    expect(queryPlan).toContainEqual(
+      expect.objectContaining({
+        detail: expect.stringContaining('idx_worker_dispatches_recoverable')
+      })
+    )
     expect(queryPlan).toContainEqual(
       expect.objectContaining({ detail: expect.stringMatching(/^SEARCH dc.*\(id=\?\)$/) })
     )
@@ -167,8 +207,20 @@ describe('historical worker repair safety', () => {
     const reopenStart = performance.now()
     db = new OrchestrationDb(databasePath)
     const reopenMs = performance.now() - reopenStart
+    db.db.exec('DROP INDEX idx_worker_dispatches_recoverable')
+    db.db.exec("UPDATE worker_dispatches SET state = 'ready' WHERE state = 'abandoned'")
+    db.close()
+    const upgradeStart = performance.now()
+    db = new OrchestrationDb(databasePath)
+    const indexBuildOpenMs = performance.now() - upgradeStart
+    expect(db.db.prepare(`EXPLAIN QUERY PLAN ${repairSql}`).all()).toEqual(queryPlan)
+    expect(
+      db.db
+        .prepare("SELECT COUNT(*) AS count FROM worker_dispatches WHERE state = 'abandoned'")
+        .get()
+    ).toEqual({ count: 1_000 })
     process.stdout.write(
-      `${JSON.stringify({ assignments: 100_000, repairMs, noOpMs, reopenMs })}\n`
+      `${JSON.stringify({ assignments: 100_000, repairMs, noOpMs, reopenMs, indexBuildOpenMs })}\n`
     )
   })
 })
