@@ -13,10 +13,8 @@ import {
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
 } from '../../../shared/agent-session-wire'
-import {
-  createStructuredAgentSessionOperationId,
-  structuredAgentSessionPayloadFingerprint
-} from '../../../shared/structured-agent-session-mutation'
+import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
+import { agentSessionSendBodyFingerprint } from '../../../shared/structured-agent-session-send-mutation'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
 import { structuredAgentSessionSendBlock } from './structured-agent-session-send-preparation'
 import { isUnsettledQueuedMessage } from '../agent-session-journal/queued-message-table'
@@ -147,16 +145,6 @@ export function shouldQueueStructuredAgentSessionSend(input: {
   return oldestActionableQueuedMessage(input.journal) !== null
 }
 
-/** A draft's payload fingerprint in the session that will send it: the reducer
- *  aliases the provider's echo to the submission by recomputing exactly this. */
-export function queuedMessageFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
-  return structuredAgentSessionPayloadFingerprint({
-    method: 'agentSession.send',
-    sessionId,
-    fields: { body }
-  })
-}
-
 /** The accept-side budget refusal, or null when the draft fits. */
 export function queuedMessageBudgetRefusal(
   journal: AgentSessionJournal,
@@ -230,7 +218,8 @@ export async function maybeQueueStructuredAgentSessionSend(
     {
       messageId: clientMessageId,
       body: params.body,
-      fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
+      // In the session that will send it: the reducer aliases the provider's echo by exactly this.
+      fingerprint: agentSessionSendBodyFingerprint(ctx.sessionId, params.body),
       hostInstance: structuredAgentSessionHostInstance()
     },
     ctx.operationReceipt
@@ -262,8 +251,16 @@ export type QueuedMessageDrainDeps = {
  */
 export class StructuredAgentSessionQueuedMessageDrain {
   private readonly scheduled = new Set<string>()
+  private disposed = false
 
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
+
+  /** Quit, with delivery: a hand-off made now could only be settled by the next process, so a
+   *  quit leaves the cards exactly as a crash does. Read by the step at its start, and again
+   *  right before it appends, since quit can land while it awaits. */
+  dispose(): void {
+    this.disposed = true
+  }
 
   schedule(sessionId: string): void {
     const journal = this.deps.sessions.get(sessionId)?.journal
@@ -310,7 +307,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   private async step(sessionId: string): Promise<void> {
     const session = this.deps.sessions.get(sessionId)
-    if (!session) {
+    if (this.disposed || !session) {
       return
     }
     const journal = session.journal
@@ -333,7 +330,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     // Live facts only, through the one gate; the backlog is never a gate, so a
     // lone draft drains. Whatever clears a hold publishes or commits, which
     // re-derives this step.
-    if (structuredQueueHold({ journal, record, fence }) !== null) {
+    if (this.disposed || structuredQueueHold({ journal, record, fence }) !== null) {
       return
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.
