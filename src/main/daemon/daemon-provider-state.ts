@@ -3,7 +3,7 @@ import { setLocalPtyProvider } from '../ipc/pty'
 import { DegradedDaemonPtyProvider } from './degraded-daemon-pty-provider'
 import { getDaemonRuntimeDir as getRuntimeDir } from './daemon-launch-paths'
 import { parseDaemonPidFile, type ParsedDaemonPid } from './daemon-pid-file-parse'
-import type { DaemonProvider } from './daemon-provider-routing'
+import { getLegacyDaemonAdapters, type DaemonProvider } from './daemon-provider-routing'
 import { DaemonPtyRouter } from './daemon-pty-router'
 import { getDaemonPidPath, getDaemonSocketPath, getDaemonTokenPath } from './daemon-spawner'
 import type { DaemonSpawner } from './daemon-spawner'
@@ -84,22 +84,13 @@ export function getDaemonProvider(): DaemonProvider | null {
   return adapter
 }
 
-/**
- * True while a daemon whose shells lack the account-switching `claude` function still hosts
- * terminals; derived on each call from the live daemons, so it ends when those terminals close.
- */
-// Temporary: needed until Claude account resolution moves to a PATH-level wrapper.
-export function daemonHostsTerminalsWithoutClaudeAccountFunction(): boolean {
-  if (!adapter) {
-    return false
-  }
-  const daemons =
-    adapter instanceof DaemonPtyRouter || adapter instanceof DegradedDaemonPtyProvider
-      ? adapter.getAllAdapters()
-      : [adapter]
-  return daemons.some(
-    (daemon) => daemon.lacksClaudeAccountFunction() && daemon.hostsAttachedSessions()
-  )
+/** Terminals still open on a daemon kept alive from before `protocolVersion`; ends when they close. */
+export function hasTerminalsFromBeforeDaemonProtocol(protocolVersion: number): boolean {
+  return adapter
+    ? getLegacyDaemonAdapters(adapter).some(
+        (legacy) => legacy.protocolVersion < protocolVersion && legacy.hasAnyPty()
+      )
+    : false
 }
 
 // Why: computed from the pid record on demand (not cached at adoption) so the Settings

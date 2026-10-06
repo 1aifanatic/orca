@@ -49,6 +49,11 @@ export abstract class DaemonPtySessionControl extends DaemonPtySessionInput {
     return this.activeSessionIds.has(id)
   }
 
+  /** In memory, so asking never waits on or respawns the daemon. */
+  hasAnyPty(): boolean {
+    return this.activeSessionIds.size > 0
+  }
+
   async probePtyLiveness(id: string): Promise<boolean | null> {
     try {
       if (!this.getSizeUnsupported && this.protocolVersion >= GET_SIZE_PROTOCOL_VERSION) {

@@ -73,8 +73,7 @@ const stalePidRecord: ParsedDaemonPid = {
   bootId: null,
   spawnerExecPath:
     '/Users/alice/Library/Caches/com.stablyai.orca.ShipIt/u/Orca.app/Contents/MacOS/Orca',
-  cgroupUnit: null,
-  claudeAccountFunction: false
+  cgroupUnit: null
 }
 const origin = {
   app_version_match: 'different',

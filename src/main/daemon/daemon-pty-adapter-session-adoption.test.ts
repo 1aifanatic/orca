@@ -636,8 +636,7 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           current: {
             pid: process.pid,
             startedAtMs: (firstIdentity?.startedAtMs ?? 0) + 10_000,
-            launchNonce: 'replacement-launch',
-            claudeAccountFunction: true
+            launchNonce: 'replacement-launch'
           }
         }
       ])

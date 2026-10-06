@@ -1,6 +1,5 @@
 import type { Socket } from 'node:net'
 import { StringDecoder } from 'node:string_decoder'
-import { z } from 'zod'
 import { encodeNdjson } from './ndjson'
 import { CLEAN_DISCONNECT_PROTOCOL_VERSION, DaemonProtocolError } from './types'
 import type { DaemonEndpointIdentity, HelloMessage, HelloResponse } from './types'
@@ -101,36 +100,42 @@ export function sendDaemonHello(
   })
 }
 
-// Why optional unknowns: an older or newer daemon's extra fields of another shape are dropped, not fatal.
-const daemonEndpointIdentitySchema = z.object({
-  pid: z.number().refine((pid) => Number.isSafeInteger(pid) && pid > 0),
-  startedAtMs: z.number().refine((startedAtMs) => Number.isFinite(startedAtMs) && startedAtMs > 0),
-  launchNonce: z.string().min(1),
-  entryPath: z.unknown().optional(),
-  appVersion: z.unknown().optional(),
-  spawnerExecPath: z.unknown().optional(),
-  claudeAccountFunction: z.unknown().optional()
-})
-
 function parseDaemonEndpointIdentity(value: unknown): DaemonEndpointIdentity | null {
-  const parsed = daemonEndpointIdentitySchema.safeParse(value)
-  if (!parsed.success) {
+  if (!value || typeof value !== 'object') {
     return null
   }
-  const identity = parsed.data
-  const text = (field: unknown): string | null =>
-    typeof field === 'string' && field.length > 0 ? field : null
-  const entryPath = text(identity.entryPath)
-  const appVersion = text(identity.appVersion)
-  const spawnerExecPath = text(identity.spawnerExecPath)
+  const identity = value as {
+    pid?: unknown
+    startedAtMs?: unknown
+    launchNonce?: unknown
+    entryPath?: unknown
+    appVersion?: unknown
+    spawnerExecPath?: unknown
+  }
+  if (
+    !Number.isSafeInteger(identity.pid) ||
+    (identity.pid as number) <= 0 ||
+    typeof identity.startedAtMs !== 'number' ||
+    !Number.isFinite(identity.startedAtMs) ||
+    identity.startedAtMs <= 0 ||
+    typeof identity.launchNonce !== 'string' ||
+    identity.launchNonce.length === 0
+  ) {
+    return null
+  }
   return {
-    pid: identity.pid,
+    pid: identity.pid as number,
     startedAtMs: identity.startedAtMs,
     launchNonce: identity.launchNonce,
-    ...(entryPath ? { entryPath } : {}),
-    ...(appVersion ? { appVersion } : {}),
-    ...(spawnerExecPath ? { spawnerExecPath } : {}),
-    ...(identity.claudeAccountFunction === true ? { claudeAccountFunction: true as const } : {})
+    ...(typeof identity.entryPath === 'string' && identity.entryPath.length > 0
+      ? { entryPath: identity.entryPath }
+      : {}),
+    ...(typeof identity.appVersion === 'string' && identity.appVersion.length > 0
+      ? { appVersion: identity.appVersion }
+      : {}),
+    ...(typeof identity.spawnerExecPath === 'string' && identity.spawnerExecPath.length > 0
+      ? { spawnerExecPath: identity.spawnerExecPath }
+      : {})
   }
 }
 
