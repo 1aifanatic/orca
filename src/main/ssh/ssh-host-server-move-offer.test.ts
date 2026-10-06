@@ -51,4 +51,16 @@ describe('offering to move a host whose relay terminals keep it on the relay', (
       )
     ).toEqual({ kind: 'relay', reason: 'refused', detail: 'An automation runs here.' })
   })
+
+  it('never offers to move terminals another Orca desktop or session runs', () => {
+    const elsewhere = { ...live, terminals: 1, terminalsElsewhere: true }
+    expect(canOfferManagedServerMove(elsewhere)).toBe(false)
+    expect(shouldToastManagedServerMove({}, elsewhere, '1.5.0')).toBe(false)
+    expect(relayServerStatus(elsewhere, false)).toEqual({
+      kind: 'relay',
+      reason: 'relay_terminals_live',
+      terminals: 1,
+      terminalsElsewhere: true
+    })
+  })
 })

@@ -4,15 +4,20 @@ import type { HostServerOnConnectResult } from './ssh-host-server-on-connect'
 
 type RelayDecision = Extract<HostServerOnConnectResult, { route: 'relay' }>
 
-/** Only live terminals: an unverifiable census can't be fixed by stopping them from here. */
-export function canOfferManagedServerMove(decision: Pick<RelayDecision, 'reason'>): boolean {
-  return decision.reason === 'relay_terminals_live'
+/**
+ * Only this desktop's live terminals: an unverifiable census, or terminals another desktop or
+ * session runs, can't be ended by stopping this target's terminals.
+ */
+export function canOfferManagedServerMove(
+  decision: Pick<RelayDecision, 'reason' | 'terminalsElsewhere'>
+): boolean {
+  return decision.reason === 'relay_terminals_live' && !decision.terminalsElsewhere
 }
 
 /** The toast shows once per host per app version; the SSH Hosts action stays regardless. */
 export function shouldToastManagedServerMove(
   target: Pick<SshTarget, 'managedServerMoveOffered'>,
-  decision: Pick<RelayDecision, 'reason'>,
+  decision: Pick<RelayDecision, 'reason' | 'terminalsElsewhere'>,
   appVersion: string
 ): boolean {
   return (
@@ -30,6 +35,7 @@ export function relayServerStatus(
     reason: decision.reason,
     ...(decision.detail ? { detail: decision.detail } : {}),
     ...(decision.terminals !== undefined ? { terminals: decision.terminals } : {}),
-    ...(offerMove ? { offerMove: true } : {})
+    ...(offerMove ? { offerMove: true } : {}),
+    ...(decision.terminalsElsewhere ? { terminalsElsewhere: true } : {})
   }
 }

@@ -220,6 +220,9 @@ function relayLine(
 ): SshHostServerStatusLine {
   switch (status.reason) {
     case 'relay_terminals_live':
+      if (status.terminalsElsewhere) {
+        return { tone: 'muted', text: terminalsElsewhereText(status.terminals) }
+      }
       return {
         tone: 'muted',
         // Why: an absent count is unreported, never zero open terminals.
@@ -265,4 +268,18 @@ function relayLine(
 
 function withDetail(detail: string | undefined): Pick<SshHostServerStatusLine, 'detail'> {
   return detail ? { detail } : {}
+}
+
+/** No move action: stopping this desktop's terminals can't end another desktop's. */
+function terminalsElsewhereText(terminals: number | undefined): string {
+  return terminals
+    ? translate(
+        'auto.components.settings.sshHostServer.terminalsElsewhere',
+        'Runs the relay while {{count}} terminals another Orca desktop or session opened on this host are running.',
+        { count: terminals }
+      )
+    : translate(
+        'auto.components.settings.sshHostServer.terminalsElsewhereUncounted',
+        'Runs the relay while terminals another Orca desktop or session opened on this host are running.'
+      )
 }

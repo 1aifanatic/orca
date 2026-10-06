@@ -54,12 +54,15 @@ export type HostServerOnConnectResult =
       /** A blocker the user must act on, or why orcad can't run on this host. */
       detail?: string
       terminals?: number
+      terminalsElsewhere?: boolean
     }
 
 export type HostServerTerminalVerdict = {
   verdict: 'exited' | 'live' | 'unverifiable'
   /** Relay terminals known to be running or unproven. */
   count: number
+  /** Counted only by the host-wide census: another desktop or session runs them. */
+  elsewhere?: boolean
 }
 
 export type HostServerOnConnectDeps = {
@@ -201,7 +204,8 @@ async function convertHost(
       return {
         route: 'relay',
         reason: terminalReason(terminals.verdict),
-        terminals: terminals.count
+        terminals: terminals.count,
+        ...(terminals.elsewhere ? { terminalsElsewhere: true } : {})
       }
     }
     trace.path = 'convert'

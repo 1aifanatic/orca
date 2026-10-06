@@ -39,9 +39,11 @@ describe('the connect-time relay terminal verdict', () => {
   })
 
   it('stays on the relay while any endpoint, even another desktop’s, runs live work', async () => {
+    // Only the host-wide census counted them, so they belong to another desktop or session.
     await expect(decide({ verdict: 'live', count: 2 }).verdict).resolves.toEqual({
       verdict: 'live',
-      count: 2
+      count: 2,
+      elsewhere: true
     })
   })
 
@@ -68,8 +70,21 @@ describe('the connect-time relay terminal verdict', () => {
       { verdict: 'live', count: 1 },
       { lister: Object.assign(async () => [], { previous: async () => [] }) }
     )
-    await expect(verdict).resolves.toEqual({ verdict: 'live', count: 1 })
+    await expect(verdict).resolves.toEqual({ verdict: 'live', count: 1, elsewhere: true })
     expect(censusHost).toHaveBeenCalledTimes(1)
+  })
+
+  it('attributes terminals this target leases or lists to this desktop', async () => {
+    const listed = decide(
+      { verdict: 'live', count: 3 },
+      { lister: Object.assign(async () => ['pty-1'], { previous: async () => [] }) }
+    )
+    await expect(listed.verdict).resolves.toEqual({ verdict: 'live', count: 1 })
+    const leased = decide(
+      { verdict: 'live', count: 3 },
+      { leases: [{ ptyId: 'a', state: 'attached' }] }
+    )
+    await expect(leased.verdict).resolves.not.toHaveProperty('elsewhere')
   })
 
   // A session whose relays could not answer proves nothing, and no lease here changes that.
