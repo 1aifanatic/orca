@@ -40,10 +40,16 @@ export async function readRuntimeFileContent({
   worktreeId,
   connectionId,
   expectedExternalSshTargetId,
+  expectedRuntimeEnvironmentId,
   includeLocalLogMetadata,
   access
 }: RuntimeFileReadArgs): Promise<RuntimeReadableFileContent> {
-  assertExternalSshReadOwnership(settings, connectionId, expectedExternalSshTargetId)
+  assertExternalSshReadOwnership(
+    settings,
+    connectionId,
+    expectedExternalSshTargetId,
+    expectedRuntimeEnvironmentId
+  )
   const target = getActiveRuntimeTarget(settings)
   if (target.kind !== 'environment' || !worktreeId) {
     return window.api.fs.readFile({
@@ -95,8 +101,9 @@ export async function readRuntimeFilePreview(
 ): Promise<RuntimeFilePreviewResult> {
   assertExternalSshReadOwnership(
     context.settings,
-    context.connectionId,
-    context.expectedExternalSshTargetId
+    context.connectionId ?? context.expectedSshTargetId,
+    context.expectedExternalSshTargetId,
+    context.expectedRuntimeEnvironmentId
   )
   const remoteArgs = getRemoteFileArgs(context, filePath)
   if (!remoteArgs) {
@@ -124,8 +131,9 @@ export async function downloadRuntimeFile(
 ): Promise<RuntimeFileDownloadResult> {
   assertExternalSshReadOwnership(
     context.settings,
-    context.connectionId,
-    context.expectedExternalSshTargetId
+    context.connectionId ?? context.expectedSshTargetId,
+    context.expectedExternalSshTargetId,
+    context.expectedRuntimeEnvironmentId
   )
   const remoteArgs = getRemoteFileArgs(context, filePath)
   if (!remoteArgs) {

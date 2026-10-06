@@ -16,6 +16,7 @@ export type RuntimeFileReadArgs = {
   worktreeId?: string
   connectionId?: string
   expectedExternalSshTargetId?: string
+  expectedRuntimeEnvironmentId?: string | null
   includeLocalLogMetadata?: boolean
   /** File access of the local fallback read; remote reads stay root-relative. */
   access?: LocalFileAccess
@@ -30,6 +31,7 @@ export type RuntimeFileOperationArgs = {
   expectedSshTargetId?: string
   expectedSshConnectionGeneration?: number
   expectedExternalSshTargetId?: string
+  expectedRuntimeEnvironmentId?: string | null
 }
 
 export type RuntimeFileDownloadResult =
