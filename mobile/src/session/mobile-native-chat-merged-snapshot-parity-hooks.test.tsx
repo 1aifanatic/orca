@@ -133,12 +133,12 @@ function drawnFooter(node: ReactNode): unknown {
   if (Array.isArray(node)) {
     return node.map(drawnFooter)
   }
-  if (!isValidElement<{ children?: ReactNode; stopping?: boolean }>(node)) {
+  if (!isValidElement<{ children?: ReactNode; line?: { stopping?: boolean } }>(node)) {
     return node ?? null
   }
-  const element: ReactElement<{ children?: ReactNode; stopping?: boolean }> = node
+  const element: ReactElement<{ children?: ReactNode; line?: { stopping?: boolean } }> = node
   if (element.type === 'LiveStatus') {
-    return ['live', element.props.stopping === true]
+    return ['live', element.props.line?.stopping === true]
   }
   return element.type === 'ChatMessage' ? drawnRow(element) : drawnFooter(element.props.children)
 }
