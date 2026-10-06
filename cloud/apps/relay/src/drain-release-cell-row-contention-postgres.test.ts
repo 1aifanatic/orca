@@ -698,9 +698,10 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       expect(report.director.lockWaitingMean).toBeLessThan(0.5)
       expect(report.dials.placedCrossRegion).toBe(neighboursCapped ? report.dials.placed : 0)
       if (rate === 18) {
-        // Still cell-side: releases on one row serialise at ~1/RTT (~5.8/s)
-        // and the excess sheds to lease expiry. The director no longer waits.
-        expect(report.releases.ok).toBeLessThan(0.6 * report.releases.attempted)
+        // The release commits with its counter write, so the source row is no longer
+        // held for a round trip and releases stop shedding to lease expiry. With the
+        // separate COMMIT, 79 of 180 landed and the rest timed out waiting for the pool.
+        expect(report.releases.ok).toBe(report.releases.attempted)
       }
     }
   }, 240_000)
@@ -718,8 +719,11 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
           report.firstAttempt.rejected
         expect(total(slotRejections)).toBeLessThan(0.1 * report.hosts)
         expect(report.lockWaitingMean).toBeLessThan(0.5)
-        // Measured 16-20 refusals of 180 and a p95 of 5.7-6.3s; before, p95 was 11-16s.
-        expect(report.busyRefusals).toBeLessThanOrEqual(0.2 * report.hosts)
+        // Measured 16-80 refusals of 180 and a p95 of 5.6-6.5s; before, p95 was 11-16s.
+        // Refusals rose from 16-20 when releases began committing in one round trip:
+        // the ~100 releases that used to time out waiting for the pool now run, and
+        // hold their own host's row when a 1s redial arrives. The wait stays bounded.
+        expect(report.busyRefusals).toBeLessThanOrEqual(0.5 * report.hosts)
         expect(report.timeToPlacedMs.p95).toBeLessThanOrEqual(8_000)
       }
     }

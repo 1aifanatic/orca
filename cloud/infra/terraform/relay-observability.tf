@@ -1086,6 +1086,105 @@ resource "google_monitoring_alert_policy" "relay_region_hint_skew" {
   depends_on = [google_logging_metric.relay_snapshot]
 }
 
+# Declared for a targeted apply after the step-2 wave; mid-wave every unrolled cell is below.
+# Cells only: a director-only fix must not raise the floor the cells are held to. Linear unit
+# buckets keep each integer level in its own bucket, so sum / count is the exact level.
+resource "google_logging_metric" "relay_cell_fix_level" {
+  project         = var.project_id
+  name            = "orca_relay_cell_fix_level"
+  description     = "RELAY_FIX_LEVEL reported by each cell's runtime metrics line."
+  filter          = "${local.relay_runtime_log_filter} AND jsonPayload.role=\"cell\" AND jsonPayload.fixLevel:*"
+  value_extractor = "EXTRACT(jsonPayload.fixLevel)"
+  label_extractors = {
+    cell_id = "EXTRACT(jsonPayload.cellId)"
+  }
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+
+    labels {
+      key         = "cell_id"
+      value_type  = "STRING"
+      description = "Durable relay cell identifier."
+    }
+  }
+
+  bucket_options {
+    linear_buckets {
+      num_finite_buckets = 64
+      width              = 1
+      offset             = 0
+    }
+  }
+}
+
+# Images from before the field: a serving cell that reports no level at all.
+resource "google_logging_metric" "relay_cell_without_fix_level" {
+  project     = var.project_id
+  name        = "orca_relay_cell_without_fix_level"
+  description = "Runtime metrics lines from a cell holding controls whose image reports no fix level."
+  filter      = "${local.relay_runtime_log_filter} AND jsonPayload.role=\"cell\" AND jsonPayload.controls>0 AND NOT jsonPayload.fixLevel:*"
+  label_extractors = {
+    cell_id = "EXTRACT(jsonPayload.cellId)"
+  }
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "cell_id"
+      value_type  = "STRING"
+      description = "Durable relay cell identifier."
+    }
+  }
+}
+
+locals {
+  # Hourly level per cell; sum / count of the distribution is exact for integer levels.
+  relay_cell_fix_level_hourly = "(sum by (cell_id) (increase(logging_googleapis_com:user_orca_relay_cell_fix_level_sum{monitored_resource=\"gce_instance\"}[1h])) / sum by (cell_id) (increase(logging_googleapis_com:user_orca_relay_cell_fix_level_count{monitored_resource=\"gce_instance\"}[1h])))"
+  relay_cell_serving          = "(sum by (cell_id) (increase(logging_googleapis_com:user_orca_relay_controls_sum{monitored_resource=\"gce_instance\",role=\"cell\"}[1h])) > 0)"
+  relay_cell_without_level    = "(sum by (cell_id) (increase(logging_googleapis_com:user_orca_relay_cell_without_fix_level{monitored_resource=\"gce_instance\"}[1h])))"
+}
+
+# A retest window cannot exceed 24 h, so the six days live in the query: every hourly point
+# of the last six days is below the floor (or missing the field), and all 144 are present.
+resource "google_monitoring_alert_policy" "relay_cell_outdated_fix_level" {
+  project               = var.project_id
+  display_name          = "Orca Relay: cell left on an outdated image"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.relay_alert_notification_channels
+
+  conditions {
+    display_name = "Serving cell below the newest cell fix level for 6 days"
+
+    condition_prometheus_query_language {
+      query    = "(max_over_time(${local.relay_cell_fix_level_hourly}[6d:1h]) < scalar(max(max_over_time(${local.relay_cell_fix_level_hourly}[7d:1h])))) and on (cell_id) (count_over_time(${local.relay_cell_fix_level_hourly}[6d:1h]) >= 144) and on (cell_id) ${local.relay_cell_serving}"
+      duration = "0s"
+    }
+  }
+
+  conditions {
+    display_name = "Serving cell reporting no fix level for 6 days"
+
+    condition_prometheus_query_language {
+      query    = "(min_over_time(${local.relay_cell_without_level}[6d:1h]) > 0) and on (cell_id) (count_over_time(${local.relay_cell_without_level}[6d:1h]) >= 144)"
+      duration = "0s"
+    }
+  }
+
+  documentation {
+    content   = "A cell holding desktops has run an image older than the newest cell fix level for six days. On 2026-09-28, 18 cells still ran images without the pg connection-error fix and crashed in a two-minute database failover, dropping ~16.3k hosts. The floor is the highest `fixLevel` any cell reported in seven days; images from before the field report none and fire the second condition. Roll the named cell with a same-capacity roll to the current digest; c4/c5-style empty cells do not fire because they hold no controls."
+    mime_type = "text/markdown"
+  }
+
+  depends_on = [google_logging_metric.relay_cell_fix_level, google_logging_metric.relay_cell_without_fix_level]
+}
+
 # Why: the four signals that had to be assembled by hand during the 2026-09-04 incident.
 resource "google_monitoring_dashboard" "relay_incident" {
   project = var.project_id
