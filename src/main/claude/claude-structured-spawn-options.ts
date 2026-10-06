@@ -4,11 +4,9 @@
 
 import type { EffortLevel, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
-import {
-  claudeStructuredOptionsBypassPermissions,
-  claudeStructuredOptionsWithPermissionMode,
-  type ClaudeStructuredLaunch,
-  type ClaudeStructuredSdkOptions
+import type {
+  ClaudeStructuredLaunch,
+  ClaudeStructuredSdkOptions
 } from './claude-structured-launch-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { restoredClaudeStructuredSessionOptions } from './claude-structured-options'
@@ -28,6 +26,24 @@ const PERMISSION_MODES: ReadonlySet<string> = new Set<PermissionMode>([
   'dontAsk',
   'auto'
 ])
+
+/** Whether `options` launch with the Agent Permissions bypass. */
+function claudeStructuredOptionsBypassPermissions(options: ClaudeStructuredSdkOptions): boolean {
+  return options.extraArgs?.['dangerously-skip-permissions'] !== undefined
+}
+
+/** `options` launched in `mode` instead of the mode they carry; never more than they allow. */
+function claudeStructuredOptionsWithPermissionMode(
+  options: ClaudeStructuredSdkOptions,
+  mode: PermissionMode
+): ClaudeStructuredSdkOptions {
+  if (mode === 'bypassPermissions') {
+    return options
+  }
+  // Known limit: no switch back to bypass later; that needs the allow flag older CLIs reject.
+  const { 'dangerously-skip-permissions': _bypass, ...extraArgs } = options.extraArgs ?? {}
+  return { ...options, permissionMode: mode, extraArgs }
+}
 
 function isEffortLevel(value: string): value is EffortLevel {
   return EFFORT_LEVELS.has(value)

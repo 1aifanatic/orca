@@ -94,26 +94,6 @@ export function claudeStructuredPermissionOptions(
   return mode === 'bypassPermissions' ? { extraArgs: { 'dangerously-skip-permissions': null } } : {}
 }
 
-/** Whether `options` launch with the Agent Permissions bypass. */
-export function claudeStructuredOptionsBypassPermissions(
-  options: ClaudeStructuredSdkOptions
-): boolean {
-  return options.extraArgs?.['dangerously-skip-permissions'] !== undefined
-}
-
-/** `options` launched in `mode` instead of the mode they carry; never more than they allow. */
-export function claudeStructuredOptionsWithPermissionMode(
-  options: ClaudeStructuredSdkOptions,
-  mode: PermissionMode
-): ClaudeStructuredSdkOptions {
-  if (mode === 'bypassPermissions') {
-    return options
-  }
-  // Known limit: no switch back to bypass later; that needs the allow flag older CLIs reject.
-  const { 'dangerously-skip-permissions': _bypass, ...extraArgs } = options.extraArgs ?? {}
-  return { ...options, permissionMode: mode, extraArgs }
-}
-
 export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string

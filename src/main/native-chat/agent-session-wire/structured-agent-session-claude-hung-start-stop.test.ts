@@ -104,7 +104,10 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function envelope(method: 'agentSession.send' | 'agentSession.cancel', fields: object) {
+function envelope(
+  method: 'agentSession.send' | 'agentSession.cancel',
+  fields: Parameters<typeof computeAgentSessionPayloadFingerprint>[0]['fields']
+) {
   return {
     sessionId: SESSION,
     clientOperationId: hostTestOperationId(),
@@ -112,7 +115,7 @@ function envelope(method: 'agentSession.send' | 'agentSession.cancel', fields: o
     payloadFingerprint: computeAgentSessionPayloadFingerprint({
       method,
       sessionId: SESSION,
-      fields: { ...fields }
+      fields
     })
   }
 }
