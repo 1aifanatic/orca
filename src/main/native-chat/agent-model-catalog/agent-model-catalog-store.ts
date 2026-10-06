@@ -13,6 +13,7 @@ import type { AgentModelCatalogPersistence } from './agent-model-catalog-persist
 
 export const AGENT_MODEL_CATALOG_FRESH_MS = 10 * 60_000
 export const AGENT_MODEL_CATALOG_FAILURE_TTL_MS = 30_000
+export const AGENT_MODEL_CATALOG_PICKER_WAIT_MS = 30_000
 /** A validation read younger than this trusts the entry even when the picked
  *  model is missing; older, it waits for one bounded refresh before refusing. */
 export const AGENT_MODEL_CATALOG_VALIDATION_MIN_AGE_MS = 60_000
@@ -87,6 +88,9 @@ export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
   private readonly failures = new Map<string, CatalogFailure>()
   private readonly refreshes = new Map<string, InFlightListings>()
+  private readonly listingWaiters = new Map<string, Set<() => void>>()
+  private readonly latestWrittenOrder = new Map<string, number>()
+  private nextListingOrder = 0
   private persistence: AgentModelCatalogPersistence | null = null
   private readonly now: () => number
 
@@ -152,12 +156,22 @@ export class AgentModelCatalogStore {
     agent: 'claude' | 'codex',
     success: AgentModelCatalogSuccess
   ): AgentModelCatalogEntry | null {
+    const entry = this.writeSuccess(fingerprint, agent, success, ++this.nextListingOrder)
+    this.notifyListingWaiters(fingerprint)
+    return entry
+  }
+
+  private entryFromSuccess(
+    fingerprint: string,
+    agent: 'claude' | 'codex',
+    success: AgentModelCatalogSuccess
+  ): AgentModelCatalogEntry | null {
     if (success.models.length === 0) {
       // An empty list identifies no model; it is doubt, not a catalog.
       return null
     }
     const previous = this.entries.get(fingerprint)
-    const entry: AgentModelCatalogEntry = {
+    return {
       agent,
       fingerprint,
       models: withKnownDefaultEfforts(success.models, previous),
@@ -166,8 +180,24 @@ export class AgentModelCatalogStore {
       origin: success.origin,
       fetchedAt: this.now()
     }
+  }
+
+  private writeSuccess(
+    fingerprint: string,
+    agent: 'claude' | 'codex',
+    success: AgentModelCatalogSuccess,
+    order: number
+  ): AgentModelCatalogEntry | null {
+    const entry = this.entryFromSuccess(fingerprint, agent, success)
+    if (!entry) {
+      return null
+    }
+    const previous = this.entries.get(fingerprint)
     this.entries.delete(fingerprint)
     this.entries.set(fingerprint, entry)
+    if (this.refreshes.has(fingerprint)) {
+      this.latestWrittenOrder.set(fingerprint, order)
+    }
     this.failures.delete(fingerprint)
     this.evictOverCap()
     // Live sessions re-list every turn; an unchanged listing only refreshes the in-memory age.
@@ -199,12 +229,20 @@ export class AgentModelCatalogStore {
       listers.delete(lister)
       if (listers.size === 0 && this.refreshes.get(fingerprint) === listers) {
         this.refreshes.delete(fingerprint)
+        this.latestWrittenOrder.delete(fingerprint)
       }
+      this.notifyListingWaiters(fingerprint)
     }
+    const order = ++this.nextListingOrder
     const run = listModels().then(
       (success) => {
+        // An older session still receives its own result, but cannot replace a newer catalog.
+        const entry =
+          (this.latestWrittenOrder.get(fingerprint) ?? 0) > order && this.entries.has(fingerprint)
+            ? this.entryFromSuccess(fingerprint, agent, success)
+            : this.writeSuccess(fingerprint, agent, success, order)
         settle()
-        return this.recordSuccess(fingerprint, agent, success)
+        return entry
       },
       (error: unknown) => {
         settle()
@@ -217,25 +255,47 @@ export class AgentModelCatalogStore {
     return run
   }
 
-  /** For a reader with no Codex of its own: the first listing running for the account that
-   *  succeeds, or null once all of them fail. Null at once when none is running. */
+  /** A picker follows the current account work until a catalog lands, all work ends,
+   *  or its fixed deadline expires. */
   pendingListing(fingerprint: string): Promise<AgentModelCatalogEntry | null> | null {
-    const runs = [...(this.refreshes.get(fingerprint)?.values() ?? [])]
-    if (runs.length === 0) {
+    if (!this.refreshes.has(fingerprint)) {
       return null
     }
     return new Promise((resolve) => {
-      let unsettled = runs.length
-      for (const run of runs) {
-        void run.then((entry) => {
-          if (entry) {
-            resolve(entry)
-          } else if (--unsettled === 0) {
-            resolve(null)
-          }
-        })
+      const waiters = this.listingWaiters.get(fingerprint) ?? new Set<() => void>()
+      let settled = false
+      const finish = (entry: AgentModelCatalogEntry | null): void => {
+        if (settled) {
+          return
+        }
+        settled = true
+        clearTimeout(deadline)
+        waiters.delete(check)
+        if (waiters.size === 0) {
+          this.listingWaiters.delete(fingerprint)
+        }
+        resolve(entry)
       }
+      const check = (): void => {
+        const entry = this.get(fingerprint)
+        if (entry || !this.refreshes.has(fingerprint)) {
+          finish(entry)
+        }
+      }
+      const deadline = setTimeout(
+        () => finish(this.get(fingerprint)),
+        AGENT_MODEL_CATALOG_PICKER_WAIT_MS
+      )
+      waiters.add(check)
+      this.listingWaiters.set(fingerprint, waiters)
+      check()
     })
+  }
+
+  private notifyListingWaiters(fingerprint: string): void {
+    for (const check of this.listingWaiters.get(fingerprint) ?? []) {
+      check()
+    }
   }
 
   /** True when a read should kick a background refresh: nothing known or the

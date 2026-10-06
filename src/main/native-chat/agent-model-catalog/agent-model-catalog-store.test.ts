@@ -13,6 +13,8 @@ import { createAgentModelCatalogFilePersistence } from './agent-model-catalog-pe
 import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AGENT_MODEL_CATALOG_FRESH_MS,
+  AGENT_MODEL_CATALOG_MAX_ENTRIES,
+  AGENT_MODEL_CATALOG_PICKER_WAIT_MS,
   AgentModelCatalogStore,
   type AgentModelCatalogProbe,
   type AgentModelCatalogSessionAccess,
@@ -144,6 +146,27 @@ describe('agent model catalog store', () => {
     expect(await store.pendingListing('fp-2')).toBeNull()
   })
 
+  it('ends a picker wait at its deadline even while a listing remains active', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = new AgentModelCatalogStore()
+      let settle!: (success: AgentModelCatalogSuccess) => void
+      const listing = store.refresh(
+        'fp-1',
+        'codex',
+        liveLister(store),
+        () => new Promise<AgentModelCatalogSuccess>((resolve) => (settle = resolve))
+      )
+      const waited = store.pendingListing('fp-1')
+      await vi.advanceTimersByTimeAsync(AGENT_MODEL_CATALOG_PICKER_WAIT_MS)
+      expect(await waited).toBeNull()
+      settle(success('gpt-late'))
+      expect((await listing)!.models[0]!.id).toBe('gpt-late')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('holds back a probe until every lister settles, then lets the account refresh again', async () => {
     let at = 1_000
     const store = new AgentModelCatalogStore({ now: () => at })
@@ -163,6 +186,66 @@ describe('agent model catalog store', () => {
     at += AGENT_MODEL_CATALOG_FRESH_MS
     // A leftover in-flight record here would suppress every later refresh for the account.
     expect(store.shouldRefresh('fp-1')).toBe(true)
+  })
+
+  it('keeps the newer completed listing when an older chat finishes later', async () => {
+    const store = new AgentModelCatalogStore()
+    const save = vi.fn()
+    await store.attachPersistence({ load: async () => [], save, flush: async () => {} })
+    let settleOlder!: (success: AgentModelCatalogSuccess) => void
+    const older = store.refresh(
+      'fp-1',
+      'codex',
+      liveLister(store),
+      () => new Promise<AgentModelCatalogSuccess>((resolve) => (settleOlder = resolve))
+    )
+    const newer = await store.refresh('fp-1', 'codex', liveLister(store), async () =>
+      success('gpt-new')
+    )
+    settleOlder(success('gpt-old'))
+    const olderResult = await older
+
+    expect(newer!.models[0]!.id).toBe('gpt-new')
+    expect(olderResult!.models[0]!.id).toBe('gpt-old')
+    expect(store.get('fp-1')!.models[0]!.id).toBe('gpt-new')
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a direct live update ahead of a pending older probe', async () => {
+    const store = new AgentModelCatalogStore()
+    let settleProbe!: (success: AgentModelCatalogSuccess) => void
+    const probe: AgentModelCatalogProbe = () =>
+      new Promise<AgentModelCatalogSuccess>((resolve) => (settleProbe = resolve))
+    const pending = store.refresh('fp-1', 'codex', probe, () => probe('/homes/a'))
+    store.recordSuccess('fp-1', 'codex', success('gpt-live'))
+    settleProbe({ ...success('gpt-probe'), origin: 'probe' })
+    expect((await pending)!.models[0]!.id).toBe('gpt-probe')
+    expect(store.get('fp-1')!.models[0]!.id).toBe('gpt-live')
+  })
+
+  it('keeps an older successful listing when the newer entry was evicted', async () => {
+    const store = new AgentModelCatalogStore()
+    let settleOlder!: (success: AgentModelCatalogSuccess) => void
+    const older = store.refresh(
+      'fp-1',
+      'codex',
+      liveLister(store),
+      () => new Promise<AgentModelCatalogSuccess>((resolve) => (settleOlder = resolve))
+    )
+    await store.refresh('fp-1', 'codex', liveLister(store), async () => success('gpt-new'))
+    for (let index = 0; index < AGENT_MODEL_CATALOG_MAX_ENTRIES; index++) {
+      store.recordSuccess(`other-${index}`, 'codex', success('other'))
+    }
+    expect(store.get('fp-1')).toBeNull()
+    const save = vi.fn()
+    await store.attachPersistence({ load: async () => [], save, flush: async () => {} })
+
+    settleOlder(success('gpt-old'))
+    expect((await older)!.models[0]!.id).toBe('gpt-old')
+    expect(store.get('fp-1')!.models[0]!.id).toBe('gpt-old')
+    expect(save).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ fingerprint: 'fp-1' })])
+    )
   })
 
   it('records a failed refresh as a failure and resolves null without rejecting', async () => {
