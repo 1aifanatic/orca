@@ -1,65 +1,211 @@
-name: pnpm verification cache pilot
+name: Relay Node 26 without native preparation proof
+run-name: Relay Node 26 without native preparation proof
 
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
+  relay_node26:
+    runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      CI_SOURCE_SHA: '9a0a311fe9d5a5f9ebc5f2892806a043cfc1873f'
+      ORCA_BACKGROUND_LAUNCH: '1'
+      NO_COLOR: '1'
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout the exact CI candidate
+        id: checkout
+        uses: actions/checkout@v6
         with:
+          ref: ${{ env.CI_SOURCE_SHA }}
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
 
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-        with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
+      - name: Prepare evidence and absence assertions
+        id: evidence
+        shell: bash
         run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          set -euo pipefail
+          PROOF_DIR="$RUNNER_TEMP/orca-relay-node26-proof"
+          printf 'PROOF_DIR=%s\n' "$PROOF_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$PROOF_DIR"
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$checked_out_sha" = "$CI_SOURCE_SHA"
+          printf 'CHECKED_OUT_SHA=%s\n' "$checked_out_sha" >> "$GITHUB_ENV"
+          printf 'CHECKED_OUT_TREE=%s\n' "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+          cat > "$PROOF_DIR/assert-absence.mjs" <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const phase = process.argv[2];
+          const candidates = [
+            'node_modules/node-pty/build',
+            'native/windows-registry/build',
+            'node_modules/@vscode/windows-process-tree/build',
+            'node_modules/electron/dist',
+            'node_modules/electron/path.txt'
+          ];
+          const inventory = candidates.map(relativePath => {
+            try {
+              const value = fs.lstatSync(path.resolve(relativePath));
+              return { relativePath, present: true, directory: value.isDirectory() };
+            } catch (error) {
+              if (error.code !== 'ENOENT') throw error;
+              return { relativePath, present: false };
+            }
+          });
+          const result = {
+            phase, capturedAt: new Date().toISOString(),
+            node: process.version, execPath: process.execPath,
+            versions: process.versions, platform: process.platform, arch: process.arch,
+            sourceSha: process.env.CHECKED_OUT_SHA, tree: process.env.CHECKED_OUT_TREE,
+            runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            workflowSha: process.env.GITHUB_WORKFLOW_SHA,
+            workflowRef: process.env.GITHUB_WORKFLOW_REF,
+            electronCacheConfigured: Boolean(process.env.ELECTRON_CACHE),
+            inventory
+          };
+          fs.writeFileSync(path.join(process.env.PROOF_DIR, `absence-${phase}.json`), JSON.stringify(result, null, 2) + '\n');
+          if (inventory.some(item => item.present) || result.electronCacheConfigured) {
+            throw new Error('Native preparation or Electron binary/cache state is present');
+          }
+          if (process.versions.node.split('.')[0] !== '26') throw new Error('Node 26 is required');
+          JS
+
+      - name: Install Node 26 root dependencies without native preparation
+        id: install
+        uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: none
+          node-version: '26'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            cloud/pnpm-lock.yaml
+
+      - name: Assert prepared addons and Electron binary are absent
+        id: before
+        run: |
+          pnpm --version > "$PROOF_DIR/root-pnpm-version.txt"
+          node "$PROOF_DIR/assert-absence.mjs" before
+
+      - name: Install and build the exact relay dependency workspaces
+        id: cloud
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          date -u '+%Y-%m-%dT%H:%M:%SZ' > "$PROOF_DIR/cloud-start.txt"
+          set +e
+          (
+            set -e
+            npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
+            npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay^...' build
+          ) > "$PROOF_DIR/cloud-stdout.log" 2> "$PROOF_DIR/cloud-stderr.log"
+          command_status=$?
+          set -e
+          printf '%s\n' "$command_status" > "$PROOF_DIR/cloud-exit-code.txt"
+          date -u '+%Y-%m-%dT%H:%M:%SZ' > "$PROOF_DIR/cloud-end.txt"
+          cat "$PROOF_DIR/cloud-stdout.log"
+          cat "$PROOF_DIR/cloud-stderr.log" >&2
+          exit "$command_status"
+
+      - name: Run both unchanged relay integration test files
+        id: tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          date -u '+%Y-%m-%dT%H:%M:%SZ' > "$PROOF_DIR/tests-start.txt"
+          set +e
+          pnpm exec vitest run --config config/vitest.config.ts \
+            tests/e2e/relay-region-compatibility.unit.test.ts \
+            tests/e2e/relay-region-correction.unit.test.ts \
+            --reporter=default --reporter=json --outputFile.json="$PROOF_DIR/vitest.json" \
+            > "$PROOF_DIR/tests-stdout.log" 2> "$PROOF_DIR/tests-stderr.log"
+          command_status=$?
+          set -e
+          printf '%s\n' "$command_status" > "$PROOF_DIR/tests-exit-code.txt"
+          date -u '+%Y-%m-%dT%H:%M:%SZ' > "$PROOF_DIR/tests-end.txt"
+          cat "$PROOF_DIR/tests-stdout.log"
+          cat "$PROOF_DIR/tests-stderr.log" >&2
+          exit "$command_status"
+
+      - name: Preserve and check all 16 raw case outcomes
+        id: ledger
+        if: always()
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const directory = process.env.PROOF_DIR;
+          const raw = JSON.parse(fs.readFileSync(path.join(directory, 'vitest.json'), 'utf8'));
+          const expectedModules = new Map([
+            ['tests/e2e/relay-region-compatibility.unit.test.ts', 13],
+            ['tests/e2e/relay-region-correction.unit.test.ts', 3]
+          ]);
+          const moduleCounts = raw.testResults.map(module => ({
+            name: module.name, count: module.assertionResults.length
+          }));
+          const cases = raw.testResults.flatMap(module => module.assertionResults.map(result => ({
+            module: module.name, fullName: result.fullName,
+            ancestorTitles: result.ancestorTitles, title: result.title,
+            status: result.status, duration: result.duration,
+            failureMessages: result.failureMessages
+          })));
+          fs.writeFileSync(path.join(directory, 'case-ledger.json'), JSON.stringify({
+            success: raw.success, numTotalTests: raw.numTotalTests,
+            numPassedTests: raw.numPassedTests, numFailedTests: raw.numFailedTests,
+            numPendingTests: raw.numPendingTests, moduleCounts, cases
+          }, null, 2) + '\n');
+          const exactModules = moduleCounts.length === 2 && [...expectedModules].every(([name, count]) =>
+            moduleCounts.some(module => module.name.endsWith('/' + name) && module.count === count)
+          );
+          if (raw.success !== true || raw.numTotalTests !== 16 || cases.length !== 16 ||
+              !exactModules ||
+              cases.some(result => result.status !== 'passed') ||
+              fs.readFileSync(path.join(directory, 'tests-exit-code.txt'), 'utf8').trim() !== '0') {
+            throw new Error('Exact 16-case PASS evidence is required; raw outcomes were preserved');
+          }
+          JS
+
+      - name: Assert native and Electron absence after the real tests
+        id: after
+        if: always() && steps.install.outcome == 'success'
+        run: node "$PROOF_DIR/assert-absence.mjs" after
+
+      - name: Capture resolved runtime and actual step outcomes
+        id: receipt
+        if: always()
+        env:
+          PROOF_DIR: ${{ runner.temp }}/orca-relay-node26-proof
+          ACTUAL_STEPS: ${{ toJSON(steps) }}
+          ACTUAL_JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const directory = process.env.PROOF_DIR;
+          fs.mkdirSync(directory, { recursive: true });
+          const receipt = {
+            sourceSha: process.env.CHECKED_OUT_SHA, tree: process.env.CHECKED_OUT_TREE,
+            expectedSourceSha: process.env.CI_SOURCE_SHA,
+            workflowSha: process.env.GITHUB_WORKFLOW_SHA, workflowRef: process.env.GITHUB_WORKFLOW_REF,
+            runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            runnerName: process.env.RUNNER_NAME, runnerOs: process.env.RUNNER_OS,
+            runnerArch: process.env.RUNNER_ARCH, node: process.version,
+            versions: process.versions, jobStatusAtCapture: process.env.ACTUAL_JOB_STATUS,
+            capturedAt: new Date().toISOString(), steps: JSON.parse(process.env.ACTUAL_STEPS)
+          };
+          fs.writeFileSync(path.join(directory, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n');
+          JS
+
+      - name: Upload raw proof even after failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relay-node26-no-native-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/orca-relay-node26-proof/
+          retention-days: 14
+          if-no-files-found: error
