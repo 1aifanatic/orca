@@ -38,6 +38,8 @@ import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-labe
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
+import { useComposerErrorLine } from './use-composer-error-line'
+import type { NativeChatOptionPickerRequest } from './native-chat-composer-types'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 
 export function NativeChatStructuredSession(
@@ -77,11 +79,9 @@ export function NativeChatStructuredSession(
     // phases, that empty list must not become the draft's turn baseline.
     transcriptLoading: controller.status === 'idle' || controller.status === 'loading'
   })
-  const [composerError, setComposerError] = useState<string | null>(null)
-  const [optionPickerRequest, setOptionPickerRequest] = useState<{
-    id: string
-    sequence: number
-  } | null>(null)
+  const [composerError, setComposerError] = useComposerErrorLine(controller.commandRefusalCauses)
+  const [optionPickerRequest, setOptionPickerRequest] =
+    useState<NativeChatOptionPickerRequest | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const paneCommands = useStructuredNativeChatPaneCommands({
     tabId: props.tabId,
@@ -243,7 +243,8 @@ export function NativeChatStructuredSession(
     props.agent,
     props.sessionId,
     props.target,
-    sendThroughRelaunch
+    sendThroughRelaunch,
+    setComposerError
   ])
 
   return (

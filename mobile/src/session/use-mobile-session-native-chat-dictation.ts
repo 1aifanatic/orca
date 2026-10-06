@@ -17,6 +17,7 @@ import { useMobileNativeChatSendError } from './use-mobile-native-chat-send-erro
 import { mobileNativeChatScopeKey } from './mobile-native-chat-scope-key'
 import { useMobileSendCompletionGeneration } from './use-mobile-send-completion-generation'
 import type { MobileSessionFeedbackCapabilitiesModel } from './use-mobile-session-feedback-capabilities'
+import { mobileReplacedSessionToFollow } from './use-mobile-native-chat-draft-follow'
 
 export function useMobileSessionNativeChatDictation(
   scope: MobileSessionFeedbackCapabilitiesModel,
@@ -69,7 +70,7 @@ export function useMobileSessionNativeChatDictation(
     worktreeId,
     activeSessionTab,
     activeSessionTabId,
-    sessionTabs,
+    replacedSessionToFollow: mobileReplacedSessionToFollow(activeSessionTab, sessionTabs),
     activeHandleRef,
     deviceTokenRef,
     nativeChatTranscriptIsLocalReadable,
@@ -81,6 +82,7 @@ export function useMobileSessionNativeChatDictation(
   })
   const { toggleTabChatView, showNativeChat, showNativeChatRef } = nativeChatController
   nativeChatSendError.bannerMountedRef.current = showNativeChat
+  nativeChatSendError.keepWhile(nativeChatController.nativeChatCommandRefusalCauses)
   const nativeChatOverlayInputLockReason =
     activeSessionTab?.type === 'agent-session'
       ? connState === 'connected'

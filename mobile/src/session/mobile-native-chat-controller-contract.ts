@@ -12,6 +12,7 @@ import type {
 } from '../../../src/shared/native-chat-turn-status'
 import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn-membership'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
+import type { MobileNativeChatCommandRefusalCauses } from './use-mobile-native-chat-send-error'
 import type { MobileStructuredQueuedMessageControls } from './use-mobile-structured-queued-message-controls'
 import type { MobileNativeChatPendingMessage } from './use-mobile-native-chat-drafts'
 import type { useMobileNativeChatSession } from './use-mobile-native-chat-session'
@@ -41,6 +42,8 @@ export type MobileNativeChatController = {
   nativeChatSettledTurns: NativeChatSettledTurns | null
   /** Structured lane: the journal that places each transcript row in its turn. */
   nativeChatTurnJournal: NativeChatTurnJournal | null
+  /** What a refused command's line stands on. */
+  nativeChatCommandRefusalCauses: MobileNativeChatCommandRefusalCauses
   nativeChatCanStop: boolean
   nativeChatStreamingText?: string
   /** Agent mid-turn, regardless of whether chat is the visible view. */

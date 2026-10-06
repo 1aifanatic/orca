@@ -7,8 +7,16 @@ import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-na
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import {
   sendStructuredConversationCommand,
-  structuredConversationCommandHold
+  structuredConversationCommandHold,
+  type StructuredConversationCommandCauses
 } from './structured-conversation-command-send'
+
+const NO_CAUSES: StructuredConversationCommandCauses = {
+  working: false,
+  prompt: false,
+  background: false,
+  outbox: false
+}
 
 const START_FAILED: AgentSessionFailureFact = { kind: 'startFailed' }
 const COMPACTION_FAILED: AgentSessionFailureFact = {
@@ -63,6 +71,7 @@ async function sent(
     agentName: structuredAgentLabel(provider),
     pending: { current: false },
     hold: null,
+    causes: NO_CAUSES,
     startFailures: () => [],
     send: async () => ({ kind: 'done', value: result })
   })
@@ -158,6 +167,7 @@ describe('the line under the composer after a conversation command failed', () =
         agentName: 'Claude',
         pending: { current: false },
         hold: null,
+        causes: NO_CAUSES,
         startFailures: () => [START_FAILED],
         send: async () => ({ kind: 'done', value: result })
       })
@@ -253,29 +263,31 @@ describe('a /compact the host holds in line', () => {
   })
 })
 
-describe('a command held here', () => {
-  function held(
-    command: 'clear' | 'compact',
-    hold: Parameters<typeof sendStructuredConversationCommand>[0]['hold'],
-    pending = { current: false }
-  ) {
-    const send = vi.fn(async () => ({
-      kind: 'done' as const,
-      value: { command, state: 'completed' as const }
-    }))
-    return {
-      send,
-      result: sendStructuredConversationCommand({
-        command,
-        agentName: structuredAgentLabel('claude'),
-        pending,
-        hold,
-        startFailures: () => [],
-        send
-      })
-    }
+function held(
+  command: 'clear' | 'compact',
+  hold: Parameters<typeof sendStructuredConversationCommand>[0]['hold'],
+  pending = { current: false },
+  causes = NO_CAUSES
+) {
+  const send = vi.fn(async () => ({
+    kind: 'done' as const,
+    value: { command, state: 'completed' as const }
+  }))
+  return {
+    send,
+    result: sendStructuredConversationCommand({
+      command,
+      agentName: structuredAgentLabel('claude'),
+      pending,
+      hold,
+      causes,
+      startFailures: () => [],
+      send
+    })
   }
+}
 
+describe('a command held here', () => {
   it('behind a message still on its way: not taken, no line, nothing left to go out later', async () => {
     const { send, result } = held('compact', 'ahead')
     expect(await result).toEqual({ accepted: false, error: null })
@@ -325,5 +337,81 @@ describe('a command held here', () => {
       accepted: false,
       error: "Answer the agent's question or approval, then run /compact."
     })
+  })
+})
+
+describe('a refusal names what it waits on only while the chat shows it', () => {
+  const shown = (cause: keyof StructuredConversationCommandCauses) => ({
+    ...NO_CAUSES,
+    [cause]: true
+  })
+  const refusedBy = (
+    reason: 'turnActive' | 'messagesUnsettled' | 'promptPending' | 'backgroundTasksRunning'
+  ): AgentSessionConversationCommandResult =>
+    hostResult('clear', {
+      kind: 'commandRefused',
+      refusal: { code: 'agent_session_operation_invalid', details: { reason } }
+    })
+  const hostAnswers = (
+    result: AgentSessionConversationCommandResult,
+    causes: StructuredConversationCommandCauses
+  ) =>
+    sendStructuredConversationCommand({
+      command: result.command,
+      agentName: structuredAgentLabel('claude'),
+      pending: { current: false },
+      hold: null,
+      causes,
+      startFailures: () => [],
+      send: async () => ({ kind: 'done', value: result })
+    })
+
+  it('held here: the agent working, a prompt, background tasks, or a message not yet gone', async () => {
+    const pending = { current: false }
+    expect((await held('clear', 'working', pending, shown('working')).result).refusedWhile).toBe(
+      'working'
+    )
+    expect((await held('clear', 'prompt', pending, shown('prompt')).result).refusedWhile).toBe(
+      'prompt'
+    )
+    expect(
+      (await held('compact', 'background', pending, shown('background')).result).refusedWhile
+    ).toBe('background')
+    for (const hold of ['retry', 'sending'] as const) {
+      expect((await held('clear', hold, pending, shown('outbox')).result).refusedWhile).toBe(
+        'outbox'
+      )
+    }
+  })
+
+  it('names none the chat does not show, so the line cannot go before it is read', async () => {
+    // A rewind on its way holds the command in background words, with no strip to watch.
+    const rewinding = await held('compact', 'background').result
+    expect(rewinding.error).toBeTruthy()
+    expect(rewinding).not.toHaveProperty('refusedWhile')
+    // A command on its way is not something the chat shows ending.
+    const second = await held('clear', null, { current: true }, shown('working')).result
+    expect(second).not.toHaveProperty('refusedWhile')
+  })
+
+  it('from the host: the reason its words name, when the chat shows it', async () => {
+    for (const reason of ['turnActive', 'messagesUnsettled'] as const) {
+      expect((await hostAnswers(refusedBy(reason), shown('working'))).refusedWhile).toBe('working')
+    }
+    expect((await hostAnswers(refusedBy('promptPending'), shown('prompt'))).refusedWhile).toBe(
+      'prompt'
+    )
+    const background = await hostAnswers(refusedBy('backgroundTasksRunning'), shown('background'))
+    expect(background).toEqual({
+      accepted: false,
+      error:
+        'Background tasks are still running. Wait for the background tasks to finish. Run /clear again.',
+      refusedWhile: 'background'
+    })
+    // Ahead of the chat, or a reason that names nothing it shows: said as any failure.
+    expect(await hostAnswers(refusedBy('turnActive'), NO_CAUSES)).not.toHaveProperty('refusedWhile')
+    expect(
+      await hostAnswers(hostResult('compact', COMPACTION_FAILED), shown('working'))
+    ).not.toHaveProperty('refusedWhile')
   })
 })

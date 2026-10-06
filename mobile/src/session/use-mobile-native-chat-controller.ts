@@ -5,7 +5,6 @@ import type { MobileNativeChatTab } from './mobile-native-chat-eligibility'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileNativeChatAskDismiss } from './use-mobile-native-chat-ask-dismiss'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
-import { mobileReplacedSessionToFollow } from './use-mobile-native-chat-draft-follow'
 import { useMobileNativeChatFileSearch } from './use-mobile-native-chat-file-search'
 import { useMobileNativeChatMessageSend } from './use-mobile-native-chat-message-send'
 import { mobileNativeChatStreamPreview } from './mobile-native-chat-streaming-gate'
@@ -16,6 +15,7 @@ import { useMobileNativeChatPrompts } from './use-mobile-native-chat-prompts'
 import { useNativeChatAcceptedAction } from './use-native-chat-action-outcomes'
 import { useThrottledLatestValue } from './use-throttled-latest-value'
 import type { MobileNativeChatController } from './mobile-native-chat-controller-contract'
+import type { MobileNativeChatSendErrorReporter } from './use-mobile-native-chat-send-error'
 import { useMobileBridgeChatPromptWrites } from './use-mobile-bridge-chat-prompt-writes'
 import { useMobileNativeChatActiveResolution } from './use-mobile-native-chat-active-resolution'
 
@@ -31,8 +31,8 @@ export function useMobileNativeChatController(args: {
   worktreeId: string
   activeSessionTab: MobileNativeChatTab | null
   activeSessionTabId: string | null
-  /** Every tab shown: a /clear's new tab takes the old chat's drafts only while none shows it. */
-  sessionTabs?: readonly { type: string; sessionId?: string | null }[]
+  /** The chat whose drafts the active tab takes (`mobileReplacedSessionToFollow`). */
+  replacedSessionToFollow?: string | null
   activeHandleRef: MutableRefObject<string | null>
   deviceTokenRef: MutableRefObject<string | null>
   nativeChatTranscriptIsLocalReadable: boolean
@@ -41,7 +41,7 @@ export function useMobileNativeChatController(args: {
   connState: ConnectionState
   /** Host capability fact from the shared runtime status probe. */
   agentSessionHostSupport?: StructuredAgentSessionHostSupport | null
-  onSendError: (message: string) => void
+  onSendError: MobileNativeChatSendErrorReporter
   /** Retires a held failure banner. Any accepted chat write clears it — a delivered
    *  answer or permission reply must not sit under a stale "not sent". */
   onSendResolved: () => void
@@ -125,7 +125,7 @@ export function useMobileNativeChatController(args: {
     worktreeId,
     tabId: activeSessionTabId,
     sessionId: activeChatSessionId,
-    replacesSessionId: mobileReplacedSessionToFollow(activeSessionTab, args.sessionTabs),
+    replacesSessionId: args.replacedSessionToFollow ?? null,
     messages: nativeChatSession.messages,
     launchDraft: activeSessionTab?.launchDraft ?? null,
     launchDraftCreatedAt: activeSessionTab?.launchDraftCreatedAt ?? null,
@@ -202,10 +202,7 @@ export function useMobileNativeChatController(args: {
     onSendError
   })
 
-  const { nativeChatFilePaths, loadNativeChatFiles } = useMobileNativeChatFileSearch({
-    client,
-    worktreeId
-  })
+  const fileSearch = useMobileNativeChatFileSearch({ client, worktreeId })
 
   // Why: the send seam reports outgoing catalog commands to session-option
   // tracking, but the options hook needs the seam's dispatcher — a ref breaks
@@ -302,6 +299,8 @@ export function useMobileNativeChatController(args: {
     nativeChatWorkingStartedAt: activeChatStructured ? structuredNativeChat.workingStartedAt : null,
     nativeChatSettledTurns: activeChatStructured ? structuredNativeChat.settledTurns : null,
     nativeChatTurnJournal: activeChatStructured ? structuredNativeChat.turnJournal : null,
+    // Only the structured lane names a refusal's cause; the bridge lane's starved ones drop none.
+    nativeChatCommandRefusalCauses: structuredNativeChat.commandRefusalCauses,
     nativeChatCanStop: activeChatStructured
       ? structuredNativeChat.turnId !== null
       : nativeChatAgentWorking,
@@ -324,8 +323,8 @@ export function useMobileNativeChatController(args: {
     handleNativeChatStop: activeChatStructured ? structuredNativeChat.cancel : handleNativeChatStop,
     // The inactive lane's session is starved of identity, so its cards stay empty.
     nativeChatQueued: structuredNativeChat.queued,
-    nativeChatFilePaths,
-    loadNativeChatFiles,
+    nativeChatFilePaths: fileSearch.nativeChatFilePaths,
+    loadNativeChatFiles: fileSearch.loadNativeChatFiles,
     handleNativeChatQuestionAnswer: activeChatStructured
       ? structuredNativeChat.respondQuestion
       : legacyHandleNativeChatQuestionAnswer,

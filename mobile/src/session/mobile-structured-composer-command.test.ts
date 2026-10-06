@@ -151,19 +151,55 @@ describe('mobile structured conversation commands', () => {
     input.busy = () => 'working'
     expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('rejected')
     expect(input.onError).toHaveBeenLastCalledWith(
-      "The agent is still working. Run /clear when it's done."
+      "The agent is still working. Run /clear when it's done.",
+      'working'
     )
     input.busy = () => 'prompt'
     expect(await dispatchMobileStructuredCommand({ ...input, text: '/clear' })).toBe('rejected')
     expect(input.onError).toHaveBeenLastCalledWith(
-      "Answer the agent's question or approval, then run /clear."
+      "Answer the agent's question or approval, then run /clear.",
+      'prompt'
     )
     input.busy = () => 'working'
     expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
     expect(input.onError).toHaveBeenLastCalledWith(
-      "The agent is still working. Run /compact when it's done."
+      "The agent is still working. Run /compact when it's done.",
+      'working'
     )
     expect(sendRequest).not.toHaveBeenCalled()
+  })
+  it("a host's refusal names its cause only when the phone showed it at the press", async () => {
+    const { input, sendRequest } = setup()
+    const refused = {
+      ok: true,
+      result: {
+        ok: true,
+        value: {
+          command: 'compact',
+          state: 'completed',
+          error: "The agent is still working. Run /compact when it's done.",
+          failure: {
+            kind: 'commandRefused',
+            refusal: { code: 'agent_session_operation_invalid', details: { reason: 'turnActive' } }
+          }
+        }
+      }
+    }
+    sendRequest.mockResolvedValue(refused)
+    input.waitsInLine = () => true
+    input.busy = () => 'working'
+    expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
+    expect(input.onError).toHaveBeenLastCalledWith(
+      "The agent is still working. Run /compact when it's done.",
+      'working'
+    )
+    // Ahead of the phone: said as any failure, so it can't go before it is read.
+    input.busy = () => null
+    expect(await dispatchMobileStructuredCommand(input)).toBe('rejected')
+    expect(input.onError).toHaveBeenLastCalledWith(
+      "The agent is still working. Run /compact when it's done.",
+      undefined
+    )
   })
   it('keeps ordinary messages on the existing send path', async () => {
     const { input, sendRequest } = setup()

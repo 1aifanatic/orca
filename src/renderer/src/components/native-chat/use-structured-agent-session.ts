@@ -175,7 +175,7 @@ export function useStructuredAgentSession(args: {
     blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
     write
   })
-  const runConversationCommand = structuredConversationCommandRunner({
+  const conversationCommand = structuredConversationCommandRunner({
     agentName: structuredAgentLabel(agent),
     pending: commandPending,
     commandsWait,
@@ -233,7 +233,8 @@ export function useStructuredAgentSession(args: {
     epoch: state.epoch,
     rewind,
     conversationCommands,
-    runConversationCommand,
+    runConversationCommand: conversationCommand.run,
+    commandRefusalCauses: conversationCommand.causes,
     journalItems: transcriptItems,
     subagentRoster: transportState.subagentRoster,
     messages,
