@@ -4,7 +4,7 @@ import type { CommitMessagePlan } from '../../shared/commit-message-plan'
 import { getAgentModelProbeSpec } from '../../shared/agent-model-probe-spec'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { resolveCodexHomeProcessLockKeyForSpawnEnv } from '../codex-cli/codex-home-process-lock'
-import { supervisedProviderSpawnFailure } from '../codex/provider-spawn-failure-report'
+import { supervisedProviderSpawnFailure } from '../provider-process/provider-spawn-failure-report'
 import { isSshRequestOutcomeUnverifiable } from '../ssh/ssh-channel-multiplexer'
 import { WINDOWS_BATCH_UNSAFE_ARGUMENTS_ERROR } from '../win32-utils'
 import {

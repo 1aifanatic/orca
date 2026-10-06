@@ -1,12 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
-import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
+import { terminateProviderProcessTree } from '../provider-process/provider-process-teardown'
 import { stopCodexBackfillRecoveryProcess } from './codex-state-db-backfill-recovery-process'
 
-vi.mock('./codex-app-server-process-teardown', () => ({
-  terminateCodexAppServerProcessTree: vi.fn(async () => true)
+vi.mock('../provider-process/provider-process-teardown', () => ({
+  terminateProviderProcessTree: vi.fn(async () => true)
 }))
 
 type FakeSupervisor = EventEmitter & {
@@ -54,7 +54,7 @@ describe('stopCodexBackfillRecoveryProcess for a supervised app-server', () => {
     expect(child.stdin.end).toHaveBeenCalledOnce()
     // A direct SIGTERM would skip the stdin-end grace a Codex close gets.
     expect(child.kill).not.toHaveBeenCalled()
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
   })
 
   it('tears the tree down only once the supervisor has had its full stop time', async () => {
@@ -63,11 +63,11 @@ describe('stopCodexBackfillRecoveryProcess for a supervised app-server', () => {
 
     const stopped = stopCodexBackfillRecoveryProcess(asHandle(child), true)
     await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS - 1)
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     await stopped
 
-    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
+    expect(terminateProviderProcessTree).toHaveBeenCalledWith(child, {
       site: 'codex-state-db-backfill-recovery'
     })
     // The stop signals nothing itself: the stdin end asks, and only the teardown forces.

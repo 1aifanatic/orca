@@ -4,12 +4,15 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SpawnOptions as SdkSpawnOptions } from '@anthropic-ai/claude-agent-sdk'
 import { resolveSpawn, type spawnProcess } from '../../shared/child-process/run-process'
 import type { ProcessSpec } from '../../shared/child-process/process-spec'
-import type * as ProviderSupervisor from '../codex/codex-app-server-posix-supervisor'
-import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
+import type * as ProviderSupervisor from '../provider-process/provider-process-supervisor'
+import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
 import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
-import { proveClaudeChildExitWithReaper } from './claude-child-exit-proof-ladder'
+import {
+  CLAUDE_CODE_CLOSE_REQUEST,
+  proveClaudeChildExitWithReaper
+} from './claude-child-exit-proof-ladder'
 
-vi.mock('../codex/codex-app-server-posix-supervisor', async (importOriginal) => {
+vi.mock('../provider-process/provider-process-supervisor', async (importOriginal) => {
   const actual = await importOriginal<typeof ProviderSupervisor>()
   return { ...actual, createProviderSpawnSpec: vi.fn(actual.createProviderSpawnSpec) }
 })
@@ -98,8 +101,16 @@ describe('claude agent SDK process spawn', () => {
       const supervisorSpec = JSON.parse(
         Buffer.from(String(spec.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
       )
+      // Passed explicitly from the constant the exit-proof ladder closes with, never left to the
+      // spec default, so the two cannot drift.
+      expect(vi.mocked(createProviderSpawnSpec)).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        platform,
+        { closeRequest: CLAUDE_CODE_CLOSE_REQUEST }
+      )
       expect(supervisorSpec).toMatchObject({
-        closeRequest: 'stdin-end-and-sigterm',
+        closeRequest: CLAUDE_CODE_CLOSE_REQUEST,
         cwd: '/work/repo',
         ownerPid: globalThis.process.pid
       })
@@ -115,7 +126,7 @@ describe('claude agent SDK process spawn', () => {
     'stops Claude by the spawn spec\u2019s supervision on $platform, never the platform',
     async ({ platform, specSupervised }) => {
       const actual = await vi.importActual<typeof ProviderSupervisor>(
-        '../codex/codex-app-server-posix-supervisor'
+        '../provider-process/provider-process-supervisor'
       )
       vi.mocked(createProviderSpawnSpec).mockImplementationOnce((...args) => ({
         ...actual.createProviderSpawnSpec(...args),

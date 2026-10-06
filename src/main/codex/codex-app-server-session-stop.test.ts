@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from './codex-app-server-posix-supervisor'
-import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
+import { terminateProviderProcessTree } from '../provider-process/provider-process-teardown'
 import type * as ProcessTreeKill from './codex-app-server-process-tree-kill'
 import {
   killCodexAppServerProcessTree,
@@ -10,8 +10,8 @@ import {
 } from './codex-app-server-process-tree-kill'
 import { CodexAppServerTimeoutError, runCodexAppServerSession } from './codex-app-server-session'
 
-vi.mock('./codex-app-server-process-teardown', () => ({
-  terminateCodexAppServerProcessTree: vi.fn(async () => true)
+vi.mock('../provider-process/provider-process-teardown', () => ({
+  terminateProviderProcessTree: vi.fn(async () => true)
 }))
 vi.mock('./codex-app-server-process-tree-kill', async (importOriginal) => ({
   ...(await importOriginal<typeof ProcessTreeKill>()),
@@ -84,7 +84,7 @@ describe('runCodexAppServerSession stop', () => {
     expect(child.kill.mock.calls).toEqual([['SIGTERM']])
     expect(stdinEnded).toBe(true)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
     expect(killCodexAppServerProcessTree).not.toHaveBeenCalled()
   })
 
@@ -94,10 +94,10 @@ describe('runCodexAppServerSession stop', () => {
 
     const outcome = startWedgedSession(child, 'linux')
     await vi.advanceTimersByTimeAsync(1_000 + PROVIDER_SUPERVISOR_MAX_STOP_MS - 1)
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
+    expect(terminateProviderProcessTree).toHaveBeenCalledWith(child, {
       site: 'codex-app-server-session'
     })
     await vi.advanceTimersByTimeAsync(1_000)
@@ -122,6 +122,6 @@ describe('runCodexAppServerSession stop', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
     expect(child.kill).not.toHaveBeenCalled()
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
   })
 })

@@ -5,7 +5,7 @@
 import { providerDiagnostic, withProviderDiagnostic } from '../../shared/agent-session-failure'
 import { stderrIndicatesMissingAppServer } from './codex-app-server-capability-signal'
 import { CodexAppServerUnsupportedError } from './codex-app-server-session'
-import { providerStderrForDisplay } from './provider-spawn-failure-report'
+import { providerStderrForDisplay } from '../provider-process/provider-spawn-failure-report'
 
 const EXIT_DETAIL_MAX_CHARS = 400
 

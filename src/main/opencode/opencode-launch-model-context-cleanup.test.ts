@@ -9,16 +9,16 @@ import {
 } from '../../shared/child-process/process-tree-termination'
 import { probeOpenCodeLaunchModelContext } from './opencode-launch-model-context'
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
-import { terminateCodexAppServerProcessTree } from '../codex/codex-app-server-process-teardown'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
+import { terminateProviderProcessTree } from '../provider-process/provider-process-teardown'
 
 vi.mock('../../shared/child-process/run-process', () => ({ spawnProcess: vi.fn() }))
 vi.mock('../../shared/child-process/process-tree-termination', () => ({
   signalProcessTree: vi.fn(),
   forceTerminateProcessTree: vi.fn()
 }))
-vi.mock('../codex/codex-app-server-process-teardown', () => ({
-  terminateCodexAppServerProcessTree: vi.fn()
+vi.mock('../provider-process/provider-process-teardown', () => ({
+  terminateProviderProcessTree: vi.fn()
 }))
 
 vi.mock('../../shared/fetch-response-body', () => ({ readFetchResponseJsonWithinLimit: vi.fn() }))
@@ -169,14 +169,14 @@ describe('OpenCode model probe termination evidence', () => {
     // Signalling the supervisor's own group, or SIGKILLing it, would orphan the server's group.
     expect(signalProcessTree).not.toHaveBeenCalled()
     expect(forceTerminateProcessTree).not.toHaveBeenCalled()
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
   })
 
   it('forces a POSIX supervisor tree only after its full stop time, and trusts no forced stop', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     child.kill.mockReturnValue(true)
     // The teardown reports true even when it found no descendants to prove gone.
-    vi.mocked(terminateCodexAppServerProcessTree).mockImplementation(async () => {
+    vi.mocked(terminateProviderProcessTree).mockImplementation(async () => {
       supervisorExits(null, 'SIGKILL')
       return true
     })
@@ -184,11 +184,11 @@ describe('OpenCode model probe termination evidence', () => {
     const probe = probeOpenCodeLaunchModelContext(options)
     await untilStopRequested()
     await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS - 1)
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
 
     expect(await probe).toBeNull()
-    expect(terminateCodexAppServerProcessTree).toHaveBeenCalledWith(child, {
+    expect(terminateProviderProcessTree).toHaveBeenCalledWith(child, {
       site: 'opencode-launch-model-preflight'
     })
   })
@@ -200,7 +200,7 @@ describe('OpenCode model probe termination evidence', () => {
     })
 
     expect(await probeOpenCodeLaunchModelContext(options)).toBeNull()
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
   })
 
   it('accepts a POSIX supervisor that relayed the server exiting on its own', async () => {
@@ -225,7 +225,7 @@ describe('OpenCode model probe termination evidence', () => {
     await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS)
 
     expect(await probe).toBeNull()
-    expect(terminateCodexAppServerProcessTree).not.toHaveBeenCalled()
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
   })
 
   it('keeps a Windows root exit with inherited pipes unverified and avoids its former pid', async () => {

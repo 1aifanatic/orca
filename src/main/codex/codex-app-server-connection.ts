@@ -1,22 +1,23 @@
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { RetryableProcessExitProof } from '../../shared/child-process/retryable-process-exit-proof'
-import { CODEX_APP_SERVER_CLOSE_REQUEST } from './codex-app-server-close-request'
+import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import {
   createProviderSpawnSpec,
   requestProviderClose,
   stopSupervisedProvider
-} from './codex-app-server-posix-supervisor'
+} from '../provider-process/provider-process-supervisor'
+import { CODEX_APP_SERVER_CLOSE_REQUEST } from './codex-app-server-close-request'
 import { buildCodexAppServerExitError } from './codex-app-server-exit-error'
 import { initializeCodexAppServerConnection } from './codex-app-server-handshake'
 import { CodexAppServerHandshakeExitUnprovenError } from './codex-app-server-handshake-exit-proof'
-import { terminateCodexAppServerProcessTree } from './codex-app-server-process-teardown'
-import { waitForProcessExitUntil } from './codex-process-exit-deadline'
+import { terminateProviderProcessTree } from '../provider-process/provider-process-teardown'
+import { waitForProcessExitUntil } from '../provider-process/provider-process-exit-deadline'
 import {
   CodexAppServerTimeoutError,
   CodexAppServerUnsupportedError
 } from './codex-app-server-session'
 import { createCodexAppServerRecordDispatcher } from './codex-app-server-record-dispatch'
-import { createCodexAppServerRecordReader } from './codex-app-server-record-reader'
+import { createProviderRecordReader } from '../provider-process/provider-record-reader'
 import type {
   CodexAppServerConnection,
   CodexAppServerConnectionHandlers
@@ -36,16 +37,7 @@ export { CodexAppServerFrameSizeError } from './codex-app-server-frame-size-erro
 // Structured chat needs a persistent bidirectional child and per-request deadlines;
 // the request-scoped app-server runner cannot carry approvals or streamed turns.
 
-export type CodexAppServerLaunch = {
-  command: string
-  args: string[]
-  /** Workspace directory used by the provider process itself. */
-  cwd?: string
-  /** Overlay on the inherited environment — the pinned CODEX_HOME lives here. */
-  env?: Record<string, string>
-  /** Keys stripped after the overlay, matching `CodexAppServerInvocation`. */
-  envToDelete?: readonly string[]
-}
+export type CodexAppServerLaunch = ProviderProcessLaunch
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 export const GRACEFUL_EXIT_MS = 1_500
@@ -62,11 +54,7 @@ export async function openCodexAppServerConnection(
   handlers: CodexAppServerConnectionHandlers = {},
   spawnImpl: typeof spawnProcess = spawnProcess
 ): Promise<CodexAppServerConnection> {
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...launch.env }
-  for (const key of launch.envToDelete ?? []) {
-    delete childEnv[key]
-  }
-  const spawnSpec = createProviderSpawnSpec(launch, childEnv, process.platform, {
+  const spawnSpec = createProviderSpawnSpec(launch, process.env, process.platform, {
     closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST
   })
   const child = spawnImpl(spawnSpec)
@@ -74,7 +62,7 @@ export async function openCodexAppServerConnection(
   function terminateProcessTree(): Promise<boolean> {
     // The supervisor and provider own separate POSIX groups so the supervisor can prove the
     // provider group empty before relaying its exit. Forced wrapper teardown uses descendant proof.
-    return terminateCodexAppServerProcessTree(child)
+    return terminateProviderProcessTree(child, { site: 'codex-app-server-teardown' })
   }
 
   let stderrTail = ''
@@ -161,7 +149,7 @@ export async function openCodexAppServerConnection(
     void terminateProcessTree()
   })
 
-  const recordReader = createCodexAppServerRecordReader({
+  const recordReader = createProviderRecordReader({
     stdout: child.stdout,
     onRecord: (parsed, line) => {
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

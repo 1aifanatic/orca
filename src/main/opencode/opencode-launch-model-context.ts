@@ -11,8 +11,8 @@ import { createOutputSink } from '../../shared/child-process/bounded-output-sink
 import { readFetchResponseJsonWithinLimit } from '../../shared/fetch-response-body'
 import { cancelUnreadResponseBody } from '../lib/unread-response-body'
 import type { ChildProcessHandle } from '../../shared/child-process/process-spec'
-import { createProviderSpawnSpec } from '../codex/codex-app-server-posix-supervisor'
-import { stopSupervisedChildProcess } from '../codex/supervised-child-process-stop'
+import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
+import { stopSupervisedChildProcess } from '../provider-process/supervised-child-process-stop'
 
 const OPENCODE_PREFLIGHT_KILL_SITE = 'opencode-launch-model-preflight'
 // A supervisor's pipes are its own, so they close as it exits.
@@ -236,7 +236,7 @@ async function stopSupervisedPreflight(
     // Never started, so there is nothing to stop.
     return true
   }
-  if (await stopSupervisedChildProcess(child, undefined, OPENCODE_PREFLIGHT_KILL_SITE)) {
+  if (await stopSupervisedChildProcess(child, { site: OPENCODE_PREFLIGHT_KILL_SITE })) {
     return false
   }
   if (child.signalCode === null && child.exitCode === 1) {

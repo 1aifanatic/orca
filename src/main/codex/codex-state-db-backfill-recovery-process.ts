@@ -5,9 +5,12 @@ import { buildWslCodexAppServerArgs } from '../codex-accounts/wsl-codex-command'
 import { CODEX_READ_ONLY_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import { terminateCodexProbeChild } from '../rate-limits/codex-probe-termination'
 import { CODEX_APP_SERVER_CLOSE_REQUEST } from './codex-app-server-close-request'
-import { createProviderSpawnSpec, requestProviderClose } from './codex-app-server-posix-supervisor'
+import {
+  createProviderSpawnSpec,
+  requestProviderClose
+} from '../provider-process/provider-process-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
-import { stopSupervisedChildProcess } from './supervised-child-process-stop'
+import { stopSupervisedChildProcess } from '../provider-process/supervised-child-process-stop'
 
 const BACKFILL_RECOVERY_KILL_SITE = 'codex-state-db-backfill-recovery'
 
@@ -60,17 +63,16 @@ export async function stopCodexBackfillRecoveryProcess(
 ): Promise<void> {
   if (supervised) {
     // A session supervisor turns stdin end into its group stop, as a Codex connection close does.
-    await stopSupervisedChildProcess(
-      child,
-      () =>
+    await stopSupervisedChildProcess(child, {
+      site: BACKFILL_RECOVERY_KILL_SITE,
+      request: () =>
         requestProviderClose({
           child,
           closeRequest: CODEX_APP_SERVER_CLOSE_REQUEST,
           supervised: true,
           exited: () => child.exitCode !== null || child.signalCode !== null
-        }),
-      BACKFILL_RECOVERY_KILL_SITE
-    )
+        })
+    })
     return
   }
   await terminateCodexProbeChild(child)

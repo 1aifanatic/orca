@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   PROVIDER_STDIN_END_GRACE_MS,
   PROVIDER_SUPERVISOR_MAX_STOP_MS
-} from './codex-app-server-posix-supervisor'
+} from '../provider-process/provider-process-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import { CodexAppServerTimeoutError, runCodexAppServerSession } from './codex-app-server-session'
 import { classifyCodexTrustGrantError } from './codex-trust-grant-telemetry'
-import { PROVIDER_SPAWN_FAILURE_MARKER } from './provider-spawn-failure-report'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from '../provider-process/provider-spawn-failure-report'
 import {
   alive,
   createSupervisedProbeRig,

@@ -1,11 +1,11 @@
 import type { SpawnedProcess } from '../../shared/child-process/run-process'
-import { waitForProcessExitUntil } from '../codex/codex-process-exit-deadline'
+import { waitForProcessExitUntil } from '../provider-process/provider-process-exit-deadline'
 import {
   PROVIDER_SUPERVISOR_MAX_STOP_MS,
   requestProviderClose,
   stopSupervisedProvider,
   type ProviderCloseRequest
-} from '../codex/codex-app-server-posix-supervisor'
+} from '../provider-process/provider-process-supervisor'
 import type { ClaudeChildTreeReaper } from './claude-agent-sdk-exit-proof'
 
 export const GRACEFUL_EXIT_MS = 1_500

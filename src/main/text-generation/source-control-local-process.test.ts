@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
 import { SOURCE_CONTROL_GENERATION_TIMEOUT_MS } from './source-control-generation-limits'
 import { discoverModelsLocal } from './commit-message-model-discovery'
 import { cancelGenerateCommitMessageLocal } from './commit-message-text-generation'
@@ -16,8 +16,8 @@ const { terminateTreeMock } = vi.hoisted(() => ({
   terminateTreeMock: vi.fn(async () => true)
 }))
 
-vi.mock('../codex/codex-app-server-process-teardown', () => ({
-  terminateCodexAppServerProcessTree: terminateTreeMock
+vi.mock('../provider-process/provider-process-teardown', () => ({
+  terminateProviderProcessTree: terminateTreeMock
 }))
 
 type FakeSupervisor = EventEmitter & {

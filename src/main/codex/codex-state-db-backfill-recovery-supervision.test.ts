@@ -5,7 +5,7 @@ import { CODEX_READ_ONLY_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-ap
 import {
   PROVIDER_STDIN_END_GRACE_MS,
   PROVIDER_SUPERVISOR_MAX_STOP_MS
-} from './codex-app-server-posix-supervisor'
+} from '../provider-process/provider-process-supervisor'
 import type { CodexAppServerSpawn } from './codex-app-server-process-tree-kill'
 import type { CodexStateDbBackfillStatus } from './codex-state-db'
 import { runCodexStateDbBackfillRecovery } from './codex-state-db-backfill-recovery'

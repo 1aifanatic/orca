@@ -9,7 +9,7 @@ import {
   discoverCommitMessageModelsLocal,
   discoverCommitMessageModelsRemote
 } from './commit-message-text-generation'
-import { PROVIDER_SPAWN_FAILURE_MARKER } from '../codex/provider-spawn-failure-report'
+import { PROVIDER_SPAWN_FAILURE_MARKER } from '../provider-process/provider-spawn-failure-report'
 import {
   createChildTerminationExpectation,
   createMockDiscoveryChild,

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../codex/codex-app-server-posix-supervisor'
+import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
 import {
   alive,
   createSupervisedProbeRig,
