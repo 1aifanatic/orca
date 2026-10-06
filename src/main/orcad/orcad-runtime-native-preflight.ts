@@ -12,6 +12,7 @@ import { resolveOrcadInstallRoot } from './orcad-app-paths'
 import {
   isWindowsProcessTableAvailable,
   isWindowsProcessStartTimeAvailable,
+  readWindowsProcessCreationTime,
   readWindowsProcessIdentityTableFresh
 } from '../windows/windows-process-table'
 
@@ -95,10 +96,25 @@ async function preflightWindowsProcessIdentity(): Promise<void> {
   if (!isWindowsProcessTableAvailable() || !isWindowsProcessStartTimeAvailable()) {
     throw new Error('The bundled Windows process table must support process creation times')
   }
-  const rows = await readWindowsProcessIdentityTableFresh()
-  const self = rows.find((row) => row.pid === process.pid)
-  const created = self?.creationTimeMs
-  if (created === undefined || !Number.isFinite(created) || created <= 0 || created > Date.now()) {
+  let created: number | null | undefined
+  try {
+    const rows = await readWindowsProcessIdentityTableFresh()
+    created = rows.find((row) => row.pid === process.pid)?.creationTimeMs
+  } catch (error) {
+    // A whole-table snapshot can time out on a loaded host; the addon's one-PID query still
+    // proves this runtime can identify a process, which is all readiness needs.
+    created = readWindowsProcessCreationTime(process.pid)
+    if (created === null) {
+      throw error
+    }
+  }
+  if (
+    created === undefined ||
+    created === null ||
+    !Number.isFinite(created) ||
+    created <= 0 ||
+    created > Date.now()
+  ) {
     throw new Error('The bundled Windows process table could not identify this process')
   }
 }
