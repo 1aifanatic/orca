@@ -1,3 +1,4 @@
+import type { OpenFile } from '@/store/slices/editor'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
@@ -19,6 +20,24 @@ export type EditorFileOperationProvenance = {
   generation: WorktreeOperationGenerationSnapshot
   ownershipProjection: 'explicit' | 'legacy'
   expectedSshConnectionGeneration?: number
+}
+
+export function getPersistedEditorOwnerFields(
+  file: Pick<OpenFile, 'runtimeEnvironmentId' | 'externalSshTargetId' | 'operationProvenance'>
+): Pick<OpenFile, 'runtimeEnvironmentId' | 'externalSshTargetId'> {
+  const captured = file.operationProvenance?.generation.route
+  const host = parseExecutionHostId(captured?.executionHostId)
+  if (!captured || !host) {
+    return {
+      runtimeEnvironmentId: file.runtimeEnvironmentId,
+      externalSshTargetId: file.externalSshTargetId
+    }
+  }
+  // A restart must retain the owner that opened the document, even after catalog replacement.
+  return {
+    runtimeEnvironmentId: captured.runtimeEnvironmentId,
+    externalSshTargetId: host.kind === 'ssh' ? host.targetId : undefined
+  }
 }
 
 type EditorOwnerState = Pick<
