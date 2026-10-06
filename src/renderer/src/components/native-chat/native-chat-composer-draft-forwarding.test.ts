@@ -11,7 +11,8 @@ import { structuredAgentSessionDraftScopeKey as scope } from './native-chat-comp
 import {
   clearNativeChatComposerDraftForwardingForTests,
   currentNativeChatComposerDraftScope,
-  forwardStructuredAgentSessionDraft
+  forwardStructuredAgentSessionDraft,
+  useDraftFollowsReplacedConversation
 } from './native-chat-composer-draft-forwarding'
 import {
   clearStructuredAgentSessionHandedBackNoticesForTests,
@@ -41,6 +42,19 @@ describe('a draft when /clear replaces its conversation', () => {
     forwardStructuredAgentSessionDraft('new', 'newer')
     expect(currentNativeChatComposerDraftScope(scope('old'))).toBe(scope('newer'))
     expect(currentNativeChatComposerDraftScope(scope('other'))).toBe(scope('other'))
+  })
+
+  it('follows the pane: its conversation changing under it carries what was typed', () => {
+    writeNativeChatDraftCache(scope('old'), 'typed in this pane')
+    const { rerender } = renderHook(
+      ({ sessionId }) => useDraftFollowsReplacedConversation(sessionId),
+      {
+        initialProps: { sessionId: 'old' }
+      }
+    )
+    expect(readNativeChatDraftCache(scope('old'))).toBe('typed in this pane')
+    rerender({ sessionId: 'new' })
+    expect(readNativeChatDraftCache(scope('new'))).toBe('typed in this pane')
   })
 
   it('moving the same way again adds nothing twice', () => {

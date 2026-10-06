@@ -1,6 +1,7 @@
 // A /clear moves a chat's tab to the conversation that replaces it. The composer there is keyed by
 // that conversation, so what was typed, or is handed back later, under the old one follows it.
 
+import { useLayoutEffect, useRef } from 'react'
 import {
   appendToNativeChatComposerDraft,
   deleteNativeChatComposerDraft,
@@ -42,6 +43,19 @@ export function forwardStructuredAgentSessionDraft(
   if (appendToNativeChatComposerDraft(to, { text: draft.text, images: draft.images })) {
     deleteNativeChatComposerDraft(from)
   }
+}
+
+/** A pane's conversation changes under it when a /clear replaces it: what was typed there goes
+ *  along to the new conversation's composer. */
+export function useDraftFollowsReplacedConversation(sessionId: string | undefined): void {
+  const previous = useRef(sessionId)
+  useLayoutEffect(() => {
+    const from = previous.current
+    previous.current = sessionId
+    if (from && sessionId && from !== sessionId) {
+      forwardStructuredAgentSessionDraft(from, sessionId)
+    }
+  }, [sessionId])
 }
 
 export function clearNativeChatComposerDraftForwardingForTests(): void {
