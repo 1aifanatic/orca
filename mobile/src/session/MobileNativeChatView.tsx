@@ -54,6 +54,8 @@ type Props = MobileQueuedSlotProps & {
   folded: NativeChatMessage[]
   status: MobileNativeChatStatus
   error?: string
+  /** The read failed for good (damage, a newer Orca's chat): its error takes the whole pane. */
+  readFailedFinally?: boolean
   /** Resolved agent for this chat; names the empty-state copy (desktop parity). */
   agent?: string | null
   agentWorking?: boolean
@@ -146,6 +148,7 @@ export function MobileNativeChatView({
   folded,
   status,
   error,
+  readFailedFinally = false,
   agent,
   agentWorking,
   canStop = agentWorking,
@@ -313,6 +316,18 @@ export function MobileNativeChatView({
   const showLoading = status === 'loading' && messages.length === 0
 
   const lockReason = useSettledMobileNativeChatInputLock(inputLockReason)
+  const emptyStateView = emptyState ? (
+    <View style={styles.center}>
+      <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+      <Text style={styles.emptySubtitle}>{emptyState.subtitle}</Text>
+    </View>
+  ) : null
+
+  // Whatever was already on screen: nothing here can act on a chat that cannot load, and its words
+  // say why once, as a fresh open's do.
+  if (readFailedFinally && emptyStateView) {
+    return <View style={[styles.root, { paddingBottom: bottomPad }]}>{emptyStateView}</View>
+  }
 
   return (
     <View style={[styles.root, { paddingBottom: bottomPad }]}>
@@ -360,14 +375,7 @@ export function MobileNativeChatView({
                 turns.waitingRows,
                 renderItem
               )}
-              ListEmptyComponent={
-                emptyState ? (
-                  <View style={styles.center}>
-                    <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-                    <Text style={styles.emptySubtitle}>{emptyState.subtitle}</Text>
-                  </View>
-                ) : null
-              }
+              ListEmptyComponent={emptyStateView}
             />
           </GestureDetector>
           {/* Jump-to-latest control. */}

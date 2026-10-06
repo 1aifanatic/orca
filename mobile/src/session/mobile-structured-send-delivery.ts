@@ -16,11 +16,11 @@
 //   rejected — a terminal refusal or rejected submission spends a fresh id (a
 //     recorded one reports `queued`: the host holds its text, not the composer). A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
-//     keeps it because neither proves a retained delivery did not happen. The
-//     one exception is a host that refuses the replay's request shape itself
-//     (an older host's strict schema turning `delivery` away): that host can
-//     never accept the replay, so keeping the id would only refuse every later
-//     send of the same text.
+//     keeps it because neither proves a retained delivery did not happen. Two
+//     exceptions spend it anyway, because the host can never accept the replay
+//     and keeping the id would only refuse every later send of the same text:
+//     a host that refuses the replay's request shape itself (an older host's
+//     strict schema turning `delivery` away), and an id the host has expired.
 //   unknown — the one answer that KEEPS its id, whether it came from the host or
 //     from an ack-loss on the way back. The message may be with the provider, so
 //     the retry has to stay a replay. Rotating here is what sent one message to a
@@ -29,6 +29,7 @@
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type { AgentSessionSendResult } from '../../../src/shared/agent-session-wire'
 import { agentSessionRefusalOperationState } from '../../../src/shared/agent-session-refusal-retry'
+import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
 import { structuredAgentSessionRejectionNotice } from '../../../src/shared/structured-agent-session-send-disposition'
 import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
@@ -53,6 +54,15 @@ export function mobileStructuredSendDelivery(
     const refusalState = agentSessionRefusalOperationState(result.code)
     if (refusalState === 'unknown') {
       return { outcome: 'unknown', operationIdSpent: false, error: null }
+    }
+    if (retained && result.code === 'agent_session_operation_expired') {
+      // The host refuses this id for good once its day is up, so keeping it would refuse this text
+      // forever. The earlier attempt may already be in the chat, so the words say to check first.
+      return {
+        outcome: 'rejected',
+        operationIdSpent: true,
+        error: agentSessionWriteNoticeEnglish(['sendOutcomeLost'])
+      }
     }
     return {
       outcome: 'rejected',

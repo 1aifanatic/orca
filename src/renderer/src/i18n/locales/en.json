@@ -1,4 +1,37 @@
 {
+  "csv": {
+    "detectingDelimiter": "Detecting delimiter…",
+    "indexProgress": "Indexing CSV… {{percent}}%",
+    "loadingCell": "Loading…",
+    "nextRows": "Next rows",
+    "previousRows": "Previous rows",
+    "readOnlyPreview": "Large file preview · Read-only",
+    "resizeColumn": "Resize column {{column}}",
+    "rowWindow": "Rows {{first}}–{{last}}",
+    "editor": "CSV editor",
+    "editCell": "Edit row {{row}}, column {{column}}",
+    "filterRows": "Filter rows",
+    "edit": "Edit cell",
+    "copy": "Copy",
+    "paste": "Paste",
+    "rows": "Rows",
+    "insertRowAbove": "Insert row above",
+    "insertRowBelow": "Insert row below",
+    "deleteRows": "Delete selected rows",
+    "columns": "Columns",
+    "newColumn": "Column {{column}}",
+    "insertColumnBefore": "Insert column before",
+    "insertColumnAfter": "Insert column after",
+    "moveColumnLeft": "Move column left",
+    "moveColumnRight": "Move column right",
+    "deleteColumns": "Delete selected columns",
+    "sort": "Sort",
+    "sortAscending": "Sort selected column ascending",
+    "sortDescending": "Sort selected column descending",
+    "originalOrder": "Original row order",
+    "save": "Save",
+    "inspectionOnly": "Inspection only · File row order unchanged"
+  },
   "osDocumentOpen": {
     "failed": "Failed to open the file."
   },
@@ -1262,11 +1295,7 @@
         "9263e75f49": "Codex is using the previous account",
         "d3e8a1f4b2": "Account switched",
         "9375620cc3": "Restart this session to use {{value0}}. It stays on the previous account until you do.",
-        "6133594b12": "Keep old account",
-        "8f0d5c92a1": "Codex setup changed",
-        "3ea91b5c07": "This Codex session is using an outdated configuration",
-        "e6b7139d2a": "Restart this session to load your current Codex configuration.",
-        "7b1d20f4c8": "Keep current session"
+        "6133594b12": "Keep old account"
       },
       "FirstLaunchBanner": {
         "b9e1b966c7": "Dismiss notice",
@@ -3872,6 +3901,9 @@
             "grokUsageAria": "Open Grok usage details",
             "grokUsageMenu": "Grok Usage",
             "floatingTerminalNewActivity": "{{label}}, new activity",
+            "4fba7dc1e7": "{{value0}} bal",
+            "4025a6f62f": "Unlimited",
+            "a95969101f": "{{value0}} credits",
             "codexSignInSuccess": "Signed in to Codex",
             "codexSignInError": "Codex sign-in failed. Please try again.",
             "cursorUsageMenu": "Cursor Usage",
@@ -4022,6 +4054,16 @@
               }
             }
           },
+          "provider": {
+            "extra": {
+              "usage": {
+                "section": {
+                  "135d51c19f": "Limit {{value0}}",
+                  "apiKeyBalanceUnavailable": "Balance is not included in this usage response."
+                }
+              }
+            }
+          },
           "tooltip": {
             "zcode": {
               "mcp": "MCP"
@@ -4059,6 +4101,14 @@
             "d1b7f509ac": "Run grok in a terminal on the computer running Orca and wait for it to start. If prompted, complete sign-in, then retry usage. You do not need to send a chat message.",
             "f90b3d7a16": "Run Kimi to refresh",
             "a37e8c15d4": "Run kimi in a terminal on the computer running Orca and wait for it to start, then retry usage.",
+            "fbc80d8be2": "Zen balance",
+            "c03c61f53f": "Balance",
+            "f6a27a3c0a": "{{value0}} available",
+            "7404abbece": "Usage credits",
+            "473d45cd0f": "Balance {{value0}}",
+            "f21b2ba897": "Credits",
+            "56c0d70577": "Unlimited",
+            "87b5bda4d3": "{{value0}} credits available",
             "minimax": {
               "expired": {
                 "label": "Sign-in expired",
@@ -8915,7 +8965,38 @@
             "fastDescription": "Extra multiplier while scrolling with a modifier key.",
             "tui": "TUI",
             "tuiDescription": "Discrete wheel reports for full-screen terminal apps."
-          }
+          },
+          "8dbe0bc942": "Shell arguments, one per line",
+          "f58cb71f53": "--rcfile\n/path/to/rcfile",
+          "48b91a3ed2": "Custom args",
+          "7bd83fc1d0": "-l (default)",
+          "5ffc4777b6": "Shell argument mode",
+          "578ec79449": "Enter one argument per line. Leave it empty to pass no arguments.",
+          "884a006065": "Starts the shell as a login shell with -l.",
+          "01c600daff": "Shell arguments",
+          "e3ae5aed18": ". Switch to System shell or choose an executable on this host.",
+          "59573d0b33": "Enter a shell name on PATH or an executable path. Orca starts it as a login shell.",
+          "5e06e87730": "Custom shell executable",
+          "c2bf02ce2f": "fish, nu, or /bin/zsh",
+          "f51cc79784": "Custom shell",
+          "dd3f4c35da": "System shell ({{value0}})",
+          "fd05fb109c": "Terminal shell",
+          "69724e8f0c": "Choose what Orca opens for new local terminal panes.",
+          "c2ddb189e7": "rcfile",
+          "73c211e979": "wrapper",
+          "4faf688f78": "login",
+          "44f8a56f66": "args",
+          "af893aa433": "arguments",
+          "ddc72a4860": "default",
+          "d469840b75": "nushell",
+          "17ad899ba4": "bash",
+          "c9bc93d343": "zsh",
+          "0cbe5ad727": "fish",
+          "81694f1584": "terminal",
+          "a909136b3f": "shell",
+          "1c29734248": "Shell used for new terminal panes",
+          "9589abc009": "Default shell",
+          "5a5eac2f44": "Shell not found: {{value0}}"
         },
         "TerminalSettingsPreview": {
           "a63953a48a": "Preview {{value0}} theme",
@@ -10880,7 +10961,19 @@
               "statusline": "statusline",
               "dim": "dim",
               "colors": "colors"
-            }
+            },
+            "d31ed1ac1c": "rcfile",
+            "d9e29543a1": "wrapper",
+            "50ba80b6dd": "login",
+            "36ba1a1357": "args",
+            "5304b12d5c": "arguments",
+            "7c3ede6f12": "nushell",
+            "bf09070e31": "bash",
+            "d26257a80d": "zsh",
+            "454df22a5e": "fish",
+            "ddd5efe113": "shell",
+            "3de504994c": "Shell and arguments used for new local interactive terminal panes",
+            "1733ccd3e9": "Terminal shell"
           },
           "windows": {
             "search": {
@@ -13497,7 +13590,8 @@
             "fca915a67a": "Remote items are permanently deleted and cannot be undone. Local items move to the {{value0}}."
           },
           "useFileExplorerHandlers": {
-            "32cd9fd991": "Cannot open symlink target"
+            "32cd9fd991": "Cannot open symlink target",
+            "folderLinksOutsideProject": "This folder links outside the project, so it can't be opened here."
           },
           "useFileExplorerImport": {
             "25919b2050": "Skipped {{value0}} {{value1}}.",
@@ -13765,7 +13859,6 @@
           },
           "aiVaultSessionLogOpen": {
             "workspaceGone": "Couldn't open log — workspace is no longer available.",
-            "notAuthorized": "Couldn't open log — path not authorized.",
             "alreadyEditable": "Log is already open for editing."
           },
           "github": {
@@ -15773,6 +15866,10 @@
           "a0af0198aa": "Large diffs are not rendered by default.",
           "c3d9f4a712": "This diff's size isn't known yet, so it loads on request.",
           "f7fa7a40d0": "Load diff"
+        },
+        "richMarkdownImageInsertionFeedback": {
+          "importedFileKept": "Image insertion canceled because the destination changed. The imported file was kept.",
+          "destinationChanged": "Image insertion canceled because the destination changed. Try again."
         }
       },
       "diff": {
@@ -16142,6 +16239,7 @@
             "effd75e330": "Nearby Context",
             "7d1480fbf1": "HTML",
             "9098b118ab": "Page",
+            "accessibleNameOpenQuote": "\"",
             "eb98a0971a": "\"",
             "d053db279d": "role=",
             "a759d8f866": "Selected Element",
@@ -16810,7 +16908,6 @@
           "showUnreadOnly": "Show unread only",
           "showChildAgents": "Show child agents",
           "activityOptions": "Activity options",
-          "threadListOptionsFiltered": "Thread list options, filters active",
           "showSearch": "Show search",
           "interrupted": "Interrupted",
           "state": {
@@ -16826,7 +16923,9 @@
             "permission": "Needs attention"
           },
           "filtersSection": "Filters",
-          "viewSection": "View"
+          "viewSection": "View",
+          "threadListOptionsActive": "Thread list options ({{value0}} active)",
+          "activityOptionsActive": "Activity options ({{value0}})"
         },
         "clearCompleted": {
           "clearedOne": "Cleared 1 completed agent",
@@ -16844,7 +16943,11 @@
         },
         "ActivityScopeFilterControls": {
           "hiddenCount": "{{value0}} hidden",
-          "resetScope": "Show all hosts and projects"
+          "resetScope": "Show all hosts and projects",
+          "hideAutomationCreated": "Hide automation-created",
+          "hideCliCreated": "Hide CLI-created",
+          "hideOtherClientsAria": "Hide agents in workspaces created from other Orca clients on shared remote servers",
+          "hideOtherClients": "Hide other-client agents"
         },
         "ActivityThreadHoverCard": {
           "pathCopied": "Path copied to clipboard",
@@ -16855,6 +16958,25 @@
         },
         "ActivityThreadRow": {
           "clearNotification": "Clear notification"
+        },
+        "ActivityThreadContextMenu": {
+          "copyTitle": "Copy Title",
+          "copyPath": "Copy Path",
+          "open": "Open",
+          "markRead": "Mark Read",
+          "markUnread": "Mark Unread",
+          "goToWorkspace": "Go to Workspace",
+          "clear": "Clear from List",
+          "agentSection": "Agent",
+          "markManyRead_one": "Mark {{count}} Agent Read",
+          "markManyRead_other": "Mark {{count}} Agents Read",
+          "markManyUnread_one": "Mark {{count}} Agent Unread",
+          "markManyUnread_other": "Mark {{count}} Agents Unread",
+          "clearMany_one": "Clear {{count}} Agent from List",
+          "clearMany_other": "Clear {{count}} Agents from List",
+          "markManyRead": "Mark {{count}} Agents Read",
+          "markManyUnread": "Mark {{count}} Agents Unread",
+          "clearMany": "Clear {{count}} Agents from List"
         }
       },
       "confirmation": {
@@ -17240,6 +17362,7 @@
           "tool": {
             "arrow": "Arrow",
             "ellipse": "Ellipse",
+            "eraser": "Eraser",
             "highlight": "Highlighter",
             "pen": "Pen",
             "rect": "Rectangle",
@@ -17593,6 +17716,11 @@
         }
       }
     },
+    "jiraIssueAssigneeField": {
+      "label": "Assignee",
+      "automatic": "Automatic",
+      "assignToMe": "Assign to me ({{name}})"
+    },
     "jiraUserPicker": {
       "select": "Select {{value0}}",
       "search": "Search users",
@@ -17604,6 +17732,7 @@
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
         "runCommandAgain": "Run /{{command}} again.",
         "sendToTryAgain": "Send your message to try again.",
+        "sendAgainToTryOnceMore": "Send your message again to try once more.",
         "couldNotStart": "{{agent}} couldn't start.",
         "couldNotRestart": "{{agent}} couldn't restart.",
         "notSignedIn": "{{agent}} is not signed in for the selected account.",
@@ -17657,7 +17786,7 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "{{agent}} from before may still be running. Your messages will send once it stops."
+        "previousExitUnverifiable": "Couldn't stop {{agent}} from before."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17681,6 +17810,8 @@
         "historyUnavailable": "Orca couldn't open this chat's history right now.",
         "savedByNewerOrca": "Chats were saved by a newer Orca.",
         "updateOrcaToKeepUsing": "Update Orca to keep using them.",
+        "chatSavedByNewerOrca": "This chat was saved by a newer Orca.",
+        "updateOrcaToOpenChat": "Update Orca to open it.",
         "unsupported": "This needs a newer Orca on the computer running this chat. Update Orca there, then try again.",
         "notAvailable": "This isn't available in this chat.",
         "unreachable": "Orca couldn't reach the agent.",
@@ -17779,6 +17910,13 @@
         "localAttachmentUnsupported": "Local attachments are not available for remote sessions.",
         "removeAttachment": "Remove attachment",
         "pastedImageLabel": "Pasted image",
+        "draftNotSaved": "This draft couldn't be saved yet. Orca keeps trying.",
+        "imageNotBroughtBack": "{{name}} couldn't be brought back with this draft. Attach it again or remove it.",
+        "pastedImageNotBroughtBack": "This pasted image couldn't be brought back with this draft. Remove it, and paste it again if you still need it.",
+        "removeImageToSend": "An image couldn't be brought back. Remove it to send.",
+        "removeImagesToSend": "Some images couldn't be brought back. Remove them to send.",
+        "imageAttachAgainLabel": "Attach again",
+        "pastedImageNotKeptLabel": "Not kept",
         "imagePasteFailed": "Image paste failed.",
         "imageSaving": "Saving pasted image…",
         "worktreeNotReady": "Worktree not ready — try again in a moment.",
@@ -18000,6 +18138,7 @@
         "reason": "Reason",
         "blockedPath": "Blocked path",
         "askRule": "Ask rule",
+        "needsNewerOrca": "This request needs a newer version of Orca.",
         "plan": {
           "file": "Plan file"
         }
@@ -18034,6 +18173,12 @@
         "subtitle": "Files are added to your message as paths the agent can read."
       },
       "copyCode": "Copy code",
+      "context": {
+        "unavailable": "Context usage is not known yet. It becomes available after the agent next responds.",
+        "summary": "Context: {{used}} / {{window}} tokens ({{percent}}%), estimated from the last response.",
+        "used": "Context: {{used}} tokens used, estimated from the last response.",
+        "unreported": "Context usage is not available for this session."
+      },
       "goal": {
         "placeholder": "Describe your goal, define measurable outcomes for best results",
         "clear": "Clear goal",
@@ -18356,6 +18501,16 @@
         "workspaceReadyToast": "Workspace {{name}} is ready",
         "goToWorktree": "Go to worktree",
         "goToWorkspace": "Go to workspace"
+      },
+      "delete": {
+        "changes": {
+          "permanentLoss": "Any uncommitted or untracked changes in Git workspaces will be permanently deleted.",
+          "clean": "No uncommitted or untracked changes",
+          "unavailable": "Changes could not be checked",
+          "checking": "Checking for changes…",
+          "checkingDetails": "Checking…",
+          "unavailableDetails": "Details unavailable"
+        }
       }
     },
     "agentSessionContinuation": {
@@ -18910,5 +19065,21 @@
   },
   "fileSearch": {
     "failed": "Search failed. Try again."
+  },
+  "worktree": {
+    "nestedRemoval": {
+      "refreshFailed": "Could not refresh the workspace list",
+      "review": "Delete with nested worktrees…",
+      "title": "Delete workspace and nested worktrees?",
+      "description": "This permanently deletes \"{{name}}\", every nested worktree listed below, and all files inside them, including uncommitted changes. Their terminals and agents will be stopped.",
+      "detached": "Detached HEAD",
+      "loading": "Checking nested worktrees…",
+      "order": "Nested worktrees are deleted first. If one fails, deletion stops and the parent is kept. Branches follow your existing deletion settings.",
+      "cancel": "Cancel",
+      "retry": "Review again",
+      "deleting": "Deleting…",
+      "confirm": "Delete all listed worktrees",
+      "preservedBranches": "Some nested worktree branches were kept"
+    }
   }
 }
