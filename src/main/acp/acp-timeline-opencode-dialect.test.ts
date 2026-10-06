@@ -63,11 +63,11 @@ describe('OpenCode over ACP', () => {
   })
 
   it('keeps a shared exit code the agent already reported', () => {
-    const shaped = OPENCODE_ACP_DIALECT.normalizeToolUpdate!({
+    const normalized = OPENCODE_ACP_DIALECT.normalizeToolUpdate!({
       toolCallId: 'call-1',
       rawOutput: { exitCode: 0, metadata: { exit: 3 } }
     })
-    expect(shaped.rawOutput).toEqual({ exitCode: 0, metadata: { exit: 3 } })
+    expect(normalized.rawOutput).toEqual({ exitCode: 0, metadata: { exit: 3 } })
   })
 
   it('leaves a tool with no command metadata as it came', () => {
