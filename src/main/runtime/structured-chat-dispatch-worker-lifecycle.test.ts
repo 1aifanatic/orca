@@ -211,7 +211,7 @@ describe("a chat assignee's liveness, stop and close", () => {
     expect(await call('orchestration.workerShow', { dispatch: dispatchId })).toMatchObject({
       observation: {
         status: 'unverifiable',
-        reason: expect.stringContaining('no record of the session that continues it')
+        reason: expect.stringContaining('after a /clear cannot be verified')
       },
       projection: { liveness: { verdict: 'unverifiable' } }
     })

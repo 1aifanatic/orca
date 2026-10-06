@@ -56,7 +56,7 @@ describe('a chat assignee', () => {
     }
     expect(observeChatAssignee(CHAT, null, store(cleared, true))).toMatchObject({
       status: 'unverifiable',
-      reason: expect.stringContaining('no record of the session that continues it')
+      reason: expect.stringContaining('after a /clear cannot be verified')
     })
     const unknown = testOrcaSessionId('3f9a1c7e-6b2d-4e85-a0c4-9d1e7b3f5a26')
     expect(observeChatAssignee(unknown, null, store(sessionRecord(CHAT), true))).toMatchObject({

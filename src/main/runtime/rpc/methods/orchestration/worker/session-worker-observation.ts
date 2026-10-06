@@ -6,11 +6,11 @@ import {
   type ChatAssigneeObservation
 } from '../../../../orchestration/chat-assignee'
 import type { OrchestrationDb } from '../../../../orchestration/db'
-import { structuredWorkerAddressable } from '../../../../structured-worker-custody'
 import {
-  observeStructuredWorker,
-  resolveStructuredWorkerForDispatch
-} from '../../orchestration-structured-worker-lifecycle'
+  holdStructuredWorker,
+  observeStructuredSession
+} from '../../../../structured-worker-authority'
+import { resolveStructuredWorkerForDispatch } from '../../orchestration-structured-worker-lifecycle'
 
 export type SessionWorkerObservation = {
   terminal: null
@@ -61,12 +61,13 @@ export async function inspectSessionWorker(
     paneKey: structured.paneKey,
     processIncarnation: structured.processIncarnation
   })
-  const observation = observeStructuredWorker(structured)
-  const addressable = structuredWorkerAddressable(
-    db,
-    structured.sessionId,
-    db.getWorkerTerminalResourceByHandle?.(structured.handle)
-  )
+  // One lineage walk, so status and `addressable` judge the same session even mid-`/clear`.
+  const hold = holdStructuredWorker(structured, db)
+  const observation =
+    hold.kind === 'unverifiable'
+      ? { status: 'unverifiable' as const, reason: hold.reason }
+      : observeStructuredSession(hold.running.sessionId)
+  const addressable = hold.kind === 'unverifiable' ? null : hold.kind === 'held'
   return {
     terminal: null,
     exact,

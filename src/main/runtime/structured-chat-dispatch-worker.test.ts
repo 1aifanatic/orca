@@ -71,6 +71,13 @@ async function refusal(method: string, params: Record<string, unknown>, sessionI
   return response.error
 }
 
+/** Who each agent message in the chat's journal says it is from. */
+async function taskSenders(sessionId: string): Promise<unknown[]> {
+  return (await host.journalSnapshot(sessionId)).items.flatMap((item) =>
+    item.body.kind === 'message' && item.body.from ? [item.body.from] : []
+  )
+}
+
 function dispatchCount(): unknown {
   return db.db.prepare('SELECT COUNT(*) AS n FROM dispatch_contexts').get()
 }
@@ -105,6 +112,9 @@ describe('a chat as the assignee of orchestration dispatch', () => {
     expect(task).toContain(`Your Orca session ID is: ${WORKER}`)
     expect(task).not.toMatch(/address/i)
     expect(task).toContain(dispatchId)
+    expect(await taskSenders(PEER_CHAT)).toMatchObject([
+      { kind: 'agent', orchestration: { message: 'task', taskId, dispatchId } }
+    ])
   })
 
   it("holds the task as a card in a busy chat's queue, naming the Dispatch, and sends it when the turn ends", async () => {
@@ -122,26 +132,27 @@ describe('a chat as the assignee of orchestration dispatch', () => {
     expect(result).toMatchObject({ injected: true })
     const dispatchId = idOf(result.dispatch)
     expect(worker.turns).toHaveLength(1)
-    expect(queuedRows(PEER_CHAT).map((card) => card.source)).toEqual([
-      {
-        kind: 'agent',
-        senders: [
-          {
-            party: {
-              address: formatOrcaSessionAddress(testOrcaSessionId(COORDINATOR)),
-              terminalHandle: null,
-              orcaSessionId: COORDINATOR
-            }
+    const from = {
+      kind: 'agent',
+      senders: [
+        {
+          party: {
+            address: formatOrcaSessionAddress(testOrcaSessionId(COORDINATOR)),
+            terminalHandle: null,
+            orcaSessionId: COORDINATOR
           }
-        ],
-        orchestration: { message: 'task', runId, taskId, dispatchId }
-      }
-    ])
+        }
+      ],
+      orchestration: { message: 'task', runId, taskId, dispatchId }
+    }
+    // On the card's body: the turn the queue sends carries it, and the provider never sees it.
+    expect(queuedRows(PEER_CHAT).map((card) => card.body.from)).toMatchObject([from])
 
     await endTurn()
     await vi.waitFor(() => expect(worker.turns).toHaveLength(2), WAIT)
     expect(turnText(worker.turns[1]!)).toContain(dispatchId)
     expect(await queuedCardTexts(PEER_CHAT)).toEqual([])
+    expect(await taskSenders(PEER_CHAT)).toMatchObject([from])
   })
 
   it('queues one card for one Dispatch however often its task is sent', async () => {
@@ -156,7 +167,8 @@ describe('a chat as the assignee of orchestration dispatch', () => {
     )
     const dispatch = db.getDispatchContextById(idOf(result.dispatch))!
 
-    const send = () => sendChatTask({ db, dispatch, from: undefined, preamble: 'the task' })
+    const from = { kind: 'agent' as const, senders: [], orchestration: null }
+    const send = () => sendChatTask({ db, dispatch, from, preamble: 'the task' })
     expect(await send()).toBe('queued')
     expect(await send()).toBe('queued')
 

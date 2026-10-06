@@ -101,15 +101,19 @@ export function refuseUndeliverableSessionRecipient(
       message: `Agent session ${sessionId} runs on another host; mail reaches a session only on the host that runs it. Send from that host. ${noEffect}`
     }
   }
+  if (reach.kind === 'unverifiable') {
+    return {
+      code: CODES.notLive,
+      message: `The session continuing agent session ${sessionId} after a /clear cannot be verified: ${reach.reason} ${noEffect}`
+    }
+  }
   if (reach.kind === 'ended') {
     return {
       code: CODES.notLive,
       message:
-        reach.reason === 'continuation-missing'
-          ? `Agent session ${sessionId} was cleared, and this host has no record of the session that continues it. ${noEffect}`
-          : reach.reason === 'worker-identity-lost'
-            ? `Agent session ${sessionId} is a structured worker whose worker identity this host no longer has, so it can never read that mail. ${noEffect}`
-            : `Agent session ${sessionId} has ended: its chat was closed. ${noEffect}`
+        reach.reason === 'worker-identity-lost'
+          ? `Agent session ${sessionId} is a structured worker whose worker identity this host no longer has, so it can never read that mail. ${noEffect}`
+          : `Agent session ${sessionId} has ended: its chat was closed. ${noEffect}`
     }
   }
   return null

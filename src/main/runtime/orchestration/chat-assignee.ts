@@ -58,16 +58,15 @@ export function observeChatAssignee(
       return { status: 'live', session: reach.session }
     case 'other-host':
       return { status: 'unverifiable', reason: 'The chat runs on another host.' }
+    case 'unverifiable':
+      return {
+        status: 'unverifiable',
+        reason: `The session continuing this chat after a /clear cannot be verified: ${reach.reason}`
+      }
     case 'ended':
       switch (reach.reason) {
         case 'closed':
           return { status: 'exited', reason: 'The chat was closed.' }
-        case 'continuation-missing':
-          return {
-            status: 'unverifiable',
-            reason:
-              'The chat was cleared, and this host has no record of the session that continues it.'
-          }
         case 'worker-identity-lost':
           // Not reachable for a chat today (its Dispatch records no worker incarnation); still no exit.
           return {

@@ -1,10 +1,8 @@
 import type { AgentType } from '../../../../shared/native-chat-types'
 import { chatAssigneeSessionId } from '../../orchestration/chat-assignee'
+import { OrchestrationError } from '../../orchestration/orchestration-error'
 import type { OrchestrationDb } from '../../orchestration/db'
-import {
-  lineageLiveSession,
-  readAgentSessionRecordStore
-} from '../../orchestration/structured-session-lineage'
+import { readAgentSessionRecordStore } from '../../orchestration/structured-session-lineage'
 import type { StructuredWorkerIdentity } from '../../structured-worker-identity'
 
 /** What a worker transcript read needs of the session it reads, and what its cursor is bound to. */
@@ -14,27 +12,30 @@ export type StructuredJournalSource = Pick<
 >
 
 /**
- * A chat assignee's journal: its live session's, so a `/clear` moves the read on to the session
- * that continues the chat, and a cursor from before it is refused as a new process's would be.
- * Undefined when the assignee is not a chat; null for a chat this host has no record of.
+ * A chat assignee's journal, read as a worker's is: its whole `/clear` lineage from its root, which
+ * is also what the cursor is bound to. Null when the assignee is not a chat.
  */
-export function chatAssigneeJournalSource(
+export function chatAssigneeJournal(
   db: OrchestrationDb,
   dispatchId: string
-): { source: StructuredJournalSource; agent: AgentType } | null | undefined {
+): { source: StructuredJournalSource; agent: AgentType } | null {
   const handle =
     db.getWorkerDispatch(dispatchId)?.agent_terminal_handle ??
     db.getDispatchContextById(dispatchId)?.assignee_handle
   const chat = chatAssigneeSessionId(handle)
   if (!handle || !chat) {
-    return undefined
+    return null
   }
-  const store = readAgentSessionRecordStore()
-  const live = store ? lineageLiveSession(store, chat) : null
-  return live
-    ? {
-        source: { sessionId: live.sessionId, processIncarnation: live.sessionId, paneKey: handle },
-        agent: live.provider
-      }
-    : null
+  const root = readAgentSessionRecordStore()?.getRecord(chat)
+  if (!root) {
+    throw new OrchestrationError(
+      'transcript_required',
+      `The transcript for Dispatch ${dispatchId} could not be read; this host has no record of its chat.`
+    )
+  }
+  // The chat's address stands in for a worker's pane and incarnation: it is its whole identity.
+  return {
+    source: { sessionId: chat, processIncarnation: handle, paneKey: handle },
+    agent: root.provider
+  }
 }

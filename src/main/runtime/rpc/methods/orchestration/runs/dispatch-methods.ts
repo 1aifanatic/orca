@@ -20,6 +20,7 @@ import {
   refuseChatSelfAssignment
 } from '../chat-assignee-admission'
 import { sendChatTask } from '../chat-task-delivery'
+import { dispatchTaskSource } from '../../../../orchestration/dispatch-task-source'
 
 export const ORCHESTRATION_DISPATCH_METHODS = [
   defineMethod({
@@ -176,7 +177,14 @@ export const ORCHESTRATION_DISPATCH_METHODS = [
       if (params.inject) {
         try {
           if (chatAssignee) {
-            await sendChatTask({ db, dispatch: ctx, from: params.from, preamble })
+            const from = dispatchTaskSource({
+              db,
+              dispatch: ctx,
+              from: params.from,
+              senderName: (party, reported) =>
+                runtime.orchestrationSenderNames.nameOf(party, reported)
+            })
+            await sendChatTask({ db, dispatch: ctx, from, preamble })
           } else {
             prompt = await sendAgentTurn({
               kind: 'terminal',

@@ -168,6 +168,12 @@ describe('worker-start --terminal names a chat', () => {
     expect(await call('orchestration.workerList', {})).toMatchObject({
       workers: [{ dispatchId, projection: { liveness: { verdict: 'live' } } }]
     })
+    // What the chat reports when the person types into it, a /clear included: a chat is no
+    // minted worker, so there is nothing to take over and its Dispatch is untouched.
+    expect(await call('orchestration.workerTerminalUserInput', { sessionId: PEER_CHAT })).toEqual({
+      changed: 0
+    })
+    expect(db.getWorkerTerminalResourceByOwner(dispatchId)?.ownership_state).toBe('external')
     expect(await call('orchestration.workerStop', { dispatch: dispatchId })).toMatchObject({
       state: 'stop_unknown',
       processAction: 'none'

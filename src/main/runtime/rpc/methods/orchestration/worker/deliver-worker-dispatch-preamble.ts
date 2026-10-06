@@ -14,6 +14,9 @@ import { sendStructuredWorkerPreamble } from '../../orchestration-structured-wor
 import { chatAssigneeSessionId } from '../../../../orchestration/chat-assignee'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { sendChatTask, type ChatTaskDelivery } from '../chat-task-delivery'
+import { dispatchTaskSource } from '../../../../orchestration/dispatch-task-source'
+import type { DispatchContextRow } from '../../../../orchestration/types'
+import type { AgentMessageSource } from '../../../../../../shared/agent-session-message-source'
 import type { WorkerTurnStartObservation } from './worker-start-turn-observation'
 import type { createStructuredWorkerSessionForWorktree } from './worker-topology'
 
@@ -66,19 +69,8 @@ export async function deliverWorkerDispatchPreamble(args: {
     cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
   })
   if (chatAssigneeSessionId(terminalHandle)) {
-    const dispatch = args.db.getDispatchContextById(args.dispatchId)
-    if (!dispatch) {
-      throw new OrchestrationError(
-        'dispatch_not_found',
-        `Dispatch ${args.dispatchId} was not found.`
-      )
-    }
-    const delivery = await sendChatTask({
-      db: args.db,
-      dispatch,
-      from: args.coordinatorHandle,
-      preamble
-    })
+    const { dispatch, from } = workerTaskSource(args)
+    const delivery = await sendChatTask({ db: args.db, dispatch, from, preamble })
     return { structuredTurnStart: chatTaskTurnStart(delivery) }
   }
   if (structuredSession) {
@@ -86,7 +78,8 @@ export async function deliverWorkerDispatchPreamble(args: {
       host: structuredSession.host,
       sessionId: structuredSession.identity.sessionId,
       dispatchId: args.dispatchId,
-      preamble
+      preamble,
+      from: workerTaskSource(args).from
     })
     return {
       structuredTurnStart:
@@ -137,4 +130,24 @@ function chatTaskTurnStart(delivery: ChatTaskDelivery): WorkerTurnStartObservati
           'settles the Dispatch but does not remove the card from the chat.'
       }
   }
+}
+
+/** The Dispatch and who its task is from, for a worker whose chat shows the sender. */
+function workerTaskSource(args: {
+  runtime: OrcaRuntimeService
+  db: OrchestrationDb
+  dispatchId: string
+  coordinatorHandle: string
+}): { dispatch: DispatchContextRow; from: AgentMessageSource } {
+  const dispatch = args.db.getDispatchContextById(args.dispatchId)
+  if (!dispatch) {
+    throw new OrchestrationError('dispatch_not_found', `Dispatch ${args.dispatchId} was not found.`)
+  }
+  const from = dispatchTaskSource({
+    db: args.db,
+    dispatch,
+    from: args.coordinatorHandle,
+    senderName: (party, reported) => args.runtime.orchestrationSenderNames.nameOf(party, reported)
+  })
+  return { dispatch, from }
 }
