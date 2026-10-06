@@ -97,6 +97,11 @@ const HOOK_SETTINGS: readonly {
   }
 ]
 
+/** The hooks-setting reader a launch passes, matched by what it reads now. */
+function readsSetting(enabled: boolean): { asymmetricMatch: (reader: unknown) => boolean } {
+  return { asymmetricMatch: (reader) => typeof reader === 'function' && reader() === enabled }
+}
+
 function resumeFrom(homePath: string): Promise<unknown> {
   mocks.prepareCodexSessionResume.mockImplementation(
     async (args: {
@@ -152,7 +157,7 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       expect(mocks.prepareRuntimeHomeForLaunch).toHaveBeenCalledWith(
         ACCOUNT_HOME,
         undefined,
-        codexHooksOn,
+        readsSetting(codexHooksOn),
         true
       )
     }
@@ -186,7 +191,11 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
       expect(mocks.ensureRealHomeCodexHookState).not.toHaveBeenCalled()
       expect(mocks.awaitRealHomeCodexHookTrust).not.toHaveBeenCalled()
       if (codexHooksOn) {
-        expect(mocks.installForLaunchPrep).toHaveBeenCalledWith(ACCOUNT_HOME, true)
+        expect(mocks.installForLaunchPrep).toHaveBeenCalledWith(
+          ACCOUNT_HOME,
+          true,
+          readsSetting(true)
+        )
         expect(mocks.refreshRuntimeUserHooksForLaunchPrep).not.toHaveBeenCalled()
       } else {
         expect(mocks.installForLaunchPrep).not.toHaveBeenCalled()
@@ -203,8 +212,8 @@ describe('Codex launch prep honours the per-agent hook opt-out', () => {
     await prepareCodexRuntimeHomeForLaunch(undefined, undefined, { launchesCodex: false })
 
     expect(mocks.prepareRuntimeHomeForLaunch.mock.calls).toEqual([
-      [ACCOUNT_HOME, undefined, true, false],
-      [ACCOUNT_HOME, undefined, true, false]
+      [ACCOUNT_HOME, undefined, readsSetting(true), false],
+      [ACCOUNT_HOME, undefined, readsSetting(true), false]
     ])
   })
 })

@@ -57,6 +57,27 @@ function addLedgerRecognizedHashes(
   }
 }
 
+/**
+ * Per entry main's grant recorded in this home's ledger, the hash Codex gave
+ * Orca's entry, when the recorded hook is Orca's `command`.
+ */
+export function readLedgerOrcaHashes(
+  runtimeHomePath: string,
+  command: string,
+  timeoutSec: number
+): CodexHookHashes[] {
+  const ledgerHome = readCodexTrustGrantLedgerHomeForReconciliation(runtimeHomePath)
+  return Object.keys(ledgerHome?.entries ?? {}).flatMap((key) => {
+    const parts = parseTrustKey(key)
+    if (!parts) {
+      return []
+    }
+    const hashes = new Set<string>()
+    addLedgerRecognizedHashes(hashes, [ledgerHome], key, { ...parts, command, timeoutSec })
+    return [...hashes].map((hash) => ({ [parts.eventLabel]: hash }))
+  })
+}
+
 type CodexManagedHookTrustOwnershipOptions = {
   runtimeHomePath: string
   /** hooks.json first, then other spellings Codex may key it by (same hash). */

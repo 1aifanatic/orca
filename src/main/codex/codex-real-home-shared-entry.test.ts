@@ -106,7 +106,7 @@ describe('the shared real-home Codex entry', () => {
     const status = await new CodexHookService().prepareRuntimeHomeForLaunch(
       accountHome,
       undefined,
-      true,
+      () => true,
       false
     )
 
@@ -147,7 +147,7 @@ describe('the shared real-home Codex entry', () => {
     await new CodexHookService().prepareRuntimeHomeForLaunch(
       getOrcaManagedCodexHomePath(),
       undefined,
-      false,
+      () => false,
       false
     )
 

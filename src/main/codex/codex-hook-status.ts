@@ -10,7 +10,9 @@ import {
 import {
   approvalsAtOrcaEntries,
   findOrcaEntrySlots,
-  getManagedCodexHookHome
+  getManagedCodexHookHome,
+  isKnownOrcaHash,
+  readKnownOrcaHashes
 } from './codex-hook-orca-approvals'
 import type { CodexHookAnswer } from './codex-hook-trust-derivation'
 
@@ -55,9 +57,15 @@ export function readCodexHookHomeStatus(
       return status('partial', true, `Orca's hook entry is installed, but ${reason}`)
     }
     // Why not an error: until Codex answers, the approval is the home's earlier one or Orca's own hash.
+    const known = readKnownOrcaHashes(home, command)
     const approved =
       trustReadError === null &&
-      [...approvals.values()].every((held) => held.some((approval) => approval.enabled !== false))
+      [...approvals].every(([eventLabel, held]) =>
+        held.some(
+          (approval) =>
+            approval.enabled !== false && isKnownOrcaHash(known, eventLabel, approval.trustedHash)
+        )
+      )
     return approved
       ? status('installed', true, `Approved by Orca; not yet confirmed by Codex (${reason})`)
       : status('partial', true, `Orca's hook entry is not approved yet (${reason})`)

@@ -20,7 +20,7 @@ import {
   applyMirroredRuntimeUserHookTrustStates,
   getRuntimeHooksWithSystemUserHooks
 } from './codex-hook-user-mirroring'
-import { getSystemCodexHomePath } from './codex-home-paths'
+import { getOrcaManagedCodexHomePath, getSystemCodexHomePath } from './codex-home-paths'
 import {
   promoteCodexRuntimeHookApprovalsToSystem,
   snapshotCodexRuntimeHookTrustProvenance
@@ -95,6 +95,10 @@ export async function removeCodexHooksExclusively(
   getStatus: () => AgentHookInstallStatus
 ): Promise<AgentHookInstallStatus> {
   const configPath = getConfigPath()
+  if (existsSync(configPath)) {
+    // Why rebuild first: it also moves mirrored user approvals back from the slots Orca's group shifted.
+    await refreshCodexRuntimeUserHooksExclusively(getOrcaManagedCodexHomePath(), getStatus)
+  }
   const configExists = existsSync(configPath)
   const config = readHooksJson(configPath)
   if (!config) {
@@ -110,6 +114,7 @@ export async function removeCodexHooksExclusively(
     }
   }
 
+  // Why strip as well: the rebuild leaves the file as it was when ~/.codex's hooks.json is unreadable.
   const nextHooks = { ...config.hooks }
   // Why: same broad matcher as install() so stale entries from older builds get cleaned even if scriptPath moved.
   const isManagedCommand = createManagedCommandMatcher(getCodexManagedScriptFileName())

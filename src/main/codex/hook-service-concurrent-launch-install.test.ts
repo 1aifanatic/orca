@@ -100,7 +100,7 @@ describe('launch-prep Codex hook install sharing', () => {
     const home = join(userDataDir, 'managed')
 
     const statuses = await Promise.all(
-      Array.from({ length: 7 }, () => service.installForLaunchPrep(home, false))
+      Array.from({ length: 7 }, () => service.installForLaunchPrep(home, false, () => true))
     )
 
     expect(statuses.every((status) => status.state === 'installed')).toBe(true)
@@ -120,8 +120,8 @@ describe('launch-prep Codex hook install sharing', () => {
     })
 
     await Promise.all([
-      service.installForLaunchPrep(home, false),
-      service.installForLaunchPrep(home, true)
+      service.installForLaunchPrep(home, false, () => true),
+      service.installForLaunchPrep(home, true, () => true)
     ])
 
     // Why: the plain terminal goes ahead on Orca's own hash; the Codex launch still gets Codex's.
@@ -134,8 +134,10 @@ describe('launch-prep Codex hook install sharing', () => {
     const service = new CodexHookService()
     const home = join(userDataDir, 'managed')
 
-    await Promise.all(Array.from({ length: 3 }, () => service.installForLaunchPrep(home, false)))
-    await service.installForLaunchPrep(home, false)
+    await Promise.all(
+      Array.from({ length: 3 }, () => service.installForLaunchPrep(home, false, () => true))
+    )
+    await service.installForLaunchPrep(home, false, () => true)
 
     expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
   })
@@ -145,8 +147,10 @@ describe('launch-prep Codex hook install sharing', () => {
     const home = join(userDataDir, 'managed')
     installExclusivelyMock.mockRejectedValueOnce(new Error('hooks.json unreadable'))
 
-    await expect(service.installForLaunchPrep(home, false)).rejects.toThrow('hooks.json unreadable')
-    await expect(service.installForLaunchPrep(home, false)).resolves.toMatchObject({
+    await expect(service.installForLaunchPrep(home, false, () => true)).rejects.toThrow(
+      'hooks.json unreadable'
+    )
+    await expect(service.installForLaunchPrep(home, false, () => true)).resolves.toMatchObject({
       state: 'installed'
     })
     expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
@@ -156,8 +160,8 @@ describe('launch-prep Codex hook install sharing', () => {
     const service = new CodexHookService()
 
     await Promise.all([
-      service.installForLaunchPrep(join(userDataDir, 'managed'), false),
-      service.installForLaunchPrep(join(userDataDir, 'per-account'), false)
+      service.installForLaunchPrep(join(userDataDir, 'managed'), false, () => true),
+      service.installForLaunchPrep(join(userDataDir, 'per-account'), false, () => true)
     ])
 
     expect(installExclusivelyMock).toHaveBeenCalledTimes(2)
@@ -172,7 +176,7 @@ describe('launch-prep Codex hook install sharing', () => {
     const home = join(userDataDir, 'managed')
 
     await Promise.all([
-      service.installForLaunchPrep(home, false),
+      service.installForLaunchPrep(home, false, () => true),
       service.refreshRuntimeUserHooksForLaunchPrep(home)
     ])
 

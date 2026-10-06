@@ -1,4 +1,8 @@
-import { readHooksJson, type HooksConfig } from '../agent-hooks/installer-utils'
+import {
+  MANAGED_HOOK_TIMEOUT_SECONDS,
+  readHooksJson,
+  type HooksConfig
+} from '../agent-hooks/installer-utils'
 import {
   computeTrustKey,
   getCodexExplicitHomeHookSourcePath,
@@ -14,10 +18,12 @@ import {
   getConfigPath
 } from './codex-hook-definition'
 import { readEveryKnownCodexHookHashes } from './codex-hook-hash-lookup'
+import { readLedgerOrcaHashes } from './codex-managed-trust-reconciliation'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 
 /** One Codex home's hook files, and every path Codex may key its entries by. */
 export type CodexHookHome = {
+  homePath: string
   hooksJsonPath: string
   tomlPath: string
   keySourcePaths: readonly string[]
@@ -26,6 +32,7 @@ export type CodexHookHome = {
 export function getManagedCodexHookHome(runtimeHomePath: string): CodexHookHome {
   const hooksJsonPath = getConfigPath(runtimeHomePath)
   return {
+    homePath: runtimeHomePath,
     hooksJsonPath,
     tomlPath: getCodexConfigTomlPath(runtimeHomePath),
     keySourcePaths: [getCodexExplicitHomeHookSourcePath(hooksJsonPath)]
@@ -74,10 +81,31 @@ export function approvalsAtOrcaEntries(
 }
 
 /**
- * Until Codex answers: Orca's own hash, overlaid with each event's approval at
- * Orca's entry. Only a hash Orca's entry may carry counts: keys are positional,
- * so a removed user hook's approval can be left at Orca's key.
+ * Every hash Orca's entry may carry in `home`: Orca's own, every answer Codex
+ * gave this Orca, and what main's grant recorded there. Keys are positional, so
+ * an approval at Orca's key holding any other hash is a removed user hook's.
  */
+export function readKnownOrcaHashes(home: CodexHookHome, command: string): CodexHookHashes[] {
+  return [
+    computeOrcaCodexHookHashes(command),
+    ...readEveryKnownCodexHookHashes(),
+    ...readLedgerOrcaHashes(home.homePath, command, MANAGED_HOOK_TIMEOUT_SECONDS)
+  ]
+}
+
+/** The one rule for whether an approval's hash is Orca's. */
+export function isKnownOrcaHash(
+  knownOrcaHashes: readonly CodexHookHashes[],
+  eventLabel: CodexEventLabel,
+  trustedHash: string | undefined
+): boolean {
+  return (
+    trustedHash !== undefined &&
+    knownOrcaHashes.some((hashes) => hashes[eventLabel] === trustedHash)
+  )
+}
+
+/** Until Codex answers: Orca's own hash, overlaid with each event's approval at Orca's entry holding a known Orca hash. */
 export function readStopgapOrcaHashes(home: CodexHookHome, command: string): CodexHookHashes {
   let trustStates: ReadonlyMap<string, CodexHookTrustState>
   try {
@@ -85,16 +113,15 @@ export function readStopgapOrcaHashes(home: CodexHookHome, command: string): Cod
   } catch {
     trustStates = new Map()
   }
-  const computed = computeOrcaCodexHookHashes(command)
-  const orcaHashes = [computed, ...readEveryKnownCodexHookHashes()]
+  const known = readKnownOrcaHashes(home, command)
   const slots = findOrcaEntrySlots(readHooksJson(home.hooksJsonPath)?.hooks, command)
   const approved = [...approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)]
   return {
-    ...computed,
+    ...computeOrcaCodexHookHashes(command),
     ...Object.fromEntries(
       approved.flatMap(([eventLabel, approvals]) => {
         const approval = approvals.find(({ trustedHash }) =>
-          orcaHashes.some((hashes) => hashes[eventLabel] === trustedHash)
+          isKnownOrcaHash(known, eventLabel, trustedHash)
         )
         return approval ? [[eventLabel, approval.trustedHash]] : []
       })

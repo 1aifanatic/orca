@@ -16,6 +16,7 @@ import { installCodexHooksRemote } from './codex-hook-remote-install'
 import { getManagedScript } from './codex-hook-script'
 import { readCodexHookHomeStatus } from './codex-hook-status'
 import {
+  CODEX_ANSWER_AWAITED,
   CODEX_HOOK_LAUNCH_WAIT_MS,
   readEveryKnownCodexHookHashes,
   readKnownCodexHookAnswer,
@@ -168,15 +169,19 @@ export class CodexHookService {
   async prepareRuntimeHomeForLaunch(
     runtimeHomePath: string | null | undefined,
     target: CodexWslRuntimeHookTarget | undefined,
-    hooksEnabled: boolean,
+    isHooksEnabled: () => boolean,
     launchesCodex: boolean
   ): Promise<AgentHookInstallStatus> {
-    if (hooksEnabled) {
+    if (isHooksEnabled()) {
       // Why: a managed account's launch home is its self-contained CODEX_HOME,
       // so hooks/trust must install there rather than the shared mirror.
       return (
         (await this.installForRuntimeHomeSerialized(runtimeHomePath, target)) ??
-        (await this.installForLaunchPrep(runtimeHomePath ?? undefined, launchesCodex))
+        (await this.installForLaunchPrep(
+          runtimeHomePath ?? undefined,
+          launchesCodex,
+          isHooksEnabled
+        ))
       )
     }
     return (
@@ -205,13 +210,15 @@ export class CodexHookService {
   // Only a plain terminal's launch prep skips waiting for Codex's answer.
   async install(
     runtimeHomePath: string = getOrcaManagedCodexHomePath(),
-    waitsForCodex = true
+    waitsForCodex = true,
+    isHooksEnabled: () => boolean = () => true
   ): Promise<AgentHookInstallStatus> {
-    const answer = await resolveCodexHookAnswerForLaunch(
-      waitsForCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0
-    )
+    const answer =
+      (await resolveCodexHookAnswerForLaunch(waitsForCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0)) ??
+      CODEX_ANSWER_AWAITED
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () => {
-      if (answer?.kind === 'refused') {
+      // Why decided in the queue: an Off that landed during the wait has already run, and must win.
+      if (!isHooksEnabled() || answer.kind === 'refused') {
         // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
         return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, (homePath) =>
           readCodexHookHomeStatus(homePath, answer)
@@ -219,7 +226,7 @@ export class CodexHookService {
       }
       // Why a stopgap: an answer still on its way must never leave a managed home worse than main.
       const hashes =
-        answer?.kind === 'hashes'
+        answer.kind === 'hashes'
           ? answer.hashes
           : readStopgapOrcaHashes(
               getManagedCodexHookHome(runtimeHomePath),
@@ -246,13 +253,14 @@ export class CodexHookService {
    */
   installForLaunchPrep(
     runtimeHomePath: string | undefined,
-    launchesCodex: boolean
+    launchesCodex: boolean,
+    isHooksEnabled: () => boolean
   ): Promise<AgentHookInstallStatus> {
     const homePath = runtimeHomePath ?? getOrcaManagedCodexHomePath()
     return dedupeInFlightRun(
       this.launchPrepInFlight,
       launchPrepKey(launchesCodex ? 'codex-launch' : 'install', homePath),
-      () => this.install(homePath, launchesCodex)
+      () => this.install(homePath, launchesCodex, isHooksEnabled)
     )
   }
 

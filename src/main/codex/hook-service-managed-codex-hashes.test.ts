@@ -62,6 +62,8 @@ import {
   getManagedScriptPath
 } from './codex-hook-definition'
 import { CODEX_DAEMON_OVERRIDE_MARKER } from './codex-daemon-socket-path-guard'
+import { writeCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
+import { getCodexHookTrustSignature } from './codex-hook-identity'
 
 // Why this file: a managed CODEX_HOME's approval for Orca's entry is Codex's
 // own hash, not one Orca computes, and is written before the entry.
@@ -495,6 +497,48 @@ describe('managed-home Codex hook approval', () => {
     expect(codex.deriveCodexHookHashes).toHaveBeenCalledTimes(1)
   })
 
+  it("lets hooks turned off during a Codex launch's wait win", async () => {
+    useCodexHashes()
+    const service = new CodexHookService()
+    await service.install()
+    let enabled = true
+    let answer: (value: CodexHookAnswer) => void = () => {}
+    useAnswer(new Promise<CodexHookAnswer>((resolve) => (answer = resolve)))
+    const launch = service.installForLaunchPrep(undefined, true, () => enabled)
+    await vi.waitFor(() => expect(codex.deriveCodexHookHashes).toHaveBeenCalledTimes(2))
+
+    enabled = false
+    await service.remove()
+    answer({ kind: 'hashes', codexVersion: 'codex-cli 0.131.0', hashes: CODEX_HASHES })
+    await launch
+
+    expect(readFileSync(join(managedHome(), 'hooks.json'), 'utf-8')).not.toContain('codex-hook')
+    expect(listedEventApprovals().stop).toBeUndefined()
+  })
+
+  it("turning hooks off moves the user's mirrored approval back to its own slot", async () => {
+    seedSystemUserStopHook()
+    useCodexHashes()
+    const service = new CodexHookService()
+    await service.install()
+    const userKey = (groupIndex: number): string =>
+      computeTrustKey({
+        sourcePath: getCodexExplicitHomeHookSourcePath(join(managedHome(), 'hooks.json')),
+        eventLabel: 'stop',
+        groupIndex,
+        handlerIndex: 0,
+        command: 'user-stop.sh'
+      })
+    const userHash = readHookTrustEntries(join(managedHome(), 'config.toml')).get(userKey(1))
+    expect(userHash?.trustedHash).toBeDefined()
+
+    await service.remove()
+
+    const trust = readHookTrustEntries(join(managedHome(), 'config.toml'))
+    expect(trust.get(userKey(0))?.trustedHash).toBe(userHash?.trustedHash)
+    expect(trust.get(userKey(1))).toBeUndefined()
+  })
+
   describe("Orca's own hash until Codex answers, as main wrote it", () => {
     const orcaStop = (): string | undefined => computeOrcaCodexHookHashes().stop ?? undefined
 
@@ -520,7 +564,60 @@ describe('managed-home Codex hook approval', () => {
       })
       expect(status).toMatchObject({
         state: 'installed',
-        detail: 'Approved by Orca; not yet confirmed by Codex (Orca has not asked Codex yet)'
+        detail: 'Approved by Orca; not yet confirmed by Codex (waiting for Codex to answer)'
+      })
+      expect(new CodexHookService().getStatus().detail).toBe(status.detail)
+    })
+
+    it("keeps the approval main's grant recorded for Orca's entry until Codex answers", async () => {
+      useAnswer(timedOut)
+      const service = new CodexHookService()
+      await service.install()
+      const entry = {
+        sourcePath: getCodexExplicitHomeHookSourcePath(join(managedHome(), 'hooks.json')),
+        eventLabel: 'stop' as const,
+        groupIndex: 0,
+        handlerIndex: 0,
+        command: command(),
+        timeoutSec: 10
+      }
+      upsertHookTrustEntries(join(managedHome(), 'config.toml'), [
+        { ...entry, trustedHash: 'sha256:main-granted' }
+      ])
+      writeCodexTrustGrantLedgerHome(managedHome(), {
+        binary: null,
+        entries: {
+          [computeTrustKey(entry)]: {
+            signature: getCodexHookTrustSignature(entry),
+            trustedHash: 'sha256:main-granted'
+          }
+        }
+      })
+
+      await service.install()
+
+      expect(stopApproval()).toBe('sha256:main-granted')
+      expect(service.getStatus().state).toBe('installed')
+    })
+
+    it("does not report a user hook's approval left at Orca's key as Orca's", async () => {
+      useAnswer(timedOut)
+      const service = new CodexHookService()
+      await service.install()
+      upsertHookTrustEntries(join(managedHome(), 'config.toml'), [
+        {
+          sourcePath: getCodexExplicitHomeHookSourcePath(join(managedHome(), 'hooks.json')),
+          eventLabel: 'stop',
+          groupIndex: 0,
+          handlerIndex: 0,
+          command: command(),
+          trustedHash: 'sha256:user'
+        }
+      ])
+
+      expect(service.getStatus()).toMatchObject({
+        state: 'partial',
+        detail: "Orca's hook entry is not approved yet (timed out)"
       })
     })
 

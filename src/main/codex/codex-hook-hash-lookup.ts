@@ -6,6 +6,7 @@ import {
   deriveCodexHookHashes,
   fingerprintCodex,
   probeCodexVersion,
+  sweepStaleCodexScratchHomes,
   type CodexHookAnswer,
   type CodexHookHashes
 } from './codex-hook-trust-derivation'
@@ -49,6 +50,7 @@ export function startCodexHookHashLookup(options: {
 }): void {
   const pathReady = options.pathReady.catch(() => {})
   appPathReady = pathReady
+  void sweepStaleCodexScratchHomes()
   void pathReady.then(() => (options.isEnabled() ? resolveCodexHookAnswer() : undefined))
 }
 
@@ -143,7 +145,16 @@ export function readKnownCodexHookAnswer(): CodexHookAnswer | null {
   if (current?.kind === 'hashes') {
     return current
   }
-  return readMemoizedCodexHookAnswer(codexPath, command, fingerprint) ?? current
+  return (
+    readMemoizedCodexHookAnswer(codexPath, command, fingerprint) ??
+    (derivations.has(fingerprint) ? CODEX_ANSWER_AWAITED : current)
+  )
+}
+
+/** An answer asked for and not in yet. */
+export const CODEX_ANSWER_AWAITED: CodexHookAnswer = {
+  kind: 'pending',
+  failure: 'waiting for Codex to answer'
 }
 
 function codexNotFound(codexPath: string): CodexHookAnswer {
