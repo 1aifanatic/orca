@@ -151,15 +151,7 @@ export class PtyBindingPersistenceOperations {
         const partitions = sessions
           .getWorkspaceSessionHostIds()
           .map((hostId) => ({ hostId, session: sessions.getWorkspaceSession(hostId) }))
-        if (
-          ptyBindingIsRefused(
-            args,
-            session,
-            bindingWorktreeId,
-            paneKey,
-            partitions.map((partition) => partition.session)
-          )
-        ) {
+        if (ptyBindingIsRefused(args, session, bindingWorktreeId, paneKey, partitions)) {
           outcome = 'refused'
           return { value: false, persist: false }
         }
@@ -177,7 +169,7 @@ export class PtyBindingPersistenceOperations {
         // Report-only: the binding is written even when it breaks an invariant, or the check throws.
         // After the fast lane, so a no-op rebind skips the scan.
         try {
-          const conflict = findTerminalBindingConflict(args, partitions)
+          const conflict = findTerminalBindingConflict(args, resolvedHostId, partitions)
           if (conflict) {
             span.setOwnerConflict(conflict.reason)
           }

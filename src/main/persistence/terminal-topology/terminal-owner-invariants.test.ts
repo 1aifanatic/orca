@@ -58,9 +58,11 @@ const bind = (tabId: string, leafId: string, ptyId: string, incarnationId?: stri
 describe('findTerminalBindingConflict', () => {
   // STA-9417: the activation sweep bound the setup PTY to a second, minted leaf.
   it('finds a terminal another tab already binds, naming its leaf', () => {
-    const conflict = findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, 'pty-1', 'i1'), [
-      partition('local', [['tab-a', TEST_LEAF_1, 'pty-1', 'i1']])
-    ])
+    const conflict = findTerminalBindingConflict(
+      bind('tab-b', TEST_LEAF_2, 'pty-1', 'i1'),
+      'local',
+      [partition('local', [['tab-a', TEST_LEAF_1, 'pty-1', 'i1']])]
+    )
     expect(conflict?.reason).toBe('pty_bound_to_other_leaf')
     expect(conflict?.owner).toMatchObject({ hostId: 'local', leafId: TEST_LEAF_1, ptyId: 'pty-1' })
     expect(conflict?.owner.tab.id).toBe('tab-a')
@@ -80,13 +82,13 @@ describe('findTerminalBindingConflict', () => {
       ptyIdsByLeafId: { [TEST_LEAF_1]: 'pty-1' }
     }
     expect(
-      findTerminalBindingConflict(bind('tab-a', TEST_LEAF_2, 'pty-1'), [session])?.reason
+      findTerminalBindingConflict(bind('tab-a', TEST_LEAF_2, 'pty-1'), 'local', [session])?.reason
     ).toBe('pty_bound_to_other_leaf')
   })
 
   it('keys a terminal by incarnation, so a stale incarnation elsewhere is not an owner', () => {
     expect(
-      findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, 'pty-1', 'i2'), [
+      findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, 'pty-1', 'i2'), 'local', [
         partition('local', [['tab-a', TEST_LEAF_1, 'pty-1', 'i1']])
       ])
     ).toBeNull()
@@ -94,7 +96,7 @@ describe('findTerminalBindingConflict', () => {
 
   // STA-9259: the moved pane's reattach bound the same leaf id under a second tab.
   it('finds a leaf id another tab already holds', () => {
-    const conflict = findTerminalBindingConflict(bind('tab-b', TEST_LEAF_1, 'pty-9'), [
+    const conflict = findTerminalBindingConflict(bind('tab-b', TEST_LEAF_1, 'pty-9'), 'local', [
       partition('local', [['tab-a', TEST_LEAF_1, 'pty-1']])
     ])
     expect(conflict?.reason).toBe('leaf_in_other_tab')
@@ -103,7 +105,7 @@ describe('findTerminalBindingConflict', () => {
 
   it('accepts a rebind of the same leaf', () => {
     expect(
-      findTerminalBindingConflict(bind('tab-a', TEST_LEAF_1, 'pty-1', 'i1'), [
+      findTerminalBindingConflict(bind('tab-a', TEST_LEAF_1, 'pty-1', 'i1'), 'local', [
         partition('local', [['tab-a', TEST_LEAF_1, 'pty-1', 'i1']])
       ])
     ).toBeNull()
@@ -111,7 +113,7 @@ describe('findTerminalBindingConflict', () => {
 
   it('checks the local and ssh partitions together', () => {
     const ptyId = 'ssh:ssh-1@@relay-1'
-    const conflict = findTerminalBindingConflict(bind('tab-local', TEST_LEAF_2, ptyId), [
+    const conflict = findTerminalBindingConflict(bind('tab-local', TEST_LEAF_2, ptyId), 'local', [
       partition('local', []),
       partition('ssh:ssh-1', [['tab-ssh', TEST_LEAF_1, ptyId]])
     ])
@@ -122,11 +124,33 @@ describe('findTerminalBindingConflict', () => {
   it('treats the same tab:leaf in two partitions as one surface', () => {
     const ptyId = 'ssh:ssh-1@@relay-1'
     expect(
-      findTerminalBindingConflict(bind('tab-ssh', TEST_LEAF_1, ptyId), [
+      findTerminalBindingConflict(bind('tab-ssh', TEST_LEAF_1, ptyId), 'local', [
         partition('local', [['tab-ssh', TEST_LEAF_1, ptyId]]),
         partition('ssh:ssh-1', [['tab-ssh', TEST_LEAF_1, ptyId]])
       ])
     ).toBeNull()
+  })
+
+  it('names a leaf held by another tab on another host apart', () => {
+    const conflict = findTerminalBindingConflict(bind('tab-b', TEST_LEAF_1, 'pty-9'), 'local', [
+      partition('local', []),
+      partition('ssh:ssh-1', [['tab-a', TEST_LEAF_1, 'ssh:ssh-1@@relay-1']])
+    ])
+    expect(conflict?.reason).toBe('leaf_in_other_tab_on_other_host')
+  })
+
+  // Relay ids like `pty-1` repeat after a relay restart, so the id alone is not one terminal.
+  it('does not match a repeating relay id without both incarnations', () => {
+    const ptyId = 'ssh:ssh-1@@pty-1'
+    const saved = [partition('ssh:ssh-1', [['tab-a', TEST_LEAF_1, ptyId]])]
+    expect(
+      findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, ptyId, 'i2'), 'ssh:ssh-1', saved)
+    ).toBeNull()
+    const incarnated = [partition('ssh:ssh-1', [['tab-a', TEST_LEAF_1, ptyId, 'i1']])]
+    expect(
+      findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, ptyId, 'i1'), 'ssh:ssh-1', incarnated)
+        ?.reason
+    ).toBe('pty_bound_to_other_leaf')
   })
 
   it('ignores runtime partitions, layouts without a tab row, and legacy leaf ids', () => {
@@ -141,9 +165,11 @@ describe('findTerminalBindingConflict', () => {
       orphanLayout,
       partition('runtime:env-1', [['tab-runtime', TEST_LEAF_1, 'pty-1']])
     ]
-    expect(findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, 'pty-1'), partitions)).toBeNull()
     expect(
-      findTerminalBindingConflict(bind('tab-b', 'pane:2', 'pty-1'), [
+      findTerminalBindingConflict(bind('tab-b', TEST_LEAF_2, 'pty-1'), 'local', partitions)
+    ).toBeNull()
+    expect(
+      findTerminalBindingConflict(bind('tab-b', 'pane:2', 'pty-1'), 'local', [
         partition('local', [['tab-a', TEST_LEAF_1, 'pty-1']])
       ])
     ).toBeNull()

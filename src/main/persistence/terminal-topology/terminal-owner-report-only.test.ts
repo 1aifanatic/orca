@@ -208,7 +208,7 @@ describe('report-only terminal owner check', () => {
     expect(withCheck.saved).toContain('tab-minted-2')
     expect(withCheck.writes).toEqual(withoutCheck.writes)
     expect(withCheck.saved).toEqual(withoutCheck.saved)
-    // The load repair does not run: the saved duplicate and folder tab load as they were.
+    // Load leaves saved breaches in place: the duplicate and folder tab load as they were.
     expect(withCheck.loaded.tabsByWorktree).toMatchObject({
       [LOCAL_WT]: [{ id: 'tab-b' }, { id: 'tab-minted' }],
       [FOLDER_WT]: [{ id: 'tab-folder' }]
