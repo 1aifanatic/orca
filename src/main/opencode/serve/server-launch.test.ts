@@ -67,4 +67,26 @@ describe('OpenCode server launch', () => {
       openCodeServerLaunch({ ...launchInput, environment: explicit }).env?.OPENCODE_CONFIG_DIR
     ).toBe(explicit.OPENCODE_CONFIG_DIR)
   })
+
+  it('strips inherited caller identity and stamps only the owning chat', () => {
+    const environment = {
+      ORCA_TERMINAL_HANDLE: 'parent-terminal',
+      ORCA_AGENT_SESSION_ID: 'parent-session',
+      ORCA_STRUCTURED_SESSION: '1'
+    }
+    const anonymous = resolveProviderChildEnv(
+      openCodeServerLaunch({ ...launchInput, environment }),
+      environment
+    )
+    expect(anonymous).not.toHaveProperty('ORCA_TERMINAL_HANDLE')
+    expect(anonymous).not.toHaveProperty('ORCA_AGENT_SESSION_ID')
+    expect(anonymous).not.toHaveProperty('ORCA_STRUCTURED_SESSION')
+    const owned = resolveProviderChildEnv(
+      openCodeServerLaunch({ ...launchInput, environment, sessionId: 'owned-session' }),
+      environment
+    )
+    expect(owned.ORCA_AGENT_SESSION_ID).toBe('owned-session')
+    expect(owned.ORCA_STRUCTURED_SESSION).toBe('1')
+    expect(owned).not.toHaveProperty('ORCA_TERMINAL_HANDLE')
+  })
 })

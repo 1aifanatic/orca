@@ -5,6 +5,13 @@ import {
 } from '../../../shared/agent-hook-scrub-safe-env'
 import { AGENT_HOOK_RUNTIME_ENV_KEYS } from '../../ipc/pty/host-env/spawn-env-keys'
 import type { ProviderProcessLaunch } from '../../provider-process/provider-process-launch'
+import { structuredSessionChildIdentityEnv } from '../../runtime/structured-session-child-identity-env'
+
+const CALLER_ENV = [
+  'ORCA_TERMINAL_HANDLE',
+  'ORCA_AGENT_SESSION_ID',
+  'ORCA_STRUCTURED_SESSION'
+] as const
 
 const PANE_ENV = [
   'ORCA_PANE_KEY',
@@ -26,6 +33,8 @@ export type OpenCodeServerLaunchInput = {
   environment: Record<string, string>
   port: number
   password: string
+  /** The owner supplies its own identity; an inherited caller never speaks for this server. */
+  sessionId?: string
 }
 
 export function openCodeServerLaunch(input: OpenCodeServerLaunchInput): ProviderProcessLaunch {
@@ -35,7 +44,13 @@ export function openCodeServerLaunch(input: OpenCodeServerLaunchInput): Provider
   if (!input.cwd || !input.command || !input.password) {
     throw new Error('OpenCode server requires a command, workspace and password')
   }
-  const env = { ...input.environment }
+  let env = { ...input.environment }
+  for (const key of CALLER_ENV) {
+    delete env[key]
+  }
+  if (input.sessionId) {
+    env = structuredSessionChildIdentityEnv(input.sessionId, env)
+  }
   restoreOrStripOverlayEnv(
     env,
     {
@@ -59,6 +74,10 @@ export function openCodeServerLaunch(input: OpenCodeServerLaunchInput): Provider
     cwd: input.cwd,
     env,
     // Overlay removal must also win over the supervisor's inherited environment.
-    envToDelete: [...PANE_ENV, ...(env.OPENCODE_CONFIG_DIR ? [] : ['OPENCODE_CONFIG_DIR'])]
+    envToDelete: [
+      ...PANE_ENV,
+      ...CALLER_ENV.filter((key) => env[key] === undefined),
+      ...(env.OPENCODE_CONFIG_DIR ? [] : ['OPENCODE_CONFIG_DIR'])
+    ]
   }
 }

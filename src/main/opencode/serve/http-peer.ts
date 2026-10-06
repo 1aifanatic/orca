@@ -13,6 +13,7 @@ export type OpenCodeHttpPeerOptions = {
   requestTimeoutMs?: number
   maxResponseBytes?: number
   maxPendingRequests?: number
+  consumerTimeoutMs?: number
 }
 
 export type OpenCodeHttpRequest = {
@@ -31,6 +32,7 @@ export class OpenCodeHttpPeer {
   private readonly requestTimeoutMs: number
   private readonly maxResponseBytes: number
   private readonly maxPendingRequests: number
+  private readonly consumerTimeoutMs: number
   private pending = 0
   private eventStreamOpen = false
 
@@ -44,7 +46,8 @@ export class OpenCodeHttpPeer {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000
     this.maxResponseBytes = options.maxResponseBytes ?? 16 * 1024 * 1024
     this.maxPendingRequests = options.maxPendingRequests ?? 64
-    for (const limit of [this.maxResponseBytes, this.maxPendingRequests]) {
+    this.consumerTimeoutMs = options.consumerTimeoutMs ?? 120_000
+    for (const limit of [this.maxResponseBytes, this.maxPendingRequests, this.consumerTimeoutMs]) {
       if (!Number.isSafeInteger(limit) || limit < 1) {
         throw new RangeError('OpenCode limit must be positive')
       }
@@ -178,7 +181,22 @@ export class OpenCodeHttpPeer {
         }
         for (const frame of frames.push(decoder.decode(chunk.value, { stream: true }))) {
           joined.throwIfAborted()
-          await awaitOpenCodeHttp(onFrame(frame), joined)
+          const consuming = openCodeHttpDeadline(this.consumerTimeoutMs)
+          try {
+            await awaitOpenCodeHttp(onFrame(frame), AbortSignal.any([joined, consuming.signal]))
+          } catch (error) {
+            if (error instanceof OpenCodeHttpError && error.kind !== 'transport') {
+              throw error
+            }
+            throw new OpenCodeHttpError(
+              'consumer',
+              'OpenCode event consumer did not complete',
+              undefined,
+              { cause: error }
+            )
+          } finally {
+            consuming.dispose()
+          }
         }
       }
     } catch (error) {

@@ -3,11 +3,12 @@ import { appendCompactedStringChunk } from '../../../shared/string-chunk-compact
 
 export class OpenCodeHttpError extends Error {
   constructor(
-    readonly kind: 'transport' | 'status' | 'invalid-response' | 'closed' | 'capacity',
+    readonly kind: 'transport' | 'status' | 'invalid-response' | 'closed' | 'capacity' | 'consumer',
     message: string,
-    readonly status?: number
+    readonly status?: number,
+    options?: ErrorOptions
   ) {
-    super(message)
+    super(message, options)
     this.name = 'OpenCodeHttpError'
   }
 }

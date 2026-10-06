@@ -8,14 +8,17 @@ const infoSchema = z.object({ version: z.string(), pid: z.number().int().positiv
 const healthSchema = z.object({ version: z.string(), healthy: z.literal(true) })
 
 function supportedVersion(version: string): OpenCodeServerVersion {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version)
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version)
   const major = Number(match?.[1])
   const minor = Number(match?.[2])
   const patch = Number(match?.[3])
   if (major === 2) {
     return { major, version }
   }
-  if (major === 1 && (minor > 14 || (minor === 14 && patch >= 19))) {
+  if (
+    major === 1 &&
+    (minor > 14 || (minor === 14 && (patch > 19 || (patch === 19 && !match?.[4]))))
+  ) {
     return { major, version }
   }
   throw new OpenCodeHttpError(

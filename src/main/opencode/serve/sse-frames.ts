@@ -1,4 +1,5 @@
 import { appendCompactedStringChunk } from '../../../shared/string-chunk-compaction'
+import { OpenCodeHttpError } from './http-response'
 
 export type OpenCodeSseFrame = { data: string; event: string; id: string }
 
@@ -49,7 +50,7 @@ export class OpenCodeSseFrames {
     }
     this.lineBytes += Buffer.byteLength(part, 'utf8')
     if (this.lineBytes > this.maxFrameBytes) {
-      throw new Error('OpenCode SSE line exceeds limit')
+      throw new OpenCodeHttpError('capacity', 'OpenCode SSE line exceeds limit')
     }
     appendCompactedStringChunk(this.line, part)
   }
@@ -74,7 +75,7 @@ export class OpenCodeSseFrames {
     if (field === 'data') {
       this.dataBytes += Buffer.byteLength(value, 'utf8') + 1
       if (this.dataBytes > this.maxFrameBytes) {
-        throw new Error('OpenCode SSE frame exceeds limit')
+        throw new OpenCodeHttpError('capacity', 'OpenCode SSE frame exceeds limit')
       }
       appendCompactedStringChunk(this.data, `${value}\n`)
     } else if (field === 'event') {

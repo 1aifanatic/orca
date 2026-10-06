@@ -5,7 +5,11 @@ afterEach(() => vi.useRealTimers())
 
 function peer(
   fetchImpl: typeof fetch,
-  options: { maxResponseBytes?: number; maxPendingRequests?: number } = {}
+  options: {
+    maxResponseBytes?: number
+    maxPendingRequests?: number
+    consumerTimeoutMs?: number
+  } = {}
 ) {
   return new OpenCodeHttpPeer({ port: 48271, password: 'pässwörd', fetch: fetchImpl, ...options })
 }
@@ -111,6 +115,64 @@ describe('OpenCode HTTP peer', () => {
 })
 
 describe('OpenCode event stream', () => {
+  it('bounds a stalled consumer and releases the stream for a new subscription', async () => {
+    vi.useFakeTimers()
+    const cancelled = vi.fn()
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('data: one\n\n'))
+            },
+            cancel: cancelled
+          }),
+          { headers: { 'content-type': 'text/event-stream' } }
+        )
+    )
+    const connection = peer(fetchImpl, { consumerTimeoutMs: 20 })
+    const stalled = expect(
+      connection.events('/event', () => new Promise<void>(() => {}), new AbortController().signal)
+    ).rejects.toMatchObject({ kind: 'consumer' })
+    await vi.advanceTimersByTimeAsync(20)
+    await stalled
+    expect(cancelled).toHaveBeenCalledOnce()
+    const signal = new AbortController()
+    await connection.events('/event', async () => signal.abort(), signal.signal)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+    connection.close()
+  })
+
+  it('keeps framing limits and consumer faults separate from network loss', async () => {
+    const stream = () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: payload\n\n'))
+          }
+        }),
+        { headers: { 'content-type': 'text/event-stream' } }
+      )
+    const oversized = peer(async () => stream(), { maxResponseBytes: 8 })
+    await expect(
+      oversized.events('/event', async () => {}, new AbortController().signal)
+    ).rejects.toMatchObject({ kind: 'capacity' })
+    oversized.close()
+    const broken = peer(async () => stream())
+    const cause = new Error('consumer failure')
+    await expect(
+      broken.events(
+        '/event',
+        async () => {
+          throw cause
+        },
+        new AbortController().signal
+      )
+    ).rejects.toMatchObject({ kind: 'consumer', cause })
+    broken.close()
+  })
+
   it('decodes split UTF-8 and the BOM, and forwards child events without filtering', async () => {
     const signal = new AbortController()
     const frames: string[] = []

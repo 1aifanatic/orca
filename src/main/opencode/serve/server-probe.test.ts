@@ -74,7 +74,7 @@ describe('OpenCode server version probe', () => {
     peer.close()
   })
 
-  it.each(['1.14.18', '0.9.0', '3.0.0', 'invalid'])(
+  it.each(['1.14.18', '1.14.19-beta', '1.14.19-rc.1', '0.9.0', '3.0.0', 'invalid'])(
     'refuses unsupported version %s',
     async (version) => {
       const { peer } = replay({
@@ -87,6 +87,24 @@ describe('OpenCode server version probe', () => {
       await expect(probeOpenCodeServer(peer, new AbortController().signal)).rejects.toThrow(
         'requires version'
       )
+      peer.close()
+    }
+  )
+
+  it.each(['1.14.19', '1.14.19+build.1', '1.14.20-beta'])(
+    'accepts version %s at or above the release floor',
+    async (version) => {
+      const { peer } = replay({
+        '/global/health': {
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ healthy: true, version })
+        }
+      })
+      await expect(probeOpenCodeServer(peer, new AbortController().signal)).resolves.toEqual({
+        major: 1,
+        version
+      })
       peer.close()
     }
   )
