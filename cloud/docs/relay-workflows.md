@@ -219,15 +219,20 @@ whether a US cell belongs there is decided at promotion, not assumed. Both were 
 on 2026-10-01, so the same-cap job now rolls them as general cells. They stay out of the fleet pool
 list because their pool is the US default of 10.
 
-C34 is an Asia spare at the C31 shape in `asia-east2-c`, so the six Asia cells spread 2/2/2. It is
-its own topology wave and registers alone as migration-only, then the director is configured with
-`cell-ids` set to C34. It has no promotion wave: the Asia admission script and workflow refuse
-`promote` for it, and placement and regional rehome select only general cells. It is a
-migration-only landing zone that only an explicit evacuation or migration naming it can target.
-Do not name it in the multi-target `promote-general-cell` or `retire-migration-cell` modes, which
-accept any migration-only cell. It is a declared rehome source, sits in the same-cap migration-only
-list, and stays out of the fleet pool list. Promoting it later takes its own reviewed change adding a
-promotion wave and canary entry.
+C34 is a sixth Asia cell at the C31 shape in `asia-east2-c`, so the six Asia cells spread 2/2/2. It
+was its own topology wave, registered alone as migration-only, and the director was configured with
+`cell-ids` set to C34, all on 2026-10-05. It launched as a migration-only spare and now has a
+promotion wave of its own, with the same five-minute canary C30 and C31 ran. The canary lands on
+C34 because it is the emptiest general Asia cell once promoted. Promotion compares the director's
+serving digest and C34's runtime digest with the one `image-digest` input, so C34 must first be
+rolled to the director's image. That roll is a same-cap wave that enters and leaves
+migration-only, so it moves nobody. C34 stays in the same-cap migration-only list until its promotion
+succeeds, because a same-cap job reads a cell's class from that list, not from the selector. It
+then moves to the general list and the fleet pool list together, as its own reviewed change,
+before any same-cap wave names C34 again. Between promotion and that change, do not run a same-cap
+wave on C34; a rollback there would demote it. Do not name it in the multi-target
+`promote-general-cell` or `retire-migration-cell` modes, which accept any migration-only cell. It
+is a declared rehome source.
 Rollback returns
 Asia cells to migration-only; it does not destroy the network or use
 existing-only. The production topology dispatch remains unavailable until the
@@ -692,6 +697,92 @@ after checkout and authentication, before package installation, revision checks,
 Their typed confirmations are `PAUSE_REGIONAL_REHOMING` and `DISABLE_REGIONAL_REHOMING`. Keep the
 default 3,600,000 ms drain grace so existing splices can finish. The job summary contains only fresh
 aggregate active, receipt, registration, completion, and abort counts.
+
+### Director deploy driver
+
+`dev/scripts/drive-relay-director-deploy.mjs` runs a whole director deploy from an operator machine
+with `gh` and `gcloud` logged in. It only dispatches the workflows above and reads their results; it
+holds no credentials and changes no workflow. It never fills in a workflow's typed confirmation: the
+operator types each one when the driver reaches it.
+
+```bash
+cd cloud
+node dev/scripts/drive-relay-director-deploy.mjs --commit <reviewed main SHA> --dry-run
+node dev/scripts/drive-relay-director-deploy.mjs --commit <reviewed main SHA> \
+  [--configure production-gce-c34=sha256:<cell image digest>]
+```
+
+It keeps no state between runs. Every decision comes from live state read at the start of each run:
+
+- the serving director's digest and configured cells, from `gcloud`;
+- the admission selector, from an `Operate Relay Asia Admission` `inspect`;
+- the rehome control, from a rehome `inspect` at the generation the newest rehome run printed, or
+  at `--rehome-generation`.
+
+Steps already done are skipped: a serving digest that matches is not deployed again, and cells
+already configured are not configured again. It always reads rehome, even when nothing is left to
+do, so it never reports success over a pause it cannot explain.
+
+The sequence:
+
+1. **Publish.** No `cloud-*` workflow is queued or running (all pages; the hourly clock-skew
+   monitor and `cloud-verify` excepted), and `main` is the reviewed commit. The publish workflow
+   builds whatever `main` is when it is dispatched, so the driver dispatches it straight after that
+   check, before the inspects and the typed phrase. It changes nothing serving, so a bad build needs
+   no cleanup. The digest is the registry digest of `relay:sha-<commit>`, and the run's own push
+   line must name the same digest. If `main` still moved in those seconds, the driver stops and
+   names the `--commit <built> --publish-run <run>` that deploys that build once it is reviewed.
+2. **Preflight, read-only**, then the operator types `DEPLOY <commit prefix>`.
+3. **Pause**, only if rehome is enabled, after the operator types `PAUSE_REGIONAL_REHOMING`.
+4. **Deploy** with that digest, the paused generation, `preserve` for both regional inputs, no
+   prune, and the old serving digest as predecessor.
+5. **Soak**, with `--configure` only, while no wave is configured yet. It watches 5 minutes of
+   director 5xx and stops if they exceed twice the 5 minutes before the new revision existed, plus
+   25. The window starts at the traffic switch (a minute before the deploy run completed) when this
+   run deployed, otherwise at the time of the run, so a re-run judges fresh traffic. It is read a
+   minute late, to allow for log lag. Then the operator types `CONFIGURE_ASIA_DIRECTOR` and each
+   pending wave is configured.
+6. **Digest check.** A rehome `inspect` bound to the serving and rollback digests that `gcloud`
+   reports now. A wrong digest fails here, read-only, before 15 minutes of monitor evidence is
+   spent on it.
+7. **Monitor.** The operator types `ENABLE_REGIONAL_REHOMING`. The prompt says this arms an
+   automatic enable, sent about 17 minutes later, and only if the monitor is green and its evidence
+   is at most 150 s old. The monitor dry-run then starts. Its artifact passes the same
+   `relay-monitor-evidence.mjs verify-authority` check the enable job runs.
+8. **Enable** with the verified digests, within 150 s of the monitor completing.
+
+Steps 6 to 8 run only for a pause this driver owns.
+
+**Ownership.** The driver owns a pause only if it can name the run that made it, and the live
+control is still at that run's generation. Two kinds of line in a run's log prove it paused
+rehome:
+
+- `pause`;
+- `recover-enable` with `recovered: true`, meaning a failed enable that disabled rehome again itself.
+
+The run must be a rehome-control run by the same GitHub user. A `recover-enable` with
+`recovered: false` found rehome already disabled, for example by a director safety pause, and is
+never adopted. A failed enable run is never counted as an enable, whatever it printed last. A fresh run that finds rehome paused stops. It goes ahead only
+with:
+
+- `--pause-run <run>`, which an earlier run of this driver printed; or
+- `--leave-rehome-paused`, which deploys and leaves rehome paused. It refuses an enabled switch.
+
+A pause made by anything else is never lifted.
+
+**Stops.** On any failure, Ctrl-C, SIGTERM or SIGHUP, the driver prints what changed:
+
+- `REHOME IS CHANGING` when a pause or enable run is in flight and will apply on its own;
+- `PAUSE UNCONFIRMED` or `ENABLE UNCONFIRMED` when such a run printed no usable result;
+- `REHOME IS PAUSED by this driver` with the owning run;
+- the serving director, re-read;
+- the published digest;
+- the rollback point, with the `gh workflow run` command that redeploys it.
+
+It ends with the single command that finishes from where it stopped. That command carries
+`--publish-run` and `--pause-run`, and the driver re-verifies both against the runs' logs and live
+state. Each run writes a timestamped log under `~/.orca/relay-director-deploy/`
+(`--log-directory` overrides it).
 
 ## Mobile push gateway
 

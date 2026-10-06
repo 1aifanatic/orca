@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   activateTabAndFocusPane: vi.fn(),
   activateStructuredAgentSessionTab: vi.fn(),
   activateAndRevealWorkspace: vi.fn(),
-  isFloatingWorkspacePanelVisible: vi.fn(),
   dispatchEvent: vi.fn()
 }))
 
@@ -22,9 +21,6 @@ vi.mock('@/lib/structured-agent-session-tab-activation', () => ({
 }))
 vi.mock('@/lib/worktree-activation', () => ({
   activateAndRevealWorkspace: mocks.activateAndRevealWorkspace
-}))
-vi.mock('@/lib/floating-workspace-terminal-actions', () => ({
-  isFloatingWorkspacePanelVisible: mocks.isFloatingWorkspacePanelVisible
 }))
 
 import { createActivityThreadActions, hasActivityThreadWorkspace } from './activity-thread-actions'
@@ -70,7 +66,6 @@ describe('activity thread host routing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('window', { dispatchEvent: mocks.dispatchEvent })
-    mocks.isFloatingWorkspacePanelVisible.mockReturnValue(false)
     mocks.activateStructuredAgentSessionTab.mockReturnValue(false)
     mocks.activateAndRevealWorkspace.mockReturnValue({ primaryTabId: null })
     getKnownWorktreeById.mockReturnValue(thread.worktree)
@@ -119,7 +114,7 @@ describe('activity thread host routing', () => {
       state.settings = { floatingTerminalEnabled: true }
       state.tabsByWorktree = { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingThread.tab] }
       mocks.activateAndRevealWorkspace.mockReturnValue(false)
-      mocks.isFloatingWorkspacePanelVisible.mockReturnValue(open)
+      state.floatingWorkspacePanelOpen = open
 
       makeActions().selectThread(floatingThread)
 
@@ -281,5 +276,21 @@ describe('activity thread host routing', () => {
     markAllSet = [thread, readThread]
     actions.markAllThreadsRead()
     expect(acknowledgeAgents).toHaveBeenCalledWith([thread.paneKey])
+  })
+
+  it('marks a batch of threads read or unread in one store update', () => {
+    const other = { ...makeRemoteThread(), paneKey: 'tab-2:other' }
+    const unacknowledgeAgents = vi.fn()
+    const actions = createActivityThreadActions({
+      getMarkAllReadThreads: () => [],
+      acknowledgeAgents,
+      unacknowledgeAgents,
+      setSelectedPaneKey
+    })
+
+    actions.markThreadsRead([thread, other])
+    actions.markThreadsUnread([thread, other])
+    expect(acknowledgeAgents).toHaveBeenCalledExactlyOnceWith([thread.paneKey, other.paneKey])
+    expect(unacknowledgeAgents).toHaveBeenCalledExactlyOnceWith([thread.paneKey, other.paneKey])
   })
 })
