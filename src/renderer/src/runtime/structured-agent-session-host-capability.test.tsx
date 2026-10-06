@@ -7,7 +7,7 @@ import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
-  AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY
+  AGENT_SESSION_REWIND_RECOVERY_CAPABILITY
 } from '../../../shared/protocol-version'
 
 const mocks = vi.hoisted(() => ({
@@ -108,7 +108,7 @@ describe('whether a host settles an in-doubt rewind on the next send', () => {
       renderHook(() => useStructuredAgentSessionHostRecoversRewindOnSend({ kind: 'local' })).result
         .current
     ).toBe(false)
-    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY])
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_REWIND_RECOVERY_CAPABILITY])
     expect(
       renderHook(() => useStructuredAgentSessionHostRecoversRewindOnSend({ kind: 'local' })).result
         .current
@@ -124,10 +124,7 @@ describe('whether a host settles an in-doubt rewind on the next send', () => {
       })
     )
     await waitFor(() =>
-      expect(mocks.supports).toHaveBeenCalledWith(
-        'env-1',
-        AGENT_SESSION_REWIND_SEND_RECOVERY_RUNTIME_CAPABILITY
-      )
+      expect(mocks.supports).toHaveBeenCalledWith('env-1', AGENT_SESSION_REWIND_RECOVERY_CAPABILITY)
     )
     await waitFor(() => expect(result.current).toBe(supported))
   })

@@ -60,6 +60,8 @@ const settledTurn = (itemId: string, userItemId: string, start: number) =>
     completedAt: start + 1_000
   })
 
+const REWIND = { disabledReason: null, request: vi.fn() }
+
 describe('which transcript rows offer Edit from here', () => {
   it('offers it only on prompts that opened their own turn', () => {
     const steer = agentJournalSubmissionKey('steer')
@@ -89,7 +91,7 @@ describe('which transcript rows offer Edit from here', () => {
     ]
     render(
       <TooltipProvider>
-        <NativeChatRewindContext.Provider value={{ disabledReason: null, request: vi.fn() }}>
+        <NativeChatRewindContext.Provider value={REWIND}>
           <NativeChatMessageList
             session={{
               messages: projectStructuredAgentSessionMessages(items, [], submissions, {
