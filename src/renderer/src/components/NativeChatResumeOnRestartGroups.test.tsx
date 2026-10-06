@@ -498,6 +498,72 @@ it.each([
   }
 )
 
+it.each([true, false])(
+  'cache-only metadata/enabled=%s: preserves sidebar header geometry without showing live state',
+  (enabled) => {
+    useAppStore.setState({ fetchHostedReviewForBranch: vi.fn().mockResolvedValue(undefined) })
+    render(true, undefined, false, undefined, true, ['status'])
+    const child = worktree('child', { hostId: 'local' })
+    const state = useAppStore.getState()
+    act(() =>
+      useAppStore.setState({
+        settings: {
+          ...(state.settings ?? getDefaultSettings('')),
+          promptCacheTimerEnabled: enabled,
+          promptCacheTtlMs: 300_000
+        },
+        tabsByWorktree: {
+          [child.id]: [
+            {
+              id: 'child-claude',
+              worktreeId: child.id,
+              ptyId: null,
+              title: 'Claude',
+              customTitle: null,
+              color: null,
+              launchAgent: 'claude',
+              sortOrder: 0,
+              createdAt: 1
+            }
+          ]
+        },
+        cacheTimerByKey: { 'child-claude:seed': Date.now() }
+      })
+    )
+    const dialogChild = cardTitled('child')
+    const dialog = worktreeCardVerticalSignature(dialogChild)
+    const list = cardTitled('parent').parentElement?.parentElement
+    if (!list) {
+      throw new Error('Missing dialog list')
+    }
+    const dialogOffsets = worktreeCardVerticalOffsets(
+      cardTitled('parent'),
+      cardTitled('next-root'),
+      worktreeCardRootGap(list)
+    )
+    expect(dialogChild.querySelector('[data-worktree-card-meta-row]')).toBeNull()
+    expect(dialogChild.textContent).toContain('Prompt in-child')
+    expect(dialogChild.textContent).toContain('Prompt also-in-child')
+
+    const live = renderLiveSidebarRows()
+    const dialogContainer = container
+    container = live
+    const sidebarChild = cardTitled('child')
+    const sidebar = worktreeCardVerticalSignature(sidebarChild)
+    const sidebarOffsets = worktreeCardVerticalOffsets(
+      cardTitled('parent'),
+      cardTitled('next-root'),
+      worktreeCardRootGap(live)
+    )
+    container = dialogContainer
+    expect(sidebarChild.querySelector('[data-worktree-card-meta-row]') !== null).toBe(enabled)
+    expect(sidebar.surface).toEqual(enabled ? ['border', 'pb-1.5', 'pt-1.25'] : ['border', 'py-2'])
+    expect(dialog).toEqual(sidebar)
+    expect(sidebarOffsets.chipToChildTitle).toBe(enabled ? 12 : 15)
+    expect(dialogOffsets).toEqual(sidebarOffsets)
+  }
+)
+
 it('counts only listed child workspaces in the passive chip', () => {
   render(false)
   const state = useAppStore.getState()

@@ -271,6 +271,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
   const titleOnlyCard = !hasSecondaryCardContent
   const surfacePaddingClassName = getWorktreeCardSurfacePadding(
     hasMetaRow ||
+      card.cacheTimerAffectsSurfacePadding ||
       !!remoteBranchConflict ||
       card.inlineAgentRowsAffectSurfacePadding ||
       showLineageChildChip ||

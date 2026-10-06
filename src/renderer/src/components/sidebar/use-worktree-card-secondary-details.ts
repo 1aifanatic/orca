@@ -244,7 +244,12 @@ export function useWorktreeCardSecondaryDetails({
     cliProvenance: metaCliProvenance
   })
   const hasPorts = showPorts && workspacePorts.length > 0
-  const cacheStartedAt = usePromptCacheCountdownStartedAt(worktree.id, showAggregateCacheTimer)
+  // Hidden live metadata still determines the sidebar's header padding.
+  const cacheStartedAtForSurfacePadding = usePromptCacheCountdownStartedAt(
+    worktree.id,
+    !compactCards && !compactInlineAgentRowsVisible
+  )
+  const cacheStartedAt = showAggregateCacheTimer ? cacheStartedAtForSurfacePadding : null
   // Why: derived from the settings the card already subscribes to — a third store
   // subscription for this one field costs a listener per card on every store write.
   const cacheTtlMs = showAggregateCacheTimer ? (settings?.promptCacheTtlMs ?? 0) : 0
@@ -276,6 +281,7 @@ export function useWorktreeCardSecondaryDetails({
     handleOpenLinearIssueInOrca,
     hasDetails,
     hasPorts,
+    cacheTimerAffectsSurfacePadding: cacheStartedAtForSurfacePadding != null,
     cacheStartedAt,
     cacheTtlMs
   }
