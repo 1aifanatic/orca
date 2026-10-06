@@ -139,8 +139,7 @@ describe('Claude structured Fast mode', () => {
     }
   )
 
-  // Turning Fast off needs no support evidence, so it must not pay a catalog round
-  // trip — restore replays a stored `false` on every acquire.
+  // Turning Fast off needs no support evidence, so it must not pay a catalog round trip.
   it('reads no catalog to turn Fast off, but does to turn it on', async () => {
     const { session } = fastModeSession(true)
     const listed = session.connection.supportedModels

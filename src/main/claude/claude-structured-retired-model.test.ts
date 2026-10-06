@@ -8,8 +8,11 @@ import {
   retireClaudeLaunchedModel
 } from './claude-structured-retired-model'
 import {
+  adapterFor,
+  claudeFrame,
   claudeStartupSettled,
   fakeClaude,
+  tick,
   identityFor,
   PROVIDER_SESSION_ID,
   recordingJournalSink
@@ -145,6 +148,58 @@ describe("the account catalog a child's listing writes through", () => {
 
     expect(events.some((event) => event.type === 'started')).toBe(true)
     expect(store.get(handle.fingerprint)?.models.map((model) => model.id)).toEqual(['opus'])
+    await adapter.closeAll()
+  })
+})
+
+describe('a live child still launched with a retired model', () => {
+  async function healed(holdReset: boolean) {
+    let answerReset: () => void = () => {}
+    const claude = fakeClaude({
+      initModels: [NATIVE_OPUS, LAUNCHED_ROW],
+      routes: {
+        list_models: () => [NATIVE_OPUS],
+        set_model: (params) =>
+          holdReset && params?.model === undefined
+            ? new Promise<void>((resolve) => (answerReset = resolve))
+            : undefined
+      }
+    })
+    const adapter = adapterFor(claude)
+    await adapter.acquire({
+      identity: identityFor(),
+      fence: 7,
+      spawnToken: 'spawn-9',
+      options: { model: RETIRED }
+    })
+    claudeFrame(claude.connections[0]!, modelNotFound())
+    return { claude, adapter, answerReset: () => answerReset() }
+  }
+
+  function setModelCalls(claude: ReturnType<typeof fakeClaude>) {
+    return claude.connections[0]!.calls.filter((call) => call.subtype === 'set_model')
+  }
+
+  it("goes back to the CLI's own default, so the next turn runs", async () => {
+    const { claude, adapter } = await healed(false)
+    await tick()
+
+    expect(setModelCalls(claude)).toEqual([{ subtype: 'set_model', params: { model: undefined } }])
+    const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+    expect(options.current.model).not.toBe(RETIRED)
+    await adapter.closeAll()
+  })
+
+  it('keeps a model the user picks before the reset lands', async () => {
+    const { claude, adapter, answerReset } = await healed(true)
+    await adapter.setOption({ sessionId: 'session-1', key: 'model', value: 'opus', fence: 7 })
+    answerReset()
+    await tick()
+
+    // The pick goes out after the reset, so the CLI runs it; the reset's bookkeeping stands aside.
+    expect(setModelCalls(claude).map((call) => call.params?.model)).toEqual([undefined, 'opus'])
+    const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+    expect(options.current.model).toBe('opus')
     await adapter.closeAll()
   })
 })

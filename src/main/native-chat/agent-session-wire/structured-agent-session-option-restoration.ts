@@ -21,7 +21,7 @@ export async function readNativeSessionOptions(input: {
 }
 
 /** The record's options once the provider has reported: its model, effort and Fast replace the
- *  saved ones, other saved options stay, and any the restore could not apply are dropped. */
+ *  saved ones, other saved options stay, and any the child could not take are dropped. */
 export function nativeSessionOptionsFromReport(input: {
   reported: AgentSessionOptionsResult['current']
   restoreSkipped: readonly string[]

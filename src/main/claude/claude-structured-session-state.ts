@@ -68,7 +68,7 @@ export type ClaudeStructuredSessionEvent =
       fence: number
     }
   | { type: 'auth-diagnostic'; sessionId: string; diagnostic: ClaudeAuthDiagnostic }
-  /** Startup facts applied and saved options restored; held prompts are about to be written. */
+  /** Startup facts applied; the child already took any message written to it. */
   | StructuredAgentSessionStartedEvent
   | StructuredAgentSessionOptionsSkippedEvent
   | {
@@ -214,7 +214,7 @@ export type ClaudeSession = {
   translator: ClaudeJournalTranslator | null
   events: StructuredAgentSessionEventSink | undefined
   unbindReadingControl?: () => void
-  /** Published at spawn; init facts, option restore and queued prompts land when startup does. */
+  /** Published at spawn with its saved options; init facts land when startup does. */
   startup: ClaudeSessionStartup
 }
 

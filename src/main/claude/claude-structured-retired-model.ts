@@ -3,7 +3,10 @@
 // `model_not_found` (Claude Code 2.1.280). That reply is the evidence the saved model cannot run.
 
 import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
-import type { ClaudeSession } from './claude-structured-session-state'
+import type {
+  ClaudeSession,
+  ClaudeStructuredSessionAdapterDeps
+} from './claude-structured-session-state'
 
 /** The launched model, once, when a root reply says it does not exist and the chat still has it
  *  picked: the session stops holding it, so the record drops it. Null otherwise. */
@@ -24,6 +27,39 @@ export function retireClaudeLaunchedModel(
   session.options.delete('model')
   session.restoreSkippedOptions.add('model')
   return launched
+}
+
+/** Puts the live child, still launched with the retired model, back on the CLI's own default (the
+ *  SDK's `set_model` with no model), as a chat that never picked one runs. A user's pick made
+ *  meanwhile owns the model; a refused or unanswered reset changes nothing but the log. */
+export function resetClaudeRetiredModel(
+  session: ClaudeSession,
+  deps: Pick<ClaudeStructuredSessionAdapterDeps, 'requestTimeoutMs' | 'logger'>,
+  sessionId: string,
+  retired: string
+): void {
+  const sequence = session.optionMutationSequence
+  void session.connection.setModel(undefined, { timeoutMs: deps.requestTimeoutMs }).then(
+    () => {
+      if (sequence !== session.optionMutationSequence) {
+        return
+      }
+      // The retired id is no longer what runs; the next turn's own report names the default.
+      if (session.reportedOptions.model === retired) {
+        delete session.reportedOptions.model
+      }
+      if (session.appliedOptions?.model === retired) {
+        const { model: _retired, ...applied } = session.appliedOptions
+        session.appliedOptions = applied
+      }
+    },
+    (error: unknown) =>
+      deps.logger?.warn('putting a retired Claude model back on the default failed', {
+        scope: 'claude-retired-model-reset',
+        sessionId,
+        error
+      })
+  )
 }
 
 /** The saved values this child showed it cannot run. Only a retired launch model is one: a launch

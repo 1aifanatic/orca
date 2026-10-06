@@ -1,6 +1,6 @@
 // A publish-first create proves nothing about the model until Claude answers startup. The record
 // must never hold the catalog's default in the meantime: an owner handoff or a reopen would
-// replay it as a `set_model` and silently move a user whose CLI default is not Sonnet.
+// launch it as `--model` and silently move a user whose CLI default is not Sonnet.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -153,7 +153,7 @@ describe('a publish-first Claude create whose init is slow', () => {
       ok: true
     })
     expect(store.getRecord(SESSION)?.lease.runtimeFence).toBeGreaterThan(releasedFence)
-    // The new child's init reports its CLI default; the saved pick is restored over it.
+    // The new child is launched with the saved pick, whatever its CLI default.
     expect(store.getRecord(SESSION)?.options?.model).toBe('opus')
     expect(lastPhase()).toBe('starting')
 

@@ -1,5 +1,8 @@
 import { claudePromptCardWritten } from './claude-child-work-evidence'
-import { retireClaudeLaunchedModel } from './claude-structured-retired-model'
+import {
+  resetClaudeRetiredModel,
+  retireClaudeLaunchedModel
+} from './claude-structured-retired-model'
 import type {
   ClaudeSession,
   ClaudeStructuredSessionAdapterDeps,
@@ -9,7 +12,7 @@ import type {
 type ClaudeEventDelivery = {
   session: ClaudeSession | null
   event: ClaudeStructuredSessionEvent
-  deps: Pick<ClaudeStructuredSessionAdapterDeps, 'onEvent'>
+  deps: Pick<ClaudeStructuredSessionAdapterDeps, 'onEvent' | 'requestTimeoutMs' | 'logger'>
   publishChildWork: (
     sessionId: string,
     session?: ClaudeSession | null,
@@ -49,6 +52,7 @@ export function emitClaudeStructuredSessionEvent({
       acquisitionGeneration: session.acquisitionGeneration,
       options: { model: retired }
     })
+    resetClaudeRetiredModel(session, deps, event.sessionId, retired)
   }
   publishChildWork(event.sessionId, session, event.type === 'message' ? event.message : null)
   // A prompt blocks its child only after the journal has written its card.

@@ -179,7 +179,7 @@ export function fakeClaude(
       },
       setModel: async (model) => {
         connection.calls.push({ subtype: 'set_model', params: { model } })
-        routed('set_model', { model })
+        await routed('set_model', { model })
       },
       setPermissionMode: async (mode) => {
         connection.calls.push({ subtype: 'set_permission_mode', params: { mode } })

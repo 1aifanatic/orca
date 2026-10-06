@@ -325,9 +325,9 @@ function observeClaudeSettingsReadback(
 }
 
 /** The options as main already holds them, over `catalog`; asks the CLI nothing. Startup's
- *  settings readback and restore's confirmations are applied by the time a start proves, and
- *  the SDK answers `list_models` from its initialize result, so a started session's snapshot
- *  passes that result here rather than paying two round trips for what it already read. */
+ *  settings readback is applied by the time a start proves, and the SDK answers `list_models`
+ *  from its initialize result, so a started session's snapshot passes that result here rather
+ *  than paying two round trips for what it already read. */
 export function claudeStructuredSessionOptionsFrom(
   session: ClaudeSession,
   catalog: unknown[] | null,
