@@ -208,6 +208,20 @@ export function agentSessionBlockedSendParts(
     : agentSessionWriteNoticeParts(blocked.failure, 'composer-send')
 }
 
+/** A send its 30 s bound ended: unconfirmed if a request went out, else not sent, in the words of
+ *  what the host last refused it with, or that Orca couldn't reach the agent. */
+export function agentSessionDeadlineSendParts(
+  issued: boolean,
+  thrownRefusal: AgentSessionWriteFailure | null | undefined
+): AgentSessionWriteNoticePart[] {
+  if (issued) {
+    return agentSessionUnconfirmedSendParts(thrownRefusal)
+  }
+  return thrownRefusal
+    ? agentSessionWriteNoticeParts(thrownRefusal, 'composer-send')
+    : ['unreachable', ...agentSessionWriteNotDoneParts('composer-send')]
+}
+
 export function agentSessionWriteNoticeEnglish(
   parts: readonly AgentSessionWriteNoticePart[]
 ): string {

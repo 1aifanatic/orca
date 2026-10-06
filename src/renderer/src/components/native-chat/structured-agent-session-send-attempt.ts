@@ -21,6 +21,7 @@ import {
 } from '@/runtime/runtime-rpc-client'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { isRuntimeCompatBlockError } from '@/runtime/runtime-protocol-compat'
+import { agentSessionRefusalReasonWords } from '../../../../shared/agent-session-refusal-reason-words'
 import {
   agentSessionThrownFailure,
   readAgentSessionErrorRefusal,
@@ -105,9 +106,13 @@ function blockedBeforeRequest(
   if (isRuntimeCompatBlockError(error) && error instanceof Error) {
     return { text: error.message }
   }
-  return readAgentSessionErrorRefusal(error)
-    ? { failure: agentSessionThrownFailure(error, rpcCode) }
-    : null
+  if (!readAgentSessionErrorRefusal(error)) {
+    return null
+  }
+  const failure = agentSessionThrownFailure(error, rpcCode)
+  // A refusal the host names as one that clears goes again on the paced schedule.
+  const words = failure.kind === 'refused' ? agentSessionRefusalReasonWords(failure) : undefined
+  return words && words.action !== 'retry' ? { failure } : null
 }
 
 /** Null when the attempt stopped before its request went out, or was abandoned meanwhile. */

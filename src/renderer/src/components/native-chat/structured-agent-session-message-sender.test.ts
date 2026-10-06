@@ -221,6 +221,63 @@ describe('structured agent session message sender', () => {
     expect(getStructuredAgentSessionSendNotice(SESSION)).not.toContain("couldn't reach")
   })
 
+  // The host names this refusal as one that clears: it goes again on the paced schedule.
+  it('reads the history again after a refusal the host says clears, then sends', async () => {
+    resetStructuredAgentSessionSendsForTests()
+    const unavailable = Object.assign(new Error('refused'), {
+      response: {
+        error: {
+          data: {
+            refusal: {
+              code: 'agent_session_journal_unreadable',
+              message: 'busy',
+              details: { reason: 'journalUnavailable' }
+            }
+          }
+        }
+      }
+    })
+    mocks.call.mockImplementation(async (_target, method: string, params) => {
+      if (method === 'agentSession.history') {
+        if (mocks.call.mock.calls.filter((call) => call[1] === method).length === 1) {
+          throw unavailable
+        }
+        return { ok: true, page: { fence: 4 } }
+      }
+      return okSubmission(params.envelope.clientOperationId, 'accepted')
+    })
+    const a = send('a')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(await a.outcome).toBe('recorded')
+    expect(sendCalls()).toBe(1)
+  })
+
+  it("says the host's own refusal at the deadline when the send never went out", async () => {
+    resetStructuredAgentSessionSendsForTests()
+    mocks.call.mockRejectedValue(
+      Object.assign(new Error('refused'), {
+        response: {
+          error: {
+            data: {
+              refusal: {
+                code: 'agent_session_journal_unreadable',
+                message: 'busy',
+                details: { reason: 'journalUnavailable' }
+              }
+            }
+          }
+        }
+      })
+    )
+    const a = send('a')
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    expect(await a.outcome).toBe('returned')
+    const notice = getStructuredAgentSessionSendNotice(SESSION) ?? ''
+    expect(notice).toContain("Orca couldn't open this chat's history right now.")
+    expect(notice).not.toContain("couldn't reach")
+    expect(sendCalls()).toBe(0)
+  })
+
   it("keeps the host's reason when it refused every resend by throwing, without saying not sent", async () => {
     const thrown = Object.assign(new Error('refused'), {
       response: {

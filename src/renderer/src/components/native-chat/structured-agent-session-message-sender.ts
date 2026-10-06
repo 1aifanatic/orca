@@ -11,9 +11,9 @@
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
   agentSessionBlockedSendParts,
+  agentSessionDeadlineSendParts,
   agentSessionUnconfirmedSendParts,
-  agentSessionWriteNoticeParts,
-  agentSessionWriteNotDoneParts
+  agentSessionWriteNoticeParts
 } from '../../../../shared/agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from '../../../../shared/agent-session-write-notice-copy'
 import type { AgentSessionWriteFailure } from '../../../../shared/agent-session-write-failure'
@@ -195,14 +195,10 @@ function onDeadline(sessionId: string, clientMessageId: string): void {
   if (!entry || entry.phase === 'recorded') {
     return
   }
-  runtimes.get(clientMessageId)?.abort.abort()
+  const runtime = runtimes.get(clientMessageId)
+  runtime?.abort.abort()
   // One that went out may still land: its row then shows it beside the text given back.
-  handBack(
-    entry,
-    entry.issued
-      ? agentSessionUnconfirmedSendParts(runtimes.get(clientMessageId)?.thrownRefusal)
-      : ['unreachable', ...agentSessionWriteNotDoneParts('composer-send')]
-  )
+  handBack(entry, agentSessionDeadlineSendParts(entry.issued, runtime?.thrownRefusal))
 }
 
 export type StructuredAgentSessionSent = {
