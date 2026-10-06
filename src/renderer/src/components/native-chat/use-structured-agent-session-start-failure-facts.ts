@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import {
   sameAgentSessionFailureFact,
   structuredAgentSessionStartFailureFacts,
@@ -8,15 +11,16 @@ import {
 
 const NO_FACTS: readonly StatedStartFailure[] = []
 
-/** What the loaded start-failure rows an older host wrote state, read only while `enabled`. Held
- *  while unchanged, so a streaming turn does not rebuild every row's delivery notice. */
+/** What the loaded start-failure rows state, read only while `enabled`. Held while unchanged, so a
+ *  streaming turn does not rebuild every row's delivery notice. */
 export function useStructuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[],
+  submissions: readonly AgentJournalSubmission[],
   enabled: boolean
 ): readonly StatedStartFailure[] {
   const facts = useMemo(
-    () => (enabled ? structuredAgentSessionStartFailureFacts(items) : NO_FACTS),
-    [enabled, items]
+    () => (enabled ? structuredAgentSessionStartFailureFacts(items, submissions) : NO_FACTS),
+    [enabled, items, submissions]
   )
   const previousRef = useRef<readonly StatedStartFailure[]>(NO_FACTS)
   const previous = previousRef.current
@@ -27,7 +31,7 @@ export function useStructuredAgentSessionStartFailureFacts(
       return (
         next !== undefined &&
         stated.itemId === next.itemId &&
-        stated.observedAt === next.observedAt &&
+        stated.covers.join('\n') === next.covers.join('\n') &&
         sameAgentSessionFailureFact(stated.fact, next.fact)
       )
     })

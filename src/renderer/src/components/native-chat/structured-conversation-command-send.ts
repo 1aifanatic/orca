@@ -19,7 +19,8 @@ export async function sendStructuredConversationCommand(input: {
   agentName: string
   pending: { current: boolean }
   blocked: boolean
-  /** What the chat's loaded start-failure rows state, read when the reply lands. */
+  /** What the chat's loaded start-failure rows state, read before the send and when the reply
+   *  lands. */
   startFailures: () => readonly StatedStartFailure[]
   send: (
     command: AgentSessionConversationCommand
@@ -35,6 +36,8 @@ export async function sendStructuredConversationCommand(input: {
     }
   }
   input.pending.current = true
+  // Only a row this command's own start wrote says why it failed; one already loaded is another's.
+  const loadedBefore = new Set(input.startFailures().map((stated) => stated.itemId))
   try {
     const outcome = await input.send(input.command)
     if (outcome.kind === 'not-done') {
@@ -51,7 +54,10 @@ export async function sendStructuredConversationCommand(input: {
     if (
       isAgentSessionConversationCommand(value.command) &&
       value.command !== 'clear' &&
-      agentSessionFailureStatedByStartRow(value.failure, input.startFailures())
+      agentSessionFailureStatedByStartRow(
+        value.failure,
+        input.startFailures().filter((stated) => !loadedBefore.has(stated.itemId))
+      )
     ) {
       return { accepted: false, error: null }
     }

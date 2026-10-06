@@ -27,13 +27,11 @@ function startFailureRow(startKey: string, fact: AgentSessionFailureFact): Agent
 it('holds the same facts while the start rows state nothing new', () => {
   const row = startFailureRow('gen-1', { kind: 'providerStartFailed' })
   const { result, rerender } = renderHook(
-    ({ items }) => useStructuredAgentSessionStartFailureFacts(items, true),
+    ({ items }) => useStructuredAgentSessionStartFailureFacts(items, [], true),
     { initialProps: { items: [row] } }
   )
   const first = result.current
-  expect(first).toEqual([
-    { itemId: row.itemId, fact: { kind: 'providerStartFailed' }, observedAt: 1 }
-  ])
+  expect(first).toEqual([{ itemId: row.itemId, fact: { kind: 'providerStartFailed' }, covers: [] }])
 
   rerender({ items: [row, startFailureRow('other-start', { kind: 'providerStartFailed' })] })
   expect(result.current).not.toBe(first)

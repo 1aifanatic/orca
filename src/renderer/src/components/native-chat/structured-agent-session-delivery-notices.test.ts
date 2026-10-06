@@ -5,60 +5,18 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import {
-  createStructuredAgentSessionOutboxEntry,
   structuredAgentSessionRejectedFailure,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
-import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
+import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+
 import {
-  agentJournalItemKey,
-  agentJournalSubmissionKey
-} from '../../../../shared/agent-session-journal-item-key'
-import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
-import {
-  structuredAgentSessionDeliveryNotices,
-  structuredAgentSessionStartFailureFacts,
-  type StatedStartFailure
-} from './structured-agent-session-delivery-notices'
-
-function entry(
-  clientMessageId: string,
-  patch: Partial<StructuredAgentSessionOutboxEntry> = {}
-): StructuredAgentSessionOutboxEntry {
-  return {
-    ...createStructuredAgentSessionOutboxEntry({
-      clientMessageId,
-      sessionId: 'session-1',
-      text: clientMessageId,
-      attachments: [],
-      queuedAt: 1
-    }),
-    ...patch
-  }
-}
-
-const NOT_FAILED_HERE: ReadonlySet<string> = new Set()
-// What the row shows, quietly in place of its time, while nothing has confirmed the message.
-const SENDING = 'Sending…'
-
-function texts(
-  outbox: StructuredAgentSessionOutboxEntry[],
-  submissions: readonly AgentJournalSubmission[] = [],
-  startFailures: readonly StatedStartFailure[] = []
-): Record<string, string> {
-  // Every failure seen while the chat was open, so each words its whole cause.
-  const notices = structuredAgentSessionDeliveryNotices(
-    outbox,
-    'Claude',
-    () => {},
-    submissions,
-    startFailures,
-    new Set(outbox.map((candidate) => candidate.clientMessageId))
-  )
-  return Object.fromEntries(
-    [...notices].map(([id, notice]) => [id, notice.sending ? SENDING : notice.text])
-  )
-}
+  entry,
+  NOT_FAILED_HERE,
+  SENDING,
+  texts
+} from './structured-agent-session-delivery-notices-test-fixtures'
 
 describe('the notice on each message that did not go through', () => {
   // Recorded by the host, so sending one again is a new message: no Retry.
@@ -710,115 +668,6 @@ describe('the notice on each message that did not go through', () => {
       ['a Stop outlived', { outlivedStop: true as const }]
     ])('says it is unconfirmed when %s it, as nothing resends it', (_label, patch) => {
       expect(texts([doubt(patch)])).toEqual(UNCONFIRMED)
-    })
-  })
-
-  // Matched on the typed fact of a row found by its identity, never on either sentence.
-  describe('a message rejected by a start whose row already says why', () => {
-    const startFailed: AgentSessionFailureFact = {
-      kind: 'startFailed',
-      refusal: { code: 'agent_session_identity_required', details: { reason: 'recordMissing' } }
-    }
-    const rejected = (id: string, fact: AgentSessionFailureFact) =>
-      entry(id, {
-        state: 'rejected',
-        lastFailure: {
-          kind: 'rejected',
-          reason: 'Written by the host.',
-          rejection: { kind: fact.kind }
-        }
-      })
-    const recorded = (id: string, fact: AgentSessionFailureFact): AgentJournalSubmission => ({
-      clientMessageId: id,
-      fence: 1,
-      payloadFingerprint: id,
-      dispatchState: 'rejected',
-      providerItemId: null,
-      reason: 'Written by the host.',
-      rejection: fact,
-      submittedAt: 1,
-      resolvedAt: 1
-    })
-    const statusRow = (itemId: string, fact: AgentSessionFailureFact): AgentJournalRenderItem => ({
-      itemId,
-      revision: 1,
-      sequence: 1,
-      observedAt: 1,
-      body: {
-        kind: 'status',
-        tone: 'error',
-        ...agentSessionFailureWords(fact, { agentName: 'Claude', surface: 'row' })
-      }
-    })
-    const startRowKey = agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('gen'))
-
-    it('reads only the start-failure rows', () => {
-      expect(
-        structuredAgentSessionStartFailureFacts([
-          statusRow(startRowKey, startFailed),
-          statusRow(agentJournalSubmissionKey('exit-row'), { kind: 'providerExited' })
-        ])
-      ).toEqual([{ itemId: startRowKey, fact: startFailed, observedAt: 1 }])
-    })
-
-    it('says only that each was not sent, and words any other rejection in full', () => {
-      const otherRefusal: AgentSessionFailureFact = {
-        kind: 'startFailed',
-        refusal: { code: 'agent_session_conflict', details: { reason: 'claimConflicted' } }
-      }
-      const facts = structuredAgentSessionStartFailureFacts([statusRow(startRowKey, startFailed)])
-      expect(
-        texts(
-          [
-            rejected('first', startFailed),
-            rejected('second', startFailed),
-            rejected('other', otherRefusal)
-          ],
-          [
-            recorded('first', startFailed),
-            recorded('second', startFailed),
-            recorded('other', otherRefusal)
-          ],
-          facts
-        )
-      ).toEqual({
-        [agentJournalSubmissionKey('first')]: 'Your message was not sent.',
-        [agentJournalSubmissionKey('second')]: 'Your message was not sent.',
-        [agentJournalSubmissionKey('other')]:
-          "Claude couldn't start. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
-      })
-    })
-
-    it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
-      const shown = "Claude couldn't start. Start a new chat to continue."
-      const stated = { itemId: startRowKey, fact: startFailed, observedAt: 1 }
-      expect(texts([rejected('first', startFailed)], [], [stated])).toEqual({
-        [agentJournalSubmissionKey('first')]: 'Written by the host.'
-      })
-      expect(texts([rejected('first', startFailed)], [recorded('first', startFailed)], [])).toEqual(
-        { [agentJournalSubmissionKey('first')]: shown }
-      )
-    })
-
-    // A newer host writes no start row: a later failure equal to an older row's is its own start's.
-    it("words in full a later failure equal to an older start's row, which speaks only for its batch", () => {
-      const facts = structuredAgentSessionStartFailureFacts([statusRow(startRowKey, startFailed)])
-      const later = { ...recorded('later', startFailed), submittedAt: 5, resolvedAt: 6 }
-      expect(
-        texts(
-          [
-            rejected('first', startFailed),
-            rejected('second', startFailed),
-            rejected('later', startFailed)
-          ],
-          [recorded('first', startFailed), recorded('second', startFailed), later],
-          facts
-        )
-      ).toEqual({
-        [agentJournalSubmissionKey('first')]: 'Your message was not sent.',
-        [agentJournalSubmissionKey('second')]: 'Your message was not sent.',
-        [agentJournalSubmissionKey('later')]: "Claude couldn't start. Start a new chat to continue."
-      })
     })
   })
 })

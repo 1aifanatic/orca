@@ -194,8 +194,14 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       'Claude',
       () => {},
       [failedStart],
-      // An older host's row, written with the rejection it states.
-      [{ itemId: 'orca:start-failure', fact: { kind: 'notSignedIn' }, observedAt: 3 }],
+      // The start's row, written right after the rejection it states.
+      [
+        {
+          itemId: 'orca:start-failure',
+          fact: { kind: 'notSignedIn' },
+          covers: [agentJournalSubmissionKey('first')]
+        }
+      ],
       new Set()
     )
 

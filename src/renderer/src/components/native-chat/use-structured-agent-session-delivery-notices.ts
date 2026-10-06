@@ -43,7 +43,11 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
   // Only an outbox copy of a rejected message reads the loaded rows, so a streaming turn rebuilds
   // no notice otherwise.
   const loadedItems = hasRejected && outbox.length > 0 ? args.journalItems : NO_ITEMS
-  const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasRejected)
+  const startFailures = useStructuredAgentSessionStartFailureFacts(
+    args.journalItems,
+    submissions,
+    hasRejected
+  )
   const commandItemIds = useCommandItemIds(args.journalItems, hasRejected)
   const notices = useMemo(
     () =>

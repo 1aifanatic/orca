@@ -11,10 +11,10 @@
 // words and gets its Retry once the queue moves.
 //
 // A message the host recorded and then rejected is drawn from the host's history, worded from the
-// journal's own fact, with no Retry: sending it again is a new message. A rejection that is a
-// failed start's, the fact a loaded start row from an older host states for that same batch, says
-// only that it was not sent: the row already says why. Until its row loads, the outbox draws it from
-// its smaller copy, which leaves on the batch or page that loads the row.
+// journal's own fact, with no Retry: sending it again is a new message. A rejection whose own
+// start's row states the same failure says only that it was not sent: the row already says why.
+// Until its row loads, the outbox draws it from its smaller copy, which leaves on the batch or page
+// that loads the row.
 
 import {
   readAgentSessionFailureFact,
@@ -54,27 +54,47 @@ const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { se
 const NO_COMMANDS: ReadonlySet<string> = new Set()
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
-/** A loaded start-failure row an older host wrote: the failure it states, and when. */
+/** A loaded start-failure row: the failure it states, and the rejected messages its start wrote it
+ *  for, by item id. */
 export type StatedStartFailure = {
   itemId: string
   fact: AgentSessionFailureFact
-  observedAt: number
+  covers: readonly string[]
 }
 
-/** What the chat's loaded start-failure rows state. */
+/** What the chat's loaded start-failure rows state. A start writes its row right after the
+ *  rejections it failed, each placed where it was rejected, so a row covers the rejected messages
+ *  since the row before it, unless a message that went through came between them: a row after that
+ *  is another start's. */
 export function structuredAgentSessionStartFailureFacts(
-  items: readonly AgentJournalRenderItem[]
+  items: readonly AgentJournalRenderItem[],
+  submissions: readonly AgentJournalSubmission[] = []
 ): StatedStartFailure[] {
+  const rejected = new Set(
+    submissions.flatMap((submission) =>
+      submission.dispatchState === 'rejected'
+        ? [agentJournalSubmissionKey(submission.clientMessageId)]
+        : []
+    )
+  )
   const stated: StatedStartFailure[] = []
-  for (const item of items) {
+  let since: string[] = []
+  for (const item of [...items].sort(byJournalPlace)) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
       if (fact) {
-        stated.push({ itemId: item.itemId, fact, observedAt: item.observedAt })
+        stated.push({ itemId: item.itemId, fact, covers: since })
       }
+      since = []
+    } else if (item.body.kind === 'message' && item.body.role === 'user') {
+      since = rejected.has(item.itemId) ? [...since, item.itemId] : []
     }
   }
   return stated
+}
+
+function byJournalPlace(a: AgentJournalRenderItem, b: AgentJournalRenderItem): number {
+  return a.sequence - b.sequence || (a.sequenceIndex ?? 0) - (b.sequenceIndex ?? 0)
 }
 
 /** Whether two facts are one failure: a start's row and the messages it rejected share one. */
@@ -108,22 +128,17 @@ export function agentSessionFailureStatedByStartRow(
   )
 }
 
-/** Whether the row of the start that rejected this message already says why: the same failure,
- *  written after the message was sent and no later than its rejection, as the older host wrote
- *  both. An equal failure in another row is another start's, so the message keeps its words. */
+/** Whether the row of the start that rejected this message already says why: the same failure, in
+ *  the row that covers it. An equal failure in another row is another start's, so the message keeps
+ *  its words. */
 function rejectionStatedByItsStartRow(
   recorded: AgentJournalSubmission,
   startFailures: readonly StatedStartFailure[]
 ): boolean {
-  const { resolvedAt } = recorded
-  return (
-    resolvedAt !== null &&
-    agentSessionFailureStatedByStartRow(
-      recorded.rejection,
-      startFailures.filter(
-        ({ observedAt }) => observedAt >= recorded.submittedAt && observedAt <= resolvedAt
-      )
-    )
+  const id = agentJournalSubmissionKey(recorded.clientMessageId)
+  return agentSessionFailureStatedByStartRow(
+    recorded.rejection,
+    startFailures.filter(({ covers }) => covers.includes(id))
   )
 }
 
