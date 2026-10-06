@@ -17763,6 +17763,7 @@
       "empty": "No users found"
     },
     "native-chat": {
+      "reasoning": "Reasoning",
       "failureWords": {
         "theAgent": "The agent",
         "providerStartFailed": "{{agent}} stopped before it finished starting.",
@@ -18316,6 +18317,7 @@
         "editAlreadySent": "Already sent — your text is still in the composer.",
         "withdrawnHold": "Stopped before it was sent",
         "pausedSendFailed": "Couldn't send — press Send to retry.",
+        "pausedKept": "Not sent yet — press Send to send it.",
         "paused": "Paused",
         "queuePausedStopped": "Queue paused because you interrupted",
         "queuePausedRestarted": "Queue paused because Orca restarted",
@@ -18323,6 +18325,8 @@
         "queuePaused": "Queue paused",
         "resume": "Resume"
       },
+      "thought": "Thought",
+      "thoughtForDuration": "Thought for {{duration}}",
       "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
       "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",
       "structuredSessionHostUnreachable": "Could not reach {{value0}}",

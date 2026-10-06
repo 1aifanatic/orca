@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { ChevronRight } from 'lucide-react-native'
 import {
-  formatNativeChatActiveTurnLabel,
   formatNativeChatTurnStatusLabel,
   NATIVE_CHAT_TURN_STATUS_COPY,
   nativeChatElapsedSeconds
@@ -71,32 +70,6 @@ export function MobileNativeChatTurnStatus({
     <View style={[styles.row, styles.bar]}>
       <Text style={styles.label} numberOfLines={1}>
         {label}
-      </Text>
-    </View>
-  )
-}
-
-/** The live turn's tail line: a spinner beside "Stopping…" once the person's Stop is ending the
- *  turn, else what the provider says it is doing, else "Thinking", else "Working…". The clock
- *  stays in the turn bar. Desktop parity: `NativeChatTurnActivityLine`. */
-export function MobileNativeChatTurnActivity({
-  thinking,
-  activityText,
-  stopping = false
-}: {
-  thinking: boolean
-  activityText?: string | null
-  stopping?: boolean
-}): React.JSX.Element {
-  return (
-    <View
-      style={styles.row}
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={NATIVE_CHAT_TURN_STATUS_COPY.responding}
-    >
-      <ActivityIndicator size="small" color={colors.textMuted} />
-      <Text style={styles.label} numberOfLines={1}>
-        {formatNativeChatActiveTurnLabel({ activityText, thinking, stopping })}
       </Text>
     </View>
   )

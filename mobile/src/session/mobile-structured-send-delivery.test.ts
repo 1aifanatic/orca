@@ -128,6 +128,34 @@ describe('mobileStructuredSendDelivery', () => {
     })
   })
 
+  it('answers a send the host kept as a card like a queued one, first send or replay', () => {
+    // The card shows the text, so neither an error nor a composer hand-back may repeat it.
+    const kept: StructuredAgentSessionMutationCallResult<AgentSessionSendResult> = {
+      status: 'accepted',
+      value: {
+        clientMessageId: 'msg-1',
+        submission: {
+          clientMessageId: 'msg-1',
+          fence: 3,
+          payloadFingerprint: 'fingerprint',
+          dispatchState: 'rejected',
+          providerItemId: null,
+          reason: 'Orca restarted before this was sent.',
+          submittedAt: 10,
+          resolvedAt: 10,
+          keptAsQueuedMessageId: 'msg-1'
+        }
+      }
+    }
+    for (const retained of [false, true]) {
+      expect(mobileStructuredSendDelivery(kept, retained)).toEqual({
+        outcome: 'queued',
+        operationIdSpent: true,
+        error: null
+      })
+    }
+  })
+
   // The chat draws a send a Stop took back with its stop row, so it never goes back to the draft. A
   // retained replay is resent by the caller, which needs the id spent and no words of its own.
   it.each([
