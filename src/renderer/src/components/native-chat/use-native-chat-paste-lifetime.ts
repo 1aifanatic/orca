@@ -5,7 +5,7 @@ import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
  * The pending chips of pastes this composer started, released when it unmounts or changes target.
  * A paste uploading into a paired server's store outlives the composer, which a prompt card
  * unmounts: its chip stays pending in the scope's attachment cache, where its result settles for
- * the composer's return (`native-chat-attachment-cache.ts`).
+ * the composer's return (`native-chat-pending-attachment-cache.ts`).
  */
 export function useNativeChatPasteLifetime(args: {
   targetKey?: string

@@ -60,7 +60,6 @@ vi.mock('./runtime-environment-transport-routing', () => ({
     }
   }
 }))
-vi.mock('./filesystem-auth', () => ({ authorizeExternalPath: () => {} }))
 
 const { uploadBufferToAgentSessionAttachments, uploadExternalPathsToAgentSessionAttachments } =
   await import('./agent-session-attachment-upload')

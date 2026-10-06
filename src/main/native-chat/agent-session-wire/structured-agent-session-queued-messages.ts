@@ -9,6 +9,10 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
+  USER_MESSAGE_SOURCE,
+  type AgentMessageSource
+} from '../../../shared/agent-session-message-source'
+import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionSendResult,
   type AgentSessionWireRefusal
@@ -193,8 +197,13 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
-    /** A client's own send: every attachment it names must still be stored. */
+    /**
+     * A person's send at a chat surface; it outranks any `source`, and every
+     * attachment it names must still be stored.
+     */
     userSend?: true
+    /** Who a host-side send is from. */
+    source?: AgentMessageSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -215,9 +224,7 @@ export async function maybeQueueStructuredAgentSessionSend(
   if (ctx.journal.submissions().some((entry) => entry.clientMessageId === clientMessageId)) {
     return null
   }
-  // A newer Orca's journal takes no new draft: the immediate path refuses the send.
   if (
-    ctx.journal.isReadOnly ||
     !shouldQueueStructuredAgentSessionSend({
       journal: ctx.journal,
       record: context.deps.store.getRecord(ctx.sessionId),
@@ -240,6 +247,7 @@ export async function maybeQueueStructuredAgentSessionSend(
         body: params.body,
         fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
         hostInstance: structuredAgentSessionHostInstance(),
+        source: params.userSend ? USER_MESSAGE_SOURCE : (params.source ?? USER_MESSAGE_SOURCE),
         ...(params.userSend ? { requireAttachments: true } : {})
       },
       ctx.operationReceipt
@@ -282,7 +290,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   schedule(sessionId: string): void {
     const journal = this.deps.sessions.get(sessionId)?.journal
-    if (!journal || journal.isReadOnly) {
+    if (!journal) {
       return
     }
     // Cheap pre-check so token streams do not pay a serialized step per delta.
@@ -325,7 +333,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   private async step(sessionId: string): Promise<void> {
     const session = this.deps.sessions.get(sessionId)
-    if (!session || session.journal.isReadOnly) {
+    if (!session) {
       return
     }
     const journal = session.journal

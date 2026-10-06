@@ -10,7 +10,8 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { open, stat } from 'node:fs/promises'
 import type { Store } from '../persistence'
-import { PATH_ACCESS_DENIED_MESSAGE, resolveAuthorizedPath } from '../ipc/filesystem-auth'
+import { PATH_ACCESS_DENIED_MESSAGE } from '../ipc/filesystem-auth'
+import { resolveDesktopAuthorizedPath } from '../ipc/local-file-access-resolution'
 import { isENOENT } from '../ipc/filesystem-path-containment'
 import {
   assertClipboardTextWriteWithinLimitWithYield,
@@ -47,6 +48,7 @@ import { readClipboardCopiedFilePaths } from './clipboard-copied-file-paths'
 import { buildClipboardImageThumbnail } from './clipboard-image-thumbnail'
 import { writeClipboardTextAndVerify } from './clipboard-text-write-verify'
 import { isDashboardPopoutRenderer } from './dashboard-popout-window'
+import { restoreNativeChatPastes, sweepExpiredNativeChatPastes } from './native-chat-paste-files'
 
 let trustedClipboardRendererWebContentsId: number | null = null
 
@@ -118,8 +120,10 @@ export function registerClipboardHandlers(store: Store): void {
   ipcMain.removeHandler('clipboard:readImageThumbnail')
   ipcMain.removeHandler('clipboard:hasImage')
   ipcMain.removeHandler('clipboard:readFilePaths')
+  ipcMain.removeHandler('clipboard:restoreNativeChatPastes')
 
   void cleanupExpiredRemoteClipboardFiles()
+  void sweepExpiredNativeChatPastes()
   scheduleLegacyRemoteClipboardFileCleanup()
 
   ipcMain.handle('clipboard:readText', async (event, options?: ReadClipboardTextOptions) => {
@@ -133,6 +137,10 @@ export function registerClipboardHandlers(store: Store): void {
       return assertClipboardTextWithinLimitWithYield(clipboard.readText('selection'), options)
     }
   )
+  ipcMain.handle('clipboard:restoreNativeChatPastes', (event, paths: unknown) => {
+    assertTrustedClipboardSender(event)
+    return restoreNativeChatPastes(paths)
+  })
   // Why: an unanswered paste reads as a dropped paste, so the composer probes
   // the clipboard in memory before the (slower) save lands.
   ipcMain.handle('clipboard:readImageThumbnail', (event): ClipboardImageThumbnail | null => {
@@ -188,7 +196,7 @@ export function registerClipboardHandlers(store: Store): void {
       }
       const deps = makeClipboardFileDeps(async (path) => {
         try {
-          const authorizedPath = await resolveAuthorizedPath(path, store)
+          const authorizedPath = await resolveDesktopAuthorizedPath(path, store)
           await stat(authorizedPath)
           return { ok: true, path: authorizedPath }
         } catch (error) {

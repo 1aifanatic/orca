@@ -27,7 +27,7 @@ async function clipboardImageSaveArgs(
   | { ok: false; notice: string; cause: NativeChatClipboardImageFailureCause }
 > {
   if (owner.kind === 'local') {
-    return { ok: true, args: undefined }
+    return { ok: true, args: { forNativeChatDraft: true } }
   }
   if (owner.kind === 'ssh') {
     return { ok: true, args: { connectionId: owner.connectionId } }

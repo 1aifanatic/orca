@@ -44,6 +44,7 @@ import {
 } from '../agent-session-journal/journal-open-failure'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { isAgentSessionAttachmentExpiredError } from '../agent-session-attachments/agent-session-attachment-claims'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 export { performSetOption } from './structured-agent-session-turns-options'
 export { performPrompt } from './structured-agent-session-turns-prompt'
 export { performCancel } from './structured-agent-session-turns-cancel'
@@ -53,6 +54,10 @@ export type AgentSessionTurnContext = {
   journal: AgentSessionJournal
   fence: number
   adapter: StructuredAgentSessionAdapter
+  /** What each agent declares; the session's own answer is `agents.capabilities(agent)`. */
+  agents: StructuredAgentRegistry
+  /** The session's agent. */
+  agent: string
   logger: StructuredAgentSessionLogger
   persistedOptions?: Readonly<Record<string, string>>
   persistOptions: (options: Readonly<Record<string, string>>) => Promise<void>
@@ -246,6 +251,7 @@ export async function handOverSubmission(
               state: 'rejected',
               reason: outcome.reason,
               rejection: outcome.rejection,
+              ...(outcome.answeredInTurn ? { answeredInTurn: outcome.answeredInTurn } : {}),
               fence: ctx.fence
             }
           : { clientMessageId, state: 'unknown', reason: outcome.reason, fence: ctx.fence }
