@@ -443,3 +443,35 @@ describe('ambiguous operation refusals', () => {
     ])
   })
 })
+
+describe('a send that a /clear raced', () => {
+  const cleared = (attempted: StructuredAgentSessionOutboxEntry) =>
+    disposeStructuredAgentSessionSendResult({
+      entries: [attempted],
+      entry: attempted,
+      result: {
+        ok: false,
+        refusal: {
+          code: 'agent_session_operation_invalid',
+          details: { reason: 'conversationCleared' },
+          message: 'This conversation has been cleared. Use the current conversation.'
+        }
+      },
+      createOperationId: () => 'client-2'
+    })
+
+  it('on a first attempt, leaves the outbox and hands its text back, said once', () => {
+    const disposition = cleared(entry)
+    expect(disposition.entries).toEqual([])
+    expect(disposition.handedBack).toBe(entry)
+    expect(agentSessionWriteNoticeEnglish(disposition.error ?? [])).toBe(
+      "The chat was cleared before your message went out. It's back in the composer."
+    )
+  })
+
+  it('on a resend, stays held for its Retry: an earlier attempt may have landed', () => {
+    const disposition = cleared({ ...entry, lastAttemptAt: 5 })
+    expect(disposition.handedBack).toBeUndefined()
+    expect(disposition.entries).toHaveLength(1)
+  })
+})

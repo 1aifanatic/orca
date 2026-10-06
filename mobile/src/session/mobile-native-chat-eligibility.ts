@@ -35,6 +35,8 @@ export type MobileNativeChatTab = {
   launchDraftCreatedAt?: number
   sessionId?: string | null
   agent?: string | null
+  /** The conversation a /clear replaced with this one. */
+  replacesSessionId?: string
 }
 
 /** Resolve a session tab to the transcript identity native chat needs, or

@@ -17666,6 +17666,7 @@
         "compactAfterRetry": "以前のメッセージを再試行してから、/compact を実行してください。",
         "clearAfterSending": "以前のメッセージはまだ送信中です。送信が終わったら /clear を実行してください。",
         "compactAfterSending": "以前のメッセージはまだ送信中です。送信が終わったら /compact を実行してください。",
+        "sentAsCleared": "メッセージが送信される前にチャットがクリアされました。メッセージは入力欄に戻っています。",
         "optionRejected": "Agent はこの設定を受け入れませんでした。",
         "goalsUnsupported": "この Agent は目標に対応していません。",
         "agentRefused": "Agent がこれを拒否しました。",

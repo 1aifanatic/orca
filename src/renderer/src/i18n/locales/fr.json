@@ -17730,6 +17730,7 @@
         "compactAfterRetry": "Réessayez votre message précédent, puis lancez /compact.",
         "clearAfterSending": "Votre message précédent est encore en cours d'envoi. Lancez /clear une fois qu'il est parti.",
         "compactAfterSending": "Votre message précédent est encore en cours d'envoi. Lancez /compact une fois qu'il est parti.",
+        "sentAsCleared": "Le chat a été effacé avant l'envoi de votre message. Il est de retour dans la zone de saisie.",
         "optionRejected": "L'agent n'a pas accepté ce réglage.",
         "goalsUnsupported": "Cet agent ne prend pas en charge les objectifs.",
         "agentRefused": "L'agent l'a refusé.",

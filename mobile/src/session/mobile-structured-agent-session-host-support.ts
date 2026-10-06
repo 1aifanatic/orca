@@ -1,5 +1,6 @@
 import {
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
@@ -14,6 +15,8 @@ export type StructuredAgentSessionHostSupport = {
   queuedMessages: boolean
   /** A /compact sent while the agent works waits as a card; an older host refuses it. */
   queuedCommands: boolean
+  /** A /clear sent while the agent works waits as a card the host runs; an older host refuses it. */
+  queuedClear: boolean
   /** A Stop that stopped nothing adds no row, so a repeated Stop is quiet. */
   quietRepeatedStop: boolean
 }
@@ -26,6 +29,7 @@ export function structuredAgentSessionHostSupport(
     questionAnswers: capabilities.includes(AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY),
     queuedMessages: capabilities.includes(AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY),
     queuedCommands: capabilities.includes(AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY),
+    queuedClear: capabilities.includes(AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY),
     quietRepeatedStop: capabilities.includes(AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY)
   }
 }

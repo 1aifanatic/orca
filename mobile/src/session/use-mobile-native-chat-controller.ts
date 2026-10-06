@@ -122,6 +122,7 @@ export function useMobileNativeChatController(args: {
     worktreeId,
     tabId: activeSessionTabId,
     sessionId: activeChatSessionId,
+    replacesSessionId: activeSessionTab?.replacesSessionId ?? null,
     messages: nativeChatSession.messages,
     launchDraft: activeSessionTab?.launchDraft ?? null,
     launchDraftCreatedAt: activeSessionTab?.launchDraftCreatedAt ?? null,

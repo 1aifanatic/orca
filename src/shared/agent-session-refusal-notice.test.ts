@@ -448,13 +448,15 @@ describe('the notice for every reason a host names', () => {
         failure.code === 'structured_agent_session_unsupported' && write !== 'read-history'
       const saysNotDone =
         write === 'read-history' && failure.code === 'agent_session_journal_unreadable'
-      // "Run /clear when it's done" already says the command has yet to happen.
+      // "Run /clear when it's done" already says the command has yet to happen, and "the chat
+      // was cleared before your message went out" that the message did not.
       const clearWhileWorking = (
         [
           'runClearWhenDone',
           'clearAfterAnswer',
           'runCompactWhenDone',
-          'compactAfterAnswer'
+          'compactAfterAnswer',
+          'sentAsCleared'
         ] as const
       ).some((sentence) => parts.includes(sentence))
       expect(notDone, cell).toEqual(
@@ -618,6 +620,21 @@ describe('a chat whose history the host could not open', () => {
     expect(agentSessionReadHistoryRefusalParts('agent_session_from_the_future')).toEqual([
       'notDoneReadHistory'
     ])
+  })
+})
+
+describe("the phone's send that a /clear raced", () => {
+  it('says the chat was cleared and the text is back in the composer, once', () => {
+    const cleared = {
+      kind: 'refused',
+      code: 'agent_session_operation_invalid',
+      details: { reason: 'conversationCleared' }
+    } as const
+    expect(
+      agentSessionWriteNoticeEnglish(agentSessionWriteNoticeParts(cleared, 'composer-send'))
+    ).toBe("The chat was cleared before your message went out. It's back in the composer.")
+    // Desktop keeps a refused retry on its row, which these words would misdescribe.
+    expect(agentSessionWriteNoticeParts(cleared, 'send')).not.toContain('sentAsCleared')
   })
 })
 

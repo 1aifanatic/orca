@@ -67,6 +67,7 @@ vi.mock('./use-structured-agent-session-outbox', () => ({
 
 import {
   AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
 } from '../../../../shared/protocol-version'
@@ -667,5 +668,66 @@ describe('against a host without the capability', () => {
         String(method).startsWith('agentSession.queuedMessage')
       )
     ).toHaveLength(0)
+  })
+})
+
+describe('a /clear against a host that runs it from the queue', () => {
+  const queuedClearAnswer = {
+    command: 'clear',
+    state: 'completed',
+    queued: { messageId: 'operation-1', position: 1, state: 'waiting' }
+  }
+
+  it('mid-turn, goes to the host asking to wait, and its queued answer shows no notice', async () => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
+    ])
+    answerCommands(queuedClearAnswer)
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('clear')
+    })
+    expect(outcome).toEqual({ accepted: true, error: null })
+    const parsed = ConversationCommandParams.parse(commandCalls()[0])
+    expect(parsed).toMatchObject({ command: 'clear', delivery: 'queue-if-active' })
+    expect(parsed.envelope.payloadFingerprint).toBe(
+      structuredAgentSessionPayloadFingerprint({
+        method: 'agentSession.conversationCommand',
+        sessionId: 'session-1',
+        fields: { command: 'clear', delivery: 'queue-if-active' }
+      })
+    )
+  })
+
+  it('against a host that holds only /compact, keeps the refusal and never asks (temporary)', async () => {
+    setLocalRuntimeCapabilitiesForTests([
+      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
+      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY
+    ])
+    answerCommands(queuedClearAnswer)
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('clear')
+    })
+    expect(outcome).toEqual({
+      accepted: false,
+      error: "The agent is still working. Run /clear when it's done."
+    })
+    expect(commandCalls()).toHaveLength(0)
+  })
+
+  it('without the queue lit, keeps the refusal even when the host could hold it', async () => {
+    setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY])
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('clear')
+    })
+    expect(outcome).toMatchObject({ accepted: false })
+    expect(commandCalls()).toHaveLength(0)
   })
 })

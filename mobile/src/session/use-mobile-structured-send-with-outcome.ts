@@ -14,7 +14,10 @@ import type { StructuredAgentSessionComposerOptions } from '../../../src/shared/
 import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
-import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
+import {
+  dispatchMobileStructuredCommand,
+  mobileStructuredCommandWaitsInLine
+} from './mobile-structured-composer-command'
 import { sendMobileStructuredAgentSessionMessage } from './mobile-structured-agent-session-send'
 import { timeoutForDeadline } from './mobile-structured-agent-session-rpc'
 import {
@@ -37,6 +40,8 @@ export function useMobileStructuredSendWithOutcome(args: {
   queueCapable: boolean
   /** The host holds a /compact sent while the agent works as a card. */
   commandsWait: boolean
+  /** The same for a /clear; an older host refuses it while the agent works (temporary). */
+  clearWaits?: boolean
   stateRef: { readonly current: StructuredAgentSessionState }
   commandPending: { current: boolean }
   controller: Pick<
@@ -54,6 +59,7 @@ export function useMobileStructuredSendWithOutcome(args: {
     agent,
     callerIdentity,
     client,
+    clearWaits,
     commandPending,
     commandsWait,
     controller,
@@ -107,9 +113,11 @@ export function useMobileStructuredSendWithOutcome(args: {
               : null,
         // A card waiting on a prompt nothing here can answer would hold it forever.
         waitsInLine: (command) =>
-          command === 'compact' &&
-          commandsWait &&
-          !pendingPromptsAllUnanswerableHere(stateRef.current.items),
+          mobileStructuredCommandWaitsInLine(command, {
+            commandsWait,
+            clearWaits: clearWaits === true,
+            promptsUnanswerableHere: pendingPromptsAllUnanswerableHere(stateRef.current.items)
+          }),
         onError: onSendError,
         timeoutMs
       })
@@ -141,6 +149,7 @@ export function useMobileStructuredSendWithOutcome(args: {
       agent,
       callerIdentity,
       client,
+      clearWaits,
       commandPending,
       commandsWait,
       controller,

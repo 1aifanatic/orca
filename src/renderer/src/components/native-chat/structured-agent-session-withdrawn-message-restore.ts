@@ -3,23 +3,26 @@ import type { AgentJournalSubmission } from '../../../../shared/agent-session-jo
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import { currentNativeChatComposerDraftScope } from './native-chat-composer-draft-forwarding'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
 import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
 
 /**
- * Gives the sender back what a Stop withdrew: its text and images go into this pane's composer,
- * after whatever is there. Called before the entries leave storage, so a failure between the two
+ * Gives the sender back what a Stop withdrew, or a send the host proved it never recorded: its text
+ * and images go into this pane's composer, after whatever is there. Called before the entries leave storage, so a failure between the two
  * repeats the text rather than losing it. Only this client's outbox holds them, so no other viewer
  * gets them.
  */
 function restoreWithdrawnMessages(
   sessionId: string,
-  composerScopeKey: string | undefined,
+  paneScopeKey: string | undefined,
   withdrawn: readonly StructuredAgentSessionOutboxEntry[]
 ): void {
-  if (!composerScopeKey || withdrawn.length === 0) {
+  if (!paneScopeKey || withdrawn.length === 0) {
     return
   }
+  // An answer can land after a /clear moved the pane on; the text goes where the pane is now.
+  const composerScopeKey = currentNativeChatComposerDraftScope(paneScopeKey)
   // What the outbox no longer holds was already given back by whichever view dropped it first.
   const held = new Set(
     getStructuredAgentSessionOutbox(sessionId).map((entry) => entry.clientMessageId)
@@ -54,7 +57,7 @@ export function useStructuredAgentSessionWithdrawnRestore(
     entries: readonly StructuredAgentSessionOutboxEntry[],
     submissions: readonly AgentJournalSubmission[]
   ) => void
-  /** Entries a Stop took out of the outbox here, before the host held them. */
+  /** Entries taken out of the outbox here before the host held them: by a Stop, or refused. */
   byStop: (entries: readonly StructuredAgentSessionOutboxEntry[]) => void
 } {
   return useMemo(

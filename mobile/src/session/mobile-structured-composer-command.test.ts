@@ -9,7 +9,10 @@ const asyncStorage = vi.hoisted(() => ({
 
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: asyncStorage }))
 
-import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
+import {
+  dispatchMobileStructuredCommand,
+  mobileStructuredCommandWaitsInLine
+} from './mobile-structured-composer-command'
 
 function setup() {
   const sendRequest = vi.fn<
@@ -166,5 +169,25 @@ describe('mobile structured conversation commands', () => {
     const { input, sendRequest } = setup()
     expect(await dispatchMobileStructuredCommand({ ...input, text: 'hello' })).toBeNull()
     expect(sendRequest).not.toHaveBeenCalled()
+  })
+})
+
+describe('which commands wait in line on this host', () => {
+  const host = { commandsWait: true, clearWaits: false, promptsUnanswerableHere: false }
+
+  it('each command by its own capability: a host that holds only /compact still refuses /clear', () => {
+    expect(mobileStructuredCommandWaitsInLine('compact', host)).toBe(true)
+    expect(mobileStructuredCommandWaitsInLine('clear', host)).toBe(false)
+    expect(mobileStructuredCommandWaitsInLine('clear', { ...host, clearWaits: true })).toBe(true)
+  })
+
+  it('never behind a prompt nothing here can answer', () => {
+    expect(
+      mobileStructuredCommandWaitsInLine('clear', {
+        commandsWait: true,
+        clearWaits: true,
+        promptsUnanswerableHere: true
+      })
+    ).toBe(false)
   })
 })

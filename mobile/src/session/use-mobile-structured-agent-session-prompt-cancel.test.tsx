@@ -126,6 +126,7 @@ function Harness({
       questionAnswers: questionAnswersSupported,
       queuedMessages: false,
       queuedCommands: false,
+      queuedClear: false,
       quietRepeatedStop: false
     },
     onSendError: vi.fn()

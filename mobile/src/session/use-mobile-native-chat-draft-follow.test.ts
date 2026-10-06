@@ -1,0 +1,81 @@
+import { createElement } from 'react'
+import { act, create, type ReactTestRenderer } from 'react-test-renderer'
+import { afterEach, describe, expect, it } from 'vitest'
+import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
+
+type DraftState = ReturnType<typeof useMobileNativeChatDrafts>
+
+describe('a draft when /clear replaces its conversation', () => {
+  let renderer: ReactTestRenderer | null = null
+  let state: DraftState | null = null
+
+  afterEach(() => {
+    act(() => renderer?.unmount())
+    renderer = null
+    state = null
+  })
+
+  type Tab = { tabId: string; sessionId: string; replacesSessionId?: string }
+
+  function Harness({ tabId, sessionId, replacesSessionId }: Tab): null {
+    state = useMobileNativeChatDrafts({
+      hostId: 'host',
+      worktreeId: 'worktree',
+      tabId,
+      sessionId,
+      replacesSessionId: replacesSessionId ?? null,
+      messages: [],
+      transcriptSettled: true
+    })
+    return null
+  }
+
+  async function show(tab: Tab): Promise<void> {
+    await act(async () => {
+      if (renderer) {
+        renderer.update(createElement(Harness, tab))
+      } else {
+        renderer = create(createElement(Harness, tab))
+      }
+    })
+  }
+
+  const OLD = { tabId: 'agent-session:old', sessionId: 'old' }
+  const NEW = { tabId: 'agent-session:new', sessionId: 'new', replacesSessionId: 'old' }
+
+  it('goes to the tab that replaced it, and the old tab keeps nothing', async () => {
+    await show(OLD)
+    act(() => state?.setComposerText('typed while the clear waited'))
+    await show(NEW)
+    expect(state?.composerText).toBe('typed while the clear waited')
+    await show({ tabId: OLD.tabId, sessionId: OLD.sessionId })
+    expect(state?.composerText).toBe('')
+  })
+
+  it('takes text a send hands back after the move', async () => {
+    await show(OLD)
+    act(() => state?.setComposerText('raced the clear'))
+    const origin = state?.captureSendOrigin('raced the clear')
+    act(() => {
+      if (origin) {
+        state?.clearDraftForSend(origin, 'raced the clear')
+      }
+    })
+    await show(NEW)
+    act(() => {
+      if (origin) {
+        state?.restoreRejectedDraft(origin, 'raced the clear')
+      }
+    })
+    expect(state?.composerText).toBe('raced the clear')
+  })
+
+  it('a tab switch to another chat moves nothing', async () => {
+    await show(OLD)
+    act(() => state?.setComposerText('stays here'))
+    await show({ tabId: 'agent-session:other', sessionId: 'other' })
+    expect(state?.composerText).toBe('')
+    await show(OLD)
+    expect(state?.composerText).toBe('stays here')
+  })
+})

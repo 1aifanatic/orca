@@ -51,8 +51,9 @@ const NOT_DONE: Record<AgentSessionWriteKind, AgentSessionWriteNoticeSentence> =
   goal: 'notDoneGoal'
 }
 
-/** A /clear or /compact refused because the agent is working: one plain sentence for every
- *  reason that is, saying only what the person sees and can do. */
+/** One plain sentence for a refusal whose usual words would mislead: a /clear or /compact refused
+ *  because the agent is working, saying only what the person sees and can do; and the phone's
+ *  send that a /clear raced, whose text it hands back to the composer. */
 const COMMAND_WHILE_WORKING: Partial<
   Record<AgentSessionWriteKind, Partial<Record<string, AgentSessionWriteNoticeSentence[]>>>
 > = {
@@ -65,7 +66,8 @@ const COMMAND_WHILE_WORKING: Partial<
     turnActive: ['agentStillWorking', 'runCompactWhenDone'],
     messagesUnsettled: ['agentStillWorking', 'runCompactWhenDone'],
     promptPending: ['compactAfterAnswer']
-  }
+  },
+  'composer-send': { conversationCleared: ['sentAsCleared'] }
 }
 
 /** That the write did not happen, for one that a second attempt can carry out. Only the phone says

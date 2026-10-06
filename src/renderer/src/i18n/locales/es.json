@@ -17631,6 +17631,7 @@
         "compactAfterRetry": "Reintente su mensaje anterior y luego ejecute /compact.",
         "clearAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /clear cuando se haya enviado.",
         "compactAfterSending": "Su mensaje anterior todavía se está enviando. Ejecute /compact cuando se haya enviado.",
+        "sentAsCleared": "El chat se borró antes de que se enviara tu mensaje. Ha vuelto al editor de mensajes.",
         "optionRejected": "El agente no aceptó este ajuste.",
         "goalsUnsupported": "Este agente no admite objetivos.",
         "agentRefused": "El agente lo rechazó.",

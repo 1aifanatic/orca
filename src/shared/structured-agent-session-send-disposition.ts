@@ -34,6 +34,21 @@ export type StructuredAgentSessionSendDisposition = {
   entries: StructuredAgentSessionOutboxEntry[]
   /** Only for an outcome with no entry left to carry it; a kept entry holds its own failure. */
   error: AgentSessionWriteNoticePart[] | null
+  /** A send the host proved it never recorded, gone from `entries`: its text goes back to the
+   *  composer, and `error` says why, once. */
+  handedBack?: StructuredAgentSessionOutboxEntry
+}
+
+/** Sent as a /clear replaced the chat: on a first attempt the host refused it before recording
+ *  anything, so there is no message to keep or retry, only its text to give back. */
+function refusedAsCleared(
+  input: SendDispositionInput & { refusal: AgentSessionWriteRefusal }
+): boolean {
+  return (
+    input.entry.lastAttemptAt === null &&
+    input.refusal.code === 'agent_session_operation_invalid' &&
+    input.refusal.details?.reason === 'conversationCleared'
+  )
 }
 
 /** A message this client couldn't store to send; the composer's draft or the row's Retry still
@@ -203,6 +218,9 @@ export function disposeStructuredAgentSessionSendRefusal(
     createOperationId: () => string
   }
 ): StructuredAgentSessionSendDisposition {
+  if (refusedAsCleared(input)) {
+    return { entries: dropEntry(input), error: ['sentAsCleared'], handedBack: input.entry }
+  }
   // The refusal saved on a message it keeps `queued` is what holds it for the user's Retry.
   const entries: StructuredAgentSessionOutboxEntry[] = input.entries.map((candidate) =>
     candidate.clientMessageId === input.entry.clientMessageId

@@ -10,6 +10,7 @@ import {
   supportsStructuredAgentSessionQuestionAnswers
 } from '@/runtime/structured-agent-session-client'
 import {
+  useStructuredAgentSessionHostQueuesClear,
   useStructuredAgentSessionHostQueuesCommands,
   useStructuredAgentSessionHostQueuesMessagesState,
   useStructuredAgentSessionHostStopsConversation
@@ -115,8 +116,9 @@ export function useStructuredAgentSession(args: {
   // anything older this client must look exactly like today's.
   const queueCapability = useStructuredAgentSessionHostQueuesMessagesState(target)
   const queueCapable = queueCapability === 'supported'
-  // A /compact waits in line only where its card renders.
+  // A /compact or /clear waits in line only where its card renders.
   const commandsWait = useStructuredAgentSessionHostQueuesCommands(target) && queueCapable
+  const clearWaits = useStructuredAgentSessionHostQueuesClear(target) && queueCapable
   const queuedMessageIds = useMemo(
     () => (transportState.queuedMessages ?? []).map((message) => message.messageId),
     [transportState.queuedMessages]
@@ -167,6 +169,7 @@ export function useStructuredAgentSession(args: {
     agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
     pending: commandPending,
     commandsWait,
+    clearWaits,
     agentWorking: transportState.turnId !== null || transportState.isWorking,
     promptPending: prompts.length > 0,
     promptsUnanswerableHere,

@@ -38,7 +38,7 @@ export type StructuredConversationCommandHold =
 /** A command that waits in line is held only by a message the host doesn't have yet, which must
  *  stay ahead of it; any other command, by anything the agent still has in flight. */
 export function structuredConversationCommandHold(input: {
-  /** A /compact the host can hold as a card behind the turn or prompt. */
+  /** A /compact or /clear the host can hold as a card behind the turn or prompt. */
   waitsInLine: boolean
   /** A turn runs, or the chat shows the agent working on a message it has not answered. */
   agentWorking: boolean
@@ -154,6 +154,9 @@ export function structuredConversationCommandRunner(args: {
   pending: { current: boolean }
   /** The host holds a /compact as a card, and this client renders the queue. */
   commandsWait: boolean
+  /** The same for a /clear, which the host runs itself when its card's turn comes. An older host
+   *  refuses it while the agent works (temporary, until those hosts age out). */
+  clearWaits?: boolean
   /** The chat shows the agent working: a turn runs, or a message it has not answered. */
   agentWorking: boolean
   promptPending: boolean
@@ -170,10 +173,8 @@ export function structuredConversationCommandRunner(args: {
   command: AgentSessionConversationCommand
 ) => Promise<{ accepted: boolean; error: string | null }> {
   return (command) => {
-    const waitsInLine =
-      command === 'compact' &&
-      args.commandsWait &&
-      !(args.promptPending && args.promptsUnanswerableHere)
+    const hostHoldsIt = command === 'compact' ? args.commandsWait : args.clearWaits === true
+    const waitsInLine = hostHoldsIt && !(args.promptPending && args.promptsUnanswerableHere)
     return sendStructuredConversationCommand({
       command,
       agentName: args.agentName,
@@ -188,11 +189,7 @@ export function structuredConversationCommandRunner(args: {
       }),
       startFailures: args.startFailures,
       send: (command) =>
-        args.write(
-          command === 'compact' && args.commandsWait
-            ? { command, delivery: 'queue-if-active' }
-            : { command }
-        )
+        args.write(hostHoldsIt ? { command, delivery: 'queue-if-active' } : { command })
     })
   }
 }

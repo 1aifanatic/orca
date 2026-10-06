@@ -28,6 +28,7 @@ import {
   type MobileNativeChatSendOrigin
 } from './mobile-native-chat-pending-echo'
 import { mobileNativeChatScopeKey } from './mobile-native-chat-scope-key'
+import { useMobileNativeChatDraftFollowsReplacement } from './use-mobile-native-chat-draft-follow'
 import { useMobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 import type { MobileNativeChatLaunchDraftSeed } from './use-mobile-native-chat-launch-draft-seed'
 import { MobileNativeChatDraftEditGenerations } from './mobile-native-chat-draft-edit-generations'
@@ -42,6 +43,8 @@ export function useMobileNativeChatDrafts(args: {
   worktreeId: string
   tabId: string | null
   sessionId: string | null
+  /** The session the active tab's conversation replaced (a /clear), as its host published it. */
+  replacesSessionId?: string | null
   messages: readonly NativeChatMessage[]
   /** Host-provided launch context still parked as an unsent TUI-input draft. */
   launchDraft?: string | null
@@ -200,14 +203,24 @@ export function useMobileNativeChatDrafts(args: {
     )
   }, [])
 
-  const restoreRejectedDraft = useCallback((origin: MobileNativeChatSendOrigin, text: string) => {
-    // Appended, so typing done while the send was in flight stays and the returned text isn't dropped.
-    setDrafts((previous) => {
-      const current = previous[origin.draftKey] ?? ''
-      const next = appendReturnedDraftText(current, text)
-      return next === current ? previous : { ...previous, [origin.draftKey]: next }
-    })
-  }, [])
+  const draftKeyNow = useMobileNativeChatDraftFollowsReplacement({
+    draftKey,
+    sessionId,
+    replacesSessionId: args.replacesSessionId ?? null,
+    setDrafts
+  })
+  const restoreRejectedDraft = useCallback(
+    (origin: MobileNativeChatSendOrigin, text: string) => {
+      // Appended, so typing done while the send was in flight stays and the returned text isn't dropped.
+      const key = draftKeyNow(origin.draftKey)
+      setDrafts((previous) => {
+        const current = previous[key] ?? ''
+        const next = appendReturnedDraftText(current, text)
+        return next === current ? previous : { ...previous, [key]: next }
+      })
+    },
+    [draftKeyNow]
+  )
 
   const acceptSend = useCallback(
     (origin: MobileNativeChatSendOrigin, text: string, images?: string[]) => {

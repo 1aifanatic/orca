@@ -25,6 +25,18 @@ function busyCommandText(
   )
 }
 
+/** Whether the host holds this command as a card while the agent works: /compact and /clear each
+ *  need their own capability (and the queue), and a prompt nothing here can answer would hold the
+ *  card forever. */
+export function mobileStructuredCommandWaitsInLine(
+  command: AgentSessionConversationCommand,
+  host: { commandsWait: boolean; clearWaits: boolean; promptsUnanswerableHere: boolean }
+): boolean {
+  return (
+    (command === 'compact' ? host.commandsWait : host.clearWaits) && !host.promptsUnanswerableHere
+  )
+}
+
 export async function dispatchMobileStructuredCommand(input: {
   text: string
   hasAttachments: boolean

@@ -72,6 +72,7 @@ export const AGENT_SESSION_WRITE_NOTICE_COPY = {
   compactAfterRetry: 'Retry your earlier message, then run /compact.',
   clearAfterSending: 'Your earlier message is still being sent. Run /clear once it has gone.',
   compactAfterSending: 'Your earlier message is still being sent. Run /compact once it has gone.',
+  sentAsCleared: "The chat was cleared before your message went out. It's back in the composer.",
   optionRejected: "The agent didn't accept this setting.",
   goalsUnsupported: "This agent doesn't support goals.",
   agentRefused: 'The agent turned this down.',

@@ -2917,6 +2917,7 @@
         "runCompactWhenDone": "Run /compact when it's done.",
         "savedByNewerOrca": "Chats were saved by a newer Orca.",
         "sendOutcomeLost": "Orca couldn't confirm your message reached the agent. Check the chat, then send it again if needed.",
+        "sentAsCleared": "The chat was cleared before your message went out. It's back in the composer.",
         "settleEarlierMessage": "Wait for your earlier message to go through, or retry it.",
         "startNewChat": "Start a new chat to continue.",
         "terminalAgentHoldsChat": "This chat is still open in a terminal agent.",

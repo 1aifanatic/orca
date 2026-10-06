@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
   AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY
@@ -15,6 +16,7 @@ describe('structuredAgentSessionHostSupport', () => {
       questionAnswers: false,
       queuedMessages: false,
       queuedCommands: false,
+      queuedClear: false,
       quietRepeatedStop: false
     })
     expect(
@@ -24,6 +26,7 @@ describe('structuredAgentSessionHostSupport', () => {
       questionAnswers: true,
       queuedMessages: false,
       queuedCommands: false,
+      queuedClear: false,
       quietRepeatedStop: false
     })
     expect(
@@ -33,6 +36,7 @@ describe('structuredAgentSessionHostSupport', () => {
       questionAnswers: false,
       queuedMessages: false,
       queuedCommands: false,
+      queuedClear: false,
       quietRepeatedStop: false
     })
     expect(
@@ -42,6 +46,7 @@ describe('structuredAgentSessionHostSupport', () => {
       questionAnswers: false,
       queuedMessages: true,
       queuedCommands: false,
+      queuedClear: false,
       quietRepeatedStop: false
     })
     expect(
@@ -51,6 +56,7 @@ describe('structuredAgentSessionHostSupport', () => {
       questionAnswers: false,
       queuedMessages: false,
       queuedCommands: true,
+      queuedClear: false,
       quietRepeatedStop: false
     })
     expect(
@@ -60,7 +66,11 @@ describe('structuredAgentSessionHostSupport', () => {
       questionAnswers: false,
       queuedMessages: false,
       queuedCommands: false,
+      queuedClear: false,
       quietRepeatedStop: true
     })
+    expect(
+      structuredAgentSessionHostSupport([AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY])
+    ).toMatchObject({ queuedCommands: false, queuedClear: true })
   })
 })

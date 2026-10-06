@@ -39,6 +39,10 @@ import { useStructuredAgentSessionOutboxOwnerChange } from '@/runtime/structured
 import { useStructuredAgentSessionOutboxUnconfirmedProbe } from './use-structured-agent-session-outbox-unconfirmed-probe'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { useStructuredAgentSessionWithdrawnRestore } from './structured-agent-session-withdrawn-message-restore'
+import {
+  noteStructuredAgentSessionHandedBackSend,
+  useStructuredAgentSessionHandedBackNotice
+} from './structured-agent-session-handed-back-notice'
 import { useStructuredAgentSessionOutboxOwnership } from './use-structured-agent-session-outbox-ownership'
 import {
   handedOffQueuedMessageIds,
@@ -186,12 +190,20 @@ export function useStructuredAgentSessionOutbox(args: {
       // Released here rather than in a `.finally`: the state write below is what re-runs the
       // drain, so a later microtask would leave the queue with no trigger to move on.
       inFlightIdRef.current = null
-      setError(disposition.error ? agentSessionWriteNoticeText(disposition.error) : null)
+      const notice = disposition.error ? agentSessionWriteNoticeText(disposition.error) : null
+      if (disposition.handedBack && notice) {
+        // Its text is back in the composer before the entry leaves, said where that composer is.
+        restoreWithdrawn.byStop([disposition.handedBack])
+        noteStructuredAgentSessionHandedBackSend(composerScopeKey, notice)
+      } else {
+        setError(notice)
+      }
       recordFailures(getStructuredAgentSessionOutbox(sessionId), disposition.entries)
       commitStructuredAgentSessionOutbox(sessionId, disposition.entries)
     },
-    [recordFailures, sessionId]
+    [composerScopeKey, recordFailures, restoreWithdrawn, sessionId]
   )
+  useStructuredAgentSessionHandedBackNotice(composerScopeKey, setError)
 
   const [drains, setDrains] = useState(0)
   const drainAgain = useCallback(() => setDrains((count) => count + 1), [])
