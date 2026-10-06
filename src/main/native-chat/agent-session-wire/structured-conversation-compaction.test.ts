@@ -400,7 +400,7 @@ it('refuses the command at handover when the provider opened a turn meanwhile (B
   })
 })
 
-it('leaves a command whose start failed not sent, beside one start-failure row (B3)', async () => {
+it('leaves a command whose start failed not sent, with its reason on it and no row beside it (B3)', async () => {
   await attach()
   await state.host.close(SESSION, 'evict')
   state.acquire.mockRejectedValue(new Error('not signed in'))
@@ -417,19 +417,9 @@ it('leaves a command whose start failed not sent, beside one start-failure row (
   })
   const snapshot = await journal()
   expect(snapshot.items.filter((item) => readAgentJournalTurn(item.body))).toEqual([])
-  // The start's own row, in the words the command's message was refused with.
   expect(
-    snapshot.items
-      .filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
-      .map((item) => item.body)
-  ).toEqual([
-    {
-      kind: 'status',
-      text: "Codex couldn't restart. Run /compact again.",
-      failure: expect.objectContaining({ kind: 'restartFailed' }),
-      tone: 'error'
-    }
-  ])
+    snapshot.items.filter((item) => item.body.kind === 'status' && item.body.tone === 'error')
+  ).toEqual([])
   expect(
     snapshot.submissions.find(
       (entry) => entry.clientMessageId === params.envelope.clientOperationId

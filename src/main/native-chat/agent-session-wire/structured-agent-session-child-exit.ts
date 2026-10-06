@@ -165,7 +165,10 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
           )),
       ...(!expected && exit.failure ? { exitFailure: exit.failure } : {}),
       ...(!expected && exitedDuringStartup && child.generation
-        ? { exitedDuringStartup: { generation: child.generation } }
+        ? {
+            exitedDuringStartup:
+              child.startedFor === undefined ? {} : { startedFor: child.startedFor }
+          }
         : {})
     })
     if (!settled.ok) {

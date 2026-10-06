@@ -335,7 +335,7 @@ describe('dead structured-session generation settlement', () => {
       exitFailure: agentSessionFailureFact('providerExited', {
         detail: providerDiagnostic('code 1\nnot signed in', 'log')
       }),
-      exitedDuringStartup: { generation: 'generation-1' }
+      exitedDuringStartup: {}
     })
 
     // The sentence is Orca's; the stderr the exit carried rides as a log detail only.

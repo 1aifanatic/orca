@@ -402,7 +402,7 @@ describe('a send with no live owner', () => {
     expect(store.getRecord(SESSION)?.lease.claimStatus).toBe('released')
   })
 
-  it("rejects the accepted message with the restart's own cause, and says so in the chat once", async () => {
+  it("rejects the accepted message with the restart's own cause, said on the message alone", async () => {
     await loseOwner()
     acquire.mockRejectedValue(new Error('Not signed in. Run codex login'))
     const params = sendParams('while signed out')
@@ -422,8 +422,8 @@ describe('a send with no live owner', () => {
     expect(
       store.getOperationRow(CALLER.callerKey, params.envelope.clientOperationId)
     ).toMatchObject({ outcome: { status: 'succeeded' } })
-    // One row, in the error tone, so the reason outlives the error strip.
-    expect(await errorStatuses()).toEqual([cause])
+    // The message carries the reason; no row repeats it beside the message.
+    expect(await errorStatuses()).toEqual([])
   })
 
   it("keeps Codex's own words behind a refused resume without saying the provider stopped", async () => {
@@ -445,9 +445,7 @@ describe('a send with no live owner', () => {
       reason: "Codex couldn't restart. Send your message to try again.",
       rejection
     })
-    expect(await errorStatuses()).toEqual([
-      "Codex couldn't restart. Send your message to try again."
-    ])
+    expect(await errorStatuses()).toEqual([])
     // Orca's own text is logged once where the start failed.
     expect(
       hostErrors.filter(
@@ -463,21 +461,20 @@ describe('a send with no live owner', () => {
     await settled(await accept(params))
     expect(acquire).toHaveBeenCalledTimes(1)
 
-    // A client that resends the same id gets the recorded rejection, and the chat no second row.
+    // A client that resends the same id gets the recorded rejection, and no second attempt.
     await expect(host.send(CALLER, params)).resolves.toMatchObject({
       ok: true,
       replayed: true,
       value: { submission: { dispatchState: 'rejected' } }
     })
     expect(acquire).toHaveBeenCalledTimes(1)
-    expect(await errorStatuses()).toHaveLength(1)
 
-    // The outbox's Retry rotates the id: a fresh attempt, with its own row.
+    // The outbox's Retry rotates the id: a fresh attempt, failed on its own message.
     expect(await settled(await accept(sendParams('while signed out')))).toMatchObject({
       dispatchState: 'rejected'
     })
     expect(acquire).toHaveBeenCalledTimes(2)
-    expect(await errorStatuses()).toHaveLength(2)
+    expect(await errorStatuses()).toEqual([])
     expect(dispatch).not.toHaveBeenCalled()
   })
 
@@ -542,7 +539,7 @@ describe('a send with no live owner', () => {
       rejection: { kind: 'restartFailed', refusal: { code: 'execution_owner_reconciling' } }
     })
     expect(acquire).not.toHaveBeenCalled()
-    expect(await errorStatuses()).toEqual([cause])
+    expect(await errorStatuses()).toEqual([])
   })
 
   it('rejects the message, and reports the fault, when the restart itself faults', async () => {
@@ -563,7 +560,7 @@ describe('a send with no live owner', () => {
     expect(hostErrors).toContainEqual(
       expect.objectContaining({ message: 'spawn-token mint failed' })
     )
-    expect(await errorStatuses()).toHaveLength(1)
+    expect(await errorStatuses()).toEqual([])
   })
 
   it('exits the recovery stage a failed attempt latched before its delivery resumes it', async () => {

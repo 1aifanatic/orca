@@ -5,10 +5,10 @@ import {
 } from '../../../shared/agent-session-failure'
 import { parseAgentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { STALE_SESSION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
-import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import {
   AGENT_JOURNAL_THREAD_SCOPE,
-  type AgentJournalRenderItem
+  type AgentJournalRenderItem,
+  type AgentJournalSubmission
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
@@ -23,11 +23,11 @@ import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
-import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import {
-  hasStructuredAgentSessionStartFailureRow,
-  structuredAgentSessionStartFailureRow
-} from './structured-agent-session-start-failure-row'
+  structuredAgentSessionStartFailure,
+  structuredAgentSessionStartFailureFact
+} from './structured-agent-session-failure-text'
+import { messageCarriesFailedStart } from './structured-agent-session-start-failure-settlement'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   endedByPersonsStop,
@@ -51,7 +51,13 @@ import {
  *  same cap. */
 export const MAX_UNEXPECTED_EXIT_REASON_CHARS = MAX_PROVIDER_DIAGNOSTIC_CHARS
 
-export type DeadGenerationJournal = UnopenedSendJournal & {
+type DeadGenerationSubmission = ReturnType<
+  NonNullable<UnopenedSendJournal['submissions']>
+>[number] &
+  Partial<Pick<AgentJournalSubmission, 'fence' | 'reason' | 'rejection'>>
+
+export type DeadGenerationJournal = Omit<UnopenedSendJournal, 'submissions'> & {
+  submissions?: () => DeadGenerationSubmission[]
   appendLifecycleBatch: AgentSessionJournal['appendLifecycleBatch']
   markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
   rejectPendingSubmissions: AgentSessionJournal['rejectPendingSubmissions']
@@ -123,9 +129,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   exitFailure?: SubmissionRejectionFact
   /** Who a failed start's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
-  /** The provider never finished starting: the start that failed, keyed by the child's
-   *  generation. Its row is the one the delivery loop writes for the same start. */
-  exitedDuringStartup?: { generation: string | null }
+  /** The provider never finished starting. `startedFor`: the queued message the start was for,
+   *  which carries the failure itself. */
+  exitedDuringStartup?: { startedFor?: string }
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
@@ -143,23 +149,22 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     if (!startupFailure) {
       await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
     }
-    await (startupFailure
-      ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
-      : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
+    const rejectedUnstarted = startupFailure
+      ? await input.journal.rejectPendingSubmissions(input.fence, startupFailure)
+      : await input.journal.markPendingSubmissionsUnknown(
+          input.fence,
+          input.pendingSubmissionReason
+        )
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
-    if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
-      const startKey = input.exitedDuringStartup.generation ?? input.settlementId
-      // A start a message waited on is the delivery loop's to record, before or after this exit,
-      // in the words it rejected the message with; this row is for a command, goal or rewind start.
-      // A row already written stays: rejected is terminal, so its words are not reworded.
-      const recordedByDeliveryLoop =
-        input.journal.submissions?.().some(isQueuedAgentJournalSubmission) ||
-        hasStructuredAgentSessionStartFailureRow(items, startKey)
-      if (!recordedByDeliveryLoop) {
-        mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
-      }
-    } else if (showUnexpectedExitOutcome) {
+    // A failed start a message carries is said there. A goal, rewind or command start with no
+    // message waiting has only this row to say why.
+    const failureOnAMessage =
+      input.exitedDuringStartup !== undefined &&
+      (rejectedUnstarted.length > 0 ||
+        input.exitedDuringStartup.startedFor !== undefined ||
+        messageCarriesFailedStart(input.journal.submissions?.() ?? [], input.fence))
+    if (showUnexpectedExitOutcome && !failureOnAMessage) {
       // The turn the exit ended, and an error so no fold ever hides why it stopped.
       mutations.push({
         kind: 'item',
@@ -167,7 +172,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
         body: {
           kind: 'status',
           ...agentSessionFailureWords(
-            input.exitFailure ?? agentSessionFailureFact('providerExited'),
+            input.exitedDuringStartup
+              ? structuredAgentSessionStartFailureFact({ exit: input.exitFailure })
+              : (input.exitFailure ?? agentSessionFailureFact('providerExited')),
             {
               ...input.failureTextContext,
               surface: 'row'

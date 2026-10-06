@@ -251,20 +251,20 @@ describe('a record an older build left mid terminal handoff', () => {
       handoffStage: 'recovering'
     })
     // Sending and opening the chat both say what frees it: quitting that terminal agent. A send is
-    // accepted, then rejected by the start that cannot take the lease, and the chat's row says why,
+    // accepted, then rejected by the start that cannot take the lease, and the message says why,
     // worded from the refusal's details; only the live refusal names the process.
     const quitTerminal =
       'This chat is still open in a terminal agent (process 4242). Quit that agent to continue the chat here.'
     expect(await delivered('while the terminal still runs')).toMatchObject({
-      dispatchState: 'rejected'
+      dispatchState: 'rejected',
+      reason:
+        "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
     })
     expect(
-      (await host.journalSnapshot(SESSION)).items.flatMap((item) =>
-        item.body.kind === 'status' && item.body.tone === 'error' ? [item.body.text] : []
+      (await host.journalSnapshot(SESSION)).items.filter(
+        (item) => item.body.kind === 'status' && item.body.tone === 'error'
       )
-    ).toEqual([
-      "Codex couldn't restart. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
-    ])
+    ).toEqual([])
     const fence = store.getRecord(SESSION)?.lease.runtimeFence ?? null
     expect(await host.attach(CALLER, hostTestAttachParams(fence))).toMatchObject({
       ok: false,

@@ -577,7 +577,7 @@ describe("the replacement's first send", () => {
       kind: 'startFailed'
     }
   ])(
-    'fails on the message when the start fails ($name): one row, the message kept as not sent, and Retry starts it',
+    'fails on the message when the start fails ($name): the message kept as not sent, with its reason, and Retry starts it',
     async ({ error, words, kind }) => {
       const replacement = await clearCommits()
       vi.mocked(adapter.acquire).mockRejectedValueOnce(error())
@@ -590,11 +590,10 @@ describe("the replacement's first send", () => {
           rejection: { kind }
         })
       )
-      const rows = await errorRows(replacement)
-      expect(rows).toHaveLength(1)
-      expect(rows[0]).toContain(words)
-      expect(rows.join(' ')).not.toContain('/clear')
-      expect((await submissionOf(replacement, clientMessageId))?.reason).not.toContain('/clear')
+      expect(await errorRows(replacement)).toEqual([])
+      const { reason } = (await submissionOf(replacement, clientMessageId)) ?? {}
+      expect(reason).toContain(words)
+      expect(reason).not.toContain('/clear')
       expect(adapter.dispatch).not.toHaveBeenCalled()
 
       // Retry resends the same words, which starts the agent and delivers them.

@@ -1,7 +1,8 @@
 // A Claude start can fail on Orca's side while the CLI is still running: a saved option it can't
 // restore, or an init frame naming another session. Orca ends that child itself, so the chat must
-// not say Claude stopped on its own; only an exit Orca saw says that. Against the production
-// runtime, adapter, record store and host, with only the CLI process scripted.
+// not say Claude stopped on its own, on a message or in a row; only an exit Orca saw says that.
+// Against the production runtime, adapter, record store and host, with only the CLI process
+// scripted.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
@@ -110,9 +111,7 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
         rejection: { kind: 'startFailed' }
       })
     )
-    expect(await failureRows(host)).toEqual([
-      { text: expect.stringMatching(/^Claude couldn't start\./), kind: 'startFailed' }
-    ])
+    expect(await failureRows(host)).toEqual([])
     expect(claude.child(SESSION).calls).not.toContain('send')
   })
 
@@ -134,6 +133,6 @@ describe('a Claude start that Orca fails while the CLI is still running', () => 
         rejection: { kind: 'providerStartFailed' }
       })
     )
-    expect(await failureRows(host)).toEqual([{ text: STOPPED_TEXT, kind: 'providerStartFailed' }])
+    expect(await failureRows(host)).toEqual([])
   })
 })
