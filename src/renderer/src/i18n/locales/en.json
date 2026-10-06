@@ -18302,6 +18302,10 @@
         "used": "Context: {{used}} tokens used, estimated from the last response.",
         "unreported": "Context usage is not available for this session."
       },
+      "agentMessage": {
+        "messageFrom": "Message from",
+        "unnamedSender": "an agent"
+      },
       "goal": {
         "placeholder": "Describe your goal, define measurable outcomes for best results",
         "clear": "Clear goal",
@@ -18355,13 +18359,14 @@
         "withdrawnHold": "Stopped before it was sent",
         "pausedSendFailed": "Couldn't send — press Send to retry.",
         "pausedKept": "Not sent yet — press Send to send it.",
-        "pausedKeptWaiting": "Not sent yet — press Send to send it once the agent finishes.",
         "paused": "Paused",
         "queuePausedStopped": "Queue paused because you interrupted",
         "queuePausedRestarted": "Queue paused because Orca restarted",
         "queuePausedCleared": "Queue paused after you cleared the conversation",
         "queuePaused": "Queue paused",
         "resume": "Resume",
+        "from": "From {{names}}",
+        "pausedKeptWaiting": "Not sent yet — press Send to send it once the agent finishes.",
         "pausedSendFailedWaiting": "Couldn't send — press Send to retry once the agent finishes."
       },
       "thought": "Thought",

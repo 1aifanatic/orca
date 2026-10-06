@@ -17977,13 +17977,14 @@
         "withdrawnHold": "Detenido antes de enviarse",
         "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
         "pausedKept": "Aún no se ha enviado. Pulsa Enviar para enviarlo.",
-        "pausedKeptWaiting": "Aún no se ha enviado. Cuando el agente termine, pulsa Enviar para enviarlo.",
         "paused": "En pausa",
         "queuePausedStopped": "Cola en pausa porque interrumpiste",
         "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
         "queuePausedCleared": "Cola en pausa después de que borraste la conversación",
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar",
+        "from": "De {{names}}",
+        "pausedKeptWaiting": "Aún no se ha enviado. Cuando el agente termine, pulsa Enviar para enviarlo.",
         "pausedSendFailedWaiting": "No se pudo enviar. Cuando el agente termine, pulsa Enviar para reintentar."
       },
       "thought": "Pensó",
@@ -18096,6 +18097,10 @@
         "summary": "Contexto: {{used}} / {{window}} tokens ({{percent}} %), estimado a partir de la última respuesta.",
         "used": "Contexto: {{used}} tokens usados, estimado a partir de la última respuesta.",
         "unreported": "El uso del contexto no está disponible para esta sesión."
+      },
+      "agentMessage": {
+        "messageFrom": "Mensaje de",
+        "unnamedSender": "un agente"
       },
       "goal": {
         "placeholder": "Describe tu objetivo y define resultados medibles para obtener mejores resultados",

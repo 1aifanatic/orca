@@ -13,6 +13,8 @@ import {
   type AgentSessionQueuedMessage,
   type AgentSessionQueuePause
 } from '../../../src/shared/agent-session-wire'
+import { readAgentMessageSource } from '../../../src/shared/agent-session-message-source'
+import { agentMessageAttribution } from './mobile-agent-message-attribution'
 
 export type MobileQueuedMessageCard = {
   messageId: string
@@ -24,6 +26,8 @@ export type MobileQueuedMessageCard = {
   needsAttention: boolean
   /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
   caption: string | null
+  /** "From <name>" on another agent's card; null on the person's. */
+  attribution: string | null
   /** A conversation command such as /compact: it never steers into a running turn. */
   command?: true
   /** A command card while the agent works: it offers no send until the agent is idle. */
@@ -149,6 +153,7 @@ export function mobileQueuedMessageCards(
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
       caption,
+      attribution: agentMessageAttribution('From', readAgentMessageSource(draft.body.from)),
       ...(draft.body.command !== undefined
         ? {
             command: true as const,

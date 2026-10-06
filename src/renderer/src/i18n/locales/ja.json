@@ -18090,6 +18090,10 @@
         "used": "コンテキスト: {{used}} トークン使用済み、最後の応答から推定。",
         "unreported": "このセッションではコンテキストの使用量を表示できません。"
       },
+      "agentMessage": {
+        "messageFrom": "送信元:",
+        "unnamedSender": "Agent"
+      },
       "goal": {
         "placeholder": "目標を説明し、最良の結果を得るために測定可能な結果を​​定義する",
         "clear": "明確な目標",
@@ -18137,13 +18141,14 @@
         "withdrawnHold": "送信前に停止されました",
         "pausedSendFailed": "送信できませんでした。「送信」を押して再試行してください。",
         "pausedKept": "まだ送信されていません。「送信」を押すと送信されます。",
-        "pausedKeptWaiting": "まだ送信されていません。Agent の処理が終わったら「送信」を押すと送信されます。",
         "paused": "一時停止中",
         "queuePausedStopped": "中断したため、キューを一時停止しました",
         "queuePausedRestarted": "Orca が再起動したため、キューを一時停止しました",
         "queuePausedCleared": "会話を消去したため、キューを一時停止しました",
         "queuePaused": "キューは一時停止中です",
         "resume": "再開",
+        "from": "送信元: {{names}}",
+        "pausedKeptWaiting": "まだ送信されていません。Agent の処理が終わったら「送信」を押すと送信されます。",
         "pausedSendFailedWaiting": "送信できませんでした。Agent の処理が終わったら「送信」を押して再試行してください。"
       },
       "thought": "考えました",
