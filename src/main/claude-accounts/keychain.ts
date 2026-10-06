@@ -9,11 +9,11 @@ export async function readActiveClaudeKeychainCredentialsStrict(
   configDir?: string
 ): Promise<string | null> {
   if (!configDir) {
-    return readKeychainPassword(getActiveClaudeService(), getKeychainUser())
+    return readKeychainPassword(claudeKeychainService(), getKeychainUser())
   }
   // Keep both lexical and canonical profile aliases scoped; never try System Default.
   for (const dir of claudeConfigDirKeychainAliases(configDir)) {
-    const credentials = await readKeychainPassword(getActiveClaudeService(dir), getKeychainUser())
+    const credentials = await readKeychainPassword(claudeKeychainService(dir), getKeychainUser())
     if (credentials) {
       return credentials
     }
@@ -36,7 +36,7 @@ function getKeychainUser(): string {
   return KEYCHAIN_ACCOUNT_PATTERN.test(user) ? user : CLAUDE_CODE_FALLBACK_USER
 }
 
-function getActiveClaudeService(configDir?: string): string {
+export function claudeKeychainService(configDir?: string): string {
   if (!configDir) {
     return ACTIVE_CLAUDE_SERVICE
   }
@@ -90,4 +90,18 @@ export function claudeConfigDirKeychainAliases(configDir: string): string[] {
     }
   }
   return aliases
+}
+
+/** Every spelling of a folder Claude may have hashed into its Keychain item name (superset U/profiles.ts). */
+export function claudeConfigDirSpellings(configDir: string, userHome: string): string[] {
+  const spellings = new Set<string>()
+  for (const dir of claudeConfigDirKeychainAliases(configDir)) {
+    const trimmed = dir.replace(/[\\/]+$/, '')
+    const rest = trimmed.startsWith(`${userHome}/`) ? trimmed.slice(userHome.length) : null
+    for (const spelling of [trimmed, ...(rest ? [`~${rest}`, `$HOME${rest}`] : [])]) {
+      spellings.add(spelling)
+      spellings.add(`${spelling}/`)
+    }
+  }
+  return [...spellings]
 }

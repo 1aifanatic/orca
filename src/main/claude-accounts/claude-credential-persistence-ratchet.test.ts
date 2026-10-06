@@ -36,7 +36,10 @@ const fsAllowances: Record<string, readonly string[]> = {
     'symlinkSync'
   ],
   'claude-accounts/claude-profile-paths.ts': ['mkdirSync', 'writeFileAtomically'],
-  'claude-accounts/claude-profile-pointer.ts': ['mkdirSync', 'rmSync', 'writeFileAtomically'],
+  // The which-account file.
+  'claude-accounts/claude-profile-router.ts': ['mkdirSync', 'rmSync', 'writeFileAtomically'],
+  // Removing an account deletes its folder, links first.
+  'claude-accounts/claude-account-folder.ts': ['rmSync', 'rmdirSync', 'unlinkSync'],
   'claude-accounts/claude-profile-prompt-history.ts': [
     'appendFileSync',
     'linkSync',
@@ -56,9 +59,6 @@ const fsAllowances: Record<string, readonly string[]> = {
     'unlinkSync',
     'writeFileAtomically'
   ],
-  // The pointer queue's own serialized-write method, not a filesystem primitive.
-  'claude-accounts/claude-profile-pointer-queue.ts': ['write'],
-  'claude-accounts/claude-profile-routing-service.ts': ['write'],
   // The guest helper answers the host on stdout.
   'claude-accounts/claude-profile-wsl-entry.ts': ['write']
 }
@@ -80,6 +80,8 @@ const WRITE_CALL =
   /\b(?:write\w*|append\w*|copy\w*|cp(?:Sync)?|rename\w*|link\w*|symlink\w*|createWriteStream)\s*\(/g
 // The one runner that takes `security` argv from its callers; each caller must spell the verb.
 const SECURITY_RUNNER = 'main/macos-keychain/generic-password.ts'
+// Removing an account deletes the Keychain items Claude made for its folder; nothing adds one.
+const KEYCHAIN_DELETE_OWNER = 'main/claude-accounts/claude-account-folder.ts'
 
 /** Names bound, directly or through another such name, to the credentials file's path. */
 function credentialFileNames(text: string): Set<string> {
@@ -142,7 +144,10 @@ function credentialMutations(text: string, file = ''): string[] {
     }
   }
   // Argv (`['add-generic-password', …]`) and shell (`security add-generic-password`) forms.
-  if (/(?:add|delete)-generic-password/.test(text)) {
+  if (
+    /add-generic-password/.test(text) ||
+    (file !== KEYCHAIN_DELETE_OWNER && /delete-generic-password/.test(text))
+  ) {
     found.push('keychain write')
   }
   if (/\b(?:write|delete|store|save)\w*Keychain\w*\b/.test(text)) {
@@ -261,4 +266,16 @@ it.each([
   "const file = join(home, '.credentials.json')\nconst raw = await readFile(file, 'utf8')"
 ])('the credential check leaves a read alone: %s', (source) => {
   expect(credentialMutations(source)).toEqual([])
+})
+
+it('lets only account removal delete a Keychain item, and nothing add one', () => {
+  const remove = "execSecurityCommand(['delete-generic-password', '-s', service])"
+  expect(credentialMutations(remove, KEYCHAIN_DELETE_OWNER)).toEqual([])
+  expect(credentialMutations(remove, 'main/claude-accounts/service.ts')).not.toEqual([])
+  expect(
+    credentialMutations(
+      "execSecurityCommand(['add-generic-password', '-s', service])",
+      KEYCHAIN_DELETE_OWNER
+    )
+  ).not.toEqual([])
 })

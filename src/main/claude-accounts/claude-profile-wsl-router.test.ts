@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -132,6 +133,29 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     })
     await f.router.prepareLaunch('Ubuntu')
     expect(f.setup.calls).toBe(2)
+  })
+
+  it('sets up a new account folder for sign-in and deletes it without following its links', async () => {
+    const f = fixture()
+    const sharedHistory = join(guest.home, '.claude', 'projects')
+    mkdirSync(sharedHistory)
+    writeFileSync(join(sharedHistory, 'chat.jsonl'), '{}')
+    // The stub setup marks account a's folder.
+    mkdirSync(f.profileHome, { recursive: true })
+    const home = await f.router.prepareAccount('Ubuntu', 'b')
+    expect(home).toBe(join(guest.home, '.local/share/orca/claude-profiles/b/home'))
+    expect(f.setup.calls).toBe(1)
+    mkdirSync(home, { recursive: true })
+    symlinkSync(sharedHistory, join(home, 'projects'))
+
+    await f.router.removeAccount('Ubuntu', 'b')
+    expect(existsSync(join(home, '..'))).toBe(false)
+    expect(existsSync(join(sharedHistory, 'chat.jsonl'))).toBe(true)
+
+    f.setup.fail = true
+    await expect(f.router.prepareAccount('Ubuntu', 'c')).rejects.toThrow(
+      CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+    )
   })
 
   it('launches System default from the guest ~/.claude with no account env', async () => {

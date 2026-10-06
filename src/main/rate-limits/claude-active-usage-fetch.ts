@@ -7,24 +7,20 @@ import { fetchClaudeOAuthUsage } from './claude-oauth-usage-request'
 import { classifyClaudeOAuthUsageError } from './claude-usage-error-classification'
 import { OAuthUsageError } from './claude-oauth-usage-error'
 import type { ClaudeRateLimitFetchOptions } from './claude-usage-fetch-options'
-import {
-  abortedClaudeRateLimitResult,
-  claudeUsageUnavailable,
-  makeClaudeUsageResult
-} from './claude-usage-result'
+import { abortedClaudeRateLimitResult, makeClaudeUsageResult } from './claude-usage-result'
+import { CLAUDE_PROFILE_MISSING_MESSAGE } from '../claude-accounts/claude-profile-router'
 
 /** Usage observes the account; only a user-started Claude process may refresh its login. */
 export async function fetchActiveClaudeRateLimits(
   options?: ClaudeRateLimitFetchOptions
 ): Promise<ProviderRateLimits> {
-  const { profileIssue, profileIssueKind } = options?.authPreparation ?? {}
-  if (profileIssue) {
-    return profileIssueKind === 'sign-in-required'
-      ? makeClaudeUsageResult('error', profileIssue, {
-          failureKind: 'missing-credentials',
-          attemptedSources: []
-        })
-      : claudeUsageUnavailable()
+  const usageError = options?.authPreparation?.usageError
+  if (usageError) {
+    return makeClaudeUsageResult('error', usageError, {
+      failureKind:
+        usageError === CLAUDE_PROFILE_MISSING_MESSAGE ? 'missing-credentials' : 'usage-unavailable',
+      attemptedSources: []
+    })
   }
   if (options?.signal?.aborted) {
     return abortedClaudeRateLimitResult()

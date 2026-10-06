@@ -1,62 +1,66 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultSettings } from '../../shared/constants'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
-
-const login = vi.hoisted((): { cancelled: string[] } => ({ cancelled: [] }))
-vi.mock('./claude-profile-login', () => ({
-  prepareClaudeProfileLogin: async (id: string) => ({
-    config: { windowsPath: `/profiles/${id}/home`, linuxPath: null, wslDistro: null },
-    provision: async () => {}
-  }),
-  // A sign-in the user never finishes: only a superseding action ends it.
-  loginToClaudeProfile: (
-    config: { windowsPath: string },
-    setCancel: (cancel: (() => boolean) | null) => void
-  ) =>
-    new Promise<void>((_resolve, reject) => {
-      setCancel(() => {
-        login.cancelled.push(config.windowsPath)
-        reject(new Error('Claude sign-in was cancelled.'))
-        return true
-      })
-    }).finally(() => setCancel(null))
-}))
-
+import { CLAUDE_SIGN_IN_NOT_FINISHED_MESSAGE } from './claude-account-registration'
+import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import { ClaudeAccountService } from './service'
 
-function account(id: string, runtime: 'host' | 'wsl'): ClaudeManagedAccount {
+const roots: string[] = []
+afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
+
+function account(id: string, extra: Partial<ClaudeManagedAccount> = {}): ClaudeManagedAccount {
   return {
     id,
     email: `${id}@example.test`,
     managedAuthPath: '',
-    managedAuthRuntime: runtime,
-    wslDistro: runtime === 'wsl' ? 'Ubuntu' : null,
+    managedAuthRuntime: 'host',
+    wslDistro: null,
     authMethod: 'subscription-oauth',
     createdAt: 1,
     updatedAt: 1,
-    lastAuthenticatedAt: 1
+    lastAuthenticatedAt: 1,
+    ...extra
   }
 }
 
-function fixture() {
+function fixture(accounts: ClaudeManagedAccount[] = [account('a'), account('b')]) {
+  const root = mkdtempSync(join(tmpdir(), 'claude-accounts-'))
+  roots.push(root)
+  const home = (id: string) => join(root, id, 'home')
+  // Stands in for Claude finishing `claude auth login` in a folder.
+  const signIn = (id: string, email: string) => {
+    mkdirSync(home(id), { recursive: true })
+    writeFileSync(
+      join(home(id), '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: email } })
+    )
+  }
   let settings: GlobalSettings = {
     ...getDefaultSettings('/tmp'),
-    claudeManagedAccounts: [account('a', 'host'), account('b', 'host'), account('w', 'wsl')],
+    claudeManagedAccounts: accounts,
     activeClaudeManagedAccountId: 'a',
     activeClaudeManagedAccountIdsByRuntime: { host: 'a', wsl: {} }
   }
   const runtimeAuth = {
-    syncForCurrentSelection: vi.fn(async () => {}),
-    forceMaterializeCurrentSelectionForRollback: vi.fn(async () => {}),
+    router: { accountHome: home, userConfigDir: () => join(root, 'personal') },
+    syncForCurrentSelection: vi.fn(async (_target?: ClaudeAccountSelectionTarget) => {}),
+    publishAll: vi.fn(async () => {}),
+    prepareAccountFolder: vi.fn(async (id: string) => {
+      mkdirSync(home(id), { recursive: true })
+      return { configDir: home(id), readPath: home(id) }
+    }),
+    removeAccountFolder: vi.fn(async (id: string) => rmSync(join(root, id), { recursive: true })),
     getRuntimeConfigDir: () => '/unused'
   }
   const service = new ClaudeAccountService(
     {
       getSettings: () => settings,
-      updateSettings: (patch: Partial<GlobalSettings>) => {
+      updateSettings: (patch) => {
         settings = { ...settings, ...patch }
-        return settings
       }
     },
     {
@@ -65,12 +69,95 @@ function fixture() {
     },
     runtimeAuth
   )
-  return { service, runtimeAuth, settings: () => settings }
+  return { root, service, runtimeAuth, signIn, settings: () => settings }
 }
 
 describe('ClaudeAccountService', () => {
-  beforeEach(() => {
-    login.cancelled.length = 0
+  it("labels each row with its folder's login and asks a folder without one to sign in", () => {
+    const f = fixture([
+      account('a'),
+      account('b'),
+      account('old-wsl', {
+        managedAuthRuntime: 'wsl',
+        wslDistro: 'Ubuntu',
+        wslLinuxAuthPath: '/home/u/.local/share/orca/claude-accounts/old-wsl/auth'
+      }),
+      account('new-wsl', {
+        managedAuthRuntime: 'wsl',
+        wslDistro: 'Ubuntu',
+        wslLinuxAuthPath: '/home/u/.local/share/orca/claude-profiles/new-wsl/home'
+      })
+    ])
+    f.signIn('a', 'now-a@example.test')
+    const byId = new Map(f.service.listAccounts().accounts.map((row) => [row.id, row]))
+    expect(byId.get('a')).toMatchObject({ email: 'now-a@example.test' })
+    expect(byId.get('a')?.needsSignIn).toBeUndefined()
+    expect(byId.get('b')).toMatchObject({ email: 'b@example.test', needsSignIn: true })
+    expect(byId.get('old-wsl')).toMatchObject({ needsSignIn: true })
+    expect(byId.get('new-wsl')?.needsSignIn).toBeUndefined()
+  })
+
+  it("reports System default's login and the user's own folder while an account is selected", () => {
+    const f = fixture()
+    mkdirSync(join(f.root, 'personal'))
+    writeFileSync(
+      join(f.root, 'personal', '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: 'me@example.test' } })
+    )
+    expect(f.service.listAccounts()).toMatchObject({
+      systemDefaultEmail: 'me@example.test',
+      userClaudeConfigDir: join(f.root, 'personal')
+    })
+  })
+
+  it('saves an account only once its folder holds a login', async () => {
+    const f = fixture()
+    const begun = await f.service.beginSignIn({ runtime: 'host' })
+    expect(begun).toMatchObject({
+      runtime: 'host',
+      configDir: join(f.root, begun.accountId, 'home')
+    })
+    await expect(f.service.finishSignIn(begun)).rejects.toThrow(CLAUDE_SIGN_IN_NOT_FINISHED_MESSAGE)
+    expect(f.settings().claudeManagedAccounts).toHaveLength(2)
+
+    f.signIn(begun.accountId, 'new@example.test')
+    await f.service.finishSignIn(begun)
+    expect(f.settings().claudeManagedAccounts.at(-1)).toMatchObject({
+      id: begun.accountId,
+      email: 'new@example.test',
+      managedAuthPath: begun.configDir
+    })
+  })
+
+  it('refuses a second account for the same login and deletes its folder', async () => {
+    const f = fixture()
+    const begun = await f.service.beginSignIn({ runtime: 'host' })
+    f.signIn(begun.accountId, 'B@example.test')
+    await expect(f.service.finishSignIn(begun)).rejects.toThrow('already added')
+    expect(f.runtimeAuth.removeAccountFolder).toHaveBeenCalledWith(begun.accountId, {
+      runtime: 'host'
+    })
+    expect(f.settings().claudeManagedAccounts).toHaveLength(2)
+  })
+
+  it('relabels a saved account signed in again under another login', async () => {
+    const f = fixture()
+    const begun = await f.service.beginSignIn({ accountId: 'b' })
+    f.signIn('b', 'other@example.test')
+    await f.service.finishSignIn(begun)
+    expect(f.settings().claudeManagedAccounts.find((entry) => entry.id === 'b')).toMatchObject({
+      email: 'other@example.test',
+      createdAt: 1
+    })
+  })
+
+  it('clears the selection, republishes, then deletes the folder on remove', async () => {
+    const f = fixture()
+    f.signIn('a', 'a@example.test')
+    await f.service.removeAccount('a')
+    expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBeNull()
+    expect(f.runtimeAuth.syncForCurrentSelection).toHaveBeenCalledWith({ runtime: 'host' })
+    expect(f.runtimeAuth.removeAccountFolder).toHaveBeenCalledWith('a', { runtime: 'host' })
   })
 
   it('puts the previous account back when publishing a new selection fails', async () => {
@@ -78,40 +165,16 @@ describe('ClaudeAccountService', () => {
     f.runtimeAuth.syncForCurrentSelection.mockRejectedValueOnce(new Error('publish failed'))
     await expect(f.service.selectAccount('b')).rejects.toThrow('publish failed')
     expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBe('a')
-    expect(f.runtimeAuth.forceMaterializeCurrentSelectionForRollback).toHaveBeenCalledWith({
-      runtime: 'host'
-    })
+    expect(f.runtimeAuth.publishAll).toHaveBeenCalled()
   })
 
   it('refuses to select a WSL account for the host', async () => {
-    const f = fixture()
+    const f = fixture([
+      account('a'),
+      account('w', { managedAuthRuntime: 'wsl', wslDistro: 'Ubuntu' })
+    ])
     await expect(f.service.selectAccountForTarget('w', { runtime: 'host' })).rejects.toThrow(
       'That Claude account belongs to a different runtime.'
     )
-    expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBe('a')
-  })
-
-  it("selects and removes a WSL account without touching the host's, starting its distro", async () => {
-    const f = fixture()
-    const ubuntu = { runtime: 'wsl' as const, wslDistro: 'Ubuntu' }
-    await f.service.selectAccountForTarget('w', ubuntu)
-    expect(f.settings().activeClaudeManagedAccountIdsByRuntime).toMatchObject({
-      host: 'a',
-      wsl: { Ubuntu: 'w' }
-    })
-    expect(f.runtimeAuth.syncForCurrentSelection).toHaveBeenLastCalledWith(ubuntu, 'boot')
-    await f.service.removeAccount('w')
-    expect(f.settings().activeClaudeManagedAccountIdsByRuntime?.host).toBe('a')
-    expect(f.runtimeAuth.syncForCurrentSelection).toHaveBeenLastCalledWith(ubuntu, 'boot')
-  })
-
-  it('ends an abandoned sign-in when the user starts another account action', async () => {
-    const f = fixture()
-    const adding = f.service.addAccount()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await expect(f.service.selectAccount('b')).resolves.toHaveProperty('accounts')
-    await expect(adding).rejects.toThrow('Claude sign-in was cancelled.')
-    expect(login.cancelled).toHaveLength(1)
-    expect(f.service.cancelPendingLogin()).toBe(false)
   })
 })

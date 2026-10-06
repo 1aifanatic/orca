@@ -1,7 +1,8 @@
 import { defineMethod, defineStreamingMethod } from '../core'
 import {
   AccountsUnsubscribeParams,
-  BeginClaudeProfileLoginParams,
+  BeginClaudeSignInParams,
+  FinishClaudeSignInParams,
   AddClaudeFromConfigDirParams,
   AddCodexFromHomeParams,
   ConsumeCodexResetCreditParams,
@@ -18,24 +19,25 @@ import {
 let accountsSubscriptionSeq = 0
 
 export const ACCOUNT_METHODS = [
+  // Why local only: sign-in runs `claude auth login` in a terminal on the execution host.
   defineMethod({
-    name: 'accounts.beginClaudeProfileLogin',
-    params: BeginClaudeProfileLoginParams,
+    name: 'accounts.beginClaudeSignIn',
+    params: BeginClaudeSignInParams,
     handler: async (params, { runtime, clientKind }) => {
       if (clientKind !== undefined) {
         throw new Error('Sign in on the Orca execution host.')
       }
-      return runtime.beginClaudeProfileLogin(params)
+      return runtime.beginClaudeSignIn(params)
     }
   }),
   defineMethod({
-    name: 'accounts.finishClaudeProfileLogin',
-    params: RemoveAccountParams,
+    name: 'accounts.finishClaudeSignIn',
+    params: FinishClaudeSignInParams,
     handler: async (params, { runtime, clientKind }) => {
       if (clientKind !== undefined) {
         throw new Error('Sign in on the Orca execution host.')
       }
-      return runtime.finishClaudeProfileLogin(params.accountId)
+      return runtime.finishClaudeSignIn(params)
     }
   }),
   defineMethod({

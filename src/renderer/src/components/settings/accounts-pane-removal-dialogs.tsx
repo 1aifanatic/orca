@@ -85,8 +85,8 @@ export function renderAccountsRemovalDialogs(
             </DialogTitle>
             <DialogDescription>
               {translate(
-                'settings.accounts.claudeRemoveProfile',
-                'Orca will forget this account and leave its login files on disk. If selected, the next Claude launch uses System default. Running sessions keep their account.'
+                'settings.accounts.claudeRemoveFolder',
+                "Orca deletes this account's Claude folder and its sign-in from this computer. Chat history shared with System default stays. If it is selected, the next Claude you start uses System default."
               )}
             </DialogDescription>
           </DialogHeader>

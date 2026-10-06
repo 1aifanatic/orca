@@ -3,7 +3,6 @@ import type { ProviderRateLimits } from '../../shared/rate-limit-types'
 import { RateLimitService } from './service'
 import { fetchClaudeRateLimits } from './claude-fetcher'
 import { fetchCodexRateLimits } from './codex-fetcher'
-import { createNativeClaudeProfileRouting } from '../claude-accounts/claude-profile-native-owner'
 import {
   asRateLimitWindow,
   deferred,
@@ -286,25 +285,14 @@ describe('RateLimitService', () => {
     try {
       vi.mocked(fetchClaudeRateLimits).mockResolvedValue(okProvider('claude', 18))
       mockFreshBackgroundProviderFetches()
-      const routing = createNativeClaudeProfileRouting({
-        store: {
-          getSettings: () => ({
-            claudeManagedAccounts: [],
-            activeClaudeManagedAccountId: null,
-            agentStatusHooksEnabled: false,
-            disabledTuiAgents: []
-          })
-        },
-        dataRoot: '/fake-data',
-        userHome: '/fake-home',
-        inheritedConfigDir: () => '/own/claude-config',
-        claudeVersion: async () => null,
-        worker: { prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }) }
-      })
+      vi.stubEnv('CLAUDE_CONFIG_DIR', '/own/claude-config')
       const service = new RateLimitService()
-      service.setClaudeAuthPreparationResolver(async () =>
-        routing.preparation(routing.resolve({ runtime: 'host' }))
-      )
+      service.setClaudeAuthPreparationResolver(async () => ({
+        configDir: '/own/claude-config',
+        envPatch: {},
+        stripAuthEnv: false,
+        provenance: 'system'
+      }))
       await service.refresh()
       service.ingestLiveClaudeRateLimits({
         configDir: '/own/claude-config',
@@ -313,6 +301,7 @@ describe('RateLimitService', () => {
       })
       expect(service.getState().claude?.session?.usedPercent).toBe(44)
     } finally {
+      vi.unstubAllEnvs()
       vi.useRealTimers()
     }
   })

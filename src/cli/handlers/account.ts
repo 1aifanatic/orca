@@ -7,8 +7,11 @@ import { printResult } from '../format'
 import { RuntimeClientError } from '../runtime-client'
 import { stripElectronRunAsNode } from '../runtime/launch'
 import { rejectRemoteSelectionFlags } from '../remote-selection-flag-rejection'
-import { buildWslExecArgs, buildWslLoginShellCommand } from '../../shared/wsl-login-shell-command'
-import { claudeLoginHostEnv, claudeLoginWslScript } from '../../shared/claude-login-environment'
+import {
+  buildWslExecArgs,
+  buildWslLoginShellCommand,
+  quotePosixShell
+} from '../../shared/wsl-login-shell-command'
 import {
   getVersionManagerBinPaths,
   resolveCliCommand,
@@ -22,11 +25,11 @@ import {
 import { stdioForWindowsInteractiveChild } from '../../shared/windows-console-input'
 import {
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
-  CODEX_ACCOUNT_IMPORT_CAPABILITY,
-  CLAUDE_PROFILE_LOGIN_CAPABILITY
-} from '../../shared/account-runtime-capabilities'
+  CLAUDE_SIGN_IN_RUNTIME_CAPABILITY
+} from '../../shared/protocol-version'
 import type { RuntimeStatus } from '../../shared/runtime-types'
 import type {
+  ClaudeAccountSignIn,
   ClaudeRateLimitAccountsState,
   CodexRateLimitAccountsState
 } from '../../shared/managed-account-types'
@@ -35,12 +38,41 @@ import {
   withInteractiveLoginCleanup
 } from './interactive-login-interruption'
 import { getWslAccountTarget } from './account-wsl-location'
-import { formatAccountsBlock } from './account-list-format'
 
 // Why: add returns just that provider's state; list returns the full snapshot.
 type AccountsListSnapshot = {
   claude: ClaudeRateLimitAccountsState
   codex: CodexRateLimitAccountsState
+}
+
+// Why: Claude and Codex managed-account summaries both carry id+email+active id,
+// so one formatter renders either provider's block.
+type AccountsBlock = {
+  accounts: readonly { id: string; email: string; needsSignIn?: true }[]
+  activeAccountId: string | null
+  activeAccountIdsByRuntime?: {
+    host: string | null
+    wsl: Record<string, string | null>
+  }
+}
+
+/** Renders a provider's managed-account list as a human-readable block, marking the active account. */
+function formatAccountsBlock(label: string, block: AccountsBlock): string {
+  if (block.accounts.length === 0) {
+    return `No managed ${label} accounts.`
+  }
+  const activeAccountIds = new Set([
+    block.activeAccountId,
+    block.activeAccountIdsByRuntime?.host,
+    ...Object.values(block.activeAccountIdsByRuntime?.wsl ?? {})
+  ])
+  const lines = block.accounts.map(
+    (account) =>
+      `  ${account.email}${activeAccountIds.has(account.id) ? ' (active)' : ''}${
+        account.needsSignIn ? ' (sign in again in Orca Settings > Accounts)' : ''
+      }`
+  )
+  return `Managed ${label} accounts (${block.accounts.length}):\n${lines.join('\n')}`
 }
 
 function addAgentNodePaths(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -65,7 +97,7 @@ function addAgentNodePaths(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 async function runAgentLoginInTerminal(
   command: string,
   args: string[],
-  prepareEnv: (env: NodeJS.ProcessEnv) => NodeJS.ProcessEnv,
+  extraEnv: Record<string, string>,
   json: boolean,
   session: InteractiveLoginSession
 ): Promise<void> {
@@ -95,7 +127,7 @@ async function runAgentLoginInTerminal(
     // the CLI's own node in front of that seed (stablyai/orca#10932).
     const env = withCliRuntimeOnPath(
       resolvedCommand,
-      addAgentNodePaths(prepareEnv(stripElectronRunAsNode(process.env)))
+      addAgentNodePaths({ ...stripElectronRunAsNode(process.env), ...extraEnv })
     )
     const consoleStdio = stdioForWindowsInteractiveChild(json)
     let child: ReturnType<typeof spawn>
@@ -136,12 +168,13 @@ async function runAgentLoginInTerminal(
   })
 }
 
+/** Signs in to a new account folder the host created, then registers it (superset AddAccountDialog). */
 async function addClaudeAccount({ client, cwd, json }: HandlerContext): Promise<void> {
-  const draft = await client.call<{
-    accountId: string
-    config: { windowsPath: string; linuxPath: string | null; wslDistro: string | null }
-  }>('accounts.beginClaudeProfileLogin', getWslAccountTarget(cwd) ?? {}, { timeoutMs: 300_000 })
-  const { accountId, config } = draft.result
+  const { result: signIn } = await client.call<ClaudeAccountSignIn>(
+    'accounts.beginClaudeSignIn',
+    getWslAccountTarget(cwd) ?? {},
+    { timeoutMs: 300_000 }
+  )
   const session: InteractiveLoginSession = {
     child: null,
     registering: false,
@@ -151,30 +184,28 @@ async function addClaudeAccount({ client, cwd, json }: HandlerContext): Promise<
     session,
     async () => {},
     async () => {
-      if (config.linuxPath && config.wslDistro) {
-        const script = claudeLoginWslScript(config.linuxPath, ['auth', 'login', '--claudeai'], {
-          exec: true
-        })
+      if (signIn.runtime === 'wsl' && signIn.wslDistro) {
+        const login = `exec env CLAUDE_CONFIG_DIR=${quotePosixShell(signIn.configDir)} claude auth login`
         await runAgentLoginInTerminal(
           'wsl.exe',
-          buildWslExecArgs(config.wslDistro, ['/bin/sh', '-c', buildWslLoginShellCommand(script)]),
-          (env) => env,
+          buildWslExecArgs(signIn.wslDistro, ['/bin/sh', '-c', buildWslLoginShellCommand(login)]),
+          {},
           json,
           session
         )
       } else {
         await runAgentLoginInTerminal(
           'claude',
-          ['auth', 'login', '--claudeai'],
-          (env) => claudeLoginHostEnv(env, config.windowsPath),
+          ['auth', 'login'],
+          { CLAUDE_CONFIG_DIR: signIn.configDir },
           json,
           session
         )
       }
       session.registering = true
       return client.call<ClaudeRateLimitAccountsState>(
-        'accounts.finishClaudeProfileLogin',
-        { accountId },
+        'accounts.finishClaudeSignIn',
+        { accountId: signIn.accountId, runtime: signIn.runtime, wslDistro: signIn.wslDistro },
         { timeoutMs: 300_000 }
       )
     }
@@ -201,7 +232,7 @@ async function addCodexAccount({ client, cwd, json }: HandlerContext): Promise<v
       await runAgentLoginInTerminal(
         'codex',
         ['login', '--device-auth'],
-        (env) => ({ ...env, CODEX_HOME: codexHome }),
+        { CODEX_HOME: codexHome },
         json,
         session
       )
@@ -234,15 +265,12 @@ async function assertAccountImportSupported(
   agent: 'claude' | 'codex'
 ): Promise<void> {
   const status = await client.call<RuntimeStatus>('status.get')
-  // Why both for Codex: older hosts advertise only the retired import capability yet still add Codex homes.
-  const accepted =
-    agent === 'claude'
-      ? [CLAUDE_PROFILE_LOGIN_CAPABILITY]
-      : [CODEX_ACCOUNT_IMPORT_CAPABILITY, ACCOUNT_IMPORT_RUNTIME_CAPABILITY]
-  if (!accepted.some((capability) => status.result.capabilities?.includes(capability))) {
+  const capability =
+    agent === 'claude' ? CLAUDE_SIGN_IN_RUNTIME_CAPABILITY : ACCOUNT_IMPORT_RUNTIME_CAPABILITY
+  if (!status.result.capabilities?.includes(capability)) {
     throw new RuntimeClientError(
       'incompatible_runtime',
-      'The running Orca app is too old to add accounts from this CLI. Update Orca on this computer, restart it, and try again.'
+      'The running Orca runtime is too old to add accounts from the CLI. Update or restart Orca and try again.'
     )
   }
 }

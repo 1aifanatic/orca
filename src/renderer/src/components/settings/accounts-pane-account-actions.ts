@@ -176,54 +176,29 @@ export function createClaudeAccountActionRunner(
       await syncClaudeAccounts(next)
       recordFeatureInteraction('claude-account-switching')
       const nextActiveAccountId = getProviderAccountActiveIdForView(next, actionRuntime)
-      const shouldPromptRestart =
-        action === 'adding' ||
-        previousActiveAccountId !== nextActiveAccountId ||
-        (action.startsWith('reauth:') &&
-          nextActiveAccountId !== null &&
-          action === `reauth:${nextActiveAccountId}`)
-      if (shouldPromptRestart) {
-        // Why: adding never selects, so "System default → System default" told the user nothing.
-        const addedWithoutSelecting =
-          action === 'adding' && previousActiveAccountId === nextActiveAccountId
-        const previousLabel = getClaudeAccountLabel(claudeAccounts, previousActiveAccountId)
-        const nextLabel = getClaudeAccountLabel(next, nextActiveAccountId)
-        // Why: a re-sign-in, or an Add replacing the selected account, would read "a@ → a@"; a
-        // select between two accounts with one email (two organizations) is a real switch.
-        const signedInAgain =
-          (action === 'adding' || action.startsWith('reauth:')) &&
-          nextActiveAccountId !== null &&
-          previousLabel === nextLabel
+      // Why: switching reaches the next `claude` started in any terminal, so nothing restarts.
+      if (action === 'adding' || previousActiveAccountId !== nextActiveAccountId) {
         toast.info(
           translate('auto.components.settings.AccountsPane.f921d32606', 'Claude account updated.'),
           {
-            description: addedWithoutSelecting
-              ? translate(
-                  'accounts.claude.added',
-                  'Account added. Select it to use it for the next Claude you start.'
-                )
-              : signedInAgain
+            description:
+              previousActiveAccountId === nextActiveAccountId
                 ? translate(
-                    'accounts.claude.signedInAgain',
-                    '{{value0}} is signed in again. The next Claude you start uses it. Running sessions keep their account.',
-                    { value0: nextLabel }
+                    'accounts.claude.added',
+                    'Account added. Select it to use it for the next Claude you start.'
                   )
                 : translate(
                     'accounts.claude.nextLaunch',
-                    '{{value0}} → {{value1}}. The next Claude you start uses this selection. Running sessions keep their account.',
-                    { value0: previousLabel, value1: nextLabel }
+                    '{{value0}} → {{value1}}. The next Claude you start uses it. Running sessions keep their account.',
+                    {
+                      value0: getClaudeAccountLabel(claudeAccounts, previousActiveAccountId),
+                      value1: getClaudeAccountLabel(next, nextActiveAccountId)
+                    }
                   )
           }
         )
       }
     } catch (error) {
-      if (!isRemoteAccountScope) {
-        try {
-          await syncClaudeAccounts(await window.api.claudeAccounts.list())
-        } catch {
-          /* The original failure remains visible. */
-        }
-      }
       if (isClaudeAccountCancellation(error)) {
         return
       }

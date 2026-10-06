@@ -237,7 +237,7 @@
       }
     },
     "accounts": {
-      "claudeRemoveProfile": "Orca will forget this account and leave its login files on disk. If selected, the next Claude launch uses System default. Running sessions keep their account."
+      "claudeRemoveFolder": "Orca deletes this account's Claude folder and its sign-in from this computer. Chat history shared with System default stays. If it is selected, the next Claude you start uses System default."
     }
   },
   "menu": {
@@ -3834,6 +3834,7 @@
             "54e8d6bb2d": "Fable",
             "d79c3362c4": "5h",
             "a79c64f87e": "Fable",
+            "8295903d17": "Restart live Claude terminals before continuing old conversations after switching.",
             "c98ea88392": "No other accounts",
             "9332ba8684": "Switch to",
             "d450654fa2": "Claude Account",
@@ -4077,13 +4078,13 @@
               "plan": "Plan"
             },
             "claude": {
-              "expired": {
-                "label": "Sign-in expired",
-                "message": "Claude usage has expired. Start Claude in this account to refresh it."
-              },
               "waiting": {
                 "label": "Updates when Claude runs",
                 "message": "Claude usage updates the next time Claude runs."
+              },
+              "expired": {
+                "label": "Sign-in expired",
+                "message": "Claude usage has expired. Start Claude in this account to refresh it."
               }
             }
           },
@@ -17537,8 +17538,6 @@
         "managedAccountEnvOverride": "This Claude launch sets its own Anthropic sign-in variables. Remove them to use a managed Claude account.",
         "accountSwitchInProgress": "A Claude account switch is in progress. Try again after it finishes.",
         "managedAccountUnsupported": "While a Claude account is added in WSL, Claude chats need a Windows Claude account.",
-        "accountSignInRequired": "The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.",
-        "accountLoginChanged": "The selected Claude account is now signed in to a different login. Open Settings > Accounts to sign in again, or choose System default.",
         "chooseClaudeAccount": "Choose or add one in Claude Accounts settings.",
         "chooseClaudeAccountThenRunCommand": "Choose or add one in Claude Accounts settings, then run /{{command}} again.",
         "chooseClaudeAccountThenSend": "Choose or add one in Claude Accounts settings, then send your message again.",
@@ -18771,36 +18770,6 @@
     "removePath": "Remove {{name}}"
   },
   "accounts": {
-    "claude": {
-      "nextLaunch": "{{value0}} → {{value1}}. The next Claude you start uses this selection. Running sessions keep their account.",
-      "routingIssue": "Claude account selection needs attention: {{value0}}",
-      "profileSwitching": "Switching applies to the next Claude you start in any tab. Running sessions keep their account.",
-      "draft": "Unfinished sign-in",
-      "signInRequired": "Sign in again to use this account",
-      "signInAgain": "Sign in again",
-      "finishSigningIn": "Finish signing in",
-      "finishSignIn": "Finish signing in to use this account",
-      "identityDuplicate": "{{value0}} is already added as another account. Sign in again with a different account, or remove this account.",
-      "identityDuplicateAddedAs": "This account was added as {{value0}} but is now signed in as {{value1}}, which is already added as another account. Sign in again as {{value0}}, or remove this account.",
-      "identityMismatch": "This account was added as {{value0}} but is now signed in as {{value1}}. Sign in again to choose which account it uses.",
-      "systemDefaultNamed": "System default: {{value0}}",
-      "added": "Account added. Select it to use it for the next Claude you start.",
-      "signedInAgain": "{{value0}} is signed in again. The next Claude you start uses it. Running sessions keep their account.",
-      "upgradeSignIn": "After upgrading, sign in once for each saved account. Usage may be stale or expired until you start Claude in that account.",
-      "wslUnavailable": "Orca could not check this account in {{value0}}. Select it to try again, or sign in again.",
-      "profileUnreadable": "This account's files could not be read. Try again, or sign in again.",
-      "setupHooks": "Orca's status hooks could not be added to this account, so its agent status may not update.",
-      "setupLinks": "Some shared Claude settings could not be linked into this account.",
-      "setupPrivateHistory": "This account's chat history is kept separate because it is on a different drive.",
-      "systemDefaultHost": "Use the Claude login on this device.",
-      "systemDefaultAlsoSavedCommand": "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run {{command}}.",
-      "organizationMismatch": "This account is now signed in to a different organization. Sign in again to choose which one it uses.",
-      "usageSignInLabel": "Sign in again",
-      "usageSignInMessage": "The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default.",
-      "olderTerminalsClose": "Some terminals are still running from before this Orca update and keep the Claude account they started with. Close all terminals once to finish the update.",
-      "launchSignInRequired": "The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.",
-      "wslNotChecked": "Orca has not checked this account in {{value0}} yet. Selecting it checks it, starting {{value0}} if it is stopped."
-    },
     "antigravity": {
       "scope": "Manage the native agy account on {{host}}.",
       "signIn": "Start agy on this host and complete its browser sign-in, then save the current account. To add a different account, use /logout in agy and sign in again.",
@@ -18829,6 +18798,25 @@
         "google": "google",
         "accounts": "accounts"
       }
+    },
+    "claude": {
+      "signInAgainTitle": "Sign in to Claude again",
+      "addTitle": "Add a Claude account",
+      "signInDescription": "Press Enter to run the command, then finish signing in in your browser. The account is saved once Claude has signed in.",
+      "signInTerminal": "Claude sign-in",
+      "preparingSignIn": "Preparing the account folder…",
+      "signInDone": "Done",
+      "added": "Account added. Select it to use it for the next Claude you start.",
+      "nextLaunch": "{{value0}} → {{value1}}. The next Claude you start uses it. Running sessions keep their account.",
+      "olderTerminals": "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account.",
+      "userConfigDirWins": "Your shell sets CLAUDE_CONFIG_DIR to {{value0}}, so Claude in your terminals uses that folder instead of the selected account.",
+      "profileSwitching": "Switching applies to the next Claude you start in any tab. Running sessions keep their account.",
+      "systemDefaultNamed": "System default: {{value0}}",
+      "systemDefaultIsSaved": "System default is signed in as {{value0}}, which is also a saved account. An earlier Orca version may have copied that login there. If it is not your own login, select System default and run claude /login.",
+      "signInRequired": "Sign in again to use this account",
+      "signInAgain": "Sign in again",
+      "usageSignInLabel": "Sign in again",
+      "usageSignInMessage": "The selected Claude account needs you to sign in again. Open Settings > Accounts, or choose System default."
     }
   }
 }

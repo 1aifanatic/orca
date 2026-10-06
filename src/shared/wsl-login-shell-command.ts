@@ -34,7 +34,6 @@ export function buildWslLoginShellCommand(command: string): string {
     'case "$_orca_wsl_shell_name" in',
     `  sh|dash) exec "$_orca_wsl_shell" -lc ${quotedCommand} ;;`,
     `  bash|zsh|ksh|mksh|ash) exec "$_orca_wsl_shell" -ilc ${quotedCommand} ;;`,
-    `  fish) exec "$_orca_wsl_shell" -ilc 'exec /bin/sh -c "$argv[1]"' -- ${quotedCommand} ;;`,
     `  *) exec /bin/sh -lc ${quotedCommand} ;;`,
     'esac'
   ].join('\n')
@@ -132,6 +131,7 @@ export function buildWslInteractiveLoginShellCommand(): string {
     '      exec "$_orca_wsl_shell" --rcfile "${_orca_shell_ready_root}/bash/rcfile"',
     '    fi',
     '    ;;',
+    // Why: a WSL fish pane gets no shell-ready wrapper or XDG handoff, so this is its only `claude`.
     '  fish)',
     `    exec "$_orca_wsl_shell" -l -C ${quotePosixShell(getFishClaudeShellFunction())}`,
     '    ;;',

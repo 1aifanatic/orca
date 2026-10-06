@@ -65,6 +65,7 @@ import {
 } from './accounts-pane-provider-setting-sections'
 import { renderMiniMaxAccountsSection } from './accounts-pane-minimax-section'
 import { renderAccountsRemovalDialogs } from './accounts-pane-removal-dialogs'
+import { ClaudeSignInDialog, type ClaudeSignInRequest } from './ClaudeSignInDialog'
 
 export { getAccountsPaneSearchEntries }
 
@@ -158,6 +159,7 @@ export function AccountsPane({
   // can change underneath an open dialog and lose the slot to diff for restarts.
   const [removeCodexTarget, setRemoveCodexTarget] = useState<RemoveAccountTarget | null>(null)
   const [removeClaudeTarget, setRemoveClaudeTarget] = useState<RemoveAccountTarget | null>(null)
+  const [claudeSignIn, setClaudeSignIn] = useState<ClaudeSignInRequest | null>(null)
   const accountVisibilityOptions = {
     remoteOwner: isRemoteAccountScope,
     ownerPlatform: accountOwnerPlatform
@@ -340,6 +342,7 @@ export function AccountsPane({
     visibleClaudeAccounts,
     systemClaudeActive,
     setRemoveClaudeTarget,
+    setClaudeSignIn,
     runClaudeAccountAction,
     codexAccounts,
     codexAction,
@@ -412,6 +415,16 @@ export function AccountsPane({
   return (
     <div className="space-y-8">
       {renderAccountsRemovalDialogs(model, removeCodexTarget, removeClaudeTarget)}
+      <ClaudeSignInDialog
+        request={claudeSignIn}
+        onClose={() => setClaudeSignIn(null)}
+        onSignedIn={(next) =>
+          void runClaudeAccountAction(
+            claudeSignIn?.accountId ? `reauth:${claudeSignIn.accountId}` : 'adding',
+            async () => next
+          )
+        }
+      />
       <SettingsSectionStack sections={visibleSections} spacing="group" />
     </div>
   )

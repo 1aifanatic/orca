@@ -1,48 +1,36 @@
-import type { ClaudeRateLimitAccountsState } from '../../shared/managed-account-types'
-import type { Store } from '../persistence'
-import type { RateLimitService } from '../rate-limits/service'
+import type {
+  ClaudeAccountSignIn,
+  ClaudeRateLimitAccountsState
+} from '../../shared/managed-account-types'
 import { ClaudeAccountRegistration } from './claude-account-registration'
-import { ClaudeAccountSelection } from './claude-account-selection'
+import {
+  ClaudeAccountSelection,
+  type ClaudeAccountRuntime,
+  type ClaudeAccountStore,
+  type ClaudeAccountUsage
+} from './claude-account-selection'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 
-export type ClaudeAccountAddTarget = {
-  runtime?: 'host' | 'wsl'
-  wslDistro?: string | null
-}
-
-export type ClaudeAccountImportOptions = ClaudeAccountAddTarget & {
-  previousLegacyCredentialsSha256?: string | null
-}
+export type ClaudeSignInRequest = ClaudeAccountSelectionTarget & { accountId?: string }
 
 export class ClaudeAccountService {
   private mutationQueue: Promise<unknown> = Promise.resolve()
-  private cancelPendingClaudeLogin: (() => boolean) | null = null
   private readonly selection: ClaudeAccountSelection
   private readonly registration: ClaudeAccountRegistration
 
   constructor(
-    store: Pick<Store, 'getSettings' | 'updateSettings'>,
-    rateLimits: Pick<
-      RateLimitService,
-      'evictInactiveClaudeCache' | 'refreshForClaudeAccountChange'
-    >,
-    private readonly runtimeAuth: Pick<
-      ClaudeRuntimeAuthService,
-      | 'syncForCurrentSelection'
-      | 'forceMaterializeCurrentSelectionForRollback'
-      | 'getRuntimeConfigDir'
-    >
+    store: ClaudeAccountStore,
+    rateLimits: ClaudeAccountUsage,
+    private readonly runtimeAuth: ClaudeAccountRuntime &
+      Pick<ClaudeRuntimeAuthService, 'getRuntimeConfigDir'>
   ) {
     this.selection = new ClaudeAccountSelection(store, rateLimits, runtimeAuth)
     this.registration = new ClaudeAccountRegistration({
       store,
       rateLimits,
       runtimeAuth,
-      selection: this.selection,
-      setCancel: (cancel) => {
-        this.cancelPendingClaudeLogin = cancel
-      }
+      selection: this.selection
     })
   }
 
@@ -50,65 +38,29 @@ export class ClaudeAccountService {
     return this.selection.list()
   }
 
-  async addAccount(target?: ClaudeAccountAddTarget): Promise<ClaudeRateLimitAccountsState> {
-    this.supersedePendingLogin()
-    return this.serializeMutation(() => this.registration.add(target))
+  beginSignIn(request: ClaudeSignInRequest = {}): Promise<ClaudeAccountSignIn> {
+    return this.serializeMutation(() => this.registration.begin(request))
   }
 
-  beginProfileLogin(target?: ClaudeAccountAddTarget) {
-    this.supersedePendingLogin()
-    return this.serializeMutation(() => this.registration.begin(target))
-  }
-
-  finishProfileLogin(accountId: string) {
-    return this.serializeMutation(() => this.registration.finish(accountId))
-  }
-
-  async addAccountFromConfigDir(
-    _configDir: string,
-    _options?: ClaudeAccountImportOptions
+  finishSignIn(
+    signIn: Omit<ClaudeAccountSignIn, 'configDir'>
   ): Promise<ClaudeRateLimitAccountsState> {
-    throw new Error(
-      'Update the Orca CLI to add accounts. Importing Claude logins is no longer supported.'
-    )
+    return this.serializeMutation(() => this.registration.finish(signIn))
   }
 
-  async reauthenticateAccount(accountId: string): Promise<ClaudeRateLimitAccountsState> {
-    this.supersedePendingLogin()
-    return this.serializeMutation(() => this.registration.reauthenticate(accountId))
-  }
-
-  async removeAccount(accountId: string): Promise<ClaudeRateLimitAccountsState> {
-    this.supersedePendingLogin()
+  removeAccount(accountId: string): Promise<ClaudeRateLimitAccountsState> {
     return this.serializeMutation(() => this.selection.remove(accountId))
   }
 
-  async selectAccount(accountId: string | null): Promise<ClaudeRateLimitAccountsState> {
-    this.supersedePendingLogin()
+  selectAccount(accountId: string | null): Promise<ClaudeRateLimitAccountsState> {
     return this.serializeMutation(() => this.selection.select(accountId))
   }
 
-  async selectAccountForTarget(
+  selectAccountForTarget(
     accountId: string | null,
     target?: ClaudeAccountSelectionTarget
   ): Promise<ClaudeRateLimitAccountsState> {
-    this.supersedePendingLogin()
     return this.serializeMutation(() => this.selection.select(accountId, target))
-  }
-
-  cancelPendingLogin(): boolean {
-    return this.cancelPendingClaudeLogin?.() ?? false
-  }
-
-  // Why before the queue, not inside it: the abandoned login owns the queue slot
-  // every later account action waits for. Called from the four the user drives,
-  // never from serializeMutation, which background work also uses.
-  private supersedePendingLogin(): void {
-    if (this.cancelPendingLogin()) {
-      console.info(
-        '[claude-accounts] Cancelled a pending Claude login superseded by a new request.'
-      )
-    }
   }
 
   getRuntimeConfigDir(target?: ClaudeAccountSelectionTarget): string {

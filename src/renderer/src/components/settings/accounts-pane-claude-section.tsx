@@ -1,4 +1,4 @@
-import { Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { selectClaudeProviderAccount } from '@/runtime/runtime-provider-accounts-client'
 import { Badge } from '../ui/badge'
@@ -12,8 +12,6 @@ import {
 } from './provider-account-visibility'
 import { formatAccountTimestamp, getClaudeAccountRuntimeLabel } from './accounts-pane-runtime'
 import type { AccountsPaneSectionModel } from './accounts-pane-types'
-import { getClaudeAccountRowState } from '@/lib/claude-account-row-state'
-import { isUnfinishedClaudeSignIn } from '../../../../shared/claude-unfinished-sign-in'
 
 export type ClaudeAccountsSectionModel = Pick<
   AccountsPaneSectionModel,
@@ -26,6 +24,7 @@ export type ClaudeAccountsSectionModel = Pick<
   | 'isRemoteAccountScope'
   | 'remoteAccountScopeNotice'
   | 'runClaudeAccountAction'
+  | 'setClaudeSignIn'
   | 'setRemoveClaudeTarget'
   | 'settings'
   | 'systemClaudeActive'
@@ -44,19 +43,21 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
     isRemoteAccountScope,
     remoteAccountScopeNotice,
     runClaudeAccountAction,
+    setClaudeSignIn,
     setRemoveClaudeTarget,
     settings,
     systemClaudeActive,
     visibleClaudeAccounts,
     wslCapabilitiesLoading
   } = model
-  // Why host only: the host reports its own login, never a WSL distro's.
-  const systemDefault = accountRuntime.runtime === 'host' ? claudeAccounts.systemDefault : undefined
-  // Why derived: the notice ends once every saved account has been signed in again.
-  const needsUpgradeSignIn = claudeAccounts.accounts.some(
-    (account) =>
-      !isUnfinishedClaudeSignIn(account) && account.profileReadiness === 'sign-in-required'
-  )
+  // Why host only: the host reads its own System default, never a WSL distro's.
+  const systemDefaultEmail =
+    accountRuntime.runtime === 'host' ? claudeAccounts.systemDefaultEmail : undefined
+  const systemDefaultIsSaved =
+    !!systemDefaultEmail &&
+    claudeAccounts.accounts.some(
+      (account) => account.email.toLowerCase() === systemDefaultEmail.toLowerCase()
+    )
   return (
     <section key="claude-accounts" id="accounts-claude" className="space-y-4 scroll-mt-6">
       <div className="space-y-1">
@@ -72,28 +73,20 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
         </p>
       </div>
 
-      {claudeAccounts.profileRoutingIssue ? (
-        <p role="alert" className="text-xs text-muted-foreground">
-          {translate(
-            'accounts.claude.routingIssue',
-            'Claude account selection needs attention: {{value0}}',
-            { value0: claudeAccounts.profileRoutingIssue }
-          )}
-        </p>
-      ) : null}
       {claudeAccounts.olderTerminalsRunning ? (
         <p role="status" className="text-xs text-muted-foreground">
           {translate(
-            'accounts.claude.olderTerminalsClose',
-            'Some terminals are still running from before this Orca update and keep the Claude account they started with. Close all terminals once to finish the update.'
+            'accounts.claude.olderTerminals',
+            "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account."
           )}
         </p>
       ) : null}
-      {needsUpgradeSignIn ? (
-        <p className="text-xs text-muted-foreground">
+      {claudeAccounts.userClaudeConfigDir && accountRuntime.runtime === 'host' ? (
+        <p role="status" className="text-xs text-muted-foreground">
           {translate(
-            'accounts.claude.upgradeSignIn',
-            'After upgrading, sign in once for each saved account. Usage may be stale or expired until you start Claude in that account.'
+            'accounts.claude.userConfigDirWins',
+            'Your shell sets CLAUDE_CONFIG_DIR to {{value0}}, so Claude in your terminals uses that folder instead of the selected account.',
+            { value0: claudeAccounts.userClaudeConfigDir }
           )}
         </p>
       ) : null}
@@ -130,12 +123,10 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
               variant="outline"
               size="xs"
               onClick={() =>
-                void runClaudeAccountAction('adding', () =>
-                  window.api.claudeAccounts.add({
-                    runtime: accountRuntime.runtime,
-                    wslDistro: accountRuntime.wslDistro
-                  })
-                )
+                setClaudeSignIn({
+                  runtime: accountRuntime.runtime,
+                  wslDistro: accountRuntime.wslDistro
+                })
               }
               disabled={
                 // Why: interactive `claude login` needs a desktop browser and
@@ -147,24 +138,9 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
               }
               className="gap-1.5"
             >
-              {claudeAction === 'adding' ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Plus className="size-3" />
-              )}
+              <Plus className="size-3" />
               {translate('auto.components.settings.AccountsPane.b0e948a4f9', 'Add Account')}
             </Button>
-            {claudeAction === 'adding' ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => void window.api.claudeAccounts.cancelPendingLogin()}
-                className="gap-1.5 text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-3" />
-                {translate('auto.components.settings.AccountsPane.dbb9626ed1', 'Cancel')}
-              </Button>
-            ) : null}
           </div>
         </div>
         {remoteAccountScopeNotice}
@@ -191,12 +167,12 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-sm font-medium">
-                  {systemDefault?.email
+                  {systemDefaultEmail
                     ? translate(
                         'accounts.claude.systemDefaultNamed',
                         'System default: {{value0}}',
                         {
-                          value0: systemDefault.email
+                          value0: systemDefaultEmail
                         }
                       )
                     : translate(
@@ -214,28 +190,20 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                 ) : null}
               </div>
               <span className="truncate text-[11px] text-muted-foreground">
-                {accountRuntime.runtime === 'host' && !isRemoteAccountScope
-                  ? translate(
-                      'accounts.claude.systemDefaultHost',
-                      'Use the Claude login on this device.'
-                    )
-                  : translate(
-                      'auto.components.settings.AccountsPane.e05d0ff737',
-                      'Use your current {{value0}} Claude login.',
-                      { value0: accountRuntimeSentenceLabel }
-                    )}
+                {translate(
+                  'auto.components.settings.AccountsPane.e05d0ff737',
+                  'Use your current {{value0}} Claude login.',
+                  { value0: accountRuntimeSentenceLabel }
+                )}
               </span>
             </div>
           </button>
-          {systemDefault?.matchesSavedAccount && systemDefault.email ? (
-            <p role="alert" className="text-xs text-muted-foreground">
-              {withInlineCommand(
-                translate(
-                  'accounts.claude.systemDefaultAlsoSavedCommand',
-                  "System default is signed in as {{value0}}, which is also one of your saved accounts. If that isn't your own Claude login, an earlier Orca version may have copied it there: select System default and run {{command}}.",
-                  { value0: systemDefault.email, command: INLINE_COMMAND_SLOT }
-                ),
-                'claude /login'
+          {systemDefaultIsSaved ? (
+            <p className="text-xs text-muted-foreground">
+              {translate(
+                'accounts.claude.systemDefaultIsSaved',
+                'System default is signed in as {{value0}}, which is also a saved account. An earlier Orca version may have copied that login there. If it is not your own login, select System default and run claude /login.',
+                { value0: systemDefaultEmail }
               )}
             </p>
           ) : null}
@@ -261,9 +229,7 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                 accountRuntime,
                 accountVisibilityOptions
               )
-              const isReauthing = claudeAction === `reauth:${account.id}`
               const isBusy = claudeAction !== 'idle' || accountRuntimeUnavailable
-              const row = getClaudeAccountRowState(account)
 
               return (
                 <div
@@ -289,11 +255,11 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                           accountRuntimeView
                         )
                       }}
-                      disabled={isBusy || !row.selectable}
+                      disabled={isBusy || account.needsSignIn}
                       className="flex min-w-0 flex-1 flex-col gap-0.5 text-left disabled:cursor-default"
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm font-medium">{row.label}</span>
+                        <span className="truncate text-sm font-medium">{account.email}</span>
                         <Badge
                           variant="outline"
                           className="h-4 shrink-0 rounded px-1.5 text-[10px] font-medium leading-none text-foreground/70"
@@ -312,17 +278,16 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                           </Badge>
                         ) : null}
                       </div>
-                      {row.problem ? (
-                        <span className="text-[11px] text-muted-foreground">{row.problem}</span>
-                      ) : row.notice ? (
-                        <span className="text-[11px] text-muted-foreground">{row.notice}</span>
-                      ) : (
-                        <span className="truncate text-[11px] text-muted-foreground">
-                          {account.organizationName
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {account.needsSignIn
+                          ? translate(
+                              'accounts.claude.signInRequired',
+                              'Sign in again to use this account'
+                            )
+                          : account.organizationName
                             ? `${account.organizationName} · ${formatAccountTimestamp(account.lastAuthenticatedAt)}`
                             : formatAccountTimestamp(account.lastAuthenticatedAt)}
-                        </span>
-                      )}
+                      </span>
                     </button>
                     <div className="flex shrink-0 items-center justify-end gap-1 max-md:w-full max-md:flex-wrap">
                       <Button
@@ -330,26 +295,16 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                         size="xs"
                         onClick={(event) => {
                           event.stopPropagation()
-                          void runClaudeAccountAction(
-                            `reauth:${account.id}`,
-                            () =>
-                              window.api.claudeAccounts.reauthenticate({
-                                accountId: account.id
-                              }),
-                            getProviderAccountRuntime(account)
-                          )
+                          setClaudeSignIn({
+                            accountId: account.id,
+                            ...getProviderAccountRuntime(account)
+                          })
                         }}
                         disabled={isRemoteAccountScope || isBusy}
                         className="h-6 px-2 text-muted-foreground hover:text-foreground"
                       >
-                        {isReauthing ? (
-                          <Loader2 className="size-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="size-3" />
-                        )}
-                        {isUnfinishedClaudeSignIn(account)
-                          ? translate('accounts.claude.finishSigningIn', 'Finish signing in')
-                          : translate('accounts.claude.signInAgain', 'Sign in again')}
+                        <RefreshCw className="size-3" />
+                        {translate('accounts.claude.signInAgain', 'Sign in again')}
                       </Button>
                       <Button
                         variant="ghost"
@@ -361,7 +316,6 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
                             runtime: getProviderAccountRuntime(account)
                           })
                         }}
-                        // Why: removing only forgets the registration, so no readiness may block it.
                         disabled={isBusy}
                         className="h-6 px-2 text-muted-foreground hover:text-destructive"
                       >
@@ -377,21 +331,5 @@ export function renderClaudeAccountsSection(model: ClaudeAccountsSectionModel): 
         </div>
       </SearchableSetting>
     </section>
-  )
-}
-
-// Why a slot: the command must render as code while the sentence around it stays translatable.
-const INLINE_COMMAND_SLOT = '\u0000'
-
-function withInlineCommand(text: string, command: string): React.ReactNode {
-  const [before, after] = text.split(INLINE_COMMAND_SLOT)
-  return after === undefined ? (
-    text
-  ) : (
-    <>
-      {before}
-      <code className="font-mono">{command}</code>
-      {after}
-    </>
   )
 }

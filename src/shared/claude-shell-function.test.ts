@@ -1,14 +1,8 @@
-import type * as ProfileRouting from './claude-profile-routing'
 import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-const gate = vi.hoisted(() => ({ enabled: true }))
-vi.mock('./claude-profile-routing', async (original) => ({
-  ...(await original<typeof ProfileRouting>()),
-  claudeProfileRoutingEnabled: () => gate.enabled
-}))
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   getPosixClaudeShellFunction,
   getFishClaudeShellFunction,
@@ -20,7 +14,6 @@ const FISH = ['/opt/homebrew/bin/fish', '/usr/local/bin/fish', '/usr/bin/fish'].
 const SHELLS = [...POSIX_SHELLS, ...(FISH ? [FISH] : [])]
 const roots: string[] = []
 afterEach(() => {
-  gate.enabled = true
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
 })
 function fixture() {
@@ -117,15 +110,6 @@ describe.each(SHELLS)('the claude function in %s', (shell) => {
     expect(overridden.stdout).toBe('HOME=/user/own KEY=fake TWIN=none\n')
     expect(overridden.stderr).toContain('not used here')
   })
-})
-
-it('emits nothing while routing is off', () => {
-  gate.enabled = false
-  expect([
-    getPosixClaudeShellFunction(),
-    getFishClaudeShellFunction(),
-    getPowerShellClaudeShellFunction()
-  ]).toEqual(['', '', ''])
 })
 
 it('restores PowerShell process env without creating empty variables', () => {

@@ -26,9 +26,12 @@ vi.mock('../../shared/child-process/run-process', () => ({
   }
 }))
 import { fetchActiveClaudeRateLimits } from './claude-active-usage-fetch'
-import { readClaudeOAuthCredentials } from './claude-oauth-credentials'
+import {
+  readClaudeOAuthCredentials,
+  resolveClaudeOAuthCredentialReadOptions
+} from './claude-oauth-credentials'
 import { OAuthUsageError } from './claude-oauth-usage-error'
-import { createNativeClaudeProfileRouting } from '../claude-accounts/claude-profile-native-owner'
+import { CLAUDE_PROFILE_MISSING_MESSAGE } from '../claude-accounts/claude-profile-router'
 const roots: string[] = []
 afterEach(() => {
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
@@ -110,16 +113,13 @@ it('distinguishes missing, malformed and inaccessible credential observations', 
     usageMetadata: { failureKind: 'keychain-unavailable' }
   })
 })
-it('refuses upgrade usage before any credential read and requests no hidden recovery on API rejection', async () => {
+it('reports an unreadable selected account before any credential read and requests no hidden recovery', async () => {
   const f = profile()
   expect(
     await fetchActiveClaudeRateLimits({
-      authPreparation: {
-        ...f.options.authPreparation,
-        profileIssue: 'Sign in again to use this account.'
-      }
+      authPreparation: { ...f.options.authPreparation, usageError: CLAUDE_PROFILE_MISSING_MESSAGE }
     })
-  ).toMatchObject({ status: 'error' })
+  ).toMatchObject({ status: 'error', usageMetadata: { failureKind: 'missing-credentials' } })
   expect(calls.keychain).not.toHaveBeenCalled()
   writeFileSync(
     join(f.home, '.credentials.json'),
@@ -182,131 +182,68 @@ it("keeps a 429's Retry-After and rate-limit message so polling waits it out", a
   calls.usage.mockRejectedValueOnce(new OAuthUsageError(message, 429, true, null))
   expect((await fetchActiveClaudeRateLimits(f.options)).usageMetadata?.retryAtMs).toBeUndefined()
 })
-it("reads System Default's inherited CLAUDE_CONFIG_DIR Keychain item before the unsuffixed one", async () => {
+it("reads System default's own CLAUDE_CONFIG_DIR Keychain item before the unsuffixed one", async () => {
   const root = mkdtempSync(join(tmpdir(), 'claude-usage-inherited-'))
   roots.push(root)
   const inherited = join(root, 'own-claude-config')
-  const routing = createNativeClaudeProfileRouting({
-    store: {
-      getSettings: () => ({
-        claudeManagedAccounts: [],
-        activeClaudeManagedAccountId: null,
-        agentStatusHooksEnabled: false,
-        disabledTuiAgents: []
+  vi.stubEnv('CLAUDE_CONFIG_DIR', inherited)
+  try {
+    calls.keychain.mockResolvedValue(null)
+    await readClaudeOAuthCredentials(
+      resolveClaudeOAuthCredentialReadOptions({
+        configDir: inherited,
+        envPatch: {},
+        stripAuthEnv: false,
+        provenance: 'system'
       })
-    },
-    dataRoot: join(root, 'data'),
-    userHome: root,
-    inheritedConfigDir: () => inherited,
-    claudeVersion: async () => null,
-    worker: { prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }) }
-  })
-  calls.keychain.mockResolvedValue(null)
-  await fetchActiveClaudeRateLimits({
-    authPreparation: routing.preparation(routing.resolve({ runtime: 'host' }))
-  })
-  expect(calls.keychain.mock.calls).toEqual(
-    process.platform === 'darwin' ? [[inherited], [undefined]] : []
-  )
+    )
+    expect(calls.keychain.mock.calls).toEqual(
+      process.platform === 'darwin' ? [[inherited], [undefined]] : []
+    )
+  } finally {
+    vi.unstubAllEnvs()
+  }
   const managed = profile()
   calls.keychain.mockClear()
   await fetchActiveClaudeRateLimits(managed.options)
   expect(calls.keychain.mock.calls).toEqual(process.platform === 'darwin' ? [[managed.home]] : [])
 })
-it('reports a profile or host problem as unavailable usage, never as a signed-out account', async () => {
+it('reports a host problem as unavailable usage, never as a signed-out account', async () => {
   const f = profile()
-  const unreachable = await fetchActiveClaudeRateLimits({
-    authPreparation: {
-      ...f.options.authPreparation,
-      profileIssue: 'WSL distro Ubuntu is not running. Start it before choosing a Claude account.',
-      profileIssueKind: 'unavailable'
-    }
-  })
-  expect(unreachable).toMatchObject({
-    status: 'error',
-    error: 'Claude usage is unavailable right now.',
-    usageMetadata: { failureKind: 'usage-unavailable' }
-  })
-  const signedOut = await fetchActiveClaudeRateLimits({
-    authPreparation: {
-      ...f.options.authPreparation,
-      profileIssue: 'Sign in again to use this account.',
-      profileIssueKind: 'sign-in-required'
-    }
-  })
-  expect(signedOut).toMatchObject({ usageMetadata: { failureKind: 'missing-credentials' } })
-})
-it('marks inactive usage unavailable, not signed out, when an account profile cannot be read', async () => {
-  const { fetchInactiveClaudeAccountUsage } = await import('./claude-managed-account-usage')
-  const { installClaudeProfileRoutingAuthority } =
-    await import('../claude-accounts/claude-profile-routing-authority')
-  const { ClaudeProfileRoutingService } =
-    await import('../claude-accounts/claude-profile-routing-service')
-  const { ClaudeProfileSignInRequiredError } =
-    await import('../claude-accounts/claude-profile-routing-owner')
-  let readiness: 'unavailable' | 'sign-in-required' = 'unavailable'
-  installClaudeProfileRoutingAuthority(
-    new ClaudeProfileRoutingService({
-      resolve: () => {
-        throw new Error('unused')
-      },
-      pointerPath: () => '/unused',
-      targets: () => [],
-      readHomes: () => [],
-      capabilities: () => [],
-      isProvisioned: () => false,
-      profileState: () => ({ readiness, identity: null }),
-      prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }),
-      publish: async () => {},
-      withdraw: () => {}
+  expect(
+    await fetchActiveClaudeRateLimits({
+      authPreparation: {
+        ...f.options.authPreparation,
+        usageError: 'Could not read the home folder of WSL distro Ubuntu.'
+      }
     })
-  )
-  const account = {
-    id: 'acct',
-    managedAuthRuntime: 'host' as const,
-    wslDistro: null
-  }
-  expect(await fetchInactiveClaudeAccountUsage(account)).toMatchObject({
-    usageMetadata: { failureKind: 'usage-unavailable' }
-  })
-  readiness = 'sign-in-required'
-  expect(await fetchInactiveClaudeAccountUsage(account)).toMatchObject({
-    usageMetadata: { failureKind: 'missing-credentials' }
-  })
-  expect(new ClaudeProfileSignInRequiredError()).toBeInstanceOf(Error)
+  ).toMatchObject({ status: 'error', usageMetadata: { failureKind: 'usage-unavailable' } })
+})
+it('asks an inactive account from an older Orca to sign in again, reading nothing', async () => {
+  const { fetchInactiveClaudeAccountUsage } = await import('./claude-managed-account-usage')
+  expect(
+    await fetchInactiveClaudeAccountUsage({
+      id: 'acct',
+      managedAuthRuntime: 'wsl',
+      wslDistro: 'Ubuntu',
+      wslLinuxAuthPath: '/home/u/.local/share/orca/claude-accounts/acct/auth'
+    })
+  ).toMatchObject({ usageMetadata: { failureKind: 'missing-credentials' } })
+  expect(calls.keychain).not.toHaveBeenCalled()
 })
 it('does not read an inactive WSL account through a stopped distro', async () => {
   const { fetchInactiveClaudeAccountUsage } = await import('./claude-managed-account-usage')
-  const { installClaudeProfileRoutingAuthority } =
-    await import('../claude-accounts/claude-profile-routing-authority')
-  const { ClaudeProfileRoutingService } =
-    await import('../claude-accounts/claude-profile-routing-service')
-  const home =
-    '\\\\wsl.localhost\\Ubuntu\\home\\u\\.local\\share\\orca\\claude-profiles\\acct\\home'
-  installClaudeProfileRoutingAuthority(
-    new ClaudeProfileRoutingService({
-      resolve: () => {
-        throw new Error('unused')
-      },
-      pointerPath: () => '/unused',
-      targets: () => [],
-      readHomes: () => [],
-      capabilities: () => [],
-      isProvisioned: () => false,
-      profileState: () => ({ readiness: 'ready', identity: null }),
-      accountHome: () => home,
-      prepare: async () => ({ outcome: 'prepared', surfaces: {}, warnings: [] }),
-      publish: async () => {},
-      withdraw: () => {}
-    })
-  )
   runningDistros.filter.mockResolvedValueOnce([])
   const result = await fetchInactiveClaudeAccountUsage({
     id: 'acct',
     managedAuthRuntime: 'wsl',
-    wslDistro: 'Ubuntu'
+    wslDistro: 'Ubuntu',
+    wslLinuxAuthPath: '/home/u/.local/share/orca/claude-profiles/acct/home'
   })
-  expect(runningDistros.filter).toHaveBeenCalledWith([home], { requireConfirmed: true })
+  expect(runningDistros.filter).toHaveBeenCalledWith(
+    ['\\\\wsl.localhost\\Ubuntu\\home\\u\\.local\\share\\orca\\claude-profiles\\acct\\home'],
+    { requireConfirmed: true }
+  )
   expect(result).toMatchObject({ usageMetadata: { failureKind: 'usage-unavailable' } })
   expect(calls.keychain).not.toHaveBeenCalled()
 })

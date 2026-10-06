@@ -74,9 +74,8 @@ export function createClaudeAccountsApi(): PreloadApi['claudeAccounts'] {
   const empty = createEmptyManagedAccountsState()
   return {
     list: () => Promise.resolve(empty),
-    add: () => Promise.resolve(empty),
-    cancelPendingLogin: () => Promise.resolve(false),
-    reauthenticate: () => Promise.resolve(empty),
+    beginSignIn: () => Promise.reject(new Error('Sign in to Claude accounts on the Orca host.')),
+    finishSignIn: () => Promise.resolve(empty),
     remove: () => Promise.resolve(empty),
     select: () => Promise.resolve(empty)
   }

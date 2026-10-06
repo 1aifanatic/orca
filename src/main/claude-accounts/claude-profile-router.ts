@@ -71,17 +71,12 @@ export class ClaudeProfileRouter {
 
   private selectedProfile(): ClaudeProfileDescriptor | null {
     const id = getSelectedClaudeAccountIdForTarget(this.args.getSettings(), { runtime: 'host' })
-    return id
-      ? describeClaudeProfile(this.args.dataRoot, id, { executionHostId: 'local', runtime: 'host' })
-      : null
+    return id ? this.describe(id) : null
   }
 
   /** The user's System default: their own CLAUDE_CONFIG_DIR, else ~/.claude. */
   systemDefaultHome(): string {
-    return resolveClaudeDefaultHome(
-      this.userHome,
-      readUserClaudeConfigDir(this.args.env ?? process.env)
-    )
+    return resolveClaudeDefaultHome(this.userHome, this.userConfigDir())
   }
 
   /** Null for System default. Throws for a missing folder: falling back would run the wrong account. */
@@ -122,6 +117,33 @@ export class ClaudeProfileRouter {
     return this.preparation()
   }
 
+  /** An account's folder on this host, whether or not it exists yet. */
+  accountHome(accountId: string): string {
+    return this.describe(accountId).home
+  }
+
+  /** Creates and sets up an account's folder for sign-in; the login itself is Claude's. */
+  async prepareAccount(accountId: string): Promise<string> {
+    const profile = this.describe(accountId)
+    const report = await this.setUp(profile).catch(() => null)
+    if (report?.outcome !== 'prepared') {
+      throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    }
+    return profile.home
+  }
+
+  /** The user's own CLAUDE_CONFIG_DIR, which wins over the selection in their terminals. */
+  userConfigDir(): string | undefined {
+    return readUserClaudeConfigDir(this.args.env ?? process.env)
+  }
+
+  private describe(accountId: string): ClaudeProfileDescriptor {
+    return describeClaudeProfile(this.args.dataRoot, accountId, {
+      executionHostId: 'local',
+      runtime: 'host'
+    })
+  }
+
   /** One setup per account at a time; a later request reuses the running one. */
   private setUp(profile: ClaudeProfileDescriptor): Promise<ClaudeProfileSetupReport> {
     const running = this.setups.get(profile.accountId)
@@ -140,7 +162,7 @@ export class ClaudeProfileRouter {
       dataRoot: this.args.dataRoot,
       profile,
       userHome: this.userHome,
-      userConfigDir: readUserClaudeConfigDir(this.args.env ?? process.env),
+      userConfigDir: this.userConfigDir(),
       hooks,
       claudeVersion: claudeVersion ?? undefined
     })

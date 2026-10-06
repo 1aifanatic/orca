@@ -1,5 +1,4 @@
 import React, { useCallback } from 'react'
-import { consumeExplainedLaunchRefusal } from '../terminal-pane/terminal-launch-refusals'
 import { Loader2, Settings as SettingsIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { DropdownMenuItem, DropdownMenuShortcut } from '@/components/ui/dropdown-menu'
@@ -174,10 +173,7 @@ function QuickLaunchAgentMenuItemsInner({
         if (useAppStore.getState().activeWorktreeId !== worktreeId) {
           return
         }
-        if (
-          !shouldShowLaunchWatchdogTimeout({ hasPty: launchState.hasPty }) ||
-          consumeExplainedLaunchRefusal(launchedTabId)
-        ) {
+        if (!shouldShowLaunchWatchdogTimeout({ hasPty: launchState.hasPty })) {
           return
         }
         toast.message(getLaunchWatchdogTimeoutMessage(label))

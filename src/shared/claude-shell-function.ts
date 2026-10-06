@@ -1,4 +1,3 @@
-import { claudeProfileRoutingEnabled } from './claude-profile-routing'
 const authHeaderWords = 'authorization|x-api-key|api-key|bearer'
 const posixAuthHeaderPattern = authHeaderWords
   .split('|')
@@ -16,9 +15,6 @@ const MISSING_NOTE =
  * as opposed to Orca's twin-marked value, wins.
  */
 export function getPosixClaudeShellFunction(): string {
-  if (!claudeProfileRoutingEnabled()) {
-    return ''
-  }
   return `__orca_claude_binary="$(unalias claude 2>/dev/null || :; command -v claude 2>/dev/null || :)"
 if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" && -x "\${__orca_claude_binary}" ]]; then
   function claude {
@@ -43,9 +39,6 @@ unset __orca_claude_binary
 
 /** Leading newline: the codex fragment it follows ends without one. */
 export function getFishClaudeShellFunction(): string {
-  if (!claudeProfileRoutingEnabled()) {
-    return ''
-  }
   return `
 set -l __orca_claude_type (type -t claude 2>/dev/null)
 if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
@@ -80,9 +73,6 @@ set -e __orca_claude_type
 
 /** Leading newline: the codex fragment it follows ends without one. */
 export function getPowerShellClaudeShellFunction(): string {
-  if (!claudeProfileRoutingEnabled()) {
-    return ''
-  }
   return `
 $orcaClaudeCommand = Get-Command claude -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($env:ORCA_CLAUDE_PROFILE_POINTER -and $orcaClaudeCommand -and

@@ -73,6 +73,19 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
 }
 
 describe('ClaudeProfileRouter', () => {
+  it('prepares an account folder for sign-in only when setup succeeds', async () => {
+    const f = fixture({ CLAUDE_CONFIG_DIR: '/custom/claude' })
+    expect(f.router.accountHome('b')).toBe(f.home('b'))
+    expect(f.router.userConfigDir()).toBe('/custom/claude')
+    const prepared = f.router.prepareAccount('b')
+    f.setup.settle()
+    await expect(prepared).resolves.toBe(f.home('b'))
+    f.setup.outcome = 'refused'
+    const refused = f.router.prepareAccount('b')
+    f.setup.settle()
+    await expect(refused).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+  })
+
   it('publishes the selected folder, System default as empty, and no file without accounts', () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })

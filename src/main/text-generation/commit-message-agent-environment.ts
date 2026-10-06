@@ -1,6 +1,5 @@
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth-service'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
-import { describeClaudeAccountLaunchRefusal } from '../../shared/claude-account-refusal-copy'
 import { readShellStartupEnvVar } from '../pty/shell-startup-env'
 import { parseWslUncPath } from '../../shared/wsl-paths'
 
@@ -140,11 +139,7 @@ export async function prepareLocalCommitMessageAgentEnv(
     console.error('[commit-message] Failed to prepare agent environment:', error)
     return {
       ok: false,
-      error:
-        (agentId === 'claude' &&
-          error instanceof Error &&
-          describeClaudeAccountLaunchRefusal(error.message)) ||
-        'Failed to prepare the selected agent account for commit message generation.'
+      error: 'Failed to prepare the selected agent account for commit message generation.'
     }
   }
 

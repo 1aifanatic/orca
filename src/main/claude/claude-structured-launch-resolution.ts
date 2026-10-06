@@ -13,15 +13,10 @@ import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
 import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
 import {
   CLAUDE_AUTH_ENV_CONFLICT_MESSAGE,
-  CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE,
   applyClaudeEnvPatch,
   hasClaudeAuthEnvConflict
 } from '../claude-accounts/environment'
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
-import {
-  CLAUDE_AUTH_SWITCH_SETTLE_TIMEOUT_MS,
-  whenClaudeAuthSwitchSettles
-} from '../claude-accounts/live-pty-gate'
 import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
   hasWslBoundClaudeAccount,
@@ -126,8 +121,6 @@ export type ClaudeStructuredLaunchResolverDeps = {
   resolveAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy
   /** The user's Agent Permissions setting, re-read per acquisition. Absent means prompting. */
   resolvePermissionMode?: () => Promise<PermissionMode> | PermissionMode
-  /** How long an in-flight account switch may hold a launch before it is refused. */
-  authSwitchSettleTimeoutMs?: number
   /** Account state for the managed-account gate; null when it cannot be read, which refuses. */
   readManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
   /** Whether Claude wrote a transcript for this id; defaults to the transcript resolver. */
@@ -160,7 +153,7 @@ export async function resolveClaudeStructuredInvocation(
   deps: Pick<
     ClaudeStructuredLaunchResolverDeps,
     'resolveCommand' | 'resolveEnv' | 'resolveInheritedEnv' | 'resolveAuthPolicy'
-  > & { authSwitchSettleTimeoutMs?: number },
+  >,
   decorateEnv: (env: Record<string, string>) => Record<string, string> = (env) => env
 ): Promise<ClaudeStructuredInvocation> {
   const command = (deps.resolveCommand ?? resolveClaudeCommand)()
@@ -169,9 +162,6 @@ export async function resolveClaudeStructuredInvocation(
   const inheritedEnv = deps.resolveInheritedEnv
     ? await deps.resolveInheritedEnv()
     : cloneDefinedEnv(process.env)
-  // A switch can begin while the policy and overlay resolve, exactly as it can
-  // during the terminal preflight's prepareClaudeAuth — recheck after the awaits.
-  await assertClaudeAuthSwitchSettled(deps.authSwitchSettleTimeoutMs)
   // Under a managed account the pinned credential is the only auth this launch may
   // use, so an explicit override is refused rather than silently beating the pin.
   if (auth.stripAuthEnv && hasClaudeAuthEnvConflict(overlay)) {
@@ -202,24 +192,6 @@ export async function resolveClaudeStructuredInvocation(
   return { command, env }
 }
 
-/**
- * Wait a running account switch out, and refuse only if it never settles.
- *
- * Launch resolution is reached from `acquireClaudeSession` *after* the old child has
- * been closed and proved, so a plain refusal here would leave the user with a dead
- * chat and no replacement — the very harm the acquire-entry guard exists to prevent.
- * The entry guard still refuses outright, because nothing has been torn down yet.
- */
-export async function assertClaudeAuthSwitchSettled(
-  timeoutMs = CLAUDE_AUTH_SWITCH_SETTLE_TIMEOUT_MS
-): Promise<void> {
-  if (!(await whenClaudeAuthSwitchSettles(timeoutMs))) {
-    throw new AgentSessionPreSpawnError(new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE), {
-      reason: 'accountSwitchInProgress'
-    })
-  }
-}
-
 export function claudeSessionIdForOrcaSession(sessionId: string): string {
   const bytes = createHash('sha256').update(`orca-claude:${sessionId}`).digest().subarray(0, 16)
   bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
@@ -232,7 +204,6 @@ export function createClaudeStructuredLaunchResolver(
   deps: ClaudeStructuredLaunchResolverDeps
 ): (input: { identity: AgentSessionJournalIdentity }) => Promise<ClaudeStructuredLaunch> {
   return async ({ identity }) => {
-    await assertClaudeAuthSwitchSettled(deps.authSwitchSettleTimeoutMs)
     const record = deps.store.getRecord(identity.sessionId)
     if (!record) {
       throw new Error(`no durable agent-session record for ${identity.sessionId}`)

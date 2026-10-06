@@ -15,12 +15,10 @@
 # synchronous caller, or a host-level flag like --status / --list that the
 # guest-command API cannot express because it always prepends --exec.
 # cli/handlers/account.ts: `orca account add claude` runs the guest OAuth login in
-# the user's terminal (same login as main/claude-accounts/claude-command-process.ts);
-# the CLI also cannot load the main-process runner.
+# the user's terminal; the CLI cannot load the main-process runner.
 cli/handlers/account.ts
 main/agent-hooks/wsl-hook-relay-launch.ts
 main/browser/wsl-browser-network-relay-launch.ts
-main/claude-accounts/claude-command-process.ts
 main/codex-accounts/service.ts
 main/codex/codex-state-db-backfill-recovery.ts
 main/codex/codex-trust-grant-host.ts

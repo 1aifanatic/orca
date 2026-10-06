@@ -36,25 +36,30 @@ describe('account RPC methods', () => {
   })
 
   it.each([
-    ['accounts.addClaudeFromConfigDir', { configDir: join(tmpdir(), 'claude-login') }],
-    ['accounts.addCodexFromHome', { sourceHome: join(tmpdir(), 'codex-login') }]
-  ])('rejects paired-device calls to %s', async (methodName, params) => {
+    ['accounts.addCodexFromHome', { sourceHome: join(tmpdir(), 'codex-login') }, /only available/],
+    ['accounts.beginClaudeSignIn', {}, /Sign in on the Orca execution host/],
+    ['accounts.finishClaudeSignIn', { accountId: 'a' }, /Sign in on the Orca execution host/]
+  ] as const)('rejects paired-device calls to %s', async (methodName, params, refusal) => {
     const runtime = {
-      addClaudeAccountFromConfigDir: vi.fn(),
-      addCodexAccountFromHome: vi.fn()
-    } as unknown as OrcaRuntimeService
+      addCodexAccountFromHome: vi.fn(),
+      beginClaudeSignIn: vi.fn(),
+      finishClaudeSignIn: vi.fn()
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: refused calls never reach the runtime; only these stubs are asserted.
+    const runtimeService = runtime as unknown as OrcaRuntimeService
     const addMethod = method(methodName)
     if (isStreamingMethod(addMethod)) {
       throw new Error(`${methodName} must be a request method`)
     }
 
     for (const clientKind of ['mobile', 'runtime'] as const) {
-      await expect(addMethod.handler(params, { runtime, clientKind })).rejects.toThrow(
-        /only available on the Orca host runtime|Update the Orca CLI to add accounts/
-      )
+      await expect(
+        addMethod.handler(params, { runtime: runtimeService, clientKind })
+      ).rejects.toThrow(refusal)
     }
-    expect(runtime.addClaudeAccountFromConfigDir).not.toHaveBeenCalled()
     expect(runtime.addCodexAccountFromHome).not.toHaveBeenCalled()
+    expect(runtime.beginClaudeSignIn).not.toHaveBeenCalled()
+    expect(runtime.finishClaudeSignIn).not.toHaveBeenCalled()
   })
 
   it('keeps explicit account-list refreshes on the forced refresh lane', async () => {

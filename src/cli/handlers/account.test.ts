@@ -64,9 +64,8 @@ import {
 } from '../../shared/windows-batch-spawn'
 import {
   ACCOUNT_IMPORT_RUNTIME_CAPABILITY,
-  CODEX_ACCOUNT_IMPORT_CAPABILITY,
-  CLAUDE_PROFILE_LOGIN_CAPABILITY
-} from '../../shared/account-runtime-capabilities'
+  CLAUDE_SIGN_IN_RUNTIME_CAPABILITY
+} from '../../shared/protocol-version'
 
 function successfulChild(): EventEmitter {
   const child = new EventEmitter()
@@ -134,12 +133,11 @@ describe('account CLI handlers', () => {
         ok: true,
         result:
           method === 'status.get'
-            ? { capabilities: [CODEX_ACCOUNT_IMPORT_CAPABILITY, CLAUDE_PROFILE_LOGIN_CAPABILITY] }
-            : method === 'accounts.beginClaudeProfileLogin'
-              ? {
-                  accountId: 'draft',
-                  config: { windowsPath: '/fake/final-profile', linuxPath: null, wslDistro: null }
-                }
+            ? {
+                capabilities: [ACCOUNT_IMPORT_RUNTIME_CAPABILITY, CLAUDE_SIGN_IN_RUNTIME_CAPABILITY]
+              }
+            : method === 'accounts.beginClaudeSignIn'
+              ? { accountId: 'draft', configDir: '/fake/final-profile', runtime: 'host' }
               : accountState(
                   method.includes('Claude') ? 'claude@example.com' : 'codex@example.com'
                 ),
@@ -320,8 +318,8 @@ describe('account CLI handlers', () => {
     await ACCOUNT_HANDLERS['account add'](context('claude'))
     expect(spawnMock.mock.calls[0]?.[2].env.CLAUDE_CONFIG_DIR).toBe('/fake/final-profile')
     expect(callMock).toHaveBeenCalledWith(
-      'accounts.finishClaudeProfileLogin',
-      { accountId: 'draft' },
+      'accounts.finishClaudeSignIn',
+      { accountId: 'draft', runtime: 'host', wslDistro: undefined },
       { timeoutMs: 300000 }
     )
     expect(readKeychainMock).not.toHaveBeenCalled()
@@ -354,7 +352,7 @@ describe('account CLI handlers', () => {
     )
 
     expect(callMock).toHaveBeenCalledWith(
-      'accounts.beginClaudeProfileLogin',
+      'accounts.beginClaudeSignIn',
       expect.objectContaining({ runtime: 'wsl', wslDistro: 'Debian' }),
       { timeoutMs: 300000 }
     )
@@ -370,9 +368,8 @@ describe('account CLI handlers', () => {
         callMock.mock.calls.some(
           ([method, params]) =>
             method ===
-              (agent === 'claude'
-                ? 'accounts.beginClaudeProfileLogin'
-                : 'accounts.addCodexFromHome') && params.wslDistro === 'Ubuntu Work'
+              (agent === 'claude' ? 'accounts.beginClaudeSignIn' : 'accounts.addCodexFromHome') &&
+            params.wslDistro === 'Ubuntu Work'
         )
       ).toBe(true)
     }
@@ -481,7 +478,7 @@ describe('account CLI handlers', () => {
             id: 'test',
             ok: true,
             result: {
-              capabilities: [CODEX_ACCOUNT_IMPORT_CAPABILITY, CLAUDE_PROFILE_LOGIN_CAPABILITY]
+              capabilities: [ACCOUNT_IMPORT_RUNTIME_CAPABILITY, CLAUDE_SIGN_IN_RUNTIME_CAPABILITY]
             },
             _meta: { runtimeId: 'test-runtime' }
           })
@@ -548,7 +545,7 @@ describe('account CLI handlers', () => {
       })
 
       await expect(ACCOUNT_HANDLERS['account add'](context(agent))).rejects.toThrow(
-        'The running Orca app is too old to add accounts from this CLI.'
+        'The running Orca runtime is too old to add accounts from the CLI.'
       )
       expect(callMock).toHaveBeenCalledOnce()
       expect(callMock).toHaveBeenCalledWith('status.get')
@@ -602,7 +599,7 @@ describe('account CLI handlers', () => {
             id: 'test',
             ok: true,
             result: {
-              capabilities: [CODEX_ACCOUNT_IMPORT_CAPABILITY, CLAUDE_PROFILE_LOGIN_CAPABILITY]
+              capabilities: [ACCOUNT_IMPORT_RUNTIME_CAPABILITY, CLAUDE_SIGN_IN_RUNTIME_CAPABILITY]
             },
             _meta: { runtimeId: 'test-runtime' }
           })
@@ -674,30 +671,6 @@ describe('account CLI handlers', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('claude@example.com (active)'))
   })
 
-  it('lists unfinished Claude sign-ins by name instead of a blank line', async () => {
-    callMock.mockResolvedValue({
-      id: 'test',
-      ok: true,
-      result: {
-        claude: {
-          accounts: [{ id: 'ready', email: 'ok@example.com' }],
-          unfinishedAccounts: [{ id: 'draft', email: '' }],
-          activeAccountId: null
-        },
-        codex: { accounts: [], activeAccountId: null }
-      },
-      _meta: { runtimeId: 'test-runtime' }
-    })
-
-    await ACCOUNT_HANDLERS['account list']({ ...context('claude'), flags: new Map() })
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'Managed Claude accounts (2):\n  ok@example.com\n  Unfinished sign-in (finish or remove it in Orca Settings > Accounts)'
-      )
-    )
-  })
-
   it('tells the user which saved Claude accounts need a fresh sign-in', async () => {
     callMock.mockResolvedValue({
       id: 'test',
@@ -705,8 +678,8 @@ describe('account CLI handlers', () => {
       result: {
         claude: {
           accounts: [
-            { id: 'old', email: 'old@example.com', profileReadiness: 'sign-in-required' },
-            { id: 'ok', email: 'ok@example.com', profileReadiness: 'ready' }
+            { id: 'old', email: 'old@example.com', needsSignIn: true },
+            { id: 'ok', email: 'ok@example.com' }
           ],
           activeAccountId: 'old'
         },

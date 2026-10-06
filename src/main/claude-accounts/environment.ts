@@ -1,7 +1,11 @@
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 
-import { CLAUDE_AUTH_ENV_VARS, isAuthLikeClaudeCustomHeaders } from '../../shared/claude-auth-env'
-export { CLAUDE_AUTH_ENV_VARS } from '../../shared/claude-auth-env'
+export const CLAUDE_AUTH_ENV_VARS = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'AWS_BEARER_TOKEN_BEDROCK'
+] as const
 
 export type ClaudeEnvPatch = {
   ORCA_CLAUDE_PROFILE_POINTER?: string
@@ -24,7 +28,7 @@ export function applyClaudeEnvPatch(
       const normalized = platform === 'win32' ? key.toUpperCase() : key
       if (
         (platform === 'win32' && CLAUDE_AUTH_ENV_VARS.some((authKey) => authKey === normalized)) ||
-        (normalized === 'ANTHROPIC_CUSTOM_HEADERS' && isAuthLikeClaudeCustomHeaders(baseEnv[key]))
+        (normalized === 'ANTHROPIC_CUSTOM_HEADERS' && isAuthLikeCustomHeaders(baseEnv[key]))
       ) {
         delete baseEnv[key]
       }
@@ -97,9 +101,16 @@ export function hasClaudeAuthEnvConflict(
     if (value && CLAUDE_AUTH_ENV_VARS.some((authKey) => authKey === normalized)) {
       return true
     }
-    if (normalized === 'ANTHROPIC_CUSTOM_HEADERS' && isAuthLikeClaudeCustomHeaders(value)) {
+    if (normalized === 'ANTHROPIC_CUSTOM_HEADERS' && isAuthLikeCustomHeaders(value)) {
       return true
     }
   }
   return false
+}
+
+function isAuthLikeCustomHeaders(value: string | undefined): boolean {
+  if (!value) {
+    return false
+  }
+  return /authorization|x-api-key|api-key|bearer/i.test(value)
 }

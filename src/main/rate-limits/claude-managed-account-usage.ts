@@ -1,6 +1,7 @@
 import type { ProviderRateLimits } from '../../shared/rate-limit-types'
-import { getClaudeProfileRoutingAuthority } from '../claude-accounts/claude-profile-routing-authority'
-import { ClaudeProfileSignInRequiredError } from '../claude-accounts/claude-profile-routing-owner'
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
+import { savedWslClaudeAccountHome } from '../claude-accounts/claude-profile-wsl-paths'
+import { toWindowsWslPath } from '../../shared/wsl-paths'
 import type { InactiveClaudeAccount } from './claude-managed-account-credentials'
 import type { ClaudeManagedAccountUsageOptions } from './claude-usage-fetch-options'
 import { fetchActiveClaudeRateLimits } from './claude-active-usage-fetch'
@@ -11,21 +12,20 @@ export async function fetchInactiveClaudeAccountUsage(
   account: InactiveClaudeAccount,
   options: ClaudeManagedAccountUsageOptions = {}
 ): Promise<ProviderRateLimits> {
-  let home: string
-  try {
-    const authority = getClaudeProfileRoutingAuthority()
-    if (!authority) {
-      throw new Error('Claude profile host is unavailable.')
-    }
-    home = authority.accountHome(account.id)
-  } catch (error) {
-    return error instanceof ClaudeProfileSignInRequiredError
-      ? makeClaudeUsageResult('error', 'Sign in again to use this account.', {
-          failureKind: 'missing-credentials',
-          attemptedSources: []
-        })
-      : claudeUsageUnavailable()
+  const configDir =
+    account.managedAuthRuntime === 'wsl'
+      ? savedWslClaudeAccountHome(account)
+      : (getClaudeProfileRouter()?.accountHome(account.id) ?? null)
+  if (!configDir || (account.managedAuthRuntime === 'wsl' && !account.wslDistro)) {
+    return makeClaudeUsageResult('error', 'Sign in again to use this account.', {
+      failureKind: 'missing-credentials',
+      attemptedSources: []
+    })
   }
+  const home =
+    account.managedAuthRuntime === 'wsl' && account.wslDistro
+      ? toWindowsWslPath(configDir, account.wslDistro)
+      : configDir
   // Why: a stopped distro parks a UNC read for minutes, and the inactive loop is sequential.
   if (
     account.managedAuthRuntime === 'wsl' &&
@@ -39,7 +39,7 @@ export async function fetchInactiveClaudeAccountUsage(
       configDir: home,
       runtime: account.managedAuthRuntime,
       wslDistro: account.wslDistro,
-      envPatch: { CLAUDE_CONFIG_DIR: home },
+      envPatch: { CLAUDE_CONFIG_DIR: configDir },
       stripAuthEnv: true,
       provenance: `profile:${account.id}`
     }

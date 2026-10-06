@@ -44,8 +44,6 @@ describe('Claude account IPC', () => {
     older = false
     expect(await handlers.get('claudeAccounts:list')!()).toEqual(state)
     older = true
-    state.accounts = [{ ...state.accounts[0], id: 'draft', email: '' }]
-    expect(await handlers.get('claudeAccounts:list')!()).toEqual(state)
     state.accounts = []
     expect(await handlers.get('claudeAccounts:list')!()).toEqual(state)
   })

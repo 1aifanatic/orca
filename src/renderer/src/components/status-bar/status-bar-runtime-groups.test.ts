@@ -163,7 +163,7 @@ describe('status bar runtime switch groups', () => {
     ])
   })
 
-  it('labels unfinished Claude sign-ins and keeps accounts that need attention unselectable', () => {
+  it("labels Claude rows with their folder's login and keeps one needing sign-in unselectable", () => {
     const summary = (
       id: string,
       email: string,
@@ -181,25 +181,19 @@ describe('status bar runtime switch groups', () => {
     })
     const runtimeState: ClaudeRateLimitAccountsState = {
       accounts: [
-        summary('draft', '', { profileReadiness: 'sign-in-required' }),
-        summary('legacy', 'old@example.test', { profileReadiness: 'sign-in-required' }),
-        summary('ready', 'ok@example.test', {
-          profileReadiness: 'ready',
-          profileEmail: 'ok@example.test'
-        })
+        summary('legacy', 'old@example.test', { needsSignIn: true }),
+        summary('relabelled', 'now@example.test')
       ],
       activeAccountId: null,
       activeAccountIdsByRuntime: { host: null, wsl: {} }
     }
-    // Local settings carry no readiness; the switcher must still learn it from the host.
+    // Local settings carry neither; the switcher must learn both from the host.
     const settings: GlobalSettings = {
       ...getDefaultSettings('/tmp'),
-      claudeManagedAccounts: runtimeState.accounts.map(
-        ({ profileReadiness: _readiness, profileEmail: _email, ...rest }) => ({
-          ...rest,
-          managedAuthPath: ''
-        })
-      ),
+      claudeManagedAccounts: [
+        { ...summary('legacy', 'old@example.test'), managedAuthPath: '' },
+        { ...summary('relabelled', 'added-as@example.test'), managedAuthPath: '' }
+      ],
       activeClaudeManagedAccountId: null,
       activeClaudeManagedAccountIdsByRuntime: { host: null, wsl: {} }
     }
@@ -209,9 +203,8 @@ describe('status bar runtime switch groups', () => {
       host.targets.map((target) => [target.label, target.disabled ?? false, target.hint ?? null])
     ).toEqual([
       ['System default', false, null],
-      ['Unfinished sign-in', true, 'Finish signing in to use this account'],
       ['old@example.test', true, 'Sign in again to use this account'],
-      ['ok@example.test', false, null]
+      ['now@example.test', false, null]
     ])
   })
 

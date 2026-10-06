@@ -123,7 +123,7 @@ export function ClaudeSwitcherMenu({
         setAccountsExpanded(false)
         return
       }
-      // Why reload: readiness and the login each profile holds change without a settings change.
+      // Why reload: the login each account folder holds changes without a settings change.
       void loadAccounts().catch((error) => {
         console.error('Failed to load Claude accounts for status bar:', error)
       })
@@ -315,10 +315,10 @@ export function ClaudeSwitcherMenu({
             })}
           </div>
           <div className="px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
-            {accountState.olderTerminalsRunning || accounts.olderTerminalsRunning
+            {accounts.olderTerminalsRunning
               ? translate(
-                  'accounts.claude.olderTerminalsClose',
-                  'Some terminals are still running from before this Orca update and keep the Claude account they started with. Close all terminals once to finish the update.'
+                  'accounts.claude.olderTerminals',
+                  "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account."
                 )
               : translate(
                   'accounts.claude.profileSwitching',

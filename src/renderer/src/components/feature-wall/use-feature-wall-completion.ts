@@ -20,7 +20,6 @@ import { hasFeatureWallUsageTracking } from './feature-wall-usage-tracking'
 import { usePersistedFeatureWallCompletion } from './use-persisted-feature-wall-completion'
 import { useFeatureWallSessionDepth } from './use-feature-wall-session-depth'
 import { useMountedRef } from '@/hooks/useMountedRef'
-import { isUnfinishedClaudeSignIn } from '../../../../shared/claude-unfinished-sign-in'
 
 export type FeatureWallCompletionState = {
   workflowDone: Record<FeatureWallWorkflowId, boolean>
@@ -95,9 +94,7 @@ export function useFeatureWallCompletion(
       window.api.codexAccounts.list().catch(() => null)
     ])
     return hasFeatureWallUsageTracking({
-      // Why: an unfinished sign-in has no login yet, so it tracks no usage.
-      claudeManagedAccountCount:
-        claude?.accounts.filter((account) => !isUnfinishedClaudeSignIn(account)).length ?? 0,
+      claudeManagedAccountCount: claude?.accounts.length ?? 0,
       codexManagedAccountCount: codex?.accounts.length ?? 0,
       claudeRateLimits: rateLimits.claude,
       codexRateLimits: rateLimits.codex

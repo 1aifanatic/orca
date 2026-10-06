@@ -1,4 +1,3 @@
-import { getClaudeProfileRoutingAuthority } from './claude-profile-routing-authority'
 import type {
   ClaudeManagedAccount,
   ClaudeManagedAccountSummary,
@@ -6,106 +5,128 @@ import type {
 } from '../../shared/managed-account-types'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RateLimitService } from '../rate-limits/service'
-import { describeClaudeAccountIdentityRefusal } from '../../shared/claude-account-refusal-copy'
+import { claudeStateFile, readClaudeFolderLogin } from './claude-account-folder'
+import { savedWslClaudeAccountHome } from './claude-profile-wsl-paths'
 import type { ClaudeRuntimeAuthService } from './runtime-auth-service'
 import {
   getClaudeSelectionTargetForAccount,
   getSelectedClaudeAccountIdForTarget,
   normalizeClaudeAccountSelectionTarget,
   normalizeClaudeRuntimeSelection,
+  pruneInvalidClaudeRuntimeSelection,
   removeClaudeAccountIdFromSelection,
   setSelectedClaudeAccountIdForTarget,
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
-import { isUnfinishedClaudeSignIn } from '../../shared/claude-unfinished-sign-in'
 
-type SelectionSettings = Pick<
+export type ClaudeAccountSettings = Pick<
   GlobalSettings,
   | 'claudeManagedAccounts'
   | 'activeClaudeManagedAccountId'
   | 'activeClaudeManagedAccountIdsByRuntime'
 >
 
+export type ClaudeAccountStore = {
+  getSettings: () => ClaudeAccountSettings
+  updateSettings: (
+    patch: Partial<ClaudeAccountSettings>,
+    options?: { notifyListeners?: boolean }
+  ) => unknown
+}
+
+export type ClaudeAccountRuntime = Pick<
+  ClaudeRuntimeAuthService,
+  'syncForCurrentSelection' | 'publishAll' | 'removeAccountFolder' | 'prepareAccountFolder'
+> & {
+  router: Pick<ClaudeRuntimeAuthService['router'], 'accountHome' | 'userConfigDir'>
+}
+
+export type ClaudeAccountUsage = Pick<
+  RateLimitService,
+  'evictInactiveClaudeCache' | 'refreshForClaudeAccountChange'
+>
+
 export class ClaudeAccountSelection {
   constructor(
-    private readonly store: {
-      getSettings: () => SelectionSettings
-      updateSettings: (
-        patch: Partial<SelectionSettings>,
-        options?: { notifyListeners?: boolean }
-      ) => unknown
-    },
-    private readonly rateLimits: Pick<
-      RateLimitService,
-      'evictInactiveClaudeCache' | 'refreshForClaudeAccountChange'
-    >,
-    private readonly runtimeAuth: Pick<
-      ClaudeRuntimeAuthService,
-      'syncForCurrentSelection' | 'forceMaterializeCurrentSelectionForRollback'
-    >
+    private readonly store: ClaudeAccountStore,
+    private readonly rateLimits: ClaudeAccountUsage,
+    private readonly runtimeAuth: ClaudeAccountRuntime
   ) {}
 
+  /** Each row is labelled with the login its folder holds (superset U/profiles.ts:121-137). */
   list(): ClaudeRateLimitAccountsState {
-    const profiles = getClaudeProfileRoutingAuthority()
-    if (!profiles) {
-      return this.snapshot()
+    this.pruneSelection()
+    const settings = this.store.getSettings()
+    const selection = normalizeClaudeRuntimeSelection(settings)
+    const accounts = settings.claudeManagedAccounts
+      .map((account) => this.summarize(account))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    const userConfigDir = this.runtimeAuth.router.userConfigDir()
+    // Why only with accounts: the personal state file is large, and no row compares with it otherwise.
+    const systemDefault =
+      accounts.length > 0 ? readClaudeFolderLogin(claudeStateFile(userConfigDir)) : null
+    return {
+      accounts,
+      activeAccountId: selection.host,
+      activeAccountIdsByRuntime: selection,
+      ...(systemDefault ? { systemDefaultEmail: systemDefault.email } : {}),
+      ...(userConfigDir && selection.host ? { userClaudeConfigDir: userConfigDir } : {})
     }
-    const described = profiles.describeAccounts(this.snapshot())
-    const now = Date.now()
-    // Why: a login that finished after Orca stopped waiting (or quit) needs no second sign-in.
-    const completed = described.accounts.flatMap((summary) => {
-      const identity =
-        isUnfinishedClaudeSignIn(summary) && summary.profileEmail && !summary.profileIdentityIssue
-          ? profiles.observedIdentity(summary.id)
-          : null
-      const account = identity ? this.findAccount(summary.id) : undefined
-      return identity && account
-        ? [
-            {
-              ...account,
-              email: identity.email,
-              organizationUuid: identity.organizationUuid,
-              organizationName: identity.organizationName,
-              authMethod: 'subscription-oauth' as const,
-              updatedAt: now,
-              lastAuthenticatedAt: now
-            }
-          ]
-        : []
-    })
-    if (completed.length === 0) {
-      return described
+  }
+
+  private summarize(account: ClaudeManagedAccount): ClaudeManagedAccountSummary {
+    const summary: ClaudeManagedAccountSummary = {
+      id: account.id,
+      email: account.email,
+      managedAuthRuntime: account.managedAuthRuntime ?? 'host',
+      wslDistro: account.wslDistro ?? null,
+      authMethod: account.authMethod ?? 'unknown',
+      organizationUuid: account.organizationUuid ?? null,
+      organizationName: account.organizationName ?? null,
+      createdAt: account.createdAt,
+      updatedAt: account.updatedAt,
+      lastAuthenticatedAt: account.lastAuthenticatedAt
     }
-    const ids = new Set(completed.map((account) => account.id))
-    this.writeSettings({
-      claudeManagedAccounts: [
-        ...this.store.getSettings().claudeManagedAccounts.filter((entry) => !ids.has(entry.id)),
-        ...completed
-      ]
-    })
-    return profiles.describeAccounts(this.snapshot())
+    if (account.managedAuthRuntime === 'wsl') {
+      // Why no read: listing must not start a stopped distro. Only an older Orca's folder layout
+      // is known to hold no login; a launch refuses a missing folder with its own reason.
+      return savedWslClaudeAccountHome(account) ? summary : { ...summary, needsSignIn: true }
+    }
+    const login = readClaudeFolderLogin(
+      claudeStateFile(this.runtimeAuth.router.accountHome(account.id))
+    )
+    return login
+      ? {
+          ...summary,
+          email: login.email,
+          organizationUuid: login.organizationUuid,
+          organizationName: login.organizationName
+        }
+      : { ...summary, needsSignIn: true }
   }
 
   async remove(accountId: string): Promise<ClaudeRateLimitAccountsState> {
     const account = this.requireAccount(accountId)
     const settings = this.store.getSettings()
-    const nextAccounts = settings.claudeManagedAccounts.filter((entry) => entry.id !== accountId)
+    const target = getClaudeSelectionTargetForAccount(account)
+    const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
     const nextSelection = removeClaudeAccountIdFromSelection(
       normalizeClaudeRuntimeSelection(settings),
       accountId
     )
-    const nextActiveId =
-      settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host
-    const target = getClaudeSelectionTargetForAccount(account)
-    const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
-    this.writeSettings({
-      claudeManagedAccounts: nextAccounts,
-      activeClaudeManagedAccountId: nextActiveId,
+    this.saveSettings({
+      claudeManagedAccounts: settings.claudeManagedAccounts.filter(
+        (entry) => entry.id !== accountId
+      ),
+      activeClaudeManagedAccountId:
+        settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host,
       activeClaudeManagedAccountIdsByRuntime: nextSelection
     })
-    await this.syncRuntimeAuthAfterRemoval(target)
+    // Why before the delete: no new launch may pick the folder while it is being removed.
+    await this.runtimeAuth.syncForCurrentSelection(target)
+    await this.runtimeAuth.removeAccountFolder(accountId, target)
     this.rateLimits.evictInactiveClaudeCache(accountId)
-    this.refreshUsageInBackground(wasSelected ? accountId : undefined, target)
+    this.refreshUsage(wasSelected ? accountId : undefined, target)
     return this.list()
   }
 
@@ -115,94 +136,58 @@ export class ClaudeAccountSelection {
   ): Promise<ClaudeRateLimitAccountsState> {
     let effectiveTarget = target
     if (accountId !== null) {
-      const account = this.requireAccount(accountId)
-      const described = this.list().accounts.find((entry) => entry.id === accountId)
-      if (described?.profileIdentityIssue) {
-        throw new Error(
-          describeClaudeAccountIdentityRefusal(described.profileIdentityIssue, {
-            addedAs: described.email,
-            signedInAs: described.profileEmail ?? described.email
-          })
-        )
-      }
-      const accountTarget = getClaudeSelectionTargetForAccount(account)
-      const requestedTarget = normalizeClaudeAccountSelectionTarget(target ?? accountTarget)
-      const normalizedAccountTarget = normalizeClaudeAccountSelectionTarget(accountTarget)
+      const accountTarget = getClaudeSelectionTargetForAccount(this.requireAccount(accountId))
+      const requested = normalizeClaudeAccountSelectionTarget(target ?? accountTarget)
+      const owned = normalizeClaudeAccountSelectionTarget(accountTarget)
       if (
-        requestedTarget.runtime !== normalizedAccountTarget.runtime ||
-        (requestedTarget.wslDistro !== null &&
-          requestedTarget.wslDistro !== normalizedAccountTarget.wslDistro)
+        requested.runtime !== owned.runtime ||
+        (requested.wslDistro !== null && requested.wslDistro !== owned.wslDistro)
       ) {
         throw new Error('That Claude account belongs to a different runtime.')
       }
       effectiveTarget = accountTarget
     }
-    const previousSettings = this.store.getSettings()
-    const outgoingAccountId = getSelectedClaudeAccountIdForTarget(previousSettings, effectiveTarget)
+    const previous = this.store.getSettings()
+    const outgoingAccountId = getSelectedClaudeAccountIdForTarget(previous, effectiveTarget)
     const nextSelection = setSelectedClaudeAccountIdForTarget(
-      normalizeClaudeRuntimeSelection(previousSettings),
+      normalizeClaudeRuntimeSelection(previous),
       accountId,
       effectiveTarget
     )
-    this.writeSettings({
+    this.saveSettings({
       activeClaudeManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,
       activeClaudeManagedAccountIdsByRuntime: nextSelection
     })
     try {
-      await this.syncRuntimeAuth(effectiveTarget)
+      await this.runtimeAuth.syncForCurrentSelection(effectiveTarget)
     } catch (error) {
-      this.restoreSettings(previousSettings)
-      await this.rollBackRuntimeAuth(effectiveTarget ?? { runtime: 'host' })
+      this.saveSettings({
+        activeClaudeManagedAccountId: previous.activeClaudeManagedAccountId,
+        activeClaudeManagedAccountIdsByRuntime: previous.activeClaudeManagedAccountIdsByRuntime
+      })
+      await this.runtimeAuth.publishAll().catch((rollbackError: unknown) => {
+        console.warn('[claude-accounts] Rollback republish failed:', rollbackError)
+      })
       throw error
     }
-    this.refreshUsageInBackground(outgoingAccountId, effectiveTarget)
+    this.refreshUsage(outgoingAccountId, effectiveTarget)
     return this.list()
   }
 
   /** Bookkeeping: a usage failure never undoes the account change that triggered it. */
-  refreshUsageInBackground(
+  refreshUsage(
     outgoingAccountId: string | null | undefined,
     target: ClaudeAccountSelectionTarget | undefined
   ): void {
     void this.rateLimits
       .refreshForClaudeAccountChange(outgoingAccountId ?? undefined, target)
-      .catch((error) =>
-        console.warn('[claude-profile] Usage unavailable after account change:', error)
+      .catch((error: unknown) =>
+        console.warn('[claude-accounts] Usage unavailable after account change:', error)
       )
   }
 
-  // Why: a distro that no longer exists has no pointer anyone can launch, so its bookkeeping must
-  // not block removing its accounts. Only the profile transport reports a missing distro.
-  private async syncRuntimeAuthAfterRemoval(target: ClaudeAccountSelectionTarget): Promise<void> {
-    try {
-      await this.syncRuntimeAuth(target)
-    } catch (error) {
-      console.warn('[claude-profile] Removed account; pointer repair failed:', error)
-    }
-  }
-
-  // Why caught with profiles: a rollback failure must not replace the error that caused it.
-  async rollBackRuntimeAuth(target: ClaudeAccountSelectionTarget): Promise<void> {
-    try {
-      await this.runtimeAuth.forceMaterializeCurrentSelectionForRollback(target)
-    } catch (rollbackError) {
-      console.warn('[claude-accounts] Rollback rematerialization failed:', rollbackError)
-    }
-  }
-
-  snapshot(): ClaudeRateLimitAccountsState {
-    const settings = this.store.getSettings()
-    return {
-      accounts: settings.claudeManagedAccounts
-        .map(toClaudeAccountSummary)
-        .sort((a, b) => b.updatedAt - a.updatedAt),
-      activeAccountId: normalizeClaudeRuntimeSelection(settings).host,
-      activeAccountIdsByRuntime: normalizeClaudeRuntimeSelection(settings)
-    }
-  }
-
-  private findAccount(accountId: string): ClaudeManagedAccount | undefined {
+  findAccount(accountId: string): ClaudeManagedAccount | undefined {
     return this.store.getSettings().claudeManagedAccounts.find((entry) => entry.id === accountId)
   }
 
@@ -214,40 +199,24 @@ export class ClaudeAccountSelection {
     return account
   }
 
-  restoreSettings(settings: SelectionSettings): void {
-    this.writeSettings({
-      claudeManagedAccounts: settings.claudeManagedAccounts,
-      activeClaudeManagedAccountId: settings.activeClaudeManagedAccountId,
-      activeClaudeManagedAccountIdsByRuntime: settings.activeClaudeManagedAccountIdsByRuntime
-    })
-  }
-
   // Why notify: every window's switcher and Settings read the selection from settings, including
   // selections made by the CLI, a paired client or another window.
-  private writeSettings(patch: Partial<SelectionSettings>): void {
+  saveSettings(patch: Partial<ClaudeAccountSettings>): void {
     this.store.updateSettings(patch, { notifyListeners: true })
   }
 
-  async syncRuntimeAuth(
-    target?: ClaudeAccountSelectionTarget,
-    operation?: () => Promise<void>
-  ): Promise<void> {
-    // Why no launch gate: launches read the settings selection, and the pointer queue orders publishes.
-    await (operation ? operation() : this.runtimeAuth.syncForCurrentSelection(target, 'boot'))
-  }
-}
-
-function toClaudeAccountSummary(account: ClaudeManagedAccount): ClaudeManagedAccountSummary {
-  return {
-    id: account.id,
-    email: account.email,
-    managedAuthRuntime: account.managedAuthRuntime ?? 'host',
-    wslDistro: account.wslDistro ?? null,
-    authMethod: account.authMethod ?? 'unknown',
-    organizationUuid: account.organizationUuid ?? null,
-    organizationName: account.organizationName ?? null,
-    createdAt: account.createdAt,
-    updatedAt: account.updatedAt,
-    lastAuthenticatedAt: account.lastAuthenticatedAt
+  private pruneSelection(): void {
+    const settings = this.store.getSettings()
+    const current = normalizeClaudeRuntimeSelection(settings)
+    const next = pruneInvalidClaudeRuntimeSelection(current, settings.claudeManagedAccounts)
+    if (
+      next.host !== settings.activeClaudeManagedAccountId ||
+      JSON.stringify(next) !== JSON.stringify(current)
+    ) {
+      this.store.updateSettings({
+        activeClaudeManagedAccountId: next.host,
+        activeClaudeManagedAccountIdsByRuntime: next
+      })
+    }
   }
 }

@@ -14,7 +14,10 @@ import type {
 } from '../../../../../shared/managed-account-types'
 import { getFeatureWallUsageProviderConnection } from '../feature-wall-usage-tracking'
 import { translate } from '@/i18n/i18n'
-import { isUnfinishedClaudeSignIn } from '../../../../../shared/claude-unfinished-sign-in'
+import {
+  ClaudeSignInDialog,
+  type ClaudeSignInRequest
+} from '@/components/settings/ClaudeSignInDialog'
 
 type ConnectAction = 'idle' | 'adding'
 
@@ -101,7 +104,7 @@ export function UsageAccountsCard(props: {
 
   const [claudeAccounts, setClaudeAccounts] = useState<ClaudeRateLimitAccountsState>()
   const [codexAccounts, setCodexAccounts] = useState<CodexRateLimitAccountsState>()
-  const [claudeAction, setClaudeAction] = useState<ConnectAction>('idle')
+  const [claudeSignIn, setClaudeSignIn] = useState<ClaudeSignInRequest | null>(null)
   const [codexAction, setCodexAction] = useState<ConnectAction>('idle')
 
   // Why: load both account lists once on mount. AccountsPane re-fetches on
@@ -136,10 +139,7 @@ export function UsageAccountsCard(props: {
   }, [fetchRateLimits])
 
   const claudeConnection = getFeatureWallUsageProviderConnection({
-    // Why: an unfinished sign-in has no login yet, so it connects nothing.
-    managedAccountCount: claudeAccounts?.accounts.filter(
-      (account) => !isUnfinishedClaudeSignIn(account)
-    ).length,
+    managedAccountCount: claudeAccounts?.accounts.length,
     provider: rateLimits.claude
   })
   const codexConnection = getFeatureWallUsageProviderConnection({
@@ -147,43 +147,18 @@ export function UsageAccountsCard(props: {
     provider: rateLimits.codex
   })
 
-  const handleClaudeSignIn = async (): Promise<void> => {
-    if (claudeAction !== 'idle') {
-      return
-    }
-    setClaudeAction('adding')
-    try {
-      const next = await window.api.claudeAccounts.add()
+  const handleClaudeSignedIn = async (next: ClaudeRateLimitAccountsState): Promise<void> => {
+    setClaudeAccounts(next)
+    await fetchSettings()
+    if (mountedRef.current) {
+      await onAccountStateChange?.()
       if (mountedRef.current) {
-        setClaudeAccounts(next)
-      }
-      await fetchSettings()
-      if (mountedRef.current) {
-        await onAccountStateChange?.()
-        if (mountedRef.current) {
-          toast.success(
-            translate(
-              'auto.components.feature.wall.agents.orchestration.UsageAccountsCard.9ddeb558f9',
-              'Claude account added.'
-            )
-          )
-        }
-      }
-    } catch (error) {
-      if (mountedRef.current) {
-        toast.error(
+        toast.success(
           translate(
-            'auto.components.feature.wall.agents.orchestration.UsageAccountsCard.4e71d72912',
-            'Claude sign-in failed.'
-          ),
-          {
-            description: readIpcErrorMessage(error)
-          }
+            'auto.components.feature.wall.agents.orchestration.UsageAccountsCard.9ddeb558f9',
+            'Claude account added.'
+          )
         )
-      }
-    } finally {
-      if (mountedRef.current) {
-        setClaudeAction('idle')
       }
     }
   }
@@ -240,8 +215,13 @@ export function UsageAccountsCard(props: {
         )}
         connected={claudeConnection.connected}
         connectionLabel={claudeConnection.label}
-        isAdding={claudeAction === 'adding'}
-        onSignIn={() => void handleClaudeSignIn()}
+        isAdding={claudeSignIn !== null}
+        onSignIn={() => setClaudeSignIn({ runtime: 'host' })}
+      />
+      <ClaudeSignInDialog
+        request={claudeSignIn}
+        onClose={() => setClaudeSignIn(null)}
+        onSignedIn={(next) => void handleClaudeSignedIn(next)}
       />
       <ProviderRow
         icon={<OpenAIIcon size={16} />}

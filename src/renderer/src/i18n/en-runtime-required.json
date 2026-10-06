@@ -474,6 +474,9 @@
           },
           "agents": {
             "orchestration": {
+              "UsageAccountsCard": {
+                "4e71d72912": "Claude sign-in failed."
+              },
               "orchestration": {
                 "cards": {
                   "da6f1f97c9": "working"
@@ -2303,6 +2306,7 @@
             "629251f4b6": "Open OpenCode Go usage details",
             "68efc0345c": "gemini",
             "76b06d4da5": "claude",
+            "8295903d17": "Restart live Claude terminals before continuing old conversations after switching.",
             "a28a5dd9b1": "error",
             "antigravityUsageDetails": "Open Antigravity usage details",
             "d2375976eb": "Open Gemini usage details",
@@ -2723,8 +2727,6 @@
         "imageUnsupported": "Image paste is not supported for this agent."
       },
       "failureWords": {
-        "accountLoginChanged": "The selected Claude account is now signed in to a different login. Open Settings > Accounts to sign in again, or choose System default.",
-        "accountSignInRequired": "The selected Claude account needs you to sign in again. Open Settings > Accounts to sign in again, or choose System default.",
         "accountSwitchInProgress": "A Claude account switch is in progress. Try again after it finishes.",
         "answerUnconfirmed": "Your answer was recorded but the agent did not confirm it.",
         "attachmentAtMost": "{{agent}} accepts at most {{limit}} images in one message, so this message was not sent.",
@@ -2942,9 +2944,6 @@
       "description": "This is where all your agents will show up at a glance. The board is coming soon.",
       "title": "Agent dashboard"
     }
-  },
-  "editor": {
-    "markdownPreview": {}
   },
   "fileExplorer": {
     "root": {

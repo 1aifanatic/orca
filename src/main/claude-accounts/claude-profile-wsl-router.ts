@@ -112,6 +112,24 @@ export class ClaudeWslProfileRouter {
     return this.preparationFor(distro, home, profile)
   }
 
+  /** Creates and sets up an account's guest folder for sign-in; the login itself is Claude's. */
+  async prepareAccount(distro: string, accountId: string): Promise<string> {
+    const { home } = await this.resolve(distro)
+    const { profile } = wslClaudeProfile(home, distro, accountId)
+    await this.setUp(distro, home, accountId).catch((error: unknown) => {
+      console.warn('[claude-profile] WSL account setup failed:', error)
+      throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    })
+    return profile.home
+  }
+
+  /** Deletes an account's guest folder. Linux `rm -r` never follows the history links. */
+  async removeAccount(distro: string, accountId: string): Promise<void> {
+    const { home } = await this.resolve(distro)
+    const folder = posix.dirname(wslClaudeProfile(home, distro, accountId).profile.home)
+    await runGuest(distro, { script: 'rm -rf -- "$1"', args: [folder], loginPath: 'none' })
+  }
+
   /** Falling back would run the wrong account. */
   private async assertPresent(distro: string, profile: ClaudeProfileDescriptor | null) {
     if (profile && !(await guestStat(distro, profile.home))?.isDirectory()) {

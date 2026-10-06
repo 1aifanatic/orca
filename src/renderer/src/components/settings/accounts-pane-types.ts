@@ -12,6 +12,7 @@ import type {
 import type { CodexConfigSyncStatus } from '../../../../shared/codex-config-sync-types'
 import type { FeatureInteractionId } from '../../../../shared/feature-interaction-catalog'
 import type { ProviderAccountRuntimeView } from './provider-account-visibility'
+import type { ClaudeSignInRequest } from './ClaudeSignInDialog'
 
 export type AccountsPaneProps = {
   settings: GlobalSettings
@@ -83,6 +84,7 @@ export type AccountsPaneSectionModel = {
   visibleClaudeAccounts: ClaudeRateLimitAccountsState['accounts']
   systemClaudeActive: boolean
   setRemoveClaudeTarget: Dispatch<SetStateAction<RemoveAccountTarget | null>>
+  setClaudeSignIn: (request: ClaudeSignInRequest) => void
   runClaudeAccountAction: ClaudeAccountActionRunner
   codexAccounts: CodexRateLimitAccountsState
   codexAction: CodexAccountAction
