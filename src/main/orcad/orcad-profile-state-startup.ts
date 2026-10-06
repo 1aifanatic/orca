@@ -2,6 +2,7 @@ import { createProfileStateStoreForStartup } from '../persistence/profile-state/
 import type { ProfileStateStoreFactoryResult } from '../persistence/profile-state/profile-state-store-factory'
 import { ensureActiveOrcaProfile, initOrcaProfilePaths } from '../orca-profiles/profile-index-store'
 import { initSshHostKeyStoreFile } from '../ssh/ssh-host-key-store'
+import { initOrcadHeldFenceTokenFile } from '../ssh/orcad-held-fence-tokens'
 import { emitOrcadProfileStateAuthoritySelected } from './orcad-profile-state-telemetry'
 
 export type OrcadProfileStateProfile = {
@@ -46,6 +47,7 @@ export async function createOrcadProfileStateStartup(
   }
   try {
     initSshHostKeyStoreFile(profile.dataFile)
+    initOrcadHeldFenceTokenFile(profile.dataFile)
     emitOrcadProfileStateAuthoritySelected(authority)
     return { store: result.store, authority }
   } catch (error) {

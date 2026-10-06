@@ -31,6 +31,7 @@ import {
   type OrcadFence
 } from './orcad-activation-fence-scope'
 import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
+import { forgetHeldOrcadFence, rememberHeldOrcadFence } from './orcad-held-fence-tokens'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import {
   ORCAD_ACTIVATION_TRANSACTION_DIRNAME,
@@ -89,6 +90,7 @@ export async function withOrcadActivationLock<T>(
   token: string = randomUUID()
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
+  rememberHeldOrcadFence(token)
   try {
     await acquireInstallLock(options.conn, lockRoot, options.host, {
       signal: options.signal,
@@ -100,6 +102,7 @@ export async function withOrcadActivationLock<T>(
     })
   } catch (error) {
     if (error instanceof RemoteInstallLockBusyError) {
+      forgetHeldOrcadFence(token)
       return await held()
     }
     throw error
@@ -145,6 +148,7 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
 ): Promise<T> {
   const lockRoot = orcadActivationTransactionRoot(options.host, options.remoteHome)
   const token = randomUUID()
+  rememberHeldOrcadFence(token)
   // The takeover writes this run's token, so the holder it replaced can no longer act or release.
   await acquireInstallLock(options.conn, lockRoot, options.host, {
     signal: options.signal,
@@ -152,6 +156,11 @@ export async function withStaleOrcadActivationRecoveryLock<T>(
     allowStaleTakeover: true,
     waitTimeoutMs: 0,
     owner: { fileName: ORCAD_FENCE_OWNER_FILENAME, token }
+  }).catch((error: unknown) => {
+    if (error instanceof RemoteInstallLockBusyError) {
+      forgetHeldOrcadFence(token)
+    }
+    throw error
   })
   const fence = activationFence(options, token)
   let retain = false
@@ -204,6 +213,7 @@ async function orphanRetainedFence(
         orphanInstallLockCommand(options.host, fence.lockDir)
       )
     )
+    forgetHeldOrcadFence(fence.token)
   } catch (error) {
     // Best effort: the fence still holds; recovery then waits out the stale window as before.
     console.warn(
@@ -259,6 +269,7 @@ async function releaseActivationFence(
       )
     : posixReleaseFenceCommand(fence, journal, lockRoot)
   const answer = (await execOrcadRemote(target, command)).trim()
+  forgetHeldOrcadFence(fence.token)
   if (answer.endsWith('SUPERSEDED')) {
     console.warn('[orcad] A newer run had taken this activation fence over; it was left in place.')
   }
