@@ -42,8 +42,16 @@ export function refreshRuntimeEnvironmentsAfterPairingChange(error: unknown): Pr
 export function subscribeRuntimeEnvironment(
   ...args: Parameters<typeof window.api.runtimeEnvironments.subscribe>
 ): ReturnType<typeof window.api.runtimeEnvironments.subscribe> {
-  return window.api.runtimeEnvironments.subscribe(...args).catch((error: unknown) => {
+  return observePairingRefusal(window.api.runtimeEnvironments.subscribe(...args))
+}
+
+/**
+ * Returns `request` itself: a side branch watches for a refusal, so a successful request settles
+ * on the same tick as before and the caller still sees the original rejection.
+ */
+export function observePairingRefusal<T>(request: Promise<T>): Promise<T> {
+  request.catch((error: unknown) => {
     void refreshRuntimeEnvironmentsAfterPairingChange(error)
-    throw error
   })
+  return request
 }
