@@ -139,25 +139,25 @@ describe('e2e rollout override', () => {
   }
 
   it('reads the flags file only in an unpackaged e2e launch', () => {
-    const file = flagsFile({ 'orcad-source-retirement': { state: 'on' } })
+    const file = flagsFile({ 'legacy-relay-dir-sweep': { state: 'on' } })
     const env = { ORCA_E2E_USER_DATA_DIR: '/e2e', ORCA_E2E_ROLLOUT_FLAGS_FILE: file }
     expect(readE2ERolloutConfigOverride(env, false)).toEqual({
-      'orcad-source-retirement': { state: 'on' }
+      'legacy-relay-dir-sweep': { state: 'on' }
     })
     expect(readE2ERolloutConfigOverride({ ORCA_E2E_ROLLOUT_FLAGS_FILE: file }, false)).toBeNull()
   })
 
   it('never reads the flags file in a packaged release', () => {
-    const file = flagsFile({ 'orcad-source-retirement': { state: 'on' } })
+    const file = flagsFile({ 'legacy-relay-dir-sweep': { state: 'on' } })
     const env = { ORCA_E2E_USER_DATA_DIR: '/e2e', ORCA_E2E_ROLLOUT_FLAGS_FILE: file }
     expect(readE2ERolloutConfigOverride(env, true)).toBeNull()
     vi.stubEnv('ORCA_E2E_USER_DATA_DIR', env.ORCA_E2E_USER_DATA_DIR)
     vi.stubEnv('ORCA_E2E_ROLLOUT_FLAGS_FILE', file)
     const context = { appVersion: '1.4.218', installId: null }
     installFakeAppEnvironment({ isPackaged: () => true })
-    expect(isRolloutFlagActive('orcad-source-retirement', context)).toBe(false)
+    expect(isRolloutFlagActive('legacy-relay-dir-sweep', context)).toBe(false)
     installFakeAppEnvironment({ isPackaged: () => false })
-    expect(isRolloutFlagActive('orcad-source-retirement', context)).toBe(true)
+    expect(isRolloutFlagActive('legacy-relay-dir-sweep', context)).toBe(true)
   })
 
   it('treats a missing or unreadable file as no override', () => {

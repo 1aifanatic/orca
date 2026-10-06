@@ -2,7 +2,6 @@
  * The connect that converts a relay-era SSH host, and the source's retention then retirement,
  * shared by the runtime relay-era cell and the upgraded-profile cell.
  */
-import { writeFileSync } from 'node:fs'
 import type { Page } from '@stablyai/playwright-test'
 import { expect } from './orca-app'
 import { readPersistedProfileState } from './persisted-profile-state'
@@ -122,11 +121,10 @@ export type ConvertedHost = {
 }
 
 /** Connects with the template in place, then proves conversion, retention and retirement. */
-export async function convertThenRetire(
+export async function convertAndRetain(
   page: Page,
   userData: string,
-  host: ConvertedHost,
-  flagsFile: string
+  host: ConvertedHost
 ): Promise<void> {
   const connected = await reconnect(page, host.targetId)
   // Polls the whole state so a timeout reports why the host stayed on the relay.
@@ -178,28 +176,22 @@ export async function convertThenRetire(
     jsonText(host.sessionFilePath)
   )
 
-  // 3. Source retained for a downgrade, then retired once the rollout flag is on.
-  expect(findOrcadMigrationSourceCutoverForTarget(userData, host.targetId)).toMatchObject({
-    phase: 'destination-committed',
-    sourceRetainedAt: expect.any(String)
-  })
-  expect(sourceRows(userData, host.targetId)).toEqual({ repos: 1, folderWorkspaces: 1 })
-  writeFileSync(flagsFile, JSON.stringify({ 'orcad-source-retirement': { state: 'on' } }))
+  // 3. Source retained for a downgrade: kept and hidden, and still so after another connect.
+  const expectRetained = async (): Promise<void> => {
+    expect(findOrcadMigrationSourceCutoverForTarget(userData, host.targetId)).toMatchObject({
+      phase: 'destination-committed',
+      sourceRetainedAt: expect.any(String)
+    })
+    expect(sourceRows(userData, host.targetId)).toEqual({ repos: 1, folderWorkspaces: 1 })
+    const listed = await page.evaluate(async (id) => {
+      const repos = await window.api.repos.list()
+      return repos.filter((repo) => repo.connectionId === id).length
+    }, host.targetId)
+    expect(listed, 'retained source rows stay hidden').toBe(0)
+  }
+  await expectRetained()
   await reconnect(page, host.targetId)
-  // Retirement drops the source rows, then compacts the journal away once the server matches it.
-  await expect
-    .poll(
-      () => {
-        const phase = findOrcadMigrationSourceCutoverForTarget(userData, host.targetId)?.phase
-        return JSON.stringify({
-          // `source-retired` is retirement before compaction; either way the move is finished.
-          ...(phase && phase !== 'source-retired' ? { journal: phase } : {}),
-          ...sourceRows(userData, host.targetId)
-        })
-      },
-      { timeout: 120_000 }
-    )
-    .toBe(JSON.stringify({ repos: 0, folderWorkspaces: 0 }))
-  expect(await managedServer(page, host.targetId)).toMatchObject({ kind: 'managed' })
+  await expect.poll(() => managedServer(page, host.targetId).then(isManaged)).toBe(true)
+  await expectRetained()
   expect(await serverCall(page, environment!.id, 'repo.list')).toContain(jsonText(host.repoPath))
 }

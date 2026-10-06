@@ -1,7 +1,6 @@
-import {
-  serializeOrcadMigrationValue,
-  type OrcadMigrationDormantStatePayload,
-  type OrcadMigrationManifest
+import type {
+  OrcadMigrationDormantStatePayload,
+  OrcadMigrationManifest
 } from '../../../shared/orcad-migration-manifest'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { SparsePreset } from '../../../shared/worktree/create-types'
@@ -9,6 +8,7 @@ import type { WorkspaceLineage, WorktreeLineage } from '../../../shared/worktree
 import type { WorktreeMeta } from '../../../shared/worktree/meta-types'
 import { omitDefaultWorktreeMetaFields } from '../../../shared/worktree/meta-persisted-defaults'
 import { assertOrcadDestinationCanonicalMetadata } from './orcad-destination-worktree-metadata'
+import { assertSameValue } from './orcad-catalog-row-identity'
 import {
   mergeRetiredNameRegistries,
   type RetiredNameRegistry
@@ -180,12 +180,6 @@ function selectNewKeyedRows<T>(
     assertSameValue(canonicalize(current), canonicalize(entry.value), `${label}:${entry.key}`)
     return false
   })
-}
-
-function assertSameValue(left: unknown, right: unknown, label: string): void {
-  if (serializeOrcadMigrationValue(left) !== serializeOrcadMigrationValue(right)) {
-    throw new Error(`orcad_migration_dormant_id_conflict:${label}`)
-  }
 }
 
 const sparsePresetKey = (preset: Pick<SparsePreset, 'id' | 'repoId'>): string =>

@@ -155,7 +155,7 @@ export async function abortOrcadMigrationCutover(
 
 /**
  * A committed read may come from memory the server never flushed; only commit()'s acknowledgement,
- * which flushes before it answers, may move the journal to committed and on to retirement.
+ * which flushes before it answers, may move the journal to committed.
  */
 async function confirmDurableCommit(
   destination: OrcadMigrationDestinationCatalog,

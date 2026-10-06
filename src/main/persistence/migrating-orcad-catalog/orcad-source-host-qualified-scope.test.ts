@@ -7,13 +7,10 @@ import {
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { Repo } from '../../../shared/repo-types'
 import type { Tab } from '../../../shared/tab-types'
-import {
-  assertOrcadMigrationClientStateRetired,
-  retireOrcadMigrationClientState
-} from './orcad-source-client-retirement'
+import { subtractOrcadMigrationClientState } from './orcad-source-client-subtraction'
 import { collectOrcadMigrationUntransferredDependencyCensus } from './orcad-source-dependency-census'
 import { collectOrcadMigrationSourceDormantState } from './orcad-source-dormant-state'
-import { retireOrcadMigrationSourceDormantState } from './orcad-source-dormant-retirement'
+import { subtractOrcadMigrationSourceDormantState } from './orcad-source-dormant-subtraction'
 import {
   orcadMigrationOwnerMatchesScope,
   createOrcadMigrationSourceScope
@@ -121,7 +118,7 @@ describe('migration scope with host-qualified owners', () => {
       collectOrcadMigrationUntransferredDependencyCensus(state, moved).counts['workspace-session']
     ).toBe(0)
 
-    retireOrcadMigrationSourceDormantState(state, moved)
+    subtractOrcadMigrationSourceDormantState(state, moved)
 
     expect(state.workspaceSessionsByHostId?.[HOST_B]?.unifiedTabs?.[WORKTREE]).toHaveLength(1)
     expect(state.workspaceSession.unifiedTabs?.[`${HOST_B}|${WORKTREE}`]).toHaveLength(1)
@@ -129,16 +126,15 @@ describe('migration scope with host-qualified owners', () => {
     expect(state.workspaceSessionsByHostId?.['ssh:host-a']?.unifiedTabs?.[WORKTREE]).toBeUndefined()
   })
 
-  it('retires selected-worktree routing after retargeting it to the destination', () => {
+  it('subtracts selected-worktree routing by retargeting it to the destination', () => {
     const state = getDefaultPersistedState('/home/test')
     state.repos = [REPO]
     state.ui.lastActiveWorktreeId = WORKTREE
     const moved = manifest(state)
     expect(moved.payload.dormantState?.clientState?.uiRouting?.lastActiveWorktreeId).toBe(WORKTREE)
 
-    retireOrcadMigrationClientState(state, moved)
+    subtractOrcadMigrationClientState(state, moved)
 
     expect(state.ui.lastActiveWorktreeId).toBe(`runtime:env-1|${WORKTREE}`)
-    expect(() => assertOrcadMigrationClientStateRetired(state, moved)).not.toThrow()
   })
 })

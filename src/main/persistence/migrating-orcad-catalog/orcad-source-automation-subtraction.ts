@@ -4,7 +4,7 @@ import type { PersistedState } from '../../../shared/persisted-state-types'
 import { createOrcadMigrationSourceScope, orcadMigrationOwnsRepoId } from './orcad-source-scope'
 
 /** The manifest's automations, and any a downgraded build added to a moved project since. */
-export function retireOrcadMigrationSourceAutomationState(
+export function subtractOrcadMigrationSourceAutomationState(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ): void {
@@ -28,22 +28,4 @@ export function retireOrcadMigrationSourceAutomationState(
   state.automationRuns = state.automationRuns.filter(
     (run) => !runIds.has(run.id) && !automationIds.has(run.automationId)
   )
-}
-
-export function assertOrcadMigrationSourceAutomationStateRetired(
-  state: PersistedState,
-  manifest: OrcadMigrationManifest
-): void {
-  const automationIds = new Set(
-    (manifest.payload.dormantState?.automations ?? []).map((entry) => entry.id)
-  )
-  const runIds = new Set(
-    (manifest.payload.dormantState?.automationRuns ?? []).map((entry) => entry.id)
-  )
-  if (
-    state.automations.some((entry) => automationIds.has(entry.id)) ||
-    state.automationRuns.some((entry) => runIds.has(entry.id))
-  ) {
-    throw new Error('orcad_migration_source_automation_state_reappeared')
-  }
 }

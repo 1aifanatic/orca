@@ -103,7 +103,6 @@ afterEach(async () => {
 })
 
 const releaseDirectSession = vi.fn(async () => {})
-let retireSource = true
 // Every relay, this build's and earlier ones, answers that nothing runs.
 const everyRelayEmpty = (): ListRelayPtyIds =>
   Object.assign(async () => [], { previous: async () => [] })
@@ -122,12 +121,11 @@ const convert = (
     censusHost,
     destinationFor: () => destination,
     releaseDirectSession,
-    now: () => new Date('2026-10-02T00:00:00.000Z'),
-    retireSource: () => retireSource
+    now: () => new Date('2026-10-02T00:00:00.000Z')
   })
 
 describe('converting an SSH host into a managed server', () => {
-  it('fences, deploys, marks the server, commits once, then retires the source', async () => {
+  it('fences, deploys, marks the server, commits once, then keeps the source rows', async () => {
     const result = await convert()
     expect(result).toMatchObject({ outcome: 'converted' })
     expect(releaseDirectSession).toHaveBeenCalledWith(TARGET.id)
@@ -138,35 +136,21 @@ describe('converting an SSH host into a managed server', () => {
     const [environment] = listEnvironments(userDataPath)
     expect(environment?.orcadMigratedAt).toBe('2026-10-02T00:00:00.000Z')
     expect(destination.commits).toBe(1)
-    expect(store.getRepos()).toEqual([])
-    // The journal compacts once the server matches it; the fenced target stays for the tunnel.
-    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
-    expect(getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))).toBe(environment?.id)
-    await expect(convert()).resolves.toMatchObject({
-      outcome: 'refused',
-      code: 'orcad_migration_already_managed'
+    // An older build reads these rows and reaches the host over its relay.
+    expect(store.getRepos().map((repo) => repo.id)).toEqual(['repo-1'])
+    const [journal] = listOrcadMigrationSourceCutovers(userDataPath)
+    expect(journal).toMatchObject({
+      phase: 'destination-committed',
+      sourceRetainedAt: '2026-10-02T00:00:00.000Z'
     })
-  })
-
-  it('keeps the source rows when retirement is off, marking the commit retained', async () => {
-    retireSource = false
-    try {
-      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
-      expect(destination.commits).toBe(1)
-      // An older build reads these rows and reaches the host over its relay.
-      expect(store.getRepos().map((repo) => repo.id)).toEqual(['repo-1'])
-      const [journal] = listOrcadMigrationSourceCutovers(userDataPath)
-      expect(journal).toMatchObject({
-        phase: 'destination-committed',
-        sourceRetainedAt: '2026-10-02T00:00:00.000Z'
-      })
-      expect(store.getSshTarget(TARGET.id)?.owner).toBeUndefined()
-      expect(getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))).toBe(
-        journal?.destinationEnvironmentId
-      )
-    } finally {
-      retireSource = true
-    }
+    expect(store.getSshTarget(TARGET.id)?.owner).toBeUndefined()
+    expect(getManagedOrcadFenceEnvironmentId(store.getSshTarget(TARGET.id))).toBe(environment?.id)
+    // Converting again only resumes the finished migration: nothing commits twice.
+    await expect(convert()).resolves.toMatchObject({
+      outcome: 'converted',
+      migrationId: journal?.migrationId
+    })
+    expect(destination.commits).toBe(1)
   })
 
   it('refuses before touching the host while terminals run or cannot be counted', async () => {
@@ -234,8 +218,8 @@ describe('converting an SSH host into a managed server', () => {
     reachable = true
     await expect(convert(null)).resolves.toMatchObject({ outcome: 'converted' })
     expect(destination.commits).toBe(1)
-    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
-    expect(store.getRepos()).toEqual([])
+    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.sourceRetainedAt).toBeDefined()
+    expect(store.getRepos().map((repo) => repo.id)).toEqual(['repo-1'])
   })
 })
 
@@ -295,18 +279,13 @@ describe('backing out a conversion whose server is registered but never committe
   })
 
   it('clears a stale journal a stopped server left, so the host converts again', async () => {
-    retireSource = false
-    try {
-      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
-      // A stopped server from a build that left its journal behind.
-      const [environment] = listEnvironments(userDataPath)
-      removeManagedOrcadEnvironment(userDataPath, environment!.id)
-      store.updateSshTarget(TARGET.id, { orcadFence: undefined })
-      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
-      expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
-    } finally {
-      retireSource = true
-    }
+    await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+    // A stopped server from a build that left its journal behind.
+    const [environment] = listEnvironments(userDataPath)
+    removeManagedOrcadEnvironment(userDataPath, environment!.id)
+    store.updateSshTarget(TARGET.id, { orcadFence: undefined })
+    await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
+    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
   })
 })
 
@@ -319,12 +298,7 @@ function shippedBuildView(targets: SshTarget[]): SshTarget[] {
 
 describe('a converted host across a downgrade and back', () => {
   async function convertRetained(): Promise<void> {
-    retireSource = false
-    try {
-      await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
-    } finally {
-      retireSource = true
-    }
+    await expect(convert()).resolves.toMatchObject({ outcome: 'converted' })
   }
 
   it('stays visible, with its projects, to an older build', async () => {

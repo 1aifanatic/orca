@@ -111,9 +111,8 @@ export async function withOrcadActivationLock<T>(
   } catch (error) {
     // A remote mutation whose teardown is unconfirmed may still be running: keep its fence fresh.
     if (!isUnconfirmedSshCommandTermination(error)) {
-      await (retainOnError
-        ? orphanRetainedFence(options)
-        : releaseActivationFence(options, lockRoot)
+      await (
+        retainOnError ? orphanRetainedFence(options) : releaseActivationFence(options, lockRoot)
       ).catch((releaseError: unknown) => {
         console.warn(
           `[orcad] Failed to release activation lock after an error: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
@@ -169,7 +168,9 @@ async function orphanRetainedFence(options: OrcadActivationLockOptions): Promise
     )
   } catch (error) {
     // Best effort: the fence still holds; recovery then waits out the stale window as before.
-    console.warn(`[orcad] Could not mark a retained activation fence as ownerless: ${String(error)}`)
+    console.warn(
+      `[orcad] Could not mark a retained activation fence as ownerless: ${String(error)}`
+    )
   }
 }
 

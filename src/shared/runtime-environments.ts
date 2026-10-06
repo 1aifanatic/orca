@@ -135,6 +135,8 @@ export type KnownRuntimeEnvironment = z.infer<typeof KnownRuntimeEnvironmentSche
 
 export type PublicKnownRuntimeEnvironment = Omit<KnownRuntimeEnvironment, 'endpoints'> & {
   endpoints: PublicRuntimeAccessEndpoint[]
+  /** Digest of the host's persisted E2EE public key, which its pairing handshake proves. */
+  hostKeyFingerprint?: string
 }
 
 export function redactRuntimeEnvironment(

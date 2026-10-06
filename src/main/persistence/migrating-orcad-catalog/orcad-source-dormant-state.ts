@@ -20,6 +20,7 @@ import {
 } from './orcad-source-scope'
 import { collectOrcadMigrationSourceClientState } from './orcad-source-client-state'
 import { inspectOrcadSourceWorktreeMetadata } from './orcad-source-worktree-metadata'
+import { compareKeys } from './orcad-source-key-order'
 
 export const ORCAD_MIGRATION_TRANSFERRED_DORMANT_KINDS = [
   'worktree-metadata',
@@ -248,8 +249,4 @@ function emptyBlockedCounts(): Record<TransferredDormantKind, number> {
     'ui-routing': 0,
     'saved-port-forward': 0
   }
-}
-
-function compareKeys(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0
 }

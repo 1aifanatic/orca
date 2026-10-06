@@ -86,7 +86,7 @@ export function inspectOrcadSourceWorktreeMetadata(
   return { rows, blockedCount }
 }
 
-export function retireOrcadSourceWorktreeMetadata(
+export function subtractOrcadSourceWorktreeMetadata(
   state: PersistedState,
   manifest: OrcadMigrationManifest
 ) {
@@ -116,21 +116,6 @@ export function retireOrcadSourceWorktreeMetadata(
   }
   sourceKeys.forEach((sourceKey) => delete state.worktreeMeta[sourceKey])
   pruneUnreferencedWorktreeIdentityMeta(state, removedIdentities)
-}
-
-export function assertOrcadSourceWorktreeMetadataRetired(
-  state: PersistedState,
-  manifest: OrcadMigrationManifest
-) {
-  const scope = createOrcadMigrationSourceScope({
-    source: manifest.source,
-    catalog: manifest.payload,
-    repos: state.repos
-  })
-  // Rows only: the host's rows outside this manifest belong to another migration of its chain.
-  if (inspectOrcadSourceWorktreeMetadata(state, scope).rows.length) {
-    throw new Error('orcad_migration_source_worktree_metadata_reappeared')
-  }
 }
 
 /** An alias whose identities hold no metadata, as a profile that lost them leaves behind. */

@@ -67,8 +67,8 @@ export type HostServerOnConnectDeps = {
   ensureTunnel: (environmentId: string) => Promise<void>
   /** Behind the tunnel: answers, or is started from its activated slot if proven stopped. */
   ensureServing: (environmentId: string) => Promise<OrcadManagedServing>
-  /** Retires a retained source once retirement is switched on; a failure only defers it. */
-  retireRetainedSource: (target: SshTarget) => Promise<void>
+  /** Marks a commit whose reply outlived the move as finished; its source rows are kept. */
+  retainCommittedSource: (target: SshTarget) => void
   /** False when this build carries no orcad template, so nothing is tried on the host. */
   hasTemplate: () => boolean
   /** A recorded "orcad can't run here" whose key still matches this build. */
@@ -83,7 +83,7 @@ export type HostServerOnConnectDeps = {
     target: SshTarget,
     hostProof: HostServerTerminalVerdict | null
   ) => Promise<OrcadManagedConversionResult>
-  /** A registered server whose conversion has not committed and been kept or retired yet. */
+  /** A registered server whose conversion has not committed and been kept yet. */
   hasUnfinishedConversion: (target: SshTarget) => boolean
   /** Releases a conversion fence once its server provably holds nothing, so the relay serves. */
   abandonConversion: (target: SshTarget) => Promise<void>
@@ -154,9 +154,11 @@ async function decide(
       // Still the managed route: a stopped server says nothing about the host's terminals.
       return { route: 'managed', environmentId: existing, serving }
     }
-    await deps.retireRetainedSource(target).catch((error: unknown) => {
-      console.warn('[ssh] Source retirement deferred to a later connect:', error)
-    })
+    try {
+      deps.retainCommittedSource(target)
+    } catch (error) {
+      console.warn('[ssh] Could not mark a finished migration retained:', error)
+    }
     const { note, reason, recorded } = await checkManagedServerUpdate(target, existing, deps, () =>
       deps.progress(target, 'updating')
     )

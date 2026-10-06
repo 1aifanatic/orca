@@ -6,10 +6,6 @@
  * crash leaves either nothing, a journal without a fence (stale, never authority), or both.
  * A fence without a journal is never released here: only the destination can say what happened.
  */
-import {
-  currentOrcadSourceStateFingerprint,
-  type OrcadSourceStateStore
-} from './orcad-retained-source-state'
 import { randomUUID } from 'node:crypto'
 import { getManagedOrcadFenceEnvironmentId } from '../../shared/managed-orcad-ssh-owner'
 import type { OrcadMigrationBlocker } from '../../shared/orcad-migration-preflight'
@@ -44,7 +40,7 @@ export type OrcadMigrationFenceState =
   | { state: 'owned-by-deploy'; environmentId: string }
   /** Owner with no journal (a downgrade dropped it, or it never landed): recover, never release. */
   | { state: 'fenced-unverifiable'; environmentId: string }
-  /** Journal whose fence is gone or changed: it can never authorize staging or retirement. */
+  /** Journal whose fence is gone or changed: it can never authorize staging. */
   | { state: 'stale-journal'; cutover: OrcadMigrationSourceCutover }
 
 /** Throws when the journal cannot be read: an unreadable record keeps the host fenced. */
@@ -80,7 +76,7 @@ export type OrcadMigrationFenceResult =
 
 export async function fenceOrcadMigrationSource(args: {
   userDataPath: string
-  store: OrcadMigrationPreflightStore & OrcadSourceStateStore
+  store: OrcadMigrationPreflightStore
   claims: SshTargetOrcadClaims
   targetId: string
   destinationEnvironmentId: string
@@ -154,7 +150,6 @@ export async function fenceOrcadMigrationSource(args: {
     manifestSha256: manifest.manifestSha256,
     provenPtyIds: args.terminalProof.provenPtyIds,
     // Taken with the export, before any commit is possible: the only proof of what the server holds.
-    ...stateBaseline(args.store, target),
     manifest
   }
   writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
@@ -241,13 +236,4 @@ function refuse(
   reason: string
 ): Extract<OrcadMigrationFenceResult, { outcome: 'refused' }> {
   return { outcome: 'refused', verdict, code, reason }
-}
-
-/** None when a session cannot be read: the retained source then stays unverified for good. */
-function stateBaseline(
-  store: OrcadSourceStateStore,
-  target: SshTarget
-): Pick<OrcadMigrationSourceCutover, 'sourceStateFingerprint'> {
-  const fingerprint = currentOrcadSourceStateFingerprint(store, target)
-  return fingerprint ? { sourceStateFingerprint: fingerprint } : {}
 }

@@ -12,18 +12,16 @@ import type { WorkspaceSessionState } from '../../shared/workspace-session-state
 import { folderWorkspaceKey } from '../../shared/workspace-scope'
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 import { Store } from '../persistence/loading-store/store'
-import {
-  listOrcadMigrationSourceCutovers,
-  writeOrcadMigrationSourceCutover
-} from './orcad-migration-cutover-journal'
+import { listOrcadMigrationSourceCutovers } from './orcad-migration-cutover-journal'
 import { fakeOrcadMigrationDestination } from './orcad-migration-destination-fake'
 import { keepOrcadServerVersion, runOrcadDeltaMove } from './orcad-migration-delta-move'
 import { planOrcadDeltaMove } from './orcad-migration-delta-plan'
 import { latestOrcadMigrationInto } from './orcad-migration-rollback-mark'
 import { retainOrcadMigrationSource } from './orcad-migration-source-retention'
 import { reconcileManagedOrcadSshTargets, visibleRepos } from './orcad-retained-source'
-import { retireRetainedOrcadSourceChain } from './orcad-retained-source-retirement'
 import { SshConnectionStore } from './ssh-connection-store'
+import { resolveHostServerOnConnect } from './ssh-host-server-on-connect'
+import { hostServerDepsStub } from './ssh-host-server-on-connect-test-deps'
 import { runTargetLifecycle } from '../ipc/ssh-target-lifecycle-queue'
 
 const mocks = vi.hoisted(() => {
@@ -118,8 +116,7 @@ async function convertedThenChangedOnOlderBuild(): Promise<void> {
       censusHost: async () => ({ verdict: 'exited', count: 0 }),
       destinationFor: () => destination,
       releaseDirectSession: async () => {},
-      now,
-      retireSource: () => false
+      now
     })
   ).resolves.toMatchObject({ outcome: 'converted' })
   store.addRepo(repo('repo-2', '/srv/tool'))
@@ -311,24 +308,6 @@ describe('moving what an older build added to a converted host', () => {
     expect(destination.commits).toBe(1)
   })
 
-  it('retires both manifests once retirement is on, never before the delta commits', async () => {
-    await convertedThenChangedOnOlderBuild()
-    const target = () => store.getSshTarget(TARGET.id)!
-    const lifecycle = <T>(_id: string, run: () => Promise<T>) => run()
-    // Changed and not yet moved: nothing retires.
-    await expect(
-      retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
-    ).resolves.toBe('skipped')
-    expect(store.getRepos()).toHaveLength(2)
-
-    await deltaMove()
-    await expect(
-      retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
-    ).resolves.toBe('retired')
-    expect(store.getRepos()).toEqual([])
-    expect(getManagedOrcadFenceEnvironmentId(target())).toBe(listEnvironments(userDataPath)[0]?.id)
-  })
-
   it('survives a second downgrade and re-upgrade after the delta move', async () => {
     await convertedThenChangedOnOlderBuild()
     await deltaMove()
@@ -451,37 +430,6 @@ describe('moving what an older build added to a converted host', () => {
     expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
     await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
   })
-
-  it('retires a moved project with metadata an older build added to it', async () => {
-    await convertedThenChangedOnOlderBuild()
-    store.setWorktreeMetaForHost('repo-1::/srv/app-feature', `ssh:${TARGET.id}`, {
-      displayName: 'feature'
-    })
-    await deltaMove()
-    const lifecycle = <T>(_id: string, run: () => Promise<T>) => run()
-    await expect(
-      retireRetainedOrcadSourceChain(userDataPath, store, store.getSshTarget(TARGET.id)!, lifecycle)
-    ).resolves.toBe('retired')
-    expect(store.getAllWorktreeMetaForHost(`ssh:${TARGET.id}`)).toEqual({})
-    expect(listOrcadMigrationSourceCutovers(userDataPath)).toEqual([])
-  })
-
-  it('resumes a retirement that failed after deleting rows, never reading it as changed', async () => {
-    await convertedThenChangedOnOlderBuild()
-    await deltaMove()
-    const lifecycle = <T>(_id: string, run: () => Promise<T>) => run()
-    const target = () => store.getSshTarget(TARGET.id)!
-    vi.spyOn(store, 'flushPendingOrThrowAsync').mockRejectedValueOnce(new Error('disk full'))
-    await expect(
-      retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
-    ).rejects.toThrow('disk full')
-    reconcileManagedOrcadSshTargets(userDataPath, store, now)
-    expect(target().orcadFence?.sourceChangedAt).toBeUndefined()
-    await expect(
-      retireRetainedOrcadSourceChain(userDataPath, store, target(), lifecycle)
-    ).resolves.toBe('retired')
-    expect(store.getRepos()).toEqual([])
-  })
 })
 
 const HOST_ID = `ssh:${TARGET.id}` as const
@@ -521,18 +469,55 @@ async function convertKeepingSource(): Promise<void> {
       censusHost: async () => ({ verdict: 'exited', count: 0 }),
       destinationFor: () => destination,
       releaseDirectSession: async () => {},
-      now,
-      retireSource: () => false
+      now
     })
   ).resolves.toMatchObject({ outcome: 'converted' })
 }
 
-const retireChain = () =>
-  retireRetainedOrcadSourceChain(userDataPath, store, store.getSshTarget(TARGET.id)!, (_id, run) =>
-    run()
-  )
+/** Everything of the host's that this build keeps for a downgrade, as stored. */
+function retainedRows(): string {
+  return JSON.stringify({
+    repos: store.getRepos(),
+    folderWorkspaces: store.getFolderWorkspaces(),
+    projectGroups: store.getProjectGroups(),
+    hostSession: store.getWorkspaceSession(HOST_ID),
+    localSession: store.getWorkspaceSession()
+  })
+}
 
-describe('a draft an older build edited in a retained source', () => {
+const expectAllRetained = () =>
+  expect(listOrcadMigrationSourceCutovers(userDataPath).every((j) => j.sourceRetainedAt)).toBe(true)
+
+/** What a connect does with a committed head; there is no retirement step any more. */
+async function connectAgain(): Promise<void> {
+  const target = store.getSshTarget(TARGET.id)!
+  const environmentId = target.orcadFence!.environmentId
+  await resolveHostServerOnConnect(target, {
+    ...hostServerDepsStub(),
+    managedEnvironmentId: () => environmentId,
+    retainCommittedSource: (host) => {
+      const head = listOrcadMigrationSourceCutovers(userDataPath).find(
+        (journal) => journal.sshTargetId === host.id && !journal.sourceRetainedAt
+      )
+      if (head?.phase === 'destination-committed') {
+        retainOrcadMigrationSource(userDataPath, head.migrationId, now)
+      }
+    }
+  })
+}
+
+/** A restart: the profile and journals are re-read from disk by a fresh store. */
+async function restart(): Promise<void> {
+  await store.flushPendingOrThrowAsync()
+  await closeTestStores()
+  store = createSqliteTestStore(Store, { dataFile: join(userDataPath, 'orca-data.json') })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: SshConnectionStore wraps the real test store it is given.
+  sshStore = new SshConnectionStore(store as never)
+  mocks.state.targetStore = sshStore
+  reconcileManagedOrcadSshTargets(userDataPath, store, now)
+}
+
+describe('a retained source is never deleted', () => {
   it.each([
     ['a repository worktree', () => 'repo-1::/srv/app'],
     [
@@ -553,143 +538,62 @@ describe('a draft an older build edited in a retained source', () => {
         return folderWorkspaceKey(folder.id)
       }
     ]
-  ])('in %s marks the host changed and is never retired', async (_label, workspace) => {
+  ])('in %s, across connects and a restart', async (_label, workspace) => {
     const worktreeId = workspace()
     saveDraft(worktreeId, 'draft before migration')
     await convertKeepingSource()
-    expect(listOrcadMigrationSourceCutovers(userDataPath)[0]?.sourceStateFingerprint).toBeDefined()
+    // A reload only fills defaults; the snapshot is taken as stored.
+    await restart()
+    const kept = retainedRows()
 
-    // The older build edits only the draft: no project is added, removed or renamed.
-    saveDraft(worktreeId, 'draft after downgrade')
-    reconcileManagedOrcadSshTargets(userDataPath, store, now)
-
-    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
-    await expect(retireChain()).resolves.toBe('skipped')
-    expect(savedDraft(worktreeId)).toBe('draft after downgrade')
+    await connectAgain()
+    expect(retainedRows()).toBe(kept)
+    await restart()
+    await connectAgain()
+    expect(retainedRows()).toBe(kept)
+    expect(savedDraft(worktreeId)).toBe('draft before migration')
+    expectAllRetained()
   })
 
-  it('marks the host changed when an older build edits an automation it keeps', async () => {
-    const automation = store.createAutomation({
-      name: 'Nightly',
-      prompt: 'Run checks',
-      agentId: 'claude',
-      projectId: 'repo-1',
-      workspaceMode: 'new_per_run',
-      baseBranch: null,
-      timezone: 'UTC',
-      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
-      dtstart: new Date('2026-10-01T00:00:00Z').getTime(),
-      // Only a paused automation moves: a running scheduler cannot hand over mid-flight.
-      enabled: false
-    })
-    await convertKeepingSource()
-
-    store.updateAutomation(
-      automation.id,
-      { prompt: 'Run checks, then open a PR' },
-      {
-        expectedOwner: {
-          selector: {
-            kind: 'ssh',
-            targetId: TARGET.id,
-            targetGeneration: store.getSshTarget(TARGET.id)!.generation!
-          }
-        }
-      }
-    )
-    reconcileManagedOrcadSshTargets(userDataPath, store, now)
-
-    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
-    await expect(retireChain()).resolves.toBe('skipped')
-  })
-
-  // Round 6: a session no move can carry (here, the local and host partitions disagree on a tab
-  // marker) still holds the draft an older build edited, so the edit must still read as changed.
-  it('detects a draft edit in a session a move would refuse', async () => {
+  // The trade-off: identity drives "changed", so an edit inside a moved project only stays kept.
+  it('keeps an older build’s draft edit without marking the host changed', async () => {
     saveDraft('repo-1::/srv/app', 'draft before migration')
     await convertKeepingSource()
-
-    saveDraft('repo-1::/srv/app', 'NEW EDIT')
-    store.setWorkspaceSession(
-      {
-        ...store.getWorkspaceSession(HOST_ID),
-        activeTabTypeByWorktree: { 'repo-1::/srv/app': 'editor' }
-      },
-      HOST_ID
-    )
-    store.setWorkspaceSession({
-      ...store.getWorkspaceSession(),
-      activeTabTypeByWorktree: { [`${HOST_ID}|repo-1::/srv/app`]: 'terminal' }
-    })
-    reconcileManagedOrcadSshTargets(userDataPath, store, now)
-
-    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
-    await expect(retireChain()).resolves.toBe('skipped')
-    expect(savedDraft('repo-1::/srv/app')).toBe('NEW EDIT')
-  })
-
-  // Astra 3: a crash after the commit but before retention, then an older build edits the draft.
-  // Resuming retention must compare with the fence's baseline, never hash the edited draft.
-  it.each([
-    ['off', false],
-    ['on', true]
-  ])('keeps a draft edited in the crash window before retention, retirement %s', async (_l, on) => {
-    saveDraft('repo-1::/srv/app', 'draft before migration')
-    // The server commits, but its reply never arrives: the client dies before retention.
-    destination.commit.mockImplementationOnce(async () => {
-      throw new Error('client crashed after the remote commit')
-    })
-    await convertSshTargetToManagedOrcad(userDataPath, {
-      sshTargetId: TARGET.id,
-      name: 'Managed',
-      listRelayPtyIds: Object.assign(async () => [], { previous: async () => [] }),
-      censusHost: async () => ({ verdict: 'exited', count: 0 }),
-      destinationFor: () => destination,
-      releaseDirectSession: async () => {},
-      now,
-      retireSource: () => false
-    }).catch(() => {})
-    const [fenced] = listOrcadMigrationSourceCutovers(userDataPath)
-    // The baseline was written with the fence, before any commit was possible.
-    expect(fenced?.phase).not.toBe('destination-committed')
-    expect(fenced?.sourceStateFingerprint).toBeDefined()
-    const crashed = { ...fenced!, phase: 'destination-committed' as const }
-    writeOrcadMigrationSourceCutover(userDataPath, crashed)
     saveDraft('repo-1::/srv/app', 'draft after downgrade')
+    reconcileManagedOrcadSshTargets(userDataPath, store, now)
+    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
 
-    if (on) {
-      await expect(retireChain()).resolves.toBe('skipped')
-    } else {
-      // The connect's resume: retain the commit whose reply the crash outlived.
-      retainOrcadMigrationSource(userDataPath, crashed.migrationId, now)
-      reconcileManagedOrcadSshTargets(userDataPath, store, now)
-      expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
-    }
+    await connectAgain()
+    await restart()
+    await connectAgain()
     expect(savedDraft('repo-1::/srv/app')).toBe('draft after downgrade')
+    expectAllRetained()
   })
 
-  it('leaves an unchanged retained source hidden and retires it', async () => {
-    saveDraft('repo-1::/srv/app', 'draft before migration')
-    await convertKeepingSource()
+  it('keeps every row through a delta move and through keeping the server version', async () => {
+    await convertedThenChangedOnOlderBuild()
+    await restart()
+    const kept = retainedRows()
+    await expect(deltaMove()).resolves.toMatchObject({ outcome: 'moved' })
+    expect(retainedRows()).toBe(kept)
+    await restart()
+    await connectAgain()
+    expect(retainedRows()).toBe(kept)
+
+    store.addRepo(repo('repo-3', '/srv/docs'))
     reconcileManagedOrcadSshTargets(userDataPath, store, now)
-
-    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
-    await expect(retireChain()).resolves.toBe('retired')
-  })
-
-  it('never auto-retires a legacy journal that has no state baseline', async () => {
-    saveDraft('repo-1::/srv/app', 'draft before migration')
-    await convertKeepingSource()
-    const [journal] = listOrcadMigrationSourceCutovers(userDataPath)
-    const { sourceStateFingerprint: _dropped, ...legacy } = journal!
-    writeOrcadMigrationSourceCutover(userDataPath, legacy)
-    saveDraft('repo-1::/srv/app', 'draft after downgrade')
-
-    reconcileManagedOrcadSshTargets(userDataPath, store, now)
-    // Unverified, not changed: it stays hidden as before, and its state is kept.
-    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeUndefined()
-    await expect(retireChain()).resolves.toBe('skipped')
-    expect(savedDraft('repo-1::/srv/app')).toBe('draft after downgrade')
+    const changed = retainedRows()
+    await keepOrcadServerVersion({
+      userDataPath,
+      store,
+      claims: sshStore.getOrcadRuntimeClaims(),
+      target: store.getSshTarget(TARGET.id)!
+    })
+    expect(retainedRows()).toBe(changed)
+    await restart()
+    await connectAgain()
+    expect(retainedRows()).toBe(changed)
+    expectAllRetained()
   })
 })
 

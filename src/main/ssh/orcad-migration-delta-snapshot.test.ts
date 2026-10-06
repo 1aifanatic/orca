@@ -138,8 +138,7 @@ async function convertedThenAdded(addOnOlderBuild: () => string): Promise<string
       censusHost: async () => ({ verdict: 'exited', count: 0 }),
       destinationFor: () => destination,
       releaseDirectSession: async () => {},
-      now,
-      retireSource: () => false
+      now
     })
   ).resolves.toMatchObject({ outcome: 'converted' })
   const worktreeId = addOnOlderBuild()
@@ -197,19 +196,20 @@ describe('a draft typed while a delta move checks terminals', () => {
         return folderWorkspaceKey(folder.id)
       }
     ]
-  ])('in %s refuses the move rather than bless the newer draft', async (_label, add) => {
+  ])('in %s moves as planned and keeps the newer draft in the source', async (_label, add) => {
     const worktreeId = await convertedThenAdded(add)
 
     await expect(
       deltaMoveTypingDuringTerminalCheck(() =>
         saveDraft(worktreeId, 'typed while the terminal check awaited')
       )
-    ).resolves.toMatchObject({ outcome: 'refused', code: 'orcad_delta_source_changed' })
+    ).resolves.toMatchObject({ outcome: 'moved' })
 
-    // Nothing moved, so nothing will be retired: the newer draft stays, and the host stays marked.
-    expect(destination.commits).toBe(1)
-    expect(listOrcadMigrationSourceCutovers(userDataPath)).toHaveLength(1)
-    expect(store.getSshTarget(TARGET.id)?.orcadFence?.sourceChangedAt).toBeDefined()
+    // The server gets the draft the plan saw; the newer one stays in the retained rows.
+    expect(destination.commits).toBe(2)
+    expect(listOrcadMigrationSourceCutovers(userDataPath).every((j) => j.sourceRetainedAt)).toBe(
+      true
+    )
     expect(savedDraft(worktreeId)).toBe('typed while the terminal check awaited')
   })
 

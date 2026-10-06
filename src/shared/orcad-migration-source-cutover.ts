@@ -15,6 +15,7 @@ export const ORCAD_MIGRATION_SOURCE_CUTOVER_PHASES = [
   'source-fenced',
   'destination-staged',
   'destination-committed',
+  // Written only by earlier builds; read as committed, and nothing writes it now.
   'source-retired'
 ] as const
 
@@ -42,11 +43,6 @@ const CutoverRecordSchema = z.object({
   supersedesMigrationId: z.string().min(1).max(128).optional(),
   // What the retained source must still look like; absent means this manifest's own catalog.
   sourceBaselineFingerprint: z.string().min(1).max(64).optional(),
-  // The retained source's substantive state (drafts, names, settings) when it was last proven equal
-  // to what the server holds; absent on older journals, whose source is then never auto-retired.
-  sourceStateFingerprint: z.string().min(1).max(80).optional(),
-  // Retirement started on this chain: rows may already be gone, so it is never read as "changed".
-  sourceRetiringAt: z.string().datetime().optional(),
   manifest: z.unknown()
 })
 
@@ -54,7 +50,7 @@ export type OrcadMigrationSourceCutover = Omit<z.infer<typeof CutoverRecordSchem
   manifest: OrcadMigrationManifest
 }
 
-/** Committed and retained: finished for this build, waiting only for source retirement. */
+/** Committed and retained: finished for this build, its source rows kept for a downgrade. */
 export function isRetainedOrcadMigrationSourceCutover(
   cutover: Pick<OrcadMigrationSourceCutover, 'phase' | 'sourceRetainedAt'>
 ): boolean {

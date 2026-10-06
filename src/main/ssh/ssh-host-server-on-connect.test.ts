@@ -8,38 +8,11 @@ import {
   resolveHostServerOnConnect,
   type HostServerOnConnectDeps
 } from './ssh-host-server-on-connect'
+import { hostServerDepsStub } from './ssh-host-server-on-connect-test-deps'
 
 const target: SshTarget = { id: 'ssh-1', label: 'Box', host: 'box', port: 22, username: 'me' }
-// oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the orchestrator reads only the environment id.
-const environment = { id: 'env-1' } as never
 
-function deps(overrides: Partial<HostServerOnConnectDeps> = {}): HostServerOnConnectDeps {
-  return {
-    managedEnvironmentId: () => null,
-    ensureTunnel: vi.fn(async () => undefined),
-    ensureServing: vi.fn(async () => ({ state: 'serving' as const })),
-    retireRetainedSource: vi.fn(async () => undefined),
-    hasUnfinishedConversion: () => false,
-    abandonConversion: vi.fn(async () => undefined),
-    abandonDeploy: vi.fn(async () => undefined),
-    hasTemplate: () => true,
-    recordedUnavailable: () => null,
-    recordUnavailable: vi.fn(),
-    isEmptyHost: () => false,
-    relayTerminals: vi.fn(async () => ({ verdict: 'exited' as const, count: 0 })),
-    deploy: vi.fn(async () => ({ outcome: 'created' as const, environment, activeVersion: '1' })),
-    convert: vi.fn(async () => ({ outcome: 'converted' as const, environment, migrationId: 'm' })),
-    progress: vi.fn(),
-    isFencedBeforeStaging: () => false,
-    releaseUnreachableSetup: vi.fn(async () => undefined),
-    report: vi.fn(),
-    autoUpdate: vi.fn(async () => ({ outcome: 'skipped' as const, reason: 'current' as const })),
-    recordedUpdateFailure: () => null,
-    recordUpdateFailure: vi.fn(),
-    clearUpdateFailure: vi.fn(),
-    ...overrides
-  }
-}
+const deps = hostServerDepsStub
 
 describe('which server an SSH host runs on connect', () => {
   it('connects a converted host through its tunnel', async () => {
@@ -169,7 +142,7 @@ describe('which server an SSH host runs on connect', () => {
     expect(remembered.convert).not.toHaveBeenCalled()
   })
 
-  it('keeps a host an older build changed on the relay, and retires a retained source when on', async () => {
+  it('keeps a host an older build changed on the relay, and still connects when retaining fails', async () => {
     const changed = deps({ managedEnvironmentId: () => 'env-1' })
     await expect(
       resolveHostServerOnConnect(
@@ -185,15 +158,15 @@ describe('which server an SSH host runs on connect', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const managed = deps({
       managedEnvironmentId: () => 'env-1',
-      retireRetainedSource: vi.fn(async () => {
-        throw new Error('flush failed')
+      retainCommittedSource: vi.fn(() => {
+        throw new Error('journal unwritable')
       })
     })
     await expect(resolveHostServerOnConnect(target, managed)).resolves.toEqual({
       route: 'managed',
       environmentId: 'env-1'
     })
-    expect(managed.retireRetainedSource).toHaveBeenCalledWith(target)
+    expect(managed.retainCommittedSource).toHaveBeenCalledWith(target)
     warn.mockRestore()
   })
 
@@ -279,7 +252,7 @@ describe('which server an SSH host runs on connect', () => {
     // No census ran, so the conversion must prove the host's terminals itself.
     expect(d.convert).toHaveBeenCalledWith(target, null)
     expect(d.relayTerminals).not.toHaveBeenCalled()
-    expect(d.retireRetainedSource).not.toHaveBeenCalled()
+    expect(d.retainCommittedSource).not.toHaveBeenCalled()
   })
 
   it('backs an uncommitted conversion out to the relay when its commit fails', async () => {
