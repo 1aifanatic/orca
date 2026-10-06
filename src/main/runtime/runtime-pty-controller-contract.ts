@@ -15,6 +15,11 @@ import type { WriteSettlement } from '../../shared/pty-write-settlement'
 import type { LaunchFile } from '../../shared/launch-prompt-file'
 import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 
+export type PtyInventoryRefreshOptions = {
+  includeForegroundProcessEvidence?: boolean
+  refreshForegroundAgents?: boolean
+}
+
 export type RuntimePtyController = {
   claimStablePaneCreate?(args: {
     worktreeId: string
