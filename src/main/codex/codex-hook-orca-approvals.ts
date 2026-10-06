@@ -9,9 +9,11 @@ import {
 import {
   CODEX_EVENTS,
   CODEX_EVENT_LABEL,
+  computeOrcaCodexHookHashes,
   getCodexConfigTomlPath,
   getConfigPath
 } from './codex-hook-definition'
+import { readEveryKnownCodexHookHashes } from './codex-hook-hash-lookup'
 
 /** One Codex home's hook files, and every path Codex may key its entries by. */
 export type CodexHookHome = {
@@ -73,6 +75,8 @@ export function approvalsAtOrcaEntries(
 /**
  * The hash this home approves Orca's entry with, per event: the stopgap keeps
  * a working entry while Codex has not answered. Empty when config.toml cannot be read.
+ * Only a hash Orca's entry may carry counts: keys are positional, so a removed
+ * user hook's approval can be left at Orca's key.
  */
 export function readApprovedOrcaHashes(
   home: CodexHookHome,
@@ -85,9 +89,15 @@ export function readApprovedOrcaHashes(
     return {}
   }
   const slots = findOrcaEntrySlots(readHooksJson(home.hooksJsonPath)?.hooks, command)
+  const orcaHashes = [computeOrcaCodexHookHashes(command), ...readEveryKnownCodexHookHashes()]
   return Object.fromEntries(
     [...approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)].flatMap(
-      ([eventLabel, [approval]]) => (approval ? [[eventLabel, approval.trustedHash]] : [])
+      ([eventLabel, approvals]) => {
+        const approval = approvals.find(({ trustedHash }) =>
+          orcaHashes.some((hashes) => hashes[eventLabel] === trustedHash)
+        )
+        return approval ? [[eventLabel, approval.trustedHash]] : []
+      }
     )
   )
 }

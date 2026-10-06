@@ -567,6 +567,27 @@ describe('managed-home Codex hook approval', () => {
       )
     })
 
+    it("replaces a user hook's approval left at Orca's key with Orca's hash", async () => {
+      useAnswer(timedOut)
+      const service = new CodexHookService()
+      await service.install()
+      // Why: keys are positional; removing a user hook ahead of Orca's leaves its approval here.
+      upsertHookTrustEntries(join(managedHome(), 'config.toml'), [
+        {
+          sourcePath: getCodexExplicitHomeHookSourcePath(join(managedHome(), 'hooks.json')),
+          eventLabel: 'stop',
+          groupIndex: 0,
+          handlerIndex: 0,
+          command: command(),
+          trustedHash: 'sha256:user'
+        }
+      ])
+
+      await service.install()
+
+      expect(stopApproval()).toBe(orcaStop())
+    })
+
     it("replaces Orca's hash with Codex's once Codex answers", async () => {
       useAnswer(timedOut)
       const service = new CodexHookService()
