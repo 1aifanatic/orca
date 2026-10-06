@@ -58,15 +58,14 @@ const {
 
 // `pnpm run <script> -- --base x` forwards the `--`, which would turn every option positional.
 const rawArgs = process.argv.slice(2)
-const { values, positionals } = parseArgs({
+const { values } = parseArgs({
   args: rawArgs[0] === '--' ? rawArgs.slice(1) : rawArgs,
-  allowPositionals: true,
   options: {
     base: { type: 'string' },
     head: { type: 'string' },
     'work-dir': { type: 'string' },
     out: { type: 'string' },
-    'skip-head-build': { type: 'boolean', default: false }
+    grep: { type: 'string', short: 'g' }
   }
 })
 
@@ -89,28 +88,34 @@ function git(args) {
 }
 
 // npm_execpath is pnpm's JS entry (run under node), a native pnpm binary (corepack), or unset.
-function pnpm(args, cwd) {
+function pnpm(args, cwd, env = process.env) {
   const entry = process.env.npm_execpath
   if (entry && /\.[cm]?js$/i.test(entry)) {
-    run(process.execPath, [entry, ...args], cwd)
+    run(process.execPath, [entry, ...args], cwd, env)
   } else if (entry && /pnpm/i.test(basename(entry)) && existsSync(entry)) {
-    run(entry, args, cwd)
+    run(entry, args, cwd, env)
   } else {
-    run('pnpm', args, cwd)
+    run('pnpm', args, cwd, env)
   }
 }
 
-/** A detached worktree per commit, installed and built once; the stamp marks a finished build. */
+/** A detached worktree per commit, installed and built once; a failed build throws before stamping. */
 function prepareCheckout(sha, workDir) {
   const tree = join(workDir, sha.slice(0, 12))
   if (!existsSync(tree)) {
     git(['worktree', 'add', '--detach', tree, sha])
   }
-  if (readStamp(tree) === sha) {
-    return { tree, built: true }
+  if (readStamp(tree) !== sha) {
+    pnpm(['install', '--frozen-lockfile', '--prefer-offline'], tree)
+    // Mirrors tests/e2e/global-setup.ts's build, so SKIP_BUILD later launches exactly this output.
+    pnpm(['exec', 'electron-vite', 'build', '--mode', 'e2e'], tree, {
+      ...process.env,
+      VITE_EXPOSE_STORE: 'true'
+    })
+    pnpm(['run', 'build:cli'], tree)
+    writeFileSync(join(tree, BUILD_STAMP), `${sha}\n`)
   }
-  pnpm(['install', '--frozen-lockfile', '--prefer-offline'], tree)
-  return { tree, built: false }
+  return { tree, skipBuild: true }
 }
 
 function readStamp(tree) {
@@ -140,21 +145,18 @@ function captureSide(label, side, outRoot) {
       '--project',
       'electron-headless',
       '--workers=1',
-      ...positionals
+      ...(values.grep ? ['--grep', values.grep] : [])
     ],
     side.tree,
     {
       ...process.env,
       ORCA_BACKGROUND_LAUNCH: '1',
       [TERMINAL_LAYOUT_PARITY_OUT_ENV]: outDir,
-      ...(side.built ? { SKIP_BUILD: '1' } : {})
+      // The working tree builds in Playwright's global setup; checkouts were built above.
+      ...(side.skipBuild ? { SKIP_BUILD: '1' } : {})
     },
     { allowFailure: true }
   )
-  if (side.sha && existsSync(join(side.tree, 'out', 'main', 'index.js'))) {
-    writeFileSync(join(side.tree, BUILD_STAMP), `${side.sha}\n`)
-    side.built = true
-  }
   return { outDir, passed }
 }
 
@@ -185,7 +187,7 @@ function main() {
     ? headSha === baseSha
       ? base
       : { sha: headSha, ...prepareCheckout(headSha, workDir) }
-    : { sha: null, tree: repoRoot, built: values['skip-head-build'] }
+    : { sha: null, tree: repoRoot, skipBuild: false }
 
   const baseRun = captureSide('base', base, outRoot)
   const headRun = captureSide('head', head, outRoot)

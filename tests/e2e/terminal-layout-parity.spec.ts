@@ -177,8 +177,8 @@ type ParityScenario = {
   id: string
   setup?: (page: Page) => Promise<ScenarioSetup>
   journey: (journey: Journey) => Promise<void>
-  /** Relaunch and also capture the restored renderer and the next save. */
-  restart?: { expectedPaneCount: number }
+  /** Relaunch (`times`, default once) and capture each restored renderer and the next save. */
+  restart?: { expectedPaneCount: number; times?: number }
 }
 
 /** Quit through the shared helper and report how the process ended; a forced kill skips the final save. */
@@ -224,19 +224,19 @@ async function runScenario(testInfo: TestInfo, scenario: ParityScenario): Promis
     const persisted = readPersistedSessions(session.userDataDir)
     checkpoints.push({ label: 'after-quit', renderer, persisted, exit })
 
-    if (scenario.restart) {
-      const second = await session.launch()
-      app = second.app
-      await bootstrapRestoredLaunch(second.page, setup.worktreeId)
-      await waitForBoundPanes(second.page, scenario.restart.expectedPaneCount)
-      const restored = await readSettledRendererLayout(second.page)
+    const { expectedPaneCount = 0, times: restarts = 1 } = scenario.restart ?? { times: 0 }
+    for (let restart = 1; restart <= restarts; restart += 1) {
+      const next = await session.launch()
+      app = next.app
+      await bootstrapRestoredLaunch(next.page, setup.worktreeId)
+      await waitForBoundPanes(next.page, expectedPaneCount)
+      const restored = await readSettledRendererLayout(next.page)
       const restartExit = await quitAndReadExit(session, app)
       app = null
-      const restoredSave = readPersistedSessions(session.userDataDir)
       checkpoints.push({
-        label: 'after-restart',
+        label: restart === 1 ? 'after-restart' : `after-restart-${restart}`,
         renderer: restored,
-        persisted: restoredSave,
+        persisted: readPersistedSessions(session.userDataDir),
         exit: restartExit
       })
     }
@@ -312,6 +312,28 @@ async function closeActivePaneFromKeyboard(page: Page, paneCount: number): Promi
     .toBe(paneCount - 1)
 }
 
+/** A real pointer drag of a pane's handle onto the tab strip, past the last tab, as a user drags a pane out. */
+async function dragPaneOutToTabStrip(journey: Journey, leafId: string): Promise<void> {
+  const { page, worktreeId } = journey
+  const handle = page.locator(`.pane[data-leaf-id="${leafId}"] .pane-drag-handle`)
+  const strip = page.locator(`[data-tab-group-strip-id][data-worktree-id="${worktreeId}"]`).first()
+  const lastTab = strip.locator(SORTABLE_TAB).last()
+  const handleBox = await handle.boundingBox()
+  const stripBox = await strip.boundingBox()
+  const lastTabBox = await lastTab.boundingBox()
+  if (!handleBox || !stripBox || !lastTabBox) {
+    throw new Error('Pane drag handle or tab strip is not laid out')
+  }
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + 4)
+  await page.mouse.down()
+  await page.mouse.move(
+    Math.min(lastTabBox.x + lastTabBox.width + 24, stripBox.x + stripBox.width - 4),
+    stripBox.y + stripBox.height / 2,
+    { steps: 20 }
+  )
+  await page.mouse.up()
+}
+
 async function splitTwice(page: Page): Promise<void> {
   await splitActiveTerminalPane(page, 'vertical')
   await waitForBoundPanes(page, 2)
@@ -385,6 +407,20 @@ const SCENARIOS: ParityScenario[] = [
       await client.call('terminal.split', { terminal: handle, direction: 'horizontal' })
       await waitForBoundPanes(page, 2)
     }
+  },
+  {
+    id: 'drag-out-to-tab',
+    journey: async (journey) => {
+      const { page } = journey
+      await splitActiveTerminalPane(page, 'vertical')
+      await waitForBoundPanes(page, 2)
+      const [, secondLeaf] = await readTerminalPaneDomLeafOrder(page)
+      await dragPaneOutToTabStrip(journey, secondLeaf!)
+      await expect(page.locator(SORTABLE_TAB)).toHaveCount(2)
+      await waitForActiveTerminalManager(page)
+      await waitForBoundPanes(page, 1)
+    },
+    restart: { expectedPaneCount: 1, times: 2 }
   },
   {
     id: 'restart-restore',
