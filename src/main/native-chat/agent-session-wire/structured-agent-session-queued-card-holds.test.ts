@@ -22,7 +22,6 @@ import {
   type NativeChatComposerPrimaryAction
 } from '../../../renderer/src/components/native-chat/native-chat-composer-primary-action'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
-import { USER_MESSAGE_SOURCE } from '../../../shared/agent-session-message-source'
 import {
   readQueuePublication,
   structuredQueueSendGate
@@ -554,8 +553,7 @@ describe('where the host would refuse the send', () => {
       messageId: card,
       body: hostTestMessage('left on the source'),
       fingerprint: 'fp-left-behind',
-      hostInstance: structuredAgentSessionHostInstance(),
-      source: USER_MESSAGE_SOURCE
+      hostInstance: structuredAgentSessionHostInstance()
     })
     const record = rig.store.getRecord(HOST_TEST_SESSION)
     if (!record) {
