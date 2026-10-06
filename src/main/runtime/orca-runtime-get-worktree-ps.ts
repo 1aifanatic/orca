@@ -16,6 +16,10 @@ import { enrichMissingRepoGitRemoteIdentities } from '../repo-git-remote-identit
 import { ensureStructuredAgentSessionHost as installStructuredAgentSessionHost } from './structured-agent-session-runtime'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
+  createStructuredAttentionMobileDelivery,
+  readStructuredAttentionWorkspaceLabels
+} from './structured-agent-session-mobile-attention'
+import {
   createStructuredAgentSessionLogger,
   neverThrowingStructuredAgentSessionLogger
 } from '../native-chat/agent-session-wire/structured-agent-session-logger'
@@ -230,6 +234,14 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         )
       },
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
+      attentionDelivery: createStructuredAttentionMobileDelivery({
+        readNotificationSettings: () => this.requireStore().getSettings().notifications,
+        readWorkspaceLabels: (scope) =>
+          readStructuredAttentionWorkspaceLabels(this.requireStore(), scope),
+        dispatch: (event) => this.mobileNotifications.dispatch(event),
+        reconcile: (state) => this.mobileNotifications.reconcileStructuredPromptAttention(state),
+        now: () => Date.now()
+      }),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.
       hasOpenDispatch: (record) =>
