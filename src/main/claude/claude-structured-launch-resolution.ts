@@ -34,7 +34,7 @@ import { resolveClaudeCommand } from '../codex-cli/command'
 import { withoutInheritedClaudeConfigDir } from './claude-config-dir-pin'
 import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
 import {
-  claudeTranscriptExists,
+  claudeLaunchResumesTranscript,
   resolveClaudeStructuredLaunchHome
 } from './claude-structured-launch-home'
 import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-support'
@@ -352,13 +352,16 @@ export function createClaudeStructuredLaunchResolver(
     const launchHome = await resolveClaudeStructuredLaunchHome(router, env, record.accountHome.path)
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
+    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
     const resumesTranscript =
       head !== null &&
-      (claudeProviderHandleLeafUuid(head) !== null ||
-        (await (deps.hasTranscript ?? claudeTranscriptExists)({
-          providerSessionId,
-          claudeConfigDir: launchHome
-        })))
+      (await claudeLaunchResumesTranscript({
+        routed: router !== undefined,
+        leafUuid,
+        providerSessionId,
+        claudeConfigDir: launchHome,
+        hasTranscript: deps.hasTranscript
+      }))
     return {
       pathToClaudeCodeExecutable: command,
       options: {
@@ -378,7 +381,7 @@ export function createClaudeStructuredLaunchResolver(
       env,
       claudeConfigDir: launchHome,
       providerSessionId,
-      resumeLeafUuid: resumesTranscript && head ? claudeProviderHandleLeafUuid(head) : null,
+      resumeLeafUuid: resumesTranscript ? leafUuid : null,
       resumesTranscript,
       continuesChain
     }

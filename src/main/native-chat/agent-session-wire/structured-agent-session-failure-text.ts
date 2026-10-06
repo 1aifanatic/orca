@@ -29,7 +29,8 @@ const TYPED_START_REFUSALS = [
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
   'managedAccountUnsupported',
-  'launchFolderMissing'
+  'launchFolderMissing',
+  'historyInOtherAccount'
 ] as const satisfies readonly (AgentSessionFailureKind &
   AgentSessionRefusalReason<'agent_session_operation_invalid'>)[]
 

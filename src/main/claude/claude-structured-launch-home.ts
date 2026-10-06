@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import type { ClaudeProfileRouter } from '../claude-accounts/claude-profile-router'
 import { applyClaudeEnvPatch } from '../claude-accounts/environment'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { resolveStructuredClaudeAccountHomePath } from '../runtime/structured-agent-account-home'
 
@@ -16,12 +17,17 @@ export async function resolveClaudeStructuredLaunchHome(
   if (!router) {
     return recordHome
   }
-  const launchHome = resolveStructuredClaudeAccountHomePath({
-    launchEnv: env,
-    wslDistro: null,
-    getClaudeConfigDirectory: () => router.systemDefaultHome()
-  })
-  applyClaudeEnvPatch(env, (await router.prepareLaunch()).envPatch)
+  const preparation = await router.prepareLaunch()
+  // Why read before the patch: System default keeps the launch env's own CLAUDE_CONFIG_DIR.
+  const launchHome =
+    preparation.provenance === 'system'
+      ? resolveStructuredClaudeAccountHomePath({
+          launchEnv: env,
+          wslDistro: null,
+          getClaudeConfigDirectory: () => router.systemDefaultHome()
+        })
+      : preparation.configDir
+  applyClaudeEnvPatch(env, preparation.envPatch)
   return launchHome
 }
 
@@ -34,4 +40,33 @@ export async function claudeTranscriptExists(input: {
     claudeProjectsDir: join(input.claudeConfigDir, 'projects')
   })
   return path !== null
+}
+
+/**
+ * Whether a chat with a recorded session resumes it. Unrouted, a stored leaf proves a transcript;
+ * routed, the selected account may not be the one holding it, and starting fresh would drop the chat.
+ */
+export async function claudeLaunchResumesTranscript(input: {
+  routed: boolean
+  leafUuid: string | null
+  providerSessionId: string
+  claudeConfigDir: string
+  hasTranscript?: typeof claudeTranscriptExists
+}): Promise<boolean> {
+  if (!input.routed && input.leafUuid !== null) {
+    return true
+  }
+  const { providerSessionId, claudeConfigDir } = input
+  if (
+    await (input.hasTranscript ?? claudeTranscriptExists)({ providerSessionId, claudeConfigDir })
+  ) {
+    return true
+  }
+  if (input.leafUuid !== null) {
+    throw new AgentSessionPreSpawnError(
+      new Error('claude transcript is not in the selected account'),
+      { reason: 'historyInOtherAccount' }
+    )
+  }
+  return false
 }

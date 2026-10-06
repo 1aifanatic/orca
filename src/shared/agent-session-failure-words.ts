@@ -224,6 +224,7 @@ const FAILURE_SENTENCES = {
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
   accountSwitchInProgress: (_context, _fact, _surface, say) => say('accountSwitchInProgress'),
   launchFolderMissing: (_context, _fact, _surface, say) => say('launchFolderMissing'),
+  historyInOtherAccount: (_context, _fact, _surface, say) => say('historyInOtherAccount'),
   managedAccountUnsupported: (context, _fact, _surface, say) =>
     joinSentences([
       say('managedAccountUnsupported'),
