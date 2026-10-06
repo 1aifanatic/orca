@@ -14,27 +14,30 @@ import {
   readCalls,
   dismissIds
 } from './structured-attention-read-retirement.test-fixture'
+import { Fragment, createElement } from 'react'
 import { act, render, waitFor } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { StructuredNotificationRead } from '../../../../shared/notification-settings-types'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import { agentSessionPromptAttentionKey } from '../../../../shared/agent-session-attention'
-import { RuntimeMobileNotificationController } from '../../../../main/runtime/runtime-mobile-notification-controller'
-import { SESSION } from '../../../../main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
+import type { StructuredNotificationRead } from '../../src/shared/notification-settings-types'
+import type { AgentJournalRenderItem } from '../../src/shared/agent-session-journal-types'
+import { agentSessionPromptAttentionKey } from '../../src/shared/agent-session-attention'
+import { RuntimeMobileNotificationController } from '../../src/main/runtime/runtime-mobile-notification-controller'
+import { SESSION } from '../../src/main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
 import { useAppStore } from '@/store'
-import { StructuredAgentSessionAttentionBridge } from './StructuredAgentSessionAttentionBridge'
+import { StructuredAgentSessionAttentionBridge } from '@/components/native-chat/StructuredAgentSessionAttentionBridge'
 
 it('reads the first accepted history even after local unread and clock targets were cleared', async () => {
   addPrompt('A')
   render(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: true })
+    )
   )
   await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
   expect(readCalls()).toBe(0)
@@ -58,11 +61,13 @@ it('reads B on return while A keeps the already-read row clock unchanged', async
       { tabId: TAB, worktreeId: WORKSPACE }
     )
   const screen = render(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed={false} />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: false })
+    )
   )
   await waitFor(() => expect(fixture.completion).toBeTypeOf('function'))
   act(() => addPrompt('A'))
@@ -79,11 +84,13 @@ it('reads B on return while A keeps the already-read row clock unchanged', async
   expect(useAppStore.getState().unreadAgentCompletionPanes[SUBJECT]).toBe('agent-completion')
   act(() => useAppStore.setState({ activeWorktreeId: WORKSPACE }))
   screen.rerender(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: true })
+    )
   )
   await waitFor(() =>
     expect(dismissIds()).toEqual(
@@ -98,11 +105,13 @@ it('reads B on return while A keeps the already-read row clock unchanged', async
 it('reads a newly accepted visible prompt without sending an RPC for text-only updates', async () => {
   addPrompt('A')
   render(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: true })
+    )
   )
   await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
   await act(async () => fixture.hydrate?.())
@@ -138,11 +147,13 @@ it('keeps hydration unread while away and retries the read on presence return', 
   transport.away.mockResolvedValue(true)
   addPrompt('A')
   render(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: true })
+    )
   )
   await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
   await act(async () => fixture.hydrate?.())
@@ -177,11 +188,13 @@ it.each(['transport-error', 'false-result'] as const)(
       return original?.(...args)
     })
     render(
-      <>
-        <StructuredAgentSessionAttentionBridge />
-        <AttentionPolicy />
-        <ReadSurface viewed target={target} />
-      </>
+      createElement(
+        Fragment,
+        null,
+        createElement(StructuredAgentSessionAttentionBridge),
+        createElement(AttentionPolicy),
+        createElement(ReadSurface, { viewed: true, target: target })
+      )
     )
     await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
     await act(async () => fixture.hydrate?.())
@@ -236,11 +249,13 @@ it('retries a failed local desktop relay withdrawal on a later explicit read', a
       })
       .mockRejectedValueOnce(new Error('scripted local retirement failure'))
     render(
-      <>
-        <StructuredAgentSessionAttentionBridge />
-        <AttentionPolicy />
-        <ReadSurface viewed />
-      </>
+      createElement(
+        Fragment,
+        null,
+        createElement(StructuredAgentSessionAttentionBridge),
+        createElement(AttentionPolicy),
+        createElement(ReadSurface, { viewed: true })
+      )
     )
     await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
     await act(async () => fixture.hydrate?.())
@@ -271,11 +286,13 @@ it('an older failed attempt cannot erase a newer success when the observation re
     return original?.(...args)
   })
   render(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: true })
+    )
   )
   await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
   await act(async () => fixture.hydrate?.())

@@ -146,9 +146,9 @@ describe('host prompt delivery and retirement', () => {
             .filter((event) => event.type === 'notification' && event.agentState === 'blocked')
             .map((event) => event.notificationId)
         ).toEqual(promptAnnounced ? [key] : [])
-        const failures = events.filter(
-          (event) => event.type === 'notification' && event.agentState === 'done'
-        )
+        const failures = events
+          .filter((event) => event.type === 'notification')
+          .filter((event) => event.agentState === 'done')
         expect(failures).toHaveLength(outcome === 'failure' ? 1 : 0)
         if (outcome === 'failure') {
           expect(failures[0]?.title).toContain('failed')

@@ -5,22 +5,23 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
-import type { NotificationSettings } from '../../../../shared/notification-settings-types'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import type { AgentSessionHistoryPage } from '../../../../shared/agent-session-wire'
-import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
-import { RUNTIME_CAPABILITIES } from '../../../../shared/protocol-version'
+import type { NotificationSettings } from '../../src/shared/notification-settings-types'
+import type { AgentJournalRenderItem } from '../../src/shared/agent-session-journal-types'
+import type { AgentSessionHistoryPage } from '../../src/shared/agent-session-wire'
+import type { RuntimeRpcResponse } from '../../src/shared/runtime-rpc-envelope'
+import { createGlobalSettingsFixture } from '../../src/shared/global-settings-test-fixture'
+import { RUNTIME_CAPABILITIES } from '../../src/shared/protocol-version'
 import {
   structuredAgentSessionPaneKey,
   projectStructuredAgentSessionStatusState
-} from '../../../../shared/structured-agent-session-projection'
-import { agentSessionAttentionSubjectPrefix } from '../../../../shared/agent-session-attention'
-import { StructuredAgentSessionTurnCompletionFeed } from '../../../../main/native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
+} from '../../src/shared/structured-agent-session-projection'
+import { agentSessionAttentionSubjectPrefix } from '../../src/shared/agent-session-attention'
+import { StructuredAgentSessionTurnCompletionFeed } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
 import {
   RuntimeMobileNotificationController,
   type MobileNotificationEvent
-} from '../../../../main/runtime/runtime-mobile-notification-controller'
-import { createStructuredAttentionMobileDelivery } from '../../../../main/runtime/structured-agent-session-mobile-attention'
+} from '../../src/main/runtime/runtime-mobile-notification-controller'
+import { createStructuredAttentionMobileDelivery } from '../../src/main/runtime/structured-agent-session-mobile-attention'
 import {
   call,
   hostCalls,
@@ -28,7 +29,7 @@ import {
   clearStructuredHostStub,
   STRUCTURED_CLIENT,
   SESSION
-} from '../../../../main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
+} from '../../src/main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
 import {
   makeUnifiedTab,
   makeTabGroup,
@@ -58,8 +59,8 @@ vi.mock('@/store', async () => {
 })
 import { useAppStore } from '@/store'
 import { useAutoAckViewedAgent } from '@/hooks/useAutoAckViewedAgent'
-import { useStructuredAgentSessionRead } from './use-structured-agent-session-read'
-import { resetStructuredAgentSessionReadOwnersForTests } from './structured-agent-session-read-owner'
+import { useStructuredAgentSessionRead } from '@/components/native-chat/use-structured-agent-session-read'
+import { resetStructuredAgentSessionReadOwnersForTests } from '@/components/native-chat/structured-agent-session-read-owner'
 import { resetStructuredAgentSessionTurnCompletionFeedsForTests } from '@/runtime/structured-agent-session-turn-completion-feed'
 
 export const WORKSPACE = 'repo1::/tmp/wt'
@@ -138,6 +139,7 @@ export function publishView(): void {
   fixture.journal?.({
     id: 'journal',
     ok: true,
+    _meta: { runtimeId: 'attention-host' },
     result: { type: 'snapshot', sessionId: SESSION, page: history(), fence: 1 }
   })
 }
@@ -240,7 +242,12 @@ beforeEach(() => {
     emit: (event) => {
       if (event.type !== 'end') {
         delivery.deliver(event, undefined)
-        fixture.completion?.({ id: 'completion', ok: true, result: event })
+        fixture.completion?.({
+          id: 'completion',
+          ok: true,
+          _meta: { runtimeId: 'attention-host' },
+          result: event
+        })
       }
     }
   })
@@ -291,7 +298,6 @@ beforeEach(() => {
     }
     return reply.result
   })
-  const state = useAppStore.getState()
   useAppStore.setState({
     repos: [TEST_REPO],
     worktreesByRepo: { repo1: [makeWorktree({ id: WORKSPACE, repoId: 'repo1' })] },
@@ -324,7 +330,7 @@ beforeEach(() => {
     unreadTerminalTabs: {},
     unreadTerminalPanes: {},
     unreadAgentCompletionPanes: {},
-    settings: { ...state.settings, experimentalTerminalAttention: true }
+    settings: createGlobalSettingsFixture({ experimentalTerminalAttention: true })
   })
 })
 afterEach(() => {

@@ -2,20 +2,24 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
+import type { AgentJournalRenderItem } from '../../src/shared/agent-session-journal-types'
 import {
   agentSessionAttentionSubjectPrefix,
   agentSessionPromptAttentionKey
-} from '../../shared/agent-session-attention'
-import { projectStructuredAgentSessionStatusState } from '../../shared/structured-agent-session-projection'
-import { AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
-import { StructuredAgentSessionTurnCompletionFeed } from '../native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
+} from '../../src/shared/agent-session-attention'
+import { projectStructuredAgentSessionStatusState } from '../../src/shared/structured-agent-session-projection'
+import { AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY } from '../../src/shared/protocol-version'
+import { StructuredAgentSessionTurnCompletionFeed } from '../../src/main/native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
 import {
   RuntimeMobileNotificationController,
   type MobileNotificationEvent
-} from './runtime-mobile-notification-controller'
-import { createStructuredAttentionMobileDelivery } from './structured-agent-session-mobile-attention'
-import { createHarness, flush, registration } from './push/push-dispatcher.test-fixture'
+} from '../../src/main/runtime/runtime-mobile-notification-controller'
+import { createStructuredAttentionMobileDelivery } from '../../src/main/runtime/structured-agent-session-mobile-attention'
+import {
+  createHarness,
+  flush,
+  registration
+} from '../../src/main/runtime/push/push-dispatcher.test-fixture'
 import {
   call,
   hostCalls,
@@ -23,14 +27,14 @@ import {
   clearStructuredHostStub,
   STRUCTURED_CLIENT,
   SESSION
-} from './rpc/methods/structured-agent-session-rpc.test-fixture'
+} from '../../src/main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
 
 const transport = vi.hoisted(() => ({ call: vi.fn(), supports: vi.fn() }))
 vi.mock('@/runtime/runtime-rpc-client', () => ({
   callRuntimeRpc: transport.call,
   runtimeEnvironmentSupportsCapability: transport.supports
 }))
-import { acknowledgeStructuredAgentSessionAttention } from '../../renderer/src/runtime/structured-agent-session-client'
+import { acknowledgeStructuredAgentSessionAttention } from '../../src/renderer/src/runtime/structured-agent-session-client'
 
 const SCOPE = {
   executionHostId: 'local',

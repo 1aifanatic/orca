@@ -16,30 +16,31 @@ import {
   readCalls,
   dismissIds
 } from './structured-attention-read-retirement.test-fixture'
+import { Fragment, createElement } from 'react'
 import { act, render, waitFor } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { join } from 'node:path'
 import type {
   NotificationDispatchRequest,
   StructuredNotificationRead
-} from '../../../../shared/notification-settings-types'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+} from '../../src/shared/notification-settings-types'
+import type { AgentJournalRenderItem } from '../../src/shared/agent-session-journal-types'
 import {
   agentSessionPromptAttentionKey,
   agentSessionAttentionSubjectPrefix,
   type AgentSessionAttentionEdge
-} from '../../../../shared/agent-session-attention'
+} from '../../src/shared/agent-session-attention'
 import {
   RuntimeMobileNotificationController,
   type MobileNotificationEvent
-} from '../../../../main/runtime/runtime-mobile-notification-controller'
-import { MobileNotificationDismissalStore } from '../../../../main/runtime/mobile-notification-dismissal-store'
-import { createNotificationDeliveryService } from '../../../../main/notifications/notification-delivery-service'
-import { SESSION } from '../../../../main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
+} from '../../src/main/runtime/runtime-mobile-notification-controller'
+import { MobileNotificationDismissalStore } from '../../src/main/runtime/mobile-notification-dismissal-store'
+import { createNotificationDeliveryService } from '../../src/main/notifications/notification-delivery-service'
+import { SESSION } from '../../src/main/runtime/rpc/methods/structured-agent-session-rpc.test-fixture'
 import { makeUnifiedTab, makeWorktree } from '@/store/slices/store-test-helpers'
 import { captureAgentSubjectReads } from '@/attention/agent-subject-read-actions'
 import { useAppStore } from '@/store'
-import { StructuredAgentSessionAttentionBridge } from './StructuredAgentSessionAttentionBridge'
+import { StructuredAgentSessionAttentionBridge } from '@/components/native-chat/StructuredAgentSessionAttentionBridge'
 
 async function mountPausedRelay({ viewed = true, away = false } = {}) {
   const relayDirectory = join(fixture.directory, 'relay')
@@ -111,11 +112,13 @@ async function mountPausedRelay({ viewed = true, away = false } = {}) {
     ]
   })
   render(
-    <>
-      <StructuredAgentSessionAttentionBridge />
-      <AttentionPolicy />
-      <ReadSurface viewed={viewed} target={REMOTE_TARGET} />
-    </>
+    createElement(
+      Fragment,
+      null,
+      createElement(StructuredAgentSessionAttentionBridge),
+      createElement(AttentionPolicy),
+      createElement(ReadSurface, { viewed: viewed, target: REMOTE_TARGET })
+    )
   )
   await waitFor(() => expect(fixture.hydrate).toBeTypeOf('function'))
   await act(async () => fixture.hydrate?.())
@@ -142,7 +145,12 @@ async function mountPausedRelay({ viewed = true, away = false } = {}) {
       if (!edge) {
         throw new Error('host did not commit attention')
       }
-      attention({ id: 'completion', ok: true, result: edge })
+      attention({
+        id: 'completion',
+        ok: true,
+        _meta: { runtimeId: 'attention-host' },
+        result: edge
+      })
     },
     liveDeliveries: () => new MobileNotificationDismissalStore(relayDirectory).liveDeliveries()
   }
@@ -180,7 +188,7 @@ it.each(['visible', 'read then away', 'tab/store rerender', 'failed retirement']
     if (mode === 'tab/store rerender') {
       act(() =>
         useAppStore.setState((state) => ({
-          settings: { ...state.settings },
+          settings: state.settings ? { ...state.settings } : null,
           unifiedTabsByWorktree: {
             ...state.unifiedTabsByWorktree,
             [WORKSPACE]: state.unifiedTabsByWorktree[WORKSPACE].map((tab) => ({
@@ -316,7 +324,14 @@ it.each(['missing cursor', 'different epoch', 'different target'] as const)(
         }))
       )
       await waitFor(() => expect(fixture.completion).toBeTypeOf('function'))
-      await act(async () => fixture.completion?.({ id: 'rebound', ok: true, result: edge }))
+      await act(async () =>
+        fixture.completion?.({
+          id: 'rebound',
+          ok: true,
+          _meta: { runtimeId: 'attention-host' },
+          result: edge
+        })
+      )
     } else {
       const { journalCursor, ...oldPrompt } = edge.prompt
       expect(journalCursor).toEqual({ epoch: 'journal-a', sequence: 3 })

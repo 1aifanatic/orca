@@ -168,7 +168,7 @@ describe('notifications:dismiss by acknowledged subject', () => {
       const { dismissMobileNotification } = register({ suppressWhenFocused: false }, controller)
       const origin = (id: string, sequence: number): StructuredAttentionOrigin => ({
         scope: {
-          executionHostId: 'remote-host',
+          executionHostId: 'runtime:remote-host',
           wslDistro: null,
           workspaceId: 'remote-folder',
           workspaceKind: 'folder'
