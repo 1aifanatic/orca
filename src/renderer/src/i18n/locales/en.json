@@ -271,12 +271,6 @@
         "title": "Warn when a Codex tab shares a server",
         "description": "Shows a notice on a Codex you started yourself when it shares a server with other tabs, because its agent status may be wrong."
       }
-    },
-    "git": {
-      "automaticReviewRefresh": {
-        "title": "Automatic Review Refresh",
-        "description": "Periodically refresh pull requests, merge requests, and checks. Turn off to reduce server requests. Opening a workspace, pushing, and manual refresh still fetch the latest status."
-      }
     }
   },
   "menu": {

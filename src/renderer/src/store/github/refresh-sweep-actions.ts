@@ -57,12 +57,11 @@ export const createRefreshSweepActions = (
     const isPRStatusGrouping = state.groupBy === 'pr-status'
     const rightSidebarShowsPR = rightSidebarShowsPullRequestData(state)
     const shouldRefreshPRs =
-      state.settings?.automaticReviewRefresh !== false &&
-      (isPRStatusGrouping ||
-        rightSidebarShowsPR ||
-        (state.settings?.experimentalNewWorktreeCardStyle === true
-          ? cardProps.includes('status')
-          : cardProps.includes('pr') || rawCardProps.includes('ci')))
+      isPRStatusGrouping ||
+      rightSidebarShowsPR ||
+      (state.settings?.experimentalNewWorktreeCardStyle === true
+        ? cardProps.includes('status')
+        : cardProps.includes('pr') || rawCardProps.includes('ci'))
     if (!shouldRefreshPRs && !shouldRefreshIssues) {
       return
     }

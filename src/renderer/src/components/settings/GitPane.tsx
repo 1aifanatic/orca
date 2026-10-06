@@ -1,5 +1,3 @@
-import { AutomaticReviewRefreshSetting } from './AutomaticReviewRefreshSetting'
-import { automaticReviewRefreshMatchesSearch } from './automatic-review-refresh-setting'
 import { useEffect, useRef, useState } from 'react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { SourceControlGroupOrder } from '../../../../shared/ui-chrome-types'
@@ -169,13 +167,6 @@ export function GitPane({
     settings.branchPrefix === 'git-username' ? displayedGitUsername : customPrefixDraft
 
   const visibleSections = [
-    automaticReviewRefreshMatchesSearch(searchQuery) ? (
-      <AutomaticReviewRefreshSetting
-        key="automatic-review-refresh"
-        settings={settings}
-        updateSettings={updateSettings}
-      />
-    ) : null,
     matchesSettingsSearch(searchQuery, {
       title: translate('auto.components.settings.GitPane.330f584b50', 'Branch Prefix'),
       description: translate(

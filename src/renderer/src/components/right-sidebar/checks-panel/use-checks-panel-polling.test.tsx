@@ -2,7 +2,6 @@
 
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDefaultSettings } from '../../../../../shared/constants'
 import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 import type { PRCheckDetail } from '../../../../../shared/github/check-types'
 import type * as GitLabReviewClient from './gitlab-review-client'
@@ -96,29 +95,6 @@ describe('useChecksPanelPolling live behavior', () => {
 
     hook.rerender({ input: { ...model, isPanelVisible: false } })
     expect(poller.cleanup).toHaveBeenCalledOnce()
-  })
-
-  it('keeps one foreground fetch and removes timers when automatic refresh is disabled', async () => {
-    const model = createModel()
-    const hook = renderHook(({ input }) => useChecksPanelPolling(input), {
-      initialProps: { input: model }
-    })
-    await act(async () =>
-      hook.rerender({
-        input: {
-          ...model,
-          settings: {
-            ...getDefaultSettings('/test'),
-            automaticReviewRefresh: false
-          }
-        }
-      })
-    )
-    expect(poller.cleanup).toHaveBeenCalledOnce()
-    expect(model.fetchPRChecks).toHaveBeenCalledOnce()
-    expect(poller.install).toHaveBeenCalledOnce()
-    hook.rerender({ input: model })
-    expect(poller.install).toHaveBeenCalledTimes(2)
   })
 
   it.each([

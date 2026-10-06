@@ -66,8 +66,6 @@ export type GlobalSettings = {
   hostSettingOverrides?: Partial<Record<ExecutionHostId, HostSettingOverrides>>
   nestWorkspaces: boolean
   workspaceDirHistory?: OrcaWorkspaceLayout[]
-  /** Periodic hosted-review and checks refreshes; foreground actions still fetch. */
-  automaticReviewRefresh?: boolean
   refreshLocalBaseRefOnWorktreeCreate: boolean
   /** Set once the user dismisses the "local main is behind" suggestion toast, so
    *  the nudge to enable refreshLocalBaseRefOnWorktreeCreate never shows again. */

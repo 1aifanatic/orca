@@ -57,7 +57,6 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
     setCommentsLoading,
     gitLabProjectRefRef
   } = model
-  const automaticReviewRefresh = settings?.automaticReviewRefresh !== false
   const gitLabDetailsLoadingGenerationRef = useRef(0)
   // Fetch checks via cached store method
   const fetchChecks = useCallback(
@@ -242,10 +241,6 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
       return
     }
 
-    if (!automaticReviewRefresh) {
-      void fetchChecks()
-      return
-    }
     // Reset backoff state on PR change
     pollIntervalRef.current = 30_000
     prevChecksRef.current = ''
@@ -256,7 +251,6 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
         finishedReviewRefreshIntervalMs(pr?.state, pr?.checksStatus) ?? pollIntervalRef.current
     })
   }, [
-    automaticReviewRefresh,
     pr?.state,
     pr?.checksStatus,
     activeGitLabReview,
@@ -273,10 +267,6 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
       return
     }
 
-    if (!automaticReviewRefresh) {
-      void fetchGitLabDetails()
-      return
-    }
     pollIntervalRef.current = 30_000
     prevChecksRef.current = ''
     return installWindowVisibilityTimeoutPoller({
@@ -285,14 +275,7 @@ export function useChecksPanelPolling(model: ChecksPanelPollingInput) {
         finishedReviewRefreshIntervalMs(activeGitLabReview.state, activeGitLabReview.status) ??
         pollIntervalRef.current
     })
-  }, [
-    automaticReviewRefresh,
-    activeGitLabReview,
-    fetchGitLabDetails,
-    isPanelVisible,
-    pollIntervalRef,
-    prevChecksRef
-  ])
+  }, [activeGitLabReview, fetchGitLabDetails, isPanelVisible, pollIntervalRef, prevChecksRef])
   return { fetchChecks, fetchGitLabDetails }
 }
 

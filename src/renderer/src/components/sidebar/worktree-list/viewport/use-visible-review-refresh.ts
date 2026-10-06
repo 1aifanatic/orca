@@ -41,7 +41,6 @@ export function useVisiblePrRefreshReporting(args: {
   const reportVisibleGitHubPRRefreshCandidates = useAppStore(
     (s) => s.reportVisibleGitHubPRRefreshCandidates
   )
-  const automaticReviewRefresh = useAppStore((s) => s.settings?.automaticReviewRefresh !== false)
   const cardProps = useAppStore((s) => s.worktreeCardProperties)
   const rightSidebarShowsPR = useAppStore((s) => rightSidebarShowsPullRequestData(s))
   const sshConnectedGeneration = useAppStore((s) => s.sshConnectedGeneration)
@@ -77,7 +76,7 @@ export function useVisiblePrRefreshReporting(args: {
       (newCardStyle
         ? cardProps.includes('status')
         : cardProps.includes('pr') || cardProps.includes('ci'))
-    if (!automaticReviewRefresh || (!shouldTrackVisibleRows && !shouldTrackSidebarWorktree)) {
+    if (!shouldTrackVisibleRows && !shouldTrackSidebarWorktree) {
       if (lastVisibleRefreshKeyRef.current !== NOTHING_TO_TRACK_KEY) {
         lastVisibleRefreshKeyRef.current = NOTHING_TO_TRACK_KEY
         reportVisibleGitHubPRRefreshCandidates([], Date.now())
@@ -118,7 +117,6 @@ export function useVisiblePrRefreshReporting(args: {
     lastVisibleRefreshKeyRef.current = key
     reportVisibleGitHubPRRefreshCandidates(Array.from(visibleWorktreeIds), Date.now())
   }, [
-    automaticReviewRefresh,
     cardProps,
     currentWorktreeId,
     documentVisibilityRevision,

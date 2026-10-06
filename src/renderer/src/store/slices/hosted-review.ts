@@ -171,14 +171,6 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
       repo !== undefined
     )
     const cached = get().hostedReviewCache[cacheKey]
-    if (
-      get().settings?.automaticReviewRefresh === false &&
-      options?.staleWhileRevalidate &&
-      !options.force &&
-      !options.active
-    ) {
-      return cached?.data ?? null
-    }
     const hintKey = linkedReviewHintKey(options)
     const requestKey = hostedReviewRequestKey(cacheKey, hintKey)
     const linkedRefetch = shouldRefetchForLinkedHint(cached, hintKey)

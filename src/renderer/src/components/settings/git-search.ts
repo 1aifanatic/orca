@@ -1,11 +1,9 @@
-import { automaticReviewRefreshSearchEntry } from './automatic-review-refresh-setting'
 import { getAutoRenameBranchSearchEntries } from './auto-rename-branch-search'
 import { translate } from '@/i18n/i18n'
 import { translateSearchKeyword } from './settings-search-keywords'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 
 export const getGitPaneSearchEntries = createLocalizedCatalog(() => [
-  automaticReviewRefreshSearchEntry(),
   {
     title: translate('auto.components.settings.git.search.68bd65fdb8', 'Branch Prefix'),
     description: translate(
