@@ -9,6 +9,10 @@ import {
 } from './release-javascript-artifact.mjs'
 import { resolvePnpmCliInvocation } from './pnpm-cli-invocation.mjs'
 import { describeProcessFailure, runProcessSync } from './script-child-process.mjs'
+import {
+  annotateJavascriptParityFiles,
+  compareJavascriptParityFiles
+} from './release-javascript-parity.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const [mode, reportDir = '.build/release-javascript-measurements'] = process.argv.slice(2)
@@ -55,12 +59,7 @@ function benchmark() {
     configuration,
     restoreMs,
     buildMs,
-    files,
-    css: Object.fromEntries(
-      files
-        .filter((file) => file.path.endsWith('.css'))
-        .map((file) => [file.path, readFileSync(join(root, 'out', file.path), 'utf8')])
-    )
+    files: annotateJavascriptParityFiles(join(root, 'out'), files)
   }
   mkdirSync(reportDir, { recursive: true })
   writeFileSync(
@@ -98,11 +97,7 @@ function summarize() {
     const download = job.steps.find((step) => step.name === 'Download shared JavaScript')
     assert(download?.conclusion === 'success', 'Missing successful artifact download')
     const downloadMs = seconds(download) * 1000
-    const reference = new Map(baseline.files.map((file) => [file.path, file.sha256]))
-    const candidate = new Map(shared.files.map((file) => [file.path, file.sha256]))
-    const changed = [...new Set([...reference.keys(), ...candidate.keys()])].filter(
-      (file) => reference.get(file) !== candidate.get(file)
-    )
+    const changed = compareJavascriptParityFiles(baseline.files, shared.files)
     differences += changed.length
     const saved = baseline.buildMs - shared.buildMs - shared.restoreMs - downloadMs
     savedMs += saved
@@ -126,7 +121,7 @@ function summarize() {
     '',
     `Shared producer job: ${producerSeconds.toFixed(1)}s including setup, compilation, archiving and upload.`,
     `Net runner time saved across four hosts after charging the producer job: ${(savedMs / 1000 - producerSeconds).toFixed(1)}s.`,
-    'Build measurements exclude consumer checkout/install and signing. Downloads and restoration are charged to shared builds. Runtime parity excludes source maps, whose source paths may differ by host. The producer starts alongside release gates; any unfinished producer work still delays packaging.'
+    'Build measurements exclude consumer checkout/install and signing. Downloads and restoration are charged to shared builds. Runtime parity excludes source maps and permits native Display P3 color rounding up to 0.00000101 with corresponding asset hash references; all other content must match. Artifact restoration always verifies exact producer hashes. The producer starts alongside release gates; any unfinished producer work still delays packaging.'
   )
   writeFileSync(join(reportDir, 'comparison.md'), `${lines.join('\n')}\n`)
   console.log(lines.join('\n'))
