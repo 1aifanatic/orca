@@ -235,6 +235,7 @@ beforeEach(async () => {
     resolveWorkspacePath: async () => root,
     resolveClaudeAuthPolicy: () => ({ stripAuthEnv: true }),
     resolveCodexCommand: () => 'codex',
+    resolveLaunchArgs: () => [],
     resolveEnvironment: async () => ({ PATH: process.env.PATH }),
     openCodexConnection: openConnection,
     readProcessStartTime: async () => 1_700_000_000_000
