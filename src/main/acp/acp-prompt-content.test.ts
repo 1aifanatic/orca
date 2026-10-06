@@ -22,8 +22,10 @@ function message(...blocks: NativeChatBlock[]): AgentJournalMessageItem {
 
 async function refusal(body: AgentJournalMessageItem, images = true) {
   const error = await acpPromptBlocks(body, images).catch((caught: unknown) => caught)
-  expect(error).toBeInstanceOf(AcpPromptContentError)
-  return (error as AcpPromptContentError).failure
+  if (!(error instanceof AcpPromptContentError)) {
+    throw new Error(`expected a refusal, got ${String(error)}`)
+  }
+  return error.failure
 }
 
 describe('ACP prompt content', () => {
