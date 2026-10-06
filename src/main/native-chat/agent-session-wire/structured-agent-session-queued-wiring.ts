@@ -17,6 +17,7 @@ import {
 } from './structured-agent-session-queued-mutations'
 import { deferredStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import {
   isUnsettledQueuedMessage,
   listQueuedMessages
@@ -34,10 +35,11 @@ export function wireStructuredAgentSessionQueuedMessages(
   sessions: ReadonlyMap<string, StructuredAgentSessionHostSession> & {
     touch: (sessionId: string) => void
   },
-  context: () => StructuredAgentSessionMutationContext,
-  /** What follows a committed /clear, outside the source's serialize. */
-  afterClear: (sessionId: string) => Promise<void>
+  context: () => StructuredAgentSessionMutationContext
 ) {
+  /** What follows a committed /clear, outside the source's serialize. */
+  const afterClear = (sessionId: string): Promise<void> =>
+    context().afterClear?.(sessionId) ?? Promise.resolve()
   const clearContext = (sessionId: string, journal: AgentSessionJournal) => ({
     sessionId,
     journal,
@@ -108,6 +110,14 @@ export function wireStructuredAgentSessionQueuedMessages(
     committedClearOf(context().deps.store.getRecord(sessionId))?.operationId === messageId
   return {
     drain,
+    /** Child work changed: the strip republishes, and a /clear card waiting on it may run. */
+    onChildWorkChanged: (sessionId: string, strip: { publish: (sessionId: string) => void }) => {
+      strip.publish(sessionId)
+      drain.schedule(sessionId)
+    },
+    /** A /clear card waits on a handoff, which ends in the record store, not the journal. */
+    wakeOnHandoffEnded: (store: Pick<AgentSessionRecordStore, 'onHandoffEnded'>) =>
+      store.onHandoffEnded((sessionId) => drain.schedule(sessionId)),
     /** A conversation opened: its drain re-derives, and any carry owed into it is finished. */
     onConversationOpened: (sessionId: string) => {
       drain.schedule(sessionId)

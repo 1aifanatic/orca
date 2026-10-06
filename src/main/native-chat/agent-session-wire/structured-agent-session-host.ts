@@ -71,10 +71,8 @@ export class StructuredAgentSessionHost {
     onOpened: (sessionId) => this.queued.onConversationOpened(sessionId),
     now: () => this.now()
   })
-  private readonly queued = wireStructuredAgentSessionQueuedMessages(
-    this.sessions,
-    () => this.mutationContext(),
-    (sessionId) => this.conversationCommands.afterClear(sessionId)
+  private readonly queued = wireStructuredAgentSessionQueuedMessages(this.sessions, () =>
+    this.mutationContext()
   )
   // Every journal publish is activity: the one renewal the idle sweep reads.
   private readonly clientDelivery = new StructuredAgentSessionClientDelivery(
@@ -83,11 +81,7 @@ export class StructuredAgentSessionHost {
     () => this.deps,
     (sessionId) => this.queued.onJournalActivity(sessionId),
     (sessionId) => this.restartResume.onAgentStarted(sessionId),
-    (sessionId) => {
-      this.backgroundTasks.publish(sessionId)
-      // A /clear card waits on background tasks: their ending is its turn.
-      this.queued.drain.schedule(sessionId)
-    }
+    (sessionId) => this.queued.onChildWorkChanged(sessionId, this.backgroundTasks)
   )
   private readonly subscribers = this.clientDelivery.subscribers
   private readonly tasks = new StructuredAgentSessionTaskQueue()
@@ -109,8 +103,7 @@ export class StructuredAgentSessionHost {
     // Every collaborator reads this copy, so a logger that throws cannot fail what it reports.
     this.deps = deps = sessionLogger.withNeverThrowingLogger(deps)
     this.clientDelivery.watchAtRestCommands(deps.adapter)
-    // A /clear card waits on a handoff, which ends in the record store, not the journal.
-    deps.store.onHandoffEnded((sessionId) => this.queued.drain.schedule(sessionId))
+    this.queued.wakeOnHandoffEnded(deps.store)
     this.backgroundTasks = new StructuredAgentSessionBackgroundTaskChannel(
       deps,
       this.sessions,
@@ -303,6 +296,7 @@ export class StructuredAgentSessionHost {
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       stopAgent: (sessionId, ending) => this.lifetime.stopAgent(sessionId, ending),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
+      afterClear: (sessionId) => this.conversationCommands.afterClear(sessionId),
       now: () => this.now()
     }
   }
@@ -325,8 +319,7 @@ export class StructuredAgentSessionHost {
   rewind = (caller: StructuredAgentSessionCaller, params: AgentSessionRewindParams) =>
     rewindStructuredAgentSession(this.mutationContext(), this.attachContext(), caller, params)
 
-  conversationCommand = (...args: Parameters<StructuredConversationCommandController['run']>) =>
-    this.conversationCommands.run(...args)
+  conversationCommand = this.conversationCommands.run
   conversationReplacements = () => this.conversationCommands.replacements()
   /** Undefined means unavailable; an empty array is an authoritative catalog. */
   readCommands = (sessionId: string) => ({ commands: this.clientDelivery.readCommands(sessionId) })
