@@ -30,6 +30,7 @@ import {
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 const CALLER = { callerKey: 'client-1' }
 
@@ -75,6 +76,7 @@ beforeEach(async () => {
     }
   })
   host = new StructuredAgentSessionHost({
+    agents: claudeAndCodexDeclared(),
     logger: recordingStructuredAgentSessionLogger().logger,
     store,
     adapter: Object.assign(adapter, { supportsCreate: () => true }),
