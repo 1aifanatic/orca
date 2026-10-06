@@ -5,9 +5,9 @@ const MAX_CARRIED_ESCAPE_CHARS = 512
 /* oxlint-disable no-control-regex -- these match terminal escape sequences, which start with ESC */
 const CSI_RE = /^\x1b\[([?>=<]?)([0-9;]*)([ -/]*[@-~])/
 const UNFINISHED_CSI_RE = /^\x1b\[[?>=<]?[0-9;]*[ -/]*$/
-// OSC and DCS strings (titles, queries) end at BEL or ST; their text is never painted.
-const STRING_RE = /^\x1b[\]P][\s\S]*?(?:\x07|\x1b\\)/
-const STRING_START_RE = /^\x1b[\]P]/
+// Terminal control strings (titles, graphics, queries) never paint their payload text.
+const STRING_RE = /^\x1b[\]PX^_][\s\S]*?(?:\x07|\x1b\\)/
+const STRING_START_RE = /^\x1b[\]PX^_]/
 const STRING_END_RE = /\x07|\x1b\\/
 
 type TerminalEscapeObserver = {

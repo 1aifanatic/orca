@@ -23,10 +23,21 @@ describe('Codex fullscreen composer paste gate', () => {
     expect(scanner.observe(END).ready).toBe(true)
   })
 
-  it('ignores a footer separator in an OSC title', () => {
+  it.each([']', 'P', 'X', '^', '_'])('ignores a footer inside ESC %s control strings', (kind) => {
     const scanner = createDraftPasteReadyScanner('codex-composer-prompt')
     scanner.observe(PROVISIONAL)
-    expect(scanner.observe('\x1b]0;\x1b[39;3HModel · folder\x07').ready).toBe(false)
+    expect(scanner.observe(`\x1b${kind}0;\x1b[39;3HModel · folder\x1b\\`).ready).toBe(false)
+    expect(scanner.observe(LIVE).ready).toBe(true)
+  })
+
+  it.each([']', 'P', 'X', '^', '_'])('keeps split ESC %s control strings hidden', (kind) => {
+    const scanner = createDraftPasteReadyScanner('codex-composer-prompt')
+    scanner.observe(PROVISIONAL)
+    const payload = `\x1b${kind}${'x'.repeat(1024)}\x1b[39;3HModel · folder\x1b\\`
+    for (const char of payload) {
+      expect(scanner.observe(char).ready).toBe(false)
+    }
+    expect(scanner.observe(LIVE).ready).toBe(true)
   })
 
   it.each(['\x1b[?2004l', '\x1b[?1049l'])(
