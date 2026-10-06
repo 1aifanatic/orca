@@ -13,24 +13,24 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
   // is populated synchronously so concurrent live writes from
   // trackHeadlessTerminalData chain after the seed via the same writeChain.
   // See docs/mobile-prefer-renderer-scrollback.md.
-  protected maybeHydrateHeadlessFromRenderer(ptyId: string): void {
+  protected maybeHydrateHeadlessFromRenderer(ptyId: string): Promise<boolean> | null {
     if (this.headlessHydrationState.has(ptyId)) {
-      return
+      return null
     }
     const providerSnapshotPreferred = this.providerSnapshotPreferredPtys.has(ptyId)
     if (this.headlessTerminals.has(ptyId) && !providerSnapshotPreferred) {
       // Daemon-snapshot seed already populated the emulator — skip hydration.
       this.headlessHydrationState.set(ptyId, 'done')
-      return
+      return null
     }
     const controller = this.ptyController
     if (!controller?.serializeBuffer || !controller.hasRendererSerializer) {
-      return
+      return null
     }
     if (!controller.hasRendererSerializer(ptyId)) {
       // Renderer hasn't registered yet (or never will). Live writes lazy-
       // create the state via trackHeadlessTerminalData on this same tick.
-      return
+      return null
     }
 
     if (providerSnapshotPreferred) {
@@ -52,6 +52,7 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
     // execute AFTER the seed-write resolves. If we awaited inline before
     // setting headlessTerminals, the live byte would lazy-create a separate
     // state and the seed-resolve would overwrite it, dropping live bytes.
+    let seeded = false
     state.writeChain = state.writeChain.then(async () => {
       if (this.headlessTerminals.get(ptyId) !== state) {
         return
@@ -99,6 +100,7 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
           this.applySeededAgentStatus(ptyId, seedTitle)
         }
         this.providerSnapshotPreferredPtys.delete(ptyId)
+        seeded = true
       } catch {
         // Hydration is best-effort. Live writes continue via the same
         // writeChain that this catch-arm leaves intact.
@@ -108,6 +110,13 @@ export class OrcaRuntimeWithMaybeHydrateHeadlessFromRenderer extends OrcaRuntime
         }
       }
     })
+    return state.writeChain.then(() => seeded)
+  }
+
+  /** Public: a phone fit resizes the PTY, but an idle TUI sends no byte to hydrate on. Resolves
+   *  true once the model holds the pane's screen reflowed onto the PTY's current grid. */
+  hydrateHeadlessTerminalFromRenderer(ptyId: string): Promise<boolean> {
+    return this.maybeHydrateHeadlessFromRenderer(ptyId) ?? Promise.resolve(false)
   }
 
   // Why: seed-derived agent status reflects historical state. Orchestration
