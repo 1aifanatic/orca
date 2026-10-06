@@ -35,6 +35,13 @@ import {
   releaseWindowGraphPublication
 } from './helpers/hold-window-graph-publication'
 
+declare global {
+  // oxlint-disable-next-line typescript-eslint/consistent-type-definitions -- declaration merging requires interface
+  interface Window {
+    __e2eToasts?: { type: string | null; text: string }[]
+  }
+}
+
 const scratch = mkdtempSync(path.join(os.tmpdir(), 'orca-paired-agent-create-'))
 const fakeBin = path.join(scratch, 'bin')
 const launchLog = path.join(scratch, 'fake-claude-launches.log')
@@ -160,6 +167,8 @@ async function assertHostResolvesFakeClaude(
   client: PairedElectronClient,
   worktreeId: string
 ): Promise<void> {
+  // Why: a previous test's answer must not satisfy this check while the redirect truncates it.
+  rmSync(resolvedClaudePath, { force: true })
   await client.page.evaluate(
     async ({ environmentId, worktreeId, command }) => {
       const response = await window.api.runtimeEnvironments.call({
@@ -191,7 +200,7 @@ async function assertHostResolvesFakeClaude(
         message: 'Host shell never reported where claude resolves'
       }
     )
-    .not.toBe('')
+    .toMatch(/\S/)
   const resolved = readFileSync(resolvedClaudePath, 'utf8').trim()
   if (resolved !== path.join(fakeBin, 'claude')) {
     throw new Error(`Refusing to launch: host shell resolves claude to ${resolved}, not the fake`)
@@ -469,7 +478,7 @@ async function runOverDeadReturnPath(
 async function observeToasts(page: Page): Promise<void> {
   await page.evaluate(() => {
     const seen: { type: string | null; text: string }[] = []
-    Reflect.set(window, '__e2eToasts', seen)
+    window.__e2eToasts = seen
     new MutationObserver(() => {
       for (const toast of document.querySelectorAll('[data-sonner-toast]')) {
         const text = toast.textContent ?? ''
@@ -482,7 +491,7 @@ async function observeToasts(page: Page): Promise<void> {
 }
 
 async function seenToasts(page: Page): Promise<unknown> {
-  return page.evaluate((): unknown => Reflect.get(window, '__e2eToasts'))
+  return page.evaluate(() => window.__e2eToasts)
 }
 
 const pendingTabs = (page: Page): Locator => page.locator('[data-pending-remote-terminal-tab]')

@@ -142,9 +142,14 @@ export function startRemoteRuntimeSocketLiveness(args: {
   }
 }
 
-function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
-  // Why: mobile typechecks shared code with DOM timer types where unref is absent.
-  if (typeof timer === 'object' && timer !== null && 'unref' in timer) {
+function unrefTimer(timer: unknown): void {
+  // Why unknown: mobile typechecks shared code with DOM timer types, where timers are numbers.
+  if (
+    typeof timer === 'object' &&
+    timer !== null &&
+    'unref' in timer &&
+    typeof timer.unref === 'function'
+  ) {
     timer.unref()
   }
 }
