@@ -39,6 +39,7 @@ function sessionFor(setModel: ClaudeSession['connection']['setModel']): ClaudeSe
     confirmedOptions: new Set(),
     restoreSkippedOptions: new Set(),
     launchedModel: null,
+    fastModeAtStart: false,
     capabilities: [],
     events: undefined,
     translator: null,
