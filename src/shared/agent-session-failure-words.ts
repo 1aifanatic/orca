@@ -130,20 +130,42 @@ function withRetryCause(sentence: string, cause: string | undefined): string {
 /** The next step after a start or restart that failed: the command, or the message, again. */
 function startRetry(
   say: AgentSessionFailureSay,
-  { command, retryControl }: AgentSessionFailureWordsContext
+  { command, retryControl }: AgentSessionFailureWordsContext,
+  sendAgain: 'sendToTryAgain' | 'sendAgainToTryOnceMore' = 'sendToTryAgain'
 ): string[] {
   if (retryControl) {
     return []
   }
-  return [command ? say('runCommandAgain', { command }) : say('sendToTryAgain')]
+  return [command ? say('runCommandAgain', { command }) : say(sendAgain)]
 }
 
 function couldNot(verb: 'couldNotStart' | 'couldNotRestart'): Sentence {
   return (context, fact, _surface, say) => {
     const failed = say(verb, agent(say, context))
+    if (fact.argumentProblem) {
+      const problemCopy = {
+        unsupportedOption: 'argumentsUnsupportedOption',
+        missingValue: 'argumentsMissingValue',
+        multipleValues: 'argumentsMultipleValues',
+        positionalPrompt: 'argumentsPositionalPrompt'
+      } as const
+      return joinSentences([
+        failed,
+        say(problemCopy[fact.argumentProblem.problem], { option: fact.argumentProblem.option }),
+        say('editSavedArguments'),
+        ...startRetry(say, context)
+      ])
+    }
     // Only a terminal agent an older build recorded holds a claim; quitting it frees the chat.
     if (fact.refusal?.details?.reason === 'claimConflicted') {
       return joinSentences([failed, say('terminalAgentHoldsChat'), say('quitTerminalAgent')])
+    }
+    // The previous process may still run, so nothing started: that, never that it exited.
+    if (fact.refusal?.details?.reason === 'previousExitUnverifiable') {
+      return joinSentences([
+        say('previousExitUnverifiable', agent(say, context)),
+        ...startRetry(say, context, 'sendAgainToTryOnceMore')
+      ])
     }
     const code = fact.refusal?.code
     return joinSentences(
@@ -201,6 +223,7 @@ const FAILURE_SENTENCES = {
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
   accountSwitchInProgress: (_context, _fact, _surface, say) => say('accountSwitchInProgress'),
+  launchFolderMissing: (_context, _fact, _surface, say) => say('launchFolderMissing'),
   managedAccountUnsupported: (context, _fact, _surface, say) =>
     joinSentences([
       say('managedAccountUnsupported'),

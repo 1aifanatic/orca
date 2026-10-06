@@ -101,11 +101,12 @@ function statusFeed(): StructuredAgentSessionStatusFeed {
       [
         STATUS_SESSION,
         {
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the status feed reads only cursor(), lastActivityAt(), stopMarks and snapshot() of a journal.
           journal: {
-            isReadOnly: false,
             cursor: () => ({ epoch: 'epoch-status', sequence: 2 }),
             lastActivityAt: () => 2,
-            snapshot: () => ({ items: STATUS_ITEMS })
+            stopMarks: { latest: () => null, revision: () => 0 },
+            snapshot: () => ({ items: STATUS_ITEMS, submissions: [] })
           } as unknown as AgentSessionJournal,
           params: {
             location: {
