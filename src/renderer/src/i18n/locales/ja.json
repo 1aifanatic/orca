@@ -76,7 +76,8 @@
         "contrast": "コントラスト",
         "contrastDescription": "背景に対するチャットの文字の明るさを調整します。右端にすると、以前の明るい表示になります。",
         "softer": "柔らかく",
-        "sharper": "くっきり"
+        "sharper": "くっきり",
+        "terminalControlledHint": "ターミナルの外観設定に従います。"
       }
     },
     "browser": {

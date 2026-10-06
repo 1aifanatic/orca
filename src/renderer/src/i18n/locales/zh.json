@@ -76,7 +76,8 @@
         "contrast": "对比度",
         "contrastDescription": "调整聊天文字相对于背景的亮度。滑到最右端可恢复以前更明亮的外观。",
         "softer": "更柔和",
-        "sharper": "更清晰"
+        "sharper": "更清晰",
+        "terminalControlledHint": "由终端界面设置。"
       }
     },
     "browser": {

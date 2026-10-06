@@ -76,7 +76,8 @@
         "contrast": "Contraste",
         "contrastDescription": "Ajusta el brillo del texto del chat sobre el fondo. El extremo derecho recupera el aspecto anterior, más brillante.",
         "softer": "Más suave",
-        "sharper": "Más nítido"
+        "sharper": "Más nítido",
+        "terminalControlledHint": "Lo controla la interfaz del terminal."
       }
     },
     "browser": {

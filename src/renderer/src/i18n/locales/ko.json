@@ -76,7 +76,8 @@
         "contrast": "대비",
         "contrastDescription": "배경에 대한 채팅 텍스트의 밝기를 조절합니다. 오른쪽 끝으로 이동하면 이전의 더 밝은 모습으로 표시됩니다.",
         "softer": "부드럽게",
-        "sharper": "선명하게"
+        "sharper": "선명하게",
+        "terminalControlledHint": "터미널 인터페이스 설정을 따릅니다."
       }
     },
     "browser": {

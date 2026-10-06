@@ -175,7 +175,8 @@
         "contrast": "Contraste",
         "contrastDescription": "Ajuste la luminosité du texte du chat sur le fond. L’extrémité droite retrouve l’ancien aspect, plus lumineux.",
         "softer": "Plus doux",
-        "sharper": "Plus net"
+        "sharper": "Plus net",
+        "terminalControlledHint": "Défini par l’interface du terminal."
       }
     },
     "browser": {
