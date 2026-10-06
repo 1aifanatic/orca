@@ -5,11 +5,7 @@ import {
 } from '../../shared/agent-session-provider-handle'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 import type { AgentSessionProcessIdentity } from '../../shared/agent-session-record'
-import {
-  PROVIDER_SPAWN_TOKEN_ENV,
-  providerProcessIdentity,
-  providerSpawnedProcessIdentity
-} from '../provider-process/provider-spawned-process-identity'
+import { readProcessStartTimeMs } from '../runtime/agent-session-process-identity-probe'
 
 // What the lease records about the child Codex just handed back: the process it
 // will later re-prove, and the provider handle link the journal binds to. Both
@@ -18,10 +14,15 @@ import {
 
 /** The child echoes its spawn token here so the owner probe can tell a live
  *  child of THIS reservation from a same-pid stranger. */
-export const CODEX_SPAWN_TOKEN_ENV = PROVIDER_SPAWN_TOKEN_ENV
+export const CODEX_SPAWN_TOKEN_ENV = 'ORCA_AGENT_SESSION_SPAWN_TOKEN'
 
-const CODEX_PROCESS_LABEL = 'codex app-server'
+const START_TIME_READ_ATTEMPTS = 3
 
+/**
+ * The child's identity, read once. The real connection reports its spawn before the handshake, and
+ * `onSpawned` makes it durable there, so a crash mid-start leaves an owner recovery can stop; a
+ * connection that reports no spawn is identified once it is open.
+ */
 export function codexSpawnedProcessIdentity(
   input: {
     identity: AgentSessionJournalIdentity
@@ -29,19 +30,47 @@ export function codexSpawnedProcessIdentity(
     onSpawned?: (process: AgentSessionProcessIdentity) => Promise<void>
   },
   readStartTime?: (pid: number) => Promise<number | null>
-): ReturnType<typeof providerSpawnedProcessIdentity> {
-  return providerSpawnedProcessIdentity(input, CODEX_PROCESS_LABEL, readStartTime)
+): {
+  onSpawned: (pid: number) => Promise<void>
+  read: (pid: number | undefined) => Promise<AgentSessionProcessIdentity>
+} {
+  let spawned: Promise<AgentSessionProcessIdentity> | undefined
+  return {
+    onSpawned: async (pid) => {
+      spawned = codexProcessIdentity({ ...input, pid }, readStartTime)
+      await input.onSpawned?.(await spawned)
+    },
+    read: (pid) => spawned ?? codexProcessIdentity({ ...input, pid }, readStartTime)
+  }
 }
 
-export function codexProcessIdentity(
+export async function codexProcessIdentity(
   input: {
     identity: AgentSessionJournalIdentity
     spawnToken: string
     pid: number | undefined
   },
-  readStartTime?: (pid: number) => Promise<number | null>
+  readStartTime: (pid: number) => Promise<number | null> = readProcessStartTimeMs
 ): Promise<AgentSessionProcessIdentity> {
-  return providerProcessIdentity(input, CODEX_PROCESS_LABEL, readStartTime)
+  if (input.pid === undefined) {
+    throw new Error('codex app-server started without a pid')
+  }
+  // Best-effort: without it a later owner probe is indeterminate, and recovery releases such an
+  // owner without signalling it, so an unreadable start time must not refuse the session.
+  let processStartTimeMs: number | null = null
+  for (
+    let attempt = 0;
+    attempt < START_TIME_READ_ATTEMPTS && processStartTimeMs === null;
+    attempt += 1
+  ) {
+    processStartTimeMs = await readStartTime(input.pid)
+  }
+  return {
+    hostId: input.identity.hostId,
+    pid: input.pid,
+    processStartTimeMs,
+    spawnToken: input.spawnToken
+  }
 }
 
 type CodexProviderHandleLinkInput = {
