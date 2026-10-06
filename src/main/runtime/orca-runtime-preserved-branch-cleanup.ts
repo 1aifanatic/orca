@@ -95,6 +95,18 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     return facts.freshSpawn ? 'unused' : 'unknown'
   }
 
+  /**
+   * Fresh execution-host proof that only the spawned shell runs in a PTY, at its prompt, on POSIX
+   * and Windows alike; false whenever that cannot be proven.
+   */
+  async confirmTerminalShellAlone(ptyId: string): Promise<boolean> {
+    try {
+      return (await this.ptyController?.confirmShellForeground?.(ptyId)) ?? false
+    } catch {
+      return false
+    }
+  }
+
   /** The PTY a terminal handle drives now; a restarted pane answers with its new PTY. */
   getTerminalPtyIdForHandle(handle: string): string | null {
     return this.getLivePtyForHandle(handle)?.pty.ptyId ?? null
