@@ -50,8 +50,9 @@ export function NativeChatToolRunCallCounts({
        is routine work, and the line's own detail is one click away. */
     <span
       aria-label={marks.map((mark) => mark.label).join(', ')}
-      className="shrink-0 font-mono text-[11px] text-muted-foreground transition-colors group-hover/tool-run:text-foreground/80"
+      className="shrink-0 font-sans text-xs tabular-nums text-chat-foreground-faint transition-colors group-hover/tool-run:text-chat-foreground"
     >
+      <span aria-hidden> · </span>
       {marks.map((mark) => mark.text).join(', ')}
     </span>
   )
