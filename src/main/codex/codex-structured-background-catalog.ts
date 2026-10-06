@@ -84,12 +84,7 @@ async function refresh(input: BackgroundCatalogInput): Promise<void> {
       return
     }
     if (fingerprint && store && store.get(fingerprint) === prior) {
-      store.recordFailure(
-        fingerprint,
-        error instanceof Error ? error.message : String(error),
-        undefined,
-        'live-session'
-      )
+      store.recordFailure(fingerprint, error instanceof Error ? error.message : String(error))
     }
     input.logger?.warn('Codex model catalog refresh failed', {
       scope: 'codex-background-catalog',

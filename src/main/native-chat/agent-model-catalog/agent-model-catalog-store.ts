@@ -1,9 +1,8 @@
-import type { AgentSessionUnavailable } from '../../../shared/agent-session-availability'
-import {
-  AgentModelCatalogAvailability,
-  AgentModelCatalogUnavailableError,
-  evictOldestOverCap
-} from './agent-model-catalog-availability'
+import type {
+  AgentSessionUnavailable,
+  AgentSessionUnavailableObservation
+} from '../../../shared/agent-session-availability'
+import { AgentModelCatalogFailures } from './agent-model-catalog-failures'
 import type {
   AgentSessionFastModeSupport,
   AgentSessionModelOption
@@ -15,7 +14,9 @@ import type { AgentModelCatalogPersistence } from './agent-model-catalog-persist
 // written through by every successful listing a live session already performs.
 // Success-only: a failure, timeout or empty list is never stored as a catalog
 // and never persisted — it is held separately under a short TTL so a burst of
-// picker opens does not hammer a dead binary, then dies on its own.
+// picker opens does not hammer a dead binary, then dies on its own. A probe that
+// proves the account signed out or its CLI missing types that failure; the type is
+// served beside the catalog for the TTL and then re-derived by the next probe.
 
 export const AGENT_MODEL_CATALOG_FRESH_MS = 10 * 60_000
 export const AGENT_MODEL_CATALOG_FAILURE_TTL_MS = 30_000
@@ -45,7 +46,12 @@ export type AgentModelCatalogProbe = (accountHomePath: string) => Promise<AgentM
 /** Who lists, by identity: a live session's per-spawn handle, or the session-less probe. */
 export type AgentModelCatalogLister = AgentModelCatalogSessionAccess | AgentModelCatalogProbe
 
-type CatalogFailure = { detail: string; failedAt: number }
+/** The probe's typed verdict that no new child can start under this account. */
+export class AgentModelCatalogUnavailableError extends Error {
+  constructor(readonly unavailable: AgentSessionUnavailable) {
+    super(unavailable.reason)
+  }
+}
 
 type InFlightListings = Map<AgentModelCatalogLister, Promise<AgentModelCatalogEntry | null>>
 
@@ -89,7 +95,7 @@ function listingKey(entry: AgentModelCatalogEntry): string {
 
 export class AgentModelCatalogStore {
   private readonly entries = new Map<string, AgentModelCatalogEntry>()
-  private readonly failures = new Map<string, CatalogFailure>()
+  private readonly failures: AgentModelCatalogFailures
   private readonly refreshes = new Map<string, InFlightListings>()
   private readonly listingWaiters = new Map<string, Set<() => void>>()
   private readonly latestWrittenOrder = new Map<string, number>()
@@ -97,12 +103,13 @@ export class AgentModelCatalogStore {
   private persistence: AgentModelCatalogPersistence | null = null
   private readonly now: () => number
 
-  /** What the probe last proved about the account's sign-in or CLI; never part of a catalog. */
-  readonly availability: AgentModelCatalogAvailability
-
   constructor(options?: { now?: () => number }) {
     this.now = options?.now ?? Date.now
-    this.availability = new AgentModelCatalogAvailability(this.now, AGENT_MODEL_CATALOG_MAX_ENTRIES)
+    this.failures = new AgentModelCatalogFailures(
+      this.now,
+      AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
+      AGENT_MODEL_CATALOG_MAX_ENTRIES
+    )
   }
 
   /** Hydrates last-good entries from disk. Anything this run already listed wins. */
@@ -135,22 +142,27 @@ export class AgentModelCatalogStore {
     return this.now() - entry.fetchedAt >= AGENT_MODEL_CATALOG_FRESH_MS
   }
 
+  /** Ages the entry out so the next read re-probes; the entry itself still serves. */
+  markStale(fingerprint: string): void {
+    const entry = this.entries.get(fingerprint)
+    if (entry && !this.isStale(entry)) {
+      this.entries.set(fingerprint, {
+        ...entry,
+        fetchedAt: this.now() - AGENT_MODEL_CATALOG_FRESH_MS
+      })
+    }
+  }
+
   failureDetail(fingerprint: string): string | null {
-    return this.hasActiveFailure(fingerprint)
-      ? (this.failures.get(fingerprint)?.detail ?? null)
-      : null
+    return this.failures.active(fingerprint)?.detail ?? null
   }
 
   hasActiveFailure(fingerprint: string): boolean {
-    const failure = this.failures.get(fingerprint)
-    if (!failure) {
-      return false
-    }
-    if (this.now() - failure.failedAt >= AGENT_MODEL_CATALOG_FAILURE_TTL_MS) {
-      this.failures.delete(fingerprint)
-      return false
-    }
-    return true
+    return this.failures.active(fingerprint) !== null
+  }
+
+  unavailable(fingerprint: string): AgentSessionUnavailableObservation | undefined {
+    return this.failures.unavailable(fingerprint)
   }
 
   recordSuccess(
@@ -158,7 +170,7 @@ export class AgentModelCatalogStore {
     agent: string,
     success: AgentModelCatalogSuccess
   ): AgentModelCatalogEntry | null {
-    const entry = this.writeSuccess(fingerprint, agent, success, ++this.nextListingOrder)
+    const entry = this.writeSuccess(fingerprint, agent, success, ++this.nextListingOrder, false)
     this.notifyListingWaiters(fingerprint)
     return entry
   }
@@ -188,7 +200,8 @@ export class AgentModelCatalogStore {
     fingerprint: string,
     agent: string,
     success: AgentModelCatalogSuccess,
-    order: number
+    order: number,
+    byProbe: boolean
   ): AgentModelCatalogEntry | null {
     const entry = this.entryFromSuccess(fingerprint, agent, success)
     if (!entry) {
@@ -200,7 +213,7 @@ export class AgentModelCatalogStore {
     if (this.refreshes.has(fingerprint)) {
       this.latestWrittenOrder.set(fingerprint, order)
     }
-    this.failures.delete(fingerprint)
+    this.failures.clear(fingerprint, byProbe)
     this.evictOverCap()
     // Live sessions re-list every turn; an unchanged listing only refreshes the in-memory age.
     if (!previous || listingKey(previous) !== listingKey(entry)) {
@@ -209,18 +222,8 @@ export class AgentModelCatalogStore {
     return entry
   }
 
-  recordFailure(
-    fingerprint: string,
-    detail: string,
-    unavailable?: AgentSessionUnavailable,
-    origin: AgentModelCatalogSuccess['origin'] = 'probe'
-  ): void {
-    this.failures.delete(fingerprint)
-    this.failures.set(fingerprint, { detail, failedAt: this.now() })
-    evictOldestOverCap(this.failures, AGENT_MODEL_CATALOG_MAX_ENTRIES)
-    if (origin === 'probe') {
-      this.availability.recordProbe(fingerprint, unavailable)
-    }
+  recordFailure(fingerprint: string, detail: string): void {
+    this.failures.recordListing(fingerprint, detail)
   }
 
   /** Joins an in-flight refresh by the same lister rather than starting a second. Never
@@ -237,8 +240,6 @@ export class AgentModelCatalogStore {
     if (inFlight) {
       return inFlight
     }
-    // Only the probe answers the account check; a live listing never sets or clears it.
-    const origin = typeof lister === 'function' ? 'probe' : 'live-session'
     const settle = (): void => {
       listers.delete(lister)
       if (listers.size === 0 && this.refreshes.get(fingerprint) === listers) {
@@ -248,6 +249,7 @@ export class AgentModelCatalogStore {
       this.notifyListingWaiters(fingerprint)
     }
     const order = ++this.nextListingOrder
+    const byProbe = typeof lister === 'function'
     let listing: Promise<AgentModelCatalogSuccess>
     try {
       listing = listModels()
@@ -256,26 +258,23 @@ export class AgentModelCatalogStore {
     }
     const run = listing.then(
       (success) => {
-        if (origin === 'probe') {
-          this.availability.recordProbe(fingerprint)
-        }
-        this.failures.delete(fingerprint)
         // An older session still receives its own result, but cannot replace a newer catalog.
         const entry =
           (this.latestWrittenOrder.get(fingerprint) ?? 0) > order && this.entries.has(fingerprint)
             ? this.entryFromSuccess(fingerprint, agent, success)
-            : this.writeSuccess(fingerprint, agent, success, order)
+            : this.writeSuccess(fingerprint, agent, success, order, byProbe)
         settle()
         return entry
       },
       (error: unknown) => {
-        // Recorded before settling so a waiting picker sees the account blocker.
-        this.recordFailure(
-          fingerprint,
-          error instanceof Error ? error.message : String(error),
-          error instanceof AgentModelCatalogUnavailableError ? error.unavailable : undefined,
-          origin
-        )
+        const detail = error instanceof Error ? error.message : String(error)
+        // Recorded before settling so a waiting picker sees the verdict.
+        if (byProbe) {
+          const typed = error instanceof AgentModelCatalogUnavailableError
+          this.failures.recordProbe(fingerprint, detail, typed ? error.unavailable : undefined)
+        } else {
+          this.failures.recordListing(fingerprint, detail)
+        }
         settle()
         return null
       }
@@ -289,8 +288,8 @@ export class AgentModelCatalogStore {
     return this.refreshes.get(fingerprint)?.has(lister) ?? false
   }
 
-  /** A picker follows the current account work until a catalog lands, the account is known
-   *  unavailable, all work ends, or its fixed deadline expires. */
+  /** A picker follows the current account work until a catalog lands, the probe proves the
+   *  account unavailable, all work ends, or its fixed deadline expires. */
   pendingListing(fingerprint: string): Promise<AgentModelCatalogEntry | null> | null {
     if (!this.refreshes.has(fingerprint)) {
       return null
@@ -312,11 +311,7 @@ export class AgentModelCatalogStore {
       }
       const check = (): void => {
         const entry = this.get(fingerprint)
-        if (
-          entry ||
-          this.availability.unavailable(fingerprint) ||
-          !this.refreshes.has(fingerprint)
-        ) {
+        if (entry || this.unavailable(fingerprint) || !this.refreshes.has(fingerprint)) {
           finish(entry)
         }
       }
@@ -336,14 +331,14 @@ export class AgentModelCatalogStore {
     }
   }
 
-  /** True when a read should kick a background refresh: nothing known or the
-   *  entry aged out, and no failure is still inside its TTL. */
+  /** True when a read should kick a background refresh: nothing known, the entry aged
+   *  out, or a probe verdict aged out, and no failure is still inside its TTL. */
   shouldRefresh(fingerprint: string): boolean {
     if (this.refreshes.has(fingerprint) || this.hasActiveFailure(fingerprint)) {
       return false
     }
     const entry = this.entries.get(fingerprint)
-    return !entry || this.isStale(entry)
+    return !entry || this.isStale(entry) || this.failures.awaitsProbe(fingerprint)
   }
 
   private evictOverCap(): void {

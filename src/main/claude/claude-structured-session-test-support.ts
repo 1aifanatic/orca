@@ -262,7 +262,8 @@ export function adapterAtPublishFor(
   requestTimeoutMs?: number,
   persistHandle?: ClaudeStructuredSessionAdapterDeps['persistHandle'],
   onChildWorkEvidence?: ClaudeStructuredSessionAdapterDeps['onChildWorkEvidence'],
-  onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate']
+  onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate'],
+  extraDeps: Partial<ClaudeStructuredSessionAdapterDeps> = {}
 ): ClaudeStructuredSessionAdapter {
   return new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
@@ -287,7 +288,8 @@ export function adapterAtPublishFor(
         persistedHandles.push(handle)
       }),
     ...(onChildWorkEvidence ? { onChildWorkEvidence } : {}),
-    ...(onDispatchSettledLate ? { onDispatchSettledLate } : {})
+    ...(onDispatchSettledLate ? { onDispatchSettledLate } : {}),
+    ...extraDeps
   })
 }
 

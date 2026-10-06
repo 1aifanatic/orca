@@ -27,7 +27,7 @@ function startFailureRow(startKey: string, fact: AgentSessionFailureFact): Agent
 it('holds the same facts while the start rows state nothing new', () => {
   const row = startFailureRow('gen-1', { kind: 'providerStartFailed' })
   const { result, rerender } = renderHook(
-    ({ items }) => useStructuredAgentSessionStartFailureFacts(items, true),
+    ({ items }) => useStructuredAgentSessionStartFailureFacts(items, true, null),
     { initialProps: { items: [row] } }
   )
   const first = result.current

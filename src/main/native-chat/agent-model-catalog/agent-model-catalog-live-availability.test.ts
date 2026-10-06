@@ -4,10 +4,9 @@ import { createCodexModelCatalogProbe } from '../../codex/codex-model-catalog-pr
 import { fetchCodexModelCatalogListing } from '../../codex/codex-structured-model-catalog'
 import { agentModelCatalogFingerprintForRecord } from './agent-model-catalog-fingerprint'
 import { createAgentModelCatalogService } from './agent-model-catalog-service'
-import { AgentModelCatalogUnavailableError } from './agent-model-catalog-availability'
 import {
   AgentModelCatalogStore,
-  type AgentModelCatalogProbe,
+  AgentModelCatalogUnavailableError,
   type AgentModelCatalogSessionAccess,
   type AgentModelCatalogSuccess
 } from './agent-model-catalog-store'
@@ -113,25 +112,28 @@ function codexFixture(account: unknown) {
 }
 
 describe('availability beside a live model listing', () => {
-  it.each(['probe first', 'live listing first'])(
-    'keeps Codex signed-out account/read evidence after thread/start succeeds: %s',
-    async (order) => {
-      const fixture = codexFixture({ account: null, requiresOpenaiAuth: true })
-      if (order === 'probe first') {
-        await fixture.read()
-      }
-      await fixture.start()
-      const result = await fixture.read()
-      expect(result).toMatchObject({
-        origin: 'live-session',
-        models: [{ id: MODEL.model }],
-        unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 30000 }
-      })
-      expect(
-        fixture.requests.mock.calls.filter(([method]) => method === 'account/read')
-      ).toHaveLength(1)
-    }
-  )
+  it('keeps Codex signed-out account/read evidence after thread/start succeeds', async () => {
+    const fixture = codexFixture({ account: null, requiresOpenaiAuth: true })
+    await fixture.read()
+    await fixture.start()
+    const result = await fixture.read()
+    expect(result).toMatchObject({
+      origin: 'live-session',
+      models: [{ id: MODEL.model }],
+      unavailable: { reason: 'notSignedIn', account: 'system', expiresInMs: 30000 }
+    })
+    expect(
+      fixture.requests.mock.calls.filter(([method]) => method === 'account/read')
+    ).toHaveLength(1)
+  })
+
+  it("does not re-probe a healthy chat's fresh catalog", async () => {
+    const fixture = codexFixture({ account: { type: 'chatgpt' }, requiresOpenaiAuth: true })
+    await fixture.start()
+    await fixture.read()
+    await fixture.read()
+    expect(fixture.requests.mock.calls.some(([method]) => method === 'account/read')).toBe(false)
+  })
 
   it.each([
     { account: { type: 'chatgpt' }, requiresOpenaiAuth: true },
@@ -139,13 +141,14 @@ describe('availability beside a live model listing', () => {
     new Error('account/read unsupported')
   ])('leaves a live Codex session enabled for signed-in or unknown status: %j', async (account) => {
     const fixture = codexFixture(account)
+    await fixture.read()
     await fixture.start()
     expect((await fixture.read()).unavailable).toBeUndefined()
     expect(fixture.requests.mock.calls.some(([method]) => method === 'account/read')).toBe(true)
   })
 
   it.each(['claude', 'codex'] as const)(
-    'live %s successes and failures neither clear nor renew the availability lifetime',
+    "the chat's own %s listings neither clear nor renew the probe's verdict",
     async (agent) => {
       let at = 1000
       const store = new AgentModelCatalogStore({ now: () => at })
@@ -181,45 +184,10 @@ describe('availability beside a live model listing', () => {
       expect((await service.read(params)).unavailable?.expiresInMs).toBe(20000)
       expect(probe).toHaveBeenCalledTimes(1)
       at += 20000
-      expect(store.availability.unavailable(fingerprint)).toBeUndefined()
+      expect(store.unavailable(fingerprint)).toBeUndefined()
       signedIn = true
       expect((await service.read(params)).unavailable).toBeUndefined()
       expect(probe).toHaveBeenCalledTimes(2)
     }
   )
-
-  it('does not join a live model refresh in place of an account probe', async () => {
-    const fixture = codexFixture({ account: null, requiresOpenaiAuth: true })
-    let resolve!: (listing: AgentModelCatalogSuccess) => void
-    const live = fixture.store.refresh(
-      fixture.fingerprint,
-      'codex',
-      fixture.access,
-      () =>
-        new Promise<AgentModelCatalogSuccess>((done) => {
-          resolve = done
-        })
-    )
-    expect((await fixture.read()).unavailable?.reason).toBe('notSignedIn')
-    resolve(liveListing())
-    await live
-    expect((await fixture.read()).unavailable?.reason).toBe('notSignedIn')
-  })
-
-  it('a live refresh cannot postpone the next account check after a successful probe', async () => {
-    let at = 1000
-    const store = new AgentModelCatalogStore({ now: () => at })
-    const probe: AgentModelCatalogProbe = async () => ({ ...liveListing(), origin: 'probe' })
-    await store.refresh('account', 'codex', probe, () => probe('/homes/account'))
-    at += 20000
-    const live: AgentModelCatalogSessionAccess = {
-      store,
-      fingerprint: 'account',
-      accountHomePath: '/homes/account'
-    }
-    await store.refresh('account', 'codex', live, async () => liveListing())
-    expect(store.availability.shouldProbe('account')).toBe(false)
-    at += 10000
-    expect(store.availability.shouldProbe('account')).toBe(true)
-  })
 })

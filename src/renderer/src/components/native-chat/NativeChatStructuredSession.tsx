@@ -132,7 +132,8 @@ export function NativeChatStructuredSession(
     journalItems: controller.journalItems,
     failedHere: controller.failedHere,
     retry: controller.retry,
-    agentName: agentLabel
+    agentName: agentLabel,
+    gateReason: controller.unavailable?.reason ?? null
   })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
   const loadingPane = historyPhase === 'unread' ? null : <NativeChatLoadingCue />
@@ -298,6 +299,7 @@ export function NativeChatStructuredSession(
             lifecycle={provisionalLaunch.lifecycle}
             failure={provisionalLaunch.failure}
             agentLabel={agentLabel}
+            gateReason={controller.unavailable?.reason ?? null}
             hasUnsentMessage={hasUnsentStructuredAgentSessionOutboxEntry(
               controller.outbox,
               controller.submissions

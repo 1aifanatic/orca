@@ -6,12 +6,16 @@ import { agentSessionRefusalCauseParts } from '../../../../shared/agent-session-
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import { joinSentences } from '../../../../shared/sentence-joining'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import { isNativeChatAvailabilityFailure } from './native-chat-start-failure-presentation'
+import {
+  isNativeChatFailureShownByGate,
+  type NativeChatGateReason
+} from './native-chat-start-failure-presentation'
 
 export function NativeChatLaunchRetry({
   lifecycle,
   failure = null,
   agentLabel,
+  gateReason = null,
   hasUnsentMessage = false,
   onRetry
 }: {
@@ -20,6 +24,8 @@ export function NativeChatLaunchRetry({
   agentLabel?: string
   /** The host's refusal behind the failed start; its message is never shown. */
   failure?: AgentSessionWriteRefusal | null
+  /** What the disabled Send states now; the line it would repeat is hidden. */
+  gateReason?: NativeChatGateReason
   hasUnsentMessage?: boolean
   onRetry: () => void
 }): React.JSX.Element | null {
@@ -36,7 +42,7 @@ export function NativeChatLaunchRetry({
       (part) =>
         typeof part !== 'string' &&
         'failure' in part &&
-        isNativeChatAvailabilityFailure(part.failure)
+        isNativeChatFailureShownByGate(part.failure, gateReason)
     )
   ) {
     return null

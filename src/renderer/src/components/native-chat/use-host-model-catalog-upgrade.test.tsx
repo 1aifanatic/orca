@@ -456,7 +456,7 @@ describe('Send availability follows the current catalog', () => {
     expect(catalogReads()).toEqual([
       { agent: 'codex', sessionId },
       { agent: 'codex', sessionId, waitForListing: true },
-      { agent: 'codex', sessionId, waitForListing: true }
+      { agent: 'codex', sessionId, waitForAvailability: true }
     ])
     expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
     expect(result.current.unavailable?.reason).toBe('notSignedIn')
@@ -487,6 +487,27 @@ describe('Send availability follows the current catalog', () => {
     expect(result.current.unavailable).toBeNull()
     unmount()
     useAppStore.setState({ runtimeStatusByEnvironmentId: previous })
+  })
+  it('re-reads under the new account and drops the old blocker on an account switch', async () => {
+    const previous = useAppStore.getState().settings
+    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
+    const { result, unmount } = renderOptions()
+    await flush()
+    expect(result.current.unavailable?.reason).toBe('notSignedIn')
+    act(() =>
+      useAppStore.setState({
+        settings: { ...previous!, activeCodexManagedAccountId: 'switched-account' }
+      })
+    )
+    await flush()
+    expect(result.current.unavailable).toBeNull()
+    expect(catalogReads()).toHaveLength(2)
+    // An unrelated store write neither re-reads nor re-keys.
+    act(() => useAppStore.setState({ runtimeStatusByEnvironmentId: new Map() }))
+    await flush()
+    expect(catalogReads()).toHaveLength(2)
+    unmount()
+    useAppStore.setState({ settings: previous })
   })
   it('ignores a late reply after the document hides and refreshes on visibility', async () => {
     const first = deferred()

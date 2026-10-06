@@ -1,5 +1,5 @@
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
-import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-availability'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { isMissingCatalogExecutable } from '../native-chat/agent-model-catalog/agent-model-catalog-executable'
 import { getSystemCodexHomePath } from './codex-home-paths'
 import { resolve } from 'node:path'

@@ -208,7 +208,8 @@ export function useStructuredAgentSession(args: {
   const messages = useStructuredAgentSessionMessages(
     transcriptItems,
     transcriptOutbox,
-    transportState.submissions
+    transportState.submissions,
+    sessionOptions.unavailable?.reason ?? null
   )
   const queuedController = useStructuredAgentSessionQueuedMessages({
     enabled: queueCapable && transportState.fence !== null,
@@ -229,7 +230,11 @@ export function useStructuredAgentSession(args: {
         agentName: structuredAgentLabel(agent),
         pending: commandPending,
         blocked: conversationBusy || rewind.blockedRef.current,
-        startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
+        startFailures: () =>
+          structuredAgentSessionStartFailureFacts(
+            stateRef.current.items,
+            sessionOptions.unavailable?.reason ?? null
+          ),
         send: (command) =>
           write<AgentSessionConversationCommandResult>(
             'agentSession.conversationCommand',

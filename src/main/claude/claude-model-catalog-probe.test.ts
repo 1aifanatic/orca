@@ -1,6 +1,6 @@
 import { createMockDiscoveryChild } from '../text-generation/commit-message-text-generation-test-harness'
 import { CLAUDE_CATALOG_STDIN } from '../../shared/claude-model-list-probe'
-import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-availability'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'

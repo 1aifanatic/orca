@@ -48,22 +48,26 @@ import { structuredAgentSessionRejectedShownInPlace } from '../../../../shared/s
 import { translate } from '@/i18n/i18n'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
-import { isNativeChatAvailabilityFailure } from './native-chat-start-failure-presentation'
+import {
+  isNativeChatFailureShownByGate,
+  type NativeChatGateReason
+} from './native-chat-start-failure-presentation'
 
 /** One shared value, so a rebuilt map re-renders no row still sending. */
 const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { sending: true }
 const NO_COMMANDS: ReadonlySet<string> = new Set()
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
-/** The facts the chat's loaded start-failure rows state. */
+/** The facts the chat's shown start-failure rows state; a row the gate states is not shown. */
 export function structuredAgentSessionStartFailureFacts(
-  items: readonly AgentJournalRenderItem[]
+  items: readonly AgentJournalRenderItem[],
+  gateReason: NativeChatGateReason = null
 ): AgentSessionFailureFact[] {
   const facts: AgentSessionFailureFact[] = []
   for (const item of items) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
-      if (fact && !isNativeChatAvailabilityFailure(fact)) {
+      if (fact && !isNativeChatFailureShownByGate(fact, gateReason)) {
         facts.push(fact)
       }
     }

@@ -41,6 +41,8 @@ export type AgentModelCatalogService = {
     workspacePath?: string | null
     /** With no entry yet, answer from the listing this read starts or joins instead of `unknown`. */
     waitForListing?: boolean
+    /** Answer once the probe already running has its sign-in/CLI verdict. */
+    waitForAvailability?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
 }
 
@@ -88,6 +90,7 @@ async function workspaceKeepsListedDefault(
  * probe so the next read is warm. With no entry, the answer says that listing
  * is running, and only a read that asks waits for it. Failures suppress a new
  * probe for 30s, but never hide another listing already running for the account.
+ * A probe failure typed as signed out or CLI missing rides along as `unavailable`.
  */
 export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
@@ -121,27 +124,33 @@ export function createAgentModelCatalogService(
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
       const home = accountHomePath
-      // The probe also runs the account check a live session's listing cannot answer.
-      const probing =
-        probe &&
-        home &&
-        (deps.store.availability.shouldProbe(fingerprint) ||
-          deps.store.shouldRefresh(fingerprint) ||
-          deps.store.isListing(fingerprint, probe))
+      // Without an entry, answer from any running listing instead of starting a second one.
+      let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
+      if (probe && home) {
+        if (entry && deps.store.shouldRefresh(fingerprint)) {
+          void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+        } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
+          void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+          listing = deps.store.pendingListing(fingerprint)
+        }
+      }
+      const probeRunning = (): boolean =>
+        Boolean(probe && home && deps.store.isListing(fingerprint, probe))
+      // A picker waits only for a first catalog; a read for the verdict joins the running probe.
+      const pending = params.waitForListing
+        ? listing
+        : params.waitForAvailability && probe && home && probeRunning()
           ? deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
           : null
-      // Without an entry, answer from any running listing instead of starting a second one.
-      const listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
-      if ((listing || probing) && params.waitForListing) {
-        // With no catalog, the first catalog or account blocker answers; with one, the probe does.
-        const listed = await (listing ?? probing)
+      if (pending) {
+        const listed = await pending
         entry = deps.store.get(fingerprint) ?? listed
       }
-      const unavailable = home ? deps.store.availability.unavailable(fingerprint) : undefined
-      // A catalog can land before the probe's account check, which then still owes its answer.
-      const inProgress = params.waitForListing
-        ? !unavailable && Boolean(probe && deps.store.isListing(fingerprint, probe))
-        : Boolean(probing || listing)
+      const unavailable = home ? deps.store.unavailable(fingerprint) : undefined
+      // A catalog can land before the probe's verdict, which one more read then waits for.
+      const inProgress = params.waitForAvailability
+        ? false
+        : (!params.waitForListing && listing !== null) || (!unavailable && probeRunning())
       const observation = {
         ...(unavailable ? { unavailable } : {}),
         ...(inProgress ? { listingInProgress: true as const } : {})

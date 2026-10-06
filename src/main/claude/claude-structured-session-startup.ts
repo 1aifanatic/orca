@@ -1,4 +1,5 @@
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
+import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 // What Claude reports at initialize, read after the session is already published. None of it
 // gates the create: a slow start is still a start, and every way it can fail (exit, auth,
 // a foreign session id) faults the published session through its exit path.
@@ -67,6 +68,8 @@ export async function readClaudeStartupFacts(input: {
   providerSessionId: string
   resumesTranscript: boolean
   account?: AgentSessionAccountKind
+  /** The account's catalog, re-probed after this CLI refuses the start as signed out. */
+  catalogAccess?: AgentModelCatalogSessionAccess
   inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
@@ -75,6 +78,7 @@ export async function readClaudeStartupFacts(input: {
     input.connection.initializationResult().then((result) => {
       const authError = claudeInitializationAuthError(result, input.account)
       if (authError) {
+        input.catalogAccess?.store.markStale(input.catalogAccess.fingerprint)
         throw authError
       }
       return result

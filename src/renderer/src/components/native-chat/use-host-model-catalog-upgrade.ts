@@ -3,6 +3,7 @@ import {
   type AgentSessionUnavailable
 } from '../../../../shared/agent-session-availability'
 import { useAppStore } from '@/store'
+import { useShallow } from 'zustand/react/shallow'
 import { runtimeHostContactForEntry } from '../../../../shared/runtime-host-contact'
 import { useEffect, useState, useSyncExternalStore, type MutableRefObject } from 'react'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
@@ -22,6 +23,22 @@ import {
   joinHostModelListingWait,
   subscribeHostModelListingWaits
 } from './host-model-listing-waits'
+
+// Each account switch gets its own wait slot, so a switch never joins the old account's read
+// while every mount under the same accounts still joins the one in flight.
+let lastAccountInputs: readonly unknown[] = []
+let accountRevision = 0
+
+function accountRevisionOf(inputs: readonly unknown[]): number {
+  if (
+    inputs.length !== lastAccountInputs.length ||
+    inputs.some((input, index) => input !== lastAccountInputs[index])
+  ) {
+    lastAccountInputs = inputs
+    accountRevision += 1
+  }
+  return accountRevision
+}
 
 /**
  * Upgrades the static seed with the host's stored catalog without waiting on
@@ -63,8 +80,24 @@ export function useHostModelCatalogUpgrade(args: {
     updateOptionState,
     worktree
   } = args
-  const [accountRevision, setAccountRevision] = useState(0)
-  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}\u0000${accountRevision}`
+  const accountInputs = useAppStore(
+    useShallow((state) => [
+      state.settings?.activeClaudeManagedAccountId,
+      state.settings?.activeCodexManagedAccountId,
+      state.settings?.activeClaudeManagedAccountIdsByRuntime,
+      state.settings?.activeCodexManagedAccountIdsByRuntime,
+      state.settings?.agentDefaultEnv
+    ])
+  )
+  // A paired host known out of contact answers nothing; its evidence is unknown until it is back.
+  const hostLive = useAppStore((state) => {
+    const entry =
+      target.kind === 'local'
+        ? undefined
+        : state.runtimeStatusByEnvironmentId.get(target.environmentId)
+    return !entry || runtimeHostContactForEntry(entry).verdict === 'live'
+  })
+  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}\u0000${accountRevisionOf(accountInputs)}`
   const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
     isHostModelListingWaitInFlight(waitKey)
   )
@@ -74,7 +107,7 @@ export function useHostModelCatalogUpgrade(args: {
   } | null>(null)
   // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- The replaceable expiry handle is cleared before rearming and by the returned cleanup.
   useEffect(() => {
-    if (!enabled || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
+    if (!enabled || !hostLive || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
       return
     }
     let stale = false
@@ -85,11 +118,13 @@ export function useHostModelCatalogUpgrade(args: {
       setObservation(null)
     }
     const params = { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
-    const read = (waitForListing: boolean): Promise<AgentSessionModelCatalogResult> =>
+    const read = (
+      wait?: 'waitForListing' | 'waitForAvailability'
+    ): Promise<AgentSessionModelCatalogResult> =>
       callStructuredAgentSession<AgentSessionModelCatalogResult>(
         target,
         'agentSession.modelCatalog',
-        waitForListing ? { ...params, waitForListing } : params
+        wait ? { ...params, [wait]: true } : params
       )
     const apply = (catalog: AgentSessionModelCatalogResult | null): void => {
       clear()
@@ -112,26 +147,37 @@ export function useHostModelCatalogUpgrade(args: {
           : current
       )
     }
-    let leave: (() => void) | null = null
-    const waitForListing = (requestGeneration: number): void => {
-      leave?.()
-      leave = joinHostModelListingWait(
-        waitKey,
-        () => read(true),
-        (catalog) => {
-          if (stale || generation !== requestGeneration) {
-            return
+    const leaves = new Set<() => void>()
+    const leave = (): void => {
+      for (const leaveWait of leaves) {
+        leaveWait()
+      }
+      leaves.clear()
+    }
+    // One waiting read of each kind per chat; a probe verdict is never followed up again.
+    const waitFor = (
+      wait: 'waitForListing' | 'waitForAvailability',
+      requestGeneration: number
+    ): void => {
+      leaves.add(
+        joinHostModelListingWait(
+          wait === 'waitForListing' ? waitKey : `${waitKey}\u0000availability`,
+          () => read(wait),
+          (catalog) => {
+            if (stale || generation !== requestGeneration) {
+              return
+            }
+            apply(catalog)
+            // The catalog landed before the probe's verdict; one more read waits for that.
+            if (wait === 'waitForListing' && catalog?.listingInProgress === true) {
+              queueMicrotask(() => {
+                if (!stale && generation === requestGeneration) {
+                  waitFor('waitForAvailability', requestGeneration)
+                }
+              })
+            }
           }
-          apply(catalog)
-          // The catalog landed before the host's account check; wait once more for that answer.
-          if (catalog?.listingInProgress === true) {
-            queueMicrotask(() => {
-              if (!stale && generation === requestGeneration) {
-                waitForListing(requestGeneration)
-              }
-            })
-          }
-        }
+        )
       )
     }
     const refresh = (): void => {
@@ -140,16 +186,20 @@ export function useHostModelCatalogUpgrade(args: {
       }
       const requestGeneration = ++generation
       if (isHostModelListingWaitInFlight(waitKey)) {
-        waitForListing(requestGeneration)
+        waitFor('waitForListing', requestGeneration)
       } else {
-        void read(false)
+        void read()
           .then((catalog) => {
             if (stale || generation !== requestGeneration) {
               return
             }
             apply(catalog)
             if (catalog.listingInProgress === true) {
-              waitForListing(requestGeneration)
+              // Only a host that reports the listing knows the wait params; an older one refuses them.
+              waitFor(
+                catalog.origin === 'unknown' ? 'waitForListing' : 'waitForAvailability',
+                requestGeneration
+              )
             }
           })
           .catch(() => {
@@ -162,7 +212,7 @@ export function useHostModelCatalogUpgrade(args: {
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') {
         generation += 1
-        leave?.()
+        leave()
         clear()
       } else {
         refresh()
@@ -172,48 +222,10 @@ export function useHostModelCatalogUpgrade(args: {
     refresh()
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
-    const unsubscribe = useAppStore.subscribe((state, previous) => {
-      const currentSettings = state.settings
-      const oldSettings = previous.settings
-      if (
-        currentSettings?.activeClaudeManagedAccountId !==
-          oldSettings?.activeClaudeManagedAccountId ||
-        currentSettings?.activeCodexManagedAccountId !== oldSettings?.activeCodexManagedAccountId ||
-        currentSettings?.activeClaudeManagedAccountIdsByRuntime !==
-          oldSettings?.activeClaudeManagedAccountIdsByRuntime ||
-        currentSettings?.activeCodexManagedAccountIdsByRuntime !==
-          oldSettings?.activeCodexManagedAccountIdsByRuntime ||
-        currentSettings?.agentDefaultEnv !== oldSettings?.agentDefaultEnv
-      ) {
-        generation += 1
-        clear()
-        setAccountRevision((revision) => revision + 1)
-      }
-      if (
-        target.kind !== 'local' &&
-        state.runtimeStatusByEnvironmentId !== previous.runtimeStatusByEnvironmentId
-      ) {
-        const contact = runtimeHostContactForEntry(
-          state.runtimeStatusByEnvironmentId.get(target.environmentId)
-        )
-        if (contact.verdict !== 'live') {
-          generation += 1
-          leave?.()
-          clear()
-        } else if (
-          runtimeHostContactForEntry(
-            previous.runtimeStatusByEnvironmentId.get(target.environmentId)
-          ).verdict !== 'live'
-        ) {
-          refresh()
-        }
-      }
-    })
     return () => {
       stale = true
       clearTimeout(expiry)
-      leave?.()
-      unsubscribe()
+      leave()
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
     }
@@ -222,6 +234,7 @@ export function useHostModelCatalogUpgrade(args: {
     agent,
     enabled,
     fence,
+    hostLive,
     namesDefault,
     optionCatalog,
     sessionId,
@@ -232,6 +245,7 @@ export function useHostModelCatalogUpgrade(args: {
   ])
   return {
     awaitingListing,
-    unavailable: enabled && observation?.key === waitKey ? observation.unavailable : null
+    unavailable:
+      enabled && hostLive && observation?.key === waitKey ? observation.unavailable : null
   }
 }

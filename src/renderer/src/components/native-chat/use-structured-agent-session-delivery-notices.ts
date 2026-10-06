@@ -9,6 +9,7 @@ import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/struc
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
+import type { NativeChatGateReason } from './native-chat-start-failure-presentation'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
@@ -21,6 +22,7 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
   failedHere: ReadonlySet<string>
   retry: (clientMessageId: string) => void
   agentName: string
+  gateReason: NativeChatGateReason
 }): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const { agentName, failedHere, outbox, submissions } = args
   // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
@@ -42,7 +44,11 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
   // Only an outbox copy of a rejected message reads the loaded rows, so a streaming turn rebuilds
   // no notice otherwise.
   const loadedItems = hasRejected && outbox.length > 0 ? args.journalItems : NO_ITEMS
-  const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasRejected)
+  const startFailures = useStructuredAgentSessionStartFailureFacts(
+    args.journalItems,
+    hasRejected,
+    args.gateReason
+  )
   const commandItemIds = useCommandItemIds(args.journalItems, hasRejected)
   const notices = useMemo(
     () =>
@@ -56,16 +62,7 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
         commandItemIds,
         loadedItems
       ),
-    [
-      outbox,
-      agentName,
-      retry,
-      journalRows,
-      startFailures,
-      failedHere,
-      commandItemIds,
-      loadedItems
-    ]
+    [outbox, agentName, retry, journalRows, startFailures, failedHere, commandItemIds, loadedItems]
   )
   // A submission batch rebuilds the map; one that says the same keeps the old, so no row re-renders.
   const previousRef = useRef(notices)

@@ -12,7 +12,9 @@ export type AgentSessionModelCatalogObservation = {
   listingInProgress?: true
 }
 
-export const AGENT_SESSION_AVAILABILITY_TTL_MS = 30_000
+/** The longest this client holds a host's verdict before reading again; a longer host lifetime
+ *  is clamped to it, never treated as unknown. */
+export const AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS = 30_000
 
 export function readAgentSessionUnavailable(
   value: unknown
@@ -25,13 +27,13 @@ export function readAgentSessionUnavailable(
     typeof value.expiresInMs !== 'number' ||
     !Number.isFinite(value.expiresInMs) ||
     value.expiresInMs <= 0 ||
-    value.expiresInMs > AGENT_SESSION_AVAILABILITY_TTL_MS ||
     !('reason' in value)
   ) {
     return null
   }
+  const expiresInMs = Math.min(value.expiresInMs, AGENT_SESSION_AVAILABILITY_MAX_HOLD_MS)
   if (value.reason === 'cliMissing') {
-    return { reason: 'cliMissing', expiresInMs: value.expiresInMs }
+    return { reason: 'cliMissing', expiresInMs }
   }
   if (value.reason !== 'notSignedIn') {
     return null
@@ -42,7 +44,7 @@ export function readAgentSessionUnavailable(
   }
   return {
     reason: 'notSignedIn',
-    expiresInMs: value.expiresInMs,
+    expiresInMs,
     ...(account === 'managed' || account === 'system' ? { account } : {})
   }
 }

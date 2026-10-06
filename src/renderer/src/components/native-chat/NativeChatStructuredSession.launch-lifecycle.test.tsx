@@ -125,11 +125,8 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
 
   it('leaves an automatic signed-out launch failure to the disabled Send tooltip', () => {
     mocks.launchLifecycle = 'failed'
-    mocks.launchFailure = {
-      kind: 'refused',
-      code: 'agent_session_operation_invalid',
-      details: { reason: 'notSignedIn' }
-    }
+    mocks.launchFailure = NOT_SIGNED_IN
+    mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
     render(sessionView())
 
     expect(screen.queryByText(/Chat could not be started/)).toBeNull()
@@ -138,10 +135,24 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(screen.getByTestId('structured-composer')).toBeTruthy()
   })
 
+  it.each([
+    ['no availability answer', null],
+    ['a different reason', { reason: 'cliMissing' } as const]
+  ])('keeps the signed-out launch failure line when the gate shows %s', (_case, unavailable) => {
+    mocks.launchLifecycle = 'failed'
+    mocks.launchFailure = NOT_SIGNED_IN
+    mocks.unavailable = unavailable
+    render(sessionView())
+
+    expect(screen.getByText(`Chat could not be started. ${NOT_SIGNED_IN_TEXT}`)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
   it('does not revive the automatic failure line for an earlier rejected outbox message', () => {
     mocks.mode = 'outbox'
     mocks.launchLifecycle = 'failed'
     mocks.launchFailure = NOT_SIGNED_IN
+    mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
     seedOutbox('session-1', [
       {
         ...createStructuredAgentSessionOutboxEntry({
@@ -262,7 +273,7 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
   })
 
   it.each(['claude', 'codex'] as const)(
-    'retries a hidden %s signed-out start after the probe clears and delivers the message',
+    'retries a %s signed-out start after the probe clears and delivers the message',
     async (agent) => {
       mocks.mode = 'outbox'
       mocks.launchLifecycle = 'failed'
@@ -280,7 +291,8 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
       mocks.unavailable = null
       rerender(sessionView(agent))
       expect(mocks.composerProps?.structuredTransport?.unavailable).toBeNull()
-      expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()
+      // With Send no longer saying it, the start's own line is back until the relaunch.
+      expect(screen.getByText(/Chat could not be started/)).toBeTruthy()
       expect(composerSend()('hello after signing in', [])).toBe(true)
       expect(mocks.retryLaunch).toHaveBeenCalledExactlyOnceWith('wt-1', 'session-1')
       expect(mocks.call).not.toHaveBeenCalled()

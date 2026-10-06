@@ -8,6 +8,8 @@ import {
   USER_MESSAGE
 } from './claude-structured-session-test-support'
 import { CLAUDE_DEFAULT_REQUEST_TIMEOUT_MS } from './claude-agent-sdk-control-requests'
+import { AgentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { agentModelCatalogFingerprint } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 
 type LateSettlement = Parameters<
   NonNullable<ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate']>
@@ -205,6 +207,39 @@ describe('Claude structured session publishes before the CLI answers initialize'
       reason: expect.stringMatching(/not signed in/),
       startupUnproven: true
     })
+  })
+
+  it("re-probes the account's catalog once the CLI refuses the start as signed out", async () => {
+    const store = new AgentModelCatalogStore({ now: () => 1_700_000_000_000 })
+    const fingerprint = agentModelCatalogFingerprint({
+      agent: 'claude',
+      accountHomeVariable: 'CLAUDE_CONFIG_DIR',
+      accountHomePath: '/accounts/claude',
+      wslDistro: null
+    })
+    store.recordSuccess(fingerprint, 'claude', {
+      models: [{ id: 'sonnet', label: 'Sonnet', isDefault: true, efforts: [] }],
+      fastModeTierByModel: new Map(),
+      origin: 'probe'
+    })
+    expect(store.shouldRefresh(fingerprint)).toBe(false)
+    const claude = fakeClaude({ initAccount: { apiProvider: 'firstParty', tokenSource: 'none' } })
+    const events: ClaudeStructuredSessionEvent[] = []
+    const adapter = adapterAtPublishFor(
+      claude,
+      {},
+      events,
+      [],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { modelCatalog: store }
+    )
+    await adapter.acquire(ACQUIRE)
+    await adapter.awaitStarted('session-1')
+    await adapter.drainObservedExits()
+    expect(store.shouldRefresh(fingerprint)).toBe(true)
   })
 
   // Accounts as Claude 2.1.280 reports them at initialize; the /login key row is from its source.

@@ -15,7 +15,6 @@ describe('positive agent availability evidence', () => {
     { reason: 'future', expiresInMs: 100 },
     { reason: 'cliMissing', expiresInMs: 0 },
     { reason: 'cliMissing', expiresInMs: Infinity },
-    { reason: 'cliMissing', expiresInMs: 30001 },
     { reason: 'cliMissing', expiresInMs: '10' },
     { reason: 'notSignedIn', account: 'future', expiresInMs: 100 }
   ])('ignores unknown or expired evidence %j', (value) => {
@@ -25,6 +24,12 @@ describe('positive agent availability evidence', () => {
     expect(
       readAgentSessionUnavailable({ reason: 'notSignedIn', account, expiresInMs: 50 })
     ).toEqual({ reason: 'notSignedIn', account, expiresInMs: 50 })
+  })
+  it("clamps a longer host lifetime to this client's hold instead of dropping it", () => {
+    expect(readAgentSessionUnavailable({ reason: 'cliMissing', expiresInMs: 90_000 })).toEqual({
+      reason: 'cliMissing',
+      expiresInMs: 30_000
+    })
   })
   it('retains signed-out evidence without optional account context', () => {
     expect(readAgentSessionUnavailable({ reason: 'notSignedIn', expiresInMs: 50 })).toEqual({

@@ -1,5 +1,5 @@
 import { getSystemCodexHomePath } from './codex-home-paths'
-import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-availability'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { describe, expect, it, vi } from 'vitest'
 import { createCodexModelCatalogProbe } from './codex-model-catalog-probe'
 import { resolveCodexStructuredInvocation } from './codex-structured-launch-resolution'

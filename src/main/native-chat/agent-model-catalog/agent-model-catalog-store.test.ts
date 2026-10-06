@@ -10,13 +10,13 @@ import {
   agentModelCatalogFingerprintForRecord
 } from './agent-model-catalog-fingerprint'
 import { createAgentModelCatalogFilePersistence } from './agent-model-catalog-persistence'
-import { AgentModelCatalogUnavailableError } from './agent-model-catalog-availability'
 import {
   AGENT_MODEL_CATALOG_FAILURE_TTL_MS,
   AGENT_MODEL_CATALOG_FRESH_MS,
   AGENT_MODEL_CATALOG_MAX_ENTRIES,
   AGENT_MODEL_CATALOG_PICKER_WAIT_MS,
   AgentModelCatalogStore,
+  AgentModelCatalogUnavailableError,
   type AgentModelCatalogProbe,
   type AgentModelCatalogSessionAccess,
   type AgentModelCatalogSuccess
@@ -394,27 +394,87 @@ describe('agent model catalog store', () => {
   })
 })
 
-describe('transient availability storage', () => {
-  it('replaces a blocker with an unknown failure or fresh success', async () => {
-    const store = new AgentModelCatalogStore()
-    store.recordFailure('a', 'auth', { reason: 'notSignedIn', account: 'system' })
-    expect(store.availability.unavailable('a')?.reason).toBe('notSignedIn')
+describe('probe verdict on the failure record', () => {
+  function blockedStore(at: { now: number }) {
+    const store = new AgentModelCatalogStore({ now: () => at.now })
+    const signedOut: AgentModelCatalogProbe = async () => {
+      throw new AgentModelCatalogUnavailableError({ reason: 'notSignedIn', account: 'system' })
+    }
+    const block = () => store.refresh('fp-1', 'codex', signedOut, () => signedOut('/homes/a'))
+    return { store, block }
+  }
+
+  it("keeps the verdict and its lifetime through a chat's own listings", async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    await block()
+    at.now += 10_000
+    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
+    await store.refresh('fp-1', 'codex', liveLister(store), async () => success('gpt-b'))
+    store.recordFailure('fp-1', 'model/list timed out')
+    await store.refresh('fp-1', 'codex', liveLister(store), async () => {
+      throw new Error('model/list timed out')
+    })
+    expect(store.get('fp-1')!.models.map((model) => model.id)).toEqual(['gpt-b'])
+    expect(store.unavailable('fp-1')).toEqual({
+      reason: 'notSignedIn',
+      account: 'system',
+      expiresInMs: AGENT_MODEL_CATALOG_FAILURE_TTL_MS - 10_000
+    })
+  })
+
+  it('clears the verdict on a probe success or an untyped probe failure', async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    await block()
+    const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
+    await store.refresh('fp-1', 'codex', listed, () => listed('/homes/a'))
+    expect(store.unavailable('fp-1')).toBeUndefined()
+    await block()
     const timedOut: AgentModelCatalogProbe = async () => {
       throw new Error('timeout')
     }
-    await store.refresh('a', 'codex', timedOut, () => timedOut('/homes/a'))
-    expect(store.availability.unavailable('a')).toBeUndefined()
-    store.recordFailure('a', 'missing', { reason: 'cliMissing' })
-    const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
-    await store.refresh('a', 'codex', listed, () => listed('/homes/a'))
-    expect(store.availability.unavailable('a')).toBeUndefined()
+    await store.refresh('fp-1', 'codex', timedOut, () => timedOut('/homes/a'))
+    expect(store.unavailable('fp-1')).toBeUndefined()
   })
+
+  it('re-probes once the verdict ages out, however fresh the catalog', async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
+    await block()
+    expect(store.shouldRefresh('fp-1')).toBe(false)
+    at.now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    expect(store.unavailable('fp-1')).toBeUndefined()
+    expect(store.shouldRefresh('fp-1')).toBe(true)
+    // A chat's listing after expiry does not stand in for the re-probe.
+    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
+    expect(store.shouldRefresh('fp-1')).toBe(true)
+  })
+
+  it('never re-probes a healthy fresh catalog inside the fresh window', async () => {
+    let at = 1_000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const listed: AgentModelCatalogProbe = async () => ({ ...success('gpt-a'), origin: 'probe' })
+    await store.refresh('fp-1', 'codex', listed, () => listed('/homes/a'))
+    at += AGENT_MODEL_CATALOG_FRESH_MS - 1
+    expect(store.shouldRefresh('fp-1')).toBe(false)
+  })
+
+  it('a refused start ages the entry so the next read re-probes', () => {
+    const store = new AgentModelCatalogStore({ now: () => 1_000_000 })
+    store.recordSuccess('fp-1', 'codex', success('gpt-a'))
+    store.markStale('fp-1')
+    expect(store.get('fp-1')!.models.map((model) => model.id)).toEqual(['gpt-a'])
+    expect(store.shouldRefresh('fp-1')).toBe(true)
+  })
+
   it('a synchronous probe fault never rejects the catalog read', async () => {
     const store = new AgentModelCatalogStore()
     const faulty: AgentModelCatalogProbe = () => {
       throw new AgentModelCatalogUnavailableError({ reason: 'cliMissing' })
     }
     await expect(store.refresh('a', 'codex', faulty, () => faulty('/homes/a'))).resolves.toBeNull()
-    expect(store.availability.unavailable('a')?.reason).toBe('cliMissing')
+    expect(store.unavailable('a')?.reason).toBe('cliMissing')
   })
 })

@@ -13,6 +13,7 @@ import type { CodexSession } from './codex-structured-session-state'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore,
+  AgentModelCatalogUnavailableError,
   type AgentModelCatalogProbe
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import { createAgentModelCatalogService } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
@@ -84,13 +85,16 @@ function seedEntry(store: AgentModelCatalogStore, ...ids: string[]): void {
 }
 
 describe('Codex session options through the host catalog store', () => {
-  it('keeps signed-out probe evidence when a live picker first lists successfully', async () => {
+  it("keeps the probe's signed-out verdict when the chat's own picker lists", async () => {
     const store = new AgentModelCatalogStore({ now: () => 1000 })
-    store.recordFailure(FINGERPRINT, 'auth', { reason: 'notSignedIn', account: 'system' })
+    const signedOut: AgentModelCatalogProbe = async () => {
+      throw new AgentModelCatalogUnavailableError({ reason: 'notSignedIn', account: 'system' })
+    }
+    await store.refresh(FINGERPRINT, 'codex', signedOut, () => signedOut('/homes/a'))
     const request = vi.fn(async () => listAnswer('gpt-live'))
     const result = await readLiveCodexSessionOptions(storeSession(request, store), undefined)
     expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
-    expect(store.availability.unavailable(FINGERPRINT)).toEqual({
+    expect(store.unavailable(FINGERPRINT)).toEqual({
       reason: 'notSignedIn',
       account: 'system',
       expiresInMs: 30000
@@ -138,10 +142,7 @@ describe('Codex session options through the host catalog store', () => {
       accountHomePath: '/homes/a',
       wslDistro: null
     })
-    let failProbe!: (error: Error) => void
-    const hungProbe = vi.fn<AgentModelCatalogProbe>(
-      () => new Promise<never>((_resolve, reject) => (failProbe = reject))
-    )
+    const hungProbe = vi.fn<AgentModelCatalogProbe>(() => new Promise<never>(() => {}))
     const service = createAgentModelCatalogService({
       store,
       getRecord: () => undefined,
@@ -159,11 +160,9 @@ describe('Codex session options through the host catalog store', () => {
     session.catalogAccess = { store, fingerprint, accountHomePath: '/homes/a' }
     const result = await readLiveCodexSessionOptions(session, undefined)
     expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
-    // The picker's waiting read answers from the chat's listing once the probe's account check ends.
-    const picker = service.read({ agent: 'codex', waitForListing: true })
-    failProbe(new Error('probe timed out'))
-    const answered = await picker
-    expect(answered.origin === 'unknown' ? null : answered.models[0]!.id).toBe('gpt-live')
+    // The picker's waiting read now answers from the chat's listing.
+    const picker = await service.read({ agent: 'codex', waitForListing: true })
+    expect(picker.origin === 'unknown' ? null : picker.models[0]!.id).toBe('gpt-live')
   })
 
   it("restores a new chat from its own connection while another chat's listing hangs", async () => {
