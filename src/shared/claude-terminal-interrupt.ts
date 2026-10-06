@@ -87,8 +87,12 @@ export class ClaudeTerminalInterruptTracker<Row extends AgentHookEventPayload> {
     if (!pending) {
       return
     }
-    // A hook or another input ends the correlation; a dialog dismissal retains the busy title.
-    if (pending.row !== row || now - pending.at > TITLE_CONFIRMATION_WINDOW_MS) {
+    // Continued busy output means Escape left the turn running, as when dismissing /usage.
+    if (
+      observed.working ||
+      pending.row !== row ||
+      now - pending.at > TITLE_CONFIRMATION_WINDOW_MS
+    ) {
       observed.pending = undefined
       return
     }

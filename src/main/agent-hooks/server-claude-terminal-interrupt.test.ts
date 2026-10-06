@@ -127,6 +127,30 @@ describe('Claude native title confirms an Escape interruption', () => {
     expect(row()).toMatchObject({ state: 'done', mainAgent: { state: 'done' } })
   })
 
+  it('does not attribute a later idle title to an Escape that left Claude busy', async () => {
+    await startTurn()
+    const tracker = createTerminalTitleTracker({
+      onTitle: (_normalized, raw, meta) => title(raw, meta?.staleWorkingTitleClear)
+    })
+    try {
+      for (const event of loadClaudeInterruptCapture('stream-usage-cancel-orca')) {
+        if (event.kind === 'input' && event.label === 'cancel-turn') {
+          break
+        }
+        if (event.kind === 'title') {
+          tracker.handleChunk(event.chunk)
+        } else {
+          server.observeClaudeTerminalEvidence(PANE, { kind: 'input', data: event.text })
+        }
+      }
+      title('✳ 500-row markdown table')
+      expect(row()).toMatchObject({ state: 'working', mainAgent: { state: 'working' } })
+      expect(row().mainAgent?.outcome).not.toBe('cancellation')
+    } finally {
+      tracker.dispose()
+    }
+  })
+
   it.each(['new hook', 'new input', 'reset', 'missing busy title', 'synthetic idle'])(
     'rejects %s as confirmation of an old Escape',
     async (scenario) => {
