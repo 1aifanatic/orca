@@ -71,7 +71,7 @@ describePosix('relay startup command staging', () => {
   it('types a short provider-delivered command as is', async () => {
     await spawn('echo short')
     await vi.advanceTimersByTimeAsync(50)
-    expect(mockPtySpawn.mock.results[0]?.value.write).toHaveBeenCalledWith('echo short\n')
+    expect(mockPtySpawn.mock.results[0]?.value.write).toHaveBeenCalledWith('echo short\r')
   })
 
   it('stages a long provider-delivered command and types only the sourcing line', async () => {
@@ -81,7 +81,7 @@ describePosix('relay startup command staging', () => {
     const scriptPath = join(stagingDir, script)
     expect(readFileSync(scriptPath, 'utf8').split('\n')[1]).toBe(command)
     await vi.advanceTimersByTimeAsync(50)
-    expect(mockPtySpawn.mock.results[0]?.value.write).toHaveBeenCalledWith(`. '${scriptPath}'\n`)
+    expect(mockPtySpawn.mock.results[0]?.value.write).toHaveBeenCalledWith(`. '${scriptPath}'\r`)
   })
 
   it('deletes a script the shell never sourced when the PTY exits', async () => {
@@ -104,7 +104,7 @@ describePosix('relay startup command staging', () => {
     const command = `claude '${'x'.repeat(600)}'`
     await spawn(command)
     await vi.advanceTimersByTimeAsync(50)
-    expect(mockPtySpawn.mock.results[0]?.value.write).toHaveBeenCalledWith(`${command}\n`)
+    expect(mockPtySpawn.mock.results[0]?.value.write).toHaveBeenCalledWith(`${command}\r`)
     const output = dispatcher._notifications
       .filter((notification) => notification.method === 'pty.data')
       .map((notification) => String(notification.params?.data))
