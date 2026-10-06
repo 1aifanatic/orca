@@ -24,8 +24,16 @@ export type OrchestrationMailNotice = Readonly<{
   messages: readonly OrchestrationMailMessage[]
 }>
 
+/** A Dispatch's task, sent as the assignee's turn: the records it joins back to while they exist. */
+export type OrchestrationTaskMessage = Readonly<{
+  message: 'task'
+  runId: string
+  taskId: string
+  dispatchId: string
+}>
+
 /** What Orca delivers for other agents, one shape per message kind. */
-export type OrchestrationAgentMessage = OrchestrationMailNotice
+export type OrchestrationAgentMessage = OrchestrationMailNotice | OrchestrationTaskMessage
 
 export type AgentMessageSource = Readonly<{
   kind: 'agent'
@@ -51,6 +59,13 @@ const mailNoticeSchema = z.object({
   messages: z.array(z.object({ messageId: z.string(), runId: z.string(), from: z.string() }))
 })
 
+const taskSchema = z.object({
+  message: z.literal('task'),
+  runId: z.string(),
+  taskId: z.string(),
+  dispatchId: z.string()
+})
+
 // Not strict: a newer build may add a field, which this one keeps no use for and must not reject.
 const storedSourceSchema = z.discriminatedUnion('kind', [
   z.object({ v: z.literal(MESSAGE_SOURCE_VERSION), kind: z.literal('user') }),
@@ -66,7 +81,7 @@ const storedSourceSchema = z.discriminatedUnion('kind', [
         })
       })
     ),
-    orchestration: z.discriminatedUnion('message', [mailNoticeSchema])
+    orchestration: z.discriminatedUnion('message', [mailNoticeSchema, taskSchema])
   })
 ])
 
