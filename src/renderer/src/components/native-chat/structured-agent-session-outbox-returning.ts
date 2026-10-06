@@ -1,10 +1,11 @@
 // A message handed back to its conversation's draft stays in the outbox, marked returning, until
 // the draft holds it durably (the addition journaled at once, or storage confirming the draft), and
 // only then leaves and says it ended (which clears the notes it carried). Drafts are saved
-// asynchronously, so removing the copy first could lose the text in a crash. A returning entry is never sent again: its id proved no record, so a resend would
-// be a new first send. On load, one still marked re-runs its hand-back, which the draft's suffix
-// rule and image id check make safe to repeat. A refused save keeps it until a later save of that
-// draft lands in this run, or the next load.
+// asynchronously, so removing the copy first could lose the text in a crash. A returning entry is
+// never sent again: its id proved no record, so a resend would be a new first send. On load, one
+// still marked re-runs its hand-back, which the draft's suffix rule and image id check make safe to
+// repeat. A refused save keeps it until a later save of that draft lands in this run, or the next
+// load.
 
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import {
@@ -101,7 +102,9 @@ export function handBackStructuredAgentSessionEntry(
       .then(() => finishReturning(entry))
       .finally(() => handingBack.delete(key))
   }
-  // Read against the loaded drafts; once loaded, the text is in the draft as the hand-back runs.
+  // Read against the loaded drafts. A hand-back can run before the app starts their load (child
+  // effects run before App's), so it starts the load itself; until that lands it waits.
+  void hydrateNativeChatComposerDrafts()
   if (isNativeChatComposerDraftLoadPending()) {
     void draftsLoaded().then(handBack, () => handingBack.delete(key))
   } else {

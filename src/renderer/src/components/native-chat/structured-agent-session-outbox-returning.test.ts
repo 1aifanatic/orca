@@ -92,7 +92,13 @@ function endingsOf(modules: Modules): string[] {
   return endings
 }
 
+// Captured before any test spies on it, so a spy never wraps another.
+const realSetItem = localStorage.setItem.bind(localStorage)
+let journalSpy: { mockRestore: () => void } | null = null
+
 beforeEach(() => {
+  journalSpy?.mockRestore()
+  journalSpy = null
   localStorage.clear()
   mocks.call.mockReset()
   storage = createMemoryNativeChatComposerDraftStorage()
@@ -106,13 +112,15 @@ afterEach(() => {
 /** The draft journal can't take an addition (localStorage full): the addition is not durable at
  *  once, so the hand-back waits for storage to confirm the draft. */
 function journalFull(): void {
-  const setItem = localStorage.setItem.bind(localStorage)
-  vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, value: string) => {
-    if (key === 'orca:nativeChatComposerDraftJournal:v1') {
-      throw new DOMException('full', 'QuotaExceededError')
-    }
-    setItem(key, value)
-  })
+  const setItem = realSetItem
+  journalSpy = vi
+    .spyOn(localStorage, 'setItem')
+    .mockImplementation((key: string, value: string) => {
+      if (key === 'orca:nativeChatComposerDraftJournal:v1') {
+        throw new DOMException('full', 'QuotaExceededError')
+      }
+      setItem(key, value)
+    })
 }
 
 describe('a message handed back to its draft', () => {
@@ -320,5 +328,61 @@ describe('a message handed back to its draft', () => {
     land()
     await vi.waitFor(() => expect(outbox.readOutbox(SESSION)).toEqual([]))
     expect(drafts.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nwithdrawn message')
+  })
+
+  /** The app's real order: the resume (a child's effect) runs before App's effect starts the load. */
+  async function resumeBeforeTheLoadStarts() {
+    vi.resetModules()
+    const storageModule = await import('./native-chat-composer-draft-storage')
+    storageModule.setNativeChatComposerDraftStorageForTests(storage)
+    const modules = {
+      returning: await import('./structured-agent-session-outbox-returning'),
+      outbox: await import('./structured-agent-session-outbox-storage'),
+      drafts: await import('./native-chat-draft-cache'),
+      store: await import('./native-chat-composer-draft-store')
+    }
+    modules.returning.resumeReturningStructuredAgentSessionEntries()
+    void modules.store.hydrateNativeChatComposerDrafts()
+    await vi.waitFor(() => expect(modules.outbox.readOutbox(SESSION)).toEqual([]))
+    await modules.store.nativeChatComposerDraftWritesSettled()
+    return modules
+  }
+
+  it('resumed before the app starts the load, adds no duplicate to the saved draft', async () => {
+    storage.drafts.set(SCOPE, { text: 'typed\n\nwithdrawn message', images: [], savedAt: 1 })
+    localStorage.setItem(
+      `orca:desktopStructuredAgentSessionOutbox:v1:${SESSION}`,
+      JSON.stringify([message({ returning: { ending: 'returned' } })])
+    )
+    const modules = await resumeBeforeTheLoadStarts()
+    expect(modules.drafts.readNativeChatDraftCache(SCOPE)).toBe('typed\n\nwithdrawn message')
+    expect(storage.drafts.get(SCOPE)).toMatchObject({ text: 'typed\n\nwithdrawn message' })
+  })
+
+  // The previous run's storage refused the draft and its unload journaled it whole, typed text and
+  // the returned message included; the resume must not replace that with an early append.
+  it('resumed before the app starts the load, keeps a draft the last run journaled whole', async () => {
+    storage.drafts.set(SCOPE, { text: 'old', images: [], savedAt: 1 })
+    const at = Date.now() - 60_000
+    localStorage.setItem(
+      'orca:nativeChatComposerDraftJournal:v1',
+      JSON.stringify([
+        {
+          scopeKey: SCOPE,
+          at,
+          run: 'previous',
+          draft: { text: 'old typed more\n\nwithdrawn message', images: [], savedAt: at }
+        }
+      ])
+    )
+    localStorage.setItem(
+      `orca:desktopStructuredAgentSessionOutbox:v1:${SESSION}`,
+      JSON.stringify([message({ returning: { ending: 'returned' } })])
+    )
+    const modules = await resumeBeforeTheLoadStarts()
+    expect(modules.drafts.readNativeChatDraftCache(SCOPE)).toBe(
+      'old typed more\n\nwithdrawn message'
+    )
+    expect(storage.drafts.get(SCOPE)).toMatchObject({ text: 'old typed more\n\nwithdrawn message' })
   })
 })
