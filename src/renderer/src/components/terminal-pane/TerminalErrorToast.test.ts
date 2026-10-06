@@ -253,6 +253,15 @@ describe('isExplainedTerminalError', () => {
     ).toBe(true)
   })
 
+  it('explains a pane whose saved session another host connection owns, without an issue link', () => {
+    const raw = "Error invoking remote method 'pty:spawn': Error: terminal_pane_owner_host_mismatch"
+    expect(isExplainedTerminalError(raw)).toBe(true)
+    const humanized = humanizeTerminalError(raw)
+    expect(humanized).toContain('belongs to another host connection')
+    expect(humanized).toContain('Open a new terminal')
+    expect(humanized).not.toContain('terminal_pane_owner_host_mismatch')
+  })
+
   it('keeps the issue link for errors Orca cannot explain', () => {
     expect(isExplainedTerminalError('Paste failed.')).toBe(false)
     expect(isExplainedTerminalError('node-pty: open_slave failed: EMFILE')).toBe(false)

@@ -61,6 +61,10 @@ const SOURCE_RESTORE_REQUIRED_REPLACE_PATTERN = new RegExp(SOURCE_RESTORE_REQUIR
 // the sources above: that copy implies the session is gone.
 const HELD_BY_PREVIOUS_RELAY_SOURCE = 'SSH_PTY_HELD_BY_PREVIOUS_RELAY(?::[ \\t]*\\S*)?'
 const HELD_BY_PREVIOUS_RELAY_PATTERN = new RegExp(HELD_BY_PREVIOUS_RELAY_SOURCE)
+// The pane's saved session is owned by another host connection, e.g. an older build's relay tab.
+const OWNER_HOST_MISMATCH_SOURCE = 'terminal_pane_owner_host_mismatch'
+const OWNER_HOST_MISMATCH_PATTERN = new RegExp(OWNER_HOST_MISMATCH_SOURCE)
+const OWNER_HOST_MISMATCH_REPLACE_PATTERN = new RegExp(OWNER_HOST_MISMATCH_SOURCE, 'g')
 const HELD_BY_PREVIOUS_RELAY_REPLACE_PATTERN = new RegExp(HELD_BY_PREVIOUS_RELAY_SOURCE, 'g')
 const UNREATTACHABLE_SESSION_PATTERNS = UNREATTACHABLE_SESSION_SOURCES.map(
   (source) => new RegExp(source)
@@ -106,6 +110,7 @@ export function isExplainedTerminalError(error: string): boolean {
         LEGACY_TERMINAL_HOST_GONE_PATTERN.test(line) ||
         SOURCE_RESTORE_REQUIRED_PATTERN.test(line) ||
         HELD_BY_PREVIOUS_RELAY_PATTERN.test(line) ||
+        OWNER_HOST_MISMATCH_PATTERN.test(line) ||
         UNREATTACHABLE_SESSION_PATTERNS.some((pattern) => pattern.test(line))
     )
 }
@@ -170,6 +175,12 @@ export function humanizeTerminalError(error: string): string {
     translate(
       'auto.components.terminal.pane.TerminalErrorToast.heldByPreviousRelay',
       'This terminal is still running on the host under the previous Orca version, which this version cannot connect to. It keeps running until it exits. Open a new terminal to keep working here.'
+    )
+  )
+  humanized = humanized.replace(OWNER_HOST_MISMATCH_REPLACE_PATTERN, () =>
+    translate(
+      'auto.components.terminal.pane.TerminalErrorToast.ownerHostMismatch',
+      "This terminal's saved session belongs to another host connection, so Orca can't reattach it here. Open a new terminal to continue."
     )
   )
   if (humanized.includes(REMOTE_TERMINAL_CLOSED_MARKER)) {
