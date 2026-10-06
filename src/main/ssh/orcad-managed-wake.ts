@@ -60,7 +60,7 @@ export async function wakeStoppedManagedOrcad(
   } else if (!(await releaseOwnInterruptedWakeFence(options, host))) {
     return { outcome: 'fenced' }
   }
-  const wake = withOrcadActivationLock(
+  const wake: Promise<OrcadManagedWake> = withOrcadActivationLock(
     options,
     async (): Promise<OrcadManagedWake> => {
       // Claimed before the write lands, so a drop after it still leaves a fence this client can prove.
@@ -92,7 +92,7 @@ export async function wakeStoppedManagedOrcad(
         throw error
       }
     },
-    () => ({ outcome: 'fenced' })
+    (): OrcadManagedWake => ({ outcome: 'fenced' })
   )
   runningWakes.set(host, wake)
   void wake
