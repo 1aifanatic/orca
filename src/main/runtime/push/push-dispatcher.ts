@@ -165,7 +165,8 @@ export class PushDispatcher {
         event.emittedAt !== undefined &&
         !reserveNotificationCooldown(
           this.recentNotifications,
-          JSON.stringify([device.deviceId, event.worktreeId ?? 'global']),
+          // Keyed news is announced once by its producer, so only its own repeat may collapse it.
+          JSON.stringify([device.deviceId, event.attentionKey ?? event.worktreeId ?? 'global']),
           event.emittedAt
         )
       ) {

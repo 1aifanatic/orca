@@ -31,11 +31,10 @@ import type {
   AgentJournalTurnOutcome
 } from './agent-session-journal-types'
 import type { AgentTurnOutcome } from './agent-turn-outcome'
-import {
-  agentSessionScopeKey,
-  type AgentSessionExecutionLocation,
-  type AgentSessionHandoffStage,
-  type AgentSessionRecord
+import type {
+  AgentSessionExecutionLocation,
+  AgentSessionHandoffStage,
+  AgentSessionRecord
 } from './agent-session-record'
 import type { AgentProviderSessionMetadata } from './agent-session-resume'
 import type { NativeChatSubagentEntry } from './native-chat-types'
@@ -299,20 +298,29 @@ export type AgentSessionTurnCompletion = {
 }
 
 /**
+ * An approval or question newly waiting on the user, derived by the EXECUTION HOST at journal
+ * commit. It usually lands mid-turn, where no completion fires. One event per prompt: a revision
+ * of a still-pending prompt keeps its id and stays silent.
+ */
+export type AgentSessionPromptAttention = {
+  scope: AgentSessionExecutionLocation
+  sessionId: string
+  /** The prompt's journal item id. */
+  promptId: string
+  /** Execution host's clock at journal commit. */
+  raisedAt: number
+}
+
+/**
  * LIVE-ONLY: there is no snapshot arm and no replay arm, by decision. A subscriber is told what
- * completes while it is subscribed and nothing else; completions that land while it is away are
+ * completes or asks while it is subscribed and nothing else; edges that land while it is away are
  * dropped rather than queued, so nothing durable can strand. On reconnect the client baselines.
  */
 export type AgentSessionTurnCompletionEvent =
   | { type: 'completion'; completion: AgentSessionTurnCompletion }
+  /** Sent only to a subscriber that asked with `includePrompts`, so an older client never sees it. */
+  | { type: 'prompt'; prompt: AgentSessionPromptAttention }
   | { type: 'end' }
-
-/** Delivery dedupe address. Unread is idempotent and does not need it; mobile fanout does. */
-export function agentSessionTurnCompletionKey(completion: AgentSessionTurnCompletion): string {
-  return [agentSessionScopeKey(completion.scope), completion.sessionId, completion.turnId].join(
-    '\u0000'
-  )
-}
 
 // ─── Mutation envelope ──────────────────────────────────────────────────────
 

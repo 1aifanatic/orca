@@ -29,6 +29,8 @@ export type MobileNotificationDispatchEvent = {
   // Why: background push must tell "needs input" from "finished" without re-deriving
   // it from the title. Optional and additive — old clients ignore it.
   agentState?: AgentStatusState
+  /** See `NotificationDispatchRequest.attentionKey`: cooldowns key on it instead of the workspace. */
+  attentionKey?: string
 }
 
 export type MobileNotificationDismissEvent = {
@@ -104,7 +106,7 @@ export class RuntimeMobileNotificationController {
         (event.emittedAt === undefined ||
           reserveNotificationCooldown(
             this.legacyCooldown,
-            event.worktreeId ?? 'global',
+            event.attentionKey ?? event.worktreeId ?? 'global',
             event.emittedAt
           ))
       event = {
@@ -145,6 +147,22 @@ export class RuntimeMobileNotificationController {
 
   dismiss(notificationId: string): void {
     this.dispatch({ type: 'dismiss', notificationId })
+  }
+
+  /** Withdraws a notification this host delivered and has not withdrawn yet; anything else is a
+   *  no-op, so a subject acknowledged again costs no push. The record survives restarts. */
+  retire(notificationId: string): void {
+    if (this.dismissalStore?.hasLiveDelivery(notificationId) === false) {
+      return
+    }
+    this.dismiss(notificationId)
+  }
+
+  /** `retire` for every live delivery whose id starts with `prefix`: one subject's alerts. */
+  retireMatching(prefix: string): void {
+    for (const notificationId of this.dismissalStore?.liveDeliveryIds(prefix) ?? []) {
+      this.dismiss(notificationId)
+    }
   }
 
   async dispatchPlugin(input: {

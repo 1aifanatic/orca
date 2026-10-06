@@ -7,6 +7,7 @@ import type {
 import { getRuntimeEnvironmentRevision } from './runtime-environment-revision'
 import type { AgentSessionConversationOutline } from '../../../shared/agent-session-conversation-outline'
 import {
+  AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY,
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
@@ -177,8 +178,29 @@ export function subscribeStructuredAgentSessionStatus(
   )
 }
 
-/** Turns that settle from now on. The host sends no snapshot and replays nothing, so a
- *  subscriber that reconnects has missed whatever completed while it was away. */
+/** The user read this chat: the owning host withdraws the phone alerts it pushed for it. An older
+ *  host has no such method and is skipped; a failure is bookkeeping and only logged. */
+export async function acknowledgeStructuredAgentSessionAttention(
+  target: RuntimeClientTarget,
+  sessionId: string
+): Promise<void> {
+  try {
+    if (
+      !(await structuredAgentSessionHostSupports(
+        target,
+        AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY
+      ))
+    ) {
+      return
+    }
+    await callRuntimeRpc(target, 'agentSession.acknowledgeAttention', { sessionId })
+  } catch (error) {
+    console.warn('[structured-session-attention] acknowledgement failed', error)
+  }
+}
+
+/** Turns that settle, and prompts raised, from now on. The host sends no snapshot and replays
+ *  nothing, so a subscriber that reconnects has missed whatever happened while it was away. */
 export function subscribeStructuredAgentSessionTurnCompletions(
   target: RuntimeClientTarget,
   onEvent: (event: AgentSessionTurnCompletionEvent) => void,
@@ -188,7 +210,8 @@ export function subscribeStructuredAgentSessionTurnCompletions(
   return subscribeStructuredAgentSessionMethod(
     target,
     'agentSession.subscribeTurnCompletions',
-    {},
+    // An older host ignores this and sends completions only: it raises no prompt alert, as before.
+    { includePrompts: true },
     onEvent,
     onError,
     onClose

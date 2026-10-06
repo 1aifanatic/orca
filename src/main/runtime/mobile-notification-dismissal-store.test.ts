@@ -55,3 +55,26 @@ it('does not dismiss a newer replacement and does not treat missing or expired h
   expect(h.store.reconcile([shown])).toEqual([])
   expect(new MobileNotificationDismissalStore(`${h.path}-unknown`).reconcile([shown])).toEqual([])
 })
+it('names the live deliveries a subject can still retire, across a restart', () => {
+  const h = fixture()
+  const keyed = (notificationId: string, notificationSeq: number) => ({
+    ...alert,
+    notificationId,
+    notificationEpoch: 'e',
+    notificationSeq
+  })
+  h.store.record(keyed('subject:prompt:a1', 1))
+  h.store.record(keyed('subject:prompt:a10', 2))
+  h.store.record(keyed('other:prompt:a1', 3))
+  h.store.record({
+    type: 'dismiss',
+    notificationId: 'subject:prompt:a10',
+    notificationEpoch: 'e',
+    notificationSeq: 4
+  })
+  const restarted = new MobileNotificationDismissalStore(h.path)
+  expect(restarted.liveDeliveryIds('subject:')).toEqual(['subject:prompt:a1'])
+  expect(restarted.hasLiveDelivery('subject:prompt:a1')).toBe(true)
+  expect(restarted.hasLiveDelivery('subject:prompt:a10')).toBe(false)
+  expect(restarted.hasLiveDelivery('subject:prompt:a')).toBe(false)
+})

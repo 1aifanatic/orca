@@ -26,6 +26,7 @@ import {
   envelope,
   hostCalls,
   installStructuredHostStub,
+  openStream,
   runtimeCalls,
   SESSION,
   sendParams,
@@ -174,7 +175,7 @@ describe('capability gating', () => {
     }
     // Bump deliberately: the whole agentSession.* surface is behind the structured capability,
     // so an additive method is invisible to old clients and needs no protocol bump.
-    expect(STRUCTURED_AGENT_SESSION_METHODS).toHaveLength(32)
+    expect(STRUCTURED_AGENT_SESSION_METHODS).toHaveLength(33)
   })
 
   it('hides the surface from a declared client that did not advertise it', async () => {
@@ -805,6 +806,58 @@ describe('agentSession.subscribeStatus', () => {
       }
     })
     expect(hostCalls.subscribeStatus).toHaveBeenCalledOnce()
+  })
+})
+
+describe('agentSession.subscribeTurnCompletions', () => {
+  const subscribed = () => hostCalls.subscribeTurnCompletions.mock.calls.map(([sub]) => sub)
+
+  it('opts a client into prompt edges only when it asks', async () => {
+    await openStream('agentSession.subscribeTurnCompletions', {}, STRUCTURED_CLIENT)
+    await openStream(
+      'agentSession.subscribeTurnCompletions',
+      { includePrompts: true },
+      STRUCTURED_CLIENT
+    )
+    expect(subscribed().map((sub) => sub.includePrompts)).toEqual([false, true])
+  })
+
+  it("ignores a newer client's opt-in it does not know rather than refusing the stream", async () => {
+    const replies = await openStream(
+      'agentSession.subscribeTurnCompletions',
+      { includePrompts: true, includeSomethingNewer: true },
+      STRUCTURED_CLIENT
+    )
+    expect(replies.filter((reply) => !reply.ok)).toEqual([])
+    expect(subscribed().map((sub) => sub.includePrompts)).toEqual([true])
+  })
+})
+
+describe('agentSession.acknowledgeAttention', () => {
+  it("withdraws every phone alert this host pushed for the session's subject", async () => {
+    const retire = vi.fn()
+    hostCalls.attentionSubjectPrefix.mockReturnValueOnce('agent-attention:scope:session-1:')
+    const reply = await call(
+      'agentSession.acknowledgeAttention',
+      { sessionId: SESSION },
+      STRUCTURED_CLIENT,
+      { retireMobileNotificationsMatching: retire }
+    )
+    expect(reply).toMatchObject({ ok: true, result: { acknowledged: true } })
+    expect(hostCalls.attentionSubjectPrefix).toHaveBeenCalledWith(SESSION)
+    expect(retire).toHaveBeenCalledExactlyOnceWith('agent-attention:scope:session-1:')
+  })
+
+  it('retires nothing for a session this host never had', async () => {
+    const retire = vi.fn()
+    const reply = await call(
+      'agentSession.acknowledgeAttention',
+      { sessionId: SESSION },
+      STRUCTURED_CLIENT,
+      { retireMobileNotificationsMatching: retire }
+    )
+    expect(reply).toMatchObject({ ok: true })
+    expect(retire).not.toHaveBeenCalled()
   })
 })
 

@@ -1,3 +1,5 @@
+import type { AgentSessionStatusSummary } from '../../../shared/agent-session-wire'
+import { agentSessionAttentionSubjectPrefix } from '../../../shared/agent-session-attention'
 import { AgentSessionRefusalError } from '../../../shared/agent-session-wire-refusals'
 import type { AgentChildWorkEvidence } from '../../../shared/agent-status-child-work-evidence'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
@@ -101,6 +103,18 @@ export class StructuredAgentSessionClientDelivery {
   subscribeStatus = (subscriber: StructuredAgentSessionStatusSubscriber): (() => void) =>
     this.statusFeed.subscribe(subscriber)
   forgetStatus = (sessionId: string): void => this.statusFeed.forget(sessionId)
+
+  readStatusSummary = (sessionId: string): AgentSessionStatusSummary | undefined =>
+    this.statusFeed.readPublished(sessionId)
+
+  /** What every attention key minted for the session starts with, from the live session or, for
+   *  one no longer held, its record; null for a session this host never had. */
+  attentionSubjectPrefix = (sessionId: string): string | null => {
+    const location =
+      this.sessions.get(sessionId)?.params.location ??
+      this.deps().store.getRecord(sessionId)?.location
+    return location ? agentSessionAttentionSubjectPrefix(location, sessionId) : null
+  }
 
   subscribeTurnCompletions = (
     subscriber: StructuredAgentSessionTurnCompletionSubscriber

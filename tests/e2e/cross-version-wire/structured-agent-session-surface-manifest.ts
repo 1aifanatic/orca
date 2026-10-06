@@ -185,6 +185,12 @@ export const STRUCTURED_CALLS: {
     method: TURN_COMPLETION_FEED_METHOD,
     hostMethod: 'subscribeTurnCompletions'
   },
+  // Reading a chat retires the phone alerts its host pushed; the host names the session's subject.
+  {
+    method: 'agentSession.acknowledgeAttention',
+    hostMethod: 'attentionSubjectPrefix',
+    result: { acknowledged: true }
+  },
   // Teardown runs through the runtime's subscription registry rather than the
   // host, so its reply is the only signal that the gate opened.
   { method: 'agentSession.unsubscribe', hostMethod: null, result: { unsubscribed: true } }

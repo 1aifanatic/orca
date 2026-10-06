@@ -56,6 +56,11 @@ export type NotificationDispatchRequest = {
    * terminal lane, which is every sender that predates structured chat.
    */
   surface?: 'terminal' | 'agent-session'
+  /** The news's own identity, set only by a producer that announces each one once. Delivery dedupes
+   *  on it instead of the per-workspace burst window, which would drop distinct news. */
+  attentionKey?: string
+  /** The execution host already pushed this to its paired phones, so main must not fan it out again. */
+  mobileDeliveredByHost?: boolean
 }
 
 export type NotificationDispatchResult = {

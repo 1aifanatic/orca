@@ -93,6 +93,8 @@ export function structuredHostStub(
     // No opening emit, unlike the status feed above: a completion is an edge, so this stream
     // opens empty and a subscriber that was away has missed what passed.
     subscribeTurnCompletions: vi.fn(() => () => undefined),
+    // No session subject, so an acknowledgement retires nothing and needs no runtime push stub.
+    attentionSubjectPrefix: vi.fn(() => null),
     unsubscribe: vi.fn()
   }
 }

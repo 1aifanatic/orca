@@ -363,6 +363,9 @@ export const SubscribeParams = z
   .object({ sessionId: SessionId, cursor: JournalCursor.optional() })
   .strict()
 
+// Not strict: an older host ignores these params entirely, and this host must ignore a newer client's.
+export const SubscribeTurnCompletionsParams = z.object({ includePrompts: z.boolean().optional() })
+
 export const UnsubscribeParams = z
   .object({
     sessionId: SessionId,

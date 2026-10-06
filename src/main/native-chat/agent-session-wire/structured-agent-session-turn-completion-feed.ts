@@ -1,12 +1,14 @@
-// The host's answer to "a request just finished", derived once per journal commit. A request is
-// the one the status row reports: a turn, or a send the agent or its start refused.
+// The host's answer to "a request just finished" and "the agent just asked the user something",
+// derived once per journal commit. A request is the one the status row reports: a turn, or a send
+// the agent or its start refused. A prompt is an approval or question item left pending; it
+// usually lands mid-turn, so it is its own edge rather than a kind of completion.
 //
 // WHY THE HOST DERIVES IT: a structured session runs on the execution host and keeps journalling
 // whether or not any renderer has a reader mounted. A client that derived completions itself would
 // see none for a backgrounded chat — which is the case this exists to serve.
 //
 // WHY IT IS LIVE-ONLY: nothing here is retained, replayed or queued. A subscriber learns what
-// finishes while it is subscribed and nothing else. That is the deliberate opposite of the status
+// finishes or asks while it is subscribed and nothing else. That is the deliberate opposite of the status
 // feed next door, which replays every session on subscribe: a status is state a late reader still
 // needs, a completion is an edge that has already passed. Keeping a queue would create a durable
 // obligation with nothing to retire it.
@@ -16,6 +18,10 @@ import type {
   AgentSessionTurnCompletion,
   AgentSessionTurnCompletionEvent
 } from '../../../shared/agent-session-wire'
+import {
+  agentSessionPromptAttentionKey,
+  type AgentSessionAttentionEdge
+} from '../../../shared/agent-session-attention'
 import type { StructuredAgentSessionLatestRequest } from '../../../shared/structured-agent-session-latest-request'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionStatusState } from './structured-agent-session-status-feed'
@@ -23,6 +29,11 @@ import type { StructuredAgentSessionStatusState } from './structured-agent-sessi
 export type StructuredAgentSessionTurnCompletionSubscriber = {
   id: string
   emit: (event: AgentSessionTurnCompletionEvent) => void
+  /** Opted in to `prompt` events; a client that predates them would misread the arm. */
+  includePrompts?: boolean
+  /** In-process only: the attention keys of prompts that stopped waiting (answered, or gone with a
+   *  rewind), so whatever announced them can withdraw the alert. Never crosses the wire. */
+  onRetired?: (attentionKeys: readonly string[]) => void
 }
 
 type CompletionFeedCursor = { epoch: string; sequence: number }
@@ -44,9 +55,13 @@ export type StructuredAgentSessionTurnCompletionFeedDeps = {
 
 type RequestMark = Pick<StructuredAgentSessionLatestRequest, 'kind' | 'id'>
 
-/** Per-session baseline. `settled` is the last settled request this feed has accounted for;
- *  absence of the whole entry — not a null field — is what makes the first observation silent. */
-type SessionBaseline = CompletionFeedCursor & { settled: RequestMark | null }
+/** Per-session baseline. `settled` is the last settled request this feed has accounted for and
+ *  `prompts` the prompts already pending; absence of the whole entry — not an empty field — is
+ *  what makes the first observation silent. */
+type SessionBaseline = CompletionFeedCursor & {
+  settled: RequestMark | null
+  prompts: ReadonlySet<string>
+}
 
 function settledMark(request: StructuredAgentSessionLatestRequest | null): RequestMark | null {
   return request && request.turnState !== 'running' ? { kind: request.kind, id: request.id } : null
@@ -84,12 +99,16 @@ export class StructuredAgentSessionTurnCompletionFeed {
   }
 
   /**
-   * One journal publication. Emits at most one completion, and only on the transition into a
-   * settled request this feed has not already accounted for.
+   * One journal publication. Emits at most one event: a completion on the transition into a
+   * settled request this feed has not already accounted for, else a prompt when one is newly
+   * pending. A settle that finds the user asked already says so (`awaitingUser`), so it stands for
+   * any prompt raised in the same commit. ONE ALERT PER PROMPT: a clean settle whose `awaitingUser`
+   * only restates a prompt pending last commit is news to completion-only subscribers alone,
+   * because every prompt-aware one was already told. A failure is its own news and reaches all.
    *
    * The first observation of a session only records where it is, so restore, restart, rewind and
    * a re-read of history all pass through silently. An already-settled request republished by an
-   * in-place revision carries the same identity and so cannot fire twice.
+   * in-place revision carries the same identity and so cannot fire twice; nor can a prompt.
    */
   observe(sessionId: string, journal?: AgentSessionJournal): void {
     const session = this.deps.sessions.get(sessionId)
@@ -99,10 +118,11 @@ export class StructuredAgentSessionTurnCompletionFeed {
     }
     const cursor = (journal ?? session.journal).cursor()
     const request = state.latestRequest
+    const prompts = new Set(state.pendingPromptIds)
     const baseline = this.baselines.get(sessionId)
     if (!baseline) {
       // Baseline only. Whatever the session was already holding is history, not news.
-      this.baselines.set(sessionId, { ...cursor, settled: settledMark(request) })
+      this.baselines.set(sessionId, { ...cursor, settled: settledMark(request), prompts })
       return
     }
     if (baseline.epoch !== cursor.epoch || cursor.sequence < baseline.sequence) {
@@ -112,49 +132,112 @@ export class StructuredAgentSessionTurnCompletionFeed {
       baseline.epoch = cursor.epoch
       baseline.sequence = cursor.sequence
       baseline.settled = settledMark(request)
+      this.retireAnswered(sessionId, session, baseline.prompts, prompts)
+      baseline.prompts = prompts
       return
     }
     baseline.sequence = cursor.sequence
+    this.retireAnswered(sessionId, session, baseline.prompts, prompts)
+    // An answered prompt leaves the set, so only a prompt not pending last commit is news.
+    const raised = state.pendingPromptIds.find((id) => !baseline.prompts.has(id))
+    baseline.prompts = prompts
+    const completion = this.settledCompletion(sessionId, session, state, baseline)
+    if (completion) {
+      const restatesPrompt =
+        completion.awaitingUser === true && completion.outcome === 'success' && raised === undefined
+      this.broadcast({ type: 'completion', completion }, restatesPrompt ? 'legacy' : 'all')
+      return
+    }
+    if (raised === undefined) {
+      return
+    }
+    this.broadcast(
+      {
+        type: 'prompt',
+        prompt: {
+          scope: session.params.location,
+          sessionId,
+          promptId: raised,
+          raisedAt: this.deps.now()
+        }
+      },
+      'prompt-aware'
+    )
+  }
+
+  private retireAnswered(
+    sessionId: string,
+    session: CompletionFeedSession,
+    before: ReadonlySet<string>,
+    now: ReadonlySet<string>
+  ): void {
+    const keys = [...before]
+      .filter((id) => !now.has(id))
+      .map((id) => agentSessionPromptAttentionKey(session.params.location, sessionId, id))
+    if (keys.length === 0) {
+      return
+    }
+    for (const subscriber of this.subscribers.values()) {
+      try {
+        subscriber.onRetired?.(keys)
+      } catch {
+        // Withdrawal is bookkeeping: a failing one must not cost the next commit its edge.
+      }
+    }
+  }
+
+  /** The completion this commit settles, if any. */
+  private settledCompletion(
+    sessionId: string,
+    session: CompletionFeedSession,
+    state: StructuredAgentSessionStatusState,
+    baseline: SessionBaseline
+  ): AgentSessionTurnCompletion | null {
+    const request = state.latestRequest
     if (request?.turnState === 'running') {
       // A running turn clears the mark, so this detector fires on each running → settled
       // transition rather than on an id it happens not to have seen.
       baseline.settled = null
-      return
+      return null
     }
     // Owed work waits, so sends refused one commit at a time announce once, when the last is
-    // answered. A pending prompt does not wait (structured chat has no other attention producer):
-    // the event says so itself, and answering it keeps the same identity.
+    // answered. A pending prompt does not wait: the event says so itself, and answering it keeps
+    // the same identity.
     // A withdrawn send leaves the older request latest.
     if (
       state.owesWork ||
       !request ||
       (baseline.settled?.kind === request.kind && baseline.settled.id === request.id)
     ) {
-      return
+      return null
     }
     baseline.settled = settledMark(request)
     // ABSENT OUTCOME IS UNKNOWN: a turn the host only saw stop carries no verdict and gets no
     // event. Inferring success here is the one mistake that would light the dot on a failure.
     if (!request.outcome) {
-      return
+      return null
     }
-    this.broadcast({
-      type: 'completion',
-      completion: {
-        scope: session.params.location,
-        sessionId,
-        turnId: request.id,
-        outcome: request.outcome,
-        completedAt: this.deps.now(),
-        // Stated here, not joined from the status stream: remote clients receive the two unordered.
-        ...(state.summary.status === 'attention' ? { awaitingUser: true } : {})
-      }
-    })
+    return {
+      scope: session.params.location,
+      sessionId,
+      turnId: request.id,
+      outcome: request.outcome,
+      completedAt: this.deps.now(),
+      // Stated here, not joined from the status stream: remote clients receive the two unordered.
+      ...(state.summary.status === 'attention' ? { awaitingUser: true as const } : {})
+    }
   }
 
-  private broadcast(event: { type: 'completion'; completion: AgentSessionTurnCompletion }): void {
+  private broadcast(
+    event: AgentSessionAttentionEdge,
+    audience: 'all' | 'legacy' | 'prompt-aware'
+  ): void {
     // A Map skips entries deleted mid-iteration, so a failing subscriber can drop itself here.
     for (const subscriber of this.subscribers.values()) {
+      const promptAware = subscriber.includePrompts === true
+      if ((audience === 'legacy' && promptAware) || (audience === 'prompt-aware' && !promptAware)) {
+        continue
+      }
       try {
         subscriber.emit(event)
       } catch {

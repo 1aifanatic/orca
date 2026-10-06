@@ -51,8 +51,9 @@ export function createNotificationDeliveryService(
   const recentDesktopNotifications = new Map<string, number>()
   const recentMobileNotifications = new Map<string, number>()
 
+  // Keyed news is announced once by its producer, so only its own repeat may collapse it.
   const dedupeKeyFor = (request: NotificationDispatchRequest): string =>
-    request.worktreeId ?? request.worktreeLabel ?? 'global'
+    request.attentionKey ?? request.worktreeId ?? request.worktreeLabel ?? 'global'
 
   const deliverNativeAndRecord = (
     request: NotificationDispatchRequest,
@@ -92,7 +93,12 @@ export function createNotificationDeliveryService(
       const notificationOptions = buildNotificationOptions(request)
 
       // Why: desktop focus only means this computer sees the worktree; the paired phone may still need the alert.
-      if (deps.dispatchMobileNotification && request.source !== 'test') {
+      // The execution host pushed its own phones and retires them itself on acknowledgement.
+      if (
+        !request.mobileDeliveredByHost &&
+        deps.dispatchMobileNotification &&
+        request.source !== 'test'
+      ) {
         if (
           reserveNotificationCooldown(
             recentMobileNotifications,
@@ -116,7 +122,8 @@ export function createNotificationDeliveryService(
             ...(request.notificationId ? { notificationId: request.notificationId } : {}),
             // Why: background push needs the agent's real state to pick "needs input"
             // vs "finished" — and to stay silent while the agent is still working.
-            ...(request.agentState ? { agentState: request.agentState } : {})
+            ...(request.agentState ? { agentState: request.agentState } : {}),
+            ...(request.attentionKey ? { attentionKey: request.attentionKey } : {})
           })
           deps.recordAnnounced?.(request)
         }

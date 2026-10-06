@@ -84,6 +84,27 @@ export class MobileNotificationDismissalStore {
     this.entries = next
   }
 
+  /** Whether a notification with this id was delivered and not dismissed since. */
+  hasLiveDelivery(notificationId: string): boolean {
+    return this.liveDeliveryIds(notificationId).includes(notificationId)
+  }
+
+  /** Ids delivered and not dismissed since, among those starting with `prefix`. */
+  liveDeliveryIds(prefix: string): string[] {
+    const now = Date.now()
+    const live = new Set<string>()
+    for (const entry of this.entries) {
+      if (
+        entry.expiresAt > now &&
+        entry.notificationId.startsWith(prefix) &&
+        entry.dismissedThrough < entry.notificationSeq
+      ) {
+        live.add(entry.notificationId)
+      }
+    }
+    return [...live]
+  }
+
   reconcile(delivered: readonly DeliveredNotificationIdentity[]): DeliveredNotificationIdentity[] {
     const now = Date.now()
     return delivered.filter((item) =>

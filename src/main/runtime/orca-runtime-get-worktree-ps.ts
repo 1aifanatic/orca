@@ -14,6 +14,10 @@ import { compareWorktreePs } from './runtime-worktree-status-projection'
 import type { Repo } from '../../shared/repo-types'
 import { enrichMissingRepoGitRemoteIdentities } from '../repo-git-remote-identity-enrichment'
 import { ensureStructuredAgentSessionHost as installStructuredAgentSessionHost } from './structured-agent-session-runtime'
+import {
+  createStructuredAttentionMobileDelivery,
+  readStructuredAttentionWorkspaceLabels
+} from './structured-agent-session-mobile-attention'
 import { createStructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import { maybeAutoRenameWorkspaceOnFirstStructuredTurn } from '../agent-hooks/first-work-structured-session-rename'
 import { firstWorkRenameDeps } from '../agent-hooks/first-work-rename-runtime'
@@ -178,6 +182,14 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         )
       },
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
+      attentionDelivery: createStructuredAttentionMobileDelivery({
+        readNotificationSettings: () => this.requireStore().getSettings().notifications,
+        readWorkspaceLabels: (scope) =>
+          readStructuredAttentionWorkspaceLabels(this.requireStore(), scope),
+        dispatch: (event) => this.mobileNotifications.dispatch(event),
+        retire: (notificationId) => this.mobileNotifications.retire(notificationId),
+        now: () => Date.now()
+      }),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.
       hasOpenDispatch: (record) =>
