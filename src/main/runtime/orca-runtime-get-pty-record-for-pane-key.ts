@@ -303,12 +303,14 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
     }
     const dispatchId =
       db?.findActiveDispatchForAssignee?.(handle, authority.identity.paneKey)?.id ?? null
-    return { sessionId: authority.sessionId, dispatchId }
+    return { sessionId: authority.running.sessionId, dispatchId }
   }
 
   /** The session running a structured worker of this runtime: its `/clear` successor, if any. */
   private liveStructuredWorkerSessionId(handle: string): string | null {
-    return resolveStructuredWorkerAuthority(handle, this._orchestrationDb)?.sessionId ?? null
+    return (
+      resolveStructuredWorkerAuthority(handle, this._orchestrationDb)?.running.sessionId ?? null
+    )
   }
 
   protected scheduleRestoredMessageRepoints(): void {

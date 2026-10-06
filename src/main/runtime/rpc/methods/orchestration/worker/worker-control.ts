@@ -208,14 +208,11 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
         // Why: only a session caller is verified; terminal env could name anyone.
         orchestrationCaller?.address
       )
-      const workerSessionId = sessionIdFromStructuredWorkerIncarnation(
-        db.getDispatchContextById(params.dispatch)?.process_incarnation
-      )
       if (abandoned.disposition === 'context_only') {
         if (!abandoned.alreadySettled) {
           // Abandon settles the Dispatch, so it owes the same binding release stop and release do:
           // a surviving redrive subscription keeps nudging a worker nobody is waiting on.
-          releaseStructuredWorkerSession(params.dispatch, runtime, workerSessionId)
+          releaseStructuredWorkerSession(params.dispatch, runtime)
           runtime.notifyMessageArrived(`dispatch:${params.dispatch}`, 'status')
         }
         return {
@@ -230,7 +227,14 @@ export const ORCHESTRATION_WORKER_CONTROL_METHODS = [
       }
       const worker = abandoned.worker
       if (abandoned.disposition === 'abandoned') {
-        releaseStructuredWorkerSession(params.dispatch, runtime, workerSessionId)
+        // Only the worker's own Dispatch settles the worker; a side task's parked mail stays.
+        releaseStructuredWorkerSession(
+          params.dispatch,
+          runtime,
+          sessionIdFromStructuredWorkerIncarnation(
+            db.getDispatchContextById(params.dispatch)?.process_incarnation
+          )
+        )
         runtime.notifyMessageArrived(`dispatch:${params.dispatch}`, 'status')
       }
       return {

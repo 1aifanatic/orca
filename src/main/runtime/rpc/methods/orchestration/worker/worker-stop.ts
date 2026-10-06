@@ -154,9 +154,13 @@ export const ORCHESTRATION_WORKER_STOP_METHODS = [
         }
         // Why `unverifiable` still proceeds: losing contact is a reason to report
         // the outcome honestly, never a reason to stop trying to stop the worker.
+        // Why a structured worker's `exited` also proceeds: mid-`/clear` its old session reads
+        // exited before the successor exists; its stop closes whatever session runs it after that.
         if (
           !observation.exact ||
-          (observation.status !== 'live' && observation.status !== 'unverifiable')
+          (observation.status !== 'live' &&
+            observation.status !== 'unverifiable' &&
+            !isStructuredWorkerHandle(handle))
         ) {
           return unknownReceipt(
             params.dispatch,

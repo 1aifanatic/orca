@@ -9,7 +9,7 @@ import {
   observeStructuredWorker,
   resolveStructuredWorkerForDispatch
 } from '../../orchestration-structured-worker-lifecycle'
-import { structuredWorkerCustody } from '../../../../structured-worker-authority'
+import { holdStructuredWorker } from '../../../../structured-worker-authority'
 import type {
   DispatchContextRow,
   FederatedDispatchRow,
@@ -57,7 +57,8 @@ export async function inspectWorkerTerminal(
       processIncarnation: structured.processIncarnation
     })
     const observation = observeStructuredWorker(structured)
-    const addressable = structuredWorkerCustody(structured, db)?.addressable ?? null
+    const hold = holdStructuredWorker(structured, db)
+    const addressable = hold.kind === 'unverifiable' ? null : hold.kind === 'held'
     return {
       terminal: null,
       exact,

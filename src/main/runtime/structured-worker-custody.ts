@@ -14,6 +14,7 @@
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { isOrcaSessionId } from '../../shared/orca-session-address'
 import { canonicalOrcaSessionId } from './orchestration/canonical-orca-session-id'
+import type { RunningStructuredSession } from './orchestration/structured-session-lineage'
 import type { OrchestrationDb } from './orchestration/db'
 import type { WorkerDispatchState } from './orchestration/types'
 import {
@@ -28,29 +29,26 @@ import {
 } from './structured-worker-identity'
 
 /**
- * Whether this runtime still owns the worker's session: routing, addressing and authority ask
- * this, never whether its process runs. Null when the host is not installed, because reading the
- * record store would install it — not being able to look is not an answer.
+ * Whether this runtime still owns the session running the worker: routing, addressing and
+ * authority ask this, never whether its process runs. Takes the resolved running session, so the
+ * session a worker was minted under cannot be judged in its place. Null when the host is not
+ * installed, because reading the record store would install it — not being able to look is not an
+ * answer.
  */
-export function structuredWorkerOwned(sessionId: string): boolean | null {
+export function structuredWorkerOwned(running: RunningStructuredSession): boolean | null {
   const host = getStructuredAgentSessionHost()
   if (!host) {
     return null
   }
-  let record: AgentSessionRecord | null
-  try {
-    record = host.deps.store.getRecord(sessionId)
-  } catch {
-    record = null
-  }
   return structuredWorkerRecordIsCurrent(
-    record,
-    record?.lease.claimStatus === 'released' && structuredWorkerTabListed(host, sessionId)
+    running.record,
+    running.record.lease.claimStatus === 'released' &&
+      structuredSessionTabListed(host, running.sessionId)
   )
 }
 
 /** Retirement is the tab index: every path that ends a chat for good hides its tab. */
-function structuredWorkerTabListed(
+export function structuredSessionTabListed(
   host: NonNullable<ReturnType<typeof getStructuredAgentSessionHost>>,
   sessionId: string
 ): boolean {
@@ -83,10 +81,10 @@ function ownerState(
  */
 export function structuredWorkerAddressable(
   db: OrchestrationDb | null | undefined,
-  sessionId: string,
+  running: RunningStructuredSession,
   row: CustodyRow | undefined
 ): boolean | null {
-  const owned = structuredWorkerOwned(sessionId)
+  const owned = structuredWorkerOwned(running)
   if (owned === null) {
     return null
   }

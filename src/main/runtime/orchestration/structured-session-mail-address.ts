@@ -45,7 +45,9 @@ export type StructuredSessionMailReach =
   /** `session` is the conversation's live session, the one its mail reaches now. */
   | { kind: 'reachable'; session: AgentSessionRecord }
   | { kind: 'other-host' }
-  | { kind: 'ended'; reason: 'closed' | 'worker-identity-lost' | 'continuation-missing' }
+  /** The lineage names a session with no record, or loops: not being able to look, not an end. */
+  | { kind: 'unverifiable'; reason: string }
+  | { kind: 'ended'; reason: 'closed' | 'worker-identity-lost' }
 
 /** Whether mail to `record`'s conversation can reach the session that runs it now. */
 export function structuredSessionMailReach(
@@ -55,7 +57,7 @@ export function structuredSessionMailReach(
 ): StructuredSessionMailReach {
   const running = resolveLineageRunningSession(store, record.sessionId)
   if (running.kind === 'unverifiable') {
-    return { kind: 'ended', reason: 'continuation-missing' }
+    return { kind: 'unverifiable', reason: running.reason }
   }
   if (running.kind === 'other-host') {
     return { kind: 'other-host' }

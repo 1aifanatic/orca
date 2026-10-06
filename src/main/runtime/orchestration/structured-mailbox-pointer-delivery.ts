@@ -190,6 +190,27 @@ export class OrchestrationStructuredMailboxPointerDelivery<
     } finally {
       this.inFlight.delete(mailboxHandle)
     }
+    await this.followMovedTarget(mailboxHandle, target, reservedTypes)
+  }
+
+  /**
+   * A `/clear` while the attempt was in flight moved the mailbox to a successor, whose idle edge
+   * found it in flight and was dropped; nothing else retries it. Only an actual move retries, so
+   * an unchanged rejected or unknown send keeps its suppression.
+   */
+  private async followMovedTarget(
+    mailboxHandle: string,
+    attempted: StructuredPointerTarget,
+    reservedTypes: ReadonlySet<string> | undefined
+  ): Promise<void> {
+    const current = this.deps.resolveStructuredTarget(mailboxHandle)
+    if (!current || current.sessionId === attempted.sessionId) {
+      return
+    }
+    if (this.parkedUntilJournalEdge.get(mailboxHandle)?.sessionId === attempted.sessionId) {
+      this.parkedUntilJournalEdge.delete(mailboxHandle)
+    }
+    await this.deliver(mailboxHandle, current, reservedTypes)
   }
 
   // A session whose agent is not running needs nothing first: an accepted send starts it.

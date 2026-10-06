@@ -481,3 +481,84 @@ describe('forgetting one settled worker', () => {
     expect(send).not.toHaveBeenCalled()
   })
 })
+
+describe('a mailbox a /clear moves while its nudge is in flight', () => {
+  function clearingHarness() {
+    let target = 'session-1'
+    const mail = [
+      { id: 'm1', type: 'status', sequence: 3, from_handle: 'term_coord', run_id: 'run_1' }
+    ]
+    const pointed = new Set<string>()
+    const stored = new Map<string, StructuredPointerOperationRow>()
+    const db = {
+      getDispatchContextById: () => ({ run_id: 'run_1' }),
+      hasOutstandingMailboxDelivery: () => false,
+      getUndeliveredUnreadMessages: () => mail.filter((message) => !pointed.has(message.id)),
+      markAsDelivered: (ids: string[]) => ids.forEach((id) => pointed.add(id)),
+      getStructuredPointerOperation: (key: string) => stored.get(key),
+      putStructuredPointerOperation: (row: StructuredPointerOperationRow) =>
+        stored.set(row.mailbox_handle, row),
+      deleteStructuredPointerOperation: (key: string) => stored.delete(key)
+    }
+    let settleHeld: ((state: 'accepted' | 'rejected') => void) | null = null
+    const send = vi.fn(
+      ({ sessionId }: { sessionId: string }) =>
+        new Promise<{ kind: 'sent'; state: 'accepted' | 'rejected' }>((resolve) => {
+          if (sessionId === 'session-1') {
+            settleHeld = (state) => resolve({ kind: 'sent', state })
+            return
+          }
+          resolve({ kind: 'sent', state: 'accepted' })
+        })
+    )
+    const delivery = new OrchestrationStructuredMailboxPointerDelivery({
+      getDb: () => db as never,
+      getMessageWaiters: () => undefined,
+      resolveStructuredTarget: () => ({ sessionId: target, dispatchId: 'd1' }),
+      getCliCommand: () => 'orca-dev',
+      host: {
+        readSessionFacts: async () => ({ submissions: [] }),
+        currentFence: () => 4,
+        send
+      }
+    })
+    return {
+      delivery,
+      send,
+      pointed,
+      clear: () => {
+        target = 'clear-successor'
+      },
+      settle: (state: 'accepted' | 'rejected') => settleHeld?.(state)
+    }
+  }
+
+  it('delivers once to the successor when the old send is then rejected, with no further edge', async () => {
+    const { delivery, send, pointed, clear, settle } = clearingHarness()
+    delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    clear()
+    // The successor's first idle edge lands while the old nudge is still in flight.
+    delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    expect(send.mock.calls.map(([input]) => input.sessionId)).toEqual(['session-1'])
+    settle('rejected')
+    await flush()
+    await flush()
+    expect(send.mock.calls.map(([input]) => input.sessionId)).toEqual([
+      'session-1',
+      'clear-successor'
+    ])
+    expect(pointed.has('m1')).toBe(true)
+  })
+
+  it('keeps an unchanged rejected nudge parked for the next edge', async () => {
+    const { delivery, send, settle } = clearingHarness()
+    delivery.deliverForHandle('dispatch:d1')
+    await flush()
+    settle('rejected')
+    await flush()
+    await flush()
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+})

@@ -28,7 +28,12 @@ export function clearedInto(record: AgentSessionRecord): string | null {
     : null
 }
 
-type LineageRunningRecord = { sessionId: string; record: AgentSessionRecord; lineage: string[] }
+/** The session running a lineage now, its record, and every session of the lineage up to it. */
+export type RunningStructuredSession = {
+  readonly sessionId: string
+  readonly record: AgentSessionRecord
+  readonly lineage: readonly string[]
+}
 
 /**
  * Where the session running a `/clear` lineage is now. `lineage` lists every session walked, from
@@ -36,9 +41,9 @@ type LineageRunningRecord = { sessionId: string; record: AgentSessionRecord; lin
  * store, a successor with no record, a corrupt chain — and never evidence the conversation ended.
  */
 export type LineageRunningSession =
-  | ({ kind: 'here' } & LineageRunningRecord)
-  | ({ kind: 'other-host' } & LineageRunningRecord)
-  | { kind: 'unverifiable'; reason: string; lineage: string[] }
+  | ({ kind: 'here' } & RunningStructuredSession)
+  | ({ kind: 'other-host' } & RunningStructuredSession)
+  | { kind: 'unverifiable'; reason: string; lineage: readonly string[] }
 
 /** The one forward walk: which session runs `sessionId`'s conversation now. */
 export function resolveLineageRunningSession(

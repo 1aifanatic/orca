@@ -18,9 +18,9 @@
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { TerminalAgent } from '../../../shared/terminal-agent'
 import {
+  holdStructuredWorker,
   resolveStructuredWorkerAuthority,
-  structuredWorkerAgent,
-  structuredWorkerCustody
+  structuredWorkerAgent
 } from '../structured-worker-authority'
 import {
   STRUCTURED_WORKER_INCARNATION_PREFIX,
@@ -28,6 +28,7 @@ import {
 } from '../structured-worker-identity'
 import type { OrchestrationDb } from './db'
 import { readStructuredSessionGateFacts } from './structured-mailbox-pointer-host'
+import type { RunningStructuredSession } from './structured-session-lineage'
 
 /** The only facts group addressing reads off a recipient. */
 export type OrchestrationAddressableAgent = {
@@ -59,7 +60,7 @@ export function listAddressableStructuredWorkers(
         return []
       }
       seen.add(identity.sessionId)
-      return structuredWorkerCustody(identity, db, row)?.addressable ? [identity] : []
+      return holdStructuredWorker(identity, db, row).kind === 'held' ? [identity] : []
     })
     .map((identity) => ({
       handle: identity.handle,
@@ -77,7 +78,7 @@ export async function structuredWorkerHandleAgentStatus(
   db: OrchestrationDb | null | undefined
 ): Promise<string | null | undefined> {
   const authority = resolveStructuredWorkerAuthority(handle, db)
-  return authority ? structuredWorkerAgentStatus(authority.sessionId) : undefined
+  return authority ? structuredWorkerAgentStatus(authority.running) : undefined
 }
 
 /**
@@ -87,8 +88,10 @@ export async function structuredWorkerHandleAgentStatus(
  * would wake a worker mid-turn — which Codex coalesces into the running turn and Claude folds
  * into it.
  */
-export async function structuredWorkerAgentStatus(sessionId: string): Promise<string | null> {
-  const facts = await readStructuredSessionGateFacts(sessionId)
+export async function structuredWorkerAgentStatus(
+  running: RunningStructuredSession
+): Promise<string | null> {
+  const facts = await readStructuredSessionGateFacts(running.sessionId)
   if (!facts) {
     return null
   }
