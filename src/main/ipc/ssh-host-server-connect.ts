@@ -133,19 +133,3 @@ export async function refineRelayTerminalDecision(
     console.warn('[ssh] Could not re-check relay terminals after connecting:', error)
   }
 }
-
-/** A move that stopped short: the status line shows what the census found now, not a stale count. */
-export function publishRelayTerminalsStatus(
-  target: SshTarget,
-  census: { verdict: 'live' | 'unverifiable'; count: number }
-): void {
-  recordRelayDecision(target, {
-    route: 'relay',
-    reason: census.verdict === 'live' ? 'relay_terminals_live' : 'relay_terminals_unverifiable',
-    terminals: census.count
-  })
-  const state = getPublicSshState(target.id)
-  if (state) {
-    broadcastSshState(getCurrentMainWindow, target.id, state)
-  }
-}
