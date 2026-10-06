@@ -23,6 +23,8 @@ import type { StructuredAgentSessionStatusSink } from './structured-agent-sessio
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import type { ConversationReplacement } from './structured-conversation-command'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
+import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -33,7 +35,7 @@ export type StructuredAgentSessionCaller = { callerKey: string }
 export type StructuredAgentSessionReveal = {
   sessionId: string
   workspaceId: string
-  agent: 'claude' | 'codex'
+  agent: AgentSessionHandleProvider
   readable: boolean
   /** Why the journal did not open, as a read would be refused. Host-side only: never published. */
   openRefusal?: AgentSessionWireRefusal
@@ -110,6 +112,8 @@ export type StructuredAgentSessionHostSession = {
 export type StructuredAgentSessionHostDeps = {
   store: AgentSessionRecordStore
   adapter: StructuredAgentSessionAdapter
+  /** The agents this runtime drives; what each declares is read here, never from the adapter. */
+  agents: StructuredAgentRegistry
   /** Optional advisory recovery storage, independent of conversation backups. */
   recoveryCapsule?: AgentSessionRecoveryCapsule
   /** The host's one chat journal database. */

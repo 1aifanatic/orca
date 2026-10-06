@@ -41,6 +41,7 @@ import type {
   StructuredAgentSessionAdapter,
   StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { conversationCommandBlocked } from './structured-conversation-command-admission'
 import { structuredAgentSessionCommandTurn } from '../../../shared/structured-agent-session-command-turn-identity'
@@ -138,6 +139,7 @@ export type StructuredAgentSessionCommandHandoverContext = {
   journal: AgentSessionJournal
   fence: number
   adapter: StructuredAgentSessionAdapter
+  agents: StructuredAgentRegistry
   providerChildPhase?: () => StructuredAgentSessionProviderChildPhase | undefined
   /** Who a failure the handover meets names, as the start's own row does. */
   failureTextContext?: AgentSessionFailureWordsContext
@@ -320,12 +322,16 @@ function commandBlocked(
   ctx: StructuredAgentSessionCommandHandoverContext,
   body: AgentJournalMessageItem
 ): SubmissionRejectionFact | null {
-  if (body.command?.name !== STRUCTURED_AGENT_SESSION_COMPACT_COMMAND || !ctx.adapter.compact) {
+  if (body.command?.name !== STRUCTURED_AGENT_SESSION_COMPACT_COMMAND) {
     return agentSessionFailureFact('commandRefused')
   }
   const record = ctx.record()
   if (!record) {
     return agentSessionFailureFact('hostFault')
+  }
+  // The declaration admits it, as it does the advertised command list; a client may send it anyway.
+  if (!ctx.agents.capabilities(record.provider)?.compact) {
+    return agentSessionFailureFact('commandRefused')
   }
   const refusal = conversationCommandBlocked(ctx, record, ctx.childWork(), 'handover')
   return refusal

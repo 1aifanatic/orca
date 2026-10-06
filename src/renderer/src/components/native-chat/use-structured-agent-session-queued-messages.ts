@@ -17,10 +17,12 @@ import type {
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionQueueDelivery } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { nativeChatComposerDraftWriteSettled } from './native-chat-composer-draft-store'
 import {
   newestSteerableQueuedMessageCard,
   projectQueuedMessageCards,
+  outboxQueueSendsOnTheirWay,
   sendingQueuedMessageCards,
   type QueuedMessageCard
 } from './structured-agent-session-queued-cards'
@@ -45,6 +47,10 @@ export type StructuredAgentSessionQueuedMessagesController = {
 }
 
 const NO_SENDS: readonly StructuredAgentSessionOutboxEntry[] = []
+const NO_DELIVERY: StructuredAgentSessionQueueDelivery = {
+  capability: 'unsupported',
+  enabled: false
+}
 
 function alreadySentNotice(): void {
   toast.error(
@@ -61,15 +67,19 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   hasPendingPrompt: boolean
   /** The chat shows the agent working: a command card offers no send then. */
   agentWorking?: boolean
-  /** Queue sends on their way that the host holds no card for yet. */
-  sending?: readonly StructuredAgentSessionOutboxEntry[]
+  /** This pane's outbox, whose queue sends the host has no record of yet show as sending. */
+  sending?: {
+    outbox: readonly StructuredAgentSessionOutboxEntry[]
+    isWorking: boolean
+    queueDelivery: StructuredAgentSessionQueueDelivery
+  }
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
   const { composerScopeKey, enabled, hasPendingPrompt, mutate, queuedMessages, submissions } = args
   const agentWorking = args.agentWorking === true
   const pause = args.queuePause
-  const sending = args.sending ?? NO_SENDS
+  const { outbox = NO_SENDS, isWorking = false, queueDelivery = NO_DELIVERY } = args.sending ?? {}
 
   const cards = useMemo(
     () => [
@@ -78,9 +88,26 @@ export function useStructuredAgentSessionQueuedMessages(args: {
         agentWorking,
         queuePaused: pause !== null
       }),
-      ...sendingQueuedMessageCards(sending)
+      ...sendingQueuedMessageCards(
+        outboxQueueSendsOnTheirWay(
+          outbox,
+          (queuedMessages ?? []).map((message) => message.messageId),
+          isWorking,
+          queueDelivery,
+          submissions
+        )
+      )
     ],
-    [agentWorking, hasPendingPrompt, pause, queuedMessages, sending, submissions]
+    [
+      agentWorking,
+      hasPendingPrompt,
+      isWorking,
+      outbox,
+      pause,
+      queueDelivery,
+      queuedMessages,
+      submissions
+    ]
   )
   const cardsRef = useRef(cards)
   useEffect(() => {

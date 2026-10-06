@@ -142,22 +142,28 @@ export function outboxOutsideQueuedCards(
   host: StructuredAgentSessionQueueDelivery
 ): readonly StructuredAgentSessionOutboxEntry[] {
   const held = new Set(heldIds)
-  const onItsWay = new Set(outboxQueueSendsOnTheirWay(outbox, heldIds, isWorking, host))
+  // Hidden from the transcript whether or not the host has recorded it yet.
+  const onItsWay = new Set(outboxQueueSendsOnTheirWay(outbox, heldIds, isWorking, host, []))
   const next = outbox.filter((entry) => !held.has(entry.clientMessageId) && !onItsWay.has(entry))
   return next.length === outbox.length ? outbox : next
 }
 
-/** The queue sends on their way that the host holds no card for yet: shown as sending cards. */
+/** The queue sends on their way that the host has no record of yet — no card, and no submission
+ *  of their own or handed off from one: shown as sending cards. */
 export function outboxQueueSendsOnTheirWay(
   outbox: readonly StructuredAgentSessionOutboxEntry[],
   heldIds: readonly string[],
   isWorking: boolean,
-  host: StructuredAgentSessionQueueDelivery
+  host: StructuredAgentSessionQueueDelivery,
+  submissions: readonly AgentJournalSubmission[]
 ): StructuredAgentSessionOutboxEntry[] {
   if (!isWorking) {
     return []
   }
-  const held = new Set(heldIds)
+  const held = new Set([...heldIds, ...handedOffQueuedMessageIds(submissions)])
+  for (const submission of submissions) {
+    held.add(submission.clientMessageId)
+  }
   const admission = admitStructuredAgentSessionOutboxEntry(outbox)
   const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
   return outbox.filter(

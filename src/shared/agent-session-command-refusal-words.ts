@@ -16,10 +16,22 @@ const STILL_WORKING: ReasonWords = (say, command) =>
     ? joinSentences([say('agentStillWorking'), say('runCommandWhenDone', { command })])
     : undefined
 
+/** A wait the person ends: nothing runs the command after it, so they run it again. */
+const WAIT_THEN_RUN_AGAIN =
+  (
+    cause: 'backgroundTasksRunning' | 'agentStarting',
+    wait: 'waitForBackgroundTasks' | 'waitForStart'
+  ): ReasonWords =>
+  (say, command) =>
+    joinSentences([
+      say(cause),
+      say(wait),
+      ...(command ? [say('runCommandAgain', { command })] : [])
+    ])
+
 const WORDS_BY_REASON: Partial<Record<string, ReasonWords>> = {
-  backgroundTasksRunning: (say) =>
-    joinSentences([say('backgroundTasksRunning'), say('waitForBackgroundTasks')]),
-  handoffInFlight: (say) => joinSentences([say('agentStarting'), say('waitForStart')]),
+  backgroundTasksRunning: WAIT_THEN_RUN_AGAIN('backgroundTasksRunning', 'waitForBackgroundTasks'),
+  handoffInFlight: WAIT_THEN_RUN_AGAIN('agentStarting', 'waitForStart'),
   turnActive: STILL_WORKING,
   messagesUnsettled: STILL_WORKING,
   promptPending: (say, command) => (command ? say('commandAfterAnswer', { command }) : undefined)
