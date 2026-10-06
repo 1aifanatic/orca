@@ -38,6 +38,8 @@ async function wiredSession() {
       const item = run.journalItems.get(itemId)
       return item ? { ...item, revision: 1, observedAt: run.now() } : null
     },
+    // No Stop was ever pressed here.
+    stopMarks: { latest: () => null, revision: () => 0 },
     snapshot: () => ({
       items: [...run.journalItems.values()]
         .sort((a, b) => a.sequence - b.sequence)
@@ -51,7 +53,7 @@ async function wiredSession() {
       [
         parent.sessionId,
         {
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies the feed's cursor, clock, snapshot, submissions and item reads.
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies the feed's cursor, clock, Stop marks, snapshot, submissions and item reads.
           journal: journal as unknown as Journal,
           params: {
             location: {

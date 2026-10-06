@@ -24,7 +24,7 @@ import { structuredAgentSessionStatusSummary } from './structured-agent-session-
 import { structuredStatusChildWork } from './structured-agent-session-status-child-work'
 import {
   StructuredAgentSessionJournalProjections,
-  type StructuredAgentSessionStatusState
+  type StructuredAgentSessionJournalProjection
 } from './structured-agent-session-status-journal-projection'
 import { structuredStatusSummariesEqual } from './structured-agent-session-status-summary-equality'
 import {
@@ -183,7 +183,8 @@ export class StructuredAgentSessionStatusFeed {
     }
   }
 
-  /** Revoke live execution authority while retaining the last projection for reload history. */
+  /** Revoke live execution authority while retaining the last projection for reload history. A
+   *  Stop still ending work is live state too: with the host gone, nothing here is ending it. */
   revokeLive(sessionId: string): void {
     const publication = this.published.get(sessionId)
     const previous = publication?.summary
@@ -193,6 +194,7 @@ export class StructuredAgentSessionStatusFeed {
     const {
       hostExecutionOwned: _hostExecutionOwned,
       hostExecutionPhase: _hostExecutionPhase,
+      stopping: _stopping,
       ...retained
     } = previous
     this.published.set(sessionId, {
@@ -206,15 +208,15 @@ export class StructuredAgentSessionStatusFeed {
     })
   }
 
-  /** The projection behind the session's row and the latest request it read, cached per commit,
-   *  so the completion feed follows the same request without snapshotting the journal again. */
-  statusState(
+  /** The projection behind the session's row, cached per commit: the latest request it read, so
+   *  the completion feed follows it without snapshotting the journal again, and its `stopping`,
+   *  which the steer hold reads instead of deriving it again. */
+  journalProjection(
     sessionId: string,
     journal?: AgentSessionJournal
-  ): StructuredAgentSessionStatusState | null {
-    const session = this.deps.sessions.get(sessionId)
-    const source = journal ?? session?.journal
-    return source ? this.projections.read(source, this.deps.getRecord(sessionId)).state : null
+  ): StructuredAgentSessionJournalProjection | null {
+    const source = journal ?? this.deps.sessions.get(sessionId)?.journal
+    return source ? this.projections.read(source, this.deps.getRecord(sessionId)) : null
   }
 
   /** Re-projects one session after its journal changed; equal projections are not re-sent. */
@@ -233,6 +235,7 @@ export class StructuredAgentSessionStatusFeed {
       journal: source,
       record,
       state: projection.state,
+      stopping: projection.stopping,
       childWork: this.childWorkFields(sessionId, session.params.provider),
       now: this.deps.now
     })

@@ -14,6 +14,7 @@ export function structuredAgentSessionStatusSummary({
   journal,
   record,
   state,
+  stopping,
   childWork,
   now
 }: {
@@ -25,6 +26,8 @@ export function structuredAgentSessionStatusSummary({
   journal: AgentSessionJournal
   record: AgentSessionRecord | null
   state: StructuredAgentSessionStatusState
+  /** A person's Stop is still ending the work it stopped. */
+  stopping: boolean
   childWork: Pick<AgentSessionStatusSummary, 'children' | 'backgroundTasks'>
   now: () => number
 }): AgentSessionStatusSummary {
@@ -45,6 +48,8 @@ export function structuredAgentSessionStatusSummary({
         }
       : {}),
     ...projected,
+    // Only a working session is still being stopped; any other status already ended that work.
+    ...(stopping && projected.status === 'working' ? { stopping: true as const } : {}),
     ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'
       ? { rewindBlockedReason: 'outcome-unknown' as const }
       : {}),

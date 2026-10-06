@@ -8,6 +8,7 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { newestAcceptedSendKey } from './structured-agent-session-status-child-work'
+import { structuredAgentSessionStopping } from './structured-agent-session-stopping'
 
 export type StructuredAgentSessionStatusState = ReturnType<
   typeof projectStructuredAgentSessionStatusState
@@ -17,10 +18,14 @@ export type StructuredAgentSessionJournalProjection = {
   epoch: string
   sequence: number
   fence: number | undefined
+  /** The Stop marks' settle revision: a settle edge writes no row, so it is a key of its own. */
+  stopRevision: number
   state: StructuredAgentSessionStatusState
   acceptedSendKey: string
   firstInputSubmissionKey: string | null
   submissionCount: number
+  /** A person's Stop is still ending the work it stopped (`structuredAgentSessionStopping`). */
+  stopping: boolean
 }
 
 export class StructuredAgentSessionJournalProjections {
@@ -37,12 +42,14 @@ export class StructuredAgentSessionJournalProjections {
     const cursor = journal.cursor()
     // The conversation's fence, which a child's end moves: its unanswered sends stop counting.
     const fence = record?.lease.runtimeFence
+    const stopRevision = journal.stopMarks.revision()
     let projection = this.byJournal.get(journal)
     if (
       !projection ||
       projection.epoch !== cursor.epoch ||
       projection.sequence !== cursor.sequence ||
-      projection.fence !== fence
+      projection.fence !== fence ||
+      projection.stopRevision !== stopRevision
     ) {
       // A journalled submission bumps `lastSequence`, so the send-time working
       // signal reaches the cache; the lease fence does not, hence the extra key.
@@ -74,12 +81,14 @@ export class StructuredAgentSessionJournalProjections {
         firstInputSubmissionKey,
         submissionCount: snapshot.submissions.length,
         fence,
+        stopRevision,
         state: projectStructuredAgentSessionStatusState(
           snapshot.items,
           snapshot.submissions,
           fence
         ),
-        acceptedSendKey: newestAcceptedSendKey(cursor.epoch, snapshot.submissions)
+        acceptedSendKey: newestAcceptedSendKey(cursor.epoch, snapshot.submissions),
+        stopping: structuredAgentSessionStopping(journal, snapshot.items, snapshot.submissions)
       }
       this.byJournal.set(journal, projection)
     }
