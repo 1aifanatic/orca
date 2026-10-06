@@ -391,11 +391,11 @@ describe('a /compact that waits in line', () => {
   })
 })
 
-it('only a /compact may ask to wait; a /clear never queues', () => {
+it('a /compact or a /clear may ask to wait, and only to wait', () => {
   const base = { envelope: rig.envelope({}, 'agentSession.conversationCommand', 'op-schema') }
   const parse = (fields: Record<string, unknown>) =>
     ConversationCommandParams.safeParse({ ...base, ...fields }).success
   expect(parse({ command: 'compact', delivery: 'queue-if-active' })).toBe(true)
-  expect(parse({ command: 'clear', delivery: 'queue-if-active' })).toBe(false)
+  expect(parse({ command: 'clear', delivery: 'queue-if-active' })).toBe(true)
   expect(parse({ command: 'compact', delivery: 'now' })).toBe(false)
 })

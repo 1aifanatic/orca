@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
@@ -11,17 +10,20 @@ import { admitAndRunAgentSessionMutation } from './structured-agent-session-muta
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
 import { sendPreparation } from './structured-agent-session-send-preparation'
 import type { StructuredAgentSessionCaller } from './structured-agent-session-host-types'
-import {
-  committedClearOfCaller,
-  conversationCommandBlocked
-} from './structured-conversation-command-admission'
+import { committedClearOfCaller } from './structured-conversation-command-admission'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
   agentSessionFailureWords,
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
-import { carryQueuedMessagesToClearReplacement } from './structured-agent-session-queued-mutations'
+import { maybeQueueStructuredAgentSessionSend } from './structured-agent-session-queued-messages'
+import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
+import {
+  clearConversationUnderSerialize,
+  QUEUED_CLEAR_CALLER_KEY,
+  structuredAgentSessionClearBody
+} from './structured-conversation-clear'
 
 /** A command's `error` is the sentence its row shows. */
 export function conversationCommandFailure(
@@ -38,7 +40,7 @@ export function conversationCommandFailure(
 export type ConversationCommandParams = {
   envelope: AgentSessionMutationEnvelope
   command: AgentSessionConversationCommand
-  /** /compact only: wait as a card while the agent works, as a queued send does. */
+  /** Wait as a card while the agent works, as a queued send does. */
   delivery?: 'queue-if-active'
 }
 export type ConversationReplacement = {
@@ -48,12 +50,14 @@ export type ConversationReplacement = {
   agent: 'claude' | 'codex'
 }
 
-const clearFingerprintOf = (sessionId: string) =>
-  computeAgentSessionPayloadFingerprint({
-    method: 'agentSession.conversationCommand',
-    sessionId,
-    fields: { command: 'clear' }
-  })
+const clearFingerprintsOf = (sessionId: string) =>
+  [{ command: 'clear' }, { command: 'clear', delivery: 'queue-if-active' }].map((fields) =>
+    computeAgentSessionPayloadFingerprint({
+      method: 'agentSession.conversationCommand',
+      sessionId,
+      fields
+    })
+  )
 
 /** This caller's committed /clear, for a /clear it presses again on the conversation that one
  *  cleared. Answered before admission, which would refuse it as cleared. */
@@ -65,7 +69,8 @@ async function answerFromCommittedClear(
   const { store } = context.deps
   const record = store.getRecord(envelope.sessionId)
   const committed =
-    command === 'clear' && envelope.payloadFingerprint === clearFingerprintOf(envelope.sessionId)
+    command === 'clear' &&
+    clearFingerprintsOf(envelope.sessionId).includes(envelope.payloadFingerprint)
       ? committedClearOfCaller(record, caller.callerKey, store.getSessionTabId(envelope.sessionId))
       : null
   const session =
@@ -82,8 +87,9 @@ async function answerFromCommittedClear(
 }
 
 /**
- * `/clear`: one write that points this conversation at a new, at-rest one and moves its tab there.
- * The new conversation's first send starts its agent.
+ * `/clear`: one write that points this conversation at a new, at-rest one and moves its tab there
+ * (`clearConversationUnderSerialize`). The new conversation's first send starts its agent. Asked
+ * with `delivery` while the agent works, it waits as a card, answered at once.
  */
 export function runStructuredConversationCommand(
   context: StructuredAgentSessionMutationContext,
@@ -95,7 +101,8 @@ export function runStructuredConversationCommand(
   const store = context.deps.store
   const matching = () => {
     const record = store.getRecord(sessionId)?.conversationCommand
-    return record?.operationId === clientOperationId && record.callerKey === caller.callerKey
+    return record?.operationId === clientOperationId &&
+      (record.callerKey === caller.callerKey || record.callerKey === QUEUED_CLEAR_CALLER_KEY)
       ? record
       : null
   }
@@ -117,65 +124,55 @@ export function runStructuredConversationCommand(
       now: context.now,
       plan: {
         method: 'agentSession.conversationCommand',
-        fields: { command },
+        fields: { command, ...(params.delivery ? { delivery: params.delivery } : {}) },
         // Written to the conversation, not the agent, so whoever owns the agent does not matter.
         conversationWrite: true,
         recoverUnknownFromDurableState: true,
         settledOutcome: (value) => ({ status: 'succeeded', sessionId, conversationCommand: value }),
-        replay: (_ctx, outcome) => {
+        replay: (replayCtx, outcome) => {
           if (outcome.status === 'succeeded' && outcome.conversationCommand) {
             return outcome.conversationCommand
           }
           const prior = matching()
-          return prior?.phase === 'committed' ? prior : null
+          if (prior?.phase === 'committed') {
+            return prior
+          }
+          // Its card answers until the queue runs it; the card is keyed by this operation id.
+          const card = queuedSendAnswer(replayCtx.journal, clientOperationId)
+          return card && 'queued' in card
+            ? { command: 'clear', state: 'completed', queued: card.queued }
+            : null
         },
-        // The commit is the only write, so a clear with no committed answer changed nothing.
+        // The commit and the card are its only writes, so with neither answering it changed nothing.
         rerunWhenReplayMissing: () => true,
         run: async (ctx) => {
-          const record = store.getRecord(sessionId)!
-          const blocked = conversationCommandBlocked(
-            ctx,
-            record,
-            context.readChildWork(sessionId),
-            context.sessions.get(sessionId)?.child ? undefined : 'at-rest'
-          )
-          if (blocked) {
-            return { ok: false, refusal: blocked }
+          // A /clear the queue already ran for this id, its answer lost: what it did.
+          const ranFromQueue = matching()
+          if (ranFromQueue?.phase === 'committed') {
+            return { ok: true, value: ranFromQueue }
           }
-          // Stopped before the marker, so nothing the old agent does can land after the clear. The
-          // stop releases the lease, which moves its fence: the marker is written at the new one.
-          // A /clear replaces this chat: the user closing it.
-          await context.stopAgent(sessionId, { cause: 'user-close' })
-          const fence = store.getRecord(sessionId)!.lease.runtimeFence
-          const completed = {
-            command,
-            runtimeFence: fence,
+          if (params.delivery) {
+            // The queue's own accept rule decides first, as for /compact: whatever a queued send
+            // waits behind, the clear waits behind too, and the host runs it when its turn comes.
+            const queued = await maybeQueueStructuredAgentSessionSend(context, ctx, {
+              envelope,
+              body: structuredAgentSessionClearBody(),
+              delivery: params.delivery
+            })
+            if (queued && !queued.ok) {
+              return queued
+            }
+            if (queued && 'queued' in queued.value) {
+              return {
+                ok: true,
+                value: { command: 'clear', state: 'completed', queued: queued.value.queued }
+              }
+            }
+          }
+          return clearConversationUnderSerialize(context, ctx, {
             operationId: clientOperationId,
-            callerKey: caller.callerKey,
-            // Only has to be new: the marker is what points at it, and a same-id resend replays it.
-            replacementSessionId: `clear-${randomBytes(20).toString('hex')}`,
-            phase: 'committed' as const,
-            state: 'completed' as const
-          }
-          await store.commitConversationClear({
-            sessionId,
-            fence,
-            command: completed,
-            claimKeyId: context.deps.claimKeyId,
-            now: context.now()
+            callerKey: caller.callerKey
           })
-          // Carry the source's drafts to the replacement, the same for every client version:
-          // the cards stay visible where the user now is, and no text rides the wire.
-          // Bookkeeping — a failure is reported and never fails the clear.
-          await carryQueuedMessagesToClearReplacement(ctx, {
-            replacementSessionId: completed.replacementSessionId,
-            // Opened under its own lock, as every open is.
-            openReplacementJournal: async () =>
-              (await context.conversation(completed.replacementSessionId)).journal,
-            callerKey: caller.callerKey,
-            operationId: clientOperationId
-          })
-          return { ok: true, value: completed }
         }
       }
     })

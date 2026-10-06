@@ -177,6 +177,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           firstWorkRenameDeps(this.requireStore(), this)
         )
       },
+      // The host moves a cleared chat's tab, from the command or from the queue that ran it.
+      onConversationReplaced: (replacement) => this.replaceStructuredAgentSessionTab(replacement),
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.

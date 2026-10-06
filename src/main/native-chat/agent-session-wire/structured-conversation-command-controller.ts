@@ -15,7 +15,7 @@ export class StructuredConversationCommandController {
   readonly pending = new Map<string, { key: string; count: number }>()
   constructor(
     private readonly context: () => StructuredAgentSessionMutationContext,
-    private readonly host: Pick<StructuredAgentSessionHost, 'waitForSendSettlement'>
+    private readonly host: Pick<StructuredAgentSessionHost, 'waitForSendSettlement' | 'close'>
   ) {}
   /** Whether a clear is in flight is read as the send arrives; it refuses only a first run, so an
    *  id with a recorded answer by the send's turn gets that answer, behind the clear. */
@@ -39,14 +39,46 @@ export class StructuredConversationCommandController {
     const entry = pending ?? { key, count: 0 }
     entry.count++
     this.pending.set(params.envelope.sessionId, entry)
-    return runStructuredConversationCommand(this.context(), caller, params).finally(() => {
-      if (--entry.count === 0 && this.pending.get(params.envelope.sessionId) === entry) {
-        this.pending.delete(params.envelope.sessionId)
+    return runStructuredConversationCommand(this.context(), caller, params)
+      .then(async (result) => {
+        if (result.ok && result.value.command === 'clear' && result.value.replacementSessionId) {
+          await this.afterClear(params.envelope.sessionId)
+        }
+        return result
+      })
+      .finally(() => {
+        if (--entry.count === 0 && this.pending.get(params.envelope.sessionId) === entry) {
+          this.pending.delete(params.envelope.sessionId)
+        }
+        // A clear can settle with no journal commit (a refusal), and drafts held behind it
+        // would otherwise wait for an unrelated commit.
+        this.context().wakeQueuedDrain?.(params.envelope.sessionId)
+      })
+  }
+
+  /**
+   * What follows a committed /clear, wherever it ran — the command, the queue's drain, or a card's
+   * Send: the tab snapshot that moves clients to the replacement, then the source closed as the
+   * user closing it. Outside the source's serialize, which the close takes. Both re-derive from
+   * the record (`replacements`), so a repeat, or one a crash skipped, changes nothing.
+   */
+  afterClear = async (sourceSessionId: string): Promise<void> => {
+    const replacement = this.replacements().find(
+      (entry) => entry.sourceSessionId === sourceSessionId
+    )
+    try {
+      if (replacement) {
+        this.context().deps.onConversationReplaced?.(replacement)
       }
-      // A clear can settle with no journal commit (a refusal), and drafts held behind it
-      // would otherwise wait for an unrelated commit.
-      this.context().wakeQueuedDrain?.(params.envelope.sessionId)
-    })
+      await this.host.close(sourceSessionId, 'user-close')
+    } catch (error) {
+      // The clear stands; the next snapshot store and the next restore re-derive the move.
+      this.context().deps.logger.warn('moving clients off a cleared chat failed', {
+        scope: 'clear-tab-move',
+        sessionId: sourceSessionId,
+        error
+      })
+    }
   }
 
   replacements = () => {

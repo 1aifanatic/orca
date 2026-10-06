@@ -46,3 +46,26 @@ export function adoptQueuedMessages(
       .run(input.hostInstance, input.sessionId, input.hostInstance).changes ?? 0
   )
 }
+
+/** waiting → returned with no hand-off: a card the host runs itself (a queued /clear) that could
+ *  not run. Like a refused hand-off's card it blocks the cards behind it until its own Send or
+ *  Delete; a returned card asked again keeps its place with the newer reason. */
+export function returnUnsentQueuedMessage(
+  db: Database.Database,
+  input: {
+    sessionId: string
+    messageId: string
+    reason: string | null
+    rejection: string | null
+    now: number
+  }
+): boolean {
+  const changed = db
+    .prepare(
+      `UPDATE queued_messages
+       SET state = 'returned', hold_reason = NULL, returned_reason = ?, returned_rejection = ?, settled_at = ?
+       WHERE session_id = ? AND message_id = ? AND state IN ('waiting', 'returned')`
+    )
+    .run(input.reason, input.rejection, input.now, input.sessionId, input.messageId)
+  return Number(changed.changes ?? 0) > 0
+}

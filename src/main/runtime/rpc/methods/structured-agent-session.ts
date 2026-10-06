@@ -117,17 +117,8 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
       await ensureHostInstalled(ctx)
       const host = requireHost(ctx)
       await host.revealSession(params.envelope.sessionId)
-      const result = await host.conversationCommand(callerFor(ctx), params)
-      if (result.ok && result.value.command === 'clear' && result.value.replacementSessionId) {
-        const replacement = host
-          .conversationReplacements()
-          .find((entry) => entry.sourceSessionId === params.envelope.sessionId)
-        if (replacement) {
-          ctx.runtime.replaceStructuredAgentSessionTab(replacement)
-        }
-        await host.close(params.envelope.sessionId, 'user-close')
-      }
-      return result
+      // A committed /clear moves the tab and closes the source in the host, as a queued one does.
+      return host.conversationCommand(callerFor(ctx), params)
     }
   }),
   defineMethod({

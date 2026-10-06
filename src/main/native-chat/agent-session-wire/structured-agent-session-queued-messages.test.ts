@@ -15,10 +15,7 @@ import { ConversationCommandParams } from '../../../shared/rpc-contract/structur
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
 import { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
-import {
-  rotateStructuredAgentSessionHostInstanceForTests,
-  structuredQueuePauses
-} from './structured-agent-session-queued-pause'
+import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 import {
   createQueuedMessageTestRig,
   eventually,
@@ -689,7 +686,7 @@ describe('/clear', () => {
     )
   })
 
-  it('a carry whose insert fails leaves no pause over the empty replacement', async () => {
+  it('a carry whose insert fails is finished from the source, still paused as a carry', async () => {
     await pausedDrafts()
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const insert = vi
@@ -706,9 +703,10 @@ describe('/clear', () => {
     if (!replacementId) {
       throw new Error('expected a replacement session')
     }
-    expect(await drafts(replacementId)).toHaveLength(0)
-    const journal = host.collaboratorsForTests().sessions.get(replacementId)?.journal
-    expect(journal && structuredQueuePauses(journal)).toEqual([])
+    // The source still owes the carry, so its drain finishes it: nothing stays stranded there.
+    await eventually(async () => expect(await drafts(replacementId)).toHaveLength(2))
+    expect(await drafts()).toEqual([])
+    expect(await rig.queuePause(replacementId)).toEqual({ reason: 'cleared' })
   })
 
   it('a returned card carries over as a plain waiting draft on the paused replacement', async () => {

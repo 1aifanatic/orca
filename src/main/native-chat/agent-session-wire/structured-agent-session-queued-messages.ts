@@ -1,6 +1,7 @@
 // Mid-turn queueing: the accept decision that turns a send into a host-held
 // draft, the serialized drain that converts one draft into an ordinary
-// submission when the session stops owing work, and the published draft list.
+// submission when the session stops owing work (or runs a /clear card itself),
+// and the published draft list.
 //
 // Drafts are never owed work: they feed no reducer, no working status, no
 // teardown and no idle sweep. The drain re-reads every gate inside its own
@@ -37,6 +38,7 @@ import {
 } from './structured-agent-session-queued-pause'
 import { nextSendableQueuedCard } from '../agent-session-journal/queued-message-pause'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { clearCarryOwed, isQueuedClearCard } from './structured-conversation-clear-carry'
 
 /** Budget at accept, in the send schema's own unit (`Buffer.byteLength` of the
  *  serialized blocks); refused readably rather than trimmed. */
@@ -261,13 +263,21 @@ export type QueuedMessageDrainDeps = {
   /** The consumed submission is ordinary #22821 work from here on. */
   wakeDelivery: (sessionId: string) => void
   logger: StructuredAgentSessionLogger
+  /** A /clear card's turn, run by the host inside this step; true once the clear committed. */
+  runQueuedClear: (sessionId: string, card: QueuedMessageRow) => Promise<boolean>
+  /** Finishes the carry a committed clear owes its replacement, inside this step. */
+  carryAfterClear: (sessionId: string) => Promise<void>
+  /** What follows a committed clear, outside the step: it closes the source, which serializes. */
+  afterClear: (sessionId: string) => Promise<void>
 }
 
 /**
  * The serialized drain. Woken by every journal commit (turn, submission, prompt,
  * command and Stop settlements are all commits), by draft mutations, and by the
  * conversation opening; each step re-derives everything and consumes at most one
- * draft — the consumed submission then owes work, which gates the next.
+ * draft — the consumed submission then owes work, which gates the next. A /clear
+ * card is run, not consumed: its clear supersedes this conversation, which holds
+ * the queue from then on.
  */
 export class StructuredAgentSessionQueuedMessageDrain {
   private readonly scheduled = new Set<string>()
@@ -285,6 +295,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     try {
       if (
         !journal.queuedMessages.settlementOwed() &&
+        !clearCarryOwed(this.deps.getRecord(sessionId), journal) &&
         (oldestActionableQueuedMessage(journal) === null ||
           isStructuredAgentSessionMainAgentWorking(
             journal.activeTurnId(),
@@ -307,6 +318,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
         this.scheduled.delete(sessionId)
         return this.step(sessionId)
       })
+      .then((cleared) => (cleared ? this.deps.afterClear(sessionId) : undefined))
       .catch((error: unknown) => {
         this.scheduled.delete(sessionId)
         this.deps.logger.warn('draining queued messages failed', {
@@ -317,10 +329,11 @@ export class StructuredAgentSessionQueuedMessageDrain {
       })
   }
 
-  private async step(sessionId: string): Promise<void> {
+  /** True when this step committed a /clear. */
+  private async step(sessionId: string): Promise<boolean> {
     const session = this.deps.sessions.get(sessionId)
     if (!session) {
-      return
+      return false
     }
     const journal = session.journal
     if (journal.queuedMessages.settlementOwed() || journal.queuedMessages.deliveredByEchoOwed()) {
@@ -333,17 +346,28 @@ export class StructuredAgentSessionQueuedMessageDrain {
         })
       })
     }
+    const record = this.deps.getRecord(sessionId)
+    if (clearCarryOwed(record, journal)) {
+      // A clear committed here with its carry cut short: the cards behind it belong to the
+      // replacement, and this source sends nothing again.
+      await this.deps.carryAfterClear(sessionId)
+      return false
+    }
     const next = oldestActionableQueuedMessage(journal)
     if (!next) {
-      return
+      return false
     }
-    const record = this.deps.getRecord(sessionId)
     const fence = this.deps.conversationFence(sessionId)
     // Live facts only, through the one gate; the backlog is never a gate, so a
     // lone draft drains. Whatever clears a hold publishes or commits, which
     // re-derives this step.
     if (structuredQueueHold({ journal, record, fence }) !== null) {
-      return
+      return false
+    }
+    // Never a submission: the host runs a /clear itself, one card per step. The hold being null
+    // means no turn, unanswered message or question is in flight, so its stop cuts off nothing.
+    if (isQueuedClearCard(next)) {
+      return this.deps.runQueuedClear(sessionId, next)
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.
     const submissionId = createStructuredAgentSessionOperationId(randomUUID)
@@ -369,7 +393,7 @@ export class StructuredAgentSessionQueuedMessageDrain {
     } catch (error) {
       if (error instanceof QueuedMessageNotConsumableError) {
         // Lost a race with a Send-now, a Delete or a Stop; their transition stands.
-        return
+        return false
       }
       // Pre-consume failure: the draft stays waiting, held with the marker on
       // the card (a stored fact, so it survives eviction and restart). The
@@ -381,5 +405,6 @@ export class StructuredAgentSessionQueuedMessageDrain {
       throw error
     }
     this.deps.wakeDelivery(sessionId)
+    return false
   }
 }

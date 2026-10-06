@@ -6,6 +6,7 @@
 
 import type Database from '../../sqlite/sync-database'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import type { UnreadAgentSessionFailureFact } from '../../../shared/agent-session-failure'
 import {
   AGENT_SESSION_MAX_NEW_OPERATION_AGE_MS,
   AGENT_SESSION_OPERATION_FUTURE_SKEW_MS
@@ -15,7 +16,11 @@ import type { JournalReducerState } from './journal-reducer'
 import type { JournalRow } from './journal-row-schema'
 import type { JournalOperationReceipt, JournalRowTransactionHook } from './journal-row-writer'
 import type { JournalSubmissionConsume } from './journal-store-contracts'
-import { adoptQueuedMessages, holdQueuedMessages } from './queued-message-holds'
+import {
+  adoptQueuedMessages,
+  holdQueuedMessages,
+  returnUnsentQueuedMessage
+} from './queued-message-holds'
 import {
   deriveQueuePauses,
   journalUserStopInForce,
@@ -149,6 +154,25 @@ export class JournalQueuedMessages {
       (db) => holdQueuedMessages(db, { ...input, sessionId: this.deps.sessionId }),
       (held) => held > 0
     ).then(() => undefined)
+  }
+
+  /** A card the host runs itself could not run: returned with why (`returnUnsentQueuedMessage`). */
+  returnUnsent(input: {
+    messageId: string
+    reason: string | null
+    rejection: UnreadAgentSessionFailureFact | null
+  }): Promise<boolean> {
+    return this.transact(
+      (db) =>
+        returnUnsentQueuedMessage(db, {
+          sessionId: this.deps.sessionId,
+          messageId: input.messageId,
+          reason: input.reason,
+          rejection: input.rejection ? JSON.stringify(input.rejection) : null,
+          now: this.deps.now()
+        }),
+      (changed) => changed
+    )
   }
 
   /** The queue's pauses in force, derived from the fold and the cards (`queued-message-pause.ts`). */

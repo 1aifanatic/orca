@@ -22,6 +22,7 @@ import type { AgentSessionAttachParams } from './structured-agent-session-attach
 import type { StructuredAgentSessionStatusSink } from './structured-agent-session-status-feed'
 import type { AgentModelCatalogService } from '../agent-model-catalog/agent-model-catalog-service'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import type { ConversationReplacement } from './structured-conversation-command'
 
 export type StructuredAgentSessionCaller = { callerKey: string }
 
@@ -147,6 +148,9 @@ export type StructuredAgentSessionHostDeps = {
    *  removed from. Both production hosts pass one — the desktop and headless `orcad`; absent,
    *  every reader of that store simply lists no structured session. */
   statusSink?: StructuredAgentSessionStatusSink
+  /** A committed /clear moved a chat to its replacement: publish the tab snapshot that moves
+   *  clients there. Absent publishes nothing; the next snapshot store re-derives the move. */
+  onConversationReplaced?: (replacement: ConversationReplacement) => void
   /** Host model catalog surface; absent means every catalog read answers `unknown`. */
   modelCatalog?: AgentModelCatalogService
 }

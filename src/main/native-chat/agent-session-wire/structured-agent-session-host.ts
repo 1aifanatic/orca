@@ -67,11 +67,13 @@ export class StructuredAgentSessionHost {
       this.conversationDelivery.afterCommit(sessionId, journal)
     },
     logger: sessionLogger.deferredStructuredAgentSessionLogger(() => this.deps.logger),
-    onOpened: (sessionId) => this.queued.drain.schedule(sessionId),
+    onOpened: (sessionId) => this.queued.onConversationOpened(sessionId),
     now: () => this.now()
   })
-  private readonly queued = wireStructuredAgentSessionQueuedMessages(this.sessions, () =>
-    this.mutationContext()
+  private readonly queued = wireStructuredAgentSessionQueuedMessages(
+    this.sessions,
+    () => this.mutationContext(),
+    (sessionId) => this.conversationCommands.afterClear(sessionId)
   )
   // Every journal publish is activity: the one renewal the idle sweep reads.
   private readonly clientDelivery = new StructuredAgentSessionClientDelivery(

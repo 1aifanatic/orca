@@ -1,5 +1,4 @@
-// `agentSession.queuedMessageSend` / `agentSession.queuedMessageDelete`, and
-// /clear's carry of the source's drafts to its replacement session. Settling
+// `agentSession.queuedMessageSend` / `agentSession.queuedMessageDelete` / Resume. Settling
 // operations stamp op-scoped tombstone receipts, so a lost acknowledgement
 // replays from the rows themselves — never from the operation ledger, which
 // records only that an operation happened. No mutation returns draft text:
@@ -22,15 +21,11 @@ import {
 } from '../agent-session-journal/journal-open-failure'
 import type { QueuedMessageRow } from '../agent-session-journal/queued-message-table'
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
-import {
-  queuedMessageFingerprint,
-  structuredQueueHold
-} from './structured-agent-session-queued-messages'
+import { structuredQueueHold } from './structured-agent-session-queued-messages'
 import {
   resumeStructuredQueue,
   structuredAgentSessionHostInstance
 } from './structured-agent-session-queued-pause'
-import { unsettledQueuedMessages } from './structured-agent-session-queued-stop'
 import {
   mutateStructuredAgentSession,
   type StructuredAgentSessionMutationContext
@@ -41,6 +36,8 @@ import {
   structuredAgentSessionSendBlock
 } from './structured-agent-session-send-preparation'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
+import { runQueuedConversationClear } from './structured-conversation-clear'
+import { isQueuedClearCard } from './structured-conversation-clear-carry'
 
 function invalid(message: string): {
   ok: false
@@ -72,74 +69,6 @@ export async function withdrawQueuedMessagesForOperation(
     messageIds: input.messageIds,
     settledByOp: agentSessionOperationKey(input.callerKey, input.operationId)
   })
-}
-
-/**
- * /clear's carry: the source's unsettled drafts become rows on the replacement
- * session — the SAME for every client version, with no text on the wire — so the
- * cards stay visible where the user now is. The replacement's queue starts
- * paused ('cleared'), lifted exactly like a Stop's: the cards were written for the context /clear just
- * discarded, so they wait for the user's next turn there, or Resume, rather than
- * sending into the fresh context unasked. Each card records the conversation it
- * came from, which IS that pause, so the drain never sees a carried card unpaused
- * and no pause outlives the cards. Runs after the clear commits, opening the
- * replacement's conversation only when there are drafts to carry; the source
- * rows are then tombstoned. A command card (a waiting /compact) is tombstoned
- * without a copy. Bookkeeping around the clear: a failure, or a crash
- * before the carry, leaves the cards on the superseded source — whose
- * supersession fence already blocks the drain — reported, never gating the
- * clear. A crash between the copy and the tombstone leaves both, which the
- * fence also makes harmless: nothing is lost and nothing runs.
- */
-export async function carryQueuedMessagesToClearReplacement(
-  ctx: AgentSessionTurnContext,
-  input: {
-    replacementSessionId: string
-    openReplacementJournal: () => Promise<AgentSessionJournal | undefined>
-    callerKey: string
-    operationId: string
-  }
-): Promise<void> {
-  try {
-    const rows = unsettledQueuedMessages(ctx.journal)
-    if (rows.length === 0) {
-      return
-    }
-    // A command card was for the context the clear discards: withdrawn below, never carried.
-    const carried = rows.filter((row) => !row.body.command)
-    if (carried.length > 0) {
-      const replacement = await input.openReplacementJournal()
-      if (!replacement) {
-        throw new Error('the replacement journal is not open')
-      }
-      for (const row of carried) {
-        // A returned card carries over as a plain waiting draft — its refusal
-        // belonged to the source's submissions. The fingerprint is re-scoped to the
-        // replacement, or its echo could never alias the sent bubble.
-        await replacement.queuedMessages.insert({
-          messageId: row.messageId,
-          body: row.body,
-          fingerprint: queuedMessageFingerprint(input.replacementSessionId, row.body),
-          hostInstance: structuredAgentSessionHostInstance(),
-          carriedFrom: ctx.sessionId,
-          source: row.source
-        })
-      }
-    }
-    await withdrawQueuedMessagesForOperation(ctx.journal, {
-      sessionId: ctx.sessionId,
-      messageIds: rows.map((row) => row.messageId),
-      callerKey: input.callerKey,
-      operationId: input.operationId
-    })
-  } catch (error) {
-    ctx.logger.warn("carrying queued drafts to /clear's replacement failed", {
-      scope: 'clear-queued-carry',
-      sessionId: ctx.sessionId,
-      replacementSessionId: input.replacementSessionId,
-      error
-    })
-  }
 }
 
 /** Draft actions run like any mutation: admitted on the session's lane, the
@@ -178,7 +107,8 @@ async function refusingNewerOrcaJournal<TValue>(
  * wait — through the same send block and pending-prompt gates as any send;
  * supersession, Stop and prepared commands are never overridden. The card goes
  * out under this operation's id, never its own, and the submission names it by
- * `queuedMessageId`; one id still means one delivery.
+ * `queuedMessageId`; one id still means one delivery. A /clear card is run by
+ * the host instead: its clear is recorded under the card's id, so it runs once.
  */
 export function sendQueuedStructuredAgentMessage(
   context: StructuredAgentSessionMutationContext,
@@ -227,6 +157,12 @@ export function sendQueuedStructuredAgentMessage(
       if (hold === 'working' && row.body.command) {
         return invalid("A command can't be sent while the agent is working.")
       }
+      if (isQueuedClearCard(row)) {
+        // Run by the host, as the drain runs it: never a submission. A refusal lands on the card
+        // itself, so this answers with the card rather than saying it a second time.
+        await runQueuedConversationClear(context, ctx, row)
+        return { ok: true, value: queuedClearSendAnswer(ctx, operationId, row) }
+      }
       const submissionId = operationId
       try {
         await ctx.journal.appendSubmission(
@@ -260,6 +196,10 @@ export function sendQueuedStructuredAgentMessage(
       return { ok: true, value: { clientMessageId: submissionId, submission } }
     },
     replay: (ctx) => {
+      const card = ctx.journal.queuedMessages.get(messageId)
+      if (card && isQueuedClearCard(card)) {
+        return queuedClearSendAnswer(ctx, operationId, card)
+      }
       const opKey = agentSessionOperationKey(ctx.resolvedBy, operationId)
       const row = ctx.journal.queuedMessages
         .receipts(opKey)
@@ -272,6 +212,20 @@ export function sendQueuedStructuredAgentMessage(
     }
   }
   return mutateQueued(context, caller, params.envelope, plan)
+}
+
+/** A /clear card's Send answers with the card as it now stands: gone once its clear ran,
+ *  returned with why when it could not. */
+function queuedClearSendAnswer(
+  ctx: AgentSessionTurnContext,
+  operationId: string,
+  card: QueuedMessageRow
+): AgentSessionSendResult {
+  const now = ctx.journal.queuedMessages.get(card.messageId) ?? card
+  return {
+    clientMessageId: operationId,
+    queued: { messageId: card.messageId, position: card.position, state: now.state }
+  }
 }
 
 /** Delete = discard, with no body in the answer: the card leaving the published
