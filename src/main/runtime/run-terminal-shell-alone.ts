@@ -9,6 +9,7 @@ import { getFreshProcessTableSnapshot } from '../../shared/process-table-snapsho
 import { getProcessTableIndex } from '../../shared/process-table-index'
 import { isShellProcess } from '../../shared/shell-process-detection'
 import type { TerminalProcessInspection } from '../../shared/terminal-process-inspection'
+import type { RuntimePtyController } from './runtime-pty-controller-contract'
 
 /** POSIX: the PTY's root shell owns the terminal's foreground group and nothing under it is stopped. */
 export async function confirmRootShellAloneFromProcessTable(rootPid: number): Promise<boolean> {
@@ -33,4 +34,29 @@ export function inspectionShowsShellAlone(inspection: TerminalProcessInspection 
     inspection.childProcessEvidence === 'no-children' &&
     (inspection.foregroundProcess === null || isShellProcess(inspection.foregroundProcess))
   )
+}
+
+/** Fresh host proof that only the spawned shell runs in a PTY, at its prompt; false when unproven. */
+export async function confirmPtyShellAlone(
+  controller: Pick<
+    RuntimePtyController,
+    'confirmShellForeground' | 'inspectProcess' | 'listProcesses'
+  > | null,
+  ptyId: string
+): Promise<boolean> {
+  try {
+    if (await controller?.confirmShellForeground?.(ptyId)) {
+      return true
+    }
+    if (process.platform === 'win32') {
+      return inspectionShowsShellAlone(
+        (await controller?.inspectProcess?.(ptyId, { scanChildProcesses: true })) ?? null
+      )
+    }
+    const processes = (await controller?.listProcesses?.(null)) ?? []
+    const rootPid = processes.find((entry) => entry.id === ptyId)?.rootProcessId
+    return rootPid ? await confirmRootShellAloneFromProcessTable(rootPid) : false
+  } catch {
+    return false
+  }
 }
