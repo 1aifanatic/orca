@@ -76,6 +76,11 @@ export function spellProviderTimelineKey(
     : `m:${providerTimelineKeyPart(key.value)}`
 }
 
+/** Whether a turn id names a turn the provider keyed inside session `namespace`. */
+export function isProviderTimelineTurnInNamespace(turnId: string, namespace: string): boolean {
+  return turnId.startsWith(`p:${providerTimelineKeyPart(namespace)}:`)
+}
+
 /** The existing `legacy` arm. Turn rows keep the `turn-lifecycle:` record prefix the other lanes
  *  write; provider keys are spelled inside their namespace, and apart from minted ones. */
 export function createLegacyProviderTimelineIdentityScheme(input: {

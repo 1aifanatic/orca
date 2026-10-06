@@ -1,6 +1,7 @@
 // What takes over when an ACP agent cannot reopen the session a chat proved. A session this chat
-// created and the agent never saved is superseded: there was nothing to remember. Any other is
-// replaced by a new session that names it, and the chat says once that the agent forgot.
+// created and never exchanged a turn on, which the agent says it does not hold, is superseded:
+// there was nothing to remember. Any other is replaced by a new session that names it, and the
+// chat says once that the agent forgot.
 
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
@@ -26,7 +27,7 @@ export function acpReopenTakeover(
   if (
     error instanceof AcpRpcError &&
     error.code === ACP_RESOURCE_NOT_FOUND &&
-    resume.mayBeUnsaved
+    resume.mayBeUnsaved()
   ) {
     return { supersedesKey: resume.key }
   }

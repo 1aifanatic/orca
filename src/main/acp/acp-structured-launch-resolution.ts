@@ -13,6 +13,9 @@ import {
 } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import type { JournalLoad } from '../native-chat/agent-session-journal/journal-open'
+import { isProviderTimelineTurnInNamespace } from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import type { AcpLaunchSpec } from './acp-launch-specs'
 
@@ -28,13 +31,16 @@ export type AcpStructuredLaunch = {
     sessionId: string
     /** The chain key of the session to load, which a fresh session names if it takes over. */
     key: string
-    /** Only a session this chat created may be one the agent never saved, and so be superseded. */
-    mayBeUnsaved: boolean
+    /** Only a session this chat created and never exchanged a turn on may be one the agent never
+     *  saved, and so be superseded. Read only when the agent cannot reopen it. */
+    mayBeUnsaved: () => boolean
   } | null
 }
 
 export type AcpStructuredLaunchResolverDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
+  /** The chat's journal as it stands, read without opening it; null when it has none. */
+  readJournal: (sessionId: string) => JournalLoad | null
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   /** The shared base env; re-read per acquisition. */
   resolveEnvironment: () => Promise<Record<string, string>>
@@ -98,9 +104,39 @@ export function createAcpStructuredLaunchResolver(
         ? {
             sessionId: head.handle.nativeId,
             key: agentSessionProviderHandleKey(head.handle),
-            mayBeUnsaved: head.origin === 'created'
+            mayBeUnsaved: () =>
+              head.origin === 'created' &&
+              nothingExchangedOn(deps.readJournal, identity.sessionId, head.handle.nativeId)
           }
         : null
     }
   }
+}
+
+/** Proof the chat holds no turn of provider session `nativeId`; a journal that does not read whole,
+ *  or does not read at all, proves nothing. */
+function nothingExchangedOn(
+  readJournal: AcpStructuredLaunchResolverDeps['readJournal'],
+  sessionId: string,
+  nativeId: string
+): boolean {
+  let load: JournalLoad | null
+  try {
+    load = readJournal(sessionId)
+  } catch {
+    return false
+  }
+  if (!load) {
+    return true
+  }
+  if (load.damage || load.newer) {
+    return false
+  }
+  for (const item of load.state.items.values()) {
+    const turn = readAgentJournalTurn(item.body)
+    if (turn && isProviderTimelineTurnInNamespace(turn.turnId, nativeId)) {
+      return false
+    }
+  }
+  return true
 }
