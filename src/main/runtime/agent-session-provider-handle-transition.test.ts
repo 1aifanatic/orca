@@ -6,7 +6,6 @@ import {
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { isPersistedAgentSessionRecord } from '../../shared/agent-session-record'
 import { encodeAgentSessionRecord } from '../../shared/agent-session-record-stored-form'
-import { CLAUDE_AND_CODEX_STORED_AGENTS } from '../../shared/agent-session-stored-agent.test-fixture'
 import {
   recordAgentSessionProviderHandle,
   reviseAgentSessionProviderResumePoint
@@ -76,12 +75,7 @@ describe('reviseAgentSessionProviderResumePoint', () => {
       handle: { resumeCursor: 'leaf-3' }
     })
     expect(second.lease.provenHandleLinkId).toBe('link-1')
-    expect(
-      isPersistedAgentSessionRecord(
-        encodeAgentSessionRecord(second),
-        CLAUDE_AND_CODEX_STORED_AGENTS
-      )
-    ).toBe(true)
+    expect(isPersistedAgentSessionRecord(encodeAgentSessionRecord(second))).toBe(true)
   })
 
   it('refuses a stale owner, a released lease, and a head minted by another owner', () => {

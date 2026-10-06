@@ -24,7 +24,6 @@ import {
   isReadableRetiredAgentSessionClaimKey
 } from './agent-session-store-row-rules'
 import { AgentSessionTabTable, type PersistedAgentSessionTab } from './agent-session-tab-table'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 /** "Never recorded" and "recorded, now empty" differ, and #17439's legacy fallback needs the first;
  *  no row count can say which. */
@@ -64,8 +63,8 @@ function parseJson(json: string | null): { ok: true; value: unknown } | { ok: fa
   }
 }
 
-function unreadableRecordReason(value: unknown, agents: AgentSessionStoredAgents): string {
-  if (isPersistedAgentSessionRecord(value, agents)) {
+function unreadableRecordReason(value: unknown): string {
+  if (isPersistedAgentSessionRecord(value)) {
     return 'record_key_session_id_mismatch'
   }
   const schemaVersion =
@@ -84,8 +83,7 @@ function unreadableRecordReason(value: unknown, agents: AgentSessionStoredAgents
  */
 export function loadAgentSessionStoreRows(
   db: Database.Database,
-  hostId: string,
-  agents: AgentSessionStoredAgents
+  hostId: string
 ): AgentSessionStoreState {
   const state: AgentSessionStoreState = {
     schemaVersion: AGENT_SESSION_STORE_SCHEMA_VERSION,
@@ -113,7 +111,7 @@ export function loadAgentSessionStoreRows(
     }
     const parsed = parseJson(text(row, 'record_json'))
     const value = parsed.ok ? parsed.value : text(row, 'record_json')
-    if (parsed.ok && isReadableAgentSessionStoreRecord(sessionId, value, agents)) {
+    if (parsed.ok && isReadableAgentSessionStoreRecord(sessionId, value)) {
       const { record } = decodePersistedAgentSessionRecord(value)
       state.records.set(sessionId, {
         ...record,
@@ -121,7 +119,7 @@ export function loadAgentSessionStoreRows(
       })
     } else {
       state.unreadableRecords.set(sessionId, {
-        reason: unreadableRecordReason(value, agents),
+        reason: unreadableRecordReason(value),
         raw: value
       })
     }

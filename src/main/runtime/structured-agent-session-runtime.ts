@@ -46,7 +46,6 @@ import { createStructuredAgentEnvironmentResolvers } from './structured-agent-sh
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import {
   STRUCTURED_AGENT_RUNTIME_REGISTRATIONS,
-  STRUCTURED_AGENT_STORAGE,
   type StructuredAgentAdapterContext
 } from './structured-agent-runtime-registrations'
 import { createStructuredAgentSessionLifecycleDelivery } from './structured-agent-session-lifecycle-delivery'
@@ -223,7 +222,6 @@ async function install(deps: StructuredAgentSessionRuntimeDeps): Promise<Install
   const journalDatabase = await openStructuredAgentSessionJournalDatabase({
     stateDirectory: deps.stateDirectory,
     hostId: deps.hostId,
-    agents: STRUCTURED_AGENT_STORAGE,
     logger
   })
   try {
@@ -242,8 +240,7 @@ async function installOnJournal(
   const envResolvers = createStructuredAgentEnvironmentResolvers(deps)
   const store = AgentSessionRecordStore.open({
     journalDatabase,
-    hostId: deps.hostId,
-    agents: STRUCTURED_AGENT_STORAGE
+    hostId: deps.hostId
   })
   let host: StructuredAgentSessionHost | null = null
   const lifecycle = createStructuredAgentSessionLifecycleDelivery({

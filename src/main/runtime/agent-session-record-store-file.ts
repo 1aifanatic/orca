@@ -18,7 +18,6 @@ import {
 } from '../../shared/agent-session-record'
 import { decodePersistedAgentSessionRecord } from '../../shared/agent-session-record-stored-form'
 import { parseAgentSessionTabTable, type AgentSessionTabTable } from './agent-session-tab-table'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 export const AGENT_SESSION_STORE_SCHEMA_VERSION = 2 as const
 
@@ -75,11 +74,7 @@ function emptyState(hostId: string): AgentSessionStoreState {
   }
 }
 
-function parseState(
-  raw: string,
-  hostId: string,
-  agents: AgentSessionStoredAgents
-): Pick<LoadedAgentSessionStore, 'state'> | null {
+function parseState(raw: string, hostId: string): Pick<LoadedAgentSessionStore, 'state'> | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
@@ -134,7 +129,7 @@ function parseState(
   state.hostId = file.hostId
   if (typeof file.records === 'object' && file.records !== null) {
     for (const [sessionId, value] of Object.entries(file.records)) {
-      const decoded = isPersistedAgentSessionRecord(value, agents)
+      const decoded = isPersistedAgentSessionRecord(value)
         ? decodePersistedAgentSessionRecord(value)
         : null
       const record = decoded?.record ?? null
@@ -225,8 +220,7 @@ function parseState(
 async function salvageUnreadableRecordsFromBackup(
   state: AgentSessionStoreState,
   backupFilePath: string,
-  hostId: string,
-  agents: AgentSessionStoredAgents
+  hostId: string
 ): Promise<void> {
   const missing = [...state.unreadableRecords.keys()].filter(
     (sessionId) => !state.records.has(sessionId)
@@ -240,7 +234,7 @@ async function salvageUnreadableRecordsFromBackup(
   } catch {
     return
   }
-  const backup = parseState(raw, hostId, agents)
+  const backup = parseState(raw, hostId)
   if (!backup) {
     return
   }
@@ -254,8 +248,7 @@ async function salvageUnreadableRecordsFromBackup(
 
 export async function loadAgentSessionStore(
   filePath: string,
-  hostId: string,
-  agents: AgentSessionStoredAgents
+  hostId: string
 ): Promise<LoadedAgentSessionStore> {
   let unusableStoreFound = false
   for (const [candidate, recoveredFromBackup] of [
@@ -274,13 +267,13 @@ export async function loadAgentSessionStore(
       }
       continue
     }
-    const parsed = parseState(raw, hostId, agents)
+    const parsed = parseState(raw, hostId)
     if (!parsed) {
       unusableStoreFound = true
       continue
     }
     if (!recoveredFromBackup) {
-      await salvageUnreadableRecordsFromBackup(parsed.state, backupPath(filePath), hostId, agents)
+      await salvageUnreadableRecordsFromBackup(parsed.state, backupPath(filePath), hostId)
     }
     return {
       ...parsed,

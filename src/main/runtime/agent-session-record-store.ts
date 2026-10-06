@@ -72,7 +72,6 @@ import type { JournalHostDatabase } from '../native-chat/agent-session-journal/j
 import type { JournalOperationReceipt } from '../native-chat/agent-session-journal/journal-row-writer'
 import { loadAgentSessionStoreRows } from './agent-session-record-rows'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 type AgentSessionOperationSettlement = Parameters<typeof settleAgentSessionOperationInto>[1]
 
@@ -88,15 +87,13 @@ export class AgentSessionRecordStore {
     readonly hostId: string
   ) {}
 
-  /** Reads every row once; nothing re-reads them. `hostId` is the execution host this runtime is;
-   *  `agents` are the agents it registered, the only ones whose records it reads or writes. */
+  /** Reads every structurally valid row, independently of which agents this host can start. */
   static open(args: {
     journalDatabase: JournalHostDatabase
     hostId: string
-    agents: AgentSessionStoredAgents
   }): AgentSessionRecordStore {
-    const rows = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId, args.agents)
-    const transactions = new AgentSessionStoreTransactions(args.journalDatabase, rows, args.agents)
+    const rows = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId)
+    const transactions = new AgentSessionStoreTransactions(args.journalDatabase, rows)
     return new AgentSessionRecordStore(transactions, args.hostId)
   }
 

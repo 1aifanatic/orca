@@ -6,9 +6,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionAccountHome } from '../../../shared/agent-session-record'
-import { agentSessionStoredAgents } from '../../../shared/agent-session-stored-agent'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
@@ -23,6 +23,8 @@ import { openTestAttachConversation } from './structured-agent-session-attach-te
 import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { StructuredAgentRegistry } from './structured-agent-registry'
+import { StructuredAgentSessionAdapterRouter } from './structured-agent-session-adapter-router'
+import { StructuredAgentSessionHost } from './structured-agent-session-host'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'grok-session'
@@ -53,7 +55,6 @@ const GROK: StructuredAgentDefinition = {
     effortDefaultsToModel: false
   }
 }
-const STORAGE = agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, GROK])
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the registry reads only the methods a declaration needs; this one declares none of them.
 const NO_METHODS = {} as StructuredAgentSessionAdapter
@@ -98,6 +99,7 @@ function params(
 
 function grokAdapter(): StructuredAgentSessionAdapter {
   return {
+    supportsLocation: () => true,
     acquire: vi
       .fn<StructuredAgentSessionAdapter['acquire']>()
       .mockImplementation(async ({ fence, spawnToken }) => ({
@@ -124,7 +126,7 @@ async function attach(input: {
   spawnToken: string
   store?: AgentSessionRecordStore
 }) {
-  const store = input.store ?? (await openTestAgentSessionRecordStore(root!, { agents: STORAGE }))
+  const store = input.store ?? (await openTestAgentSessionRecordStore(root!))
   const result = await performAttach({
     agents: input.agents,
     logger: createStructuredAgentSessionLogger(),
@@ -150,9 +152,8 @@ async function attach(input: {
   return { result, store }
 }
 
-/** A Grok chat created while Grok spoke ACP and pinned GROK_HOME, its child since gone, read back
- *  by a build that registers Grok as `relaunched` declares it. */
-async function createdGrokChat(relaunched: StructuredAgentDefinition = GROK) {
+/** Persist and reopen a Grok chat whose original child is gone. */
+async function createdGrokChat() {
   root = await mkdtemp(join(tmpdir(), 'orca-drivability-'))
   const created = await attach({
     agents: grokRegistered(),
@@ -161,9 +162,7 @@ async function createdGrokChat(relaunched: StructuredAgentDefinition = GROK) {
     spawnToken: 'spawn-a'
   })
   expect(created.result).toMatchObject({ ok: true })
-  const store = await openTestAgentSessionRecordStore(root, {
-    agents: agentSessionStoredAgents([{ agent: 'claude' }, { agent: 'codex' }, relaunched])
-  })
+  const store = await openTestAgentSessionRecordStore(root)
   await store.reconcileOnRestart({ probe: async () => ({ outcome: 'pid-absent' }), now: NOW + 1 })
   return { store, fence: store.getRecord(SESSION)!.lease.runtimeFence }
 }
@@ -173,13 +172,102 @@ const UNSUPPORTED = {
   refusal: { code: 'structured_agent_session_unsupported', details: { reason: 'hostUnsupported' } }
 }
 
+it('refuses an unregistered agent before creating a durable record', async () => {
+  root = await mkdtemp(join(tmpdir(), 'orca-drivability-'))
+  const adapter = grokAdapter()
+  const { result, store } = await attach({
+    agents: new StructuredAgentRegistry([]),
+    adapter,
+    params: params('1', null),
+    spawnToken: 'spawn-unregistered'
+  })
+  expect(result).toMatchObject(UNSUPPORTED)
+  expect(adapter.acquire).not.toHaveBeenCalled()
+  expect(store.getRecord(SESSION)).toBeNull()
+})
+
+it('keeps saved history readable without a registration and resumes when it returns', async () => {
+  const created = await createdGrokChat()
+  await created.store.setSessionTabVisibility(SESSION, true)
+  const journal = await openTestAttachConversation(openTestJournalHostDatabase(root!))(
+    created.store.getRecord(SESSION)!
+  )
+  await journal.appendItem(
+    { provider: 'orca', clientMessageId: 'saved-reply' },
+    { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: 'Saved reply' }] },
+    { fence: created.fence, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
+  )
+  await journal.close()
+
+  const store = await openTestAgentSessionRecordStore(root!)
+  const agents = new StructuredAgentRegistry([])
+  const router = new StructuredAgentSessionAdapterRouter(agents, async () => {})
+  const acquire = vi.spyOn(router, 'acquire')
+  const host = new StructuredAgentSessionHost({
+    store,
+    agents,
+    adapter: router,
+    journalDatabase: openTestJournalHostDatabase(root!),
+    claimKeyId: 'key-1',
+    probeOwner: async () => ({ outcome: 'pid-absent' }),
+    logger: createStructuredAgentSessionLogger(),
+    now: () => NOW + 2
+  })
+  try {
+    expect(router.supportsCreate(params('2', created.fence).location, 'grok')).toBe(false)
+    expect(store.listVisibleSessionIds()).toEqual([SESSION])
+    await host.restoreReadableSessions([SESSION])
+    expect(host.hasSession(SESSION)).toBe(true)
+    await expect(host.revealSession(SESSION)).resolves.toMatchObject({
+      sessionId: SESSION,
+      agent: 'grok',
+      readable: true
+    })
+    const history = await host.history({ sessionId: SESSION, direction: 'tail' })
+    expect(history).toMatchObject({
+      ok: true,
+      page: {
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            body: {
+              kind: 'message',
+              role: 'assistant',
+              blocks: [{ type: 'text', text: 'Saved reply' }]
+            }
+          })
+        ])
+      }
+    })
+    const before = store.getRecord(SESSION)!.lease.runtimeFence
+    await expect(
+      host.attach({ callerKey: 'client-1' }, params('2', before))
+    ).resolves.toMatchObject(UNSUPPORTED)
+    expect(acquire).not.toHaveBeenCalled()
+    expect(store.getRecord(SESSION)!.lease.runtimeFence).toBe(before)
+  } finally {
+    await host.flushAllStreamedEvents()
+  }
+
+  const adapter = grokAdapter()
+  const { result } = await attach({
+    agents: grokRegistered(),
+    adapter,
+    params: params('3', store.getRecord(SESSION)!.lease.runtimeFence),
+    spawnToken: 'spawn-restored',
+    store
+  })
+  expect(result).toMatchObject({ ok: true })
+  expect(adapter.acquire).toHaveBeenCalledOnce()
+  expect(store.listVisibleSessionIds()).toEqual([SESSION])
+})
+
 it.each([
   ['its transport', { ...GROK, handleTransport: 'grok-native' }],
   ['its account variable', { ...GROK, accountHomeVariable: 'GROK_CONFIG_DIR' }]
 ])(
   'keeps a chat readable after its agent changes %s, and refuses to start it',
   async (_change, changed) => {
-    const { store, fence } = await createdGrokChat(changed)
+    const { store, fence } = await createdGrokChat()
     const adapter = grokAdapter()
 
     const { result } = await attach({

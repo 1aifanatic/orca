@@ -18,7 +18,6 @@ import {
   draftAgentSessionStoreState,
   type AgentSessionStoreRowWrites
 } from './agent-session-store-draft'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 // Why: rows are diffed by identity, so a row changed in place would never be written. Tests and
 // development builds make that a TypeError; packaged builds skip the walk.
@@ -77,8 +76,7 @@ export class AgentSessionStoreTransactions {
 
   constructor(
     private readonly journalDatabase: JournalHostDatabase,
-    loaded: AgentSessionStoreState,
-    private readonly agents: AgentSessionStoredAgents
+    loaded: AgentSessionStoreState
   ) {
     freezeRows(loaded, null)
     this.published = loaded
@@ -150,7 +148,7 @@ export class AgentSessionStoreTransactions {
     const published = this.published
     const draft = draftAgentSessionStoreState(published)
     const result = apply(draft)
-    const writes = agentSessionStoreDraftRowWrites(published, draft, this.agents)
+    const writes = agentSessionStoreDraftRowWrites(published, draft)
     return {
       result,
       writes,

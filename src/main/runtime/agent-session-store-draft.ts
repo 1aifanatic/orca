@@ -15,7 +15,6 @@ import {
   isReadableRetiredAgentSessionClaimKey
 } from './agent-session-store-row-rules'
 import type { PersistedAgentSessionTab } from './agent-session-tab-table'
-import type { AgentSessionStoredAgents } from '../../shared/agent-session-stored-agent'
 
 /** Unreadable rows are derived at load and never written, so the draft shares them. */
 export function draftAgentSessionStoreState(state: AgentSessionStoreState): AgentSessionStoreState {
@@ -86,13 +85,12 @@ function retiredClaimKeysChanged(
  */
 export function agentSessionStoreDraftRowWrites(
   published: AgentSessionStoreState,
-  draft: AgentSessionStoreState,
-  agents: AgentSessionStoredAgents
+  draft: AgentSessionStoreState
 ): AgentSessionStoreRowWrites | null {
   const records = serializeChangedRows(
     published.records,
     draft.records,
-    (sessionId, written) => isReadableAgentSessionStoreRecord(sessionId, written, agents),
+    (sessionId, written) => isReadableAgentSessionStoreRecord(sessionId, written),
     encodeAgentSessionRecord
   )
   const operations = serializeChangedRows(published.operations, draft.operations, (key, written) =>

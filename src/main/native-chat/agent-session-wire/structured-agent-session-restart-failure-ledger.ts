@@ -19,8 +19,6 @@ import type {
 } from '../../../shared/agent-session-resume-marker'
 import { normalizeOptionalField } from '../../../shared/agent-status-field-normalization'
 import { AGENT_MODEL_MAX_LENGTH } from '../../../shared/agent-status-types'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import { adapterSupportsRecord } from './structured-agent-session-provider-support'
 import type { StructuredAgentSessionContinuationOutcome } from './structured-agent-session-restart-continuation'
 import type {
   StructuredAgentSessionRestartAudience,
@@ -79,7 +77,6 @@ export function continuationFailureOutcome(
 export function createStructuredAgentSessionRestartFailureLedger(deps: {
   capsule?: FailureCapsule
   getRecord: (sessionId: string) => AgentSessionRecord | null
-  adapter: StructuredAgentSessionAdapter
   /** The predicate a retry applies to the failure's marker. */
   retryable: (marker: AgentSessionResumeMarker) => boolean
   /** Whether a newer Orca saved the chat: its failure is kept for that Orca but not shown here,
@@ -108,11 +105,7 @@ export function createStructuredAgentSessionRestartFailureLedger(deps: {
     failure: AgentSessionResumeFailureRecord
   ): StructuredAgentSessionResumeFailure[] => {
     const record = deps.getRecord(failure.marker.sessionId)
-    if (
-      !record ||
-      !adapterSupportsRecord(deps.adapter, record) ||
-      deps.savedByNewerOrca(failure.marker.sessionId)
-    ) {
+    if (!record || deps.savedByNewerOrca(failure.marker.sessionId)) {
       return []
     }
     const model = normalizeOptionalField(record.options?.model, AGENT_MODEL_MAX_LENGTH)
