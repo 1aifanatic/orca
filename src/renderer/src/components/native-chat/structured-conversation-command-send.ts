@@ -60,8 +60,12 @@ export function structuredConversationCommandHold(input: {
   if (input.promptPending) {
     return 'prompt'
   }
-  if (input.agentWorking || input.outboxUnsent) {
+  if (input.agentWorking) {
     return 'working'
+  }
+  // The agent is idle and this window's own message hasn't reached the host: that is the wait.
+  if (input.outboxUnsent) {
+    return 'sending'
   }
   // The agent is not working: what is left is said as its row says it.
   if (input.outboxRetry) {

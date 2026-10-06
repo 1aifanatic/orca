@@ -538,6 +538,21 @@ describe('a /compact against a host that holds commands in line', () => {
     })
   })
 
+  it('/clear with the agent idle behind its own unsent message says it is still being sent', async () => {
+    items = []
+    outboxEntries = [unsent('on-its-way')]
+    const { result } = render()
+    let outcome: unknown
+    await act(async () => {
+      outcome = await result.current.runConversationCommand('clear')
+    })
+    expect(outcome).toEqual({
+      accepted: false,
+      error: 'Your earlier message is still being sent. Run /clear once it has gone.'
+    })
+    expect(commandCalls()).toHaveLength(0)
+  })
+
   it('/clear behind only a failed message names its Retry, not the agent working', async () => {
     items = []
     outboxEntries = [unsent('failed', { lastAttemptAt: 2, lastFailure: { kind: 'failed' } })]
