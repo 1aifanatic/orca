@@ -73,7 +73,7 @@ async function rig(watermarks: Partial<StructuredAgentSessionSinkWatermarks> = {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'grok',
-      providerHandle: { kind: 'opaque', agent: 'grok', value: 'provider-session-1' }
+      providerHandle: { transport: 'acp', agent: 'grok', nativeId: 'provider-session-1' }
     },
     stateDirectory: root,
     now: () => 1_000
@@ -99,7 +99,7 @@ async function owedRig() {
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: 'grok',
-      providerHandle: { kind: 'opaque', agent: 'grok', value: 'provider-session-1' }
+      providerHandle: { transport: 'acp', agent: 'grok', nativeId: 'provider-session-1' }
     },
     now: () => 1_000
   })
