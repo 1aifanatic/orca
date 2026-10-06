@@ -1,6 +1,9 @@
 import { vi } from 'vitest'
 import { build } from 'esbuild'
-import { fileURLToPath } from 'node:url'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { sendMobileNativeChatPermissionResponse } from '../../../mobile/src/session/mobile-native-chat-permission-send'
 import { SshChannelMultiplexer } from '../../../src/main/ssh/ssh-channel-multiplexer'
 import { SshPtyProvider } from '../../../src/main/providers/ssh-pty-provider'
@@ -174,9 +177,15 @@ async function bundleMobilePermissionModule(): Promise<unknown> {
   if (!source) {
     throw new Error('Mobile permission module did not build')
   }
-  return import(
-    /* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
-  )
+  // Why a file, not a data: URL: the Bun test runtime resolves a long data: URL as a package name.
+  const dir = await mkdtemp(join(tmpdir(), 'orca-mobile-permission-send-'))
+  try {
+    const file = join(dir, 'mobile-native-chat-permission-send.mjs')
+    await writeFile(file, source)
+    return await import(/* @vite-ignore */ pathToFileURL(file).href)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 }
 
 export async function sendMobilePermissionResponse(

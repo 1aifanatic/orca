@@ -10,6 +10,7 @@ vi.mock('react-native', async () => {
   return {
     ActivityIndicator: 'ActivityIndicator',
     Image: 'Image',
+    Platform: { OS: 'ios' },
     Keyboard: { dismiss: vi.fn() },
     FlatList: React.forwardRef((props, ref) => {
       React.useImperativeHandle(ref, () => ({ scrollToEnd: vi.fn(), scrollToOffset: vi.fn() }), [])
@@ -57,6 +58,7 @@ vi.mock('lucide-react-native', () =>
   )
 )
 vi.mock('./MobileNativeChatMessage', () => ({ MobileNativeChatMessage: 'ChatMessage' }))
+vi.mock('./MobileNativeChatLiveLine', () => ({ MobileNativeChatLiveLine: 'LiveStatus' }))
 vi.mock('./MobileNativeChatAsk', () => ({ MobileNativeChatAsk: 'ChatAsk' }))
 vi.mock('./MobileNativeChatQuestion', () => ({ MobileNativeChatQuestion: 'ChatQuestion' }))
 vi.mock('./MobileAgentWorkingIndicator', () => ({
