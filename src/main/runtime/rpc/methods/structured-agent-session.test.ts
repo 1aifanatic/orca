@@ -834,27 +834,43 @@ describe('agentSession.subscribeTurnCompletions', () => {
 })
 
 describe('agentSession.acknowledgeAttention', () => {
-  it("withdraws every phone alert this host pushed for the session's subject", async () => {
+  it("passes the captured read boundary to this session's owning host", async () => {
     const retire = vi.fn()
     hostCalls.attentionSubjectPrefix.mockReturnValueOnce('agent-attention:scope:session-1:')
     const reply = await call(
       'agentSession.acknowledgeAttention',
-      { sessionId: SESSION },
+      { sessionId: SESSION, observedCursor: { epoch: 'epoch-a', sequence: 10 } },
       STRUCTURED_CLIENT,
-      { retireMobileNotificationsMatching: retire }
+      { retireStructuredAttention: retire }
     )
     expect(reply).toMatchObject({ ok: true, result: { acknowledged: true } })
     expect(hostCalls.attentionSubjectPrefix).toHaveBeenCalledWith(SESSION)
-    expect(retire).toHaveBeenCalledExactlyOnceWith('agent-attention:scope:session-1:')
+    expect(retire).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: SESSION, observedCursor: { epoch: 'epoch-a', sequence: 10 } },
+      'agent-attention:scope:session-1:'
+    )
+  })
+
+  it('accepts an older caller without granting a session-wide read', async () => {
+    const retire = vi.fn()
+    const reply = await call(
+      'agentSession.acknowledgeAttention',
+      { sessionId: SESSION },
+      STRUCTURED_CLIENT,
+      { retireStructuredAttention: retire }
+    )
+    expect(reply).toMatchObject({ ok: true, result: { acknowledged: false } })
+    expect(retire).not.toHaveBeenCalled()
+    expect(hostCalls.attentionSubjectPrefix).not.toHaveBeenCalled()
   })
 
   it('retires nothing for a session this host never had', async () => {
     const retire = vi.fn()
     const reply = await call(
       'agentSession.acknowledgeAttention',
-      { sessionId: SESSION },
+      { sessionId: SESSION, observedCursor: { epoch: 'epoch-a', sequence: 10 } },
       STRUCTURED_CLIENT,
-      { retireMobileNotificationsMatching: retire }
+      { retireStructuredAttention: retire }
     )
     expect(reply).toMatchObject({ ok: true })
     expect(retire).not.toHaveBeenCalled()

@@ -6,7 +6,8 @@ import type {
   NotificationPermissionStatusResult,
   NotificationSoundDataResult,
   NotificationSoundPathResult,
-  NotificationSoundResult
+  NotificationSoundResult,
+  StructuredNotificationRead
 } from '../../shared/notification-settings-types'
 import type { PreloadApi } from '../api-types'
 
@@ -41,8 +42,14 @@ export const notificationsApi = {
     ipcRenderer.invoke('notifications:getDesktopAwayState'),
   dispatch: (args: Record<string, unknown>): Promise<NotificationDispatchResult> =>
     ipcRenderer.invoke('notifications:dispatch', args),
-  dismiss: (ids: string[], paneKeys?: string[]): Promise<NotificationDismissResult> =>
-    ipcRenderer.invoke('notifications:dismiss', ids, paneKeys),
+  dismiss: (
+    ids: string[],
+    paneKeys?: string[],
+    reads?: StructuredNotificationRead[]
+  ): Promise<NotificationDismissResult> =>
+    reads === undefined
+      ? ipcRenderer.invoke('notifications:dismiss', ids, paneKeys)
+      : ipcRenderer.invoke('notifications:dismiss', ids, paneKeys, reads),
   openSystemSettings: (): Promise<void> => ipcRenderer.invoke('notifications:openSystemSettings'),
   getPermissionStatus: (): Promise<NotificationPermissionStatusResult> =>
     ipcRenderer.invoke('notifications:getPermissionStatus'),

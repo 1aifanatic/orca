@@ -7,13 +7,17 @@ import {
 } from '../../shared/secure-file'
 import { removeStaleDurableWriteTempFiles } from '../durable-file-write'
 import type { MobileNotificationEvent } from './runtime-mobile-notification-controller'
+import type { DeliveredNotificationIdentity } from '../../shared/mobile-notification-identity'
+import {
+  isStructuredAttentionOrigin,
+  type StructuredAttentionOrigin
+} from '../../shared/agent-session-attention'
 
-export type DeliveredNotificationIdentity = {
-  notificationId: string
-  notificationEpoch: string
-  notificationSeq: number
+export type { DeliveredNotificationIdentity } from '../../shared/mobile-notification-identity'
+export type DeliveredNotificationRecord = DeliveredNotificationIdentity & {
+  structuredOrigin?: StructuredAttentionOrigin
 }
-type RecordEntry = DeliveredNotificationIdentity & { dismissedThrough: number; expiresAt: number }
+type RecordEntry = DeliveredNotificationRecord & { dismissedThrough: number; expiresAt: number }
 const LIMIT = 4096
 const RETENTION_MS = 7 * 86400_000
 const STALE_WRITE_TEMP_AGE_MS = 86400_000
@@ -50,13 +54,26 @@ export class MobileNotificationDismissalStore {
       entry.notificationId === event.notificationId &&
       entry.notificationEpoch === event.notificationEpoch
     let next: RecordEntry[]
-    if (event.type === 'notification') {
+    if (event.type === 'dismiss' && event.dismissedDelivery) {
+      const target = event.dismissedDelivery
+      next = kept.map((entry) =>
+        entry.notificationId === target.notificationId &&
+        entry.notificationEpoch === target.notificationEpoch
+          ? {
+              ...entry,
+              dismissedThrough: Math.max(entry.dismissedThrough, target.notificationSeq),
+              expiresAt: now + RETENTION_MS
+            }
+          : entry
+      )
+    } else if (event.type === 'notification') {
       next = [
         ...kept.filter((entry) => !same(entry)),
         {
           notificationId: event.notificationId,
           notificationEpoch: event.notificationEpoch,
           notificationSeq: event.notificationSeq,
+          ...(event.structuredOrigin ? { structuredOrigin: event.structuredOrigin } : {}),
           dismissedThrough: kept.find(same)?.dismissedThrough ?? -1,
           expiresAt: now + RETENTION_MS
         }
@@ -78,10 +95,10 @@ export class MobileNotificationDismissalStore {
       })
     }
     next = next.slice(-LIMIT)
+    this.entries = next
     if (!this.unreadable) {
       writeSecureJsonFile(this.path, next)
     }
-    this.entries = next
   }
 
   /** Whether a notification with this id was delivered and not dismissed since. */
@@ -91,18 +108,24 @@ export class MobileNotificationDismissalStore {
 
   /** Ids delivered and not dismissed since, among those starting with `prefix`. */
   liveDeliveryIds(prefix: string): string[] {
+    return [...new Set(this.liveDeliveries(prefix).map((entry) => entry.notificationId))]
+  }
+
+  liveDeliveries(prefix = ''): DeliveredNotificationRecord[] {
     const now = Date.now()
-    const live = new Set<string>()
-    for (const entry of this.entries) {
-      if (
-        entry.expiresAt > now &&
-        entry.notificationId.startsWith(prefix) &&
-        entry.dismissedThrough < entry.notificationSeq
-      ) {
-        live.add(entry.notificationId)
-      }
-    }
-    return [...live]
+    return this.entries
+      .filter(
+        (entry) =>
+          entry.expiresAt > now &&
+          entry.notificationId.startsWith(prefix) &&
+          entry.dismissedThrough < entry.notificationSeq
+      )
+      .map(({ notificationId, notificationEpoch, notificationSeq, structuredOrigin }) => ({
+        notificationId,
+        notificationEpoch,
+        notificationSeq,
+        ...(structuredOrigin ? { structuredOrigin } : {})
+      }))
   }
 
   reconcile(delivered: readonly DeliveredNotificationIdentity[]): DeliveredNotificationIdentity[] {
@@ -134,6 +157,7 @@ function isEntry(value: unknown): value is RecordEntry {
     item.notificationSeq >= 0 &&
     Number.isSafeInteger(item.dismissedThrough) &&
     item.dismissedThrough >= -1 &&
-    Number.isFinite(item.expiresAt)
+    Number.isFinite(item.expiresAt) &&
+    (item.structuredOrigin === undefined || isStructuredAttentionOrigin(item.structuredOrigin))
   )
 }

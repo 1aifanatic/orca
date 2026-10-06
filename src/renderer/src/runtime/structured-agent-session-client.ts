@@ -1,4 +1,5 @@
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
+import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type {
   AgentSessionStatusEvent,
   AgentSessionSubscribeEvent,
@@ -182,8 +183,10 @@ export function subscribeStructuredAgentSessionStatus(
  *  host has no such method and is skipped; a failure is bookkeeping and only logged. */
 export async function acknowledgeStructuredAgentSessionAttention(
   target: RuntimeClientTarget,
-  sessionId: string
-): Promise<void> {
+  sessionId: string,
+  observedCursor: AgentJournalCursor
+): Promise<boolean> {
+  const capturedCursor = { ...observedCursor }
   try {
     if (
       !(await structuredAgentSessionHostSupports(
@@ -191,11 +194,17 @@ export async function acknowledgeStructuredAgentSessionAttention(
         AGENT_SESSION_ATTENTION_ACK_RUNTIME_CAPABILITY
       ))
     ) {
-      return
+      return false
     }
-    await callRuntimeRpc(target, 'agentSession.acknowledgeAttention', { sessionId })
+    const result = await callRuntimeRpc<{ acknowledged: boolean }>(
+      target,
+      'agentSession.acknowledgeAttention',
+      { sessionId, observedCursor: capturedCursor }
+    )
+    return result.acknowledged
   } catch (error) {
     console.warn('[structured-session-attention] acknowledgement failed', error)
+    return false
   }
 }
 

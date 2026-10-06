@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { agentSessionAttentionKey } from '../../shared/agent-session-attention'
-import type { AgentSessionAttentionEdge } from '../../shared/agent-session-attention'
+import {
+  agentSessionAttentionKey,
+  type AgentSessionAttentionEdge,
+  type StructuredAttentionState
+} from '../../shared/agent-session-attention'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
 import type { NotificationSettings } from '../../shared/notification-settings-types'
 import {
@@ -65,16 +68,16 @@ function settings(overrides: Partial<NotificationSettings> = {}): NotificationSe
 
 function harness(overrides: Partial<StructuredAttentionMobileDeliveryDeps> = {}) {
   const sent: MobileNotificationDispatchEvent[] = []
-  const retired: string[] = []
+  const reconciled: StructuredAttentionState[] = []
   const delivery = createStructuredAttentionMobileDelivery({
     readNotificationSettings: () => settings(),
     readWorkspaceLabels: () => ({ repoLabel: 'orca', worktreeLabel: 'feature' }),
     dispatch: (event) => sent.push(event),
-    retire: (id) => retired.push(id),
+    reconcile: (state) => reconciled.push(state),
     now: () => 42,
     ...overrides
   })
-  return { delivery, sent, retired }
+  return { delivery, sent, reconciled }
 }
 
 describe('structured attention mobile delivery', () => {
@@ -139,10 +142,11 @@ describe('structured attention mobile delivery', () => {
     expect(h.sent).toEqual([])
   })
 
-  it('retires each key it is handed', () => {
+  it('forwards current prompt state for reconciliation', () => {
     const h = harness()
-    h.delivery.retire(['a', 'b'])
-    expect(h.retired).toEqual(['a', 'b'])
+    const state = { scope: SCOPE, sessionId: 'session-1', pendingPromptIds: ['a', 'b'] }
+    h.delivery.reconcile(state)
+    expect(h.reconciled).toEqual([state])
   })
 })
 

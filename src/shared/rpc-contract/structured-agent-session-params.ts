@@ -290,6 +290,9 @@ export const SetOptionParams = z
   .strict()
 
 export const OptionsParams = z.object({ sessionId: SessionId }).strict()
+export const AcknowledgeAttentionParams = OptionsParams.extend({
+  observedCursor: JournalCursor.optional()
+}).strip()
 
 /** `sessionId` scopes the catalog to that session's pinned account; without a
  *  session record the host keys it by the account a new launch would pin.

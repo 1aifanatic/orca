@@ -36,6 +36,7 @@ import type {
 import {
   agentSessionAttentionKey,
   agentSessionAttentionNews,
+  structuredAttentionOrigin,
   type AgentSessionAttentionEdge
 } from '../../../../shared/agent-session-attention'
 import { structuredAgentSessionPaneKey } from '../../../../shared/structured-agent-session-projection'
@@ -127,6 +128,7 @@ function dispatchStructuredAttention(
           // shared id lets it retire the phone notification the host pushed under the same id.
           notificationId: attentionKey,
           attentionKey,
+          structuredOrigin: structuredAttentionOrigin(edge),
           // A local session's host is this app's own main, which already pushed its phones.
           ...(subscriptionTarget?.kind === 'local' ? { mobileDeliveredByHost: true } : {}),
           worktreeId: request.workspaceId,

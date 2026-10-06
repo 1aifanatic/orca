@@ -1,4 +1,11 @@
 import { resolveAutoAckTabTargets } from './agent-auto-ack-targets'
+import {
+  captureAgentSubjectReads,
+  subscribeStructuredAttentionViews,
+  sameStructuredReadTarget,
+  type AgentSubjectRead,
+  type StructuredSubjectRead
+} from '@/attention/agent-subject-read-actions'
 export { resolveAutoAckTabTargets, type AutoAckTabTarget } from './agent-auto-ack-targets'
 import { useEffect, useRef } from 'react'
 import {
@@ -45,11 +52,21 @@ export function useAutoAckViewedAgent(floatingPanelVisible: boolean): void {
     let lastUnreadAgentCompletionPanes: unknown = undefined
 
     // `force` re-scans after a signal the store never sees: panel open/closed is React-local state.
+    let pendingPresenceReads: readonly AgentSubjectRead[] | undefined
     const presence = createAutoAckPresenceCheck(
       async () => window.api?.notifications?.getDesktopAwayState?.(),
-      () => maybeAck({ force: true, presenceConfirmed: true })
+      () => {
+        const reads = pendingPresenceReads
+        pendingPresenceReads = undefined
+        maybeAck({ force: true, presenceConfirmed: true, reads })
+      }
     )
-    const maybeAck = (options?: { force?: boolean; presenceConfirmed?: boolean }): void => {
+    const maybeAck = (options?: {
+      force?: boolean
+      presenceConfirmed?: boolean
+      reads?: readonly AgentSubjectRead[]
+      view?: StructuredSubjectRead
+    }): void => {
       const s = useAppStore.getState()
       const activeWorktreeId = s.activeWorktreeId
       const activeWorkspaceGroupId = activeWorktreeId
@@ -115,6 +132,21 @@ export function useAutoAckViewedAgent(floatingPanelVisible: boolean): void {
       if (targets.length === 0) {
         return
       }
+      const reads =
+        options?.reads ??
+        captureAgentSubjectReads(
+          targets.flatMap((target) => {
+            const key = surfaceForAutoAckTarget(s, target).resolveViewedSubjectKey(target.tabId)
+            return key ? [key] : []
+          })
+        ).map((read) => {
+          const view = options?.view
+          return view &&
+            read.structured?.sessionId === view.sessionId &&
+            sameStructuredReadTarget(read.structured.target, view.target)
+            ? { ...read, structured: view }
+            : read
+        })
       // Browsers have no native idle capability; their visible/focused gates still apply.
       if (!options?.presenceConfirmed && !isWebClientLocation()) {
         const records = readAgentAttentionTurnRecords(s)
@@ -124,10 +156,13 @@ export function useAutoAckViewedAgent(floatingPanelVisible: boolean): void {
           )
           return (
             computeAgentAcknowledgementTargets(records, subjectKey).length > 0 ||
-            resolveViewedUnreadSubjectKey(s.unreadAgentCompletionPanes, subjectKey) !== null
+            resolveViewedUnreadSubjectKey(s.unreadAgentCompletionPanes, subjectKey) !== null ||
+            (options?.force &&
+              reads.some((read) => read.subjectKey === subjectKey && read.structured))
           )
         })
         if (hasAttention) {
+          pendingPresenceReads = reads
           presence.request()
           return
         }
@@ -157,14 +192,18 @@ export function useAutoAckViewedAgent(floatingPanelVisible: boolean): void {
       for (const target of targets) {
         // Why re-read: acking target[0] writes to the store, which re-enters this scan synchronously
         // and may already have handled target[1]; `s` is a pre-write snapshot that would re-ack it.
-        acknowledgeViewedAutoAckTarget(useAppStore.getState(), target)
+        acknowledgeViewedAutoAckTarget(useAppStore.getState(), target, {
+          reads,
+          readViewed: options?.force
+        })
       }
     }
     rescanRef.current = (): void => maybeAck({ force: true })
     // Why: run once on mount to catch a restored session that already has agents on the visible tab.
-    maybeAck()
+    maybeAck({ force: true })
     // Subscribe to all store changes; the ref-equality guard above skips unrelated updates.
     const unsubscribe = useAppStore.subscribe(() => maybeAck())
+    const stopViews = subscribeStructuredAttentionViews((view) => maybeAck({ force: true, view }))
     const stopPresenceSignals = subscribeAutoAckPresenceSignals(
       () => maybeAck({ force: true }),
       () => maybeAck({ force: true, presenceConfirmed: true })
@@ -173,6 +212,7 @@ export function useAutoAckViewedAgent(floatingPanelVisible: boolean): void {
       presence.dispose()
       rescanRef.current = null
       unsubscribe()
+      stopViews()
       stopPresenceSignals()
     }
   }, [])

@@ -14,8 +14,7 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionResumeTrigger } from '../../shared/agent-session-resume-marker'
-import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
-import type { AgentSessionAttentionEdge } from '../../shared/agent-session-attention'
+import type { StructuredAttentionMobileDelivery } from './structured-agent-session-mobile-attention'
 import {
   structuredAgentSessionTeardownTrigger,
   tearDownRuntime,
@@ -129,16 +128,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   statusSink?: StructuredAgentSessionHostDeps['statusSink']
   /** See `StructuredAgentSessionHostDeps.hasOpenDispatch`. */
   hasOpenDispatch?: StructuredAgentSessionHostDeps['hasOpenDispatch']
-  /** How this host alerts its own paired phones with no desktop relaying: every attention edge it
-   *  derives, prompt-aware, with the session's published summary, and the prompts that stopped
-   *  waiting so their alerts can be withdrawn. */
-  attentionDelivery?: {
-    deliver: (
-      edge: AgentSessionAttentionEdge,
-      summary: AgentSessionStatusSummary | undefined
-    ) => void
-    retire: (attentionKeys: readonly string[]) => void
-  }
+  /** Host-owned phone delivery and reconciliation from the current journal projection. */
+  attentionDelivery?: StructuredAttentionMobileDelivery
   /** The account home a structured launch would pin right now, for catalog
    *  reads with no session record. Absent disables the catalog surface. */
   resolveAgentAccountHome?: RuntimeAgentAccountHomeResolver
@@ -354,7 +345,7 @@ async function installOnJournal(
           event.type === 'prompt' ? event.prompt.sessionId : event.completion.sessionId
         delivery.deliver(event, installed.readStatusSummary(sessionId))
       },
-      onRetired: delivery.retire
+      onState: delivery.reconcile
     })
   }
   setStructuredAgentSessionHost(host)

@@ -1,3 +1,4 @@
+import type { AgentSubjectRead } from '@/attention/agent-subject-read-actions'
 import type { StateCreator } from 'zustand'
 import type { AppState } from '../../types'
 import type { GitHubWorkItem } from '../../../../../shared/github/work-item-types'
@@ -137,7 +138,7 @@ export type UISliceCore = {
   consumeDiffNotesSendMenuOpenRequest: (worktreeId: string) => void
   /** Per-agent "I've looked at this" timestamps (paneKey → ts). A row is unvisited when no ack exists or stateStartedAt is newer than the last ack. Persisted so visited rows don't return bold on relaunch. */
   acknowledgedAgentsByPaneKey: Record<string, number>
-  acknowledgeAgents: (paneKeys: string[]) => void
+  acknowledgeAgents: (paneKeys: string[], reads?: readonly AgentSubjectRead[]) => void
   unacknowledgeAgents: (paneKeys: string[]) => void
   /** Per-pane cutoffs used to hide activity entries cleared by the user. */
   activityClearedAtByPaneKey: Record<string, number>

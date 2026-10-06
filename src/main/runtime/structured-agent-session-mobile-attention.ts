@@ -12,6 +12,8 @@ import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
 import {
   agentSessionAttentionKey,
   agentSessionAttentionNews,
+  structuredAttentionOrigin,
+  type StructuredAttentionState,
   type AgentSessionAttentionEdge
 } from '../../shared/agent-session-attention'
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
@@ -32,13 +34,13 @@ export type StructuredAttentionMobileDeliveryDeps = {
   readWorkspaceLabels: (scope: AgentSessionExecutionLocation) => StructuredAttentionWorkspaceLabels
   dispatch: (event: MobileNotificationDispatchEvent) => void
   /** Withdraws a notification this host delivered; a no-op for one it never sent. */
-  retire: (notificationId: string) => void
+  reconcile: (state: StructuredAttentionState) => void
   now: () => number
 }
 
 export type StructuredAttentionMobileDelivery = {
   deliver: (edge: AgentSessionAttentionEdge, summary: AgentSessionStatusSummary | undefined) => void
-  retire: (attentionKeys: readonly string[]) => void
+  reconcile: (state: StructuredAttentionState) => void
 }
 
 /** The labels the desktop shows for a workspace, from the host's persisted metadata alone. */
@@ -108,13 +110,12 @@ export function createStructuredAttentionMobileDelivery(
         worktreeId: scope.workspaceId,
         notificationId: attentionKey,
         attentionKey,
+        ...(structuredAttentionOrigin(edge)
+          ? { structuredOrigin: structuredAttentionOrigin(edge) }
+          : {}),
         agentState: news.agentState
       })
     },
-    retire: (attentionKeys) => {
-      for (const key of attentionKeys) {
-        deps.retire(key)
-      }
-    }
+    reconcile: deps.reconcile
   }
 }

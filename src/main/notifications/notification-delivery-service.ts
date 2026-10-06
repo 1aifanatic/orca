@@ -123,7 +123,8 @@ export function createNotificationDeliveryService(
             // Why: background push needs the agent's real state to pick "needs input"
             // vs "finished" — and to stay silent while the agent is still working.
             ...(request.agentState ? { agentState: request.agentState } : {}),
-            ...(request.attentionKey ? { attentionKey: request.attentionKey } : {})
+            ...(request.attentionKey ? { attentionKey: request.attentionKey } : {}),
+            ...(request.structuredOrigin ? { structuredOrigin: request.structuredOrigin } : {})
           })
           deps.recordAnnounced?.(request)
         }

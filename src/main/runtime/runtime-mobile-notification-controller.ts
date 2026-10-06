@@ -1,5 +1,12 @@
 import { reserveNotificationCooldown } from '../../shared/notification-burst-cooldown'
 import type { AgentStatusState } from '../../shared/agent-status-types'
+import {
+  agentSessionAttentionSubjectPrefix,
+  attentionOriginWasRead,
+  type StructuredAttentionOrigin,
+  type StructuredAttentionRead,
+  type StructuredAttentionState
+} from '../../shared/agent-session-attention'
 import type {
   MobilePushTestResult,
   MobilePushRegisterInput,
@@ -31,6 +38,7 @@ export type MobileNotificationDispatchEvent = {
   agentState?: AgentStatusState
   /** See `NotificationDispatchRequest.attentionKey`: cooldowns key on it instead of the workspace. */
   attentionKey?: string
+  structuredOrigin?: StructuredAttentionOrigin
 }
 
 export type MobileNotificationDismissEvent = {
@@ -38,6 +46,7 @@ export type MobileNotificationDismissEvent = {
   notificationId: string
   notificationSeq?: number
   notificationEpoch?: string
+  dismissedDelivery?: DeliveredNotificationIdentity
 }
 
 export type MobileNotificationEvent =
@@ -152,16 +161,52 @@ export class RuntimeMobileNotificationController {
   /** Withdraws a notification this host delivered and has not withdrawn yet; anything else is a
    *  no-op, so a subject acknowledged again costs no push. The record survives restarts. */
   retire(notificationId: string): void {
-    if (this.dismissalStore?.hasLiveDelivery(notificationId) === false) {
+    if (!this.dismissalStore) {
+      this.dismiss(notificationId)
       return
     }
-    this.dismiss(notificationId)
+    for (const delivery of this.dismissalStore.liveDeliveries(notificationId)) {
+      if (delivery.notificationId === notificationId) {
+        this.retireDelivery(delivery)
+      }
+    }
   }
 
   /** `retire` for every live delivery whose id starts with `prefix`: one subject's alerts. */
   retireMatching(prefix: string): void {
-    for (const notificationId of this.dismissalStore?.liveDeliveryIds(prefix) ?? []) {
-      this.dismiss(notificationId)
+    for (const delivery of this.dismissalStore?.liveDeliveries(prefix) ?? []) {
+      this.retireDelivery(delivery)
+    }
+  }
+
+  private retireDelivery(delivery: DeliveredNotificationIdentity): void {
+    this.dispatch({
+      type: 'dismiss',
+      notificationId: delivery.notificationId,
+      dismissedDelivery: {
+        notificationId: delivery.notificationId,
+        notificationEpoch: delivery.notificationEpoch,
+        notificationSeq: delivery.notificationSeq
+      }
+    })
+  }
+
+  retireStructuredAttention(read: StructuredAttentionRead, prefix = ''): void {
+    for (const delivery of this.dismissalStore?.liveDeliveries(prefix) ?? []) {
+      if (attentionOriginWasRead(delivery.structuredOrigin, read)) {
+        this.retireDelivery(delivery)
+      }
+    }
+  }
+
+  reconcileStructuredPromptAttention(state: StructuredAttentionState): void {
+    const prefix = agentSessionAttentionSubjectPrefix(state.scope, state.sessionId)
+    const pending = new Set(state.pendingPromptIds)
+    for (const delivery of this.dismissalStore?.liveDeliveries(prefix) ?? []) {
+      const cause = delivery.structuredOrigin?.cause
+      if (cause?.kind === 'prompt' && !pending.has(cause.promptId)) {
+        this.retireDelivery(delivery)
+      }
     }
   }
 

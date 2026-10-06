@@ -187,7 +187,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         readWorkspaceLabels: (scope) =>
           readStructuredAttentionWorkspaceLabels(this.requireStore(), scope),
         dispatch: (event) => this.mobileNotifications.dispatch(event),
-        retire: (notificationId) => this.mobileNotifications.retire(notificationId),
+        reconcile: (state) => this.mobileNotifications.reconcileStructuredPromptAttention(state),
         now: () => Date.now()
       }),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps

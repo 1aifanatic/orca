@@ -11,25 +11,32 @@ import {
   requireInstalledStructuredHost,
   requireStructuredHost as requireHost
 } from './structured-agent-session-gate'
-import { OptionsParams, SubscribeTurnCompletionsParams } from './structured-agent-session-schemas'
+import {
+  AcknowledgeAttentionParams,
+  SubscribeTurnCompletionsParams
+} from './structured-agent-session-schemas'
 import { structuredAgentSessionTurnCompletionSubscriptionId } from './structured-agent-session-subscription-id'
 import { bindStructuredAgentSessionStream } from './structured-agent-session-status-stream'
 
 export const STRUCTURED_AGENT_SESSION_TURN_COMPLETION_METHODS = [
-  // The user read the chat somewhere: withdraw every alert this host pushed its phones for it.
-  // Routed here by whichever client saw the read, because only the host knows what it pushed;
-  // the host's own dismissal record answers that, so it holds across a restart.
+  // Retire only deliveries whose journal cause was included in the client's accepted read.
   defineMethod({
     name: 'agentSession.acknowledgeAttention',
-    params: OptionsParams,
+    params: AcknowledgeAttentionParams,
     handler: async (params, ctx) => {
+      if (!params.observedCursor) {
+        return { acknowledged: false }
+      }
       // Built if need be: after a restart the first read can arrive before any chat is opened.
       const host = await requireInstalledStructuredHost(ctx)
       const prefix = host.attentionSubjectPrefix(params.sessionId)
       if (prefix) {
-        ctx.runtime.retireMobileNotificationsMatching(prefix)
+        ctx.runtime.retireStructuredAttention(
+          { sessionId: params.sessionId, observedCursor: params.observedCursor },
+          prefix
+        )
       }
-      return { acknowledged: true }
+      return { acknowledged: prefix !== null }
     }
   }),
   defineStreamingMethod({

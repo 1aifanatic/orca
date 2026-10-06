@@ -16,14 +16,19 @@ import type {
   NotificationDispatchRequest,
   NotificationDispatchResult,
   NotificationPermissionStatusResult,
-  NotificationSoundResult
+  NotificationSoundResult,
+  StructuredNotificationRead
 } from '../../shared/notification-settings-types'
 
 export type NotificationsApi = {
   getDesktopAwayState: () => Promise<boolean | undefined>
   dispatch: (args: NotificationDispatchRequest) => Promise<NotificationDispatchResult>
   /** `paneKeys` also retires every id main announced for those subjects. */
-  dismiss: (ids: string[], paneKeys?: string[]) => Promise<NotificationDismissResult>
+  dismiss: (
+    ids: string[],
+    paneKeys?: string[],
+    reads?: StructuredNotificationRead[]
+  ) => Promise<NotificationDismissResult>
   openSystemSettings: () => Promise<void>
   getPermissionStatus: () => Promise<NotificationPermissionStatusResult>
   probeDelivery: (args?: { force?: boolean }) => Promise<NotificationDeliveryProbeResult>

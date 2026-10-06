@@ -18,9 +18,9 @@ import type {
   AgentSessionTurnCompletion,
   AgentSessionTurnCompletionEvent
 } from '../../../shared/agent-session-wire'
-import {
-  agentSessionPromptAttentionKey,
-  type AgentSessionAttentionEdge
+import type {
+  AgentSessionAttentionEdge,
+  StructuredAttentionState
 } from '../../../shared/agent-session-attention'
 import type { StructuredAgentSessionLatestRequest } from '../../../shared/structured-agent-session-latest-request'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -31,9 +31,8 @@ export type StructuredAgentSessionTurnCompletionSubscriber = {
   emit: (event: AgentSessionTurnCompletionEvent) => void
   /** Opted in to `prompt` events; a client that predates them would misread the arm. */
   includePrompts?: boolean
-  /** In-process only: the attention keys of prompts that stopped waiting (answered, or gone with a
-   *  rewind), so whatever announced them can withdraw the alert. Never crosses the wire. */
-  onRetired?: (attentionKeys: readonly string[]) => void
+  /** In-process only: authoritative state for delivery reconciliation, including restored history. */
+  onState?: (state: StructuredAttentionState) => void
 }
 
 type CompletionFeedCursor = { epoch: string; sequence: number }
@@ -107,17 +106,32 @@ export class StructuredAgentSessionTurnCompletionFeed {
    * a re-read of history all pass through silently. An already-settled request republished by an
    * in-place revision carries the same identity and so cannot fire twice; nor can a prompt.
    */
-  observe(sessionId: string, journal?: AgentSessionJournal): void {
+  observe(
+    sessionId: string,
+    journal?: AgentSessionJournal,
+    options?: { historical?: boolean }
+  ): void {
     const session = this.deps.sessions.get(sessionId)
     const state = session ? this.deps.readStatusState(sessionId, journal) : null
     if (!session || !state) {
       return
     }
     const cursor = (journal ?? session.journal).cursor()
+    for (const subscriber of this.subscribers.values()) {
+      try {
+        subscriber.onState?.({
+          scope: session.params.location,
+          sessionId,
+          pendingPromptIds: state.pendingPromptIds
+        })
+      } catch {
+        // Delivery bookkeeping cannot cost this commit its attention edge.
+      }
+    }
     const request = state.latestRequest
     const prompts = new Set(state.pendingPromptIds)
     const baseline = this.baselines.get(sessionId)
-    if (!baseline) {
+    if (!baseline || options?.historical) {
       // Baseline only. Whatever the session was already holding is history, not news.
       this.baselines.set(sessionId, { ...cursor, settled: settledMark(request), prompts })
       return
@@ -129,17 +143,16 @@ export class StructuredAgentSessionTurnCompletionFeed {
       baseline.epoch = cursor.epoch
       baseline.sequence = cursor.sequence
       baseline.settled = settledMark(request)
-      this.retireAnswered(sessionId, session, baseline.prompts, prompts)
       baseline.prompts = prompts
       return
     }
     baseline.sequence = cursor.sequence
-    this.retireAnswered(sessionId, session, baseline.prompts, prompts)
     // An answered prompt leaves the set, so only a prompt not pending last commit is news.
     const raised = state.pendingPromptIds.find((id) => !baseline.prompts.has(id))
     baseline.prompts = prompts
     const completion = this.settledCompletion(sessionId, session, state, baseline)
     if (completion) {
+      completion.journalCursor = cursor
       const restatesPrompt = completion.awaitingUser === true && completion.outcome === 'success'
       this.broadcast({ type: 'completion', completion }, restatesPrompt ? 'legacy' : 'all')
       if (!restatesPrompt) {
@@ -156,32 +169,12 @@ export class StructuredAgentSessionTurnCompletionFeed {
           scope: session.params.location,
           sessionId,
           promptId: raised,
+          journalCursor: cursor,
           raisedAt: this.deps.now()
         }
       },
       'prompt-aware'
     )
-  }
-
-  private retireAnswered(
-    sessionId: string,
-    session: CompletionFeedSession,
-    before: ReadonlySet<string>,
-    now: ReadonlySet<string>
-  ): void {
-    const keys = [...before]
-      .filter((id) => !now.has(id))
-      .map((id) => agentSessionPromptAttentionKey(session.params.location, sessionId, id))
-    if (keys.length === 0) {
-      return
-    }
-    for (const subscriber of this.subscribers.values()) {
-      try {
-        subscriber.onRetired?.(keys)
-      } catch {
-        // Withdrawal is bookkeeping: a failing one must not cost the next commit its edge.
-      }
-    }
   }
 
   /** The completion this commit settles, if any. */

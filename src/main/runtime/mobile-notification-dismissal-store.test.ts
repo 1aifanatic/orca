@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -77,4 +77,43 @@ it('names the live deliveries a subject can still retire, across a restart', () 
   expect(restarted.hasLiveDelivery('subject:prompt:a1')).toBe(true)
   expect(restarted.hasLiveDelivery('subject:prompt:a10')).toBe(false)
   expect(restarted.hasLiveDelivery('subject:prompt:a')).toBe(false)
+})
+
+it('retains in-memory delivery and retirement when durable writes fail', () => {
+  const h = fixture()
+  mkdirSync(join(h.path, 'mobile-notification-dismissals.json'))
+  expect(() => h.store.record({ ...alert, ...shown })).toThrow()
+  expect(h.store.hasLiveDelivery(shown.notificationId)).toBe(true)
+  expect(() =>
+    h.store.record({
+      type: 'dismiss',
+      notificationId: shown.notificationId,
+      notificationEpoch: 'current',
+      notificationSeq: 1,
+      dismissedDelivery: shown
+    })
+  ).toThrow()
+  expect(h.store.hasLiveDelivery(shown.notificationId)).toBe(false)
+  expect(h.store.reconcile([shown])).toEqual([shown])
+})
+
+it('a targeted old delivery cannot retire a newer replacement with the same logical id', () => {
+  const h = fixture()
+  h.store.record({ ...alert, ...shown })
+  h.store.record({ ...alert, ...shown, notificationSeq: shown.notificationSeq + 1 })
+  h.store.record({ ...alert, ...shown, notificationEpoch: 'different' })
+  h.store.record({
+    type: 'dismiss',
+    notificationId: shown.notificationId,
+    notificationEpoch: 'current',
+    notificationSeq: 1,
+    dismissedDelivery: shown
+  })
+  expect(
+    h.store.liveDeliveries().map((record) => [record.notificationEpoch, record.notificationSeq])
+  ).toEqual([
+    ['old', 13],
+    ['different', 12]
+  ])
+  expect(h.store.reconcile([shown, { ...shown, notificationSeq: 13 }])).toEqual([shown])
 })

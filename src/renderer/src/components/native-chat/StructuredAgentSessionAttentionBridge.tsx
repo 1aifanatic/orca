@@ -1,5 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import {
+  registerAgentSubjectReadCapture,
+  subscribeAgentSubjectReads,
+  sameStructuredReadTarget
+} from '@/attention/agent-subject-read-actions'
+import { findStructuredAgentSessionReadOwner } from './structured-agent-session-read-owner'
+import { structuredAttentionReadObservation } from './structured-attention-read-observation'
 import { useAppStore } from '@/store'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import {
@@ -45,17 +52,47 @@ function StructuredAgentSessionOwnedAttention({
   const feed = useMemo(() => getStructuredAgentSessionTurnCompletionFeed(target), [target])
   useEffect(() => feed.activate(), [feed])
   const paneKey = structuredAgentSessionPaneKey(tab.id, tab.entityId)
-  useEffect(
-    () =>
-      // Routed to the owning host, which alone knows what it pushed this chat's phones.
-      useAppStore.subscribe((state, previous) => {
-        const stamp = state.acknowledgedAgentsByPaneKey[paneKey]
-        if (stamp !== undefined && stamp !== previous.acknowledgedAgentsByPaneKey[paneKey]) {
-          void acknowledgeStructuredAgentSessionAttention(target, tab.entityId)
-        }
-      }),
-    [paneKey, tab.entityId, target]
-  )
+  useEffect(() => {
+    let lastObservation: string | undefined
+    const stopCapture = registerAgentSubjectReadCapture(paneKey, () => {
+      const state = findStructuredAgentSessionReadOwner(tab.entityId, target)?.getSnapshot().state
+      if (!state?.cursor) {
+        return null
+      }
+      return {
+        target,
+        sessionId: tab.entityId,
+        observedCursor: { ...state.cursor },
+        observationKey: structuredAttentionReadObservation(state)
+      }
+    })
+    const stopRead = subscribeAgentSubjectReads((reads) => {
+      const read = reads.find((entry) => entry.subjectKey === paneKey)?.structured
+      if (
+        !read ||
+        read.sessionId !== tab.entityId ||
+        !sameStructuredReadTarget(read.target, target) ||
+        read.observationKey === lastObservation
+      ) {
+        return
+      }
+      lastObservation = read.observationKey
+      void window.api?.notifications
+        ?.dismiss?.(
+          [],
+          [paneKey],
+          [{ paneKey, sessionId: read.sessionId, observedCursor: read.observedCursor }]
+        )
+        .catch((error) => {
+          console.warn('[structured-session-attention] local retirement failed', error)
+        })
+      void acknowledgeStructuredAgentSessionAttention(target, read.sessionId, read.observedCursor)
+    })
+    return () => {
+      stopRead()
+      stopCapture()
+    }
+  }, [paneKey, tab.entityId, target])
   useEffect(
     () =>
       feed.subscribe((edge) => {

@@ -289,14 +289,14 @@ describe('StructuredAgentSessionAttentionBridge', () => {
     expect(request).not.toHaveProperty('agentTurnOutcome')
   })
 
-  it('routes reading the chat to the host that owns it, so its phone alerts are withdrawn', async () => {
+  it('does not invent a read boundary before the chat has accepted history', async () => {
     render(<StructuredAgentSessionAttentionBridge />)
     await waitFor(() => expect(mocks.subscribeCompletions).toHaveBeenCalledOnce())
     act(() => hostStream()(promptFrame()))
 
     act(() => mocks.store?.getState().acknowledgeAgents([CHAT_SUBJECT]))
 
-    expect(mocks.acknowledgeAttention).toHaveBeenCalledExactlyOnceWith({ kind: 'local' }, SESSION)
+    expect(mocks.acknowledgeAttention).not.toHaveBeenCalled()
   })
 
   it("ignores a prompt for a session the tab doesn't hold", async () => {

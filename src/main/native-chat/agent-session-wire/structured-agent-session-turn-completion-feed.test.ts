@@ -13,7 +13,7 @@ import {
   DISPATCH_REJECTED_PROVIDER_CLOSED
 } from '../../../shared/structured-agent-session-dispatch-rejection'
 import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
-import { agentSessionPromptAttentionKey } from '../../../shared/agent-session-attention'
+import type { StructuredAttentionState } from '../../../shared/agent-session-attention'
 import { StructuredAgentSessionTurnCompletionFeed } from './structured-agent-session-turn-completion-feed'
 
 const LOCATION = {
@@ -161,7 +161,8 @@ describe('StructuredAgentSessionTurnCompletionFeed', () => {
           sessionId: 'session-1',
           turnId: 'turn-1',
           outcome: 'success',
-          completedAt: 1_700
+          completedAt: 1_700,
+          journalCursor: { epoch: 'epoch-1', sequence: 2 }
         }
       }
     ])
@@ -424,7 +425,8 @@ describe('a request the agent or its start refused', () => {
           sessionId: 'session-1',
           turnId: M1,
           outcome: 'failure',
-          completedAt: 1_700
+          completedAt: 1_700,
+          journalCursor: { epoch: 'epoch-1', sequence: 2 }
         }
       }
     ])
@@ -668,7 +670,13 @@ describe('a request that settles while the user is asked something', () => {
     expect(h.events).toEqual([
       {
         type: 'prompt',
-        prompt: { scope: LOCATION, sessionId: 'session-1', promptId: 'a1', raisedAt: 1_700 }
+        prompt: {
+          scope: LOCATION,
+          sessionId: 'session-1',
+          promptId: 'a1',
+          raisedAt: 1_700,
+          journalCursor: { epoch: 'epoch-1', sequence: 2 }
+        }
       }
     ])
     h.setJournal(
@@ -804,18 +812,18 @@ describe('a request that settles while the user is asked something', () => {
       expect(h.outcomes()).toEqual([[agentJournalSubmissionKey('m1'), 'failure']])
     })
 
-    it('reports a prompt that stopped waiting so its alert can be withdrawn', () => {
-      const retired: string[][] = []
+    it('publishes current pending state before baseline, no-news, and historical returns', () => {
+      const states: StructuredAttentionState[] = []
       const h = harness()
-      h.feed.subscribe({ id: 'host', emit: () => {}, onRetired: (keys) => retired.push([...keys]) })
+      h.feed.subscribe({ id: 'host', emit: () => {}, onState: (state) => states.push(state) })
       h.setJournal([user, running, approval('a1', 3, 'pending')], accepted)
       h.observe()
-      h.setJournal([user, running, approval('a1', 3, 'pending')], accepted)
       h.observe()
-      expect(retired).toEqual([])
       h.setJournal([user, running, approval('a1', 3, 'resolved')], accepted)
-      h.observe()
-      expect(retired).toEqual([[agentSessionPromptAttentionKey(LOCATION, 'session-1', 'a1')]])
+      h.feed.observe('session-1', undefined, { historical: true })
+      expect(states.map((state) => state.pendingPromptIds)).toEqual([['a1'], ['a1'], []])
+      expect(states.every((state) => state.sessionId === 'session-1')).toBe(true)
+      expect(h.events).toEqual([])
     })
 
     it('announces a prompt under its own identity when the turn settles beside it', () => {

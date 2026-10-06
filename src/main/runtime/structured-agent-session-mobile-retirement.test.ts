@@ -96,7 +96,7 @@ describe('host prompt delivery and retirement', () => {
           }),
           readWorkspaceLabels: () => ({}),
           dispatch: (event) => controller.dispatch(event),
-          retire: (id) => controller.retire(id),
+          reconcile: (state) => controller.reconcileStructuredPromptAttention(state),
           now: () => 42
         })
         const feed = new StructuredAgentSessionTurnCompletionFeed({
@@ -121,7 +121,7 @@ describe('host prompt delivery and retirement', () => {
               delivery.deliver(event, undefined)
             }
           },
-          onRetired: delivery.retire
+          onState: delivery.reconcile
         })
         feed.observe('session-1')
         if (announcedEarlier) {
