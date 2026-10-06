@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
 // A message sent while the chat reads Stopping, through the chat's own send and its real outbox.
-// Where the host queues sends, the request asks it to, whatever the queueing setting, and the
-// transcript draws no bubble of it. Where it does not, the send goes out plain, for the host to hold
-// until the stop lands, and is marked as sent while stopping, so it draws after the Stopping line.
+// With queueing on, where the host queues sends, it asks to be queued and draws no bubble: the host
+// makes it a card the Stop holds. Otherwise it goes out plain, for the host to hold until the stop
+// lands, and is marked as sent while stopping, so it draws after the Stopping line.
 
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -55,10 +55,8 @@ beforeEach(() => {
   localStorage.clear()
   clearNativeChatDraftCacheForTests()
   items = [RUNNING_TURN]
-  setLocalRuntimeCapabilitiesForTests([
-    AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
-    AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
-  ])
+  // A host that does not queue sends, as every shipped host does not yet.
+  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   // The host has not answered yet: the send is still on its way, as while a Stop holds the lane.
   mocks.call.mockImplementation(() => new Promise(() => {}))
 })
@@ -69,7 +67,7 @@ afterEach(() => {
   mocks.call.mockReset()
 })
 
-function renderStopping() {
+function renderStopping(queueFollowUps = false) {
   return renderHook(() =>
     useStructuredAgentSession({
       sessionId: 'session-1',
@@ -77,14 +75,27 @@ function renderStopping() {
       target: { kind: 'local' },
       isVisible: true,
       composerScopeKey: 'scope-1',
-      queueFollowUps: false,
+      queueFollowUps,
       hostStopping: true
     })
   )
 }
 
-it('asks the host to queue a send made while the host reads Stopping, and draws no bubble', async () => {
-  const { result } = renderStopping()
+function expectPlainSentWhileStopping(
+  messages: ReturnType<typeof renderStopping>['result']['current']['messages']
+) {
+  expect(sends()[0]).not.toHaveProperty('delivery')
+  expect(
+    messages.find((message) => JSON.stringify(message.blocks).includes('run this after the stop'))
+  ).toMatchObject({ role: 'user', sentWhileStopping: true })
+}
+
+it('with queueing on, asks a queueing host to queue it, and draws no bubble', async () => {
+  setLocalRuntimeCapabilitiesForTests([
+    AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+    AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
+  ])
+  const { result } = renderStopping(true)
 
   expect(result.current.send('run this after the stop')).toBe(true)
 
@@ -93,24 +104,30 @@ it('asks the host to queue a send made while the host reads Stopping, and draws 
   expect(JSON.stringify(result.current.messages)).not.toContain('run this after the stop')
 })
 
+it('with queueing off, sends plain to a queueing host, marked as sent while stopping', async () => {
+  setLocalRuntimeCapabilitiesForTests([
+    AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY,
+    AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY
+  ])
+  const { result } = renderStopping(false)
+
+  expect(result.current.send('run this after the stop')).toBe(true)
+
+  await waitFor(() => expect(sends()).toHaveLength(1))
+  expectPlainSentWhileStopping(result.current.messages)
+})
+
 it('sends plain where the host does not queue sends, marked as sent while stopping', async () => {
-  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   const { result } = renderStopping()
 
   expect(result.current.send('run this after the stop')).toBe(true)
 
   await waitFor(() => expect(sends()).toHaveLength(1))
-  expect(sends()[0]).not.toHaveProperty('delivery')
-  expect(
-    result.current.messages.find((message) =>
-      JSON.stringify(message.blocks).includes('run this after the stop')
-    )
-  ).toMatchObject({ role: 'user', sentWhileStopping: true })
+  expectPlainSentWhileStopping(result.current.messages)
 })
 
 // Sent before the Stop, the host steers it into the turn: it is not one held behind the Stop.
 it('does not mark a send made before the chat read Stopping', async () => {
-  setLocalRuntimeCapabilitiesForTests([AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY])
   const { result, rerender } = renderHook(
     ({ hostStopping }: { hostStopping: boolean }) =>
       useStructuredAgentSession({
