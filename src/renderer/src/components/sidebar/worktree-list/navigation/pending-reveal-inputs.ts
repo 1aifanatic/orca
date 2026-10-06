@@ -10,7 +10,8 @@ import type { WorktreeLineage } from '../../../../../../shared/worktree/lineage-
 import type { ExecutionHostId } from '../../../../../../shared/execution-host'
 import { getWorktreeExecutionHostId } from '../../../../../../shared/execution-host'
 import type { RenderRow } from '../listing/render-row'
-import { getHostPinnedGroupKey } from '../../host-pinned-sections'
+import { getHostSectionCollapseKey } from '../../host-section-collapse'
+import { PINNED_GROUP_KEY } from '../grouping/group-keys'
 import { getWorktreeLineageGroupKey } from '../grouping/group-keys'
 import type { ProjectGroupingModel } from '../grouping/project-grouping'
 import type { PinnedWorktreeDisplayPolicy, WorktreeGroupBy } from '../grouping/row-types'
@@ -61,6 +62,9 @@ export function expandGroupsForWorktreeReveal(
   worktreeId: string,
   executionHostId?: ExecutionHostId
 ): void {
+  const hostScopedGroups = args.renderRows.some(
+    (row) => row.type === 'host-header' || (row.type === 'header' && row.collapseKey !== undefined)
+  )
   const folderGroupKeys = getFolderWorkspaceRevealGroupKeys(
     worktreeId,
     args.folderWorkspaces,
@@ -68,7 +72,8 @@ export function expandGroupsForWorktreeReveal(
     {
       groupBy: args.groupBy,
       workspaceStatuses: args.workspaceStatuses,
-      defaultHostId: args.defaultHostId
+      defaultHostId: args.defaultHostId,
+      hostScopedGroups
     }
   )
   if (folderGroupKeys.length > 0) {
@@ -120,11 +125,8 @@ export function expandGroupsForWorktreeReveal(
     )
       ? getPinnedWorktreeRevealCollapsedGroupKeys({
           worktree: targetWorktree,
-          groupKey: args.renderRows.some(
-            (row) =>
-              row.type === 'host-header' || (row.type === 'header' && row.collapseKey !== undefined)
-          )
-            ? getHostPinnedGroupKey(targetHostId)
+          groupKey: hostScopedGroups
+            ? getHostSectionCollapseKey(PINNED_GROUP_KEY, targetHostId)
             : undefined,
           collapsedGroups: args.collapsedGroups,
           inPinnedSection: true
@@ -138,7 +140,7 @@ export function expandGroupsForWorktreeReveal(
           args.settings,
           args.projectGroups,
           args.projectGrouping
-        )
+        ).map((key) => (hostScopedGroups ? getHostSectionCollapseKey(key, targetHostId) : key))
   for (const groupKey of groupKeys) {
     if (args.collapsedGroups.has(groupKey)) {
       args.toggleGroup(groupKey)
