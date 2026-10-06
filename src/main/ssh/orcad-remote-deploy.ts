@@ -66,7 +66,10 @@ export type OrcadDeployResult =
   | { outcome: 'installed-not-activated'; fullVersion: string; code: string; reason: string }
 
 /** Activate on a healthy verdict; retain changed candidate state for explicit recovery. */
-export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeployResult> {
+export async function deployOrcad(
+  input: OrcadDeployOptions,
+  retryClearedFence = true
+): Promise<OrcadDeployResult> {
   const target =
     input.target ??
     (input.localOrcadDir
@@ -90,11 +93,14 @@ export async function deployOrcad(input: OrcadDeployOptions): Promise<OrcadDeplo
   }
   const fullVersion = readLocalFullVersion(options.localOrcadDir)
   const remoteDir = computeRemoteInstallDir(ORCAD_INSTALL_MODEL, options.remoteHome, fullVersion)
-  const held = async (): Promise<OrcadDeployResult> => ({
-    outcome: 'installed-not-activated',
-    fullVersion,
-    ...(await orcadActivationFenceRefusal(options, 'update'))
-  })
+  const held = async (): Promise<OrcadDeployResult> => {
+    const { cleared, ...refusal } = await orcadActivationFenceRefusal(options, 'update')
+    // Once: a second abandoned fence means something keeps leaving them, so report it.
+    if (cleared && retryClearedFence) {
+      return deployOrcad({ ...input, target, localOrcadDir: options.localOrcadDir }, false)
+    }
+    return { outcome: 'installed-not-activated', fullVersion, ...refusal }
+  }
   // Fail fast before upload; the activation re-reads both under the fence.
   await readOrcadActivationRecord(options)
   // An unanswered probe only skips this shortcut: the fence acquisition itself still decides.

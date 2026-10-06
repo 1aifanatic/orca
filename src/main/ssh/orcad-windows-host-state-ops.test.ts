@@ -255,18 +255,36 @@ process.on('exit', () => fs.writeFileSync(${JSON.stringify(finished)}, ''))`
 })
 
 describe('the Windows state-mutation fence heartbeat', () => {
-  it('refreshes a held activation fence when a mutation starts, never a wake’s, and never creates one', async () => {
+  const fencedOp = (fence: string, token: string, name: OrcadWindowsHostOp, ...args: string[]) =>
+    runProcess({
+      program: process.execPath,
+      args: [script, '--fence', fence, token, name, ...args]
+    })
+
+  it('refreshes only a fence its run still owns, refuses a superseded run, and never creates one', async () => {
     const fence = join(dir, '.orcad-activation-transaction', '.install-lock')
     mkdirSync(fence, { recursive: true })
+    writeFileSync(join(fence, '.orca-fence-owner'), 'holder-1')
     utimesSync(fence, new Date(0), new Date(0))
-    expect(await op('snapshot-capture', root, snapshot)).toBe('CAPTURED')
+    expect(await fencedOp(fence, 'holder-1', 'snapshot-capture', root, snapshot)).toMatchObject({
+      code: 0,
+      stdout: 'CAPTURED'
+    })
     expect(Date.now() - statSync(fence).mtimeMs).toBeLessThan(60_000)
 
-    writeFileSync(join(fence, '.orca-wake-owner'), 'wake-1')
+    // Outside any fence's run, nothing refreshes it.
     utimesSync(fence, new Date(0), new Date(0))
     expect(await op('snapshot-restore', root, snapshot)).toBe('RESTORED')
     expect(statSync(fence).mtimeMs).toBe(0)
-    expect(readFileSync(join(fence, '.orca-wake-owner'), 'utf8')).toBe('wake-1')
+
+    // A run another took the fence over from never mutates, and leaves the successor's token.
+    writeFileSync(join(fence, '.orca-fence-owner'), 'successor')
+    expect(await fencedOp(fence, 'holder-1', 'snapshot-restore', root, snapshot)).toMatchObject({
+      code: 75,
+      stdout: '__ORCAD_FENCE_LOST__\n'
+    })
+    expect(statSync(fence).mtimeMs).toBe(0)
+    expect(readFileSync(join(fence, '.orca-fence-owner'), 'utf8')).toBe('successor')
 
     rmSync(fence, { recursive: true })
     expect(await op('snapshot-restore', root, snapshot)).toBe('RESTORED')

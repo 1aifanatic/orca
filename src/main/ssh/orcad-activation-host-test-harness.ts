@@ -9,6 +9,7 @@ import {
   withActivatedVersion,
   type OrcadActivationRecord
 } from './orcad-activation-record'
+import { sshCommandExitError } from './ssh-relay-exec-command'
 
 export const OLD = '0.1.0+aa01'
 export const NEW = '0.2.0+bb01'
@@ -23,7 +24,9 @@ export function isReadinessRead(command: string): boolean {
   return command.startsWith('head -c ') || command.includes('orcad_readiness_wait')
 }
 
-const WAKE_OWNER = '.orca-wake-owner'
+const WAKE_OWNER = '.orca-fence-owner'
+const FENCE_GUARD =
+  /^\[ "\$\(cat '[^']*' 2>\/dev\/null\)" = '([^']*)' \] \|\| \{ echo (__ORCAD_FENCE_LOST__; exit 75|SUPERSEDED; exit 0); \};\s*/u
 
 export class FakeOrcadHost {
   record: string | null = null
@@ -119,29 +122,48 @@ export class FakeOrcadHost {
   }
 
   /** Returns false where a stale-only takeover would answer busy. */
-  acquireFence(options?: { allowStaleTakeover?: boolean }): boolean {
+  acquireFence(options?: { allowStaleTakeover?: boolean; owner?: { token: string } }): boolean {
     if (options?.allowStaleTakeover && this.fence && this.fenceFresh) {
       return false
     }
     this.fenceFresh = options?.allowStaleTakeover === true && this.fence
     this.fence = true
+    // The real lock writes the holder's generation token in the command that creates it.
+    this.wakeOwner = options?.owner?.token ?? this.wakeOwner
     return true
   }
 
   exec(command: string): string {
     this.commands.push(command)
+    return this.execInner(command)
+  }
+
+  private execInner(command: string): string {
+    const guard = FENCE_GUARD.exec(command)
+    if (guard) {
+      const owned = this.fence && this.wakeOwner === guard[1]
+      if (command.includes('echo RELEASED')) {
+        return owned
+          ? this.mutate(() => {
+              this.journal = null
+              this.fence = false
+              this.wakeOwner = null
+              return 'RELEASED'
+            })
+          : 'SUPERSEDED'
+      }
+      if (!owned) {
+        throw sshCommandExitError(command, 75, '__ORCAD_FENCE_LOST__\n')
+      }
+      return this.execInner(command.slice(guard[0].length))
+    }
     if (command.startsWith('touch -m -t 200001010000')) {
       this.fenceFresh = false
       return ''
     }
-    // A wake's owner token lives inside the fence's lock dir, so the fence's release drops it.
-    // A state mutation's fence heartbeat names the token only to skip a wake's fence.
+    // The holder's token lives inside the fence's lock dir, so the fence's release drops it.
+    // A state mutation's fence heartbeat names the token only to check it is still its own.
     if (command.includes(WAKE_OWNER) && !command.includes('orcad-state-mutation.lock')) {
-      const written = /printf %s '([^']*)'/u.exec(command)?.[1]
-      if (written !== undefined) {
-        this.wakeOwner = this.fence ? written : null
-        return ''
-      }
       return this.wakeOwner === null || !this.fence
         ? '__ORCAD_RECORD_ABSENT__\n'
         : `__ORCAD_RECORD_PRESENT__\n${this.wakeOwner}`

@@ -10,6 +10,7 @@ import {
   writeAtomicOrcadRemoteRecord
 } from './orcad-remote-record-file'
 import type { OrcadRemoteExecTarget } from './orcad-remote-runtime-control'
+import { currentOrcadFence } from './orcad-activation-fence-scope'
 import { joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 
 const ORCAD_ACTIVATION_TRANSACTION_MAX_BYTES = 64 * 1024
@@ -43,13 +44,18 @@ export async function readOrcadActivationTransaction(
   return parsed.state === 'ok' ? parsed.transaction : null
 }
 
+/**
+ * Stamped with the writing run's fence token, so a release only ever removes its own generation's
+ * journal (Astra pass 9); readers ignore the extra field.
+ */
 export function writeOrcadActivationTransaction(
   options: OrcadActivationTransactionStoreOptions,
   transaction: OrcadActivationTransaction
 ): Promise<void> {
+  const fenceToken = currentOrcadFence()?.token
   return writeAtomicOrcadRemoteRecord(
     options,
     orcadActivationTransactionPath(options.host, options.remoteHome),
-    serializeOrcadActivationTransaction(transaction)
+    serializeOrcadActivationTransaction(fenceToken ? { ...transaction, fenceToken } : transaction)
   )
 }

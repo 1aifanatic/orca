@@ -28,9 +28,6 @@ export const ORCAD_STATE_MUTATION_LOCK_DIRNAME = 'orcad-state-mutation.lock'
  */
 export const ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS = 60
 
-/** A wake's token in the fence dir (orcad-managed-wake.ts): such a fence is never refreshed. */
-export const ORCAD_WAKE_OWNER_FILENAME = '.orca-wake-owner'
-
 /** A state mutation found another still running, so it did nothing. */
 export const ORCAD_STATE_MUTATION_BUSY = 'STATE_MUTATION_BUSY'
 /** The host-side deadline killed a state mutation part way through. */

@@ -25,6 +25,10 @@ import {
 } from '../../shared/orcad-stop-request'
 import { ORCAD_STDIO_BRIDGE_FUNCTION } from './orcad-stdio-bridge-script'
 import {
+  ORCAD_WINDOWS_FENCE_PRELUDE,
+  ORCAD_WINDOWS_HOST_FENCE_OPS
+} from './orcad-windows-host-fence-ops'
+import {
   ORCAD_WINDOWS_HOST_STATE_OPS,
   type OrcadWindowsHostStateOp
 } from './orcad-windows-host-state-ops'
@@ -58,6 +62,8 @@ export type OrcadWindowsHostOp =
   | 'slot-runtime'
   | 'remove-file'
   | 'remove-tree'
+  | 'fence-check'
+  | 'fence-release'
   | 'script-present'
   | 'script-install'
   | 'stdio-bridge'
@@ -71,7 +77,8 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 
-const [op, ...args] = process.argv.slice(2)
+${ORCAD_WINDOWS_FENCE_PRELUDE}
+const [op, ...args] = fencedArgv(process.argv.slice(2))
 const answer = (value) => process.stdout.write(value, () => process.exit(0))
 const encoded = (marker, buffer) => answer(marker + ' ' + buffer.toString('base64') + '\\n')
 
@@ -275,6 +282,7 @@ const ops = {
 ${ORCAD_STDIO_BRIDGE_FUNCTION}
 
 ${ORCAD_WINDOWS_HOST_STATE_OPS}
+${ORCAD_WINDOWS_HOST_FENCE_OPS}
 const run = Object.hasOwn(ops, op) ? ops[op] : null
 if (!run) {
   process.stderr.write('unknown orcad host op: ' + String(op) + '\\n')

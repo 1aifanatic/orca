@@ -170,7 +170,7 @@ export function parseOrcadActivationTransaction(
 }
 
 export function serializeOrcadActivationTransaction(
-  transaction: OrcadActivationTransaction
+  transaction: OrcadActivationTransaction & { fenceToken?: string }
 ): string {
   return `${JSON.stringify(transaction, null, 2)}\n`
 }

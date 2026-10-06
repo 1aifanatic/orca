@@ -203,6 +203,59 @@ describe('managed server CLI verbs', () => {
     })
   })
 
+  // BUG-21: an update restarts the server, so the call's connection closes before it answers.
+  it('reports what a restarting update left behind instead of failing on the closed connection', async () => {
+    vi.useFakeTimers()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    let updated = false
+    const call = vi.fn(async (method: string) => {
+      if (method === 'status.get') {
+        return envelope({ capabilities: [MANAGED_SERVER_RUNTIME_CAPABILITY] })
+      }
+      if (method === 'managedServer.update') {
+        updated = true
+        throw new RuntimeClientError(
+          'runtime_unavailable',
+          'The Orca runtime closed the connection before responding.'
+        )
+      }
+      return envelope({ activeVersion: '0.2.0+bb01', recovery: null, deferredUpdate: null })
+    })
+    try {
+      const done = run('environment update', call, [])
+      await vi.advanceTimersByTimeAsync(2_000)
+      await done
+      expect(updated).toBe(true)
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('now runs 0.2.0+bb01'))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports an update the restart left interrupted as needing recover', async () => {
+    vi.useFakeTimers()
+    const call = vi.fn(async (method: string) => {
+      if (method === 'status.get') {
+        return envelope({ capabilities: [MANAGED_SERVER_RUNTIME_CAPABILITY] })
+      }
+      if (method === 'managedServer.update') {
+        throw new RuntimeClientError('runtime_unavailable', 'closed')
+      }
+      return envelope({
+        activeVersion: '0.1.0+aa01',
+        recovery: { operation: 'activate', version: '0.2.0+bb01', phase: 'snapshot-captured' },
+        deferredUpdate: null
+      })
+    })
+    try {
+      const done = run('environment update', call, []).catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(await done).toMatchObject({ code: 'managed_server_interrupted' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('restores changed state only with --accept-changed-state --yes, and its refusal names the flags', async () => {
     const refusal = {
       outcome: 'refused',

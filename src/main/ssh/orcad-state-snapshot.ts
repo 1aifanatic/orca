@@ -15,6 +15,12 @@
  * fence that keeps its terminals adoptable — turning a rollback into the exact terminal
  * massacre the daemon exists to prevent.
  */
+import {
+  currentOrcadFence,
+  posixOrcadFenceGuard,
+  posixOrcadFenceOwnedTest,
+  type OrcadFence
+} from './orcad-activation-fence-scope'
 import { shellEscape } from './ssh-connection-utils'
 import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
 import type { OrcadWindowsHostStateOp } from './orcad-windows-host-state-ops'
@@ -23,13 +29,10 @@ import {
   ORCAD_STATE_MUTATION_BUSY,
   ORCAD_STATE_MUTATION_DEADLINE,
   ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
-  ORCAD_WAKE_OWNER_FILENAME,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME
 } from './orcad-state-snapshot-members'
 import { orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
-import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
-import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 
 /**
  * The member names go into the command unquoted (see `captureOrcadStateSnapshotCommand`), so
@@ -82,16 +85,15 @@ export function posixProcessGroupCommand(pid: string, procRoot = '/proc'): strin
 export function serializedStateMutationCommand(
   baseDir: string,
   script: string,
-  heartbeatSeconds = ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS
+  heartbeatSeconds = ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
+  // The holder's fence; null (a call outside any fence's run) refreshes no fence at all.
+  owned: OrcadFence | null = currentOrcadFence()
 ): string {
   const lock = shellEscape(`${baseDir}/${ORCAD_STATE_MUTATION_LOCK_DIRNAME}`)
-  const fence = shellEscape(
-    `${baseDir}/${ORCAD_ACTIVATION_TRANSACTION_DIRNAME}/${RELAY_INSTALL_LOCK_NAME}`
-  )
   const busy = `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0;`
   const staleMinutes = Math.max(1, Math.ceil((3 * heartbeatSeconds) / 60))
   const guarded = [
-    `lock=${lock}; fence=${fence};`,
+    `lock=${lock};`,
     `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
     'if ! mkdir "$lock" 2>/dev/null; then',
     'holder=$(cat "$lock/pid" 2>/dev/null); group=$(cat "$lock/pgid" 2>/dev/null);',
@@ -110,8 +112,12 @@ export function serializedStateMutationCommand(
     `group=$(${posixProcessGroupCommand('$$')});`,
     'case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > "$lock/pgid";; esac; fi;',
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
-    // A wake's fence ages toward takeover on its own, so its token stops the refresh.
-    `beat_fence() { touch -c -m "$lock" 2>/dev/null; [ -e "$fence/${ORCAD_WAKE_OWNER_FILENAME}" ] || touch -c -m "$fence" 2>/dev/null; };`,
+    // Only a fence this run still owns: a superseded or foreign one ages toward takeover.
+    `beat_fence() { touch -c -m "$lock" 2>/dev/null; ${
+      owned
+        ? `${posixOrcadFenceOwnedTest(owned)} && touch -c -m ${shellEscape(owned.lockDir)} 2>/dev/null;`
+        : ':;'
+    } };`,
     'beat_fence;',
     `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do beat_fence; done ) >/dev/null 2>&1 & beat=$!;`,
     `trap 'kill "$beat" 2>/dev/null; rm -rf "$lock"' EXIT;`,
@@ -119,6 +125,8 @@ export function serializedStateMutationCommand(
   ].join(' ')
   const run = `sh -c ${shellEscape(guarded)}`
   return [
+    // Outermost: a superseded fence holder never takes the mutation lock or touches state.
+    ...(owned ? [posixOrcadFenceGuard(owned)] : []),
     // Its own process group, so the lock can name every process the mutation started.
     'orca_state_group() { if command -v setsid >/dev/null 2>&1; then ORCA_STATE_MUTATION_GROUP=1 setsid "$@";',
     `elif command -v perl >/dev/null 2>&1; then ORCA_STATE_MUTATION_GROUP=1 perl -e ${shellEscape('setpgrp(0, 0); exec { $ARGV[0] } @ARGV or exit 127')} "$@";`,

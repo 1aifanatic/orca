@@ -16,12 +16,20 @@ export function acquireInstallLockParentCommand(
   )
 }
 
-export function tryCreateInstallLockCommand(host: RemoteHostPlatform, lockDir: string): string {
+/** A file the holder writes inside the lock in the same command that creates it. */
+export type InstallLockOwnerFile = { fileName: string; token: string }
+
+export function tryCreateInstallLockCommand(
+  host: RemoteHostPlatform,
+  lockDir: string,
+  owner?: InstallLockOwnerFile
+): string {
   if (!isWindowsRemoteHost(host)) {
     return [
       `if mkdir ${shellEscape(lockDir)} 2>/dev/null; then`,
       posixCurrentBootIdentityAssignment(host, 'current_boot_id'),
       posixWriteBootIdentity(lockDir, 'current_boot_id'),
+      ...posixWriteOwner(lockDir, owner),
       'echo OK;',
       'else echo BUSY; fi'
     ].join(' ')
@@ -40,6 +48,7 @@ export function tryCreateInstallLockCommand(host: RemoteHostPlatform, lockDir: s
       '$stream = [System.IO.File]::Open($owner, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)',
       ...windowsCurrentBootIdentityStatements('$currentBootId'),
       windowsWriteBootIdentityStatement('$lock', '$currentBootId'),
+      ...(owner ? [windowsWriteOwner(owner).replace(/; $/u, '')] : []),
       "'OK'",
       '}',
       `} catch { 'BUSY' } finally { if ($null -ne $stream) { $stream.Dispose() } }`
@@ -86,21 +95,24 @@ export function orphanInstallLockCommand(host: RemoteHostPlatform, lockDir: stri
   )
 }
 
+/** A takeover writes the new holder's owner file too, so the holder it replaced can tell. */
 export function tryStealInstallLockCommand(
   host: RemoteHostPlatform,
   lockDir: string,
-  staleAfterSeconds: number
+  staleAfterSeconds: number,
+  owner?: InstallLockOwnerFile
 ): string {
   if (!isWindowsRemoteHost(host)) {
-    return posixStealInstallLockCommand(host, lockDir, staleAfterSeconds)
+    return posixStealInstallLockCommand(host, lockDir, staleAfterSeconds, owner)
   }
-  return windowsStealInstallLockCommand(lockDir, staleAfterSeconds)
+  return windowsStealInstallLockCommand(lockDir, staleAfterSeconds, owner)
 }
 
 function posixStealInstallLockCommand(
   host: RemoteHostPlatform,
   lockDir: string,
-  staleAfterSeconds: number
+  staleAfterSeconds: number,
+  owner?: InstallLockOwnerFile
 ): string {
   const escapedLockDir = shellEscape(lockDir)
   const escapedStealLockPrefix = shellEscape(`${lockDir}.steal`)
@@ -134,6 +146,7 @@ function posixStealInstallLockCommand(
     `if [ ! -e "$lock_tombstone" ] && mv ${escapedLockDir} "$lock_tombstone" 2>/dev/null; then`,
     `if mkdir ${escapedLockDir} 2>/dev/null; then`,
     posixWriteBootIdentity(lockDir, 'current_boot_id'),
+    ...posixWriteOwner(lockDir, owner),
     'if [ "$current_rebooted" = 1 ]; then echo REBOOT_OK; else echo OK; fi;',
     'else echo BUSY; fi; else echo BUSY; fi;',
     'else echo BUSY; fi;',
@@ -141,7 +154,11 @@ function posixStealInstallLockCommand(
   ].join(' ')
 }
 
-function windowsStealInstallLockCommand(lockDir: string, staleAfterSeconds: number): string {
+function windowsStealInstallLockCommand(
+  lockDir: string,
+  staleAfterSeconds: number,
+  owner?: InstallLockOwnerFile
+): string {
   return powerShellCommand(
     [
       `$lock = ${powerShellLiteral(lockDir)}`,
@@ -188,7 +205,7 @@ function windowsStealInstallLockCommand(lockDir: string, staleAfterSeconds: numb
       '$lockTombstone = "$lock.tombstone.$PID.$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"',
       'Move-Item -LiteralPath $lock -Destination $lockTombstone -ErrorAction Stop',
       '$successorStream = $null',
-      `try { $null = New-Item -ItemType Directory -Path $lock -ErrorAction Stop; $successorOwner = Join-Path $lock '.owner'; $successorStream = [System.IO.File]::Open($successorOwner, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None); ${windowsWriteBootIdentityStatement('$lock', '$currentBootId')}; if ($currentRebooted) { 'REBOOT_OK' } else { 'OK' } } catch { 'BUSY' } finally { if ($null -ne $successorStream) { $successorStream.Dispose() } }`,
+      `try { $null = New-Item -ItemType Directory -Path $lock -ErrorAction Stop; $successorOwner = Join-Path $lock '.owner'; $successorStream = [System.IO.File]::Open($successorOwner, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None); ${windowsWriteBootIdentityStatement('$lock', '$currentBootId')}; ${windowsWriteOwner(owner)}if ($currentRebooted) { 'REBOOT_OK' } else { 'OK' } } catch { 'BUSY' } finally { if ($null -ne $successorStream) { $successorStream.Dispose() } }`,
       "} else { 'BUSY' }",
       '}',
       "} catch { 'BUSY' } finally {",
@@ -285,4 +302,18 @@ function posixLockIdentityAssignment(lockDir: string, variableName: string): str
 function posixLockMtimeSecondsAssignment(lockDir: string, variableName: string): string {
   const escapedLockDir = shellEscape(lockDir)
   return `${variableName}=$(stat -c %Y ${escapedLockDir} 2>/dev/null || stat -f %m ${escapedLockDir} 2>/dev/null)`
+}
+
+function posixWriteOwner(lockDir: string, owner?: InstallLockOwnerFile): string[] {
+  if (!owner) {
+    return []
+  }
+  const ownerPath = `${lockDir.replace(/\/+$/u, '')}/${owner.fileName}`
+  return [`printf %s ${shellEscape(owner.token)} > ${shellEscape(ownerPath)};`]
+}
+
+function windowsWriteOwner(owner?: InstallLockOwnerFile): string {
+  return owner
+    ? `[System.IO.File]::WriteAllText((Join-Path $lock ${powerShellLiteral(owner.fileName)}), ${powerShellLiteral(owner.token)}); `
+    : ''
 }

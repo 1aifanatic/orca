@@ -380,7 +380,7 @@ describe('deployOrcad', () => {
 
   it.each([
     ['a fresh fence with no journal', false, false, 'orcad_activation_fence_busy'],
-    ['a fence past its stale age', true, false, 'orcad_activation_recovery_required'],
+    ['a stale fence over a journal', true, true, 'orcad_activation_recovery_required'],
     ['a fresh fence over a live run journal', false, true, 'orcad_activation_fence_busy']
   ])('refuses before uploading on %s', async (_label, stale, journal, code) => {
     vi.mocked(isRelayInstallLockStale).mockResolvedValueOnce(stale)
@@ -408,6 +408,27 @@ describe('deployOrcad', () => {
       code
     })
     expect(uploadRelayDirectory).not.toHaveBeenCalled()
+  })
+
+  // BUG-21: a bare stale fence (a wake cut short) failed every update with "Recover it first".
+  it('clears a stale fence no journal backs and goes on with the update', async () => {
+    vi.mocked(isRelayInstallLockStale).mockResolvedValueOnce(true)
+    let fenced = true
+    mockExec.mockImplementation(async (_conn, command) => {
+      const text = String(command)
+      if (text.includes('echo LOCKED || echo OPEN')) {
+        return fenced ? 'LOCKED\n' : 'OPEN\n'
+      }
+      if (text.includes('echo RELEASED')) {
+        fenced = false
+      }
+      return text.includes('__ORCAD_RECORD_ABSENT__') ? '__ORCAD_RECORD_ABSENT__\n' : ''
+    })
+    await deployOrcad(options()).catch(() => undefined)
+    expect(vi.mocked(acquireInstallLock).mock.calls[0]?.[3]).toMatchObject({
+      allowStaleTakeover: true
+    })
+    expect(uploadRelayDirectory).toHaveBeenCalled()
   })
 
   it('leaves an upload incomplete when the remote cannot make search executable', async () => {

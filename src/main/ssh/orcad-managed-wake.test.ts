@@ -52,8 +52,10 @@ function stoppedHost(): FakeOrcadHost {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
-  vi.mocked(acquireInstallLock).mockImplementation(async () => {
+  vi.mocked(acquireInstallLock).mockImplementation(async (_conn, _root, _host, options) => {
     host.acquireFence()
+    // The real lock writes the owner token in the same command that creates it.
+    host.wakeOwner = options?.owner?.token ?? null
   })
 })
 
@@ -129,6 +131,25 @@ describe('wakeStoppedManagedOrcad', () => {
     expect(host.fence).toBe(false)
   })
 
+  it('releases its own fence on reconnect when the drop surfaced as a plain failure', async () => {
+    host = stoppedHost()
+    // A disconnect fails every later step, the fence release included, without the unconfirmed flag.
+    const gone = new Error('Not connected')
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('nohup') || command.includes('echo RELEASED')) {
+        throw gone
+      }
+      return host.exec(command)
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(gone)
+    expect(host.fence).toBe(true)
+
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
+    expect(await wakeStoppedManagedOrcad(slot)).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
   it('never claims a fence with no owner token, even while its own interrupted token is held', async () => {
     host = stoppedHost()
     const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
@@ -165,6 +186,44 @@ describe('wakeStoppedManagedOrcad', () => {
 
     // The reconnected wake starts while the first is still holding the fence it just took.
     const reconnected = wakeStoppedManagedOrcad(slot)
+    drop?.()
+    await expect(dropped).rejects.toBe(lost)
+    expect(await reconnected).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
+  it('proves a fence its own wake took even when the drop hid whether the lock was created', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    // The host created the lock (with its owner token), but the client never saw OK.
+    vi.mocked(acquireInstallLock).mockImplementationOnce(async (_conn, _root, _host, options) => {
+      host.acquireFence()
+      host.wakeOwner = options?.owner?.token ?? null
+      throw lost
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(lost)
+    expect(host.fence).toBe(true)
+
+    expect(await wakeStoppedManagedOrcad(slot)).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
+  it('waits for a wake still before its fence instead of racing it to the lock', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    let drop: (() => void) | undefined
+    vi.mocked(acquireInstallLock).mockImplementationOnce(async (_conn, _root, _host, options) => {
+      host.acquireFence()
+      host.wakeOwner = options?.owner?.token ?? null
+      await new Promise<void>((resolve) => (drop = resolve))
+      throw lost
+    })
+    const dropped = wakeStoppedManagedOrcad(slot)
+    // The reconnected wake starts while the first is still taking the fence.
+    const reconnected = wakeStoppedManagedOrcad(slot)
+    await vi.waitFor(() => expect(drop).toBeDefined())
     drop?.()
     await expect(dropped).rejects.toBe(lost)
     expect(await reconnected).toMatchObject({ outcome: 'started' })

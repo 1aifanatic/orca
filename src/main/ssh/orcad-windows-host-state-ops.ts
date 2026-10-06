@@ -12,13 +12,10 @@ import { PRIMARY_RUNTIME_METADATA_FILE } from '../../shared/runtime-bootstrap'
 import { ORCAD_LOCK_FILE_NAME } from '../orcad/orcad-instance-lock'
 import { ORCAD_WINDOWS_PROCESS_TREE_FILENAME } from '../../shared/orcad-artifacts'
 import { ORCAD_INSTALL_MODEL } from './remote-install-model'
-import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
-import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
 import {
   ORCAD_SNAPSHOT_MEMBERS,
   ORCAD_STATE_MUTATION_BUSY,
   ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
-  ORCAD_WAKE_OWNER_FILENAME,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME,
   ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME
@@ -42,16 +39,15 @@ const MEMBERS = ${text(ORCAD_SNAPSHOT_MEMBERS)}
 const STATE_DIR = ${text(ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME)}
 const RESTORE_STAGE = ${text(ORCAD_STATE_RESTORE_STAGE_DIRNAME)}
 const MUTATION_LOCK = path.join(__dirname, ${text(ORCAD_STATE_MUTATION_LOCK_DIRNAME)})
-const FENCE = path.join(__dirname, ${text(ORCAD_ACTIVATION_TRANSACTION_DIRNAME)}, ${text(RELAY_INSTALL_LOCK_NAME)})
 
 // The fence goes stale by age; a live mutation keeps it fresh, and a dead process stops.
 function refreshFence() {
   try {
-    if (!lstatOrNull(FENCE)?.isDirectory()) return
-    // A wake's fence ages toward takeover on its own, so its token stops the refresh.
-    if (lstatOrNull(path.join(FENCE, ${text(ORCAD_WAKE_OWNER_FILENAME)}))) return
+    // Only the fence this op's run still owns: a superseded or foreign fence ages on its own.
+    if (FENCE_TOKEN === null || !lstatOrNull(FENCE_DIR)?.isDirectory()) return
+    if (fenceOwner(FENCE_DIR) !== FENCE_TOKEN) return
     const now = new Date()
-    fs.utimesSync(FENCE, now, now)
+    fs.utimesSync(FENCE_DIR, now, now)
   } catch {}
 }
 

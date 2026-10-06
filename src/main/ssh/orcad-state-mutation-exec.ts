@@ -13,6 +13,7 @@ import {
 } from './orcad-state-snapshot-members'
 import type { OrcadRemoteExecTarget } from './orcad-remote-runtime-control'
 import { execCommand, isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
+import { isOrcadFenceLost, OrcadFenceLostError } from './orcad-activation-fence-scope'
 
 // Longer than the host's own deadline, so the host kills the work before the client gives up.
 export const ORCAD_STATE_MUTATION_CLIENT_TIMEOUT_MS =
@@ -38,7 +39,7 @@ export async function execOrcadStateMutation(
     if (error instanceof Error && 'sshChannelCloseConfirmed' in error) {
       throw unconfirmed(error)
     }
-    throw error
+    throw isOrcadFenceLost(error) ? new OrcadFenceLostError() : error
   }
   const verdict = output.trim().split('\n').pop()?.trim()
   if (verdict === ORCAD_STATE_MUTATION_BUSY) {
@@ -64,7 +65,8 @@ export function execOrcadStateMutationOr(
   fallback = ''
 ): Promise<string> {
   return execOrcadStateMutation(target, command).catch((error: unknown) => {
-    if (isUnconfirmedSshCommandTermination(error)) {
+    // A lost fence is a refusal, never a failed capture to fall back from.
+    if (isUnconfirmedSshCommandTermination(error) || error instanceof OrcadFenceLostError) {
       throw error
     }
     return fallback

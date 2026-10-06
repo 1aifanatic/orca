@@ -20,6 +20,14 @@ import {
 import type { SshConnection } from './ssh-connection'
 import { errorMessage } from '../../shared/error-message'
 import { execCommand, isUnconfirmedSshCommandTermination } from './ssh-relay-deploy-helpers'
+import {
+  currentOrcadFence,
+  isOrcadFenceLost,
+  OrcadFenceLostError,
+  posixOrcadFenceGuard
+} from './orcad-activation-fence-scope'
+import { orcadRemoteBaseDir, orcadWindowsHostOpCommand } from './orcad-remote-windows-node'
+import { ORCAD_WINDOWS_FENCE_ARG } from './orcad-windows-host-fence-ops'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
 
 // Only between host-side waits, so a host that answers early cannot turn this into a tight loop.
@@ -33,25 +41,47 @@ export type OrcadRemoteExecTarget = {
   remoteHome?: string
 }
 
-export function execOrcadRemote(
+/** Under a held activation fence, the step runs only while the host still names this run its owner. */
+export async function execOrcadRemote(
   target: OrcadRemoteExecTarget,
   command: string,
   signal = target.signal
 ): Promise<string> {
-  return execCommand(target.conn, command, {
-    wrapCommand: target.host.commandDialect !== 'powershell',
-    signal
-  })
+  const fence = currentOrcadFence()
+  const run = (line: string): Promise<string> =>
+    execCommand(target.conn, line, {
+      wrapCommand: target.host.commandDialect !== 'powershell',
+      signal
+    })
+  try {
+    if (!fence) {
+      return await run(command)
+    }
+    if (!isWindowsRemoteHost(target.host)) {
+      return await run(`${posixOrcadFenceGuard(fence)} ${command}`)
+    }
+    // A host op checks inside the host script; anything else is checked by one op just before it.
+    if (!command.includes(ORCAD_WINDOWS_FENCE_ARG) && target.remoteHome) {
+      const baseDir = orcadRemoteBaseDir(target.host, target.remoteHome)
+      await run(orcadWindowsHostOpCommand(target.host, baseDir, 'fence-check', []))
+    }
+    return await run(command)
+  } catch (error) {
+    if (isUnconfirmedSshCommandTermination(error)) {
+      throw error
+    }
+    throw isOrcadFenceLost(error) ? new OrcadFenceLostError() : error
+  }
 }
 
-/** A confirmed failure reads as `fallback`; an unconfirmed one propagates and keeps the fence. */
+/** A confirmed failure reads as `fallback`; an unconfirmed one or a lost fence propagates. */
 export function execOrcadRemoteOr(
   target: OrcadRemoteExecTarget,
   command: string,
   fallback = ''
 ): Promise<string> {
   return execOrcadRemote(target, command).catch((error: unknown) => {
-    if (isUnconfirmedSshCommandTermination(error)) {
+    if (isUnconfirmedSshCommandTermination(error) || error instanceof OrcadFenceLostError) {
       throw error
     }
     return fallback
@@ -103,7 +133,7 @@ export async function launchOrcadAndAwaitReadiness(
         orcadReadinessWaitCommand(target.host, spec.remoteInstallDir, waitSeconds)
       )
     } catch (error) {
-      if (isUnconfirmedSshCommandTermination(error)) {
+      if (isUnconfirmedSshCommandTermination(error) || error instanceof OrcadFenceLostError) {
         throw error
       }
       // Why retry: a failed read (a refused channel, a timed-out wait) says nothing about the
