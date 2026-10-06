@@ -103,6 +103,12 @@ describe('SSH retained payload admission', () => {
         ?.managedServer
     ).toEqual({ ...relay, offerMove: true })
     expect(
+      admitSshConnectionState(
+        { ...state, managedServer: { ...relay, terminalsElsewhere: true } },
+        'ssh-a'
+      )?.managedServer
+    ).toEqual({ ...relay, terminalsElsewhere: true })
+    expect(
       admitSshConnectionState({ ...state, managedServer: { ...relay, offerMove: 'yes' } }, 'ssh-a')
         ?.managedServer
     ).toEqual(relay)

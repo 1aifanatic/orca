@@ -309,6 +309,8 @@ export type SshManagedServerStatus =
       terminals?: number
       /** Show the one-time offer to move now, restarting those terminals. */
       offerMove?: boolean
+      /** Those terminals belong to another Orca desktop or session, so this one offers no move. */
+      terminalsElsewhere?: boolean
     }
 
 /** Plain SSH terminals and SFTP browsing only; `reason` is the ladder's classified cause. */

@@ -245,7 +245,13 @@ describe('re-checking relay terminals once the relay session is up', () => {
         censusHost: async () => ({ verdict: 'live', count: 1 }),
         isCurrent: () => true
       })
-    ).resolves.toEqual({ route: 'relay', reason: 'relay_terminals_live', terminals: 1 })
+    ).resolves.toEqual({
+      route: 'relay',
+      reason: 'relay_terminals_live',
+      terminals: 1,
+      // Neither relay of this target lists it, so no move is offered for another desktop's shell.
+      terminalsElsewhere: true
+    })
     expect(upgraded.markSshRemotePtyLease).not.toHaveBeenCalled()
   })
 })

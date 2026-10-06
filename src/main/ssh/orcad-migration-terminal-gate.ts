@@ -128,6 +128,14 @@ async function hostWideVerdict(
 }
 
 /**
+ * Only the host-wide census counted them: no lease or listing of this target names one, so they
+ * run under another desktop's target or session and stopping this target's terminals can't end them.
+ */
+export function terminalsRunElsewhere(proof: OrcadMigrationTerminalVerdict): boolean {
+  return proof.verdict !== 'exited' && proof.ptyIds.length === 0 && (proof.hostTerminals ?? 0) > 0
+}
+
+/**
  * Whoever acts on an exited proof (a move, or a connect whose relay session answered) marks the
  * detached and expired leases it covers terminated, so later checks stop reading them as running
  * or unverifiable and the next connect can convert.

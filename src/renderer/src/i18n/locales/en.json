@@ -12535,7 +12535,9 @@
           "updateDeferredLater": "Runs a managed Orca server; it updates on a later connect.",
           "updateFailedPrevious": "Runs a managed Orca server on its previous version; updating it failed.",
           "terminalsLiveUncounted": "Runs the relay until its open terminals are closed, then moves to a managed server.",
-          "refusedBlocked": "Not moved to a managed server: something on this host stops the move."
+          "refusedBlocked": "Not moved to a managed server: something on this host stops the move.",
+          "terminalsElsewhere": "Runs the relay while {{count}} terminals another Orca desktop or session opened on this host are running.",
+          "terminalsElsewhereUncounted": "Runs the relay while terminals another Orca desktop or session opened on this host are running."
         },
         "ZcodePlanAccountsSection": {
           "site": {

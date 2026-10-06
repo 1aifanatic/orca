@@ -18,6 +18,7 @@ import { detectRemoteHostPlatform } from './ssh-remote-platform-detection'
 import { isWindowsRemoteHost, normalizeRemoteHome, validateRemoteHome } from './ssh-remote-platform'
 import {
   assessOrcadMigrationTerminals,
+  terminalsRunElsewhere,
   type HostRelayTerminalProof,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
@@ -37,7 +38,11 @@ export async function relayTerminalsOnConnect(args: {
   )
   return proof.verdict === 'exited'
     ? { verdict: 'exited', count: 0 }
-    : { verdict: proof.verdict, count: proof.ptyIds.length || (proof.hostTerminals ?? 0) }
+    : {
+        verdict: proof.verdict,
+        count: proof.ptyIds.length || (proof.hostTerminals ?? 0),
+        ...(terminalsRunElsewhere(proof) ? { elsewhere: true } : {})
+      }
 }
 
 /** Only a listing that found no endpoint, or only idle ones, proves exit; `unenumerable` does not. */

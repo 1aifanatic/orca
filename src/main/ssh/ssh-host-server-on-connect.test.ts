@@ -73,6 +73,15 @@ describe('which server an SSH host runs on connect', () => {
       })
       expect(d.convert).not.toHaveBeenCalled()
     }
+    const elsewhere = deps({
+      relayTerminals: async () => ({ verdict: 'live', count: 1, elsewhere: true })
+    })
+    await expect(resolveHostServerOnConnect(target, elsewhere)).resolves.toEqual({
+      route: 'relay',
+      reason: 'relay_terminals_live',
+      terminals: 1,
+      terminalsElsewhere: true
+    })
     const raced = deps({
       convert: async () => ({
         outcome: 'refused',

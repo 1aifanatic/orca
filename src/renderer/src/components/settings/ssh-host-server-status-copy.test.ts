@@ -102,6 +102,21 @@ describe('SSH host server status line', () => {
     })
   })
 
+  it('names terminals another desktop runs, with no move action', () => {
+    const line = sshHostServerStatusLine(plain, {
+      managedServer: {
+        kind: 'relay',
+        reason: 'relay_terminals_live',
+        terminals: 1,
+        terminalsElsewhere: true
+      }
+    })
+    expect(line?.text).toBe(
+      'Runs the relay while 1 terminals another Orca desktop or session opened on this host are running.'
+    )
+    expect(line).not.toHaveProperty('action')
+  })
+
   it('keeps durable reasons visible without a live state', () => {
     expect(sshHostServerStatusLine({ orcadFence: { environmentId: 'e' } }, undefined)?.text).toBe(
       'Runs a managed Orca server'
