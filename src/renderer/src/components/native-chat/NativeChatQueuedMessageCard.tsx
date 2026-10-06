@@ -162,8 +162,8 @@ export function NativeChatQueuedMessageCard({
   const returned = card.state === 'returned'
   const sendNow = queuedMessageCardSendNow(card)
   const isMac = isMacPlatform()
-  // A clipped line opens in place: a card can hold text the person never typed (another agent's
-  // message), and Steer or Delete must not be a blind choice.
+  // A clipped line opens below the row, at the card's full width: a card can hold text the person
+  // never typed (another agent's message), and Steer or Delete must not be a blind choice.
   const [expanded, setExpanded] = useState(false)
   const [clipped, measureLine] = useNativeChatClippedLine(false)
   const textId = useId()
@@ -172,114 +172,122 @@ export function NativeChatQueuedMessageCard({
     <li
       data-queued-message-id={card.messageId}
       data-queued-message-state={card.state}
-      className={cn('flex gap-2 px-2.5 py-1.5', expanded ? 'items-start' : 'items-center')}
+      className="px-2.5 py-1.5"
     >
-      {returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED ? (
-        <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden />
-      ) : (
-        <ListEnd className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      )}
-      <div className="min-w-0 flex-1">
-        {card.from ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {queuedCardSenderLine(card.from)}
-          </p>
-        ) : null}
-        {expanded ? (
-          <p
-            id={textId}
-            className="scrollbar-sleek max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm"
-          >
-            {card.text}
-          </p>
+      <div className="flex items-center gap-2">
+        {returned || card.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED ? (
+          <AlertCircle className="size-3.5 shrink-0 text-destructive" aria-hidden />
         ) : (
-          <p id={textId} ref={measureLine} className="truncate text-sm" title={card.text}>
-            {card.text}
-          </p>
+          <ListEnd className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         )}
-        {caption ? (
-          <p
-            className={
-              returned
-                ? 'truncate text-xs text-destructive'
-                : 'truncate text-xs text-muted-foreground'
-            }
-          >
-            {caption}
-          </p>
-        ) : null}
-      </div>
-      {expanded || clipped ? (
-        <QueuedMessageExpandToggle
-          expanded={expanded}
-          controls={textId}
-          onToggle={() => setExpanded(!expanded)}
-        />
-      ) : null}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button type="button" variant="ghost" size="xs" onClick={onSteer} disabled={steerHeld}>
-            {sendNow.steers ? <CornerDownRight className="size-3" /> : <Send className="size-3" />}
-            {sendNow.label}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={4}>
-          <span className="flex items-center gap-2">
-            <span>{sendNow.hint}</span>
-            {showsSteerShortcut ? (
-              <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
-            ) : null}
-          </span>
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={translate('components.native-chat.queuedMessages.delete', 'Delete')}
-            onClick={onDelete}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={4}>
-          {translate('components.native-chat.queuedMessages.delete', 'Delete')}
-        </TooltipContent>
-      </Tooltip>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={translate(
-              'components.native-chat.queuedMessages.moreActions',
-              'More actions'
-            )}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onEdit} disabled={editHold !== null}>
-            <Pencil />
-            <span className="flex flex-col">
-              {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
-              {editHold ? <span>{editHold}</span> : null}
-            </span>
-          </DropdownMenuItem>
-          {onTurnOffQueueing ? (
-            <DropdownMenuItem onSelect={onTurnOffQueueing}>
-              {translate(
-                'components.native-chat.queuedMessages.turnOffQueueing',
-                'Turn off queueing'
-              )}
-            </DropdownMenuItem>
+        <div className="min-w-0 flex-1">
+          {card.from ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {queuedCardSenderLine(card.from)}
+            </p>
           ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          {expanded ? null : (
+            <p ref={measureLine} className="truncate text-sm" title={card.text}>
+              {card.text}
+            </p>
+          )}
+          {caption ? (
+            <p
+              className={
+                returned
+                  ? 'truncate text-xs text-destructive'
+                  : 'truncate text-xs text-muted-foreground'
+              }
+            >
+              {caption}
+            </p>
+          ) : null}
+        </div>
+        {expanded || clipped ? (
+          <QueuedMessageExpandToggle
+            expanded={expanded}
+            controls={textId}
+            onToggle={() => setExpanded(!expanded)}
+          />
+        ) : null}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="xs" onClick={onSteer} disabled={steerHeld}>
+              {sendNow.steers ? (
+                <CornerDownRight className="size-3" />
+              ) : (
+                <Send className="size-3" />
+              )}
+              {sendNow.label}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            <span className="flex items-center gap-2">
+              <span>{sendNow.hint}</span>
+              {showsSteerShortcut ? (
+                <ShortcutKeyCombo keys={[isMac ? '⌘' : 'Ctrl', isMac ? '⏎' : 'Enter']} />
+              ) : null}
+            </span>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={translate('components.native-chat.queuedMessages.delete', 'Delete')}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            {translate('components.native-chat.queuedMessages.delete', 'Delete')}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={translate(
+                'components.native-chat.queuedMessages.moreActions',
+                'More actions'
+              )}
+            >
+              <MoreHorizontal className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onEdit} disabled={editHold !== null}>
+              <Pencil />
+              <span className="flex flex-col">
+                {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
+                {editHold ? <span>{editHold}</span> : null}
+              </span>
+            </DropdownMenuItem>
+            {onTurnOffQueueing ? (
+              <DropdownMenuItem onSelect={onTurnOffQueueing}>
+                {translate(
+                  'components.native-chat.queuedMessages.turnOffQueueing',
+                  'Turn off queueing'
+                )}
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {expanded ? (
+        // Indented to the text, past the icon slot and its gap.
+        <p
+          id={textId}
+          className="scrollbar-sleek mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words pl-5.5 text-sm"
+        >
+          {card.text}
+        </p>
+      ) : null}
     </li>
   )
 }

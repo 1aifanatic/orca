@@ -336,11 +336,16 @@ describe('NativeChatQueuedMessageList', () => {
         .getByRole('button', { name: 'Steer' })
         .querySelector('.lucide-corner-down-right')
     ).not.toBeNull()
-    expect(waiting!.firstElementChild?.classList.contains('lucide-list-end')).toBe(true)
+    // The card's row (its first child) leads with the glyph.
+    expect(
+      waiting!.firstElementChild?.firstElementChild?.classList.contains('lucide-list-end')
+    ).toBe(true)
     expect(
       within(failed!).getByRole('button', { name: 'Send' }).querySelector('.lucide-send')
     ).not.toBeNull()
-    expect(failed!.firstElementChild?.classList.contains('lucide-circle-alert')).toBe(true)
+    expect(
+      failed!.firstElementChild?.firstElementChild?.classList.contains('lucide-circle-alert')
+    ).toBe(true)
     expect(container.querySelectorAll('.lucide-list-end')).toHaveLength(1)
   })
 
@@ -516,6 +521,8 @@ describe('NativeChatQueuedMessageList', () => {
       expect(whole?.textContent).toBe(text)
       expect(whole?.className).toContain('whitespace-pre-wrap')
       expect(whole?.className).not.toContain('truncate')
+      // Opened below the row, at the card's width, not squeezed beside its actions.
+      expect(whole?.parentElement?.tagName).toBe('LI')
       fireEvent.click(fold)
       expect(screen.getByRole('button', { name: 'Show full message' })).toBeTruthy()
     } finally {
