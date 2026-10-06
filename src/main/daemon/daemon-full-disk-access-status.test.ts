@@ -55,9 +55,3 @@ it('includes the in-process host used for fresh terminals in degraded mode', asy
   expect(await getTerminalHostsFullDiskAccessStatus()).toBe('denied')
   expect(localStatus).toHaveBeenCalledTimes(1)
 })
-
-it.each(['win32', 'linux'] as const)('does not probe %s hosts', async (platform) => {
-  vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-  expect(await getTerminalHostsFullDiskAccessStatus()).toBe('unsupported')
-  expect(current.getFullDiskAccessStatus).not.toHaveBeenCalled()
-})

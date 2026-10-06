@@ -379,16 +379,15 @@ export function DeveloperPermissionsPane({
                           'Terminal hosts: '
                         )}
                         {developerPermissionStatusLabel(permission.id, state.terminalHostStatus)}
-                        {state.terminalHostStatus !== 'granted' &&
-                          state.terminalHostStatus !== 'unsupported' && (
-                            <>
-                              {' '}
-                              {translate(
-                                'auto.components.settings.DeveloperPermissionsPane.terminalHostRecovery',
-                                'If a terminal cannot read protected files, save its work and close it in Terminal → Manage Sessions. Restart the daemon if new terminals are also affected; restarting closes its current terminals.'
-                              )}
-                            </>
-                          )}
+                        {state.terminalHostStatus !== 'granted' && (
+                          <>
+                            {' '}
+                            {translate(
+                              'auto.components.settings.DeveloperPermissionsPane.terminalHostRecovery',
+                              'If a terminal cannot read protected files, save its work and close it in Terminal → Manage Sessions. Restart the daemon if new terminals are also affected; restarting closes its current terminals.'
+                            )}
+                          </>
+                        )}
                       </p>
                     )}
                   </div>
