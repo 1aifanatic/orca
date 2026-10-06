@@ -12,9 +12,7 @@ async function settleAndCapture(page: Page, testInfo: TestInfo, name: string): P
   await page.screenshot({ path: testInfo.outputPath(`${name}.png`) })
 }
 
-// A LaTeX build rewrites its PDF in place over several seconds; the editor's
-// external-change reload can pick up the half-written file before the final one.
-test('PDF preview survives a rebuild that is read half-written', async ({
+test('PDF preview recovers after repeated failed refreshes without showing old pages', async ({
   orcaPage,
   electronApp,
   seededRepoPath,
@@ -48,16 +46,21 @@ test('PDF preview survives a rebuild that is read half-written', async ({
   await expect(error).toBeHidden()
   await expect(pages).toHaveCount(3)
 
-  // The next build reads half-written again: the last good PDF stays on screen.
+  // A failed refresh must not leave pages from the previous contents visible.
   const firstPage = pages.first().locator('.textLayer')
   writeFileSync(filePath, halfWritten)
-  await settleAndCapture(orcaPage, testInfo, '2-rebuild-in-progress')
-  await expect(error).toBeHidden()
-  await expect(firstPage).toContainText('PDF search fixture - page 1')
+  await expect(error).toBeVisible()
+  await expect(pages).toHaveCount(0)
+  await settleAndCapture(orcaPage, testInfo, '2-failed-refresh')
+
+  writeFileSync(filePath, '')
+  await expect(error).toBeVisible()
+  await expect(pages).toHaveCount(0)
 
   // A distinct finished build, so the swap to the new document is observable.
   writeFileSync(filePath, createPdfFindFixture({ title: 'Next build' }))
   await expect(firstPage).toContainText('Next build - page 1')
+  await expect(error).toBeHidden()
   await orcaPage.screenshot({ path: testInfo.outputPath('3-next-build.png') })
   const windows = await electronApp.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((window) => ({

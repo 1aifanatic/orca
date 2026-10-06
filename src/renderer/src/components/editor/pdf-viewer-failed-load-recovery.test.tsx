@@ -152,7 +152,7 @@ describe('PdfViewer when the file is rewritten', () => {
     expect(shownDocuments.at(-1)).toBe(finished)
   })
 
-  it('keeps showing the last good version while a rebuild writes a broken one', async () => {
+  it('clears the previous version and reports a broken rewrite, then recovers', async () => {
     const previous = { name: 'previous build' }
     const next = { name: 'next build' }
     getDocument
@@ -163,13 +163,12 @@ describe('PdfViewer when the file is rewritten', () => {
     await waitFor(() => expect(shownDocuments.at(-1)).toBe(previous))
 
     view.rerender(<PdfViewer content={btoa('%PDF v2 half-written')} filePath="out/main.pdf" />)
-    await waitFor(() => expect(getDocument).toHaveBeenCalledTimes(2))
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(view.queryByText(ERROR_TEXT)).toBeNull()
-    expect(shownDocuments.at(-1)).toBe(previous)
+    await waitFor(() => expect(view.queryByText(ERROR_TEXT)).toBeTruthy())
+    expect(shownDocuments.at(-1)).toBeNull()
 
     view.rerender(<PdfViewer content={btoa('%PDF v2 finished')} filePath="out/main.pdf" />)
     await waitFor(() => expect(shownDocuments.at(-1)).toBe(next))
+    expect(view.queryByText(ERROR_TEXT)).toBeNull()
   })
 
   it('does not keep another file on screen when the newly opened one fails', async () => {
@@ -202,18 +201,26 @@ describe('PdfViewer when the file is rewritten', () => {
     expect(pending.destroy).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the document when its own file reads empty mid-rebuild', async () => {
-    const previous = { name: 'previous build' }
-    getDocument.mockImplementationOnce(() => loadingTask(previous))
-    const view = render(<PdfViewer content={btoa('%PDF v1')} filePath="out/main.pdf" />)
-    await waitFor(() => expect(shownDocuments.at(-1)).toBe(previous))
+  it.each([
+    { content: '', error: ERROR_TEXT, label: 'empty' },
+    { content: '%%%', error: 'Failed to decode PDF content', label: 'invalid base64' }
+  ])(
+    'clears its previous document when rewritten with $label content',
+    async ({ content, error }) => {
+      const previous = { name: 'previous build' }
+      const task = loadingTask(previous)
+      getDocument.mockImplementationOnce(() => task)
+      const view = render(<PdfViewer content={btoa('%PDF v1')} filePath="out/main.pdf" />)
+      await waitFor(() => expect(shownDocuments.at(-1)).toBe(previous))
 
-    view.rerender(<PdfViewer content="" filePath="out/main.pdf" />)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+      view.rerender(<PdfViewer content={content} filePath="out/main.pdf" />)
 
-    expect(shownDocuments.at(-1)).toBe(previous)
-    expect(view.queryByText(ERROR_TEXT)).toBeNull()
-  })
+      expect(shownDocuments.at(-1)).toBeNull()
+      expect(view.queryByText(error)).toBeTruthy()
+      expect(task.destroy).toHaveBeenCalledTimes(1)
+      expect(getDocument).toHaveBeenCalledTimes(1)
+    }
+  )
 
   it('does not keep another file on screen when the newly opened one is empty', async () => {
     getDocument.mockImplementationOnce(() => loadingTask({ name: 'a.pdf' }))
@@ -223,7 +230,26 @@ describe('PdfViewer when the file is rewritten', () => {
     view.rerender(<PdfViewer content="" filePath="empty.pdf" />)
 
     await waitFor(() => expect(shownDocuments.at(-1)).toBeNull())
+    expect(view.queryByText(ERROR_TEXT)).toBeTruthy()
+  })
+
+  it('recovers after a failed load followed by an empty rewrite', async () => {
+    const finished = { name: 'finished' }
+    getDocument
+      .mockImplementationOnce(() => loadingTask('fail'))
+      .mockImplementationOnce(() => loadingTask(finished))
+    const view = render(<PdfViewer content={btoa('%PDF broken')} filePath="out/main.pdf" />)
+    await waitFor(() => expect(view.queryByText(ERROR_TEXT)).toBeTruthy())
+    const container = view.container.querySelector('.pdfViewer')
+
+    view.rerender(<PdfViewer content="" filePath="out/main.pdf" />)
+    expect(view.queryByText(ERROR_TEXT)).toBeTruthy()
+    expect(getDocument).toHaveBeenCalledTimes(1)
+    view.rerender(<PdfViewer content={btoa('%PDF finished')} filePath="out/main.pdf" />)
+
+    await waitFor(() => expect(shownDocuments.at(-1)).toBe(finished))
     expect(view.queryByText(ERROR_TEXT)).toBeNull()
+    expect(view.container.querySelector('.pdfViewer')).toBe(container)
   })
 
   it('recovers after invalid base64 without remounting the preview container', async () => {
@@ -381,7 +407,7 @@ describe('PdfViewer when the file is rewritten', () => {
     }
   )
 
-  it('keeps the displayed task alive while loading and releases it after replacement', async () => {
+  it('detaches before loading a replacement and restores the prior scroll and zoom', async () => {
     const previous = { name: 'previous' }
     const previousTask = loadingTask(previous)
     let shownOnDestroy: unknown
@@ -390,7 +416,13 @@ describe('PdfViewer when the file is rewritten', () => {
       return Promise.resolve()
     })
     const nextTask = pendingTask()
-    getDocument.mockImplementationOnce(() => previousTask).mockImplementationOnce(() => nextTask)
+    let parsedAfterDestroy = false
+    getDocument
+      .mockImplementationOnce(() => previousTask)
+      .mockImplementationOnce(() => {
+        parsedAfterDestroy = previousTask.destroy.mock.calls.length === 1
+        return nextTask
+      })
     const view = render(
       <PdfViewer
         content={btoa('%PDF previous')}
@@ -400,16 +432,17 @@ describe('PdfViewer when the file is rewritten', () => {
     )
     await waitFor(() => expect(shownDocuments.at(-1)).toBe(previous))
     eventBuses.at(-1)?.dispatch('pagesinit', { scale: 1 })
-    view.rerender(
-      <PdfViewer content={btoa('%PDF next')} filePath="out/main.pdf" scrollCacheKey="main:pdf" />
-    )
-    expect(shownDocuments.at(-1)).toBe(previous)
-    expect(previousTask.destroy).not.toHaveBeenCalled()
-    expect(viewerSignals.at(-1)?.aborted).toBe(false)
-
     fireEvent.click(view.getByTitle('Zoom in'))
     const position = { pageNumber: 7, top: 420, left: 12 }
     eventBuses.at(-1)?.dispatch('updateviewarea', { scale: 1.25, location: position })
+    view.rerender(
+      <PdfViewer content={btoa('%PDF next')} filePath="out/main.pdf" scrollCacheKey="main:pdf" />
+    )
+    expect(shownDocuments.at(-1)).toBeNull()
+    expect(previousTask.destroy).toHaveBeenCalledTimes(1)
+    expect(parsedAfterDestroy).toBe(true)
+    expect(viewerSignals.at(-1)?.aborted).toBe(true)
+    expect(shownOnDestroy).toBeNull()
     const next = { name: 'next' }
     await finishTask(nextTask, next)
     eventBuses.at(-1)?.dispatch('pagesinit', { scale: 1.25 })
@@ -417,7 +450,6 @@ describe('PdfViewer when the file is rewritten', () => {
     expect(viewers.at(-1)?.currentScale).toBe(1.25)
     expect(previousTask.destroy).toHaveBeenCalledTimes(1)
     expect(viewerSignals[0]?.aborted).toBe(true)
-    expect(shownOnDestroy).toBe(next)
     expect(pdfViewPositionCache.get('main:pdf')).toEqual(position)
     expect(scrollDestinations.at(-1)).toMatchObject({
       pageNumber: 7,
@@ -499,17 +531,22 @@ describe('PdfViewer when the file is rewritten', () => {
         view.rerender(<PdfViewer content={btoa(`%PDF rewrite ${index}`)} filePath="out/main.pdf" />)
         await Promise.resolve()
       })
-      expect(activeTasks).toBe(1)
-      expect(viewerSignals.filter((signal) => !signal.aborted)).toHaveLength(1)
+      const live = index % 2 === 0 ? 0 : 1
+      expect(activeTasks).toBe(live)
+      expect(viewerSignals.filter((signal) => !signal.aborted)).toHaveLength(live)
       peakLocalization = Math.max(
         peakLocalization,
         localizationResources.filter((resource) => resource.active).length
       )
-      expect(eventBuses.slice(0, -1).every((bus) => bus.listenerCount() === 0)).toBe(true)
-      expect(view.queryByText(ERROR_TEXT)).toBeNull()
+      expect(eventBuses.filter((bus) => bus.listenerCount() > 0)).toHaveLength(live)
+      if (live) {
+        expect(view.queryByText(ERROR_TEXT)).toBeNull()
+      } else {
+        expect(view.queryByText(ERROR_TEXT)).toBeTruthy()
+      }
     }
 
-    expect(peakTasks).toBe(2)
+    expect(peakTasks).toBe(1)
     expect(peakLocalization).toBe(1)
     expect(getDocument).toHaveBeenCalledTimes(51)
     expect(viewers).toHaveLength(26)

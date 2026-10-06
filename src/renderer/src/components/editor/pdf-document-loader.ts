@@ -26,9 +26,6 @@ export function createPdfDocumentLoader({
     }
   }
   const fail = (error: unknown): void => {
-    if (displayed) {
-      return
-    }
     onError(
       error instanceof Error && error.name === 'PasswordException'
         ? 'This PDF is password-protected'
@@ -45,20 +42,26 @@ export function createPdfDocumentLoader({
         destroy(pending)
         pending = null
       }
-      // Why: a rebuild can truncate the file before writing its next version.
-      if (!content) {
-        if (!displayed) {
-          onError(null)
+      const previous = displayed
+      displayed = null
+      try {
+        // Why: flush the reader's position before the replacement restores it.
+        previous?.detach()
+      } finally {
+        if (previous) {
+          destroy(previous.task)
         }
+      }
+      onError(null)
+      if (!content) {
+        onError('Failed to load PDF preview')
         return
       }
       let binary: string
       try {
         binary = window.atob(content)
       } catch {
-        if (!displayed) {
-          onError('Failed to decode PDF content')
-        }
+        onError('Failed to decode PDF content')
         return
       }
       const bytes = new Uint8Array(binary.length)
@@ -80,20 +83,12 @@ export function createPdfDocumentLoader({
             return
           }
           pending = null
-          const previous = displayed
-          displayed = null
           try {
-            // Why: detach flushes the latest scroll position before the replacement restores it.
-            previous?.detach()
             displayed = { task, detach: display(doc) }
             onError(null)
           } catch (error) {
             destroy(task)
             fail(error)
-          } finally {
-            if (previous) {
-              destroy(previous.task)
-            }
           }
         },
         (error: unknown) => {
