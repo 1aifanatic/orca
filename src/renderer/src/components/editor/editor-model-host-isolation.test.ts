@@ -258,6 +258,7 @@ describe('same-path models on different execution hosts', () => {
     }
     const detach = attachModelLifetimeView(local.model)
     edit(runtime.model, 'runtime independent edit')
+    store.setState({ editorDrafts: { [runtime.file.id]: 'runtime independent edit' } })
     attach()
     store.setState({
       openFiles: store

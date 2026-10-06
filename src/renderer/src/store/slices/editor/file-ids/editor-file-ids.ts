@@ -5,6 +5,8 @@ import { toSshExecutionHostId } from '../../../../../../shared/execution-host'
 import { areLocalWindowsWslPathAliases } from '../../../../../../shared/cross-platform-path'
 import { editorDocumentIdentityKey, runtimeOwnerKey } from './editor-document-identity'
 import { getConnectionIdForFileFromState } from '@/lib/connection-owner-resolution'
+import { getEditorModelOwnerKey } from '@/components/editor/editor-model-owner'
+import type { WorktreeOperationRouteState } from '@/lib/worktree-operation-route'
 import { isLocalWindowsDesktopClient } from '@/lib/desktop-window-chrome'
 
 export function isSameEditorOwner(
@@ -134,26 +136,22 @@ export function getReusableOpenFileModes(mode: OpenFile['mode']): readonly OpenF
  */
 export function collectSameDocumentOpenFileIds(
   openFiles: readonly OpenFile[],
-  file: Pick<
-    OpenFile,
-    | 'id'
-    | 'filePath'
-    | 'worktreeId'
-    | 'runtimeEnvironmentId'
-    | 'externalSshTargetId'
-    | 'readOnly'
-    | 'liveTail'
-    | 'mode'
-  >
+  file: OpenFile,
+  state?: WorktreeOperationRouteState
 ): Set<string> {
   const fileIds = new Set<string>([file.id])
   if (file.mode !== 'edit') {
     return fileIds
   }
-  const identity = editorDocumentIdentityKey(file)
+  const closeIdentity = (candidate: OpenFile): string =>
+    JSON.stringify([
+      editorDocumentIdentityKey(candidate),
+      state ? getEditorModelOwnerKey(candidate, state) : null
+    ])
+  const identity = closeIdentity(file)
   const modes = getReusableOpenFileModes(file.mode)
   for (const candidate of openFiles) {
-    if (matchesEditorMode(candidate, modes) && editorDocumentIdentityKey(candidate) === identity) {
+    if (matchesEditorMode(candidate, modes) && closeIdentity(candidate) === identity) {
       fileIds.add(candidate.id)
     }
   }
