@@ -173,7 +173,9 @@ export async function resolveRuntimeLocalWorktreeCreateCandidate(args: {
         continue
       }
     }
-    if (!checkoutExistingBranch && !selectedReviewConflictMatched) {
+    // Why: the PR lookup is a ~1–3 s network call; probe only after a branch collision (suffix > 1),
+    // as the desktop create does, so the common no-collision create skips it.
+    if (suffix > 1 && !checkoutExistingBranch && !selectedReviewConflictMatched) {
       let existingPR: Awaited<ReturnType<typeof getPRForBranch>> | null = null
       try {
         existingPR = await getLocalGitHubPrForBranch(

@@ -278,7 +278,8 @@ describe('runtime create Git priority', () => {
       )
       expect(mocks.canCheckout).toHaveBeenCalledWith('/repo', 'app', 'main', options)
       expect(mocks.branchConflict).toHaveBeenCalledWith('/repo', 'app', 'main', options, undefined)
-      expect(mocks.githubPr).toHaveBeenCalledWith('/repo', 'app', routing)
+      // No collision, so no PR lookup; its routing is pinned by the collision case below.
+      expect(mocks.githubPr).not.toHaveBeenCalled()
       expect(mocks.remoteBase).toHaveBeenCalledWith('/repo', 'main', options)
       expect(mocks.hasBase).toHaveBeenCalledWith('/repo', 'main', options)
       expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ options }))
@@ -346,4 +347,30 @@ describe('runtime create Git priority', () => {
     )
     expect(mocks.consume).not.toHaveBeenCalled()
   })
+})
+
+describe('runtime create PR conflict probe', () => {
+  it('skips the PR lookup when the first name has no branch collision', async () => {
+    await createWorktree()
+
+    expect(mocks.githubPr).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, 'Ubuntu'])(
+    'probes the next name for a PR once the first name collides, routed for %s',
+    async (wslDistro) => {
+      const routing = wslDistro ? { wslDistro } : {}
+      mocks.routing.mockReturnValue(routing)
+      mocks.branchName.mockImplementation(async (_path, _override, name: string) => name)
+      mocks.branchConflict.mockResolvedValueOnce('local').mockResolvedValue(null)
+
+      await createWorktree()
+
+      expect(mocks.githubPr).toHaveBeenCalledOnce()
+      const [repoPath, branch, options] = mocks.githubPr.mock.calls[0] ?? []
+      expect(repoPath).toBe('/repo')
+      expect(branch).not.toBe('app')
+      expect(options).toEqual(routing)
+    }
+  )
 })
