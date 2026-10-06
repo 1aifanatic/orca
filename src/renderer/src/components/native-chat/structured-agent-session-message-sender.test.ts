@@ -451,6 +451,25 @@ describe('structured agent session message sender', () => {
     expect(sendCalls()).toBe(1)
   })
 
+  // Bookkeeping never gates a send: a hand-back that throws still frees the chat, and says so.
+  it('frees the chat and answers the caller when putting the text back throws', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mocks.handBack.mockImplementationOnce(() => {
+      throw new Error('draft write failed')
+    })
+    mocks.call.mockRejectedValueOnce(new Error('connection closed'))
+    const a = send('a')
+    expect(await a.outcome).toBe('unconfirmed')
+    expect(structuredAgentSessionSendOut(SESSION)).toBe(false)
+    expect(phases()).toEqual([])
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toContain("Couldn't save your message.")
+    expect(report).toHaveBeenCalledTimes(1)
+    report.mockRestore()
+    deferredCalls()
+    send('b')
+    expect(phases()).toEqual(['b:sending'])
+  })
+
   it('never holds a later send behind one nobody answered', async () => {
     mocks.call.mockRejectedValueOnce(new Error('timeout')).mockRejectedValue(new Error('timeout'))
     send('a')

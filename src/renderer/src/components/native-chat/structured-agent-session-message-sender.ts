@@ -73,25 +73,42 @@ function finish(
   updateStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId, keep ?? null)
 }
 
-function handBack(
-  entry: StructuredAgentSessionPendingSend,
-  notice: readonly AgentSessionWriteNoticePart[] | null
-): void {
-  const chatTakesText = !entry.callerKeepsText
-  if (chatTakesText) {
+/** Puts the text back in the chat's composer; false, reported, when the draft write threw. */
+function returnToComposer(entry: StructuredAgentSessionPendingSend): boolean {
+  try {
     handBackStructuredAgentSessionMessage(
       entry.sessionId,
       entry.clientMessageId,
       entry.body,
       entry.imageConnectionIds
     )
+    return true
+  } catch (error) {
+    console.error('[native-chat-send] a message could not be put back in the composer', error)
+    return false
   }
-  if (notice && chatTakesText) {
-    publishStructuredAgentSessionSends(entry.sessionId, {
-      notice: agentSessionWriteNoticeText([...notice])
-    })
+}
+
+function handBack(
+  entry: StructuredAgentSessionPendingSend,
+  notice: readonly AgentSessionWriteNoticePart[] | null
+): void {
+  try {
+    if (entry.callerKeepsText) {
+      return
+    }
+    const parts: readonly AgentSessionWriteNoticePart[] | null = returnToComposer(entry)
+      ? notice
+      : [...(notice ?? []), 'messageNotSaved']
+    if (parts) {
+      publishStructuredAgentSessionSends(entry.sessionId, {
+        notice: agentSessionWriteNoticeText([...parts])
+      })
+    }
+  } finally {
+    // Bookkeeping never holds the chat: whatever the hand-back met, the send ends.
+    finish(entry, notice?.includes('sendOutcomeLost') ? 'unconfirmed' : 'returned')
   }
-  finish(entry, notice?.includes('sendOutcomeLost') ? 'unconfirmed' : 'returned')
 }
 
 /** Settled by the host's answer, from the send's own reply or the journal, whichever comes first. */
