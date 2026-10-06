@@ -1,6 +1,8 @@
 import type { AgentJournalCursor, AgentJournalTurnOutcome } from './agent-session-journal-types'
 import type { AgentSessionExecutionLocation } from './agent-session-record'
 
+// Turn completion feed: the per-turn EDGE beside the status feed's STATE.
+
 /**
  * The session's latest request reaching a terminal outcome — a root turn, or a send the agent or
  * its start refused — derived by the EXECUTION HOST at journal commit.

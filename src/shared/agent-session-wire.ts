@@ -12,6 +12,7 @@ import type {
 
 export * from './agent-session-wire-refusals'
 export * from './agent-session-queued-message-wire'
+export * from './agent-session-turn-completion-wire'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
 import type { AgentSessionContextUsage } from './agent-session-context-usage'
 // ─── Structured agent-session wire contract ─────────────────────────────────
@@ -286,14 +287,6 @@ export type AgentSessionStatusEvent =
   | { type: 'snapshot'; sessions: AgentSessionStatusSummary[] }
   | { type: 'status'; session: AgentSessionStatusSummary }
   | { type: 'end' }
-
-// ─── Turn completion feed ───────────────────────────────────────────────────
-
-export type {
-  AgentSessionTurnCompletion,
-  AgentSessionPromptAttention,
-  AgentSessionTurnCompletionEvent
-} from './agent-session-attention-wire'
 
 // ─── Mutation envelope ──────────────────────────────────────────────────────
 
