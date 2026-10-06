@@ -14,7 +14,7 @@ import {
 } from 'node:fs'
 import { builtinModules, createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { build as buildVite } from 'vite'
 import { resolveElectronProbeLaunch } from '../browser/electron-probe-display-launch'
@@ -27,11 +27,7 @@ import {
   createSharedControlTestServer
 } from '../../shared/remote-runtime-shared-control-test-server'
 
-// Why a real Electron process: the registration in `runtime-environments.ts` that hands the removal
-// watch its user-data path and its teardown only runs inside the shipped main process, and the
-// retirement rides the socket's own liveness timer. A vitest-only harness can reach neither, so
-// #20995 -- the CLI removes an environment and the app keeps the socket -- could only be reproduced
-// here. The store rewrite is issued from this process, which is what `orca environment rm` is.
+// The real CLI and a hidden Electron process exercise registration and socket retirement together.
 
 const electronBinary = resolveElectronBinary()
 const roots: string[] = []
@@ -141,6 +137,23 @@ describe('runtime environment removed by the CLI', () => {
       }
     })
 
+    await buildVite({
+      configFile: false,
+      logLevel: 'silent',
+      resolve: { conditions: ['node'] },
+      build: {
+        emptyOutDir: false,
+        lib: {
+          entry: join(process.cwd(), 'src/cli/index.ts'),
+          formats: ['cjs'],
+          fileName: () => 'orca-cli.cjs'
+        },
+        outDir: fixtureDir,
+        target: 'node20',
+        rollupOptions: { external: (id) => !isAbsolute(id) && !id.startsWith('.') }
+      }
+    })
+
     writeFileSync(
       join(fixtureDir, 'package.json'),
       '{ "name": "orca-cli-removal-fixture", "main": "main.js" }'
@@ -187,7 +200,7 @@ describe('runtime environment removed by the CLI', () => {
     const cli = await runProcess({
       program: process.execPath,
       args: [
-        join(process.cwd(), 'out/cli/index.js'),
+        join(fixtureDir, 'orca-cli.cjs'),
         'environment',
         'rm',
         '--environment',
