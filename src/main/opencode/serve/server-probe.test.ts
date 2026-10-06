@@ -21,7 +21,7 @@ const recordedV2: Record<string, RecordedResponse> = {
   '/global/health': html
 }
 
-function replay(responses: Record<string, RecordedResponse>) {
+function replay(responses: Readonly<Record<string, RecordedResponse | undefined>>) {
   const fetchImpl = vi.fn<typeof fetch>(async (url) => {
     const response = responses[new URL(String(url)).pathname] ?? html
     return new Response(response.body, {

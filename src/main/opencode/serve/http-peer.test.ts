@@ -60,9 +60,27 @@ describe('OpenCode HTTP peer', () => {
     failed.close()
   })
 
+  it('stops serializing a request at its byte limit before sending it', async () => {
+    let visits = 0
+    const body = Array.from({ length: 100 }, () => ({
+      toJSON() {
+        visits += 1
+        return 'value'
+      }
+    }))
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ok: true }))
+    const connection = peer(fetchImpl, { maxResponseBytes: 64 })
+    await expect(connection.request('/session', { method: 'POST', body })).rejects.toMatchObject({
+      kind: 'capacity'
+    })
+    expect(visits).toBeLessThan(body.length)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    connection.close()
+  })
+
   it('releases stalled request capacity on timeout and close, with no timers left', async () => {
     vi.useFakeTimers()
-    const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}))
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => {}))
     const connection = peer(fetchImpl, { maxPendingRequests: 1 })
     const first = expect(connection.request('/first', { timeoutMs: 20 })).rejects.toMatchObject({
       kind: 'transport'
@@ -179,7 +197,7 @@ describe('OpenCode event stream', () => {
 
   it('bounds event headers and silent streams and clears deadlines after cancellation', async () => {
     vi.useFakeTimers()
-    const never = peer(() => new Promise(() => {}))
+    const never = peer(() => new Promise<Response>(() => {}))
     const opening = expect(
       never.events('/event', async () => {}, new AbortController().signal)
     ).rejects.toMatchObject({ kind: 'transport' })

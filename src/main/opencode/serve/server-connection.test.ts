@@ -134,7 +134,7 @@ describe('chat-owned OpenCode server connection', () => {
 
   it('fails startup and pending HTTP on observed process exit without respawning', async () => {
     const fixture = managedChild()
-    const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}))
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => {}))
     const connection = new OpenCodeServerConnection(fixture.process, 48271, 'fixture', fetchImpl)
     const ready = expect(connection.waitUntilReady()).rejects.toThrow()
     fixture.exit()

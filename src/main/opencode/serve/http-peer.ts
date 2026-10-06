@@ -1,6 +1,10 @@
 import { OpenCodeHttpError, openCodeMediaType, readOpenCodeHttpText } from './http-response'
 import { OpenCodeSseFrames, type OpenCodeSseFrame } from './sse-frames'
 import { awaitOpenCodeHttp, openCodeHttpDeadline } from './http-lifetime'
+import {
+  JsonStringifyByteLimitError,
+  stringifyJsonWithinByteLimit
+} from '../../../shared/node-bounded-json-stringify'
 
 export type OpenCodeHttpPeerOptions = {
   port: number
@@ -58,9 +62,17 @@ export class OpenCodeHttpPeer {
     if (this.pending >= this.maxPendingRequests) {
       throw new OpenCodeHttpError('capacity', 'OpenCode HTTP request capacity exceeded')
     }
-    const body = request.body === undefined ? undefined : JSON.stringify(request.body)
-    if (body && Buffer.byteLength(body, 'utf8') > this.maxResponseBytes) {
-      throw new OpenCodeHttpError('capacity', 'OpenCode HTTP request exceeds limit')
+    let body: string | undefined
+    try {
+      body =
+        request.body === undefined
+          ? undefined
+          : stringifyJsonWithinByteLimit(request.body, this.maxResponseBytes).serialized
+    } catch (error) {
+      if (error instanceof JsonStringifyByteLimitError) {
+        throw new OpenCodeHttpError('capacity', 'OpenCode HTTP request exceeds limit')
+      }
+      throw new OpenCodeHttpError('invalid-response', 'OpenCode request is not serializable JSON')
     }
     const deadline = openCodeHttpDeadline(request.timeoutMs ?? this.requestTimeoutMs)
     const signal = AbortSignal.any([
