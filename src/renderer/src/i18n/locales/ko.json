@@ -11,6 +11,9 @@
     "retrying": "재시도 중…"
   },
   "settings": {
+    "chat": {
+      "description": "채팅 모양을 선택하세요."
+    },
     "terminal": {
       "optionLayoutAlt": "ABC 또는 U.S. — Option 키가 Alt/Esc 시퀀스를 전송합니다",
       "optionLayoutCompose": "이 배열에서는 Option 키로 @, €, [, ] 같은 문자를 입력합니다",
@@ -67,8 +70,7 @@
         "wide": "넓게",
         "full": "전체",
         "pixels": "px",
-        "reset": "초기화",
-        "summary": "{{fontSize}}px · {{width}} 너비"
+        "reset": "초기화"
       }
     },
     "browser": {
@@ -14347,18 +14349,11 @@
             "88ffb502e5": "Markdown 노트 열기",
             "629528690b": "새로운 Markdown 노트",
             "3215fc73e9": "새로운 Terminal",
-            "da508bd7f5": "저장",
-            "918c2139f3": "저장하지 않음",
-            "e7bf09d4d4": "취소",
-            "690b6fb98a": "저장되지 않은 변경사항",
             "bbc177f98f": "활성화",
             "adc281394d": "닫기",
             "8cf80db43b": "agents가 Orca를 통해 조정할 수 있도록 Orca CLI 및 agents 스킬을 설정합니다.",
             "2a3c5ddf5e": "오케스트레이션 활성화",
-            "d6b563ae24": "편집기 로드 중...",
             "8b14ba6c17": "새 브라우저 탭",
-            "b085fb58b5": "이 파일에는 저장되지 않은 변경사항이 있습니다.",
-            "5ddc688c52": "'{{value0}}'에 저장되지 않은 변경사항이 있습니다. 닫기 전에 저장하시겠습니까?",
             "25d7817f79": "터미널"
           },
           "FloatingTerminalToggleButton": {
@@ -17566,6 +17561,7 @@
       }
     },
     "native-chat": {
+      "reasoning": "추론",
       "contextMenu": {
         "copyOrcaSessionId": "Orca 세션 ID 복사",
         "orcaSessionIdCopied": "Orca 세션 ID를 복사했습니다",
@@ -17588,6 +17584,7 @@
         "managedAccountEnvOverride": "이 Claude 실행은 자체 Anthropic 로그인 변수를 설정합니다. 관리되는 Claude 계정을 사용하려면 해당 변수를 제거하세요.",
         "accountSwitchInProgress": "Claude 계정 전환이 진행 중입니다. 완료된 후 다시 시도하세요.",
         "managedAccountUnsupported": "WSL에 Claude 계정이 추가되어 있는 동안에는 Claude 채팅에 Windows Claude 계정이 필요합니다.",
+        "launchFolderMissing": "이 채팅이 실행되던 폴더가 더 이상 존재하지 않습니다. 이 채팅을 계속하려면 폴더를 복원하세요.",
         "chooseClaudeAccount": "Claude 계정 설정에서 선택하거나 추가하세요.",
         "chooseClaudeAccountThenRunCommand": "Claude 계정 설정에서 선택하거나 추가한 다음 /{{command}}을(를) 다시 실행하세요.",
         "chooseClaudeAccountThenSend": "Claude 계정 설정에서 선택하거나 추가한 다음 메시지를 다시 보내세요.",
@@ -17772,6 +17769,8 @@
         "moreCalls": "+{{value0}} 이상",
         "failedCount": "{{value0}} 실패",
         "failedCallsLabel": "도구 호출 실패: {{value0}}",
+        "interruptedCount": "{{value0}} 중단됨",
+        "interruptedCallsLabel": "중단된 도구 호출: {{value0}}",
         "runningPreview": "{{preview}} 실행 중",
         "runningCommand": "실행 명령",
         "runningNamedPreview": "{{toolName}} {{preview}} 실행 중",
@@ -17899,6 +17898,10 @@
       "loadingEarlier": "로드 중…",
       "loadEarlier": "이전 메시지 로드",
       "loadingEarlierMessages": "이전 메시지 로드 중…",
+      "prompt": {
+        "collapse": "접기",
+        "expand": "펼치기"
+      },
       "question": {
         "step": "{{value0}} 단계",
         "other": "다른…",
@@ -18092,6 +18095,7 @@
         "turnOffQueueing": "대기열 사용 안 함",
         "withdrawnHold": "전송 전에 중지됨",
         "pausedSendFailed": "보낼 수 없습니다. 보내기를 눌러 다시 시도하세요.",
+        "pausedKept": "아직 보내지 않았습니다. 보내기를 눌러 보내세요.",
         "paused": "일시 중지됨",
         "queuePausedStopped": "중단했기 때문에 대기열이 일시 중지되었습니다",
         "queuePausedRestarted": "Orca가 다시 시작되어 대기열이 일시 중지되었습니다",
@@ -18099,6 +18103,8 @@
         "queuePaused": "대기열이 일시 중지되었습니다",
         "resume": "재개"
       },
+      "thought": "생각함",
+      "thoughtForDuration": "{{duration}} 동안 생각함",
       "structuredSessionHostDeclined": "{{value0}}을(를) 터미널에서 열었습니다",
       "structuredSessionHostDeclinedDescription": "이 서버는 이 워크스페이스에서 {{value0}} 채팅을 실행할 수 없습니다.",
       "structuredSessionHostUnreachable": "{{value0}}에 연결할 수 없습니다",

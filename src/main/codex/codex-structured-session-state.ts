@@ -45,6 +45,15 @@ export type CodexStructuredLaunch = {
   env?: Record<string, string>
 }
 
+/** Turn and item boundaries, timed by when the host received them, never by when a buffered or
+ *  retried delivery got round to them. */
+export const CODEX_RECEIPT_TIMED_METHODS: ReadonlySet<string> = new Set([
+  'turn/started',
+  'turn/completed',
+  'item/started',
+  'item/completed'
+])
+
 export type CodexStructuredSessionEvent =
   | {
       type: 'notification'
@@ -52,7 +61,8 @@ export type CodexStructuredSessionEvent =
       threadId: string
       method: string
       params: unknown
-      /** Host receipt time of a turn boundary; survives retry and deferral so a replay is not re-stamped. */
+      /** Host receipt time of a `CODEX_RECEIPT_TIMED_METHODS` boundary; survives retry and
+       *  deferral so a replay is not re-stamped. */
       observedAt?: number
       /** Highest dispatch sequence armed when this turn-start was first received. */
       dispatchSequenceAtReceipt?: number
@@ -133,8 +143,6 @@ export type CodexSession = {
     serviceTier?: string | null
     serviceTierKnown?: true
   }
-  /** Exact provider-advertised Fast request value for each discovered model. */
-  fastModeTierByModel: Map<string, string>
   /** Absent when the adapter runs without a host catalog store (tests). */
   catalogAccess?: CodexSessionCatalogAccess
   /** Sends whose identity is still to be settled by the provider echo. */

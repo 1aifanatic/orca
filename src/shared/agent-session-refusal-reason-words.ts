@@ -82,7 +82,7 @@ const REASON_WORDS = {
     promptPending: causeWords('promptPending', 'actFirst', 'answerFirst'),
     backgroundTasksRunning: causeWords('backgroundTasksRunning', 'wait', 'waitForBackgroundTasks'),
     messagesUnsettled: causeWords('messagesUnsettled', 'actFirst', 'settleEarlierMessage'),
-    // No chat surface sends a rewind; a replayed one says only that it did not happen.
+    // The rewind control words its own refusals; anywhere else says only that it did not happen.
     rewindRefused: codeWords('hostFinding'),
     rewindUnconfirmed: codeWords('hostFinding'),
     promptGone: causeWords('questionChanged', 'nothingLeft'),
@@ -96,6 +96,7 @@ const REASON_WORDS = {
     managedAccountEnvOverride: { fact: 'managedAccountEnvOverride', action: 'actFirst' },
     accountSwitchInProgress: { fact: 'accountSwitchInProgress', action: 'wait' },
     managedAccountUnsupported: { fact: 'managedAccountUnsupported', action: 'actFirst' },
+    launchFolderMissing: { fact: 'launchFolderMissing', action: 'actFirst' },
     attachFailed: codeWords('retry')
   },
   agent_session_ownership_unknown: {

@@ -110,6 +110,9 @@
     "retrying": "Nouvelle tentative…"
   },
   "settings": {
+    "chat": {
+      "description": "Choisissez l’apparence des chats."
+    },
     "terminal": {
       "optionLayoutAlt": "ABC ou U.S. — Option envoie des séquences Alt/Esc",
       "optionLayoutCompose": "la disposition utilise Option pour composer des caractères comme @, €, [, ]",
@@ -166,8 +169,7 @@
         "wide": "Large",
         "full": "Pleine",
         "pixels": "px",
-        "reset": "Réinitialiser",
-        "summary": "{{fontSize}}px · Largeur {{width}}"
+        "reset": "Réinitialiser"
       }
     },
     "browser": {
@@ -14450,18 +14452,11 @@
             "88ffb502e5": "Ouvrir une note Markdown",
             "629528690b": "Nouvelle note Markdown",
             "3215fc73e9": "Nouveau terminal",
-            "da508bd7f5": "Enregistrer",
-            "918c2139f3": "Ne pas enregistrer",
-            "e7bf09d4d4": "Annuler",
-            "690b6fb98a": "Modifications non enregistrées",
             "bbc177f98f": "Activer",
             "adc281394d": "Ignorer",
             "8cf80db43b": "Configurez le CLI Orca et la skill d'agent pour que les agents puissent se coordonner via Orca.",
             "2a3c5ddf5e": "Activer l'orchestration",
-            "d6b563ae24": "Chargement de l'éditeur...",
             "8b14ba6c17": "Nouvel onglet de navigateur",
-            "b085fb58b5": "Ce fichier contient des modifications non enregistrées.",
-            "5ddc688c52": "« {{value0}} » contient des modifications non enregistrées. Voulez-vous enregistrer avant de fermer ?",
             "25d7817f79": "terminal"
           },
           "FloatingTerminalToggleButton": {
@@ -17630,6 +17625,7 @@
   },
   "components": {
     "native-chat": {
+      "reasoning": "Raisonnement",
       "contextMenu": {
         "copyOrcaSessionId": "Copier l'ID de session Orca",
         "orcaSessionIdCopied": "ID de session Orca copié",
@@ -17652,6 +17648,7 @@
         "managedAccountEnvOverride": "Ce lancement de Claude définit ses propres variables de connexion Anthropic. Supprimez-les pour utiliser un compte Claude géré.",
         "accountSwitchInProgress": "Un changement de compte Claude est en cours. Réessayez une fois qu'il sera terminé.",
         "managedAccountUnsupported": "Tant qu'un compte Claude est ajouté dans WSL, les chats Claude nécessitent un compte Claude Windows.",
+        "launchFolderMissing": "Le dossier dans lequel ce chat s'exécutait n'existe plus. Restaurez-le pour poursuivre ce chat.",
         "chooseClaudeAccount": "Choisissez-en un ou ajoutez-en un dans les paramètres Comptes Claude.",
         "chooseClaudeAccountThenRunCommand": "Choisissez-en un ou ajoutez-en un dans les paramètres Comptes Claude, puis relancez /{{command}}.",
         "chooseClaudeAccountThenSend": "Choisissez-en un ou ajoutez-en un dans les paramètres Comptes Claude, puis renvoyez votre message.",
@@ -17836,6 +17833,8 @@
         "moreCalls": "+{{value0}} plus",
         "failedCount": "{{value0}} a échoué",
         "failedCallsLabel": "Appels d'outil ayant échoué : {{value0}}",
+        "interruptedCount": "{{value0}} interrompu(s)",
+        "interruptedCallsLabel": "Appels d'outil interrompus : {{value0}}",
         "runningPreview": "Exécution de {{preview}}",
         "runningCommand": "Commande en cours d'exécution",
         "runningNamedPreview": "En cours d'exécution {{toolName}} {{preview}}",
@@ -17963,6 +17962,10 @@
       "loadingEarlier": "Chargement…",
       "loadEarlier": "Charger les messages précédents",
       "loadingEarlierMessages": "Chargement des messages précédents…",
+      "prompt": {
+        "collapse": "Réduire",
+        "expand": "Développer"
+      },
       "question": {
         "step": "Étape {{value0}}",
         "other": "Autre…",
@@ -18156,6 +18159,7 @@
         "turnOffQueueing": "Désactiver la file d'attente",
         "withdrawnHold": "Arrêté avant l'envoi",
         "pausedSendFailed": "Envoi impossible. Appuyez sur Envoyer pour réessayer.",
+        "pausedKept": "Pas encore envoyé. Appuyez sur Envoyer pour l'envoyer.",
         "paused": "En pause",
         "queuePausedStopped": "File d'attente en pause, car vous avez interrompu",
         "queuePausedRestarted": "File d'attente en pause, car Orca a redémarré",
@@ -18163,6 +18167,8 @@
         "queuePaused": "File d'attente en pause",
         "resume": "Reprendre"
       },
+      "thought": "A réfléchi",
+      "thoughtForDuration": "A réfléchi pendant {{duration}}",
       "structuredSessionHostDeclined": "{{value0}} ouvert dans un terminal",
       "structuredSessionHostDeclinedDescription": "Ce serveur ne peut pas exécuter de discussion {{value0}} dans cet espace de travail.",
       "structuredSessionHostUnreachable": "Impossible de joindre {{value0}}",

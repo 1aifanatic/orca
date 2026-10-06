@@ -11,6 +11,9 @@
     "retrying": "Reintentando…"
   },
   "settings": {
+    "chat": {
+      "description": "Elige el aspecto de los chats."
+    },
     "terminal": {
       "optionLayoutAlt": "ABC o EE. UU. — Option envía secuencias Alt/Esc",
       "optionLayoutCompose": "la distribución usa Option para escribir caracteres como @, €, [, ]",
@@ -67,8 +70,7 @@
         "wide": "Amplio",
         "full": "Completo",
         "pixels": "px",
-        "reset": "Restablecer",
-        "summary": "{{fontSize}}px · Ancho {{width}}"
+        "reset": "Restablecer"
       }
     },
     "browser": {
@@ -14347,18 +14349,11 @@
             "88ffb502e5": "Abrir nota Markdown",
             "629528690b": "Nueva nota Markdown",
             "3215fc73e9": "Nueva terminal",
-            "da508bd7f5": "Guardar",
-            "918c2139f3": "No guardar",
-            "e7bf09d4d4": "Cancelar",
-            "690b6fb98a": "Cambios no guardados",
             "bbc177f98f": "Habilitar",
             "adc281394d": "Descartar",
             "8cf80db43b": "Configura la CLI de Orca y el skill de agente para que los agentes puedan coordinarse a través de Orca.",
             "2a3c5ddf5e": "Habilitar orquestación",
-            "d6b563ae24": "Cargando editor...",
             "8b14ba6c17": "Nueva pestaña del navegador",
-            "b085fb58b5": "Este archivo tiene cambios no guardados.",
-            "5ddc688c52": "\"{{value0}}\" tiene cambios no guardados. ¿Quieres guardar antes de cerrar?",
             "25d7817f79": "terminal"
           },
           "FloatingTerminalToggleButton": {
@@ -17531,6 +17526,7 @@
   },
   "components": {
     "native-chat": {
+      "reasoning": "Razonamiento",
       "contextMenu": {
         "copyOrcaSessionId": "Copiar ID de sesión de Orca",
         "orcaSessionIdCopied": "ID de sesión de Orca copiado",
@@ -17553,6 +17549,7 @@
         "managedAccountEnvOverride": "Este inicio de Claude define sus propias variables de inicio de sesión de Anthropic. Quítelas para usar una cuenta de Claude administrada.",
         "accountSwitchInProgress": "Hay un cambio de cuenta de Claude en curso. Vuelva a intentarlo cuando termine.",
         "managedAccountUnsupported": "Mientras haya una cuenta de Claude agregada en WSL, los chats de Claude necesitan una cuenta de Claude de Windows.",
+        "launchFolderMissing": "La carpeta en la que se ejecutaba este chat ya no existe. Restáurela para continuar este chat.",
         "chooseClaudeAccount": "Elija o agregue una en la configuración de Cuentas de Claude.",
         "chooseClaudeAccountThenRunCommand": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a ejecutar /{{command}}.",
         "chooseClaudeAccountThenSend": "Elija o agregue una en la configuración de Cuentas de Claude y vuelva a enviar su mensaje.",
@@ -17737,6 +17734,8 @@
         "moreCalls": "+{{value0}} más",
         "failedCount": "{{value0}} fallidas",
         "failedCallsLabel": "Llamadas a herramientas fallidas: {{value0}}",
+        "interruptedCount": "{{value0}} interrumpidas",
+        "interruptedCallsLabel": "Llamadas a herramientas interrumpidas: {{value0}}",
         "runningPreview": "Ejecutando {{preview}}",
         "runningCommand": "Ejecutando comando",
         "runningNamedPreview": "Ejecutando {{toolName}} {{preview}}",
@@ -17864,6 +17863,10 @@
       "loadingEarlier": "Cargando…",
       "loadEarlier": "Cargar mensajes anteriores",
       "loadingEarlierMessages": "Cargando mensajes anteriores…",
+      "prompt": {
+        "collapse": "Contraer",
+        "expand": "Expandir"
+      },
       "question": {
         "step": "Paso {{value0}}",
         "other": "Otro…",
@@ -17939,6 +17942,7 @@
         "turnOffQueueing": "Desactivar la cola",
         "withdrawnHold": "Detenido antes de enviarse",
         "pausedSendFailed": "No se pudo enviar. Pulsa Enviar para reintentar.",
+        "pausedKept": "Aún no se ha enviado. Pulsa Enviar para enviarlo.",
         "paused": "En pausa",
         "queuePausedStopped": "Cola en pausa porque interrumpiste",
         "queuePausedRestarted": "Cola en pausa porque Orca se reinició",
@@ -17946,6 +17950,8 @@
         "queuePaused": "Cola en pausa",
         "resume": "Reanudar"
       },
+      "thought": "Pensó",
+      "thoughtForDuration": "Pensó durante {{duration}}",
       "receipt": {
         "cancelled": "Cancelado",
         "unavailable": "Respuesta seleccionada no disponible",

@@ -21,6 +21,7 @@ import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
+import { useNativeChatTabOwnerWorktreeId } from './use-native-chat-tab-owner'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { useNativeChatImageRuntimeContext } from './native-chat-image-runtime-context'
 import { useStructuredNativeChatPaneCommands } from './use-structured-native-chat-pane-commands'
@@ -30,6 +31,8 @@ import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-a
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
 import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
+import { useNativeChatRewindHost } from './use-native-chat-rewind-host'
+import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -41,11 +44,9 @@ import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-sess
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
 ): React.JSX.Element {
+  const ownerWorktreeId = useNativeChatTabOwnerWorktreeId(props.tabId)
   const fileLinkContext = useNativeChatFileLinkContext(props.tabId)
-  const provisionalLaunch = useNativeChatProvisionalLaunch(
-    fileLinkContext?.worktreeId,
-    props.sessionId
-  )
+  const provisionalLaunch = useNativeChatProvisionalLaunch(ownerWorktreeId, props.sessionId)
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
@@ -55,12 +56,15 @@ export function NativeChatStructuredSession(
   )
   // Chat-wide: absent means on; only an explicit off keeps mid-turn sends immediate.
   const queueFollowUps = useAppStore((store) => store.settings?.nativeChatQueueFollowUps !== false)
+  const composerRef = useRef<NativeChatComposerHandle>(null)
+  const { rewindHost, focusComposer } = useNativeChatRewindHost(props, composerRef)
   const controller = useStructuredAgentSession({
     ...props,
     // Why: Stop and a queued card's Edit give text back to the conversation's draft, as the composer keeps it.
     composerScopeKey: structuredAgentSessionDraftScopeKey(props.sessionId),
     queueFollowUps,
     providerStarting: startupPhase === 'starting',
+    rewind: rewindHost,
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
@@ -78,7 +82,6 @@ export function NativeChatStructuredSession(
     sequence: number
   } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const composerRef = useRef<NativeChatComposerHandle>(null)
   const paneCommands = useStructuredNativeChatPaneCommands({
     tabId: props.tabId,
     groupId: props.groupId,
@@ -125,7 +128,6 @@ export function NativeChatStructuredSession(
     submissions: controller.submissions,
     journalItems: controller.journalItems,
     failedHere: controller.failedHere,
-    queuedMessageIds: controller.queuedMessageIds,
     retry: controller.retry,
     agentName: agentLabel
   })
@@ -226,7 +228,7 @@ export function NativeChatStructuredSession(
       optionPickerRequest,
       sessionCommands: controller.sessionCommands,
       contextUsage: controller.contextUsage,
-      worktreeId: fileLinkContext?.worktreeId,
+      worktreeId: ownerWorktreeId ?? undefined,
       onError: setComposerError,
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
@@ -235,8 +237,8 @@ export function NativeChatStructuredSession(
     }
   }, [
     controller,
-    fileLinkContext?.worktreeId,
     optionPickerRequest,
+    ownerWorktreeId,
     props.agent,
     props.sessionId,
     props.target,
@@ -276,24 +278,29 @@ export function NativeChatStructuredSession(
         ) : viewState.kind === 'empty' ? (
           <NativeChatEmptyState kind="empty" agent={props.agent} />
         ) : (
-          <NativeChatMessageList
-            session={session}
-            journalItems={controller.journalItems}
-            journalSubmissions={controller.submissions}
-            subagentRoster={controller.subagentRoster}
-            railOutline={controller.railOutline}
-            isVisible={props.isVisible}
-            isWorking={controller.isWorking}
-            expandSignal={false}
-            workingStartedAt={controller.workingStartedAt}
-            settledTurns={controller.settledTurns}
-            awaitingInput={prompt === null ? null : 'shown'}
-            turnActivity={controller.turnActivity}
-            onLinkClick={onLinkClick}
-            allowFileUriLinks={onLinkClick !== undefined}
-            runtimeContext={imageRuntimeContext}
-            deliveryNotices={deliveryNotices}
-          />
+          <NativeChatRewindContext.Provider value={controller.rewind.surface}>
+            <NativeChatMessageList
+              // A rewind replaces the conversation; nothing the old transcript held carries over.
+              key={controller.epoch ?? undefined}
+              session={session}
+              journalItems={controller.journalItems}
+              journalSubmissions={controller.submissions}
+              journalLatestTurn={controller.latestTurn}
+              subagentRoster={controller.subagentRoster}
+              railOutline={controller.railOutline}
+              isVisible={props.isVisible}
+              isWorking={controller.isWorking}
+              expandSignal={false}
+              workingStartedAt={controller.workingStartedAt}
+              settledTurns={controller.settledTurns}
+              awaitingInput={prompt === null ? null : 'shown'}
+              turnActivity={controller.turnActivity}
+              onLinkClick={onLinkClick}
+              allowFileUriLinks={onLinkClick !== undefined}
+              runtimeContext={imageRuntimeContext}
+              deliveryNotices={deliveryNotices}
+            />
+          </NativeChatRewindContext.Provider>
         )}
       </div>
       {readFailedFinally ? null : (
@@ -307,9 +314,7 @@ export function NativeChatStructuredSession(
           {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
           <NativeChatQueuedMessageList
             controller={controller.queuedMessages}
-            focusComposer={() => {
-              composerRef.current?.focus()
-            }}
+            focusComposer={focusComposer}
           />
           <NativeChatStructuredSessionStatus
             sessionId={props.sessionId}
