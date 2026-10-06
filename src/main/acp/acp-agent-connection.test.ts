@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { spawnProcess } from '../../shared/child-process/run-process'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
 import { ROOT_ONLY_GRACEFUL_EXIT_MS } from '../provider-process/provider-process-close'
+import type { terminateProviderProcessTree } from '../provider-process/provider-process-teardown'
 import {
   createAcpAgentConnection,
   type AcpAgentConnection,
@@ -11,7 +12,9 @@ import {
 } from './acp-agent-connection'
 import { AcpScriptedAgent, deferred, tick } from './acp-scripted-agent.test-support'
 
-const teardown = vi.hoisted(() => vi.fn(async () => 'unverifiable' as const))
+const teardown = vi.hoisted(() =>
+  vi.fn<typeof terminateProviderProcessTree>(async () => 'unverifiable')
+)
 vi.mock('../provider-process/provider-process-teardown', () => ({
   terminateProviderProcessTree: teardown
 }))
@@ -191,6 +194,43 @@ describe('ACP process-owning connection', () => {
     expect(spawn).toHaveBeenCalledOnce()
     expect(onExit.mock.calls[0][1].expected).toBe(true)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['live', 'unverifiable'] as const)(
+    'retains %s tree evidence when root exits between completed close attempts',
+    async (tree) => {
+      vi.useFakeTimers()
+      const { connection, child } = fixture({}, { exitOnEnd: false })
+      teardown.mockResolvedValueOnce(tree)
+      const close = connection.close()
+      await vi.advanceTimersByTimeAsync(grace + 1_000)
+      expect(await close).toBe(false)
+      child.emit('exit', null, 'SIGKILL')
+      expect(connection.processTreeUnproven).toBe(true)
+      expect(await connection.close()).toBe(true)
+      expect(connection.processTreeUnproven).toBe(true)
+      expect(teardown).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('isolates early and late exit subscribers and continues delivering exit', () => {
+    const onDiagnostic = vi.fn(() => {
+      throw new Error('diagnostic')
+    })
+    const { connection, child } = fixture({ onDiagnostic })
+    const failing = (): void => {
+      throw new Error('observer')
+    }
+    const early = vi.fn()
+    connection.onExit(failing)
+    connection.onExit(early)
+    expect(() => child.emit('exit', 0, null)).not.toThrow()
+    expect(early).toHaveBeenCalledExactlyOnceWith({ code: 0, signal: null, processless: false })
+    expect(() => connection.onExit(failing)).not.toThrow()
+    const late = vi.fn()
+    connection.onExit(late)
+    expect(late).toHaveBeenCalledOnce()
+    expect(onDiagnostic).toHaveBeenCalledTimes(2)
   })
 
   it('settles a failed spawn but requires processless close evidence before reporting exit', async () => {

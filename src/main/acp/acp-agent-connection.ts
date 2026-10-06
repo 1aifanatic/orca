@@ -27,6 +27,7 @@ export function createAcpAgentConnection(
 export class AcpAgentConnection extends AcpSessionRuntime {
   private readonly managed: ManagedProviderProcess
   private readonly lifecycle: { closing: boolean; error?: Error }
+  private readonly diagnoseLifecycle: (message: string) => void
   readonly spawned: Promise<void>
 
   constructor(
@@ -66,6 +67,7 @@ export class AcpAgentConnection extends AcpSessionRuntime {
     })
     this.managed = managed
     this.lifecycle = lifecycle
+    this.diagnoseLifecycle = diagnose
     const { child } = managed
     this.spawned = new Promise((resolve) => {
       if (child.pid !== undefined) {
@@ -107,9 +109,10 @@ export class AcpAgentConnection extends AcpSessionRuntime {
     return this.managed.rootVerdict
   }
 
+  /** Reports retained cleanup uncertainty; false does not prove descendant exit. */
   get processTreeUnproven(): boolean {
     const result = this.managed.lastCloseResult
-    return result?.root === 'exited' && (result.tree === 'unverifiable' || result.tree === 'live')
+    return this.exited && (result?.tree === 'unverifiable' || result?.tree === 'live')
   }
 
   stderrTail(): string {
@@ -117,7 +120,13 @@ export class AcpAgentConnection extends AcpSessionRuntime {
   }
 
   onExit(listener: (exit: ProviderProcessExit) => void): void {
-    this.managed.onExit(listener)
+    this.managed.onExit((exit) => {
+      try {
+        listener(exit)
+      } catch (failure) {
+        this.diagnoseLifecycle(`ACP exit listener failed: ${String(failure)}`)
+      }
+    })
   }
 
   pauseReading(): void {
