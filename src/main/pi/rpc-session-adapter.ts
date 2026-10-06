@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { agentSessionFailureFact, providerDiagnostic } from '../../shared/agent-session-failure'
+import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
 import {
   AgentSessionPreSpawnError,
@@ -11,10 +11,11 @@ import {
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { providerSpawnedProcessIdentity } from '../provider-process/provider-spawned-process-identity'
-import { JsonlRpcResponseError } from '../jsonl-rpc/peer'
+import { ProviderAcquisitionStarts } from '../provider-process/provider-acquisition-starts'
+import { compactPiRpcSession } from './rpc-compaction'
 import { buildPiRpcLaunch } from './rpc-launch'
 import { piRpcProviderLink, type PiRpcResolvedLaunch } from './rpc-launch-resolution'
-import { PiRpcSession, type PiRpcSessionDeps } from './rpc-session'
+import { PiRpcSession, type PiRpcSessionDeps, type PiRpcConnection } from './rpc-session'
 import { PiRpcPromptError, preparePiRpcPrompt } from './rpc-prompt'
 import { applyPiRpcSessionOption, readPiRpcSessionOptions } from './rpc-options'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
@@ -30,6 +31,7 @@ export type PiRpcSessionAdapterDeps = PiRpcSessionDeps & {
 export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
   private readonly sessions = new Map<string, PiRpcSession>()
   private readonly acquiring = new Set<string>()
+  private readonly starts = new ProviderAcquisitionStarts<PiRpcConnection>()
   private readonly retiring = new Set<Promise<void>>()
   constructor(private readonly deps: PiRpcSessionAdapterDeps) {}
 
@@ -42,17 +44,35 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
 
   async acquire(input: StructuredAgentSessionAcquireInput): Promise<AgentSessionAcquisition> {
     const id = input.identity.sessionId
-    if (this.sessions.has(id) || this.acquiring.has(id)) {
+    if (this.acquiring.has(id)) {
       throw new AgentSessionPreSpawnError(new Error('Pi session already owns a child'))
     }
     this.acquiring.add(id)
+    const attempt = this.starts.begin(input.signal)
     let session: PiRpcSession | undefined
     try {
+      if (attempt.signal.aborted) {
+        throw new AgentSessionPreSpawnError(new Error('Pi closed while starting'))
+      }
+      if (!(await this.starts.stopFailed(id))) {
+        throw new AgentSessionAcquisitionExitUnprovenError(
+          new Error('Previous Pi start has not exited')
+        )
+      }
+      const previous = this.sessions.get(id)
+      if (previous?.connection.closed && previous.connection.rootVerdict === 'exited') {
+        this.acknowledgeSessionRelease(id)
+      } else if (previous) {
+        throw new AgentSessionPreSpawnError(new Error('Pi session already owns a child'))
+      }
       let launch: PiRpcResolvedLaunch
       try {
         launch = await this.deps.resolveLaunch(input.identity)
       } catch (error) {
         throw new AgentSessionPreSpawnError(error)
+      }
+      if (attempt.signal.aborted) {
+        throw new AgentSessionPreSpawnError(new Error('Pi closed while starting'))
       }
       const spec = buildPiRpcLaunch({
         ...launch,
@@ -60,6 +80,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       })
       session = new PiRpcSession(input, randomUUID(), spec, this.deps)
       this.sessions.set(id, session)
+      this.starts.track(attempt, session.connection)
       const spawned = providerSpawnedProcessIdentity(
         input,
         'Pi RPC',
@@ -70,7 +91,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       }
       const process = await spawned.read(session.connection.pid)
       const file = await session.start()
-      if (session.connection.closed) {
+      if (session.connection.closed || attempt.signal.aborted) {
         throw new Error('Pi exited while starting')
       }
       return {
@@ -80,7 +101,8 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       }
     } catch (error) {
       if (!session) {
-        throw error instanceof AgentSessionPreSpawnError
+        throw error instanceof AgentSessionPreSpawnError ||
+          error instanceof AgentSessionAcquisitionExitUnprovenError
           ? error
           : new AgentSessionPreSpawnError(error)
       }
@@ -91,8 +113,10 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
         }
         throw new AgentSessionAcquisitionRootExitObservedError(error)
       }
+      this.starts.retainFailed(id, session.connection)
       throw new AgentSessionAcquisitionExitUnprovenError(error)
     } finally {
+      this.starts.end(attempt)
       this.acquiring.delete(id)
     }
   }
@@ -101,7 +125,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
     const session = this.session(input.sessionId, input.fence)
     let prompt
     try {
-      prompt = await preparePiRpcPrompt(input.body, session.turns.working ? 'steer' : 'followUp')
+      prompt = await preparePiRpcPrompt(input.body)
     } catch (error) {
       this.deps.logger.warn('Pi prompt could not be prepared', {
         scope: 'pi-prompt',
@@ -126,40 +150,8 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
     )
   }
 
-  compact: NonNullable<StructuredAgentSessionAdapter['compact']> = async (input) => {
-    const session = this.session(input.sessionId, input.fence)
-    session.turns.beginCommand(input.command)
-    try {
-      await session.connection.request('compact', {}, { timeoutMs: null })
-      session.turns.commandCompleted()
-      return { state: 'accepted', providerIdentity: null }
-    } catch (error) {
-      if (!(error instanceof JsonlRpcResponseError)) {
-        throw error
-      }
-      if (error.message === 'Nothing to compact (session too small)') {
-        session.lane.apply([
-          {
-            type: 'item.close',
-            item: `compact-noop:${input.command.turnId}`,
-            body: { kind: 'status', tone: 'warning', text: error.message }
-          }
-        ])
-        session.turns.commandCompleted()
-        return { state: 'accepted', providerIdentity: null }
-      }
-      session.turns.commandRejected()
-      return {
-        state: 'rejected',
-        ...agentSessionFailureWords(
-          agentSessionFailureFact('providerRejected', {
-            detail: providerDiagnostic(error.message, 'person')
-          }),
-          { provider: 'pi', agentName: 'Pi', surface: 'rejection' }
-        )
-      }
-    }
-  }
+  compact: NonNullable<StructuredAgentSessionAdapter['compact']> = async (input) =>
+    compactPiRpcSession(this.session(input.sessionId, input.fence), input.command)
 
   cancelTurn: StructuredAgentSessionAdapter['cancelTurn'] = async (input) => {
     const session = this.session(input.sessionId, input.fence)
@@ -231,9 +223,7 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
   }
   readOptions: NonNullable<StructuredAgentSessionAdapter['readOptions']> = (input) =>
     readPiRpcSessionOptions(this.session(input.sessionId, input.fence).connection)
-  readCommands(id: string) {
-    return this.sessions.get(id)?.commands
-  }
+  readCommands = (id: string) => this.sessions.get(id)?.commands
   readOptionRestoreFailures(id: string): readonly string[] {
     return this.sessions.get(id)?.skipped ?? []
   }

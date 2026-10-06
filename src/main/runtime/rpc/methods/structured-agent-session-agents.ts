@@ -9,6 +9,7 @@ import { AGENT_SESSION_AGENTS_METHOD } from '../../../../shared/agent-session-re
 import { defineMethod } from '../core'
 import { requireInstalledStructuredHost } from './structured-agent-session-gate'
 import { AgentsParams } from './structured-agent-session-schemas'
+import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 
 export const STRUCTURED_AGENT_SESSION_AGENTS_METHODS = [
   defineMethod({
@@ -17,6 +18,12 @@ export const STRUCTURED_AGENT_SESSION_AGENTS_METHODS = [
     handler: async (_params, ctx): Promise<AgentSessionAgentsResult> => ({
       agents: (await requireInstalledStructuredHost(ctx))
         .agentDefinitions()
+        .filter(
+          ({ agent }) =>
+            agent !== 'pi' ||
+            ctx.clientKind === undefined ||
+            clientRendersStructuredAgent(ctx.clientCapabilities, agent)
+        )
         .map(({ agent, capabilities }) => ({ agent, capabilities: { ...capabilities } }))
     })
   })

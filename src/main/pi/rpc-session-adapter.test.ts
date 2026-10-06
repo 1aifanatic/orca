@@ -14,6 +14,8 @@ import type { JsonlRpcAgentConnectionOptions } from '../jsonl-rpc/agent-connecti
 import type { JsonlRpcRecord } from '../jsonl-rpc/peer'
 import { JsonlRpcResponseError } from '../jsonl-rpc/peer'
 import type { PiRpcConnection } from './rpc-session'
+import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
+import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { PiRpcSessionAdapter } from './rpc-session-adapter'
 
 const sessionId = 'session-timeline'
@@ -42,7 +44,9 @@ class FakeConnection implements PiRpcConnection {
   closeResult: Awaited<ReturnType<PiRpcConnection['close']>> = { root: 'exited', tree: 'exited' }
   readonly sent: JsonlRpcRecord[] = []
   readonly requests: string[] = []
+  private readonly exitListeners: (() => void)[] = []
   requestOverride?: (command: string) => Promise<unknown> | undefined
+  abortRequest?: () => void
   constructor(readonly handlers: JsonlRpcAgentConnectionOptions) {}
   async request(command: string): Promise<unknown> {
     this.requests.push(command)
@@ -68,6 +72,7 @@ class FakeConnection implements PiRpcConnection {
     this.sent.push(frame)
   }
   async close(): Promise<Awaited<ReturnType<PiRpcConnection['close']>>> {
+    this.abortRequest?.()
     this.closed = true
     this.rootVerdict = this.closeResult.root
     this.lastCloseResult = this.closeResult
@@ -78,12 +83,22 @@ class FakeConnection implements PiRpcConnection {
   }
   pauseReading(): void {}
   resumeReading(): void {}
+  onExit(listener: () => void): void {
+    if (this.rootVerdict === 'exited') {
+      listener()
+    } else {
+      this.exitListeners.push(listener)
+    }
+  }
   receive(frame: JsonlRpcRecord): void {
     this.handlers.onRecord?.(frame)
   }
   exit(error = new Error('child exited')): void {
     this.closed = true
     this.rootVerdict = 'exited'
+    for (const listener of this.exitListeners.splice(0)) {
+      listener()
+    }
     this.handlers.onExit?.(error, {
       expected: false,
       exit: { code: 1, signal: null, processless: false }
@@ -91,7 +106,10 @@ class FakeConnection implements PiRpcConnection {
   }
 }
 
-async function setup(options: Readonly<Record<string, string>> = {}) {
+async function setup(
+  options: Readonly<Record<string, string>> = {},
+  eventSink?: (sink: StructuredAgentSessionEventSink) => StructuredAgentSessionEventSink
+) {
   const rig = await openProviderTimelineRig({ agent: 'pi', sessionId })
   const connections: FakeConnection[] = []
   const lifecycle = vi.fn(),
@@ -111,22 +129,26 @@ async function setup(options: Readonly<Record<string, string>> = {}) {
     fence: 7,
     spawnToken: 'spawn-token',
     options,
-    events: rig.eventSink,
+    events: eventSink?.(rig.eventSink) ?? rig.eventSink,
     onSpawned
   }
-  const adapter = new PiRpcSessionAdapter({
-    resolveLaunch: async () => ({
-      command: '/host/bin/pi',
-      cwd: '/host/folder',
-      fullAccess: true,
-      previous: null
-    }),
-    readProcessStartTime: async () => 12345,
-    openConnection: (_launch, handlers) => {
+  const resolveLaunch = vi.fn(async () => ({
+    command: '/host/bin/pi',
+    cwd: '/host/folder',
+    fullAccess: true,
+    previous: null
+  }))
+  const openConnection = vi.fn(
+    (_launch: ProviderProcessLaunch, handlers: JsonlRpcAgentConnectionOptions) => {
       const connection = new FakeConnection(handlers)
       connections.push(connection)
       return connection
-    },
+    }
+  )
+  const adapter = new PiRpcSessionAdapter({
+    resolveLaunch,
+    readProcessStartTime: async () => 12345,
+    openConnection,
     onLifecycle: lifecycle,
     onSettled: settled,
     onIdle: idle,
@@ -142,10 +164,97 @@ async function setup(options: Readonly<Record<string, string>> = {}) {
     await adapter.drainObservedExits()
     adapter.acknowledgeSessionRelease(sessionId)
   })
-  return { adapter, connection, rig, acquired, onSpawned, lifecycle, settled, idle, input }
+  return {
+    adapter,
+    connection,
+    rig,
+    acquired,
+    onSpawned,
+    lifecycle,
+    settled,
+    idle,
+    input,
+    resolveLaunch,
+    openConnection,
+    connections
+  }
 }
 
 describe('Pi RPC session ownership and delivery', () => {
+  it('does not spawn a start cancelled while resolving its workspace', async () => {
+    const h = await setup()
+    await h.adapter.closeSession(sessionId)
+    const launch = await h.resolveLaunch.mock.results[0]?.value
+    const resolving = Promise.withResolvers<NonNullable<typeof launch>>()
+    h.resolveLaunch.mockImplementationOnce(() => resolving.promise)
+    const controller = new AbortController()
+    const started = h.adapter.acquire({ ...h.input, fence: 8, signal: controller.signal })
+    await Promise.resolve()
+    controller.abort()
+    resolving.resolve(launch!)
+    await expect(started).rejects.toThrow('closed while starting')
+    expect(h.connections).toHaveLength(1)
+  })
+
+  it('kills the child and rejects a stalled startup when the host aborts it', async () => {
+    const h = await setup()
+    await h.adapter.closeSession(sessionId)
+    const controller = new AbortController()
+    const opened = Promise.withResolvers<FakeConnection>()
+    const reply = Promise.withResolvers<unknown>()
+    h.openConnection.mockImplementationOnce((_launch, handlers) => {
+      const connection = new FakeConnection(handlers)
+      connection.requestOverride = (command) =>
+        command === 'get_state' ? reply.promise : undefined
+      connection.abortRequest = () => reply.reject(new Error('closed while starting'))
+      h.connections.push(connection)
+      opened.resolve(connection)
+      return connection
+    })
+    const started = h.adapter.acquire({ ...h.input, fence: 8, signal: controller.signal })
+    const child = await opened.promise
+    await Promise.resolve()
+    controller.abort()
+    await expect(started).rejects.toThrow('closed while starting')
+    expect(child.rootVerdict).toBe('exited')
+  })
+
+  it('retains final events when exit publication times out under journal backpressure', async () => {
+    let blocked = true
+    const h = await setup({}, (sink) => ({
+      ...sink,
+      tryAppendTransition: (transition) =>
+        blocked
+          ? { accepted: false, reason: 'backpressure' }
+          : sink.tryAppendTransition!(transition)
+    }))
+    vi.useFakeTimers()
+    h.connection.receive({
+      type: 'extension_ui_request',
+      id: 'last-dialog',
+      method: 'input',
+      title: 'Final tail'
+    })
+    h.connection.exit()
+    await vi.advanceTimersByTimeAsync(2_001)
+    expect(h.lifecycle).toHaveBeenCalledOnce()
+    h.adapter.acknowledgeSessionRelease(sessionId)
+    let completed = false
+    const drained = h.adapter.drainObservedExits().then(() => {
+      completed = true
+    })
+    await Promise.resolve()
+    expect(completed).toBe(false)
+    blocked = false
+    await vi.advanceTimersByTimeAsync(250)
+    await drained
+    expect(
+      (await h.rig.rows()).some(
+        (row) => row.body.kind === 'question' && row.body.question === 'Final tail'
+      )
+    ).toBe(true)
+    vi.useRealTimers()
+  })
   it('lets a new acquisition proceed while the released child drains final stdout', async () => {
     const h = await setup()
     h.connection.deferExit = true

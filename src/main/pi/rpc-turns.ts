@@ -58,7 +58,8 @@ export class PiRpcTurns {
       failed: deps.failed
     })
     this.delivery = new PiRpcPromptDelivery({
-      send: deps.send,
+      send: (frame) =>
+        deps.send({ ...frame, streamingBehavior: this.working ? 'steer' : 'followUp' }),
       settled: deps.settled,
       failed: deps.failed,
       accepted: (id, at) => {
@@ -72,6 +73,13 @@ export class PiRpcTurns {
       },
       rejectedAfterAcceptance: (error) => {
         this.failure = error
+      },
+      beforeWrite: () => this.touch(),
+      refused: () => {
+        if (this.active) {
+          this.settling = true
+          this.probe()
+        }
       }
     })
   }
@@ -92,8 +100,6 @@ export class PiRpcTurns {
     if (this.ended) {
       throw new Error('Pi session ended before dispatch')
     }
-    this.revision++
-    this.settling = false
     return this.delivery.submit(id, at, frame, before)
   }
 

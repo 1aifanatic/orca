@@ -38,10 +38,11 @@ async function setup(request = vi.fn(async () => state())) {
     onInputAccepted: accepted,
     onFailed: failed
   })
+  const send = vi.fn(async (_frame: Record<string, unknown>) => {})
   const turns = new PiRpcTurns({
     lane,
     generation: 'generation-1',
-    send: vi.fn(async () => {}),
+    send,
     request,
     settled,
     failed,
@@ -60,10 +61,28 @@ async function setup(request = vi.fn(async () => state())) {
     await Promise.resolve()
     lane.flush()
   }
-  return { rig, lane, turns, request, accepted, failed, idle, settled, start, flush }
+  return { rig, lane, turns, request, accepted, failed, idle, settled, start, flush, send }
 }
 
 describe('Pi turn settlement races', () => {
+  it('chooses steering after asynchronous dispatch admission finishes', async () => {
+    const h = await setup()
+    await h.turns.submit('first', 1, { type: 'prompt', message: 'first' })
+    const gate = Promise.withResolvers<void>()
+    const second = h.turns.submit(
+      'second',
+      2,
+      { type: 'prompt', message: 'second', streamingBehavior: 'followUp' },
+      () => gate.promise
+    )
+    h.turns.receive({ type: 'agent_start' })
+    gate.resolve()
+    await second
+    expect(h.send.mock.calls[1]?.[0]).toMatchObject({
+      message: 'second',
+      streamingBehavior: 'steer'
+    })
+  })
   it('waits for agent_settled and a host idle probe after agent_end', async () => {
     const h = await setup()
     await h.start()

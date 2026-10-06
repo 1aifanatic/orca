@@ -114,6 +114,7 @@ describe('JSON-lines RPC process ownership', () => {
   })
 
   it('closes a broken stdout transport and cleans up, while keeping host exit evidence separate', async () => {
+    vi.useFakeTimers()
     const onExit = vi.fn()
     const onClose = vi.fn()
     const { connection, child } = fixture({ onExit, onClose }, { exitOnEnd: false })
@@ -122,10 +123,26 @@ describe('JSON-lines RPC process ownership', () => {
     await pending
     expect(connection.closed).toBe(true)
     expect(connection.rootVerdict).toBe('live')
+    expect(onClose).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(250)
     expect(onClose).toHaveBeenCalledOnce()
     expect(onExit).not.toHaveBeenCalled()
     child.emit('exit', 0, null)
     expect(connection.rootVerdict).toBe('exited')
+    await connection.close()
+  })
+
+  it('preserves the numeric exit when stdout closes first', async () => {
+    const onClose = vi.fn(),
+      onExit = vi.fn()
+    const { connection, child } = fixture({ onClose, onExit }, { exitOnEnd: false })
+    child.stdout.emit('end')
+    child.emit('exit', 7, null)
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onExit).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('code 7') }),
+      expect.anything()
+    )
     await connection.close()
   })
 

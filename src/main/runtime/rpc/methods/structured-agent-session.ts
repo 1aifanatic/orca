@@ -21,6 +21,7 @@ import {
   ensureStructuredHostInstalled as ensureHostInstalled,
   requireInstalledStructuredHost as requireInstalledHost,
   requireStructuredCapability,
+  requireStructuredAgentAudience,
   requireStructuredCleanupHost,
   requireStructuredCreateSupportAdmission,
   requireStructuredHost as requireHost,
@@ -75,8 +76,8 @@ import { sendStructuredAgentSessionForClient } from './structured-agent-session-
  * or forge, such as whether this machine can read a provider child's process start time.
  */
 async function resolveClientSuppliedAttach(params: z.infer<typeof AttachParams>, ctx: RpcContext) {
-  await ensureHostInstalled(ctx)
-  const host = requireHost(ctx)
+  await ensureHostInstalled(ctx, params.agent)
+  const host = requireHost(ctx, params.agent)
   if (!host.supportsCreate(params.location, params.agent)) {
     throw agentSessionRefusalError('structured_agent_session_unsupported', {
       reason: 'hostUnsupported'
@@ -134,7 +135,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     name: 'agentSession.createSupport',
     params: CreateSupportParams,
     handler: async (params, ctx) => {
-      requireStructuredCreateSupportAdmission(ctx)
+      requireStructuredCreateSupportAdmission(ctx, params.agent)
       const support = await ctx.runtime.getStructuredAgentSessionCreateSupport(
         params.worktree,
         params.agent
@@ -150,7 +151,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     name: 'agentSession.create',
     params: CreateParams,
     handler: async (params, ctx) => {
-      requireStructuredCapability(ctx)
+      requireStructuredAgentAudience(ctx, params.agent)
       if (params.envelope.expectedRuntimeFence !== null) {
         throw agentSessionRefusalError('agent_session_operation_invalid', {
           reason: 'requestMalformed'
@@ -259,7 +260,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     name: 'agentSession.history',
     params: HistoryParams,
     handler: async (params, ctx) => {
-      const host = await requireInstalledHost(ctx)
+      const host = await requireInstalledHost(ctx, params.sessionId)
       return projectTurnItemHistory(
         projectBackgroundTaskHistory(await host.history(params), ctx),
         ctx,
@@ -271,7 +272,7 @@ export const STRUCTURED_AGENT_SESSION_METHODS = [
     name: 'agentSession.subscribe',
     params: SubscribeParams,
     handler: async (params, ctx, emit) => {
-      const host = await requireInstalledHost(ctx)
+      const host = await requireInstalledHost(ctx, params.sessionId)
       const subscriptionId = subscriptionIdFor(ctx, params.sessionId)
       // A stream reads; it never keeps an agent alive or starts one.
       let dispose = (): void => {}

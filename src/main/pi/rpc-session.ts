@@ -32,6 +32,7 @@ export type PiRpcConnection = Pick<
   | 'rootVerdict'
   | 'processless'
   | 'lastCloseResult'
+  | 'onExit'
 >
 export type PiRpcSessionDeps = {
   openConnection?: (
@@ -208,9 +209,11 @@ export class PiRpcSession {
   retire(): Promise<void> {
     return new Promise((resolve) => {
       this.releaseAfterExit = () => {
-        this.lane.dispose()
         this.releaseAfterExit = undefined
-        resolve()
+        void this.lane.drained().then(() => {
+          this.lane.dispose()
+          resolve()
+        })
       }
       if (this.publishedExit) {
         void this.exitDelivery.then(() => this.releaseAfterExit?.())
@@ -225,6 +228,7 @@ export class PiRpcSession {
     this.publishedExit = true
     this.dialogs.cancelAll()
     this.turns.end()
+    this.lane.finalize()
     this.lane.apply([
       { type: 'session.ended', verdict: { state: 'interrupted', completedAt: Date.now() } }
     ])

@@ -237,6 +237,10 @@ export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
 // a client that does not (an older client would list them with an empty pane).
 export const STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY =
   'agent-session.structured.registered-agents.v1' as const
+// Pi's dialog cards have a newer shape than the registered-agents reader alone promises.
+// A client advertises this only after it can render and answer those cards.
+export const PI_STRUCTURED_DIALOGS_RUNTIME_CAPABILITY =
+  'agent-session.structured.pi-dialogs.v1' as const
 // Why: paired structured clients explicitly hold every visible session surface, allowing the host
 // to stop provider children after the last surface closes without tying lifetime to a transport.
 export const STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY =
@@ -403,6 +407,7 @@ export const RUNTIME_CAPABILITIES = [
   STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REVEAL_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
+  PI_STRUCTURED_DIALOGS_RUNTIME_CAPABILITY,
   STRUCTURED_AGENT_SESSION_RESUME_HISTORY_RUNTIME_CAPABILITY,
   AGENT_SESSION_STATUS_FEED_RUNTIME_CAPABILITY,
   AGENT_SESSION_TURN_COMPLETION_RUNTIME_CAPABILITY,

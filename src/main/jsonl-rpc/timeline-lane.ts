@@ -31,11 +31,21 @@ export class JsonlRpcTimelineLane {
   private heldBytes = 0
   private draining = false
   private ended = false
+  private finalizing = false
   private retryTimer?: ReturnType<typeof setTimeout>
   private readonly watchers = new Set<() => void>()
 
   constructor(private readonly deps: JsonlRpcTimelineLaneDeps) {
-    this.assembler = createProviderTimelineAssembler(deps)
+    this.assembler = createProviderTimelineAssembler({
+      ...deps,
+      sink: {
+        ...deps.sink,
+        tryAppendTransition: (transition) =>
+          deps.sink.tryAppendTransition(
+            this.finalizing ? { ...transition, lifecycle: true } : transition
+          )
+      }
+    })
     this.identity = createLegacyProviderTimelineIdentityScheme(deps)
   }
 
@@ -149,6 +159,13 @@ export class JsonlRpcTimelineLane {
 
   flush(): void {
     this.assembler.flush()
+  }
+
+  finalize(): void {
+    // The final tail shares the host's reserved settlement budget and lifecycle barrier.
+    this.finalizing = true
+    this.retry()
+    this.flush()
   }
 
   dispose(): void {

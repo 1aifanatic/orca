@@ -19,6 +19,7 @@ import {
 import type { RpcRequest, RpcResponse } from '../core'
 import { RpcDispatcher } from '../dispatcher'
 import { STRUCTURED_AGENT_SESSION_METHODS } from './structured-agent-session'
+import { STRUCTURED_AGENT_SESSION_AGENTS_METHODS } from './structured-agent-session-agents'
 import { createStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger'
 import { recordingStructuredAgentSessionLogger } from '../../../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 
@@ -252,7 +253,7 @@ export function dispatcher(runtimeOverrides: Record<string, unknown> = {}): RpcD
   }
   return new RpcDispatcher({
     runtime: runtime as unknown as OrcaRuntimeService,
-    methods: STRUCTURED_AGENT_SESSION_METHODS
+    methods: [...STRUCTURED_AGENT_SESSION_METHODS, ...STRUCTURED_AGENT_SESSION_AGENTS_METHODS]
   })
 }
 

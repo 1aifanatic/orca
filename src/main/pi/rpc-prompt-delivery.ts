@@ -7,7 +7,8 @@ import { piRpcPromptReplySchema } from './rpc-protocol'
 type Submission = {
   id: string
   at: number
-  frame: JsonlRpcRecord
+  frame?: JsonlRpcRecord
+  bytes: number
   accepted: boolean
   retries: number
 }
@@ -18,6 +19,8 @@ type DeliveryDeps = {
   rejectedAfterAcceptance: (error: string) => void
   settled: (id: string, outcome: AgentSessionDispatchOutcome) => void
   failed: (error: Error) => void
+  beforeWrite?: () => void
+  refused?: () => void
 }
 
 /** Idless prompt acknowledgements are FIFO and may wait indefinitely on extension dialogs. */
@@ -25,10 +28,12 @@ export class PiRpcPromptDelivery {
   private readonly acknowledgements: Submission[] = []
   private readonly waiting: Submission[] = []
   private readonly retries = new Set<ReturnType<typeof setTimeout>>()
+  private readonly pending = new Set<Submission>()
+  private heldBytes = 0
   private ended = false
   constructor(private readonly deps: DeliveryDeps) {}
   get holdsDispatch(): boolean {
-    return this.waiting.length > 0
+    return this.waiting.length > 0 || this.retries.size > 0
   }
 
   async submit(
@@ -37,18 +42,36 @@ export class PiRpcPromptDelivery {
     frame: JsonlRpcRecord,
     before?: () => Promise<void>
   ): Promise<AgentSessionDispatchOutcome> {
-    await before?.()
-    if (this.ended || this.acknowledgements.length >= 128) {
+    if (this.ended) {
       throw new Error('Pi prompt queue unavailable')
     }
-    const submission: Submission = { id, at, frame, accepted: false, retries: 0 }
-    this.acknowledgements.push(submission)
-    this.waiting.push(submission)
+    const bytes = Buffer.byteLength(JSON.stringify(frame))
+    if (this.pending.size >= 128 || this.heldBytes + bytes > 32 * 1024 * 1024) {
+      return {
+        state: 'rejected',
+        ...agentSessionFailureWords(agentSessionFailureFact('queueFull'), {
+          provider: 'pi',
+          agentName: 'Pi',
+          surface: 'rejection'
+        })
+      }
+    }
+    const submission: Submission = { id, at, frame, bytes, accepted: false, retries: 0 }
+    this.pending.add(submission)
+    this.heldBytes += bytes
     try {
+      await before?.()
+      if (this.ended) {
+        throw new Error('Pi ended before writing the prompt')
+      }
+      this.deps.beforeWrite?.()
+      this.acknowledgements.push(submission)
+      this.waiting.push(submission)
       await this.deps.send(frame)
       return { state: 'admitted' }
     } catch {
       this.remove(submission)
+      this.deps.refused?.()
       return { state: 'unknown', reason: 'Pi prompt write did not settle' }
     }
   }
@@ -74,14 +97,21 @@ export class PiRpcPromptDelivery {
         reply.error?.startsWith('No API key found for ') &&
         submission.retries++ < 8
       ) {
+        this.removeWaiting(submission)
         const timer = setTimeout(() => {
           this.retries.delete(timer)
           if (this.ended) {
             return
           }
+          const frame = submission.frame
+          if (!frame) {
+            this.deps.failed(new Error('Pi retry lost its unaccepted prompt'))
+            return
+          }
           this.acknowledgements.push(submission)
+          this.waiting.push(submission)
           void this.deps
-            .send(submission.frame)
+            .send(frame)
             .catch((error: unknown) =>
               this.deps.failed(error instanceof Error ? error : new Error(String(error)))
             )
@@ -101,13 +131,17 @@ export class PiRpcPromptDelivery {
       })
       if (submission.accepted) {
         this.deps.rejectedAfterAcceptance(reply.error ?? 'Pi rejected the prompt')
+      } else {
+        this.deps.refused?.()
       }
       return
     }
+    this.releaseFrame(submission)
     if (reply.data?.disposition === 'handled' || reply.data?.agentInvoked === false) {
       this.accept(submission)
       this.deps.commandOnly()
     }
+    this.finishIfConsumed(submission)
   }
 
   end(): void {
@@ -116,14 +150,18 @@ export class PiRpcPromptDelivery {
       clearTimeout(timer)
     }
     this.retries.clear()
-    for (const submission of this.waiting) {
-      this.deps.settled(submission.id, {
-        state: 'unknown',
-        reason: 'Pi ended before confirming delivery'
-      })
+    for (const submission of this.pending) {
+      if (!submission.accepted) {
+        this.deps.settled(submission.id, {
+          state: 'unknown',
+          reason: 'Pi ended before confirming delivery'
+        })
+      }
+      this.releaseFrame(submission)
     }
     this.waiting.length = 0
     this.acknowledgements.length = 0
+    this.pending.clear()
   }
 
   private accept(submission: Submission): void {
@@ -131,10 +169,9 @@ export class PiRpcPromptDelivery {
       return
     }
     submission.accepted = true
-    const index = this.waiting.indexOf(submission)
-    if (index !== -1) {
-      this.waiting.splice(index, 1)
-    }
+    this.removeWaiting(submission)
+    this.releaseFrame(submission)
+    this.finishIfConsumed(submission)
     this.deps.accepted(submission.id, submission.at)
   }
   private remove(submission: Submission): void {
@@ -143,6 +180,25 @@ export class PiRpcPromptDelivery {
       if (index !== -1) {
         list.splice(index, 1)
       }
+    }
+    this.releaseFrame(submission)
+    this.pending.delete(submission)
+  }
+  private removeWaiting(submission: Submission): void {
+    const index = this.waiting.indexOf(submission)
+    if (index !== -1) {
+      this.waiting.splice(index, 1)
+    }
+  }
+  private releaseFrame(submission: Submission): void {
+    if (submission.frame) {
+      this.heldBytes -= submission.bytes
+      submission.frame = undefined
+    }
+  }
+  private finishIfConsumed(submission: Submission): void {
+    if (!this.waiting.includes(submission) && !this.acknowledgements.includes(submission)) {
+      this.pending.delete(submission)
     }
   }
 }

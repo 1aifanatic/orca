@@ -47,6 +47,7 @@ export const piRpcMessageSchema = z.looseObject({
 export const piRpcMessageEventSchema = z.object({
   type: z.enum(['message_start', 'message_update', 'message_end']),
   message: piRpcMessageSchema.optional(),
+  usage: piRpcUsageSchema.optional(),
   assistantMessageEvent: z
     .looseObject({
       type: z.string(),
@@ -93,12 +94,14 @@ export const piRpcDialogSchema = z.discriminatedUnion('method', [
     id: z.union([z.string(), z.number()]),
     method: z.literal('select'),
     title: z.string(),
+    message: z.string().optional(),
     options: z.array(z.string()).min(1).max(64)
   }),
   z.object({
     id: z.union([z.string(), z.number()]),
     method: z.enum(['input', 'editor']),
     title: z.string(),
+    message: z.string().optional(),
     placeholder: z.string().optional(),
     prefill: z.string().optional()
   })

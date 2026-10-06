@@ -37,7 +37,12 @@ describe('provider free-text question metadata', () => {
   })
 
   it('keeps the previous empty-answer rejection when metadata is absent', () => {
-    const legacy = { question: 'Provide text', options: [], freeTextQuestionId: 'q1' }
+    const legacy = {
+      question: 'Provide text',
+      options: [],
+      freeTextQuestionId: 'q1',
+      freeTextInput: undefined
+    }
     const answers = [{ questionId: 'q1', optionIds: [], other: '  ' }]
     expect(isValidAgentSessionQuestionAnswers(agentSessionPromptQuestions(legacy), answers)).toBe(
       false

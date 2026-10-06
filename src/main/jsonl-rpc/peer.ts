@@ -23,6 +23,12 @@ const responseSchema = z.looseObject({
 })
 
 export type JsonlRpcRecord = z.infer<typeof recordSchema>
+export class JsonlRpcStreamClosedError extends Error {
+  constructor() {
+    super('Agent JSON-lines RPC stream closed')
+    this.name = 'JsonlRpcStreamClosedError'
+  }
+}
 export class JsonlRpcResponseError extends Error {
   constructor(
     readonly command: string,
@@ -214,7 +220,8 @@ export class JsonlRpcPeer {
       this.close(error instanceof Error ? error : new Error(String(error)))
     }
   }
-  private readonly onEnd = (): void => this.close(this.inputEndError)
+  private readonly onEnd = (): void =>
+    this.close(this.inputEndError ?? new JsonlRpcStreamClosedError())
   private readonly onError = (error: Error): void => this.close(error)
 
   private diagnose(message: string): void {

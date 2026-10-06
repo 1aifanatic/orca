@@ -6,7 +6,12 @@ import {
 } from '../provider-process/managed-provider-process'
 import type { ProviderProcessLaunch } from '../provider-process/provider-process-launch'
 import type { ProviderProcessCloseResult } from '../provider-process/provider-process-close'
-import { JsonlRpcPeer, type JsonlRpcPeerHandlers, type JsonlRpcRecord } from './peer'
+import {
+  JsonlRpcPeer,
+  JsonlRpcStreamClosedError,
+  type JsonlRpcPeerHandlers,
+  type JsonlRpcRecord
+} from './peer'
 import { resolveJsonlRpcPeerOptions, type JsonlRpcPeerOptions } from './peer-limits'
 
 export type JsonlRpcAgentConnectionOptions = JsonlRpcPeerHandlers & {
@@ -20,6 +25,7 @@ export class JsonlRpcAgentConnection {
   private readonly peer: JsonlRpcPeer
   private closing = false
   private finishObservedExit?: () => void
+  private streamExitTimer?: ReturnType<typeof setTimeout>
 
   constructor(
     launch: ProviderProcessLaunch,
@@ -38,7 +44,10 @@ export class JsonlRpcAgentConnection {
       {
         ...options,
         onClose: (error) => {
-          if (!this.closing && managed.rootVerdict !== 'exited') {
+          const fail = (): void => {
+            if (this.closing || managed.rootVerdict === 'exited') {
+              return
+            }
             void managed.close().then(
               (result) => {
                 if (result.root !== 'exited') {
@@ -49,6 +58,17 @@ export class JsonlRpcAgentConnection {
             )
             options.onClose?.(error)
           }
+          if (
+            error instanceof JsonlRpcStreamClosedError &&
+            !this.closing &&
+            managed.rootVerdict !== 'exited'
+          ) {
+            // EOF often precedes the exit carrying an import/startup failure's code.
+            this.streamExitTimer = setTimeout(fail, 250)
+            this.streamExitTimer.unref()
+          } else {
+            fail()
+          }
         }
       },
       peerOptions
@@ -56,6 +76,7 @@ export class JsonlRpcAgentConnection {
     managed.child.on('error', this.onError)
     managed.child.stderr.on('error', this.onError)
     managed.onExit((exit) => {
+      clearTimeout(this.streamExitTimer)
       const error = new Error(
         exit.processless
           ? 'Agent process could not start'
@@ -117,6 +138,10 @@ export class JsonlRpcAgentConnection {
     return this.managed.lastCloseResult
   }
 
+  onExit(listener: () => void): void {
+    this.managed.onExit(listener)
+  }
+
   request(
     command: string,
     params: Record<string, unknown> = {},
@@ -140,6 +165,7 @@ export class JsonlRpcAgentConnection {
   /** Stop sends the dialect's abort first, then closes this connection through the supervisor. */
   close(error?: Error): Promise<ProviderProcessCloseResult> {
     this.closing = true
+    clearTimeout(this.streamExitTimer)
     this.finishObservedExit?.()
     this.peer.close(error)
     return this.managed.close()

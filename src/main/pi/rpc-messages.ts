@@ -46,7 +46,7 @@ export class PiRpcMessages {
       this.text.clear()
       return []
     }
-    const events = this.context.live(message?.usage, at)
+    const events = this.context.live(event.usage ?? message?.usage, at)
     this.active ??= ++this.ordinal
     const update = event.assistantMessageEvent
     if (

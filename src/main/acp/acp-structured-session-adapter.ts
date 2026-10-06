@@ -27,7 +27,11 @@ import {
   endAcpStructuredSession,
   type AcpStructuredSession
 } from './acp-structured-session'
-import { AcpStructuredStarts, type AcpStartAttempt } from './acp-structured-starts'
+import {
+  ProviderAcquisitionStarts,
+  type ProviderStartAttempt
+} from '../provider-process/provider-acquisition-starts'
+import type { AcpStructuredConnection } from './acp-structured-connection'
 import { waitForAcpExit } from './acp-structured-connection'
 import { AcpConnectionClosedError } from './acp-errors'
 import { acpPromptBlocks } from './acp-structured-turns'
@@ -41,7 +45,7 @@ import { writeAcpSessionOption } from './acp-structured-options'
 export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   /** Live children, and ones whose exit is not yet proven; a proven exit removes its entry. */
   private readonly sessions = new Map<string, AcpStructuredSession>()
-  private readonly starts = new AcpStructuredStarts()
+  private readonly starts = new ProviderAcquisitionStarts<AcpStructuredConnection>()
 
   constructor(private readonly deps: AcpStructuredSessionAdapterDeps) {}
 
@@ -68,7 +72,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   private async start(
     input: StructuredAgentSessionAcquireInput,
-    attempt: AcpStartAttempt
+    attempt: ProviderStartAttempt<AcpStructuredConnection>
   ): Promise<AgentSessionAcquisition> {
     const sessionId = input.identity.sessionId
     const generation = this.deps.mintGeneration?.() ?? randomUUID()

@@ -49,13 +49,16 @@ export function piRpcDialogPresentation(value: unknown): PiRpcDialogPresentation
   const questionId = String(dialog.id)
   const options =
     dialog.method === 'select'
-      ? dialog.options.map((label, index) => ({ id: `option-${index}`, label }))
+      ? dialog.options.map((label, index) => ({
+          id: `option-${index}`,
+          label: label || 'Empty value'
+        }))
       : []
   return {
     id: dialog.id,
     body: {
       kind: 'question',
-      question: dialog.title,
+      question: [dialog.title, dialog.message].filter((text) => text !== undefined).join('\n\n'),
       options,
       resolution: pendingResolution,
       ...(dialog.method === 'select'
