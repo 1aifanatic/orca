@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
+import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { agentSessionWriteNoticeEnglish } from '../../../shared/agent-session-refusal-notice'
 import { structuredAgentSessionReturnedCardParts } from '../../../shared/structured-agent-session-send-disposition'
 import { JournalQueuedMessages } from '../agent-session-journal/journal-queued-messages'
@@ -165,6 +166,41 @@ describe('a /clear that waits in line', () => {
     expect(await carriedOrder(replacementId)).toEqual([first, queuedCompact.id, second])
     expect(await rig.queuePause(replacementId)).toBeNull()
     expect(await rig.drafts()).toEqual([])
+  })
+
+  it('a kept card, ahead of it or behind it, is carried still kept: only its own Send sends it', async () => {
+    const working = await rig.workingSend()
+    const ahead = await queuedSend('kept ahead of the clear')
+    await queuedClear()
+    const behind = await queuedSend('kept behind the clear')
+    const free = await queuedSend('free behind the clear')
+    const queued = rig.host.collaboratorsForTests().sessions.get(SESSION)!.journal.queuedMessages
+    await queued.hold({ messageIds: [ahead, behind], reason: QUEUED_MESSAGE_PAUSED_KEPT })
+    await rig.settleAccepted(working, 'a')
+    const replacementId = await clearedReplacement()
+    await eventually(async () => expect(await carriedOrder(replacementId)).toContain(free))
+    const carried = rig.host.collaboratorsForTests().sessions.get(replacementId)!.journal
+    for (const id of [ahead, behind]) {
+      expect(carried.queuedMessages.get(id)).toMatchObject({
+        state: 'waiting',
+        holdReason: QUEUED_MESSAGE_PAUSED_KEPT
+      })
+    }
+    const sent = (await rig.host.journalSnapshot(replacementId)).submissions
+    expect(sent.map((entry) => entry.queuedMessageId)).toEqual([free])
+  })
+
+  it('its id resent without `delivery` is a conflict, never its card’s answer', async () => {
+    const working = await rig.workingSend()
+    const clearId = await queuedClear()
+    expect(await clear(undefined, clearId).result).toMatchObject({
+      ok: false,
+      refusal: { code: 'agent_session_operation_conflict' }
+    })
+    expect(await rig.drafts()).toEqual([{ messageId: clearId, state: 'waiting' }])
+    await rig.settleAccepted(working, 'a')
+    await clearedReplacement()
+    expect(committedClears()).toBe(1)
   })
 
   it('a resent id answers from its card, then from the clear it ran; one clear', async () => {
