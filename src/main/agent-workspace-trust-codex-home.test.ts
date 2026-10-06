@@ -44,7 +44,7 @@ function trustedProjects(configFile: string): string[] {
 
 function launchOn(codexHome: string | null): Promise<unknown> {
   const context: AgentTrustLaunchContext = {
-    // Why HOME too: the env's home must not pull Codex trust back into a ~/.codex.
+    // Why HOME too: an explicit CODEX_HOME must leave this home's .codex alone; without one, trust goes there.
     env: { HOME: state.home, USERPROFILE: state.home },
     claudeAuth: null,
     wslDistro: null,
