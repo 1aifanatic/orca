@@ -237,7 +237,8 @@ export class AgentModelCatalogStore {
     }
     const order = ++this.nextListingOrder
     // Only the session-less probe checks the account; a chat's own listing never answers for it.
-    const probed = typeof lister === 'function' ? this.statuses.beginProbe(fingerprint) : null
+    const probed =
+      typeof lister === 'function' ? this.statuses.beginProbe(fingerprint, agent) : null
     let listing: Promise<AgentModelCatalogSuccess>
     try {
       listing = listModels()

@@ -43,6 +43,8 @@ export type AgentModelCatalogService = {
     waitForListing?: boolean
     /** Answer once the probe already running has its sign-in/CLI verdict. */
     waitForAvailability?: boolean
+    /** The client's own timer read, which waits out the backed-off hold; a person's read doesn't. */
+    scheduledRecheck?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
 }
 
@@ -139,7 +141,7 @@ export function createAgentModelCatalogService(
       if (probe && home) {
         // A blocked answer past its hold, or one an account change marked, is re-derived here by
         // the probe whatever else is listing; no chat's own listing can answer for the account.
-        if (deps.store.statuses.needsProbe(fingerprint)) {
+        if (deps.store.statuses.needsProbe(fingerprint, params.scheduledRecheck === true)) {
           void reprobe()
           listing = !entry ? (listing ?? deps.store.pendingListing(fingerprint)) : null
         } else if (entry && deps.store.shouldRefresh(fingerprint)) {

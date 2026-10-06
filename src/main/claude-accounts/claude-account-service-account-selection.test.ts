@@ -58,19 +58,24 @@ describe('ClaudeAccountService credential capture', () => {
     mkdirSync(managedAuthPath, { recursive: true })
     writeFileSync(join(managedAuthPath, '.orca-managed-claude-auth'), 'account-1\n', 'utf-8')
     writeFileSync(join(managedAuthPath, '.credentials.json'), '{"old":true}\n', 'utf-8')
+    const otherAuthPath = join(tempDir, 'claude-accounts', 'account-2', 'auth')
+    mkdirSync(otherAuthPath, { recursive: true })
+    writeFileSync(join(otherAuthPath, '.orca-managed-claude-auth'), 'account-2\n', 'utf-8')
+    const account = (id: string, path: string) => ({
+      id,
+      email: `${id}@example.com`,
+      managedAuthPath: path,
+      authMethod: 'subscription-oauth',
+      organizationUuid: null,
+      organizationName: null,
+      createdAt: 1,
+      updatedAt: 1,
+      lastAuthenticatedAt: 1
+    })
     let settings = {
       claudeManagedAccounts: [
-        {
-          id: 'account-1',
-          email: 'old@example.com',
-          managedAuthPath,
-          authMethod: 'subscription-oauth',
-          organizationUuid: null,
-          organizationName: null,
-          createdAt: 1,
-          updatedAt: 1,
-          lastAuthenticatedAt: 1
-        }
+        account('account-1', managedAuthPath),
+        account('account-2', otherAuthPath)
       ],
       activeClaudeManagedAccountId: 'account-1'
     }
@@ -110,6 +115,10 @@ describe('ClaudeAccountService credential capture', () => {
     expect(rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith('account-1', {
       runtime: 'host'
     })
+    // An account nothing has selected leaves every sign-in as it was.
+    recheck.mockClear()
+    await service.removeAccount('account-2')
+    expect(recheck).not.toHaveBeenCalled()
     expect(settings).toMatchObject({
       claudeManagedAccounts: [],
       activeClaudeManagedAccountId: null

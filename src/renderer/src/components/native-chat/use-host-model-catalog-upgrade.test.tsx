@@ -434,6 +434,25 @@ describe('Send availability follows the current catalog', () => {
     await flush()
     expect(result.current.unavailable).toBeNull()
   })
+  it('marks only its timer read as scheduled; a focus read is a person looking', async () => {
+    answerCatalog([
+      () => Promise.resolve(blocked),
+      () => Promise.resolve(blocked),
+      () => Promise.resolve(blocked)
+    ])
+    renderOptions()
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30000)
+    })
+    act(() => window.dispatchEvent(new Event('focus')))
+    await flush()
+    expect(catalogReads()).toEqual([
+      { agent: 'codex', sessionId },
+      { agent: 'codex', sessionId, scheduledRecheck: true },
+      { agent: 'codex', sessionId }
+    ])
+  })
   it('a focus refresh with an unknown answer clears the blocker', async () => {
     answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
     const { result } = renderOptions()

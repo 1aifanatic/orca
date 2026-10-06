@@ -49,10 +49,10 @@ export class ClaudeAccountSelection {
       settings.activeClaudeManagedAccountId === accountId ? null : nextSelection.host
     const target = getClaudeSelectionTargetForAccount(account)
     const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
-    // Removing the selected account swaps another sign-in into the same config dir.
-    this.lifecycle.onSignInChanged?.()
     try {
       if (wasSelected) {
+        // Removing the selected account swaps another sign-in into the same config dir.
+        this.lifecycle.onSignInChanged?.()
         this.store.updateSettings({
           activeClaudeManagedAccountId: nextActiveId,
           activeClaudeManagedAccountIdsByRuntime: nextSelection

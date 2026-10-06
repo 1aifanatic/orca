@@ -10,8 +10,9 @@ import {
 // or what the same CLI said refusing a start there. Its own record with its own writers, never part
 // of the model catalog or its failure backoff. In memory only and capped; an entry lives until a
 // newer answer replaces it, an untyped probe failure makes it unknown, the cap evicts it, or the
-// process restarts. A blocked answer older than its hold, or one an account change marked, is
-// re-derived by the next read's probe and served until that probe answers.
+// process restarts. A blocked answer is re-derived by the next read's probe, and served until that
+// probe answers, once an account change follows it, once a person's read finds it older than the
+// TTL, or once the client's own timer read finds it past its backed-off hold.
 
 /** The probe's typed verdict that no new child can start under this account. */
 export class AgentModelCatalogUnavailableError extends Error {
@@ -27,8 +28,6 @@ export type AgentAccountStatus = AgentSessionAvailabilityState & {
   agent: string
   /** The probe's start, or the refused start. */
   taken: AgentAccountEvidence
-  /** An account change after `taken`: the next read re-probes, and older evidence is ignored. */
-  recheckOrder?: number
   /** Probes in a row that found this same blocked state; each doubles the hold before the next. */
   streak: number
 }
@@ -44,7 +43,9 @@ function sameState(left: AgentSessionAvailabilityState, right: AgentSessionAvail
 export class AgentAccountStatuses {
   private readonly statuses = new Map<string, AgentAccountStatus>()
   /** The probe running for each home, by the evidence it will record. */
-  private readonly probing = new Map<string, AgentAccountEvidence>()
+  private readonly probing = new Map<string, AgentAccountEvidence & { agent: string }>()
+  /** Each agent's last account change, by sequence: evidence taken before it is the old account's. */
+  private readonly rechecks = new Map<string, number>()
   private sequence = 0
 
   constructor(
@@ -67,7 +68,7 @@ export class AgentAccountStatuses {
     if (!rederivable && left <= 0) {
       return undefined
     }
-    const recheckInMs = left > 0 && status.recheckOrder === undefined ? left : this.ttlMs
+    const recheckInMs = left > 0 && !this.marked(status) ? left : this.ttlMs
     return status.state === 'notSignedIn'
       ? {
           state: 'notSignedIn',
@@ -78,7 +79,7 @@ export class AgentAccountStatuses {
   }
 
   /** The answer held now, as a handle `blockedAfter` compares against. Every write replaces the
-   *  object and `recheck` mutates it in place, so identity means "no newer answer". */
+   *  object, so identity means "no newer answer". */
   held(fingerprint: string): AgentAccountStatus | undefined {
     return this.statuses.get(fingerprint)
   }
@@ -89,26 +90,33 @@ export class AgentAccountStatuses {
     return status !== undefined && status !== held && status.state !== 'ready'
   }
 
-  /** True when the next read should start the probe: blocked past its hold, or marked. */
-  needsProbe(fingerprint: string): boolean {
+  /** True when this read should start the probe: marked by an account change, or blocked past the
+   *  TTL for a person's read. Only the client's timer read waits out the backed-off hold, so
+   *  someone back from signing in elsewhere is re-checked within the TTL. */
+  needsProbe(fingerprint: string, scheduled = false): boolean {
     const status = this.statuses.get(fingerprint)
-    return (
-      status !== undefined &&
-      (status.recheckOrder !== undefined ||
-        (status.state !== 'ready' && this.holdLeft(status) <= 0))
-    )
+    if (!status) {
+      return false
+    }
+    if (this.marked(status)) {
+      return true
+    }
+    if (status.state === 'ready') {
+      return false
+    }
+    const age = this.now() - status.taken.at
+    return scheduled ? this.holdLeft(status) <= 0 : age < 0 || age >= this.ttlMs
   }
 
   /** The probe running now began before the account change it would have to answer for. */
   probeStartedBeforeRecheck(fingerprint: string): boolean {
     const running = this.probing.get(fingerprint)
-    const marked = this.statuses.get(fingerprint)?.recheckOrder
-    return running !== undefined && marked !== undefined && running.order < marked
+    return running !== undefined && running.order < this.lastRecheck(running.agent)
   }
 
-  beginProbe(fingerprint: string): AgentAccountEvidence {
+  beginProbe(fingerprint: string, agent: string): AgentAccountEvidence {
     const taken = this.evidence()
-    this.probing.set(fingerprint, taken)
+    this.probing.set(fingerprint, { ...taken, agent })
     return taken
   }
 
@@ -119,7 +127,7 @@ export class AgentAccountStatuses {
     state: AgentSessionAvailabilityState | null,
     taken: AgentAccountEvidence
   ): void {
-    if (this.probing.get(fingerprint) === taken) {
+    if (this.probing.get(fingerprint)?.order === taken.order) {
       this.probing.delete(fingerprint)
     }
     this.write(fingerprint, agent, state, taken, true)
@@ -147,14 +155,18 @@ export class AgentAccountStatuses {
   }
 
   /** The agent's sign-in changed under Orca: each of its answers is re-derived by the next read's
-   *  probe, served until that probe answers, and its hold starts over. */
+   *  probe, served until that probe answers, and its hold starts over. A probe already running,
+   *  even the home's first, read the old account. */
   recheck(agent: string): void {
-    const order = ++this.sequence
-    for (const status of this.statuses.values()) {
-      if (status.agent === agent) {
-        status.recheckOrder = order
-      }
-    }
+    this.rechecks.set(agent, ++this.sequence)
+  }
+
+  private lastRecheck(agent: string): number {
+    return this.rechecks.get(agent) ?? -Infinity
+  }
+
+  private marked(status: AgentAccountStatus): boolean {
+    return this.lastRecheck(status.agent) > status.taken.order
   }
 
   private evidence(): AgentAccountEvidence {
@@ -180,7 +192,7 @@ export class AgentAccountStatuses {
     probed: boolean
   ): void {
     const held = this.statuses.get(fingerprint)
-    if (held && taken.order < Math.max(held.taken.order, held.recheckOrder ?? -Infinity)) {
+    if (taken.order < Math.max(held?.taken.order ?? -Infinity, this.lastRecheck(agent))) {
       return
     }
     this.statuses.delete(fingerprint)
@@ -189,10 +201,7 @@ export class AgentAccountStatuses {
     }
     // Only a probe repeating the same blocked answer backs off; a refused start keeps the pace.
     const repeated =
-      held !== undefined &&
-      held.recheckOrder === undefined &&
-      state.state !== 'ready' &&
-      sameState(held, state)
+      held !== undefined && !this.marked(held) && state.state !== 'ready' && sameState(held, state)
     const streak = !repeated ? 1 : probed ? held.streak + 1 : held.streak
     this.statuses.set(fingerprint, { ...state, agent, taken, streak })
     for (const key of this.statuses.keys()) {

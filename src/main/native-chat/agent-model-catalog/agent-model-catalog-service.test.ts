@@ -615,6 +615,25 @@ describe('catalog availability evidence', () => {
     expect(probe).toHaveBeenCalledTimes(2)
   })
 
+  it("backs off only the client's timer reads; a person's read re-checks after the TTL", async () => {
+    let at = 1000
+    const store = new AgentModelCatalogStore({ now: () => at })
+    const fingerprint = selectedHomeFingerprint('/homes/a')
+    store.recordSuccess(fingerprint, 'codex', listing('gpt-a'))
+    const probe = vi.fn(signedOut)
+    await store.refresh(fingerprint, 'codex', probe, () => probe('/homes/a'))
+    await store.refresh(fingerprint, 'codex', probe, () => probe('/homes/a'))
+    const service = availabilityService(store, probe)
+    // Two blocked probes in a row: the timer's hold is 60 s.
+    at += AGENT_MODEL_CATALOG_FAILURE_TTL_MS
+    const timer = await service.read({ agent: 'codex', scheduledRecheck: true })
+    expect(timer.availability).toMatchObject({ state: 'notSignedIn', recheckInMs: 30_000 })
+    expect(probe).toHaveBeenCalledTimes(2)
+    // Someone back at the window, say from `codex login`, is re-checked now.
+    await service.read({ agent: 'codex' })
+    expect(probe).toHaveBeenCalledTimes(3)
+  })
+
   it('an untyped probe failure makes the answer unknown and keeps the cached models', async () => {
     let at = 1
     const store = new AgentModelCatalogStore({ now: () => at })

@@ -527,13 +527,45 @@ describe("the account's status beside the catalog", () => {
       await block()
       const hold = store.statuses.get('fp-1', true)
       holds.push(hold && hold.state !== 'ready' ? hold.recheckInMs : 0)
-      // Every read before the hold is up serves the held answer and starts no probe.
+      // Every timer read before the hold is up serves the held answer and starts no probe.
       at.now += holds.at(-1)! - 1
-      expect(store.statuses.needsProbe('fp-1')).toBe(false)
+      expect(store.statuses.needsProbe('fp-1', true)).toBe(false)
       at.now += 1
-      expect(store.statuses.needsProbe('fp-1')).toBe(true)
+      expect(store.statuses.needsProbe('fp-1', true)).toBe(true)
     }
     expect(holds).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000])
+  })
+
+  it("re-checks for a person's read past the TTL, inside the timer's backed-off hold", async () => {
+    const at = { now: 1_000 }
+    const { store, block } = blockedStore(at)
+    await block()
+    await block()
+    await block()
+    at.now += AGENT_MODEL_CATALOG_FAILURE_TTL_MS - 1
+    expect(store.statuses.needsProbe('fp-1')).toBe(false)
+    at.now += 1
+    expect(store.statuses.needsProbe('fp-1')).toBe(true)
+    expect(store.statuses.needsProbe('fp-1', true)).toBe(false)
+  })
+
+  it("an account change during a home's first probe drops that probe's old-account answer", async () => {
+    const store = new AgentModelCatalogStore({ now: () => 1_000 })
+    let answer!: (value: AgentModelCatalogSuccess) => void
+    const slow: AgentModelCatalogProbe = () =>
+      new Promise<AgentModelCatalogSuccess>((resolve) => (answer = resolve))
+    const first = store.refresh('fp-1', 'claude', slow, () => slow('/homes/a'))
+    store.statuses.recheck('claude')
+    expect(store.statuses.probeStartedBeforeRecheck('fp-1')).toBe(true)
+    answer({ ...success('gpt-a'), origin: 'probe' })
+    await first
+    expect(status(store)).toBeUndefined()
+    // The next probe began after the change, so its answer stands.
+    const next = store.refresh('fp-1', 'claude', slow, () => slow('/homes/a'))
+    expect(store.statuses.probeStartedBeforeRecheck('fp-1')).toBe(false)
+    answer({ ...success('gpt-a'), origin: 'probe' })
+    await next
+    expect(status(store)).toEqual({ state: 'ready' })
   })
 
   it('starts the hold over after an account change or a different refusal', async () => {

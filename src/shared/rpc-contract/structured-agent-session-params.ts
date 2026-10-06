@@ -119,11 +119,9 @@ export const AttachParams = z
 /** An identity, and nothing the host would otherwise read off disk. A transcript path or account
  *  home here would let a client choose which file this host imports and which credential directory
  *  the provider child launches against; both are derived host-side from this id instead. */
-export const ResumeSource = z
-  .object({
-    providerSessionId: Identifier('Invalid provider session id')
-  })
-  .strict()
+export const ResumeSource = z.strictObject({
+  providerSessionId: Identifier('Invalid provider session id')
+})
 
 export const CreateIntentParams = z
   .object({
@@ -307,13 +305,16 @@ export const AgentsParams = z.object({}).strict()
  *  `waitForListing` holds the answer until the listing the host reported in progress lands; send
  *  it only after that report, because a host that predates it refuses the unknown key.
  *  `waitForAvailability` holds it until the running probe's sign-in/CLI verdict lands; send it
- *  only after a host reported a listing in progress beside a catalog, which only such a host does. */
+ *  only after a host reported a listing in progress beside a catalog, which only such a host does.
+ *  `scheduledRecheck` marks the client's own timer read, which the host's backoff spaces out; it is
+ *  sent only on that timer, armed by a blocked `availability` answer only such a host gives. */
 export const ModelCatalogParams = z.strictObject({
   agent: StructuredAgent,
   sessionId: SessionId.optional(),
   worktree: Identifier('Invalid worktree selector').optional(),
   waitForListing: z.boolean().optional(),
-  waitForAvailability: z.boolean().optional()
+  waitForAvailability: z.boolean().optional(),
+  scheduledRecheck: z.boolean().optional()
 })
 
 export const ConversationCommandParams = z
