@@ -207,6 +207,74 @@ async function sendLine(
   ])
 }
 
+/** Host Node is hidden on the lane, so the listener is Windows PowerShell's own TcpListener. */
+const DETECTED_PORT = 4317
+
+async function expectWorkspacePortDetected(
+  page: Page,
+  userData: string,
+  environmentId: string,
+  repoId: string,
+  worktreeId: string
+): Promise<void> {
+  const listener = await orcaCliResult<{ terminal: { handle: string } }>(userData, [
+    'terminal',
+    'create',
+    '--environment',
+    environmentId,
+    '--worktree',
+    `id:${worktreeId}`,
+    '--title',
+    'port-listener'
+  ])
+  await sendLine(
+    userData,
+    environmentId,
+    listener.terminal.handle,
+    `powershell -NoProfile -Command "$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,${DETECTED_PORT});$l.Start();Write-Output ORCA_PORT_LISTENING;Start-Sleep 900"`
+  )
+  await waitForEchoedLine(userData, environmentId, listener.terminal.handle, 'ORCA_PORT_LISTENING')
+  let last = ''
+  await expect
+    .poll(
+      async () => {
+        const response = await page.evaluate((args) => window.api.runtimeEnvironments.call(args), {
+          selector: environmentId,
+          method: 'workspacePorts.scan',
+          params: { repoId },
+          timeoutMs: 30_000
+        })
+        last = JSON.stringify(response)
+        const result =
+          response.ok && response.result && typeof response.result === 'object'
+            ? response.result
+            : null
+        const ports = result && 'ports' in result && Array.isArray(result.ports) ? result.ports : []
+        const entry = ports.find((port: { port?: unknown }) => port?.port === DETECTED_PORT)
+        return entry ? `${entry.kind}:${entry.owner?.worktreeId ?? ''}` : 'absent'
+      },
+      { timeout: 90_000 }
+    )
+    .toBe(`workspace:${worktreeId}`)
+    .catch((error: unknown) => {
+      throw new Error(
+        `workspacePorts.scan never attributed ${DETECTED_PORT}: ${last.slice(0, 3_000)}`,
+        {
+          cause: error
+        }
+      )
+    })
+  console.log(`[cli-matrix] workspace port detected: ${last.slice(0, 1_500)}`)
+  await orcaCliResult(userData, [
+    'terminal',
+    'close',
+    '--environment',
+    environmentId,
+    '--terminal',
+    listener.terminal.handle
+  ])
+}
+
 /** The terminal is still listed after an orcad restart, kept its output and still takes input. */
 async function expectTerminalSurvives(
   userData: string,
@@ -302,7 +370,7 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
     ])
     testInfo.annotations.push({ type: 'environment-status', description: JSON.stringify(status) })
 
-    await orcaCliResult(userData, [
+    const added = await orcaCliResult<{ repo: { id: string } }>(userData, [
       'repo',
       'add',
       '--environment',
@@ -329,6 +397,9 @@ test('@orcad-cli-managed an empty Windows host deploys, serves CLI terminals thr
     const before = `ORCA_CLI_BEFORE_${Date.now()}`
     await sendLine(userData, environmentId, handle, `echo ${before}`)
     await waitForEchoedLine(userData, environmentId, handle, before)
+
+    // Port detection: a listener started in a workspace terminal is reported as that workspace's port.
+    await expectWorkspacePortDetected(page, userData, environmentId, added.repo.id, worktree!.id)
 
     // Disconnect and reconnect: the server, and the terminal it runs, outlive the SSH session.
     expect(await reconnect(page, targetId)).toContain('"managed"')
