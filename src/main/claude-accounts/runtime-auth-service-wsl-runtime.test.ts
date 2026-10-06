@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type * as ClaudeProfileRouting from '../../shared/claude-profile-routing'
 
 vi.mock('electron', () => createElectronMock())
 
@@ -283,7 +284,7 @@ describe('ClaudeRuntimeAuthService', () => {
       runningDistros: vi.fn(async () => [])
     }
     vi.doMock('../../shared/claude-profile-routing', async (original) => ({
-      ...(await original<typeof import('../../shared/claude-profile-routing')>()), // eslint-disable-line @typescript-eslint/consistent-type-imports -- vi.doMock's original() needs inline import()
+      ...(await original<typeof ClaudeProfileRouting>()),
       claudeProfileRoutingEnabled: () => true
     }))
     vi.doMock('./claude-profile-wsl-router', () => ({
