@@ -114,4 +114,18 @@ describe('managed orcad terminal census client', () => {
       unverifiable
     )
   })
+
+  it('asks the server to release finished automation shells only when an update needs it', async () => {
+    answerWith([ORCAD_TERMINAL_CENSUS_RUNTIME_CAPABILITY], { ok: true, result: census })
+    await collect(active)
+    expect(mocks.send.mock.calls[0]?.[2]).toEqual({ activatedAt: Date.parse(active.activatedAt) })
+
+    await collectManagedTerminalCensus('/profile', environment, active, undefined, {
+      releaseFinishedAutomationTerminals: true
+    })
+    expect(mocks.send.mock.calls[1]?.[2]).toEqual({
+      activatedAt: Date.parse(active.activatedAt),
+      releaseFinishedAutomationTerminals: true
+    })
+  })
 })

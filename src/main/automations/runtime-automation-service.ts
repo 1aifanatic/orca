@@ -150,6 +150,7 @@ function bindHeadlessRunTerminalRetention(
       })
     }
   })
+  service.releaseFinishedRunTerminals = () => retention.drain()
   const start = service.start.bind(service)
   const stop = service.stop.bind(service)
   service.start = () => {

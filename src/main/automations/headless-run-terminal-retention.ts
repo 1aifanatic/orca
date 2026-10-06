@@ -31,6 +31,8 @@ export type HeadlessRunTerminalRetentionDeps = {
 
 export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRetentionDeps): {
   sweep: () => Promise<void>
+  /** Before an update restarts the server: no grace, no newest-N, every other rule still holds. */
+  drain: () => Promise<number>
   start: () => void
   stop: () => void
 } {
@@ -40,7 +42,8 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
   let timer: ReturnType<typeof setInterval> | null = null
   let sweeping: Promise<void> | null = null
 
-  const sweepOnce = async (): Promise<void> => {
+  const sweepOnce = async (policy: { keep: number; graceMs: number }): Promise<number> => {
+    let closedCount = 0
     const finishedByAutomation = new Map<string, AutomationRun[]>()
     for (const run of deps.listRuns()) {
       // Only completed: a failed run can still hold a live agent (blocked on a prompt, past the
@@ -58,15 +61,17 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
     }
     for (const runs of finishedByAutomation.values()) {
       const newestFirst = runs.toSorted((a, b) => runRecency(b) - runRecency(a))
-      for (const run of newestFirst.slice(RUN_TERMINALS_KEPT_PER_AUTOMATION)) {
+      for (const run of newestFirst.slice(policy.keep)) {
         if (
-          now() - (finishedSeenAt.get(run.id) ?? now()) < RUN_TERMINAL_GRACE_MS ||
+          now() - (finishedSeenAt.get(run.id) ?? now()) < policy.graceMs ||
           deps.terminalClientUse(run) !== 'unused'
         ) {
           continue
         }
         try {
-          await deps.closeRunTerminal(run)
+          if (await deps.closeRunTerminal(run)) {
+            closedCount += 1
+          }
           await deps.forgetRunTerminal(run)
           finishedSeenAt.delete(run.id)
         } catch (error) {
@@ -74,17 +79,30 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
         }
       }
     }
+    return closedCount
   }
 
   const sweep = (): Promise<void> => {
-    sweeping ??= sweepOnce().finally(() => {
-      sweeping = null
+    sweeping ??= sweepOnce({
+      keep: RUN_TERMINALS_KEPT_PER_AUTOMATION,
+      graceMs: RUN_TERMINAL_GRACE_MS
     })
+      .then(() => {})
+      .finally(() => {
+        sweeping = null
+      })
     return sweeping
+  }
+
+  const drain = async (): Promise<number> => {
+    // Waits out a periodic sweep so the two never close the same terminal twice.
+    await sweeping?.catch(() => {})
+    return sweepOnce({ keep: 0, graceMs: 0 })
   }
 
   return {
     sweep,
+    drain,
     start: () => {
       timer ??= setInterval(() => void sweep(), SWEEP_INTERVAL_MS)
       timer.unref?.()

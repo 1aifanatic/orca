@@ -132,4 +132,27 @@ describe('headless run terminal retention', () => {
     await vi.advanceTimersByTimeAsync(RUN_TERMINAL_GRACE_MS * 2)
     expect(h.closed).toEqual(['tab-r0:1'])
   })
+
+  it('drains every completed, unused run terminal for an update, ignoring keep and grace', async () => {
+    const runs = [
+      ...[0, 1, 2, 3, 4].map((n) => makeRun(`r${n}`, n)),
+      makeRun('typed', 5),
+      makeRun('adopted', 6),
+      makeRun('failed', 7, 'dispatch_failed'),
+      makeRun('working', 8, 'dispatched')
+    ]
+    const h = harness(runs)
+    h.use.set('typed', 'used')
+    h.use.set('adopted', 'unknown')
+
+    // Fresh runs, inside the grace period: an update still releases them.
+    expect(await h.retention.drain()).toBe(5)
+    expect(h.closed.toSorted()).toEqual([
+      'tab-r0:1',
+      'tab-r1:1',
+      'tab-r2:1',
+      'tab-r3:1',
+      'tab-r4:1'
+    ])
+  })
 })
