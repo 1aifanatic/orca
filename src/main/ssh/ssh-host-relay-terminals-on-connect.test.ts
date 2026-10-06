@@ -62,13 +62,14 @@ describe('the connect-time relay terminal verdict', () => {
     expect(censusHost).not.toHaveBeenCalled()
   })
 
-  it('trusts a connected relay session that answered, without asking the host', async () => {
+  // Astra pass 4 §2: this target's empty lists cannot see another desktop's relay on the account.
+  it('asks the account-wide census even when the connected relay answered empty', async () => {
     const { censusHost, verdict } = decide(
       { verdict: 'live', count: 1 },
       { lister: Object.assign(async () => [], { previous: async () => [] }) }
     )
-    await expect(verdict).resolves.toEqual({ verdict: 'exited', count: 0 })
-    expect(censusHost).not.toHaveBeenCalled()
+    await expect(verdict).resolves.toEqual({ verdict: 'live', count: 1 })
+    expect(censusHost).toHaveBeenCalledTimes(1)
   })
 
   // A session whose relays could not answer proves nothing, and no lease here changes that.

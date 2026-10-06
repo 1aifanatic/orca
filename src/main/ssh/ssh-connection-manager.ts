@@ -1,5 +1,6 @@
 import type { SshTarget, SshConnectionState } from '../../shared/ssh-types'
 import { SshConnection, type SshConnectionCallbacks } from './ssh-connection'
+import { recordSshConnectionOpened } from './ssh-connection-attribution'
 
 export class SshConnectionManager {
   private connections = new Map<string, SshConnection>()
@@ -38,6 +39,7 @@ export class SshConnectionManager {
       }
 
       const conn = new SshConnection(target, this.callbacks)
+      recordSshConnectionOpened(conn)
       this.connections.set(target.id, conn)
 
       try {

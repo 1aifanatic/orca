@@ -73,7 +73,14 @@ const rollback = (): Promise<unknown> =>
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
-  vi.mocked(acquireInstallLock).mockImplementation(async () => host.acquireFence())
+  vi.mocked(acquireInstallLock).mockImplementation(async (_conn, dir, _host, options) => {
+    if (!host.acquireFence(options)) {
+      const { RemoteInstallLockBusyError } = await vi.importActual<typeof InstallLock>(
+        './ssh-relay-install-lock'
+      )
+      throw new RemoteInstallLockBusyError(dir, 0)
+    }
+  })
   vi.mocked(writeAtomicOrcadRemoteRecord).mockImplementation(async (_target, path, contents) =>
     host.write(path, contents)
   )
@@ -188,6 +195,7 @@ describe('recovery refusals keep the fence', () => {
     expect(host.journal).not.toBeNull()
     expect(host.alive.size).toBe(0)
 
+    // BUG-17: the refused takeover left the lock ownerless, so the accepting re-run need not wait.
     await expect(
       recoverInterruptedOrcadActivation({ ...slot, acceptChangedState: true })
     ).resolves.toMatchObject({ outcome: 'recovered', resolution: 'restored-incumbent' })

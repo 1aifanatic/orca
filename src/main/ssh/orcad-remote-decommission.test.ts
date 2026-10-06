@@ -63,7 +63,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   host = FakeOrcadHost.deployedOld()
   vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
-  vi.mocked(acquireInstallLock).mockImplementation(async () => host.acquireFence())
+  vi.mocked(acquireInstallLock).mockImplementation(async () => {
+    host.acquireFence()
+  })
   vi.mocked(writeAtomicOrcadRemoteRecord).mockImplementation(async (_target, path, contents) =>
     host.write(path, contents)
   )

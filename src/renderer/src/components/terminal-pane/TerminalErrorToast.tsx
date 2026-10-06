@@ -204,18 +204,21 @@ export function humanizeTerminalError(error: string): string {
 
 export function TerminalErrorToast({
   error,
+  paneOnClient = true,
   onDismiss,
   onRestartDaemon,
   onRetry
 }: {
   error: string
+  /** False for a pane on an SSH or remote host, or one whose host is not yet known. */
+  paneOnClient?: boolean
   onDismiss: () => void
   onRestartDaemon?: () => void
   onRetry?: () => Promise<boolean>
 }): React.JSX.Element {
   const ssh = isSshError(error)
   // Why: the client's OS and shell describe neither the host nor its shell, and the renderer knows neither.
-  const showClientEnvironment = !ssh && !isHeldByPreviousRelayError(error)
+  const showClientEnvironment = paneOnClient && !ssh && !isHeldByPreviousRelayError(error)
   const paneOwnerUnverified = isPaneOwnerUnverifiedError(error)
   const showDaemonRestart = !ssh && onRestartDaemon && shouldOfferDaemonRestart(error)
   // Restart cannot recover a session after its owning daemon exits.

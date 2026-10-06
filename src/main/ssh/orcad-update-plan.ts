@@ -66,6 +66,21 @@ export function planOrcadUpdate(input: {
       reason: `${input.candidateVersion} is already the active version; nothing to restart.`
     }
   }
+  const inProcess = input.census.inProcessSessions ?? 0
+  // First, and force cannot override it: these run inside orcad, so no daemon carries them
+  // across, and an empty daemon list would otherwise read as an unreported protocol.
+  if (inProcess > 0) {
+    return {
+      action: 'defer',
+      code: 'orcad_update_ends_in_process_terminals',
+      reason:
+        `${inProcess} terminal${inProcess === 1 ? ' runs' : 's run'} inside the orcad process ` +
+        'itself because its terminal daemon is degraded. Any restart ends ' +
+        `${inProcess === 1 ? 'it' : 'them'}, and forcing the update cannot keep ` +
+        `${inProcess === 1 ? 'it' : 'them'} alive. Close ${inProcess === 1 ? 'it' : 'them'}, ` +
+        'then update.'
+    }
+  }
   const crossing = assessOrcadLiveDaemonCrossing(input.census, input.candidateDaemonProtocol)
   // Why force cannot override: the operator can accept a mixed pair, not unreachable terminals.
   if (crossing === 'strands-live-terminals') {
@@ -110,20 +125,6 @@ export function planOrcadUpdate(input: {
           'daemon will be preserved across the restart, and the outgoing version directory ' +
           'stays pinned against GC.'
       ]
-    }
-  }
-  const inProcess = input.census.inProcessSessions ?? 0
-  // Why force cannot override: these run inside orcad, so no daemon carries them across.
-  if (inProcess > 0) {
-    return {
-      action: 'defer',
-      code: 'orcad_update_ends_in_process_terminals',
-      reason:
-        `${inProcess} terminal${inProcess === 1 ? ' runs' : 's run'} inside the orcad process ` +
-        'itself because its terminal daemon is degraded. Any restart ends ' +
-        `${inProcess === 1 ? 'it' : 'them'}, and forcing the update cannot keep ` +
-        `${inProcess === 1 ? 'it' : 'them'} alive. Close ${inProcess === 1 ? 'it' : 'them'}, ` +
-        'then update.'
     }
   }
   if (liveSessions > 0 && !input.force) {

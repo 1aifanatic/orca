@@ -18,13 +18,17 @@ function relay(current: string[] | null, previous: string[] | null): ListRelayPt
   return list
 }
 
+// Every relay on the account, whichever desktop launched it, holds no work.
+const hostIdle = async () => ({ verdict: 'exited' as const, count: 0 })
+
 describe('migration terminal gate', () => {
   it('proves exit from terminated leases and an empty relay', async () => {
     await expect(
       assessOrcadMigrationTerminals(
         store([{ ptyId: 'a', state: 'terminated' }]),
         'ssh-1',
-        relay([], [])
+        relay([], []),
+        hostIdle
       )
     ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
   })
@@ -43,7 +47,7 @@ describe('migration terminal gate', () => {
   it('needs a host census, not silence, when no relay session can be asked', async () => {
     await expect(assessOrcadMigrationTerminals(store([]), 'ssh-1', null)).resolves.toMatchObject({
       verdict: 'unverifiable',
-      needsHostCensus: true
+      reason: "no census of every relay on this host's account was taken"
     })
     await expect(
       assessOrcadMigrationTerminals(store([]), 'ssh-1', null, async () => ({
@@ -106,7 +110,7 @@ describe('migration terminal gate', () => {
 
   it('proves a detached terminal exited once this relay and earlier relays both answer without it', async () => {
     const leases = store([{ ptyId: 'a', state: 'detached' }])
-    const proof = await assessOrcadMigrationTerminals(leases, 'ssh-1', relay([], []))
+    const proof = await assessOrcadMigrationTerminals(leases, 'ssh-1', relay([], []), hostIdle)
     expect(proof).toEqual({ verdict: 'exited', provenPtyIds: ['a'] })
 
     // Only the move acting on the proof retires the lease; asking alone changes nothing.
@@ -173,7 +177,8 @@ describe('migration terminal gate', () => {
       assessOrcadMigrationTerminals(
         store([{ ptyId: 'old', state: 'expired' }]),
         'ssh-1',
-        relay([], [])
+        relay([], []),
+        hostIdle
       )
     ).resolves.toEqual({ verdict: 'exited', provenPtyIds: ['old'] })
   })

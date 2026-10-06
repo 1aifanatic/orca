@@ -29,6 +29,8 @@ export class FakeOrcadHost {
   record: string | null = null
   journal: string | null = null
   fence = false
+  /** Set by a recovery takeover, which recreates the lock fresh; the ownerless mark clears it. */
+  fenceFresh = false
   wakeOwner: string | null = null
   readonly alive = new Set<string>()
   readonly pidFiles = new Set<string>()
@@ -116,12 +118,22 @@ export class FakeOrcadHost {
     })
   }
 
-  acquireFence(): void {
+  /** Returns false where a stale-only takeover would answer busy. */
+  acquireFence(options?: { allowStaleTakeover?: boolean }): boolean {
+    if (options?.allowStaleTakeover && this.fence && this.fenceFresh) {
+      return false
+    }
+    this.fenceFresh = options?.allowStaleTakeover === true && this.fence
     this.fence = true
+    return true
   }
 
   exec(command: string): string {
     this.commands.push(command)
+    if (command.startsWith('touch -m -t 200001010000')) {
+      this.fenceFresh = false
+      return ''
+    }
     // A wake's owner token lives inside the fence's lock dir, so the fence's release drops it.
     if (command.includes(WAKE_OWNER)) {
       const written = /printf %s '([^']*)'/u.exec(command)?.[1]
