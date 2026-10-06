@@ -8,11 +8,12 @@ export function projectJournalStopNote(
   item: AgentJournalRenderItem,
   items: ReadonlyMap<string, AgentJournalRenderItem>
 ): AgentJournalRenderItem {
+  // Field checks before the key parse: this runs for every item of every snapshot.
   if (
-    isStructuredAgentSessionStopNote(item.itemId) &&
     item.body.kind === 'status' &&
     item.body.failure?.kind === 'cancelUnconfirmed' &&
     item.turnScope?.kind === 'turn' &&
+    isStructuredAgentSessionStopNote(item.itemId) &&
     readAgentJournalTurn(items.get(item.turnScope.turnItemId)?.body)?.state === 'interrupted'
   ) {
     return { ...item, body: { kind: 'status', text: STOP_NOTE_CANCELLATION_REQUESTED } }
