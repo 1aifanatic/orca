@@ -52,7 +52,9 @@ function stoppedHost(): FakeOrcadHost {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
-  vi.mocked(acquireInstallLock).mockImplementation(async () => host.acquireFence())
+  vi.mocked(acquireInstallLock).mockImplementation(async () => {
+    host.acquireFence()
+  })
 })
 
 afterEach(() => {
