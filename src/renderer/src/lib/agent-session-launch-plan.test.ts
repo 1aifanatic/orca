@@ -111,16 +111,20 @@ describe('planAgentSessionLaunch', () => {
     )
   })
 
-  it('returns null for an agent that cannot hold a structured session even on the structured route', async () => {
+  it('uses the host-derived structured route for a registered agent beyond Claude and Codex', async () => {
     const plan = planAgentSessionLaunch(store, {
       requestId: 'request-4',
-      agent: 'gemini',
+      agent: 'opencode',
       workspace: { kind: 'git-worktree', worktreeId: 'wt-1' }
     })
 
-    await expect(plan.launch(hooks)).resolves.toBeNull()
-    expect(plan.begin(hooks)).toBeNull()
-    expect(mocks.beginStructuredAgentLaunchSettlement).not.toHaveBeenCalled()
+    await expect(plan.launch(hooks)).resolves.toBe(STRUCTURED)
+    expect(mocks.beginStructuredAgentLaunchSettlement).toHaveBeenCalledWith(
+      'wt-1',
+      'opencode',
+      { requestId: 'request-4', executionHostId: 'local' },
+      hooks
+    )
   })
 
   it('launches into the workspace created after planning when the target names one', async () => {

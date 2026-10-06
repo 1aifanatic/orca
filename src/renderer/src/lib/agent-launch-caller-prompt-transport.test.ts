@@ -49,7 +49,8 @@ vi.mock('@/lib/agent-ready-wait', () => ({
   waitForAgentReady: vi.fn(async () => ({ ready: true, reason: 'foreground-match' }))
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => []
+  readLocalRuntimeCapabilitiesOrUnknown: () => [],
+  readLocalStructuredAgents: () => null
 }))
 
 const PROMPT = 'Explain the failing check and propose a fix.'
