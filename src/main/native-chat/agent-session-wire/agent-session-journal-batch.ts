@@ -119,7 +119,13 @@ function stopNotesByTurn(
   }
   const notes = new Map<string, string[]>()
   for (const item of items) {
-    if (isStructuredAgentSessionStopNote(item.itemId) && item.turnScope?.kind === 'turn') {
+    // Every Stop note is a status row. Not filtered on its failure: a note already projected
+    // without one must still re-emit when its turn row is removed.
+    if (
+      item.body.kind === 'status' &&
+      item.turnScope?.kind === 'turn' &&
+      isStructuredAgentSessionStopNote(item.itemId)
+    ) {
       const turnItemId = item.turnScope.turnItemId
       const ids = notes.get(turnItemId) ?? []
       ids.push(item.itemId)
