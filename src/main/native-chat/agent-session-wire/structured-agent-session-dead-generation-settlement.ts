@@ -12,7 +12,6 @@ import {
   type AgentJournalRenderItem
 } from '../../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
-import { stopNoteRevisionsForEndedTurns } from './structured-agent-session-stop-note-revisions'
 import { partitionJournalLifecycleMutations } from '../agent-session-journal/journal-lifecycle-batch-partition'
 import type { JournalLifecycleMutationInput } from '../agent-session-journal/journal-row-builders'
 import { cancelledJournalPromptBody } from '../agent-session-journal/journal-prompt-body-bounds'
@@ -188,7 +187,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
       }
     }
     const turnEnds = runningTurnLifecycleRevisions(items, input.verdict)
-    mutations.push(...turnEnds, ...stopNoteRevisionsForEndedTurns(items, turnEnds))
+    mutations.push(...turnEnds)
     const batchId = `dead-generation:${input.settlementId}`
     for (const chunk of partitionJournalLifecycleMutations(batchId, mutations)) {
       await input.journal.appendLifecycleBatch({
@@ -251,7 +250,7 @@ export async function settleStaleStructuredAgentSessionState(input: {
     ...items.flatMap((item) => runningTurnLifecycleRevisions([item], verdictFor(item))),
     ...proven
   ]
-  mutations.push(...turnEnds, ...stopNoteRevisionsForEndedTurns(items, turnEnds))
+  mutations.push(...turnEnds)
   const evidence = input.deathEvidence
   if (
     evidence &&
