@@ -390,21 +390,3 @@ describe('withCliRuntimeOnPath', () => {
     expect(paired.Path).toBe([v20, 'C:\\Windows', 'C:\\Windows\\System32'].join(';'))
   })
 })
-
-describe('explicit Windows executable suffixes', () => {
-  it.each(['cmd', 'exe', 'bat', 'com'])(
-    'resolves a bare wrapper.%s without appending a second suffix',
-    (suffix) => {
-      const root = mkdtempSync(join(tmpdir(), 'orca-custom-command-'))
-      const binary = join(root, `wrapper.${suffix}`)
-      makeExecutable(binary)
-      expect(
-        resolveCliCommands([`wrapper.${suffix}`], {
-          platform: 'win32',
-          pathEnv: root,
-          homePath: root
-        }).get(`wrapper.${suffix}`)
-      ).toBe(binary)
-    }
-  )
-})

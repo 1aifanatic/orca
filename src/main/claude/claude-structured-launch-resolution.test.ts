@@ -1,10 +1,10 @@
 import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
@@ -17,6 +17,7 @@ import {
   type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
+import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from '../claude-accounts/live-pty-gate'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
 const SESSION_ID = 'orca-session-1'
@@ -61,18 +62,16 @@ function resolverFor(
   stripAuthEnv = false,
   // Manual by default so a test that is not about permissions is not silently about them.
   agentDefaultArgs: Record<string, string> = { claude: '' },
-  hasTranscript: () => Promise<boolean> = async () => true,
-  commandDeps: Partial<ClaudeStructuredLaunchResolverDeps> = {}
+  hasTranscript: () => Promise<boolean> = async () => true
 ) {
   return createClaudeStructuredLaunchResolver({
-    store: { getRecord: () => value } as unknown as AgentSessionRecordStore,
+    store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveAuthPolicy: () => ({ stripAuthEnv }),
     resolvePermissionMode: () => claudeStructuredPermissionModeForSettings({ agentDefaultArgs }),
     hasTranscript,
-    ...(resolveEnv ? { resolveEnv } : {}),
-    ...commandDeps
+    ...(resolveEnv ? { resolveEnv } : {})
   })
 }
 
@@ -111,6 +110,19 @@ const RESUMABLE = record({
 })
 
 describe('claude structured launch resolution', () => {
+  it('resumes a floating session in its pinned folder, not the current floating setting', async () => {
+    const pinned = mkdtempSync(join(tmpdir(), 'orca-claude-floating-'))
+    const floating = record({
+      location: { ...record().location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID },
+      launchDirectory: pinned
+    })
+
+    const launch = await resolverFor(floating)({ identity: IDENTITY })
+
+    // resolverFor answers `/repos/<id>` — the current setting — which a pinned resume must ignore.
+    expect(launch.cwd).toBe(pinned)
+  })
+
   it('pre-mints a stable provider id and pins interactive setting sources', async () => {
     const first = await resolverFor(record())({ identity: IDENTITY })
     const second = await resolverFor(record())({ identity: IDENTITY })
@@ -355,7 +367,7 @@ describe('claude structured launch resolution', () => {
 
   it('builds on the supplied inherited env instead of Orca process env', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -367,7 +379,7 @@ describe('claude structured launch resolution', () => {
 
   it('drops an inherited CLAUDE_CONFIG_DIR so the record stays the only Claude home the pin sees', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -385,7 +397,7 @@ describe('claude structured launch resolution', () => {
 
   it('keeps a configured overlay CLAUDE_CONFIG_DIR over the dropped inherited one', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -398,7 +410,7 @@ describe('claude structured launch resolution', () => {
 
   it('still strips an inherited auth key under a managed account', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => '/usr/local/bin/claude',
       resolveAuthPolicy: () => ({ stripAuthEnv: true }),
@@ -435,7 +447,7 @@ describe('claude structured launch resolution', () => {
     makeExecutable(nodeCommand)
 
     const launch = await createClaudeStructuredLaunchResolver({
-      store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
       resolveWorkspacePath: async (id) => `/repos/${id}`,
       resolveCommand: () => claudeCommand,
       resolveAuthPolicy: () => ({ stripAuthEnv: false }),
@@ -477,7 +489,7 @@ describe('claude structured launch resolution', () => {
   describe('managed-account gate on every acquisition', () => {
     function resolverWithGate(read: () => ClaudeManagedAccountGateSettings | null) {
       return createClaudeStructuredLaunchResolver({
-        store: { getRecord: () => RESUMABLE } as unknown as AgentSessionRecordStore,
+        store: { getRecord: () => RESUMABLE, pinLaunchDirectory: vi.fn() },
         resolveWorkspacePath: async (id) => `/repos/${id}`,
         resolveCommand: () => '/usr/local/bin/claude',
         // Derived, not a literal: the gate and the policy must read the SAME account state, so a
@@ -525,59 +537,84 @@ describe('claude structured launch resolution', () => {
   })
 })
 
-describe('Claude custom Command setting', () => {
-  it('rereads the command per acquisition while keeping account and resume controls', async () => {
-    let command = `"${process.execPath}" wrapper.js --profile work`
-    const resolver = resolverFor(record(), undefined, false, { claude: '' }, async () => true, {
-      resolveCommandOverride: () => command
-    })
-    const first = await resolver({ identity: IDENTITY })
-    expect(first.pathToClaudeCodeExecutable).toBe(process.execPath)
-    expect(first.invocation?.prefixArgs).toEqual(['wrapper.js', '--profile', 'work'])
-    expect(first.claudeConfigDir).toBe('/home/work/.claude')
-    command = `"${process.execPath}" another-wrapper.js`
-    const second = await resolver({ identity: IDENTITY })
-    expect(second.invocation?.prefixArgs).toEqual(['another-wrapper.js'])
-    expect(second.providerSessionId).toBe(first.providerSessionId)
-  })
-  it.each([
-    { command: 'missing-custom-claude', options: {}, reason: 'customCommandInvalid' },
-    {
-      command: `"${process.execPath}" --model sonnet`,
-      options: { model: 'sonnet' },
-      reason: 'customCommandConflict'
-    },
-    {
-      command: `"${process.execPath}" --effort high`,
-      options: { effort: 'high' },
-      reason: 'customCommandConflict'
-    },
-    { command: `"${process.execPath}" --resume alien`, options: {}, reason: 'customCommandInvalid' }
-  ])('refuses $reason before any process starts', async ({ command, options, reason }) => {
-    const defaultCommand = vi.fn(() => '/must-not-fall-back/claude')
-    const resolver = resolverFor(
-      record({
-        options: {
-          ...(options.model !== undefined ? { model: options.model } : {}),
-          ...(options.effort !== undefined ? { effort: options.effort } : {})
-        }
-      }),
-      undefined,
-      false,
-      { claude: '' },
-      async () => true,
-      {
-        resolveCommand: defaultCommand,
-        resolveCommandOverride: () => command
-      }
-    )
-    await expect(resolver({ identity: IDENTITY })).rejects.toMatchObject({ reason })
-    expect(defaultCommand).not.toHaveBeenCalled()
-  })
-  it('allows an override default model when the chat has no model preference', async () => {
-    const launch = await resolverFor(record(), undefined, false, { claude: '' }, async () => true, {
-      resolveCommandOverride: () => `"${process.execPath}" --model sonnet`
+describe('readable Claude thinking', () => {
+  const launchWith = (
+    thinkingDisplay?: ClaudeStructuredLaunchResolverDeps['thinkingDisplay'],
+    authSwitchSettleTimeoutMs?: number,
+    command = '/usr/local/bin/claude'
+  ) =>
+    createClaudeStructuredLaunchResolver({
+      store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
+      resolveWorkspacePath: async (id) => `/repos/${id}`,
+      resolveCommand: () => command,
+      resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+      resolveEnv: () => ({ PROJECT_SHIM: '1', ANTHROPIC_API_KEY: 'sk-user' }),
+      hasTranscript: async () => false,
+      ...(thinkingDisplay ? { thinkingDisplay } : {}),
+      ...(authSwitchSettleTimeoutMs === undefined ? {} : { authSwitchSettleTimeoutMs })
     })({ identity: IDENTITY })
-    expect(launch.invocation?.prefixArgs).toEqual(['--model', 'sonnet'])
+
+  // Whether the CLI's directory holds a `node` decides if the runtime pairing puts that directory
+  // first on PATH (Linux CI's /usr/local/bin does, a Mac's usually does not), so both are pinned.
+  it.each([
+    ['without a sibling Node runtime', false],
+    ['with a sibling Node runtime', true]
+  ])(
+    'probes the CLI the launch runs, on its PATH and shims, without its credentials (%s)',
+    async (_, sibling) => {
+      const argsFor = vi.fn(
+        async (_launch: { command: string; cwd: string; env: Record<string, string> }) => ({
+          'thinking-display': 'summarized'
+        })
+      )
+      const binDir = join(mkdtempSync(join(tmpdir(), 'orca-claude-probe-')), 'bin')
+      const command = join(binDir, process.platform === 'win32' ? 'claude.cmd' : 'claude')
+      makeExecutable(command)
+      if (sibling) {
+        makeExecutable(join(binDir, process.platform === 'win32' ? 'node.cmd' : 'node'))
+      }
+      const launch = await launchWith({ argsFor }, undefined, command)
+      const asked = argsFor.mock.calls[0]?.[0]
+      expect(asked).toMatchObject({ command, cwd: '/repos/workspace-1' })
+      const segments = (env: Record<string, string> | undefined) =>
+        (env?.PATH ?? env?.Path ?? '').split(delimiter)
+      // The launch's PATH is the probe's plus Orca's own CLI directory, which holds no `claude` or
+      // runtime, so both resolve the same binary and the same shims in the same order.
+      const orcaCliDir = launch.env?.ORCA_CLI_COMMAND ? dirname(launch.env.ORCA_CLI_COMMAND) : null
+      expect(segments(launch.env).filter((dir) => dir !== orcaCliDir)).toEqual(segments(asked?.env))
+      expect(segments(asked?.env)[0] === binDir).toBe(sibling)
+      expect(asked?.env).toMatchObject({ PROJECT_SHIM: '1' })
+      expect(asked?.env).not.toHaveProperty('ANTHROPIC_API_KEY')
+      // The launch keeps the credential the user gave it.
+      expect(launch.env).toMatchObject({ ANTHROPIC_API_KEY: 'sk-user' })
+      expect(launch.options.extraArgs).toEqual({
+        'replay-user-messages': null,
+        'thinking-display': 'summarized'
+      })
+      expect(launch.options).not.toHaveProperty('thinking')
+    }
+  )
+
+  it('passes nothing when the CLI is not known to take the flag, or nothing can say', async () => {
+    const launch = await launchWith({ argsFor: async () => ({}) })
+    expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
+    expect((await launchWith()).options.extraArgs).toEqual({ 'replay-user-messages': null })
+  })
+
+  it('still rechecks an account switch that began while the probe ran', async () => {
+    try {
+      const launch = launchWith(
+        {
+          argsFor: async () => {
+            beginClaudeAuthSwitch()
+            return {}
+          }
+        },
+        10
+      )
+      await expect(launch).rejects.toMatchObject({ reason: 'accountSwitchInProgress' })
+    } finally {
+      endClaudeAuthSwitch()
+    }
   })
 })

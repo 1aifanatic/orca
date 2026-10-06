@@ -87,21 +87,6 @@ describe('worker-start mode receipt wording', () => {
     })
   })
 
-  it('honors the structured preference with a custom Command', () => {
-    expect(
-      decideWorkerStartMode({
-        params: { agent: 'claude' },
-        settings: { ...STRUCTURED_PREFERENCE, agentCmdOverrides: { claude: 'claude-wrapper' } }
-      })
-    ).toEqual({
-      mode: 'structured',
-      preferred: 'structured',
-      reason: 'user_default',
-      detail:
-        'Started a structured chat session worker, the default for new agent tabs in your settings.'
-    })
-  })
-
   it.each([
     [
       'an unanswered host',

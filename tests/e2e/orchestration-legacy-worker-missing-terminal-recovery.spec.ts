@@ -217,7 +217,6 @@ test('a missing legacy worker cannot spawn a replacement during restart recovery
     await first.page.evaluate(
       async ({ agentCommand, terminalWindowsShell }) => {
         await window.__store?.getState().updateSettings({
-          experimentalStructuredNativeChat: false,
           agentCmdOverrides: { codex: agentCommand },
           terminalWindowsShell
         })

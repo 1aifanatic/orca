@@ -3,7 +3,6 @@ import { runCodexAppServerSession } from './codex-app-server-session'
 import { fetchCodexModelCatalogListing } from './codex-structured-model-catalog'
 import {
   resolveCodexStructuredInvocation,
-  type CodexStructuredInvocation,
   type CodexStructuredLaunchResolverDeps
 } from './codex-structured-launch-resolution'
 import type {
@@ -17,12 +16,10 @@ const CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS = 15_000
 
 export type CodexModelCatalogProbeDeps = Pick<
   CodexStructuredLaunchResolverDeps,
-  'resolveCommand' | 'resolveEnvironment' | 'resolveCommandOverride'
+  'resolveCommand' | 'resolveEnvironment'
 > & {
   /** Test seam; production runs the shared short-lived app-server session. */
   runSession?: typeof runCodexAppServerSession
-  invocation?: CodexStructuredInvocation
-  cwd?: string
 }
 
 function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> {
@@ -45,14 +42,12 @@ export function createCodexModelCatalogProbe(
   deps: CodexModelCatalogProbeDeps
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
-    const { command, prefixArgs, environment } =
-      deps.invocation ?? (await resolveCodexStructuredInvocation(deps, deps.cwd))
+    const { command, environment } = await resolveCodexStructuredInvocation(deps)
     const run = deps.runSession ?? runCodexAppServerSession
     const listing = await run(
       {
         command,
-        ...(deps.cwd ? { cwd: deps.cwd } : {}),
-        args: [...prefixArgs, ...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
+        args: [...CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS],
         cliPath: command,
         env: { ...definedEnv(environment), CODEX_HOME: accountHomePath },
         timeoutMs: CODEX_MODEL_CATALOG_PROBE_TIMEOUT_MS

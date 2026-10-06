@@ -18,6 +18,7 @@ import { openTestAttachConversation } from './structured-agent-session-attach-te
 import { performAttach } from './structured-agent-session-attach-flow'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
+import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'session-alpha'
@@ -81,6 +82,7 @@ async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
     setOption: unused
   }
   const input = {
+    agents: NO_STRUCTURED_AGENTS,
     store,
     adapter,
     logger: createStructuredAgentSessionLogger(),
@@ -111,18 +113,6 @@ async function firstAnswerAndReplay(thrown: AgentSessionPreSpawnError) {
 describe('a create that fails before any process spawns', () => {
   it.each<[string, string, AgentSessionPreSpawnReason | undefined, string]>([
     [
-      'a command that cannot be spawned',
-      'ENOENT /private/custom-wrapper',
-      'customCommandInvalid',
-      "Claude couldn't start with your custom command. Use a program and its arguments in Settings → Agents → Command, or clear it."
-    ],
-    [
-      'a command that conflicts with the chat preferences',
-      'custom command singleton flags',
-      'customCommandConflict',
-      'The custom command conflicts with this chat’s model or effort. Remove model or effort flags in Settings → Agents → Command.'
-    ],
-    [
       'the managed account env override',
       'This Claude launch defines explicit Anthropic auth environment variables.',
       'managedAccountEnvOverride',
@@ -139,6 +129,12 @@ describe('a create that fails before any process spawns', () => {
       'structured Claude is not offered under the active managed Claude account',
       'managedAccountUnsupported',
       'While a Claude account is added in WSL, Claude chats need a Windows Claude account. Choose or add one in Claude Accounts settings, then send your message again.'
+    ],
+    [
+      'a floating chat whose launch folder is gone',
+      'the folder this chat ran in no longer exists: /gone/floating',
+      'launchFolderMissing',
+      'The folder this chat ran in no longer exists. Restore it to continue this chat.'
     ],
     [
       "Orca's own reason",

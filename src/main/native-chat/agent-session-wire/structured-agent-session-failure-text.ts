@@ -24,11 +24,10 @@ import { AgentSessionAcquisitionRefusal } from './structured-agent-session-adapt
 const TYPED_START_REFUSALS = [
   'notSignedIn',
   'historyTooLarge',
-  'customCommandInvalid',
-  'customCommandConflict',
   'managedAccountEnvOverride',
   'accountSwitchInProgress',
-  'managedAccountUnsupported'
+  'managedAccountUnsupported',
+  'launchFolderMissing'
 ] as const satisfies readonly (AgentSessionFailureKind &
   AgentSessionRefusalReason<'agent_session_operation_invalid'>)[]
 

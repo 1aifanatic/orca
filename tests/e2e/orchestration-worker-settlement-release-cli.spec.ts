@@ -142,7 +142,6 @@ test('compiled CLI rejects false completion then reconciles the dead retained wo
   await orcaPage.evaluate(
     async ({ agentCommand, terminalWindowsShell }) => {
       await window.__store?.getState().updateSettings({
-        experimentalStructuredNativeChat: false,
         agentCmdOverrides: { codex: agentCommand },
         terminalWindowsShell
       })

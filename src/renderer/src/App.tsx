@@ -37,13 +37,9 @@ function App(): React.JSX.Element {
   const layout = useAppChromeLayout()
   const floatingWorkspace = useFloatingWorkspacePanel()
   const onboardingGate = useOnboardingAndFeatureTips()
-  const clearUnreadDockBadge = useUnreadDockBadge()
+  const clearUnreadDockBadge = useUnreadDockBadge(floatingWorkspace.open)
 
-  // Why enabled && open: the overlay only renders while the feature is on, and its panel is
-  // aria-hidden while closed — so that pair is what "on screen" means for the floating workspace.
-  useAppShellServices({
-    floatingPanelVisible: floatingWorkspace.enabled && floatingWorkspace.open
-  })
+  useAppShellServices()
   // Why before the startup chain: its effect runs first, and no startup step can skip the load.
   useEffect(startNativeChatDraftLoad, [])
   useAppStartupHydration(onboardingGate.applyStartupOnboardingState)

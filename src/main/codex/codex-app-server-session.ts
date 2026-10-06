@@ -17,7 +17,6 @@ import { createProviderRecordReader } from '../provider-process/provider-record-
 
 export type CodexAppServerInvocation = {
   command: string
-  cwd?: string
   args: string[]
   /**
    * The resolved CLI path, used to pair the CLI with the `node` it was installed
@@ -108,10 +107,8 @@ export async function runCodexAppServerSession<T>(
   const pairedEnv = invocation.cliPath
     ? withCliRuntimeOnPath(invocation.cliPath, childEnv)
     : childEnv
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the requested three pipe streams are present on the spawned process.
   const child = spawnImpl(invocation.command, invocation.args, {
     env: pairedEnv,
-    ...(invocation.cwd ? { cwd: invocation.cwd } : {}),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true
   }) as ChildProcessWithoutNullStreams

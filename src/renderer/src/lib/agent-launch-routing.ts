@@ -34,7 +34,7 @@ export type AgentLaunchRoutingInput = {
   promptDelivery?: NativeChatLaunchPromptDelivery
   launchText?: string
   nativeChatTranscriptIsLocalReadable?: boolean
-  requiresTuiLaunchCommand?: boolean
+  startsOutsideWorkspaceRoot?: boolean
   initialSessionOptions?: Readonly<Record<string, unknown>>
 }
 
@@ -75,7 +75,7 @@ export function structuredAgentLaunchSupported(
       ...(input.clientCapabilities ? { clientCapabilities: input.clientCapabilities } : {}),
       workspaceKind: input.workspaceKind,
       projectRuntime: input.projectRuntime,
-      requiresTuiLaunchCommand: input.requiresTuiLaunchCommand
+      startsOutsideWorkspaceRoot: input.startsOutsideWorkspaceRoot
     }).supported
   )
 }

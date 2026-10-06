@@ -8,16 +8,12 @@ import {
 import { createCodexModelCatalogProbe } from '../codex/codex-model-catalog-probe'
 import { createClaudeModelCatalogProbe } from '../claude/claude-model-catalog-probe'
 import { workspaceMayOverrideDefaultModel } from '../native-chat/agent-model-catalog/agent-project-model-override'
-import {
-  resolveClaudeStructuredInvocation,
-  type ClaudeStructuredLaunchResolverDeps
-} from '../claude/claude-structured-launch-resolution'
-import {
-  resolveCodexStructuredInvocation,
-  type CodexStructuredLaunchResolverDeps
-} from '../codex/codex-structured-launch-resolution'
+import type { ClaudeStructuredLaunchResolverDeps } from '../claude/claude-structured-launch-resolution'
+import type { CodexStructuredLaunchResolverDeps } from '../codex/codex-structured-launch-resolution'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
+import type { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
+import { agentDrivesSession } from '../native-chat/agent-session-wire/structured-agent-session-provider-support'
 
 // The store is process-global; hydrate it from disk at most once per process.
 let persistenceAttached = false
@@ -50,18 +46,16 @@ export async function attachAgentModelCatalogPersistenceOnce(
  */
 export async function modelCatalogHostDeps(input: {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
+  agents: Pick<StructuredAgentRegistry, 'definition'>
   deps: Pick<
     StructuredAgentSessionRuntimeDeps,
     | 'stateDirectory'
     | 'resolveAgentAccountHome'
-    | 'resolveWorkspacePath'
-    | 'resolveCommandOverride'
     | 'resolveCodexCommand'
     | 'resolveClaudeCommand'
     | 'resolveClaudeLaunchEnv'
     | 'resolveClaudeAuthPolicy'
   >
-  readSessionCatalogAccess?: AgentModelCatalogServiceDeps['readSessionCatalogAccess']
   envResolvers: {
     resolveCodexEnvironment: NonNullable<CodexStructuredLaunchResolverDeps['resolveEnvironment']>
     resolveClaudeInheritedEnv: NonNullable<
@@ -77,50 +71,20 @@ export async function modelCatalogHostDeps(input: {
   const modelCatalog = createAgentModelCatalogService({
     store: agentModelCatalogStore,
     getRecord: (sessionId) => input.store.getRecord(sessionId) ?? undefined,
+    drivesRecord: (record) => agentDrivesSession(input.agents, record),
     resolveAccountHome: deps.resolveAgentAccountHome,
     workspaceMayOverrideDefaultModel,
-    resolveWorkspacePath: deps.resolveWorkspacePath,
-    readSessionCatalogAccess: input.readSessionCatalogAccess,
-    prepareProbe: async (agent, cwd, pinned) => {
-      if (agent === 'codex') {
-        const resolver = {
-          resolveEnvironment: input.envResolvers.resolveCodexEnvironment,
-          ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {}),
-          resolveCommandOverride: () => deps.resolveCommandOverride?.('codex')
-        }
-        const resolved = await resolveCodexStructuredInvocation(
-          pinned
-            ? {
-                ...resolver,
-                resolveCommand: () => pinned.command,
-                resolveCommandOverride: () => undefined
-              }
-            : resolver,
-          cwd
-        )
-        const invocation = pinned ? { ...resolved, ...pinned } : resolved
-        return { invocation, probe: createCodexModelCatalogProbe({ ...resolver, invocation, cwd }) }
-      }
-      const resolver = {
+    probes: {
+      codex: createCodexModelCatalogProbe({
+        resolveEnvironment: input.envResolvers.resolveCodexEnvironment,
+        ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
+      }),
+      claude: createClaudeModelCatalogProbe({
         resolveInheritedEnv: input.envResolvers.resolveClaudeInheritedEnv,
         resolveAuthPolicy: deps.resolveClaudeAuthPolicy,
         ...(deps.resolveClaudeCommand ? { resolveCommand: deps.resolveClaudeCommand } : {}),
-        ...(deps.resolveClaudeLaunchEnv ? { resolveEnv: deps.resolveClaudeLaunchEnv } : {}),
-        resolveCommandOverride: () => deps.resolveCommandOverride?.('claude')
-      }
-      const resolved = await resolveClaudeStructuredInvocation(
-        pinned
-          ? {
-              ...resolver,
-              resolveCommand: () => pinned.command,
-              resolveCommandOverride: () => undefined
-            }
-          : resolver,
-        undefined,
-        cwd
-      )
-      const invocation = pinned ? { ...resolved, ...pinned } : resolved
-      return { invocation, probe: createClaudeModelCatalogProbe({ ...resolver, invocation, cwd }) }
+        ...(deps.resolveClaudeLaunchEnv ? { resolveEnv: deps.resolveClaudeLaunchEnv } : {})
+      })
     }
   })
   return { modelCatalog }

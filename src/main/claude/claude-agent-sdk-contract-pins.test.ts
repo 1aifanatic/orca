@@ -1,7 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import {
   query,
   type CanUseTool,
@@ -15,8 +14,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { spawnProcess } from '../../shared/child-process/run-process'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
-import { createClaudeCodeProcessSpawn } from './claude-agent-sdk-process-spawn'
 import { claudeQuerySettingsReader } from './claude-agent-sdk-control-requests'
 import { createClaudeStructuredLaunchResolver } from './claude-structured-launch-resolution'
 
@@ -29,17 +26,6 @@ import { createClaudeStructuredLaunchResolver } from './claude-structured-launch
 const FAKE_CLI = join(__dirname, '__fixtures__', 'claude-agent-sdk-scripted-cli.mjs')
 const SESSION_ID = '5348c19f-6a54-4c2e-9c68-9c2b1a3d4e5f'
 const LEAF_UUID = 'ad0f7c9e-1b2c-4d3e-8f90-abc123def456'
-const PINNED_SDK_VERSION = '0.3.284'
-const SDK_PLATFORM_PACKAGE_BASENAMES = [
-  'claude-agent-sdk-darwin-arm64',
-  'claude-agent-sdk-darwin-x64',
-  'claude-agent-sdk-linux-arm64',
-  'claude-agent-sdk-linux-arm64-musl',
-  'claude-agent-sdk-linux-x64',
-  'claude-agent-sdk-linux-x64-musl',
-  'claude-agent-sdk-win32-arm64',
-  'claude-agent-sdk-win32-x64'
-]
 
 /**
  * The exact argv the hand-rolled transport built before the SDK swap. Frozen here
@@ -160,7 +146,7 @@ function resolvedLaunch(permissionMode: PermissionMode, launchArgs: string[] = [
     launchArgs
   } as unknown as AgentSessionRecord
   return createClaudeStructuredLaunchResolver({
-    store: { getRecord: () => record } as unknown as AgentSessionRecordStore,
+    store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath: async () => '/repos/workspace-1',
     resolveCommand: () => FAKE_CLI,
     resolveAuthPolicy: () => ({ stripAuthEnv: true }),
@@ -497,59 +483,4 @@ describe('Claude Agent SDK contract pins', () => {
       true
     )
   })
-
-  it('pins the SDK version the contract was verified against', () => {
-    const sdkEntry = createRequire(__filename).resolve('@anthropic-ai/claude-agent-sdk')
-    const manifest = JSON.parse(readFileSync(join(dirname(sdkEntry), 'package.json'), 'utf8')) as {
-      version: string
-    }
-    expect(manifest.version).toBe(PINNED_SDK_VERSION)
-  })
-
-  it('keeps the eight bundled CLI platform binaries out of the install', () => {
-    const sdkEntry = createRequire(__filename).resolve('@anthropic-ai/claude-agent-sdk')
-    // The SDK's own scoped directory is where pnpm would link its optional
-    // platform packages; ignoredOptionalDependencies must keep them all absent.
-    const scopeDir = dirname(dirname(sdkEntry))
-    for (const basename of SDK_PLATFORM_PACKAGE_BASENAMES) {
-      expect(
-        existsSync(join(scopeDir, basename, 'package.json')),
-        `${basename} must not be installed`
-      ).toBe(false)
-    }
-  })
-})
-
-it('pins the SDK script-path insertion and runs Orca-owned prefix args exactly once', async () => {
-  const scenario = scriptScenario([{ awaitUserMessage: true }, { emit: RESULT_FRAME }])
-  const sdkCalls: SdkSpawnOptions[] = []
-  const spawner = createClaudeCodeProcessSpawn(spawnProcess, 'win32', {
-    command: process.execPath,
-    prefixArgs: [FAKE_CLI]
-  })
-  await drainQuery({
-    pathToClaudeCodeExecutable: process.execPath,
-    cwd: scenario.cwd,
-    env: scenarioEnv(scenario),
-    spawnClaudeCodeProcess: (options) => {
-      sdkCalls.push(options)
-      return spawner.spawn(options)
-    }
-  })
-  expect(sdkCalls).toHaveLength(1)
-  expect(sdkCalls[0]?.command).toBe(process.execPath)
-  expect(sdkCalls[0]?.args[0]).toBe('--output-format')
-  expect(scenario.readReport().argv.filter((arg) => arg === FAKE_CLI)).toHaveLength(1)
-
-  const scriptScenarioInput = scriptScenario([{ awaitUserMessage: true }, { emit: RESULT_FRAME }])
-  const scriptSpawns: SpawnSeen[] = []
-  await drainQuery({
-    pathToClaudeCodeExecutable: FAKE_CLI,
-    cwd: scriptScenarioInput.cwd,
-    env: scenarioEnv(scriptScenarioInput),
-    spawnClaudeCodeProcess: recordingSpawner(scriptSpawns)
-  })
-  expect(scriptSpawns[0]?.command).toBe('node')
-  expect(scriptSpawns[0]?.args[0]).toBe(FAKE_CLI)
-  expect(scriptSpawns[0]?.args[1]).toBe('--output-format')
 })

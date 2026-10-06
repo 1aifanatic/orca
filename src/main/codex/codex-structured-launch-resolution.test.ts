@@ -1,14 +1,23 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
-import {
-  createCodexStructuredLaunchResolver,
-  type CodexStructuredLaunchResolverDeps
-} from './codex-structured-launch-resolution'
+import { createCodexStructuredLaunchResolver } from './codex-structured-launch-resolution'
 import { codexStructuredPermissionPolicyForSettings } from './codex-structured-permission-policy'
 import { codexProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
+
+const { isWindowsProcessStartTimeAvailable } = vi.hoisted(() => ({
+  isWindowsProcessStartTimeAvailable: vi.fn(() => true)
+}))
+
+vi.mock('../windows/windows-process-table', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  isWindowsProcessStartTimeAvailable
+}))
 
 const SESSION_ID = 'session-1'
 const IDENTITY = { sessionId: SESSION_ID } as Parameters<
@@ -45,27 +54,57 @@ function resolverFor(
   value: AgentSessionRecord | null,
   resolveWorkspacePath: (workspaceId: string) => Promise<string> = async (id) => `/repos/${id}`,
   resolveRollout: () => Promise<string | null> = async () => null,
-  agentDefaultArgs: Record<string, string> = { codex: '' },
-  commandDeps: Partial<CodexStructuredLaunchResolverDeps> = {}
+  agentDefaultArgs: Record<string, string> = { codex: '' }
 ) {
   return createCodexStructuredLaunchResolver({
-    store: { getRecord: () => value } as unknown as AgentSessionRecordStore,
+    store: { getRecord: () => value, pinLaunchDirectory: vi.fn() },
     resolveWorkspacePath,
     resolveCommand: () => '/usr/local/bin/codex',
     resolveRollout,
-    isWindowsProcessStartTimeAvailable: () => true,
-    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings({ agentDefaultArgs }),
-    ...commandDeps
+    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings({ agentDefaultArgs })
   })
 }
 
 describe('codex structured launch resolution', () => {
+  it('resumes a floating session in its pinned folder, not the current floating setting', async () => {
+    const pinned = mkdtempSync(join(tmpdir(), 'orca-codex-floating-'))
+    const resolveWorkspacePath = vi.fn(async () => '/floating/current-setting')
+    const floating = record({
+      location: { ...record().location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID },
+      launchDirectory: pinned
+    })
+
+    const launch = await resolverFor(floating, resolveWorkspacePath)({ identity: IDENTITY })
+
+    expect(launch.cwd).toBe(pinned)
+    expect(resolveWorkspacePath).not.toHaveBeenCalled()
+  })
+
+  it('repairs the first launch directory of an unpinned legacy floating session', async () => {
+    const pinLaunchDirectory = vi.fn()
+    const resolveLaunch = createCodexStructuredLaunchResolver({
+      store: {
+        getRecord: () =>
+          record({
+            location: { ...record().location, workspaceId: FLOATING_TERMINAL_WORKTREE_ID }
+          }),
+        pinLaunchDirectory
+      },
+      resolveWorkspacePath: async () => '/floating/start-folder',
+      resolveCommand: () => '/usr/local/bin/codex'
+    })
+
+    await expect(resolveLaunch({ identity: IDENTITY })).resolves.toMatchObject({
+      cwd: '/floating/start-folder'
+    })
+    expect(pinLaunchDirectory).toHaveBeenCalledExactlyOnceWith(SESSION_ID, '/floating/start-folder')
+  })
+
   it('launches the app server in the workspace and account home the record pinned', async () => {
     const launch = await resolverFor(record())({ identity: IDENTITY })
 
     expect(launch).toEqual({
       command: '/usr/local/bin/codex',
-      invocation: { command: '/usr/local/bin/codex', prefixArgs: [] },
       args: ['app-server'],
       cwd: '/repos/workspace-1',
       codexHome: '/home/work/.codex',
@@ -80,10 +119,9 @@ describe('codex structured launch resolution', () => {
 
     await withPlatform('win32', async () => {
       const resolveLaunch = createCodexStructuredLaunchResolver({
-        store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
+        store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
         resolveWorkspacePath: async () => String.raw`C:\workspaces\orca`,
-        resolveCommand: () => command,
-        isWindowsProcessStartTimeAvailable: () => true
+        resolveCommand: () => command
       })
 
       await expect(resolveLaunch({ identity: IDENTITY })).resolves.toMatchObject({
@@ -93,19 +131,19 @@ describe('codex structured launch resolution', () => {
     })
   })
 
-  it('fails closed before resolving a Windows launch without creation-time proof', async () => {
+  it('resolves a Windows launch on a host that cannot read process creation times', async () => {
+    isWindowsProcessStartTimeAvailable.mockReturnValue(false)
     await withPlatform('win32', async () => {
-      const resolveWorkspacePath = vi.fn(async () => String.raw`C:\workspaces\orca`)
       const resolveLaunch = createCodexStructuredLaunchResolver({
-        store: { getRecord: () => record() } as unknown as AgentSessionRecordStore,
-        resolveWorkspacePath,
-        isWindowsProcessStartTimeAvailable: () => false
+        store: { getRecord: () => record(), pinLaunchDirectory: vi.fn() },
+        resolveWorkspacePath: async () => String.raw`C:\workspaces\orca`,
+        resolveCommand: () => 'codex.exe'
       })
 
-      await expect(resolveLaunch({ identity: IDENTITY })).rejects.toThrow(
-        'Windows process creation-time proof'
-      )
-      expect(resolveWorkspacePath).not.toHaveBeenCalled()
+      await expect(resolveLaunch({ identity: IDENTITY })).resolves.toMatchObject({
+        command: 'codex.exe',
+        args: ['app-server']
+      })
     })
   })
 
@@ -268,60 +306,5 @@ describe('codex structured launch resolution', () => {
         throw new Error('workspace-1 is gone')
       })({ identity: IDENTITY })
     ).rejects.toThrow('workspace-1 is gone')
-  })
-})
-
-describe('Codex custom Command setting', () => {
-  it('prepends wrapper arguments and rereads the host setting per acquisition', async () => {
-    let command = `"${process.execPath}" wrapper.js --profile work`
-    const resolver = resolverFor(record(), undefined, undefined, undefined, {
-      resolveCommandOverride: () => command
-    })
-    const first = await resolver({ identity: IDENTITY })
-    expect(first.command).toBe(process.execPath)
-    expect(first.args).toEqual(['wrapper.js', '--profile', 'work', 'app-server'])
-    expect(first.codexHome).toBe('/home/work/.codex')
-    command = `"${process.execPath}" another-wrapper.js`
-    expect((await resolver({ identity: IDENTITY })).args).toEqual([
-      'another-wrapper.js',
-      'app-server'
-    ])
-  })
-  it.each([
-    { command: 'missing-custom-codex', options: {}, reason: 'customCommandInvalid' },
-    {
-      command: `"${process.execPath}" --model gpt-live`,
-      options: { model: 'gpt-live' },
-      reason: 'customCommandConflict'
-    },
-    {
-      command: `"${process.execPath}" -c model_reasoning_effort=high`,
-      options: { effort: 'high' },
-      reason: 'customCommandConflict'
-    },
-    {
-      command: `"${process.execPath}" --listen http://localhost`,
-      options: {},
-      reason: 'customCommandInvalid'
-    }
-  ])('refuses $reason before any process starts', async ({ command, options, reason }) => {
-    const defaultCommand = vi.fn(() => '/must-not-fall-back/codex')
-    const resolver = resolverFor(
-      record({
-        options: {
-          ...(options.model !== undefined ? { model: options.model } : {}),
-          ...(options.effort !== undefined ? { effort: options.effort } : {})
-        }
-      }),
-      undefined,
-      undefined,
-      undefined,
-      {
-        resolveCommand: defaultCommand,
-        resolveCommandOverride: () => command
-      }
-    )
-    await expect(resolver({ identity: IDENTITY })).rejects.toMatchObject({ reason })
-    expect(defaultCommand).not.toHaveBeenCalled()
   })
 })

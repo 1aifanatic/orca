@@ -207,11 +207,9 @@ const FAILURE_SENTENCES = {
     ]),
   historyTooLarge: (_context, _fact, _surface, say) =>
     joinSentences([say('historyTooLarge'), say('startNewChat')]),
-  customCommandInvalid: (context, _fact, _surface, say) =>
-    say('customCommandInvalid', agent(say, context)),
-  customCommandConflict: (_context, _fact, _surface, say) => say('customCommandConflict'),
   managedAccountEnvOverride: (_context, _fact, _surface, say) => say('managedAccountEnvOverride'),
   accountSwitchInProgress: (_context, _fact, _surface, say) => say('accountSwitchInProgress'),
+  launchFolderMissing: (_context, _fact, _surface, say) => say('launchFolderMissing'),
   managedAccountUnsupported: (context, _fact, _surface, say) =>
     joinSentences([
       say('managedAccountUnsupported'),

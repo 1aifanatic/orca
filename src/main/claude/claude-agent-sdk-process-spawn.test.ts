@@ -87,14 +87,27 @@ describe('claude agent SDK process spawn', () => {
       expect(spawn.pid).toBe(4321)
       expect(spec.program).toBe(globalThis.process.execPath)
       expect(spec.args?.[0]).toBe('-e')
+      expect(spec.args?.slice(2)).toEqual([
+        '--',
+        '/usr/local/bin/claude',
+        '--output-format',
+        'stream-json'
+      ])
       expect(spec.detached).toBe(true)
       expect(spec.cwd).toBe('/work/repo')
       const supervisorSpec = JSON.parse(
         Buffer.from(String(spec.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
       )
+      // A gone Orca closes Claude as its own close does (stdin end and SIGTERM), not with the
+      // root-only stdin-end drain a managed provider gets by default.
+      expect(vi.mocked(createProviderSpawnSpec)).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        platform,
+        { closeRequest: 'stdin-end-and-sigterm' }
+      )
       expect(supervisorSpec).toMatchObject({
-        command: '/usr/local/bin/claude',
-        args: ['--output-format', 'stream-json'],
+        closeRequest: 'stdin-end-and-sigterm',
         cwd: '/work/repo',
         ownerPid: globalThis.process.pid
       })
@@ -121,32 +134,22 @@ describe('claude agent SDK process spawn', () => {
       spawn.spawn(sdkOptions())
       expect(spawn.supervised).toBe(specSupervised)
 
-      let exited = false
-      let settle = (): void => {}
-      const exitPromise = new Promise<void>((resolve) => {
-        settle = resolve
-      })
-      // Claude leaves shortly after stdin ends, so the ladder never needs its forced rung.
+      const managed = spawn.managed
+      if (!managed) {
+        throw new Error('Claude spawner did not retain its managed child')
+      }
+      // Claude leaves shortly after stdin ends, before the forced stop.
       process.child.stdin.on('finish', () =>
-        setTimeout(() => {
-          exited = true
-          settle()
-        }, 10)
+        setTimeout(() => process.child.emit('exit', 0, null), 10)
       )
       const tree = {
         capture: vi.fn(async () => {}),
         reap: vi.fn(async () => 'exited' as const),
-        treeVerdict: 'exited' as const
+        treeVerdict: 'exited' as const,
+        forcedReapAttempted: false
       }
-      await proveClaudeChildExitWithReaper(
-        {
-          child: process.child,
-          exitPromise,
-          exited: () => exited,
-          tree,
-          supervised: spawn.supervised
-        },
-        () => tree
+      await expect(proveClaudeChildExitWithReaper({ managed, tree }, () => tree)).resolves.toBe(
+        true
       )
       // SIGTERM to an unsupervised Claude on Windows is TerminateProcess; a skipped one leaves it running.
       if (specSupervised) {
@@ -176,8 +179,8 @@ describe('claude agent SDK process spawn', () => {
     process.child.stderr.write('claude: not signed in')
     await new Promise((resolve) => setImmediate(resolve))
 
-    expect(spawn.stderrTail).toMatch(/claude: not signed in$/)
-    expect(spawn.stderrTail.length).toBe(8192)
+    expect(spawn.managed?.stderrTail()).toMatch(/claude: not signed in$/)
+    expect(spawn.managed?.stderrTail().length).toBe(8192)
   })
 
   it('hands a Windows .cmd shim to Orca\u2019s argument encoder', () => {
@@ -199,49 +202,5 @@ describe('claude agent SDK process spawn', () => {
     expect(resolved.args[0]).toContain('/v:off')
     expect(resolved.args[0]).toContain('"a b&c"')
     expect(resolved.args[0]).toContain('"--setting-sources=user,project,local"')
-  })
-})
-
-describe('custom Claude invocation through the SDK spawn callback', () => {
-  it('builds argv from the selected wrapper and the SDK structured arguments', () => {
-    const process = fakeSpawn()
-    createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', {
-      command: '/selected/wrapper',
-      prefixArgs: ['code', '--profile', 'work']
-    }).spawn(sdkOptions({ command: '/selected/wrapper' }))
-    expect(process.specs[0]).toMatchObject({
-      program: '/selected/wrapper',
-      args: ['code', '--profile', 'work', '--output-format', 'stream-json']
-    })
-  })
-  it('drops only the exact script path inserted by the SDK runtime selection', () => {
-    const process = fakeSpawn()
-    const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', {
-      command: '/selected/wrapper.mjs',
-      prefixArgs: ['code']
-    })
-    spawn.spawn(
-      sdkOptions({
-        command: '/runtime/node',
-        args: ['/selected/wrapper.mjs', '--output-format', 'stream-json']
-      })
-    )
-    expect(process.specs[0]).toMatchObject({
-      program: '/selected/wrapper.mjs',
-      args: ['code', '--output-format', 'stream-json']
-    })
-  })
-  it('refuses SDK script-path drift instead of dropping another token', () => {
-    const process = fakeSpawn()
-    const spawn = createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', {
-      command: '/selected/wrapper.mjs',
-      prefixArgs: ['code']
-    })
-    expect(() =>
-      spawn.spawn(
-        sdkOptions({ command: '/runtime/node', args: ['/different/wrapper.mjs', '--verbose'] })
-      )
-    ).toThrow('SDK executable contract changed')
-    expect(process.specs).toEqual([])
   })
 })

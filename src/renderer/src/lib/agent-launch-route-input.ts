@@ -154,7 +154,7 @@ export function buildAgentLaunchRouteInput(
     ),
     // A cwd decides the route only when it names somewhere other than the workspace root; the
     // host applies the same rule (`agent-launch-mode.ts`), so the two never disagree on it.
-    requiresTuiLaunchCommand: requestsCwdOutsideWorkspaceRootForWorkspace({
+    startsOutsideWorkspaceRoot: requestsCwdOutsideWorkspaceRootForWorkspace({
       workspaceId: workspace.worktreeId,
       requestedCwd: tuiCustomization?.cwd,
       workspacePath: workspace.worktreeId

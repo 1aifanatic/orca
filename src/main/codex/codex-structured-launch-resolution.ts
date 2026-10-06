@@ -1,7 +1,7 @@
 // How a durable session record becomes a Codex process launch.
 //
-// Session identity is read back from the durable record; the host's launch settings
-// are re-read per acquisition. A client that attaches twice must
+// Every input is read back from the record the store already made durable, not
+// from the call that triggered the acquire. A client that attaches twice must
 // land in the same working directory under the same account home, and a resume
 // must name the thread this session actually proved — never one a caller asks
 // for, which is how a resume becomes a fork wearing a resume's name.
@@ -9,20 +9,16 @@
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import {
-  resolveStructuredAgentCommand,
-  assertStructuredAgentCommandPreferences
-} from '../native-chat/structured-agent-command-resolution'
-import type { StructuredAgentCommandInvocation } from '../../shared/tui-agent-launch-command-override'
 import { resolveCodexCommand } from '../codex-cli/command'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
+import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
 import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
-import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
+import { CODEX_STRUCTURED_AGENT } from './codex-structured-agent-definition'
 
 export type CodexStructuredLaunchResolverDeps = {
-  store: AgentSessionRecordStore
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'pinLaunchDirectory'>
   /** Absolute path of a workspace on this host. Rejects when the workspace no
    *  longer resolves, which is the case a stale mobile client hits. */
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
@@ -30,16 +26,14 @@ export type CodexStructuredLaunchResolverDeps = {
   resolveCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   /** Fresh shell/configured environment for this spawn; never written to the session record. */
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
-  resolveCommandOverride?: () => string | null | undefined
   resolveRollout?: typeof resolvePinnedCodexRolloutProof
-  /** Test seam for the host capability; production uses the native process table. */
-  isWindowsProcessStartTimeAvailable?: () => boolean
   /** The user's Agent Permissions setting as thread policy, re-read per acquisition.
    *  States both postures outright — a resume inherits the last one for any field left absent. */
   resolvePermissionPolicy?: () => CodexStructuredPermissionPolicy
 }
 
-export type CodexStructuredInvocation = StructuredAgentCommandInvocation & {
+export type CodexStructuredInvocation = {
+  command: string
   environment: NodeJS.ProcessEnv | undefined
 }
 
@@ -51,28 +45,16 @@ export type CodexStructuredInvocation = StructuredAgentCommandInvocation & {
  * drift there heals on the next refresh.
  */
 export async function resolveCodexStructuredInvocation(
-  deps: Pick<
-    CodexStructuredLaunchResolverDeps,
-    'resolveCommand' | 'resolveEnvironment' | 'resolveCommandOverride'
-  >,
-  cwd?: string
+  deps: Pick<CodexStructuredLaunchResolverDeps, 'resolveCommand' | 'resolveEnvironment'>
 ): Promise<CodexStructuredInvocation> {
   const environment = await deps.resolveEnvironment?.()
   const pathEnv = environment?.PATH ?? environment?.Path ?? null
   const homePath = environment?.HOME ?? environment?.USERPROFILE
-  const selected = resolveStructuredAgentCommand({
-    agent: 'codex',
-    override: deps.resolveCommandOverride?.(),
-    env: environment ?? process.env,
-    cwd
+  const command = (deps.resolveCommand ?? resolveCodexCommand)({
+    pathEnv,
+    ...(homePath ? { homePath } : {})
   })
-  const command =
-    selected?.command ??
-    (deps.resolveCommand ?? resolveCodexCommand)({
-      pathEnv,
-      ...(homePath ? { homePath } : {})
-    })
-  return { ...selected, command, prefixArgs: selected?.prefixArgs ?? [], environment }
+  return { command, environment }
 }
 
 export function createCodexStructuredLaunchResolver(
@@ -95,37 +77,23 @@ export function createCodexStructuredLaunchResolver(
         `codex structured sessions run on the local host, not ${location.executionHostId}`
       )
     }
-    // Refuse before resolving launch data; a PID alone cannot prove Windows ownership.
-    if (
-      process.platform === 'win32' &&
-      !(deps.isWindowsProcessStartTimeAvailable ?? isWindowsProcessStartTimeAvailable)()
-    ) {
-      throw new Error('codex structured sessions require Windows process creation-time proof')
+    const pinned = CODEX_STRUCTURED_AGENT.accountHomeVariable
+    if (accountHome.variable !== pinned) {
+      throw new Error(`codex sessions pin ${pinned}, not ${accountHome.variable}`)
     }
-    if (accountHome.variable !== 'CODEX_HOME') {
-      throw new Error(`codex sessions pin CODEX_HOME, not ${accountHome.variable}`)
-    }
-    const cwd = await deps.resolveWorkspacePath(location.workspaceId)
-    const invocation = await resolveCodexStructuredInvocation(deps, cwd)
-    const { command, environment } = invocation
-    assertStructuredAgentCommandPreferences('codex', invocation, record.options ?? {})
+    const { command, environment } = await resolveCodexStructuredInvocation(deps)
     // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
     // concern, and the permission posture they used to smuggle in is derived per acquisition.
     const permissionPolicy = deps.resolvePermissionPolicy?.()
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
-    // A Codex record's chain holds only Codex handles; the record store refuses anything else.
+    // A Codex record's chain holds only Codex handles; the attach admission refuses anything else.
     const resumeThreadId = head?.handle.nativeId ?? null
     // The same saved options every turn sends, so the thread and its turns name one model.
     const model = record.options?.model
     return {
       command,
-      args: [...invocation.prefixArgs, 'app-server'],
-      invocation: {
-        command,
-        prefixArgs: invocation.prefixArgs,
-        ...(invocation.cwd ? { cwd: invocation.cwd } : {})
-      },
-      cwd,
+      args: ['app-server'],
+      cwd: await resolveAgentSessionLaunchDirectory(deps, record),
       codexHome: accountHome.path,
       ...(environment ? { env: { ...environment } as Record<string, string> } : {}),
       // An empty chain is a session that has never proved a thread, so it

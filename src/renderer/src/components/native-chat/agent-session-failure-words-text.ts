@@ -63,17 +63,6 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       translate('components.native-chat.failureWords.signInThenSend', COPY.signInThenSend),
     historyTooLarge: () =>
       translate('components.native-chat.failureWords.historyTooLarge', COPY.historyTooLarge),
-    customCommandInvalid: (values) =>
-      translate(
-        'components.native-chat.failureWords.customCommandInvalid',
-        COPY.customCommandInvalid,
-        values
-      ),
-    customCommandConflict: () =>
-      translate(
-        'components.native-chat.failureWords.customCommandConflict',
-        COPY.customCommandConflict
-      ),
     managedAccountEnvOverride: () =>
       translate(
         'components.native-chat.failureWords.managedAccountEnvOverride',
@@ -88,6 +77,11 @@ const PIECES: Record<AgentSessionFailureCopyId, (values: AgentSessionFailureCopy
       translate(
         'components.native-chat.failureWords.managedAccountUnsupported',
         COPY.managedAccountUnsupported
+      ),
+    launchFolderMissing: () =>
+      translate(
+        'components.native-chat.failureWords.launchFolderMissing',
+        COPY.launchFolderMissing
       ),
     chooseClaudeAccount: () =>
       translate(
