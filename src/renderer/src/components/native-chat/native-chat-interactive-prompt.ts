@@ -47,31 +47,25 @@ export type ChatApproval = {
   options: { label: string; send: string }[]
 }
 
+/** A journal approval prompt as its card reads it; each option sends its id. */
+export function chatApprovalFromJournal(body: AgentJournalApprovalItem): ChatApproval {
+  return {
+    title: body.title,
+    ...(body.displayName ? { displayName: body.displayName } : {}),
+    ...(body.description ? { description: body.description } : {}),
+    ...(body.decisionReason ? { decisionReason: body.decisionReason } : {}),
+    ...(body.blockedPath ? { blockedPath: body.blockedPath } : {}),
+    ...(body.matchedAskRule ? { matchedAskRule: body.matchedAskRule } : {}),
+    ...(body.subject ? { subject: body.subject } : {}),
+    ...(body.detail ? { detail: body.detail } : {}),
+    options: body.options.map((option) => ({ label: option.label, send: option.id }))
+  }
+}
+
 export type InteractivePromptCard =
   | { kind: 'question'; prompt: AskPrompt }
   | { kind: 'approval'; approval: ChatApproval }
   | null
-
-export function nativeChatStructuredApproval(
-  approvalBody: AgentJournalApprovalItem | null
-): ChatApproval | null {
-  return approvalBody
-    ? {
-        title: approvalBody.title,
-        ...(approvalBody.displayName ? { displayName: approvalBody.displayName } : {}),
-        ...(approvalBody.description ? { description: approvalBody.description } : {}),
-        ...(approvalBody.decisionReason ? { decisionReason: approvalBody.decisionReason } : {}),
-        ...(approvalBody.blockedPath ? { blockedPath: approvalBody.blockedPath } : {}),
-        ...(approvalBody.matchedAskRule ? { matchedAskRule: approvalBody.matchedAskRule } : {}),
-        ...(approvalBody.subject ? { subject: approvalBody.subject } : {}),
-        ...(approvalBody.detail ? { detail: approvalBody.detail } : {}),
-        options: approvalBody.options.map((option) => ({
-          label: option.label,
-          send: option.id
-        }))
-      }
-    : null
-}
 
 const ESCAPE = String.fromCharCode(27)
 

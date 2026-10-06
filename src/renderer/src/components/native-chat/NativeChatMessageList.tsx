@@ -86,6 +86,7 @@ export function NativeChatMessageList({
   deliveryNotices,
   awaitingInput = null,
   turnActivity,
+  stopping = false,
   runtimeContext
 }: {
   ref?: Parameters<typeof useNativeChatMessageListHandle>[0]
@@ -113,6 +114,8 @@ export function NativeChatMessageList({
   /** Set while the turn waits on the reader; the live activity line yields to it. */
   awaitingInput?: NativeChatAwaitingInput | null
   turnActivity?: NativeChatTurnActivity | null
+  /** A person's Stop is ending the live turn: its tail line reads "Stopping…". */
+  stopping?: boolean
   runtimeContext?: RuntimeFileOperationArgs | null
 }): React.JSX.Element {
   const [navigationRequest, setNavigationRequest] = useState<NativeChatNavigationRequest | null>(
@@ -206,13 +209,14 @@ export function NativeChatMessageList({
     line: {
       draws: tailRow === 'activity',
       thinking: turnStatuses.active?.thinking === true,
+      stopping,
       activityText: turnActivity?.text
     }
   })
   // A message waiting behind the live turn draws after that turn's live activity, not inside it.
   const { slots, waitingSlots } = useMemo(
-    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, journalItems),
-    [allSlots, journalItems]
+    () => splitNativeChatSlotsWaitingBehindLiveTurn(allSlots, journalItems, stopping),
+    [allSlots, journalItems, stopping]
   )
   const transcriptWindow = useNativeChatTranscriptWindow({
     scrollRef,

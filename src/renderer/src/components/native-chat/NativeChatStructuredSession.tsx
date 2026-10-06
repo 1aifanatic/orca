@@ -29,17 +29,18 @@ import { NativeChatStructuredSessionStatus } from './NativeChatStructuredSession
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import { NativeChatLaunchRetry } from './NativeChatLaunchRetry'
 import { useNativeChatProvisionalLaunch } from './use-native-chat-provisional-launch'
-import { useStructuredAgentSessionHostExecutionPhase } from './StructuredAgentSessionStatusBridge'
+import { useStructuredAgentSessionHostExecution } from './StructuredAgentSessionStatusBridge'
 import { useNativeChatRewindHost } from './use-native-chat-rewind-host'
 import { NativeChatRewindContext } from './native-chat-rewind-context'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
+import { nativeChatStructuredStopControls } from './native-chat-structured-stop-controls'
+import { chatApprovalFromJournal } from './native-chat-interactive-prompt'
 import { useAppStore } from '../../store'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
-import { nativeChatStructuredApproval } from './native-chat-interactive-prompt'
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -49,7 +50,7 @@ export function NativeChatStructuredSession(
   const provisionalLaunch = useNativeChatProvisionalLaunch(ownerWorktreeId, props.sessionId)
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
-  const startupPhase = useStructuredAgentSessionHostExecutionPhase(props.sessionId, props.target)
+  const hostExecution = useStructuredAgentSessionHostExecution(props.sessionId, props.target)
   const paneKey = useMemo(
     () => structuredAgentSessionPaneKey(props.tabId, props.sessionId),
     [props.sessionId, props.tabId]
@@ -63,11 +64,13 @@ export function NativeChatStructuredSession(
     // Why: Stop and a queued card's Edit give text back to the conversation's draft, as the composer keeps it.
     composerScopeKey: structuredAgentSessionDraftScopeKey(props.sessionId),
     queueFollowUps,
-    providerStarting: startupPhase === 'starting',
+    hostStopping: hostExecution.stopping,
+    providerStarting: hostExecution.phase === 'starting',
     rewind: rewindHost,
     transportEnabled: provisionalLaunch.transportEnabled,
     ...(provisionalLaunch.launch ? { launch: provisionalLaunch.launch } : {})
   })
+  const stopControls = nativeChatStructuredStopControls(controller, hostExecution.stopping)
   const launchDraftSignal = useNativeChatLaunchDraftSignal({
     terminalTabId: props.tabId,
     agent: props.agent,
@@ -159,8 +162,7 @@ export function NativeChatStructuredSession(
   // cancel then works.
   const promptsUnanswerable = pendingPromptsAllUnanswerableHere(controller.prompts)
   const composerShown = (prompt === null || promptsUnanswerable) && !readFailedFinally
-  const approvalBody = prompt?.body.kind === 'approval' ? prompt.body : null
-  const approval = nativeChatStructuredApproval(approvalBody)
+  const approval = prompt?.body.kind === 'approval' ? chatApprovalFromJournal(prompt.body) : null
   const cancelPrompt = () => {
     if (controller.turnId && prompt) {
       void controller.cancel(controller.turnId, {
@@ -292,6 +294,7 @@ export function NativeChatStructuredSession(
               settledTurns={controller.settledTurns}
               awaitingInput={prompt === null ? null : 'shown'}
               turnActivity={controller.turnActivity}
+              stopping={stopControls.stopping}
               onLinkClick={onLinkClick}
               allowFileUriLinks={onLinkClick !== undefined}
               runtimeContext={imageRuntimeContext}
@@ -311,6 +314,7 @@ export function NativeChatStructuredSession(
           {/* Host-held drafts, never transcript rows. Above the status area, so running shells and agents sit next to the composer. */}
           <NativeChatQueuedMessageList
             controller={submits.queuedMessages}
+            steerHeld={stopControls.stopping}
             focusComposer={focusComposer}
           />
           <NativeChatStructuredSessionStatus
@@ -396,8 +400,8 @@ export function NativeChatStructuredSession(
               targetPtyId={null}
               agent={props.agent}
               isWorking={controller.canStop}
-              onStop={() => void controller.stop()}
-              steerQueued={submits.queuedMessages.steerNewest}
+              {...stopControls.composer}
+              steerQueued={stopControls.stopping ? undefined : submits.queuedMessages.steerNewest}
               structuredTransport={structuredTransport}
               launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
             />

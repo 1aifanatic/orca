@@ -80,6 +80,8 @@ export function useStructuredAgentSessionOutbox(args: {
   queuedMessageIds?: readonly string[]
   /** With the queue delivery, whether a new send waits as a queued card. */
   isWorking?: boolean
+  /** The chat reads Stopping: a send made now is marked as made while stopping. */
+  stopping?: boolean
 }) {
   const {
     composerScopeKey,
@@ -89,6 +91,7 @@ export function useStructuredAgentSessionOutbox(args: {
     queueDelivery = NO_QUEUE_DELIVERY,
     queuedMessageIds,
     sessionId,
+    stopping: sentWhileStopping = false,
     submissions,
     target
   } = args
@@ -279,7 +282,15 @@ export function useStructuredAgentSessionOutbox(args: {
         return false
       }
       // Whether it asks to be queued is decided when it first goes out.
-      if (!appendStructuredAgentSessionOutboxMessage(sessionId, text, attachments)) {
+      if (
+        !appendStructuredAgentSessionOutboxMessage(
+          sessionId,
+          text,
+          attachments,
+          undefined,
+          sentWhileStopping
+        )
+      ) {
         setError(agentSessionWriteNoticeText(STRUCTURED_AGENT_SESSION_OUTBOX_NOT_SAVED))
         return false
       }
@@ -295,7 +306,7 @@ export function useStructuredAgentSessionOutbox(args: {
       )
       return admitted && !shown.includes(admitted) ? 'queued' : true
     },
-    [isWorking, queueDelivery, queuedMessageIds, sessionId]
+    [isWorking, queueDelivery, queuedMessageIds, sentWhileStopping, sessionId]
   )
 
   const { withdrawUnsent } = useStructuredAgentSessionOutboxOwnership({
