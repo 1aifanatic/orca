@@ -11,6 +11,9 @@
     "retrying": "Reintentando…"
   },
   "settings": {
+    "chat": {
+      "description": "Elige el aspecto de los chats."
+    },
     "terminal": {
       "optionLayoutAlt": "ABC o EE. UU. — Option envía secuencias Alt/Esc",
       "optionLayoutCompose": "la distribución usa Option para escribir caracteres como @, €, [, ]",
@@ -67,8 +70,7 @@
         "wide": "Amplio",
         "full": "Completo",
         "pixels": "px",
-        "reset": "Restablecer",
-        "summary": "{{fontSize}}px · Ancho {{width}}"
+        "reset": "Restablecer"
       }
     },
     "browser": {
@@ -17737,6 +17739,8 @@
         "moreCalls": "+{{value0}} más",
         "failedCount": "{{value0}} fallidas",
         "failedCallsLabel": "Llamadas a herramientas fallidas: {{value0}}",
+        "interruptedCount": "{{value0}} interrumpidas",
+        "interruptedCallsLabel": "Llamadas a herramientas interrumpidas: {{value0}}",
         "runningPreview": "Ejecutando {{preview}}",
         "runningCommand": "Ejecutando comando",
         "runningNamedPreview": "Ejecutando {{toolName}} {{preview}}",

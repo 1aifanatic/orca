@@ -10,6 +10,7 @@ import {
   type AgentJournalSubmission
 } from './agent-session-journal-types'
 import { agentTurnVerdict, type AgentTurnOutcome } from './agent-turn-outcome'
+import { agentJournalToolCallLifecycle } from './agent-journal-tool-call-lifecycle'
 import { agentJournalLinkageFields } from './agent-session-journal-producer'
 import { structuredAgentSessionStatusBlock } from './structured-agent-session-status-block'
 import { agentJournalItemRowOrigin } from './agent-session-journal-position'
@@ -90,7 +91,8 @@ function itemBlocks(item: AgentJournalRenderItem): {
               {
                 type: 'tool-result' as const,
                 output: boundedText(body.output),
-                isError: body.state === 'failed',
+                // Output a call left when it was cut short is not an error it reported.
+                isError: agentJournalToolCallLifecycle(body) === 'failed',
                 // The call and its output are one journal row, so the result names its call.
                 ...(body.callId !== undefined ? { callId: body.callId } : {})
               }
@@ -164,6 +166,7 @@ export function projectStructuredItemToNativeChat(
   // Reducer updates replace journal items, so unchanged rows keep their render caches.
   const projected = itemBlocks(item)
   const sentAs = item.body.kind === 'message' ? item.body.sentAs : undefined
+  const command = item.body.kind === 'message' ? item.body.command : undefined
   // Read here too: a client's journal comes off the wire, from a host of any version.
   const from = item.body.kind === 'message' ? readAgentMessageSource(item.body.from) : undefined
   const message: NativeChatMessage | null = projected
@@ -174,6 +177,7 @@ export function projectStructuredItemToNativeChat(
         blocks: projected.blocks,
         // A send mode this build cannot name renders as an ordinary message.
         ...(sentAs !== undefined && isAgentJournalMessageSendMode(sentAs) ? { sentAs } : {}),
+        ...(command ? { command } : {}),
         ...(from && projected.role === 'user' ? { from } : {})
       }
     : null
