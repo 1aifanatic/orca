@@ -8,6 +8,7 @@ import type {
   AgentSessionJournalIdentity,
   AgentSessionJournalProviderHandle
 } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { agentSessionJournalProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { journalRowSchemaVersion } from '../../../shared/agent-session-journal-types'
 import {
@@ -73,6 +74,7 @@ export function journalSubmissionRowBuilder(
     fence: number
     handoverRecorded?: true
     queuedMessageId?: string
+    origin?: 'client' | 'host'
   },
   /** Present when the append hands off a queued draft: the row names that draft, stamped here
    *  from the consume itself so no hand-off path can leave the link off. */
@@ -111,6 +113,9 @@ export function journalDispatchRowBuilder(
     providerItemId,
     reason: boundedDispatchReason(input),
     ...(input.state === 'rejected' ? { rejection: input.rejection } : {}),
+    ...(input.state === 'rejected' && input.keptAsQueuedMessageId !== undefined
+      ? { keptAsQueuedMessageId: input.keptAsQueuedMessageId }
+      : {}),
     // Every rejection states its turn, null for none, so a reader tells it from an older row.
     ...(input.state === 'rejected'
       ? {
@@ -319,6 +324,8 @@ export function buildJournalSubmissionRow(input: {
   ts: number
   handoverRecorded?: true
   queuedMessageId?: string
+  origin?: 'client' | 'host'
+  source?: Pick<AgentSessionMessageSource, 'kind'>
 }): JournalSubmissionRow {
   return {
     kind: 'submission',
@@ -328,6 +335,9 @@ export function buildJournalSubmissionRow(input: {
     body: input.body,
     ...journalRowBase(input.state.epoch, input.seq, input.fence, input.ts),
     ...(input.handoverRecorded ? { handoverRecorded: true } : {}),
-    ...(input.queuedMessageId !== undefined ? { queuedMessageId: input.queuedMessageId } : {})
+    ...(input.queuedMessageId !== undefined ? { queuedMessageId: input.queuedMessageId } : {}),
+    ...(input.origin !== undefined ? { origin: input.origin } : {}),
+    // The kind only: a caller's full source carries senders that stay host-only.
+    ...(input.source !== undefined ? { source: { kind: input.source.kind } } : {})
   }
 }

@@ -5,10 +5,12 @@
 //     person's pauses.
 //   - 'cleared': a card /clear carried into this conversation waits, and no turn or Resume has
 //     happened here since.
-//   - 'restarted': a waiting card was written by another host process, and no turn has started
-//     since this conversation opened. Never published: after a restart nothing sends by itself,
-//     and the next turn (the carry-on or the person's own message) runs first.
+//   - 'restarted': a waiting card with no hold of its own was written by another host process,
+//     and no turn has started since this conversation opened. Never published: after a restart
+//     nothing sends by itself, and the next turn (the carry-on or the person's own message) runs
+//     first.
 // Any accepted turn lifts them, whoever sent it: a person, Orca's own messages, or the queue.
+// A card held on its own (`hold_reason`) is outside every pause: only an action on it releases it.
 
 import type {
   AgentJournalCursor,
@@ -131,7 +133,11 @@ export function deriveQueuePauses(input: {
   if (carried.length > 0 && latestAcceptedTurnSequence === 0 && marks.resumedSequence === 0) {
     pauses.push({ reason: 'cleared', since: null })
   }
-  if (!input.restartEnded && waiting.some((card) => card.hostInstance !== input.hostInstance)) {
+  // A card held on its own waits for its own Send whoever wrote it, so it pauses nothing else.
+  const foreign = waiting.some(
+    (card) => card.holdReason === null && card.hostInstance !== input.hostInstance
+  )
+  if (!input.restartEnded && foreign) {
     // The process that wrote a card is gone: every card waits, whenever it was written.
     pauses.push({ reason: 'restarted', since: null })
   }
@@ -169,8 +175,9 @@ export function queuePauseHolding(
 }
 
 /** The card the queue sends next: the oldest waiting one with no hold of its own, unless a
- *  returned card or a held one comes first. The queue never reorders, so a newer card never
- *  overtakes a held one. The drain's pick and its consume both read this. */
+ *  returned card or one a pause holds comes first. The queue never reorders, so a newer card never
+ *  overtakes one a pause holds; a card held on its own is passed over. The drain's pick and its
+ *  consume both read this. */
 export function nextSendableQueuedCard<T extends QueueCard>(
   pauses: readonly DerivedQueuePause[],
   cards: readonly T[]

@@ -4,8 +4,10 @@
 // streams from re-sending it. They ride together: a client never sees one without the others.
 
 import {
+  QUEUED_MESSAGE_PAUSED_KEPT,
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
   type AgentSessionQueuedMessage,
+  type AgentSessionQueuedMessagePausedReason,
   type AgentSessionQueuePause
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -41,7 +43,8 @@ export function structuredQueueSendGate(
 }
 
 /** Waiting and returned rows only. `paused` is a per-card hold (a failed
- *  conversion); a Stop or a /clear pauses the queue, published once beside it. */
+ *  conversion, or a send the host kept); a Stop or a /clear pauses the queue, published once
+ *  beside it. */
 function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSessionQueuedMessage[] {
   const published: AgentSessionQueuedMessage[] = []
   for (const row of journal.queuedMessages.list()) {
@@ -56,9 +59,7 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
       state: row.state,
       ...(held ? { paused: true as const } : {}),
       // The stored reason is a typed marker; an unknown one reads as a plain hold.
-      ...(held && row.holdReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED
-        ? { pausedReason: QUEUED_MESSAGE_PAUSED_SEND_FAILED }
-        : {}),
+      ...(held && isPublishedPausedReason(row.holdReason) ? { pausedReason: row.holdReason } : {}),
       ...(row.state === 'returned' ? { returnedReason: row.returnedReason } : {}),
       ...(row.state === 'returned' && row.returnedRejection
         ? { returnedRejection: row.returnedRejection }
@@ -66,6 +67,12 @@ function computePublishedQueuedMessages(journal: AgentSessionJournal): AgentSess
     })
   }
   return published
+}
+
+function isPublishedPausedReason(
+  reason: string | null
+): reason is AgentSessionQueuedMessagePausedReason {
+  return reason === QUEUED_MESSAGE_PAUSED_SEND_FAILED || reason === QUEUED_MESSAGE_PAUSED_KEPT
 }
 
 type ListMemo = { key: string; serialized: string; list: AgentSessionQueuedMessage[] }

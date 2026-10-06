@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
 import {
   USER_MESSAGE_SOURCE,
-  type AgentMessageSource
+  type AgentSessionMessageSource
 } from '../../../shared/agent-session-message-source'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
@@ -216,8 +216,10 @@ export async function maybeQueueStructuredAgentSessionSend(
     envelope: { clientOperationId: string }
     body: AgentJournalMessageItem
     delivery?: 'queue-if-active'
-    /** Who a host-side send is from; a client's send never carries it, so it is its person's. */
-    source?: AgentMessageSource
+    /** A person's send at a chat surface; it outranks any `source`. */
+    userSend?: true
+    /** Who a host-side send is from. */
+    source?: AgentSessionMessageSource
   }
 ): Promise<
   | { ok: true; value: AgentSessionSendResult }
@@ -259,7 +261,7 @@ export async function maybeQueueStructuredAgentSessionSend(
       body: params.body,
       fingerprint: queuedMessageFingerprint(ctx.sessionId, params.body),
       hostInstance: structuredAgentSessionHostInstance(),
-      source: params.source ?? USER_MESSAGE_SOURCE
+      source: params.userSend ? USER_MESSAGE_SOURCE : (params.source ?? USER_MESSAGE_SOURCE)
     },
     ctx.operationReceipt
   )
@@ -294,8 +296,9 @@ export class StructuredAgentSessionQueuedMessageDrain {
 
   constructor(private readonly deps: QueuedMessageDrainDeps) {}
 
-  /** Host teardown: nothing is handed off from here on. A card sent while the host quits is
-   *  refused at close, and its row would read as the chat having moved on past its restart offer. */
+  /** Quit, with delivery: a hand-off made now could only be settled by the next process, so a
+   *  quit leaves the cards exactly as a crash does. Read by the step at its start, and again
+   *  right before it appends, since quit can land while it awaits. */
   dispose(): void {
     this.disposed = true
   }
@@ -344,8 +347,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
   }
 
   private async step(sessionId: string): Promise<void> {
-    const session = this.disposed ? undefined : this.deps.sessions.get(sessionId)
-    if (!session) {
+    const session = this.deps.sessions.get(sessionId)
+    if (this.disposed || !session) {
       return
     }
     const journal = session.journal
@@ -361,12 +364,9 @@ export class StructuredAgentSessionQueuedMessageDrain {
     }
     const fence = this.deps.conversationFence(sessionId)
     // Whatever clears a hold publishes or commits, which re-derives this step.
-    const next = nextStructuredQueuedMessage({
-      journal,
-      record: this.deps.getRecord(sessionId),
-      fence
-    })
-    if (!next) {
+    const record = this.deps.getRecord(sessionId)
+    const next = nextStructuredQueuedMessage({ journal, record, fence })
+    if (this.disposed || !next) {
       return
     }
     // Always a fresh id: the submission names its draft by `queuedMessageId`, never by id equality.
@@ -375,6 +375,8 @@ export class StructuredAgentSessionQueuedMessageDrain {
       await journal.appendSubmission(
         {
           clientMessageId: submissionId,
+          // The queue's own automatic send, never kept as a card by a restart or a close.
+          origin: 'host',
           payloadFingerprint: next.fingerprint,
           body: next.body,
           fence,

@@ -29,6 +29,9 @@ import type { NativeChatQueueHold } from './native-chat-composer-types'
 
 export type StructuredAgentSessionQueuedMessagesController = {
   cards: QueuedMessageCard[]
+  /** The host queues sends. Without it a card can still show — a message the host kept unsent —
+   *  but queueing settings and the steer chord would do nothing. */
+  queueCapable: boolean
   /** Why the queue holds cards Resume would send: the header row above them. A string reason: a
    *  newer host may name one this build does not know. */
   pause: { reason: string } | null
@@ -235,6 +238,7 @@ export function useStructuredAgentSessionQueuedMessages(args: {
 
   return {
     cards,
+    queueCapable: enabled,
     pause,
     resume,
     resuming,

@@ -37,7 +37,7 @@ import {
   setOptionPlan
 } from './structured-agent-session-mutation-plans'
 import { runQueueableStructuredAgentSessionSend } from './structured-agent-session-queued-send'
-import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
+import type { AgentSessionMessageSource } from '../../../shared/agent-session-message-source'
 import { cancelStructuredAgentSessionPrompt } from './structured-agent-session-prompt-cancel'
 import { mutateWithChatStop } from './structured-agent-session-chat-stop'
 export type { StructuredAgentSessionMutationContext } from './structured-agent-session-mutation-context'
@@ -55,9 +55,16 @@ export function sendStructuredAgentSessionTurn(
     body: AgentJournalMessageItem
     retryUnknown?: true
     delivery?: 'queue-if-active'
-    /** Host-local, never on the wire: who a host-side `queue-if-active` send queues for, recorded
-     *  on its card. A client's send never carries it, so its card is its person's. */
-    source?: AgentMessageSource
+    /** Host-local, set only by the client-facing `agentSession.send` RPC (the
+     *  renderer's launch prompt included): recorded as the submission's `client`
+     *  origin, so a restart or a close keeps it as a card if it never reached the
+     *  agent. Orchestration mail, a restart continuation and `agent.launch`'s host-sent
+     *  prompt never set it. */
+    userSend?: true
+    /** Host-local, never on the wire: who a host-side send is from. A queued one records it on
+     *  its card, a direct one its kind on the submission. A client's send is always its person's
+     *  (`userSend`). */
+    source?: AgentSessionMessageSource
     beforeRun?: () => void
   },
   arrival?: Parameters<typeof sendPreparation>[2]

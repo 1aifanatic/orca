@@ -20,7 +20,8 @@ export async function sendStructuredAgentSessionForClient(
   context: RpcContext
 ) {
   const host = requireStructuredHost(context)
-  const result = await host.send(structuredCallerFor(context), params)
+  // A client's own send: a restart or a close keeps it as a card if it never reached the agent.
+  const result = await host.send(structuredCallerFor(context), { ...params, userSend: true })
   const capabilities = context.clientCapabilities ?? []
   if (
     !result.ok ||

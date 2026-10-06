@@ -23,6 +23,10 @@ export function NativeChatQueuedMessageList({
   const queueRef = useRef<HTMLDivElement>(null)
   const { cards, pause } = controller
   const newest = cards.at(-1)
+  // Only a host that queues sends has queueing to turn off; a kept card shows without it.
+  const turnOffQueueing = controller.queueCapable
+    ? () => void updateSettings({ nativeChatQueueFollowUps: false })
+    : undefined
   // Only when focus was on the queue (a card, or Resume) — never pull it from wherever the user
   // moved on to.
   const refocusAfter = (action: Promise<void>): void => {
@@ -57,11 +61,11 @@ export function NativeChatQueuedMessageList({
                 <NativeChatQueuedMessageCard
                   key={card.messageId}
                   card={card}
-                  showsSteerShortcut={card === newest}
+                  showsSteerShortcut={controller.queueCapable && card === newest}
                   onSteer={() => refocusAfter(controller.steer(card.messageId))}
                   onDelete={() => refocusAfter(controller.remove(card.messageId))}
                   onEdit={() => refocusAfter(controller.edit(card.messageId))}
-                  onTurnOffQueueing={() => void updateSettings({ nativeChatQueueFollowUps: false })}
+                  onTurnOffQueueing={turnOffQueueing}
                 />
               ))}
             </ul>

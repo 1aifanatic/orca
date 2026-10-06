@@ -182,13 +182,29 @@ describe('queued message cards', () => {
     const unsendable = [
       draft('returned', 1, { state: 'returned', returnedReason: null }),
       draft('behind', 2),
-      draft('failed', 3, { paused: true, pausedReason: 'send_failed' })
+      draft('failed', 3, { paused: true, pausedReason: 'send_failed' }),
+      draft('kept', 4, { paused: true, pausedReason: 'kept' })
     ]
     expect(queuedMessagesQueuePause(project(unsendable), stopped)).toBeNull()
     // No published pause (an idle chat after a restart): plain cards, no header.
     const unpaused = project([draft('waiting', 1)], false)
     expect(unpaused.map((card) => card.hold)).toEqual(['turn'])
     expect(queuedMessagesQueuePause(unpaused, null)).toBeNull()
+  })
+
+  // A kept card is held on its own, like a failed one: the host sends the cards behind it.
+  it('a card behind a kept or a send_failed card is not held by it', () => {
+    const cards = projectQueuedMessageCards(
+      [
+        draft('failed', 1, { paused: true, pausedReason: 'send_failed' }),
+        draft('after-failed', 2),
+        draft('kept', 3, { paused: true, pausedReason: 'kept' }),
+        draft('behind', 4)
+      ],
+      [],
+      IDLE
+    )
+    expect(cards.map((card) => card.hold)).toEqual(['paused', 'turn', 'paused', 'turn'])
   })
 
   it('steers the newest card', () => {

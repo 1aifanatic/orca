@@ -129,7 +129,6 @@ export function NativeChatStructuredSession(
     submissions: controller.submissions,
     journalItems: controller.journalItems,
     failedHere: controller.failedHere,
-    queuedMessageIds: controller.queuedMessageIds,
     retry: controller.retry,
     agentName: agentLabel
   })
@@ -286,6 +285,7 @@ export function NativeChatStructuredSession(
               session={session}
               journalItems={controller.journalItems}
               journalSubmissions={controller.submissions}
+              journalLatestTurn={controller.latestTurn}
               subagentRoster={controller.subagentRoster}
               railOutline={controller.railOutline}
               isVisible={props.isVisible}
