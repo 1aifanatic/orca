@@ -164,7 +164,7 @@ function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
   const changed = plan.changedLabels.size > 0
   if (
     !changed &&
-    findMissingCodexHookApprovals(approvals, trustStates).length === 0 &&
+    findMissingCodexHookApprovals(approvals, tomlPath).length === 0 &&
     findStale(trustStates).length === 0
   ) {
     return 'settled'
