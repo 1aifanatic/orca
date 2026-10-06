@@ -6,7 +6,9 @@
 // attached. Every chip dies with its operation: settled or dropped when the save or upload settles
 // (each bounded by its call timeout), or removed by the user.
 
+import { useCallback, useSyncExternalStore } from 'react'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
+import { appendToNativeChatComposerDraft } from './native-chat-composer-draft-store'
 
 const EMPTY: readonly NativeChatComposerImageAttachment[] = Object.freeze([])
 const pendingCache = new Map<string, readonly NativeChatComposerImageAttachment[]>()
@@ -19,10 +21,7 @@ export function nativeChatPendingAttachmentSnapshot(
   return pendingCache.get(scopeKey) ?? EMPTY
 }
 
-function writePending(
-  scopeKey: string,
-  next: readonly NativeChatComposerImageAttachment[]
-): void {
+function writePending(scopeKey: string, next: readonly NativeChatComposerImageAttachment[]): void {
   if (next.length === 0) {
     pendingCache.delete(scopeKey)
   } else {
@@ -44,6 +43,17 @@ export function subscribeToNativeChatPendingAttachments(
       listeners.delete(scopeKey)
     }
   }
+}
+
+/** The scope's pending chips, re-rendering when they change. */
+export function useNativeChatPendingAttachments(
+  scopeKey: string
+): readonly NativeChatComposerImageAttachment[] {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeToNativeChatPendingAttachments(scopeKey, listener),
+    [scopeKey]
+  )
+  return useSyncExternalStore(subscribe, () => nativeChatPendingAttachmentSnapshot(scopeKey))
 }
 
 /** Adds a chip still on its way. Preview URLs stay with the composer that minted them. */
@@ -69,6 +79,24 @@ export function takeNativeChatPendingAttachment(
     )
   }
   return taken
+}
+
+/** Settles a pending chip into the scope's draft, as an image the user attached. False when the
+ *  user already removed it. */
+export function settleNativeChatPendingAttachment(
+  scopeKey: string,
+  id: string,
+  path: string,
+  connectionId?: string | null
+): boolean {
+  if (!takeNativeChatPendingAttachment(scopeKey, id)) {
+    return false
+  }
+  appendToNativeChatComposerDraft(scopeKey, {
+    images: [{ id, path, ...(connectionId ? { connectionId } : {}) }],
+    fromUser: true
+  })
+  return true
 }
 
 /** Shows a pending chip that was held out of sight, such as while a server was asked first. */

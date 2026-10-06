@@ -78,13 +78,9 @@ describe('NativeChatImageAttachmentPreview', () => {
         worktreePath: null
       })
     }
-    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(
-      path,
-      path,
-      undefined,
-      expect.anything(),
-      { kind: 'chat-image' }
-    )
+    expect(mocks.useLocalImageSrc).toHaveBeenCalledWith(path, path, undefined, expect.anything(), {
+      kind: 'chat-image'
+    })
     expect(screen.getByRole('img', { name: 'shot.png' }).getAttribute('src')).toBe(
       'blob:from-server'
     )

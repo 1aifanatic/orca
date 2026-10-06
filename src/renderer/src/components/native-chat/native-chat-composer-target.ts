@@ -28,4 +28,11 @@ export function nativeChatComposerTargetIsRemote(ptyId: string | null): boolean 
   return ptyId !== null && isRemoteRuntimePtyId(ptyId)
 }
 
+export function nativeChatLocalAttachmentUnsupportedNotice(): string {
+  return translate(
+    'components.native-chat.composer.localAttachmentUnsupported',
+    'Local attachments are not available for remote sessions.'
+  )
+}
+
 export { formatNativeChatFileReference } from '../../../../shared/agent-image-paste'

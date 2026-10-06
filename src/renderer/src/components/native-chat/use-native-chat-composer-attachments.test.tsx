@@ -8,6 +8,7 @@ import {
   useNativeChatComposerAttachments
 } from './use-native-chat-composer-attachments'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
+import { nativeChatPendingAttachmentSnapshot } from './native-chat-pending-attachment-cache'
 import { readNativeChatDraftCache } from './native-chat-draft-cache'
 import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
 
@@ -556,7 +557,7 @@ describe('useNativeChatComposerAttachments', () => {
     )
   })
 
-  it('keeps a pending chip in the scope cache, without its preview, beside a settled one', async () => {
+  it('keeps a pending chip in the pending cache, without its preview, and the settled one in the draft', async () => {
     const probe = await renderProbe('pty-1')
     let pendingId: string | null = null
     act(() => {
@@ -566,11 +567,14 @@ describe('useNativeChatComposerAttachments', () => {
       probe.latest().attachResolvedPaths(['/tmp/settled.png'])
     })
 
-    // A composer that comes back must still wait for the pending one.
-    const cached = readNativeChatAttachmentCache('pty-1')
-    expect(cached).toMatchObject([{ id: pendingId, pending: true }, { path: '/tmp/settled.png' }])
-    expect(cached.every((attachment) => attachment.previewUrl === undefined)).toBe(true)
-    expect(probe.latest().imageAttachments[0]?.previewUrl).toBe('blob:preview-1')
+    // A composer that comes back must still wait for the pending one, which no draft saves.
+    expect(nativeChatPendingAttachmentSnapshot('pty-1')).toEqual([
+      { id: pendingId, path: '', pending: true }
+    ])
+    expect(readNativeChatAttachmentCache('pty-1')).toMatchObject([{ path: '/tmp/settled.png' }])
+    expect(
+      probe.latest().imageAttachments.find((attachment) => attachment.id === pendingId)?.previewUrl
+    ).toBe('blob:preview-1')
     act(() => probe.root.unmount())
   })
 

@@ -177,12 +177,7 @@ export function nativeChatAttachFailedNotice(names: readonly string[], cause = '
       })
 }
 
-export function nativeChatLocalAttachmentUnsupportedNotice(): string {
-  return translate(
-    'components.native-chat.composer.localAttachmentUnsupported',
-    'Local attachments are not available for remote sessions.'
-  )
-}
+export { nativeChatLocalAttachmentUnsupportedNotice } from './native-chat-composer-target'
 
 /**
  * Upload client-local paths into `${worktreePath}/.orca/drops` on the SSH

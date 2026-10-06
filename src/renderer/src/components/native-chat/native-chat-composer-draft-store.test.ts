@@ -377,6 +377,17 @@ describe('native-chat composer draft store', () => {
     ])
   })
 
+  it('saves a paste a paired server stored for the chat as the real image', async () => {
+    const stored = {
+      id: 'p-1',
+      path: '/srv/orca/agent-session-attachments/0f6c/orca-paste-1-0f.png'
+    }
+    modules.attachments.appendNativeChatAttachmentCache('agent-session:s1', [stored])
+
+    const reloaded = await reload()
+    expect(reloaded.attachments.readNativeChatAttachmentCache('agent-session:s1')).toEqual([stored])
+  })
+
   it('puts a re-attached image in the place of the one to attach again', async () => {
     storage.drafts.set('tab-1:pane', {
       text: 'see',

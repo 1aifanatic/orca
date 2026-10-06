@@ -553,7 +553,8 @@ describe('useNativeChatExternalAttachments', () => {
       expect(chips.attachReferences).toHaveBeenCalledExactlyOnceWith([
         '/srv/agent-session-attachments/u2/notes.md'
       ])
-      expect(mocks.authorizeExternalPath).not.toHaveBeenCalled()
+      // The client never reads its own disk for these paths: the server stores the bytes.
+      expect(mocks.stat).not.toHaveBeenCalled()
     })
 
     it('does not insert a file whose chip the user removed while it uploaded', async () => {
