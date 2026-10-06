@@ -76,9 +76,11 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
 
 type Step = 'continue' | 'stop'
 
+type RefusedStart = Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+
 type Prepared =
   | 'stop'
-  | Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+  | RefusedStart
   | { ok: true; awaited: StructuredAgentSessionProviderChildIdentity | null }
 
 /** A failed start before it is worded; `fail` words it once, through the one wording point. */
@@ -271,7 +273,7 @@ export class StructuredAgentSessionDeliveryLoop {
   /** A start the session refused, as the failure every queued message it was for is rejected with. */
   private refusedStart(
     sessionId: string,
-    { refusal, diagnostic }: Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+    { refusal, diagnostic, argumentProblem }: RefusedStart
   ): StartFailure {
     // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
     const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
@@ -280,6 +282,7 @@ export class StructuredAgentSessionDeliveryLoop {
       cause: {
         refusal,
         ...(diagnostic ? { diagnostic } : {}),
+        ...(argumentProblem ? { argumentProblem } : {}),
         ...(newSession ? { newSession: true as const } : {})
       }
     }

@@ -7,8 +7,10 @@
 
 import {
   providerDiagnosticOf,
+  type AgentSessionArgumentProblem,
   type ProviderDiagnostic
 } from '../../../shared/agent-session-failure'
+import { argumentProblemOf } from '../structured-agent-arguments-error'
 import {
   agentSessionRefusalFromReference,
   readAgentSessionRefusalReference,
@@ -50,6 +52,7 @@ export type StructuredAgentSessionResumeOutcome =
       diagnostic?: ProviderDiagnostic
       /** The host's own close, Stop or quit aborted the start, so it failed nothing it was for. */
       aborted?: true
+      argumentProblem?: AgentSessionArgumentProblem
     }
 
 /** The attach's caller key: the ledger row a start settles is Orca's own. */
@@ -200,11 +203,13 @@ function withDiagnostic(
   aborted: boolean
 ): StructuredAgentSessionResumeOutcome {
   const diagnostic = providerDiagnosticOf(error)
+  const argumentProblem = argumentProblemOf(error)
   return {
     ok: false,
     refusal,
     ...(diagnostic ? { diagnostic } : {}),
-    ...(aborted ? { aborted: true as const } : {})
+    ...(aborted ? { aborted: true as const } : {}),
+    ...(argumentProblem ? { argumentProblem } : {})
   }
 }
 
