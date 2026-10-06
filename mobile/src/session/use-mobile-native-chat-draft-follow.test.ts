@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it } from 'vitest'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
+import { mobileReplacedSessionToFollow } from './use-mobile-native-chat-draft-follow'
 
 type DraftState = ReturnType<typeof useMobileNativeChatDrafts>
 
@@ -15,15 +16,19 @@ describe('a draft when /clear replaces its conversation', () => {
     state = null
   })
 
-  type Tab = { tabId: string; sessionId: string; replacesSessionId?: string }
+  /** `open`: the sessions the phone's tab list shows, when a test names them. */
+  type Tab = { tabId: string; sessionId: string; replacesSessionId?: string; open?: string[] }
 
-  function Harness({ tabId, sessionId, replacesSessionId }: Tab): null {
+  function Harness({ tabId, sessionId, replacesSessionId, open }: Tab): null {
     state = useMobileNativeChatDrafts({
       hostId: 'host',
       worktreeId: 'worktree',
       tabId,
       sessionId,
-      replacesSessionId: replacesSessionId ?? null,
+      replacesSessionId: mobileReplacedSessionToFollow(
+        replacesSessionId ? { replacesSessionId } : null,
+        (open ?? []).map((id) => ({ type: 'agent-session', sessionId: id }))
+      ),
       messages: [],
       transcriptSettled: true
     })
@@ -50,6 +55,19 @@ describe('a draft when /clear replaces its conversation', () => {
     expect(state?.composerText).toBe('typed while the clear waited')
     await show({ tabId: OLD.tabId, sessionId: OLD.sessionId })
     expect(state?.composerText).toBe('')
+  })
+
+  it('stays in a cleared chat reopened beside the new one until its tab closes', async () => {
+    const reopened = { ...OLD, tabId: 'agent-session:old-reopened', open: ['old', 'new'] }
+    await show(reopened)
+    act(() => state?.setComposerText('typed in the reopened chat'))
+    await show({ ...NEW, open: ['old', 'new'] })
+    expect(state?.composerText).toBe('')
+    await show(reopened)
+    expect(state?.composerText).toBe('typed in the reopened chat')
+    // Its tab closed: what it held follows the new chat, once.
+    await show({ ...NEW, open: ['new'] })
+    expect(state?.composerText).toBe('typed in the reopened chat')
   })
 
   it('goes after a draft the new tab already holds, never over it', async () => {

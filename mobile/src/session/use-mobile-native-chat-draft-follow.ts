@@ -2,12 +2,28 @@ import { useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'rea
 import { appendReturnedDraftText } from '../../../src/shared/returned-draft-text'
 import { isLoneStructuredAgentSessionConversationCommand } from '../../../src/shared/structured-agent-session-composer'
 
+/** The session whose drafts the active tab takes: none while any tab shows it, so a cleared chat
+ *  reopened from history keeps what is typed there until its tab closes. */
+export function mobileReplacedSessionToFollow(
+  activeTab: { replacesSessionId?: string } | null,
+  sessionTabs: readonly { type: string; sessionId?: string | null }[] = []
+): string | null {
+  const replacesSessionId = activeTab?.replacesSessionId
+  if (!replacesSessionId) {
+    return null
+  }
+  const shown = sessionTabs.some(
+    (tab) => tab.type === 'agent-session' && tab.sessionId === replacesSessionId
+  )
+  return shown ? null : replacesSessionId
+}
+
 /**
  * A /clear moves a tab to the conversation that replaces it, under a new tab id, and the host
  * publishes which conversation it replaced. Whenever the tab that replaced a session shows, every
  * draft kept for that session comes to it, after anything there, whenever it was typed or handed
- * back and whichever tab was showing when the clear ran. A lone command is the /clear that
- * replaced it, never carried.
+ * back and whichever tab was showing when the clear ran. A lone /clear or /compact is never
+ * carried: the /clear is what replaced it, and a /compact does nothing in a fresh chat.
  */
 export function useMobileNativeChatDraftFollowsReplacement(args: {
   draftKey: string | null

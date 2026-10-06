@@ -59,8 +59,8 @@ const NO_SUBSCRIPTION = (): void => {}
 /** Asked again after 1, 2, 4, 8 and 16 s; with still no answer, the text comes back saying so. */
 const ASK_AGAIN_MS = [1_000, 2_000, 4_000, 8_000, 16_000]
 
-/** The old conversation's draft goes after anything already here. A lone command is the /clear
- *  that replaced it, which the new chat must never start with. */
+/** The old conversation's draft goes after anything already here. A lone /clear or /compact is
+ *  dropped: the /clear is what replaced it, and a /compact does nothing in a fresh chat. */
 function carryDraft(fromSessionId: string, composerScopeKey: string): void {
   const from = structuredAgentSessionDraftScopeKey(fromSessionId)
   const draft = readNativeChatComposerDraft(from)

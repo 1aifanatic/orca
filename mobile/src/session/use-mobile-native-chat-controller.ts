@@ -5,6 +5,7 @@ import type { MobileNativeChatTab } from './mobile-native-chat-eligibility'
 import type { StructuredAgentSessionHostSupport } from './mobile-structured-agent-session-host-support'
 import { useMobileNativeChatAskDismiss } from './use-mobile-native-chat-ask-dismiss'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
+import { mobileReplacedSessionToFollow } from './use-mobile-native-chat-draft-follow'
 import { useMobileNativeChatFileSearch } from './use-mobile-native-chat-file-search'
 import { useMobileNativeChatMessageSend } from './use-mobile-native-chat-message-send'
 import { mobileNativeChatStreamPreview } from './mobile-native-chat-streaming-gate'
@@ -30,6 +31,8 @@ export function useMobileNativeChatController(args: {
   worktreeId: string
   activeSessionTab: MobileNativeChatTab | null
   activeSessionTabId: string | null
+  /** Every tab shown: a /clear's new tab takes the old chat's drafts only while none shows it. */
+  sessionTabs?: readonly { type: string; sessionId?: string | null }[]
   activeHandleRef: MutableRefObject<string | null>
   deviceTokenRef: MutableRefObject<string | null>
   nativeChatTranscriptIsLocalReadable: boolean
@@ -122,7 +125,7 @@ export function useMobileNativeChatController(args: {
     worktreeId,
     tabId: activeSessionTabId,
     sessionId: activeChatSessionId,
-    replacesSessionId: activeSessionTab?.replacesSessionId ?? null,
+    replacesSessionId: mobileReplacedSessionToFollow(activeSessionTab, args.sessionTabs),
     messages: nativeChatSession.messages,
     launchDraft: activeSessionTab?.launchDraft ?? null,
     launchDraftCreatedAt: activeSessionTab?.launchDraftCreatedAt ?? null,
