@@ -3,6 +3,7 @@ import { OrchestrationStructuredMailboxPointerDelivery } from './orchestration/s
 import { createStructuredMailboxPointerHost } from './orchestration/structured-mailbox-pointer-host'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
 import { isStructuredWorkerHandle } from './structured-worker-identity'
+import { ORCA_SESSION_ADDRESS_PREFIX } from '../../shared/orca-session-address'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { OrcaRuntimeWithRuntimeId } from './orca-runtime-runtime-id'
 import { RuntimeTerminalAgentPresence } from './runtime-terminal-agent-presence'
@@ -223,7 +224,8 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
     getDb: () => this._orchestrationDb,
     getTerminalHandleForPaneKey: (paneKey) => this.getTerminalHandleForPaneKey(paneKey),
     hasTerminalHandle: (handle) => this.handles.has(handle),
-    isStructuredWorkerHandle: (handle) => isStructuredWorkerHandle(handle),
+    isStructuredSessionOwner: (handle) =>
+      isStructuredWorkerHandle(handle) || handle.startsWith(ORCA_SESSION_ADDRESS_PREFIX),
     canProbePtyLiveness: () => Boolean(this.ptyController?.probePtyLiveness),
     controllerKnowsPtyIsLive: (ptyId) => this.controllerKnowsPtyIsLive(ptyId),
     isLeafPtyProvenAbsent: (ptyId) => this.isLeafPtyProvenAbsent(ptyId)

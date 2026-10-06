@@ -249,7 +249,8 @@ export async function sendStructuredWorkerPreamble(args: {
   }
 }
 
-function preambleDispatchState(
+/** A sent preamble's verdict: acknowledged, or held for its agent; anything else throws. */
+export function preambleDispatchState(
   submission: AgentJournalSubmission | undefined
 ): 'accepted' | 'pending' {
   if (submission?.dispatchState === 'accepted' || submission?.dispatchState === 'pending') {

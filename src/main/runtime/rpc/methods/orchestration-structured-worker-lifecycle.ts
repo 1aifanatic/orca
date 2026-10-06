@@ -45,6 +45,10 @@ import type { StructuredWorkerIdentity } from '../../structured-worker-identity'
 import type { WorkerTerminalReleaseState } from '../../orchestration/worker-terminal-ownership'
 import { releaseStructuredWorkerSession } from './orchestration-structured-worker-session'
 import { closeStructuredAgentSessionChild } from '../../structured-agent-session-close'
+import {
+  chatAssigneeJournalSource,
+  type StructuredJournalSource
+} from './orchestration-chat-assignee-journal'
 
 export { observeStructuredWorker, structuredWorkerOwned, type StructuredWorkerObservation }
 
@@ -101,7 +105,8 @@ export async function readStructuredWorkerOutput(args: {
   limit?: number
 }): Promise<OrchestrationWorkerReadTranscriptResult | null> {
   const identity = resolveStructuredWorkerForDispatch(args.db, args.dispatchId)
-  if (!identity) {
+  const chat = identity ? undefined : chatAssigneeJournalSource(args.db, args.dispatchId)
+  if (!identity && chat === undefined) {
     return null
   }
   if (args.source === 'terminal') {
@@ -112,12 +117,21 @@ export async function readStructuredWorkerOutput(args: {
       `Worker Dispatch ${args.dispatchId} has no terminal output; read it with --source auto or --source transcript.`
     )
   }
+  const journal = identity
+    ? { source: identity, agent: structuredWorkerAgent(identity) }
+    : (chat ?? null)
+  if (!journal) {
+    throw new OrchestrationError(
+      'transcript_required',
+      `The transcript for Dispatch ${args.dispatchId} could not be read; this host has no record of its chat.`
+    )
+  }
   return readStructuredWorkerJournal({
-    identity,
+    identity: journal.source,
     dispatchId: args.dispatchId,
     workerState: args.workerState,
     liveness: args.liveness,
-    agent: structuredWorkerAgent(identity),
+    agent: journal.agent,
     ...(args.cursor === undefined ? {} : { cursor: args.cursor }),
     ...(args.limit === undefined ? {} : { limit: args.limit })
   })
@@ -125,7 +139,7 @@ export async function readStructuredWorkerOutput(args: {
 
 /** Journal page in the shape `worker-read --source transcript` already serves. */
 export async function readStructuredWorkerJournal(args: {
-  identity: StructuredWorkerIdentity
+  identity: StructuredJournalSource
   dispatchId: string
   workerState: string
   liveness: StructuredWorkerObservation['status']
@@ -194,7 +208,7 @@ export async function readStructuredWorkerJournal(args: {
  * The oldest item stays in the anchor as the window-slide detector: a slide shifts every index.
  */
 function structuredJournalPrefixIdentity(args: {
-  identity: StructuredWorkerIdentity
+  identity: StructuredJournalSource
   page: StructuredJournalPage
   position: number
 }): string {

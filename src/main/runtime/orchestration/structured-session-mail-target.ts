@@ -24,7 +24,8 @@ import {
   readAgentSessionRecordStore,
   type AgentSessionRecordReader
 } from './structured-session-lineage'
-import type { RunRow } from './types'
+import type { DispatchContextRow, RunRow } from './types'
+import { chatAssigneeSessionId } from './chat-assignee'
 
 /**
  * The session a Run's coordinator binding names when that binding has no handle. A structured
@@ -73,6 +74,22 @@ export function structuredWorkerMailSessionId(
 ): string | null {
   const live = store ? lineageLiveSession(store, mintedSessionId) : null
   return live && structuredWorkerHostScope(live.location) ? live.sessionId : null
+}
+
+/**
+ * The target of a `dispatch:<id>` mailbox whose assignee is a chat: its live session, under the
+ * Dispatch's budget. `undefined` when the assignee is not a chat, so a worker keeps its own lookup.
+ */
+export function chatDispatchMailTarget(
+  dispatch: Pick<DispatchContextRow, 'id' | 'assignee_handle'>,
+  db: OrchestrationDb | null | undefined
+): StructuredPointerTarget | null | undefined {
+  const sessionId = chatAssigneeSessionId(dispatch.assignee_handle)
+  if (!sessionId) {
+    return undefined
+  }
+  const target = structuredSessionMailTarget(sessionId, db)
+  return target ? { ...target, dispatchId: dispatch.id } : null
 }
 
 /**

@@ -23,7 +23,7 @@ export function structuredMailSource(input: {
   const senders = new Map<string, AgentMessageSender>()
   for (const { from_handle: address } of input.batch) {
     if (!senders.has(address)) {
-      senders.set(address, { party: senderParty(address, input.db) })
+      senders.set(address, orchestrationMessageSender(address, input.db))
     }
   }
   return {
@@ -42,12 +42,18 @@ export function structuredMailSource(input: {
   }
 }
 
-function senderParty(address: string, db: OrchestrationDb | null): AgentMessageSender['party'] {
+/** One sender, named the way orchestration names a party. */
+export function orchestrationMessageSender(
+  address: string,
+  db: OrchestrationDb | null
+): AgentMessageSender {
   try {
     const { paneKey: _credential, ...party } = resolveOrchestrationParty(address, db)
-    return party
+    return { party }
   } catch {
     // A worker this host lost the identity of: what the address itself says.
-    return { address, terminalHandle: null, orcaSessionId: parseOrcaSessionAddress(address) }
+    return {
+      party: { address, terminalHandle: null, orcaSessionId: parseOrcaSessionAddress(address) }
+    }
   }
 }
