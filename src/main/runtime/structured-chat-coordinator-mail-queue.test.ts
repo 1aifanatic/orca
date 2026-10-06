@@ -70,7 +70,9 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     const chat = await openChat(COORDINATOR)
     const { runId, taskId } = await coordinatorRunAndTask()
     const endTurn = await runningUserTurn(chat)
-    await finishWorker(taskId)
+    const dispatchId = await finishWorker(taskId)
+    // The report was accepted, so its dispatch settled before its mail was named.
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('completed')
     await vi.waitFor(
       async () => expect(await queuedCardTexts()).toEqual([ptyPointer(`run:${runId}`)]),
       WAIT
@@ -83,7 +85,7 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
       senders: [
         {
           party: { address: 'term_worker', terminalHandle: 'term_worker', orcaSessionId: null },
-          // Named by the task its dispatch was given, through the real runtime's naming.
+          // Named by the task of the dispatch it just finished, through the real runtime's naming.
           name: 'build it'
         }
       ],

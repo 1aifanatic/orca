@@ -28,7 +28,10 @@ export type SenderNamingSources = {
 type Party = AgentMessageSender['party']
 
 export function orchestrationSenderName(party: Party, sources: SenderNamingSources): string | null {
-  const task = dispatchTaskName(party, sources)
+  const federated = party.address.startsWith('dispatch:')
+  const terminal =
+    !federated && party.terminalHandle ? sources.terminal(party.terminalHandle) : null
+  const task = dispatchTaskName(party, federated, terminal, sources.db)
   if (task) {
     return task
   }
@@ -39,11 +42,6 @@ export function orchestrationSenderName(party: Party, sources: SenderNamingSourc
       return tab?.customLabel?.trim() || tab?.label.trim() || defaultAgentChatLabel(record.provider)
     }
   }
-  const terminal = isDispatchAddress(party.address)
-    ? null
-    : party.terminalHandle
-      ? sources.terminal(party.terminalHandle)
-      : null
   if (terminal) {
     const agentLabel = terminal.agent ? formatAgentTypeLabel(terminal.agent) : null
     return terminal.customTitle?.trim() || agentLabel
@@ -51,25 +49,25 @@ export function orchestrationSenderName(party: Party, sources: SenderNamingSourc
   return null
 }
 
-/** The task its dispatch was given: the federated `dispatch:<id>` address, or a local worker's
- *  active dispatch. */
-function dispatchTaskName(party: Party, sources: SenderNamingSources): string | null {
-  const db = sources.db
+/** The task its dispatch was given: the federated `dispatch:<id>` address, or the dispatch a local
+ *  worker holds, else the one it last held, since its own `worker_done` settles that dispatch
+ *  before the report is delivered. A handle is issued per run, so its latest is this run's. */
+function dispatchTaskName(
+  party: Party,
+  federated: boolean,
+  terminal: TerminalSenderNaming | null,
+  db: OrchestrationDb | null
+): string | null {
   if (!db) {
     return null
   }
-  const dispatch = isDispatchAddress(party.address)
+  const handle = party.terminalHandle
+  const dispatch = federated
     ? db.getDispatchContextById(party.address.slice('dispatch:'.length))
-    : party.terminalHandle
-      ? db.getActiveDispatchForTerminal(
-          party.terminalHandle,
-          sources.terminal(party.terminalHandle)?.paneKey ?? undefined
-        )
+    : handle
+      ? (db.getActiveDispatchForTerminal(handle, terminal?.paneKey ?? undefined) ??
+        db.getLatestDispatchForTerminal(handle))
       : undefined
   const task = dispatch ? db.getTask(dispatch.task_id) : undefined
   return task?.display_name || task?.task_title || null
-}
-
-function isDispatchAddress(address: string): boolean {
-  return address.startsWith('dispatch:')
 }

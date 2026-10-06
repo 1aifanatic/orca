@@ -11,6 +11,7 @@ import {
 import { testOrcaSessionId } from '../../shared/orca-session-address-test-fixture'
 import { OrchestrationDb } from './orchestration/db'
 import { createRootDispatch } from './orchestration/db/root-dispatch-test-fixture'
+import { reconcileLifecycleMessage } from './orchestration/lifecycle-reconciliation'
 import { RuntimeOrchestrationSenderNames } from './runtime-orchestration-sender-names'
 
 const hostRef = vi.hoisted((): { current: unknown } => ({ current: null }))
@@ -86,6 +87,48 @@ describe("a sender's name, from what Orca shows for it", () => {
     createRootDispatch(db, task.id, 'term_worker')
     session.tabsByWorktree = { [WORKTREE]: [{ id: 'tab_term_worker', customTitle: 'Build tab' }] }
     expect(names().nameOf(terminalParty('term_worker'))).toBe('Parser port')
+  })
+
+  it('names a worker by its task after its own accepted worker_done settled that dispatch', () => {
+    const run = db.createRun({
+      objective: 'o',
+      coordinatorHandle: 'term_coord',
+      coordinatorPaneKey: null
+    })
+    const task = db.createTask({ runId: run.id, spec: 'build it' })
+    const started = db.createStartingWorkerDispatch({
+      creator: { kind: 'system' },
+      maxDepth: Number.MAX_SAFE_INTEGER,
+      taskId: task.id,
+      startOptions: {}
+    })
+    db.prepareStartingWorkerAuthority({
+      dispatchId: started.dispatch.id,
+      handle: 'term_worker',
+      paneKey: 'tab_term_worker:leaf',
+      processIncarnation: 'p:1',
+      worktreeId: WORKTREE,
+      effects: [],
+      setupState: 'not_applicable'
+    })
+    db.markWorkerDispatchReady(started.dispatch.id)
+    const report = db.insertMessage({
+      from: 'term_worker',
+      to: `run:${run.id}`,
+      subject: 'Done',
+      type: 'worker_done',
+      senderPaneKey: 'tab_term_worker:leaf',
+      runId: run.id,
+      payload: JSON.stringify({
+        taskId: task.id,
+        dispatchId: started.dispatch.id,
+        outcome: 'succeeded'
+      })
+    })
+    // Settled synchronously at send, before the mail lane names who it is from.
+    expect(reconcileLifecycleMessage(db, report).action).toBe('completed')
+    expect(db.getDispatchContextById(started.dispatch.id)?.status).toBe('completed')
+    expect(names().nameOf(terminalParty('term_worker'))).toBe('build it')
   })
 
   it("names a chat by the label its tab shows, the person's rename first", () => {

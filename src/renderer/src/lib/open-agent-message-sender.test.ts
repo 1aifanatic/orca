@@ -95,8 +95,10 @@ function versionBlock(): Error {
   return Object.assign(new Error('update needed'), { code: RUNTIME_COMPAT_BLOCK_CODE })
 }
 
-const UNREACHABLE = AGENT_SESSION_WRITE_NOTICE_COPY.unreachable
-const UNSUPPORTED = AGENT_SESSION_WRITE_NOTICE_COPY.unsupported
+// Existing sentences, each translated whole: the cause and what to do, or which Orca to update.
+const UNREACHABLE = `${AGENT_SESSION_WRITE_NOTICE_COPY.unreachable} ${AGENT_SESSION_WRITE_NOTICE_COPY.tryAgain}`
+const UPDATE = AGENT_SESSION_WRITE_NOTICE_COPY.updateOrcaToOpenChat
+const OLDER_HOST = AGENT_SESSION_WRITE_NOTICE_COPY.unsupported
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -140,7 +142,7 @@ describe("opening a message's sender", () => {
     await open(terminal)
     mocks.focusRuntime.mockRejectedValueOnce(versionBlock())
     await open(terminal)
-    expect(mocks.toastError.mock.calls.map(([text]) => text)).toEqual([UNREACHABLE, UNSUPPORTED])
+    expect(mocks.toastError.mock.calls.map(([text]) => text)).toEqual([UNREACHABLE, UPDATE])
     expect(mocks.paneUnavailable).not.toHaveBeenCalled()
     expect(mocks.unavailable).not.toHaveBeenCalled()
   })
@@ -171,15 +173,15 @@ describe("opening a message's sender", () => {
     await open(terminal)
     mocks.callRuntimeRpc.mockRejectedValueOnce(versionBlock())
     await open(chat)
-    expect(mocks.toastError.mock.calls.map(([text]) => text)).toEqual([UNREACHABLE, UNSUPPORTED])
+    expect(mocks.toastError.mock.calls.map(([text]) => text)).toEqual([UNREACHABLE, UPDATE])
     expect(mocks.unavailable).not.toHaveBeenCalled()
     expect(mocks.gone).not.toHaveBeenCalled()
   })
 
-  it('treats a location kind a newer host answers with as needing an update', async () => {
+  it('treats a location kind a newer host answers with as needing an update, of either side', async () => {
     mocks.callRuntimeRpc.mockResolvedValue({ location: { kind: 'browser', url: 'x' } })
     await open(terminal)
-    expect(mocks.toastError).toHaveBeenCalledWith(UNSUPPORTED)
+    expect(mocks.toastError).toHaveBeenCalledWith(UPDATE)
     expect(mocks.focusRenderer).not.toHaveBeenCalled()
   })
 
@@ -193,8 +195,9 @@ describe("opening a message's sender", () => {
     mocks.focusRenderer.mockReturnValue(true)
     await open(terminal)
     expect(mocks.focusRenderer).toHaveBeenCalledWith('term_a', 'env-host')
+    // Only here is the chat's host known to be the older side.
     await open(dispatch)
-    expect(mocks.toastError).toHaveBeenCalledWith(UNSUPPORTED)
+    expect(mocks.toastError).toHaveBeenCalledWith(OLDER_HOST)
   })
 
   it('runs one open per sender at a time', async () => {

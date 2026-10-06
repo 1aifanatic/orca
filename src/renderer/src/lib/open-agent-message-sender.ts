@@ -3,9 +3,8 @@
 // the sender was addressed, and uses words that already exist.
 
 import { toast } from 'sonner'
-import { translate } from '@/i18n/i18n'
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
-import { AGENT_SESSION_WRITE_NOTICE_COPY } from '../../../shared/agent-session-write-notice-copy'
+import { agentSessionWriteNoticeText } from '@/components/native-chat/agent-session-write-notice-text'
 import type {
   OrchestrationPartyLocation,
   OrchestrationPartyLocationResult
@@ -30,7 +29,10 @@ import {
 import { getRuntimeEnvironmentIdForWorktree } from './worktree-runtime-owner'
 
 type Sender = AgentMessageSource['senders'][number]
-type Lookup = OrchestrationPartyLocationResult | 'unsupported' | 'unreachable'
+/** `older-host`: the chat's host predates the lookup. `update`: one side is too old, either one.
+ *  `unreachable`: no answer at all. */
+type LookupFailure = 'older-host' | 'update' | 'unreachable'
+type Lookup = OrchestrationPartyLocationResult | LookupFailure
 
 /** The answers that prove the terminal is gone; anything else proves nothing about it. */
 const TERMINAL_GONE_CODES = new Set([
@@ -76,7 +78,7 @@ async function openSender(
     messageIds,
     getActiveRuntimeTarget({ activeRuntimeEnvironmentId: environmentId })
   )
-  if (found === 'unsupported' || found === 'unreachable') {
+  if (typeof found === 'string') {
     showLookupFailure(found)
     return
   }
@@ -97,7 +99,7 @@ async function openSender(
   }
   if (location.kind !== 'terminal') {
     // A kind a newer host answers with.
-    showLookupFailure('unsupported')
+    showLookupFailure('update')
     return
   }
   await focusTerminal(location.handle, environmentId)
@@ -113,7 +115,7 @@ async function focusTerminal(handle: string, environmentId: string | null): Prom
     if (error instanceof RuntimeRpcCallError && TERMINAL_GONE_CODES.has(error.code)) {
       showAgentPaneUnavailable()
     } else {
-      showLookupFailure(isRuntimeCompatBlockError(error) ? 'unsupported' : 'unreachable')
+      showLookupFailure(isRuntimeCompatBlockError(error) ? 'update' : 'unreachable')
     }
   }
 }
@@ -133,7 +135,7 @@ async function lookUpSender(
     if (error instanceof RuntimeRpcCallError && error.code === 'method_not_found') {
       return lookUpOnOlderHost(party)
     }
-    return isRuntimeCompatBlockError(error) ? 'unsupported' : 'unreachable'
+    return isRuntimeCompatBlockError(error) ? 'update' : 'unreachable'
   }
 }
 
@@ -148,29 +150,27 @@ function lookUpOnOlderHost(party: Sender['party']): Lookup {
         return located({ kind: 'chat', sessionId, worktreeId })
       }
     }
-    return 'unsupported'
+    return 'older-host'
   }
   const handle = party.terminalHandle
   return handle && !handle.startsWith('dispatch:') && !handle.startsWith('run:')
     ? located({ kind: 'terminal', handle })
-    : 'unsupported'
+    : 'older-host'
 }
 
 function located(location: OrchestrationPartyLocation): OrchestrationPartyLocationResult {
   return { location }
 }
 
-/** Words for a sender of any kind: the host could not answer, or must be updated first. */
-function showLookupFailure(failure: 'unsupported' | 'unreachable'): void {
+/** Words for a sender of any kind, each sentence translated whole as write notices are. */
+function showLookupFailure(failure: LookupFailure): void {
   toast.error(
-    failure === 'unsupported'
-      ? translate(
-          'components.native-chat.writeNotice.unsupported',
-          AGENT_SESSION_WRITE_NOTICE_COPY.unsupported
-        )
-      : translate(
-          'components.native-chat.writeNotice.unreachable',
-          AGENT_SESSION_WRITE_NOTICE_COPY.unreachable
-        )
+    agentSessionWriteNoticeText(
+      failure === 'older-host'
+        ? ['unsupported']
+        : failure === 'update'
+          ? ['updateOrcaToOpenChat']
+          : ['unreachable', 'tryAgain']
+    )
   )
 }
