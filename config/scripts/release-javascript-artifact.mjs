@@ -15,6 +15,7 @@ import { join, resolve } from 'node:path'
 import { runProcessSync, describeProcessFailure } from './script-child-process.mjs'
 import { isDirectInvocation } from './script-entry-detection.mjs'
 import { DESKTOP_RC_TAG, DESKTOP_STABLE_TAG } from './release-tag-patterns.mjs'
+import { getTarProgram } from './zip-extractor-command.mjs'
 
 const REQUIRED_FILES = [
   'cli/index.js',
@@ -110,7 +111,7 @@ export function packReleaseJavascript({ root = process.cwd(), artifactDir, confi
   verifyRequiredFiles(files)
   mkdirSync(artifactDir, { recursive: true })
   const archive = join(artifactDir, ARCHIVE_NAME)
-  command('tar', ['-czf', archive, '-C', root, 'out'], root)
+  command(getTarProgram(), ['-czf', archive, '-C', root, 'out'], root)
   const manifest = {
     schema: 1,
     configuration,
@@ -129,7 +130,7 @@ export function restoreReleaseJavascript({ root = process.cwd(), artifactDir, co
   assert.deepEqual(manifest.configuration, configuration, 'JavaScript build configuration differs')
   const archive = join(artifactDir, ARCHIVE_NAME)
   assert.equal(sha256(readFileSync(archive)), manifest.archiveSha256, 'JavaScript archive differs')
-  const entries = command('tar', ['-tzf', archive], root).split('\n')
+  const entries = command(getTarProgram(), ['-tzf', archive], root).split(/\r?\n/)
   for (const entry of entries) {
     assert(entry === 'out/' || entry.startsWith('out/'), `Unexpected archive entry: ${entry}`)
     assert(
@@ -140,7 +141,7 @@ export function restoreReleaseJavascript({ root = process.cwd(), artifactDir, co
   mkdirSync(join(root, '.build'), { recursive: true })
   const temporary = mkdtempSync(join(root, '.build', 'release-javascript-'))
   try {
-    command('tar', ['-xzf', archive, '-C', temporary], root)
+    command(getTarProgram(), ['-xzf', archive, '-C', temporary], root)
     const staged = join(temporary, 'out')
     const files = javascriptInventory(staged)
     verifyRequiredFiles(files)
