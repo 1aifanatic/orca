@@ -58,7 +58,7 @@ const OLDER_IDENTITY: OlderJournalIdentity = {
 }
 
 test.each(['v1.4.219', 'v1.4.220', WRITABLE_BASELINE_REF])(
-  '%s raw replay preserves the unconfirmed failure in both host directions',
+  '%s replays current raw rows with the unconfirmed failure intact',
   async (ref) => {
     const directory = mkdtempSync(join(tmpdir(), 'orca-stop-note-raw-skew-'))
     const journals = createTrackedJournalOpener()
