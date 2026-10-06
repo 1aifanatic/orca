@@ -3,7 +3,7 @@
 
 // @vitest-environment happy-dom
 
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
@@ -125,8 +125,8 @@ vi.mock('./use-structured-agent-session', async () => {
   }
 })
 
-vi.mock('./use-native-chat-font-scale', () => ({
-  useNativeChatFontScale: () => ({ scale: 1 })
+vi.mock('./use-native-chat-font-size', () => ({
+  useNativeChatFontSize: () => undefined
 }))
 
 vi.mock('./use-native-chat-file-link-context', () => ({
@@ -184,7 +184,12 @@ vi.mock('./NativeChatQuestionCard', () => ({
 
 import { NativeChatStructuredSession } from './NativeChatStructuredSession'
 import { getStructuredAgentSessionOutbox } from './structured-agent-session-outbox-storage'
-import { seededEntry, seedOutbox } from './NativeChatStructuredSession.test-harness'
+import {
+  advanceProbeClock,
+  seededEntry,
+  seedOutbox,
+  useProbeClock
+} from './NativeChatStructuredSession.test-harness'
 
 describe('NativeChatStructuredSession delivery', () => {
   afterEach(() => {
@@ -209,6 +214,7 @@ describe('NativeChatStructuredSession delivery', () => {
 
   // Resent under its own id until the host answers, so its row says only that it is still sending.
   it('says a send whose answer was lost is sending until it confirms on its own, with no Retry', async () => {
+    useProbeClock()
     mocks.mode = 'outbox'
     mocks.call.mockRejectedValueOnce(new Error('socket closed')).mockResolvedValueOnce({
       ok: true,
@@ -229,19 +235,19 @@ describe('NativeChatStructuredSession delivery', () => {
     const send = mocks.composerProps?.structuredTransport?.send as
       | ((text: string, attachments: readonly { id: string; path: string }[]) => boolean)
       | undefined
-    expect(send?.('hello', [])).toBe(true)
+    await act(async () => {
+      expect(send?.('hello', [])).toBe(true)
+    })
     // From the moment it is sent, through the lost answer, until the host confirms it.
-    await waitFor(() => expect(screen.getByText('Sending…')).toBeTruthy())
-    await waitFor(() =>
-      expect(getStructuredAgentSessionOutbox('session-1')).toMatchObject([{ state: 'unconfirmed' }])
-    )
+    expect(getStructuredAgentSessionOutbox('session-1')).toMatchObject([{ state: 'unconfirmed' }])
     expect(screen.getByText('Sending…')).toBeTruthy()
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
 
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    await advanceProbeClock(1000)
+    expect(mocks.call).toHaveBeenCalledTimes(2)
     expect(mocks.call.mock.calls[1]?.[2]).toEqual(mocks.call.mock.calls[0]?.[2])
-    await waitFor(() => expect(screen.queryByText('Sending…')).toBeNull())
+    expect(screen.queryByText('Sending…')).toBeNull()
     expect(getStructuredAgentSessionOutbox('session-1')).toEqual([])
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
   }, 10000)
@@ -272,6 +278,7 @@ describe('NativeChatStructuredSession delivery', () => {
   }
 
   it('says a send reopened mid-send is sending while it is resent, until it settles', async () => {
+    useProbeClock()
     mocks.mode = 'outbox'
     mocks.submissions = []
     mocks.call.mockResolvedValue({
@@ -288,11 +295,12 @@ describe('NativeChatStructuredSession delivery', () => {
     expect(screen.getByText('Sending…')).toBeTruthy()
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
-    await waitFor(() => expect(mocks.call).toHaveBeenCalledOnce(), { timeout: 3000 })
+    await advanceProbeClock(1000)
+    expect(mocks.call).toHaveBeenCalledOnce()
     expect(mocks.call.mock.calls[0]?.[2]).toMatchObject({
       envelope: { clientOperationId: 'op-sent' }
     })
-    await waitFor(() => expect(getStructuredAgentSessionOutbox('session-reopened')).toEqual([]))
+    expect(getStructuredAgentSessionOutbox('session-reopened')).toEqual([])
     expect(screen.queryByText('Sending…')).toBeNull()
     expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
   }, 10000)
@@ -306,6 +314,7 @@ describe('NativeChatStructuredSession delivery', () => {
   ])(
     'lets a send reopened mid-send leave once the journal holds %s, with no Retry and no resend',
     async (label, patch) => {
+      useProbeClock()
       mocks.mode = 'outbox'
       const sessionId = `session-reopened-${label.replace(/\W+/g, '-')}`
       mocks.submissions = [
@@ -325,18 +334,18 @@ describe('NativeChatStructuredSession delivery', () => {
 
       renderSession(sessionId)
 
-      await waitFor(() => expect(getStructuredAgentSessionOutbox(sessionId)).toEqual([]))
+      await advanceProbeClock(0)
+      expect(getStructuredAgentSessionOutbox(sessionId)).toEqual([])
       expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
       expect(screen.queryByText('Message delivery is unconfirmed.')).toBeNull()
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-      })
+      await advanceProbeClock(1500)
       expect(mocks.call).not.toHaveBeenCalled()
     },
     10000
   )
 
   it('never sends a send an older build said a Stop outlived, and offers no Retry', async () => {
+    useProbeClock()
     mocks.mode = 'outbox'
     mocks.submissions = []
     seedMidSend('session-reopened-stopped', { outlivedStop: true })
@@ -346,9 +355,7 @@ describe('NativeChatStructuredSession delivery', () => {
     // Its settlement waits for the journal, and it is not being sent, so nothing reads "Sending…".
     expect(screen.queryByText('Sending…')).toBeNull()
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull()
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-    })
+    await advanceProbeClock(1500)
     expect(mocks.call).not.toHaveBeenCalled()
   }, 10000)
 })

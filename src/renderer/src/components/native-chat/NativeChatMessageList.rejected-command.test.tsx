@@ -174,7 +174,6 @@ function list(kind: Case) {
       workingStartedAt={null}
       settledTurns={new Map()}
       expandSignal={false}
-      fontScale={1}
     />
   )
 }

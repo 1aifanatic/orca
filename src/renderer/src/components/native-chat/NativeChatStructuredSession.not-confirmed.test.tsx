@@ -20,7 +20,7 @@ vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAge
 vi.mock('@/lib/structured-agent-session-launch', () =>
   moduleFactories.structuredAgentSessionLaunch()
 )
-vi.mock('./use-native-chat-font-scale', () => moduleFactories.useNativeChatFontScale())
+vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())

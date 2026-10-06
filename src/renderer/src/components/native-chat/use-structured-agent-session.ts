@@ -45,7 +45,6 @@ import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-member
 import { structuredAgentSessionJournalIsLive } from '../../../../shared/structured-agent-session-journal-liveness'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -190,7 +189,7 @@ export function useStructuredAgentSession(args: {
   const transcriptItems = useMemo(
     () =>
       withNativeChatCutTurnNotices(transportState.journalItems, {
-        agentName: TUI_AGENT_DISPLAY_NAMES[agent === 'codex' ? 'codex' : 'claude']
+        agentName: structuredAgentLabel(agent)
       }),
     [agent, transportState.journalItems]
   )
@@ -214,7 +213,7 @@ export function useStructuredAgentSession(args: {
     runConversationCommand: (command: AgentSessionConversationCommand) =>
       structuredConversationCommands.sendStructuredConversationCommand({
         command,
-        agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
+        agentName: structuredAgentLabel(agent),
         pending: commandPending,
         blocked: Boolean(
           transportState.turnId ||

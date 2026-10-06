@@ -12,8 +12,7 @@
 //
 // Every offset below is in the scroll container's own pixels (rows are placed at
 // `item.start - scrollMargin` inside a sizer sitting `scrollMargin` down), which is
-// the same space as `scrollTop`. That keeps the comparison honest under the
-// transcript's `zoom`, where a bounding rect would be off by exactly the zoom factor.
+// the same coordinate space as `scrollTop`.
 
 import { NATIVE_CHAT_BOTTOM_THRESHOLD_PX } from './native-chat-autoscroll'
 
@@ -31,14 +30,24 @@ export type NativeChatRailSlot = {
   message?: { id: string; role: string; unsent?: true }
 }
 
-/** A row shown as not sent has no tick and no turn, so the tick before it stays lit. */
+/** The tick of the nearest row at or above `index` that has one. A row shown as not sent has no
+ *  tick, nor does a row in no turn or one whose turn a not-sent message opened (a failed start's
+ *  row, a refused command's result), so the tick before them stays lit. */
 function railTickAt(slots: readonly NativeChatRailSlot[], index: number): string | null {
-  let at = index
-  while (slots[at]?.message?.unsent === true) {
-    at -= 1
+  const notSent = new Set<string>()
+  for (const slot of slots) {
+    if (slot.message?.unsent === true) {
+      notSent.add(slot.message.id)
+    }
   }
-  const slot = slots[at]
-  return slot?.turnKey ?? (slot?.message?.role === 'user' ? slot.message.id : null)
+  for (let at = index; at >= 0; at -= 1) {
+    const slot = slots[at]
+    const tick = slot?.turnKey ?? (slot?.message?.role === 'user' ? slot.message.id : null)
+    if (tick !== null && !notSent.has(tick)) {
+      return tick
+    }
+  }
+  return null
 }
 
 export function findActiveNativeChatRailItem({
