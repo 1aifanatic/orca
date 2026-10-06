@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   peerReplacedEnvironmentIds,
-  replacedRuntimeEnvironmentIds
+  replacedRuntimeEnvironmentIds,
+  resetDeferredPeerChecksForTests
 } from './runtime-environment-peer-replacement'
+
+afterEach(() => resetDeferredPeerChecksForTests())
 
 function managed(
   overrides: { generation?: number; pairingRevision?: number; hostKey?: string | null } = {}
@@ -40,9 +43,14 @@ describe('which re-paired environments name a different machine', () => {
     )
   })
 
-  it('retires a re-pair whose host key is unknown', () => {
+  it('defers a re-pair whose host key is not known yet instead of retiring it', () => {
+    expect(retired(managed(), managed({ pairingRevision: 2, hostKey: null }))).toEqual([])
     expect(
-      retired(managed({ hostKey: null }), managed({ pairingRevision: 2, hostKey: null }))
+      peerReplacedEnvironmentIds(
+        [managed({ pairingRevision: 2, hostKey: null })],
+        [managed({ pairingRevision: 2, hostKey: 'key-b' })],
+        []
+      )
     ).toEqual(['env-1'])
   })
 

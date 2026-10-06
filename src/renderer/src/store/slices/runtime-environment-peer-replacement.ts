@@ -23,30 +23,73 @@ export function replacedRuntimeEnvironmentIds(
     .map((environment) => environment.id)
 }
 
+// Re-pairs of a managed server whose host key was not yet known: the host key it had before.
+const deferredHostKeyById = new Map<string, string | null>()
+
+export function resetDeferredPeerChecksForTests(): void {
+  deferredHostKeyById.clear()
+}
+
+function sameRegistration(
+  before: CatalogEnvironment | undefined,
+  after: CatalogEnvironment | undefined
+): boolean {
+  const left = before?.orcadDeployment
+  const right = after?.orcadDeployment
+  return Boolean(
+    left &&
+    right &&
+    left.sshTargetId === right.sshTargetId &&
+    left.sshTargetGeneration === right.sshTargetGeneration
+  )
+}
+
 /**
- * Re-paired ids that may now name a different machine. A managed server re-pairs on every update;
- * it is the same machine only when the host's key digest, which its pairing handshake proves, is
- * known and unchanged under the same SSH target registration. A registration alone is no proof:
- * a reinstalled host, or a target that now resolves elsewhere, keeps it. Without that evidence
- * the environment is retired, workspaces and tabs included, as before.
+ * Ids that now name a different machine, whose workspaces and tabs are retired. A managed server
+ * re-pairs on every update and is the same machine while the host's key digest, which its pairing
+ * handshake proves, is unchanged under the same SSH target registration. A registration alone is
+ * no proof (a reinstall or a target that resolves elsewhere keeps it), so a re-pair whose key is
+ * not known yet is decided later, once a catalog carries it, rather than purged on a guess.
  */
 export function peerReplacedEnvironmentIds(
   previous: readonly CatalogEnvironment[],
   next: readonly CatalogEnvironment[],
   replacedIds: readonly string[]
 ): string[] {
-  return replacedIds.filter((id) => {
+  const nextById = new Map(next.map((environment) => [environment.id, environment]))
+  const retired: string[] = []
+  for (const id of replacedIds) {
     const before = previous.find((environment) => environment.id === id)
-    const after = next.find((environment) => environment.id === id)
-    const beforeDeployment = before?.orcadDeployment
-    const afterDeployment = after?.orcadDeployment
-    return !(
-      beforeDeployment &&
-      afterDeployment &&
-      beforeDeployment.sshTargetId === afterDeployment.sshTargetId &&
-      beforeDeployment.sshTargetGeneration === afterDeployment.sshTargetGeneration &&
-      before.hostKeyFingerprint &&
-      before.hostKeyFingerprint === after.hostKeyFingerprint
-    )
-  })
+    const after = nextById.get(id)
+    if (!sameRegistration(before, after)) {
+      deferredHostKeyById.delete(id)
+      retired.push(id)
+      continue
+    }
+    const beforeKey = before?.hostKeyFingerprint ?? deferredHostKeyById.get(id) ?? null
+    const afterKey = after?.hostKeyFingerprint
+    if (beforeKey && afterKey) {
+      deferredHostKeyById.delete(id)
+      if (beforeKey !== afterKey) {
+        retired.push(id)
+      }
+      continue
+    }
+    deferredHostKeyById.set(id, beforeKey)
+  }
+  for (const [id, beforeKey] of deferredHostKeyById) {
+    const after = nextById.get(id)
+    if (replacedIds.includes(id) || !after?.hostKeyFingerprint) {
+      if (!after) {
+        deferredHostKeyById.delete(id)
+      }
+      continue
+    }
+    deferredHostKeyById.delete(id)
+    const before = previous.find((environment) => environment.id === id)
+    if (!sameRegistration(before, after) || (beforeKey && beforeKey !== after.hostKeyFingerprint)) {
+      retired.push(id)
+    }
+  }
+  return retired
 }
