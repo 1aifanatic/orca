@@ -132,8 +132,8 @@ function chatTaskTurnStart(delivery: ChatTaskDelivery): WorkerTurnStartObservati
       return {
         verdict: 'unobserved',
         reason:
-          "The task is waiting as a card in the chat's queue and is sent when the current turn " +
-          'ends. If the worker then reports, this Dispatch settles normally. worker-abandon ' +
+          "The task is waiting as a card in the chat's queue and is sent when the queue reaches " +
+          'it. If the worker then reports, this Dispatch settles normally. worker-abandon ' +
           'settles the Dispatch but does not remove the card from the chat.'
       }
   }

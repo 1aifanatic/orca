@@ -179,7 +179,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       },
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
       // A closed chat settles the Dispatch it was working, as a closed terminal does.
-      onSessionTabHidden: () => this.onStructuredSessionTabHidden(),
+      onSessionTabHidden: (sessionId) => this.onStructuredSessionTabHidden(sessionId),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.
       hasOpenDispatch: (record) =>

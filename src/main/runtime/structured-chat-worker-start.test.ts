@@ -91,7 +91,7 @@ describe('worker-start --terminal names a chat', () => {
     expect(receipt).toMatchObject({
       state: 'ready',
       turnStart: 'observed',
-      mode: { detail: `Gave the task to the chat ${WORKER}; no agent was started.` }
+      mode: { detail: `Gave the task to the chat ${WORKER}.` }
     })
     const dispatchId = String(receipt.dispatchId)
     expect(turnText(worker.turns[0]!)).toContain(`Your Orca session ID is: ${WORKER}`)
@@ -119,7 +119,7 @@ describe('worker-start --terminal names a chat', () => {
       state: 'outcome_unknown',
       turnStart: 'unobserved',
       lastError: expect.stringMatching(
-        /waiting as a card in the chat's queue.*worker-abandon .* does not remove the card/
+        /waiting as a card in the chat's queue and is sent when the queue reaches it\..*worker-abandon .* does not remove the card/
       ),
       effects: expect.arrayContaining([
         expect.objectContaining({ kind: 'dispatch_input', id: WORKER, state: 'accepted' }),

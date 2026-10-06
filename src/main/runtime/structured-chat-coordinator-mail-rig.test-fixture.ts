@@ -260,7 +260,7 @@ beforeEach(async () => {
     readProcessStartTime: async () => 1_700_000_000_000,
     // The same calls the runtime's own host install makes.
     onSessionStatusChanged: (summary) => runtime.onStructuredSessionStatusForMail(summary),
-    onSessionTabHidden: () => runtime.onStructuredSessionTabHidden()
+    onSessionTabHidden: (sessionId) => runtime.onStructuredSessionTabHidden(sessionId)
   })
   dispatcher = new RpcDispatcher({ runtime, methods: ORCHESTRATION_METHODS })
 })

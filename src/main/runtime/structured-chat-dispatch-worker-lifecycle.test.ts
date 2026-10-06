@@ -181,6 +181,25 @@ describe("a chat assignee's liveness, stop and close", () => {
     })
   })
 
+  it("keeps its Dispatch when another chat's close lands while its own close is rolled back", async () => {
+    const { dispatchId } = await dispatchToChat()
+    let refuseClose: (error: Error) => void = () => undefined
+    const close = vi
+      .spyOn(host, 'close')
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => (refuseClose = reject)))
+    const closing = closeStructuredAgentSessionChild(PEER_CHAT, { restoreTabOnUnprovenClose: true })
+    await vi.waitFor(() => expect(close).toHaveBeenCalled(), WAIT)
+
+    // Its tab is hidden pending the close when the other chat's notice re-derives.
+    await host.setSessionTabVisibility(COORDINATOR, false)
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
+    refuseClose(new Error('the agent would not stop'))
+
+    expect(await closing).toMatchObject({ stopped: false, closeAttempted: true })
+    expectChatOpen(PEER_CHAT)
+    expect(db.getDispatchContextById(dispatchId)?.status).toBe('dispatched')
+  })
+
   it('reads unverifiable, and keeps its Dispatch, when the session that continues the chat is unknown', async () => {
     const { dispatchId } = await dispatchToChat()
     const successor = await clearChat(PEER_CHAT)

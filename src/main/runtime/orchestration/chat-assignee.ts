@@ -15,6 +15,7 @@ import { DISPATCH_CONTEXT_COLUMN_LIST } from './db/row-column-lists'
 import type { DispatchContextRow } from './types'
 import { structuredSessionMailReach } from './structured-session-mail-address'
 import {
+  lineageLiveSession,
   readAgentSessionRecordStore,
   type AgentSessionRecordReader
 } from './structured-session-lineage'
@@ -79,10 +80,12 @@ export function observeChatAssignee(
 }
 
 /**
- * Every unsettled Dispatch whose chat has exited, re-derived from the records on each call: a
- * closed chat's Dispatch settles as a closed terminal's does, and nothing is remembered to miss.
+ * The unsettled Dispatches of the chat whose current session's tab was hidden, once that chat has
+ * exited, re-derived from the records at the notice. Only that chat: another chat may be mid-close
+ * with its tab hidden, and a close can still put its tab back.
  */
-export function exitedChatAssigneeDispatches(
+export function exitedChatDispatchesForSession(
+  hiddenSessionId: string,
   db: OrchestrationDb,
   store: AgentSessionRecordReader | null = readAgentSessionRecordStore()
 ): DispatchContextRow[] {
@@ -97,7 +100,11 @@ export function exitedChatAssigneeDispatches(
     .all(ORCA_SESSION_ADDRESS_PREFIX.length, ORCA_SESSION_ADDRESS_PREFIX)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The schema-pinned complete Dispatch projection returns Dispatch rows; the adapter exposes unknown.
   return (rows as DispatchContextRow[]).filter((dispatch) => {
-    const sessionId = chatAssigneeSessionId(dispatch.assignee_handle)
-    return sessionId !== null && observeChatAssignee(sessionId, db, store).status === 'exited'
+    const chat = chatAssigneeSessionId(dispatch.assignee_handle)
+    return (
+      chat !== null &&
+      lineageLiveSession(store, chat)?.sessionId === hiddenSessionId &&
+      observeChatAssignee(chat, db, store).status === 'exited'
+    )
   })
 }

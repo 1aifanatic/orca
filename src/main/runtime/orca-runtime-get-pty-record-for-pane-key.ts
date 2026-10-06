@@ -15,7 +15,7 @@ import {
   structuredSessionIdleEdgeMailboxes,
   structuredWorkerMailSessionId
 } from './orchestration/structured-session-mail-target'
-import { exitedChatAssigneeDispatches } from './orchestration/chat-assignee'
+import { exitedChatDispatchesForSession } from './orchestration/chat-assignee'
 import { OPERATOR_CLOSE_EXIT_CAUSE } from '../../shared/terminal-exit-cause'
 import {
   resolveTerminalIdentityFromProbes,
@@ -224,13 +224,14 @@ export class OrcaRuntimeWithGetPtyRecordForPaneKey extends OrcaRuntimeWithPruneM
   }
 
   /**
-   * A chat tab left the screen. A chat worker whose conversation that ended settles its Dispatch as
-   * a terminal the operator closed does; a /clear moves the tab, so its successor keeps the work.
+   * A chat tab left the screen. If that chat worked a Dispatch and has now ended, the Dispatch
+   * settles as a terminal the operator closed does; a /clear moves the tab, so its successor keeps
+   * the work.
    */
-  onStructuredSessionTabHidden(): void {
+  onStructuredSessionTabHidden(sessionId: string): void {
     try {
       const db = this.getExistingOrchestrationDb()
-      for (const dispatch of db ? exitedChatAssigneeDispatches(db) : []) {
+      for (const dispatch of db ? exitedChatDispatchesForSession(sessionId, db) : []) {
         this.failActiveDispatchOnExit(dispatch.assignee_handle, null, 0, OPERATOR_CLOSE_EXIT_CAUSE)
       }
     } catch (error) {

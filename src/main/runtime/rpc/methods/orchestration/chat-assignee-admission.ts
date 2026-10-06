@@ -69,7 +69,7 @@ export function refuseChatSelfAssignment(args: {
   }
 }
 
-/** A chat adopted as a worker starts nothing; the decided mode stands, its sentence says so. */
+/** A chat adopted as a worker is given the task, not launched; the decided mode stands. */
 export function chatWorkerMode(
   mode: WorkerStartModeReceipt,
   chat: OrcaSessionId | null
@@ -77,7 +77,7 @@ export function chatWorkerMode(
   return chat
     ? {
         ...mode,
-        detail: `Gave the task to the chat ${formatOrcaSessionAddress(chat)}; no agent was started.`
+        detail: `Gave the task to the chat ${formatOrcaSessionAddress(chat)}.`
       }
     : mode
 }
