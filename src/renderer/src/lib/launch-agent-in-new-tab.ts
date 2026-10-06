@@ -26,6 +26,7 @@ import { resolveInitialNativeChatSessionOptions } from '@/components/native-chat
 import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
 import { launchStructuredAgentFromNewTab } from '@/lib/launch-agent-in-new-tab-structured-route'
 import type { StructuredAgentLaunchSettlement } from '@/lib/structured-agent-launch-settlement'
+import type { StructuredLaunchTerminal } from '@/lib/structured-agent-session-launch-admission'
 import { workspaceKindForWorktreeId } from '@/lib/agent-launch-route-input'
 import {
   planAgentSessionLaunch,
@@ -77,6 +78,8 @@ export type LaunchAgentInNewTabArgs = LaunchAgentInNewTabRequest & {
   beforeSurfaceOpen?: (
     surface: { kind: 'local-terminal' } | { kind: 'host-published' }
   ) => boolean | void
+  /** Opens instead of this agent's terminal when the host declines its structured chat. */
+  onStructuredHostDeclined?: () => StructuredLaunchTerminal
 }
 
 /** `host-published`: the surface opens once its host answers, a structured chat's included. */
@@ -197,6 +200,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       worktreeId,
       ...(groupId ? { groupId } : {}),
       ...(beforeSurfaceOpen ? { beforeSurfaceOpen } : {}),
+      ...(args.onStructuredHostDeclined ? { onHostDeclined: args.onStructuredHostDeclined } : {}),
       // The host's "no" opens this same launch as a terminal, with the caller's arguments.
       openTerminal: (terminalPlan) =>
         launchAgentInNewTabInternal({

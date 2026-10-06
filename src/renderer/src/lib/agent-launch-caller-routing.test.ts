@@ -291,6 +291,25 @@ describe('agent launch caller routing', () => {
     expect(mockLaunchAgentInWebHostTab).not.toHaveBeenCalled()
   })
 
+  it("opens the caller's own fallback, not the agent's terminal, when it names one", async () => {
+    store.settings = { ...store.settings, ...CHAT_DEFAULT_SETTINGS }
+    await useActualAdmission()
+    mockCreateSupport.mockResolvedValue({ supported: false })
+    const onStructuredHostDeclined = vi.fn(() => ({ opened: true }))
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+    const result = launchAgentInNewTab({
+      requestId: 'request-11',
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      onStructuredHostDeclined
+    })
+
+    await expect(result?.structuredSettlement).resolves.toEqual({ kind: 'terminal' })
+    expect(onStructuredHostDeclined).toHaveBeenCalledOnce()
+    expect(store.createTab).not.toHaveBeenCalled()
+  })
+
   it('keeps the host-published terminal for a paired server without structured sessions', async () => {
     store.settings = { ...store.settings, ...CHAT_DEFAULT_SETTINGS }
     mockIsWebRuntimeSessionActive.mockReturnValue(true)

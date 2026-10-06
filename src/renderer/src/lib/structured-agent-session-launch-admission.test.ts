@@ -32,6 +32,7 @@ import { resumeAiVaultSessionInNewChat } from '@/components/right-sidebar/ai-vau
 import { getStructuredAgentLaunchStatus } from './structured-agent-session-launch-status'
 import { getStructuredAgentSessionLaunchSelection } from './structured-agent-session-launch-options'
 import { peekWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
+import { LOCAL_ADMISSION_WAIT_MS } from './structured-agent-session-host-admission'
 import { structuredAgentSessionFocusOwner } from '@/runtime/structured-agent-session-owner'
 
 const WORKTREE = 'repo-1::/srv/app'
@@ -341,5 +342,65 @@ describe('a structured chat launch on this machine', () => {
     expect(onHostDeclined).not.toHaveBeenCalled()
     expect(mocks.toastError).not.toHaveBeenCalled()
     launch?.cancel()
+  })
+
+  // Not resolvable yet is not a "no": the chat opens and its own create asks again, as before.
+  it('opens the chat, not a terminal, when this machine cannot resolve a new workspace yet', async () => {
+    mocks.createSupport.mockRejectedValue(new Error('selector_not_found'))
+    const onHostDeclined = vi.fn()
+
+    const launch = beginStructuredAgentSessionProvisionalLaunch({
+      plan: localPlan(),
+      hooks: {},
+      onHostDeclined
+    })
+
+    await vi.waitFor(
+      () => expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE]).toHaveLength(1),
+      { timeout: 3_000 }
+    )
+    expect(onHostDeclined).not.toHaveBeenCalled()
+    launch?.cancel()
+  })
+
+  // The click must never wait without end: past the bound the chat opens and reports for itself.
+  it('opens the chat once the wait for this machine passes its bound', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      mocks.createSupport.mockReturnValue(new Promise(() => undefined))
+      const onHostDeclined = vi.fn()
+
+      const launch = beginStructuredAgentSessionProvisionalLaunch({
+        plan: localPlan(),
+        hooks: {},
+        onHostDeclined
+      })
+      await vi.advanceTimersByTimeAsync(LOCAL_ADMISSION_WAIT_MS - 1)
+      expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE] ?? []).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(useAppStore.getState().unifiedTabsByWorktree[WORKTREE]).toHaveLength(1)
+      expect(onHostDeclined).not.toHaveBeenCalled()
+      expect(mocks.toastError).not.toHaveBeenCalled()
+      launch?.cancel()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('a paired server that cannot resolve a new workspace yet', () => {
+  it('keeps its terminal fallback, as before', async () => {
+    mocks.createSupport.mockRejectedValue(new Error('selector_not_found'))
+    const onHostDeclined = vi.fn(() => ({ opened: true }))
+
+    const launch = beginStructuredAgentSessionProvisionalLaunch({
+      plan: pairedPlan(),
+      hooks: {},
+      onHostDeclined
+    })
+
+    await expect(launch?.settlement).resolves.toEqual({ kind: 'terminal' })
+    expect(onHostDeclined).toHaveBeenCalledOnce()
   })
 })

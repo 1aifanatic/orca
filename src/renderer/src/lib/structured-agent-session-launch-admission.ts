@@ -8,7 +8,11 @@ import {
   adoptAgentSessionLaunchVerdict,
   type AgentSessionLaunchPlan
 } from '@/lib/agent-session-launch-plan'
-import { admitStructuredLaunchOnHost } from '@/lib/structured-agent-session-host-admission'
+import {
+  admitStructuredLaunchOnHost,
+  type StructuredLaunchAdmission
+} from '@/lib/structured-agent-session-host-admission'
+import { holdStructuredLaunchAwaitingHost } from '@/lib/structured-agent-session-launch-awaiting-host'
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/structured-agent-session-launch-errors'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
 import type {
@@ -127,6 +131,7 @@ export async function openDeclinedStructuredLaunchTerminal(args: {
  * here: no tab, launch record, queued prompt or focus intent exists until it answers. Admitted opens
  * the chat; declined opens the caller's terminal (a resume, which has no terminal equivalent,
  * fails); an unreachable server opens nothing and says so. There is nothing to undo either way.
+ * This machine's "can't answer" or "not resolvable yet" opens the chat, whose own create reports.
  */
 export function beginHostAdmittedStructuredLaunch(args: {
   plan: AgentSessionLaunchPlan & { agent: AgentSessionHandleProvider }
@@ -154,56 +159,72 @@ export function beginHostAdmittedStructuredLaunch(args: {
         resolveDelivery = resolve
       })
     : undefined
+  // Released once the surface that answers the launch has opened, or nothing will.
+  const releaseHold = holdStructuredLaunchAwaitingHost(args.worktreeId, plan.agent)
   const settlement = (async (): Promise<StructuredAgentLaunchSettlement> => {
-    const admission = await admitStructuredLaunchOnHost(
-      args.target,
-      toRuntimeWorktreeSelector(args.worktreeId),
-      plan.agent
-    )
-    if (isCancelled()) {
-      resolveDelivery(NOT_DELIVERED)
-      return { kind: 'cancelled', sessionId: null }
-    }
-    // This machine's runtime has no connection to lose; the chat's own create reports its failure.
-    if (admission.kind === 'unreachable' && paired) {
-      notifyHostUnreachable(plan.agent, args.executionHostId)
-      resolveDelivery({ delivered: false, failureNotified: true })
-      return {
-        kind: 'failed',
-        error: new Error('structured chat host unreachable'),
-        notified: true
-      }
-    }
-    if (admission.kind === 'declined') {
-      if (plan.resumeFrom) {
+    try {
+      const asked = await admitStructuredLaunchOnHost(
+        args.target,
+        toRuntimeWorktreeSelector(args.worktreeId),
+        plan.agent
+      )
+      if (isCancelled()) {
         resolveDelivery(NOT_DELIVERED)
+        return { kind: 'cancelled', sessionId: null }
+      }
+      // A server that cannot resolve the workspace yet keeps its terminal fallback; this machine has
+      // no connection to lose, so its "can't answer" leaves the report to the chat's own create.
+      const admission: StructuredLaunchAdmission =
+        asked.kind !== 'workspace-unresolved'
+          ? asked
+          : paired
+            ? { kind: 'declined' }
+            : { kind: 'unreachable' }
+      if (admission.kind === 'unreachable' && paired) {
+        notifyHostUnreachable(plan.agent, args.executionHostId)
+        resolveDelivery({ delivered: false, failureNotified: true })
         return {
           kind: 'failed',
-          error: new StructuredAgentSessionCreateRefusalError(
-            'structured_agent_session_unsupported'
-          )
+          error: new Error('structured chat host unreachable'),
+          notified: true
         }
       }
-      // The notice explains a server's refusal; on this machine the terminal opening is the answer.
-      if (paired) {
-        notifyHostDeclined(plan.agent)
+      if (admission.kind === 'declined') {
+        if (plan.resumeFrom) {
+          resolveDelivery(NOT_DELIVERED)
+          return {
+            kind: 'failed',
+            error: new StructuredAgentSessionCreateRefusalError(
+              'structured_agent_session_unsupported'
+            )
+          }
+        }
+        // The notice explains a server's refusal; on this machine the terminal opening is the answer.
+        if (paired) {
+          notifyHostDeclined(plan.agent)
+        }
+        const terminal = await args.onHostDeclined(args.target)
+        void (
+          terminal.promptDeliveryResult ??
+          Promise.resolve(terminal.opened ? DELIVERED : NOT_DELIVERED)
+        ).then(resolveDelivery, () => resolveDelivery(NOT_DELIVERED))
+        return terminal.opened ? { kind: 'terminal' } : { kind: 'cancelled', sessionId: null }
       }
-      const terminal = await args.onHostDeclined(args.target)
-      void (
-        terminal.promptDeliveryResult ??
-        Promise.resolve(terminal.opened ? DELIVERED : NOT_DELIVERED)
-      ).then(resolveDelivery, () => resolveDelivery(NOT_DELIVERED))
-      return terminal.opened ? { kind: 'terminal' } : { kind: 'cancelled', sessionId: null }
+      admitted = args.openAdmitted(
+        admission.kind === 'admitted' ? admission.seedOptions : undefined
+      )
+      if (!admitted) {
+        resolveDelivery(NOT_DELIVERED)
+        return { kind: 'cancelled', sessionId: null }
+      }
+      void (admitted.promptDeliveryResult ?? Promise.resolve(DELIVERED)).then(resolveDelivery, () =>
+        resolveDelivery(NOT_DELIVERED)
+      )
+      // Not awaited: the hold ends when the chat opens, not when it settles.
+      return admitted.settlement
+    } finally {
+      releaseHold()
     }
-    admitted = args.openAdmitted(admission.kind === 'admitted' ? admission.seedOptions : undefined)
-    if (!admitted) {
-      resolveDelivery(NOT_DELIVERED)
-      return { kind: 'cancelled', sessionId: null }
-    }
-    void (admitted.promptDeliveryResult ?? Promise.resolve(DELIVERED)).then(resolveDelivery, () =>
-      resolveDelivery(NOT_DELIVERED)
-    )
-    return admitted.settlement
   })().catch((error: unknown): StructuredAgentLaunchSettlement => {
     resolveDelivery(NOT_DELIVERED)
     return { kind: 'failed', error }
