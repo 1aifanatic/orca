@@ -59,6 +59,23 @@ describe('structured AI Vault ownership', () => {
     }
   )
 
+  it.each(['ssh:remote', 'runtime:paired'] as const)(
+    'never applies local ownership to a same-ID %s row',
+    (executionHostId) => {
+      installOwnership({ conversationName: 'Local name' })
+      const local = listResult()
+      const remote = {
+        ...local.sessions[0]!,
+        id: 'remote-row',
+        executionHostId,
+        title: 'Remote name'
+      }
+      const merged = { ...local, sessions: [...local.sessions, remote] }
+      expect(projectStructuredAiVaultSessions(merged, true).sessions[1]).toBe(remote)
+      expect(projectStructuredAiVaultSessions(merged, false).sessions).toEqual([remote])
+    }
+  )
+
   it('derives typed refusals from the single writer predicate for live and proving leases', async () => {
     installOwnership()
     expect(() =>

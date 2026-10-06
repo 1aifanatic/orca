@@ -1,3 +1,4 @@
+import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { agentSessionLeaseAdmitsWriter } from '../../shared/agent-session-lease-adjudication'
 import { defaultAgentChatLabel } from '../../shared/agent-session-chat-label'
 import type { AiVaultListResult, AiVaultSession } from '../../shared/ai-vault-types'
@@ -18,7 +19,8 @@ export function projectStructuredAiVaultSessions(
     return result
   }
   const sessions = result.sessions.flatMap((session) => {
-    const ownership = findSessionOwnership(session)
+    const ownership =
+      session.executionHostId === LOCAL_EXECUTION_HOST_ID ? findSessionOwnership(session) : null
     if (!ownership) {
       return [session]
     }

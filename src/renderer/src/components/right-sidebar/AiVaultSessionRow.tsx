@@ -28,8 +28,7 @@ import type { AgentStatusState } from '../../../../shared/agent-status-types'
 import type { AiVaultSearchHit } from '../../../../shared/ai-vault-search-types'
 import { AiVaultSearchEvidence } from './AiVaultSearchEvidence'
 import { useAppStore } from '@/store'
-import { structuredChatTabBySessionId } from '@/lib/structured-chat-tab-index'
-import { structuredChatRowName } from '../../../../shared/structured-chat-row-name'
+import { aiVaultSessionDisplayTitle } from './ai-vault-structured-title-projection'
 
 export function VaultSessionRow({
   session,
@@ -96,18 +95,9 @@ export function VaultSessionRow({
     ? translate('aiVault.continueInCli', 'Continue in CLI')
     : defaultResumeLabel
   const updatedAt = session.updatedAt ?? session.modifiedAt
-  const liveTitle = useAppStore((state) => {
-    const owner = session.structuredSession
-    return owner
-      ? structuredChatRowName(
-          structuredChatTabBySessionId(
-            state.unifiedTabsByWorktree[owner.workspaceId],
-            owner.sessionId
-          )
-        )
-      : null
-  })
-  const title = liveTitle ?? session.title
+  const title = useAppStore((state) =>
+    aiVaultSessionDisplayTitle(session, state.unifiedTabsByWorktree)
+  )
   const detailsId = getSessionDetailsId(session.id)
   const latestTurn = latestSessionConversationTurn(session)
   // Computed once so the dropdown menu and the context menu never disagree.

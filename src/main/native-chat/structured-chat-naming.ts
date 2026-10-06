@@ -1,3 +1,4 @@
+import type { StructuredAgentSessionStatusObserverOptions } from './agent-session-wire/structured-agent-session-status-observation'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
 import { clampConversationNameFirstPrompt } from '../../shared/conversation-name-generation'
@@ -72,8 +73,16 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     }
   }
 
-  return (summary: AgentSessionStatusSummary, options: { replay: boolean }): void => {
-    if (options.replay || summary.status !== 'working' || attempted.has(summary.sessionId)) {
+  return (
+    summary: AgentSessionStatusSummary,
+    options: StructuredAgentSessionStatusObserverOptions
+  ): void => {
+    if (
+      options.replay ||
+      options.firstInputSubmissionKey === null ||
+      summary.status !== 'working' ||
+      attempted.has(summary.sessionId)
+    ) {
       return
     }
     attempted.add(summary.sessionId)
