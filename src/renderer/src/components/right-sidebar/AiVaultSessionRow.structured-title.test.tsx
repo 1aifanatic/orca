@@ -197,6 +197,12 @@ describe('native chat names in Vault rows', () => {
     expect(screen.getByText('Explain the parser')).toBeTruthy()
   })
 
+  it('ignores a published name no record store would hold', async () => {
+    await renderRow(row('local', 'Host row title'))
+    publish('local', 'x'.repeat(201))
+    expect(screen.getByText('Host row title')).toBeTruthy()
+  })
+
   it('keeps the host row title for a chat the feed has not named, as after a restart', async () => {
     await renderRow(row('local', 'Named before restart'))
     publish('local')

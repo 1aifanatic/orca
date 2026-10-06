@@ -67,7 +67,7 @@ export const AiVaultSearchHitSchema = z
     resumeCommand: z.string().optional(),
     /** The native chat owning this transcript, from the indexing host; older hosts omit it. */
     structuredSession: z
-      .object({ sessionId: z.string().min(1).max(512), workspaceId: z.string().min(1).max(4096) })
+      .object({ sessionId: z.string().min(1).max(512), workspaceId: z.string().min(1).max(512) })
       .optional()
   })
   .refine((hit) => hit.source.presence === 'present' || hit.resumeCommand === undefined, {

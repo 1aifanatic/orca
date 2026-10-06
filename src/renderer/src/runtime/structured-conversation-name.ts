@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import type { Tab } from '../../../shared/tab-types'
+import { isAgentSessionConversationName } from '../../../shared/agent-session-conversation-name'
 import { useAppStore } from '@/store'
 import {
   structuredAgentSessionOwnerForTab,
@@ -26,7 +27,11 @@ export function useStructuredConversationName(
   useEffect(() => watched?.activate(), [watched])
   return useSyncExternalStore(
     watched?.subscribe ?? noSubscription,
-    () => (sessionId && watched?.getSnapshot().get(sessionId)?.conversationName) || null,
+    () => {
+      const name = sessionId ? watched?.getSnapshot().get(sessionId)?.conversationName : undefined
+      // Unchecked wire data from a paired host: drop a name no record store would hold.
+      return isAgentSessionConversationName(name) ? name : null
+    },
     () => null
   )
 }
