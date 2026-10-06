@@ -14,6 +14,7 @@ import {
   getConfigPath
 } from './codex-hook-definition'
 import { readEveryKnownCodexHookHashes } from './codex-hook-hash-lookup'
+import type { CodexHookHashes } from './codex-hook-trust-derivation'
 
 /** One Codex home's hook files, and every path Codex may key its entries by. */
 export type CodexHookHome = {
@@ -73,31 +74,30 @@ export function approvalsAtOrcaEntries(
 }
 
 /**
- * The hash this home approves Orca's entry with, per event: the stopgap keeps
- * a working entry while Codex has not answered. Empty when config.toml cannot be read.
- * Only a hash Orca's entry may carry counts: keys are positional, so a removed
- * user hook's approval can be left at Orca's key.
+ * Until Codex answers: Orca's own hash, overlaid with each event's approval at
+ * Orca's entry. Only a hash Orca's entry may carry counts: keys are positional,
+ * so a removed user hook's approval can be left at Orca's key.
  */
-export function readApprovedOrcaHashes(
-  home: CodexHookHome,
-  command: string
-): Partial<Record<CodexEventLabel, string>> {
+export function readStopgapOrcaHashes(home: CodexHookHome, command: string): CodexHookHashes {
   let trustStates: ReadonlyMap<string, CodexHookTrustState>
   try {
     trustStates = readHookTrustEntries(home.tomlPath)
   } catch {
-    return {}
+    trustStates = new Map()
   }
+  const computed = computeOrcaCodexHookHashes(command)
+  const orcaHashes = [computed, ...readEveryKnownCodexHookHashes()]
   const slots = findOrcaEntrySlots(readHooksJson(home.hooksJsonPath)?.hooks, command)
-  const orcaHashes = [computeOrcaCodexHookHashes(command), ...readEveryKnownCodexHookHashes()]
-  return Object.fromEntries(
-    [...approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)].flatMap(
-      ([eventLabel, approvals]) => {
+  const approved = [...approvalsAtOrcaEntries(trustStates, slots, home.keySourcePaths, command)]
+  return {
+    ...computed,
+    ...Object.fromEntries(
+      approved.flatMap(([eventLabel, approvals]) => {
         const approval = approvals.find(({ trustedHash }) =>
           orcaHashes.some((hashes) => hashes[eventLabel] === trustedHash)
         )
         return approval ? [[eventLabel, approval.trustedHash]] : []
-      }
+      })
     )
-  )
+  }
 }

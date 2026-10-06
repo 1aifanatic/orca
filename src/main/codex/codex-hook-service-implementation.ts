@@ -5,13 +5,9 @@ import { normalizeRuntimePathForComparison } from '../../shared/cross-platform-p
 import { dedupeInFlightRun } from '../in-flight-run-dedupe'
 import { refreshManagedScriptIfPresent } from '../agent-hooks/managed-hook-script-refresh'
 import { getOrcaManagedCodexHomePath } from './codex-home-paths'
-import {
-  computeOrcaCodexHookHashes,
-  getManagedCommand,
-  getManagedScriptPath
-} from './codex-hook-definition'
+import { getManagedCommand, getManagedScriptPath } from './codex-hook-definition'
 import { installCodexHooksExclusively } from './codex-hook-local-install'
-import { getManagedCodexHookHome, readApprovedOrcaHashes } from './codex-hook-orca-approvals'
+import { getManagedCodexHookHome, readStopgapOrcaHashes } from './codex-hook-orca-approvals'
 import {
   refreshCodexRuntimeUserHooksExclusively,
   removeCodexHooksExclusively
@@ -25,7 +21,6 @@ import {
   readKnownCodexHookAnswer,
   resolveCodexHookAnswerForLaunch
 } from './codex-hook-hash-lookup'
-import type { CodexHookAnswer } from './codex-hook-trust-derivation'
 import { removeStaleWslRuntimeManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import { runExclusivelyForRuntimeAndSystemTrustConfig } from './codex-hook-trust-queue'
 import {
@@ -216,24 +211,20 @@ export class CodexHookService {
       waitsForCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0
     )
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () => {
-      // Why each event keeps the home's approval, else gets Orca's own hash (main's fallback):
-      // an answer still on its way must never leave a managed home worse than main.
+      if (answer?.kind === 'refused') {
+        // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
+        return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, (homePath) =>
+          readCodexHookHomeStatus(homePath, answer)
+        )
+      }
+      // Why a stopgap: an answer still on its way must never leave a managed home worse than main.
       const hashes =
         answer?.kind === 'hashes'
           ? answer.hashes
-          : answer?.kind === 'refused'
-            ? null
-            : {
-                ...computeOrcaCodexHookHashes(),
-                ...readApprovedOrcaHashes(
-                  getManagedCodexHookHome(runtimeHomePath),
-                  getManagedCommand(getManagedScriptPath())
-                )
-              }
-      if (!hashes) {
-        // Why: without Codex's hash an entry would wait for review; the home keeps only the user's hooks.
-        return this.refreshRuntimeUserHooksExclusively(runtimeHomePath, answer)
-      }
+          : readStopgapOrcaHashes(
+              getManagedCodexHookHome(runtimeHomePath),
+              getManagedCommand(getManagedScriptPath())
+            )
       return installCodexHooksExclusively(runtimeHomePath, hashes, (homePath) =>
         readCodexHookHomeStatus(homePath, answer)
       )
@@ -289,11 +280,10 @@ export class CodexHookService {
   }
 
   private refreshRuntimeUserHooksExclusively(
-    runtimeHomePath: string,
-    answer?: CodexHookAnswer | null
+    runtimeHomePath: string
   ): Promise<AgentHookInstallStatus> {
     return refreshCodexRuntimeUserHooksExclusively(runtimeHomePath, (homePath) =>
-      answer === undefined ? this.getStatus(homePath) : readCodexHookHomeStatus(homePath, answer)
+      this.getStatus(homePath)
     )
   }
 
