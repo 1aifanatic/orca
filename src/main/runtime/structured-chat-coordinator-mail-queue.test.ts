@@ -83,8 +83,8 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
       senders: [
         {
           party: { address: 'term_worker', terminalHandle: 'term_worker', orcaSessionId: null },
-          // No tab this runtime knows of names it, and an agent-set title never does.
-          name: null
+          // Named by the task its dispatch was given, through the real runtime's naming.
+          name: 'build it'
         }
       ],
       orchestration: {

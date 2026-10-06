@@ -19,11 +19,18 @@ describe('who another agent’s message is from, on mobile', () => {
     expect(agentMessageAttribution('From', undefined)).toBeNull()
   })
 
-  it('names each sender once, an unnamed one as an agent, and counts the rest', () => {
+  it('names each sender, an unnamed one as an agent, and counts the rest', () => {
     expect(agentMessageAttribution('Message from', from(['Coder']))).toBe('Message from Coder')
-    expect(agentMessageAttribution('From', from([null, null]))).toBe('From an agent')
     expect(agentMessageAttribution('From', from([]))).toBe('From an agent')
     expect(agentMessageAttribution('From', from(['A', 'B', 'C', 'D']))).toBe('From A, B, C +1')
+  })
+
+  it('keeps two senders that share a name two, and counts only the senders it leaves out', () => {
+    expect(agentMessageAttribution('From', from(['Codex', 'Codex']))).toBe('From Codex, Codex')
+    expect(agentMessageAttribution('From', from([null, null]))).toBe('From an agent, an agent')
+    expect(agentMessageAttribution('From', from(['Codex', 'Codex', 'Codex', 'Codex']))).toBe(
+      'From Codex, Codex, Codex +1'
+    )
   })
 
   it('puts the line on the queued card, read through the shared reader', () => {

@@ -235,12 +235,33 @@ describe('every target param resolves both spellings of a party to one canonical
     expect(
       await as(undefined, 'orchestration.partyLocation', { address: `dispatch:${dispatchId}` })
     ).toEqual({ location: { kind: 'chat', sessionId: SESSION_Y, worktreeId: WORKSPACE_X } })
-    expect(await as(undefined, 'orchestration.partyLocation', { address: 'term_peer' })).toEqual({
-      location: { kind: 'terminal', handle: 'term_peer' }
+    expect(await as(undefined, 'orchestration.partyLocation', { address: WORKER_HANDLE })).toEqual({
+      location: { kind: 'terminal', handle: WORKER_HANDLE }
     })
     expect(
       await as(undefined, 'orchestration.partyLocation', { address: 'dispatch:gone' })
-    ).toEqual({ location: null })
+    ).toEqual({ location: null, lost: 'terminal' })
+  })
+
+  it("partyLocation: a terminal handle from an earlier run opens as its pane's live terminal, by the mail it sent", async () => {
+    vi.spyOn(h.runtime, 'getTerminalHandleForPaneKey').mockImplementation((paneKey) =>
+      paneKey === WORKER_PANE ? WORKER_HANDLE : null
+    )
+    const mail = h.db.insertMessage({
+      from: 'term_previous_run',
+      to: ADDRESS_X,
+      subject: 's',
+      senderPaneKey: WORKER_PANE
+    })
+    expect(
+      await as(undefined, 'orchestration.partyLocation', {
+        address: 'term_previous_run',
+        messageIds: [mail.id]
+      })
+    ).toEqual({ location: { kind: 'terminal', handle: WORKER_HANDLE } })
+    expect(
+      await as(undefined, 'orchestration.partyLocation', { address: 'term_previous_run' })
+    ).toEqual({ location: null, lost: 'terminal' })
   })
 })
 

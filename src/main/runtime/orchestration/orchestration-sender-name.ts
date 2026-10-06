@@ -1,48 +1,75 @@
-// What a chat shows a message's sender as: only names Orca controls, never a title the agent
-// set on its own terminal (it could call itself "You").
+// What a chat shows a message's sender as: names from Orca's own records, most specific first, and
+// never a title the agent paints on its own terminal.
 
 import type { AgentMessageSender } from '../../../shared/agent-session-message-source'
 import { defaultAgentChatLabel } from '../../../shared/agent-session-chat-label'
 import type { AgentType } from '../../../shared/agent-status-types'
 import { formatAgentTypeLabel } from '../../../shared/agent-type-label'
+import type { Tab } from '../../../shared/tab-types'
 import type { OrchestrationDb } from './db'
 import { lineageLiveSession, type AgentSessionRecordReader } from './structured-session-lineage'
 
 export type TerminalSenderNaming = {
-  /** The title the person gave the tab, if any. */
+  /** The tab's stored title: a rename, by the person or through the CLI. Never its live title. */
   customTitle: string | null
   agent: AgentType | null
+  /** Its pane, which an active dispatch still names after the handle was reissued. */
+  paneKey: string | null
 }
 
-export function orchestrationSenderName(
-  party: AgentMessageSender['party'],
-  deps: {
-    db: OrchestrationDb | null
-    records: AgentSessionRecordReader | null
-    terminal: (handle: string) => TerminalSenderNaming | null
-  }
-): string | null {
-  // A federated sender is its dispatch here: named by the task it was given.
-  const dispatchId = party.address.startsWith('dispatch:')
-    ? party.address.slice('dispatch:'.length)
-    : null
-  if (dispatchId) {
-    const dispatch = deps.db?.getDispatchContextById(dispatchId)
-    const task = dispatch ? deps.db?.getTask(dispatch.task_id) : undefined
-    return task?.display_name || task?.task_title || null
+export type SenderNamingSources = {
+  db: OrchestrationDb | null
+  records: AgentSessionRecordReader | null
+  /** The chat's tab as this host mirrors the workspace session. */
+  chatTab: (worktreeId: string, sessionId: string) => Pick<Tab, 'customLabel' | 'label'> | null
+  terminal: (handle: string) => TerminalSenderNaming | null
+}
+
+type Party = AgentMessageSender['party']
+
+export function orchestrationSenderName(party: Party, sources: SenderNamingSources): string | null {
+  const task = dispatchTaskName(party, sources)
+  if (task) {
+    return task
   }
   if (party.orcaSessionId) {
-    const record = deps.records ? lineageLiveSession(deps.records, party.orcaSessionId) : null
+    const record = sources.records ? lineageLiveSession(sources.records, party.orcaSessionId) : null
     if (record) {
-      return record.conversationName ?? defaultAgentChatLabel(record.provider)
+      const tab = sources.chatTab(record.location.workspaceId, record.sessionId)
+      return tab?.customLabel?.trim() || tab?.label.trim() || defaultAgentChatLabel(record.provider)
     }
   }
-  if (party.terminalHandle) {
-    const terminal = deps.terminal(party.terminalHandle)
-    if (terminal) {
-      const agentLabel = terminal.agent ? formatAgentTypeLabel(terminal.agent) : null
-      return terminal.customTitle?.trim() || agentLabel
-    }
+  const terminal = isDispatchAddress(party.address)
+    ? null
+    : party.terminalHandle
+      ? sources.terminal(party.terminalHandle)
+      : null
+  if (terminal) {
+    const agentLabel = terminal.agent ? formatAgentTypeLabel(terminal.agent) : null
+    return terminal.customTitle?.trim() || agentLabel
   }
   return null
+}
+
+/** The task its dispatch was given: the federated `dispatch:<id>` address, or a local worker's
+ *  active dispatch. */
+function dispatchTaskName(party: Party, sources: SenderNamingSources): string | null {
+  const db = sources.db
+  if (!db) {
+    return null
+  }
+  const dispatch = isDispatchAddress(party.address)
+    ? db.getDispatchContextById(party.address.slice('dispatch:'.length))
+    : party.terminalHandle
+      ? db.getActiveDispatchForTerminal(
+          party.terminalHandle,
+          sources.terminal(party.terminalHandle)?.paneKey ?? undefined
+        )
+      : undefined
+  const task = dispatch ? db.getTask(dispatch.task_id) : undefined
+  return task?.display_name || task?.task_title || null
+}
+
+function isDispatchAddress(address: string): boolean {
+  return address.startsWith('dispatch:')
 }

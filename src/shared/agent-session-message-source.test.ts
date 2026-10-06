@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentMessageSendersShown,
-  normalizeAgentMessageBodyFrom,
   readAgentMessageSource,
   type AgentMessageSource
 } from './agent-session-message-source'
@@ -71,15 +70,6 @@ describe("a message's sender, read through its one reader", () => {
     for (const value of [null, 'nobody', 42, [], { senders: [] }]) {
       expect(readAgentMessageSource(value)).toBeUndefined()
     }
-  })
-
-  it('normalizes a stored body in place, dropping what it cannot read', () => {
-    const kept: Record<string, unknown> = { kind: 'message', from: { ...FROM, extra: 1 } }
-    normalizeAgentMessageBodyFrom(kept)
-    expect(kept.from).toEqual(FROM)
-    const dropped: Record<string, unknown> = { kind: 'message', from: 'nobody' }
-    normalizeAgentMessageBodyFrom(dropped)
-    expect('from' in dropped).toBe(false)
   })
 
   it('names at most a few senders and counts the rest', () => {

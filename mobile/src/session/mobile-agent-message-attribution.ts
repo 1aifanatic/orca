@@ -16,6 +16,7 @@ export function agentMessageAttribution(
     return null
   }
   const { shown, more } = agentMessageSendersShown(source)
-  const names = [...new Set(shown.map((sender) => sender.name ?? UNNAMED_SENDER))]
+  // One name per sender, repeats included: two senders that share a name are still two.
+  const names = shown.map((sender) => sender.name ?? UNNAMED_SENDER)
   return `${lead} ${names.length > 0 ? names.join(', ') : UNNAMED_SENDER}${more > 0 ? ` +${more}` : ''}`
 }

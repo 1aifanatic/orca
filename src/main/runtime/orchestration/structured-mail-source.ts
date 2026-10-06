@@ -15,8 +15,19 @@ import { resolveOrchestrationParty } from './orchestration-party'
 
 export type MailSourceMessage = Pick<MessageRow, 'id' | 'from_handle' | 'run_id'>
 
-/** A name Orca controls for a party (never an agent-set title); null when it has none. */
+/** A name from Orca's records for a party (never an agent-painted title); null when it has none. */
 export type SenderNameResolver = (party: AgentMessageSender['party']) => string | null
+
+/** The one way a sender is recorded on a message: its party as orchestration resolves the
+ *  address, and a bounded snapshot of its name for when it is gone. */
+export function agentMessageSender(
+  address: string,
+  db: OrchestrationDb | null,
+  senderName: SenderNameResolver
+): AgentMessageSender {
+  const party = senderParty(address, db)
+  return { party, name: snapshotName(senderName, party) }
+}
 
 export function structuredMailSource(input: {
   db: OrchestrationDb | null
@@ -28,8 +39,7 @@ export function structuredMailSource(input: {
   const senders = new Map<string, AgentMessageSender>()
   for (const { from_handle: address } of input.batch) {
     if (!senders.has(address)) {
-      const party = senderParty(address, input.db)
-      senders.set(address, { party, name: snapshotName(input.senderName, party) })
+      senders.set(address, agentMessageSender(address, input.db, input.senderName))
     }
   }
   return {

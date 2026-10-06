@@ -16,6 +16,7 @@ import type {
 import type { AgentSessionRewindRecord } from '../../../shared/agent-session-rewind'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import { restoreRewindJournalBody } from './structured-rewind-journal-body'
+import { withRecordedSender } from '../../../shared/agent-session-message-source'
 
 type RetainedRow = AgentSessionRewindRecord['retained'][number]
 
@@ -93,13 +94,13 @@ export function retainedRowReplacement(row: RetainedRow): AgentJournalProducerLi
 }
 
 /** A provider item the old epoch held keeps that row's scope, producer and first-seen time; only
- *  its body is the provider's. */
+ *  its body is the provider's, and a user message keeps the sender the host recorded on it. */
 function withHeldAttribution(item: RetainedRow, held: RetainedRow | undefined): RetainedRow {
   if (!held) {
     return item
   }
-  const { itemId: _itemId, body: _body, ...attribution } = held
-  return { ...item, ...attribution }
+  const { itemId: _itemId, body: heldBody, ...attribution } = held
+  return { ...item, ...attribution, body: withRecordedSender(item.body, heldBody) }
 }
 
 /** Provider turn id → the item id of its turn record: the turn's own, or the command turn that

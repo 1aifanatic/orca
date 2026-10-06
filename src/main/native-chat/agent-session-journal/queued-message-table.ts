@@ -13,7 +13,6 @@ import type {
   AgentJournalCursor,
   AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
-import { normalizeAgentMessageBodyFrom } from '../../../shared/agent-session-message-source'
 import { rejectedDraftSettlement } from './journal-dispatch-settlement'
 import { readStoredRejectionFact } from './journal-dispatch-reducer'
 
@@ -301,7 +300,6 @@ function toStoredRow(row: unknown): QueuedMessageRow | null {
   try {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: body_json is written only by insertQueuedMessage from a schema-validated AgentJournalMessageItem.
     body = JSON.parse(record.body_json) as AgentJournalMessageItem
-    normalizeAgentMessageBodyFrom(body)
   } catch {
     // Our own writer stringified it; an unreadable body is corruption, and a
     // row we cannot re-materialize must not masquerade as an empty message.

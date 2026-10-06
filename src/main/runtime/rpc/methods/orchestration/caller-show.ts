@@ -50,12 +50,16 @@ export const ORCHESTRATION_CALLER_METHODS = [
     name: 'orchestration.partyLocation',
     params: PartyLocationParams,
     // Why host-side: a chat sender's live session follows its `/clear` lineage on this host.
-    handler: (params, { runtime }): OrchestrationPartyLocationResult => ({
-      location: locateOrchestrationParty(params.address, {
-        db: runtime.getOrchestrationDb(),
-        records: readAgentSessionRecordStore(),
-        terminalHandleForPaneKey: (paneKey) => runtime.getTerminalHandleForPaneKey(paneKey)
-      })
-    })
+    handler: (params, { runtime }): OrchestrationPartyLocationResult =>
+      locateOrchestrationParty(
+        params.address,
+        {
+          db: runtime.getOrchestrationDb(),
+          records: readAgentSessionRecordStore(),
+          terminalPaneKey: (handle) => runtime.getTerminalPaneKey(handle),
+          terminalHandleForPaneKey: (paneKey) => runtime.getTerminalHandleForPaneKey(paneKey)
+        },
+        params.messageIds
+      )
   })
 ]

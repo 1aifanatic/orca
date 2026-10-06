@@ -16,8 +16,9 @@ export function agentMessageSenderLabel(sender: AgentMessageSender): string {
 /** A queued card's plain "From <names>" line; the card's own controls own its clicks. */
 export function queuedCardSenderLine(from: AgentMessageSource): string {
   const { shown, more } = agentMessageSendersShown(from)
-  const names = [...new Set(shown.map(agentMessageSenderLabel))]
-  const listed = names.length > 0 ? names.join(', ') : unnamedSenderLabel()
+  // One name per sender, repeats included: two senders that share a name are still two.
+  const listed =
+    shown.length > 0 ? shown.map(agentMessageSenderLabel).join(', ') : unnamedSenderLabel()
   return translate('components.native-chat.queuedMessages.from', 'From {{names}}', {
     names: more > 0 ? `${listed} +${more}` : listed
   })

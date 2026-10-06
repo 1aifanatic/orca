@@ -31,5 +31,9 @@ export type OrchestrationPartyLocation =
   | { kind: 'chat'; sessionId: string; worktreeId: string }
   | { kind: 'terminal'; handle: string }
 
-/** `orchestration.partyLocation`: null when this host no longer knows where the party is. */
-export type OrchestrationPartyLocationResult = { location: OrchestrationPartyLocation | null }
+/** `orchestration.partyLocation`: a null location is a party this host no longer finds; `lost`
+ *  says what it was, so the click names a gone chat or a gone pane. */
+export type OrchestrationPartyLocationResult = {
+  location: OrchestrationPartyLocation | null
+  lost?: 'chat' | 'terminal'
+}

@@ -175,7 +175,7 @@ describe('draft rows', () => {
     expect(journal.queuedMessages.list()).toHaveLength(1)
   })
 
-  it("keeps an agent card's sender on its body across reopen, read through the one reader", async () => {
+  it("keeps an agent card's body as written across reopen: the queue reads nothing of its sender", async () => {
     const from: AgentMessageSource = {
       kind: 'agent',
       senders: [
@@ -212,7 +212,7 @@ describe('draft rows', () => {
     await first.close()
     closeTestJournalHostDatabases()
     const db = new Database(journalDatabasePath(root))
-    // A newer build's message kind, and a value no build writes.
+    // A newer build's message kind, and a value no build writes: carried as written, for clients to read.
     const setFrom = db.prepare(
       "UPDATE queued_messages SET body_json = json_set(body_json, '$.from', json(?)) WHERE message_id = ?"
     )
@@ -227,8 +227,8 @@ describe('draft rows', () => {
     const reopened = await open()
     expect(reopened.queuedMessages.list().map((row) => [row.messageId, row.body.from])).toEqual([
       ['agent-card', from],
-      ['newer-kind', { ...from, orchestration: null }],
-      ['malformed', undefined]
+      ['newer-kind', { ...from, orchestration: { message: 'task', taskId: 't1' } }],
+      ['malformed', 'nobody']
     ])
     // That older table still takes new cards.
     await queueDraft(reopened, 'after')

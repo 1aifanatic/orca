@@ -87,18 +87,17 @@ export function readAgentMessageSource(value: unknown): AgentMessageSource | und
   return parsed.success ? parsed.data : undefined
 }
 
-/** A message body's `from` replaced in place by what `readAgentMessageSource` reads of it, at a
- *  boundary that keeps the stored object. */
-export function normalizeAgentMessageBodyFrom(body: Record<string, unknown>): void {
-  if (!('from' in body)) {
-    return
-  }
-  const from = readAgentMessageSource(body.from)
-  if (from) {
-    body.from = from
-  } else {
-    delete body.from
-  }
+/** A provider's copy of a user message the host recorded: the provider's body, with the sender the
+ *  host stamped put back, since no provider ever carries it. */
+export function withRecordedSender<T extends object>(provider: T, recorded: object): T {
+  const from = 'from' in recorded ? recorded.from : undefined
+  return from !== undefined && isUserMessage(recorded) && isUserMessage(provider)
+    ? { ...provider, from }
+    : provider
+}
+
+function isUserMessage(body: object): boolean {
+  return 'kind' in body && body.kind === 'message' && 'role' in body && body.role === 'user'
 }
 
 /** The senders a label names, and how many more it counts; one notice can carry many. */
