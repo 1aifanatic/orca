@@ -51,41 +51,61 @@ export async function wakeStoppedManagedOrcad(
     return { outcome: liveness === 'LIVE' ? 'serving' : 'unverifiable' }
   }
   const host = wakeHostKey(options)
+  // A wake this client began on a connection that has since dropped settles first, so a fence
+  // it still holds is known to be this client's before this wake looks at it.
+  await runningWakes.get(host)?.catch(() => {})
   if (!(await orcadActivationFenceExists(options))) {
     // The fence this client left is gone by some other route; any later one belongs to another run.
     interruptedWakes.delete(host)
   } else if (!(await releaseOwnInterruptedWakeFence(options, host))) {
     return { outcome: 'fenced' }
   }
-  return withOrcadActivationLock(
+  const wake: Promise<OrcadManagedWake> = withOrcadActivationLock(
     options,
     async (): Promise<OrcadManagedWake> => {
-      // Re-read under the fence: another client may have activated or started a slot meanwhile.
-      const active = (await readOrcadActivationRecord(options)).active
-      if (!active) {
-        return { outcome: 'not-activated' }
-      }
-      const identity = await resolveOrcadSlotIdentity(options, active)
-      // Marks this fence as this wake's, so only that exact fence is ever released later.
+      // Claimed before the write lands, so a drop after it still leaves a fence this client can prove.
       const token = randomUUID()
-      await writeAtomicOrcadRemoteRecord(options, wakeOwnerPath(options), token)
       interruptedWakes.set(host, token)
-      onStarting()
+      const settle = (): void => {
+        if (interruptedWakes.get(host) === token) {
+          interruptedWakes.delete(host)
+        }
+      }
       try {
+        await writeAtomicOrcadRemoteRecord(options, wakeOwnerPath(options), token)
+        // Re-read under the fence: another client may have activated or started a slot meanwhile.
+        const active = (await readOrcadActivationRecord(options)).active
+        if (!active) {
+          settle()
+          return { outcome: 'not-activated' }
+        }
+        const identity = await resolveOrcadSlotIdentity(options, active)
+        onStarting()
         const readiness = await ensureOrcadSlotServing(options, identity)
-        interruptedWakes.delete(host)
+        settle()
         return { outcome: 'started', readiness }
       } catch (error) {
         // A lost connection keeps the fence on the host; anything else releases it.
         if (!isUnconfirmedSshCommandTermination(error)) {
-          interruptedWakes.delete(host)
+          settle()
         }
         throw error
       }
     },
-    () => ({ outcome: 'fenced' })
+    (): OrcadManagedWake => ({ outcome: 'fenced' })
   )
+  runningWakes.set(host, wake)
+  void wake
+    .catch(() => {})
+    .finally(() => {
+      if (runningWakes.get(host) === wake) {
+        runningWakes.delete(host)
+      }
+    })
+  return wake
 }
+
+const runningWakes = new Map<string, Promise<OrcadManagedWake>>()
 
 // The owner token of a fence this client's own wake may have left when its connection dropped.
 const interruptedWakes = new Map<string, string>()
@@ -115,6 +135,7 @@ async function releaseOwnInterruptedWakeFence(
   if (!token || (await readOrcadActivationTransaction(options))) {
     return false
   }
+  // Only a fence carrying this process's own token: a fresh fence another client took has none yet.
   const owner = await readBoundedOrcadRemoteRecord(options, wakeOwnerPath(options), 64)
   if (owner.state !== 'present' || owner.raw.trim() !== token) {
     interruptedWakes.delete(host)

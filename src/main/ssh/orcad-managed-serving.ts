@@ -34,15 +34,17 @@ const PROBE_TIMEOUT_MS = 5_000
 // transport and port only, so a kill, reboot or rebind is never answered from cache.
 const VERDICT_REUSE_MS = 5_000
 
-const inFlight = new Map<string, Promise<OrcadManagedServing>>()
-type RecentVerdict = {
-  at: number
-  connection: SshConnection
-  generation: number
-  remotePort: number
-  serving: OrcadManagedServing
+type ServingTransport = { connection: SshConnection; generation: number; remotePort: number }
+// Why per transport: a check on a dropped connection fails, and a caller on the reconnected one
+// must run its own instead of inheriting that failure as "could not be started".
+const inFlight = new Map<string, ServingTransport & { check: Promise<OrcadManagedServing> }>()
+const recent = new Map<string, ServingTransport & { at: number; serving: OrcadManagedServing }>()
+
+function sameTransport(a: ServingTransport, b: ServingTransport): boolean {
+  return (
+    a.connection === b.connection && a.generation === b.generation && a.remotePort === b.remotePort
+  )
 }
-const recent = new Map<string, RecentVerdict>()
 export type ManagedOrcadStartListener = {
   /** Shows "Starting managed server…" for the host. */
   starting: (target: SshTarget) => void
@@ -62,34 +64,31 @@ export function ensureManagedOrcadServing(
   now: () => number = Date.now
 ): Promise<OrcadManagedServing> {
   const id = input.environment.id
-  const generation = input.connection.getConnectGeneration()
+  const transport: ServingTransport = {
+    connection: input.connection,
+    generation: input.connection.getConnectGeneration(),
+    remotePort: input.remotePort
+  }
   const cached = recent.get(id)
-  if (
-    cached &&
-    cached.connection === input.connection &&
-    cached.generation === generation &&
-    cached.remotePort === input.remotePort &&
-    now() - cached.at < VERDICT_REUSE_MS
-  ) {
+  if (cached && sameTransport(cached, transport) && now() - cached.at < VERDICT_REUSE_MS) {
     return Promise.resolve(cached.serving)
   }
   const pending = inFlight.get(id)
-  if (pending) {
-    return pending
+  if (pending && sameTransport(pending, transport)) {
+    return pending.check
   }
-  const operation = checkAndStart(input).then((serving) => {
-    recent.set(id, {
-      at: now(),
-      connection: input.connection,
-      generation,
-      remotePort: input.remotePort,
-      serving
+  const check = checkAndStart(input)
+    .then((serving) => {
+      recent.set(id, { ...transport, at: now(), serving })
+      return serving
     })
-    return serving
-  })
-  const settled = operation.finally(() => inFlight.delete(id))
-  inFlight.set(id, settled)
-  return settled
+    .finally(() => {
+      if (inFlight.get(id)?.check === check) {
+        inFlight.delete(id)
+      }
+    })
+  inFlight.set(id, { ...transport, check })
+  return check
 }
 
 /** Test-only: forget cached verdicts. */

@@ -129,6 +129,49 @@ describe('wakeStoppedManagedOrcad', () => {
     expect(host.fence).toBe(false)
   })
 
+  it('never claims a fence with no owner token, even while its own interrupted token is held', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('nohup')) {
+        throw lost
+      }
+      return host.exec(command)
+    })
+    await expect(wakeStoppedManagedOrcad(slot)).rejects.toBe(lost)
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => host.exec(command))
+    // That fence was cleared unseen, and another desktop took a fresh one: no owner file yet.
+    host.wakeOwner = null
+
+    expect(await wakeStoppedManagedOrcad(slot)).toEqual({ outcome: 'fenced' })
+    expect(host.fence).toBe(true)
+    expect(launches()).toEqual([])
+  })
+
+  it('lets a wake on a dropped connection settle before a reconnected wake reads the fence', async () => {
+    host = stoppedHost()
+    const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })
+    let drop: (() => void) | undefined
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      // Drops the first wake under its fence, after its owner token landed but before its launch.
+      if (host.fence && host.wakeOwner && command.includes('orcad-active.json') && !drop) {
+        await new Promise<void>((resolve) => (drop = resolve))
+        throw lost
+      }
+      return host.exec(command)
+    })
+    const dropped = wakeStoppedManagedOrcad(slot)
+    await vi.waitFor(() => expect(drop).toBeDefined())
+
+    // The reconnected wake starts while the first is still holding the fence it just took.
+    const reconnected = wakeStoppedManagedOrcad(slot)
+    drop?.()
+    await expect(dropped).rejects.toBe(lost)
+    expect(await reconnected).toMatchObject({ outcome: 'started' })
+    expect(launches()).toHaveLength(1)
+    expect(host.fence).toBe(false)
+  })
+
   it('never releases a fence another run took after its own interrupted fence was cleared', async () => {
     host = stoppedHost()
     const lost = Object.assign(new Error('connection lost'), { sshChannelCloseConfirmed: false })

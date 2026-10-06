@@ -114,6 +114,34 @@ describe('ensureManagedOrcadServing', () => {
     expect(probe).toHaveBeenCalledTimes(2)
   })
 
+  it('runs its own start on a reconnected transport instead of inheriting a dropped one', async () => {
+    let dropFirst!: (error: Error) => void
+    vi.mocked(wakeStoppedManagedOrcad)
+      .mockImplementationOnce(
+        (_slot, onStarting) =>
+          new Promise((_resolve, reject) => {
+            onStarting?.()
+            dropFirst = reject
+          })
+      )
+      .mockImplementationOnce(async () => ({
+        outcome: 'started',
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only health and boundEndpoint are read.
+        readiness: { health: { previousIdleStop: null } } as never
+      }))
+    const onDropped = ensureManagedOrcadServing(input(async () => false))
+    await vi.waitFor(() => expect(wakeStoppedManagedOrcad).toHaveBeenCalledOnce())
+
+    // The SSH session drops mid-start and the client reconnects, as at app launch.
+    generation += 1
+    const onReconnected = ensureManagedOrcadServing(input(async () => false))
+    dropFirst(new Error('SSH connection lost'))
+
+    expect(await onReconnected).toEqual({ state: 'started', boundPort: null })
+    expect(await onDropped).toMatchObject({ state: 'unverifiable' })
+    expect(wakeStoppedManagedOrcad).toHaveBeenCalledTimes(2)
+  })
+
   it('never answers a new SSH transport from an earlier verdict, as after a reboot', async () => {
     const probe = vi.fn(async () => true)
     await ensureManagedOrcadServing(input(probe), () => 0)
