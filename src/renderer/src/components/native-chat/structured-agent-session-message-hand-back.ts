@@ -1,7 +1,9 @@
 import type { AgentJournalMessageItem } from '../../../../shared/agent-session-journal-types'
-import { structuredAgentSessionDraftScopeKey } from './native-chat-composer-draft-store'
+import {
+  appendToNativeChatComposerDraft,
+  structuredAgentSessionDraftScopeKey
+} from './native-chat-composer-draft-store'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
-import { appendNativeChatAttachmentCache } from './use-native-chat-composer-attachments'
 
 /** The text a message body carries, as the composer shows it. */
 export function structuredAgentSessionMessageText(body: AgentJournalMessageItem): string {
@@ -23,24 +25,25 @@ export function returnMessageToComposer(
     structuredAgentSessionMessageText({ kind: 'message', role: 'user', blocks })
   )
   let image = 0
-  appendNativeChatAttachmentCache(
-    composerScopeKey,
-    blocks.flatMap((block, index) => {
-      if (block.type !== 'image-ref') {
-        return []
-      }
-      const connectionId = imageConnectionIds?.[image++]
-      return block.path
-        ? [
-            {
-              id: `${attachmentIdPrefix}-${index}`,
-              path: block.path,
-              ...(connectionId ? { connectionId } : {})
-            }
-          ]
-        : []
-    })
-  )
+  // Not the attachment hook's helper: its imports reach the store, whose teardown imports this.
+  const images = blocks.flatMap((block, index) => {
+    if (block.type !== 'image-ref') {
+      return []
+    }
+    const connectionId = imageConnectionIds?.[image++]
+    return block.path
+      ? [
+          {
+            id: `${attachmentIdPrefix}-${index}`,
+            path: block.path,
+            ...(connectionId ? { connectionId } : {})
+          }
+        ]
+      : []
+  })
+  if (images.length > 0) {
+    appendToNativeChatComposerDraft(composerScopeKey, { images })
+  }
   return durable
 }
 
