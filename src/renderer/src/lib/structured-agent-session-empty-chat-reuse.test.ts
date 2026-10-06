@@ -9,7 +9,6 @@ import type { StructuredAgentSessionLaunchIntent } from '@/lib/launch-structured
 const mocks = vi.hoisted(() => ({
   createIntent: vi.fn(),
   launch: vi.fn(),
-  callStructuredAgentSession: vi.fn(),
   callRuntimeRpc: vi.fn(),
   refreshTabs: vi.fn(),
   activateTab: vi.fn(),
@@ -63,8 +62,9 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
   refreshLocalStructuredSessionTabs: mocks.refreshTabs
 }))
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.callStructuredAgentSession,
-  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
+  // Sends reach the runtime RPC through this wrapper, as in the app.
+  callStructuredAgentSession: (target: unknown, method: string, params?: unknown) =>
+    mocks.callRuntimeRpc(target, method, params)
 }))
 vi.mock('@/runtime/runtime-rpc-client', () => ({
   callRuntimeRpc: mocks.callRuntimeRpc,

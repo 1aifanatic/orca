@@ -34,8 +34,9 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: vi.fn(),
-  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
+  // Sends reach the runtime RPC through this wrapper, as in the app.
+  callStructuredAgentSession: (target: unknown, method: string, params?: unknown) =>
+    mocks.callRuntimeRpc(target, method, params)
 }))
 
 vi.mock('@/store', () => ({
@@ -179,9 +180,7 @@ describe('notes sent to a new agent', () => {
     const { onDelivered } = sendNotesToNewAgent()
     expect(isNoteInFlight('note-a')).toBe(true)
 
-    await settle()
-
-    expect(onDelivered).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(onDelivered).toHaveBeenCalledOnce())
     expect(isNoteInFlight('note-a')).toBe(false)
   })
 

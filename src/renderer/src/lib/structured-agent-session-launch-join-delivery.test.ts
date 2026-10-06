@@ -40,8 +40,7 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.callStructuredAgentSession,
-  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
+  callStructuredAgentSession: mocks.callStructuredAgentSession
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', () => ({

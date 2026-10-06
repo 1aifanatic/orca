@@ -35,8 +35,11 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.callStructuredAgentSession,
-  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
+  // Sends reach the runtime RPC through this wrapper, as in the app; reads stay on this mock.
+  callStructuredAgentSession: (target: unknown, method: string, params?: unknown) =>
+    method === 'agentSession.send'
+      ? mocks.callRuntimeRpc(target, method, params)
+      : mocks.callStructuredAgentSession(target, method, params)
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', () => ({
@@ -195,8 +198,7 @@ describe('a new launch after a failed one', () => {
       expect.objectContaining({
         envelope: expect.objectContaining({ sessionId: fresh.sessionId }),
         body: expect.objectContaining({ blocks: [{ type: 'text', text: 'review notes' }] })
-      }),
-      { skipCompatibilityCheck: true }
+      })
     )
     // The failed chat keeps its own prompt, in its own composer.
     expect(getStructuredAgentSessionLaunchLifecycle(WORKTREE_ID, failed.sessionId)).toBe('failed')

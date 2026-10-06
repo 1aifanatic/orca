@@ -10,7 +10,9 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
+  // Sends reach the runtime RPC through this wrapper, as in the app.
+  callStructuredAgentSession: (target: unknown, method: string, params?: unknown) =>
+    mocks.call(target, method, params)
 }))
 
 import { resetStructuredAgentSessionSendsForTests } from '@/components/native-chat/structured-agent-session-message-sender'
