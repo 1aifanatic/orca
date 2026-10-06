@@ -127,7 +127,6 @@ export function NativeChatStructuredSession(
     submissions: controller.submissions,
     journalItems: controller.journalItems,
     failedHere: controller.failedHere,
-    queuedMessageIds: controller.queuedMessageIds,
     retry: controller.retry,
     agentName: agentLabel
   })

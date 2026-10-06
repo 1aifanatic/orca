@@ -43,6 +43,8 @@ const USER_BUBBLE_CHROME_PX = 32
 const IMAGE_STRIP_PX = 88
 /** Header margin and vertical padding; its summary can occupy two text lines. */
 const TOOL_RUN_CHROME_PX = 16
+/** A reasoning row draws only its one-line trigger (`min-h-6`) until opened; opening remeasures it. */
+const COLLAPSED_REASONING_PX = 24
 const SUBAGENT_ROW_PX = 32
 /** The one-line head that names a subagent above its own rows. */
 export const NATIVE_CHAT_SUBAGENT_SECTION_HEAD_PX = SUBAGENT_ROW_PX
@@ -109,6 +111,14 @@ export function nativeChatRowContentMetrics(
   return metrics
 }
 
+/** The trigger's headline is chat text, so it grows with the chat size above its `min-h-6` floor. */
+function collapsedReasoningHeight(typography: NativeChatRowTypography): number {
+  return Math.max(
+    COLLAPSED_REASONING_PX,
+    (COLLAPSED_REASONING_PX * typography.lineHeightPx) / DEFAULT_ROW_TYPOGRAPHY.lineHeightPx
+  )
+}
+
 export function estimateNativeChatRowHeight(
   content: NativeChatRowContentMetrics,
   chrome: NativeChatRowChromeMetrics,
@@ -123,7 +133,12 @@ export function estimateNativeChatRowHeight(
     height = content.subagentGroupCount * SUBAGENT_ROW_PX
     partCount = height > 0 ? 1 : 0
   } else {
-    height = content.textLines * typography.lineHeightPx
+    height =
+      content.role === 'reasoning'
+        ? content.textLines > 0
+          ? collapsedReasoningHeight(typography)
+          : 0
+        : content.textLines * typography.lineHeightPx
     if (content.role === 'user' && content.textLines > 0) {
       height += USER_BUBBLE_CHROME_PX
     }
