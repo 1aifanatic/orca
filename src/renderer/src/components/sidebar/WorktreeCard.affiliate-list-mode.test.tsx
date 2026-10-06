@@ -345,11 +345,11 @@ describe('WorktreeCard read-only mode', () => {
     container.remove()
   })
 
-  function renderReadOnly(): HTMLElement | null {
+  function renderReadOnly(overrides: Partial<Worktree> = {}): HTMLElement | null {
     act(() => {
       root.render(
         <WorktreeCard
-          worktree={makeWorktree()}
+          worktree={makeWorktree(overrides)}
           repo={makeRepo()}
           isActive={false}
           readOnly
@@ -386,19 +386,33 @@ describe('WorktreeCard read-only mode', () => {
     expect(container.querySelector('[data-testid="inline-agents"]')).toBeNull()
   })
 
-  it('shows no status, even with the status property on', () => {
+  it('keeps the status lane but draws it quiet: no button, sleep or unread', () => {
+    sleepMocks.sleeping = true
     for (const newCardStyle of [false, true]) {
       settings = { experimentalNewWorktreeCardStyle: newCardStyle }
-      renderReadOnly()
+      renderReadOnly({ isUnread: true })
 
-      expect(worktreeCardProperties).toContain('status')
-      expect(container.querySelector('[data-worktree-card-status-slot]')).toBeNull()
+      const lane = container.querySelector('[data-worktree-card-status-slot]')
+      expect(lane).not.toBeNull()
+      expect(lane?.querySelector('button')).toBeNull()
+      expect(lane?.querySelector('.lucide-moon, [data-worktree-unread-alert]')).toBeNull()
     }
   })
 
-  it('names the host even when the sidebar hides the host chip', () => {
-    renderReadOnly()
+  it.each([
+    ['legacy', {}, true],
+    ['compact', { compactWorktreeCards: true }, false],
+    ['new', { experimentalNewWorktreeCardStyle: true }, true]
+  ] as const)(
+    '%s: follows the host card property and sidebar compact rules',
+    (_, style, showsHost) => {
+      settings = style
+      renderReadOnly()
+      expect(container.textContent).not.toContain('Local Mac')
 
-    expect(container.textContent).toContain('Local Mac')
-  })
+      worktreeCardProperties = ['status', 'host']
+      renderReadOnly()
+      expect(container.textContent?.includes('Local Mac')).toBe(showsHost)
+    }
+  )
 })

@@ -10,15 +10,8 @@ import {
 import WorktreeCard, { type ActiveSurfaceVariant } from '../../WorktreeCard'
 import { PINNED_GROUP_KEY } from '../grouping/group-keys'
 import type { WorktreeGroupBy } from '../grouping/row-types'
-import {
-  getFolderBackedRepoWorktreeCardContentIndent,
-  getFolderBackedRepoWorktreeCardSurfaceInset,
-  getLineageChildrenInlineStyle,
-  getLineageNestedRowGeometry,
-  getWorktreeCardContentIndent,
-  getWorktreeCardSurfaceInset,
-  LINEAGE_CHILDREN_INLINE_OFFSET
-} from './indentation'
+import { getLineageChildrenInlineStyle, LINEAGE_CHILDREN_INLINE_OFFSET } from './indentation'
+import { getWorktreeRowGeometry } from './worktree-row-geometry'
 import type { LineageToggleHandler } from '../../worktree-lineage-toggle-handler-cache'
 import { stopNestedWorktreeCardBubble } from './header-event-guards'
 import type { WorktreeItemRow } from '../listing/renderable-rows'
@@ -63,66 +56,6 @@ export type WorktreeItemRowContext = {
   onCardDragEnd: () => void
 }
 
-// Geometry differs three ways: a plain grouped row, a lineage child inheriting its parent's
-// surface, and a row inside a folder-backed project group.
-function getWorktreeItemRowGeometry(
-  ctx: WorktreeItemRowContext,
-  itemRow: WorktreeItemRow,
-  nested: boolean
-): { surfaceInset: number; cardContentIndent: number; lineageChildrenInlineOffset?: number } {
-  const projectGroupId = itemRow.repo?.projectGroupId
-  const isFolderBackedRepoChild =
-    ctx.groupBy === 'repo' &&
-    Boolean(projectGroupId && ctx.folderBackedProjectGroupIds.has(projectGroupId))
-  // Why: experimental in-card lineage inherits the parent surface; legacy cards keep depth-based nested geometry.
-  const paddingDepth = nested ? Math.max(0, itemRow.depth - 1) : itemRow.depth
-  const getCardContentIndent = (lineageDepth: number): number =>
-    isFolderBackedRepoChild
-      ? getFolderBackedRepoWorktreeCardContentIndent({
-          groupDepth: itemRow.groupDepth,
-          lineageDepth
-        })
-      : getWorktreeCardContentIndent({
-          isGrouped: ctx.groupBy !== 'none',
-          groupDepth: itemRow.groupDepth,
-          lineageDepth
-        })
-  const nestedLineageGeometry = nested
-    ? getLineageNestedRowGeometry({
-        experimentalNewWorktreeCardStyle: ctx.settings?.experimentalNewWorktreeCardStyle === true,
-        inheritedCardContentIndent: getCardContentIndent(0),
-        lineageDepth: itemRow.depth
-      })
-    : null
-  // Why: grouped rows inherit their header depth, but the card surface still spans the full row.
-  const paddingLeft =
-    nested && ctx.groupBy !== 'none'
-      ? getWorktreeCardContentIndent({
-          isGrouped: false,
-          groupDepth: itemRow.groupDepth,
-          lineageDepth: paddingDepth
-        })
-      : getCardContentIndent(paddingDepth)
-  const surfaceInset = nestedLineageGeometry
-    ? nestedLineageGeometry.surfaceInset
-    : isFolderBackedRepoChild
-      ? getFolderBackedRepoWorktreeCardSurfaceInset({
-          groupDepth: itemRow.groupDepth,
-          lineageDepth: paddingDepth
-        })
-      : getWorktreeCardSurfaceInset({
-          isGrouped: ctx.groupBy !== 'none',
-          groupDepth: itemRow.groupDepth
-        })
-  return {
-    surfaceInset,
-    cardContentIndent: nestedLineageGeometry
-      ? nestedLineageGeometry.cardContentIndent
-      : Math.max(0, paddingLeft - surfaceInset),
-    lineageChildrenInlineOffset: nestedLineageGeometry?.lineageChildrenInlineOffset
-  }
-}
-
 export function renderWorktreeItemRow(
   ctx: WorktreeItemRowContext,
   itemRow: WorktreeItemRow,
@@ -130,8 +63,15 @@ export function renderWorktreeItemRow(
   lineageChildren?: React.ReactNode,
   forceActiveSurface = false
 ): React.JSX.Element {
-  const { surfaceInset, cardContentIndent, lineageChildrenInlineOffset } =
-    getWorktreeItemRowGeometry(ctx, itemRow, nested)
+  const { surfaceInset, cardContentIndent, lineageChildrenInlineOffset } = getWorktreeRowGeometry({
+    groupBy: ctx.groupBy,
+    folderBackedProjectGroupIds: ctx.folderBackedProjectGroupIds,
+    newCardStyle: ctx.settings?.experimentalNewWorktreeCardStyle === true,
+    projectGroupId: itemRow.repo?.projectGroupId,
+    depth: itemRow.depth,
+    groupDepth: itemRow.groupDepth,
+    nested
+  })
   const lineageChildrenStyle = lineageChildren
     ? getLineageChildrenInlineStyle(lineageChildrenInlineOffset ?? LINEAGE_CHILDREN_INLINE_OFFSET)
     : undefined

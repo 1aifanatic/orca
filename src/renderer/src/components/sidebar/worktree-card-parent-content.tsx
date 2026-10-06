@@ -7,7 +7,7 @@ import { WorktreeCardDetailsHover } from './WorktreeCardMeta'
 import { WorktreeCardPortsDetails } from './WorktreeCardPorts'
 import type { WorktreeCardPresentation } from './worktree-card-presentation'
 import { WorktreeCardSecondaryRows } from './worktree-card-secondary-rows'
-import { WorktreeCardStatusSlot } from './WorktreeCardStatusSlot'
+import { WorktreeCardStatusSlot, WorktreeCardStatusSlotView } from './WorktreeCardStatusSlot'
 import type { WorktreeCardController } from './use-worktree-card-controller'
 
 export function WorktreeCardParentContent({
@@ -20,6 +20,7 @@ export function WorktreeCardParentContent({
   const {
     worktree,
     affiliateListMode,
+    quietStatusLane,
     newCardStyle,
     lineageChildren,
     showStatus,
@@ -134,22 +135,41 @@ export function WorktreeCardParentContent({
           className={cn(
             'flex shrink-0 justify-center',
             newCardStyle ? 'mr-1 w-5 items-center' : 'items-start pt-[2px]',
-            affiliateListMode && 'px-1'
+            // Why: a quiet lane stands in for the sidebar's own, so it keeps the sidebar's width.
+            affiliateListMode && !quietStatusLane && 'px-1'
           )}
           data-worktree-card-status-slot=""
         >
-          <WorktreeCardStatusSlot
-            worktreeId={worktree.id}
-            showStatus={showStatus}
-            showUnreadAction={showUnreadQuickAction}
-            isUnread={worktree.isUnread}
-            unreadTooltip={unreadTooltip}
-            onPointerDown={stopQuickActionPointerPropagation}
-            onToggleUnread={handleToggleUnreadQuick}
-            prDisplay={statusLaneReview}
-            newCardStyle={newCardStyle}
-            hasBranchIdentity={Boolean(branchIdentityDisplay)}
-          />
+          {quietStatusLane ? (
+            // Why: a quiet legacy lane keeps the 16px footprint of the sidebar's unread button.
+            <WorktreeCardStatusSlotView
+              status="inactive"
+              isSleeping={false}
+              showStatus={showStatus}
+              showUnreadAction={false}
+              isUnread={false}
+              unreadTooltip={unreadTooltip}
+              onPointerDown={stopQuickActionPointerPropagation}
+              onToggleUnread={handleToggleUnreadQuick}
+              prDisplay={statusLaneReview}
+              newCardStyle={newCardStyle}
+              hasBranchIdentity={Boolean(branchIdentityDisplay)}
+              className={newCardStyle ? undefined : 'size-4'}
+            />
+          ) : (
+            <WorktreeCardStatusSlot
+              worktreeId={worktree.id}
+              showStatus={showStatus}
+              showUnreadAction={showUnreadQuickAction}
+              isUnread={worktree.isUnread}
+              unreadTooltip={unreadTooltip}
+              onPointerDown={stopQuickActionPointerPropagation}
+              onToggleUnread={handleToggleUnreadQuick}
+              prDisplay={statusLaneReview}
+              newCardStyle={newCardStyle}
+              hasBranchIdentity={Boolean(branchIdentityDisplay)}
+            />
+          )}
         </div>
       ) : null}
 

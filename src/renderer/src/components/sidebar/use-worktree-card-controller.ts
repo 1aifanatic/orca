@@ -15,17 +15,15 @@ import { useIsSleepingWorktree } from './use-worktree-sleep-state'
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const { worktree, repo, readOnly } = props
   const foundation = useWorktreeCardFoundation({ worktree, repo })
-  // Why: the only read of `readOnly` past toReadOnlyCardProps; views see the outcome, never the flag.
-  // A read-only card loses its own controls and the live state that belongs to now, not the picture.
+  // Why: resolve read-only policy here so views share one quiet, passive presentation.
   const interactive = !readOnly
+  const quietStatusLane = readOnly
   const cardProps = useMemo(
     () => (readOnly ? getReadOnlyCardProperties(foundation.cardProps) : foundation.cardProps),
     [readOnly, foundation.cardProps]
   )
   const isSleeping = useIsSleepingWorktree(worktree.id) && !readOnly
   const deleteState = readOnly ? undefined : foundation.deleteState
-  // Why: the new card shows its review in the status lane, which a read-only card lacks.
-  const reviewInBadges = !foundation.newCardStyle || readOnly
   const review = useWorktreeCardReviewDetails({
     worktree,
     repo,
@@ -54,7 +52,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const showCli = cardProps.includes('cli')
   const showComment = cardProps.includes('comment')
   const showPorts = cardProps.includes('ports')
-  const shouldRefreshHostedReview = reviewInBadges ? showPR : showStatus
+  const shouldRefreshHostedReview = foundation.newCardStyle ? showStatus : showPR
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
   const hoverDetailsOpen = detailsHoverControl.hoverOpen
 
@@ -126,8 +124,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     worktree,
     repo,
     statusPrDisplay: props.statusPrDisplay,
-    reviewInBadges,
-    showCacheTimer: !readOnly,
+    showLiveState: !readOnly,
     showStatus,
     showIssue,
     showLinearIssue,
@@ -162,8 +159,8 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     cardProps,
     deleteState,
     interactive,
+    quietStatusLane,
     isSleeping,
-    reviewInBadges,
     ...review,
     ...linked,
     detailsHoverControl,
@@ -180,6 +177,10 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     ...activation,
     showDeleteQuickAction,
     ...workspaceActions,
+    // Why: a read-only card's children are always listed, so its chip names them without a toggle.
+    showLineageChildChip: readOnly
+      ? props.lineageChildCount > 0
+      : workspaceActions.showLineageChildChip,
     ...secondary
   }
 }

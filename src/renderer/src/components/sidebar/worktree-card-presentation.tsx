@@ -68,8 +68,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     canUnlinkReview,
     handleUnlinkReview,
     detailsHoverControl,
-    showDeleteQuickAction,
-    reviewInBadges
+    showDeleteQuickAction
   } = card
 
   // Why: pinned trees mix repos, so the repo icon shows regardless of groupBy's hideRepoBadge.
@@ -216,7 +215,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
             issue={metaIssue}
             linearIssue={metaLinearIssue}
             jiraIssue={metaJiraIssue}
-            review={reviewInBadges ? metaReview : null}
+            review={newCardStyle ? null : metaReview}
             comment={metaComment}
             automationProvenance={metaAutomationProvenance}
             cliProvenance={metaCliProvenance}

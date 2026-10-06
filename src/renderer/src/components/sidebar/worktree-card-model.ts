@@ -53,8 +53,7 @@ export type WorktreeCardProps = {
   onCardDragEnd?: (event: React.DragEvent<HTMLDivElement>) => void
   nativeDragEnabled?: boolean
   affiliateListMode?: boolean
-  /** A static picture of the card for another surface: nothing on it responds, it shows no live
-   *  state, and `agentRows` stands in for the live agent list. See `toReadOnlyCardProps`. */
+  /** Passive sidebar layout without live state; caller-owned `agentRows` remain interactive. */
   readOnly?: boolean
   agentRows?: React.ReactNode
   statusPrDisplay?: WorktreeCardPrDisplay | null
@@ -95,10 +94,7 @@ export type ResolvedWorktreeCardProps = Omit<WorktreeCardProps, DefaultedWorktre
   statusPrDisplay: WorktreeCardPrDisplay | null
 }
 
-/**
- * What a read-only card keeps of its props: only what it pictures. Every handler, selection and
- * active flag is dropped here, so a caller cannot make one live by passing it.
- */
+// Why: allowlist presentation props so caller-supplied handlers cannot make a read-only card act.
 export function toReadOnlyCardProps(props: ResolvedWorktreeCardProps): ResolvedWorktreeCardProps {
   return {
     worktree: props.worktree,
@@ -118,7 +114,7 @@ export function toReadOnlyCardProps(props: ResolvedWorktreeCardProps): ResolvedW
     revealHighlight: false,
     revealHighlightTone: 'default',
     nativeDragEnabled: false,
-    lineageChildCount: 0,
+    lineageChildCount: props.lineageChildCount,
     lineageCollapsed: false,
     isLineageDropTarget: false,
     affiliateListMode: true,
@@ -127,19 +123,13 @@ export function toReadOnlyCardProps(props: ResolvedWorktreeCardProps): ResolvedW
   }
 }
 
-// Why: these show the workspace as it is now, which misleads on a picture of another moment; and
-// with no sidebar around it, the host is always worth naming.
-const READ_ONLY_HIDDEN_CARD_PROPERTIES = new Set<WorktreeCardProperty>([
-  'status',
-  'ports',
-  'inline-agents'
-])
+// Why: recovery cards replace live ports and agents while keeping the sidebar's quiet status lane.
+const READ_ONLY_HIDDEN_CARD_PROPERTIES = new Set<WorktreeCardProperty>(['ports', 'inline-agents'])
 
 export function getReadOnlyCardProperties(
   cardProps: readonly WorktreeCardProperty[]
 ): WorktreeCardProperty[] {
-  const kept = cardProps.filter((property) => !READ_ONLY_HIDDEN_CARD_PROPERTIES.has(property))
-  return kept.includes('host') ? kept : [...kept, 'host']
+  return cardProps.filter((property) => !READ_ONLY_HIDDEN_CARD_PROPERTIES.has(property))
 }
 
 export const EMPTY_WORKSPACE_PORTS = []

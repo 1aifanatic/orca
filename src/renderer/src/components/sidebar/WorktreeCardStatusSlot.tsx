@@ -95,6 +95,16 @@ function getReviewStatusLabel(review: WorktreeCardPrDisplay): string {
 
 export function WorktreeCardStatusSlot({
   worktreeId,
+  ...props
+}: WorktreeCardStatusSlotProps): React.JSX.Element | null {
+  const status = useWorktreeActivityStatus(worktreeId)
+  const isSleeping = useIsSleepingWorktree(worktreeId)
+  return <WorktreeCardStatusSlotView status={status} isSleeping={isSleeping} {...props} />
+}
+
+export function WorktreeCardStatusSlotView({
+  status,
+  isSleeping,
   showStatus,
   showUnreadAction,
   isUnread,
@@ -106,9 +116,10 @@ export function WorktreeCardStatusSlot({
   hasBranchIdentity = false,
   branchIdentityLabel,
   className
-}: WorktreeCardStatusSlotProps): React.JSX.Element | null {
-  const status = useWorktreeActivityStatus(worktreeId)
-  const isSleeping = useIsSleepingWorktree(worktreeId)
+}: Omit<WorktreeCardStatusSlotProps, 'worktreeId'> & {
+  status: WorktreeStatus
+  isSleeping: boolean
+}): React.JSX.Element | null {
   const statusLabel = getWorktreeStatusLabel(status) || status
   // Why: sleep must stay distinct from awake completion; a sleeping workspace
   // never collapses into branch/PR, even when retained done rows keep its

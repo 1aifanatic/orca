@@ -7,6 +7,7 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorktreeCardProperty } from '../../../../shared/ui-chrome-types'
 import type { Worktree } from '../../../../shared/worktree/types'
+import type { WorktreeStatus } from '@/lib/worktree-status'
 import { issueCacheKey } from '@/store/github/cache-identity'
 
 const activateWorktreeFromSidebar = vi.hoisted(() => vi.fn())
@@ -41,6 +42,9 @@ const ALL_CARD_PROPERTIES: WorktreeCardProperty[] = [
 
 let settings: Partial<GlobalSettings> = {}
 let deleteStateByWorktreeId: Record<string, unknown> = {}
+let activityStatus: WorktreeStatus = 'working'
+let sleeping = true
+const onChatClick = vi.fn()
 
 vi.mock('@/store', () => ({
   useAppStore: (selector: (state: unknown) => unknown) =>
@@ -133,11 +137,11 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 }))
 
 vi.mock('./use-worktree-activity-status', () => ({
-  useWorktreeActivityStatus: () => 'working'
+  useWorktreeActivityStatus: () => activityStatus
 }))
 
 vi.mock('./use-worktree-sleep-state', () => ({
-  useIsSleepingWorktree: () => true
+  useIsSleepingWorktree: () => sleeping
 }))
 
 vi.mock('./CacheTimer', () => ({
@@ -164,7 +168,7 @@ vi.mock('./WorktreeContextMenu', () => ({
 import WorktreeCard from './WorktreeCard'
 
 const INTERACTIVE =
-  'button, a[href], input, textarea, select, [tabindex]:not([tabindex="-1"]), [role="button"], [draggable="true"]'
+  'button, a, input, textarea, select, [tabindex], [role="button"], [draggable="true"]'
 
 const CARD_STYLES: { name: string; settings: Partial<GlobalSettings> }[] = [
   { name: 'legacy', settings: { promptCacheTimerEnabled: true } },
@@ -213,6 +217,8 @@ describe('WorktreeCard read-only contract', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    activityStatus = 'working'
+    sleeping = true
     deleteStateByWorktreeId = {}
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -225,11 +231,11 @@ describe('WorktreeCard read-only contract', () => {
   })
 
   /** Every feature on and every handler passed, so only the card itself can keep it inert. */
-  function render(readOnly: boolean): HTMLElement {
+  function render(readOnly: boolean, overrides: Partial<Worktree> = {}): HTMLElement {
     act(() => {
       root.render(
         <WorktreeCard
-          worktree={worktree}
+          worktree={{ ...worktree, ...overrides }}
           repo={repo}
           isActive
           isActiveSurface
@@ -243,11 +249,14 @@ describe('WorktreeCard read-only contract', () => {
           flushSurface
           nativeDragEnabled
           lineageChildCount={2}
+          lineageCollapsed
           lineageChildren={<span>children</span>}
           readOnly={readOnly}
           agentRows={
             <div data-testid="caller-rows">
-              <button type="button">chat</button>
+              <button type="button" onClick={onChatClick}>
+                chat
+              </button>
             </div>
           }
           {...callbacks}
@@ -261,15 +270,45 @@ describe('WorktreeCard read-only contract', () => {
     return surface
   }
 
+  it.each([
+    ['branch', null, null],
+    ['GitHub review', 42, null],
+    ['GitLab review', null, 43]
+  ] as const)('%s: read-only uses the quiet sidebar glyph', (_, linkedPR, linkedGitLabMR) => {
+    settings = { experimentalNewWorktreeCardStyle: true }
+    const overrides = { linkedPR, linkedGitLabMR, isUnread: false }
+    render(true, overrides)
+    const readOnlyGlyph = container.querySelector('[data-worktree-card-status-slot] svg')?.outerHTML
+    expect(readOnlyGlyph).toBeDefined()
+    expect(liveState()).toEqual([])
+
+    activityStatus = 'inactive'
+    sleeping = false
+    render(false, overrides)
+    expect(container.querySelector('[data-worktree-card-status-slot] svg')?.outerHTML).toBe(
+      readOnlyGlyph
+    )
+  })
+
   function controlsOutsideCallerRows(): string[] {
     return [...container.querySelectorAll(INTERACTIVE)]
       .filter((element) => !element.closest('[data-testid="caller-rows"]'))
       .map((element) => element.getAttribute('aria-label') ?? element.outerHTML.slice(0, 80))
   }
 
+  // Why: the fixture is working, asleep and unread, so a lane drawn from live state shows it.
   function liveState(): string[] {
+    const lane = container.querySelector('[data-worktree-card-status-slot]')
+    const title = container.querySelector('[data-worktree-title-inline-rename]')
     return [
-      container.querySelector('[data-worktree-card-status-slot]') && 'status',
+      /Working|Failed|Done/.test(lane?.textContent ?? '') && 'live status',
+      lane?.querySelector(
+        '[data-agent-working-spinner], .animate-spin, .bg-red-500, .bg-emerald-500'
+      ) && 'live glyph',
+      lane?.querySelector('.lucide-moon') && 'sleep glyph',
+      lane?.querySelector('.lucide-bell, .text-amber-500, [data-worktree-unread-alert]') &&
+        'unread glyph',
+      title?.className.includes('font-semibold') && 'unread title',
       container.querySelector('[data-worktree-sleeping-dim]') && 'sleep dim',
       container.querySelector('[data-testid="cache-timer"]') && 'cache countdown',
       container.textContent?.includes('Queued for deletion') && 'delete overlay'
@@ -281,7 +320,8 @@ describe('WorktreeCard read-only contract', () => {
       settings = style.settings
       render(false)
       expect(controlsOutsideCallerRows().length).toBeGreaterThan(0)
-      expect(liveState()).toContain('status')
+      expect(liveState()).toContain('live status')
+      expect(liveState()).toContain('unread title')
       deleteStateByWorktreeId = { [worktree.id]: { isDeleting: true, phase: 'queued' } }
       render(false)
       expect(liveState()).toContain('delete overlay')
@@ -301,13 +341,31 @@ describe('WorktreeCard read-only contract', () => {
 
         expect(controlsOutsideCallerRows()).toEqual([])
         expect(liveState()).toEqual([])
+        expect(container.querySelector('[data-worktree-card-status-slot]')).not.toBeNull()
+        expect(container.textContent).toContain('2 children')
+        expect(container.querySelector('.-rotate-90')).toBeNull()
         expect(container.querySelector('[data-testid="context-menu-wrapper"]')).toBeNull()
         expect(surface.getAttribute('data-worktree-card-active')).toBeNull()
         expect(surface.getAttribute('data-worktree-card-selected')).toBeNull()
+        expect(surface.getAttribute('data-worktree-lineage-drop-target')).toBeNull()
+        expect(surface.className).not.toContain('reveal-highlight')
         expect(activateWorktreeFromSidebar).not.toHaveBeenCalled()
         for (const callback of Object.values(callbacks)) {
           expect(callback).not.toHaveBeenCalled()
         }
+        const chat = container.querySelector('[data-testid="caller-rows"] button')
+        act(() => chat?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+        expect(onChatClick).toHaveBeenCalledTimes(deleting ? 2 : 1)
+      }
+    })
+
+    it(`${style.name} card: activity changes never enter the quiet status lane`, () => {
+      settings = style.settings
+      for (const status of ['working', 'failed', 'done', 'inactive'] as const) {
+        activityStatus = status
+        render(true)
+        expect(liveState()).toEqual([])
+        expect(controlsOutsideCallerRows()).toEqual([])
       }
     })
   }

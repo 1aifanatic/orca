@@ -20,8 +20,7 @@ export function useWorktreeCardSecondaryDetails({
   worktree,
   repo,
   statusPrDisplay,
-  reviewInBadges,
-  showCacheTimer,
+  showLiveState,
   showStatus,
   showIssue,
   showLinearIssue,
@@ -65,8 +64,7 @@ export function useWorktreeCardSecondaryDetails({
     ReviewDetails,
     'prDisplay' | 'linkedGitLabMR' | 'linkedBitbucketPR' | 'linkedAzureDevOpsPR' | 'linkedGiteaPR'
   > & {
-    reviewInBadges: boolean
-    showCacheTimer: boolean
+    showLiveState: boolean
     showStatus: boolean
     showIssue: boolean
     showLinearIssue: boolean
@@ -78,7 +76,7 @@ export function useWorktreeCardSecondaryDetails({
     showPorts: boolean
   }) {
   // Why: unread lives in the left status lane, so the Status toggle owns both the dot/PR slot and unread emphasis.
-  const showUnreadEmphasis = showStatus && worktree.isUnread
+  const showUnreadEmphasis = showLiveState && showStatus && worktree.isUnread
   const hoverIssue = issueDisplay
   const hoverLinearIssue = linearIssueDisplay
   const hoverJiraIssue = jiraIssueDisplay
@@ -101,7 +99,7 @@ export function useWorktreeCardSecondaryDetails({
     showInlineAgentList &&
     agentActivityDisplayMode === 'compact' &&
     compactInlineAgentRows.length > 0
-  const showAggregateCacheTimer = showCacheTimer && !compactCards && !compactInlineAgentRowsVisible
+  const showAggregateCacheTimer = showLiveState && !compactCards && !compactInlineAgentRowsVisible
   const handleOpenGitHubIssueInOrca = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
@@ -235,7 +233,7 @@ export function useWorktreeCardSecondaryDetails({
     issue: metaIssue,
     linearIssue: metaLinearIssue,
     jiraIssue: metaJiraIssue,
-    review: reviewInBadges ? metaReview : null,
+    review: newCardStyle ? null : metaReview,
     comment: metaComment,
     automationProvenance: metaAutomationProvenance,
     cliProvenance: metaCliProvenance
