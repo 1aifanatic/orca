@@ -421,10 +421,12 @@ describe('notes sent to a chat already open', () => {
     const cleared = draftWhenNotesClear(target.sessionId)
     const view = openChat(target.sessionId, null)
     view.result.current.stop('stop-1')
-    await Promise.resolve()
 
-    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(
-      NOTES
+    // Back in the composer once the drafts' startup load is in.
+    await vi.waitFor(() =>
+      expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(target.sessionId))).toBe(
+        NOTES
+      )
     )
     // The addition is journaled at once, so it is durable: the message leaves and its notes are
     // cleared, never before the draft holds the text.
