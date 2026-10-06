@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalMessageItem } from '../../shared/agent-session-journal-types'
 import { readAgentSessionFailureFact } from '../../shared/agent-session-failure'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
@@ -11,6 +11,7 @@ import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wir
 import { createDeferredStructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
 import { testEventSinkLogging } from '../native-chat/agent-session-wire/structured-agent-session-logger-test-support'
 import type { AcpScriptedAgent } from './acp-scripted-agent.test-support'
+import { ACP_REOPEN_FAILED } from './acp-session-reopen-failure'
 import {
   GROK_CONFIG_OPTIONS,
   openAcpAdapterRig,
@@ -336,6 +337,28 @@ describe('reattaching a Grok chat the journal holds', () => {
     expect(failure).toBeInstanceOf(AgentSessionAcquisitionRefusal)
     expect(failure).toMatchObject({ reason: 'notSignedIn' })
     expect(rig.sent('session/new')).toEqual([])
+  })
+
+  it('fails a start closed while the agent reopens rather than opening a new session', async () => {
+    const start = new AbortController()
+    const logger = { warn: vi.fn(), error: vi.fn() }
+    const rig = await openAcpAdapterRig({
+      launch: { resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: false } },
+      initialize: RESUMES,
+      deps: { logger },
+      script: (agent) =>
+        agent.on('session/load', (frame) => {
+          start.abort()
+          agent.fail(frame, -32603, 'session file is corrupt')
+        })
+    })
+    expect(
+      await rig.acquire({ signal: start.signal }).catch((error: unknown) => error)
+    ).toBeInstanceOf(Error)
+    expect(rig.sent('session/new')).toEqual([])
+    expect(await notRestoredRows(rig)).toEqual([])
+    // Nothing was replaced, so nothing says it was.
+    expect(logger.warn).not.toHaveBeenCalledWith(ACP_REOPEN_FAILED, expect.anything())
   })
 
   it('keeps the slash commands Grok reports while it loads', async () => {
