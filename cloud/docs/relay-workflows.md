@@ -229,8 +229,8 @@ rolled to the director's image. That roll is a same-cap wave that enters and lea
 migration-only, so it moves nobody. C34 stays in the same-cap migration-only list until its promotion
 succeeds, because a same-cap job reads a cell's class from that list, not from the selector. It
 then moves to the general list and the fleet pool list together, as its own reviewed change,
-before any same-cap wave names C34 again. Until then, do not run a same-cap wave on C34. Do not
-name it in the multi-target `promote-general-cell` or `retire-migration-cell` modes, which accept
+before any same-cap wave names C34 again. Between promotion and that change, do not run a same-cap
+wave on C34; a rollback there would demote it. Do not name it in the multi-target `promote-general-cell` or `retire-migration-cell` modes, which accept
 any migration-only cell. It is a declared rehome source.
 Rollback returns
 Asia cells to migration-only; it does not destroy the network or use
