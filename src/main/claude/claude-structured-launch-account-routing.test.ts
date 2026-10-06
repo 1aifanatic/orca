@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve as resolvePath } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
@@ -32,7 +32,7 @@ it('launches each acquisition under the current selection, not the account it wa
     getSettings: () => settings,
     dataRoot: root,
     userHome: join(root, 'personal'),
-    env: { CLAUDE_CONFIG_DIR: '/user/own' }
+    env: { CLAUDE_CONFIG_DIR: resolvePath('/user/own') }
   })
   installClaudeProfileRouter(router)
   const record = {
@@ -70,7 +70,7 @@ it('launches each acquisition under the current selection, not the account it wa
   })
 
   settings.activeClaudeManagedAccountId = null
-  expect((await resolve({ identity })).claudeConfigDir).toBe('/user/own')
+  expect((await resolve({ identity })).claudeConfigDir).toBe(resolvePath('/user/own'))
 })
 
 function routedResumeFixture() {
