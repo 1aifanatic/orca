@@ -40,7 +40,9 @@ export function annotateJavascriptParityFiles(root, files) {
         readFileSync(join(root, file.path), 'utf8').replaceAll('\r\n', '\n')
       ])
   )
-  const normalizeUnique = createAssetReferenceNormalizer(replacements)
+  const normalizeIdentity = createAssetReferenceNormalizer(
+    new Map([...names].flatMap(([stem, entries]) => [...entries].map((name) => [name, stem])))
+  )
   const ambiguous = []
   for (const [stem, entries] of names) {
     if (entries.size < 2) {
@@ -48,8 +50,9 @@ export function annotateJavascriptParityFiles(root, files) {
     }
     for (const name of entries) {
       const file = files.find((file) => ASSET_PATH.test(file.path) && basename(file.path) === name)
+      // Dependency hashes identify the module; final checks preserve every resolved reference.
       const signature = createHash('sha256')
-        .update(normalizeUnique(contents.get(file.path)))
+        .update(normalizeIdentity(contents.get(file.path)))
         .digest('hex')
       const extension = stem.slice(stem.lastIndexOf('.'))
       ambiguous.push([name, `${stem.slice(0, -extension.length)}-${signature}${extension}`])

@@ -115,6 +115,26 @@ it('matches duplicate asset stems by content while rejecting a reference to the 
   expect(compareJavascriptParityFiles(before, wrong)).toEqual(['renderer/index.html'])
 })
 
+it('preserves module identity across chained and cyclic dependencies with the same stem', () => {
+  const before = inventory({
+    'renderer/assets/App-AAAAAAAA.js': 'desktop();import "./App-BBBBBBBB.js"',
+    'renderer/assets/App-BBBBBBBB.js': 'web();import "./App-AAAAAAAA.js"',
+    'renderer/index.html': '<script src="assets/App-AAAAAAAA.js"></script>'
+  })
+  const after = inventory({
+    'renderer/assets/App-CCCCCCCC.js': 'web();import "./App-DDDDDDDD.js"',
+    'renderer/assets/App-DDDDDDDD.js': 'desktop();import "./App-CCCCCCCC.js"',
+    'renderer/index.html': '<script src="assets/App-DDDDDDDD.js"></script>'
+  })
+  expect(compareJavascriptParityFiles(before, after)).toEqual([])
+  const changed = inventory({
+    'renderer/assets/App-CCCCCCCC.js': 'web();import "./App-DDDDDDDD.js"',
+    'renderer/assets/App-DDDDDDDD.js': 'desktop();import "./App-DDDDDDDD.js"',
+    'renderer/index.html': '<script src="assets/App-DDDDDDDD.js"></script>'
+  })
+  expect(compareJavascriptParityFiles(before, changed)).not.toEqual([])
+})
+
 it('normalizes generated text and SVG line endings without changing escaped string values', () => {
   const before = inventory({
     'renderer/assets/icon-AAAAAAAA.svg': '<svg>\r\n</svg>',
