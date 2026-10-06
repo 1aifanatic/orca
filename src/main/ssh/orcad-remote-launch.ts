@@ -13,7 +13,14 @@
  * still owns a running service.
  */
 import { shellEscape } from './ssh-connection-utils'
-import { isWindowsRemoteHost, joinRemotePath, type RemoteHostPlatform } from './ssh-remote-platform'
+import {
+  isWindowsRemoteHost,
+  joinRemotePath,
+  remoteBasename,
+  remoteDirname,
+  type RemoteHostPlatform
+} from './ssh-remote-platform'
+import { RELAY_REMOTE_DIR } from './relay-protocol'
 import {
   assertPosixOrcadHost as assertPosixHost,
   ORCAD_LOG_FILENAME,
@@ -83,15 +90,28 @@ export function orcadLaunchCommand(host: RemoteHostPlatform, spec: OrcadLaunchSp
   const log = shellEscape(joinRemotePath(host, spec.remoteInstallDir, ORCAD_LOG_FILENAME))
   const pidFile = shellEscape(joinRemotePath(host, spec.remoteInstallDir, ORCAD_PID_FILENAME))
   const entry = shellEscape(joinRemotePath(host, spec.remoteInstallDir, 'orcad.js'))
+  const baseDir = remoteDirname(spec.remoteInstallDir.replace(/\/+$/u, ''), host)
+  // Only `~/.orca-remote` itself; never tighten an unrelated parent a custom slot path names.
+  const privateDirs = [
+    ...(remoteBasename(baseDir, host) === RELAY_REMOTE_DIR ? [baseDir] : []),
+    spec.remoteInstallDir
+  ]
   return [
+    // Why first: the readiness file carries the pairing offer's device token, so every file this
+    // launch creates must be owner-only from birth, not only the ones after the exec.
+    'umask 077 &&',
+    // Best effort: directories and files an earlier build left 0755/0644 keep their old modes.
+    `{ chmod 700 ${privateDirs.map(shellEscape).join(' ')} 2>/dev/null || :; } &&`,
     `cd ${dir} &&`,
     `${selectOrcadSlotRuntimeCommand(host, spec.remoteInstallDir, spec.nodePath)} &&`,
     // Why truncate: a re-launch into a dir that already holds a previous readiness line would
     // otherwise let the deploy activate on the OLD process's health payload.
     `: > ${readiness} &&`,
+    // Required, not best effort: a truncating redirect keeps an earlier build's 0644 mode.
+    `chmod 600 ${readiness} &&`,
+    `{ chmod 600 ${pidFile} ${log} 2>/dev/null || :; } &&`,
     // A stop request the previous process never consumed must not stop this one.
     `rm -f ${shellEscape(joinRemotePath(host, spec.remoteInstallDir, ORCAD_STOP_REQUEST_FILENAME))} &&`,
-    'umask 077 &&',
     `ORCA_VERSION=${shellEscape(spec.fullVersion)}`,
     `ORCA_USER_DATA=${shellEscape(spec.userDataDir)}`,
     ...orcadManagedLaunchEnv(spec).map(([name, value]) => `${name}=${shellEscape(value)}`),

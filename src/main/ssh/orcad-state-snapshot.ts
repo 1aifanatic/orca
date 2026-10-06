@@ -105,7 +105,8 @@ export function captureOrcadStateSnapshotCommand(
     `members=;`,
     memberTests,
     'if [ -z "$members" ]; then echo EMPTY; else',
-    `mkdir -p ${dir} && umask 077 &&`,
+    // Umask first so the snapshot dir, not just the archive, is owner-only.
+    `umask 077 && mkdir -p ${dir} &&`,
     // Why a temp name then mv: a deploy killed mid-tar must not leave a truncated archive
     // that a later rollback would happily restore.
     `tar -C ${root} -cf ${archive}.partial $members && mv ${archive}.partial ${archive} &&`,
