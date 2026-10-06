@@ -35,7 +35,9 @@ export class AcpStructuredPrompts {
   constructor(
     private readonly lane: () => AcpStructuredLane | null,
     /** Whether a request arriving now belongs to a turn that may still ask the person. */
-    private readonly admits: () => boolean
+    private readonly admits: () => boolean,
+    /** Whether its turn may still show what a request answered at once carried. */
+    private readonly shows: () => boolean
   ) {}
 
   get size(): number {
@@ -51,14 +53,14 @@ export class AcpStructuredPrompts {
     const translated = lane.translator.request(method, params, context.id)
     if (translated.settled) {
       // Answered at once; what it carried shows only while its turn may still show anything.
-      if (this.admits()) {
+      if (this.shows()) {
         lane.apply(translated.events)
       }
       return Promise.resolve(translated.settled.reply)
     }
     if (translated.presentation && !this.admits()) {
-      // Its turn is being stopped or steered, or none is open: the agent hears its own cancelled
-      // reply and no card opens.
+      // No prompt of Orca's runs, or a Stop or steer is cutting it short: the agent hears its own
+      // cancelled reply and no card opens.
       return Promise.resolve(translated.presentation.reply(null))
     }
     lane.apply(translated.events)
