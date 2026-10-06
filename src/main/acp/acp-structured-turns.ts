@@ -66,11 +66,37 @@ export class AcpStructuredTurns {
   private readonly unsettled = new Set<string>()
   private readonly idleWaiters = new Set<() => void>()
   private ended = false
+  /** A Stop reached this session; it ends with the process. */
+  private stopping = false
 
   constructor(private readonly deps: AcpStructuredTurnsDeps) {}
 
   get running(): boolean {
     return this.active !== null
+  }
+
+  /** Whether an agent request may reach the person: Orca's prompt runs and nobody is cutting it
+   *  short (no steer's cancel, no Stop). */
+  get acceptsRequests(): boolean {
+    return (
+      !this.stopping && this.active !== null && this.steerCancelled !== this.active && !this.ended
+    )
+  }
+
+  /** Steers wait behind the running prompt's cancel. */
+  get holdsSteers(): boolean {
+    return this.steers.length > 0
+  }
+
+  /** Whether a Stop reached this session. */
+  get stopped(): boolean {
+    return this.stopping
+  }
+
+  /** A Stop: held steers never reach the agent, and nothing it asks from now on is shown. */
+  stop(): boolean {
+    this.stopping = true
+    return this.withdrawSteers()
   }
 
   /** Resolves once no prompt of Orca's is running. */
@@ -101,8 +127,7 @@ export class AcpStructuredTurns {
     }
   }
 
-  /** A Stop: held steers never reach the agent. */
-  withdrawSteers(): boolean {
+  private withdrawSteers(): boolean {
     const withdrawn = this.steers.splice(0)
     for (const send of withdrawn) {
       this.reject(send.clientMessageId, agentSessionFailureFact('cancelled'))

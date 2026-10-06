@@ -96,7 +96,15 @@ export async function acquireAcpStructuredSession(input: {
     reattaching: false
   }
   const options = new AcpStructuredOptions()
-  const prompts = new AcpStructuredPrompts(() => slot.lane)
+  // Orca's own prompt may ask; so may a turn the agent began itself, for a question it cannot answer
+  // alone. Nothing may while a Stop or steer cuts its turn short, or when no turn is open.
+  const prompts = new AcpStructuredPrompts(
+    () => slot.lane,
+    () =>
+      session !== null &&
+      (session.turns.acceptsRequests ||
+        (!session.turns.running && !session.turns.stopped && session.lane.openTurnId !== null))
+  )
   const early: (() => void)[] = []
   const whenLane = (deliver: () => void): void => {
     if (slot.lane) {
@@ -119,8 +127,9 @@ export async function acquireAcpStructuredSession(input: {
     {
       clientInfo: { name: 'orca', version: '1' },
       onPermission: (request, context) => {
-        if (!session?.turns.running) {
-          // No prompt of Orca's runs (a turn the agent began itself): nobody is there to ask.
+        if (!session?.turns.acceptsRequests) {
+          // No prompt of Orca's runs (or a turn the agent began itself), or a Stop or steer is
+          // cutting it short: nobody is there to ask.
           return { outcome: { outcome: 'cancelled' } }
         }
         if (launch.fullAccess) {

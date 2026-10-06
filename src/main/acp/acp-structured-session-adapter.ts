@@ -164,11 +164,12 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (input.turnId !== undefined && liveTurnId !== null && input.turnId !== liveTurnId) {
       return { cancelled: false, refusal: { turnNotRunning: true } }
     }
-    const withdrew = session.turns.withdrawSteers()
+    if (!session.turns.running && session.lane.openTurnId === null && !session.turns.holdsSteers) {
+      return { cancelled: false, refusal: { turnNotRunning: true } }
+    }
+    session.turns.stop()
     if (!session.turns.running && session.lane.openTurnId === null) {
-      return withdrew
-        ? { cancelled: true }
-        : { cancelled: false, refusal: { turnNotRunning: true } }
+      return { cancelled: true }
     }
     // The agent hears its own cancelled reply to what it asked, then may end its turn its own way;
     // the host ends the process once that lands or the grace runs out (`awaitStoppedRequestEnd`),

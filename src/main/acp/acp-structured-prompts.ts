@@ -32,7 +32,11 @@ type OpenRequest = {
 export class AcpStructuredPrompts {
   private readonly open = new Map<string, OpenRequest>()
 
-  constructor(private readonly lane: () => AcpStructuredLane | null) {}
+  constructor(
+    private readonly lane: () => AcpStructuredLane | null,
+    /** Whether a request arriving now belongs to a turn that may still ask the person. */
+    private readonly admits: () => boolean
+  ) {}
 
   get size(): number {
     return this.open.size
@@ -45,6 +49,11 @@ export class AcpStructuredPrompts {
       throw new AcpRpcError(-32603, 'ACP request arrived with no session to show it')
     }
     const translated = lane.translator.request(method, params, context.id)
+    if (translated.presentation && !this.admits()) {
+      // Its turn is being stopped or steered, or none is open: the agent hears its own cancelled
+      // reply and no card opens.
+      return Promise.resolve(translated.presentation.reply(null))
+    }
     lane.apply(translated.events)
     const opened = translated.events.find((event) => event.type === 'request.open')
     if (!translated.presentation || opened?.type !== 'request.open') {
