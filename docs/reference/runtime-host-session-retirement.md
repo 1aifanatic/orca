@@ -7,7 +7,9 @@ Local, direct SSH, and historical runtime namespace aliases remain separate auth
 Before removing active state, Orca durably writes a private recovery file under the active profile's
 `retired-runtime-sessions/` directory, beside `profile-state.db`. Each version-1 JSON file records
 the execution host, the exact session (including unsaved editor text and disk signatures), and
-available referenced terminal scrollback. Missing pre-existing snapshots are listed explicitly.
+available referenced terminal scrollback, including the full stored buffer rather than the smaller
+replay window. Missing, unreadable, or oversized legacy snapshots are listed explicitly and their
+source files are kept. Only successfully archived, unshared profile snapshots are deleted.
 Archives use the profile's secure file writer and are limited to 64 MiB. An archive failure keeps
 the active session and permits ordinary saves; a failed database commit restores the partition.
 

@@ -9,6 +9,7 @@ import { ProfileStateSqliteAuthority } from '../profile-state/profile-state-sqli
 import { Store } from './store'
 import {
   getProfileTerminalScrollbackSnapshotRoot,
+  readTerminalScrollbackSnapshotSync,
   writeTerminalScrollbackSnapshotSync
 } from '../../terminal-scrollback-snapshots'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
@@ -281,4 +282,100 @@ it('keeps identical late drafts from different retired hosts in separate archive
     .map((file) => JSON.parse(readFileSync(join(archiveRoot, file), 'utf8')))
     .filter((archive) => archive.kind === 'late-editor-draft')
   expect(late.map((archive) => archive.hostId).sort()).toEqual([HOST, otherHost].sort())
+})
+
+function draftWithScrollback(tabId: string, ref: string): WorkspaceSessionState {
+  return {
+    ...draft(),
+    tabsByWorktree: {
+      [WORKSPACE]: [
+        {
+          id: tabId,
+          worktreeId: WORKSPACE,
+          ptyId: null,
+          title: 'Terminal',
+          customTitle: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }
+      ]
+    },
+    terminalLayoutsByTabId: {
+      [tabId]: {
+        root: { type: 'leaf', leafId: LEAF },
+        activeLeafId: LEAF,
+        expandedLeafId: null,
+        scrollbackRefsByLeafId: { [LEAF]: ref }
+      }
+    }
+  }
+}
+
+it('archives stored scrollback beyond the smaller replay window without losing its prefix', async () => {
+  const { store, dataFile, archiveRoot } = fixture()
+  const buffer = `original prefix\n${'x'.repeat(1024 * 1024)}original tail`
+  const ref = writeTerminalScrollbackSnapshotSync({
+    tabId: 'large',
+    leafId: LEAF,
+    buffer,
+    storage: { snapshotRoot: getProfileTerminalScrollbackSnapshotRoot(dataFile) }
+  })
+  if (!ref) {
+    throw new Error('Missing snapshot')
+  }
+  store.setWorkspaceSession(draftWithScrollback('large', ref), HOST)
+  await store.removeRuntimeWorkspaceSessionPartition(HOST)
+  const file = readdirSync(archiveRoot)[0]!
+  const archive = JSON.parse(readFileSync(join(archiveRoot, file), 'utf8'))
+  expect(archive.snapshots[ref]?.length).toBe(buffer.length)
+  expect(archive.snapshots[ref]?.startsWith('original prefix\n')).toBe(true)
+  expect(archive.snapshots[ref] === buffer).toBe(true)
+})
+
+it('keeps an oversized legacy snapshot when it cannot be fully archived', async () => {
+  const { store, dataFile, archiveRoot } = fixture()
+  const snapshotRoot = getProfileTerminalScrollbackSnapshotRoot(dataFile)
+  const ref = writeTerminalScrollbackSnapshotSync({
+    tabId: 'oversized',
+    leafId: LEAF,
+    buffer: 'original',
+    storage: { snapshotRoot }
+  })
+  if (!ref) {
+    throw new Error('Missing snapshot')
+  }
+  const rawPath = join(snapshotRoot, `${ref}.bin`)
+  const original = 'x'.repeat(5 * 1024 * 1024 + 1)
+  writeFileSync(rawPath, original)
+  store.setWorkspaceSession(draftWithScrollback('oversized', ref), HOST)
+  await store.removeRuntimeWorkspaceSessionPartition(HOST)
+  const archive = JSON.parse(readFileSync(join(archiveRoot, readdirSync(archiveRoot)[0]!), 'utf8'))
+  expect(archive.missingSnapshots).toContain(ref)
+  expect(readFileSync(rawPath, 'utf8')).toBe(original)
+})
+
+it('does not substitute a stale fallback for an oversized primary archive', () => {
+  const { dir, dataFile } = fixture()
+  const snapshotRoot = getProfileTerminalScrollbackSnapshotRoot(dataFile)
+  const fallbackSnapshotRoot = join(dir, 'fallback')
+  const ref = writeTerminalScrollbackSnapshotSync({
+    tabId: 'fallback',
+    leafId: LEAF,
+    buffer: 'primary',
+    storage: { snapshotRoot }
+  })
+  if (!ref) {
+    throw new Error('Missing snapshot')
+  }
+  mkdirSync(fallbackSnapshotRoot, { recursive: true })
+  writeFileSync(join(fallbackSnapshotRoot, `${ref}.bin`), 'stale fallback')
+  writeFileSync(join(snapshotRoot, `${ref}.bin`), 'x'.repeat(5 * 1024 * 1024 + 1))
+  expect(
+    readTerminalScrollbackSnapshotSync(
+      ref,
+      { snapshotRoot, fallbackSnapshotRoot },
+      { purpose: 'archive' }
+    ) === null
+  ).toBe(true)
 })
