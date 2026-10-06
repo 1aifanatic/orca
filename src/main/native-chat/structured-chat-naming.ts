@@ -1,9 +1,7 @@
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
-import {
-  clampConversationNameFirstPrompt,
-  deriveConversationNamePlaceholder
-} from '../../shared/conversation-name-generation'
+import { clampConversationNameFirstPrompt } from '../../shared/conversation-name-generation'
+import { hasStructuredChatPromptText } from '../../shared/structured-agent-session-first-prompt'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import {
@@ -17,7 +15,8 @@ export type StructuredChatNamingDeps = {
     'getRecord' | 'compareAndSetConversationName'
   > | null
   getSettings: () => Pick<GlobalSettings, 'nativeChatAutoName'>
-  readFirstPrompt: (sessionId: string) => Promise<string>
+  readFirstPrompt: (sessionId: string, hostStartedAt: number) => Promise<string>
+  now?: () => number
   hasOpenDispatch: (record: AgentSessionRecord) => boolean
   generate: (record: AgentSessionRecord, firstPrompt: string) => Promise<string | null>
   onNamed: (workspaceId: string, sessionId: string) => void
@@ -25,10 +24,11 @@ export type StructuredChatNamingDeps = {
 }
 
 export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps) {
-  const inFlight = new Set<string>()
+  const attempted = new Set<string>()
+  const hostStartedAt = (deps.now ?? Date.now)()
   const logger = neverThrowingStructuredAgentSessionLogger(deps.logger)
   const warn = (sessionId: string, error: unknown) =>
-    logger.warn('Chat name generation failed; keeping its first-message title', {
+    logger.warn('Chat name generation failed', {
       scope: 'conversation-name',
       sessionId,
       error
@@ -52,48 +52,31 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     ) {
       return
     }
-    let prompt: string
-    try {
-      prompt = await deps.readFirstPrompt(summary.sessionId)
-    } catch (error) {
-      warn(summary.sessionId, error)
-      prompt = summary.latestPrompt
-    }
-    const firstPrompt = clampConversationNameFirstPrompt(prompt)
-    const placeholder = deriveConversationNamePlaceholder(firstPrompt)
-    if (!placeholder) {
+    const firstPrompt = clampConversationNameFirstPrompt(
+      await deps.readFirstPrompt(summary.sessionId, hostStartedAt)
+    )
+    if (
+      !hasStructuredChatPromptText(firstPrompt) ||
+      store.getRecord(summary.sessionId)?.conversationName !== undefined ||
+      deps.getSettings().nativeChatAutoName === false
+    ) {
       return
     }
-    // The durable first-message title settles the attempt, including a failure or restart.
-    const seeded = await store.compareAndSetConversationName(summary.sessionId, placeholder, null)
-    if (!seeded) {
-      return
-    }
-    refresh(seeded)
-    if (deps.getSettings().nativeChatAutoName === false) {
-      return
-    }
-    const generated = await deps.generate(seeded, firstPrompt)
+    const generated = await deps.generate(record, firstPrompt)
     if (!generated) {
       return
     }
-    const named = await store.compareAndSetConversationName(
-      summary.sessionId,
-      generated,
-      seeded.conversationName ?? null
-    )
+    const named = await store.compareAndSetConversationName(summary.sessionId, generated, null)
     if (named) {
       refresh(named)
     }
   }
 
   return (summary: AgentSessionStatusSummary, options: { replay: boolean }): void => {
-    if (options.replay || summary.status !== 'working' || inFlight.has(summary.sessionId)) {
+    if (options.replay || summary.status !== 'working' || attempted.has(summary.sessionId)) {
       return
     }
-    inFlight.add(summary.sessionId)
-    void name(summary)
-      .catch((error: unknown) => warn(summary.sessionId, error))
-      .finally(() => inFlight.delete(summary.sessionId))
+    attempted.add(summary.sessionId)
+    void name(summary).catch((error: unknown) => warn(summary.sessionId, error))
   }
 }

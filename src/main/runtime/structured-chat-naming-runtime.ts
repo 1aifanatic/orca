@@ -4,7 +4,7 @@ import type { CommitMessageAgentEnvironmentResolvers } from '../text-generation/
 import type { StructuredChatNamingDeps } from '../native-chat/structured-chat-naming'
 import type { StructuredAgentSessionLogger } from '../native-chat/agent-session-wire/structured-agent-session-logger'
 import { getStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import { firstStructuredAgentSessionPrompt } from '../../shared/structured-agent-session-first-prompt'
+import { firstStructuredChatNamingPrompt } from '../../shared/structured-chat-naming-eligibility'
 import { LOCAL_COMMIT_MESSAGE_HOST_KEY } from '../../shared/commit-message-host-key'
 import {
   generateConversationNameFromContext,
@@ -29,10 +29,10 @@ export function structuredChatNamingDeps(
   return {
     getStore: () => getStructuredAgentSessionHost()?.deps.store ?? null,
     getSettings: () => getStore().getSettings(),
-    readFirstPrompt: async (sessionId) => {
+    readFirstPrompt: async (sessionId, hostStartedAt) => {
       const host = getStructuredAgentSessionHost()
       return host
-        ? firstStructuredAgentSessionPrompt((await host.journalSnapshot(sessionId)).items)
+        ? firstStructuredChatNamingPrompt(await host.journalSnapshot(sessionId), hostStartedAt)
         : ''
     },
     hasOpenDispatch: runtime.hasOpenDispatch,
