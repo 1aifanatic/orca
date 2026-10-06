@@ -12,8 +12,11 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import {
   createStructuredAgentSessionOutboxEntry,
+  stageStructuredAgentSessionOutboxEntryForSend,
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
+import { disposeStructuredAgentSessionSendResult } from '../../../../shared/structured-agent-session-send-disposition'
+import type { AgentSessionWireRefusal } from '../../../../shared/agent-session-wire'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn<(target: unknown, method: string, params: unknown) => Promise<unknown>>(
@@ -99,11 +102,30 @@ function entry(
   }
 }
 
-const REFUSED_AS_CLEARED = {
-  kind: 'refused',
+const CLEARED_REFUSAL: AgentSessionWireRefusal = {
   code: 'agent_session_operation_invalid',
-  details: { reason: 'conversationCleared' }
-} as const
+  details: { reason: 'conversationCleared' },
+  message: 'This conversation has been cleared. Use the current conversation.'
+}
+
+/** What the outbox saves when a send's own answer refuses it, through the real disposition:
+ *  `attempts` 1 is a first attempt; 2 is a resend of one whose first answer was lost. */
+function refusedSend(
+  id: string,
+  text: string,
+  refusal: AgentSessionWireRefusal,
+  attempts: 1 | 2 = 1
+) {
+  const sent = stageStructuredAgentSessionOutboxEntryForSend(entry(id, text), 5)
+  const asked = attempts === 1 ? entry(id, text) : { ...sent, state: 'queued' as const }
+  const disposition = disposeStructuredAgentSessionSendResult({
+    entries: [attempts === 1 ? sent : stageStructuredAgentSessionOutboxEntryForSend(asked, 9)],
+    entry: asked,
+    result: { ok: false, refusal },
+    createOperationId: () => `${id}-again`
+  })
+  return disposition.entries[0]!
+}
 
 describe('the /clear the composer sent', () => {
   it('never starts the new chat, when the tab moves before the reply', async () => {
@@ -188,11 +210,7 @@ describe('a draft saved before the saved drafts finished loading', () => {
 describe('messages this window held for the chat a /clear replaced', () => {
   it('come back in order when proven never recorded, said once, by the right cause', async () => {
     commitStructuredAgentSessionOutbox('old', [
-      entry('m1', 'refused as the clear ran', {
-        state: 'rejected',
-        lastAttemptAt: 2,
-        lastFailure: REFUSED_AS_CLEARED
-      }),
+      refusedSend('m1', 'refused as the clear ran', CLEARED_REFUSAL),
       entry('m2', 'still waiting behind it')
     ])
     const { result } = pane('new', { replaces: 'old' })
@@ -205,29 +223,60 @@ describe('messages this window held for the chat a /clear replaced', () => {
   })
 
   it('one refused for another reason before the clear comes back saying only it was not sent', async () => {
-    commitStructuredAgentSessionOutbox('old', [
-      entry('m1', 'refused for something else', {
-        state: 'rejected',
-        lastAttemptAt: 2,
-        lastFailure: {
-          kind: 'refused',
-          code: 'agent_session_operation_invalid',
-          details: { reason: 'rewindUnconfirmed' }
-        }
-      })
-    ])
+    // As saved: a first attempt's refusal rotates the id and leaves it never attempted.
+    const refused = refusedSend('m1', 'refused for something else', {
+      code: 'agent_session_owner_restart_failed',
+      message: 'The agent could not restart.'
+    })
+    expect(refused).toMatchObject({ state: 'rejected', lastAttemptAt: null })
+    commitStructuredAgentSessionOutbox('old', [refused])
     const { result } = pane('new', { replaces: 'old' })
     await waitFor(() =>
       expect(readNativeChatDraftCache(scope('new'))).toBe('refused for something else')
     )
     expect(result.current.error).toBe(NOT_SENT)
+    expect(mocks.call).not.toHaveBeenCalled()
+  })
+
+  it('one whose save failed comes back saying only it was not sent', async () => {
+    commitStructuredAgentSessionOutbox('old', [
+      entry('m1', 'never saved to go out', { lastFailure: { kind: 'failed' } })
+    ])
+    const { result } = pane('new', { replaces: 'old' })
+    await waitFor(() =>
+      expect(readNativeChatDraftCache(scope('new'))).toBe('never saved to go out')
+    )
+    expect(result.current.error).toBe(NOT_SENT)
+  })
+
+  it('a saved refusal that proves nothing (a resend refused as expired) is asked about, not handed back', async () => {
+    const doubtful = refusedSend(
+      'm1',
+      'maybe ran there',
+      { code: 'agent_session_operation_expired', message: 'Expired.' },
+      2
+    )
+    expect(doubtful).toMatchObject({ clientMessageId: 'm1', state: 'queued', lastAttemptAt: 9 })
+    mocks.call.mockResolvedValue({
+      ok: true,
+      replayed: true,
+      fence: 1,
+      cursor: { epoch: 'e', sequence: 1 },
+      value: { clientMessageId: 'm1', submission: { clientMessageId: 'm1' } }
+    })
+    commitStructuredAgentSessionOutbox('old', [doubtful])
+    const { result } = pane('new', { replaces: 'old' })
+    await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
+    expect(mocks.call).toHaveBeenCalledOnce()
+    expect(readNativeChatDraftCache(scope('new'))).toBe('')
+    expect(result.current.error).toBeNull()
   })
 
   it('leave without their text when the host has them: its row there, its card or turn here', async () => {
     commitStructuredAgentSessionOutbox('old', [
       entry('m1', 'recorded and rejected there', {
         state: 'rejected',
-        lastAttemptAt: 2,
+        lastAttemptAt: 5,
         lastFailure: { kind: 'rejected', reason: 'The provider refused it.' }
       }),
       entry('m2', 'carried as a card', { state: 'unconfirmed', lastAttemptAt: 3 }),
@@ -268,7 +317,11 @@ describe('messages this window held for the chat a /clear replaced', () => {
     expect(mocks.call.mock.calls[0]![2]).toMatchObject({
       envelope: { sessionId: 'old', clientOperationId: 'm1' }
     })
-    expect(result.current.outbox).toMatchObject([{ clientMessageId: 'm1', state: 'dispatching' }])
+    expect(result.current.transcriptRows).toMatchObject([
+      { clientMessageId: 'm1', state: 'dispatching' }
+    ])
+    // Only drawn: Stop here can't end it, so this chat's own outbox stays empty.
+    expect(result.current.outbox).toEqual([])
     act(() =>
       answer({
         ok: true,
@@ -281,7 +334,7 @@ describe('messages this window held for the chat a /clear replaced', () => {
     await waitFor(() => expect(getStructuredAgentSessionOutbox('old')).toEqual([]))
     expect(readNativeChatDraftCache(scope('new'))).toBe('')
     expect(result.current.error).toBeNull()
-    expect(result.current.outbox).toEqual([])
+    expect(result.current.transcriptRows).toEqual([])
   })
 
   it('one whose answer was lost and did NOT run is asked again, and comes back once', async () => {
@@ -310,11 +363,7 @@ describe('messages this window held for the chat a /clear replaced', () => {
     // The old pane's send settles after it unmounted: its refusal is written to the old outbox.
     act(() => {
       commitStructuredAgentSessionOutbox('old', [
-        entry('m1', 'typed as the clear ran', {
-          state: 'rejected',
-          lastAttemptAt: 2,
-          lastFailure: REFUSED_AS_CLEARED
-        })
+        refusedSend('m1', 'typed as the clear ran', CLEARED_REFUSAL)
       ])
     })
     await waitFor(() =>
@@ -326,11 +375,7 @@ describe('messages this window held for the chat a /clear replaced', () => {
 
   it("a refusal that lands before the move: the old chat keeps the host's own words, never these", async () => {
     commitStructuredAgentSessionOutbox('old', [
-      entry('m1', 'typed as the clear ran', {
-        state: 'rejected',
-        lastAttemptAt: 2,
-        lastFailure: REFUSED_AS_CLEARED
-      })
+      refusedSend('m1', 'typed as the clear ran', CLEARED_REFUSAL)
     ])
     // The old chat, still on screen, shows the refused message as a stale chat always has.
     const old = pane('old')

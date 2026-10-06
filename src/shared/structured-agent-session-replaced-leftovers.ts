@@ -29,9 +29,30 @@ function reasonOf(details: unknown): string | undefined {
     : undefined
 }
 
-function refusedAsCleared(refusal: { details?: unknown }): boolean {
-  return reasonOf(refusal.details) === 'conversationCleared'
+/** THE proof rule, for a refusal saved on a message and for one answering it again: whether it
+ *  proves the host holds no message under that id, and why. Null when it proves nothing — the
+ *  host can't tell yet, the id expired or holds another payload, or the chat isn't attached here;
+ *  only asking again, or the chat, can tell then. */
+export function refusalProvesUnrecorded(refusal: {
+  code: string
+  details?: unknown
+}): ReplacedLeftoverCause | null {
+  const reason = reasonOf(refusal.details)
+  if (
+    PROVES_NOTHING_CODES.has(refusal.code) ||
+    (reason !== undefined && PROVES_NOTHING_REASONS.has(reason))
+  ) {
+    return null
+  }
+  return reason === 'conversationCleared' ? 'cleared' : 'notSent'
 }
+
+const PROVES_NOTHING_CODES = new Set([
+  'agent_session_operation_unknown',
+  'agent_session_operation_conflict',
+  'agent_session_operation_expired'
+])
+const PROVES_NOTHING_REASONS = new Set(['messageIdReused', 'sessionNotAttached'])
 
 export function classifyReplacedLeftover(
   entry: StructuredAgentSessionOutboxEntry,
@@ -40,23 +61,25 @@ export function classifyReplacedLeftover(
   if (ownedByHost.has(entry.clientMessageId) || structuredAgentSessionEntryRejectedByHost(entry)) {
     return { kind: 'owned' }
   }
-  if (entry.lastAttemptAt === null) {
+  // A saved failure's own cause decides before "never left": a refused first attempt is saved
+  // under a fresh id that nothing has sent yet.
+  const failure = entry.lastFailure
+  if (failure?.kind === 'refused') {
+    // Only a first attempt's refusal rotates the id, and only one that proves nothing landed.
+    // Under a kept id an earlier attempt may have, so only asking again can tell.
+    const cause = entry.lastAttemptAt === null ? refusalProvesUnrecorded(failure) : null
+    return cause ? { kind: 'handBack', cause } : { kind: 'inDoubt' }
+  }
+  if (failure?.kind === 'failed') {
+    // It failed before the host ran it: a save that failed, or a request never written.
+    return { kind: 'handBack', cause: 'notSent' }
+  }
+  if (failure === undefined && entry.lastAttemptAt === null) {
     // It never left this window, so the clear is why it never went out.
     return { kind: 'handBack', cause: 'cleared' }
   }
-  if (entry.lastFailure?.kind === 'refused') {
-    // A refusal the host returned proves it holds no message under that id.
-    return { kind: 'handBack', cause: refusedAsCleared(entry.lastFailure) ? 'cleared' : 'notSent' }
-  }
   return { kind: 'inDoubt' }
 }
-
-/** Answers that don't tell whether the message landed: only the chat could tell. */
-const PROVES_NOTHING_CODES = new Set([
-  'agent_session_operation_conflict',
-  'agent_session_operation_expired'
-])
-const PROVES_NOTHING_REASONS = new Set(['messageIdReused', 'sessionNotAttached'])
 
 /** The host's answer to asking again under the same id; `thrown` is no answer at all. */
 export function resolveReplacedLeftover(
@@ -68,15 +91,8 @@ export function resolveReplacedLeftover(
   if (answer.ok) {
     return 'recorded'
   }
-  const { refusal } = answer
-  if (refusal.code === 'agent_session_operation_unknown') {
-    return 'askAgain'
-  }
-  const reason = reasonOf(refusal.details)
-  if (PROVES_NOTHING_CODES.has(refusal.code) || (reason && PROVES_NOTHING_REASONS.has(reason))) {
-    return { handBack: 'unconfirmed' }
-  }
-  return { handBack: refusedAsCleared(refusal) ? 'cleared' : 'notSent' }
+  const cause = refusalProvesUnrecorded(answer.refusal)
+  return cause ? { handBack: cause } : 'askAgain'
 }
 
 const CAUSE_WORDS: Record<ReplacedLeftoverCause, AgentSessionWriteNoticeSentence[]> = {

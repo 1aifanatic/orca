@@ -151,7 +151,9 @@ export function useStructuredAgentSession(args: {
     enabled: providerVisible
   })
 
-  const { outbox } = outboxController
+  // Stop and the command holds read this window's own outbox; the transcript also draws a cleared
+  // chat's messages still being asked about, which no Stop here can end.
+  const { outbox, transcriptRows = outbox } = outboxController
   // What the host refuses a conversation command or a rewind behind.
   const conversationBusy = Boolean(
     transportState.turnId ||
@@ -194,8 +196,8 @@ export function useStructuredAgentSession(args: {
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptOutbox = useMemo(
-    () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, queueDelivery),
-    [isWorking, outbox, queueDelivery, queuedMessageIds]
+    () => outboxOutsideQueuedCards(transcriptRows, queuedMessageIds, isWorking, queueDelivery),
+    [isWorking, queueDelivery, queuedMessageIds, transcriptRows]
   )
   // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
   const transcriptItems = useMemo(

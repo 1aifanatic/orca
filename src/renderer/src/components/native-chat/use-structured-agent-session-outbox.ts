@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore
@@ -315,8 +316,15 @@ export function useStructuredAgentSessionOutbox(args: {
       createOperationId: structuredSessionOperationId
     })
   }
+  const transcriptRows = useMemo(
+    () => (askedAbout.length > 0 ? [...askedAbout, ...outbox] : outbox),
+    [askedAbout, outbox]
+  )
   return {
-    outbox: askedAbout.length > 0 ? [...askedAbout, ...outbox] : outbox,
+    outbox,
+    /** What the transcript draws: this outbox, and ahead of it a replaced chat's messages being
+     *  asked about — sending rows there only, which nothing here can stop or send again. */
+    transcriptRows,
     error,
     failedHere,
     send,
