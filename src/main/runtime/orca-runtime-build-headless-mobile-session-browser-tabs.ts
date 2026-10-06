@@ -269,10 +269,7 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
         const bIndex = orderIndexByTabId.get(b.id) ?? Number.MAX_SAFE_INTEGER
         return aIndex - bIndex || a.sortOrder - b.sortOrder || a.createdAt - b.createdAt
       })
-      .map((tab, index) => ({
-        ...tab,
-        sortOrder: index
-      }))
+      .map((tab, index) => ({ ...tab, sortOrder: index }))
     this.setWorkspaceSessionForWorktree(worktreeId, {
       ...session,
       tabsByWorktree: {
