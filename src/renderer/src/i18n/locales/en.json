@@ -17578,7 +17578,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {},
           "NativeChatLaunchRetry": {
             "failed": "Chat could not be started.",
             "unknown": "Chat connection could not be confirmed.",

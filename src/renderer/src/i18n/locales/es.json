@@ -17391,7 +17391,6 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {},
           "NativeChatLaunchRetry": {
             "retry": "Reintentar",
             "failed": "No se pudo iniciar el chat.",
