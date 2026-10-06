@@ -63,11 +63,15 @@ export class ClaudeWslProfileRouter {
     if (!home?.startsWith('/')) {
       throw new Error(`Could not read the home folder of WSL distro ${distro}.`)
     }
+    return { home, profile: this.selectedProfile(home, distro) }
+  }
+
+  private selectedProfile(home: string, distro: string): ClaudeProfileDescriptor | null {
     const id = getSelectedClaudeAccountIdForTarget(this.args.getSettings(), {
       runtime: 'wsl',
       wslDistro: distro
     })
-    return { home, profile: id ? wslClaudeProfile(home, distro, id).profile : null }
+    return id ? wslClaudeProfile(home, distro, id).profile : null
   }
 
   private pointerIn(home: string): string {
@@ -105,8 +109,10 @@ export class ClaudeWslProfileRouter {
       })
     }
     // Why: a missing or stale guest pointer would run the pane's `claude` under another account.
+    // Re-read the selection: one made during setup has already published its own pointer.
     if (this.accountIn(distro)) {
-      await writePointer(distro, this.pointerIn(home), profile?.home ?? '')
+      const selected = this.selectedProfile(home, distro)
+      await writePointer(distro, this.pointerIn(home), selected?.home ?? '')
     }
     return this.preparationFor(distro, home, profile)
   }
@@ -186,7 +192,11 @@ async function guestStat(distro: string, linuxPath: string) {
 
 /** Writes in the guest only when the file differs, so a launch reads it over the share instead. */
 async function writePointer(distro: string, pointer: string, home: string): Promise<void> {
-  const current = await readFile(toWindowsWslPath(pointer, distro), 'utf8').catch(() => null)
+  // Why the timeout: a hung share must not stall startup's serialized publish; the guest write decides.
+  const current = await Promise.race([
+    readFile(toWindowsWslPath(pointer, distro), 'utf8').catch(() => null),
+    new Promise<null>((resolve) => setTimeout(resolve, 2_000, null).unref())
+  ])
   if (current === home) {
     return
   }

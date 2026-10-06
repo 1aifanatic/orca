@@ -47,26 +47,32 @@ export async function claudeTranscriptExists(input: {
  * routed, the selected account may not be the one holding it, and starting fresh would drop the chat.
  */
 export async function claudeLaunchResumesTranscript(input: {
-  routed: boolean
+  router: ClaudeProfileRouter | undefined
   leafUuid: string | null
   providerSessionId: string
   claudeConfigDir: string
   hasTranscript?: typeof claudeTranscriptExists
 }): Promise<boolean> {
-  if (!input.routed && input.leafUuid !== null) {
+  const { router, providerSessionId, claudeConfigDir } = input
+  if (!router && input.leafUuid !== null) {
     return true
   }
-  const { providerSessionId, claudeConfigDir } = input
-  if (
-    await (input.hasTranscript ?? claudeTranscriptExists)({ providerSessionId, claudeConfigDir })
-  ) {
+  const hasTranscript = input.hasTranscript ?? claudeTranscriptExists
+  if (await hasTranscript({ providerSessionId, claudeConfigDir })) {
     return true
   }
-  if (input.leafUuid !== null) {
-    throw new AgentSessionPreSpawnError(
-      new Error('claude transcript is not in the selected account'),
-      { reason: 'historyInOtherAccount' }
-    )
+  if (input.leafUuid === null) {
+    return false
   }
-  return false
+  const otherHomes = router ? [...router.accountHomes(), router.systemDefaultHome()] : []
+  for (const home of otherHomes.filter((home) => home !== claudeConfigDir)) {
+    if (await hasTranscript({ providerSessionId, claudeConfigDir: home })) {
+      throw new AgentSessionPreSpawnError(
+        new Error('claude transcript is not in the selected account'),
+        { reason: 'historyInOtherAccount' }
+      )
+    }
+  }
+  // Found nowhere Orca knows of (e.g. a folder since removed): the stored leaf still says it ran.
+  return true
 }

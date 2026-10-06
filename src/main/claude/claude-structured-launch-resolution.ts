@@ -323,7 +323,7 @@ export function createClaudeStructuredLaunchResolver(
     const resumesTranscript =
       head !== null &&
       (await claudeLaunchResumesTranscript({
-        routed: router !== undefined,
+        router,
         leafUuid,
         providerSessionId,
         claudeConfigDir: launchHome,
