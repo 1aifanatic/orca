@@ -18,12 +18,16 @@ export type ClientHostedMarkerFixture = {
   /** A second page the guest reaches on its own, to tell "survived" from "survived where". */
   movedUrl: string
   origin: string
+  /** Requests the server has answered, to prove a disconnected guest reached it by no other path. */
+  requestCount(): number
 }
 
 export async function startClientHostedMarkerFixture(
   markers: { created: string; moved: string } = { created: 'survivor', moved: 'moved-on' }
 ): Promise<ClientHostedMarkerFixture> {
+  let requests = 0
   const server = createServer((request, response) => {
+    requests += 1
     const marker = request.url === '/moved' ? markers.moved : markers.created
     response.writeHead(200, {
       'cache-control': 'no-store',
@@ -50,7 +54,8 @@ export async function startClientHostedMarkerFixture(
       }),
     markerUrl: `${origin}/survivor`,
     movedUrl: `${origin}/moved`,
-    origin
+    origin,
+    requestCount: () => requests
   }
 }
 
