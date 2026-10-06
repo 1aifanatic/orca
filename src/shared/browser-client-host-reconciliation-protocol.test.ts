@@ -161,14 +161,31 @@ describe('browser client-host reconciliation protocol', () => {
             authorityRuntimeId: 'runtime-a',
             authorityEpoch: 'epoch-new',
             browserHostClientId: 'host-a',
-            browserHostGeneration: 2,
+            browserHostGeneration: 4,
             pageHostGeneration: 3
           },
           browserProfileId: 'profile-a',
           executionHostKey: 'native:runtime-a:1'
         })
       )
-    ).toThrow('Browser page reclaim requires an older authority epoch')
+    ).toThrow('Browser page reclaim requires an older authority')
+    // Same epoch, earlier lease: a desktop taking back guests it kept through a fenced lease.
+    expect(
+      BrowserClientHostCommandEvent.parse(
+        command({
+          type: 'reclaimPage',
+          previousAuthority: {
+            authorityRuntimeId: 'runtime-a',
+            authorityEpoch: 'epoch-new',
+            browserHostClientId: 'host-a',
+            browserHostGeneration: 2,
+            pageHostGeneration: 3
+          },
+          browserProfileId: 'profile-a',
+          executionHostKey: 'native:runtime-a:1'
+        })
+      ).command.type
+    ).toBe('reclaimPage')
     expect(() =>
       BrowserClientHostCommandEvent.parse(
         command({

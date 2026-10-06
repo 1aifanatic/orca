@@ -107,7 +107,9 @@ function canReclaimPage(
   return Boolean(
     intent.reclaimFrom &&
     intent.reclaimFrom.pairedDeviceId === inventoryPairedDeviceId &&
-    intent.authorityEpoch !== intent.reclaimFrom.authorityEpoch &&
+    // A new epoch, or a newer lease of the same epoch for a desktop whose old lease was fenced.
+    (intent.authorityEpoch !== intent.reclaimFrom.authorityEpoch ||
+      intent.browserHostGeneration > intent.reclaimFrom.browserHostGeneration) &&
     intent.authorityRuntimeId === intent.reclaimFrom.authorityRuntimeId &&
     sameAuthority(intent.reclaimFrom, page) &&
     intent.browserHostClientId === intent.reclaimFrom.browserHostClientId &&

@@ -32,6 +32,19 @@ const PageReconciliationProtocolVersion = z.literal(
   BROWSER_CLIENT_HOST_PAGE_RECONCILIATION_PROTOCOL_VERSION
 )
 const FileChannelProtocolVersion = z.literal(BROWSER_CLIENT_FILE_CHANNEL_PROTOCOL_VERSION)
+// A desktop whose lease was fenced while unreachable re-attaches with the guests it kept; a runtime
+// that echoes this rekeys them in place instead of reloading them.
+const ReturningHostReclaimProtocolVersion = z.literal(1)
+
+/** Every optional protocol a ready event can confirm, and so a lease authority can carry. */
+const NegotiatedBrowserHostProtocols = {
+  pageCommandProtocolVersion: PageCommandProtocolVersion.optional(),
+  pageInventoryProtocolVersion: PageInventoryProtocolVersion.optional(),
+  leaseReconnectProtocolVersion: LeaseReconnectProtocolVersion.optional(),
+  pageReconciliationProtocolVersion: PageReconciliationProtocolVersion.optional(),
+  fileChannelProtocolVersion: FileChannelProtocolVersion.optional(),
+  returningHostReclaimProtocolVersion: ReturningHostReclaimProtocolVersion.optional()
+}
 
 /**
  * Sent when an attach names a runtime id this process does not have. It means "a newer authority
@@ -117,7 +130,8 @@ export const BrowserClientHostAttachParams = z
     pageInventory: BrowserClientHostedPageInventoryList.optional(),
     leaseReconnectProtocolVersion: LeaseReconnectProtocolVersion.optional(),
     pageReconciliationProtocolVersion: PageReconciliationProtocolVersion.optional(),
-    fileChannelProtocolVersion: FileChannelProtocolVersion.optional()
+    fileChannelProtocolVersion: FileChannelProtocolVersion.optional(),
+    returningHostReclaimProtocolVersion: ReturningHostReclaimProtocolVersion.optional()
   })
   .superRefine((params, context) => {
     if (
@@ -171,11 +185,7 @@ export const BrowserClientHostReady = z.object({
   type: z.literal('ready'),
   authorityEpoch: Identity,
   browserHostGeneration: Generation,
-  pageCommandProtocolVersion: PageCommandProtocolVersion.optional(),
-  pageInventoryProtocolVersion: PageInventoryProtocolVersion.optional(),
-  leaseReconnectProtocolVersion: LeaseReconnectProtocolVersion.optional(),
-  pageReconciliationProtocolVersion: PageReconciliationProtocolVersion.optional(),
-  fileChannelProtocolVersion: FileChannelProtocolVersion.optional()
+  ...NegotiatedBrowserHostProtocols
 })
 
 const BrowserClientHostRevoked = z.object({
@@ -185,13 +195,9 @@ const BrowserClientHostRevoked = z.object({
   reason: z.enum(['replaced', 'released'])
 })
 
-export const BrowserClientHostLeaseAuthority = BrowserHostLeaseAuthority.extend({
-  pageCommandProtocolVersion: PageCommandProtocolVersion.optional(),
-  pageInventoryProtocolVersion: PageInventoryProtocolVersion.optional(),
-  leaseReconnectProtocolVersion: LeaseReconnectProtocolVersion.optional(),
-  pageReconciliationProtocolVersion: PageReconciliationProtocolVersion.optional(),
-  fileChannelProtocolVersion: FileChannelProtocolVersion.optional()
-})
+export const BrowserClientHostLeaseAuthority = BrowserHostLeaseAuthority.extend(
+  NegotiatedBrowserHostProtocols
+)
 
 export type BrowserClientHostLeaseAuthority = z.infer<typeof BrowserClientHostLeaseAuthority>
 
@@ -304,13 +310,16 @@ export const BrowserClientHostCommandEvent = BrowserClientPageCommandAuthority.e
       message: 'Browser page reconciliation client authority does not match'
     })
   }
+  // Older means a previous epoch, or (negotiated by returningHostReclaimProtocolVersion) an earlier
+  // lease of this epoch that was fenced while the desktop was unreachable.
   if (
     event.command.type === 'reclaimPage' &&
-    event.command.previousAuthority.authorityEpoch === event.authorityEpoch
+    event.command.previousAuthority.authorityEpoch === event.authorityEpoch &&
+    event.command.previousAuthority.browserHostGeneration >= event.browserHostGeneration
   ) {
     context.addIssue({
       code: 'custom',
-      message: 'Browser page reclaim requires an older authority epoch'
+      message: 'Browser page reclaim requires an older authority'
     })
   }
 })

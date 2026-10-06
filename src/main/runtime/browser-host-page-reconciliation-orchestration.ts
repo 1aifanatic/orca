@@ -44,9 +44,11 @@ export class BrowserHostPageReconciliationOrchestrator {
   adopt(
     state: BrowserHostLeaseState,
     intents: readonly BrowserHostRuntimePageIntent[],
-    options: BrowserHostPageReconciliationOptions = {}
+    options: BrowserHostPageReconciliationOptions = {},
+    /** Entries naming this runtime whose pages it has since released: the one orphan it can name. */
+    releasedPageIds: readonly string[] = []
   ): Promise<BrowserHostPageReconciliationResult> {
-    const claimed = new Set(intents.map((intent) => intent.browserPageId))
+    const claimed = new Set([...intents.map((intent) => intent.browserPageId), ...releasedPageIds])
     return this.run(state, intents, options, (inventory) =>
       inventory.filter((page) => claimed.has(page.browserPageId))
     )

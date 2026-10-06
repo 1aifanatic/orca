@@ -6,12 +6,20 @@ import {
   selectAdoptableClientHostedPages,
   type AdoptableClientHostedPage
 } from './browser-host-client-page-adoption'
+import {
+  buildReturningClientPageIntents,
+  selectReturningClientPages
+} from './browser-host-returning-client-pages'
 import { isRestoredClientHostedBrowserPlacement } from './client-hosted-browser-page-persistence'
 import type { RuntimeBrowserPageRegistry } from './runtime-browser-page-registry'
 
 type AdoptionAuthority = Pick<
   BrowserHostLeaseRegistry,
-  'authorityRuntimeId' | 'authorityEpoch' | 'adoptClientPages' | 'getPlacement'
+  | 'authorityRuntimeId'
+  | 'authorityEpoch'
+  | 'adoptClientPages'
+  | 'getPlacement'
+  | 'nextPageHostGeneration'
 >
 
 /**
@@ -33,6 +41,8 @@ export type RuntimeBrowserClientPageAdoptionOptions = {
   notifyWorkspace: (workspaceId: string) => void
   /** The execution-host key that workspace's pages would be created under now. */
   resolveExecutionHostKey: (workspaceId: string) => Promise<BrowserExecutionHostKeyResolution>
+  /** The desktop negotiated taking back guests it kept through a fenced lease of this runtime. */
+  returningHostReclaim?: boolean
   signal?: AbortSignal
 }
 
@@ -84,7 +94,20 @@ export async function adoptRuntimeBrowserClientPagesFromInventory(
       return page !== undefined && !isRestoredClientHostedBrowserPlacement(page.placement)
     }
   })
-  if (adoptable.length === 0) {
+  const returning = options.returningHostReclaim
+    ? selectReturningClientPages({
+        inventory,
+        authority: options.authority,
+        lease: options.lease,
+        getPage: (browserPageId) => options.pages.getPage(browserPageId),
+        getPlacement: (browserPageId) => options.authority.getPlacement(browserPageId)
+      })
+    : { reclaimable: [], releasedPageIds: [] }
+  if (
+    adoptable.length === 0 &&
+    returning.reclaimable.length === 0 &&
+    returning.releasedPageIds.length === 0
+  ) {
     return NOTHING_TO_ADOPT
   }
   const executionHostKeyByWorkspaceId = new Map<string, string>()
@@ -115,7 +138,16 @@ export async function adoptRuntimeBrowserClientPagesFromInventory(
     },
     executionHostKeyByWorkspaceId
   })
-  if (intents.length === 0) {
+  const returningIntents = buildReturningClientPageIntents({
+    pages: returning.reclaimable,
+    authority: options.authority,
+    lease: options.lease,
+    minimumPageHostGeneration: Math.max(
+      options.authority.nextPageHostGeneration(),
+      ...intents.map((intent) => intent.pageHostGeneration + 1)
+    )
+  })
+  if (intents.length === 0 && returningIntents.length === 0 && !returning.releasedPageIds.length) {
     return { adoptedPageIds: [], unadoptedPageIds: settle(adoptable) }
   }
   const intentsByPageId = new Map(intents.map((intent) => [intent.browserPageId, intent]))
@@ -127,10 +159,12 @@ export async function adoptRuntimeBrowserClientPagesFromInventory(
         browserHostGeneration: options.lease.browserHostGeneration,
         pairedDeviceId: options.lease.pairedDeviceId
       },
-      intents,
-      options.signal ? { signal: options.signal } : {}
+      [...intents, ...returningIntents],
+      options.signal ? { signal: options.signal } : {},
+      returning.releasedPageIds
     )
   )
+  const reclaimedPageIds = republishReturningClientPages(options, returning, adoptedPageIds)
   const byPageId = new Map(adoptable.map((page) => [page.browserPageId, page]))
   const publishedWorkspaces = new Set<string>()
   const publishedPageIds: string[] = []
@@ -175,9 +209,39 @@ export async function adoptRuntimeBrowserClientPagesFromInventory(
   }
   const published = new Set(publishedPageIds)
   return {
-    adoptedPageIds: publishedPageIds,
+    adoptedPageIds: [...publishedPageIds, ...reclaimedPageIds],
     unadoptedPageIds: settle(adoptable.filter((page) => !published.has(page.browserPageId)))
   }
+}
+
+/** Moves each kept page's record onto the placement the reclaim just committed. */
+function republishReturningClientPages(
+  options: RuntimeBrowserClientPageAdoptionOptions,
+  returning: ReturnType<typeof selectReturningClientPages>,
+  adoptedPageIds: ReadonlySet<string>
+): readonly string[] {
+  const reclaimed: string[] = []
+  const workspaces = new Set<string>()
+  for (const { page } of returning.reclaimable) {
+    const placement = options.authority.getPlacement(page.browserPageId)
+    if (!adoptedPageIds.has(page.browserPageId) || placement?.kind !== 'client') {
+      continue
+    }
+    try {
+      options.pages.replaceClientPagePlacement(page.browserPageId, page.placement, placement)
+      reclaimed.push(page.browserPageId)
+      workspaces.add(page.workspaceId)
+    } catch (error) {
+      console.warn('[browser-host-lease] returning client page republish failed:', {
+        browserPageId: page.browserPageId,
+        error
+      })
+    }
+  }
+  for (const workspaceId of workspaces) {
+    options.notifyWorkspace(workspaceId)
+  }
+  return reclaimed
 }
 
 function adoptedPageUrl(page: BrowserClientHostedPageInventory): string {

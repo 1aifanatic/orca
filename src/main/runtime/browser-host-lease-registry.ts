@@ -224,14 +224,25 @@ export class BrowserHostLeaseRegistry {
   adoptClientPages(
     identity: BrowserHostLeaseIdentity,
     intents: readonly BrowserHostRuntimePageIntent[],
-    options: { maxConcurrency?: number; actionTimeoutMs?: number; signal?: AbortSignal } = {}
+    options: { maxConcurrency?: number; actionTimeoutMs?: number; signal?: AbortSignal } = {},
+    releasedPageIds: readonly string[] = []
   ): Promise<readonly string[]> {
-    return adoptBrowserHostClientPages(intents, options, {
-      state: this.requireLeaseState(identity),
-      reconciliations: this.pageReconciliations,
-      placements: this.pagePlacements,
-      executionHostGrants: this.clientPageExecutionHostGrants
-    })
+    return adoptBrowserHostClientPages(
+      intents,
+      options,
+      {
+        state: this.requireLeaseState(identity),
+        reconciliations: this.pageReconciliations,
+        placements: this.pagePlacements,
+        executionHostGrants: this.clientPageExecutionHostGrants
+      },
+      releasedPageIds
+    )
+  }
+
+  /** The lowest page generation a new placement may still take. */
+  nextPageHostGeneration(): number {
+    return this.pagePlacements.nextPageHostGeneration
   }
 
   attachCommandDelivery(

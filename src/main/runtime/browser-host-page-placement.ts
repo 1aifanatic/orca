@@ -82,6 +82,10 @@ export class BrowserHostPagePlacementRegistry {
     return placement
   }
 
+  get nextPageHostGeneration(): number {
+    return this.nextPageGeneration
+  }
+
   reserveClientPage(
     browserPageId: string,
     host: BrowserHostPlacementIdentity,

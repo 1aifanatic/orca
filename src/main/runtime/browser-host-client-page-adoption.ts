@@ -117,7 +117,8 @@ export type BrowserHostClientPageAdoptionDependencies = {
     adopt(
       state: BrowserHostLeaseState,
       intents: readonly BrowserHostRuntimePageIntent[],
-      options: ReconciliationOptions
+      options: ReconciliationOptions,
+      releasedPageIds: readonly string[]
     ): Promise<unknown>
   }
   placements: { getPlacement(browserPageId: string): RuntimeBrowserPlacement | undefined }
@@ -135,9 +136,10 @@ export type BrowserHostClientPageAdoptionDependencies = {
 export async function adoptBrowserHostClientPages(
   intents: readonly BrowserHostRuntimePageIntent[],
   options: ReconciliationOptions,
-  dependencies: BrowserHostClientPageAdoptionDependencies
+  dependencies: BrowserHostClientPageAdoptionDependencies,
+  releasedPageIds: readonly string[] = []
 ): Promise<readonly string[]> {
-  if (intents.length === 0) {
+  if (intents.length === 0 && releasedPageIds.length === 0) {
     return []
   }
   const grants = intents.map((intent) => ({
@@ -145,7 +147,7 @@ export async function adoptBrowserHostClientPages(
     grant: dependencies.state.executionHostGrants.retain(intent.executionHostKey)
   }))
   await dependencies.reconciliations
-    .adopt(dependencies.state, intents, options)
+    .adopt(dependencies.state, intents, options, releasedPageIds)
     .catch(() => undefined)
   const adopted: string[] = []
   for (const { intent, grant } of grants) {

@@ -147,7 +147,8 @@ describe('recovery of rehydrated client-hosted pages', () => {
       authorityRuntimeId: 'runtime-new',
       authorityEpoch: 'epoch-new',
       getPlacement: vi.fn(() => freshPlacement),
-      adoptClientPages: vi.fn(async () => ['page-a'])
+      adoptClientPages: vi.fn(async () => ['page-a']),
+      nextPageHostGeneration: () => 1
     }
 
     const result = await adoptRuntimeBrowserClientPagesFromInventory({

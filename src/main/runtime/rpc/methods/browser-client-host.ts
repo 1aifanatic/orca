@@ -39,6 +39,11 @@ export const BROWSER_CLIENT_HOST_METHODS = [
       }
 
       const registry = getBrowserHostLeaseRegistry(runtime)
+      const returningHostReclaim =
+        params.returningHostReclaimProtocolVersion === 1 &&
+        params.pageReconciliationProtocolVersion === 1 &&
+        // Lets e2e stand in for a runtime that predates the negotiation.
+        process.env.ORCA_E2E_DISABLE_RETURNING_HOST_RECLAIM !== '1'
       // Attach inventory cannot describe pages created or replaced after readiness is published.
       const pagePlacementsAtAttach = new Map(
         getRuntimeBrowserPageRegistry(runtime)
@@ -98,7 +103,8 @@ export const BROWSER_CLIENT_HOST_METHODS = [
             : {}),
           ...(handle.lease.fileChannelProtocolVersion
             ? { fileChannelProtocolVersion: handle.lease.fileChannelProtocolVersion }
-            : {})
+            : {}),
+          ...(returningHostReclaim ? { returningHostReclaimProtocolVersion: 1 as const } : {})
         })
         if (params.pageCommandProtocolVersion) {
           releaseCommandDelivery = registry.attachCommandDelivery(
@@ -120,6 +126,7 @@ export const BROWSER_CLIENT_HOST_METHODS = [
           notifyWorkspace: (workspaceId) => runtime.notifyMobileSessionTabsChanged(workspaceId),
           resolveExecutionHostKey: (workspaceId) =>
             runtime.resolveBrowserExecutionHostKeyForWorkspace(workspaceId),
+          returningHostReclaim,
           ...(signal ? { signal } : {})
         })
         if (adoption.unadoptedPageIds.length === 0) {
