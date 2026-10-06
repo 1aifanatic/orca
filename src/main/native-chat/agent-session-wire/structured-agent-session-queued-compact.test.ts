@@ -398,4 +398,5 @@ it('a /compact or a /clear may ask to wait, and only to wait', () => {
   expect(parse({ command: 'compact', delivery: 'queue-if-active' })).toBe(true)
   expect(parse({ command: 'clear', delivery: 'queue-if-active' })).toBe(true)
   expect(parse({ command: 'compact', delivery: 'now' })).toBe(false)
+  // A /clear asked to wait is held as a card: `structured-agent-session-queued-clear.test.ts`.
 })

@@ -24,7 +24,7 @@ import {
   QUEUED_CLEAR_CALLER_KEY,
   structuredAgentSessionClearBody
 } from './structured-conversation-clear'
-import type { AgentSessionHandleProvider } from '../../../shared/agent-session-provider-handle'
+import type { StructuredAgentId } from '../../../shared/agent-session-provider-handle'
 
 /** A command's `error` is the sentence its row shows. */
 export function conversationCommandFailure(
@@ -48,7 +48,7 @@ export type ConversationReplacement = {
   sourceSessionId: string
   sessionId: string
   workspaceId: string
-  agent: AgentSessionHandleProvider
+  agent: StructuredAgentId
 }
 
 const clearFingerprintsOf = (sessionId: string) =>
