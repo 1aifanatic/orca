@@ -12,7 +12,6 @@ import { holdAgentSessionInventory } from './structured-agent-session-inventory-
 import type { Tab } from '../../shared/tab-types'
 import {
   resolveTerminalCloseTarget,
-  terminalSurfaceCloseMutation,
   type PaneCloseResolution,
   type RendererTerminalClose,
   type TerminalSurfaceCloseOptions
@@ -25,6 +24,7 @@ import { retireTerminalSurfacesFromSnapshot } from './mobile-session-terminal-re
 import type { PtyControllerInventory } from './runtime-pty-controller-contract'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { captureAcknowledgedTerminalTabRetirement } from './workspace-session-terminal-tab-retirement-identity'
+import { closeLeafOrTab } from '../persistence/terminal-topology/terminal-topology-commit'
 
 export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRuntimeWithPersistTerminalSurfaceRetirements {
   // Why: headless serve backs browser panes with offscreen WebContents that live
@@ -131,7 +131,7 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     let refusal: Error | undefined
     try {
       refusal = await store.runDurableMutation(
-        terminalSurfaceCloseMutation({
+        closeLeafOrTab({
           worktreeId,
           target,
           options,
@@ -279,17 +279,18 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     })
   }
 
-  protected emitMobileSessionTabsSnapshot(snapshot: RuntimeMobileSessionTabsSnapshot): void {
+  protected emitMobileSessionTabsSnapshot(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    metadata: Pick<RuntimeMobileSessionTabsResult, 'structuredConversationTitle'> = {}
+  ): void {
     if (this.mobileSessionTabListeners.size === 0) {
       return
     }
-    const result = this.toMobileSessionTabsResult(snapshot)
-    const changeSequence = ++this.mobileSessionTabsChangeSequence
+    const result = { ...this.toMobileSessionTabsResult(snapshot), ...metadata }
+    const sequence = ++this.mobileSessionTabsChangeSequence
     for (const subscription of this.mobileSessionTabListeners) {
-      subscription.listener(
-        this.projectMobileSessionTabsForClient(result, subscription.clientNavigationId),
-        changeSequence
-      )
+      const navigationId = subscription.clientNavigationId
+      subscription.listener(this.projectMobileSessionTabsForClient(result, navigationId), sequence)
     }
   }
 

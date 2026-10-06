@@ -76,7 +76,8 @@ export const AI_VAULT_METHODS = [
           limit: params.unlimited ? undefined : params.limit,
           unlimited: params.unlimited,
           force: params.force,
-          scopePaths: params.scopePaths
+          scopePaths: params.scopePaths,
+          includeAntigravityIdeSessions: params.includeAntigravityIdeSessions
         })
       } catch (error) {
         if (error instanceof Error) {
@@ -87,14 +88,14 @@ export const AI_VAULT_METHODS = [
       }
       // Why: web clients consume this response directly (no parent-side retag),
       // so sessions must come back stamped as the runtime host they addressed.
-      const stamped = params.executionHostId
-        ? restampAiVaultListResult(result, params.executionHostId)
-        : result
-      return projectStructuredAiVaultSessions(
-        stamped,
+      const projected = projectStructuredAiVaultSessions(
+        result,
         clientKind === undefined ||
           (clientCapabilities?.includes(STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY) ?? false)
       )
+      return params.executionHostId
+        ? restampAiVaultListResult(projected, params.executionHostId)
+        : projected
     }
   }),
   defineMethod({
