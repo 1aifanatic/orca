@@ -31,6 +31,8 @@ export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
   requestId: AgentLaunchRequestId
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
+  /** The caller keeps the prompt's text if it does not go out (notes), so no composer gets it. */
+  promptKeptByCaller?: true
 }
 
 /**
@@ -50,6 +52,7 @@ export type AgentSessionLaunchVerdict = {
   promptDelivery?: NativeChatLaunchPromptDelivery
   resumeFrom?: StructuredAgentSessionResumeSource
   onPromptDelivered?: () => void
+  promptKeptByCaller?: true
 }
 
 export type AgentSessionStructuredFeasibilityRequest = AgentLaunchRouteArgs & {
@@ -89,6 +92,7 @@ function structuredLaunchOptions(verdict: AgentSessionLaunchVerdict): Structured
     ...(verdict.promptDelivery ? { promptDelivery: verdict.promptDelivery } : {}),
     ...(verdict.resumeFrom ? { resumeFrom: verdict.resumeFrom } : {}),
     ...(verdict.onPromptDelivered ? { onPromptDelivered: verdict.onPromptDelivered } : {}),
+    ...(verdict.promptKeptByCaller ? { promptKeptByCaller: true as const } : {}),
     ...(verdict.executionHostId ? { executionHostId: verdict.executionHostId } : {})
   }
 }
@@ -186,6 +190,7 @@ export function planAgentSessionLaunch(
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
     ...(request.promptDelivery ? { promptDelivery: request.promptDelivery } : {}),
     ...(request.resumeFrom ? { resumeFrom: request.resumeFrom } : {}),
-    ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {})
+    ...(request.onPromptDelivered ? { onPromptDelivered: request.onPromptDelivered } : {}),
+    ...(request.promptKeptByCaller ? { promptKeptByCaller: true as const } : {})
   })
 }

@@ -154,6 +154,10 @@ function restartStructuredLaunchState(state: StructuredLaunchState): void {
   notifyStructuredLaunchListeners()
 }
 
+function promptOwner(options: StructuredAgentLaunchOptions): { callerKeepsText?: true } {
+  return options.promptKeptByCaller ? { callerKeepsText: true } : {}
+}
+
 function joinStructuredLaunchState(
   existing: StructuredLaunchState,
   agent: AgentSessionHandleProvider,
@@ -172,7 +176,7 @@ function joinStructuredLaunchState(
   // Why: an unconfirmed launch keeps its draft or staged text, so a recheck must not stage it twice.
   const text = retrying || repeat ? '' : launchPromptText(joined)
   const stagedPrompt = text
-    ? stageStructuredLaunchPrompt(existing.intent.sessionId, text)
+    ? stageStructuredLaunchPrompt(existing.intent.sessionId, text, promptOwner(options))
     : (repeat?.stagedPrompt ?? null)
   if (retrying) {
     restartStructuredLaunchState(existing)
@@ -220,7 +224,9 @@ function structuredAgentLaunchState(
     options.hostSeedOptions
   )
   const text = launchPromptText(options)
-  const stagedPrompt = text ? stageStructuredLaunchPrompt(intent.sessionId, text) : null
+  const stagedPrompt = text
+    ? stageStructuredLaunchPrompt(intent.sessionId, text, promptOwner(options))
+    : null
   launchDraft.seedStructuredAgentLaunchDraft(intent.sessionId, agent, options)
   const callers = createStructuredLaunchCallerGroup({
     kind: 'first',

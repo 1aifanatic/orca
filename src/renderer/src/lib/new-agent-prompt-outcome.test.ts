@@ -138,7 +138,9 @@ function sendNotesToNewAgent() {
   const launch = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
     requestId: 'request-1',
     prompt: NOTES,
-    promptDelivery: 'submit-after-ready'
+    promptDelivery: 'submit-after-ready',
+    // The notes keep their text until it goes out, as the notes menu's launch says.
+    promptKeptByCaller: true
   })
   holdNotesForSend(
     ['note-a'],
@@ -184,8 +186,9 @@ describe('notes sent to a new agent', () => {
     expect(isNoteInFlight('note-a')).toBe(false)
   })
 
-  // One owner of the text: the new chat's composer has it, so the notes let it go.
-  it('leave the shelf when the new chat gives them back to its composer', async () => {
+  // One owner of the text: the notes keep it until it goes out, so the new chat's composer never
+  // gets a copy to send a second time.
+  it("come back to the shelf, never into the new chat's composer, when the host refuses them", async () => {
     mocks.launch.mockResolvedValue({ sessionId: chat.sessionId, fence: 1 })
     mocks.callRuntimeRpc.mockResolvedValue({
       ok: false,
@@ -193,23 +196,19 @@ describe('notes sent to a new agent', () => {
     })
     const { onDelivered } = sendNotesToNewAgent()
 
-    await vi.waitFor(() => expect(onDelivered).toHaveBeenCalledOnce())
-    expect(isNoteInFlight('note-a')).toBe(false)
-    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe(
-      NOTES
-    )
+    await vi.waitFor(() => expect(isNoteInFlight('note-a')).toBe(false))
+    expect(onDelivered).not.toHaveBeenCalled()
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe('')
   })
 
-  it("come back to the shelf when the start fails, and wait in that chat's composer", async () => {
+  it("come back to the shelf when the start fails, and only there, not in that chat's composer", async () => {
     mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
     const { onDelivered } = sendNotesToNewAgent()
     await failTheStart()
 
     expect(isNoteInFlight('note-a')).toBe(false)
     expect(onDelivered).not.toHaveBeenCalled()
-    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe(
-      NOTES
-    )
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe('')
     expect(sentMessages()).toHaveLength(0)
   })
 

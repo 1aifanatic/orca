@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => {
   const launch: { lifecycle: string | null } = { lifecycle: null }
   return {
     send: vi.fn(),
-    relaunch: vi.fn((): Promise<{ delivered: boolean }> | null => null),
+    relaunch: vi.fn((): Promise<{ delivered: boolean; unconfirmed?: true }> | null => null),
     launch
   }
 })
@@ -99,4 +99,13 @@ it('restarts a failed chat with the notes as its first message', async () => {
     callerKeepsText: true
   })
   expect(mocks.send).not.toHaveBeenCalled()
+})
+
+it('says a restart that carried the notes could not be confirmed, never that it refused them', async () => {
+  mocks.launch.lifecycle = 'failed'
+  mocks.relaunch.mockReturnValue(Promise.resolve({ delivered: false, unconfirmed: true }))
+  await expect(sendNotes()).resolves.toEqual({
+    status: 'unconfirmed',
+    code: 'runtime-unverifiable'
+  })
 })

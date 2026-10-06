@@ -49,9 +49,12 @@ export async function sendMessageToAgent(args: {
     { callerKeepsText: true }
   )
   if (relaunched) {
-    return (await relaunched).delivered
+    const result = await relaunched
+    return result.delivered
       ? { status: 'sent' }
-      : { status: 'not-writable', code: 'session-send-refused' }
+      : result.unconfirmed
+        ? { status: 'unconfirmed', code: 'runtime-unverifiable' }
+        : { status: 'not-writable', code: 'session-send-refused' }
   }
   // Sent as its composer would, so it shows in the chat; reported only once the host answers.
   const sent = sendStructuredAgentSessionMessage({

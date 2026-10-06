@@ -14,9 +14,11 @@ export type StructuredPromptDeliveryResult = {
   failureNotified: boolean
   /** Not sent, and waiting in the new chat's composer, which now owns the text. */
   inComposer?: true
+  /** Nobody could confirm it went: the host may hold it. */
+  unconfirmed?: true
 }
 
-type StagedDelivery = { delivered: boolean; inComposer: boolean }
+type StagedDelivery = { delivered: boolean; inComposer: boolean; unconfirmed?: true }
 
 export type StructuredLaunchPromptOptions = {
   prompt?: string
@@ -130,7 +132,9 @@ function sendStagedPrompt(
       const outcome = await sent.outcome
       return {
         delivered: outcome === 'recorded',
-        inComposer: !prompt.callerKeepsText && (outcome === 'returned' || outcome === 'unconfirmed')
+        inComposer:
+          !prompt.callerKeepsText && (outcome === 'returned' || outcome === 'unconfirmed'),
+        ...(outcome === 'unconfirmed' ? { unconfirmed: true as const } : {})
       }
     } finally {
       unstage(prompt)
@@ -156,14 +160,19 @@ export function settleStructuredAgentLaunchPrompt(args: {
       if (!prompt || prompt.discarded) {
         return { delivered: false, failureNotified: true }
       }
-      const { delivered, inComposer } = await sendStagedPrompt(prompt, receipt, args.target)
+      const { delivered, inComposer, unconfirmed } = await sendStagedPrompt(
+        prompt,
+        receipt,
+        args.target
+      )
       if (delivered) {
         args.options.onPromptDelivered?.()
       }
       return {
         delivered,
         failureNotified: false,
-        ...(inComposer ? { inComposer: true as const } : {})
+        ...(inComposer ? { inComposer: true as const } : {}),
+        ...(unconfirmed ? { unconfirmed } : {})
       }
     },
     (error: unknown) => {
