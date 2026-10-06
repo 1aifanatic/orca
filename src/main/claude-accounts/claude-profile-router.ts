@@ -25,6 +25,7 @@ import {
 } from './runtime-selection'
 import { wslClaudeProfilePointer } from './claude-profile-wsl-paths'
 import { isDirectory, listClaudeProfileHomes } from './claude-profile-installed-router'
+import { removeClaudeAccountFolder } from './claude-account-folder'
 
 export type ClaudeProfileRouterSettings = Pick<
   GlobalSettings,
@@ -126,6 +127,12 @@ export class ClaudeProfileRouter {
       throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
     }
     return profile.home
+  }
+
+  /** Deletes an account's folder after any setup running for it, which would otherwise recreate it. */
+  async removeAccount(accountId: string): Promise<void> {
+    await this.setups.get(accountId)?.catch(() => {})
+    await removeClaudeAccountFolder(this.args.dataRoot, accountId)
   }
 
   /** The user's own CLAUDE_CONFIG_DIR, which wins over the selection in their terminals. */

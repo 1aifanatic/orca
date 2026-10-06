@@ -159,6 +159,23 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     )
   })
 
+  it('removes a guest folder only after its running setup, so the setup cannot bring it back', async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    let release = () => {}
+    // Like the guest helper, setup recreates the folder it writes into.
+    f.setup.gate = new Promise<void>((resolve) => (release = resolve)).then(() => {
+      mkdirSync(f.profileHome, { recursive: true })
+    })
+    await f.router.publish('Ubuntu')
+    expect(f.setup.calls).toBe(1)
+    const removal = f.router.removeAccount('Ubuntu', 'a')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    release()
+    await removal
+    expect(existsSync(join(f.profileHome, '..'))).toBe(false)
+  })
+
   it('writes a missing guest pointer before a launch returns', async () => {
     const f = fixture()
     mkdirSync(f.profileHome, { recursive: true })

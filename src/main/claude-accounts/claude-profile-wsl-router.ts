@@ -134,8 +134,12 @@ export class ClaudeWslProfileRouter {
     return profile.home
   }
 
-  /** Deletes an account's guest folder. Linux `rm -r` never follows the history links. */
+  /**
+   * Deletes an account's guest folder after any setup running for it, which would otherwise
+   * recreate it. Linux `rm -r` never follows the history links.
+   */
   async removeAccount(distro: string, accountId: string): Promise<void> {
+    await this.setups.get(accountId)?.catch(() => {})
     const { home } = await this.resolve(distro)
     const folder = posix.dirname(wslClaudeProfile(home, distro, accountId).profile.home)
     await runGuest(distro, { script: 'rm -rf -- "$1"', args: [folder], loginPath: 'none' })

@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import {
@@ -22,6 +22,13 @@ import {
   claudeProfileHistoryDirs,
   installClaudeProfileRouter
 } from './claude-profile-installed-router'
+
+// Why: removal deletes macOS Keychain items; the test must never reach the real Keychain.
+vi.mock('../macos-keychain/generic-password', () => ({
+  execSecurityCommand: async () => {
+    throw new Error('The specified item could not be found in the keychain.')
+  }
+}))
 
 const roots: string[] = []
 afterEach(() => {
@@ -160,6 +167,21 @@ describe('ClaudeProfileRouter', () => {
       envPatch: { ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath }
     })
     expect(f.router.preparation().envPatch).not.toHaveProperty('CLAUDE_CONFIG_DIR')
+  })
+
+  it('removes a folder only after its running setup, so the setup cannot bring it back', async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    f.router.publish()
+    expect(f.setup.calls).toBe(1)
+    const removal = f.router.removeAccount('a')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Setup writes into the folder before it settles, as the worker does.
+    mkdirSync(f.home('a'), { recursive: true })
+    writeFileSync(join(f.home('a'), 'settings.json'), '{}')
+    f.setup.settle()
+    await removal
+    expect(existsSync(join(f.dataRoot, 'claude-profiles', 'a'))).toBe(false)
   })
 
   it('treats a CLAUDE_CONFIG_DIR an outer Orca injected as not the user’s', () => {

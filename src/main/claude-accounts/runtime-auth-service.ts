@@ -7,7 +7,6 @@ import { getDefaultWslDistro, getWslHome } from '../wsl'
 import { ClaudeProfileRouter } from './claude-profile-router'
 import { ClaudeWslProfileRouter } from './claude-profile-wsl-router'
 import { installClaudeProfileRouter } from './claude-profile-installed-router'
-import { removeClaudeAccountFolder } from './claude-account-folder'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import type { ClaudeRuntimeAuthPreparation } from './runtime-auth/runtime-auth-types'
 
@@ -102,7 +101,7 @@ export class ClaudeRuntimeAuthService {
   ): Promise<void> {
     const wsl = this.wslRouteFor(target)
     if (!wsl) {
-      await removeClaudeAccountFolder(this.dataRoot, accountId)
+      await this.router.removeAccount(accountId)
       return
     }
     // Why never thrown: a deleted distro must not block removing its accounts.
