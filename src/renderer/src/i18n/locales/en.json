@@ -279,7 +279,7 @@
       "fileExplorer": "file explorer"
     },
     "followSymlinkedDirectories": "Follow symlinked directories",
-    "followSymlinkedDirectoriesDescription": "Include linked folders in Quick Open and File Explorer. May request filesystem permissions."
+    "followSymlinkedDirectoriesDescription": "Search linked folders in Quick Open and expand local linked folders in File Explorer."
   },
   "menu": {
     "checkForUpdates": "Check for Updates...",

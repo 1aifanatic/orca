@@ -1,5 +1,9 @@
 // @ts-nocheck -- mechanically split class members.
 import {
+  QUICK_OPEN_SEARCH_VERSION,
+  isQuickOpenQueryTooLarge
+} from '../../shared/quick-open-path-search'
+import {
   RuntimeFileCommandsWithActiveRuntimeTextSearches,
   RuntimeFileCommandsWithActiveRuntimeTextSearches as RuntimeFileCommands
 } from './runtime-file-commands-active-runtime-text-searches'
@@ -19,7 +23,6 @@ import {
   isMobilePreviewableImagePath
 } from './runtime-file-commands-mobile-file-list-limit'
 import { rankRuntimeMobileFilePaths } from './runtime-mobile-file-path-search'
-import { isQuickOpenQueryTooLarge } from '../../shared/quick-open-path-search'
 import { searchQuickOpenFilePaths as searchHostQuickOpenFilePaths } from '../ipc/filesystem-search-file-paths'
 import { stat } from 'node:fs/promises'
 import { joinWorktreeRelativePath } from './runtime-relative-paths'
@@ -130,11 +133,25 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
     limit: number,
     excludePaths?: string[],
     signal?: AbortSignal,
-    options: { includeIgnored?: boolean; followSymlinks?: boolean } = {}
+    options: {
+      includeIgnored?: boolean
+      followSymlinks?: boolean
+      allowLegacyIncludeIgnored?: boolean
+    } = {}
   ): Promise<RuntimeFileListResult> {
     const target = await this.host.resolveRuntimeFileTarget(worktreeSelector)
     const { worktree } = target
     const route = runtimeFileRouteForTarget(target)
+    const quickOpenSearchVersion =
+      route.kind !== 'ssh'
+        ? QUICK_OPEN_SEARCH_VERSION
+        : (await route.provider?.supportsQuickOpenSearch?.({ signal, minimumVersion: 3 }))
+          ? 3
+          : (await route.provider?.supportsQuickOpenSearch?.({ signal, minimumVersion: 2 }))
+            ? 2
+            : (await route.provider?.supportsQuickOpenSearch?.({ signal, minimumVersion: 1 }))
+              ? 1
+              : 0
     const result =
       !query.trim() || isQuickOpenQueryTooLarge(query)
         ? { paths: [], totalCount: 0, truncated: false }
@@ -164,6 +181,7 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
         kind: isMobileBinaryPath(relativePath) ? ('binary' as const) : ('text' as const)
       })),
       totalCount: result.totalCount,
+      quickOpenSearchVersion,
       truncated: result.truncated
     }
   }

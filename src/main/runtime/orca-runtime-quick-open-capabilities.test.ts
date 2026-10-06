@@ -96,29 +96,27 @@ describe('runtime SSH Quick Open capability requirements', () => {
     }
   )
 
-  it.each(['src target', 'src_target', 'src-target'])(
-    'requires v3 for matching %s',
+  it.each(['package-lock', 'my_file', 'file name'])(
+    'preserves existing filename search %s on older relays',
     async (query) => {
-      for (const version of [1, 2]) {
+      for (const version of [1, 2, 3]) {
         const { commands, listFiles } = remoteSearch(version)
-        await expect(commands.searchQuickOpenFilePaths('id:wt-1', query, 7)).rejects.toThrow(
-          'matching options'
+        await expect(commands.searchQuickOpenFilePaths('id:wt-1', query, 7)).resolves.toMatchObject(
+          {
+            files: [{ relativePath: 'late/target.ts' }]
+          }
         )
-        expect(listFiles).not.toHaveBeenCalled()
+        expect(listFiles).toHaveBeenCalledWith(
+          '/repo',
+          expect.objectContaining({ searchQuery: query, maxResults: 8 })
+        )
       }
-      const { commands, listFiles } = remoteSearch(3)
-      await commands.searchQuickOpenFilePaths('id:wt-1', query, 7)
-      expect(listFiles).toHaveBeenCalledWith(
-        '/repo',
-        expect.objectContaining({ searchQuery: query, maxResults: 8 })
-      )
     }
   )
 
   it('does not require v3 for whitespace only around a simple query', async () => {
     const { commands, supportsQuickOpenSearch } = remoteSearch(1)
     await commands.searchQuickOpenFilePaths('id:wt-1', ' target ', 7)
-    expect(supportsQuickOpenSearch).toHaveBeenCalledOnce()
     expect(supportsQuickOpenSearch).toHaveBeenCalledWith({ signal: undefined, minimumVersion: 1 })
   })
 
@@ -215,4 +213,27 @@ describe('runtime SSH file-list capability requirements', () => {
       []
     )
   })
+})
+
+it.each([0, 1, 2, 3, 4])(
+  'reports execution relay matching capability %i through a paired runtime',
+  async (version) => {
+    const { commands } = remoteSearch(version)
+    const result = await commands.searchQuickOpenFilePaths('id:wt-1', '', 7)
+    expect(result.quickOpenSearchVersion).toBe(Math.min(version, 3))
+  }
+)
+
+it('keeps inherited ignored-file visibility from breaking searches on an older relay', async () => {
+  const { commands, listFiles } = remoteSearch(1)
+  await expect(
+    commands.searchQuickOpenFilePaths('id:wt-1', 'target', 7, undefined, undefined, {
+      includeIgnored: false,
+      allowLegacyIncludeIgnored: true
+    })
+  ).resolves.toMatchObject({ files: [{ relativePath: 'late/target.ts' }] })
+  expect(listFiles).toHaveBeenCalledWith(
+    '/repo',
+    expect.not.objectContaining({ includeIgnored: false })
+  )
 })

@@ -1,6 +1,5 @@
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
-import { QUICK_OPEN_SEARCH_VERSION } from '../../../shared/quick-open-path-search'
 import type { SearchOptions, SearchResult } from '../../../shared/code-search-types'
 import type { RuntimeFileListResult } from '../../../shared/runtime-types'
 import {
@@ -68,6 +67,7 @@ export async function listRuntimeFiles(
     rootPath: string
     candidatePaths?: string[]
     includeIgnored?: boolean
+    allowLegacyIncludeIgnored?: boolean
     followSymlinks?: boolean
     excludePaths?: string[]
     requestToken?: string
@@ -85,6 +85,7 @@ export async function listRuntimeFiles(
     return window.api.fs.listFiles({
       ...(args.includeIgnored === undefined ? {} : { includeIgnored: args.includeIgnored }),
       ...(args.followSymlinks === undefined ? {} : { followSymlinks: args.followSymlinks }),
+      ...(args.allowLegacyIncludeIgnored ? { allowLegacyIncludeIgnored: true } : {}),
       rootPath: args.rootPath,
       ...(args.candidatePaths === undefined ? {} : { candidatePaths: args.candidatePaths }),
       connectionId: context.connectionId,
@@ -94,7 +95,8 @@ export async function listRuntimeFiles(
       ...(args.nameFilter && !context.connectionId ? { nameFilter: args.nameFilter } : {})
     })
   }
-  if (args.includeIgnored === false || args.followSymlinks || args.candidatePaths !== undefined) {
+  let includeIgnored = args.includeIgnored
+  if (includeIgnored === false || args.followSymlinks || args.candidatePaths !== undefined) {
     const capability = await callRuntimeRpc<RuntimeFileListResult>(
       target,
       'files.searchPaths',
@@ -112,16 +114,19 @@ export async function listRuntimeFiles(
       throw error
     })
     if (
+      includeIgnored === false &&
+      args.allowLegacyIncludeIgnored &&
+      (capability?.quickOpenSearchVersion ?? 0) < 2
+    ) {
+      includeIgnored = undefined
+    }
+    if (
       !(
         typeof capability?.quickOpenSearchVersion === 'number' &&
-        capability.quickOpenSearchVersion >= QUICK_OPEN_SEARCH_VERSION
+        capability.quickOpenSearchVersion >= (args.candidatePaths === undefined ? 2 : 3)
       )
     ) {
-      if (
-        args.candidatePaths !== undefined &&
-        args.includeIgnored !== false &&
-        !args.followSymlinks
-      ) {
+      if (args.candidatePaths !== undefined && includeIgnored !== false && !args.followSymlinks) {
         return validateLegacyQuickOpenRecentCandidates({
           target,
           worktreeSelector: toRuntimeWorktreeSelector(context.worktreeId),
@@ -131,7 +136,9 @@ export async function listRuntimeFiles(
           signal: args.signal
         })
       }
-      throw new Error('Update the remote host to use Quick Open listing options.')
+      if (includeIgnored === false || args.followSymlinks) {
+        throw new Error('Update the remote host to use Quick Open listing options.')
+      }
     }
   }
   return callRuntimeRpc<string[]>(
@@ -140,7 +147,7 @@ export async function listRuntimeFiles(
     {
       worktree: toRuntimeWorktreeSelector(context.worktreeId),
       ...(args.candidatePaths === undefined ? {} : { candidatePaths: args.candidatePaths }),
-      ...(args.includeIgnored === undefined ? {} : { includeIgnored: args.includeIgnored }),
+      ...(includeIgnored === undefined ? {} : { includeIgnored }),
       ...(args.followSymlinks === undefined ? {} : { followSymlinks: args.followSymlinks }),
       excludePaths: args.excludePaths,
       // Optional on the host schema since #17954; an older host strips it and keeps its own default.
@@ -156,6 +163,7 @@ export async function searchRuntimeFilePaths(
     query: string
     limit?: number
     includeIgnored?: boolean
+    allowLegacyIncludeIgnored?: boolean
     followSymlinks?: boolean
     excludePaths?: string[]
     requestToken?: string
@@ -176,6 +184,7 @@ export async function searchRuntimeFilePaths(
       maxResults: limit + 1,
       ...(args.includeIgnored === undefined ? {} : { includeIgnored: args.includeIgnored }),
       ...(args.followSymlinks === undefined ? {} : { followSymlinks: args.followSymlinks }),
+      ...(args.allowLegacyIncludeIgnored ? { allowLegacyIncludeIgnored: true } : {}),
       searchQuery: args.query
     })
     return { files: files.slice(0, limit), truncated: files.length > limit }
@@ -205,10 +214,11 @@ export async function searchRuntimeFilePaths(
       throw error
     }
   }
-  if (hasCachedLegacyQuickOpenInventory(target, worktreeSelector, context.worktreePath)) {
-    if (args.includeIgnored === false || args.followSymlinks) {
-      throw new Error('Update the remote host to use Quick Open listing options.')
-    }
+  if (
+    args.includeIgnored !== false &&
+    !args.followSymlinks &&
+    hasCachedLegacyQuickOpenInventory(target, worktreeSelector, context.worktreePath)
+  ) {
     return searchLegacy()
   }
   let result: RuntimeFileListResult
@@ -223,26 +233,30 @@ export async function searchRuntimeFilePaths(
         excludePaths: args.excludePaths,
         ...(args.includeIgnored === undefined ? {} : { includeIgnored: args.includeIgnored }),
         ...(args.followSymlinks === undefined ? {} : { followSymlinks: args.followSymlinks }),
+        ...(args.allowLegacyIncludeIgnored ? { allowLegacyIncludeIgnored: true } : {}),
         mode: 'quick-open'
       },
       { timeoutMs: 15_000, ...(args.signal === undefined ? {} : { signal: args.signal }) }
     )
   } catch (error) {
     if (error instanceof RuntimeRpcCallError && error.code === 'method_not_found') {
-      if (args.includeIgnored === false || args.followSymlinks) {
+      if (
+        (args.includeIgnored === false && !args.allowLegacyIncludeIgnored) ||
+        args.followSymlinks
+      ) {
         throw new Error('Update the remote host to use Quick Open listing options.')
       }
       return searchLegacyOrRequireUpdate()
     }
     throw error
   }
-  const supportsModernSearch =
-    typeof result.quickOpenSearchVersion === 'number' &&
-    result.quickOpenSearchVersion >= QUICK_OPEN_SEARCH_VERSION
-  if ((args.includeIgnored === false || args.followSymlinks) && !supportsModernSearch) {
+  if (
+    ((args.includeIgnored === false && !args.allowLegacyIncludeIgnored) || args.followSymlinks) &&
+    (result.quickOpenSearchVersion ?? 0) < 2
+  ) {
     throw new Error('Update the remote host to use Quick Open listing options.')
   }
-  if ((args.excludePaths?.length || /[\s_-]/.test(args.query.trim())) && !supportsModernSearch) {
+  if (args.excludePaths?.length && (result.quickOpenSearchVersion ?? 0) < 1) {
     return searchLegacyOrRequireUpdate()
   }
   const excludePrefixes = buildExcludePathPrefixes(

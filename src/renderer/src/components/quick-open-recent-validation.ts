@@ -1,3 +1,4 @@
+import { debounceRuntimeFileRequest } from '@/runtime/runtime-file-request-debounce'
 import { useEffect, useRef } from 'react'
 import { quickOpenRecentCandidateSet } from '../../../shared/quick-open-recent-candidates'
 import { cancelRuntimeFileList, listRuntimeFiles } from '@/runtime/runtime-file-client'
@@ -8,12 +9,16 @@ import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client-typ
 type EligibleRecentResult = { paths: string[]; error?: string }
 type EligibleRecentRequest = {
   key: string
+  readonly settled: boolean
   load: Promise<EligibleRecentResult>
   dispose: () => void
 }
 export type QuickOpenRecentCache = { current: EligibleRecentRequest | null }
 
-export function clearQuickOpenRecentCache(cache: QuickOpenRecentCache): void {
+export function clearQuickOpenRecentCache(cache: QuickOpenRecentCache, pendingOnly = false): void {
+  if (pendingOnly && cache.current?.settled) {
+    return
+  }
   cache.current?.dispose()
   cache.current = null
 }
@@ -21,6 +26,7 @@ export function clearQuickOpenRecentCache(cache: QuickOpenRecentCache): void {
 export async function mergeQuickOpenRecentCandidates(args: {
   result: { files: string[]; truncated: boolean }
   candidatePaths: string[]
+  completeInventory?: boolean
   cache: QuickOpenRecentCache
   key: string
   context: RuntimeFileOperationArgs
@@ -31,7 +37,7 @@ export async function mergeQuickOpenRecentCandidates(args: {
     return
   }
   const candidates = [...quickOpenRecentCandidateSet(args.candidatePaths)]
-  if (candidates.length === 0) {
+  if (candidates.length === 0 || args.completeInventory) {
     return args.result
   }
   if (args.cache.current?.key !== args.key) {
@@ -40,12 +46,16 @@ export async function mergeQuickOpenRecentCandidates(args: {
     const requestToken = createBrowserUuid()
     const requested = new Set(candidates)
     let settled = false
-    const load = listRuntimeFiles(args.context, {
-      ...args.options,
-      signal: controller.signal,
-      requestToken,
-      candidatePaths: candidates,
-      maxResults: candidates.length
+    let started = false
+    const load = debounceRuntimeFileRequest(200, controller.signal, () => {
+      started = true
+      return listRuntimeFiles(args.context, {
+        ...args.options,
+        signal: controller.signal,
+        requestToken,
+        candidatePaths: candidates,
+        maxResults: candidates.length
+      })
     })
       .then((paths) => ({ paths: paths.filter((path) => requested.has(path)) }))
       .catch((error: unknown) => ({
@@ -63,10 +73,13 @@ export async function mergeQuickOpenRecentCandidates(args: {
       })
     args.cache.current = {
       key: args.key,
+      get settled() {
+        return settled
+      },
       load,
       dispose: () => {
         controller.abort()
-        if (!settled) {
+        if (!settled && started) {
           cancelRuntimeFileList(args.context, requestToken)
         }
       }
@@ -100,8 +113,4 @@ export function useQuickOpenRecentCache(enabled: boolean, key: string): QuickOpe
     return () => clearQuickOpenRecentCache(cache)
   }, [enabled, key])
   return cache
-}
-
-export async function waitForQuickOpenRecentValidation(cache: QuickOpenRecentCache): Promise<void> {
-  await cache.current?.load
 }

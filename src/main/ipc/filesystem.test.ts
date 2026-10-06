@@ -611,7 +611,7 @@ describe('registerFilesystemHandlers', () => {
       ]) {
         listFilesMock.mockClear()
         const operation = handlers.get('fs:listFiles')!(null, { ...request, ...options })
-        const minimum = 'includeIgnored' in options || 'followSymlinks' in options ? 2 : 3
+        const minimum = 'candidatePaths' in options ? 3 : 'searchQuery' in options ? 1 : 2
         if (version < minimum) {
           await expect(operation).rejects.toThrow('Update the remote host')
           expect(listFilesMock).not.toHaveBeenCalled()
@@ -686,6 +686,7 @@ describe('registerFilesystemHandlers', () => {
         requestToken: 'token-1'
       }) as Promise<string[]>
 
+      await Promise.resolve()
       expect(capturedSignal?.aborted).toBe(false)
       if (eventName === 'cancel') {
         await handlers.get('fs:cancelListFiles')!(senderEvent, { requestToken: 'token-1' })

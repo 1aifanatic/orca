@@ -614,7 +614,7 @@ it('merges host-eligible history beyond remote top32 once per palette lifetime',
   }
   const root = await renderProbe(args)
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await new Promise((resolve) => setTimeout(resolve, 400))
   })
   expect(states.at(-1)?.files).toContain('src/file99.ts')
   expect(states.at(-1)?.files).not.toContain('src/deleted.ts')
@@ -627,7 +627,7 @@ it('merges host-eligible history beyond remote top32 once per palette lifetime',
     root.render(createElement(HookProbe, { ...args, query: 'file9' }))
   })
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await new Promise((resolve) => setTimeout(resolve, 400))
   })
   expect(listRuntimeFilesMock).toHaveBeenCalledOnce()
   await act(async () => {
@@ -637,7 +637,7 @@ it('merges host-eligible history beyond remote top32 once per palette lifetime',
     root.render(createElement(HookProbe, args))
   })
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await new Promise((resolve) => setTimeout(resolve, 400))
   })
   expect(listRuntimeFilesMock).toHaveBeenCalledTimes(2)
 })
@@ -655,7 +655,7 @@ it('keeps ordinary remote search available when recent eligibility is unsupporte
     states
   })
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    await new Promise((resolve) => setTimeout(resolve, 400))
   })
   expect(states.at(-1)?.files).toEqual(['src/file0.ts'])
   expect(states.at(-1)?.loadError).toBeNull()
@@ -679,6 +679,9 @@ it('merges an eligible recent beyond the local empty-query inventory cap', async
     query: '',
     recentPaths: ['late.ts'],
     states
+  })
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 250))
   })
   await flushEffects()
   expect(states.at(-1)?.files).toContain('late.ts')

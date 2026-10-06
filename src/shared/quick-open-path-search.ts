@@ -60,9 +60,6 @@ export function rankQuickOpenFiles(
   }
 
   const normalizedQuery = normalizeQuickOpenQuery(query)
-  if (normalizedQuery === null) {
-    return []
-  }
   const results: QuickOpenRankedResult[] = []
   for (const file of files) {
     const score = scoreQuickOpenTerms(normalizedQuery, file)
@@ -112,7 +109,7 @@ export class QuickOpenPathRanker {
   }
 }
 
-function normalizeQuickOpenQuery(query: string): readonly string[] | null {
+function normalizeQuickOpenQuery(query: string): readonly string[] {
   const terms = [...new Set(query.trim().replace(/\\/g, '/').toLowerCase().split(/\s+/))]
     .filter(Boolean)
     .sort()

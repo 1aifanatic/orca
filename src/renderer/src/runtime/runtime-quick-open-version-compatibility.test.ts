@@ -7,52 +7,6 @@ import {
 } from './runtime-file-client-test-harness'
 installRuntimeFileClientEnvironment()
 
-it('finds the last file beyond 25,000 entries through a version-one inventory fallback', async () => {
-  const files = Array.from({ length: 25_001 }, (_, i) => ({
-    relativePath: `src/file-${i}.ts`,
-    basename: `file-${i}.ts`,
-    kind: 'text'
-  }))
-  files.push({ relativePath: 'apps/late/.env', basename: '.env', kind: 'text' })
-  runtimeEnvironmentCall.mockImplementation(({ method }) =>
-    Promise.resolve({
-      id: 'compat',
-      ok: true,
-      _meta: { runtimeId: 'host' },
-      result:
-        method === 'files.searchPaths'
-          ? { files: [], truncated: false, quickOpenSearchVersion: 1 }
-          : {
-              worktree: 'id:large-legacy',
-              rootPath: '/host/repo',
-              files: files.map((file) => ({
-                ...file,
-                basename: file.relativePath.split('/').at(-1) ?? '',
-                kind: 'text'
-              })),
-              totalCount: files.length,
-              truncated: false
-            }
-    })
-  )
-  await expect(
-    searchRuntimeFilePaths(
-      {
-        settings: { activeRuntimeEnvironmentId: 'env-1' },
-        worktreeId: 'large-legacy',
-        worktreePath: '/host/repo'
-      },
-      { query: '.env late' }
-    )
-  ).resolves.toEqual({ files: ['apps/late/.env'], truncated: false })
-  expect(runtimeEnvironmentCall.mock.calls.map(([request]) => request.method)).toEqual([
-    'files.searchPaths',
-    'files.list'
-  ])
-  expect(runtimeEnvironmentCall.mock.calls[1][0].params).toEqual({ worktree: 'id:large-legacy' })
-  expect(fsListFiles).not.toHaveBeenCalled()
-})
-
 it('accepts a future compatible search version rather than falling back on exact-version inequality', async () => {
   runtimeEnvironmentCall.mockResolvedValue({
     id: 'compat',
@@ -195,9 +149,12 @@ it.each(['missing-search', 'old-search'] as const)(
               })
         })
       )
-      await expect(searchRuntimeFilePaths(context, { query: 'two terms' })).rejects.toThrow(
-        code === 'method_not_found' ? 'Update the remote host' : 'inventory failed'
-      )
+      const search = searchRuntimeFilePaths(context, { query: 'two terms' })
+      await (route === 'old-search'
+        ? expect(search).resolves.toEqual({ files: [], truncated: false })
+        : expect(search).rejects.toThrow(
+            code === 'method_not_found' ? 'Update the remote host' : 'inventory failed'
+          ))
     }
   }
 )
@@ -239,4 +196,143 @@ it('preserves raw errors when joining a cached pending legacy inventory', async 
     'files.searchPaths',
     'files.list'
   ])
+})
+
+it.each(['method_not_found', 'file_inventory_capacity', 'remote_runtime_unavailable'])(
+  'does not require optional inventory to return existing old-host punctuation matches (%s)',
+  async (code) => {
+    runtimeEnvironmentCall.mockImplementation(({ method }) =>
+      Promise.resolve({
+        id: 'compat',
+        _meta: { runtimeId: 'host' },
+        ...(method === 'files.searchPaths'
+          ? {
+              ok: true,
+              result: {
+                rootPath: '/host/repo',
+                files: [{ relativePath: 'late/package-lock.json' }],
+                truncated: false,
+                quickOpenSearchVersion: 1
+              }
+            }
+          : { ok: false, error: { code, message: 'inventory unavailable' } })
+      })
+    )
+    await expect(
+      searchRuntimeFilePaths(
+        {
+          settings: { activeRuntimeEnvironmentId: 'env-1' },
+          worktreeId: `punctuation-${code}`,
+          worktreePath: '/host/repo'
+        },
+        { query: 'package-lock' }
+      )
+    ).resolves.toEqual({ files: ['late/package-lock.json'], truncated: false })
+    expect(runtimeEnvironmentCall).toHaveBeenCalledOnce()
+  }
+)
+
+it.each([{ includeIgnored: false }, { followSymlinks: true }])(
+  'uses discovery preferences on a version-two paired host: %j',
+  async (options) => {
+    runtimeEnvironmentCall.mockResolvedValue({
+      id: 'compat',
+      _meta: { runtimeId: 'host' },
+      ok: true,
+      result: {
+        rootPath: '/repo',
+        files: [{ relativePath: 'src/file.ts' }],
+        truncated: false,
+        quickOpenSearchVersion: 2
+      }
+    })
+    await expect(
+      searchRuntimeFilePaths(
+        {
+          settings: { activeRuntimeEnvironmentId: 'env-1' },
+          worktreeId: 'v2-options',
+          worktreePath: '/repo'
+        },
+        { query: 'file', ...options }
+      )
+    ).resolves.toEqual({ files: ['src/file.ts'], truncated: false })
+  }
+)
+
+it('keeps inherited ignored-file visibility from disabling an older paired host', async () => {
+  runtimeEnvironmentCall.mockImplementation(({ method }) =>
+    Promise.resolve({
+      id: 'compat',
+      _meta: { runtimeId: 'host' },
+      ok: true,
+      result:
+        method === 'files.listAll'
+          ? ['src/file.ts']
+          : {
+              rootPath: '/repo',
+              files: [{ relativePath: 'src/file.ts' }],
+              truncated: false,
+              quickOpenSearchVersion: 1
+            }
+    })
+  )
+  const context = {
+    settings: { activeRuntimeEnvironmentId: 'env-1' },
+    worktreeId: 'legacy-ignored',
+    worktreePath: '/repo'
+  }
+  await expect(
+    searchRuntimeFilePaths(context, {
+      query: 'file',
+      includeIgnored: false,
+      allowLegacyIncludeIgnored: true
+    })
+  ).resolves.toEqual({ files: ['src/file.ts'], truncated: false })
+  await expect(
+    listRuntimeFiles(context, {
+      rootPath: '/repo',
+      includeIgnored: false,
+      allowLegacyIncludeIgnored: true
+    })
+  ).resolves.toEqual(['src/file.ts'])
+  expect(runtimeEnvironmentCall.mock.calls.at(-1)?.[0].params).not.toHaveProperty('includeIgnored')
+})
+
+it('does not reuse unfiltered recent inventory after enabling supported ignore filtering', async () => {
+  runtimeEnvironmentCall.mockImplementation(({ method }) =>
+    Promise.resolve({
+      id: 'compat',
+      _meta: { runtimeId: 'host' },
+      ok: true,
+      result:
+        method === 'files.list'
+          ? {
+              worktree: 'id:cached-v2-options',
+              rootPath: '/repo',
+              files: [{ relativePath: 'secret.ts', basename: 'secret.ts', kind: 'text' }],
+              totalCount: 1,
+              truncated: false
+            }
+          : { rootPath: '/repo', files: [], truncated: false, quickOpenSearchVersion: 2 }
+    })
+  )
+  const context = {
+    settings: { activeRuntimeEnvironmentId: 'env-1' },
+    worktreeId: 'cached-v2-options',
+    worktreePath: '/repo'
+  }
+  await expect(
+    listRuntimeFiles(context, { rootPath: '/repo', candidatePaths: ['secret.ts'], maxResults: 1 })
+  ).resolves.toEqual(['secret.ts'])
+  await expect(
+    searchRuntimeFilePaths(context, {
+      query: 'secret',
+      includeIgnored: false,
+      allowLegacyIncludeIgnored: true
+    })
+  ).resolves.toEqual({ files: [], truncated: false })
+  expect(runtimeEnvironmentCall.mock.calls.at(-1)?.[0]).toMatchObject({
+    method: 'files.searchPaths',
+    params: { includeIgnored: false }
+  })
 })

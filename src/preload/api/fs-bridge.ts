@@ -160,6 +160,7 @@ export const fsApi = {
     searchQuery?: string
     candidatePaths?: string[]
     includeIgnored?: boolean
+    allowLegacyIncludeIgnored?: boolean
     followSymlinks?: boolean
     nameFilter?: string
   }): Promise<string[]> => ipcRenderer.invoke('fs:listFiles', args),

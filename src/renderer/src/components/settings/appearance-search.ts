@@ -121,7 +121,7 @@ export const getFollowSymlinkedDirectoriesEntry = (): SettingsSearchEntry => ({
   title: translate('settings.followSymlinkedDirectories', 'Follow symlinked directories'),
   description: translate(
     'settings.followSymlinkedDirectoriesDescription',
-    'Include linked folders in Quick Open and File Explorer. May request filesystem permissions.'
+    'Search linked folders in Quick Open and expand local linked folders in File Explorer.'
   ),
   keywords: [
     ...translateSearchKeyword('settings.followSymlinkedDirectoriesKeywords.symlink', 'symlink'),

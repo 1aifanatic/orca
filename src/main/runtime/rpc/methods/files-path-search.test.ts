@@ -41,7 +41,8 @@ describe('file path search RPC method', () => {
       rootPath: '/repo',
       files: [{ relativePath: 'src/app.ts', basename: 'app.ts', kind: 'text' }],
       totalCount: 1,
-      truncated: false
+      truncated: false,
+      quickOpenSearchVersion: 1
     })
     const runtime = {
       getRuntimeId: () => 'test-runtime',
@@ -74,7 +75,7 @@ describe('file path search RPC method', () => {
       controller.signal,
       { includeIgnored: undefined, followSymlinks: undefined }
     )
-    expect(response).toMatchObject({ ok: true, result: { quickOpenSearchVersion: 3 } })
+    expect(response).toMatchObject({ ok: true, result: { quickOpenSearchVersion: 1 } })
   })
 
   it('keeps the complete paired Quick Open reply within its content budget', async () => {

@@ -21,7 +21,7 @@ vi.mock('@/runtime/runtime-file-client', async () => {
   }
 })
 
-it('keeps one pending eligibility scan and starts only the latest query after it settles', async () => {
+it('shows ordinary results and starts the next query while recent validation is pending', async () => {
   vi.useFakeTimers()
   seedRemoteWorktree()
   const states: RuntimeFileListState[] = []
@@ -52,15 +52,16 @@ it('keeps one pending eligibility scan and starts only the latest query after it
       })
       await act(async () => vi.advanceTimersByTimeAsync(320))
     }
-    expect(signal.aborted).toBe(false)
-    expect(listRuntimeFilesMock).toHaveBeenCalledOnce()
-    expect(searchRuntimeFilePathsMock).toHaveBeenCalledOnce()
+    expect(signal.aborted).toBe(true)
+    expect(searchRuntimeFilePathsMock).toHaveBeenCalledTimes(3)
+    expect(states.at(-1)?.files).toEqual(['src/file0.ts'])
+    expect(states.at(-1)?.loading).toBe(false)
     await act(async () => {
       release(['src/file99.ts'])
     })
     await act(async () => vi.advanceTimersByTimeAsync(320))
-    expect(searchRuntimeFilePathsMock).toHaveBeenCalledTimes(2)
-    expect(searchRuntimeFilePathsMock.mock.calls[1][1].query).toBe('file99')
+    expect(searchRuntimeFilePathsMock).toHaveBeenCalledTimes(3)
+    expect(searchRuntimeFilePathsMock.mock.calls[2][1].query).toBe('file99')
     expect(states.at(-1)?.files).toContain('src/file99.ts')
     expect(states.at(-1)?.loading).toBe(false)
   } finally {
@@ -118,12 +119,12 @@ it('revokes pending eligibility on close and owner change without overlapping ho
       })
       await act(async () => vi.advanceTimersByTimeAsync(320))
     }
-    expect(listRuntimeFilesMock).toHaveBeenCalledOnce()
-    expect(aborted).toBe(0)
+    expect(listRuntimeFilesMock).toHaveBeenCalledTimes(3)
+    expect(aborted).toBe(2)
     await act(async () => {
       root.render(createElement(HookProbe, { ...args, enabled: false }))
     })
-    expect(aborted).toBe(1)
+    expect(aborted).toBe(3)
     expect(active).toBe(0)
     await act(async () => {
       root.render(createElement(HookProbe, args))
@@ -139,14 +140,14 @@ it('revokes pending eligibility on close and owner change without overlapping ho
       })
     })
     await act(async () => vi.advanceTimersByTimeAsync(320))
-    expect(aborted).toBe(2)
-    expect(listRuntimeFilesMock).toHaveBeenCalledTimes(3)
+    expect(aborted).toBe(4)
+    expect(listRuntimeFilesMock).toHaveBeenCalledTimes(5)
     await act(async () => {
       releases.at(-1)?.()
     })
     expect(active).toBe(0)
     expect(maximumActive).toBe(1)
-    expect(searchRuntimeFilePathsMock).toHaveBeenCalledTimes(3)
+    expect(searchRuntimeFilePathsMock).toHaveBeenCalledTimes(5)
     expect(states.at(-1)?.files).toContain('src/file99.ts')
     console.log(
       'ELIGIBILITY_FINAL_COUNTS',

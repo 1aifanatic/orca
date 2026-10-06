@@ -55,19 +55,15 @@ export async function readFileExplorerDirectory(
       connectionId: route.connectionId
     },
     dirPath,
-    { followSymlinks: useAppStore.getState().settings?.followSymlinkedDirectories ?? false }
+    useAppStore.getState().settings?.followSymlinkedDirectories
+      ? { followSymlinks: true }
+      : undefined
   )
   // Why: remote-runtime and paired-web routes return the host's order verbatim,
   // and an older host may still sort lexicographically; re-sorting an already
   // sorted local listing is near-free (adaptive sort).
   return {
-    entries: sortDirEntries(
-      entries.map((entry) =>
-        entry.isSymlink && !useAppStore.getState().settings?.followSymlinkedDirectories
-          ? { ...entry, isDirectory: false }
-          : entry
-      )
-    ),
+    entries: sortDirEntries(entries),
     operationOwner
   }
 }

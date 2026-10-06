@@ -163,6 +163,7 @@ export type FilesystemApi = {
       searchQuery?: string
       candidatePaths?: string[]
       includeIgnored?: boolean
+      allowLegacyIncludeIgnored?: boolean
       followSymlinks?: boolean
       nameFilter?: string
     }) => Promise<string[]>

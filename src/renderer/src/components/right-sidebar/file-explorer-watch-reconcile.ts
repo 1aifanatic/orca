@@ -112,7 +112,7 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
     const parent = parentDirForWatchPath(normalizedPath)
     const cachedParent = resolveCachedDirPath(cache, parent, currentWorktreePath, cachePathIndex)
     const updatedChild =
-      args.followSymlinks && evt.kind === 'update' && cachedParent
+      evt.kind === 'update' && cachedParent
         ? cachedDirectoryChild(cache, cachedParent, normalizedPath, childPathIndexes)
         : undefined
     const knownFileUpdate =
@@ -121,7 +121,7 @@ export function processFileExplorerFsPayload(args: ProcessFileExplorerFsPayloadA
       updatedChild !== undefined &&
       !updatedChild.isDirectory &&
       updatedChild.isSymlink === false
-    if (args.followSymlinks && !knownFileUpdate) {
+    if (!knownFileUpdate) {
       hasLinkedCache ??= hasCachedDirectoryLink(cache, cachePathIndex())
       // Native events name the target, so cached aliases need the existing bounded refresh too.
       needsFullRefresh ||= hasLinkedCache

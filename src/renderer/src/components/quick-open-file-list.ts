@@ -9,7 +9,7 @@ export type {
 } from './quick-open-file-list-target'
 import {
   mergeQuickOpenRecentCandidates,
-  waitForQuickOpenRecentValidation,
+  clearQuickOpenRecentCache,
   useQuickOpenRecentCache
 } from './quick-open-recent-validation'
 /* oxlint-disable react-doctor/no-adjust-state-on-prop-change -- Why: quick-open file lists are fetched over local or SSH runtime IPC, so loading/error/results track the request lifecycle. */
@@ -200,6 +200,7 @@ export function useRuntimeFileListForWorktree({
     const listFiles = (nameFilter?: string) =>
       listRuntimeFiles(requestContext, {
         includeIgnored,
+        ...(includeIgnored === false ? { allowLegacyIncludeIgnored: true } : {}),
         followSymlinks,
         rootPath: worktreePath,
         excludePaths,
@@ -214,17 +215,12 @@ export function useRuntimeFileListForWorktree({
         files,
         truncated: files.length >= QUICK_OPEN_LISTING_MAX_RESULTS
       }))
-    let requestStarted = false
-    const request = (async () => {
-      await waitForQuickOpenRecentValidation(eligibleRecentCache)
-      if (cancelled) {
-        return undefined
-      }
-      requestStarted = true
-      return usesRuntimePathSearch && remoteQuery.length > 0
+    const request =
+      usesRuntimePathSearch && remoteQuery.length > 0
         ? debounceRuntimeFileRequest(120, requestAbortController.signal, () =>
             searchRuntimeFilePaths(requestContext, {
               includeIgnored,
+              ...(includeIgnored === false ? { allowLegacyIncludeIgnored: true } : {}),
               followSymlinks,
               query: remoteQuery,
               limit: 32,
@@ -238,53 +234,59 @@ export function useRuntimeFileListForWorktree({
               listFiles(hostNameFilter)
             )
           : listFiles()
-    })()
 
     void request
-      .then(
-        (result) =>
-          result &&
-          mergeQuickOpenRecentCandidates({
-            result,
-            candidatePaths: JSON.parse(recentKey),
-            cache: eligibleRecentCache,
-            key: eligibilityKey,
-            context: requestContext,
-            options: {
-              rootPath: worktreePath,
-              includeIgnored,
-              followSymlinks,
-              excludePaths
-            },
-            cancelled: () => cancelled
-          })
-      )
       .then((result) => {
-        if (!result) {
+        if (cancelled) {
           return
         }
-        if (!cancelled) {
-          setListing({ requestKey, ...result })
-          setListedOperationOwner(requestOperationOwner)
-          if (!usesRuntimePathSearch && !hostNameFilter) {
-            setCappedLocalListing((current) =>
-              nextCappedLocalListing(current, listingKey, result.truncated)
-            )
+        const publish = (next: typeof result & { recentError?: string }): void => {
+          if (!cancelled) {
+            setListing({ requestKey, ...next })
+            setListedOperationOwner(requestOperationOwner)
           }
         }
+        publish(result)
+        setLoadingRequest({ requestKey, loading: false })
+        if (!usesRuntimePathSearch && !hostNameFilter) {
+          setCappedLocalListing((current) =>
+            nextCappedLocalListing(current, listingKey, result.truncated)
+          )
+        }
+        return mergeQuickOpenRecentCandidates({
+          result,
+          completeInventory:
+            !result.truncated &&
+            !hostNameFilter &&
+            (!usesRuntimePathSearch || remoteQuery.length === 0),
+          candidatePaths: JSON.parse(recentKey),
+          cache: eligibleRecentCache,
+          key: eligibilityKey,
+          context: requestContext,
+          options: {
+            rootPath: worktreePath,
+            includeIgnored,
+            ...(includeIgnored === false ? { allowLegacyIncludeIgnored: true } : {}),
+            followSymlinks,
+            excludePaths
+          },
+          cancelled: () => cancelled
+        }).then((merged) => {
+          if (merged) {
+            publish(merged)
+          }
+        })
       })
       .catch((error) => {
+        if (!cancelled) {
+          setLoadingRequest({ requestKey, loading: false })
+        }
         if (!cancelled && hostNameFilter) {
           // Why: a failed host scan falls back to filtering the capped listing, not an error.
           setCappedLocalListing((current) => current && { ...current, hostFilterFailed: true })
         } else if (!cancelled) {
           setListing(NO_LISTING)
           setLoadError(cleanRuntimeFileListError(error))
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingRequest({ requestKey, loading: false })
         }
       })
 
@@ -295,9 +297,8 @@ export function useRuntimeFileListForWorktree({
       // the previous full-tree scan host- and relay-side. Over SSH, abandoned
       // scans otherwise stack up and starve fs.readDir/fs.stat past their
       // 30s timeout ("Could not load files for this workspace").
-      if (requestStarted) {
-        cancelRuntimeFileList(requestContext, requestToken)
-      }
+      clearQuickOpenRecentCache(eligibleRecentCache, true)
+      cancelRuntimeFileList(requestContext, requestToken)
     }
   }, [
     enabled,

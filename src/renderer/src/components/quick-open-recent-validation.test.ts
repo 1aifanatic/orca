@@ -1,5 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ list: vi.fn(), cancel: vi.fn() }))
+vi.mock('@/runtime/runtime-file-request-debounce', () => ({
+  debounceRuntimeFileRequest: (
+    _delay: number,
+    _signal: AbortSignal,
+    request: () => Promise<unknown>
+  ) => request()
+}))
 vi.mock('@/runtime/runtime-file-client', () => ({
   listRuntimeFiles: mocks.list,
   cancelRuntimeFileList: mocks.cancel
@@ -93,4 +100,21 @@ it('cancels eligibility on owner/root changes while preserving ordinary search o
   })
   expect(result?.files).toEqual(['recent.ts', 'ordinary.ts'])
   expect(result?.recentError).toBe('Recent files could not be checked: Update host')
+})
+
+it('uses fresh complete inventory membership without a second traversal', async () => {
+  const result = { files: ['ordinary.ts', 'recent.ts'], truncated: false }
+  expect(
+    await mergeQuickOpenRecentCandidates({
+      result,
+      completeInventory: true,
+      candidatePaths: ['recent.ts', 'deleted.ts'],
+      cache: { current: null },
+      key: 'full',
+      context,
+      options: { rootPath: '/repo' },
+      cancelled: () => false
+    })
+  ).toBe(result)
+  expect(mocks.list).not.toHaveBeenCalled()
 })

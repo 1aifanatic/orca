@@ -1,3 +1,4 @@
+import { resolveSshQuickOpenDiscoveryOptions } from '../../providers/ssh-quick-open-discovery-options'
 import { ipcMain } from 'electron'
 import { getSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { listQuickOpenFiles } from '../filesystem-list-files'
@@ -30,6 +31,7 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
         candidatePaths?: string[]
         searchQuery?: string
         includeIgnored?: boolean
+        allowLegacyIncludeIgnored?: boolean
         followSymlinks?: boolean
         /** Local only: keep paths containing every whitespace-separated word, like the Explorer filter. */
         nameFilter?: string
@@ -43,16 +45,19 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
           if (!provider) {
             return []
           }
+          const discovery = await resolveSshQuickOpenDiscoveryOptions(
+            provider,
+            args,
+            controller?.signal
+          )
           if (
-            (args.includeIgnored === false ||
-              args.followSymlinks ||
-              args.candidatePaths !== undefined) &&
+            args.candidatePaths !== undefined &&
             !(await provider.supportsQuickOpenSearch?.({
               signal: controller?.signal,
-              minimumVersion: args.candidatePaths !== undefined ? 3 : 2
+              minimumVersion: 3
             }))
           ) {
-            throw new Error('Update the remote host to use Quick Open listing options.')
+            throw new Error('Update the remote host to validate Quick Open recent files.')
           }
           // Why: forward excludePaths or nested linked worktrees get double-scanned over SSH, causing timeout-induced partial results.
           if (
@@ -65,8 +70,7 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
           ) {
             const legacyFiles = await provider.listFiles(args.rootPath, {
               excludePaths: args.excludePaths,
-              ...(args.includeIgnored === undefined ? {} : { includeIgnored: args.includeIgnored }),
-              ...(args.followSymlinks === undefined ? {} : { followSymlinks: args.followSymlinks }),
+              ...discovery,
               maxResults: QUICK_OPEN_SSH_LEGACY_RESULT_LIMIT,
               signal: controller?.signal
             })
@@ -79,22 +83,10 @@ export function registerFilesystemSearchHandlers(context: FilesystemHandlerConte
             }
             return ranker.result().paths
           }
-          if (
-            args.searchQuery !== undefined &&
-            provider.supportsQuickOpenSearch &&
-            /[\s_-]/.test(args.searchQuery.trim()) &&
-            !(await provider.supportsQuickOpenSearch?.({
-              signal: controller?.signal,
-              minimumVersion: 3
-            }))
-          ) {
-            throw new Error('Update the remote host to use Quick Open matching options.')
-          }
           return await provider.listFiles(args.rootPath, {
             candidatePaths: args.candidatePaths,
             excludePaths: args.excludePaths,
-            ...(args.includeIgnored === undefined ? {} : { includeIgnored: args.includeIgnored }),
-            ...(args.followSymlinks === undefined ? {} : { followSymlinks: args.followSymlinks }),
+            ...discovery,
             ...(args.maxResults === undefined ? {} : { maxResults: args.maxResults }),
             ...(args.searchQuery === undefined ? {} : { searchQuery: args.searchQuery }),
             signal: controller?.signal

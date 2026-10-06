@@ -48,7 +48,7 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
           const provider = requireSshFilesystemProvider(args.connectionId)
           // Why: re-sort locally — the remote relay may be an older build with lexicographic ordering.
           return sortDirEntries(
-            await provider.readDir(args.dirPath, { followSymlinks: args.followSymlinks ?? false })
+            await provider.readDir(args.dirPath, { followSymlinks: args.followSymlinks })
           )
         }
         const dirPath = await resolveDesktopAuthorizedPath(args.dirPath, store)

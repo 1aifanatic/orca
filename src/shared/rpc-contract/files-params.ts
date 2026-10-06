@@ -9,6 +9,7 @@ export const FilePathsExist = WorktreeSelector.extend({
 })
 
 export const FilePathSearch = WorktreeSelector.extend({
+  allowLegacyIncludeIgnored: z.boolean().optional(),
   includeIgnored: z.boolean().optional(),
   followSymlinks: z.boolean().optional(),
   query: z.string().max(QUICK_OPEN_REMOTE_QUERY_MAX_CODE_UNITS).default(''),

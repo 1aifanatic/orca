@@ -83,10 +83,12 @@ describe('linked-directory watcher invalidation', () => {
     expect(f.refreshTree).toHaveBeenCalledOnce()
   })
 
-  it('skips linked invalidation when disabled, uncached, or outside the event root', () => {
+  it('keeps cached historical aliases refreshed with the Quick Open preference disabled', () => {
     const f = fixture()
     const event = { kind: 'create' as const, absolutePath: '/repo/target/new.ts' }
     f.process([event], false)
+    expect(f.refreshTree).toHaveBeenCalledOnce()
+    f.refreshTree.mockClear()
     f.process([{ ...event, absolutePath: '/other/new.ts' }])
     f.process([event], true, '/other')
     expect(f.refreshTree).not.toHaveBeenCalled()
