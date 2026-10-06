@@ -7,18 +7,10 @@ import { codexProviderHandle } from '../../../shared/agent-session-provider-hand
 import { probeAgentSessionProcessIdentity } from '../../runtime/agent-session-process-identity-probe'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
-import {
-  settleStructuredAgentSessionChildExit,
-  type StructuredAgentSessionChildExitContext,
-  type StructuredAgentSessionChildExitSession
-} from './structured-agent-session-child-exit'
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 import { StructuredAgentSessionLeaseRenewer } from './structured-agent-session-lease-renewer'
 import { recordingStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
-import {
-  holdsLiveProviderChild,
-  markProviderChildExited
-} from './structured-agent-session-provider-child'
+import { holdsLiveProviderChild } from './structured-agent-session-provider-child'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'session-held'
@@ -91,16 +83,19 @@ function pidProbe(platform: NodeJS.Platform) {
   )
 }
 
+/** The host's child record, read against an adapter that owns the process for `gen-1` until the
+ *  test says its root exited. */
 function hostWith(child: StructuredAgentSessionProviderChild | null) {
-  const session: StructuredAgentSessionChildExitSession = {
-    child,
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Only the exit-receipt mark runs here; the serialized settlement that reads the journal never does.
-    journal: {} as StructuredAgentSessionChildExitSession['journal']
-  }
+  const session = { child }
+  const adapter: { liveGeneration: string | null } = { liveGeneration: 'gen-1' }
   return {
-    session,
+    adapter,
     holdsLiveChild: (sessionId: string, fence: number) =>
-      holdsLiveProviderChild(sessionId === SESSION ? session : undefined, fence)
+      holdsLiveProviderChild(
+        sessionId === SESSION ? session : undefined,
+        fence,
+        (generation) => generation === adapter.liveGeneration
+      )
   }
 }
 
@@ -138,20 +133,16 @@ describe.each(['darwin', 'win32'] as const)('lease renewal of a held child on %s
     expect(log.entries).toEqual([])
   })
 
-  it('stops renewing once the held child exit is received', async () => {
+  it('stops renewing the moment the adapter sees the root exit', async () => {
     const { store, fence } = await liveStoreWithoutStartTime()
-    const child: StructuredAgentSessionProviderChild = {
-      generation: 'gen-1',
-      fence,
-      phase: 'ready'
-    }
-    const { session, holdsLiveChild } = hostWith(child)
+    const { adapter, holdsLiveChild } = hostWith({ generation: 'gen-1', fence, phase: 'ready' })
     const probe = pidProbe(platform)
     const clock = { now: NOW + 10_000 }
     const { renewer } = renewerFor(store, probe, clock, holdsLiveChild)
     await renewer.renewNow()
 
-    markProviderChildExited(session, child)
+    // The child is still on the host's record: only the adapter has seen the exit so far.
+    adapter.liveGeneration = null
     clock.now = NOW + 20_000
     await renewer.renewNow()
 
@@ -184,9 +175,11 @@ describe.each(['darwin', 'win32'] as const)('lease renewal of a held child on %s
 
   it('still probes a record this runtime does not hold at its fence', async () => {
     const { store, fence } = await liveStoreWithoutStartTime()
-    // An older child on record, or none at all, holds nothing at the record's fence.
+    // An older child, one whose acquisition the adapter does not run, or none at all.
     for (const child of [
       { generation: 'gen-0', fence: fence - 1, phase: 'ready' } as const,
+      { generation: 'gen-2', fence, phase: 'ready' } as const,
+      { generation: null, fence, phase: 'ready' } as const,
       null
     ]) {
       const { holdsLiveChild } = hostWith(child)
@@ -206,37 +199,5 @@ describe.each(['darwin', 'win32'] as const)('lease renewal of a held child on %s
         error: expect.objectContaining({ message: 'agent_session_ownership_unknown' })
       })
     }
-  })
-})
-
-describe('receipt of a child exit', () => {
-  it('ends the held child proof before the exit settlement gets its turn', async () => {
-    const child: StructuredAgentSessionProviderChild = {
-      generation: 'gen-1',
-      fence: 3,
-      phase: 'ready'
-    }
-    const { session, holdsLiveChild } = hostWith(child)
-    const context = {
-      sessions: new Map([[SESSION, session]]),
-      // The session's queue is busy: the settlement itself never starts in this test.
-      serialize: () => new Promise<never>(() => {})
-    }
-
-    void settleStructuredAgentSessionChildExit(
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The receipt mark reads only `sessions`; everything else runs inside `serialize`, which never starts here.
-      context as unknown as StructuredAgentSessionChildExitContext<StructuredAgentSessionChildExitSession>,
-      {
-        type: 'ended',
-        sessionId: SESSION,
-        reason: 'exited',
-        cause: 'unexpected-exit',
-        fence: 3,
-        acquisitionGeneration: 'gen-1'
-      }
-    )
-
-    expect(session.child).toBe(child)
-    expect(holdsLiveChild(SESSION, 3)).toBe(false)
   })
 })

@@ -12,10 +12,7 @@ import type {
   StructuredAgentSessionHostSession,
   StructuredAgentSessionProviderChild
 } from './structured-agent-session-host-types'
-import {
-  endProviderChild,
-  markProviderChildExited
-} from './structured-agent-session-provider-child'
+import { endProviderChild } from './structured-agent-session-provider-child'
 import {
   releaseStoredStructuredAgentSessionOwnerAfterExit,
   type StructuredAgentSessionLeaseStore
@@ -74,14 +71,6 @@ export function settleStructuredAgentSessionChildExit<
   context: StructuredAgentSessionChildExitContext<TSession>,
   event: StructuredAgentSessionEndedEvent
 ): Promise<void> {
-  // Before the queue: lease renewal must not vouch for a child whose exit is only waiting its turn.
-  const exited = context.sessions.get(event.sessionId)
-  if (exited) {
-    markProviderChildExited(exited, {
-      generation: event.acquisitionGeneration,
-      fence: event.fence
-    })
-  }
   return context.serialize(event.sessionId, async () => {
     const child = context.sessions.get(event.sessionId)?.child
     if (!child || child.fence !== event.fence || child.generation !== event.acquisitionGeneration) {
@@ -110,7 +99,6 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
   if (!session || session.child !== child) {
     return
   }
-  markProviderChildExited(session, child)
   const { expected } = exit
   const close = child.close
   // Receipt of the exit is the one end time the host may record for a running turn.

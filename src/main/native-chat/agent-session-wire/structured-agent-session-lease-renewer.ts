@@ -28,7 +28,7 @@ export class StructuredAgentSessionLeaseRenewer {
         records: readonly AgentSessionRecord[]
       ) => Promise<Map<string, AgentSessionOwnerProbe>>
       /** Whether this runtime holds the session's child at `fence` and has not seen it exit. */
-      holdsLiveChild?: (sessionId: string, fence: number) => boolean
+      holdsLiveChild: (sessionId: string, fence: number) => boolean
       now: () => number
       logger: StructuredAgentSessionLogger
       intervalMs?: number
@@ -82,7 +82,7 @@ export class StructuredAgentSessionLeaseRenewer {
     // A child this runtime holds proves itself; a PID probe can be indeterminate for it (no start
     // time, no token echo), which would freeze the lease at its last proof.
     const holds = (record: AgentSessionRecord): boolean =>
-      this.input.holdsLiveChild?.(record.sessionId, record.lease.runtimeFence) === true
+      this.input.holdsLiveChild(record.sessionId, record.lease.runtimeFence)
     const held = records.filter(holds)
     const unheld = records.filter((record) => !held.includes(record))
     const probes =

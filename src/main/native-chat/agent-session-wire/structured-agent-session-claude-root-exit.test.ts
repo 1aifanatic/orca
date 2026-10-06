@@ -126,7 +126,7 @@ describe('Claude root-exit stop', () => {
       claimKeyId: 'key-1',
       logger: createStructuredAgentSessionLogger()
     }
-    const runtimeState = new StructuredAgentSessionHostRuntimeState(deps)
+    const runtimeState = new StructuredAgentSessionHostRuntimeState(deps, undefined, () => false)
 
     claude.connections[0]!.handlers.onExit?.(new Error('provider exited'))
     await expect(

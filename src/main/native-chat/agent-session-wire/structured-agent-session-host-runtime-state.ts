@@ -16,15 +16,16 @@ export class StructuredAgentSessionHostRuntimeState {
 
   constructor(
     private readonly deps: StructuredAgentSessionHostDeps,
-    onEventSinkFailure?: (sessionId: string, error: unknown) => void,
-    holdsLiveChild?: (sessionId: string, fence: number) => boolean
+    onEventSinkFailure: ((sessionId: string, error: unknown) => void) | undefined,
+    /** Required: dropping it silently sends every held child back to the PID probe. */
+    holdsLiveChild: (sessionId: string, fence: number) => boolean
   ) {
     this.onEventSinkFailure = onEventSinkFailure
     this.leaseRenewer = new StructuredAgentSessionLeaseRenewer({
       store: deps.store,
       probe: (record) => this.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
-      ...(holdsLiveChild ? { holdsLiveChild } : {}),
+      holdsLiveChild,
       now: () => deps.now?.() ?? Date.now(),
       // Lease/ownership failures are transient and stay on the visible lease-error path.
       // Only deferred sink I/O failures are terminal and may force-close a provider.

@@ -52,7 +52,7 @@ import {
 import { structuredAgentSessionRestartResumeSurfaces } from './structured-agent-session-restart-resume-wiring'
 import { createStructuredAgentSessionConversationDelivery } from './structured-agent-session-host-delivery'
 import {
-  holdsLiveProviderChild,
+  heldProviderChildReader,
   structuredAgentSessionConversationFence
 } from './structured-agent-session-provider-child'
 import { wireStructuredAgentSessionQueuedMessages } from './structured-agent-session-queued-wiring'
@@ -115,7 +115,7 @@ export class StructuredAgentSessionHost {
     this.runtimeState = new StructuredAgentSessionHostRuntimeState(
       deps,
       (sessionId, error) => this.eventRecovery.recoverAfterSinkFailure(sessionId, error),
-      (sessionId, fence) => holdsLiveProviderChild(this.sessions.get(sessionId), fence)
+      heldProviderChildReader(this.sessions, deps.adapter)
     )
     this.reconcileLeases = createRestartReconciler({
       store: deps.store,

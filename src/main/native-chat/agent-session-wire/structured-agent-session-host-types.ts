@@ -68,8 +68,6 @@ export type StructuredAgentSessionProviderChild = StructuredAgentSessionProvider
    *  for any other start. In memory only: it tells a restart offer its own start from another. */
   readonly startedFor?: string
   close?: StructuredAgentSessionChildClose
-  /** The host received the child's exit; it stays on record only until that exit is settled. */
-  exitObserved?: true
 }
 
 /** What ending a child established about its provider root. A stop's comes only from

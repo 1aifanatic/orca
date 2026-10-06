@@ -251,7 +251,8 @@ export function createClaudeChildTreeReaper(
     return terminated ? 'exited' : 'unverifiable'
   }
 
-  /** The only source of a tree verdict: `exited` is observed on POSIX, taskkill's report on Windows. */
+  /** The only source of a tree verdict: `exited` is observed on POSIX and is taskkill's report
+   *  on Windows. */
   async function judgeTree(): Promise<DescendantTreeVerdict> {
     const killRoot = (): boolean => terminateClaudeRoot({ child, exited })
     const rootPid = child.pid
@@ -333,9 +334,10 @@ export function createClaudeChildTreeReaper(
  * Resolves true only after the child actually emitted exit and, on POSIX, its
  * snapshotted descendants were observed gone; on Windows, after it left on its
  * own once its stdin ended with no forced reap before, or a forced
- * `taskkill /T /F` reported its tree terminated. False is unproven. On POSIX a root that left on its own before a
- * snapshot could be armed stays unproven: its descendants had already
- * reparented out of reach when the ladder first looked.
+ * `taskkill /T /F` reported its tree terminated. False is unproven. On POSIX a
+ * root that left on its own before a snapshot could be armed stays unproven:
+ * its descendants had already reparented out of reach when the ladder first
+ * looked.
  */
 export function proveClaudeChildExit(input: ClaudeChildExitProofInput): Promise<boolean> {
   return proveClaudeChildExitWithReaper(input, () =>

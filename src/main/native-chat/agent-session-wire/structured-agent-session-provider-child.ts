@@ -8,6 +8,7 @@
 import type { AgentJournalCursor } from '../../../shared/agent-session-journal-types'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import type {
   StructuredAgentSessionEndedChild,
   StructuredAgentSessionHostSession,
@@ -47,25 +48,30 @@ export function markProviderChildStarted(
   return child !== null
 }
 
-/** From the moment the host receives the exit: the child stops vouching for its lease. */
-export function markProviderChildExited(
-  session: ChildBearer,
-  identity: StructuredAgentSessionProviderChildIdentity
-): void {
-  const child = matchingChild(session, identity)
-  if (child) {
-    child.exitObserved = true
-  }
-}
-
-/** This runtime holds a child at `fence` whose exit it has not received: first-hand proof of life
- *  that needs no PID probe. A previous runtime's child is never on record here. */
+/** This runtime holds a child at `fence` whose process its adapter still sees running: first-hand
+ *  proof of life that needs no PID probe. A previous runtime's child is never on record here. */
 export function holdsLiveProviderChild(
   session: Pick<ChildBearer, 'child'> | undefined,
-  fence: number
+  fence: number,
+  processLive: (acquisitionGeneration: string) => boolean
 ): boolean {
   const child = session?.child
-  return !!child && child.fence === fence && child.exitObserved !== true
+  return (
+    !!child && child.fence === fence && child.generation !== null && processLive(child.generation)
+  )
+}
+
+/** Lease renewal's held-child read, from the host's child record and the adapter's own handle. */
+export function heldProviderChildReader(
+  sessions: { get(sessionId: string): Pick<ChildBearer, 'child'> | undefined },
+  adapter: Pick<StructuredAgentSessionAdapter, 'holdsLiveProviderProcess'>
+): (sessionId: string, fence: number) => boolean {
+  return (sessionId, fence) =>
+    holdsLiveProviderChild(
+      sessions.get(sessionId),
+      fence,
+      (generation) => adapter.holdsLiveProviderProcess?.(sessionId, generation) === true
+    )
 }
 
 /** `endedAt` is a close's ask; an exit of the child's own ends where the journal stands. */
