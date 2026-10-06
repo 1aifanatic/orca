@@ -18,16 +18,18 @@ const INITIAL_PROMPT = JSON.stringify({
   ]
 })
 
-const storeState = {
-  agentStatusByPaneKey: {
-    'tab-1:leaf-1': {
-      interactivePrompt: INITIAL_PROMPT as string | undefined,
-      toolName: 'AskUserQuestion' as string | undefined,
-      state: undefined as string | undefined,
-      stateStartedAt: 1 as number | undefined
-    }
-  }
+type PaneStatus = {
+  interactivePrompt?: string
+  toolName?: string
+  state?: string
+  stateStartedAt?: number
 }
+const paneStatus: PaneStatus = {
+  interactivePrompt: INITIAL_PROMPT,
+  toolName: 'AskUserQuestion',
+  stateStartedAt: 1
+}
+const storeState = { agentStatusByPaneKey: { 'tab-1:leaf-1': paneStatus } }
 
 vi.mock('../../store', () => ({
   useAppStore: (selector: (state: typeof storeState) => unknown) => selector(storeState)

@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
   inferQuestionAnswered: vi.fn(() => Promise.resolve(true)),
   sendRuntimePtyInput: vi.fn(),
-  sendRuntimePtyInputVerified: vi.fn(() => Promise.resolve(true)),
+  sendRuntimePtyInputVerified: vi.fn((..._args: unknown[]) => Promise.resolve(true)),
   sendNativeChatAskAnswer: vi.fn(),
   sendNativeChatMessage: vi.fn(),
   // Mutable so a test can swap the live status between sendAnswer and settle.

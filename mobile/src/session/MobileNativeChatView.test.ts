@@ -734,7 +734,9 @@ describe('MobileNativeChatView', () => {
         }
       })
       expect(composer().props.disabled).toBe(true)
-      await update({ question: { question: 'Name?', options: [], multiSelect: false } })
+      await update({
+        question: { question: 'Name?', options: [], multiSelect: false, optionTokens: [] }
+      })
       expect(composer().props.disabled).toBe(true)
     })
 
