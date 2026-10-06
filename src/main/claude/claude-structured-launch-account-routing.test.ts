@@ -73,7 +73,7 @@ it('launches each acquisition under the current selection, not the account it wa
   expect((await resolve({ identity })).claudeConfigDir).toBe('/user/own')
 })
 
-it('refuses to resume a chat whose transcript is in another account instead of starting fresh', async () => {
+function routedResumeFixture() {
   const root = mkdtempSync(join(tmpdir(), 'claude-launch-routing-'))
   roots.push(root)
   const home = join(root, 'claude-profiles', 'a', 'home')
@@ -117,14 +117,28 @@ it('refuses to resume a chat whose transcript is in another account instead of s
     agent: 'claude' as const,
     providerHandle: handle
   }
+  return { root, home, transcriptHomes, launch: () => resolve({ identity }) }
+}
 
-  await expect(resolve({ identity })).rejects.toMatchObject({
+it('refuses to resume a chat whose transcript is in another account instead of starting fresh', async () => {
+  const { root, home, transcriptHomes, launch } = routedResumeFixture()
+  transcriptHomes.add(join(root, 'personal', '.claude'))
+
+  await expect(launch()).rejects.toMatchObject({
     name: 'AgentSessionPreSpawnError',
     reason: 'historyInOtherAccount'
   })
 
   transcriptHomes.add(home)
-  const resumed = await resolve({ identity })
+  const resumed = await launch()
+  expect(resumed.options).toMatchObject({ resume: 'ran-under-b' })
+  expect(resumed.resumeLeafUuid).toBe('leaf-1')
+})
+
+it('resumes a chat with a stored leaf whose transcript is in no known folder', async () => {
+  const { launch } = routedResumeFixture()
+
+  const resumed = await launch()
   expect(resumed.options).toMatchObject({ resume: 'ran-under-b' })
   expect(resumed.resumeLeafUuid).toBe('leaf-1')
 })
