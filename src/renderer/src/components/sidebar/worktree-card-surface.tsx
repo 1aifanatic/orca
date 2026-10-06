@@ -41,7 +41,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     showRenameErrorDialog,
     setShowRenameErrorDialog
   } = card
-  const { titleOnlyCard, cardStyle } = presentation
+  const { surfacePaddingClassName, cardStyle } = presentation
 
   const parentCardContent = <WorktreeCardParentContent card={card} presentation={presentation} />
 
@@ -50,7 +50,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
       className={cn(
         'relative flex flex-col pr-1.5 transition-[background-color,border-color,opacity,box-shadow] duration-200 outline-none select-none',
         interactive && 'cursor-pointer',
-        titleOnlyCard ? 'py-2' : 'pt-1.25 pb-1.5',
+        surfacePaddingClassName,
         flushSurface ? 'ml-1 w-[calc(100%-0.25rem)]' : 'ml-1',
         'overflow-hidden rounded-lg',
         // Why: the live data attribute updates before React state during navigation,

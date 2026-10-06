@@ -10,6 +10,7 @@ import {
   WorktreeCardMetaBadges
 } from './WorktreeCardMeta'
 import { WorktreeCardPortsDetails, WorktreeCardPortsTrigger } from './WorktreeCardPorts'
+import { getWorktreeCardSurfacePadding } from './worktree-card-spacing'
 import type { WorktreeCardController } from './use-worktree-card-controller'
 
 export function buildWorktreeCardPresentation(card: WorktreeCardController) {
@@ -268,6 +269,13 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     showLineageChildChip ||
     agentRows != null
   const titleOnlyCard = !hasSecondaryCardContent
+  const surfacePaddingClassName = getWorktreeCardSurfacePadding(
+    hasMetaRow ||
+      !!remoteBranchConflict ||
+      card.inlineAgentRowsAffectSurfacePadding ||
+      showLineageChildChip ||
+      (card.callerRowsAffectSurfacePadding && agentRows != null)
+  )
 
   return {
     showPinnedRepoIcon,
@@ -294,7 +302,8 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     cardStyle,
     detailsAndPorts,
     titleRowIndicators,
-    titleOnlyCard
+    titleOnlyCard,
+    surfacePaddingClassName
   }
 }
 

@@ -11,6 +11,7 @@ import { useWorktreeCardReviewDetails } from './use-worktree-card-review-details
 import { useWorktreeCardSecondaryDetails } from './use-worktree-card-secondary-details'
 import { useWorktreeCardWorkspaceActions } from './use-worktree-card-workspace-actions'
 import { useIsSleepingWorktree } from './use-worktree-sleep-state'
+import { hasInlineWorktreeAgentRows } from './worktree-card-spacing'
 
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   const { worktree, repo, readOnly } = props
@@ -160,6 +161,13 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     deleteState,
     interactive,
     quietStatusLane,
+    // Caller-owned recovery rows keep the sidebar header's padding even when compact cards hide live agents.
+    callerRowsAffectSurfacePadding: !readOnly,
+    inlineAgentRowsAffectSurfacePadding: hasInlineWorktreeAgentRows({
+      cardProperties: foundation.cardProps,
+      newCardStyle: foundation.newCardStyle,
+      compactCards: foundation.compactCards
+    }),
     isSleeping,
     ...review,
     ...linked,

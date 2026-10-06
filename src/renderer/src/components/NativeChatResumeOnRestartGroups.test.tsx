@@ -7,17 +7,27 @@ import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
 import type { SshConnectionStatus } from '../../../shared/ssh-types'
 import { worktreeCardTitleXSignature } from './sidebar/worktree-card-title-geometry.test-support'
+import {
+  describeWorktreeVerticalGeometry,
+  worktreeCardRootGap,
+  worktreeCardVerticalOffsets,
+  worktreeCardVerticalSignature
+} from './sidebar/worktree-card-vertical-geometry.test-support'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { Worktree } from '../../../shared/worktree/types'
+import type { WorktreeCardProperty } from '../../../shared/ui-chrome-types'
 import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
 import { TooltipProvider } from './ui/tooltip'
 import {
   renderWorktreeItemRow,
+  renderWorktreeLineageDescendants,
   type WorktreeItemRowContext
 } from './sidebar/worktree-list/rows/item-row'
 import { WORKTREE_ROW_DRAG_INITIAL_STATE } from './sidebar/worktree-list/drag/row-state'
-import type { WorktreeItemRow } from './sidebar/worktree-list/listing/renderable-rows'
 import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
+import { buildRows } from './sidebar/worktree-list/grouping/build-rows'
+import { buildRenderableRows } from './sidebar/worktree-list/listing/renderable-rows'
+import { WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP } from './sidebar/worktree-list/viewport/virtual-rows'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root: Root
@@ -68,16 +78,24 @@ function render(
     child: 'local'
   },
   compactCards = false,
-  sshStatus?: SshConnectionStatus
+  sshStatus?: SshConnectionStatus,
+  includeSiblings = false,
+  cardProperties?: WorktreeCardProperty[]
 ): void {
   const parent = worktree('parent', { hostId: hosts.parent })
   const child = worktree('child', { hostId: hosts.child })
+  const sibling = worktree('sibling', { hostId: hosts.child })
+  const nextRoot = worktree('next-root', { hostId: hosts.parent })
   const candidates = [
     candidate('in-child', child),
     candidate('in-parent', parent),
-    candidate('also-in-child', child)
+    candidate('also-in-child', child),
+    ...(includeSiblings
+      ? [candidate('in-sibling', sibling), candidate('in-next-root', nextRoot)]
+      : [])
   ]
   useAppStore.setState({
+    worktreeCardProperties: cardProperties ?? useAppStore.getState().worktreeCardProperties,
     settings: {
       ...getDefaultSettings(''),
       experimentalNewWorktreeCardStyle: newCardStyle,
@@ -110,7 +128,7 @@ function render(
         : []
     ),
     sshTargetLabels: new Map([['build-server', 'build-server']]),
-    worktreesByRepo: { 'repo-1': [parent, child] },
+    worktreesByRepo: { 'repo-1': [parent, child, ...(includeSiblings ? [sibling, nextRoot] : [])] },
     worktreeLineageById: {
       [child.id]: {
         worktreeId: child.id,
@@ -120,7 +138,20 @@ function render(
         origin: 'cli',
         capture: { source: 'explicit-cli-flag', confidence: 'explicit' },
         createdAt: 1
-      }
+      },
+      ...(includeSiblings
+        ? {
+            [sibling.id]: {
+              worktreeId: sibling.id,
+              worktreeInstanceId: 'instance-sibling',
+              parentWorktreeId: parent.id,
+              parentWorktreeInstanceId: 'instance-parent',
+              origin: 'cli' as const,
+              capture: { source: 'explicit-cli-flag' as const, confidence: 'explicit' as const },
+              createdAt: 1
+            }
+          }
+        : {})
     }
   })
   act(() =>
@@ -237,32 +268,44 @@ function renderLiveSidebarRows(): HTMLElement {
     onCardDragStart: vi.fn(),
     onCardDragEnd: vi.fn()
   }
-  const row = (workspace: Worktree, depth: number): WorktreeItemRow => ({
-    type: 'item',
-    rowKey: workspace.id,
-    sectionKey: 'repo-1',
-    worktree: workspace,
-    repo,
-    depth,
-    groupDepth: 0,
-    lineageTrail: [],
-    isLastLineageChild: true,
-    lineageChildCount: depth === 0 ? 1 : 0,
-    lineageGroupKey: depth === 0 ? 'parent' : undefined,
-    lineageCollapsed: false
-  })
+  const rows = buildRenderableRows(
+    buildRows(
+      'repo',
+      state.worktreesByRepo['repo-1'] ?? [],
+      new Map(repo ? [[repo.id, repo]] : []),
+      null,
+      new Set(),
+      undefined,
+      undefined,
+      undefined,
+      state.worktreeLineageById,
+      undefined,
+      true
+    )
+  ).filter((row) => row.type === 'item' || row.type === 'lineage-group')
   const live = document.createElement('div')
+  live.style.display = 'flex'
+  live.style.flexDirection = 'column'
+  live.style.rowGap = `${WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP}px`
   document.body.append(live)
   const liveRoot = createRoot(live)
   act(() =>
     liveRoot.render(
       <TooltipProvider>
-        {renderWorktreeItemRow(
-          ctx,
-          row(parent, 0),
-          false,
-          renderWorktreeItemRow(ctx, row(child, 1), true)
-        )}
+        {rows.map((row) => {
+          if (row.type === 'item') {
+            return renderWorktreeItemRow(ctx, row, false)
+          }
+          const [lineageParent, ...descendants] = row.rows
+          return lineageParent
+            ? renderWorktreeItemRow(
+                ctx,
+                lineageParent,
+                false,
+                renderWorktreeLineageDescendants(ctx, lineageParent, descendants)
+              )
+            : null
+        })}
       </TooltipProvider>
     )
   )
@@ -339,6 +382,121 @@ it('lays a read-only parent out with its status lane and passive child chip', ()
   expect(parentCard.textContent).toContain('1 child')
   expect(parentCard.querySelector('button[aria-expanded]')).toBeNull()
 })
+
+it.each([
+  { style: 'legacy', newCardStyle: false, compactCards: false },
+  { style: 'compact', newCardStyle: false, compactCards: true },
+  { style: 'new', newCardStyle: true, compactCards: false }
+])(
+  '$style: matches the live sidebar vertical card and lineage geometry',
+  ({ newCardStyle, compactCards }) => {
+    render(newCardStyle, undefined, compactCards, undefined, true)
+    const dialog = {
+      parent: worktreeCardVerticalSignature(cardTitled('parent')),
+      child: worktreeCardVerticalSignature(cardTitled('child')),
+      sibling: worktreeCardVerticalSignature(cardTitled('sibling')),
+      nextRoot: worktreeCardVerticalSignature(cardTitled('next-root'))
+    }
+    const live = renderLiveSidebarRows()
+    const dialogContainer = container
+    container = live
+    const sidebar = {
+      parent: worktreeCardVerticalSignature(cardTitled('parent')),
+      child: worktreeCardVerticalSignature(cardTitled('child')),
+      sibling: worktreeCardVerticalSignature(cardTitled('sibling')),
+      nextRoot: worktreeCardVerticalSignature(cardTitled('next-root'))
+    }
+    container = dialogContainer
+    expect(sidebar.parent.surface).toEqual(['border', 'pb-1.5', 'pt-1.25'])
+    expect(sidebar.child.surface).toEqual(
+      compactCards ? ['border', 'py-2'] : ['border', 'pb-1.5', 'pt-1.25']
+    )
+    expect(sidebar.parent.children).toHaveLength(2)
+    for (const childPath of sidebar.parent.children) {
+      expect(childPath).toContainEqual(['mt-1.5', 'space-y-1'])
+    }
+    expect(dialog).toEqual(sidebar)
+  }
+)
+
+it.each([
+  { style: 'legacy', newCardStyle: false, compactCards: false },
+  { style: 'compact', newCardStyle: false, compactCards: true },
+  { style: 'new', newCardStyle: true, compactCards: false }
+])('$style: leaves the sidebar gap before the next root card', ({ newCardStyle, compactCards }) => {
+  render(newCardStyle, undefined, compactCards, undefined, true)
+  const list = cardTitled('parent').parentElement?.parentElement
+  if (!list) {
+    throw new Error('Missing dialog list')
+  }
+  const live = renderLiveSidebarRows()
+  expect(WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP).toBe(6)
+  expect(describeWorktreeVerticalGeometry(list)).toEqual(describeWorktreeVerticalGeometry(live))
+})
+
+it.each(
+  [
+    { style: 'legacy', newCardStyle: false, compactCards: false },
+    { style: 'compact', newCardStyle: false, compactCards: true },
+    { style: 'new', newCardStyle: true, compactCards: false }
+  ].flatMap((style) => [true, false].map((inlineAgents) => ({ ...style, inlineAgents })))
+)(
+  '$style/inline=$inlineAgents: follows sidebar padding when branch metadata is hidden',
+  ({ newCardStyle, compactCards, inlineAgents }) => {
+    render(newCardStyle, undefined, compactCards, undefined, true, [
+      'status',
+      ...(inlineAgents ? ['inline-agents' as const] : [])
+    ])
+    const titles = ['parent', 'child', 'sibling', 'next-root']
+    const dialog = titles.map((title) => worktreeCardVerticalSignature(cardTitled(title)))
+    const live = renderLiveSidebarRows()
+    const dialogContainer = container
+    container = live
+    const sidebar = titles.map((title) => worktreeCardVerticalSignature(cardTitled(title)))
+    container = dialogContainer
+    expect(sidebar[1]?.surface).toEqual(
+      (newCardStyle && !inlineAgents) || compactCards
+        ? ['border', 'py-2']
+        : ['border', 'pb-1.5', 'pt-1.25']
+    )
+    expect(dialog).toEqual(sidebar)
+  }
+)
+
+it.each([
+  { style: 'legacy', newCardStyle: false, compactCards: false, chip: 18, sibling: 10, root: 19 },
+  { style: 'compact', newCardStyle: false, compactCards: true, chip: 21, sibling: 13, root: 22 },
+  { style: 'new', newCardStyle: true, compactCards: false, chip: 12, sibling: 10, root: 19 }
+])(
+  '$style: matches computed chip, sibling and next-root title offsets',
+  ({ newCardStyle, compactCards, chip, sibling, root: nextRootOffset }) => {
+    render(newCardStyle, undefined, compactCards, undefined, true)
+    const list = cardTitled('parent').parentElement?.parentElement
+    if (!list) {
+      throw new Error('Missing dialog list')
+    }
+    const dialog = worktreeCardVerticalOffsets(
+      cardTitled('parent'),
+      cardTitled('next-root'),
+      worktreeCardRootGap(list)
+    )
+    const live = renderLiveSidebarRows()
+    const dialogContainer = container
+    container = live
+    const sidebar = worktreeCardVerticalOffsets(
+      cardTitled('parent'),
+      cardTitled('next-root'),
+      worktreeCardRootGap(live)
+    )
+    container = dialogContainer
+    expect(sidebar).toEqual({
+      chipToChildTitle: chip,
+      childToSiblingTitle: sibling,
+      lastChildToNextRootTitle: nextRootOffset
+    })
+    expect(dialog).toEqual(sidebar)
+  }
+)
 
 it('counts only listed child workspaces in the passive chip', () => {
   render(false)

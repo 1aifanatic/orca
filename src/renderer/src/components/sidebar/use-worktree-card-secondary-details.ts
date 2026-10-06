@@ -11,6 +11,7 @@ import type { WorktreeCardProps } from './worktree-card-model'
 import type { useWorktreeCardFoundation } from './use-worktree-card-foundation'
 import type { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details'
 import type { useWorktreeCardReviewDetails } from './use-worktree-card-review-details'
+import { hasInlineWorktreeAgentRows } from './worktree-card-spacing'
 
 type Foundation = ReturnType<typeof useWorktreeCardFoundation>
 type LinkedDetails = ReturnType<typeof useWorktreeCardLinkedDetails>
@@ -90,7 +91,11 @@ export function useWorktreeCardSecondaryDetails({
   const metaAutomationProvenance = showAutomation ? worktree.automationProvenance : null
   const metaCliProvenance = showCli ? worktree.cliProvenance : null
   const metaComment = showComment ? hoverComment : null
-  const showInlineAgentList = cardProps.includes('inline-agents') && (newCardStyle || !compactCards)
+  const showInlineAgentList = hasInlineWorktreeAgentRows({
+    cardProperties: cardProps,
+    newCardStyle,
+    compactCards
+  })
   const compactInlineAgentRows = useWorktreeAgentRows(
     worktree.id,
     showInlineAgentList && agentActivityDisplayMode === 'compact'

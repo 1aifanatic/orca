@@ -8,6 +8,7 @@ import {
   LINEAGE_CHILDREN_INLINE_OFFSET
 } from '@/components/sidebar/worktree-list/rows/indentation'
 import { getWorktreeRowGeometry } from '@/components/sidebar/worktree-list/rows/worktree-row-geometry'
+import { WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP } from '@/components/sidebar/worktree-list/viewport/virtual-rows'
 import {
   getCyclicProjectedWorktreeLineageIds,
   getSidebarLineageAncestors
@@ -301,7 +302,7 @@ export function ResumeOnRestartGroups({
       {repoGroups.map((repoGroup) => (
         <section key={repoGroup.repoId ?? 'no-repo'} className="flex flex-col gap-1">
           <RepoHeader repoId={repoGroup.repoId} />
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col" style={{ rowGap: WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP }}>
             {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
               <WorkspaceCard
                 key={node.group.workspaceId}
