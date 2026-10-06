@@ -4,6 +4,7 @@ import type { AgentJournalSubmission } from '../../../../shared/agent-session-jo
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   proof: vi.fn((): boolean => true),
+  compatible: vi.fn(async (): Promise<void> => undefined),
   handBack: vi.fn((): boolean => true)
 }))
 
@@ -11,7 +12,7 @@ vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call
 }))
 vi.mock('@/runtime/runtime-rpc-client', () => ({
-  ensureRuntimeEnvironmentCompatible: vi.fn(async () => undefined),
+  ensureRuntimeEnvironmentCompatible: mocks.compatible,
   runtimeEnvironmentSupportsCapability: vi.fn(async () => mocks.proof())
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
@@ -82,6 +83,10 @@ async function flush(): Promise<void> {
   }
 }
 
+function sendCalls(): number {
+  return mocks.call.mock.calls.filter((call) => call[1] === 'agentSession.send').length
+}
+
 function phases(): string[] {
   return getStructuredAgentSessionPendingSends(SESSION).map(
     (entry) =>
@@ -95,6 +100,8 @@ describe('structured agent session message sender', () => {
     mocks.call.mockReset()
     mocks.handBack.mockClear()
     mocks.proof.mockClear()
+    mocks.compatible.mockReset()
+    mocks.compatible.mockResolvedValue(undefined)
     noteStructuredAgentSessionFence(SESSION, 4)
   })
   afterEach(() => {
@@ -278,17 +285,23 @@ describe('structured agent session message sender', () => {
     mocks.proof.mockReturnValue(true)
   })
 
-  it('gives back on Stop only what has not gone out', async () => {
+  // A Stop, or the chat's tab closing, which withdraws the same way.
+  it('gives back on Stop only what has not gone out, and never sends it', async () => {
     const calls = deferredCalls()
     const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
     const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    const c = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'c' })
     await flush()
-    expect(withdrawUnsentStructuredAgentSessionSends(SESSION)).toBe(true)
+    withdrawUnsentStructuredAgentSessionSends(SESSION)
     expect(await b.outcome).toBe('returned')
+    expect(await c.outcome).toBe('returned')
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
     expect(phases()).toEqual(['a:sending'])
     calls[0].resolve(okSubmission(a.clientMessageId, 'accepted'))
     expect(await a.outcome).toBe('recorded')
-    expect(mocks.handBack).toHaveBeenCalledTimes(1)
+    expect(mocks.handBack).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    expect(sendCalls()).toBe(1)
   })
 
   it('never resends a send that was on its way when Stop was pressed', async () => {
@@ -296,7 +309,7 @@ describe('structured agent session message sender', () => {
     const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
     await flush()
     // The first attempt went out and its answer was lost: a same-id resend is due.
-    expect(withdrawUnsentStructuredAgentSessionSends(SESSION)).toBe(false)
+    withdrawUnsentStructuredAgentSessionSends(SESSION)
     expect(await a.outcome).toBe('returned')
     expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
       "Orca couldn't confirm your message reached the agent. Check the chat"
@@ -313,7 +326,169 @@ describe('structured agent session message sender', () => {
     withdrawUnsentStructuredAgentSessionSends(SESSION)
     calls[0].reject(new Error('timeout'))
     expect(await a.outcome).toBe('returned')
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
+      "Orca couldn't confirm your message reached the agent. Check the chat"
+    )
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
     expect(calls).toHaveLength(1)
+  })
+
+  it('never resends after a Stop that lands while the resend is being readied', async () => {
+    const remote = { kind: 'environment', environmentId: 'env-1' } as const
+    mocks.call.mockRejectedValue(new Error('connection closed'))
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target: remote, text: 'a' })
+    await flush()
+    expect(sendCalls()).toBe(1)
+    // The resend's timer fires; it waits on the host's version check before its request goes out.
+    let ready = (): void => {}
+    mocks.compatible.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          ready = resolve
+        })
+    )
+    await vi.advanceTimersByTimeAsync(1_000)
+    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    ready()
+    expect(await a.outcome).toBe('returned')
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
+      "Orca couldn't confirm your message reached the agent. Check the chat"
+    )
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    expect(sendCalls()).toBe(1)
+  })
+
+  it('settles a send on its way at a Stop from its answer: recorded, or the host held it as a card', async () => {
+    const calls = deferredCalls()
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    await flush()
+    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    // The journal shows its row, whatever the Stop did.
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [submission(a.clientMessageId, 'accepted')],
+      []
+    )
+    expect(await a.outcome).toBe('recorded')
+    const b = sendStructuredAgentSessionMessage({
+      sessionId: SESSION,
+      target,
+      text: 'b',
+      delivery: 'queue-if-active'
+    })
+    await flush()
+    withdrawUnsentStructuredAgentSessionSends(SESSION)
+    calls[1].resolve({
+      ok: true,
+      replayed: false,
+      fence: 1,
+      cursor: { epoch: 'e', sequence: 1 },
+      value: {
+        clientMessageId: b.clientMessageId,
+        queued: { messageId: b.clientMessageId, position: 0, state: 'waiting' }
+      }
+    })
+    expect(await b.outcome).toBe('recorded')
+    expect(mocks.handBack).not.toHaveBeenCalled()
+  })
+
+  it("lets a send kept as a card be the card's, from its reply or the journal", async () => {
+    const kept = (id: string) =>
+      submission(id, 'rejected', {
+        rejection: { kind: 'hostRestarted' },
+        keptAsQueuedMessageId: id
+      })
+    mocks.call.mockImplementation(async (_target, _method, params) => ({
+      ok: true,
+      replayed: true,
+      fence: 1,
+      cursor: { epoch: 'e', sequence: 1 },
+      value: {
+        clientMessageId: params.envelope.clientOperationId,
+        submission: kept(params.envelope.clientOperationId)
+      }
+    }))
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    expect(await a.outcome).toBe('recorded')
+    const calls = deferredCalls()
+    const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    await flush()
+    // Even a kept row whose words read as a Stop's: the card holds the text, never the composer.
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [{ ...kept(b.clientMessageId), rejection: { kind: 'cancelled' } }],
+      []
+    )
+    expect(await b.outcome).toBe('recorded')
+    calls[0].reject(new Error('timeout'))
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
+    expect(mocks.handBack).not.toHaveBeenCalled()
+    expect(sendCalls()).toBe(2)
+  })
+
+  it('hands back silently a send whose own reply says a Stop withdrew it', async () => {
+    mocks.call.mockImplementation(async (_target, _method, params) => ({
+      ok: true,
+      replayed: false,
+      fence: 1,
+      cursor: { epoch: 'e', sequence: 1 },
+      value: {
+        clientMessageId: params.envelope.clientOperationId,
+        submission: submission(params.envelope.clientOperationId, 'rejected', {
+          rejection: { kind: 'cancelled' }
+        })
+      }
+    }))
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    expect(await a.outcome).toBe('returned')
+    expect(mocks.handBack).toHaveBeenCalledTimes(1)
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toBeNull()
+  })
+
+  it('leaves a send to its own answer while the journal has no row for it', async () => {
+    const calls = deferredCalls()
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    await flush()
+    settleStructuredAgentSessionSendsFromJournal(SESSION, [submission('other', 'accepted')], [])
+    expect(phases()).toEqual(['a:sending'])
+    calls[0].resolve(okSubmission(a.clientMessageId, 'accepted'))
+    expect(await a.outcome).toBe('recorded')
+  })
+
+  it('reads a pending row in the journal as the host holding it, kept only for a Stop', async () => {
+    deferredCalls()
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    await flush()
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [submission(a.clientMessageId, 'pending')],
+      []
+    )
+    expect(await a.outcome).toBe('recorded')
+    await flush()
+    expect(phases()).toEqual(['a:recorded', 'b:sending'])
+  })
+
+  it('reads a send the host left in doubt at a Stop as its record, and sends the next', async () => {
+    deferredCalls()
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    await flush()
+    settleStructuredAgentSessionSendsFromJournal(
+      SESSION,
+      [
+        submission(a.clientMessageId, 'unknown', {
+          recovered: true,
+          reason: 'provider_closed_before_acknowledgement'
+        })
+      ],
+      []
+    )
+    expect(await a.outcome).toBe('recorded')
+    await flush()
+    expect(phases()).toEqual(['b:sending'])
+    expect(mocks.handBack).not.toHaveBeenCalled()
   })
 
   it('keeps the queue request fixed across resends of one id', async () => {
@@ -337,5 +512,65 @@ describe('structured agent session message sender', () => {
       expect(call[2]).toMatchObject({ delivery: 'queue-if-active' })
     }
     expect(phases()).toEqual([])
+  })
+})
+
+// An earlier build kept a message whose fate was unknown and sent nothing behind it until someone
+// decided it, which froze the chat. Nothing here waits on one past its own deadline.
+describe('a send whose fate is unknown never freezes the chat', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mocks.call.mockReset()
+    mocks.handBack.mockClear()
+    mocks.proof.mockReturnValue(true)
+    mocks.compatible.mockReset()
+    mocks.compatible.mockResolvedValue(undefined)
+    noteStructuredAgentSessionFence(SESSION, 4)
+  })
+  afterEach(() => {
+    resetStructuredAgentSessionSendsForTests()
+    vi.useRealTimers()
+  })
+
+  it('holds what was sent behind one nobody answers no longer than its deadline', async () => {
+    mocks.call.mockRejectedValue(new Error('connection closed'))
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS - 1)
+    expect(phases()).toEqual(['a:sending', 'b:waiting'])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await a.outcome).toBe('returned')
+    expect(await b.outcome).toBe('returned')
+    expect(phases()).toEqual([])
+    // The next message goes out at once.
+    mocks.call.mockReset()
+    deferredCalls()
+    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'c' })
+    await flush()
+    expect(phases()).toEqual(['c:sending'])
+    expect(sendCalls()).toBe(1)
+  })
+
+  it('sends the next at once when the host can neither confirm nor deny the one ahead', async () => {
+    mocks.call.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce({
+      ok: false,
+      refusal: {
+        code: 'agent_session_operation_expired',
+        message: 'expired',
+        details: { reason: 'operationExpired' }
+      }
+    })
+    const a = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'a' })
+    sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
+    await flush()
+    const calls = deferredCalls()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(await a.outcome).toBe('returned')
+    expect(getStructuredAgentSessionSendNotice(SESSION)).toContain(
+      "Orca couldn't confirm your message reached the agent. Check the chat"
+    )
+    await flush()
+    expect(phases()).toEqual(['b:sending'])
+    expect(calls).toHaveLength(1)
   })
 })

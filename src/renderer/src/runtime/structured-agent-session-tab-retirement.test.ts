@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   callRuntime:
     vi.fn<(target: RuntimeClientTarget, method: string, params?: unknown) => Promise<unknown>>(),
   discardOutbox: vi.fn<(sessionId: string) => void>(),
+  withdrawUnsent: vi.fn<(sessionId: string) => void>(),
   hasTombstone: vi.fn<(worktreeId: string, sessionId: string) => boolean>(),
   markCancelled:
     vi.fn<(worktreeId: string, sessionId: string, executionHostId: string) => boolean>()
@@ -19,6 +20,9 @@ vi.mock('@/lib/structured-agent-session-launch-registry', () => ({
 }))
 vi.mock('@/lib/structured-agent-session-launch-prompt', () => ({
   discardStructuredAgentSessionChatSends: mocks.discardOutbox
+}))
+vi.mock('@/components/native-chat/structured-agent-session-message-sender', () => ({
+  withdrawUnsentStructuredAgentSessionSends: mocks.withdrawUnsent
 }))
 vi.mock('./structured-agent-session-close', () => ({
   closeStructuredAgentSession: mocks.closeSession
@@ -90,11 +94,13 @@ describe('structured agent session tab retirement', () => {
     })
     expect(mocks.markCancelled).toHaveBeenCalledWith('wt-1', 'session-1', 'local')
     expect(mocks.discardOutbox).toHaveBeenCalledWith('session-1')
+    expect(mocks.withdrawUnsent).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(mocks.callRuntime).toHaveBeenCalled())
     expect(mocks.closeSession).toHaveBeenCalledWith(target, 'session-1')
   })
 
-  it("lets a published chat's sends on their way settle when its tab closes", async () => {
+  // Withdrawn, as a Stop does: nothing more goes out, and nothing is dropped.
+  it("never drops a published chat's sends when its tab closes", async () => {
     beginStructuredAgentSessionTabClose({
       target,
       worktreeId: 'wt-1',
@@ -102,6 +108,7 @@ describe('structured agent session tab retirement', () => {
       provisional: false
     })
     expect(mocks.discardOutbox).not.toHaveBeenCalled()
+    expect(mocks.withdrawUnsent).toHaveBeenCalledWith('session-1')
     await vi.waitFor(() => expect(mocks.closeSession).toHaveBeenCalledWith(target, 'session-1'))
   })
 

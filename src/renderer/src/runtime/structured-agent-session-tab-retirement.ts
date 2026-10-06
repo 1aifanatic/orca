@@ -9,6 +9,7 @@ import {
 } from '@/lib/structured-agent-session-launch-registry'
 import { toRuntimeExecutionHostId } from '../../../shared/execution-host'
 import { discardStructuredAgentSessionChatSends } from '@/lib/structured-agent-session-launch-prompt'
+import { withdrawUnsentStructuredAgentSessionSends } from '@/components/native-chat/structured-agent-session-message-sender'
 import { closeStructuredAgentSession } from './structured-agent-session-close'
 import { withLocalSessionTabCloseOwner } from './local-session-tab-close-owner'
 import { executionHostIdForStructuredTarget } from './structured-agent-session-owner'
@@ -76,9 +77,11 @@ export function beginStructuredAgentSessionTabClose(args: {
       executionHostIdForStructuredTarget(args.target)
     )
     discardStructuredAgentSessionChatSends(args.sessionId)
+  } else {
+    // Nothing more goes out, and nothing is dropped: one on its way settles from its answer, and
+    // the rest goes back to the conversation's draft.
+    withdrawUnsentStructuredAgentSessionSends(args.sessionId)
   }
-  // A send already on its way still settles: what the host never took goes back to the
-  // conversation's draft.
   retireStructuredAgentSessionTab(args)
 }
 

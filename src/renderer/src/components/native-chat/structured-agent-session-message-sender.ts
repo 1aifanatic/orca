@@ -53,7 +53,9 @@ type SendRuntime = {
   attempts: number
   /** Bumped when the journal settles the send, so an answer still on its way changes nothing. */
   generation: number
-  /** A Stop came after it went out: its own answer still settles it, but it is never sent again. */
+  /** Its request is out and the answer not back yet. */
+  awaiting: boolean
+  /** A Stop came while it was out: its own answer still settles it, but it is never sent again. */
   stopped?: true
   resolve: (outcome: StructuredAgentSessionSendOutcome) => void
 }
@@ -105,7 +107,12 @@ function settleRecorded(
   entry: StructuredAgentSessionPendingSend,
   submission: AgentJournalSubmission | null
 ): void {
-  if (submission && dispatchWasWithdrawn(submission) && submission.queuedMessageId === undefined) {
+  if (
+    submission &&
+    dispatchWasWithdrawn(submission) &&
+    submission.queuedMessageId === undefined &&
+    submission.keptAsQueuedMessageId === undefined
+  ) {
     // A Stop took it back before the agent had it: the text goes back where it was typed.
     handBack(entry, null)
     return
@@ -142,9 +149,10 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
     entry,
     target: runtime.target,
     beforeIssue: () => {
-      if (runtime.generation !== generation) {
+      if (runtime.generation !== generation || runtime.stopped) {
         return null
       }
+      runtime.awaiting = true
       const latest = findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
       updateStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId, {
         issued: true
@@ -157,6 +165,7 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
       runtime.generation !== generation ||
       runtimes.get(entry.clientMessageId) !== runtime
   })
+  runtime.awaiting = false
   const current = findStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId)
   if (!outcome || !current) {
     return
@@ -240,6 +249,7 @@ export function sendStructuredAgentSessionMessage(input: {
         STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS
       ),
       resend: null,
+      awaiting: false,
       attempts: 0,
       generation: 0,
       resolve
@@ -271,6 +281,9 @@ export function settleStructuredAgentSessionSendsFromJournal(
     if (submission.queuedMessageId !== undefined) {
       cards.add(submission.queuedMessageId)
     }
+    if (submission.keptAsQueuedMessageId !== undefined) {
+      cards.add(submission.keptAsQueuedMessageId)
+    }
   }
   const rows = new Map(submissions.map((submission) => [submission.clientMessageId, submission]))
   for (const entry of entries) {
@@ -286,26 +299,29 @@ export function settleStructuredAgentSessionSendsFromJournal(
   }
 }
 
-/** A Stop: what has not gone out yet goes back to the composer instead of starting a turn, and
- *  what has is never sent again under its id; one waiting to be resent goes back now. */
-export function withdrawUnsentStructuredAgentSessionSends(sessionId: string): boolean {
-  const entries = getStructuredAgentSessionPendingSends(sessionId)
-  for (const entry of entries) {
+/**
+ * A Stop, or the chat's tab closing: what has not gone out goes back to the composer silently, and
+ * what has is never sent again under its id. One whose request is out settles from its answer; one
+ * between attempts goes back now, as unconfirmed.
+ */
+export function withdrawUnsentStructuredAgentSessionSends(sessionId: string): void {
+  for (const entry of getStructuredAgentSessionPendingSends(sessionId)) {
     const runtime = runtimes.get(entry.clientMessageId)
+    if (!runtime) {
+      continue
+    }
     if (!entry.issued) {
-      runtime?.abort.abort()
+      runtime.abort.abort()
       handBack(entry, null)
-    } else if (runtime && entry.phase === 'sending') {
+    } else if (runtime.awaiting) {
       runtime.stopped = true
-      if (runtime.resend) {
-        handBack(entry, ['sendOutcomeLost'])
-      }
+    } else {
+      handBack(entry, ['sendOutcomeLost'])
     }
   }
-  return entries.some((entry) => !entry.issued)
 }
 
-/** The chat closed: its sends are dropped with it, and their callers told so. */
+/** A cancelled launch or a purged worktree: its sends are dropped, and their callers told so. */
 export function dropStructuredAgentSessionSends(sessionId: string): void {
   for (const entry of getStructuredAgentSessionPendingSends(sessionId)) {
     const runtime = runtimes.get(entry.clientMessageId)
