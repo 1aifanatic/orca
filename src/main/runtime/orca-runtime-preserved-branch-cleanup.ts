@@ -1,9 +1,6 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithTerminalDrivers } from './orca-runtime-terminal-drivers'
-import {
-  confirmRootShellAloneFromProcessTable,
-  inspectionShowsShellAlone
-} from './run-terminal-shell-alone'
+import { confirmRunTerminalShellAlone, readRunTerminalClientUse } from './run-terminal-client-use'
 import { ALL_EXECUTION_HOSTS_SCOPE, type ExecutionHostScope } from '../../shared/execution-host'
 import { RuntimePreservedBranchCleanup } from './runtime-preserved-branch-cleanup'
 import type { IPtyProvider } from '../providers/types'
@@ -84,41 +81,13 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     | ((paneKey: string) => AgentStatusIpcPayload[])
     | null
 
-  /**
-   * Whether a client drove or is viewing a PTY's current process, for closing finished run
-   * terminals: `unknown` when this process cannot tell (it adopted the PTY rather than spawned it).
-   */
+  /** See run-terminal-client-use.ts. */
   readTerminalClientUse(ptyId: string): 'used' | 'unused' | 'unknown' {
-    if (this.hasRawTerminalViewSubscriber(ptyId)) {
-      return 'used'
-    }
-    const facts = this.terminalRunFacts.read(ptyId, undefined)
-    if (facts.firstUserInputAt !== null) {
-      return 'used'
-    }
-    return facts.freshSpawn ? 'unused' : 'unknown'
+    return readRunTerminalClientUse(this, ptyId)
   }
 
-  /**
-   * Fresh execution-host proof that only the spawned shell runs in a PTY, at its prompt, on POSIX
-   * and Windows alike; false whenever that cannot be proven.
-   */
-  async confirmTerminalShellAlone(ptyId: string): Promise<boolean> {
-    try {
-      if (await this.ptyController?.confirmShellForeground?.(ptyId)) {
-        return true
-      }
-      if (process.platform === 'win32') {
-        return inspectionShowsShellAlone(
-          (await this.ptyController?.inspectProcess?.(ptyId, { scanChildProcesses: true })) ?? null
-        )
-      }
-      const processes = (await this.ptyController?.listProcesses?.(null)) ?? []
-      const rootPid = processes.find((entry) => entry.id === ptyId)?.rootProcessId
-      return rootPid ? await confirmRootShellAloneFromProcessTable(rootPid) : false
-    } catch {
-      return false
-    }
+  confirmTerminalShellAlone(ptyId: string): Promise<boolean> {
+    return confirmRunTerminalShellAlone(this.ptyController, ptyId)
   }
 
   /** The PTY a terminal handle drives now; a restarted pane answers with its new PTY. */
