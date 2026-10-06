@@ -170,6 +170,37 @@ it('a tip replaced before it was ever on screen asks again once the slot is free
   expect(useAppStore.getState().activeModal).toBe('feature-tips')
 })
 
+it('a shown tip replaced by a modal the user opens is done: its turn ends and it never returns', async () => {
+  seedOneFeatureTip()
+  useAppStore.getState().settleLaunchPromptDiscovery()
+  await mount(
+    <>
+      <FeatureTipHarness />
+      <FeatureTipsModal />
+    </>
+  )
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([
+    expect.objectContaining({ id: 'feature-tip', shown: true })
+  ])
+
+  // The slot holds one modal, so the user's evicts the tip, as on main.
+  await act(async () => useAppStore.getState().openModal('add-repo'))
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
+  await act(async () => useAppStore.getState().closeModal())
+  await flush()
+  expect(useAppStore.getState().activeModal).toBe('none')
+  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
+  // Nothing latched: the next prompt takes its turn at once.
+  await mount(
+    <>
+      <FeatureTipHarness />
+      <FeatureTipsModal />
+      <StandInPrompt />
+    </>
+  )
+  expect(promptOnScreen()).toBe(true)
+})
+
 it('a prompt not yet shown waits while a modal the user opened is still loading', async () => {
   useAppStore.getState().settleLaunchPromptDiscovery()
   const chunk = Promise.withResolvers<void>()
