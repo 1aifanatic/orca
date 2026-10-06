@@ -264,6 +264,31 @@ describe('reconcileRealHomeCodexHookEntries', () => {
     expect(readHooks().hooks.PreCompact).toEqual(otherEvent)
   })
 
+  it("keeps the approval of Orca's entry in an event this Codex does not list", async () => {
+    const interrupt: HookDefinition = { hooks: [buildCodexManagedHook(frozen(), 'Interrupt')] }
+    writeHooks({ hooks: { Interrupt: [interrupt] } })
+    // Why another version's hash: a newer Codex sharing ~/.codex approved this entry.
+    const approved = {
+      ...createCodexHookTrustEntry(
+        hooksPath(),
+        'Interrupt',
+        0,
+        0,
+        interrupt,
+        interrupt.hooks![0]!
+      )!,
+      trustedHash: CODEX_HASHES.interrupt,
+      enabled: true
+    }
+    upsertHookTrustEntries(configPath(), [approved])
+    const { interrupt: _unlisted, ...olderCodexHashes } = CODEX_HASHES
+
+    expect(await reconcile({ hashes: olderCodexHashes })).toBe('written')
+
+    expect(readHooks().hooks.Interrupt).toEqual([interrupt])
+    expect(trustAt(approved)).toEqual({ trustedHash: CODEX_HASHES.interrupt, enabled: true })
+  })
+
   it('adds an entry only in events Codex lists', async () => {
     writeHooks({ hooks: {} })
 
@@ -355,6 +380,34 @@ describe('reconcileRealHomeCodexHookEntries', () => {
       after[1]!.hooks![0]!
     )!
     expect(trustAt(orca)).toEqual({ trustedHash: CODEX_HASHES.pre_tool_use, enabled: true })
+  })
+
+  it("drops Orca's approval at the slot its copy left in a user's matcher group", async () => {
+    const lint = { type: 'command' as const, command: 'lint.sh' }
+    const userGroup: HookDefinition = {
+      matcher: 'Bash',
+      hooks: [lint, buildCodexManagedHook(frozen(), 'PreToolUse')]
+    }
+    writeHooks({ hooks: { PreToolUse: [userGroup] } })
+    const leftCopy = createCodexHookTrustEntry(
+      hooksPath(),
+      'PreToolUse',
+      0,
+      1,
+      userGroup,
+      userGroup.hooks![1]!
+    )!
+    upsertHookTrustEntries(configPath(), [
+      { ...leftCopy, trustedHash: CODEX_HASHES.pre_tool_use, enabled: true }
+    ])
+
+    expect(await reconcile()).toBe('written')
+
+    expect(readHooks().hooks.PreToolUse).toEqual([
+      { matcher: 'Bash', hooks: [lint] },
+      { hooks: [buildCodexManagedHook(frozen(), 'PreToolUse')] }
+    ])
+    expect(trustAt(leftCopy)).toBeUndefined()
   })
 
   it('moves an entry alone in a matcher group out, since Codex hashes the matcher', async () => {
@@ -571,5 +624,17 @@ describe('until Codex answers', () => {
 
     expect(readHooks().hooks.Stop).toEqual([USER_A, orcaGroup()])
     expect(readHookTrustEntries(configPath()).size).toBe(0)
+  })
+
+  it("keeps an approval at Orca's entry for a Codex that lists it without a hash", async () => {
+    writeHooks({ hooks: { Stop: [USER_A, orcaGroup()] } })
+    upsertHookTrustEntries(configPath(), [
+      { ...stopEntryAt(1, orcaGroup()), trustedHash: CODEX_HASHES.stop, enabled: true }
+    ])
+
+    await reconcile({ hashes: { ...CODEX_HASHES, stop: null } })
+
+    expect(readHooks().hooks.Stop).toEqual([USER_A, orcaGroup()])
+    expectOrcaApprovedAt(1)
   })
 })

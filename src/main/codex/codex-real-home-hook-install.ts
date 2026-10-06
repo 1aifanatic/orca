@@ -17,6 +17,7 @@ import { getCodexManagedScriptFileName } from './codex-hook-identity'
 import { removeSystemManagedHookTrustEntries } from './codex-hook-trust-cleanup'
 import {
   CODEX_EVENT_LABEL,
+  type CodexManagedHookInstallMaterial,
   getCodexManagedHookInstallMaterial,
   getSystemCodexConfigTomlPath
 } from './codex-hook-definition'
@@ -46,8 +47,7 @@ import {
   parseTrustKey,
   readHookTrustEntries,
   removeHookTrustEntries,
-  type CodexHookTrustState,
-  type CodexTrustEntry
+  type CodexHookTrustState
 } from './config-toml-trust'
 
 type ReconcileArgs = {
@@ -160,7 +160,7 @@ function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
     })
   )
   const findStale = (states: ReadonlyMap<string, CodexHookTrustState>): string[] =>
-    findStaleOrcaApprovals(states, approvals, sourcePaths, knownOrcaHashes, plan)
+    findStaleOrcaApprovals(states, events, sourcePaths, knownOrcaHashes, plan)
   const changed = plan.changedLabels.size > 0
   if (
     !changed &&
@@ -194,23 +194,30 @@ function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
 /**
  * Approvals Orca left at a slot its entry no longer holds, such as a copy it
  * removed from a user's group. Owned only while they hold a hash Orca writes.
- * Never in an event this run left alone: its entries keep theirs.
+ * Never at a slot Orca's entry holds, whatever its hash, nor in an event this
+ * run did not plan or left alone: its entries keep theirs.
  */
 function findStaleOrcaApprovals(
   trustStates: ReadonlyMap<string, CodexHookTrustState>,
-  approvals: readonly CodexTrustEntry[],
+  events: CodexManagedHookInstallMaterial['events'],
   sourcePaths: readonly string[],
   knownOrcaHashes: readonly CodexHookHashes[],
   plan: SettlePlan
 ): string[] {
-  const wanted = new Set(
-    approvals.map((entry) => normalizeHookTrustKeyForLookup(computeTrustKey(entry)))
+  const plannedLabels = new Set(events.map((eventName) => CODEX_EVENT_LABEL[eventName]))
+  const held = new Set(
+    sourcePaths.flatMap((sourcePath) =>
+      plan.managedEntries.map((entry) =>
+        normalizeHookTrustKeyForLookup(computeTrustKey({ ...entry, sourcePath }))
+      )
+    )
   )
   return [...trustStates].flatMap(([key, state]) => {
     const parts = parseTrustKey(key)
     return parts &&
+      plannedLabels.has(parts.eventLabel) &&
       !plan.untouchedLabels.has(parts.eventLabel) &&
-      !wanted.has(normalizeHookTrustKeyForLookup(key)) &&
+      !held.has(normalizeHookTrustKeyForLookup(key)) &&
       sourcePaths.some((sourcePath) => codexHookSourcePathsEqual(parts.sourcePath, sourcePath)) &&
       isKnownOrcaHash(knownOrcaHashes, parts.eventLabel, state.trustedHash)
       ? [key]
