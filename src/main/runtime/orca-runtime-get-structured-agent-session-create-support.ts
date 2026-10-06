@@ -111,11 +111,20 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         })
       )
     }
-    return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) =>
-      resolveStructuredCodexAccountHomePath({
-        launchEnv,
-        resolveLaunchHome: this.prepareCodexStructuredLaunchFn
-      })
+    return this.resolveStructuredAgentSessionIntent(
+      input,
+      async ({ launchEnv }) =>
+        resolveStructuredCodexAccountHomePath({
+          launchEnv,
+          resolveLaunchHome: this.prepareCodexStructuredLaunchFn
+        }),
+      // Why after pinning: trust goes into the home this chat's Codex runs on, which a resume repins.
+      async (accountHomePath) =>
+        applyStructuredCodexWorkspaceTrust({
+          workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
+          accountHomePath,
+          settings: this.requireStore().getSettings()
+        })
     )
   }
 
@@ -168,7 +177,9 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         workspaceId: string
         workspaceKind: 'folder' | 'git-worktree'
       }
-    }) => string | Promise<string>
+    }) => string | Promise<string>,
+    /** Runs once the account home this chat will run on is final, before the intent returns. */
+    afterAccountHomePinned?: (accountHomePath: string) => Promise<void>
   ): Promise<AgentSessionAttachParams> {
     const support = await this.getStructuredAgentSessionCreateSupport(input.worktree, input.agent)
     if (!support.supported) {
@@ -206,14 +217,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         })
       : null
     const accountHomePath = adoption ? adoption.accountHomePath : selectedAccountHomePath
-    if (input.agent === 'codex') {
-      // Why after adoption: trust goes into the home this chat's Codex runs on, which a resume repins.
-      await applyStructuredCodexWorkspaceTrust({
-        workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
-        accountHomePath,
-        settings
-      })
-    }
+    await afterAccountHomePinned?.(accountHomePath)
     return {
       envelope: {
         sessionId: input.envelope.sessionId,

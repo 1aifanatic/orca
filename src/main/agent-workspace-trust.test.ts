@@ -99,9 +99,9 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
   })
 
   it.each([
+    // Why: an explicit CODEX_HOME wins over whatever HOME the launch env names.
     ['the CODEX_HOME Orca gives the launch', '/orca/accounts/a/home', '/orca/accounts/a/home'],
-    // Why: with no CODEX_HOME Orca runs Codex on ~/.codex, whatever HOME the launch env names.
-    ['~/.codex without one', null, join(homedir(), '.codex')]
+    ['.codex under the launch env home without one', null, join('/home/agent', '.codex')]
   ])('writes Codex trust into %s', async (_label, codexHome, expectedHome) => {
     const context = {
       ...local,
@@ -110,6 +110,11 @@ describe('applyAgentWorkspaceTrust on this machine', () => {
     }
     await applyAgentWorkspaceTrust('codex', WORKSPACE, context)
     expect(mocks.codexConfigFiles).toHaveBeenCalledWith(join(expectedHome, 'config.toml'))
+  })
+
+  it('falls back to the home folder when the launch env names no home', async () => {
+    await applyAgentWorkspaceTrust('codex', WORKSPACE, local)
+    expect(mocks.codexConfigFiles).toHaveBeenCalledWith(join(homedir(), '.codex', 'config.toml'))
   })
 
   it('contains a rejected or throwing write so the launch proceeds', async () => {

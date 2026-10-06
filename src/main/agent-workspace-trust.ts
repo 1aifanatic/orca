@@ -80,10 +80,9 @@ export async function applyAgentWorkspaceTrust(
           claudeAuth: context.claudeAuth,
           wslDistro: context.wslDistro
         }),
-      // Why homedir(), not the launch env's HOME: with no CODEX_HOME Orca runs Codex on the
-      // ~/.codex its real-home hook lane uses (getSystemCodexHomePath).
+      // Why agentHome: with no CODEX_HOME, Codex reads `.codex` under the home it resolves `~` to.
       codexConfigFiles: () =>
-        getLocalCodexTrustConfigFiles(launchedCodexConfigFile(context.codexHome, homedir())),
+        getLocalCodexTrustConfigFiles(launchedCodexConfigFile(context.codexHome, agentHome)),
       // Why: Codex queues behind a config lane it shares with Orca's hook installs.
       deadlineMs:
         preset === 'codex' ? AGENT_TRUST_WRITE_DEADLINE_MS : SHORT_AGENT_TRUST_WRITE_DEADLINE_MS
