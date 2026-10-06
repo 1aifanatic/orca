@@ -29,7 +29,6 @@ export {
 } from './agent-session-resume-runtime-capabilities'
 import { AGENT_SESSION_BACKGROUND_TASK_CHILD_VIEWS_CAPABILITY } from './agent-session-background-task-child-views-capability'
 import { AGENT_SESSION_STOP_RUNTIME_CAPABILITIES } from './agent-session-stop-capabilities'
-import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from './structured-agent-session-registered-agents-capability'
 import { REMOTE_SERVER_UPDATE_CAPABILITY } from './remote-server-update'
 import {
   SKILL_BUNDLE_INSTALL_CAPABILITY,
@@ -230,6 +229,14 @@ export const AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY =
 // journal and lifecycle surfaces independently from Codex support.
 export const CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY =
   'agent-session.structured.claude.v1' as const
+// Why: a host's structured agents are the ones it registered, not a list every build ships. A host
+// advertising this accepts any agent it lists through `agentSession.agents` (with each agent's
+// capability record) in `agentSession.*` params, and refuses one it did not register; a client
+// offers an agent beyond Claude and Codex only to such a host. A client advertising it renders an
+// `agent-session` tab of any agent its host lists; the host withholds every other agent's tabs from
+// a client that does not (an older client would list them with an empty pane).
+export const STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY =
+  'agent-session.structured.registered-agents.v1' as const
 // Why: paired structured clients explicitly hold every visible session surface, allowing the host
 // to stop provider children after the last surface closes without tying lifetime to a transport.
 export const STRUCTURED_AGENT_SESSION_HOLD_RUNTIME_CAPABILITY =

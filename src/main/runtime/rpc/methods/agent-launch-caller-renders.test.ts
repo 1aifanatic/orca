@@ -7,8 +7,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
-import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../../shared/structured-agent-session-registered-agents-capability'
+import {
+  STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
 import type { RpcContext } from '../core'
 import {
   CAPABLE_CLIENT,
