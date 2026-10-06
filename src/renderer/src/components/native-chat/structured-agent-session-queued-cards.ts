@@ -104,6 +104,15 @@ export function projectQueuedMessageCards(
   })
 }
 
+/** A command card waits in line: a later send goes behind it, even with follow-ups off. */
+export function commandCardWaiting(
+  queuedMessages: readonly AgentSessionQueuedMessage[] | null | undefined
+): boolean {
+  return (queuedMessages ?? []).some(
+    (message) => message.state === 'waiting' && message.body.command !== undefined
+  )
+}
+
 /** The card Cmd/Ctrl+Enter steers: the newest one, unless it is a command, which never steers. */
 export function newestSteerableQueuedMessageCard(
   cards: readonly QueuedMessageCard[]

@@ -13,8 +13,12 @@ import { sayAgentSessionFailureTranslated } from './agent-session-failure-words-
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import {
   agentSessionFailureStatedByStartRow,
-  structuredAgentSessionDeliveryNotices
+  structuredAgentSessionDeliveryNotices,
+  structuredAgentSessionStartFailureFacts
 } from './structured-agent-session-delivery-notices'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
+import type { StructuredPromptItem } from './structured-agent-session-message-projection'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import {
@@ -22,7 +26,10 @@ import {
   type StructuredAgentSessionOutboxEntry
 } from '../../../../shared/structured-agent-session-outbox'
 import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
-import type { StructuredAgentSessionWriteOutcome } from './use-structured-agent-session-mutate'
+import type {
+  StructuredAgentSessionWrite,
+  StructuredAgentSessionWriteOutcome
+} from './use-structured-agent-session-mutate'
 
 /** Why this client does not send the command yet. `ahead`: a message this window sent is not
  *  the host's yet; the command is not taken, and its text stays in the composer while Send is
@@ -158,41 +165,49 @@ export function structuredConversationCommandRunner(args: {
   pending: { current: boolean }
   /** The host holds a /compact as a card, and this client renders the queue. */
   commandsWait: boolean
-  /** The chat shows the agent working: a turn runs, or a message it has not answered. */
-  agentWorking: boolean
-  promptPending: boolean
-  /** Every pending prompt is one this build cannot answer: a card would wait on it forever. */
-  promptsUnanswerableHere: boolean
-  backgroundTasksRunning: boolean
+  /** What the chat shows: a turn, the Working rule, its background work, its sends. */
+  chat: {
+    turnId: string | null
+    isWorking: boolean
+    backgroundTasks: { isMonitoring: boolean }
+    submissions: readonly AgentJournalSubmission[]
+  }
+  /** The chat's pending prompts: a card would wait forever on ones this build cannot answer. */
+  prompts: readonly StructuredPromptItem[]
+  /** A rewind this pane started is on its way; read at the press. */
+  rewindInFlight: { readonly current: boolean }
   outbox: readonly StructuredAgentSessionOutboxEntry[]
-  submissions: readonly AgentJournalSubmission[]
-  startFailures: () => readonly AgentSessionFailureFact[]
-  write: (
-    fields: Record<string, unknown>
-  ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>>
+  /** The loaded rows, read when the reply lands, for the start failures they state. */
+  items: () => readonly AgentJournalRenderItem[]
+  write: StructuredAgentSessionWrite
 }): (
   command: AgentSessionConversationCommand
 ) => Promise<{ accepted: boolean; error: string | null }> {
   return (command) => {
+    const promptPending = args.prompts.length > 0
     const waitsInLine =
       command === 'compact' &&
       args.commandsWait &&
-      !(args.promptPending && args.promptsUnanswerableHere)
+      !(promptPending && pendingPromptsAllUnanswerableHere(args.prompts))
     return sendStructuredConversationCommand({
       command,
       agentName: args.agentName,
       pending: args.pending,
       hold: structuredConversationCommandHold({
         waitsInLine,
-        agentWorking: args.agentWorking,
-        promptPending: args.promptPending,
-        backgroundTasksRunning: args.backgroundTasksRunning,
-        ...outboxRows(args.outbox, args.submissions, args.agentName),
-        outboxUnsent: hasUnsentStructuredAgentSessionOutboxEntry(args.outbox, args.submissions)
+        agentWorking: args.chat.turnId !== null || args.chat.isWorking,
+        promptPending,
+        // A rewind on its way holds a command as background work does, in the same words.
+        backgroundTasksRunning:
+          args.chat.backgroundTasks.isMonitoring || args.rewindInFlight.current,
+        ...outboxRows(args.outbox, args.chat.submissions, args.agentName),
+        outboxUnsent: hasUnsentStructuredAgentSessionOutboxEntry(args.outbox, args.chat.submissions)
       }),
-      startFailures: args.startFailures,
+      startFailures: () => structuredAgentSessionStartFailureFacts(args.items()),
       send: (command) =>
-        args.write(
+        args.write<AgentSessionConversationCommandResult>(
+          'agentSession.conversationCommand',
+          'agentSession.conversationCommand',
           command === 'compact' && args.commandsWait
             ? { command, delivery: 'queue-if-active' }
             : { command }

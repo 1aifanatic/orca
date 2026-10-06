@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
-import type { AgentSessionConversationCommandResult } from '../../../../shared/agent-session-conversation-command'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -33,11 +32,15 @@ import { useStructuredAgentSessionContextUsage } from './use-structured-agent-se
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
 import { structuredConversationCommandRunner } from './structured-conversation-command-send'
-import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
-import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
+import {
+  commandCardWaiting,
+  outboxOutsideQueuedCards
+} from './structured-agent-session-queued-cards'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
+import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
+import type { NativeChatRewindHost } from './use-native-chat-rewind'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -57,6 +60,8 @@ export function useStructuredAgentSession(args: {
   composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
+  /** The host's rewind latch and what follows a message returned by a rewind. */
+  rewind?: NativeChatRewindHost
 }) {
   const {
     agent,
@@ -92,7 +97,8 @@ export function useStructuredAgentSession(args: {
     optionSurface,
     setStructuredOption,
     threadGoal: threadGoalSupport,
-    contextUsage: contextUsageSupport
+    contextUsage: contextUsageSupport,
+    rewind: rewindSupport
   } = useStructuredAgentSessionOptions({
     agent,
     sessionId,
@@ -120,11 +126,9 @@ export function useStructuredAgentSession(args: {
   const prompts = pendingStructuredSessionPrompts(transportState.journalItems)
   const promptsUnanswerableHere = pendingPromptsAllUnanswerableHere(prompts)
   // A send after a waiting command goes behind it, even with follow-ups off: send order is kept.
-  const commandWaiting = (transportState.queuedMessages ?? []).some(
-    (message) => message.state === 'waiting' && message.body.command !== undefined
-  )
   // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
   // answer: the send must start a turn, after which the card's cancel works.
+  const commandWaiting = commandCardWaiting(transportState.queuedMessages)
   const queueEnabled = (queueFollowUps || commandWaiting) && !promptsUnanswerableHere
   const queueDelivery = useMemo(
     () => ({ capability: queueCapability, enabled: queueEnabled }),
@@ -133,6 +137,7 @@ export function useStructuredAgentSession(args: {
   const outboxController = useStructuredAgentSessionOutbox({
     sessionId,
     target,
+    // Never held for an in-doubt rewind: the host recovers it on the next send.
     fence: transportState.fence,
     submissions: transportState.submissions,
     journalItems: transportState.journalItems,
@@ -159,23 +164,34 @@ export function useStructuredAgentSession(args: {
   })
 
   const { outbox } = outboxController
+  // What the host refuses a conversation command or a rewind behind.
+  const conversationBusy = Boolean(
+    transportState.turnId ||
+    prompts.length ||
+    transportState.backgroundTasks.isMonitoring ||
+    outbox.length
+  )
+  const rewind = useStructuredAgentSessionRewind({
+    sessionId,
+    target,
+    composerScopeKey,
+    ...args.rewind,
+    state,
+    support: transportEnabled ? rewindSupport : undefined,
+    // The host also refuses a rewind behind its queued cards, paused ones included.
+    blocked: conversationBusy || commandPending.current || queuedMessageIds.length > 0,
+    write
+  })
   const runConversationCommand = structuredConversationCommandRunner({
     agentName: structuredAgentLabel(agent),
     pending: commandPending,
     commandsWait,
-    agentWorking: transportState.turnId !== null || transportState.isWorking,
-    promptPending: prompts.length > 0,
-    promptsUnanswerableHere,
-    backgroundTasksRunning: transportState.backgroundTasks.isMonitoring,
+    chat: transportState,
+    prompts,
+    rewindInFlight: rewind.blockedRef,
     outbox,
-    submissions: transportState.submissions,
-    startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
-    write: (fields) =>
-      write<AgentSessionConversationCommandResult>(
-        'agentSession.conversationCommand',
-        'agentSession.conversationCommand',
-        fields
-      )
+    items: () => stateRef.current.items,
+    write
   })
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
@@ -212,13 +228,14 @@ export function useStructuredAgentSession(args: {
     queuePause: transportState.queuePause,
     submissions: transportState.submissions,
     hasPendingPrompt: prompts.length > 0,
-    agentWorking: transportState.turnId !== null || transportState.isWorking,
     // Hidden from the transcript, a queue send on its way reads as sending among the cards.
     sending: { outbox, isWorking, queueDelivery },
     composerScopeKey,
     mutate
   })
   return {
+    epoch: state.epoch,
+    rewind,
     conversationCommands,
     runConversationCommand,
     journalItems: transcriptItems,
@@ -245,8 +262,9 @@ export function useStructuredAgentSession(args: {
     send: (...input: Parameters<typeof outboxController.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
+      rewind.admitsSend() &&
       outboxController.send(...input),
-    retry: outboxController.retry,
+    retry: rewind.unlessBlocked(outboxController.retry),
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,
