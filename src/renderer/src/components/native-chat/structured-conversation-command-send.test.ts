@@ -70,7 +70,7 @@ afterEach(async () => {
 })
 
 describe("a /compact whose start failed, beside the chat's start-failure rows", () => {
-  const row = (itemId: string) => ({ itemId, fact: START_FAILED, covers: [] })
+  const row = (itemId: string) => ({ itemId, fact: START_FAILED })
 
   it('says nothing under the composer when its own start wrote the row', async () => {
     let loaded: ReturnType<typeof row>[] = []
@@ -189,7 +189,7 @@ describe('the line under the composer after a conversation command failed', () =
         agentName: 'Claude',
         pending: { current: false },
         blocked: false,
-        startFailures: () => [{ itemId: 'orca:start-failure', fact: START_FAILED, covers: [] }],
+        startFailures: () => [{ itemId: 'orca:start-failure', fact: START_FAILED }],
         send: async () => ({ kind: 'done', value: result })
       })
     ).toEqual({ accepted: false, error })

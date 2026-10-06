@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type {
-  AgentJournalRenderItem,
-  AgentJournalSubmission
-} from '../../../../shared/agent-session-journal-types'
+import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import {
   sameAgentSessionFailureFact,
   structuredAgentSessionStartFailureFacts,
@@ -15,12 +12,11 @@ const NO_FACTS: readonly StatedStartFailure[] = []
  *  streaming turn does not rebuild every row's delivery notice. */
 export function useStructuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[],
-  submissions: readonly AgentJournalSubmission[],
   enabled: boolean
 ): readonly StatedStartFailure[] {
   const facts = useMemo(
-    () => (enabled ? structuredAgentSessionStartFailureFacts(items, submissions) : NO_FACTS),
-    [enabled, items, submissions]
+    () => (enabled ? structuredAgentSessionStartFailureFacts(items) : NO_FACTS),
+    [enabled, items]
   )
   const previousRef = useRef<readonly StatedStartFailure[]>(NO_FACTS)
   const previous = previousRef.current
@@ -31,7 +27,6 @@ export function useStructuredAgentSessionStartFailureFacts(
       return (
         next !== undefined &&
         stated.itemId === next.itemId &&
-        stated.covers.join('\n') === next.covers.join('\n') &&
         sameAgentSessionFailureFact(stated.fact, next.fact)
       )
     })

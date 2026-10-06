@@ -21,13 +21,19 @@ import {
   readWholeAgentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../../shared/agent-session-failure'
-import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  agentJournalSubmissionKey
+} from '../../../../shared/agent-session-journal-item-key'
 import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
-import { isStructuredAgentSessionStartFailureRow } from '../../../../shared/structured-agent-session-start-failure-row-key'
+import {
+  isStructuredAgentSessionStartFailureRow,
+  structuredAgentSessionStartFailureRowIdentity
+} from '../../../../shared/structured-agent-session-start-failure-row-key'
 import {
   structuredAgentSessionEntryIdExpired,
   structuredAgentSessionEntryRejectedByHost,
@@ -54,47 +60,26 @@ const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { se
 const NO_COMMANDS: ReadonlySet<string> = new Set()
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
-/** A loaded start-failure row: the failure it states, and the rejected messages its start wrote it
- *  for, by item id. */
+/** A loaded start-failure row: its item id, and the failure it states. */
 export type StatedStartFailure = {
   itemId: string
   fact: AgentSessionFailureFact
-  covers: readonly string[]
 }
 
-/** What the chat's loaded start-failure rows state. A start writes its row right after the
- *  rejections it failed, each placed where it was rejected, so a row covers the rejected messages
- *  since the row before it, unless a message that went through came between them: a row after that
- *  is another start's. */
+/** What the chat's loaded start-failure rows state. */
 export function structuredAgentSessionStartFailureFacts(
-  items: readonly AgentJournalRenderItem[],
-  submissions: readonly AgentJournalSubmission[] = []
+  items: readonly AgentJournalRenderItem[]
 ): StatedStartFailure[] {
-  const rejected = new Set(
-    submissions.flatMap((submission) =>
-      submission.dispatchState === 'rejected'
-        ? [agentJournalSubmissionKey(submission.clientMessageId)]
-        : []
-    )
-  )
   const stated: StatedStartFailure[] = []
-  let since: string[] = []
-  for (const item of [...items].sort(byJournalPlace)) {
+  for (const item of items) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
       if (fact) {
-        stated.push({ itemId: item.itemId, fact, covers: since })
+        stated.push({ itemId: item.itemId, fact })
       }
-      since = []
-    } else if (item.body.kind === 'message' && item.body.role === 'user') {
-      since = rejected.has(item.itemId) ? [...since, item.itemId] : []
     }
   }
   return stated
-}
-
-function byJournalPlace(a: AgentJournalRenderItem, b: AgentJournalRenderItem): number {
-  return a.sequence - b.sequence || (a.sequenceIndex ?? 0) - (b.sequenceIndex ?? 0)
 }
 
 /** Whether two facts are one failure: a start's row and the messages it rejected share one. */
@@ -128,17 +113,21 @@ export function agentSessionFailureStatedByStartRow(
   )
 }
 
-/** Whether the row of the start that rejected this message already says why: the same failure, in
- *  the row that covers it. An equal failure in another row is another start's, so the message keeps
- *  its words. */
+/** Whether the row of the start that rejected this message already says why. A row keyed by the
+ *  message is its own start's and speaks for it alone, so its failure decides. With none, as in a
+ *  chat an older host wrote — one row for a batch, keyed by its start or by its oldest message —
+ *  any loaded row with the same failure does. */
 function rejectionStatedByItsStartRow(
   recorded: AgentJournalSubmission,
   startFailures: readonly StatedStartFailure[]
 ): boolean {
-  const id = agentJournalSubmissionKey(recorded.clientMessageId)
+  const ownRow = agentJournalItemKey(
+    structuredAgentSessionStartFailureRowIdentity(recorded.clientMessageId)
+  )
+  const own = startFailures.filter(({ itemId }) => itemId === ownRow)
   return agentSessionFailureStatedByStartRow(
     recorded.rejection,
-    startFailures.filter(({ covers }) => covers.includes(id))
+    own.length > 0 ? own : startFailures
   )
 }
 
