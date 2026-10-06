@@ -5,12 +5,14 @@ import { tagRuntimeSubscriptionReplayResponse } from '../../../../shared/runtime
 import { createCompatibleRuntimeStatusResponse } from '@/runtime/runtime-compatibility-test-fixture'
 import { registerRuntimeClientIpcBridge } from './runtime-client-ipc-bridge'
 import type { RuntimeClientEvent } from '../../../../shared/runtime-client-events'
+import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 
 const initialState = useAppStore.getState()
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
   useAppStore.setState(initialState, true)
+  replaceRuntimeEnvironmentRevisions(initialState.runtimeEnvironments)
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -220,7 +222,8 @@ it.each(['clients', 'all'] as const)(
       }
       expect(h.activateNotifiedWorktree).toHaveBeenCalledWith(event, {
         allowRuntimeEnvironment: true,
-        executionHostId: 'runtime:host-a'
+        executionHostId: 'runtime:host-a',
+        isCurrent: expect.any(Function)
       })
     } finally {
       await h.finish()
@@ -255,12 +258,45 @@ it('does not mistake a local repo with the same id for the publishing remote rep
     expect(h.fetchRuntimeEnvironmentRepos).toHaveBeenCalledWith('host-a')
     expect(h.activateNotifiedWorktree).toHaveBeenCalledWith(expect.anything(), {
       allowRuntimeEnvironment: true,
-      executionHostId: 'runtime:host-a'
+      executionHostId: 'runtime:host-a',
+      isCurrent: expect.any(Function)
     })
   } finally {
     await h.finish()
   }
 })
+
+it.each(['cleanup', 're-pair'] as const)(
+  'cancels an accepted activation after %s during repository discovery',
+  async (change) => {
+    const h = createHarness()
+    const repos = Promise.withResolvers<never[]>()
+    h.fetchRuntimeEnvironmentRepos.mockImplementation(() => repos.promise)
+    try {
+      const stop = h.start()
+      h.emit(0, false, {
+        type: 'activateWorktree',
+        repoId: 'remote-repo',
+        worktreeId: 'remote-wt',
+        navigation: 'clients'
+      })
+      expect(h.fetchRuntimeEnvironmentRepos).toHaveBeenCalledWith('host-a')
+      if (change === 'cleanup') {
+        stop()
+      } else {
+        replaceRuntimeEnvironmentRevisions([{ id: 'host-a', createdAt: 1, pairingRevision: 2 }])
+      }
+      repos.resolve([])
+      for (let index = 0; index < 10; index += 1) {
+        await Promise.resolve()
+      }
+      expect(h.activateNotifiedWorktree).not.toHaveBeenCalled()
+    } finally {
+      repos.resolve([])
+      await h.finish()
+    }
+  }
+)
 
 it('does no replay recovery or resubscription after cleanup', async () => {
   const h = createHarness()

@@ -129,6 +129,8 @@ activation. The new host's default publication changes deliberately remove impli
 navigation for older clients too, rather than retaining the unwanted behavior.
 An older host cannot express explicit follow intent to an updated client, so that
 client must open the workspace itself.
+Accepted navigation is also fenced through repository/worktree discovery; bridge
+cleanup, reconnection, or re-pairing revokes any activation still awaiting a fetch.
 
 Older CLIs hardcode `navigation: 'all'` for `--activate` and `--run-hooks`. The host
 recognizes their `cliProvenanceRequest` and normalizes that automatic target to

@@ -21,11 +21,17 @@ function getVisibleWorktreeIdsForRepo(state: AppState, repoId: string): Set<stri
   return new Set((state.worktreesByRepo[repoId] ?? []).map((worktree) => worktree.id))
 }
 
+type WorktreeEventActivationOptions = {
+  allowRuntimeEnvironment: boolean
+  executionHostId?: ExecutionHostId
+  isCurrent?: () => boolean
+}
+
 export type WorktreeEventRuntime = {
   worktreeChangeRefreshQueue: WorktreeChangeRefreshQueue
   activateNotifiedWorktree: (
     event: Extract<RuntimeClientEvent, { type: 'activateWorktree' }>,
-    options: { allowRuntimeEnvironment: boolean; executionHostId?: ExecutionHostId }
+    options: WorktreeEventActivationOptions
   ) => Promise<void>
 }
 
@@ -140,8 +146,11 @@ export function createWorktreeEventRuntime(
       startup,
       defaultTabs
     }: Extract<RuntimeClientEvent, { type: 'activateWorktree' }>,
-    options: { allowRuntimeEnvironment: boolean; executionHostId?: ExecutionHostId }
+    options: WorktreeEventActivationOptions
   ): Promise<void> => {
+    if (options.isCurrent?.() === false) {
+      return
+    }
     if (!options.allowRuntimeEnvironment && isRuntimeEnvironmentActive()) {
       // Why: local CLI worktree events carry local ids; runtime activation comes via the remote stream, allowed separately.
       return
@@ -153,6 +162,10 @@ export function createWorktreeEventRuntime(
     await (options.executionHostId
       ? useAppStore.getState().fetchWorktrees(repoId, { executionHostId: options.executionHostId })
       : useAppStore.getState().fetchWorktrees(repoId))
+    // A connection or bridge replacement during discovery revokes this navigation.
+    if (options.isCurrent?.() === false) {
+      return
+    }
     const existsAfterFetch = Boolean(
       useAppStore.getState().getKnownWorktreeById(worktreeId, options.executionHostId)
     )

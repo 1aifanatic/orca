@@ -35,6 +35,10 @@ export function registerRuntimeClientIpcBridge(
   worktreeRuntime: WorktreeEventRuntime
 ): () => void {
   const { worktreeChangeRefreshQueue, activateNotifiedWorktree } = worktreeRuntime
+  let stopped = false
+  unsubs.push(() => {
+    stopped = true
+  })
   const ensureRuntimeEventRepoKnown = async (
     environmentId: string,
     repoId: string
@@ -138,13 +142,23 @@ export function registerRuntimeClientIpcBridge(
     if (!event.navigation || !navigationTargetsClients(event.navigation)) {
       return
     }
+    const runtimeGeneration = getRuntimeEnvironmentConnectionGeneration(environmentId)
+    const runtimeRevision = getRuntimeEnvironmentRevision(environmentId)
+    const isCurrent = (): boolean =>
+      !stopped &&
+      generation === getEnvironmentSshStateGeneration(environmentId) &&
+      runtimeGeneration === getRuntimeEnvironmentConnectionGeneration(environmentId) &&
+      runtimeRevision === getRuntimeEnvironmentRevision(environmentId)
     void ensureRuntimeEventRepoKnown(environmentId, event.repoId)
-      .then(() =>
-        activateNotifiedWorktree(event, {
-          allowRuntimeEnvironment: true,
-          executionHostId: toRuntimeExecutionHostId(environmentId)
-        })
-      )
+      .then(() => {
+        return isCurrent()
+          ? activateNotifiedWorktree(event, {
+              allowRuntimeEnvironment: true,
+              executionHostId: toRuntimeExecutionHostId(environmentId),
+              isCurrent
+            })
+          : undefined
+      })
       .catch((error) => {
         console.error('Failed to activate runtime-created worktree:', error)
       })
