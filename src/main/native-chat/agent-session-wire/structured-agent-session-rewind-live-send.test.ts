@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
@@ -86,6 +87,7 @@ function openHost(): StructuredAgentSessionHost {
     logger: createStructuredAgentSessionLogger(),
     store,
     adapter: adapter(),
+    agents: claudeAndCodexDeclared(),
     journalDatabase: openTestJournalHostDatabase(directory),
     claimKeyId: 'key',
     now: () => HOST_TEST_NOW,
