@@ -182,6 +182,8 @@ export function createPdfViewerSession({
     } finally {
       // Why: setDocument(null) does not release pdf.js's scroll listener and ResizeObserver.
       abortController.abort()
+      // Why: the default localization service owns a separate MutationObserver.
+      void viewer.l10n?.destroy().catch(() => {})
     }
   }
   try {

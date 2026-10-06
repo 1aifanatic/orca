@@ -61,7 +61,10 @@ export function createPdfDocumentLoader({
         }
         return
       }
-      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
       let task: PdfLoadingTask
       try {
         task = pdfjsLib.getDocument(buildPdfJsDocumentOptions(bytes, document.baseURI))

@@ -10,10 +10,16 @@ const getDocument = vi.hoisted(() => vi.fn())
 const shownDocuments = vi.hoisted((): unknown[] => [])
 const viewers = vi.hoisted((): { currentScale: number; currentScaleValue: string }[] => [])
 const eventBuses = vi.hoisted(
-  (): { dispatch: (name: string, event: { location?: unknown; scale: number }) => void }[] => []
+  (): {
+    dispatch: (name: string, event: { location?: unknown; scale: number }) => void
+    listenerCount: () => number
+  }[] => []
 )
 const scrollDestinations = vi.hoisted((): unknown[] => [])
 const viewerSignals = vi.hoisted((): AbortSignal[] => [])
+const localizationResources = vi.hoisted(
+  (): { active: boolean; destroy: ReturnType<typeof vi.fn<() => Promise<void>>> }[] => []
+)
 
 vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument }))
 vi.mock('pdfjs-dist/web/pdf_viewer.mjs', () => {
@@ -35,6 +41,9 @@ vi.mock('pdfjs-dist/web/pdf_viewer.mjs', () => {
         callback(event)
       }
     }
+    listenerCount(): number {
+      return [...this.listeners.values()].reduce((count, listeners) => count + listeners.size, 0)
+    }
   }
   class PDFLinkService {
     setViewer(): void {}
@@ -47,8 +56,19 @@ vi.mock('pdfjs-dist/web/pdf_viewer.mjs', () => {
     pagesCount = 10
     currentScale = 1
     currentScaleValue = 'page-width'
-    constructor(options: { abortSignal?: AbortSignal }) {
+    l10n: { active: boolean; destroy: ReturnType<typeof vi.fn<() => Promise<void>>> }
+    constructor(options: { container: HTMLDivElement; abortSignal?: AbortSignal }) {
       viewers.push(this)
+      const observer = new MutationObserver(() => {})
+      observer.observe(options.container, { childList: true, subtree: true })
+      const resource = { active: true, destroy: vi.fn(() => Promise.resolve()) }
+      resource.destroy.mockImplementation(() => {
+        observer.disconnect()
+        resource.active = false
+        return Promise.resolve()
+      })
+      this.l10n = resource
+      localizationResources.push(resource)
       if (options.abortSignal) {
         viewerSignals.push(options.abortSignal)
       }
@@ -112,6 +132,7 @@ afterEach(() => {
   eventBuses.length = 0
   scrollDestinations.length = 0
   viewerSignals.length = 0
+  localizationResources.length = 0
   pdfViewPositionCache.clear()
   localStorage.clear()
 })
@@ -429,6 +450,125 @@ describe('PdfViewer when the file is rewritten', () => {
     view.unmount()
     for (const task of tasks) {
       expect(task.destroy).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('does no parsing or viewer reconstruction for 100 unchanged rerenders', async () => {
+    const task = loadingTask({ name: 'stable' })
+    getDocument.mockImplementationOnce(() => task)
+    const content = btoa('%PDF stable')
+    const view = render(<PdfViewer content={content} filePath="out/main.pdf" />)
+    await waitFor(() => expect(viewers).toHaveLength(1))
+
+    for (let index = 0; index < 100; index += 1) {
+      view.rerender(
+        <PdfViewer content={index % 2 ? content : `\n${content}\n`} filePath="out/main.pdf" />
+      )
+    }
+
+    expect(getDocument).toHaveBeenCalledTimes(1)
+    expect(viewers).toHaveLength(1)
+    expect(viewerSignals).toHaveLength(1)
+    expect(task.destroy).not.toHaveBeenCalled()
+    view.unmount()
+    expect(task.destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('bounds active resources across 25 failed and successful rewrite cycles', async () => {
+    const tasks: ReturnType<typeof loadingTask>[] = []
+    let activeTasks = 0
+    let peakTasks = 0
+    let peakLocalization = 0
+    getDocument.mockImplementation(() => {
+      const index = tasks.length
+      const task = loadingTask(index % 2 ? 'fail' : { index })
+      activeTasks += 1
+      peakTasks = Math.max(peakTasks, activeTasks)
+      task.destroy.mockImplementation(() => {
+        activeTasks -= 1
+        return Promise.resolve()
+      })
+      tasks.push(task)
+      return task
+    })
+    const view = render(<PdfViewer content={btoa('%PDF initial')} filePath="out/main.pdf" />)
+    await waitFor(() => expect(viewers).toHaveLength(1))
+
+    for (let index = 0; index < 50; index += 1) {
+      await act(async () => {
+        view.rerender(<PdfViewer content={btoa(`%PDF rewrite ${index}`)} filePath="out/main.pdf" />)
+        await Promise.resolve()
+      })
+      expect(activeTasks).toBe(1)
+      expect(viewerSignals.filter((signal) => !signal.aborted)).toHaveLength(1)
+      peakLocalization = Math.max(
+        peakLocalization,
+        localizationResources.filter((resource) => resource.active).length
+      )
+      expect(eventBuses.slice(0, -1).every((bus) => bus.listenerCount() === 0)).toBe(true)
+      expect(view.queryByText(ERROR_TEXT)).toBeNull()
+    }
+
+    expect(peakTasks).toBe(2)
+    expect(peakLocalization).toBe(1)
+    expect(getDocument).toHaveBeenCalledTimes(51)
+    expect(viewers).toHaveLength(26)
+    view.unmount()
+    expect(activeTasks).toBe(0)
+    expect(viewerSignals.every((signal) => signal.aborted)).toBe(true)
+    expect(eventBuses.every((bus) => bus.listenerCount() === 0)).toBe(true)
+    expect(localizationResources.every((resource) => !resource.active)).toBe(true)
+    for (const resource of localizationResources) {
+      expect(resource.destroy).toHaveBeenCalledTimes(1)
+    }
+    for (const task of tasks) {
+      expect(task.destroy).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('releases superseded tasks when asynchronous worker teardown finishes after a burst', async () => {
+    const tasks: ReturnType<typeof pendingTask>[] = []
+    const finishDestroy: (() => void)[] = []
+    getDocument.mockImplementation(() => {
+      const task = pendingTask()
+      task.destroy.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishDestroy.push(resolve)
+          })
+      )
+      tasks.push(task)
+      return task
+    })
+    const view = render(<PdfViewer content={btoa('%PDF initial')} filePath="out/main.pdf" />)
+    for (let index = 0; index < 30; index += 1) {
+      view.rerender(<PdfViewer content={btoa(`%PDF rewrite ${index}`)} filePath="out/main.pdf" />)
+    }
+    const newest = { name: 'newest' }
+    const active = tasks.at(-1)
+    expect(active).toBeDefined()
+    if (active) {
+      await finishTask(active, newest)
+    }
+    expect(shownDocuments.filter((doc) => doc !== null)).toEqual([newest])
+    expect(viewers).toHaveLength(1)
+
+    view.unmount()
+    await act(async () => {
+      for (const finish of finishDestroy) {
+        finish()
+      }
+      for (const task of tasks) {
+        task.resolve({ name: 'closed' })
+      }
+      await Promise.all(tasks.map((task) => task.promise))
+    })
+
+    expect(shownDocuments.filter((doc) => doc !== null)).toEqual([newest])
+    expect(viewerSignals.every((signal) => signal.aborted)).toBe(true)
+    for (const task of tasks) {
+      expect(task.destroy).toHaveBeenCalledTimes(1)
+      await expect(task.destroy.mock.results[0]?.value).resolves.toBeUndefined()
     }
   })
 })
