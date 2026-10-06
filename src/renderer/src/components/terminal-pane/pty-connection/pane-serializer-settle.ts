@@ -177,6 +177,8 @@ export function bindSettlePaneSerializer(session: ConnectPanePtySession): void {
       startupDraftHardTimer = null
       if (session.startupDraftAgent === 'codex') {
         startupDraftPasteSettled = true
+        // A timed-out launch stays consumed across pane disposal and remount.
+        session.startupDraftPasteAttempted = true
         session.cleanupStartupDraftPasteTimers()
         createPasteReadinessTimeoutNotice({
           worktreeId: session.deps.worktreeId,
