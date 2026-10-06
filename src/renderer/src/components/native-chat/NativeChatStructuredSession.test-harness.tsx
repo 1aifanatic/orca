@@ -235,6 +235,8 @@ export function createStructuredSessionMocks() {
               supportsStopAll: mocks.supportsBackgroundTaskStopAll
             },
             turnId: mocks.turnId,
+            epoch: 'epoch-1',
+            rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,
             queueSendsNext: mocks.queueSendsNext,
             stop: mocks.stop,
