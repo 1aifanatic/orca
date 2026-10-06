@@ -19,7 +19,7 @@ import type {
   SshManagedServerUpdateNote,
   SshTarget
 } from '../../shared/ssh-types'
-import type { OrcadManagedServing } from './orcad-managed-serving'
+import { MANAGED_ORCAD_FENCED_DETAIL, type OrcadManagedServing } from './orcad-managed-serving'
 import {
   checkManagedServerUpdate,
   type ManagedServerUpdateDeps
@@ -47,6 +47,8 @@ export type HostServerOnConnectResult =
       environmentId: string
       update?: SshManagedServerUpdateNote
       serving?: SshManagedServerServingNote
+      /** Another desktop's update held the host; recheck until it clears. Never published. */
+      fenceHeld?: true
     }
   | {
       route: 'relay'
@@ -155,19 +157,32 @@ async function decide(
     const serving = await deps.ensureServing(existing)
     if (serving.state === 'unverifiable') {
       // Still the managed route: a stopped server says nothing about the host's terminals.
-      return { route: 'managed', environmentId: existing, serving }
+      return {
+        route: 'managed',
+        environmentId: existing,
+        serving,
+        ...(serving.detail === MANAGED_ORCAD_FENCED_DETAIL ? { fenceHeld: true as const } : {})
+      }
     }
     try {
       deps.retainCommittedSource(target)
     } catch (error) {
       console.warn('[ssh] Could not mark a finished migration retained:', error)
     }
-    const { note, reason, recorded } = await checkManagedServerUpdate(target, existing, deps, () =>
-      deps.progress(target, 'updating')
+    const { note, reason, recorded, fenceBusy } = await checkManagedServerUpdate(
+      target,
+      existing,
+      deps,
+      () => deps.progress(target, 'updating')
     )
     trace.update = reason
     trace.recorded = recorded
-    return { route: 'managed', environmentId: existing, ...(note ? { update: note } : {}) }
+    return {
+      route: 'managed',
+      environmentId: existing,
+      ...(note ? { update: note } : {}),
+      ...(fenceBusy ? { fenceHeld: true as const } : {})
+    }
   }
   const recorded = deps.recordedUnavailable(target)
   if (recorded) {
