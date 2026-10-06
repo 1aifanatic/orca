@@ -164,10 +164,7 @@ export function useStructuredAgentSession(args: {
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
   const transcriptPending = useMemo(
-    () =>
-      pendingSendsOutsideQueuedCards(pending, queuedMessageIds, isWorking).map((entry) =>
-        entry.phase === 'in-doubt' ? { ...entry, inDoubt: true } : entry
-      ),
+    () => pendingSendsOutsideQueuedCards(pending, queuedMessageIds, isWorking),
     [isWorking, pending, queuedMessageIds]
   )
   // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
@@ -239,7 +236,6 @@ export function useStructuredAgentSession(args: {
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
       sends.send(...input),
-    sendAgain: sends.sendAgain,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,

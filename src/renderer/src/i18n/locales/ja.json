@@ -18024,8 +18024,6 @@
         "estimated": "最後の応答から推定。"
       },
       "dismissDeliveryNotice": "閉じる",
-      "sendAgain": "もう一度送信",
-      "deliveryInDoubt": "このメッセージが {{value0}} に届いたことを Orca で確認できませんでした。",
       "messageNotSent": "メッセージは送信されませんでした",
       "deliveryUnconfirmed": "配信を確認できません — 再試行する前にチャットを確認してください",
       "messageSending": "送信中…",

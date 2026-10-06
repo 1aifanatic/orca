@@ -164,7 +164,7 @@ describe('queued message cards', () => {
     expect(newestSteerableQueuedMessageCard([])).toBeNull()
   })
 
-  it('a mid-turn queue send on its way is no bubble; plain, unconfirmed and recorded ones differ', () => {
+  it('a mid-turn queue send on its way is no bubble; a plain one is, and a recorded one is its row', () => {
     const entry = (
       clientMessageId: string,
       overrides: Partial<StructuredAgentSessionPendingSend> = {}
@@ -184,20 +184,18 @@ describe('queued message cards', () => {
       entry('queued', { delivery: 'queue-if-active' }),
       entry('waiting', { delivery: 'queue-if-active', phase: 'waiting', issued: false }),
       entry('plain'),
-      entry('in-doubt', { delivery: 'queue-if-active', phase: 'in-doubt' }),
       entry('recorded', { phase: 'recorded' })
     ]
-    // Its card draws a queue send while the agent works; a plain send and an unconfirmed one
-    // stay in view; the host's row draws a recorded one.
-    expect(ids(pendingSendsOutsideQueuedCards(sends, [], true))).toEqual(['plain', 'in-doubt'])
+    // Its card draws a queue send while the agent works; a plain send stays in view; the host's row
+    // draws a recorded one.
+    expect(ids(pendingSendsOutsideQueuedCards(sends, [], true))).toEqual(['plain'])
     expect(ids(pendingSendsOutsideQueuedCards(sends, [], false))).toEqual([
       'queued',
       'waiting',
-      'plain',
-      'in-doubt'
+      'plain'
     ])
     // Once the host visibly holds it, it is a card.
-    expect(ids(pendingSendsOutsideQueuedCards(sends, ['plain', 'in-doubt'], false))).toEqual([
+    expect(ids(pendingSendsOutsideQueuedCards(sends, ['plain'], false))).toEqual([
       'queued',
       'waiting'
     ])

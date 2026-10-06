@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { AgentJournalSubmission } from './agent-session-journal-types'
 import type { AgentSessionWireRefusal } from './agent-session-wire'
 import {
   structuredAgentSessionSendEvidence,
@@ -33,6 +34,28 @@ const first = { answersWithProof: false, firstAttempt: true }
 describe('structuredAgentSessionSendEvidence', () => {
   it('reads any ok answer as the host holding the message', () => {
     expect(structuredAgentSessionSendEvidence(recorded, first).kind).toBe('recorded')
+  })
+
+  it('reads a made-up row for an id the host journal lost as unconfirmed, not recorded', () => {
+    const missing: StructuredAgentSessionSendAnswer = {
+      kind: 'result',
+      result: {
+        ok: true,
+        replayed: true,
+        fence: 1,
+        cursor: { epoch: 'e', sequence: 1 },
+        value: {
+          clientMessageId: 'm',
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: only the reason is read.
+          submission: {
+            dispatchState: 'unknown',
+            reason: 'durable_send_submission_missing',
+            recovered: true
+          } as AgentJournalSubmission
+        }
+      }
+    }
+    expect(structuredAgentSessionSendEvidence(missing, proof).kind).toBe('uncertain')
   })
 
   it('resends the same id after a thrown error, a thrown refusal included', () => {

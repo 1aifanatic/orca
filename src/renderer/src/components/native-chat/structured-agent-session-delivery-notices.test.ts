@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { AgentSessionFailureFact } from '../../../../shared/agent-session-failure'
 import type {
   AgentJournalMessageItem,
@@ -18,7 +18,6 @@ import {
 import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const SENDING = 'Sending…'
-const IN_DOUBT = "Orca couldn't confirm this message reached Claude."
 
 function body(text: string): AgentJournalMessageItem {
   return { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
@@ -57,29 +56,15 @@ function row(
   }
 }
 
-function messageItem(clientMessageId: string, text: string): AgentJournalRenderItem {
-  return {
-    itemId: agentJournalSubmissionKey(clientMessageId),
-    revision: 1,
-    sequence: 1,
-    observedAt: 1,
-    body: body(text)
-  }
-}
-
 function notices(args: {
   pending?: StructuredAgentSessionPendingSend[]
   submissions?: AgentJournalSubmission[]
-  items?: AgentJournalRenderItem[]
   startFailures?: AgentSessionFailureFact[]
-  sendAgain?: (id: string, sent: AgentJournalMessageItem) => void
 }) {
   return structuredAgentSessionDeliveryNotices({
     pending: args.pending ?? [],
     submissions: args.submissions ?? [],
-    journalItems: args.items ?? [],
     agentName: 'Claude',
-    sendAgain: args.sendAgain ?? (() => {}),
     startFailures: args.startFailures ?? []
   })
 }
@@ -102,48 +87,23 @@ describe('the line under each of the chat own messages', () => {
     expect(texts(notices({ pending: [pending('c', 'recorded')] }))).toEqual({})
   })
 
-  it('offers Send again on a send nothing answered in time, with its own text', () => {
-    const sendAgain = vi.fn()
-    const map = notices({ pending: [pending('a', 'in-doubt')], sendAgain })
-    const notice = map.get(agentJournalSubmissionKey('a'))
-    expect(notice?.text).toBe(IN_DOUBT)
-    notice?.onSendAgain?.()
-    expect(sendAgain).toHaveBeenCalledWith('a', body('a'))
-  })
-
-  it("offers Send again on a message the host recorded but couldn't confirm, from its row", () => {
-    const sendAgain = vi.fn()
-    const map = notices({
-      submissions: [row('a', 'unknown', { recovered: true }), row('b', 'accepted')],
-      items: [messageItem('a', 'BRAVO'), messageItem('b', 'CHARLIE')],
-      sendAgain
-    })
-    expect(texts(map)).toEqual({ [agentJournalSubmissionKey('a')]: IN_DOUBT })
-    map.get(agentJournalSubmissionKey('a'))?.onSendAgain?.()
-    expect(sendAgain).toHaveBeenCalledWith('a', body('BRAVO'))
-  })
-
-  it('drops the line once the same message was sent again', () => {
+  it("says nothing on a message the host recorded but couldn't confirm, as the common pattern", () => {
     expect(
       texts(
         notices({
-          submissions: [
-            row('a', 'unknown', { payloadFingerprint: 'same' }),
-            row('b', 'accepted', { payloadFingerprint: 'same' })
-          ],
-          items: [messageItem('a', 'x'), messageItem('b', 'x')]
+          submissions: [row('a', 'unknown', { recovered: true }), row('b', 'accepted')]
         })
       )
     ).toEqual({})
   })
 
-  it("words a message the host rejected from the host's fact, with no Send again", () => {
+  it("words a message the host rejected from the host's fact, with no control", () => {
     const map = notices({
       submissions: [row('a', 'rejected', { reason: 'Claude does not support the image type .bmp' })]
     })
     const notice = map.get(agentJournalSubmissionKey('a'))
     expect(notice?.text).toBe('Claude does not support the image type .bmp')
-    expect(notice?.onSendAgain).toBeUndefined()
+    expect(notice?.onDismiss).toBeUndefined()
   })
 
   it('says nothing for a message a Stop withdrew: it went back to the composer', () => {

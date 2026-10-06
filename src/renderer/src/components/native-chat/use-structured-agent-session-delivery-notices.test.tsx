@@ -64,7 +64,6 @@ it('keeps the same notices across batches in a chat whose only rejection a Stop 
         submissions,
         journalItems: EMPTY,
         queuedMessageIds: NO_CARDS,
-        sendAgain: () => {},
         agentName: 'Claude'
       }),
     { initialProps: { submissions: [withdrawn('stopped')] } }
@@ -85,7 +84,6 @@ function renderNotices(submissions: readonly AgentJournalSubmission[]) {
         submissions: current,
         journalItems: EMPTY,
         queuedMessageIds: NO_CARDS,
-        sendAgain: () => {},
         agentName: 'Claude'
       }),
     { initialProps: { submissions } }

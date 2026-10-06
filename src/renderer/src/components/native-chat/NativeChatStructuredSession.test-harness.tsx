@@ -28,8 +28,8 @@ function absent<T>(): T | undefined {
   return undefined
 }
 
-/** Stands in for the transcript: renders only each message's delivery notice and its Send again,
- *  or the row's quiet "Sending…" while nothing has confirmed it. */
+/** Stands in for the transcript: renders only each message's delivery notice, or the row's quiet
+ *  "Sending…" while nothing has confirmed it. */
 export function DeliveryNoticesMock({
   notices
 }: {
@@ -40,11 +40,6 @@ export function DeliveryNoticesMock({
       {[...(notices ?? [])].map(([id, notice]) => (
         <div key={id} data-message-id={id}>
           <span>{notice.sending ? 'Sending…' : notice.text}</span>
-          {notice.onSendAgain ? (
-            <button type="button" onClick={notice.onSendAgain}>
-              Send again
-            </button>
-          ) : null}
         </div>
       ))}
     </div>
@@ -201,7 +196,6 @@ export function createStructuredSessionMocks() {
             pending: [],
             submissions: mocks.submissions,
             send: mocks.send,
-            sendAgain: () => {},
             isWorking: mocks.isWorking,
             backgroundTasks: {
               show: mocks.showBackgroundTasks || mocks.monitoringBackgroundTasks,

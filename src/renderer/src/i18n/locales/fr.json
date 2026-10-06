@@ -18088,8 +18088,6 @@
         "estimated": "Estimation basée sur la dernière réponse."
       },
       "dismissDeliveryNotice": "Ignorer",
-      "sendAgain": "Renvoyer",
-      "deliveryInDoubt": "Orca n'a pas pu confirmer que ce message est parvenu à {{value0}}.",
       "messageNotSent": "Message non envoyé",
       "deliveryUnconfirmed": "Livraison non confirmée — vérifiez le chat avant de réessayer",
       "messageSending": "Envoi…",

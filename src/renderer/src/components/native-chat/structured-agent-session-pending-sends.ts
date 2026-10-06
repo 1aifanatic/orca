@@ -13,10 +13,9 @@ export type StructuredAgentSessionPendingSend = {
   /**
    * `waiting`: behind another send. `sending`: an attempt is out, or its same-id resend is due.
    * `recorded`: the host holds it and its row draws it; kept only so a Stop that withdraws it gives
-   * the text back. `in-doubt`: an attempt went out and nothing answered in time; never resent,
-   * replaced by the host's row if one appears.
+   * the text back.
    */
-  phase: 'waiting' | 'sending' | 'recorded' | 'in-doubt'
+  phase: 'waiting' | 'sending' | 'recorded'
   /** An attempt under this id may have reached the host. */
   issued: boolean
   /** A sender outside the chat keeps its own copy, so nothing goes to the chat's composer. */

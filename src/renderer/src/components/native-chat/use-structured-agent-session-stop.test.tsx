@@ -42,7 +42,6 @@ vi.mock('./use-structured-agent-session-sends', () => ({
     error: null,
     clearError: vi.fn(),
     send: vi.fn(),
-    sendAgain: vi.fn(),
     withdrawUnsent: mocks.withdrawUnsent
   })
 }))
@@ -384,20 +383,14 @@ describe('Stop against a host that stops the conversation', () => {
     expect(ids[1]).not.toBe(ids[0])
   })
 
-  it('is hidden at rest, and with only a message the host settled or nobody confirmed', () => {
+  it('is hidden at rest, and with only a message the host settled', () => {
     expect(render().result.current.canStop).toBe(false)
     outbox = [entry('recorded')]
     submissions = [submission({ dispatchState: 'accepted', resolvedAt: 2 })]
     expect(render().result.current.canStop).toBe(false)
   })
 
-  it('is hidden with only a message in doubt', () => {
-    // A send nothing answered in time holds nothing and starts nothing.
-    outbox = [entry('in-doubt')]
-    expect(render().result.current.canStop).toBe(false)
-
-    // A send the host restarted under reads idle.
-    outbox = []
+  it('is hidden once the host reads idle after a restart', () => {
     submissions = [
       submission({
         dispatchState: 'unknown',

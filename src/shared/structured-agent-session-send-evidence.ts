@@ -9,6 +9,10 @@ import {
   type AgentSessionWriteFailure
 } from './agent-session-write-failure'
 
+/** The reason a host gives a made-up `unknown` row: its ledger has the id and its journal does not,
+ *  so the message may never have been written. */
+export const STRUCTURED_AGENT_SESSION_SUBMISSION_MISSING = 'durable_send_submission_missing'
+
 export type StructuredAgentSessionSendAnswer =
   | { kind: 'result'; result: AgentSessionMutationResult<AgentSessionSendResult> }
   | { kind: 'thrown'; error: unknown; rpcCode: string | undefined }
@@ -50,7 +54,11 @@ export function structuredAgentSessionSendEvidence(
   }
   const { result } = answer
   if (result.ok) {
-    return { kind: 'recorded' }
+    const value: AgentSessionSendResult = result.value
+    return 'submission' in value &&
+      value.submission.reason === STRUCTURED_AGENT_SESSION_SUBMISSION_MISSING
+      ? { kind: 'uncertain' }
+      : { kind: 'recorded' }
   }
   const failure = agentSessionRefusalFailure(result.refusal)
   if (failure.kind !== 'refused') {

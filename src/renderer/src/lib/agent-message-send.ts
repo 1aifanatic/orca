@@ -43,9 +43,8 @@ export async function sendMessageToAgent(args: {
     text: prompt,
     callerKeepsText: true
   })
-  const settled = await outcome
-  // An unconfirmed send stays in the chat, saying so, with Send again.
-  return settled === 'recorded' || settled === 'in-doubt'
+  // Anything else leaves the text with the caller, which keeps its notes.
+  return (await outcome) === 'recorded'
     ? { status: 'sent' }
     : { status: 'not-writable', code: 'session-send-refused' }
 }

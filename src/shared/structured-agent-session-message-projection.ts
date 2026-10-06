@@ -15,8 +15,6 @@ export type StructuredAgentSessionOptimisticMessage = {
   clientMessageId: string
   body: AgentJournalMessageItem
   queuedAt: number
-  /** Nothing answered it in time: in no turn, so a running turn's bar never lands on it. */
-  inDoubt?: boolean
 }
 
 export type StructuredAgentSessionMessageProjectionOptions = {
@@ -152,8 +150,7 @@ export function projectStructuredAgentSessionMessages(
         role: 'user',
         source: 'transcript',
         timestamp: entry.queuedAt,
-        blocks: entry.body.blocks,
-        ...(entry.inDoubt ? { unsent: true as const } : {})
+        blocks: entry.body.blocks
       }))
   ]
 }

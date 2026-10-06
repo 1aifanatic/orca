@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type {
-  AgentJournalMessageItem,
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
@@ -12,7 +11,6 @@ import { useStructuredAgentSessionStartFailureFacts } from './use-structured-age
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
 const NO_SUBMISSIONS: readonly AgentJournalSubmission[] = []
-const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
 /** The structured chat's delivery notices, by the message id each row renders under. */
 export function useStructuredAgentSessionDeliveryNotices(args: {
@@ -20,51 +18,28 @@ export function useStructuredAgentSessionDeliveryNotices(args: {
   submissions: readonly AgentJournalSubmission[]
   journalItems: readonly AgentJournalRenderItem[]
   queuedMessageIds: readonly string[]
-  sendAgain: (clientMessageId: string, body: AgentJournalMessageItem) => void
   agentName: string
 }): ReadonlyMap<string, NativeChatDeliveryNotice> {
   const { agentName, pending, queuedMessageIds, submissions } = args
-  // Read at click time, so the notices stay put while Send again is rebuilt each render.
-  const sendAgainRef = useRef(args.sendAgain)
-  useEffect(() => {
-    sendAgainRef.current = args.sendAgain
-  })
-  const sendAgain = useCallback((clientMessageId: string, body: AgentJournalMessageItem) => {
-    sendAgainRef.current(clientMessageId, body)
-  }, [])
-  // Only a chat with a message in doubt or shown as not sent reads the journal's rows and loaded
-  // items, so in a chat with neither a streaming turn rebuilds no notice.
-  const hasHostNotice = submissions.some(
-    (submission) =>
-      submission.dispatchState === 'unknown' ||
-      (submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission))
+  // Only a chat with a message shown as not sent reads the journal's rows and loaded items, so in a
+  // chat with none a streaming turn rebuilds no notice.
+  const hasRejected = submissions.some(
+    (submission) => submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission)
   )
-  const journalRows = hasHostNotice ? submissions : NO_SUBMISSIONS
-  const loadedItems = hasHostNotice ? args.journalItems : NO_ITEMS
-  const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasHostNotice)
-  const commandItemIds = useCommandItemIds(args.journalItems, hasHostNotice)
+  const journalRows = hasRejected ? submissions : NO_SUBMISSIONS
+  const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasRejected)
+  const commandItemIds = useCommandItemIds(args.journalItems, hasRejected)
   const notices = useMemo(
     () =>
       structuredAgentSessionDeliveryNotices({
         pending,
         submissions: journalRows,
-        journalItems: loadedItems,
         agentName,
-        sendAgain,
         startFailures,
         queuedMessageIds,
         commandItemIds
       }),
-    [
-      pending,
-      journalRows,
-      loadedItems,
-      agentName,
-      sendAgain,
-      startFailures,
-      queuedMessageIds,
-      commandItemIds
-    ]
+    [pending, journalRows, agentName, startFailures, queuedMessageIds, commandItemIds]
   )
   // A submission batch rebuilds the map; one that says the same keeps the old, so no row re-renders.
   const previousRef = useRef(notices)
@@ -109,12 +84,9 @@ function sameNoticesKept(
   const kept = new Map<string, NativeChatDeliveryNotice>()
   for (const [id, notice] of next) {
     const before = previous.get(id)
-    // Each Send again calls the stable `sendAgain` with its own id, so one under the same key is the
-    // same.
     const same =
       before !== undefined &&
       before.text === notice.text &&
-      (before.onSendAgain === undefined) === (notice.onSendAgain === undefined) &&
       (before.onDismiss === undefined) === (notice.onDismiss === undefined)
     allKept &&= same
     kept.set(id, same ? before : notice)

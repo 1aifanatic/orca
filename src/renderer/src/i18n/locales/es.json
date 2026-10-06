@@ -17850,8 +17850,6 @@
         "estimated": "Estimado a partir de la última respuesta."
       },
       "dismissDeliveryNotice": "Descartar",
-      "sendAgain": "Enviar de nuevo",
-      "deliveryInDoubt": "Orca no pudo confirmar que este mensaje llegó a {{value0}}.",
       "messageNotSent": "Mensaje no enviado",
       "deliveryUnconfirmed": "Entrega sin confirmar — revisa el chat antes de reintentar",
       "messageSending": "Enviando…",

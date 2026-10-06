@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
-import type {
-  AgentJournalMessageItem,
-  AgentJournalSubmission
-} from '../../../../shared/agent-session-journal-types'
+import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { StructuredAgentSessionAttachment } from '../../../../shared/structured-agent-session-send-mutation'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import type { StructuredAgentSessionHostCapabilityState } from '@/runtime/structured-agent-session-host-capability'
 import {
-  forgetInDoubtStructuredAgentSessionSend,
   sendStructuredAgentSessionMessage,
   settleStructuredAgentSessionSendsFromJournal,
   withdrawUnsentStructuredAgentSessionSends
@@ -20,10 +16,6 @@ import {
 } from './structured-agent-session-pending-sends'
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
 import { recoverLegacyStructuredAgentSessionOutbox } from './structured-agent-session-legacy-outbox'
-import {
-  structuredAgentSessionMessageImages,
-  structuredAgentSessionMessageText
-} from './structured-agent-session-message-hand-back'
 
 /** Whether the host holds a send as a card while the agent works: only a host that says it queues,
  *  with the setting on, and only text, which is all its queue takes. */
@@ -99,26 +91,12 @@ export function useStructuredAgentSessionSends(args: {
     [queue, sessionId, target]
   )
 
-  /** Sends a message's text and images again, as a new message. */
-  const sendAgain = useCallback(
-    (clientMessageId: string, body: AgentJournalMessageItem): void => {
-      const images = structuredAgentSessionMessageImages(clientMessageId, body)
-      forgetInDoubtStructuredAgentSessionSend(sessionId, clientMessageId)
-      send(
-        structuredAgentSessionMessageText(body),
-        images.map((image) => ({ path: image.path, previewUri: image.path }))
-      )
-    },
-    [send, sessionId]
-  )
-
   return {
     pending,
     /** Why the last message came back to the composer, until the next send. */
     error: notice,
     clearError: () => clearStructuredAgentSessionSendNotice(sessionId),
     send,
-    sendAgain,
     withdrawUnsent: () => withdrawUnsentStructuredAgentSessionSends(sessionId)
   }
 }

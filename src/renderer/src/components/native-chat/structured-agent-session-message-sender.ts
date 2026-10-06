@@ -2,7 +2,7 @@
 // from outside the chat all call `sendStructuredAgentSessionMessage`, with or without the chat's view
 // mounted. The host's journal and queue own every message they hold. This module keeps, in memory
 // only, the sends the host has not answered yet: for their "Sending…" bubble, to keep them in order,
-// and to put a message back in the composer when the host provably did not take it.
+// and to put a message back in the composer when the host did not take it, or nobody can say.
 //
 // Nothing here is saved, nothing blocks a later send past one deadline, and nothing is sent twice
 // under a new id: a resend reuses the message's id, which the host never runs twice.
@@ -38,12 +38,12 @@ import {
   type StructuredAgentSessionPendingSend
 } from './structured-agent-session-pending-sends'
 
-/** From the moment a message is sent: past it, one never sent goes back to the composer, and one
- *  that went out stops being resent and is shown as unconfirmed. */
+/** From the moment a message is sent: past it, the message goes back to the composer, saying it
+ *  was not sent if it never went out, and that nobody could confirm it if it did. */
 export const STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS = 30_000
 const RESEND_DELAYS_MS = [1_000, 2_000, 4_000, 8_000]
 
-export type StructuredAgentSessionSendOutcome = 'recorded' | 'returned' | 'in-doubt' | 'dropped'
+export type StructuredAgentSessionSendOutcome = 'recorded' | 'returned' | 'dropped'
 
 type SendRuntime = {
   target: RuntimeClientTarget
@@ -112,7 +112,7 @@ function settleRecorded(
 
 function pump(sessionId: string): void {
   const entries = getStructuredAgentSessionPendingSends(sessionId)
-  // One send out at a time keeps the host's arrival order; in-doubt and recorded ones hold nothing.
+  // One send out at a time keeps the host's arrival order; a recorded one holds nothing.
   if (entries.some((entry) => entry.phase === 'sending')) {
     return
   }
@@ -163,8 +163,8 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
     handBack(current, agentSessionWriteNoticeParts(evidence.failure, 'composer-send'))
     return
   }
-  if (evidence.kind === 'uncertain' || current.phase === 'in-doubt') {
-    markInDoubt(current)
+  if (evidence.kind === 'uncertain') {
+    handBack(current, ['sendOutcomeLost'])
     return
   }
   const delay = RESEND_DELAYS_MS[Math.min(runtime.attempts - 1, RESEND_DELAYS_MS.length - 1)]
@@ -177,38 +177,25 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
   }, delay)
 }
 
-/** Nothing answered and it may have reached the host: shown as such and never resent. The host's
- *  row still replaces it if one appears, and a late answer still settles it. */
-function markInDoubt(entry: StructuredAgentSessionPendingSend): void {
-  const runtime = runtimes.get(entry.clientMessageId)
-  if (runtime?.resend) {
-    clearTimeout(runtime.resend)
-    runtime.resend = null
-  }
-  updateStructuredAgentSessionPendingSend(entry.sessionId, entry.clientMessageId, {
-    phase: 'in-doubt'
-  })
-  runtime?.resolve('in-doubt')
-  pump(entry.sessionId)
-}
-
 function onDeadline(sessionId: string, clientMessageId: string): void {
   const entry = findStructuredAgentSessionPendingSend(sessionId, clientMessageId)
-  if (!entry || entry.phase === 'recorded' || entry.phase === 'in-doubt') {
+  if (!entry || entry.phase === 'recorded') {
     return
   }
-  if (!entry.issued) {
-    runtimes.get(clientMessageId)?.abort.abort()
-    handBack(entry, ['unreachable', ...agentSessionWriteNotDoneParts('composer-send')])
-    return
-  }
-  markInDoubt(entry)
+  runtimes.get(clientMessageId)?.abort.abort()
+  // One that went out may still land: its row then shows it beside the text given back.
+  handBack(
+    entry,
+    entry.issued
+      ? ['sendOutcomeLost']
+      : ['unreachable', ...agentSessionWriteNotDoneParts('composer-send')]
+  )
 }
 
 /**
  * Sends one message. Resolves once its fate is known here: `recorded` (the host holds it),
- * `returned` (it went back to the composer, with the reason on the chat's line), `in-doubt`, or
- * `dropped` (its chat closed first).
+ * `returned` (it went back to the composer, with the reason on the chat's line), or `dropped` (its
+ * chat closed first).
  */
 export function sendStructuredAgentSessionMessage(input: {
   sessionId: string
@@ -297,19 +284,6 @@ export function withdrawUnsentStructuredAgentSessionSends(sessionId: string): bo
     handBack(entry, null)
   }
   return unsent.length > 0
-}
-
-/** An unconfirmed send the person sent again as a new message: its bubble goes, and an answer
- *  still on its way changes nothing. */
-export function forgetInDoubtStructuredAgentSessionSend(
-  sessionId: string,
-  clientMessageId: string
-): void {
-  const entry = findStructuredAgentSessionPendingSend(sessionId, clientMessageId)
-  if (entry?.phase === 'in-doubt') {
-    runtimes.get(clientMessageId)?.abort.abort()
-    finish(entry, 'in-doubt')
-  }
 }
 
 /** The chat closed: its sends are dropped with it, and their callers told so. */

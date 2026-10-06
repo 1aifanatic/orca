@@ -48,7 +48,6 @@ vi.mock('./use-structured-agent-session-sends', () => ({
       error: null,
       clearError: vi.fn(),
       send: mocks.send,
-      sendAgain: vi.fn(),
       withdrawUnsent: vi.fn()
     }
   }

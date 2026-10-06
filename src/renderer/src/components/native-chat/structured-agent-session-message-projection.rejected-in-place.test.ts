@@ -45,9 +45,7 @@ function deliveryNotices(
   return structuredAgentSessionDeliveryNotices({
     pending: [],
     submissions,
-    journalItems: [],
     agentName: 'Claude',
-    sendAgain: () => {},
     startFailures,
     queuedMessageIds,
     ...(commandItemIds ? { commandItemIds } : {})
@@ -182,7 +180,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
 
     const notice = notices.get(agentJournalSubmissionKey('lost'))
     expect(notice?.text).toBe('Orca restarted before this message was sent.')
-    expect(notice?.onSendAgain).toBeUndefined()
+    expect(notice?.onDismiss).toBeUndefined()
     expect([...notices.keys()]).toEqual([agentJournalSubmissionKey('lost')])
   })
 

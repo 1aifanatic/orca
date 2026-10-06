@@ -1139,7 +1139,7 @@
         {
           "file": "src/renderer/src/components/native-chat/structured-agent-session-message-sender.test.ts",
           "assertions": [
-            "resends the same id after a thrown error, then shows it unconfirmed at the deadline"
+            "resends the same id after a thrown error, then gives it back as unconfirmed at the deadline"
           ]
         }
       ],

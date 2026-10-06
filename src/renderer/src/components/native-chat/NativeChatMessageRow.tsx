@@ -1,5 +1,5 @@
 import { memo, useCallback, useRef } from 'react'
-import { Goal, RotateCcw } from 'lucide-react'
+import { Goal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import CommentMarkdown, {
   type CommentMarkdownLinkClickHandler
@@ -32,8 +32,8 @@ import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
  *  place of its time, or that it did not go through, with its own Retry when the surface can send
  *  it again. */
 export type NativeChatDeliveryNotice =
-  | { sending: true; text?: never; onSendAgain?: never; onDismiss?: never }
-  | { sending?: never; text: string; onSendAgain?: () => void; onDismiss?: () => void }
+  | { sending: true; text?: never; onDismiss?: never }
+  | { sending?: never; text: string; onDismiss?: () => void }
 
 const USER_META_REVEAL =
   'transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100'
@@ -222,12 +222,6 @@ export const MessageRow = memo(function MessageRow({
             {deliveryNotice.onDismiss ? (
               <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onDismiss}>
                 {translate('components.native-chat.dismissDeliveryNotice', 'Dismiss')}
-              </Button>
-            ) : null}
-            {deliveryNotice.onSendAgain ? (
-              <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onSendAgain}>
-                <RotateCcw className="size-3" />
-                {translate('components.native-chat.sendAgain', 'Send again')}
               </Button>
             ) : null}
           </div>

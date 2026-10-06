@@ -16,27 +16,11 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
-import type { StructuredAgentSessionOptimisticMessage } from '../../../../shared/structured-agent-session-message-projection'
-import { structuredAgentSessionSendBody } from '../../../../shared/structured-agent-session-send-mutation'
 import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { installNativeChatMessageListTestViewport } from './native-chat-message-list-test-viewport'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
-
-function optimisticMessage(args: {
-  clientMessageId: string
-  sessionId?: string
-  text: string
-  attachments: readonly { path: string; previewUri: string }[]
-  queuedAt: number
-}): StructuredAgentSessionOptimisticMessage {
-  return {
-    clientMessageId: args.clientMessageId,
-    body: structuredAgentSessionSendBody(args.text, args.attachments),
-    queuedAt: args.queuedAt
-  }
-}
 
 const NO_CARDS: readonly string[] = []
 
@@ -121,53 +105,6 @@ function submission(
   }
 }
 
-function unsentEntry(): StructuredAgentSessionOptimisticMessage {
-  return {
-    ...optimisticMessage({
-      clientMessageId: 'held',
-      sessionId: 'session-1',
-      text: 'HELD PROMPT',
-      attachments: [],
-      queuedAt: 500
-    }),
-    inDoubt: true
-  }
-}
-
-function list(phase: Phase, scoped: boolean, outbox: StructuredAgentSessionOptimisticMessage[]) {
-  const items = journal(phase, scoped)
-  const submissions = [
-    submission('seed', 'accepted'),
-    submission('new', phase === 'done' ? 'accepted' : 'pending')
-  ]
-  const settledTurns: NativeChatSettledTurns = new Map([
-    [SEED, { startedAt: 1, workedSeconds: 3 }],
-    ...(phase === 'done' ? [[NEW, { startedAt: 2, workedSeconds: 5 }] as const] : [])
-  ])
-  return (
-    <NativeChatMessageList
-      session={{
-        messages: projectStructuredAgentSessionMessages(items, outbox, submissions, NO_CARDS),
-        status: phase === 'done' ? 'ready' : 'working',
-        sessionId: 'session-1',
-        agent: 'claude',
-        hasMore: false,
-        loadingEarlier: false,
-        olderHistoryGeneration: 0,
-        loadEarlier: vi.fn(),
-        readPhase: 'ready'
-      }}
-      journalItems={items}
-      journalSubmissions={submissions}
-      isWorking={phase !== 'done'}
-      workingStartedAt={phase === 'done' ? null : Date.now() - 1500}
-      settledTurns={settledTurns}
-      expandSignal={false}
-      fontScale={1}
-    />
-  )
-}
-
 /** The drawn sequence of the prompts, bars and live activity line, top to bottom. */
 function drawn(container: HTMLElement): string[] {
   const out: string[] = []
@@ -184,45 +121,6 @@ function drawn(container: HTMLElement): string[] {
   }
   return out
 }
-
-describe('a message nothing confirmed in time, below a newer turn', () => {
-  it.each([
-    ['states each row turn', true],
-    ['states no turn scope', false]
-  ])(
-    'keeps the newer turn bar with that turn while it runs and once done (host %s)',
-    (_host, scoped) => {
-      const outbox = [unsentEntry()]
-      const { container, rerender } = render(list('in flight', scoped, outbox))
-      expect(drawn(container)).toEqual([
-        'SEED PROMPT',
-        'WORKED',
-        'NEW PROMPT',
-        'WORKING',
-        'ACTIVITY',
-        'HELD PROMPT'
-      ])
-      rerender(list('running', scoped, outbox))
-      expect(drawn(container)).toEqual([
-        'SEED PROMPT',
-        'WORKED',
-        'NEW PROMPT',
-        'WORKING',
-        'ACTIVITY',
-        'HELD PROMPT'
-      ])
-      rerender(list('done', scoped, outbox))
-      expect(drawn(container)).toEqual([
-        'SEED PROMPT',
-        'WORKED',
-        'NEW PROMPT',
-        'WORKED',
-        'HELD PROMPT'
-      ])
-      expect(container.textContent).toContain('Worked for 5s')
-    }
-  )
-})
 
 describe('a message the host rejected after a crash, with no outbox entry left', () => {
   const LOST = agentJournalSubmissionKey('lost')
@@ -271,9 +169,7 @@ describe('a message the host rejected after a crash, with no outbox entry left',
         deliveryNotices={structuredAgentSessionDeliveryNotices({
           pending: [],
           submissions,
-          journalItems: items,
           agentName: 'Claude',
-          sendAgain: vi.fn(),
           startFailures: []
         })}
         isWorking={phase !== 'done'}
