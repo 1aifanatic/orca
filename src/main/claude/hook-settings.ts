@@ -4,7 +4,6 @@ import {
   buildManagedCommandHook,
   createManagedCommandMatcher,
   getSharedManagedScriptPath,
-  hookDefinitionHasManagedCommand,
   isPlainObject,
   MANAGED_HOOK_TIMEOUT_SECONDS,
   removeManagedCommands,
@@ -195,22 +194,9 @@ export function getStatusLineSlotState(
   return isManagedCommand(currentCommand) ? 'managed' : 'user'
 }
 
-/** Matched by script name, so Orca's line from any platform counts. */
-export function isManagedStatusLine(value: unknown, settings = CLAUDE_HOOK_SETTINGS): boolean {
-  return (
-    getStatusLineSlotState({ statusLine: value }, getStatusLineScriptFileName(settings)) ===
-    'managed'
-  )
-}
-
 // Why: records that the managed statusline was installed once, so a later empty slot reads as user opt-out.
-export function getStatusLineInstallMarkerPath(
-  settings = CLAUDE_HOOK_SETTINGS,
-  configDir?: string
-): string {
-  return configDir === undefined
-    ? getSharedManagedScriptPath(`${getStatusLineScriptBaseName(settings)}.installed`)
-    : join(configDir, '.orca-statusline.installed')
+export function getStatusLineInstallMarkerPath(settings = CLAUDE_HOOK_SETTINGS): string {
+  return getSharedManagedScriptPath(`${getStatusLineScriptBaseName(settings)}.installed`)
 }
 
 // Why: statusLine is a single settings slot, not a hooks array — never overwrite a
@@ -240,41 +226,6 @@ export function removeManagedStatusLine(
   const next = { ...config }
   delete next.statusLine
   return { config: next, changed: true }
-}
-
-/** Splits a settings `hooks` value into the user's entries and Orca's, matched as the installer matches them. */
-export function splitManagedHooks(
-  hooks: unknown,
-  settings = CLAUDE_HOOK_SETTINGS
-): { user: unknown; managed: Record<string, HookDefinition[]> } {
-  if (!isPlainObject(hooks)) {
-    return { user: hooks, managed: {} }
-  }
-  const isManagedCommand = createManagedCommandMatcher(getManagedScriptFileName(settings))
-  const user: Record<string, unknown> = {}
-  const managed: Record<string, HookDefinition[]> = {}
-  for (const [event, definitions] of Object.entries(hooks)) {
-    if (!Array.isArray(definitions)) {
-      user[event] = definitions
-      continue
-    }
-    const own = removeManagedCommands(definitions, isManagedCommand)
-    if (own.length > 0) {
-      user[event] = own
-    }
-    const ours = definitions
-      .filter((definition) => hookDefinitionHasManagedCommand(definition, isManagedCommand))
-      .map((definition) => ({
-        ...definition,
-        hooks: definition.hooks?.filter((hook: HookCommandConfig) =>
-          hookDefinitionHasManagedCommand({ hooks: [hook] }, isManagedCommand)
-        )
-      }))
-    if (ours.length > 0) {
-      managed[event] = ours
-    }
-  }
-  return { user: Object.keys(user).length > 0 ? user : undefined, managed }
 }
 
 export function removeManagedHooks(

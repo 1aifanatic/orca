@@ -1,7 +1,6 @@
 import {
   appendFileSync,
   closeSync,
-  linkSync,
   lstatSync,
   openSync,
   readFileSync,
@@ -9,16 +8,13 @@ import {
   readSync,
   realpathSync,
   renameSync,
-  rmSync,
   statSync,
   symlinkSync,
-  unlinkSync,
   writeFileSync,
-  type BigIntStats
+  type Stats
 } from 'node:fs'
 import { join } from 'node:path'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
-import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import {
   ClaudeProfileSurfaceError,
   warnClaudeProfile,
@@ -29,22 +25,16 @@ import {
 export const CLAUDE_PROFILE_MERGE_SUFFIX = '.orca-profile-merge'
 const HISTORY = 'history.jsonl'
 const PENDING = `${HISTORY}${CLAUDE_PROFILE_MERGE_SUFFIX}`
-// Identity of the Windows hardlink Orca created; replaced on every relink.
-const LINK_RECORD = `${HISTORY}.orca-profile-link`
 
-export function lstatIfPresent(file: string): BigIntStats | undefined {
+export function lstatIfPresent(file: string): Stats | undefined {
   try {
-    return lstatSync(file, { bigint: true })
+    return lstatSync(file)
   } catch (error) {
     if (!isDefinitiveAbsence(error)) {
       throw error
     }
     return undefined
   }
-}
-
-export function fileIdentity(stats: BigIntStats): string {
-  return `${stats.dev}:${stats.ino}`
 }
 
 function appendHistory(destination: string, bytes: Buffer): void {
@@ -80,24 +70,11 @@ function sharedPrefixLength(own: Buffer, destination: string): number {
   return length === 0 ? 0 : own.lastIndexOf(10, length - 1) + 1
 }
 
-function isSharedFile(file: string, destination: string): boolean {
-  const stats = lstatIfPresent(file)
-  return (
-    stats !== undefined &&
-    fileIdentity(stats) === fileIdentity(statSync(destination, { bigint: true }))
-  )
-}
-
+/**
+ * Keeps the renamed file and its cursor: a Claude that opened the old path just before the swap
+ * appends there, and the next run drains it.
+ */
 function drainHistory(pending: string, destination: string): void {
-  if (isSharedFile(pending, destination)) {
-    // Why: a second name for the shared file would replay it once the default is replaced, but a
-    // default that links to this very file keeps its only copy here.
-    if (realpathSync(destination) !== realpathSync(pending)) {
-      unlinkSync(pending)
-      rmSync(`${pending}.offset`, { force: true })
-    }
-    return
-  }
   const content = readFileSync(pending)
   let offset = 0
   try {
@@ -109,7 +86,7 @@ function drainHistory(pending: string, destination: string): void {
     if (!isDefinitiveAbsence(error)) {
       throw error
     }
-    // Why: with no cursor yet (first drain, or a run cut short), a rewrite of the shared file adds only its new lines.
+    // Why: `claude purge` rewrites the shared file through the link; only its new lines are new.
     offset = sharedPrefixLength(content, destination)
   }
   appendHistory(destination, content.subarray(offset))
@@ -125,47 +102,19 @@ function pendingGeneration(name: string): number | null {
   return name.startsWith(`${PENDING}-`) && /^\d+$/.test(suffix) ? Number(suffix) : null
 }
 
-/** A leftover cursor without its file still reserves the name, so a new file never inherits it. */
 function nextFreePath(base: string): string {
   for (let generation = 0; ; generation++) {
     const candidate = generation === 0 ? base : `${base}-${generation}`
-    if (!lstatIfPresent(candidate) && !lstatIfPresent(`${candidate}.offset`)) {
+    if (!lstatIfPresent(candidate)) {
       return candidate
     }
   }
 }
 
-/** Fails closed: an unreadable record must not read as "no link", which would drain a replaced default back. */
-function readLinkRecord(profile: string): string | null {
-  try {
-    return readFileSync(join(profile, LINK_RECORD), 'utf8').trim()
-  } catch (error) {
-    if (isDefinitiveAbsence(error)) {
-      return null
-    }
-    throw new ClaudeProfileSurfaceError(
-      'unreadable',
-      `Prompt history link record: ${String(error)}`
-    )
-  }
-}
-
-function isReadError(error: unknown): boolean {
-  return (
-    error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM')
-  )
-}
-
-function writeLinkRecord(profile: string, shared: BigIntStats): void {
-  if (readLinkRecord(profile) !== fileIdentity(shared)) {
-    writeFileAtomically(join(profile, LINK_RECORD), `${fileIdentity(shared)}\n`, { mode: 0o600 })
-  }
-}
-
+/** POSIX only: links the profile's `history.jsonl` to the shared one and appends its own lines. */
 export function mergeClaudeProfilePromptHistory(
   profile: string,
   home: string,
-  platform: NodeJS.Platform,
   report: ClaudeProfileReport
 ): ClaudeProfileSurfaceOutcome {
   const source = join(profile, HISTORY)
@@ -187,12 +136,7 @@ export function mergeClaudeProfilePromptHistory(
       drainHistory(join(profile, name), destination)
     } catch (error) {
       // Why: an old retained copy is bookkeeping; it must not keep the profile from being linked.
-      const code = isReadError(error) ? 'unreadable' : 'failed'
-      warnClaudeProfile(
-        report,
-        HISTORY,
-        new ClaudeProfileSurfaceError(code, `${name}: ${String(error)}`)
-      )
+      warnClaudeProfile(report, HISTORY, error)
     }
   }
   const current = lstatIfPresent(source)
@@ -202,55 +146,20 @@ export function mergeClaudeProfilePromptHistory(
   if (current && !current.isFile()) {
     return 'user-owned'
   }
-  const shared = statSync(destination, { bigint: true })
-  if (platform === 'win32' && current && fileIdentity(current) === fileIdentity(shared)) {
-    writeLinkRecord(profile, shared)
-    return 'unchanged'
-  }
-  if (platform === 'win32' && statSync(profile).dev !== statSync(home).dev) {
-    throw new ClaudeProfileSurfaceError(
-      'cross-filesystem',
-      'Prompt history stays private across volumes'
-    )
-  }
-  // Why: the old shared file still held under Orca's link means the default was replaced or cleared;
-  // draining it would bring back history the user removed.
-  const replaced = current !== undefined && fileIdentity(current) === readLinkRecord(profile)
   let aside: string | undefined
   if (current) {
-    aside = nextFreePath(join(profile, replaced ? `${HISTORY}.orca-profile-conflict` : PENDING))
+    aside = nextFreePath(join(profile, PENDING))
     renameSync(source, aside)
   }
-  const restore = (error: unknown): never => {
+  try {
+    symlinkSync(destination, source)
+  } catch (error) {
     if (aside && !lstatIfPresent(source)) {
       renameSync(aside, source)
     }
     throw new ClaudeProfileSurfaceError('link-failed', String(error))
   }
-  try {
-    if (platform === 'win32') {
-      linkSync(destination, source)
-    } else {
-      symlinkSync(destination, source)
-    }
-  } catch (error) {
-    restore(error)
-  }
-  if (platform === 'win32') {
-    try {
-      writeLinkRecord(profile, shared)
-    } catch (error) {
-      // Why: a link without its record would let a later default replacement drain the old copy back.
-      if (isSharedFile(source, destination)) {
-        unlinkSync(source)
-      }
-      restore(error)
-    }
-  }
-  if (aside && replaced) {
-    const detail = `Shared prompt history was replaced; the old copy is kept at ${aside}`
-    warnClaudeProfile(report, HISTORY, new ClaudeProfileSurfaceError('retained-conflict', detail))
-  } else if (aside) {
+  if (aside) {
     drainHistory(aside, destination)
   }
   return 'linked'
