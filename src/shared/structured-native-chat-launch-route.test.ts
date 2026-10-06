@@ -60,7 +60,7 @@ describe('per-launch structured feasibility', () => {
     ['a reused PTY agent', { reusesTerminal: true }, 'reused-terminal'],
     ['grok', { agent: 'grok' }, 'agent-without-structured-session'],
     ['openclaude', { agent: 'openclaude' }, 'agent-without-structured-session'],
-    ['a custom TUI launch command', { requiresTuiLaunchCommand: true }, 'tui-launch-command'],
+    ['a custom start directory', { startsOutsideWorkspaceRoot: true }, 'custom-start-directory'],
     ['an SSH host', { executionHostId: 'ssh:host-a' }, 'remote-execution-host'],
     ['a missing capability', { hostCapabilities: [] }, 'runtime-capability'],
     ['an unanswered host', { hostCapabilities: null }, 'runtime-capability-unknown']

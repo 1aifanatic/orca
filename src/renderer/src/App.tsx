@@ -37,7 +37,7 @@ function App(): React.JSX.Element {
   const layout = useAppChromeLayout()
   const floatingWorkspace = useFloatingWorkspacePanel()
   const onboardingGate = useOnboardingAndFeatureTips()
-  const clearUnreadDockBadge = useUnreadDockBadge()
+  const clearUnreadDockBadge = useUnreadDockBadge(floatingWorkspace.open)
 
   useAppShellServices()
   // Why before the startup chain: its effect runs first, and no startup step can skip the load.

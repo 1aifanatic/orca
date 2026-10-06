@@ -52,6 +52,23 @@
           "statusItem": "ステータスアイテム",
           "activity": "活動"
         }
+      },
+      "chat": {
+        "title": "チャット",
+        "textSize": "テキストサイズ",
+        "textSizeDescription": "メッセージ、ツールの動作、メッセージ入力欄。チャット内の {{increase}} / {{decrease}} でも変更できます。",
+        "codeTextSize": "コードのテキストサイズ",
+        "codeTextSizeDescription": "コードブロック、インラインコード、コマンド、ツールの出力。",
+        "width": "幅",
+        "widthDescription": "広いペインでメッセージと入力欄をどこまで広げるかを設定します。",
+        "resetAppearance": "チャットの外観をリセット",
+        "resetDescription": "上記の既定値に戻します。",
+        "comfortable": "標準",
+        "wide": "広い",
+        "full": "全幅",
+        "pixels": "px",
+        "reset": "リセット",
+        "summary": "{{fontSize}}px · 幅: {{width}}"
       }
     },
     "browser": {
@@ -894,7 +911,8 @@
             "dimensionsTooLarge": "{{fileName}} は画像サイズが大きすぎるため、安全にプレビューできません。",
             "invalidImage": "{{fileName}} は有効な画像として読み取れません。",
             "additionalErrors": "ほかに {{count}} 件の画像を添付できませんでした。",
-            "totalTooLarge": "{{fileName}} を追加すると添付ファイルの合計が {{maxSize}} を超えます。"
+            "totalTooLarge": "{{fileName}} を追加すると添付ファイルの合計が {{maxSize}} を超えます。",
+            "compressed": "{{fileName}} を添付ファイルの上限に収めるため、{{originalSize}} から {{size}} に圧縮しました。"
           }
         }
       },
@@ -933,6 +951,16 @@
         "tooLarge": "サイズが大きすぎてコピーできないため、Orca は Agent に渡せませんでした。",
         "storageFull": "ドロップされたファイル用の Orca の保存先がいっぱいのため、Orca は Agent に渡せませんでした。",
         "generic": "もう一度ドロップしてください。"
+      },
+      "reveal": {
+        "in": {
+          "file": {
+            "manager": {
+              "notFound": "ファイルが見つかりません。移動または削除された可能性があります。",
+              "launchFailed": "ファイルを表示できませんでした。"
+            }
+          }
+        }
       }
     },
     "hooks": {
@@ -3342,10 +3370,7 @@
             "1d04b1630b": "下に分割",
             "6b3efb106e": "上に分割",
             "fdd29eb669": "ピンタブ",
-            "8e9d603a09": "タブの固定を解除する",
-            "revealInFinder": "ファインダーで表示",
-            "openContainingFolder": "含まれているフォルダーを開く",
-            "revealInFileExplorer": "ファイルエクスプローラーで表示"
+            "8e9d603a09": "タブの固定を解除する"
           },
           "QuickLaunchButton": {
             "348a04c1ad": "Agent 設定…",
@@ -6234,6 +6259,7 @@
           "parkTerminal": "ターミナルを退避"
         },
         "SidebarFeedbackImageAttachments": {
+          "preparing": "添付ファイルを準備しています…",
           "attachImages": "Attach",
           "removeImage": "{{fileName}} を削除",
           "screenshotsHint": "スクリーンショットを最大 {{count}} 件、合計 {{maxSize}} まで添付できます"
@@ -15071,10 +15097,7 @@
           "f0fd4174b5": "ファイルタブを開いてリッチ markdown 編集を使用する",
           "a10d9b8337": "ファイルを開く",
           "2076ecfc9c": "前の変更",
-          "631dab0df3": "次の変更",
-          "revealInFinder": "ファインダーで表示",
-          "openContainingFolder": "含まれているフォルダーを開く",
-          "revealInFileExplorer": "ファイルエクスプローラーで表示"
+          "631dab0df3": "次の変更"
         },
         "EditorPanelMarkdownActionsMenu": {
           "3e0ce48c24": "PDFとしてエクスポート",
@@ -17759,13 +17782,35 @@
         "ranCommandsManyToolsSummary": "{{commandCount}} コマンドを実行し、{{toolCount}} ツールを使用しました",
         "usedOneSummary": "使用した工具 1 個",
         "usedManySummary": "使用した{{toolCount}}ツール",
-        "editedFile": "編集したファイル",
-        "addedFile": "追加されたファイル",
-        "deletedFile": "削除されたファイル",
-        "renamedFile": "名前変更されたファイル",
         "copyDiff": "差分をコピー",
         "diffGap": "線は表示されません",
         "diffTruncated": "差分切り捨て",
+        "row": {
+          "running": "実行中",
+          "reading": "読み取り中",
+          "editing": "編集中",
+          "searching": "検索中",
+          "searchingWeb": "ウェブ検索中",
+          "fetching": "取得中",
+          "listed": "一覧表示",
+          "listing": "一覧表示中",
+          "ran": "実行",
+          "read": "読み取り",
+          "edited": "編集",
+          "searched": "検索",
+          "searchedWeb": "ウェブ検索",
+          "fetched": "取得",
+          "added": "追加",
+          "deleted": "削除",
+          "renamed": "名前変更",
+          "subagent": "サブエージェント",
+          "triedRead": "読み取りを試行",
+          "triedEdit": "編集を試行",
+          "triedSearch": "検索を試行",
+          "triedList": "一覧表示を試行",
+          "triedFetch": "取得を試行",
+          "triedSearchWeb": "ウェブ検索を試行"
+        },
         "runReadOne": "1ファイルを読み込む",
         "runReadMany": "{{value0}} ファイルを読み取る",
         "runSearchOne": "1 回検索されました",

@@ -301,8 +301,8 @@ export function createStructuredSessionMocks() {
       },
       useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
-    useNativeChatFontScale: () => ({
-      useNativeChatFontScale: () => ({ scale: 1 })
+    useNativeChatFontSize: () => ({
+      useNativeChatFontSize: () => undefined
     }),
     useNativeChatFileLinkContext: () => ({
       useNativeChatFileLinkContext: () => mocks.fileLinkContext
