@@ -163,6 +163,51 @@ describe('active rail item', () => {
     ).toBeNull()
   })
 
+  // A failed start: three delivered prompts, the not-sent message, then the start's row below it.
+  it('keeps the tick before a not-sent message lit with its failed-start row below it', () => {
+    const notSent: NativeChatRailSlot = {
+      turnKey: undefined,
+      message: { id: 'not-sent', role: 'user', unsent: true }
+    }
+    const THREE: NativeChatRailSlot[] = [
+      { turnKey: 'u1' },
+      { turnKey: 'u1' },
+      { turnKey: 'u2' },
+      { turnKey: 'u2' },
+      { turnKey: 'u3' },
+      { turnKey: 'u3' }
+    ]
+    // The start's row in no turn, or in the turn the not-sent message names.
+    for (const startRow of [{ turnKey: undefined }, { turnKey: 'not-sent' }]) {
+      const slots = [...THREE, notSent, startRow]
+      const read = (scrollTop: number, scrollHeight: number): string | null =>
+        findActiveNativeChatRailItem({
+          slots,
+          virtualItems: rows(8),
+          scrollTop,
+          clientHeight: VIEWPORT,
+          scrollHeight,
+          previousActiveId: null
+        })
+      expect(read(500, 800)).toBe('u3')
+      expect(read(600, 2000)).toBe('u3')
+      expect(read(700, 2000)).toBe('u3')
+    }
+  })
+
+  it('walks back past a row in no turn below the last prompt', () => {
+    expect(
+      findActiveNativeChatRailItem({
+        slots: [...TURNS, { turnKey: undefined }],
+        virtualItems: rows(11),
+        scrollTop: 800,
+        clientHeight: VIEWPORT,
+        scrollHeight: 1100,
+        previousActiveId: null
+      })
+    ).toBe('u2')
+  })
+
   it('lights a prompt in no turn by its own id', () => {
     const slots: NativeChatRailSlot[] = [
       ...TURNS,
