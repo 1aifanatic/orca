@@ -28,7 +28,11 @@ describe('Pi execution host support', () => {
       const adapter = new PiRpcSessionAdapter({
         resolveLaunch: async () => {
           throw new Error('A location check must not acquire a process')
-        }
+        },
+        onLifecycle: vi.fn(),
+        onSettled: vi.fn(),
+        onIdle: vi.fn(),
+        logger: { warn: vi.fn(), error: vi.fn() }
       })
       expect(structuredAgentRuntimeRegistration('pi')?.supportsLocation(local)).toBe(proof)
       expect(adapter.supportsCreate(local, 'pi')).toBe(proof)
