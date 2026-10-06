@@ -148,6 +148,13 @@ it('keeps next-launch preference out of the current resume action', async () => 
   expect(rpc).toHaveBeenCalledTimes(2)
 })
 
+// Left to the dialog, focus lands on the scrollable list and draws a ring around it.
+it('opens with focus on the resume action', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  expect(document.activeElement?.textContent?.trim()).toBe('Resume 2 chats')
+})
+
 // One primary action and one way out of it; the body copy carries the transparency.
 it('offers exactly Dismiss all and the resume action', async () => {
   rpc.mockResolvedValue({ sessions: offered })

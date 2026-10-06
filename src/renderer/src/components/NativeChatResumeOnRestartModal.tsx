@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNativeChatRestartOfferEnabled } from './native-chat-restart-offer-gate'
 import { RotateCcw } from 'lucide-react'
 import { Button } from './ui/button'
@@ -81,6 +81,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   )
   const updateSettings = useAppStore((store) => store.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
+  const resumeButtonRef = useRef<HTMLButtonElement>(null)
   // The store's: the resume outlives this dialog, which can close or reopen mid-run.
   const resuming = useNativeChatRestartResuming()
   const busy = resuming.length > 0
@@ -189,7 +190,14 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
       {/* Height is capped, never the data: the list scrolls inside the dialog so the header and
           the primary action stay put however many chats were interrupted. */}
       {/* Wide enough for a sidebar card's chat row to keep its name, model and age on one line. */}
-      <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-3xl max-h-[85vh]">
+      <DialogContent
+        className="grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-3xl max-h-[85vh]"
+        // Why: left to Radix, focus lands on the scrollable list (its first tabbable) and rings it.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          resumeButtonRef.current?.focus()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             {/* Plain wrapper owns the icon spacing; DialogTitle owns its own. */}
@@ -265,6 +273,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             {translate('auto.components.NativeChatResumeOnRestartModal.dismissAll', 'Dismiss all')}
           </Button>
           <Button
+            ref={resumeButtonRef}
             variant="default"
             size="sm"
             disabled={busy || chosen.length === 0}
