@@ -141,7 +141,7 @@ async function finalizeClaudePublishedSession(
   }
   if (!session.closeEnded) {
     session.closeEnded = true
-    const ended = {
+    const ended: ClaudeStructuredSessionEvent = {
       type: 'ended',
       sessionId: input.sessionId,
       reason: 'claude session closed',
@@ -150,8 +150,8 @@ async function finalizeClaudePublishedSession(
       fence: session.fence,
       acquisitionGeneration: session.acquisitionGeneration,
       observedAt: Date.now(),
-      ...(session.startup.answered ? {} : { startupUnanswered: true })
-    } as const
+      ...(session.startup.answered ? {} : { startupUnanswered: true as const })
+    }
     try {
       try {
         session.translator?.handle(ended)

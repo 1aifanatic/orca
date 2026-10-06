@@ -575,11 +575,15 @@ describe('a child that exits before its message is handed over', () => {
     // then, lands before the handover step.
     acquire.mockImplementation(async (input) => {
       const child = await spawnChild(input)
+      const { acquisitionGeneration } = child
+      if (acquisitionGeneration === undefined) {
+        throw new Error('spawnChild always names a generation')
+      }
       void host.handleAdapterEvent({
         type: 'ended',
         sessionId: SESSION,
         fence: input.fence,
-        acquisitionGeneration: child.acquisitionGeneration,
+        acquisitionGeneration,
         reason: 'codex app-server crashed',
         cause: 'unexpected-exit'
       })

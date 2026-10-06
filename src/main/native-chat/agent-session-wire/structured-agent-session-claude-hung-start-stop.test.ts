@@ -65,8 +65,9 @@ beforeEach(async () => {
     onDispatchSettledLate: (settlement) => void host.settleLateDispatch(settlement),
     openConnection: async (...args) => {
       const connection = await openConnection(...args)
+      const fake = claude.connections.at(-1)
       connection.initializationResult = () => {
-        connection.calls.push({ subtype: 'initialize' })
+        fake?.calls.push({ subtype: 'initialize' })
         return new Promise((resolve) => {
           answerInitialize = () => resolve({ models: [] })
         })
