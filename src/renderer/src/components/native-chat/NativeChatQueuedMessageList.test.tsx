@@ -504,6 +504,11 @@ describe('NativeChatQueuedMessageList', () => {
       renderList(controller([card({ messageId: 'mail', text })]))
       const open = screen.getByRole('button', { name: 'Show full message' })
       expect(open.getAttribute('aria-expanded')).toBe('false')
+      // A native button in the tab order: Enter or Space opens it from the keyboard.
+      expect(open.tagName).toBe('BUTTON')
+      expect(open.getAttribute('tabindex')).not.toBe('-1')
+      open.focus()
+      expect(document.activeElement).toBe(open)
       fireEvent.click(open)
       const fold = screen.getByRole('button', { name: 'Show less' })
       expect(fold.getAttribute('aria-expanded')).toBe('true')

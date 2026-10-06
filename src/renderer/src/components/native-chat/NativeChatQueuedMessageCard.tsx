@@ -267,7 +267,7 @@ export function NativeChatQueuedMessageCard({
             <Pencil />
             <span className="flex flex-col">
               {translate('components.native-chat.queuedMessages.editMessage', 'Edit message')}
-              {editHold ? <span className="text-muted-foreground">{editHold}</span> : null}
+              {editHold ? <span>{editHold}</span> : null}
             </span>
           </DropdownMenuItem>
           {onTurnOffQueueing ? (

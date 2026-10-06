@@ -218,10 +218,33 @@ export function MobileNativeChatQueuedMessages({
   )
 }
 
-/** Two lines until tapped: a card can hold another agent's message the person never read, and
- *  Steer or Delete must not be a blind choice. Opened, a long one scrolls in a capped box. */
+/** Two lines, opening on tap when it clips: a card can hold another agent's message the person
+ *  never read, and Steer or Delete must not be a blind choice. Opened, a long one scrolls in a
+ *  capped box. */
 function MobileQueuedCardText({ text }: { text: string }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const [clipped, setClipped] = useState(false)
+  // The whole text laid out unseen at the card's width: more than two lines is what clips.
+  const measure = (
+    <Text
+      style={[styles.body, styles.measure]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      onTextLayout={(event) => setClipped(event.nativeEvent.lines.length > 2)}
+    >
+      {text}
+    </Text>
+  )
+  if (!clipped && !expanded) {
+    return (
+      <View>
+        {measure}
+        <Text style={styles.body} numberOfLines={2}>
+          {text}
+        </Text>
+      </View>
+    )
+  }
   const toggle = (
     <Pressable
       testID="queued-card-text"
@@ -233,6 +256,7 @@ function MobileQueuedCardText({ text }: { text: string }): React.JSX.Element {
       <Text style={styles.body} numberOfLines={expanded ? undefined : 2}>
         {text}
       </Text>
+      <Text style={styles.caption}>{expanded ? 'Show less' : 'Show more'}</Text>
     </Pressable>
   )
   // The press sits inside the scroll, so a drag scrolls and only a tap folds it.
@@ -241,7 +265,10 @@ function MobileQueuedCardText({ text }: { text: string }): React.JSX.Element {
       {toggle}
     </ScrollView>
   ) : (
-    toggle
+    <View>
+      {measure}
+      {toggle}
+    </View>
   )
 }
 
@@ -289,6 +316,12 @@ const styles = StyleSheet.create({
   },
   expandedBody: {
     maxHeight: 240
+  },
+  measure: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    opacity: 0
   },
   caption: {
     color: colors.textMuted,
