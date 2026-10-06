@@ -228,7 +228,7 @@ export async function openProviderTimelineRig(
       workspaceId: 'workspace-1',
       hostId: 'local',
       agent: AGENT,
-      providerHandle: { kind: 'opaque', agent: AGENT, value: 'provider-session-1' }
+      providerHandle: { transport: 'acp', agent: AGENT, nativeId: 'provider-session-1' }
     },
     stateDirectory: root,
     now: () => 1_000
