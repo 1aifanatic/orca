@@ -286,8 +286,8 @@ export function createStructuredSessionMocks() {
       useStructuredAgentSessionLaunchLifecycle: () => mocks.launchLifecycle,
       useStructuredAgentSessionLaunchFailure: () => mocks.launchFailure
     }),
-    useNativeChatFontScale: () => ({
-      useNativeChatFontScale: () => ({ scale: 1 })
+    useNativeChatFontSize: () => ({
+      useNativeChatFontSize: () => undefined
     }),
     useNativeChatFileLinkContext: () => ({
       useNativeChatFileLinkContext: () => ({
