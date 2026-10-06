@@ -140,6 +140,9 @@ export type AgentSessionRecord = {
   provider: string
   providerHandleChain: AgentSessionProviderHandleLink[]
   accountHome: AgentSessionAccountHome
+  /** The directory the provider first launched in, in the execution host's path syntax. Floating
+   *  sessions resume here; worktree and folder ids still resolve by id to their durable place. */
+  launchDirectory?: string
   /** Provider options the user chose, replayed whenever a new owner starts the session. */
   options?: Record<string, string>
   rewind?: AgentSessionRewindRecord
@@ -340,6 +343,8 @@ export function isPersistedAgentSessionRecord(
     isAgentSessionExecutionLocation(record.location) &&
     isStructuredAgentId(record.provider) &&
     isAgentSessionAccountHome(record.accountHome) &&
+    (record.launchDirectory === undefined ||
+      isBoundedString(record.launchDirectory, MAX_PATH_LENGTH)) &&
     (record.options === undefined || isAgentSessionOptions(record.options)) &&
     (record.rewind === undefined || isAgentSessionRewindRecord(record.rewind)) &&
     (record.conversationCommand === undefined ||

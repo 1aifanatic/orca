@@ -50,6 +50,8 @@ import { agentSessionRecordIdentityFields } from './agent-session-record-foundin
 import { agentSessionAccountHomesEqual } from '../../shared/agent-session-account-home'
 
 export type AgentSessionReserveRequest = {
+  /** Host-resolved floating directory committed with the first owner reservation. */
+  launchDirectory?: string
   sessionId: string
   location: AgentSessionExecutionLocation
   provider: StructuredAgentId

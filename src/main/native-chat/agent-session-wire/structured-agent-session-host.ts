@@ -1,5 +1,5 @@
-import type { StructuredAgentDefinition } from './structured-agent-definition'
 import type { AgentSessionRewindParams } from '../../../shared/agent-session-rewind'
+import type { StructuredAgentDefinition } from './structured-agent-definition'
 import { rewindStructuredAgentSession } from './structured-agent-session-rewind'
 import { StructuredConversationCommandController } from './structured-conversation-command-controller'
 // Structured agent-session host: where the lease, journal, and provider adapter meet.
@@ -15,10 +15,7 @@ import { createRestartReconciler } from './structured-agent-session-restart-reco
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
-import {
-  createStructuredAgentSessionHostRestore,
-  revealStructuredAgentSession
-} from './structured-agent-session-reveal'
+import * as reveal from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
@@ -67,6 +64,7 @@ export class StructuredAgentSessionHost {
       this.subscribers.publish(sessionId, journal)
       this.conversationDelivery.afterCommit(sessionId, journal)
     },
+    deliverSettleEdge: (id, journal) => this.conversationDelivery.afterSettleEdge(id, journal),
     logger: sessionLogger.deferredStructuredAgentSessionLogger(() => this.deps.logger),
     onOpened: (sessionId) => this.queued.drain.schedule(sessionId),
     now: () => this.now()
@@ -88,7 +86,7 @@ export class StructuredAgentSessionHost {
   private readonly tasks = new StructuredAgentSessionTaskQueue()
   private readonly runtimeState: StructuredAgentSessionHostRuntimeState
   private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>
-  private readonly restore: ReturnType<typeof createStructuredAgentSessionHostRestore>
+  private readonly restore: ReturnType<typeof reveal.createStructuredAgentSessionHostRestore>
   private readonly lifetime: StructuredAgentSessionConversationLifetime
   private readonly conversationDelivery: ReturnType<
     typeof createStructuredAgentSessionConversationDelivery
@@ -109,8 +107,8 @@ export class StructuredAgentSessionHost {
       (sessionId) => this.lifetime.conversation(sessionId),
       this.clientDelivery.readChildWork
     )
-    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, (sessionId, error) =>
-      this.eventRecovery.recoverAfterSinkFailure(sessionId, error)
+    this.runtimeState = new StructuredAgentSessionHostRuntimeState(deps, this.sessions, (id, e) =>
+      this.eventRecovery.recoverAfterSinkFailure(id, e)
     )
     this.reconcileLeases = createRestartReconciler({
       store: deps.store,
@@ -128,7 +126,7 @@ export class StructuredAgentSessionHost {
         agentStart.ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
       clientDelivery: this.clientDelivery
     })
-    this.restore = createStructuredAgentSessionHostRestore(deps, {
+    this.restore = reveal.createStructuredAgentSessionHostRestore(deps, {
       reconcileLeases: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
@@ -246,20 +244,22 @@ export class StructuredAgentSessionHost {
 
   /** Make one persisted session addressable again; see `structured-agent-session-reveal`. */
   revealSession = (sessionId: string): Promise<StructuredAgentSessionReveal> =>
-    revealStructuredAgentSession(this.deps, sessionId, (id) => this.lifetime.conversation(id))
+    reveal.revealStructuredAgentSession(this.deps, sessionId, (id) =>
+      this.lifetime.conversation(id)
+    )
 
   private serialize = this.tasks.serialize.bind(this.tasks)
 
   attach(
     caller: StructuredAgentSessionCaller,
-    params: AgentSessionAttachParams
+    params: AgentSessionAttachParams,
+    options?: Parameters<typeof attachStructuredAgentSession>[3]
   ): Promise<SessionWire.AgentSessionMutationResult<SessionWire.AgentSessionAttachResult>> {
-    return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params)
+    return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params, options)
   }
 
   /** Test barrier: every write has landed by its call's return, so no production path needs it. */
-  flushStreamedEvents = (sessionId: string): Promise<void> =>
-    this.runtimeState.flushEventSink(sessionId)
+  flushStreamedEvents = (id: string): Promise<void> => this.runtimeState.flushEventSink(id)
 
   // Trigger inlined rather than imported: `AgentSessionResumeTrigger` in shared is the canonical
   // type, and this file has no line budget left for the import.
