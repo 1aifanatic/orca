@@ -52,7 +52,8 @@ export function takeStructuredAgentSessionSendSlot(
   }
   publishStructuredAgentSessionSends(input.sessionId, {
     entries: [...getStructuredAgentSessionPendingSends(input.sessionId), entry],
-    notice: null
+    // The notice explains text given back to this chat's composer; only its own sends replace it.
+    ...(input.callerKeepsText ? {} : { notice: null })
   })
   return entry
 }

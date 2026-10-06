@@ -15,6 +15,7 @@ import {
   agentSessionWriteNotDoneParts
 } from '../../../../shared/agent-session-refusal-notice'
 import type { AgentSessionWriteNoticePart } from '../../../../shared/agent-session-write-notice-copy'
+import type { AgentSessionWriteFailure } from '../../../../shared/agent-session-write-failure'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import {
@@ -23,6 +24,7 @@ import {
   resetStructuredAgentSessionFencesForTests
 } from './structured-agent-session-send-attempt'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
+import { nativeChatRewindReasonCopy } from './native-chat-rewind-copy'
 import { handBackStructuredAgentSessionMessage } from './structured-agent-session-message-hand-back'
 import {
   takeStructuredAgentSessionSendSlot,
@@ -108,6 +110,17 @@ function settleRecorded(
   finish(entry, 'recorded', keep ? { phase: 'recorded', issued: true } : undefined)
 }
 
+/** Why the host turned the send away. Behind a rewind whose outcome is unknown it was not sent: the
+ *  rewind's words say why, and the next send has the host check it first. */
+function refusedSendParts(failure: AgentSessionWriteFailure): AgentSessionWriteNoticePart[] {
+  return failure.kind === 'refused' && failure.details?.reason === 'rewindUnconfirmed'
+    ? [
+        { text: nativeChatRewindReasonCopy('outcome-unknown') },
+        ...agentSessionWriteNotDoneParts('composer-send')
+      ]
+    : agentSessionWriteNoticeParts(failure, 'composer-send')
+}
+
 /** The send's one request, and what its answer settles. Nothing is ever sent again. */
 async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> {
   const runtime = runtimes.get(entry.clientMessageId)
@@ -132,7 +145,7 @@ async function attempt(entry: StructuredAgentSessionPendingSend): Promise<void> 
   } else if (outcome.evidence.kind === 'recorded') {
     settleRecorded(current, outcome.submission, 'reply')
   } else if (outcome.evidence.kind === 'not-recorded') {
-    handBack(current, agentSessionWriteNoticeParts(outcome.evidence.failure, 'composer-send'))
+    handBack(current, refusedSendParts(outcome.evidence.failure))
   } else {
     // Dropped, unanswered, or an answer that proves nothing: it may have landed, so check first.
     handBack(current, agentSessionUnconfirmedSendParts(outcome.thrownRefusal))

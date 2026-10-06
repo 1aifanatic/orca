@@ -1551,19 +1551,19 @@
         {
           "file": "src/renderer/src/components/native-chat/structured-agent-session-message-sender.test.ts",
           "assertions": [
-            "resends the same id after a thrown error, then gives it back as unconfirmed at the deadline"
+            "gives back at once, as unconfirmed, a send whose request threw, and never sends it again"
           ]
         }
       ],
       "evidenceRuns": [
         {
-          "date": "2026-10-05",
+          "date": "2026-10-06",
           "runner": "local",
           "platform": "macos",
           "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/shared/agent-session-operation-ledger.test.ts src/shared/structured-agent-session-send-evidence.test.ts src/main/runtime/agent-session-operation-admission.test.ts src/main/native-chat/agent-session-wire/structured-agent-session-refusal-retry.test.ts src/main/native-chat/agent-session-wire/structured-agent-session-send.test.ts src/main/runtime/orchestration/structured-mailbox-pointer-delivery.test.ts src/main/runtime/orchestration/structured-mailbox-pointer-host.test.ts src/main/runtime/orchestration/structured-pointer-operation-id.test.ts src/renderer/src/components/native-chat/structured-agent-session-message-sender.test.ts src/renderer/src/components/native-chat/use-structured-agent-session.test.tsx src/renderer/src/lib/launch-structured-agent-session.test.ts",
           "result": "passed",
-          "durationSeconds": 197,
-          "summary": "Eleven focused host, shared, renderer, and orchestration files passed 144 tests after the desktop outbox gave way to the in-memory sender, whose resends keep one id."
+          "durationSeconds": 14,
+          "summary": "Eleven focused host, shared, renderer, and orchestration files passed 173 tests after the desktop outbox gave way to the in-memory sender, which makes one request per send and never resends."
         },
         {
           "date": "2026-09-12",
