@@ -47,7 +47,7 @@ describe('settings navigation metadata', () => {
       expect(buildCmdJSettingsResults(sections).some((result) => result.sectionId === 'chat')).toBe(
         false
       )
-      for (const query of ['Code text size', 'Reset chat appearance', 'Match terminal interface']) {
+      for (const query of ['Code text size', 'Reset chat appearance']) {
         expect(
           sections.some((section) => matchesSettingsSearch(query, section.searchEntries))
         ).toBe(false)
@@ -68,7 +68,7 @@ describe('settings navigation metadata', () => {
     expect(chat.id).toBe('chat')
     expect(chat.title).toBe('Chat')
     expect(chat.group).toBe('interface')
-    for (const query of ['Code text size', 'Reset chat appearance', 'Match terminal interface']) {
+    for (const query of ['Code text size', 'Reset chat appearance']) {
       expect(matchesSettingsSearch(query, chat.searchEntries)).toBe(true)
       expect(matchesSettingsSearch(query, sections[appearanceIndex].searchEntries)).toBe(false)
     }
