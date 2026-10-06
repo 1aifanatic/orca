@@ -807,19 +807,22 @@ describe('a /clear against a host that runs it from the queue', () => {
   })
 
   it('against a host that holds only /compact, keeps the refusal and never asks (temporary)', async () => {
-    setLocalRuntimeCapabilitiesForTests([
-      AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
-      AGENT_SESSION_QUEUED_COMMANDS_RUNTIME_CAPABILITY
-    ])
+    setLocalRuntimeCapabilitiesForTests(
+      CLEAR_WAITS.filter(
+        (capability) => capability !== AGENT_SESSION_QUEUED_CLEAR_RUNTIME_CAPABILITY
+      )
+    )
     answerCommands(queuedClearAnswer)
     const { result } = render()
     let outcome: unknown
     await act(async () => {
       outcome = await result.current.runConversationCommand('clear')
     })
+    // Its line stands only while the agent works, as every command refusal's does.
     expect(outcome).toEqual({
       accepted: false,
-      error: "The agent is still working. Run /clear when it's done."
+      error: "The agent is still working. Run /clear when it's done.",
+      refusedWhile: 'working'
     })
     expect(commandCalls()).toHaveLength(0)
   })

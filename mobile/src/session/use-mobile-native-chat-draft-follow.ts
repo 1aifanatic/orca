@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { appendReturnedDraftText } from '../../../src/shared/returned-draft-text'
 import { isLoneStructuredAgentSessionConversationCommand } from '../../../src/shared/structured-agent-session-composer'
+import type { MobileNativeChatTab } from './mobile-native-chat-eligibility'
 
 /** The session whose drafts the active tab takes: none while any tab shows it, so a cleared chat
  *  reopened from history keeps what is typed there until its tab closes. */
 export function mobileReplacedSessionToFollow(
-  activeTab: { replacesSessionId?: string } | null,
+  activeTab: MobileNativeChatTab | null,
   sessionTabs: readonly { type: string; sessionId?: string | null }[] = []
 ): string | null {
   const replacesSessionId = activeTab?.replacesSessionId

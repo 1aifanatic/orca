@@ -26,7 +26,7 @@ describe('a draft when /clear replaces its conversation', () => {
       tabId,
       sessionId,
       replacesSessionId: mobileReplacedSessionToFollow(
-        replacesSessionId ? { replacesSessionId } : null,
+        replacesSessionId ? { type: 'agent-session', replacesSessionId } : null,
         (open ?? []).map((id) => ({ type: 'agent-session', sessionId: id }))
       ),
       messages: [],
