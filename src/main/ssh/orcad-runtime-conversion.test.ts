@@ -109,7 +109,11 @@ const everyRelayEmpty = (): ListRelayPtyIds =>
   Object.assign(async () => [], { previous: async () => [] })
 const convert = (
   listRelayPtyIds: ListRelayPtyIds | null = everyRelayEmpty(),
-  censusHost?: OrcadManagedConversionArgs['censusHost']
+  // The account-wide census found no relay with work unless a test says otherwise.
+  censusHost: OrcadManagedConversionArgs['censusHost'] = async () => ({
+    verdict: 'exited',
+    count: 0
+  })
 ) =>
   convertSshTargetToManagedOrcad(userDataPath, {
     sshTargetId: TARGET.id,
@@ -178,7 +182,7 @@ describe('converting an SSH host into a managed server', () => {
 
   // No relay session and no lease: only a host census may prove nothing runs, never the silence.
   it('converts with no relay session only on a host census that proves its relays idle', async () => {
-    await expect(convert(null)).resolves.toMatchObject({
+    await expect(convert(null, null)).resolves.toMatchObject({
       outcome: 'refused',
       verdict: 'unverifiable'
     })

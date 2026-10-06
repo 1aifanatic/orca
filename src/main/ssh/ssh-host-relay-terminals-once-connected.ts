@@ -9,6 +9,7 @@ import type { HostServerOnConnectResult } from './ssh-host-server-on-connect'
 import {
   assessOrcadMigrationTerminals,
   retireProvenExitedLeases,
+  type CensusHostRelayTerminals,
   type ListRelayPtyIds
 } from './orcad-migration-terminal-gate'
 
@@ -20,6 +21,8 @@ export async function relayTerminalsOnceConnected(args: {
   targetId: string
   decision: HostServerOnConnectResult | null
   listRelayPtyIds: ListRelayPtyIds | null
+  /** Every relay on the account; only it proves the leases' terminals exited, not just ours. */
+  censusHost: CensusHostRelayTerminals
   /** False once the connect was cancelled: it must neither report nor retire anything. */
   isCurrent: () => boolean
 }): Promise<RelayDecision | null> {
@@ -33,12 +36,21 @@ export async function relayTerminalsOnceConnected(args: {
   ) {
     return null
   }
-  const proof = await assessOrcadMigrationTerminals(args.store, args.targetId, args.listRelayPtyIds)
+  const proof = await assessOrcadMigrationTerminals(
+    args.store,
+    args.targetId,
+    args.listRelayPtyIds,
+    args.censusHost
+  )
   if (!args.isCurrent()) {
     return null
   }
   if (proof.verdict === 'live') {
-    return { route: 'relay', reason: 'relay_terminals_live', terminals: proof.ptyIds.length }
+    return {
+      route: 'relay',
+      reason: 'relay_terminals_live',
+      terminals: proof.ptyIds.length || (proof.hostTerminals ?? 0)
+    }
   }
   // This connect already runs the relay; retiring proven leases lets the next one convert, where
   // leaving them would read unverifiable on every connect, since nothing can ask before a session.
