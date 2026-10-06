@@ -175,10 +175,10 @@ describe('OpenCode model probe termination evidence', () => {
   it('forces a POSIX supervisor tree only after its full stop time, and trusts no forced stop', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     child.kill.mockReturnValue(true)
-    // The teardown reports true even when it found no descendants to prove gone.
+    // A teardown that found no descendants to check proves nothing about the server's group.
     vi.mocked(terminateProviderProcessTree).mockImplementation(async () => {
       supervisorExits(null, 'SIGKILL')
-      return true
+      return null
     })
 
     const probe = probeOpenCodeLaunchModelContext(options)
@@ -191,6 +191,21 @@ describe('OpenCode model probe termination evidence', () => {
     expect(terminateProviderProcessTree).toHaveBeenCalledWith(child, {
       site: 'opencode-launch-model-preflight'
     })
+  })
+
+  it('accepts a forced POSIX stop whose teardown proved the tree gone', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    child.kill.mockReturnValue(true)
+    vi.mocked(terminateProviderProcessTree).mockImplementation(async () => {
+      supervisorExits(null, 'SIGKILL')
+      return 'exited'
+    })
+
+    const probe = probeOpenCodeLaunchModelContext(options)
+    await untilStopRequested()
+    await vi.advanceTimersByTimeAsync(PROVIDER_SUPERVISOR_MAX_STOP_MS)
+
+    expect(await probe).toMatchObject({ primaryAgent: 'build' })
   })
 
   it('trusts no POSIX stop whose supervisor exited 1, which a failed group reap also exits', async () => {

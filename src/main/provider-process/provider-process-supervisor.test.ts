@@ -1,12 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { ProviderProcessLaunch } from './provider-process-launch'
 import {
   createProviderSpawnSpec,
   POSIX_PROVIDER_SUPERVISOR_SCRIPT,
   PROVIDER_SIGTERM_GRACE_MS,
   PROVIDER_STDIN_END_GRACE_MS,
-  PROVIDER_SUPERVISOR_MAX_STOP_MS,
-  stopSupervisedProvider,
   supervisedPosixLaunch
 } from './provider-process-supervisor'
 
@@ -102,50 +100,6 @@ describe('structured provider supervision', () => {
     for (const value of strings) {
       expect(Buffer.byteLength(value)).toBeLessThan(128 * 1024)
     }
-  })
-
-  it.each([
-    [true, PROVIDER_SUPERVISOR_MAX_STOP_MS + 500],
-    [false, 1_500]
-  ])('forces a provider (supervised %s) only after %s ms', async (supervised, waitMs) => {
-    vi.useFakeTimers()
-    try {
-      const request = vi.fn()
-      const force = vi.fn(async () => {})
-      const stopped = stopSupervisedProvider({
-        request,
-        exitPromise: new Promise(() => {}),
-        exited: () => false,
-        force,
-        supervised,
-        directWaitMs: 1_500,
-        slackMs: 500
-      })
-      expect(request).toHaveBeenCalledTimes(1)
-      await vi.advanceTimersByTimeAsync(waitMs - 1)
-      expect(force).not.toHaveBeenCalled()
-      await vi.advanceTimersByTimeAsync(1)
-      await expect(stopped).resolves.toBe(true)
-      expect(force).toHaveBeenCalledTimes(1)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('never forces a provider that exits within its wait', async () => {
-    let exited = false
-    let markExited!: () => void
-    const force = vi.fn(async () => {})
-    const stopped = stopSupervisedProvider({
-      request: () => setTimeout(() => ((exited = true), markExited()), 10),
-      exitPromise: new Promise((resolve) => (markExited = resolve)),
-      exited: () => exited,
-      force,
-      supervised: true
-    })
-
-    await expect(stopped).resolves.toBe(false)
-    expect(force).not.toHaveBeenCalled()
   })
 
   it('only accepts a resolved env, never a launch whose env it would ignore', () => {

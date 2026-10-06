@@ -11,7 +11,7 @@ import {
 import { CodexAppServerTimeoutError, runCodexAppServerSession } from './codex-app-server-session'
 
 vi.mock('../provider-process/provider-process-teardown', () => ({
-  terminateProviderProcessTree: vi.fn(async () => true)
+  terminateProviderProcessTree: vi.fn(async () => 'exited' as const)
 }))
 vi.mock('./codex-app-server-process-tree-kill', async (importOriginal) => ({
   ...(await importOriginal<typeof ProcessTreeKill>()),
@@ -98,7 +98,8 @@ describe('runCodexAppServerSession stop', () => {
     await vi.advanceTimersByTimeAsync(1)
 
     expect(terminateProviderProcessTree).toHaveBeenCalledWith(child, {
-      site: 'codex-app-server-session'
+      site: 'codex-app-server-session',
+      platform: 'linux'
     })
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
@@ -115,13 +116,17 @@ describe('runCodexAppServerSession stop', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(killCodexAppServerProcessTree).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1_499)
-    expect(killCodexAppServerProcessTree).toHaveBeenCalledTimes(1)
+    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
-    expect(killCodexAppServerProcessTree).toHaveBeenCalledTimes(2)
+    // The shared close's Windows teardown (taskkill of the tree), as the Codex connection's.
+    expect(terminateProviderProcessTree).toHaveBeenCalledWith(child, {
+      site: 'codex-app-server-session',
+      platform: 'win32'
+    })
 
     await vi.advanceTimersByTimeAsync(1_000)
     expect(await outcome).toBeInstanceOf(CodexAppServerTimeoutError)
     expect(child.kill).not.toHaveBeenCalled()
-    expect(terminateProviderProcessTree).not.toHaveBeenCalled()
+    expect(killCodexAppServerProcessTree).toHaveBeenCalledTimes(1)
   })
 })

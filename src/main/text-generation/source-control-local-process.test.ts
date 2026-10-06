@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { rootOnlyProviderClosePolicy } from '../provider-process/provider-process-close'
 import { PROVIDER_SUPERVISOR_MAX_STOP_MS } from '../provider-process/provider-process-supervisor'
 import { SOURCE_CONTROL_GENERATION_TIMEOUT_MS } from './source-control-generation-limits'
 import { discoverModelsLocal } from './commit-message-model-discovery'
@@ -108,10 +109,12 @@ describe('killSourceControlAgentProcess for a supervised agent', () => {
     expect(terminateTreeMock).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1)
-    await stopped
     expect(terminateTreeMock).toHaveBeenCalledWith(child, {
       site: 'source-control-text-generation'
     })
+    // The shared close then gives the forced root its own short wait.
+    await vi.advanceTimersByTimeAsync(rootOnlyProviderClosePolicy(true).forcedExitMs)
+    await stopped
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL')
   })
 
