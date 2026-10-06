@@ -67,6 +67,9 @@ export const ORCAD_STATE_MUTATION_DEADLINE_SECONDS = 15 * 60
  * pty-less command running after its channel closes, so a client that stops waiting has not
  * stopped the work, and a rerun beside it would mix two restores in one stage.
  */
+// Five missed beats: a live holder never goes this long without refreshing its lock.
+const ORCAD_STATE_MUTATION_HOLDER_STALE_MINUTES = 5
+
 export function serializedStateMutationCommand(
   baseDir: string,
   script: string,
@@ -82,14 +85,15 @@ export function serializedStateMutationCommand(
     'if ! mkdir "$lock" 2>/dev/null; then',
     'holder=$(cat "$lock/pid" 2>/dev/null);',
     // Why the age check: a run killed between mkdir and its pid write leaves no holder to probe.
-    'if { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; } ||',
+    // Why the beat too: a reused pid reads alive, but only a live holder keeps the lock fresh.
+    `if { [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null && [ -n "$(find "$lock" -maxdepth 0 -mmin -${ORCAD_STATE_MUTATION_HOLDER_STALE_MINUTES} 2>/dev/null)" ]; } ||`,
     '{ [ -z "$holder" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }; then',
     `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; fi;`,
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; }; fi;`,
     'echo $$ > "$lock/pid";',
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
     // A wake's fence ages toward takeover on its own, so its token stops the refresh.
-    `beat_fence() { [ -e "$fence/${ORCAD_WAKE_OWNER_FILENAME}" ] || touch -c -m "$fence" 2>/dev/null; };`,
+    `beat_fence() { touch -c -m "$lock" 2>/dev/null; [ -e "$fence/${ORCAD_WAKE_OWNER_FILENAME}" ] || touch -c -m "$fence" 2>/dev/null; };`,
     'beat_fence;',
     `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do beat_fence; done ) >/dev/null 2>&1 & beat=$!;`,
     `trap 'kill "$beat" 2>/dev/null; rm -rf "$lock"' EXIT;`,

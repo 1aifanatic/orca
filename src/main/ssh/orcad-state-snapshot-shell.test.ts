@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -126,6 +134,23 @@ describe.skipIf(process.platform === 'win32')('snapshot commands on a real shell
       )
     ).toBe('restored')
     expect(readFileSync(join(root, 'profiles', 'p.json'), 'utf8')).toBe('old')
+    expect(existsSync(lock)).toBe(false)
+  })
+
+  it('takes over a lock whose pid is alive but whose holder stopped refreshing it', async () => {
+    await sh(captureOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))
+    writeFileSync(join(root, 'profiles', 'p.json'), 'current')
+    const lock = join(remoteBase, 'orcad-state-mutation.lock')
+    mkdirSync(lock)
+    // A reused pid reads alive; ten quiet minutes prove nobody is running under it.
+    writeFileSync(join(lock, 'pid'), String(process.pid))
+    utimesSync(lock, new Date(Date.now() - 10 * 60_000), new Date(Date.now() - 10 * 60_000))
+
+    expect(
+      parseOrcadSnapshotRestore(
+        await sh(restoreOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))
+      )
+    ).toBe('restored')
     expect(existsSync(lock)).toBe(false)
   })
 })

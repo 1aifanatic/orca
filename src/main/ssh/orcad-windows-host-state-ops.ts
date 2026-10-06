@@ -10,6 +10,8 @@
  */
 import { PRIMARY_RUNTIME_METADATA_FILE } from '../../shared/runtime-bootstrap'
 import { ORCAD_LOCK_FILE_NAME } from '../orcad/orcad-instance-lock'
+import { ORCAD_WINDOWS_PROCESS_TREE_FILENAME } from '../../shared/orcad-artifacts'
+import { ORCAD_INSTALL_MODEL } from './remote-install-model'
 import { RELAY_INSTALL_LOCK_NAME } from '../../shared/relay-install-lock-name'
 import { ORCAD_ACTIVATION_TRANSACTION_DIRNAME } from './orcad-activation-transaction'
 import {
@@ -53,32 +55,77 @@ function refreshFence() {
   } catch {}
 }
 
-function processAlive(pid) {
-  try { process.kill(pid, 0); return true } catch (error) { return error.code === 'EPERM' }
+// A PID alone is no identity on Windows: PIDs are reused, and EPERM still means "some process".
+let processTree
+function processCreationTime(pid) {
+  if (processTree === undefined) {
+    processTree = null
+    for (const name of fs.readdirSync(__dirname)) {
+      if (!name.startsWith(${text(`${ORCAD_INSTALL_MODEL.dirPrefix}-`)})) continue
+      try { processTree = require(path.join(__dirname, name, ${text(ORCAD_WINDOWS_PROCESS_TREE_FILENAME)})); break } catch {}
+    }
+  }
+  try {
+    const created = processTree?.getProcessCreationTime(pid)
+    return typeof created === 'number' ? created : null
+  } catch { return null }
+}
+
+// 'alive', 'dead', or 'unknown' when the creation time cannot be read.
+function holderState(owner) {
+  try { process.kill(owner.pid, 0) } catch (error) { if (error.code === 'ESRCH') return 'dead' }
+  if (typeof owner.creationTimeMs !== 'number') return 'unknown'
+  const created = processCreationTime(owner.pid)
+  if (created === null) return 'unknown'
+  return created === owner.creationTimeMs ? 'alive' : 'dead'
+}
+
+function readOwner() {
+  try {
+    const owner = JSON.parse(fs.readFileSync(path.join(MUTATION_LOCK, 'owner.json'), 'utf8'))
+    return owner && Number.isSafeInteger(owner.pid) && owner.pid > 0 ? owner : null
+  } catch { return null }
+}
+
+// Why a heartbeat on the lock too: with no readable identity, only a live holder keeps it fresh.
+const UNVERIFIABLE_HOLDER_STALE_MS = ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 5 * 1000}
+
+function takeStateMutationLock() {
+  try { fs.mkdirSync(MUTATION_LOCK); return true } catch (error) { if (error.code !== 'EEXIST') return false }
+  const owner = readOwner()
+  const age = Date.now() - (lstatOrNull(MUTATION_LOCK)?.mtimeMs ?? 0)
+  // No owner yet: a run that died between mkdir and its owner write, once a minute has passed.
+  const state = owner ? holderState(owner) : age > 60000 ? 'dead' : 'alive'
+  if (state === 'alive' || (state === 'unknown' && age <= UNVERIFIABLE_HOLDER_STALE_MS)) return false
+  try { removeTree(MUTATION_LOCK); fs.mkdirSync(MUTATION_LOCK); return true } catch { return false }
+}
+
+function beatStateMutation() {
+  refreshFence()
+  try { const now = new Date(); fs.utimesSync(MUTATION_LOCK, now, now) } catch {}
 }
 
 // One capture, restore or clear at a time: a client that stopped waiting has not stopped the
 // last one, and a rerun beside it would mix two restores in one stage.
 function withStateMutationLock(run) {
   return async (...opArgs) => {
-    try { fs.mkdirSync(MUTATION_LOCK) } catch (error) {
-      if (error.code !== 'EEXIST') return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
-      let holder = NaN
-      try { holder = Number(fs.readFileSync(path.join(MUTATION_LOCK, 'pid'), 'utf8')) } catch {}
-      const aged = Date.now() - (lstatOrNull(MUTATION_LOCK)?.mtimeMs ?? 0) > 60000
-      if (Number.isInteger(holder) && holder > 0 ? processAlive(holder) : !aged) return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
-      try { removeTree(MUTATION_LOCK); fs.mkdirSync(MUTATION_LOCK) } catch { return answer(${text(ORCAD_STATE_MUTATION_BUSY)}) }
-    }
-    refreshFence()
+    if (!takeStateMutationLock()) return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
+    let token = 'FAILED'
     // Why async ops: a synchronous copy would block this timer for the whole mutation.
-    const beat = setInterval(refreshFence, ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000})
+    const beat = setInterval(beatStateMutation, ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000})
     try {
-      fs.writeFileSync(path.join(MUTATION_LOCK, 'pid'), String(process.pid))
-      return await run(...opArgs)
+      const owner = { pid: process.pid, creationTimeMs: processCreationTime(process.pid) }
+      fs.writeFileSync(path.join(MUTATION_LOCK, 'owner.json'), JSON.stringify(owner))
+      refreshFence()
+      token = await run(...opArgs)
+    } catch {
+      token = 'FAILED'
     } finally {
       clearInterval(beat)
       try { removeTree(MUTATION_LOCK) } catch {}
     }
+    // Why after the finally: answer() exits the process, which would leak the lock.
+    answer(token)
   }
 }
 
@@ -133,9 +180,9 @@ Object.assign(ops, {
     let present
     try {
       present = MEMBERS.filter((member) => lstatOrNull(path.join(root, member)))
-      if (present.some((member) => treeHasLink(path.join(root, member)))) return answer('FAILED')
-    } catch { return answer('FAILED') }
-    if (present.length === 0) return answer('EMPTY')
+      if (present.some((member) => treeHasLink(path.join(root, member)))) return ('FAILED')
+    } catch { return ('FAILED') }
+    if (present.length === 0) return ('EMPTY')
     const partial = path.join(snapshotDir, STATE_DIR + '.partial-' + process.pid)
     try {
       await removeTreeAsync(partial)
@@ -147,9 +194,9 @@ Object.assign(ops, {
       renameWithRetry(partial, path.join(snapshotDir, STATE_DIR))
     } catch {
       try { await removeTreeAsync(partial) } catch {}
-      return answer('FAILED')
+      return ('FAILED')
     }
-    answer('CAPTURED')
+    return 'CAPTURED'
   }),
 
   'snapshot-probe'(snapshotDir) {
@@ -162,7 +209,7 @@ Object.assign(ops, {
   'snapshot-restore': withStateMutationLock(async (root, snapshotDir) => {
     const state = path.join(snapshotDir, STATE_DIR)
     const stats = lstatOrNull(state)
-    if (!stats || !stats.isDirectory()) return answer('MISSING')
+    if (!stats || !stats.isDirectory()) return ('MISSING')
     const stage = path.join(root, RESTORE_STAGE)
     try {
       fs.mkdirSync(root, { recursive: true })
@@ -170,11 +217,11 @@ Object.assign(ops, {
       await fs.promises.cp(state, stage, { recursive: true })
       if (!MEMBERS.some((member) => lstatOrNull(path.join(stage, member)))) {
         await removeTreeAsync(stage)
-        return answer('FAILED')
+        return ('FAILED')
       }
     } catch {
       try { await removeTreeAsync(stage) } catch {}
-      return answer('FAILED')
+      return ('FAILED')
     }
     try {
       for (const member of MEMBERS) await removeTreeAsync(path.join(root, member))
@@ -182,16 +229,16 @@ Object.assign(ops, {
         if (lstatOrNull(path.join(stage, member))) renameWithRetry(path.join(stage, member), path.join(root, member))
       }
       await removeTreeAsync(stage)
-    } catch { return answer('FAILED') }
-    answer('RESTORED')
+    } catch { return ('FAILED') }
+    return 'RESTORED'
   }),
 
   'snapshot-clear': withStateMutationLock(async (root) => {
     try {
       fs.mkdirSync(root, { recursive: true })
       for (const member of MEMBERS) await removeTreeAsync(path.join(root, member))
-    } catch { return answer('FAILED') }
-    answer('RESTORED')
+    } catch { return ('FAILED') }
+    return 'RESTORED'
   }),
 
   'snapshot-compare'(root, snapshotDir) {
