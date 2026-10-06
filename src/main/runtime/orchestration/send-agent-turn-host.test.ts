@@ -143,8 +143,10 @@ describe('sendAgentTurn through the real host', () => {
   })
 
   /** Settles a handed-over send as the provider taking it; the turn's wait ends on that. */
-  async function sendTurnAccepted(delivery: AgentTurnDelivery) {
-    const operationId = hostTestOperationId()
+  async function sendTurnAccepted(
+    delivery: AgentTurnDelivery,
+    operationId = hostTestOperationId()
+  ) {
     const outcome = sendTurn(delivery, operationId)
     await eventually(async () =>
       expect((await rig.submission(operationId))?.handedOverAt).toBeDefined()
@@ -160,6 +162,16 @@ describe('sendAgentTurn through the real host', () => {
     // An idle chat never queues, and the sent message still names its sender.
     const sent = outcome.kind === 'sent' ? outcome.clientMessageId : ''
     expect((await sentMessage(sent))?.body).toMatchObject({ from: MAIL_SOURCE })
+  })
+
+  // An idle chat sends the mail at once: its submission says it is an agent's, without the senders
+  // the card keeps host-only, so a restart or a close rejects it rather than keep it as a card.
+  it('records an idle chat’s mail as an agent’s, by kind only', async () => {
+    const operationId = hostTestOperationId()
+    await sendTurnAccepted('queue', operationId)
+    const submission = await rig.submission(operationId)
+    expect(submission?.source).toEqual({ kind: 'agent' })
+    expect(JSON.stringify(submission)).not.toContain('term_peer')
   })
 
   it('has a `now` send join the running turn, never the queue', async () => {

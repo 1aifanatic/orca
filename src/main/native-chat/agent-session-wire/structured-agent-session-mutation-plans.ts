@@ -8,6 +8,11 @@
 // one that wrote nothing.
 
 import type { AgentJournalMessageItem } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_MESSAGE_SOURCE,
+  USER_MESSAGE_SOURCE,
+  type AgentSessionMessageSource
+} from '../../../shared/agent-session-message-source'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import type { AgentSessionOperationOutcome } from '../../../shared/agent-session-operation-ledger'
 import type {
@@ -64,12 +69,28 @@ export type MutationPlan<TValue> = {
     }
 )
 
+/** Who a send is from, read off what it carries, the one place it is decided: the person's own
+ *  send, another agent's message (its body names the sender), or neither, such as a dispatch
+ *  preamble or a restart continuation. */
+function sendSource(params: {
+  body: AgentJournalMessageItem
+  userSend?: true
+  personsMessage?: true
+}): AgentSessionMessageSource | undefined {
+  if (params.userSend || params.personsMessage) {
+    return USER_MESSAGE_SOURCE
+  }
+  return params.body.from ? AGENT_MESSAGE_SOURCE : undefined
+}
+
 export function sendPlan(params: {
   envelope: AgentSessionMutationEnvelope
   body: AgentJournalMessageItem
   retryUnknown?: true
   delivery?: 'queue-if-active'
   userSend?: true
+  /** A person's message the host sends for them; `userSend` is always one. */
+  personsMessage?: true
   beforeRun?: () => void
 }): MutationPlan<AgentSessionSendResult> {
   // The operation id IS the client message id: one send, one durable row, one
@@ -92,8 +113,10 @@ export function sendPlan(params: {
     run: (ctx) => {
       // Asked at acceptance: a send accepted after this one is queued behind it.
       params.beforeRun?.()
+      const source = sendSource(params)
       return performSend(ctx, {
         origin: params.userSend ? 'client' : 'host',
+        ...(source ? { source } : {}),
         clientMessageId,
         // Body-only, so the reducer's echo aliasing never sees control fields or the sender.
         payloadFingerprint: agentSessionSendBodyFingerprint(params.envelope.sessionId, params.body),
@@ -102,8 +125,13 @@ export function sendPlan(params: {
     },
     replay: (ctx, outcome) => {
       // A send this host queued answers from its draft, then its hand-off; a
-      // withdrawn draft replays as spent — never as missing-submission doubt.
-      const queued = queuedSendAnswer(ctx.journal, clientMessageId)
+      // withdrawn draft replays as spent — never as missing-submission doubt. Only a send that
+      // asked to be queued may get that answer: a direct send the host kept as a card answers
+      // from its own submission, which a client that never sent `delivery` can read.
+      const queued =
+        params.delivery === 'queue-if-active'
+          ? queuedSendAnswer(ctx.journal, clientMessageId)
+          : null
       if (queued) {
         return queued
       }
@@ -160,6 +188,7 @@ export function conversationCommandPlan(params: {
         clientMessageId,
         // Only a client asks through the command RPC: the person's own turn.
         origin: 'client',
+        source: USER_MESSAGE_SOURCE,
         payloadFingerprint: params.envelope.payloadFingerprint,
         body: structuredAgentSessionCompactBody()
       })

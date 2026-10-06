@@ -60,6 +60,9 @@ export function sendStructuredAgentSessionTurn(
      *  Orchestration mail, a restart continuation and `agent.launch`'s host-sent
      *  prompt never set it. */
     userSend?: true
+    /** Host-local, never on the wire: a person's message the host sends for them, such as a
+     *  launch's first prompt. `userSend` is always one; another agent's message carries `from`. */
+    personsMessage?: true
     beforeRun?: () => void
   },
   arrival?: Parameters<typeof sendPreparation>[2]

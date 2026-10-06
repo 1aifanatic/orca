@@ -41,6 +41,15 @@ export type AgentMessageSource = Readonly<{
   orchestration: OrchestrationAgentMessage | null
 }>
 
+/** Who a send is from, as its submission records it: the kind only (`AgentJournalSubmission.source`),
+ *  so a restart or a close keeps only a person's unsent send as a card. The senders stay on the
+ *  message body. */
+export type AgentSessionMessageSource = Readonly<{ kind: 'user' | 'agent' }>
+
+export const USER_MESSAGE_SOURCE: AgentSessionMessageSource = { kind: 'user' }
+
+export const AGENT_MESSAGE_SOURCE: AgentSessionMessageSource = { kind: 'agent' }
+
 /** A sender name as stored: bounded and flattened like a conversation name, never raw. */
 export function agentMessageSenderName(value: unknown): string | null {
   return normalizeAgentSessionConversationName(value)
