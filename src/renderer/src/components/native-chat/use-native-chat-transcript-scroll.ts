@@ -201,10 +201,14 @@ export function useNativeChatTranscriptScroll({
       return
     }
     if (!followingRef.current) {
-      if (revealed && detachedScrollTopRef.current !== null) {
-        restoreScrollOffset(detachedScrollTopRef.current)
+      if (revealed) {
+        if (detachedScrollTopRef.current !== null) {
+          restoreScrollOffset(detachedScrollTopRef.current)
+        }
+        settleDisclosure()
+      } else {
+        syncScrollState()
       }
-      syncScrollState()
       return
     }
     scrollToEndWhenMeasurable()
@@ -216,6 +220,7 @@ export function useNativeChatTranscriptScroll({
     restoreScrollOffset,
     showsTailRow,
     scrollToEndWhenMeasurable,
+    settleDisclosure,
     syncScrollState
   ])
 

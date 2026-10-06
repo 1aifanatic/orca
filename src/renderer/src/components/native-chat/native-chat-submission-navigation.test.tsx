@@ -394,7 +394,7 @@ it('control: a held structured card reveal expires when the reader scrolls away'
           cards: [],
           pause: null,
           resuming: false,
-          resume: async () => {},
+          resume: async () => false,
           steer: async () => {},
           remove: async () => {},
           edit: async () => {},

@@ -516,3 +516,96 @@ describe('reader navigation', () => {
     expect(screen.getByRole('region', { name: 'Conversation' })).toBe(scrollRoot(container))
   })
 })
+
+describe('disclosure following across retained pane visibility', () => {
+  let visible = true
+  let restore: (() => void)[] = []
+  beforeEach(() => {
+    visible = true
+    vi.useFakeTimers()
+    layout.belowTranscriptPx = BELOW_TRANSCRIPT_PX
+    layout.aboveTranscriptPx = 0
+    layout.measuredRowHeights = []
+    restore = [
+      stubLayout({ scrollGeometry: true, offsetChain: true, isVisible: () => visible }),
+      stubResizeObserver()
+    ]
+  })
+  afterEach(() => {
+    for (const undo of restore.toReversed()) {
+      undo()
+    }
+    layout.measuredRowHeights = []
+    vi.useRealTimers()
+  })
+
+  function view(messages: NativeChatMessage[]): React.JSX.Element {
+    return (
+      <NativeChatMessageList
+        session={session(messages)}
+        isVisible={visible}
+        isWorking
+        expandSignal={false}
+        fontScale={1}
+      />
+    )
+  }
+
+  it.each([false, true])(
+    'follows passive growth after underflow disclosure (hide before settlement=%s)',
+    (hideBeforeSettlement) => {
+      const initial = [marker(0), toolMessage(1)]
+      const rendered = render(view(initial))
+      paint(rendered.container)
+      const scroller = scrollRoot(rendered.container)
+      expect(scroller.scrollHeight).toBeLessThan(scroller.clientHeight)
+      fireEvent.click(screen.getByRole('button', { expanded: false }))
+      if (hideBeforeSettlement) {
+        visible = false
+        rendered.rerender(view(initial))
+        act(() => vi.advanceTimersByTime(300))
+        visible = true
+        rendered.rerender(view(initial))
+      }
+      paint(rendered.container)
+      expect(scroller.scrollHeight).toBeLessThan(scroller.clientHeight)
+      expect(scroller.scrollTop).toBe(0)
+      const grown = [...initial, ...Array.from({ length: 200 }, (_, i) => marker(i + 10))]
+      rendered.rerender(view(grown))
+      paint(rendered.container)
+      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight + 1000)
+      expect(distanceFromBottom(rendered.container)).toBe(0)
+      expect(screen.getByText('marker-209')).toBeInTheDocument()
+    }
+  )
+
+  it.each([false, true])(
+    'restores distant history after interrupted disclosure (growth while hidden=%s)',
+    (growWhileHidden) => {
+      const initial = transcript.with(20, toolMessage(20))
+      const grown = [...initial, ...Array.from({ length: 200 }, (_, i) => marker(i + 1000))]
+      const rendered = render(view(initial))
+      paint(rendered.container)
+      scrollTranscript(rendered.container, 900)
+      paint(rendered.container)
+      const scroller = scrollRoot(rendered.container)
+      expect(distanceFromBottom(rendered.container)).toBeGreaterThan(1000)
+      const readingAt = scroller.scrollTop
+      fireEvent.click(screen.getByRole('button', { expanded: false }))
+      visible = false
+      rendered.rerender(view(growWhileHidden ? grown : initial))
+      paint(rendered.container)
+      act(() => vi.advanceTimersByTime(300))
+      visible = true
+      rendered.rerender(view(growWhileHidden ? grown : initial))
+      paint(rendered.container)
+      expect(scroller.scrollTop).toBe(readingAt)
+      expect(distanceFromBottom(rendered.container)).toBeGreaterThan(1000)
+      expect(offersJumpToLatest()).toBe(true)
+      rendered.rerender(view([...grown, marker(1200)]))
+      paint(rendered.container)
+      expect(scroller.scrollTop).toBe(readingAt)
+      expect(distanceFromBottom(rendered.container)).toBeGreaterThan(1000)
+    }
+  )
+})

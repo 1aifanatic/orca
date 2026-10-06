@@ -56,7 +56,7 @@ function controller(
   return {
     cards,
     pause,
-    resume: vi.fn(async () => {}),
+    resume: vi.fn(async () => false),
     resuming: false,
     steer: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),

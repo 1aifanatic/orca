@@ -3,8 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { useStructuredNativeChatSubmitReveal } from './use-structured-native-chat-submit-reveal'
 
-// Submits outside the composer: each is the reader acting, so each brings the latest into view.
-it('reveals the latest for a delivery Retry, a launch Retry and a queue Resume, before they act', async () => {
+it('reveals before Retry, but waits for a successful queue Resume', async () => {
   const order: string[] = []
   const controller = {
     respond: vi.fn(async () => null),
@@ -15,6 +14,7 @@ it('reveals the latest for a delivery Retry, a launch Retry and a queue Resume, 
       resuming: false,
       resume: vi.fn(async () => {
         order.push('resume')
+        return true
       }),
       steer: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
@@ -34,5 +34,5 @@ it('reveals the latest for a delivery Retry, a launch Retry and a queue Resume, 
   await act(() => result.current.queuedMessages.resume())
 
   expect(controller.retry).toHaveBeenCalledWith('client-1')
-  expect(order).toEqual(['reveal', 'retry', 'reveal', 'launch', 'reveal', 'resume'])
+  expect(order).toEqual(['reveal', 'retry', 'reveal', 'launch', 'resume', 'reveal'])
 })

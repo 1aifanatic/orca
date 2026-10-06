@@ -1,9 +1,5 @@
-// A structured pane's own submits outside the composer — retrying a delivery or a
-// failed start, answering a prompt, sending a queued message now, resuming the queue — each
-// bring the latest into view, wherever the reader had scrolled. An answer waits
-// for the host to accept it, unless the reader moved meanwhile; the others report no outcome.
-// The host delivering on its own (a mobile send, the queue draining) is not the
-// reader acting here, so it never moves them.
+// Local actions reveal this pane. Answers and Resume wait for host acceptance,
+// preserving any newer reader navigation; passive host delivery never reveals it.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
@@ -67,9 +63,13 @@ export function useStructuredNativeChatSubmitReveal(
         revealLatest()
         return queuedMessages.steer(messageId)
       },
-      resume: () => {
-        revealLatest()
-        return queuedMessages.resume()
+      resume: async () => {
+        const reveal = holdRevealLatest()
+        const resumed = await queuedMessages.resume()
+        if (resumed) {
+          reveal()
+        }
+        return resumed
       },
       steerNewest: () => {
         const steered = queuedMessages.steerNewest()
@@ -79,7 +79,7 @@ export function useStructuredNativeChatSubmitReveal(
         return steered
       }
     }),
-    [queuedMessages, revealLatest]
+    [holdRevealLatest, queuedMessages, revealLatest]
   )
   return {
     messageListRef,

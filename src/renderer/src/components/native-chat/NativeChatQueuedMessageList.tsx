@@ -28,7 +28,7 @@ export function NativeChatQueuedMessageList({
   const pause = cards.some((card) => card.hold === 'queue-paused') ? controller.pause : null
   // Only when focus was on the queue (a card, or Resume) — never pull it from wherever the user
   // moved on to.
-  const refocusAfter = (action: Promise<void>): void => {
+  const refocusAfter = (action: Promise<unknown>): void => {
     void action.then(() => {
       const active = document.activeElement
       if (!active || active === document.body || queueRef.current?.contains(active)) {
@@ -39,7 +39,7 @@ export function NativeChatQueuedMessageList({
   return (
     <div aria-live="polite">
       {cards.length > 0 ? (
-        <div ref={queueRef} className="mx-auto w-full max-w-4xl px-4 py-1">
+        <div ref={queueRef} className="mx-auto w-full max-w-(--chat-content-max-width) px-4 py-1">
           {/* One box: the pause row, when shown, is its first row, and each card a row below it. */}
           <div className="divide-y divide-border rounded-md border border-border bg-card text-card-foreground">
             {pause ? (
