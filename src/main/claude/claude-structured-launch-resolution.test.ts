@@ -441,6 +441,23 @@ describe('claude structured launch resolution', () => {
     expect(launch.cwd).toBe('/repos/workspace-1')
   })
 
+  it('grants the attachment store beside folders the saved Arguments add', async () => {
+    const launch = await resolverFor(
+      record(),
+      undefined,
+      false,
+      { claude: '' },
+      async () => true,
+      () => ['--add-dir', '/extra'],
+      '/state/agent-session-attachments'
+    )({ identity: IDENTITY })
+
+    expect(launch.options.additionalDirectories).toEqual([
+      '/extra',
+      '/state/agent-session-attachments'
+    ])
+  })
+
   it('builds on the supplied inherited env instead of Orca process env', async () => {
     const launch = await createClaudeStructuredLaunchResolver({
       resolveLaunchArgs: () => [],

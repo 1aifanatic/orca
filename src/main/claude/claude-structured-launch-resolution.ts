@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type {
   Options as ClaudeAgentSdkOptions,
@@ -38,6 +37,9 @@ import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-sup
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import { CLAUDE_STRUCTURED_AGENT } from './claude-structured-agent-definition'
+import { claudeSessionIdForOrcaSession } from './claude-structured-session-id'
+
+export { claudeSessionIdForOrcaSession }
 
 export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project', 'local'] as const
 export const CLAUDE_SESSION_STATE_EVENTS_ENV = 'CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS'
@@ -56,7 +58,6 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'allowDangerouslySkipPermissions'
   | 'sessionId'
   | 'resume'
-  | 'additionalDirectories'
 >
 
 /**
@@ -276,14 +277,6 @@ export async function assertClaudeAuthSwitchSettled(
   }
 }
 
-export function claudeSessionIdForOrcaSession(sessionId: string): string {
-  const bytes = createHash('sha256').update(`orca-claude:${sessionId}`).digest().subarray(0, 16)
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
-  const hex = bytes.toString('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-}
-
 export function createClaudeStructuredLaunchResolver(
   deps: ClaudeStructuredLaunchResolverDeps
 ): (input: { identity: AgentSessionJournalIdentity }) => Promise<ClaudeStructuredLaunch> {
@@ -351,7 +344,11 @@ export function createClaudeStructuredLaunchResolver(
           claudeConfigDir: record.accountHome.path
         })))
     const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const { additionalDirectories } = configured
+    // The user's own --add-dir folders, plus the host's chat attachment store.
+    const additionalDirectories = [
+      ...configured.additionalDirectories,
+      ...(deps.attachmentDirectory ? [deps.attachmentDirectory] : [])
+    ]
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
@@ -380,7 +377,6 @@ export function createClaudeStructuredLaunchResolver(
           ...permission.extraArgs,
           ...thinkingDisplayArgs
         },
-        ...(deps.attachmentDirectory ? { additionalDirectories: [deps.attachmentDirectory] } : {}),
         // Claude owns where a resumed conversation continues; the stored leaf is Orca's bookkeeping.
         ...(resumesTranscript ? { resume: providerSessionId } : { sessionId: providerSessionId })
       },
