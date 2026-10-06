@@ -161,13 +161,15 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     }
     session?.translator?.handle(event)
     this.deps.onEvent?.(event)
-    if (event.type === 'message' && session && retireClaudeLaunchedModel(session, event.message)) {
+    const retired =
+      event.type === 'message' && session ? retireClaudeLaunchedModel(session, event.message) : null
+    if (session && retired !== null) {
       this.deps.onEvent?.({
         type: 'options-skipped',
         sessionId: event.sessionId,
         fence: session.fence,
         acquisitionGeneration: session.acquisitionGeneration,
-        keys: ['model']
+        options: { model: retired }
       })
     }
     this.publishChildWork(event.sessionId, session, event.type === 'message' ? event.message : null)

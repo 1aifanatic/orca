@@ -5,12 +5,12 @@
 import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { ClaudeSession } from './claude-structured-session-state'
 
-/** True once, when a root reply says the model this child was launched with does not exist and
- *  the chat still has that model picked: the session stops holding it, so the record drops it. */
+/** The launched model, once, when a root reply says it does not exist and the chat still has it
+ *  picked: the session stops holding it, so the record drops it. Null otherwise. */
 export function retireClaudeLaunchedModel(
   session: Pick<ClaudeSession, 'launchedModel' | 'options' | 'restoreSkippedOptions'>,
   message: Record<string, unknown>
-): boolean {
+): string | null {
   const launched = session.launchedModel
   if (
     launched === null ||
@@ -19,11 +19,21 @@ export function retireClaudeLaunchedModel(
     message.error !== 'model_not_found' ||
     session.options.get('model') !== launched
   ) {
-    return false
+    return null
   }
   session.options.delete('model')
   session.restoreSkippedOptions.add('model')
-  return true
+  return launched
+}
+
+/** The saved values this child showed it cannot run. Only a retired launch model is one: a launch
+ *  never skips a model, so a skipped model is that. */
+export function claudeRetiredOptions(
+  session: Pick<ClaudeSession, 'launchedModel' | 'restoreSkippedOptions'>
+): { retiredOptions?: Record<string, string> } {
+  return session.restoreSkippedOptions.has('model') && session.launchedModel !== null
+    ? { retiredOptions: { model: session.launchedModel } }
+    : {}
 }
 
 /** The rows of a listing the account's catalog keeps. A child launched with `--model X` lists X

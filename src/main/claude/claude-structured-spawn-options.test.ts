@@ -108,16 +108,12 @@ describe('a Claude chat launched with its saved options', () => {
     expect(spawn.skipped).toEqual(['permissionMode'])
   })
 
-  // Measured on Claude Code 2.1.280: `--permission-mode plan --allow-dangerously-skip-permissions`
-  // starts in plan and takes `set_permission_mode bypassPermissions` later; without the allow flag
-  // that write is refused.
-  it('starts a saved narrower mode under an Agent Permissions bypass with bypass still reachable', () => {
+  // Known limit: the allow flag that would keep bypass reachable is one older CLIs reject at start.
+  it('starts a saved narrower mode under an Agent Permissions bypass without any bypass flag', () => {
     const spawn = launched({ permissionMode: 'acceptEdits' }, { base: BYPASS_LAUNCH })
 
-    expect(spawn.sdkOptions).toMatchObject({
-      permissionMode: 'acceptEdits',
-      allowDangerouslySkipPermissions: true
-    })
+    expect(spawn.sdkOptions.permissionMode).toBe('acceptEdits')
+    expect(spawn.sdkOptions).not.toHaveProperty('allowDangerouslySkipPermissions')
     expect(spawn.sdkOptions.extraArgs).toEqual({ 'replay-user-messages': null })
   })
 

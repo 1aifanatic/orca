@@ -5,6 +5,7 @@
 
 import type { StructuredAgentSessionStartedEvent } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeStreamJsonConnection } from './claude-stream-json-connection'
+import { ClaudeControlRequestError } from './claude-agent-sdk-control-requests'
 import { ClaudeSlashCommandCatalog } from './claude-slash-command-catalog'
 import {
   claudeAuthDiagnostic,
@@ -19,6 +20,7 @@ import {
   readClaudeStructuredSessionSettings
 } from './claude-structured-session-acquisition-options'
 import { listedModels } from './claude-structured-model-catalog'
+import { claudeRetiredOptions } from './claude-structured-retired-model'
 import {
   claudeModelFastModeSupport,
   claudeStructuredSessionOptionsFrom,
@@ -156,9 +158,13 @@ export async function readClaudeStartupFacts(input: {
 }
 
 /** A new conversation is launched without a saved Fast on, which its settings may opt in to per
- *  session. Those settings now read: an opt-in drops it, as before; otherwise it is applied, and
- *  no message waits on that. */
-function applyClaudeFreshSessionFastMode(session: ClaudeSession, facts: ClaudeStartupFacts): void {
+ *  session. Those settings now read: an opt-in drops it, as before; otherwise it is applied before
+ *  `started`, and no message waits on that. A refusal drops it as main's restore did; silence keeps
+ *  it wanted and unconfirmed. */
+async function applyClaudeFreshSessionFastMode(
+  session: ClaudeSession,
+  facts: ClaudeStartupFacts
+): Promise<void> {
   if (facts.resumesTranscript || session.options.get('fastMode') !== 'true') {
     return
   }
@@ -179,11 +185,18 @@ function applyClaudeFreshSessionFastMode(session: ClaudeSession, facts: ClaudeSt
     session.restoreSkippedOptions.add('fastMode')
     return
   }
-  void session.connection
-    .applyFlagSettings({ fastMode: true }, { timeoutMs: facts.requestTimeoutMs })
-    .catch((error: unknown) =>
-      console.warn('[claude-structured] applying a saved Fast on to a new session failed:', error)
+  try {
+    await session.connection.applyFlagSettings(
+      { fastMode: true },
+      { timeoutMs: facts.requestTimeoutMs }
     )
+  } catch (error) {
+    if (error instanceof ClaudeControlRequestError) {
+      session.options.delete('fastMode')
+      session.restoreSkippedOptions.add('fastMode')
+    }
+    session.confirmedOptions.delete('fastMode')
+  }
 }
 
 function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFacts): void {
@@ -274,7 +287,7 @@ export async function settleClaudeSessionStartup(input: {
       }
     }
     applyClaudeStartupFacts(session, facts)
-    applyClaudeFreshSessionFastMode(session, facts)
+    await applyClaudeFreshSessionFastMode(session, facts)
     if (!superseded()) {
       input.onStarted({
         // `list_models` is answered from this same initialize result, so nothing is re-read.
@@ -282,7 +295,8 @@ export async function settleClaudeSessionStartup(input: {
           session,
           readClaudeModels(facts.initialization)
         ),
-        restoreSkippedOptions: [...session.restoreSkippedOptions]
+        restoreSkippedOptions: [...session.restoreSkippedOptions],
+        ...claudeRetiredOptions(session)
       })
       if (session.startup.state === 'pending') {
         session.startup.state = 'proven'

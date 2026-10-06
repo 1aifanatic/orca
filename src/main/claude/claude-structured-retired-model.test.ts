@@ -59,10 +59,10 @@ describe("the CLI's word that a launched model does not exist", () => {
   it('drops the launched model once, as a skipped saved option', () => {
     const session = sessionLaunchedWith(RETIRED)
 
-    expect(retireClaudeLaunchedModel(session, modelNotFound())).toBe(true)
+    expect(retireClaudeLaunchedModel(session, modelNotFound())).toBe(RETIRED)
     expect(session.options.has('model')).toBe(false)
     expect([...session.restoreSkippedOptions]).toEqual(['model'])
-    expect(retireClaudeLaunchedModel(session, modelNotFound())).toBe(false)
+    expect(retireClaudeLaunchedModel(session, modelNotFound())).toBeNull()
   })
 
   it.each([
@@ -71,7 +71,7 @@ describe("the CLI's word that a launched model does not exist", () => {
     ['a model picked since the launch', sessionLaunchedWith(RETIRED, 'opus'), modelNotFound()],
     ['a launch that named no model', sessionLaunchedWith(null), modelNotFound()]
   ])('keeps the saved model for %s', (_case, session, message) => {
-    expect(retireClaudeLaunchedModel(session, message)).toBe(false)
+    expect(retireClaudeLaunchedModel(session, message)).toBeNull()
     expect([...session.restoreSkippedOptions]).toEqual([])
   })
 })

@@ -8,6 +8,10 @@ import {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { ClaudeStreamJsonConnection } from './claude-stream-json-connection'
 import { CLAUDE_SPAWN_TOKEN_ENV } from './claude-structured-owner-identity'
+import {
+  ClaudeControlRequestError,
+  ClaudeControlRequestTimeoutError
+} from './claude-agent-sdk-control-requests'
 import type {
   ClaudeStructuredSessionAdapter,
   ClaudeStructuredSessionEvent
@@ -163,6 +167,42 @@ describe('ClaudeStructuredSessionAdapter.acquire', () => {
       restoreSkippedOptions: []
     })
   })
+
+  it.each([
+    ['refuses', new ClaudeControlRequestError('apply_flag_settings', 'not for this org'), false],
+    ['never answers', new ClaudeControlRequestTimeoutError('apply_flag_settings'), true]
+  ] as const)(
+    'settles a saved Fast on a new conversation when the CLI %s its apply',
+    async (_case, failure, kept) => {
+      const claude = fakeClaude({
+        settings: { applied: {}, effective: {}, sources: {} },
+        initModels: [{ value: 'opus', displayName: 'Opus', supportsFastMode: true }],
+        routes: {
+          apply_flag_settings: () => {
+            throw failure
+          }
+        }
+      })
+      const events: ClaudeStructuredSessionEvent[] = []
+      const adapter = adapterFor(claude, {}, events)
+
+      await adapter.acquire({
+        identity: identityFor(),
+        fence: 7,
+        spawnToken: 'spawn-9',
+        options: { model: 'opus', fastMode: 'true' }
+      })
+
+      // A refusal drops the pick, as main's refused restore did; silence keeps it, unconfirmed.
+      expect(events.find((event) => event.type === 'started')).toMatchObject({
+        reportedOptions: kept ? { fastMode: true } : { model: 'opus' },
+        restoreSkippedOptions: kept ? [] : ['fastMode']
+      })
+      const options = await adapter.readOptions({ sessionId: 'session-1', fence: 7 })
+      expect(options.current.fastMode === true).toBe(kept)
+      expect(options.current.confirmed ?? []).not.toContain('fastMode')
+    }
+  )
 
   it('drops a saved Fast on from a new conversation whose model the CLI lists without it', async () => {
     const claude = fakeClaude({

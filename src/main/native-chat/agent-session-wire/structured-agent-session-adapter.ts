@@ -217,6 +217,8 @@ export type StructuredAgentSessionStartedEvent = {
   reportedOptions: AgentSessionOptionsResult['current']
   /** Saved options the child could not take; the host drops them rather than persist them. */
   restoreSkippedOptions: readonly string[]
+  /** Values the child showed it cannot run: a report naming the same value is not persisted. */
+  retiredOptions?: Readonly<Record<string, string>>
 }
 
 /** A running child showed saved options it cannot run, as a model the provider reports missing.
@@ -226,7 +228,8 @@ export type StructuredAgentSessionOptionsSkippedEvent = {
   sessionId: string
   fence: number
   acquisitionGeneration: string
-  keys: readonly string[]
+  /** Each saved value the child showed it cannot run; a record holding another value keeps it. */
+  options: Readonly<Record<string, string>>
 }
 
 export type StructuredAgentSessionLifecycleEvent =

@@ -4,6 +4,7 @@
 // record store and host, with only the CLI process scripted.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { computeAgentSessionPayloadFingerprint } from '../../shared/agent-session-mutation-envelope'
 import { claudeSessionIdForOrcaSession } from '../claude/claude-structured-launch-resolution'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { createScriptedClaudeRuntime } from './structured-claude-scripted-runtime-test-support'
@@ -74,5 +75,67 @@ describe("a Claude chat whose saved model the CLI says doesn't exist", () => {
     await host.flushStreamedEvents(SESSION)
 
     expect(host.deps.store.getRecord(SESSION)?.options?.model).toBe(RETIRED)
+  })
+
+  // The CLI's word is about the model it was launched with; a pick made since is the user's.
+  it('keeps a model the user picked while the heal was on its way', async () => {
+    const host = await startedWith({ model: RETIRED })
+    const record = () => host.deps.store.getRecord(SESSION)
+    const changed = await host.setOption(CALLER, {
+      envelope: {
+        sessionId: SESSION,
+        clientOperationId: `${Date.now()}-${'1'.padStart(32, '0')}`,
+        expectedRuntimeFence: record()?.lease.runtimeFence ?? 0,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.setOption',
+          sessionId: SESSION,
+          fields: { key: 'model', value: 'opus' }
+        })
+      },
+      key: 'model',
+      value: 'opus'
+    })
+    expect(changed, JSON.stringify(changed)).toMatchObject({ ok: true })
+    expect(record()?.options?.model).toBe('opus')
+
+    await host.handleAdapterEvent({
+      type: 'options-skipped',
+      sessionId: SESSION,
+      fence: record()?.lease.runtimeFence ?? 0,
+      acquisitionGeneration: 'generation-heal',
+      options: { model: RETIRED }
+    })
+
+    expect(record()?.options?.model).toBe('opus')
+  })
+
+  // A slow settings readback lets the turn's error land first; `started` then reports the CLI's
+  // own model, which is still the retired one, and must not write it back.
+  it('does not let a start that lands after the heal write the retired model back', async () => {
+    claude.behave(SESSION, {
+      sendsNoStartFrame: true,
+      startupSettingsReadHangs: true,
+      controlTimeoutMs: 300
+    })
+    const host = await claude.install()
+    await expect(
+      host.attach(CALLER, claude.attachParams(SESSION, null, { options: { model: RETIRED } }))
+    ).resolves.toMatchObject({ ok: true })
+    await vi.waitFor(() =>
+      expect(host.collaboratorsForTests().sessions.get(SESSION)?.child?.phase).toBe('starting')
+    )
+    claude.child(SESSION).handlers.onMessage?.({
+      type: 'system',
+      subtype: 'init',
+      session_id: claudeSessionIdForOrcaSession(SESSION),
+      model: RETIRED
+    })
+    claude.child(SESSION).handlers.onMessage?.(modelNotFoundReply('reply-1'))
+
+    await vi.waitFor(
+      () => expect(host.collaboratorsForTests().sessions.get(SESSION)?.child?.phase).toBe('ready'),
+      { timeout: 5_000 }
+    )
+    expect(host.deps.store.getRecord(SESSION)?.options).not.toHaveProperty('model')
   })
 })

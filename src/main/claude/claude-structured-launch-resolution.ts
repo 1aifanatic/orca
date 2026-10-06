@@ -108,15 +108,9 @@ export function claudeStructuredOptionsWithPermissionMode(
   if (mode === 'bypassPermissions') {
     return options
   }
-  const { 'dangerously-skip-permissions': bypass, ...extraArgs } = options.extraArgs ?? {}
-  return {
-    ...options,
-    permissionMode: mode,
-    // The bypass flag would start the child in bypass. The allow flag starts it in `mode` and
-    // keeps bypass reachable, as the Agent Permissions setting grants (verified on 2.1.280).
-    ...(bypass !== undefined ? { allowDangerouslySkipPermissions: true } : {}),
-    extraArgs
-  }
+  // Known limit: no switch back to bypass later; that needs the allow flag older CLIs reject.
+  const { 'dangerously-skip-permissions': _bypass, ...extraArgs } = options.extraArgs ?? {}
+  return { ...options, permissionMode: mode, extraArgs }
 }
 
 export type ClaudeStructuredLaunch = {

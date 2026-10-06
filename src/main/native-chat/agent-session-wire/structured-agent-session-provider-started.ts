@@ -78,6 +78,7 @@ async function persistStartedOptions(
     options: nativeSessionOptionsFromReport({
       reported: event.reportedOptions,
       restoreSkipped: event.restoreSkippedOptions,
+      ...(event.retiredOptions ? { retired: event.retiredOptions } : {}),
       ...(record.options ? { priorOptions: record.options } : {})
     }),
     now: context.now()
@@ -101,8 +102,11 @@ export function settleStructuredAgentSessionOptionsSkipped(
       return
     }
     const options = { ...record.options }
-    for (const key of event.keys) {
-      delete options[key]
+    for (const [key, value] of Object.entries(event.options)) {
+      // A pick made since the child launched is the user's, whatever the child showed.
+      if (options[key] === value) {
+        delete options[key]
+      }
     }
     try {
       await store.replaceSessionOptions({
