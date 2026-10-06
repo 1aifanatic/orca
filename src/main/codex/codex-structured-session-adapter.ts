@@ -130,7 +130,7 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
     }
     if (event.type === 'notification') {
       // Only an admitted turn end settles; a refused one settles on the retry that lands.
-      settleCodexSendsInEndedTurn(session, event.method, event.params, (settlement) =>
+      settleCodexSendsInEndedTurn(session, event, (settlement) =>
         this.deps.onDispatchSettledLate?.({ sessionId: event.sessionId, ...settlement })
       )
       // After the admission check, so a refused frame is observed by the child records
@@ -280,9 +280,6 @@ export class CodexStructuredSessionAdapter implements StructuredAgentSessionAdap
       input.replacesGoal,
       this.deps.requestTimeoutMs
     )
-
-  // Provider-level: a goal change at rest starts the agent first.
-  supportsThreadGoal = (): boolean => true
 
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
     answerCodexStructuredPrompt({ request, sessions: this.sessions })

@@ -24,8 +24,12 @@ import {
   attach,
   CALLER,
   envelope,
-  hostTestState
+  hostTestState,
+  replaceHostTestState
 } from './structured-agent-session-host-test-harness'
+import { StructuredAgentSessionHost } from './structured-agent-session-host'
+import { StructuredAgentRegistry } from './structured-agent-registry'
+import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
 import {
   HOST_TEST_NOW,
   HOST_TEST_SESSION as SESSION,
@@ -33,6 +37,7 @@ import {
   hostTestMessage
 } from './structured-agent-session-host-test-data'
 import type { StructuredConversationCommandOutcome } from './structured-conversation-command-outcome'
+import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 
 let state: ReturnType<typeof hostTestState>
 let compact: Mock<NonNullable<StructuredAgentSessionAdapter['compact']>>
@@ -332,6 +337,33 @@ it('says only that the compaction failed when the provider refused it without wo
   )
 })
 
+it('refuses the command for an agent that does not declare compaction, whatever its adapter has', async () => {
+  const declared = CODEX_STRUCTURED_AGENT.capabilities
+  const agents = new StructuredAgentRegistry([
+    {
+      definition: {
+        ...CODEX_STRUCTURED_AGENT,
+        capabilities: { ...declared, compact: false, threadGoal: false, rewind: false }
+      },
+      adapter: state.host.deps.adapter
+    }
+  ])
+  replaceHostTestState({
+    store: state.store,
+    host: new StructuredAgentSessionHost({ ...state.host.deps, agents })
+  })
+  state = hostTestState()
+  await attach()
+  const params = compactParams()
+
+  await expect(state.host.conversationCommand(CALLER, params)).resolves.toMatchObject({
+    ok: true,
+    value: { state: 'completed', failure: { kind: 'commandRefused' } }
+  })
+  expect(compact).not.toHaveBeenCalled()
+  expect(await commandTurn(params.envelope.clientOperationId)).toBeUndefined()
+})
+
 it('keeps the reason when the agent the compaction was meant for had already gone', async () => {
   await attach()
   // As the adapter answers for a child it let go after a fault Orca could not prove ended.
@@ -614,7 +646,7 @@ it('writes one exit row when the child dies mid-command, and the loop writes not
     acquisitionGeneration: `generation-${fence}`,
     link: {
       linkId: `link-${fence}`,
-      handle: { provider: 'codex', threadId: THREAD },
+      handle: codexProviderHandle(THREAD),
       // The next child resumes the thread, as a real one does.
       origin: state.store.getRecord(SESSION)?.providerHandleChain.length ? 'resumed' : 'created',
       mintedAtFence: fence,
@@ -664,7 +696,7 @@ it('delivers the next message after a command whose child died and whose settlem
     acquisitionGeneration: `generation-${fence}`,
     link: {
       linkId: `link-${fence}`,
-      handle: { provider: 'codex', threadId: THREAD },
+      handle: codexProviderHandle(THREAD),
       origin: state.store.getRecord(SESSION)?.providerHandleChain.length ? 'resumed' : 'created',
       mintedAtFence: fence,
       observedAt: 1

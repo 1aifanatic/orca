@@ -27,6 +27,8 @@
 
 import { z } from 'zod'
 import { AgentSessionContextUsageSchema } from './agent-session-context-usage-schema'
+import { AgentSessionFailureFactSchema } from './agent-session-failure-fact-schema'
+import { AgentJournalAnsweredTurnSchema } from './agent-session-answered-turn-schema'
 import { knownTags, openDiscriminatedUnion } from './agent-session-journal-open-union'
 import type {
   AgentJournalItemBody,
@@ -201,13 +203,20 @@ const ThreadGoalState = openDiscriminatedUnion(
   ])
 )
 
-/** Open like `state`: a kind, audience or refusal detail a newer host writes must not turn the row
- *  malformed; the fact reader is where an unplaceable one is dropped. */
-const FailureFact = z.object({
-  kind: z.string().min(1),
-  detail: z.object({ text: z.string(), audience: z.string().min(1) }).optional(),
-  refusal: z.object({ code: z.string().min(1), details: z.looseObject({}).optional() }).optional()
-})
+/** A turn's lifecycle, as the turn item and the legacy status row both carry it. */
+const TurnLifecycleFields = {
+  turnId: z.string(),
+  state: z.string().min(1),
+  // Open like `state`: a verdict a newer build writes must not turn the row
+  // malformed. `readAgentJournalTurnOutcome` is where an unplaceable one
+  // becomes unknown rather than an arm a caller would act on.
+  outcome: z.string().min(1).optional(),
+  userItemId: z.string().min(1).optional(),
+  startedAt: z.number().finite().positive().optional(),
+  requestedAt: z.number().finite().positive().optional(),
+  completedAt: z.number().finite().positive().optional(),
+  durationMs: z.number().finite().nonnegative().optional()
+}
 
 const KnownItemBody = z.discriminatedUnion('kind', [
   MessageBody,
@@ -219,6 +228,8 @@ const KnownItemBody = z.discriminatedUnion('kind', [
     input: z.unknown().optional(),
     callId: ProviderCallId.optional(),
     state: z.string().min(1),
+    // Open like `state`: an ending a newer build writes reads as the `state` beside it.
+    endedAs: z.string().min(1).optional(),
     output: BoundedPayload.optional()
   }),
   z.object({ kind: z.literal('diff'), path: z.string(), patch: BoundedPayload }),
@@ -248,35 +259,14 @@ const KnownItemBody = z.discriminatedUnion('kind', [
     text: z.string(),
     presentation: z.string().optional(),
     tone: z.string().optional(),
-    turnLifecycle: z
-      .object({
-        turnId: z.string(),
-        state: z.string().min(1),
-        outcome: z.string().min(1).optional(),
-        userItemId: z.string().min(1).optional(),
-        startedAt: z.number().finite().positive().optional(),
-        requestedAt: z.number().finite().positive().optional(),
-        completedAt: z.number().finite().positive().optional(),
-        durationMs: z.number().finite().nonnegative().optional()
-      })
-      .optional(),
+    turnLifecycle: z.object(TurnLifecycleFields).optional(),
     providerFrame: ProviderFrame.optional(),
     threadGoal: ThreadGoalState.optional(),
-    failure: FailureFact.optional()
+    failure: AgentSessionFailureFactSchema.optional()
   }),
   z.object({
     kind: z.literal('turn'),
-    turnId: z.string(),
-    state: z.string().min(1),
-    // Open like `state`: a verdict a newer build writes must not turn the row
-    // malformed. `readAgentJournalTurnOutcome` is where an unplaceable one
-    // becomes unknown rather than an arm a caller would act on.
-    outcome: z.string().min(1).optional(),
-    userItemId: z.string().min(1).optional(),
-    startedAt: z.number().finite().positive().optional(),
-    requestedAt: z.number().finite().positive().optional(),
-    completedAt: z.number().finite().positive().optional(),
-    durationMs: z.number().finite().nonnegative().optional(),
+    ...TurnLifecycleFields,
     contextUsage: AgentSessionContextUsageSchema.optional(),
     providerTurnId: z.string().min(1).optional()
   })
@@ -329,10 +319,12 @@ export const AgentJournalSubmissionSchema = z.object({
   reason: z.string().nullable(),
   submittedAt: z.number(),
   resolvedAt: z.number().nullable(),
+  submittedSequence: z.number().int().optional(),
+  answeredInTurn: AgentJournalAnsweredTurnSchema.optional(),
   recovered: z.literal(true).optional(),
   handoverRecorded: z.literal(true).optional(),
   handedOverAt: z.number().optional(),
-  rejection: FailureFact.optional(),
+  rejection: AgentSessionFailureFactSchema.optional(),
   // Listed, or the parse strips it: this schema drops unknown keys.
   queuedMessageId: z.string().min(1).optional()
 })
