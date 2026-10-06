@@ -107,12 +107,7 @@ function settleRecorded(
   entry: StructuredAgentSessionPendingSend,
   submission: AgentJournalSubmission | null
 ): void {
-  if (
-    submission &&
-    dispatchWasWithdrawn(submission) &&
-    submission.queuedMessageId === undefined &&
-    submission.keptAsQueuedMessageId === undefined
-  ) {
+  if (submission && dispatchWasWithdrawn(submission) && submission.queuedMessageId === undefined) {
     // A Stop took it back before the agent had it: the text goes back where it was typed.
     handBack(entry, null)
     return
@@ -280,9 +275,6 @@ export function settleStructuredAgentSessionSendsFromJournal(
   for (const submission of submissions) {
     if (submission.queuedMessageId !== undefined) {
       cards.add(submission.queuedMessageId)
-    }
-    if (submission.keptAsQueuedMessageId !== undefined) {
-      cards.add(submission.keptAsQueuedMessageId)
     }
   }
   const rows = new Map(submissions.map((submission) => [submission.clientMessageId, submission]))

@@ -413,12 +413,7 @@ describe('structured agent session message sender', () => {
     const calls = deferredCalls()
     const b = sendStructuredAgentSessionMessage({ sessionId: SESSION, target, text: 'b' })
     await flush()
-    // Even a kept row whose words read as a Stop's: the card holds the text, never the composer.
-    settleStructuredAgentSessionSendsFromJournal(
-      SESSION,
-      [{ ...kept(b.clientMessageId), rejection: { kind: 'cancelled' } }],
-      []
-    )
+    settleStructuredAgentSessionSendsFromJournal(SESSION, [kept(b.clientMessageId)], [])
     expect(await b.outcome).toBe('recorded')
     calls[0].reject(new Error('timeout'))
     await vi.advanceTimersByTimeAsync(STRUCTURED_AGENT_SESSION_SEND_BUDGET_MS)
