@@ -12,6 +12,7 @@ import { useNativeChatFontScale } from './use-native-chat-font-scale'
 import { useNativeChatCanSend } from './use-native-chat-can-send'
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
+import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
 import { NativeChatEmptyState } from './NativeChatEmptyState'
 import { useNativeChatInteractiveSend } from './use-native-chat-interactive-send'
 import { shouldClearNativeChatWorkingSuppression } from './native-chat-working-suppression'
@@ -114,8 +115,6 @@ export function NativeChatResolvedView({
   const interactiveSend = useNativeChatInteractiveSend(terminalTabId, paneKey, targetPtyId, agent)
   const [workingInterrupted, setWorkingInterrupted] = useState(false)
   const previousWorkingEpochRef = useRef<number | null>(null)
-  // True while a question card owns the input region, so the composer is hidden.
-  const [questionActive, setQuestionActive] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<NativeChatComposerHandle>(null)
   // The question card's free-text row; keeps Paste working while the card
@@ -126,13 +125,6 @@ export function NativeChatResolvedView({
     rootRef,
     composerRef,
     questionAnswerInputRef
-  })
-  useNativeChatComposerRevealFocus({
-    rootRef,
-    composerRef,
-    isVisible,
-    isFocusedGroup,
-    composerReady: !questionActive && targetPtyId !== null && canSend
   })
   const contextMenu = useNativeChatContextMenu({
     rootRef,
@@ -222,6 +214,21 @@ export function NativeChatResolvedView({
     paneKey,
     messages: sessionAfterCommandBoundaries.messages,
     transcriptSettled: session.readPhase === 'ready'
+  })
+  // Why one derived value: an answerable card replaces the composer, which would type into the
+  // agent's selector; card and composer never share a commit.
+  const promptCardPresentation = useNativeChatPromptCardPresentation({
+    paneKey,
+    card: promptCard,
+    canSend
+  })
+  const shownPromptCard = promptCardPresentation.card
+  useNativeChatComposerRevealFocus({
+    rootRef,
+    composerRef,
+    isVisible,
+    isFocusedGroup,
+    composerReady: shownPromptCard === null && targetPtyId !== null && canSend
   })
 
   // The streaming preview bubble (if any) sits after the transcript but before
@@ -372,20 +379,19 @@ export function NativeChatResolvedView({
           />
         )}
       </div>
-      {/* Live interactive prompt (question / approval) is the bottom input region
-          (mobile parity). A question card supplies its own answer input, so it
-          fully replaces the composer while active — no stray "Send a message". */}
-      <NativeChatInteractiveCard
-        card={promptCard}
-        send={interactiveSend}
-        canSend={canSend}
-        onShowingQuestionChange={setQuestionActive}
-        answerInputRef={questionAnswerInputRef}
-      />
       {/* canSend reflects the mobile presence-lock: when a mobile client holds
           the pty, the composer shows its guarded state instead of racing the
           mobile driver (R8). */}
-      {questionActive ? null : (
+      {shownPromptCard ? (
+        <NativeChatInteractiveCard
+          key={promptCardPresentation.occurrenceKey ?? 'prompt'}
+          card={shownPromptCard}
+          send={interactiveSend}
+          onDismiss={promptCardPresentation.dismiss}
+          shouldFocus={isVisible && isFocusedGroup}
+          answerInputRef={questionAnswerInputRef}
+        />
+      ) : (
         <NativeChatComposer
           ref={composerRef}
           terminalTabId={terminalTabId}

@@ -1,6 +1,9 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useAppStore } from '../../store'
-import { sendRuntimePtyInput } from '@/runtime/runtime-terminal-inspection'
+import {
+  sendRuntimePtyInput,
+  sendRuntimePtyInputVerified
+} from '@/runtime/runtime-terminal-inspection'
 import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import type { AgentType } from '../../../../shared/native-chat-types'
 import {
@@ -36,10 +39,13 @@ export type NativeChatInteractiveSend = {
   ) => { settleAfterMs: number; waitsForVerifiedDelivery: boolean }
   /** Send a raw control string (e.g. an approval option number or ESC) as-is. */
   sendRaw: (raw: string) => void
+  /** `sendRaw` that resolves to whether the write was acknowledged; unknown delivery is false. */
+  sendRawVerified: (raw: string) => Promise<boolean>
   /** Stop delayed writes without interrupting the agent. */
   cancelPending: () => void
-  /** Reject the active question without requesting session interruption. */
-  cancelAsk: () => void
+  /** Reject the active question without requesting session interruption; resolves to whether
+   *  the Escape was acknowledged. */
+  cancelAsk: () => Promise<boolean>
   /** Interrupt the active turn. */
   cancel: () => void
 }
@@ -85,6 +91,19 @@ export function useNativeChatInteractiveSend(
         'driving'
       )
     },
+    [terminalTabId, targetPtyId]
+  )
+
+  const sendRawVerified = useCallback(
+    (raw: string): Promise<boolean> =>
+      targetPtyId
+        ? sendRuntimePtyInputVerified(
+            getSettingsForAgentTabRuntimeOwner(terminalTabId),
+            targetPtyId,
+            raw,
+            'driving'
+          ).catch(() => false)
+        : Promise.resolve(false),
     [terminalTabId, targetPtyId]
   )
 
@@ -159,8 +178,8 @@ export function useNativeChatInteractiveSend(
 
   const cancelAsk = useCallback(() => {
     cancelInFlight()
-    sendRaw(ESC)
-  }, [cancelInFlight, sendRaw])
+    return sendRawVerified(ESC)
+  }, [cancelInFlight, sendRawVerified])
 
   const cancel = useCallback(() => {
     cancelInFlight()
@@ -176,5 +195,5 @@ export function useNativeChatInteractiveSend(
     sendRaw(ESC)
   }, [agent, cancelInFlight, sendRaw, targetPtyId, terminalTabId])
 
-  return { sendAnswer, sendRaw, cancelPending: cancelInFlight, cancelAsk, cancel }
+  return { sendAnswer, sendRaw, sendRawVerified, cancelPending: cancelInFlight, cancelAsk, cancel }
 }

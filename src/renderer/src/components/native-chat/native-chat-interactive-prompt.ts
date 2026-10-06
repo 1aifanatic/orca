@@ -51,7 +51,8 @@ export type InteractivePromptCard =
   | { kind: 'approval'; approval: ChatApproval }
   | null
 
-const ESCAPE = String.fromCharCode(27)
+/** The terminal approval's Deny reply: Escape is every agent TUI's cancel key. */
+export const NATIVE_CHAT_APPROVAL_DENY_SEND = String.fromCharCode(27)
 
 /** Parse the desktop-only approval envelope; question parsing stays cross-platform. */
 export function parseApprovalFromStatus(
@@ -89,7 +90,10 @@ export function parseApprovalFromStatus(
         label: translate('components.native-chat.approval.allow', 'Allow'),
         send: nativeChatApprovalAcceptKey(agent)
       },
-      { label: translate('components.native-chat.approval.deny', 'Deny'), send: ESCAPE }
+      {
+        label: translate('components.native-chat.approval.deny', 'Deny'),
+        send: NATIVE_CHAT_APPROVAL_DENY_SEND
+      }
     ]
   }
 }

@@ -18,6 +18,10 @@ export type NativeChatApprovalCardProps = {
   onChoose: (option: string) => void
   /** Cancel the active provider turn while this card owns the composer region. */
   onCancel?: () => void
+  /** Escape's action when there is no `onCancel` (and so no cancel button), e.g. Deny. */
+  onEscape?: () => void
+  /** A choice is being delivered: the options wait for its answer. */
+  isSubmitting?: boolean
   shouldFocus?: boolean
   /** A plan body renders as markdown; these make its file paths clickable. */
   onLinkClick?: CommentMarkdownLinkClickHandler
@@ -33,6 +37,8 @@ export function NativeChatApprovalCard({
   approval,
   onChoose,
   onCancel,
+  onEscape,
+  isSubmitting = false,
   shouldFocus = false,
   onLinkClick,
   allowFileUriLinks = false
@@ -64,10 +70,11 @@ export function NativeChatApprovalCard({
           aria-label={approval.title}
           tabIndex={-1}
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && !event.nativeEvent.isComposing && onCancel) {
+            const escape = onCancel ?? onEscape
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing && escape) {
               event.preventDefault()
               event.stopPropagation()
-              onCancel()
+              escape()
             }
           }}
           className="flex min-h-0 w-full flex-1 flex-col gap-2 overflow-hidden rounded-lg border border-input bg-card px-4 py-3 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -170,7 +177,7 @@ export function NativeChatApprovalCard({
               <button
                 key={`${opt.label}-${i}`}
                 type="button"
-                disabled={newerSubject}
+                disabled={newerSubject || isSubmitting}
                 onClick={() => onChoose(opt.send)}
                 className={cn(
                   'rounded-md px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',

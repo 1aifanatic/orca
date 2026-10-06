@@ -23,7 +23,8 @@ const storeState = {
     'tab-1:leaf-1': {
       interactivePrompt: INITIAL_PROMPT as string | undefined,
       toolName: 'AskUserQuestion' as string | undefined,
-      state: undefined as string | undefined
+      state: undefined as string | undefined,
+      stateStartedAt: 1 as number | undefined
     }
   }
 }
@@ -34,10 +35,12 @@ vi.mock('../../store', () => ({
 
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
+import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
 
 const mocks = {
   sendAnswer: vi.fn<NativeChatInteractiveSend['sendAnswer']>(),
   sendRaw: vi.fn<NativeChatInteractiveSend['sendRaw']>(),
+  sendRawVerified: vi.fn<NativeChatInteractiveSend['sendRawVerified']>(),
   cancelPending: vi.fn<NativeChatInteractiveSend['cancelPending']>(),
   cancel: vi.fn<NativeChatInteractiveSend['cancel']>(),
   cancelAsk: vi.fn<NativeChatInteractiveSend['cancelAsk']>()
@@ -52,50 +55,54 @@ const NO_MESSAGES: readonly NativeChatMessage[] = []
 function cardElement(
   canSend = true,
   messages?: readonly NativeChatMessage[],
-  onShowingQuestionChange?: (showing: boolean) => void,
   transcriptSettled = true
 ): React.JSX.Element {
-  return (
-    <CardHarness
-      canSend={canSend}
-      messages={messages}
-      onShowingQuestionChange={onShowingQuestionChange}
-      transcriptSettled={transcriptSettled}
-    />
-  )
+  return <CardHarness canSend={canSend} messages={messages} transcriptSettled={transcriptSettled} />
 }
 
-// The view derives the card and hands it over; this stands in for that view.
+const SEND: NativeChatInteractiveSend = {
+  sendAnswer: mocks.sendAnswer,
+  sendRaw: mocks.sendRaw,
+  sendRawVerified: mocks.sendRawVerified,
+  cancelPending: mocks.cancelPending,
+  cancel: mocks.cancel,
+  cancelAsk: mocks.cancelAsk
+}
+
+// Stands in for the view: it derives the shown card and renders it XOR the composer.
 function CardHarness({
   canSend,
   messages,
-  onShowingQuestionChange,
   transcriptSettled
 }: {
   canSend: boolean
   messages?: readonly NativeChatMessage[]
-  onShowingQuestionChange?: (showing: boolean) => void
   transcriptSettled: boolean
-}): React.JSX.Element | null {
+}): React.JSX.Element {
   const card = useNativeChatInteractivePromptCard({
     paneKey: 'tab-1:leaf-1',
     messages: messages ?? NO_MESSAGES,
     transcriptSettled: transcriptSettled && messages !== undefined
   })
-  return (
+  const presentation = useNativeChatPromptCardPresentation({
+    paneKey: 'tab-1:leaf-1',
+    card,
+    canSend
+  })
+  return presentation.card ? (
     <NativeChatInteractiveCard
-      card={card}
-      canSend={canSend}
-      onShowingQuestionChange={onShowingQuestionChange}
-      send={{
-        sendAnswer: mocks.sendAnswer,
-        sendRaw: mocks.sendRaw,
-        cancelPending: mocks.cancelPending,
-        cancel: mocks.cancel,
-        cancelAsk: mocks.cancelAsk
-      }}
+      key={presentation.occurrenceKey ?? 'prompt'}
+      card={presentation.card}
+      onDismiss={presentation.dismiss}
+      send={SEND}
     />
+  ) : (
+    <div data-testid="composer" />
   )
+}
+
+function composerShown(): boolean {
+  return screen.queryByTestId('composer') !== null
 }
 
 function askCallMessage(question: string): NativeChatMessage {
@@ -136,16 +143,118 @@ function chooseSpacesAndSubmit(): void {
   fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
 }
 
+const APPROVAL = JSON.stringify({ approval: { tool: 'Bash', summary: 'rm -rf build' } })
+
+describe('NativeChatInteractiveCard approvals', () => {
+  const status = storeState.agentStatusByPaneKey['tab-1:leaf-1']
+  beforeEach(() => {
+    vi.clearAllMocks()
+    status.interactivePrompt = APPROVAL
+    status.toolName = undefined
+    status.state = 'waiting'
+    status.stateStartedAt = 10
+  })
+
+  afterEach(() => {
+    cleanup()
+    status.toolName = 'AskUserQuestion'
+  })
+
+  function deferredDelivery(): { settle: (delivered: boolean) => Promise<void> } {
+    let resolve: (delivered: boolean) => void = () => {}
+    mocks.sendRawVerified.mockReturnValue(
+      new Promise<boolean>((done) => {
+        resolve = done
+      })
+    )
+    return {
+      settle: async (delivered) => {
+        await act(async () => resolve(delivered))
+      }
+    }
+  }
+
+  // Why: a composer message typed under an approval lands in the agent's selector.
+  it('replaces the composer and hides only once the choice was delivered', async () => {
+    const delivery = deferredDelivery()
+    render(cardElement())
+    expect(screen.getByText('Allow Bash?')).toBeInTheDocument()
+    expect(composerShown()).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    expect(mocks.sendRawVerified).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
+    expect(mocks.sendRawVerified).toHaveBeenCalledOnce()
+
+    await delivery.settle(true)
+    expect(screen.queryByText('Allow Bash?')).not.toBeInTheDocument()
+    expect(composerShown()).toBe(true)
+  })
+
+  it('keeps the card answerable when the choice was refused or its delivery is unknown', async () => {
+    const delivery = deferredDelivery()
+    render(cardElement())
+    fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    await delivery.settle(false)
+
+    expect(screen.getByText('Allow Bash?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Allow' })).toBeEnabled()
+    expect(composerShown()).toBe(false)
+  })
+
+  it('answers Escape with Deny', () => {
+    mocks.sendRawVerified.mockResolvedValue(true)
+    render(cardElement())
+    fireEvent.keyDown(screen.getByRole('group'), { key: 'Escape' })
+    expect(mocks.sendRawVerified).toHaveBeenCalledWith('\x1b')
+  })
+
+  it('shows a second approval with the same text once it is a new wait', async () => {
+    mocks.sendRawVerified.mockResolvedValue(true)
+    const rendered = render(cardElement())
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    })
+    // The answered wait lingers in status: still the same occurrence.
+    rendered.rerender(cardElement())
+    expect(screen.queryByText('Allow Bash?')).not.toBeInTheDocument()
+
+    status.stateStartedAt = 20
+    rendered.rerender(cardElement())
+    expect(screen.getByText('Allow Bash?')).toBeInTheDocument()
+  })
+
+  it('leaves the composer in place while this window may not send', () => {
+    render(cardElement(false))
+    expect(screen.queryByText('Allow Bash?')).not.toBeInTheDocument()
+    expect(composerShown()).toBe(true)
+  })
+})
+
 describe('NativeChatInteractiveCard answer lifecycle', () => {
-  it('routes question Cancel to rejection and releases the composer slot without Stop', () => {
-    const onShowingQuestionChange = vi.fn()
-    render(cardElement(true, undefined, onShowingQuestionChange))
+  it('routes question Cancel to rejection and releases the composer slot without Stop', async () => {
+    mocks.cancelAsk.mockResolvedValue(true)
+    render(cardElement())
     expect(screen.getByTestId('native-chat-question-card-title')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(composerShown()).toBe(false)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    })
     expect(mocks.cancelAsk).toHaveBeenCalledOnce()
     expect(mocks.cancel).not.toHaveBeenCalled()
     expect(screen.queryByTestId('native-chat-question-card-title')).not.toBeInTheDocument()
-    expect(onShowingQuestionChange).toHaveBeenLastCalledWith(false)
+    expect(composerShown()).toBe(true)
+  })
+
+  it('keeps the question when its Cancel was not delivered', async () => {
+    mocks.cancelAsk.mockResolvedValue(false)
+    render(cardElement())
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    })
+    expect(screen.getByTestId('native-chat-question-card-title')).toBeInTheDocument()
+    expect(composerShown()).toBe(false)
   })
   beforeEach(() => {
     vi.clearAllMocks()
@@ -267,16 +376,15 @@ describe('NativeChatInteractiveCard transcript fallback', () => {
     cleanup()
   })
 
-  it('renders a pending transcript ask and reports the composer replacement', () => {
-    const onShowingQuestionChange = vi.fn()
-    render(cardElement(true, [askCallMessage('Tabs or spaces?')], onShowingQuestionChange))
+  it('renders a pending transcript ask in place of the composer', () => {
+    render(cardElement(true, [askCallMessage('Tabs or spaces?')]))
 
     expect(screen.getByText('Tabs or spaces?')).toBeInTheDocument()
-    expect(onShowingQuestionChange).toHaveBeenCalledWith(true)
+    expect(composerShown()).toBe(false)
   })
 
   it('withholds a retained transcript ask while its replacement read is unsettled', () => {
-    render(cardElement(true, [askCallMessage('Stale transcript question?')], undefined, false))
+    render(cardElement(true, [askCallMessage('Stale transcript question?')], false))
 
     expect(screen.queryByText('Stale transcript question?')).not.toBeInTheDocument()
   })
