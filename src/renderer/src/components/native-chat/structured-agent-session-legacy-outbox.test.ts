@@ -6,7 +6,7 @@ import { agentJournalSubmissionKey } from '../../../../shared/agent-session-jour
 
 const mocks = vi.hoisted(() => ({
   outline: vi.fn(),
-  handBack: vi.fn((): boolean => true),
+  handBack: vi.fn((_sessionId: string, _clientMessageId: string, _body: unknown): boolean => true),
   notice: vi.fn()
 }))
 
@@ -110,6 +110,27 @@ describe('a chat an older build left messages for', () => {
     await recover({})
     expect(mocks.handBack).not.toHaveBeenCalled()
     expect(localStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('hands back a refused, held or outlived-Stop copy once, and never again', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify([
+        {
+          ...saved('refused', 'refused'),
+          state: 'rejected',
+          lastFailure: { kind: 'refused', code: 'agent_session_conflict' }
+        },
+        { ...saved('held', 'held for Retry'), state: 'queued', lastFailure: { kind: 'failed' } },
+        { ...saved('stopped', 'outlived a Stop'), outlivedStop: true }
+      ])
+    )
+    mocks.outline.mockResolvedValue(outline([]))
+    await recover({})
+    expect(mocks.handBack.mock.calls.map((call) => call[1])).toEqual(['refused', 'held', 'stopped'])
+    expect(localStorage.getItem(KEY)).toBeNull()
+    await recover({})
+    expect(mocks.handBack).toHaveBeenCalledTimes(3)
   })
 
   it('says it could not confirm when the host cannot list the whole chat', async () => {

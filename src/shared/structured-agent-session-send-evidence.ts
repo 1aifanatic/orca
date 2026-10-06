@@ -46,7 +46,9 @@ export function structuredAgentSessionSendEvidence(
 ): StructuredAgentSessionSendEvidence {
   if (answer.kind === 'thrown') {
     // A thrown error, a thrown refusal included, is never proof: the host may have written first.
-    return answer.rpcCode !== undefined &&
+    // A call turned away proves only that this one wrote nothing; an earlier one may have landed.
+    return host.firstAttempt &&
+      answer.rpcCode !== undefined &&
       TURNED_AWAY_RPC_CODES.has(answer.rpcCode) &&
       readAgentSessionErrorRefusal(answer.error) === undefined
       ? { kind: 'not-recorded', failure: agentSessionRpcErrorFailure(answer.rpcCode) }
@@ -77,6 +79,7 @@ export function structuredAgentSessionSendEvidence(
   const provesNothing =
     failure.code === 'agent_session_operation_expired' ||
     failure.code === 'agent_session_operation_conflict' ||
+    reason === 'messageIdReused' ||
     reason === 'sessionNotAttached'
   return host.answersWithProof && !provesNothing
     ? { kind: 'not-recorded', failure }
