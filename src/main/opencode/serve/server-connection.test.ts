@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { spawnManagedProviderProcess } from '../../provider-process/managed-provider-process'
 import type {
+  spawnManagedProviderProcess,
   ManagedProviderProcess,
   ProviderProcessExit
 } from '../../provider-process/managed-provider-process'
