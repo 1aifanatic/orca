@@ -6,6 +6,9 @@ on:
         description: Owned PR used for cancellation qualification
         required: true
         type: string
+  push:
+    branches:
+      - nwparker/ci-closed-pr-cancellation
 permissions:
   actions: write
   pull-requests: read
@@ -16,7 +19,7 @@ jobs:
     steps:
       - uses: actions/github-script@v8
         env:
-          PROBE_PR: ${{ inputs.pull_request_number }}
+          PROBE_PR: ${{ inputs.pull_request_number || '25821' }}
         with:
           script: >
             const { data: pr } = await github.rest.pulls.get({ ...context.repo,
