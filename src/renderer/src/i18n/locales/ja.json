@@ -17579,6 +17579,7 @@
       }
     },
     "native-chat": {
+      "reasoning": "推論",
       "contextMenu": {
         "copyOrcaSessionId": "Orca セッション ID をコピー",
         "orcaSessionIdCopied": "Orca セッション ID をコピーしました",
@@ -18115,6 +18116,8 @@
         "queuePaused": "キューは一時停止中です",
         "resume": "再開"
       },
+      "thought": "考えました",
+      "thoughtForDuration": "{{duration}} 考えました",
       "structuredSessionHostDeclined": "{{value0}} をターミナルで開きました",
       "structuredSessionHostDeclinedDescription": "このサーバーはこのワークスペースで {{value0}} チャットを実行できません。",
       "structuredSessionHostUnreachable": "{{value0}} に接続できませんでした",
