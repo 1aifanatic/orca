@@ -18226,7 +18226,7 @@
       },
       "rewind": {
         "unsupported": "This chat can't go back to an earlier message.",
-        "historyNotPaginated": "This older Codex chat can't go back to an earlier message. Start a new chat to use Edit from here.",
+        "historyNotPaginated": "This older Codex chat can't go back to an earlier message. Start a new chat to use Rewind to here.",
         "busy": "Available once the agent is idle and nothing in this chat is waiting on you.",
         "staleEpoch": "The conversation changed. Review the latest messages and try again.",
         "invalidTarget": "The conversation can't go back to this message. Nothing was changed.",
@@ -18239,11 +18239,11 @@
         "refused": "Orca couldn't go back to this message. Check the conversation before continuing.",
         "unavailable": "Wait for the chat to finish connecting.",
         "pending": "Wait for the conversation to go back to the earlier message.",
-        "title": "Edit from here?",
+        "title": "Rewind to here?",
         "confirmation": "Discard this message and everything after it? The message returns to the composer so you can edit and resend it. File changes on disk are kept.",
-        "confirm": "Discard and edit",
+        "confirm": "Rewind",
         "cancel": "Cancel",
-        "action": "Edit from here"
+        "action": "Rewind to here"
       },
       "drop": {
         "title": "Drop to attach to this chat",

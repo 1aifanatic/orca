@@ -13,7 +13,7 @@ const reasonCopy = {
   'history-not-paginated': () =>
     translate(
       'components.native-chat.rewind.historyNotPaginated',
-      "This older Codex chat can't go back to an earlier message. Start a new chat to use Edit from here."
+      "This older Codex chat can't go back to an earlier message. Start a new chat to use Rewind to here."
     ),
   busy: () =>
     translate(

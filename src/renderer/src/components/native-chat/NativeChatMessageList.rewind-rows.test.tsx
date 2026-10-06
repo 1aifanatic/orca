@@ -62,7 +62,7 @@ const settledTurn = (itemId: string, userItemId: string, start: number) =>
 
 const REWIND = { disabledReason: null, request: vi.fn() }
 
-describe('which transcript rows offer Edit from here', () => {
+describe('which transcript rows offer Rewind to here', () => {
   it('offers it only on prompts that opened their own turn', () => {
     const steer = agentJournalSubmissionKey('steer')
     const compact = agentJournalItemKey({ provider: 'orca', clientMessageId: 'cmd-1' })
@@ -116,7 +116,7 @@ describe('which transcript rows offer Edit from here', () => {
     )
     expect(screen.getByText('Make it four')).toBeInTheDocument()
     expect(screen.getByText('/compact')).toBeInTheDocument()
-    const offered = screen.getAllByRole('button', { name: 'Edit from here' })
+    const offered = screen.getAllByRole('button', { name: 'Rewind to here' })
     const after = (later: Element, earlier: Element) =>
       Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING)
     // The opener's and the last prompt's; the steer and the /compact row get none.

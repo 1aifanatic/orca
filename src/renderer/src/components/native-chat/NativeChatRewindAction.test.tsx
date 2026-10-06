@@ -39,7 +39,7 @@ function row(
 describe('user-row rewind affordance', () => {
   it('is keyboard reachable and calls the selected user item from the hover strip', () => {
     const request = row('user')
-    const button = screen.getByRole('button', { name: 'Edit from here' })
+    const button = screen.getByRole('button', { name: 'Rewind to here' })
     button.focus()
     expect(button).toHaveFocus()
     expect(button.parentElement).toHaveClass(
@@ -51,7 +51,7 @@ describe('user-row rewind affordance', () => {
   })
   it('exposes the disabled reason to keyboard users and cannot invoke rewind', async () => {
     const request = row('user', 'Wait for the current turn to finish first.')
-    const button = screen.getByRole('button', { name: 'Edit from here' })
+    const button = screen.getByRole('button', { name: 'Rewind to here' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
     expect(button).toHaveAttribute('aria-description', 'Wait for the current turn to finish first.')
     act(() => button.focus())
@@ -64,10 +64,10 @@ describe('user-row rewind affordance', () => {
   })
   it.each(['assistant', 'reasoning', 'system'] as const)('omits rewind for %s', (role) => {
     row(role)
-    expect(screen.queryByRole('button', { name: 'Edit from here' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Rewind to here' })).toBeNull()
   })
   it('renders nothing where the row is offered no rewind', () => {
     row('user', null, false)
-    expect(screen.queryByRole('button', { name: 'Edit from here' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Rewind to here' })).toBeNull()
   })
 })

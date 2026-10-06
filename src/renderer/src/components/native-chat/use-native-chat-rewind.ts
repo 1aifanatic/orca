@@ -164,12 +164,12 @@ export function useNativeChatRewind(input: RewindInput) {
     let keepBlocked = false
     try {
       const confirmed = await confirm({
-        title: translate('components.native-chat.rewind.title', 'Edit from here?'),
+        title: translate('components.native-chat.rewind.title', 'Rewind to here?'),
         description: translate(
           'components.native-chat.rewind.confirmation',
           'Discard this message and everything after it? The message returns to the composer so you can edit and resend it. File changes on disk are kept.'
         ),
-        confirmLabel: translate('components.native-chat.rewind.confirm', 'Discard and edit'),
+        confirmLabel: translate('components.native-chat.rewind.confirm', 'Rewind'),
         cancelLabel: translate('components.native-chat.rewind.cancel', 'Cancel'),
         confirmVariant: 'destructive',
         cancelVariant: 'ghost'

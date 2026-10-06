@@ -1,4 +1,4 @@
-// Where "Edit from here" is offered: which providers can rewind, and which transcript rows.
+// Where "Rewind to here" is offered: which providers can rewind, and which transcript rows.
 
 import type { AgentSessionRewindSupport } from '../../../../shared/agent-session-rewind'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'

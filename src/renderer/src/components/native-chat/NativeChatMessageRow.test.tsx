@@ -69,7 +69,7 @@ describe('MessageRow control visibility', () => {
     renderMessage('user', 0, { disabledReason: null, request })
     const copy = screen.getByRole('button', { name: 'Copy message' })
     const time = screen.getByRole('time')
-    const edit = screen.getByRole('button', { name: 'Edit from here' })
+    const edit = screen.getByRole('button', { name: 'Rewind to here' })
     expect(Array.from(copy.parentElement!.children)).toEqual([copy, time, edit])
     expect(copy.parentElement).toHaveClass('can-hover:opacity-0', 'group-hover:opacity-100')
     edit.focus()

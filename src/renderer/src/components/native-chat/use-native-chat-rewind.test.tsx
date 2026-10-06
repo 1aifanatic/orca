@@ -89,8 +89,8 @@ describe('structured chat rewind', () => {
     await act(() => view.result.current.request('user', confirm))
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Edit from here?',
-        confirmLabel: 'Discard and edit',
+        title: 'Rewind to here?',
+        confirmLabel: 'Rewind',
         confirmVariant: 'destructive',
         description: expect.not.stringMatching(/in total/)
       })
