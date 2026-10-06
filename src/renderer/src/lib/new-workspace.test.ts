@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   mockInspectRuntimeTerminalProcess,
-  mockSendRuntimePtyInputVerified,
+  mockSendRuntimePtyInputForSequence,
   mockPasteDraftToAgentPtyWhenReady,
   mockShowAutomationPromptNotSentToast,
   mockTrack,
@@ -11,7 +11,7 @@ const {
   startupLeafId
 } = vi.hoisted(() => ({
   mockInspectRuntimeTerminalProcess: vi.fn(),
-  mockSendRuntimePtyInputVerified: vi.fn(),
+  mockSendRuntimePtyInputForSequence: vi.fn(),
   mockPasteDraftToAgentPtyWhenReady: vi.fn(),
   mockShowAutomationPromptNotSentToast: vi.fn(),
   mockTrack: vi.fn(),
@@ -74,7 +74,7 @@ vi.mock('@/store', () => ({
 
 vi.mock('@/runtime/runtime-terminal-inspection', () => ({
   inspectRuntimeTerminalProcess: mockInspectRuntimeTerminalProcess,
-  sendRuntimePtyInputVerified: mockSendRuntimePtyInputVerified
+  sendRuntimePtyInputForSequence: mockSendRuntimePtyInputForSequence
 }))
 
 vi.mock('@/lib/agent-paste-draft', () => ({
@@ -272,7 +272,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
       foregroundProcess: 'aider',
       hasChildProcesses: true
     })
-    mockSendRuntimePtyInputVerified.mockResolvedValue(true)
+    mockSendRuntimePtyInputForSequence.mockResolvedValue(true)
     mockPasteDraftToAgentPtyWhenReady.mockResolvedValue(true)
   })
 
@@ -293,7 +293,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
       }
     })
 
-    expect(mockSendRuntimePtyInputVerified).toHaveBeenCalledWith(
+    expect(mockSendRuntimePtyInputForSequence).toHaveBeenCalledWith(
       {},
       'pty-1',
       'fix the spinner\r',
@@ -303,7 +303,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
   })
 
   it('does not track when follow-up prompt delivery is rejected by the terminal runtime', async () => {
-    mockSendRuntimePtyInputVerified.mockResolvedValue(false)
+    mockSendRuntimePtyInputForSequence.mockResolvedValue(false)
 
     await ensureAgentStartupInTerminal({
       worktreeId: 'wt-1',
@@ -338,7 +338,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
       }
     })
 
-    expect(mockSendRuntimePtyInputVerified).not.toHaveBeenCalled()
+    expect(mockSendRuntimePtyInputForSequence).not.toHaveBeenCalled()
     expect(mockShowAutomationPromptNotSentToast).toHaveBeenCalledWith('aider')
   })
 
@@ -379,7 +379,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
   })
 
   it('does not track when follow-up prompt delivery rejects', async () => {
-    mockSendRuntimePtyInputVerified.mockRejectedValue(new Error('runtime timeout'))
+    mockSendRuntimePtyInputForSequence.mockRejectedValue(new Error('runtime timeout'))
 
     await expect(
       ensureAgentStartupInTerminal({
@@ -807,7 +807,7 @@ describe('ensureAgentStartupInTerminal prompt delivery', () => {
     await vi.advanceTimersByTimeAsync(5_000)
     await delivery
 
-    expect(mockSendRuntimePtyInputVerified).not.toHaveBeenCalled()
+    expect(mockSendRuntimePtyInputForSequence).not.toHaveBeenCalled()
   })
 })
 

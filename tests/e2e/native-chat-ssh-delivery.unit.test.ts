@@ -1,6 +1,11 @@
 import '../../src/main/runtime/rpc/unused-default-rpc-methods.test-fixture'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createSshDelivery, createPairedRuntime, io } from './__mocks__/native-chat-ssh-delivery'
+import {
+  createSshDelivery,
+  createPairedRuntime,
+  sendMobilePermissionResponse,
+  io
+} from './__mocks__/native-chat-ssh-delivery'
 import {
   sendNativeChatAskAnswer,
   sendNativeChatMessage,
@@ -15,7 +20,6 @@ import {
 import { RpcDispatcher } from '../../src/main/runtime/rpc/dispatcher'
 import { TERMINAL_METHODS } from '../../src/main/runtime/rpc/methods/terminal'
 import { sendAgentDraftPasteContentNow } from '../../src/renderer/src/lib/agent-draft-paste-content'
-import { sendMobileNativeChatPermissionResponse } from '../../mobile/src/session/mobile-native-chat-permission-send'
 import type { RpcClient } from '../../mobile/src/transport/rpc-client'
 
 let close: (() => void) | undefined
@@ -171,7 +175,7 @@ describe('prompt delivery through production IPC, provider and paired host', () 
         close: () => {}
       }
       await expect(
-        sendMobileNativeChatPermissionResponse({
+        sendMobilePermissionResponse({
           client,
           terminal: handle,
           deviceToken: null,

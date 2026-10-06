@@ -1,4 +1,7 @@
 import { vi } from 'vitest'
+import { build } from 'esbuild'
+import { fileURLToPath } from 'node:url'
+import type { sendMobileNativeChatPermissionResponse } from '../../../mobile/src/session/mobile-native-chat-permission-send'
 import { SshChannelMultiplexer } from '../../../src/main/ssh/ssh-channel-multiplexer'
 import { SshPtyProvider } from '../../../src/main/providers/ssh-pty-provider'
 import {
@@ -142,4 +145,56 @@ export async function createPairedRuntime(ssh: ReturnType<typeof createSshDelive
     throw new Error('terminal fixture missing')
   }
   return { runtime, handle: terminals[0].handle }
+}
+
+let mobilePermissionModule: Promise<unknown> | undefined
+
+async function bundleMobilePermissionModule(): Promise<unknown> {
+  const result = await build({
+    entryPoints: [
+      fileURLToPath(
+        new URL(
+          '../../../mobile/src/session/mobile-native-chat-permission-send.ts',
+          import.meta.url
+        )
+      )
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+    // Root-only test workers have no Expo tsconfig; execute the unchanged source bundle.
+    tsconfigRaw: {}
+  })
+  const source = result.outputFiles[0]?.text
+  if (!source) {
+    throw new Error('Mobile permission module did not build')
+  }
+  return import(
+    /* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+  )
+}
+
+export async function sendMobilePermissionResponse(
+  args: Parameters<typeof sendMobileNativeChatPermissionResponse>[0]
+): ReturnType<typeof sendMobileNativeChatPermissionResponse> {
+  const mobileModule = await (mobilePermissionModule ??= bundleMobilePermissionModule())
+  if (
+    typeof mobileModule !== 'object' ||
+    mobileModule === null ||
+    !('sendMobileNativeChatPermissionResponse' in mobileModule) ||
+    typeof mobileModule.sendMobileNativeChatPermissionResponse !== 'function'
+  ) {
+    throw new Error('Mobile permission module export is unavailable')
+  }
+  const outcome: unknown = await mobileModule.sendMobileNativeChatPermissionResponse(args)
+  if (
+    outcome === 'accepted' ||
+    outcome === 'rejected' ||
+    outcome === 'unknown' ||
+    outcome === 'queued'
+  ) {
+    return outcome
+  }
+  throw new Error('Mobile permission module returned an invalid outcome')
 }
