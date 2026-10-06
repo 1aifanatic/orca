@@ -132,6 +132,9 @@ export function decideAgentLaunchMode(args: {
   placement: AgentLaunchModePlacement
   settings: AgentLaunchModeSettings | null | undefined
   vocabulary?: AgentLaunchModeVocabulary
+  /** Registered agents (beyond Claude and Codex) this surface can open as structured; defaults to
+   *  every agent this host registers. */
+  registeredStructuredAgents?: readonly string[]
 }): AgentLaunchModeReceipt {
   const { placement, settings } = args
   const vocabulary = args.vocabulary ?? DEFAULT_LAUNCH_VOCABULARY
@@ -156,7 +159,7 @@ export function decideAgentLaunchMode(args: {
     reusesTerminal: Boolean(placement.terminal),
     hostCapabilities: RUNTIME_CAPABILITIES,
     // This host is the one that will run the agent, so its own registrations answer.
-    hostStructuredAgents: REGISTERED_STRUCTURED_AGENTS,
+    hostStructuredAgents: args.registeredStructuredAgents ?? REGISTERED_STRUCTURED_AGENTS,
     // The floating workspace has nowhere to keep a session, so it is decided here rather than left
     // to the host probe below, which cannot answer for a workspace with no record. WSL still is:
     // the create-support probe reads the resolved workspace rather than guessing from a
