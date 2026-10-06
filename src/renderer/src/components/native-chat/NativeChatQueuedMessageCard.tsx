@@ -118,9 +118,7 @@ export function queuedMessageCardSendNow(card: QueuedMessageCard): {
 }
 
 /** Why Edit waits: the prompt card standing in the composer's slot must be answered first. */
-function queuedMessageCardEditHold(
-  editHeldBy: 'question' | 'approval' | null
-): string | null {
+function queuedMessageCardEditHold(editHeldBy: 'question' | 'approval' | null): string | null {
   switch (editHeldBy) {
     case 'question':
       return translate(
@@ -195,7 +193,7 @@ export function NativeChatQueuedMessageCard({
             {card.text}
           </p>
         ) : (
-          <p id={textId} ref={measureLine} className="truncate text-sm">
+          <p id={textId} ref={measureLine} className="truncate text-sm" title={card.text}>
             {card.text}
           </p>
         )}
