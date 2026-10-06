@@ -63,7 +63,6 @@ function stopEntry(sourcePath: string, groupIndex = 0): CodexTrustEntry {
 async function reconcile(): Promise<void> {
   await reconcileRealHomeCodexHookEntries({
     hashes: CODEX_HASHES,
-    knownOrcaHashes: [],
     isEnabled: () => true,
     convertOlderForms: true
   })

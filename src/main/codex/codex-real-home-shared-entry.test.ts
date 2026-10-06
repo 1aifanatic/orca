@@ -102,7 +102,6 @@ async function reconcileWithHooksOff(): Promise<void> {
   reconcileInternals.resetForTesting()
   startCodexHooks({
     isEnabled: () => false,
-    usesRealHome: () => true,
     resolveLaunchHome: () => null,
     pathReady: Promise.resolve()
   })

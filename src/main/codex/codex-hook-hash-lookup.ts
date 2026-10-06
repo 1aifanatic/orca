@@ -149,7 +149,11 @@ export const CODEX_ANSWER_AWAITED: CodexHookAnswer = {
 }
 
 function codexNotFound(codexPath: string): CodexHookAnswer {
-  return { kind: 'pending', failure: `Orca could not find Codex at ${codexPath}` }
+  return {
+    kind: 'pending',
+    failure: `Orca could not find Codex at ${codexPath}`,
+    codexMissing: true
+  }
 }
 
 /** The answer for a launch, waiting at most `waitMs` for one not known yet; null when none came in time. */

@@ -99,7 +99,6 @@ describe('a status-hook problem never moves the system default off ~/.codex', ()
     startCodexHooks({
       pathReady: Promise.resolve(),
       isEnabled: () => true,
-      usesRealHome: () => service.isHostSystemDefaultRealHomeSelected(),
       resolveLaunchHome: () => service.resolveHostCodexHomePathForLaunchReadOnly()
     })
     await _internals.settledForTesting()

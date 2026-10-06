@@ -295,7 +295,6 @@ describe.runIf(binary)('codex hook file-entry binary contract', { timeout: 180_0
     async function reconcileRealHome(): Promise<void> {
       await reconcileRealHomeCodexHookEntries({
         hashes,
-        knownOrcaHashes: [],
         isEnabled: () => true,
         convertOlderForms: false
       })

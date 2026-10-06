@@ -566,7 +566,7 @@ describe('managed-home Codex hook approval', () => {
         state: 'installed',
         detail: 'Approved by Orca; not yet confirmed by Codex (waiting for Codex to answer)'
       })
-      expect(new CodexHookService().getStatus().detail).toBe(status.detail)
+      expect(new CodexHookService().getStatus(managedHome()).detail).toBe(status.detail)
     })
 
     it("keeps the approval main's grant recorded for Orca's entry until Codex answers", async () => {
@@ -597,7 +597,7 @@ describe('managed-home Codex hook approval', () => {
       await service.install()
 
       expect(stopApproval()).toBe('sha256:main-granted')
-      expect(service.getStatus().state).toBe('installed')
+      expect(service.getStatus(managedHome()).state).toBe('installed')
     })
 
     it("does not report a user hook's approval left at Orca's key as Orca's", async () => {
@@ -615,7 +615,7 @@ describe('managed-home Codex hook approval', () => {
         }
       ])
 
-      expect(service.getStatus()).toMatchObject({
+      expect(service.getStatus(managedHome())).toMatchObject({
         state: 'partial',
         detail: "Orca's hook entry is not approved yet (timed out)"
       })

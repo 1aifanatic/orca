@@ -1,8 +1,7 @@
 import { withTimeout } from '../../shared/promise-timeout-fallback'
-import { computeOrcaCodexHookHashes } from './codex-hook-definition'
 import {
   CODEX_HOOK_LAUNCH_WAIT_MS,
-  readEveryKnownCodexHookHashes,
+  readKnownCodexHookAnswer,
   resolveCodexHookAnswer,
   startCodexHookHashLookup
 } from './codex-hook-hash-lookup'
@@ -10,12 +9,10 @@ import type { CodexHookAnswer } from './codex-hook-trust-derivation'
 import { reconcileRealHomeCodexHookEntries } from './codex-real-home-hook-install'
 
 // Keeps Orca's Codex hook entry in ~/.codex true to the setting and the codex in
-// use; a call that finds nothing changed reads two files and spawns nothing.
+// use; a call that finds nothing changed only reads files and spawns nothing.
 
 type ReconcileConfig = {
   isEnabled: () => boolean
-  /** Whether launches run Codex on ~/.codex: system default selected, no custom CODEX_HOME. */
-  usesRealHome: () => boolean
   /** The CODEX_HOME the next native pane gets, null for ~/.codex; may throw while it is unknown. */
   resolveLaunchHome: () => string | null
 }
@@ -31,8 +28,9 @@ type ReconcileRequest = {
 let config: ReconcileConfig | null = null
 let running: Promise<void> | null = null
 let rerun = false
-// Why flags, not counters: a request the next run cannot serve (hooks off, ~/.codex not used) is dropped.
+// Why kept until a run writes ~/.codex: hooks off or another home selected must not drop it.
 let convertRequested = false
+// Why dropped when the next run cannot serve it: the launch it was for has gone ahead.
 let realHomeLaunchRequested = false
 
 // Why short: a pending lookup must leave room in a launch's 3 s wait for the stopgap write.
@@ -92,15 +90,22 @@ export function reconcileCodexHooksForLaunch(): Promise<void> {
  * The home status reports on: the CODEX_HOME the next native pane gets in the
  * app, or ~/.codex in a process that does not know the selection (the CLI's).
  */
-export function resolveCodexHookStatusHome():
+export function resolveCodexHookStatusHome(): CodexHookHomeChoice {
+  return resolveHome(config)
+}
+
+type CodexHookHomeChoice =
   | { kind: 'real' }
   | { kind: 'managed'; path: string }
-  | { kind: 'unknown' } {
-  if (!config) {
+  | { kind: 'unknown' }
+
+// Why one reader: status and the reconcile must agree on which home is in use.
+function resolveHome(current: ReconcileConfig | null): CodexHookHomeChoice {
+  if (!current) {
     return { kind: 'real' }
   }
   try {
-    const path = config.resolveLaunchHome()
+    const path = current.resolveLaunchHome()
     return path === null ? { kind: 'real' } : { kind: 'managed', path }
   } catch {
     return { kind: 'unknown' }
@@ -110,11 +115,10 @@ export function resolveCodexHookStatusHome():
 async function runUntilSettled(): Promise<void> {
   for (;;) {
     rerun = false
-    const request = { convertOlderForms: convertRequested, realHomeLaunch: realHomeLaunchRequested }
-    convertRequested = false
+    const realHomeLaunch = realHomeLaunchRequested
     realHomeLaunchRequested = false
     try {
-      await reconcileOnce(request)
+      await reconcileOnce(realHomeLaunch)
     } catch (error) {
       console.warn('[codex-hook-reconcile] Codex hook reconcile failed:', error)
     }
@@ -126,26 +130,30 @@ async function runUntilSettled(): Promise<void> {
   }
 }
 
-async function reconcileOnce(request: Required<ReconcileRequest>): Promise<void> {
+async function reconcileOnce(realHomeLaunch: boolean): Promise<void> {
   const current = config
-  if (!current?.isEnabled() || !(request.realHomeLaunch || current.usesRealHome())) {
+  if (!current?.isEnabled() || !(realHomeLaunch || resolveHome(current).kind === 'real')) {
     return
   }
   const lookup = resolveCodexHookAnswer()
-  const answer = await withTimeout<CodexHookAnswer | null>(lookup, ANSWER_WAIT_MS, null)
-  if (!answer) {
-    // Why: the stopgap below goes in now, as main's did; Codex's hash replaces it once it answers.
-    void lookup.then(() => reconcileCodexHooks({ realHomeLaunch: request.realHomeLaunch }))
+  const live = await withTimeout<CodexHookAnswer | null>(lookup, ANSWER_WAIT_MS, null)
+  if (!live) {
+    // Why: Codex's hash replaces what goes in below once it answers.
+    void lookup.then(() => reconcileCodexHooks({ realHomeLaunch }))
   }
-  if (answer?.kind === 'refused') {
-    // Why nothing: this Codex version cannot approve Orca's entry; status says why.
+  // Why the saved answer while the live one is pending: it is Codex's own for these bytes, so
+  // a slow version probe at app start changes nothing that answer already put in place.
+  const answer = live && live.kind !== 'pending' ? live : readKnownCodexHookAnswer()
+  if (answer?.kind === 'refused' || (answer?.kind === 'pending' && answer.codexMissing)) {
+    // Why nothing: this Codex cannot approve Orca's entry, or none was found to run it.
     return
   }
+  const convertOlderForms = convertRequested
+  convertRequested = false
   await reconcileRealHomeCodexHookEntries({
     hashes: answer?.kind === 'hashes' ? answer.hashes : null,
-    knownOrcaHashes: [computeOrcaCodexHookHashes(), ...readEveryKnownCodexHookHashes()],
-    isEnabled: () => config?.isEnabled() === true,
-    convertOlderForms: request.convertOlderForms
+    isEnabled: () => current.isEnabled(),
+    convertOlderForms
   })
 }
 

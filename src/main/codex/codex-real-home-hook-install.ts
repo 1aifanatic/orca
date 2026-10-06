@@ -20,7 +20,12 @@ import {
   getCodexManagedHookInstallMaterial,
   getSystemCodexConfigTomlPath
 } from './codex-hook-definition'
-import { findStopgapOrcaHashes, getRealHomeCodexHookHome } from './codex-hook-orca-approvals'
+import {
+  findStopgapOrcaHashes,
+  getRealHomeCodexHookHome,
+  isKnownOrcaHash,
+  readKnownOrcaHashes
+} from './codex-hook-orca-approvals'
 import { getOrcaUserDataPath, getSystemCodexHomePath } from './codex-home-paths'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-moves'
 import { sweepRealHomeCodexHook } from './codex-real-home-hook-sweep'
@@ -48,8 +53,6 @@ import {
 type ReconcileArgs = {
   /** Codex's hashes; null while Codex has not answered, when Orca keeps or computes its own. */
   hashes: CodexHookHashes | null
-  /** Hashes Orca may have approved its entry with before: an approval left behind with one is Orca's. */
-  knownOrcaHashes: readonly CodexHookHashes[]
   isEnabled: () => boolean
   /** App start and the setting turning on; a launch never fights a running older build. */
   convertOlderForms: boolean
@@ -93,7 +96,8 @@ export async function reconcileRealHomeCodexHookEntries(args: ReconcileArgs): Pr
 
 /** 'pruned' when another pass must settle what this one left; else 'settled', even when ~/.codex cannot take the entry. */
 function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
-  const { hooksJsonPath, tomlPath, keySourcePaths: sourcePaths } = getRealHomeCodexHookHome()
+  const home = getRealHomeCodexHookHome()
+  const { hooksJsonPath, tomlPath, keySourcePaths: sourcePaths } = home
   const hooksWritePath = resolveHooksJsonWritePath(hooksJsonPath)
   // Why: the pre-write guard compares against these bytes; a separate later
   // read would let a concurrent save land between parse and write.
@@ -135,6 +139,7 @@ function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
   }
 
   const trustStates = readHookTrustEntries(tomlPath)
+  const knownOrcaHashes = readKnownOrcaHashes(home, material.command)
   // Why the stopgap: an entry already in place keeps its approval, so nothing changes.
   const hashes =
     args.hashes ??
@@ -143,7 +148,7 @@ function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
       hooks,
       keySourcePaths: sourcePaths,
       command: material.command,
-      knownOrcaHashes: args.knownOrcaHashes
+      knownOrcaHashes
     })
   const approvals = sourcePaths.flatMap((keySource) =>
     plan.managedEntries.flatMap((entry) => {
@@ -155,7 +160,7 @@ function reconcilePass(args: ReconcileArgs): 'settled' | 'pruned' {
     })
   )
   const findStale = (states: ReadonlyMap<string, CodexHookTrustState>): string[] =>
-    findStaleOrcaApprovals(states, approvals, sourcePaths, [hashes, ...args.knownOrcaHashes], plan)
+    findStaleOrcaApprovals(states, approvals, sourcePaths, knownOrcaHashes, plan)
   const changed = plan.changedLabels.size > 0
   if (
     !changed &&
@@ -195,7 +200,7 @@ function findStaleOrcaApprovals(
   trustStates: ReadonlyMap<string, CodexHookTrustState>,
   approvals: readonly CodexTrustEntry[],
   sourcePaths: readonly string[],
-  orcaHashes: readonly CodexHookHashes[],
+  knownOrcaHashes: readonly CodexHookHashes[],
   plan: SettlePlan
 ): string[] {
   const wanted = new Set(
@@ -207,8 +212,7 @@ function findStaleOrcaApprovals(
       !plan.untouchedLabels.has(parts.eventLabel) &&
       !wanted.has(normalizeHookTrustKeyForLookup(key)) &&
       sourcePaths.some((sourcePath) => codexHookSourcePathsEqual(parts.sourcePath, sourcePath)) &&
-      state.trustedHash !== undefined &&
-      orcaHashes.some((hashes) => hashes[parts.eventLabel] === state.trustedHash)
+      isKnownOrcaHash(knownOrcaHashes, parts.eventLabel, state.trustedHash)
       ? [key]
       : []
   })

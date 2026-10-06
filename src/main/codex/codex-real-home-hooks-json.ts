@@ -53,12 +53,14 @@ export function readRealHomeHooksFileProblem(): string | null {
     : `Orca cannot add its hook to ${hooksJsonPath}, so Orca shows no status for ~/.codex`
 }
 
-// Why: an unparseable user file is never clobbered, and Codex skips a file with other root keys.
+// Why: an unparseable user file is never clobbered, and Codex skips a file with other root keys
+// or an event that is not a list, whose value Orca would otherwise replace.
 export function isAddableHooksFile(config: HooksConfig | null): config is HooksConfig {
   return (
     config !== null &&
     Object.keys(config).every((key) => key === 'hooks' || key === 'description') &&
-    (config.hooks === undefined || isPlainObject(config.hooks))
+    (config.hooks === undefined ||
+      (isPlainObject(config.hooks) && Object.values(config.hooks).every(Array.isArray)))
   )
 }
 

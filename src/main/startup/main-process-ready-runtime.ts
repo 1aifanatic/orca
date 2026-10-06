@@ -104,7 +104,6 @@ export async function initializeReadyRuntimeServices(): Promise<void> {
   startCodexHooks({
     pathReady: app.isPackaged ? hydrateAgentCliShellPath() : Promise.resolve(),
     isEnabled: () => isAgentStatusHooksEnabledForAgent(store.getSettings(), 'codex'),
-    usesRealHome: () => state.codexRuntimeHome?.isHostSystemDefaultRealHomeSelected() === true,
     resolveLaunchHome: () => {
       if (!state.codexRuntimeHome) {
         throw new Error('Codex runtime home service is not initialized')

@@ -69,7 +69,6 @@ async function writeOrcaEntry(hashes: CodexHookHashes | null): Promise<void> {
   writeFileSync(hooksPath(), '{ "hooks": {} }\n')
   await reconcileRealHomeCodexHookEntries({
     hashes,
-    knownOrcaHashes: [],
     isEnabled: () => true,
     convertOlderForms: true
   })
@@ -152,14 +151,14 @@ describe('Codex hook status for ~/.codex', () => {
 
   it.each([
     ['an unparseable file', '{ not json'],
-    ['unknown top-level fields', JSON.stringify({ hooks: {}, _managed: true })]
+    ['unknown top-level fields', JSON.stringify({ hooks: {}, _managed: true })],
+    ['an event that is not a list', JSON.stringify({ hooks: { Stop: { note: 'mine' } } })]
   ])('reports on ~/.codex, and says why there is no status, for %s', async (_case, content) => {
     await answer({ kind: 'hashes', codexVersion: 'codex-cli 0.160.1', hashes: CODEX_HASHES })
     mkdirSync(join(home, '.codex'), { recursive: true })
     writeFileSync(hooksPath(), content)
     startCodexHooks({
       isEnabled: () => false,
-      usesRealHome: () => true,
       resolveLaunchHome: () => null,
       pathReady: Promise.resolve()
     })
@@ -179,7 +178,6 @@ describe('Codex hook status for ~/.codex', () => {
     const accountHome = join(userData, 'codex-accounts', 'one', 'home')
     startCodexHooks({
       isEnabled: () => false,
-      usesRealHome: () => false,
       resolveLaunchHome: () => accountHome,
       pathReady: Promise.resolve()
     })

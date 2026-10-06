@@ -228,14 +228,14 @@ export class CodexHookService {
   // Why: runtimeHomePath defaults to the shared managed mirror, but a managed
   // account launching against its own self-contained CODEX_HOME passes that
   // per-account home so hooks.json/config.toml/trust land where codex reads.
-  // Only a plain terminal's launch prep skips waiting for Codex's answer.
+  // Only launch prep for a pane that does not run Codex skips waiting for Codex's answer.
   async install(
     runtimeHomePath: string = getOrcaManagedCodexHomePath(),
-    waitsForCodex = true,
+    launchesCodex = true,
     isHooksEnabled: () => boolean = () => true
   ): Promise<AgentHookInstallStatus> {
     const answer =
-      (await resolveCodexHookAnswerForLaunch(waitsForCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0)) ??
+      (await resolveCodexHookAnswerForLaunch(launchesCodex ? CODEX_HOOK_LAUNCH_WAIT_MS : 0)) ??
       CODEX_ANSWER_AWAITED
     return runExclusivelyForRuntimeAndSystemTrustConfig(runtimeHomePath, () => {
       // Why decided in the queue: an Off that landed during the wait has already run, and must win.

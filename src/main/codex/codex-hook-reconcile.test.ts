@@ -68,6 +68,9 @@ import {
 } from './codex-hook-reconcile'
 import { _internals as lookupInternals } from './codex-hook-hash-lookup'
 import { readRealHomeHooksFileProblem } from './codex-real-home-hooks-json'
+import { readCurrentCodexHookStatus } from './codex-hook-status'
+import { writeCodexTrustGrantLedgerHome } from './codex-trust-grant-ledger'
+import { getCodexHookTrustSignature } from './codex-hook-identity'
 import {
   buildCodexManagedHook,
   CODEX_EVENT_LABEL,
@@ -131,7 +134,6 @@ function snapshot(dir: string): Map<string, { bytes: string; mtimeMs: number }> 
 async function start(pathReady: Promise<unknown> = Promise.resolve()): Promise<void> {
   startCodexHooks({
     isEnabled: () => enabled,
-    usesRealHome: () => usesRealHome,
     resolveLaunchHome: () => (usesRealHome ? null : join(userData, 'codex-runtime-home')),
     pathReady
   })
@@ -300,9 +302,7 @@ describe('reconcileCodexHooks', () => {
   })
 
   it("leaves an older build's entry alone on a pane spawn, and converts it at app start", async () => {
-    enabled = false
     await start()
-    enabled = true
     writeHooks({ Stop: [olderBuildStop()] })
 
     scheduleCodexHookReconcile()
@@ -313,19 +313,35 @@ describe('reconcileCodexHooks', () => {
     expect(readHooks().Stop).toEqual([{ hooks: [buildCodexManagedHook(command(), 'Stop')] }])
   })
 
-  it('drops an app-start conversion it could not run, rather than carry it to a spawn', async () => {
-    writeHooks({ Stop: [olderBuildStop()] })
-    enabled = false
-    await start()
+  it.each([
+    ['hooks are off', () => (enabled = false), () => (enabled = true)],
+    ['a managed account is selected', () => (usesRealHome = false), () => (usesRealHome = true)]
+  ])(
+    'keeps an app-start conversion while %s, for the first run that writes ~/.codex',
+    async (_case, block, unblock) => {
+      writeHooks({ Stop: [olderBuildStop()] })
+      block()
+      await start()
 
-    enabled = true
-    scheduleCodexHookReconcile()
-    await settleSpawn()
+      unblock()
+      scheduleCodexHookReconcile()
+      await settleSpawn()
 
-    expect(readHooks().Stop).toEqual([olderBuildStop()])
-    expect(readHooks().SessionStart).toEqual([
-      { hooks: [buildCodexManagedHook(command(), 'SessionStart')] }
-    ])
+      expect(readHooks().Stop).toEqual([{ hooks: [buildCodexManagedHook(command(), 'Stop')] }])
+    }
+  )
+
+  it("writes nothing while the next pane's home is not known yet", async () => {
+    startCodexHooks({
+      isEnabled: () => true,
+      resolveLaunchHome: () => {
+        throw new Error('not ready')
+      },
+      pathReady: Promise.resolve()
+    })
+    await _internals.settledForTesting()
+
+    expect(existsSync(codexHome())).toBe(false)
   })
 
   it('leaves ~/.codex untouched while a managed account or custom CODEX_HOME is selected', async () => {
@@ -359,41 +375,27 @@ describe('reconcileCodexHooks', () => {
     expect(existsSync(codexHome())).toBe(false)
   })
 
-  it("approves with Orca's own hash while Codex cannot be found", async () => {
+  it('creates no ~/.codex while Codex cannot be found, and says so', async () => {
     mocks.codexPath = join(userData, 'missing-codex')
 
     await start()
+    await reconcileCodexHooksForLaunch()
 
-    const key = computeTrustKey({
-      sourcePath: hooksPath(),
-      eventLabel: 'stop',
-      groupIndex: 0,
-      handlerIndex: 0,
-      command: command()
-    })
-    expect(readHookTrustEntries(tomlPath()).get(key)?.trustedHash).toBe(
-      computeOrcaCodexHookHashes().stop
+    expect(existsSync(codexHome())).toBe(false)
+    expect(readCurrentCodexHookStatus().detail).toBe(
+      `Orca could not find Codex at ${mocks.codexPath}`
     )
   })
 
-  it("replaces a user hook's approval left at Orca's key while Codex cannot be found", async () => {
-    mocks.codexPath = join(userData, 'missing-codex')
+  it("leaves Orca's entry and approvals in ~/.codex as they are while Codex cannot be found", async () => {
     await start()
-    const stop = {
-      sourcePath: hooksPath(),
-      eventLabel: 'stop' as const,
-      groupIndex: 0,
-      handlerIndex: 0,
-      command: command()
-    }
-    // Why: keys are positional; removing a user hook ahead of Orca's leaves its approval here.
-    upsertHookTrustEntries(tomlPath(), [{ ...stop, trustedHash: 'sha256:user' }])
+    writeHooks({ Stop: [olderBuildStop()] })
+    const before = snapshot(codexHome())
+    mocks.codexPath = join(userData, 'missing-codex')
 
-    await reconcileCodexHooksForLaunch()
+    await reconcileCodexHooks({ convertOlderForms: true })
 
-    expect(readHookTrustEntries(tomlPath()).get(computeTrustKey(stop))?.trustedHash).toBe(
-      computeOrcaCodexHookHashes().stop
-    )
+    expect(snapshot(codexHome())).toEqual(before)
   })
 
   it('never throws, and does nothing outside the app', async () => {
@@ -493,7 +495,8 @@ describe('a ~/.codex/hooks.json Orca cannot add to', () => {
   it.each([
     ['an unparseable file', '{ not json'],
     ['unknown top-level fields', JSON.stringify({ hooks: {}, _managed: true })],
-    ['a hooks value that is not an object', JSON.stringify({ hooks: [] })]
+    ['a hooks value that is not an object', JSON.stringify({ hooks: [] })],
+    ['an event that is not a list', JSON.stringify({ hooks: { Stop: { note: 'mine' } } })]
   ])(
     'is left byte-for-byte and named as the reason for %s, until it is fixed',
     async (_case, content) => {
@@ -552,5 +555,62 @@ describe("a ~/.codex/hooks.json with Codex's description key", () => {
       written.hooks.Stop.map((group: Hooks[string][number]) => group.hooks[0]!.command)
     ).toEqual([command()])
     expect(readRealHomeHooksFileProblem()).toBeNull()
+  })
+})
+
+describe('an app start whose lookup has not answered within its wait', () => {
+  it("keeps the saved answer's entries, writing nothing, when the version probe is slow", async () => {
+    const before0150 = Object.fromEntries(
+      Object.entries(CODEX_HASHES).filter(([label]) => label !== 'interrupt')
+    )
+    mocks.probeCodexVersion.mockResolvedValue('codex-cli 0.149.0')
+    mocks.deriveCodexHookHashes.mockResolvedValue({
+      kind: 'hashes',
+      codexVersion: 'codex-cli 0.149.0',
+      hashes: before0150
+    })
+    await start()
+    const settled = snapshot(codexHome())
+    // A restart: in-process answers gone, the saved one kept, and `codex --version` slow.
+    _internals.resetForTesting()
+    lookupInternals.resetForTesting()
+    mocks.probeCodexVersion.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve('codex-cli 0.149.0'), 900))
+    )
+
+    await start()
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    await _internals.settledForTesting()
+
+    expect(snapshot(codexHome())).toEqual(settled)
+  })
+
+  it("keeps the approval main's grant recorded for Orca's entry", async () => {
+    const stop = {
+      sourcePath: hooksPath(),
+      eventLabel: 'stop' as const,
+      groupIndex: 0,
+      handlerIndex: 0,
+      command: command(),
+      timeoutSec: 10
+    }
+    writeHooks({ Stop: [{ hooks: [buildCodexManagedHook(command(), 'Stop')] }] })
+    upsertHookTrustEntries(tomlPath(), [{ ...stop, trustedHash: 'sha256:main-granted' }])
+    writeCodexTrustGrantLedgerHome(codexHome(), {
+      binary: null,
+      entries: {
+        [computeTrustKey(stop)]: {
+          signature: getCodexHookTrustSignature(stop),
+          trustedHash: 'sha256:main-granted'
+        }
+      }
+    })
+    mocks.deriveCodexHookHashes.mockImplementation(() => new Promise(() => {}))
+
+    await start()
+
+    expect(readHookTrustEntries(tomlPath()).get(computeTrustKey(stop))?.trustedHash).toBe(
+      'sha256:main-granted'
+    )
   })
 })

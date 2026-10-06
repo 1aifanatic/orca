@@ -65,6 +65,7 @@ import {
   getCodexManagedHookInstallMaterial
 } from './codex-hook-definition'
 import { createCodexHookTrustEntry } from './codex-hook-identity'
+import { memoizeCodexHookAnswer } from './codex-hook-trust-memo'
 import type { CodexHookHashes } from './codex-hook-trust-derivation'
 import {
   computeTrustKey,
@@ -123,18 +124,26 @@ async function reconcile(
     hashes?: CodexHookHashes | null
     userDataPath?: string
     convertOlderForms?: boolean
-    knownOrcaHashes?: CodexHookHashes[]
   } = {}
 ): Promise<'written' | 'unchanged'> {
   const hashes = options.hashes === undefined ? CODEX_HASHES : options.hashes
   if (options.userDataPath) {
     vi.stubEnv('ORCA_USER_DATA_PATH', options.userDataPath)
   }
+  // Why saved: the app's lookup holds the answer an earlier run wrote.
+  memoizeCodexHookAnswer(
+    '/bin/codex',
+    'codex-for-tests',
+    getCodexManagedHookInstallMaterial().command,
+    {
+      kind: 'hashes',
+      codexVersion: 'codex-cli 0.160.1',
+      hashes: CODEX_HASHES
+    }
+  )
   const before = codexFileIdentities()
   await reconcileRealHomeCodexHookEntries({
     hashes,
-    // Why Codex's hashes too: the app's lookup holds the answer an earlier run wrote.
-    knownOrcaHashes: options.knownOrcaHashes ?? [computeOrcaCodexHookHashes(), CODEX_HASHES],
     isEnabled: () => true,
     convertOlderForms: options.convertOlderForms ?? true
   })
@@ -484,7 +493,6 @@ describe('reconcileRealHomeCodexHookEntries', () => {
 
     await reconcileRealHomeCodexHookEntries({
       hashes: CODEX_HASHES,
-      knownOrcaHashes: [],
       isEnabled: () => true,
       convertOlderForms: true
     })

@@ -177,7 +177,8 @@ describe('what a lookup may spawn', () => {
 
     expect(missing).toEqual({
       kind: 'pending',
-      failure: `Orca could not find Codex at ${mocks.codexPath}`
+      failure: `Orca could not find Codex at ${mocks.codexPath}`,
+      codexMissing: true
     })
     writeFileSync(mocks.codexPath, 'codex 0.150.1')
     expect(hashesOf(await resolveCodexHookAnswer())).toEqual(HASHES)
@@ -232,7 +233,8 @@ describe('the answer status reads', () => {
 
     expect(readKnownCodexHookAnswer()).toEqual({
       kind: 'pending',
-      failure: `Orca could not find Codex at ${mocks.codexPath}`
+      failure: `Orca could not find Codex at ${mocks.codexPath}`,
+      codexMissing: true
     })
   })
 })
