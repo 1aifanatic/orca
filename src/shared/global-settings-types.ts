@@ -1,3 +1,4 @@
+import type { NativeChatGlobalSettings } from './native-chat-appearance-settings'
 import type { ExecutionHostId } from './execution-host'
 import type { OrcaWorkspaceLayout } from './orca-workspace-layout'
 import type { GitHubProjectSettings } from './github/project-types'
@@ -39,12 +40,14 @@ import type {
   TaskViewPresetId
 } from './ui-chrome-types'
 import type { SetupScriptLaunchMode } from './worktree/launch-types'
-import type { WorktreeVisibilityDefaults } from './worktree/visibility-defaults'
+import type { WorktreeVisibilityDefaults } from './repo-types'
+
+export type { WorktreeVisibilityDefaults } from './repo-types'
 
 /** MiniMax account region used to select the quota endpoint. */
 export type MiniMaxEndpoint = 'overseas' | 'cn'
 
-export type GlobalSettings = {
+export type GlobalSettings = NativeChatGlobalSettings & {
   workspaceDir: string
   /** Host-owned defaults used when a repository has no explicit visibility override. */
   worktreeVisibilityDefaults?: WorktreeVisibilityDefaults
@@ -236,6 +239,7 @@ export type GlobalSettings = {
   openInApplications?: OpenInApplication[]
   /** Deprecated: migration/backward-compat only. Use PersistedUIState.rightSidebarOpen. */
   rightSidebarOpenByDefault: boolean
+  followSymlinkedDirectories?: boolean
   showGitIgnoredFiles?: boolean
   /** Preferred Source Control changes layout. Per-user, not per-workspace. */
   sourceControlViewMode: SourceControlViewMode
@@ -526,8 +530,7 @@ export type GlobalSettings = {
   aiVaultSearch?: AiVaultSearchSettings
 }
 
-// Re-exported so existing importers keep one entry point; the shapes live in their
-// own files because this one is at the max-lines ceiling.
+// Re-exported so existing importers keep one entry point; the shape lives in its
+// own file because this one is at the max-lines ceiling.
 export type { GhosttyImportPreview } from './ghostty-import-preview'
 export type { OrcaWorkspaceLayout } from './orca-workspace-layout'
-export type { WorktreeVisibilityDefaults } from './worktree/visibility-defaults'

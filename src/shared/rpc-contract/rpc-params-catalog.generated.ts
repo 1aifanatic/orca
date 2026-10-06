@@ -480,6 +480,7 @@ import {
 } from './speech-params'
 import { SshTarget } from './ssh-params'
 import {
+  AgentsParams,
   AttachParams,
   CancelParams,
   ConversationCommandParams,
@@ -593,6 +594,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'agent.launch': AgentLaunch,
   'agent.launchReplay': AgentLaunchReplay,
   'agentHooks.prepareCodexForWslPane': PrepareCodexForWslPaneParams,
+  'agentSession.agents': AgentsParams,
   'agentSession.cancel': CancelParams,
   'agentSession.close': OptionsParams,
   'agentSession.commands': OptionsParams,

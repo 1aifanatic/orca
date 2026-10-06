@@ -11,9 +11,13 @@ vi.mock('./runtime-environment-transport-routing', () => ({
   subscribeRuntimeEnvironment: mocks.subscribe
 }))
 import {
-  closeSubscriptionsForEnvironment,
-  registerRuntimeEnvironmentSubscriptions
-} from './runtime-environment-subscriptions'
+  registerRuntimeEnvironmentSubscriptionHandlers,
+  type PendingRuntimeSubscription,
+  type RetainedRemoteRuntimeSubscription
+} from './runtime-environment-subscription-handlers'
+
+const remoteRuntimeSubscriptions = new Map<string, RetainedRemoteRuntimeSubscription>()
+const pendingSubscriptions = new Map<string, PendingRuntimeSubscription>()
 
 type Callbacks = Parameters<typeof subscribeRuntimeEnvironment>[5]
 const sender = {
@@ -39,9 +43,22 @@ const connection = (): RemoteRuntimeSubscription => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.subscribe.mockReset()
-  registerRuntimeEnvironmentSubscriptions(() => '/profile')
+  registerRuntimeEnvironmentSubscriptionHandlers({
+    getUserDataPath: () => '/profile',
+    remoteRuntimeSubscriptions,
+    pendingSubscriptions
+  })
 })
-afterEach(() => closeSubscriptionsForEnvironment('env'))
+afterEach(() => {
+  for (const pending of pendingSubscriptions.values()) {
+    pending.close()
+  }
+  pendingSubscriptions.clear()
+  for (const subscription of remoteRuntimeSubscriptions.values()) {
+    subscription.close()
+  }
+  remoteRuntimeSubscriptions.clear()
+})
 
 it('reserves an ID while setup is pending so a second open cannot take its ownership', async () => {
   const gate = Promise.withResolvers<RemoteRuntimeSubscription>()
@@ -76,7 +93,7 @@ it('does not let callbacks from an old subscription publish to or remove its rep
   expect(unsubscribe()).toEqual({ unsubscribed: true })
   await open()
   sender.send.mockClear()
-  expect(currentChecks[0]()).toBe(false)
+  expect(connections[0].close).toHaveBeenCalledOnce()
   expect(currentChecks[1]()).toBe(true)
   const payload = { type: 'binary' as const, bytes: new Uint8Array([1]) }
   callbacks[0].onEvent(payload)
@@ -101,7 +118,12 @@ it('does not retain a subscription that closes before setup resolves', async () 
       return value
     }
   )
-  await expect(open()).rejects.toThrow('closed during setup')
+  // The renderer hears the close, and the id is not kept for a dead connection.
+  await expect(open()).resolves.toMatchObject({ subscriptionId: 'reused-id' })
+  expect(sender.send).toHaveBeenCalledWith('runtimeEnvironments:subscriptionEvent', {
+    subscriptionId: 'reused-id',
+    type: 'close'
+  })
   expect(value.close).toHaveBeenCalledOnce()
   mocks.subscribe.mockResolvedValueOnce(connection())
   await expect(open()).resolves.toMatchObject({ subscriptionId: 'reused-id' })
