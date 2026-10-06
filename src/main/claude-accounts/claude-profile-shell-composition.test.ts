@@ -23,7 +23,14 @@ async function composed() {
   const powershell = await import('../powershell-osc133-bootstrap')
   const localBash = await import('../providers/local-pty-shell-ready-bash-rcfile')
   const daemonBash = await import('../daemon/daemon-bash-shell-ready-rcfile')
+  const zsh = await import('../zsh-startup-wrapper-builder')
+  const localZsh = await import('../providers/local-pty-shell-ready-wrapper-fileset')
+  const daemonZsh = await import('../daemon/daemon-zsh-shell-ready-wrapper-spec')
   return {
+    zsh: [
+      zsh.buildZshStartupHook(localZsh.getLocalZshWrapperSpec()),
+      zsh.buildZshStartupHook(daemonZsh.getDaemonZshWrapperSpec())
+    ],
     bash: [
       localBash.getBashShellReadyRcfileContent(),
       daemonBash.getDaemonBashShellReadyRcfileContent()
@@ -38,7 +45,7 @@ async function composed() {
 
 it('gives every composed shell startup and the plain fish vendor snippet the claude function', async () => {
   const on = await composed()
-  for (const text of on.bash) {
+  for (const text of [...on.bash, ...on.zsh]) {
     expect(text).toContain('ORCA_CLAUDE_INJECTED_CONFIG_DIR')
   }
   const { getFishVendorConfSnippet } = await import('../fish-xdg-data-dirs-handoff')

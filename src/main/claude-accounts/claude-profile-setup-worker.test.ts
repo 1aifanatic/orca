@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { build } from 'esbuild'
@@ -58,4 +58,20 @@ it('runs account setup in the built worker entry, off the calling thread', async
       join(root, 'missing-entry.js')
     )
   ).rejects.toThrow()
+})
+
+it('rejects and stops a setup worker that never finishes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'claude-setup-worker-'))
+  roots.push(root)
+  const hung = join(root, 'hung.js')
+  writeFileSync(hung, 'setInterval(() => {}, 1000)\n')
+  const job = {
+    dataRoot: root,
+    profile: describeClaudeProfile(root, 'a', { executionHostId: 'local', runtime: 'host' }),
+    userHome: root,
+    userConfigDir: undefined,
+    hooks: false,
+    claudeVersion: undefined
+  }
+  await expect(runClaudeProfileSetupInWorker(job, hung, 50)).rejects.toThrow('timed out')
 })

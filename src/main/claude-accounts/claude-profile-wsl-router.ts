@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { lstat } from 'node:fs/promises'
+import { lstat, readFile } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import { CLAUDE_PROFILE_POINTER_ENV } from '../../shared/claude-profile-routing'
@@ -7,10 +7,11 @@ import { WSL_CLAUDE_PROFILE_HELPER_FILENAME } from '../../shared/relay-artifacts
 import { parseWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
 import { getWslHomeAsync, listRunningWslDistrosAsync } from '../wsl'
 import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
-import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
+import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
 import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
+  claudeProfileMarkerPath,
   type ClaudeProfileDescriptor
 } from './claude-profile-paths'
 import {
@@ -69,20 +70,22 @@ export class ClaudeWslProfileRouter {
     return { home, profile: id ? wslClaudeProfile(home, distro, id).profile : null }
   }
 
+  private pointerIn(home: string): string {
+    return posix.join(home, wslClaudeProfilePointer(this.args.dataRoot))
+  }
+
   /** Pointer first, then setup in the background, as on the host. No accounts here means no pointer. */
   async publish(distro: string): Promise<void> {
     const { home, profile } = await this.resolve(distro)
-    const pointer = posix.join(home, wslClaudeProfilePointer(this.args.dataRoot).slice(2))
     if (!this.accountIn(distro)) {
-      await runGuest(distro, { script: 'rm -f -- "$1"', args: [pointer], loginPath: 'none' })
+      await runGuest(distro, {
+        script: 'rm -f -- "$1"',
+        args: [this.pointerIn(home)],
+        loginPath: 'none'
+      })
       return
     }
-    await runGuest(distro, {
-      script:
-        'umask 077; mkdir -p -- "${1%/*}" && printf %s "$2" > "$1.tmp" && mv -f -- "$1.tmp" "$1"',
-      args: [pointer, profile?.home ?? ''],
-      loginPath: 'none'
-    })
+    await writePointer(distro, this.pointerIn(home), profile?.home ?? '')
     // Why the existence check: setup creates the folder, and only sign-in may create an account.
     if (profile && (await guestStat(distro, profile.home))?.isDirectory()) {
       this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
@@ -95,13 +98,15 @@ export class ClaudeWslProfileRouter {
   async prepareLaunch(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
     const { home, profile } = await this.resolve(distro)
     await this.assertPresent(distro, profile)
-    // Why the marker: setup's ownership gate writes it, so its absence means never set up.
-    const marker = profile ? posix.join(posix.dirname(profile.home), 'profile.json') : null
-    if (profile && marker && !(await guestStat(distro, marker))?.isFile()) {
+    if (profile && !(await guestStat(distro, claudeProfileMarkerPath(profile)))?.isFile()) {
       await this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
         console.warn('[claude-profile] WSL account setup failed:', error)
         throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
       })
+    }
+    // Why: a missing or stale guest pointer would run the pane's `claude` under another account.
+    if (this.accountIn(distro)) {
+      await writePointer(distro, this.pointerIn(home), profile?.home ?? '')
     }
     return this.preparationFor(distro, home, profile)
   }
@@ -150,7 +155,7 @@ export class ClaudeWslProfileRouter {
       wslDistro: distro,
       wslLinuxConfigDir: configHome,
       envPatch: {
-        [CLAUDE_PROFILE_POINTER_ENV]: wslClaudeProfilePointer(this.args.dataRoot),
+        [CLAUDE_PROFILE_POINTER_ENV]: `~/${wslClaudeProfilePointer(this.args.dataRoot)}`,
         ...(profile
           ? { CLAUDE_CONFIG_DIR: profile.home, [CLAUDE_INJECTED_CONFIG_DIR_ENV]: profile.home }
           : {})
@@ -179,6 +184,20 @@ async function guestStat(distro: string, linuxPath: string) {
   return lstat(toWindowsWslPath(linuxPath, distro)).catch(() => null)
 }
 
+/** Writes in the guest only when the file differs, so a launch reads it over the share instead. */
+async function writePointer(distro: string, pointer: string, home: string): Promise<void> {
+  const current = await readFile(toWindowsWslPath(pointer, distro), 'utf8').catch(() => null)
+  if (current === home) {
+    return
+  }
+  await runGuest(distro, {
+    script:
+      'umask 077; mkdir -p -- "${1%/*}" && printf %s "$2" > "$1.tmp" && mv -f -- "$1.tmp" "$1"',
+    args: [pointer, home],
+    loginPath: 'none'
+  })
+}
+
 async function runGuest(distro: string, spec: WslSpec, timeoutMs = 15_000): Promise<string> {
   const result = await runWslProcess({ ...spec, distro, timeoutMs, maxOutputBytes: 256 * 1024 })
   if (result.code !== 0 || result.timedOut) {
@@ -191,7 +210,7 @@ async function runGuest(distro: string, spec: WslSpec, timeoutMs = 15_000): Prom
 
 /** Step 1's setup, run as Linux inside the distro on Orca's pinned Node. */
 const runWslSetup: WslSetup = async (distro, home, accountId) => {
-  const helper = wslRelayBundleDirs()
+  const helper = relayBundleCandidates('wsl')
     .map((dir) => join(dir, WSL_CLAUDE_PROFILE_HELPER_FILENAME))
     .find(existsSync)
   if (!helper) {

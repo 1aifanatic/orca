@@ -37,6 +37,8 @@ export const AGENT_SESSION_FAILURE_COPY = {
     'While a Claude account is added in WSL, Claude chats need a Windows Claude account.',
   launchFolderMissing:
     'The folder this chat ran in no longer exists. Restore it to continue this chat.',
+  historyInOtherAccount:
+    "This chat's history is in another Claude account. Switch back to that account to continue it.",
   chooseClaudeAccount: 'Choose or add one in Claude Accounts settings.',
   chooseClaudeAccountThenRunCommand:
     'Choose or add one in Claude Accounts settings, then run /{{command}} again.',

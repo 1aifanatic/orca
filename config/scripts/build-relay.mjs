@@ -341,7 +341,6 @@ for (const platform of RELAY_BUILD_PLATFORMS) {
     target: 'node18',
     format: 'cjs',
     outfile: join(outDir, WSL_CLAUDE_PROFILE_HELPER_FILENAME),
-    external: ['electron'],
     minify: true,
     define: { 'process.env.NODE_ENV': '"production"' }
   })

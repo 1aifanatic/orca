@@ -68,8 +68,6 @@ export type ZshStartupHookSpec = {
   startupCommandDelivery: boolean
   /** Comment heading the overlay restores inside the hook. */
   overlayRestoreComment: string
-  /** The selected-account `claude` function; relay panes never carry its pointer env. */
-  claudeAccountFunction: boolean
   restores: ZshWrapperRestoreSpec
 }
 
@@ -188,11 +186,10 @@ ${joinBlocks([
   indentBlock(ORCA_CLI_POSIX_PATH_RESTORE, '  ').replace(/\n$/, ''),
   featureGuard('overlay', getOverlayRestoreBlocks(spec)),
   // Why outside the overlay guard: a system-default Codex home carries no overlay key.
-  indentBlock(
-    getPosixCodexShellLaunchPreflight() +
-      (spec.claudeAccountFunction ? getPosixClaudeShellFunction() : ''),
-    '  '
-  ).replace(/\n$/, ''),
+  indentBlock(getPosixCodexShellLaunchPreflight() + getPosixClaudeShellFunction(), '  ').replace(
+    /\n$/,
+    ''
+  ),
   // Why no /etc/zshrc repair branch: ZDOTDIR was handed back before that file
   // ran, so the value it derives is the user's own path. #11044 is unreachable.
   `  if [[ -n "\${_orca_histfile:-}" ]]; then

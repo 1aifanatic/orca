@@ -18,12 +18,12 @@ export function wslClaudeProfile(
 
 /**
  * The guest's which-account file, relative to the guest home: a pane spawn cannot ask the guest
- * for its home, so the `claude` function expands `~/`. Named after the host data folder so a dev
- * build and the packaged app never share one, as their host pointers do not.
+ * for its home, so the pane value is `~/` plus this and the `claude` function expands it. Named
+ * after the host data folder so a dev build and the packaged app never share one.
  */
 export function wslClaudeProfilePointer(hostDataRoot: string): string {
   const build = basename(hostDataRoot).replace(/[^\w.-]/g, '_')
-  return `~/.local/share/orca/claude-profiles/selected-wsl-${build}`
+  return `.local/share/orca/claude-profiles/selected-wsl-${build}`
 }
 
 /** A saved WSL account's guest folder; null for an older Orca's folder, which holds no login. */

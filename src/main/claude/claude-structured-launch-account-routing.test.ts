@@ -72,3 +72,59 @@ it('launches each acquisition under the current selection, not the account it wa
   settings.activeClaudeManagedAccountId = null
   expect((await resolve({ identity })).claudeConfigDir).toBe('/user/own')
 })
+
+it('refuses to resume a chat whose transcript is in another account instead of starting fresh', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'claude-launch-routing-'))
+  roots.push(root)
+  const home = join(root, 'claude-profiles', 'a', 'home')
+  mkdirSync(home, { recursive: true })
+  writeFileSync(join(root, 'claude-profiles', 'a', 'profile.json'), '{}')
+  installClaudeProfileRouter(
+    new ClaudeProfileRouter({
+      getSettings: () => ({
+        claudeManagedAccounts: [],
+        activeClaudeManagedAccountId: 'a',
+        activeClaudeManagedAccountIdsByRuntime: undefined,
+        agentStatusHooksEnabled: false,
+        disabledTuiAgents: []
+      }),
+      dataRoot: root,
+      userHome: join(root, 'personal'),
+      env: {}
+    })
+  )
+  const handle = claudeProviderHandle('ran-under-b', 'leaf-1')
+  const record = {
+    ...agentSessionRecordFixture(),
+    providerHandleChain: [
+      { linkId: 'link-1', origin: 'created' as const, mintedAtFence: 1, observedAt: 1, handle }
+    ]
+  }
+  const transcriptHomes = new Set<string>()
+  const resolve = createClaudeStructuredLaunchResolver({
+    store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
+    resolveLaunchArgs: () => [],
+    resolveWorkspacePath: async (id) => `/repos/${id}`,
+    resolveCommand: () => '/usr/local/bin/claude',
+    resolveInheritedEnv: async () => ({ PATH: '/usr/bin' }),
+    resolveAuthPolicy: () => ({ stripAuthEnv: false }),
+    hasTranscript: async ({ claudeConfigDir }) => transcriptHomes.has(claudeConfigDir)
+  })
+  const identity = {
+    sessionId: record.sessionId,
+    workspaceId: 'workspace-1',
+    hostId: 'local',
+    agent: 'claude' as const,
+    providerHandle: handle
+  }
+
+  await expect(resolve({ identity })).rejects.toMatchObject({
+    name: 'AgentSessionPreSpawnError',
+    reason: 'historyInOtherAccount'
+  })
+
+  transcriptHomes.add(home)
+  const resumed = await resolve({ identity })
+  expect(resumed.options).toMatchObject({ resume: 'ran-under-b' })
+  expect(resumed.resumeLeafUuid).toBe('leaf-1')
+})

@@ -190,6 +190,25 @@ __orca_deferred_init() {
     }
   fi
   unset __orca_codex_binary
+  __orca_claude_binary="$(unalias claude 2>/dev/null || :; command -v claude 2>/dev/null || :)"
+  if [[ -n "${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "${__orca_claude_binary:-}" && -x "${__orca_claude_binary}" ]]; then
+    function claude {
+      local __orca_claude_home __orca_claude_pointer="${ORCA_CLAUDE_PROFILE_POINTER:-}"
+      # Why: a WSL pane's pointer is relative to the guest home, which the host cannot know at spawn.
+      case "$__orca_claude_pointer" in '~/'*) __orca_claude_pointer="${HOME:-}/${__orca_claude_pointer#??}" ;; esac
+      __orca_claude_home="$(cat "$__orca_claude_pointer" 2>/dev/null || :)"
+      if [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "${ORCA_CLAUDE_INJECTED_CONFIG_DIR:-}" ]; then
+        [ -z "$__orca_claude_home" ] || [ "$__orca_claude_home" = "$CLAUDE_CONFIG_DIR" ] || printf '%s\n' 'Orca: CLAUDE_CONFIG_DIR is set in this shell, so the Claude account selected in Orca is not used here.' >&2
+        command claude "$@"; return
+      fi
+      if [ -z "$__orca_claude_home" ]; then
+        ( unset CLAUDE_CONFIG_DIR ORCA_CLAUDE_INJECTED_CONFIG_DIR; command claude "$@" ); return
+      fi
+      if [ ! -d "$__orca_claude_home" ]; then printf '%s\n' "Orca: the selected Claude account's folder is missing. Sign in to it again or choose another account." >&2; return 1; fi
+      ( unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN AWS_BEARER_TOKEN_BEDROCK; case "${ANTHROPIC_CUSTOM_HEADERS:-}" in *[aA][uU][tT][hH][oO][rR][iI][zZ][aA][tT][iI][oO][nN]*|*[xX]-[aA][pP][iI]-[kK][eE][yY]*|*[aA][pP][iI]-[kK][eE][yY]*|*[bB][eE][aA][rR][eE][rR]*) unset ANTHROPIC_CUSTOM_HEADERS ;; esac; export CLAUDE_CONFIG_DIR="$__orca_claude_home" ORCA_CLAUDE_INJECTED_CONFIG_DIR="$__orca_claude_home"; command claude "$@" )
+    }
+  fi
+  unset __orca_claude_binary
   if [[ -n "${_orca_histfile:-}" ]]; then
     HISTFILE="$_orca_histfile"
   fi

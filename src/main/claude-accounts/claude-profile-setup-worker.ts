@@ -25,10 +25,16 @@ function workerPath(): string {
 /** One worker per setup: a first setup can merge a large history tree with sync fs calls. */
 export function runClaudeProfileSetupInWorker(
   job: ClaudeProfileSetupJob,
-  path = workerPath()
+  path = workerPath(),
+  timeoutMs = 60_000
 ): Promise<ClaudeProfileSetupReport> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path, { workerData: job })
+    // Why: a hung setup would hold the router's in-flight entry, and every launch waiting on it, forever.
+    const timer = setTimeout(() => {
+      reject(new Error('Claude account setup timed out'))
+      void worker.terminate()
+    }, timeoutMs)
     let result:
       | { ok: true; report: ClaudeProfileSetupReport }
       | { ok: false; error: string }
@@ -38,6 +44,7 @@ export function runClaudeProfileSetupInWorker(
     })
     worker.once('error', reject)
     worker.once('exit', (code) => {
+      clearTimeout(timer)
       if (result?.ok) {
         resolve(result.report)
       } else {

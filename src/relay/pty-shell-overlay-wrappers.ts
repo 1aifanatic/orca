@@ -31,7 +31,6 @@ function getRelayZshWrapperSpec(): ZshStartupHookSpec {
     readyMarkerEscaped: SHELL_READY_MARKER_ESCAPED,
     osc133CommandMarkers: false,
     startupCommandDelivery: false,
-    claudeAccountFunction: false,
     overlayRestoreComment:
       '# Why: remote startup files can re-export user defaults after relay spawn.',
     restores: {

@@ -8,7 +8,6 @@ export function getDaemonZshWrapperSpec(): ZshStartupHookSpec {
     readyMarkerEscaped: SHELL_READY_MARKER,
     osc133CommandMarkers: true,
     startupCommandDelivery: false,
-    claudeAccountFunction: true,
     overlayRestoreComment:
       "# Why: ~/.zshrc can export the user's default OpenCode config after spawn.",
     restores: {

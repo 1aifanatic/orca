@@ -6,7 +6,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
+import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 
 import type { MultiplexerTransport } from '../ssh/ssh-channel-multiplexer'
 import {
@@ -33,7 +33,7 @@ const INSTALL_TIMEOUT_MS = 30_000
 export type WslHookRelayBundle = { jsPath: string; version: string }
 
 export function resolveWslHookRelayBundle(): WslHookRelayBundle | null {
-  for (const dir of wslRelayBundleDirs()) {
+  for (const dir of relayBundleCandidates('wsl')) {
     const jsPath = join(dir, WSL_HOOK_RELAY_BUNDLE_NAME)
     const versionPath = join(dir, WSL_HOOK_RELAY_VERSION_FILE)
     if (existsSync(jsPath) && existsSync(versionPath)) {
