@@ -1,6 +1,6 @@
 import type { SshTarget, SshConnectionState } from '../../shared/ssh-types'
 import { SshConnection, type SshConnectionCallbacks } from './ssh-connection'
-import { recordSshConnectionOpened } from './ssh-connection-attribution'
+import { recordSshConnectionOpened, recordSshConnectionReused } from './ssh-connection-attribution'
 
 export class SshConnectionManager {
   private connections = new Map<string, SshConnection>()
@@ -23,6 +23,7 @@ export class SshConnectionManager {
   async connect(target: SshTarget): Promise<SshConnection> {
     const existing = this.connections.get(target.id)
     if (existing?.getState().status === 'connected') {
+      recordSshConnectionReused(existing)
       return existing
     }
 

@@ -161,15 +161,19 @@ function moveDeps() {
       }
       return { terminated: leases.length, unverifiable: 0 }
     }),
-    relayTerminals: async (target: SshTarget) => {
-      // No relay session: the host's census, which found no relay endpoint, decides with the leases.
-      const proof = await assessOrcadMigrationTerminals(store, target.id, null, hostIdle)
-      return proof.verdict === 'exited'
-        ? { verdict: 'exited' as const, count: 0 }
-        : { verdict: proof.verdict, count: proof.ptyIds.length }
-    },
-    // The reconnect's server decision: the census passed, so it converts.
+    // The reconnect's server decision: its census (no relay session, so the host's census, which
+    // found no relay endpoint, decides with the leases) keeps the relay or lets it convert.
     connect: vi.fn(async (targetId: string) => {
+      const proof = await assessOrcadMigrationTerminals(store, targetId, null, hostIdle)
+      if (proof.verdict !== 'exited') {
+        status = {
+          kind: 'relay',
+          reason:
+            proof.verdict === 'live' ? 'relay_terminals_live' : 'relay_terminals_unverifiable',
+          terminals: proof.ptyIds.length
+        }
+        return
+      }
       const result = await convertSshTargetToManagedOrcad(userDataPath, {
         sshTargetId: targetId,
         name: TARGET.label,
@@ -186,8 +190,7 @@ function moveDeps() {
     }),
     serverStatus: () => status,
     report: vi.fn(),
-    releaseRelay: vi.fn(async () => {}),
-    publishRelayStatus: vi.fn()
+    releaseRelay: vi.fn(async () => {})
   }
 }
 
@@ -255,12 +258,5 @@ describe('moving a host whose live relay terminals kept it on the relay', () => 
     // Reconnected on the relay, whose own gate refuses the conversion the same way.
     expect(deps.connect).toHaveBeenCalledWith(TARGET.id)
     expect(destination.stage).not.toHaveBeenCalled()
-    expect(deps.publishRelayStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ id: TARGET.id }),
-      {
-        verdict: 'unverifiable',
-        count: 1
-      }
-    )
   })
 })
