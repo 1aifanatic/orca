@@ -1647,8 +1647,11 @@ export function createRemoteRuntimePtyTransport(
             return
           }
           if (!autoRecoveryWindowSpent) {
-            // Why: a published surface is the evidence a parked inventory wait is waiting for, unless that wait needs a replacement handle.
-            if (getRecoveryReplacementPolicy(previousHandle) !== 'require-replacement') {
+            // Why: a published surface is the evidence a parked wait (not a scheduled backoff) is waiting for, unless it needs a replacement handle.
+            if (
+              recovery.currentPhase === 'recovering' &&
+              getRecoveryReplacementPolicy(previousHandle) !== 'require-replacement'
+            ) {
               recovery.retryNow()
             }
             return
