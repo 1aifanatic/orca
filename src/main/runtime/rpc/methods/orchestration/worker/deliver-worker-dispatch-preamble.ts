@@ -15,7 +15,6 @@ import { chatAssigneeSessionId } from '../../../../orchestration/chat-assignee'
 import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 import { sendChatTask, type ChatTaskDelivery } from '../chat-task-delivery'
 import { dispatchTaskSource } from '../../../../orchestration/dispatch-task-source'
-import type { DispatchContextRow } from '../../../../orchestration/types'
 import type { AgentMessageSource } from '../../../../../../shared/agent-session-message-source'
 import type { WorkerTurnStartObservation } from './worker-start-turn-observation'
 import type { createStructuredWorkerSessionForWorktree } from './worker-topology'
@@ -39,6 +38,7 @@ export async function deliverWorkerDispatchPreamble(args: {
   terminalHandle: string
   dispatchId: string
   dispatchDepth: number
+  runId: string
   taskId: string
   taskSpec: string
   coordinatorHandle: string
@@ -69,7 +69,14 @@ export async function deliverWorkerDispatchPreamble(args: {
     cliCommand: runtime.getTerminalOrchestrationCliCommand(terminalHandle)
   })
   if (chatAssigneeSessionId(terminalHandle)) {
-    const { dispatch, from } = workerTaskSource(args)
+    const dispatch = args.db.getDispatchContextById(args.dispatchId)
+    if (!dispatch) {
+      throw new OrchestrationError(
+        'dispatch_not_found',
+        `Dispatch ${args.dispatchId} was not found.`
+      )
+    }
+    const from = workerTaskSource(args)
     const delivery = await sendChatTask({ db: args.db, dispatch, from, preamble })
     return { structuredTurnStart: chatTaskTurnStart(delivery) }
   }
@@ -79,7 +86,7 @@ export async function deliverWorkerDispatchPreamble(args: {
       sessionId: structuredSession.identity.sessionId,
       dispatchId: args.dispatchId,
       preamble,
-      from: workerTaskSource(args).from
+      from: workerTaskSource(args)
     })
     return {
       structuredTurnStart:
@@ -132,22 +139,19 @@ function chatTaskTurnStart(delivery: ChatTaskDelivery): WorkerTurnStartObservati
   }
 }
 
-/** The Dispatch and who its task is from, for a worker whose chat shows the sender. */
+/** Who the task is from, for a worker whose chat shows the sender. */
 function workerTaskSource(args: {
   runtime: OrcaRuntimeService
   db: OrchestrationDb
   dispatchId: string
+  runId: string
+  taskId: string
   coordinatorHandle: string
-}): { dispatch: DispatchContextRow; from: AgentMessageSource } {
-  const dispatch = args.db.getDispatchContextById(args.dispatchId)
-  if (!dispatch) {
-    throw new OrchestrationError('dispatch_not_found', `Dispatch ${args.dispatchId} was not found.`)
-  }
-  const from = dispatchTaskSource({
+}): AgentMessageSource {
+  return dispatchTaskSource({
     db: args.db,
-    dispatch,
+    dispatch: { id: args.dispatchId, run_id: args.runId, task_id: args.taskId },
     from: args.coordinatorHandle,
     senderName: (party, reported) => args.runtime.orchestrationSenderNames.nameOf(party, reported)
   })
-  return { dispatch, from }
 }
