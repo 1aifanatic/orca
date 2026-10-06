@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { transport } from './__mocks__/structured-attention-read-surfaces'
 import { cleanup } from '@testing-library/react'
 import { beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -10,7 +11,6 @@ import type { AgentJournalRenderItem } from '../../src/shared/agent-session-jour
 import type { AgentSessionHistoryPage } from '../../src/shared/agent-session-wire'
 import type { RuntimeRpcResponse } from '../../src/shared/runtime-rpc-envelope'
 import { createGlobalSettingsFixture } from '../../src/shared/global-settings-test-fixture'
-import { RUNTIME_CAPABILITIES } from '../../src/shared/protocol-version'
 import {
   structuredAgentSessionPaneKey,
   projectStructuredAgentSessionStatusState
@@ -37,26 +37,6 @@ import {
   TEST_REPO
 } from '@/store/slices/store-test-helpers'
 
-const transport = vi.hoisted(() => ({
-  call: vi.fn(),
-  away: vi.fn(),
-  supports: vi.fn(),
-  dismiss: vi.fn(),
-  dispatch: vi.fn()
-}))
-vi.mock('@/runtime/runtime-rpc-client', async (original) => ({
-  ...(await original()),
-  callRuntimeRpc: transport.call,
-  runtimeEnvironmentSupportsCapability: transport.supports
-}))
-vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => RUNTIME_CAPABILITIES,
-  ensureLocalRuntimeCapabilities: async () => RUNTIME_CAPABILITIES
-}))
-vi.mock('@/store', async () => {
-  const { createTestStore } = await import('@/store/slices/store-test-helpers')
-  return { useAppStore: createTestStore() }
-})
 import { useAppStore } from '@/store'
 import { useAutoAckViewedAgent } from '@/hooks/useAutoAckViewedAgent'
 import { useStructuredAgentSessionRead } from '@/components/native-chat/use-structured-agent-session-read'
