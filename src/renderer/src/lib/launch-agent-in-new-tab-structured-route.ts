@@ -3,13 +3,9 @@ import {
   type AgentSessionLaunchPlan
 } from '@/lib/agent-session-launch-plan'
 import type { AgentLaunchSurface, LaunchAgentInNewTabArgs } from '@/lib/launch-agent-in-new-tab'
-import { launchAgentInStructuredNewTab } from '@/lib/launch-agent-in-new-tab-structured'
 import type { StructuredAgentLaunchSettlement } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
-import {
-  beginStructuredAgentSessionProvisionalLaunch,
-  structuredLaunchPairedOwner
-} from '@/lib/structured-agent-session-provisional-tab'
+import { beginStructuredAgentSessionProvisionalLaunch } from '@/lib/structured-agent-session-provisional-tab'
 
 type StructuredFromNewTab = {
   surface: AgentLaunchSurface
@@ -19,9 +15,9 @@ type StructuredFromNewTab = {
 }
 
 /**
- * The new-tab launcher's structured route. A local chat opens at once. A paired server admits the
- * chat before any of it exists here, so its surface is the host's, as for every paired launch, and
- * its "no" runs the caller's own launch as a terminal.
+ * The new-tab launcher's structured route. The owning host, this machine or a paired server,
+ * admits the chat before any of it exists here, so its surface is the host's, and its "no" runs
+ * the caller's own launch as a terminal.
  */
 export function launchStructuredAgentFromNewTab(args: {
   plan: AgentSessionLaunchPlan
@@ -33,41 +29,13 @@ export function launchStructuredAgentFromNewTab(args: {
   } | null
 }): StructuredFromNewTab | null {
   const { plan, beforeSurfaceOpen } = args
-  const paired = structuredLaunchPairedOwner(plan, args.worktreeId)
-  if (!paired) {
-    const structured = launchAgentInStructuredNewTab({
-      plan,
-      ...(beforeSurfaceOpen
-        ? {
-            beforeOpen: (sessionId?: string) =>
-              sessionId === undefined ||
-              beforeSurfaceOpen({ kind: 'local-agent-session', sessionId })
-          }
-        : {}),
-      ...(args.groupId ? { targetGroupId: args.groupId } : {})
-    })
-    return (
-      structured && {
-        surface: {
-          kind: 'local-agent-session',
-          tabId: structured.tabId,
-          sessionId: structured.sessionId
-        },
-        pasteDraftAfterLaunch: false,
-        structuredSettlement: structured.structuredSettlement,
-        ...(structured.promptDeliveryResult
-          ? { promptDeliveryResult: structured.promptDeliveryResult }
-          : {})
-      }
-    )
-  }
   if (beforeSurfaceOpen?.({ kind: 'host-published' }) === false) {
     return null
   }
   const launch = beginStructuredAgentSessionProvisionalLaunch({
     plan,
     hooks: {},
-    target: { worktreeId: args.worktreeId, executionHostId: paired.executionHostId },
+    target: { worktreeId: args.worktreeId },
     ...(args.groupId ? { targetGroupId: args.groupId } : {}),
     onHostDeclined: () => {
       const terminal = args.openTerminal(

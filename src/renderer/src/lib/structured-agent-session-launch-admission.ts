@@ -26,8 +26,8 @@ export type StructuredLaunchTerminal = {
   promptDeliveryResult?: Promise<StructuredPromptDeliveryResult>
 }
 
-/** A chat launch on a paired server. Nothing of it exists here until the server admits it. */
-export type PairedStructuredLaunch = {
+/** A chat launch its owning host has not admitted yet. Nothing of it exists here until it does. */
+export type HostAdmittedStructuredLaunch = {
   sessionId: null
   tab: null
   settlement: Promise<StructuredAgentLaunchSettlement>
@@ -123,12 +123,12 @@ export async function openDeclinedStructuredLaunchTerminal(args: {
 }
 
 /**
- * Asks the paired server that would run a chat before committing any of it here: no tab, launch
- * record, queued prompt or focus intent exists until it answers. Admitted opens the chat as a local
- * launch would; declined opens the caller's terminal with a notice (a resume, which has no terminal
- * equivalent, fails); unreachable opens nothing and says so. There is nothing to undo either way.
+ * Asks the host that would run a chat, this machine or a paired server, before committing any of it
+ * here: no tab, launch record, queued prompt or focus intent exists until it answers. Admitted opens
+ * the chat; declined opens the caller's terminal (a resume, which has no terminal equivalent,
+ * fails); an unreachable server opens nothing and says so. There is nothing to undo either way.
  */
-export function beginPairedStructuredLaunch(args: {
+export function beginHostAdmittedStructuredLaunch(args: {
   plan: AgentSessionLaunchPlan & { agent: AgentSessionHandleProvider }
   hooks: StructuredAgentLaunchHooks
   worktreeId: string
@@ -137,9 +137,13 @@ export function beginPairedStructuredLaunch(args: {
   /** Commits the admitted chat: the local launch path, told which host admitted it and the saved
    *  selection that host said create will seed. */
   openAdmitted: (seedOptions?: Readonly<Record<string, string>>) => AdmittedLaunch | null
-  onHostDeclined: () => Promise<StructuredLaunchTerminal> | StructuredLaunchTerminal
-}): PairedStructuredLaunch {
+  /** Told which host declined, since where its terminal opens can depend on it. */
+  onHostDeclined: (
+    target: RuntimeClientTarget
+  ) => Promise<StructuredLaunchTerminal> | StructuredLaunchTerminal
+}): HostAdmittedStructuredLaunch {
   const { plan } = args
+  const paired = args.target.kind === 'environment'
   let cancelled = false
   let admitted: AdmittedLaunch | null = null
   const isCancelled = (): boolean => cancelled || args.hooks.signal?.aborted === true
@@ -160,7 +164,8 @@ export function beginPairedStructuredLaunch(args: {
       resolveDelivery(NOT_DELIVERED)
       return { kind: 'cancelled', sessionId: null }
     }
-    if (admission.kind === 'unreachable') {
+    // This machine's runtime has no connection to lose; the chat's own create reports its failure.
+    if (admission.kind === 'unreachable' && paired) {
       notifyHostUnreachable(plan.agent, args.executionHostId)
       resolveDelivery({ delivered: false, failureNotified: true })
       return {
@@ -179,15 +184,18 @@ export function beginPairedStructuredLaunch(args: {
           )
         }
       }
-      notifyHostDeclined(plan.agent)
-      const terminal = await args.onHostDeclined()
+      // The notice explains a server's refusal; on this machine the terminal opening is the answer.
+      if (paired) {
+        notifyHostDeclined(plan.agent)
+      }
+      const terminal = await args.onHostDeclined(args.target)
       void (
         terminal.promptDeliveryResult ??
         Promise.resolve(terminal.opened ? DELIVERED : NOT_DELIVERED)
       ).then(resolveDelivery, () => resolveDelivery(NOT_DELIVERED))
       return terminal.opened ? { kind: 'terminal' } : { kind: 'cancelled', sessionId: null }
     }
-    admitted = args.openAdmitted(admission.seedOptions)
+    admitted = args.openAdmitted(admission.kind === 'admitted' ? admission.seedOptions : undefined)
     if (!admitted) {
       resolveDelivery(NOT_DELIVERED)
       return { kind: 'cancelled', sessionId: null }

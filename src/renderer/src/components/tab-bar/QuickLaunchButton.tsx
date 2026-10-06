@@ -161,9 +161,6 @@ function QuickLaunchAgentMenuItemsInner({
         onPromptHandedOff(
           newAgentPromptOutcome({
             prompt: prompt ?? '',
-            ...(result.surface.kind === 'local-agent-session'
-              ? { sessionId: result.surface.sessionId }
-              : {}),
             delivery: result.promptDeliveryResult
           })
         )

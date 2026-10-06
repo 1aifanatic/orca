@@ -45,7 +45,7 @@ beforeEach(() => {
   mocks.detectionTargetKey.mockReturnValue('local')
   mocks.planAgentSessionLaunch.mockReturnValue({ route: 'structured-native-chat' })
   mocks.launchAgentInNewTab.mockReturnValue({
-    surface: { kind: 'local-agent-session', tabId: 'chat-tab', sessionId: 's-1' }
+    surface: { kind: 'host-published' }
   })
 })
 
@@ -59,7 +59,8 @@ describe('openDefaultAgentChatInEmptyWorkspace', () => {
   it('launches the default agent as a chat', () => {
     seedSettings({})
 
-    expect(openDefaultAgentChatInEmptyWorkspace('wt-1')).toEqual({ primaryTabId: 'chat-tab' })
+    // The chat's tab opens once its host admits it, so none is primary yet.
+    expect(openDefaultAgentChatInEmptyWorkspace('wt-1')).toEqual({ primaryTabId: null })
     expect(mocks.launchAgentInNewTab).toHaveBeenCalledWith(
       expect.objectContaining({ agent: 'codex', worktreeId: 'wt-1', pendingActivationSpawn: true })
     )

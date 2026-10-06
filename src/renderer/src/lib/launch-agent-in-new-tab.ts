@@ -75,16 +75,13 @@ export type LaunchAgentInNewTabArgs = LaunchAgentInNewTabRequest & {
   pendingActivationSpawn?: boolean
   /** Lets a workspace reveal itself before the selected surface opens. */
   beforeSurfaceOpen?: (
-    surface:
-      | { kind: 'local-terminal' }
-      | { kind: 'local-agent-session'; sessionId: string }
-      | { kind: 'host-published' }
+    surface: { kind: 'local-terminal' } | { kind: 'host-published' }
   ) => boolean | void
 }
 
+/** `host-published`: the surface opens once its host answers, a structured chat's included. */
 export type AgentLaunchSurface =
   | { kind: 'local-terminal'; tabId: string }
-  | { kind: 'local-agent-session'; tabId: string; sessionId: string }
   | { kind: 'host-published' }
 
 export type LaunchAgentInNewTabResult = {
@@ -200,7 +197,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
       worktreeId,
       ...(groupId ? { groupId } : {}),
       ...(beforeSurfaceOpen ? { beforeSurfaceOpen } : {}),
-      // A paired server's "no" opens this same launch as a terminal, with the caller's arguments.
+      // The host's "no" opens this same launch as a terminal, with the caller's arguments.
       openTerminal: (terminalPlan) =>
         launchAgentInNewTabInternal({
           ...args,

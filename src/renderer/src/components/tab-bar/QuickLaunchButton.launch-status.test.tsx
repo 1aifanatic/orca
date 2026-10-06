@@ -149,7 +149,7 @@ describe('QuickLaunchAgentMenuItems launches', () => {
   it('gives each pick its own request, so a second pick opens its own chat', () => {
     launchMock.mockReset()
     launchMock.mockReturnValue({
-      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' }
+      surface: { kind: 'host-published' }
     })
     render(
       <QuickLaunchAgentMenuItems
@@ -173,7 +173,7 @@ describe('QuickLaunchAgentMenuItems launches', () => {
   it("hands the launch's own delivery outcome to the notes menu", async () => {
     const delivery = Promise.resolve({ delivered: true, failureNotified: false })
     launchMock.mockReturnValue({
-      surface: { kind: 'local-agent-session', tabId: 'tab-1', sessionId: 'codex-session' },
+      surface: { kind: 'host-published' },
       promptDeliveryResult: delivery
     })
     const onPromptHandedOff = vi.fn()
