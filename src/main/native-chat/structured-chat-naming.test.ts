@@ -3,7 +3,10 @@ import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
 import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
-import { firstStructuredAgentSessionPrompt } from '../../shared/structured-agent-session-first-prompt'
+import {
+  firstStructuredAgentSessionPrompt,
+  STRUCTURED_CHAT_NAME_PROMPT_LIMIT
+} from '../../shared/structured-agent-session-first-prompt'
 import { setAgentSessionRecordConversationName } from '../runtime/agent-session-record-conversation-name'
 import {
   createStructuredChatNamingHandler,
@@ -308,6 +311,24 @@ describe.each(['claude', 'codex'] as const)('structured %s chat naming', (provid
     await settle()
     expect(state.deps.generate).toHaveBeenCalledWith(expect.anything(), 'login preview')
   })
+
+  it.each(['journal', 'published'] as const)(
+    'clips the %s prompt without splitting a Unicode character',
+    async (source) => {
+      const state = rig(provider)
+      const prefix = 'A'.repeat(STRUCTURED_CHAT_NAME_PROMPT_LIMIT - 1)
+      state.summary.latestPrompt = `${prefix}𠮷`
+      state.deps.readFirstPrompt = async () => {
+        if (source === 'published') {
+          throw new Error('Unavailable')
+        }
+        return `${prefix}𠮷`
+      }
+      state.handle(state.summary, { replay: false })
+      await settle()
+      expect(state.deps.generate).toHaveBeenCalledWith(expect.anything(), prefix)
+    }
+  )
 
   it('continues generation when snapshot refresh fails', async () => {
     const state = rig(provider)

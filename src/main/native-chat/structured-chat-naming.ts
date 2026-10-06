@@ -1,8 +1,10 @@
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
-import { deriveConversationNamePlaceholder } from '../../shared/conversation-name-generation'
+import {
+  clampConversationNameFirstPrompt,
+  deriveConversationNamePlaceholder
+} from '../../shared/conversation-name-generation'
 import type { GlobalSettings } from '../../shared/global-settings-types'
-import { STRUCTURED_CHAT_NAME_PROMPT_LIMIT } from '../../shared/structured-agent-session-first-prompt'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import {
   neverThrowingStructuredAgentSessionLogger,
@@ -57,7 +59,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
       warn(summary.sessionId, error)
       prompt = summary.latestPrompt
     }
-    const firstPrompt = prompt.slice(0, STRUCTURED_CHAT_NAME_PROMPT_LIMIT).trim()
+    const firstPrompt = clampConversationNameFirstPrompt(prompt)
     const placeholder = deriveConversationNamePlaceholder(firstPrompt)
     if (!placeholder) {
       return

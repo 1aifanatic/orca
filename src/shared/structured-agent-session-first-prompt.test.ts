@@ -63,6 +63,26 @@ describe('first structured chat prompt', () => {
     expect(result.endsWith('\ny')).toBe(true)
   })
 
+  it('clips a single prompt block without splitting a Unicode character', () => {
+    const prefix = 'A'.repeat(STRUCTURED_CHAT_NAME_PROMPT_LIMIT - 1)
+    expect(firstStructuredAgentSessionPrompt([message(`${prefix}𠮷`)])).toBe(prefix)
+  })
+
+  it('clips a later prompt block without splitting a Unicode character', () => {
+    const prefix = 'A'.repeat(STRUCTURED_CHAT_NAME_PROMPT_LIMIT - 2)
+    const prompt = message('', {
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [
+          { type: 'text', text: prefix },
+          { type: 'text', text: '𠮷' }
+        ]
+      }
+    })
+    expect(firstStructuredAgentSessionPrompt([prompt])).toBe(prefix)
+  })
+
   it('skips punctuation-only entries in favor of the first text request', () => {
     expect(
       firstStructuredAgentSessionPrompt([message('?!'), message('修复登录'), message('Later')])
