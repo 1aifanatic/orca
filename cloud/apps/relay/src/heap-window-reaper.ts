@@ -39,9 +39,7 @@ export class HeapWindowReaper {
       )
     }
     const pages = await heapPages(database, this.table)
-    if (pages === 0) {
-      return 0
-    }
+    if (pages === 0) return 0
     // A random first page: every director runs this sweep, and walks that all start at page 0
     // after a rollout would read the same pages in lockstep.
     let page = this.nextPage ?? Math.floor(this.random() * pages)
@@ -53,9 +51,7 @@ export class HeapWindowReaper {
       deleted < this.budget.maxRowsPerTick &&
       this.clock() - startedAt < this.budget.budgetMs
     ) {
-      if (page >= pages) {
-        page = 0
-      }
+      if (page >= pages) page = 0
       const end = Math.min(page + this.budget.pagesPerStatement, pages)
       // SKIP LOCKED: a row some request holds is left for a later pass rather than waited on.
       // `= ANY(ARRAY(...))`, not `IN (...)`: IN can plan as a hash join over a sequential scan of

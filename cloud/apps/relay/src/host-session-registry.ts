@@ -166,9 +166,7 @@ function readControlFrame(
   timeoutReason: string,
   receive: (raw: RawData, isBinary: boolean) => void
 ): void {
-  if (socket.readyState !== socket.OPEN) {
-    return
-  }
+  if (socket.readyState !== socket.OPEN) return
   const timer = setTimeout(() => {
     finish()
     socket.close(RELAY_CLOSE_CODE.BAD_OUTER_CREDENTIAL, timeoutReason)
@@ -1012,9 +1010,7 @@ export class HostSessionRegistry {
       socket.close(RELAY_CLOSE_CODE.WRONG_CELL, 'wrong assignment epoch')
       return
     }
-    if (socket.readyState !== socket.OPEN) {
-      return
-    }
+    if (socket.readyState !== socket.OPEN) return
 
     const key = this.key(identity.sub, identity.relayHostId)
     const existing = this.sessions.get(key)

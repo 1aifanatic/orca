@@ -2967,9 +2967,7 @@ export class RelayAssignmentStore {
     const cellIds = await this.deadCellEvacuationCandidates(cutoff)
     // Why: without a candidate cell the host query below walks every assignment by primary key to
     // return nothing (574 ms per call in production, from stale existing-only cells it can never act on).
-    if (cellIds.length === 0) {
-      return 0
-    }
+    if (cellIds.length === 0) return 0
     const rows = await this.database.query(
       `SELECT assignment.user_id, assignment.relay_host_id, assignment.cell_id
        FROM relay_assignments assignment
