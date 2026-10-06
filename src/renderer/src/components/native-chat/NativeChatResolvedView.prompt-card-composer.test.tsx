@@ -85,6 +85,7 @@ const { useAppStore } = await import('../../store')
 const { installNativeChatMessageListTestViewport } =
   await import('./native-chat-message-list-test-viewport')
 const { resetNativeChatPtySendQueuesForTests } = await import('./native-chat-runtime-send')
+const { clearAnsweredNativeChatPromptsForTests } = await import('./native-chat-answered-prompts')
 
 const paneKey = 'tab-hidden:leaf-hidden'
 const approval = JSON.stringify({ approval: { tool: 'Bash', summary: 'npm test' } })
@@ -131,6 +132,7 @@ function rootElement(): Element {
 beforeEach(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
   resetNativeChatPtySendQueuesForTests()
+  clearAnsweredNativeChatPromptsForTests()
   composer.mounts = 0
   composer.typed.mockReset().mockReturnValue(true)
   pty.verified.mockReset().mockResolvedValue(true)

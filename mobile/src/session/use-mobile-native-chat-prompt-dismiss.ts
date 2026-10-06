@@ -1,22 +1,31 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import {
+  forgetMobileNativeChatPromptDismissal,
+  readMobileNativeChatPromptDismissal,
+  subscribeMobileNativeChatPromptDismissals,
+  writeMobileNativeChatPromptDismissal
+} from './mobile-native-chat-prompt-dismissals'
 
-type PromptDismissal = { sessionKey: string | null; promptKey: string }
 type DetectedPrompt = { sessionKey: string | null; promptKey: string | null }
 
 /** Presentation only: retain one answered occurrence per tab until observations supersede it. */
 export function useMobileNativeChatPromptDismiss({
+  kind,
   promptKey,
   detectedPromptKey,
   scopeKey,
   sessionKey,
   observing
 }: {
+  /** Ask and permission/question cards keep separate answers for the same tab. */
+  kind: 'ask' | 'prompt'
   promptKey: string | null
   detectedPromptKey: string | null
   scopeKey: string | null
   sessionKey: string | null
   observing: boolean
 }): { showPrompt: boolean; dismissPrompt: () => void } {
+  const storeKey = JSON.stringify([kind, scopeKey])
   const detectedByScopeRef = useRef(new Map<string | null, DetectedPrompt>())
   const observation = useMemo(() => {
     const previous = detectedByScopeRef.current.get(scopeKey)
@@ -24,8 +33,8 @@ export function useMobileNativeChatPromptDismiss({
       ? previous
       : { sessionKey, promptKey: detectedPromptKey }
   }, [sessionKey, detectedPromptKey, scopeKey])
-  const [dismissedByScope, setDismissedByScope] = useState<Map<string | null, PromptDismissal>>(
-    () => new Map()
+  const dismissed = useSyncExternalStore(subscribeMobileNativeChatPromptDismissals, () =>
+    readMobileNativeChatPromptDismissal(storeKey)
   )
   useLayoutEffect(() => {
     if (observing) {
@@ -34,22 +43,14 @@ export function useMobileNativeChatPromptDismiss({
   }, [observing, detectedPromptKey, scopeKey, sessionKey, observation])
   // A cleared or genuinely different detected prompt retires the old dismissal.
   useEffect(() => {
-    if (observing) {
-      setDismissedByScope((previous) => {
-        const dismissed = previous.get(scopeKey)
-        if (
-          dismissed === undefined ||
-          (dismissed.sessionKey === sessionKey && dismissed.promptKey === detectedPromptKey)
-        ) {
-          return previous
-        }
-        const next = new Map(previous)
-        next.delete(scopeKey)
-        return next
-      })
+    if (
+      observing &&
+      dismissed !== undefined &&
+      !(dismissed.sessionKey === sessionKey && dismissed.promptKey === detectedPromptKey)
+    ) {
+      forgetMobileNativeChatPromptDismissal(storeKey)
     }
-  }, [observing, detectedPromptKey, scopeKey, sessionKey])
-  const dismissed = dismissedByScope.get(scopeKey)
+  }, [observing, dismissed, detectedPromptKey, storeKey, sessionKey])
   const showPrompt =
     promptKey !== null &&
     !(dismissed?.sessionKey === sessionKey && dismissed.promptKey === promptKey)
@@ -61,13 +62,7 @@ export function useMobileNativeChatPromptDismiss({
       detected.sessionKey === sessionKey &&
       detected.promptKey === promptKey
     ) {
-      setDismissedByScope((previous) => {
-        const current = previous.get(scopeKey)
-        if (current?.sessionKey === sessionKey && current.promptKey === promptKey) {
-          return previous
-        }
-        return new Map(previous).set(scopeKey, { sessionKey, promptKey })
-      })
+      writeMobileNativeChatPromptDismissal(storeKey, { sessionKey, promptKey })
     }
   }
 

@@ -1,6 +1,12 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useAppStore } from '../../store'
 import { nativeChatCardDismissKey } from './native-chat-dismiss-key'
+import {
+  forgetAnsweredNativeChatPrompt,
+  readAnsweredNativeChatPrompt,
+  recordAnsweredNativeChatPrompt,
+  subscribeAnsweredNativeChatPrompts
+} from './native-chat-answered-prompts'
 import type { InteractivePromptCard } from './native-chat-interactive-prompt'
 
 export type NativeChatPromptCardPresentation = {
@@ -15,7 +21,8 @@ export type NativeChatPromptCardPresentation = {
 /**
  * Which prompt card the pane shows, derived in render so the card and the composer never share a
  * commit. Dismissal is presentation only: it hides one occurrence after its answer was delivered and
- * never says the agent moved on. A lingering live status must not reshow an answered occurrence.
+ * never says the agent moved on. A lingering live status must not reshow an answered occurrence,
+ * including after the view remounts.
  */
 export function useNativeChatPromptCardPresentation({
   paneKey,
@@ -48,26 +55,20 @@ export function useNativeChatPromptCardPresentation({
       activeOccurrenceRef.current = null
     }
   }, [occurrence])
-  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
-  const [previousScopeKey, setPreviousScopeKey] = useState(scopeKey)
-  if (previousScopeKey !== scopeKey) {
-    setPreviousScopeKey(scopeKey)
-    setDismissedKey(null)
-  }
-  // Why reset when the prompt clears: a later, identical question must show again.
-  const present = card !== null
-  const [wasPresent, setWasPresent] = useState(present)
-  if (present !== wasPresent) {
-    setWasPresent(present)
-    if (!present) {
-      setDismissedKey(null)
+  const answered = useSyncExternalStore(subscribeAnsweredNativeChatPrompts, () =>
+    readAnsweredNativeChatPrompt(paneKey)
+  )
+  // Why retire on a cleared or changed prompt: a later, identical question must show again.
+  useLayoutEffect(() => {
+    if (answered !== null && answered !== promptKey) {
+      forgetAnsweredNativeChatPrompt(paneKey)
     }
-  }
+  }, [answered, promptKey, paneKey])
   const dismiss = useCallback(() => {
-    if (activeOccurrenceRef.current === occurrence && canSend) {
-      setDismissedKey(occurrenceKey)
+    if (activeOccurrenceRef.current === occurrence && canSend && promptKey !== null) {
+      recordAnsweredNativeChatPrompt(paneKey, promptKey)
     }
-  }, [occurrence, occurrenceKey, canSend])
-  const shown = card !== null && canSend && occurrenceKey !== dismissedKey
+  }, [occurrence, canSend, promptKey, paneKey])
+  const shown = card !== null && canSend && promptKey !== answered
   return { card: shown ? card : null, occurrenceKey, dismiss }
 }

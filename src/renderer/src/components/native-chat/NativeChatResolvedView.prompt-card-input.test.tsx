@@ -35,6 +35,7 @@ vi.mock('@/runtime/runtime-terminal-inspection', async (importOriginal) => ({
 }))
 
 const { NativeChatResolvedView } = await import('./NativeChatResolvedView')
+const { clearAnsweredNativeChatPromptsForTests } = await import('./native-chat-answered-prompts')
 const { useAppStore } = await import('../../store')
 const { installNativeChatMessageListTestViewport } =
   await import('./native-chat-message-list-test-viewport')
@@ -71,8 +72,8 @@ function setStatus(payload: Omit<AgentStatusPayload, 'prompt' | 'agentType'>): v
     .setAgentStatus(paneKey, { prompt: 'Clean the build', agentType: 'claude', ...payload })
 }
 
-function renderPane(): void {
-  render(
+function renderPane(targetPtyId = 'pty-card'): ReturnType<typeof render> {
+  return render(
     <NativeChatResolvedView
       paneKey={paneKey}
       agent="claude"
@@ -80,7 +81,7 @@ function renderPane(): void {
       transcriptPath={null}
       isVisible
       isFocusedGroup
-      targetPtyId="pty-card"
+      targetPtyId={targetPtyId}
       terminalTabId="tab-card"
       ownsTabWideLaunchDraft={false}
     />
@@ -90,6 +91,7 @@ function renderPane(): void {
 beforeEach(() => {
   restoreViewport = installNativeChatMessageListTestViewport()
   composer.mounts = 0
+  clearAnsweredNativeChatPromptsForTests()
   ptyInput.verified.mockReset()
   useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
   retained.session = transcript()
@@ -171,5 +173,27 @@ describe('NativeChatResolvedView prompt cards own the input region', () => {
 
     expect(screen.getAllByText('Which folder?').length).toBeGreaterThan(0)
     expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).not.toBeNull()
+  })
+
+  it('keeps an answered approval hidden across a chat view remount and a PTY rebind', async () => {
+    ptyInput.verified.mockResolvedValue(true)
+    setStatus({
+      state: 'waiting',
+      interactivePrompt: JSON.stringify({ approval: { tool: 'Bash', summary: 'npm test' } })
+    })
+    const first = renderPane()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Allow' }))
+    })
+    // The approved tool is still running, so the host status lingers: a chat/terminal toggle.
+    first.unmount()
+    const second = renderPane()
+    expect(document.querySelector('[data-native-chat-approval-card="true"]')).toBeNull()
+    expect(screen.getByTestId('native-chat-composer').closest('[hidden]')).toBeNull()
+
+    second.unmount()
+    renderPane('pty-card-reconnected')
+    expect(document.querySelector('[data-native-chat-approval-card="true"]')).toBeNull()
+    expect(ptyInput.verified).toHaveBeenCalledOnce()
   })
 })

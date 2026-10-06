@@ -36,6 +36,7 @@ export function useMobileNativeChatPromptPresentation({
     [permission, question, approvalStartedAt]
   )
   const { showPrompt, dismissPrompt } = useMobileNativeChatPromptDismiss({
+    kind: 'prompt',
     promptKey,
     detectedPromptKey: promptKey,
     scopeKey,

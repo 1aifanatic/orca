@@ -38,6 +38,10 @@ vi.mock('../../store', () => ({
 import { NativeChatInteractiveCard } from './NativeChatInteractiveCard'
 import { useNativeChatInteractivePromptCard } from './use-native-chat-interactive-prompt-card'
 import { useNativeChatPromptCardPresentation } from './use-native-chat-prompt-card-presentation'
+import { clearAnsweredNativeChatPromptsForTests } from './native-chat-answered-prompts'
+
+// Answered occurrences outlive a view by design; each test starts with none.
+beforeEach(clearAnsweredNativeChatPromptsForTests)
 
 const mocks = {
   sendAnswer: vi.fn<NativeChatInteractiveSend['sendAnswer']>(),

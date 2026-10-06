@@ -224,6 +224,20 @@ describe('prompt cards through the production controller, send contract and view
     }
   )
 
+  it('keeps an acknowledged Deny hidden after the chat screen remounts on a lingering status', async () => {
+    await render({ tab: permissionTab })
+    await act(async () => {
+      await permissionAction().props.onPress()
+    })
+    expect(sendButton().props.disabled).toBe(false)
+    await unmount()
+    await render({
+      tab: { ...permissionTab, agentStatus: { ...permissionTab.agentStatus, updatedAt: 99 } }
+    })
+    expect(getController().nativeChatPermission).toBe(null)
+    expect(sendButton().props.disabled).toBe(false)
+  })
+
   it.each(['prompt', 'session', 'PTY', 'tab', 'clear'])(
     'drops an accepted result after real %s replacement',
     async (replacement) => {
