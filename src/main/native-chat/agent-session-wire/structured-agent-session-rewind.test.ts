@@ -322,28 +322,25 @@ describe('host rewind', () => {
     const target = await seed()
     const body = hostTestMessage('unanswered')
     const clientOperationId = hostTestOperationId()
-    expect(
-      await host.send(caller, {
-        body,
-        envelope: {
-          ...(await params(target)).envelope,
-          clientOperationId,
-          payloadFingerprint: computeAgentSessionPayloadFingerprint({
-            method: 'agentSession.send',
-            sessionId: HOST_TEST_SESSION,
-            fields: { body }
-          })
-        }
-      })
-    ).toMatchObject({ ok: true })
+    // Accepted: the wait below sees its submission settle in doubt.
+    await host.send(caller, {
+      body,
+      envelope: {
+        ...(await params(target)).envelope,
+        clientOperationId,
+        payloadFingerprint: computeAgentSessionPayloadFingerprint({
+          method: 'agentSession.send',
+          sessionId: HOST_TEST_SESSION,
+          fields: { body }
+        })
+      }
+    })
     // The adapter's reply is lost: a live doubt, which the chat shows as working.
-    await vi.waitFor(async () =>
-      expect(
-        (await host.journalSnapshot(HOST_TEST_SESSION)).submissions.find(
-          (entry) => entry.clientMessageId === clientOperationId
-        )?.dispatchState
-      ).toBe('unknown')
-    )
+    const sent = async () =>
+      (await host.journalSnapshot(HOST_TEST_SESSION)).submissions.find(
+        (entry) => entry.clientMessageId === clientOperationId
+      )
+    await vi.waitFor(async () => expect((await sent())?.dispatchState).toBe('unknown'))
     expect(await host.rewind(caller, await params(target))).toMatchObject({
       ok: false,
       refusal: { rewindReason: 'busy' }
