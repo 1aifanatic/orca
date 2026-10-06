@@ -66,7 +66,8 @@ function shellQuote(value: string): string {
 function fixtureCommand(sinkPath: string): string {
   const command = [process.execPath, fixturePath, sinkPath]
   return process.platform === 'win32'
-    ? command.map((value) => `"${value.replaceAll('"', '""')}"`).join(' ')
+    ? // Why: the isolated Windows profile starts PowerShell, which parses a leading quoted path as a string, not a command.
+      `& ${command.map((value) => `"${value.replaceAll('"', '""')}"`).join(' ')}`
     : command.map(shellQuote).join(' ')
 }
 

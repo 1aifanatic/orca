@@ -162,7 +162,8 @@ export class RemoteRuntimePtyRecoveryState {
     if (this.pendingRetry === null || this.pendingEpoch === null) {
       return false
     }
-    if (this.phase !== 'backoff' && this.phase !== 'disconnected') {
+    // Why: a retry pending while 'recovering' is one parked for an external trigger, with nothing in flight.
+    if (this.phase === 'idle' || this.phase === 'disposed') {
       return false
     }
     const retry = this.pendingRetry

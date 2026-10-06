@@ -4,7 +4,7 @@ import {
   readyHostSessionInventoryResponse,
   type MultiplexSubscriptionCallbacks
 } from './remote-runtime-pty-transport-test-harness'
-import { REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS } from './remote-runtime-pty-recovery-state'
+import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 
 let subscriptionCallbacks: MultiplexSubscriptionCallbacks = null
 let resolvedPaneHandle = 'terminal-1'
@@ -33,6 +33,72 @@ const UNPUBLISHED_HOST_GRAPH = {
     activeTabType: null,
     tabs: []
   }
+}
+
+// Past the transport's 15s bounded inventory wait, well inside the auto-recovery deadline.
+const PAST_BOUNDED_INVENTORY_WAIT_MS = 20_000
+
+const PUBLISHED_HOST_GRAPH: RuntimeMobileSessionTabsResult = {
+  worktree: 'wt-1',
+  publicationEpoch: 'epoch-ready:client-navigation',
+  snapshotVersion: 1,
+  activeGroupId: null,
+  activeTabId: 'host-tab-1::pane:1',
+  activeTabType: 'terminal',
+  tabs: [
+    {
+      type: 'terminal',
+      id: 'host-tab-1::pane:1',
+      parentTabId: 'host-tab-1',
+      leafId: 'pane:1',
+      title: 'Terminal',
+      isActive: true,
+      status: 'ready',
+      terminal: 'terminal-1'
+    }
+  ]
+}
+
+let hostGraphPublished = false
+
+function publishHostGraph(): void {
+  hostGraphPublished = true
+}
+
+// The host app relaunched with its daemon PTY alive; its renderer has not published yet.
+async function connectThenLoseHostRenderer(options: { staleSend?: boolean } = {}) {
+  const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+  const handleEvents = await import('../../runtime/web-session-terminal-handle-events')
+  const onPtyExit = vi.fn()
+  const transport = createRemoteRuntimePtyTransport('env-1', {
+    worktreeId: 'wt-1',
+    tabId: 'web-terminal-host-tab-1',
+    leafId: 'pane:1',
+    onPtyExit
+  })
+  await transport.connect({ url: '', callbacks: {} })
+  await vi.waitFor(() => expect(subscriptionSendBinary).toHaveBeenCalled())
+  hostGraphPublished = false
+  runtimeCall.mockImplementation(async (request: { method: string }) => {
+    if (request.method === 'terminal.send') {
+      return {
+        ok: false,
+        error: { code: 'terminal_handle_stale', message: 'terminal_handle_stale' }
+      }
+    }
+    if (request.method === 'session.tabs.list') {
+      return hostGraphPublished
+        ? { ok: true, result: PUBLISHED_HOST_GRAPH }
+        : UNPUBLISHED_HOST_GRAPH
+    }
+    return { ok: false, error: { code: 'runtime_error', message: 'tab_not_found' } }
+  })
+  if (options.staleSend) {
+    await expect(transport.sendInputAccepted?.('x', 'driving')).resolves.toBe(false)
+  } else {
+    subscriptionCallbacks?.onClose?.()
+  }
+  return { transport, onPtyExit, handleEvents }
 }
 
 describe('remote runtime pty transport against a relaunched host that has not published', () => {
@@ -90,24 +156,7 @@ describe('remote runtime pty transport against a relaunched host that has not pu
   it('ignores pushed unpublished frames and reattaches on the first published snapshot', async () => {
     vi.useFakeTimers()
     try {
-      const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
-      const handleEvents = await import('../../runtime/web-session-terminal-handle-events')
-      const onPtyExit = vi.fn()
-      const transport = createRemoteRuntimePtyTransport('env-1', {
-        worktreeId: 'wt-1',
-        tabId: 'web-terminal-host-tab-1',
-        leafId: 'pane:1',
-        onPtyExit
-      })
-      await transport.connect({ url: '', callbacks: {} })
-      await vi.waitFor(() => expect(subscriptionSendBinary).toHaveBeenCalled())
-      runtimeCall.mockImplementation(async (request: { method: string }) =>
-        request.method === 'session.tabs.list'
-          ? UNPUBLISHED_HOST_GRAPH
-          : { ok: false, error: { code: 'runtime_error', message: 'tab_not_found' } }
-      )
-
-      subscriptionCallbacks?.onClose?.()
+      const { transport, onPtyExit, handleEvents } = await connectThenLoseHostRenderer()
       // Both spellings: the bare placeholder and a paired client's projection of it.
       handleEvents.queueAcceptedWebSessionTerminalSnapshot(UNPUBLISHED_HOST_GRAPH.result, 'env-1')
       await vi.advanceTimersByTimeAsync(0)
@@ -115,40 +164,42 @@ describe('remote runtime pty transport against a relaunched host that has not pu
         { ...UNPUBLISHED_HOST_GRAPH.result, publicationEpoch: 'none' },
         'env-1'
       )
-      // Outlast the bounded inventory wait but not the auto-recovery deadline.
-      await vi.advanceTimersByTimeAsync(20_000)
-      expect(20_000).toBeLessThan(REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS)
+      await vi.advanceTimersByTimeAsync(PAST_BOUNDED_INVENTORY_WAIT_MS)
 
       expect(onPtyExit).not.toHaveBeenCalled()
       expect(transport.getPtyId()).toBe('remote:env-1@@terminal-1')
       expect(runtimeSubscribe).toHaveBeenCalledTimes(1)
 
-      handleEvents.queueAcceptedWebSessionTerminalSnapshot(
-        {
-          worktree: 'wt-1',
-          publicationEpoch: 'epoch-ready:client-navigation',
-          snapshotVersion: 1,
-          activeGroupId: null,
-          activeTabId: 'host-tab-1::pane:1',
-          activeTabType: 'terminal',
-          tabs: [
-            {
-              type: 'terminal',
-              id: 'host-tab-1::pane:1',
-              parentTabId: 'host-tab-1',
-              leafId: 'pane:1',
-              title: 'Terminal',
-              isActive: true,
-              status: 'ready',
-              terminal: 'terminal-1'
-            }
-          ]
-        },
-        'env-1'
-      )
+      publishHostGraph()
+      handleEvents.queueAcceptedWebSessionTerminalSnapshot(PUBLISHED_HOST_GRAPH, 'env-1')
       await vi.advanceTimersByTimeAsync(0)
       await vi.waitFor(() => expect(runtimeSubscribe).toHaveBeenCalledTimes(2))
       expect(onPtyExit).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not reattach a handle the host fenced as stale when it republishes that handle', async () => {
+    vi.useFakeTimers()
+    try {
+      const { transport, onPtyExit, handleEvents } = await connectThenLoseHostRenderer({
+        staleSend: true
+      })
+      await vi.advanceTimersByTimeAsync(PAST_BOUNDED_INVENTORY_WAIT_MS)
+      const listCalls = (): number =>
+        runtimeCall.mock.calls.filter(([request]) => request.method === 'session.tabs.list').length
+      const listCallsWhileParked = listCalls()
+
+      publishHostGraph()
+      handleEvents.queueAcceptedWebSessionTerminalSnapshot(PUBLISHED_HOST_GRAPH, 'env-1')
+      await vi.advanceTimersByTimeAsync(PAST_BOUNDED_INVENTORY_WAIT_MS)
+
+      // Republishing the fenced handle is not the replacement it waits for, so no new inventory loop.
+      expect(listCalls()).toBe(listCallsWhileParked)
+      expect(runtimeSubscribe).toHaveBeenCalledTimes(1)
+      expect(onPtyExit).not.toHaveBeenCalled()
+      expect(transport.getPtyId()).toBe('remote:env-1@@terminal-1')
     } finally {
       vi.useRealTimers()
     }

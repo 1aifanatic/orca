@@ -1,7 +1,7 @@
-import { UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH } from '../../../shared/runtime-types'
-
-// Why: hosts project the placeholder per paired client (client-session-tab-selection.ts), renaming its epoch.
-const UNPUBLISHED_CLIENT_NAVIGATION_PUBLICATION_EPOCH = `${UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH}:client-navigation`
+import {
+  CLIENT_NAVIGATION_PUBLICATION_EPOCH_SUFFIX,
+  UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH
+} from '../../../shared/runtime-types'
 
 type SnapshotPublication = {
   publicationEpoch: string
@@ -22,20 +22,17 @@ type AgentSessionPublication = SnapshotPublication & {
  * A runtime that has published nothing for a worktree still answers a forced snapshot, with a
  * synthesized empty frame. Every worktree is in that state for a moment after the host process
  * restarts, and the frame is indistinguishable from "the user closed everything" unless the epoch
- * is read: `UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH` at version 0 is the runtime saying "ask me
- * later". Absence in such a frame proves nothing, so it must not drive a cull.
+ * is read: `UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH`, bare or with a paired client's navigation
+ * suffix, is the runtime saying "ask me later". Absence in such a frame proves nothing, so it must not drive a cull.
  *
  * Deliberately not part of the staleness gate: the frame is not stale, and rejecting it outright
  * would also drop the terminal reconciliation that legitimately rides on it.
  */
 export function hostSnapshotAffirmsWorktreeContents(snapshot: SnapshotPublication): boolean {
-  if (snapshot.publicationEpoch === UNPUBLISHED_CLIENT_NAVIGATION_PUBLICATION_EPOCH) {
-    // Why: a paired client's projection adds its own navigation revision to the version, so only the epoch can tell.
-    return false
-  }
-  return !(
-    snapshot.publicationEpoch === UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH &&
-    snapshot.snapshotVersion === 0
+  return (
+    snapshot.publicationEpoch !== UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH &&
+    snapshot.publicationEpoch !==
+      `${UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH}${CLIENT_NAVIGATION_PUBLICATION_EPOCH_SUFFIX}`
   )
 }
 

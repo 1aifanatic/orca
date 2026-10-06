@@ -849,15 +849,15 @@ export function createRemoteRuntimePtyTransport(
           return { handle: nextHandle, inventoryFailed: false }
         }
         if (request === 'list') {
-          if (!hasHostSessionTerminalSurface(listed, hostTabId)) {
-            if (hostSnapshotAffirmsWorktreeContents(listed)) {
-              return { handle: null, inventoryFailed: false }
+          if (hasHostSessionTerminalSurface(listed, hostTabId)) {
+            if (!nextHandle) {
+              // Why: the surface is published but unmaterialized, and only activation can mint its PTY.
+              nextRequest = 'activate'
             }
-            // Why: a relaunched host answers before its renderer publishes; that absence is unknown liveness, so keep asking.
-          } else if (!nextHandle) {
-            // Why: the surface is published but unmaterialized, and only activation can mint its PTY.
-            nextRequest = 'activate'
+          } else if (hostSnapshotAffirmsWorktreeContents(listed)) {
+            return { handle: null, inventoryFailed: false }
           }
+          // Why: an unpublished frame from a relaunched host is unknown liveness, so keep asking.
         } else {
           // Why: an activation response can race host publication, so inventory — not this snapshot — decides what exists.
           nextRequest = 'list'
@@ -1643,18 +1643,15 @@ export function createRemoteRuntimePtyTransport(
           return
         }
         if (update.terminalHandle === previousHandle) {
-          // Why: an inventory wait that ended without evidence parked recovery; this snapshot is the evidence it waited for.
-          const inventoryWaitParked =
-            recovery.currentPhase === 'recovering' &&
-            resubscribeEpoch === null &&
-            getRecoveryReplacementPolicy(previousHandle) !== 'require-replacement'
-          // Why: once the auto-recovery window is spent, a host still publishing this surface is evidence the fenced handle outlived the stale error.
-          if (
-            !(autoRecoveryWindowSpent || inventoryWaitParked) ||
-            getCurrentMultiplexedStream(previousHandle)
-          ) {
+          if (getCurrentMultiplexedStream(previousHandle)) {
             return
           }
+          if (!autoRecoveryWindowSpent) {
+            // Why: a published surface is the evidence a parked inventory wait is waiting for.
+            recovery.retryNow()
+            return
+          }
+          // Why: once the auto-recovery window is spent, a host still publishing this surface is evidence the fenced handle outlived the stale error.
           // Why: one reattach per spent window, so a handle that really is dead is not retried on every host snapshot.
           autoRecoveryWindowSpent = false
           const reattachEpoch = recovery.begin()

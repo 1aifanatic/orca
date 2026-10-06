@@ -31,7 +31,7 @@ function sessionKey(environmentId: string, worktreeId: string): string {
 function resolveSubscriberUpdate(
   snapshot: RuntimeMobileSessionTabsResult,
   subscriber: TerminalHandleSubscriber
-): WebSessionTerminalHandleUpdate | null {
+): WebSessionTerminalHandleUpdate {
   const surfaces = snapshot.tabs.filter(
     (tab): tab is RuntimeMobileSessionTerminalClientTab =>
       tab.type === 'terminal' &&
@@ -39,10 +39,7 @@ function resolveSubscriberUpdate(
       (!subscriber.leafId || tab.leafId === subscriber.leafId)
   )
   if (surfaces.length === 0) {
-    // Why: a frame the host synthesized before publishing says nothing about this surface.
-    return hostSnapshotAffirmsWorktreeContents(snapshot)
-      ? { surfacePresent: false, terminalHandle: null }
-      : null
+    return { surfacePresent: false, terminalHandle: null }
   }
   const mirroredSurfaces = surfaces.filter(
     (surface) => surface.parentTabId === subscriber.hostTabId
@@ -86,7 +83,8 @@ export function queueAcceptedWebSessionTerminalSnapshot(
   snapshot: RuntimeMobileSessionTabsResult,
   environmentId: string
 ): void {
-  if (subscribersBySession.size === 0) {
+  // Why: a frame the host synthesized before publishing says nothing about any surface.
+  if (subscribersBySession.size === 0 || !hostSnapshotAffirmsWorktreeContents(snapshot)) {
     return
   }
   const key = sessionKey(environmentId, snapshot.worktree)
@@ -108,11 +106,8 @@ export function queueAcceptedWebSessionTerminalSnapshot(
     pendingSnapshotBySession.delete(key)
     const currentSubscribers = subscribersBySession.get(key)
     for (const subscriber of pendingSnapshot.eligibleSubscribers) {
-      const update = currentSubscribers?.has(subscriber)
-        ? resolveSubscriberUpdate(pendingSnapshot.snapshot, subscriber)
-        : null
-      if (update) {
-        subscriber.listener(update)
+      if (currentSubscribers?.has(subscriber)) {
+        subscriber.listener(resolveSubscriberUpdate(pendingSnapshot.snapshot, subscriber))
       }
     }
   })
