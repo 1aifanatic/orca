@@ -41,6 +41,7 @@ describe('NativeChatComposerActions', () => {
       attachDisabled: false,
       dictationDisabled: false,
       isWorking: true,
+      primaryAction: 'stop' as const,
       isDictating: false,
       isDictationHoldMode: false,
       onAttach: vi.fn(),
