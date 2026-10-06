@@ -16,6 +16,7 @@ import {
   clearOrcadStateSnapshotMembersCommand,
   parseOrcadSnapshotCapture,
   parseOrcadSnapshotRestore,
+  posixProcessGroupCommand,
   restoreOrcadStateSnapshotCommand,
   serializedStateMutationCommand
 } from './orcad-state-snapshot'
@@ -142,18 +143,65 @@ describe.skipIf(process.platform === 'win32')('snapshot commands on a real shell
     expect(existsSync(lock)).toBe(false)
   })
 
-  it('never takes over a lock that names no process group', async () => {
+  it('on a host that recorded no group, waits on a live pid or a recent beat, then takes over', async () => {
+    await sh(captureOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))
     const lock = join(remoteBase, 'orcad-state-mutation.lock')
     mkdirSync(lock, { recursive: true })
+    const restore = async (): Promise<string> =>
+      (await sh(restoreOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))).trim()
+    const old = new Date(Date.now() - 10 * 60_000)
+
+    writeFileSync(join(lock, 'pid'), String(process.pid))
+    utimesSync(lock, old, old)
+    expect(await restore()).toBe('STATE_MUTATION_BUSY')
+
     const exited = (await runProcess({ program: '/bin/sh', args: ['-c', 'echo $$'] })).stdout
     writeFileSync(join(lock, 'pid'), exited.trim())
-    utimesSync(lock, new Date(0), new Date(0))
-    // A host that could not start a group cannot prove the run's children are gone.
-    expect(
-      (await sh(restoreOrcadStateSnapshotCommand(posix, root, snapshot, remoteBase))).trim()
-    ).toBe('STATE_MUTATION_BUSY')
-    expect(existsSync(lock)).toBe(true)
+    utimesSync(lock, new Date(), new Date())
+    expect(await restore()).toBe('STATE_MUTATION_BUSY')
+
+    // A dead pid and three missed beats: nothing of that run is provably left.
+    utimesSync(lock, old, old)
+    expect(parseOrcadSnapshotRestore(await restore())).toBe('restored')
+    expect(existsSync(lock)).toBe(false)
   })
+
+  it('reads a process group from a proc stat whose command holds spaces and parens', async () => {
+    const proc = join(base, 'proc')
+    mkdirSync(join(proc, '4321'), { recursive: true })
+    writeFileSync(join(proc, '4321', 'stat'), '4321 (we ird) (x)) S 1 777 777 0 -1 4194560 0 0')
+    expect((await sh(posixProcessGroupCommand('4321', proc))).trim()).toBe('777')
+  })
+
+  it.skipIf(!existsSync('/proc/self/stat'))(
+    'records the group from /proc where ps has no -p (BusyBox)',
+    async () => {
+      const shim = join(base, 'bin')
+      mkdirSync(shim)
+      writeFileSync(
+        join(shim, 'ps'),
+        '#!/bin/sh\necho "ps: unrecognized option: p" >&2\nexit 1\n',
+        {
+          mode: 0o755
+        }
+      )
+      const lock = join(remoteBase, 'orcad-state-mutation.lock')
+      const run = spawnProcess({
+        program: SHELL,
+        args: [
+          '-c',
+          `PATH='${shim}':"$PATH"; ${serializedStateMutationCommand(remoteBase, 'sleep 5', 1)}`
+        ]
+      })
+      try {
+        await expect.poll(() => existsSync(join(lock, 'pgid'))).toBe(true)
+        expect(Number(readFileSync(join(lock, 'pgid'), 'utf8'))).toBeGreaterThan(1)
+      } finally {
+        run.kill('SIGKILL')
+      }
+    },
+    20_000
+  )
 
   it('keeps the lock while a killed shell’s child still runs, and frees it once the group is gone', async () => {
     const lock = join(remoteBase, 'orcad-state-mutation.lock')

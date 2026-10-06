@@ -67,6 +67,18 @@ export const ORCAD_STATE_MUTATION_DEADLINE_SECONDS = 15 * 60
  * pty-less command running after its channel closes, so a client that stops waiting has not
  * stopped the work, and a rerun beside it would mix two restores in one stage.
  */
+/**
+ * Prints `pid`'s process group. Why /proc first: BusyBox `ps` has no `-p`. The comm field
+ * may hold spaces and parens, so the fields are read after its last `)`.
+ */
+export function posixProcessGroupCommand(pid: string, procRoot = '/proc'): string {
+  const stat = `${procRoot}/${pid}/stat`
+  return [
+    `if [ -r ${stat} ]; then stat=$(cat ${stat} 2>/dev/null); set -- \${stat##*")"}; echo "$3";`,
+    `else ps -o pgid= -p ${pid} 2>/dev/null | tr -d " "; fi`
+  ].join(' ')
+}
+
 export function serializedStateMutationCommand(
   baseDir: string,
   script: string,
@@ -77,6 +89,7 @@ export function serializedStateMutationCommand(
     `${baseDir}/${ORCAD_ACTIVATION_TRANSACTION_DIRNAME}/${RELAY_INSTALL_LOCK_NAME}`
   )
   const busy = `echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0;`
+  const staleMinutes = Math.max(1, Math.ceil((3 * heartbeatSeconds) / 60))
   const guarded = [
     `lock=${lock}; fence=${fence};`,
     `mkdir -p ${shellEscape(baseDir)} 2>/dev/null;`,
@@ -86,13 +99,14 @@ export function serializedStateMutationCommand(
     'if [ -z "$holder" ]; then',
     `[ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] || { ${busy} };`,
     // Why the group: a killed shell can leave its tar or rm running; any live member keeps it.
-    `elif [ -z "$group" ] || kill -0 "-$group" 2>/dev/null; then ${busy}`,
+    `elif [ -n "$group" ]; then kill -0 "-$group" 2>/dev/null && { ${busy} };`,
+    // No group recorded: a live pid, or a beat within three, still holds; past that it is gone.
+    `elif kill -0 "$holder" 2>/dev/null || [ -z "$(find "$lock" -maxdepth 0 -mmin +${staleMinutes} 2>/dev/null)" ]; then ${busy}`,
     'fi;',
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { ${busy} }; fi;`,
-    // A host with no way to start a group records none, so its lock is never taken over.
     'if [ "${ORCA_STATE_MUTATION_GROUP:-}" = 1 ]; then',
-    'group=$(ps -o pgid= -p $$ 2>/dev/null | tr -d " ");',
-    '[ -n "$group" ] && echo "$group" > "$lock/pgid"; fi;',
+    `group=$(${posixProcessGroupCommand('$$')});`,
+    'case "$group" in ""|*[!0-9]*) ;; *) echo "$group" > "$lock/pgid";; esac; fi;',
     'echo $$ > "$lock/pid";',
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
     // A wake's fence ages toward takeover on its own, so its token stops the refresh.
