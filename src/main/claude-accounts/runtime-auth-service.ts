@@ -151,8 +151,11 @@ export class ClaudeRuntimeAuthService extends ClaudeRuntimeAuthSync {
         await this.syncForCurrentSelection()
         return
       }
-      router.publish()
-      await this.publishRunningWslDistros()
+      // Why serialized: an account change during startup must not be overwritten by this older read.
+      await this.serializeMutation(async () => {
+        router.publish()
+        await this.publishRunningWslDistros()
+      })
     } catch (error) {
       console.warn('[claude-runtime-auth] Failed to sync runtime auth state:', error)
     }

@@ -134,6 +134,15 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     expect(f.setup.calls).toBe(2)
   })
 
+  it('writes a missing guest pointer before a launch returns', async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    writeFileSync(join(f.profileHome, '..', 'profile.json'), '{}')
+    expect(existsSync(f.pointer)).toBe(false)
+    await f.router.prepareLaunch('Ubuntu')
+    expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
+  })
+
   it('launches System default from the guest ~/.claude with no account env', async () => {
     const f = fixture()
     f.wsl.Ubuntu = null

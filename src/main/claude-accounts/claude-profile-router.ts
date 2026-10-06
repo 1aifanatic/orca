@@ -9,6 +9,7 @@ import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { resolveClaudeCommand } from '../codex-cli/command'
 import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
+  claudeProfileMarkerPath,
   describeClaudeProfile,
   type ClaudeProfileDescriptor,
   readUserClaudeConfigDir,
@@ -36,12 +37,6 @@ export type ClaudeProfileRouterSettings = Pick<
 
 export const CLAUDE_PROFILE_SETUP_FAILED_MESSAGE =
   'The selected Claude account could not be set up. Try again or choose another account.'
-
-// Written by setup's ownership gate when setup starts, not when it completes: its absence means
-// setup never started here, and its presence does not prove setup finished.
-function profileMarkerPath(profile: ClaudeProfileDescriptor): string {
-  return join(dirname(profile.home), 'profile.json')
-}
 
 export const CLAUDE_PROFILE_MISSING_MESSAGE =
   "The selected Claude account's folder is missing. Sign in to it again or choose another account."
@@ -114,7 +109,7 @@ export class ClaudeProfileRouter {
   /** Waits for setup only for a folder that was never set up; otherwise launches at once. */
   async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
     const profile = this.selectedProfile()
-    if (profile && isDirectory(profile.home) && !existsSync(profileMarkerPath(profile))) {
+    if (profile && isDirectory(profile.home) && !existsSync(claudeProfileMarkerPath(profile))) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
         throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
@@ -165,7 +160,7 @@ export class ClaudeProfileRouter {
   terminalEnv(target?: ClaudeAccountSelectionTarget): ClaudeEnvPatch {
     // Why only the pointer: the guest's `claude` reads it, so a pane never waits on the guest.
     if (target?.runtime === 'wsl') {
-      return { [CLAUDE_PROFILE_POINTER_ENV]: wslClaudeProfilePointer(this.args.dataRoot) }
+      return { [CLAUDE_PROFILE_POINTER_ENV]: `~/${wslClaudeProfilePointer(this.args.dataRoot)}` }
     }
     try {
       return this.launchEnv()

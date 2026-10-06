@@ -1,7 +1,7 @@
 import { spawnProcess } from '../../shared/child-process/run-process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { wslRelayBundleDirs } from '../wsl/wsl-relay-bundle-dirs'
+import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 import {
   WSL_BROWSER_NETWORK_RELAY_BUNDLE_NAME,
   WSL_BROWSER_NETWORK_RELAY_DIR,
@@ -28,7 +28,7 @@ export type WslBrowserNetworkRelayChild = ReturnType<typeof spawnProcess> & {
 type WslBrowserNetworkRelayBundle = { jsPath: string; version: string }
 
 export function resolveWslBrowserNetworkRelayBundle(): WslBrowserNetworkRelayBundle | null {
-  for (const dir of wslRelayBundleDirs()) {
+  for (const dir of relayBundleCandidates('wsl')) {
     const jsPath = join(dir, WSL_BROWSER_NETWORK_RELAY_BUNDLE_NAME)
     const versionPath = join(dir, WSL_BROWSER_NETWORK_RELAY_VERSION_FILE)
     if (!existsSync(jsPath) || !existsSync(versionPath)) {
