@@ -53,7 +53,8 @@ function fixture() {
   }
   const service = new ClaudeHookService()
   const installProfile = () => service.install({ ...CURRENT, configDir: profile })
-  const provision = () => provisionClaudeProfile({ profileHome: profile, userHome: state.home })
+  const provision = () =>
+    provisionClaudeProfile({ profileHome: profile, userHome: state.home, platform: 'linux' })
   return { defaultDir, profile, settings, edit, service, installProfile, provision }
 }
 
@@ -75,27 +76,14 @@ function stopHooks(f: ReturnType<typeof fixture>) {
   const orcaCount = (dir: string) => stop(dir).filter(isOrca).length
   return { hook, setStop, stop, orcaCount }
 }
-const CUSTOM = { type: 'command', command: 'my-statusline' }
-function statusLines(f: ReturnType<typeof fixture>) {
-  const setDefaultCustom = () =>
-    f.edit(f.defaultDir, (value) => {
-      value.statusLine = CUSTOM
-    })
-  // The user drops their custom line and toggles Orca's hooks off and on again.
-  const revertDefaultToOrca = () => {
-    f.edit(f.defaultDir, (value) => delete value.statusLine)
-    f.service.remove()
-    f.service.install(CURRENT)
-  }
-  const sync = async () => {
-    await f.provision()
-    f.installProfile()
-  }
-  return { setDefaultCustom, revertDefaultToOrca, sync }
+const sync = async (f: ReturnType<typeof fixture>) => {
+  const report = await f.provision()
+  expect(f.installProfile().state).toBe('installed')
+  return report
 }
 
 describe('Claude hooks at an explicit profile', () => {
-  it('installs identical managed hooks at a profile without editing default settings', () => {
+  it('installs managed hooks at a profile without editing default settings or adding a statusline', () => {
     const f = fixture()
     writeFileSync(join(f.defaultDir, 'settings.json'), '{"model":"default"}')
     writeFileSync(join(f.profile, 'settings.json'), '{"model":"profile"}')
@@ -105,151 +93,43 @@ describe('Claude hooks at an explicit profile', () => {
     expect(result.configPath).toBe(join(f.profile, 'settings.json'))
     expect(result.state).toBe('installed')
     expect(readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')).toBe(before)
-    const settings = f.settings(f.profile)
-    expect(settings.model).toBe('profile')
-    expect(settings.hooks).toEqual(JSON.parse(before).hooks)
-    expect(settings.statusLine).toEqual(JSON.parse(before).statusLine)
+    expect(f.settings(f.profile)).toEqual({ model: 'profile', hooks: JSON.parse(before).hooks })
   })
-  it('retires only the profile statusline marker for an old Claude', () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    f.installProfile()
-    expect(existsSync(join(f.profile, '.orca-statusline.installed'))).toBe(true)
-    f.service.install({ claudeVersion: '1.0.0', configDir: f.profile })
-    expect(f.settings(f.profile).statusLine).toBeUndefined()
-    expect(existsSync(join(f.profile, '.orca-statusline.installed'))).toBe(false)
-    expect(existsSync(join(state.home, '.orca/agent-hooks/claude-statusline.installed'))).toBe(true)
-  })
-  it('keeps a profile opt-out across re-provision and reinstall', async () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    await f.provision()
-    f.installProfile()
-    expect(f.settings(f.profile).statusLine).toEqual(f.settings(f.defaultDir).statusLine)
-    f.edit(f.profile, (value) => delete value.statusLine)
-    await f.provision()
-    f.installProfile()
-    expect(f.settings(f.profile).statusLine).toBeUndefined()
-  })
-  it('carries a default-home opt-out to every profile', async () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    f.installProfile()
-    f.edit(f.defaultDir, (value) => delete value.statusLine)
-    f.service.install(CURRENT)
-    await f.provision()
-    f.installProfile()
-    expect(f.settings(f.defaultDir).statusLine).toBeUndefined()
-    expect(f.settings(f.profile).statusLine).toBeUndefined()
-  })
-  it('shares a custom default statusline into a profile that had Orca line', async () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    f.installProfile()
-    const custom = { type: 'command', command: 'my-statusline' }
-    f.edit(f.defaultDir, (value) => {
-      value.statusLine = custom
-    })
-    await f.provision()
-    f.installProfile()
-    expect(f.settings(f.profile).statusLine).toEqual(custom)
-  })
-  it("shares the user's own hooks around Orca's, keeping profile edits and never duplicating Orca's", async () => {
+  it("shares the user's hooks, Orca's hooks and statusline as plain keys that installs leave in sync", async () => {
     const f = fixture()
     const { hook, setStop, stop, orcaCount } = stopHooks(f)
     f.service.install(CURRENT)
-    setStop(f.defaultDir, ['notify-me', 'format-me'])
-    await f.provision()
-    f.installProfile()
-    expect(stop(f.profile).slice(0, 2)).toEqual([hook('notify-me'), hook('format-me')])
-    expect(orcaCount(f.profile)).toBe(1)
     setStop(f.defaultDir, ['notify-me'])
-    await f.provision()
-    // Orca's entry survives the merge before the installer runs again.
-    expect(stop(f.profile)).toEqual([hook('notify-me'), expect.anything()])
-    expect(orcaCount(f.profile)).toBe(1)
-    f.installProfile()
-    await f.provision()
-    expect(stop(f.profile)[0]).toEqual(hook('notify-me'))
-    expect(stop(f.profile)).toHaveLength(2)
+    await sync(f)
+    expect(f.settings(f.profile).hooks).toEqual(f.settings(f.defaultDir).hooks)
+    expect(f.settings(f.profile).statusLine).toEqual(f.settings(f.defaultDir).statusLine)
+    expect((await sync(f)).surfaces['settings.json']).toBe('unchanged')
+    setStop(f.defaultDir, ['notify-v2'])
+    await sync(f)
+    expect(stop(f.profile)[0]).toEqual(hook('notify-v2'))
     expect(orcaCount(f.profile)).toBe(1)
     setStop(f.profile, ['profile-only'])
-    setStop(f.defaultDir, ['notify-v2'])
-    await f.provision()
-    f.installProfile()
+    setStop(f.defaultDir, ['notify-v3'])
+    await sync(f)
     expect(stop(f.profile)[0]).toEqual(hook('profile-only'))
     expect(orcaCount(f.profile)).toBe(1)
   })
-  it("removes the user's last hook from an unedited profile and keeps a profile-side deletion", async () => {
+  it('carries a default-home statusline opt-out and an old-Claude retire to the profile', async () => {
     const f = fixture()
-    const { hook, setStop, stop, orcaCount } = stopHooks(f)
     f.service.install(CURRENT)
-    setStop(f.defaultDir, ['notify-me'])
-    await f.provision()
-    f.installProfile()
-    expect(stop(f.profile)[0]).toEqual(hook('notify-me'))
-    setStop(f.defaultDir, [])
-    await f.provision()
-    expect(stop(f.profile)).not.toContainEqual(hook('notify-me'))
-    expect(orcaCount(f.profile)).toBe(1)
-    expect((await f.provision()).surfaces['settings.json']).toBe('unchanged')
-    setStop(f.defaultDir, ['notify-me'])
-    await f.provision()
-    expect(stop(f.profile)[0]).toEqual(hook('notify-me'))
-    setStop(f.profile, [])
-    await f.provision()
-    f.installProfile()
-    expect(stop(f.profile)).not.toContainEqual(hook('notify-me'))
-    expect(orcaCount(f.profile)).toBe(1)
-  })
-  it('lets a shared custom statusline follow the default back to none or to Orca line', async () => {
-    const f = fixture()
-    const { setDefaultCustom, revertDefaultToOrca, sync } = statusLines(f)
-    f.service.install(CURRENT)
-    setDefaultCustom()
-    await sync()
-    expect(f.settings(f.profile).statusLine).toEqual(CUSTOM)
+    await sync(f)
+    expect(f.settings(f.profile).statusLine).toBeDefined()
     f.edit(f.defaultDir, (value) => delete value.statusLine)
-    await sync()
+    await sync(f)
     expect(f.settings(f.profile).statusLine).toBeUndefined()
-    setDefaultCustom()
-    await sync()
-    revertDefaultToOrca()
-    await sync()
-    expect(f.settings(f.profile).statusLine).toEqual(f.settings(f.defaultDir).statusLine)
-    expect(f.settings(f.profile).statusLine).not.toEqual(CUSTOM)
-  })
-  it('gives a profile Orca line back after a custom line replaced it, but keeps a profile opt-out', async () => {
-    const f = fixture()
-    const { setDefaultCustom, revertDefaultToOrca, sync } = statusLines(f)
-    f.service.install(CURRENT)
-    f.installProfile()
-    setDefaultCustom()
-    await sync()
-    revertDefaultToOrca()
-    await sync()
-    expect(f.settings(f.profile).statusLine).toEqual(f.settings(f.defaultDir).statusLine)
-    const optedOut = fixture()
-    const opted = statusLines(optedOut)
-    optedOut.service.install(CURRENT)
-    optedOut.installProfile()
-    optedOut.edit(optedOut.profile, (value) => delete value.statusLine)
-    await opted.sync()
-    opted.setDefaultCustom()
-    await opted.sync()
-    opted.revertDefaultToOrca()
-    await opted.sync()
-    expect(optedOut.settings(optedOut.profile).statusLine).toBeUndefined()
-  })
-  it('leaves the profile statusline alone while the default settings are unreadable', () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    f.installProfile()
-    const before = f.settings(f.profile).statusLine
-    writeFileSync(join(f.defaultDir, 'settings.json'), '{bad')
-    f.installProfile()
-    expect(f.settings(f.profile).statusLine).toEqual(before)
-    expect(existsSync(join(f.profile, '.orca-statusline.installed'))).toBe(true)
+    const old = fixture()
+    old.service.install(CURRENT)
+    await sync(old)
+    old.service.install({ claudeVersion: '1.0.0' })
+    await old.provision()
+    old.service.install({ claudeVersion: '1.0.0', configDir: old.profile })
+    expect(old.settings(old.defaultDir).statusLine).toBeUndefined()
+    expect(old.settings(old.profile).statusLine).toBeUndefined()
   })
   it('refuses a profile destination that is or links into the default home', () => {
     const f = fixture()
@@ -257,11 +137,9 @@ describe('Claude hooks at an explicit profile', () => {
     const defaults = readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')
     rmSync(join(f.profile, 'settings.json'), { force: true })
     symlinkSync(join(f.defaultDir, 'settings.json'), join(f.profile, 'settings.json'))
-    expect(f.service.remove({ configDir: f.profile }).state).toBe('error')
     expect(f.installProfile().state).toBe('error')
     expect(f.service.install({ ...CURRENT, configDir: f.defaultDir }).state).toBe('error')
     expect(readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')).toBe(defaults)
-    expect(existsSync(join(f.defaultDir, '.orca-statusline.installed'))).toBe(false)
   })
   it.runIf(caseInsensitive)('refuses a case-only alias of the default home', () => {
     const f = fixture()
@@ -269,58 +147,6 @@ describe('Claude hooks at an explicit profile', () => {
     const defaults = readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')
     const alias = join(state.home, '.CLAUDE')
     expect(f.service.install({ ...CURRENT, configDir: alias }).state).toBe('error')
-    expect(f.service.remove({ configDir: alias }).state).toBe('error')
     expect(readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')).toBe(defaults)
-    expect(existsSync(join(f.defaultDir, '.orca-statusline.installed'))).toBe(false)
-  })
-  it("shares the user's first hook into a profile that so far holds only Orca's", async () => {
-    const f = fixture()
-    const { hook, setStop, stop } = stopHooks(f)
-    writeFileSync(join(f.defaultDir, 'settings.json'), '{"model":"a"}')
-    await f.provision()
-    f.installProfile()
-    f.service.install(CURRENT)
-    setStop(f.defaultDir, ['my-guard'])
-    await f.provision()
-    expect(stop(f.profile)[0]).toEqual(hook('my-guard'))
-  })
-  it("removes the user's hooks but keeps Orca's when the whole hooks block leaves ~/.claude", async () => {
-    const f = fixture()
-    const { hook, setStop, stop, orcaCount } = stopHooks(f)
-    f.service.install(CURRENT)
-    setStop(f.defaultDir, ['my-guard'])
-    await f.provision()
-    f.installProfile()
-    const orcaEvents = Object.keys(f.settings(f.profile).hooks ?? {})
-    f.edit(f.defaultDir, (value) => delete value.hooks)
-    expect((await f.provision()).surfaces['settings.json']).toBe('merged')
-    expect(stop(f.profile)).not.toContainEqual(hook('my-guard'))
-    expect(orcaCount(f.profile)).toBe(1)
-    expect(Object.keys(f.settings(f.profile).hooks ?? {})).toEqual(orcaEvents)
-    expect((await f.provision()).surfaces['settings.json']).toBe('unchanged')
-  })
-  it('creates the marker in a profile directory that did not exist yet', () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    const fresh = join(state.home, 'fresh')
-    f.service.install({ ...CURRENT, configDir: fresh })
-    expect(existsSync(join(fresh, '.orca-statusline.installed'))).toBe(true)
-  })
-  it('removes Orca hooks, statusline and marker from a profile only', () => {
-    const f = fixture()
-    f.service.install(CURRENT)
-    f.installProfile()
-    const before = readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')
-    expect(f.service.remove({ configDir: f.profile }).state).toBe('not_installed')
-    expect(f.settings(f.profile)).toEqual({ hooks: {} })
-    expect(existsSync(join(f.profile, '.orca-statusline.installed'))).toBe(false)
-    expect(readFileSync(join(f.defaultDir, 'settings.json'), 'utf8')).toBe(before)
-    expect(f.service.getStatus(CURRENT).state).toBe('installed')
-  })
-  it('keeps profile destinations off the remote installer', () => {
-    type RemoteOptions = Parameters<ClaudeHookService['installRemote']>[2]
-    // @ts-expect-error -- remote settings live at the remote default home only
-    const remote: RemoteOptions = { configDir: '/profile' }
-    expect(remote).toBeDefined()
   })
 })

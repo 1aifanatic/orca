@@ -22,48 +22,33 @@ export type ClaudeProfileLedger = {
   keys: Record<string, Record<string, string>>
 }
 
-/** Orca's own bookkeeping: an unreadable or linked ledger starts empty (nothing shared is overwritten) and is rewritten. */
-export function readClaudeProfileLedger(file: string): {
-  ledger: ClaudeProfileLedger
-  readable: boolean
-} {
-  const ledger: ClaudeProfileLedger = { version: 1, files: {}, keys: {} }
-  try {
-    if (lstatSync(file).isSymbolicLink()) {
-      return { ledger, readable: false }
-    }
-  } catch (error) {
-    if (!isDefinitiveAbsence(error)) {
-      return { ledger, readable: false }
+function stringEntries(value: unknown): Record<string, string> {
+  const entries: Record<string, string> = {}
+  if (value && typeof value === 'object') {
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry === 'string') {
+        entries[key] = entry
+      }
     }
   }
+  return entries
+}
+
+/** Orca's own bookkeeping: an unreadable ledger starts empty, so nothing shared is overwritten. */
+export function readClaudeProfileLedger(file: string): ClaudeProfileLedger {
+  const ledger: ClaudeProfileLedger = { version: 1, files: {}, keys: {} }
   const result = readClaudeProfileObject(file)
   if (result.kind !== 'present') {
-    return { ledger, readable: result.kind === 'absent' }
+    return ledger
   }
-  const { files, keys } = result.value
-  if (files && typeof files === 'object') {
-    for (const [key, value] of Object.entries(files)) {
-      if (typeof value === 'string') {
-        ledger.files[key] = value
-      }
-    }
-  }
+  ledger.files = stringEntries(result.value.files)
+  const keys = result.value.keys
   if (keys && typeof keys === 'object') {
     for (const [surface, entries] of Object.entries(keys)) {
-      if (!entries || typeof entries !== 'object') {
-        continue
-      }
-      const values: Record<string, string> = {}
-      for (const [key, value] of Object.entries(entries)) {
-        if (typeof value === 'string') {
-          values[key] = value
-        }
-      }
-      ledger.keys[surface] = values
+      ledger.keys[surface] = stringEntries(entries)
     }
   }
-  return { ledger, readable: true }
+  return ledger
 }
 
 export function linkClaudeProfileDirectory(

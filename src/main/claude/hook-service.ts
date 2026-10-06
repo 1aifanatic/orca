@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs'
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import type { AgentHookSource } from '../../shared/agent-hook-relay'
 import type { SFTPWrapper } from 'ssh2'
 import type { AgentHookInstallState, AgentHookInstallStatus } from '../../shared/agent-hook-types'
@@ -6,6 +6,7 @@ import {
   buildManagedCommandHook,
   readHooksJson,
   writeHooksJson,
+  type HooksConfig,
   writeManagedScript
 } from '../agent-hooks/installer-utils'
 import {
@@ -23,13 +24,14 @@ import {
 
 export { getManagedScript }
 import { getManagedStatusLineScript } from './statusline-script'
-import { installManagedStatusLine, retireManagedStatusLine } from './claude-managed-statusline'
-import { profileTargetsDefaultHome } from './claude-profile-hook-target'
+import { refuseProfileAtDefaultHome } from './claude-profile-hook-target'
 import {
   applyManagedHooks,
+  applyManagedStatusLine,
   CLAUDE_HOOK_SETTINGS,
   getManagedScriptFileName,
   getConfigPath,
+  getManagedCommand,
   getManagedLifecycleHook,
   getManagedScriptPath,
   getPosixManagedScriptFileName,
@@ -38,6 +40,7 @@ import {
   getStatusLineInstallMarkerPath,
   getStatusLineScriptFileName,
   getStatusLineScriptPath,
+  getStatusLineSlotState,
   hasSameManagedHookInvocation,
   removeManagedHooks,
   removeManagedStatusLine,
@@ -63,10 +66,8 @@ type ClaudeHookInstallOptions = {
 }
 
 type ClaudeHookTargetOptions = ClaudeHookInstallOptions & {
-  /** Explicit managed profile on this host; omitted for the existing default-home behavior. */
+  /** An account profile on this host; omitted for the default home. */
   configDir?: string
-  /** The home whose default settings a profile follows; defaults to os.homedir(). */
-  userHome?: string
 }
 
 const DEFAULT_CLAUDE_HOOK_SERVICE_OPTIONS: ClaudeHookServiceOptions = {
@@ -102,26 +103,8 @@ export class ClaudeHookService {
       : (this.options.hookPlan ?? OPENCLAUDE_MANAGED_HOOK_PLAN)
   }
 
-  // Why: a profile destination that is, or links into, the default home would edit System Default's hooks.
-  private refuseDefaultHome(options: ClaudeHookTargetOptions): AgentHookInstallStatus | null {
-    const { configDir, userHome } = options
-    if (
-      configDir === undefined ||
-      !profileTargetsDefaultHome(this.options.settings, configDir, userHome)
-    ) {
-      return null
-    }
-    return {
-      agent: this.options.agent,
-      state: 'error',
-      configPath: getConfigPath(this.options.settings, configDir),
-      managedHooksPresent: false,
-      detail: 'Profile settings resolve to the default home'
-    }
-  }
-
   getStatus(options: ClaudeHookTargetOptions = {}): AgentHookInstallStatus {
-    const refused = this.refuseDefaultHome(options)
+    const refused = refuseProfileAtDefaultHome(this.options, options.configDir)
     if (refused) {
       return refused
     }
@@ -186,7 +169,7 @@ export class ClaudeHookService {
   }
 
   install(options: ClaudeHookTargetOptions = {}): AgentHookInstallStatus {
-    const refused = this.refuseDefaultHome(options)
+    const refused = refuseProfileAtDefaultHome(this.options, options.configDir)
     if (refused) {
       return refused
     }
@@ -217,26 +200,62 @@ export class ClaudeHookService {
     } else {
       writeManagedScript(scriptPath, payload)
     }
-    if (plan.statusLine === 'install') {
-      nextConfig = installManagedStatusLine(
-        this.options.settings,
-        nextConfig,
-        options.configDir,
-        options.userHome
-      )
-    } else if (plan.statusLine === 'retire') {
-      nextConfig = retireManagedStatusLine(this.options.settings, nextConfig, options.configDir)
+    // Why: a profile's statusLine arrives with the settings merge from the default home.
+    if (options.configDir === undefined && plan.statusLine === 'install') {
+      nextConfig = this.installManagedStatusLine(nextConfig)
+    } else if (options.configDir === undefined && plan.statusLine === 'retire') {
+      nextConfig = this.retireManagedStatusLine(nextConfig)
     }
     writeHooksJson(configPath, nextConfig)
     return this.getStatus(options)
+  }
+
+  // Why: the statusline feed is opportunistic (usage display, not agent status); a user who deleted the
+  // managed entry has opted out, and the marker distinguishes that deletion from a first install.
+  private installManagedStatusLine(config: HooksConfig): HooksConfig {
+    const scriptFileName = getStatusLineScriptFileName(this.options.settings)
+    const markerPath = getStatusLineInstallMarkerPath(this.options.settings)
+    const slot = getStatusLineSlotState(config, scriptFileName)
+    if (slot === 'user' || (slot === 'empty' && existsSync(markerPath))) {
+      return config
+    }
+    const statusLineScriptPath = getStatusLineScriptPath(this.options.settings)
+    writeManagedScript(statusLineScriptPath, getManagedStatusLineScript('local'))
+    const next = applyManagedStatusLine(
+      config,
+      getManagedCommand(statusLineScriptPath),
+      scriptFileName
+    )
+    try {
+      writeFileSync(markerPath, '')
+    } catch {
+      // Best-effort: a missing marker only means one future user deletion gets re-installed once.
+    }
+    return next
+  }
+
+  // Why: a Claude that predates statusLine discards the whole settings file over Orca's; dropping the
+  // marker with it keeps an upgrade from reading the removal as the user's opt-out.
+  private retireManagedStatusLine(config: HooksConfig): HooksConfig {
+    const { config: next, changed } = removeManagedStatusLine(
+      config,
+      getStatusLineScriptFileName(this.options.settings)
+    )
+    if (changed) {
+      try {
+        rmSync(getStatusLineInstallMarkerPath(this.options.settings), { force: true })
+      } catch {
+        // Best-effort: a stale marker only means one upgrade skips re-adding the statusline.
+      }
+    }
+    return next
   }
 
   // Why: install the Claude hook on the remote box (via SFTP); POSIX-only by design (Windows-remote deferred).
   async installRemote(
     sftp: SFTPWrapper,
     remoteHome: string,
-    // Why: remote settings live at the remote default home; a profile destination must not be silently dropped.
-    options: ClaudeHookInstallOptions & { configDir?: never } = {}
+    options: ClaudeHookInstallOptions = {}
   ): Promise<AgentHookInstallStatus> {
     // Why: remote Windows is unsupported; local process.platform cannot identify the remote OS.
     const remoteConfigPath = getRemoteConfigPath(remoteHome, this.options.settings)
@@ -290,12 +309,8 @@ export class ClaudeHookService {
     }
   }
 
-  remove(options: Omit<ClaudeHookTargetOptions, 'claudeVersion'> = {}): AgentHookInstallStatus {
-    const refused = this.refuseDefaultHome(options)
-    if (refused) {
-      return refused
-    }
-    const configPath = getConfigPath(this.options.settings, options.configDir)
+  remove(): AgentHookInstallStatus {
+    const configPath = getConfigPath(this.options.settings)
     const config = readHooksJson(configPath)
     if (!config) {
       return {
@@ -320,14 +335,12 @@ export class ClaudeHookService {
     if (this.options.agent === 'claude') {
       try {
         // Why: an Orca-level uninstall resets the opt-out memory so a later re-enable installs the statusline again.
-        rmSync(getStatusLineInstallMarkerPath(this.options.settings, options.configDir), {
-          force: true
-        })
+        rmSync(getStatusLineInstallMarkerPath(this.options.settings), { force: true })
       } catch {
         // ignore — marker cleanup is best-effort
       }
     }
-    return this.getStatus(options)
+    return this.getStatus()
   }
 }
 

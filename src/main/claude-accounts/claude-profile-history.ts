@@ -8,7 +8,7 @@ import {
   symlinkSync
 } from 'node:fs'
 import { join } from 'node:path'
-import { assertOutsideDefaultClaudeHomes } from './claude-profile-paths'
+import { assertOutsideDefaultClaudeHomes, resolveClaudeDefaultHome } from './claude-profile-paths'
 import {
   ClaudeProfileSurfaceError,
   createClaudeProfileReport,
@@ -89,7 +89,6 @@ function mergeDirectory(
   profile: string,
   home: string,
   name: (typeof CLAUDE_PROFILE_HISTORY_DIRS)[number],
-  platform: NodeJS.Platform,
   report: ClaudeProfileReport
 ): ClaudeProfileSurfaceOutcome {
   const source = join(profile, name)
@@ -131,7 +130,7 @@ function mergeDirectory(
     renameSync(source, pending)
   }
   try {
-    symlinkSync(destination, source, platform === 'win32' ? 'junction' : 'dir')
+    symlinkSync(destination, source)
   } catch (error) {
     if (current) {
       if (!lstatIfPresent(source)) {
@@ -148,25 +147,32 @@ function mergeDirectory(
   return 'linked'
 }
 
-/** Pools a profile's sessions and prompt history into ~/.claude. Execution-host paths only. */
+/**
+ * Pools a profile's sessions and prompt history into the default home. Execution-host paths only.
+ * Windows keeps each profile's history private: its links are junctions and hardlinks.
+ */
 export async function shareClaudeProfileHistory(args: {
   profileHome: string
   userHome: string
+  /** The user's own CLAUDE_CONFIG_DIR; `~/.claude` when unset. */
+  userConfigDir?: string
   platform?: NodeJS.Platform
 }): Promise<ClaudeProfileReport> {
-  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome)
-  const defaultHome = join(args.userHome, '.claude')
+  assertOutsideDefaultClaudeHomes(args.profileHome, args.userHome, args.userConfigDir)
+  const report = createClaudeProfileReport()
+  if ((args.platform ?? process.platform) === 'win32') {
+    return report
+  }
+  const defaultHome = resolveClaudeDefaultHome(args.userHome, args.userConfigDir)
   mkdirSync(args.profileHome, { recursive: true, mode: 0o700 })
   mkdirSync(defaultHome, { recursive: true, mode: 0o700 })
-  const platform = args.platform ?? process.platform
-  const report = createClaudeProfileReport()
   for (const name of CLAUDE_PROFILE_HISTORY_DIRS) {
     await runClaudeProfileSurface(report, name, () =>
-      mergeDirectory(args.profileHome, defaultHome, name, platform, report)
+      mergeDirectory(args.profileHome, defaultHome, name, report)
     )
   }
   await runClaudeProfileSurface(report, 'history.jsonl', () =>
-    mergeClaudeProfilePromptHistory(args.profileHome, defaultHome, platform, report)
+    mergeClaudeProfilePromptHistory(args.profileHome, defaultHome, report)
   )
   return report
 }

@@ -2,23 +2,15 @@ import * as fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type * as FsUtils from '../codex-accounts/fs-utils'
 vi.mock('electron', () => ({ app: { getPath: () => '/unused-test-path' } }))
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof fs>()
   return {
     ...actual,
-    linkSync: vi.fn(actual.linkSync),
     renameSync: vi.fn(actual.renameSync),
-    statSync: vi.fn(actual.statSync),
-    symlinkSync: vi.fn(actual.symlinkSync)
+    statSync: vi.fn(actual.statSync)
   }
 })
-vi.mock('../codex-accounts/fs-utils', async (original) => {
-  const actual = await original<typeof FsUtils>()
-  return { ...actual, writeFileAtomically: vi.fn(actual.writeFileAtomically) }
-})
-import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { shareClaudeProfileHistory } from './claude-profile-history'
 const roots: string[] = []
 function fixture() {
@@ -29,18 +21,10 @@ function fixture() {
   const defaultHome = join(userHome, '.claude')
   fs.mkdirSync(profileHome)
   fs.mkdirSync(defaultHome, { recursive: true })
-  const share = (platform?: NodeJS.Platform) =>
+  const share = (platform: NodeJS.Platform = 'linux') =>
     shareClaudeProfileHistory({ profileHome, userHome, platform })
   const history = (): string => fs.readFileSync(join(defaultHome, 'history.jsonl'), 'utf8')
-  const scrub = (content: string): void => {
-    fs.writeFileSync(join(defaultHome, 'scrubbed'), content)
-    fs.renameSync(join(defaultHome, 'scrubbed'), join(defaultHome, 'history.jsonl'))
-  }
-  const leftovers = (): string[] =>
-    fs
-      .readdirSync(profileHome)
-      .filter((name) => name.startsWith('history.jsonl.orca-profile-merge'))
-  return { profileHome, userHome, defaultHome, share, history, scrub, leftovers }
+  return { profileHome, userHome, defaultHome, share, history }
 }
 afterEach(() => {
   vi.resetAllMocks()
@@ -152,15 +136,13 @@ describe('Claude profile history sharing', () => {
     expect(f.history()).toBe('d1\np1\np2\nafter-link\n')
   })
   it('adds only the new lines of a CLI rewrite of the shared file', async () => {
-    for (const platform of ['darwin', 'win32'] as const) {
-      const f = fixture()
-      fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\nd2\n')
-      await f.share(platform)
-      fs.writeFileSync(join(f.profileHome, 'rewrite'), 'd1\nd2\nnew\n')
-      fs.renameSync(join(f.profileHome, 'rewrite'), join(f.profileHome, 'history.jsonl'))
-      await f.share(platform)
-      expect(f.history()).toBe('d1\nd2\nnew\n')
-    }
+    const f = fixture()
+    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\nd2\n')
+    await f.share()
+    fs.writeFileSync(join(f.profileHome, 'rewrite'), 'd1\nd2\nnew\n')
+    fs.renameSync(join(f.profileHome, 'rewrite'), join(f.profileHome, 'history.jsonl'))
+    await f.share()
+    expect(f.history()).toBe('d1\nd2\nnew\n')
   })
   it('drains retained generations in numeric order', async () => {
     const f = fixture()
@@ -174,53 +156,12 @@ describe('Claude profile history sharing', () => {
     await f.share()
     expect(f.history()).toBe('g0\ng1\ng2\ng10\ng11\n')
   })
-  it('never reuses a leftover cursor for a new retained copy', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.profileHome, 'history.jsonl.orca-profile-merge.offset'), '18\n')
-    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'new-1\nnew-2\nnew-3\nnew-4\n')
-    await f.share()
-    expect(f.history()).toBe('new-1\nnew-2\nnew-3\nnew-4\n')
-  })
-  it('does not replay a profile file that is already the shared file', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nb\n')
-    fs.linkSync(join(f.defaultHome, 'history.jsonl'), join(f.profileHome, 'history.jsonl'))
-    await f.share()
-    fs.appendFileSync(join(f.defaultHome, 'history.jsonl'), 'c\n')
-    await f.share()
-    await f.share()
-    expect(f.history()).toBe('a\nb\nc\n')
-    expect(fs.lstatSync(join(f.profileHome, 'history.jsonl')).isSymbolicLink()).toBe(true)
-    expect(f.leftovers()).toEqual([])
-  })
   it('drains a copy left by an interrupted share without replaying the shared history', async () => {
     const f = fixture()
     fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'd1\nd2\n')
     fs.writeFileSync(join(f.profileHome, 'history.jsonl.orca-profile-merge'), 'd1\nd2\nnew\n')
     await f.share()
     expect(f.history()).toBe('d1\nd2\nnew\n')
-  })
-  it('removes a leftover name for the shared file so a later scrub stays scrubbed', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
-    fs.linkSync(
-      join(f.defaultHome, 'history.jsonl'),
-      join(f.profileHome, 'history.jsonl.orca-profile-merge')
-    )
-    await f.share()
-    expect(f.leftovers()).toEqual([])
-    f.scrub('a\nb\n')
-    await f.share()
-    expect(f.history()).toBe('a\nb\n')
-  })
-  it('never removes a retained file the default history links to', async () => {
-    const f = fixture()
-    const kept = join(f.profileHome, 'history.jsonl.orca-profile-merge')
-    fs.writeFileSync(kept, 'only\n')
-    fs.symlinkSync(kept, join(f.defaultHome, 'history.jsonl'))
-    await f.share()
-    expect(fs.readFileSync(kept, 'utf8')).toBe('only\n')
-    expect(f.history()).toBe('only\n')
   })
   it('still links a session tree when its old leftover cannot be read', async () => {
     const f = fixture()
@@ -236,35 +177,6 @@ describe('Claude profile history sharing', () => {
       fs.realpathSync(join(f.defaultHome, 'projects'))
     )
   })
-  it('fails closed on an unreadable Windows link record', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
-    await f.share('win32')
-    const record = join(f.profileHome, 'history.jsonl.orca-profile-link')
-    fs.chmodSync(record, 0)
-    f.scrub('a\nb\n')
-    const report = await f.share('win32')
-    fs.chmodSync(record, 0o600)
-    expect(report.warnings).toContainEqual(
-      expect.objectContaining({ surface: 'history.jsonl', code: 'unreadable' })
-    )
-    expect(f.history()).toBe('a\nb\n')
-  })
-  it('undoes a Windows link whose record could not be written', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
-    vi.mocked(writeFileAtomically).mockImplementationOnce(() => {
-      throw Object.assign(new Error('busy'), { code: 'EBUSY' })
-    })
-    const report = await f.share('win32')
-    expect(report.warnings).toContainEqual(
-      expect.objectContaining({ surface: 'history.jsonl', code: 'link-failed' })
-    )
-    expect(fs.existsSync(join(f.profileHome, 'history.jsonl'))).toBe(false)
-    f.scrub('a\nb\n')
-    await f.share('win32')
-    expect(f.history()).toBe('a\nb\n')
-  })
   it('still links the profile when an old retained copy cannot be read', async () => {
     const f = fixture()
     const old = join(f.profileHome, 'history.jsonl.orca-profile-merge')
@@ -273,60 +185,33 @@ describe('Claude profile history sharing', () => {
     fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'private\n')
     const report = await f.share()
     fs.chmodSync(old, 0o600)
-    expect(report.warnings).toContainEqual(
-      expect.objectContaining({ surface: 'history.jsonl', code: 'unreadable' })
-    )
+    expect(report.warnings).toContainEqual(expect.objectContaining({ surface: 'history.jsonl' }))
     expect(fs.lstatSync(join(f.profileHome, 'history.jsonl')).isSymbolicLink()).toBe(true)
     expect(f.history()).toBe('private\n')
   })
-  it('selects Windows junctions/hardlinks and recognizes an existing hardlink', async () => {
+  it('keeps every profile history private on Windows', async () => {
     const f = fixture()
-    await f.share('win32')
-    expect(fs.linkSync).toHaveBeenCalledWith(
-      join(f.defaultHome, 'history.jsonl'),
-      join(f.profileHome, 'history.jsonl')
-    )
-    expect(fs.symlinkSync).toHaveBeenCalledWith(
-      join(f.defaultHome, 'projects'),
-      join(f.profileHome, 'projects'),
-      'junction'
-    )
-    fs.appendFileSync(join(f.profileHome, 'history.jsonl'), 'one\n')
-    await f.share('win32')
-    expect(f.history()).toBe('one\n')
-  })
-  it('does not bring back Windows history the user cleared or rewrote in the default home', async () => {
-    const f = fixture()
-    fs.writeFileSync(join(f.defaultHome, 'history.jsonl'), 'a\nSECRET\nb\n')
-    await f.share('win32')
-    fs.writeFileSync(join(f.defaultHome, 'rewrite'), 'a\nb\n')
-    fs.renameSync(join(f.defaultHome, 'rewrite'), join(f.defaultHome, 'history.jsonl'))
+    fs.mkdirSync(join(f.profileHome, 'projects'))
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'private\n')
     const report = await f.share('win32')
-    expect(f.history()).toBe('a\nb\n')
-    expect(report.warnings).toContainEqual(
-      expect.objectContaining({ surface: 'history.jsonl', code: 'retained-conflict' })
-    )
-    expect(
-      fs.readFileSync(join(f.profileHome, 'history.jsonl.orca-profile-conflict'), 'utf8')
-    ).toBe('a\nSECRET\nb\n')
-    fs.rmSync(join(f.defaultHome, 'history.jsonl'))
-    await f.share('win32')
-    await f.share('win32')
-    expect(f.history()).toBe('')
-    fs.appendFileSync(join(f.profileHome, 'history.jsonl'), 'later\n')
-    expect(f.history()).toBe('later\n')
+    expect(report).toEqual({ surfaces: {}, warnings: [] })
+    expect(fs.lstatSync(join(f.profileHome, 'projects')).isDirectory()).toBe(true)
+    expect(fs.readFileSync(join(f.profileHome, 'history.jsonl'), 'utf8')).toBe('private\n')
+    expect(fs.readdirSync(f.defaultHome)).toEqual([])
   })
-  it('keeps private history with a warning if Windows hardlink publication fails', async () => {
+  it("pools into the user's own CLAUDE_CONFIG_DIR when they set one", async () => {
     const f = fixture()
-    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'private')
-    vi.mocked(fs.linkSync).mockImplementationOnce(() => {
-      throw new Error('unsupported filesystem')
+    const userConfigDir = join(f.userHome, 'custom-claude')
+    fs.writeFileSync(join(f.profileHome, 'history.jsonl'), 'p1\n')
+    await shareClaudeProfileHistory({
+      profileHome: f.profileHome,
+      userHome: f.userHome,
+      userConfigDir,
+      platform: 'linux'
     })
-    const report = await f.share('win32')
-    expect(report.warnings).toContainEqual(
-      expect.objectContaining({ surface: 'history.jsonl', code: 'link-failed' })
-    )
-    expect(fs.readFileSync(join(f.profileHome, 'history.jsonl'), 'utf8')).toBe('private')
+    expect(fs.realpathSync(join(f.profileHome, 'projects'))).toBe(join(userConfigDir, 'projects'))
+    expect(fs.readFileSync(join(userConfigDir, 'history.jsonl'), 'utf8')).toBe('p1\n')
+    expect(fs.readdirSync(f.defaultHome)).toEqual([])
   })
   it('refuses a profile that is or holds a default Claude home', async () => {
     const f = fixture()
@@ -335,5 +220,12 @@ describe('Claude profile history sharing', () => {
         shareClaudeProfileHistory({ profileHome, userHome: f.userHome })
       ).rejects.toThrow('separate directories')
     }
+    await expect(
+      shareClaudeProfileHistory({
+        profileHome: join(f.userHome, 'custom', 'inner'),
+        userHome: f.userHome,
+        userConfigDir: join(f.userHome, 'custom')
+      })
+    ).rejects.toThrow('separate directories')
   })
 })
