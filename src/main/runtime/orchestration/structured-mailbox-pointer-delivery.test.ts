@@ -521,6 +521,7 @@ describe('a mailbox a /clear moves while its nudge is in flight', () => {
       getMessageWaiters: () => undefined,
       resolveStructuredTarget: () => ({ sessionId: target, dispatchId: 'd1' }),
       getCliCommand: () => 'orca-dev',
+      senderName: () => null,
       host: {
         readSessionFacts: async () => ({ submissions: [] }),
         currentFence: () => 4,
