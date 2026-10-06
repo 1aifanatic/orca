@@ -186,7 +186,8 @@ describe('a multi-line prompt typed into a shell the host names', () => {
 describe('on a host that cannot prove the launched agent is in front', () => {
   it.each([
     ['a long single line', 'x'.repeat(TYPED_STARTUP_LINE_PROMPT_BUDGET_BYTES * 4)],
-    ['a multi-line prompt', linesOf(5, 40)]
+    // Why past the budget: PowerShell quotes a multi-line prompt onto one line, so only size refuses it.
+    ['a multi-line prompt', linesOf(5, 120)]
   ])('carries %s on the launch line', (_label, prompt) => {
     const { plan, promptCarried } = offer('claude', prompt, {
       platform: 'win32',
