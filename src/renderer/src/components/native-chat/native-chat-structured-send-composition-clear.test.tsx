@@ -9,7 +9,7 @@ import type { NativeChatStructuredComposerTransport } from './native-chat-compos
 vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
 }))
-const actions = vi.hoisted(() => ({ sendDisabled: null as boolean | null }))
+const actions = vi.hoisted((): { sendDisabled: boolean | null } => ({ sendDisabled: null }))
 
 vi.mock('./NativeChatComposerActions', () => ({
   NativeChatComposerActions: (props: { sendDisabled: boolean }) => {
