@@ -43,7 +43,7 @@ export type LegacyWorkerRecoveryWorkspace = {
 export type LegacyWorkerRecoveryInventory = PtyControllerInventory
 
 export type LegacyWorkerRecoveryPorts = {
-  preparePlan: () => LegacyWorkerTerminalRecoveryPlan
+  preparePlan: (dispatchIds?: readonly string[]) => LegacyWorkerTerminalRecoveryPlan
   resolveWorkspace: (
     candidate: LegacyWorkerRecoveryCandidate
   ) => Promise<LegacyWorkerRecoveryWorkspace>

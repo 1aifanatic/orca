@@ -21656,9 +21656,9 @@
         "https://github.com/stablyai/orca/pull/22612"
       ],
       "invariant": "Completing an assignment settles its active worker bookkeeping in the same transaction without asserting process exit or releasing a terminal. Historical settled assignments converge once on database open. Missing workspaces require owning-provider evidence before exact-incarnation retirement; a restarted relay's empty inventory and loss of contact are unverifiable. Automatic retries retain unresolved assignments without revisiting settled workers or persisting empty batches; late availability converges without user intervention.",
-      "oracle": "Reopen historical completed/failed/circuit-broken PTY, structured and handle-less assignments and require no active recovery rows; preserve genuine report outcomes, pending unknown workers, diagnostics and terminal resources. Inject settlement failure and require complete transaction rollback. Query 100 missing-workspace candidates once per provider, preserve live/unidentified PTYs and wrong-host SSH evidence. Advance fake time ten minutes and require zero persistence for unresolved passes and no repeated settlement. Make a host verifiable after two minutes and require automatic convergence and timer cleanup.",
+      "oracle": "Reopen historical completed/failed/circuit-broken PTY, structured and handle-less assignments and require no active recovery rows; preserve genuine report outcomes, pending unknown workers, diagnostics and terminal resources. Inject settlement failure and require complete transaction rollback. Query 100 missing-workspace candidates once per provider, preserve live/unidentified PTYs and wrong-host SSH evidence. Advance fake time ten minutes and require zero persistence for unresolved passes and no repeated settlement. Make a host verifiable after two minutes and require automatic convergence and timer cleanup. Require indexed SQL lookups for only the requested assignments, one query shape across batch sizes, and recovery after a failed SQL read.",
       "commands": [
-        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts",
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts tests/e2e/cross-version-wire/orchestration-delivery-downgrade.unit.test.ts",
         "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
         "ORCA_BACKGROUND_LAUNCH=1 pnpm exec playwright test tests/e2e/profile-state-terminal-restart-persistence.spec.ts tests/e2e/orchestration-legacy-worker-restart-recovery.spec.ts --config tests/playwright.config.ts --project electron-headless --workers=1"
       ],
@@ -21676,7 +21676,9 @@
           "assertions": [
             "repairs historical settled PTY, structured and handle-less assignments on reopen",
             "preserves genuine report outcomes and pending unknown workers",
-            "rolls back all assignments when worker settlement fails"
+            "rolls back all assignments when worker settlement fails",
+            "reads only requested recovery assignments through indexed lookups and one SQL shape",
+            "a failed SQL read remains a retry failure and recovery resumes after reopen"
           ]
         },
         {
@@ -21693,7 +21695,14 @@
             "100 deleted git or folder workspace candidates use one owning-provider inventory",
             "live PTYs without scoped membership or verified incarnation remain deferred",
             "local inventory and restarted relay inventory never prove SSH worker exit",
-            "SSH cleanup requires an explicit owning-host absence verdict; probe failures preserve uncertainty"
+            "SSH cleanup requires an explicit owning-host absence verdict; probe failures preserve uncertainty",
+            "foreign provider identities do not start local recovery timers"
+          ]
+        },
+        {
+          "file": "src/main/runtime/orca-runtime.test.ts",
+          "assertions": [
+            "recovery starts zero foreground-process probes while an explicit status refresh still reads its requested terminal"
           ]
         }
       ],
@@ -21702,10 +21711,10 @@
           "date": "2026-10-05",
           "runner": "local",
           "platform": "macos",
-          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/orca-runtime.test.ts src/main/runtime/rpc/orchestration-runtime-update-settlement.test.ts src/main/runtime/rpc/methods/orchestration/worker/composed-workers.test.ts src/main/runtime/rpc/methods/orchestration/messaging/check.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation-lifecycle-settlement.test.ts src/main/runtime/rpc/methods/orchestration/federation/federation.test.ts src/cli/handlers/orchestration-lifecycle-rejection.test.ts src/cli/handlers/orchestration-migration.test.ts tests/e2e/cross-version-wire/orchestration-delivery-downgrade.unit.test.ts",
           "result": "passed",
-          "durationSeconds": 28.6,
-          "summary": "2,572 tests passed across 149 files; seven tests and one file skipped. Includes SQLite lifecycle, runtime recovery, federation and CLI contracts."
+          "durationSeconds": 56.25,
+          "summary": "2,581 tests passed across 150 files; seven tests and one file skipped. Includes SQLite lifecycle, runtime recovery, federation, CLI and SQL downgrade contracts."
         },
         {
           "date": "2026-10-05",
@@ -21722,8 +21731,8 @@
           "platform": "macos",
           "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/main/runtime/orchestration/worker-dispatch-settlement.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-retry.test.ts src/main/runtime/runtime-legacy-worker-missing-workspace-recovery.test.ts src/main/runtime/runtime-legacy-worker-terminal-recovery-persistence.test.ts",
           "result": "passed",
-          "durationSeconds": 0.696,
-          "summary": "36 focused settlement, bounded retry, missing-workspace and durable host-routing regressions passed. Reverting four production entry points produced 16 failures and 11 passes in the three lifecycle/provider/retry suites."
+          "durationSeconds": 0.958,
+          "summary": "44 focused settlement, automatic retry, indexed SQL, missing-workspace and durable host-routing regressions passed. Reverting production corrections reproduces failures for settlement, scoped SQL reads, uncertain SSH absence, late recovery and unnecessary foreground probes."
         }
       ],
       "runtimeBudget": {
@@ -21736,11 +21745,11 @@
       },
       "redGreenEvidence": {
         "status": "partial",
-        "evidence": "Reverting production settlement, startup repair, retry controller and missing-workspace runner produced 16 failing and 11 passing regressions across three suites; candidate regressions and broader runtime suite pass. No soak history yet."
+        "evidence": "Reverting settlement and recovery entry points produced 16 failing and 11 passing regressions. Separate reversions reproduced failures for indexed SQL scope, uncertain SSH absence, late automatic recovery and five unnecessary foreground probes. Candidate and broader runtime tests pass; no soak history yet."
       },
       "performanceBudget": {
         "required": true,
-        "evidence": "One startup SQL repair, one inventory query for 100 deleted-workspace candidates, one durable batch flush, and at most two full rollback snapshots per changed host. Timer passes process only still-deferred assignments, omit foreground-process inspection, and skip empty persistence and release reconciliation. Ten minutes of unchanged retries cause zero session writes and never revisit settled workers. Existing backoff remains capped at 30 seconds so late availability recovers automatically; timers stop on convergence or cancellation."
+        "evidence": "One startup SQL repair, one inventory query for 100 deleted-workspace candidates, one durable batch flush, and at most two full rollback snapshots per changed host. Timer passes query only still-deferred assignments through primary-key indexes with a stable parameterized SQL shape, perform zero foreground-process or foreground-agent probes, and skip empty persistence and release reconciliation. Explicit foreground status reads still work. Ten minutes of unchanged retries cause zero session writes and never revisit settled workers. Existing backoff remains capped at 30 seconds so late availability recovers automatically; timers stop on convergence or cancellation, and foreign identities never arm local timers."
       },
       "knownGaps": [
         "Physical Linux/Windows, WSL and live SSH reconnect/deleted-folder journeys are untested locally.",

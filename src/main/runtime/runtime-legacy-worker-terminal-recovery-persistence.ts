@@ -22,8 +22,8 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
     private readonly getHostId: (worktreeId: string) => ExecutionHostId | null
   ) {}
 
-  prepare(): LegacyWorkerTerminalRecoveryPlan {
-    return this.getPlan() ?? { candidates: [], ambiguousDispatchIds: [] }
+  prepare(dispatchIds?: readonly string[]): LegacyWorkerTerminalRecoveryPlan {
+    return this.getPlan(dispatchIds) ?? { candidates: [], ambiguousDispatchIds: [] }
   }
 
   async persist(
@@ -124,11 +124,18 @@ export class RuntimeLegacyWorkerTerminalRecoveryPersistence {
     }
   }
 
-  private getPlan(): LegacyWorkerTerminalRecoveryPlan | null {
+  private getPlan(dispatchIds?: readonly string[]): LegacyWorkerTerminalRecoveryPlan | null {
     try {
-      return planLegacyWorkerTerminalRecovery(this.getDb().listLegacyWorkerTerminalRecoveryRows())
+      return planLegacyWorkerTerminalRecovery(
+        dispatchIds
+          ? this.getDb().listLegacyWorkerTerminalRecoveryRows(dispatchIds)
+          : this.getDb().listLegacyWorkerTerminalRecoveryRows()
+      )
     } catch (error) {
       console.warn('[orchestration] failed to plan legacy worker terminal recovery', error)
+      if (dispatchIds) {
+        throw error
+      }
       return null
     }
   }

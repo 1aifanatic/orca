@@ -19,7 +19,10 @@ export async function runLegacyWorkerTerminalRecovery(
   ports: LegacyWorkerRecoveryPorts,
   options: LegacyWorkerRecoveryOptions
 ): Promise<LegacyWorkerTerminalRecoveryResult> {
-  const plan = ports.preparePlan()
+  const plan =
+    options.retry && options.dispatchIds
+      ? ports.preparePlan(options.dispatchIds)
+      : ports.preparePlan()
   const retryDispatchIds =
     options.retry && options.dispatchIds ? new Set(options.dispatchIds) : null
   const adoptedDispatchIds: string[] = []

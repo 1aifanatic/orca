@@ -148,7 +148,7 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
     )
 
   protected readonly legacyWorkerRecovery = new RuntimeLegacyWorkerTerminalRecoveryController({
-    preparePlan: () => this.legacyWorkerRecoveryPersistence.prepare(),
+    preparePlan: (dispatchIds) => this.legacyWorkerRecoveryPersistence.prepare(dispatchIds),
     resolveWorkspace: async (candidate) => {
       const scope = await this.resolveTerminalWorkspaceLaunchScope(`id:${candidate.worktreeId}`)
       const resolved = scope.folderWorkspace
@@ -163,7 +163,7 @@ export class OrcaRuntimeWithPreservedBranchCleanup extends OrcaRuntimeWithTermin
         undefined,
         connectionId,
         false,
-        { includeForegroundProcessEvidence: false }
+        { includeForegroundProcessEvidence: false, refreshForegroundAgents: false }
       ),
     runMutation: (worktreeId, operation) => this.runWorktreeTerminalMutation(worktreeId, operation),
     getActivation: (worktreeId) => this.getLegacyWorkerRecoveryActivation(worktreeId),

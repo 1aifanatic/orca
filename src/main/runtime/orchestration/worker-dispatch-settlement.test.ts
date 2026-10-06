@@ -2,10 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OrchestrationDb } from './db'
 import { settleActiveDispatchesForTask } from './db/dispatch-context/dispatch-completion'
 import { mintStructuredWorkerHandle } from '../structured-worker-identity'
+import { RuntimeLegacyWorkerTerminalRecoveryPersistence } from '../runtime-legacy-worker-terminal-recovery-persistence'
 
 describe('settled assignment worker recovery', () => {
   let directory: string
@@ -79,6 +80,73 @@ describe('settled assignment worker recovery', () => {
     ).toMatchObject({ action: 'settled' })
     expect(db.getWorkerDispatch(dispatchId)?.state).toBe('succeeded')
     expect(db.getTask(taskId)?.status).toBe('completed')
+  })
+
+  it('reads only requested recovery assignments through indexed lookups and one SQL shape', () => {
+    const first = worker('term_first')
+    const second = worker('term_second')
+    worker('term_not_requested')
+    const prepare = vi.spyOn(db.db, 'prepare')
+    expect(
+      db.listLegacyWorkerTerminalRecoveryRows([first.dispatchId]).map((row) => row.dispatch_id)
+    ).toEqual([first.dispatchId])
+    expect(
+      db
+        .listLegacyWorkerTerminalRecoveryRows([first.dispatchId, second.dispatchId])
+        .map((row) => row.dispatch_id)
+    ).toEqual([first.dispatchId, second.dispatchId])
+    expect(db.listLegacyWorkerTerminalRecoveryRows([])).toEqual([])
+    expect(prepare).toHaveBeenCalledTimes(2)
+    const query = prepare.mock.calls[0]?.[0]
+    expect(prepare.mock.calls[1]?.[0]).toBe(query)
+    if (typeof query !== 'string') {
+      throw new Error('Recovery query was not prepared')
+    }
+    const plan = db.db
+      .prepare(`EXPLAIN QUERY PLAN ${query}`)
+      .all(JSON.stringify([first.dispatchId]))
+    const details = plan.map((row) => {
+      if (
+        typeof row !== 'object' ||
+        row === null ||
+        !('detail' in row) ||
+        typeof row.detail !== 'string'
+      ) {
+        throw new Error('Invalid query plan')
+      }
+      return row.detail
+    })
+    expect(
+      details.some(
+        (detail) => detail.startsWith('SEARCH wd USING INDEX') && detail.includes('dispatch_id=?')
+      )
+    ).toBe(true)
+    expect(
+      details.some(
+        (detail) => detail.startsWith('SEARCH dc USING INDEX') && detail.includes('id=?')
+      )
+    ).toBe(true)
+    expect(details.some((detail) => /^SCAN (wd|dc)\b/.test(detail))).toBe(false)
+  })
+
+  it('preserves retry failure when SQL cannot be read, then recovers after the database reopens', () => {
+    const { dispatchId } = worker()
+    const recovery = new RuntimeLegacyWorkerTerminalRecoveryPersistence(
+      () => null,
+      () => db,
+      () => null
+    )
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      db.close()
+      expect(() => recovery.prepare([dispatchId])).toThrow()
+      db = new OrchestrationDb(databasePath)
+      expect(
+        recovery.prepare([dispatchId]).candidates.map((candidate) => candidate.dispatchId)
+      ).toEqual([dispatchId])
+    } finally {
+      warning.mockRestore()
+    }
   })
 
   it('rolls back dispatch completion when worker settlement cannot be committed', () => {

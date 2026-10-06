@@ -1,4 +1,5 @@
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
+import { getPtyExecutionHost } from '../../shared/terminal-execution-host'
 import type { LegacyWorkerTerminalRecoveryPlan } from './orchestration/orchestration-legacy-worker-terminal-recovery'
 import { runLegacyWorkerTerminalRecovery } from './runtime-legacy-worker-terminal-recovery-runner'
 import type {
@@ -84,6 +85,10 @@ export class RuntimeLegacyWorkerTerminalRecoveryController {
     const scopeKey = options.connectionId ? `ssh:${options.connectionId}` : 'local'
     const dispatchIds = plan.candidates.flatMap((candidate) => {
       const sshPty = parseAppSshPtyId(candidate.ptyId)
+      const ptyHost = getPtyExecutionHost(candidate.ptyId)
+      if (ptyHost === 'foreign' || (ptyHost !== null && !sshPty)) {
+        return []
+      }
       const inScope = options.connectionId
         ? sshPty?.connectionId === options.connectionId
         : sshPty === null

@@ -115,10 +115,16 @@ describe('worker recovery after workspace deletion', () => {
   it.each(['ssh:malformed', 'remote:peer-1@@pty-remote'])(
     'does not query a local provider for foreign PTY %s',
     async (ptyId) => {
-      const fixture = missingWorkspaceRecoveryFixture([missingWorkspaceWorker({ ptyId })])
-      await fixture.controller.reconcile()
-      expect(fixture.refreshInventory).not.toHaveBeenCalled()
-      expect(fixture.reconcileMissing).not.toHaveBeenCalled()
+      vi.useFakeTimers()
+      try {
+        const fixture = missingWorkspaceRecoveryFixture([missingWorkspaceWorker({ ptyId })])
+        await fixture.controller.reconcile()
+        expect(fixture.refreshInventory).not.toHaveBeenCalled()
+        expect(fixture.reconcileMissing).not.toHaveBeenCalled()
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
     }
   )
 
