@@ -14,19 +14,11 @@
 // get their own start. Every write names a message fixed when its pass chose it, never the queue's
 // head read again after a failure.
 
-import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionRecord } from '../../../shared/agent-session-record'
-import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import {
   agentSessionFailureFact,
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
-import {
-  agentSessionFailureWords,
-  type AgentSessionFailureWordsContext
-} from '../../../shared/agent-session-failure-words'
-import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
-import type { StructuredAgentRegistry } from './structured-agent-registry'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
@@ -42,38 +34,12 @@ import {
   startThatFailedWhileQueued,
   structuredAgentSessionEndedChildFailure
 } from './structured-agent-session-ended-child-failure'
+import { sameProviderChild } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
-import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
+import type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
-export type StructuredAgentSessionDeliveryLoopDeps = {
-  sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
-  adapter: StructuredAgentSessionAdapter
-  agents: StructuredAgentRegistry
-  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
-  /** A start step, tracked from enqueue so quit waits for the child it may produce. */
-  trackStart: <T>(start: Promise<T>) => Promise<T>
-  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
-  ensureProviderChild: (
-    sessionId: string,
-    startedFor: string
-  ) => Promise<StructuredAgentSessionResumeOutcome>
-  /** Ends the session's child, whose start failed, as a host stop; for a caller inside `serialize`. */
-  endFailedStart: (sessionId: string) => Promise<void>
-  /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
-  conversationFence: (sessionId: string) => number
-  /** Rejects queued messages as a completed close of the chat does; false when that failed. */
-  abandonQueued: (
-    sessionId: string,
-    which: (submission: AgentJournalSubmission) => boolean
-  ) => Promise<boolean>
-  /** Who the chat's failure sentences name. */
-  failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
-  logger: StructuredAgentSessionLogger
-  record: (sessionId: string) => AgentSessionRecord | null
-  readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
-  now: () => number
-}
+export type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
 
 type Step = 'continue' | 'stop'
 
@@ -89,12 +55,20 @@ type Attempt = { clientMessageId?: string }
 
 export class StructuredAgentSessionDeliveryLoop {
   private readonly running = new Set<string>()
+  /** The child each session's current pass waits on to prove its start; gone with the pass. */
+  private readonly waitingOn = new Map<string, StructuredAgentSessionProviderChildIdentity>()
   private disposed = false
 
   constructor(private readonly deps: StructuredAgentSessionDeliveryLoopDeps) {}
 
   isRunning(sessionId: string): boolean {
     return this.running.has(sessionId)
+  }
+
+  /** Whether a pass waits on this child's start: its exit then fails that pass's message. */
+  awaits(sessionId: string, child: StructuredAgentSessionProviderChildIdentity): boolean {
+    const awaited = this.waitingOn.get(sessionId)
+    return awaited !== undefined && sameProviderChild(awaited, child)
   }
 
   /** Quit: no step after this one starts a child or hands a message over. */
@@ -145,12 +119,19 @@ export class StructuredAgentSessionDeliveryLoop {
         )
       )
     }
-    // A child published before it proved its start takes no input yet; waited for outside
-    // the queue so a Stop can reach it meanwhile.
-    const failure = await this.deps.adapter.awaitStarted?.(sessionId)
-    return this.deps.serialize(sessionId, () =>
-      this.handOver(sessionId, prepared, failure || null, attempt)
-    )
+    if (prepared.awaited) {
+      this.waitingOn.set(sessionId, prepared.awaited)
+    }
+    try {
+      // A child published before it proved its start takes no input yet; waited for outside
+      // the queue so a Stop can reach it meanwhile.
+      const failure = await this.deps.adapter.awaitStarted?.(sessionId)
+      return await this.deps.serialize(sessionId, () =>
+        this.handOver(sessionId, prepared, failure || null, attempt)
+      )
+    } finally {
+      this.waitingOn.delete(sessionId)
+    }
   }
 
   /** The error is Orca's own and goes to the log; the chat says only that Orca failed, on the

@@ -214,13 +214,37 @@ describe('the one row a failed start leaves', () => {
     ])
   })
 
-  it.each<[string, Submission]>([
-    [
-      'a queued message, which the delivery loop rejects with its own row',
-      { clientMessageId: 'queued-1', dispatchState: 'pending', handoverRecorded: true }
-    ],
-    [
-      "a message already rejected as this start, with its writer's row",
+  const QUEUED: Submission = {
+    clientMessageId: 'queued-1',
+    dispatchState: 'pending',
+    handoverRecorded: true
+  }
+
+  function startedFor(session: ReturnType<typeof startingSession>, clientMessageId: string) {
+    return { ...session, child: { ...session.child, startedFor: clientMessageId } }
+  }
+
+  it('is not written again beside the queued message the start was for: the loop rejects it with its own', async () => {
+    const session = startedFor(startingSession([QUEUED]), 'queued-1')
+
+    await settleStructuredAgentSessionChildExit(contextFor(session), ended)
+
+    expect(rowsWritten(session)).toEqual([])
+  })
+
+  it('is not written again beside the queued message a delivery pass waits on it for', async () => {
+    const session = startingSession([QUEUED])
+
+    await settleStructuredAgentSessionChildExit(
+      { ...contextFor(session), deliveryAwaits: () => true },
+      ended
+    )
+
+    expect(rowsWritten(session)).toEqual([])
+  })
+
+  it("is not written again beside a message already rejected as this start, with its writer's row", async () => {
+    const session = startingSession([
       {
         clientMessageId: 'rejected-1',
         dispatchState: 'rejected',
@@ -228,12 +252,24 @@ describe('the one row a failed start leaves', () => {
         reason: STARTUP_TEXT,
         rejection: { kind: 'providerStartFailed' }
       }
-    ]
-  ])('is not written again beside %s', async (_case, submission) => {
-    const session = startingSession([submission])
+    ])
 
     await settleStructuredAgentSessionChildExit(contextFor(session), ended)
 
     expect(rowsWritten(session)).toEqual([])
+  })
+
+  // A message queued but neither started for nor waited on is no message the loop charges with this
+  // start: it starts afresh, so this start's failure has only this row.
+  it('is written beside a queued message no pass charges with this start', async () => {
+    const session = startingSession([QUEUED])
+
+    await settleStructuredAgentSessionChildExit(contextFor(session), ended)
+
+    expect(rowsWritten(session)).toEqual([
+      expect.objectContaining({
+        identity: { provider: 'orca', clientMessageId: `start-failure:${GENERATION}` }
+      })
+    ])
   })
 })

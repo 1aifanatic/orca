@@ -108,10 +108,7 @@ export function rejectStructuredAgentSessionStartFailure(
   })
 }
 
-type FailedStartSubmission = Pick<
-  AgentJournalSubmission,
-  'dispatchState' | 'handoverRecorded' | 'handedOverAt'
-> &
+type FailedStartSubmission = Pick<AgentJournalSubmission, 'dispatchState'> &
   Partial<Pick<AgentJournalSubmission, 'fence' | 'reason' | 'rejection'>>
 
 /** Whether a message was rejected as the failed start of the child under `fence`. */
@@ -120,18 +117,6 @@ export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence
     submission.dispatchState === 'rejected' &&
     submission.fence === fence &&
     isFailedStartOrHostFault({ reason: submission.reason ?? null, rejection: submission.rejection })
-  )
-}
-
-/** Whether a message says why a child that died starting under `fence` failed: a queued one, which
- *  the delivery loop rejects with it or starts again for, or one already rejected as that start. */
-export function messageCarriesFailedStart(
-  submissions: readonly FailedStartSubmission[],
-  fence: number
-): boolean {
-  return submissions.some(
-    (submission) =>
-      isQueuedAgentJournalSubmission(submission) || rejectedAsFailedStartAt(submission, fence)
   )
 }
 

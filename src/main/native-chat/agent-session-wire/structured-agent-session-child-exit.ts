@@ -5,12 +5,14 @@
 
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import { PROVIDER_EXIT_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
+import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionEndedEvent } from './structured-agent-session-adapter'
 import type {
   StructuredAgentSessionHostSession,
-  StructuredAgentSessionProviderChild
+  StructuredAgentSessionProviderChild,
+  StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import { endProviderChild } from './structured-agent-session-provider-child'
 import {
@@ -54,6 +56,11 @@ export type StructuredAgentSessionChildExitContext<
   publishStatus?: (sessionId: string) => void
   /** The delivery loop hands over whatever is queued once the child is off the record. */
   wakeDelivery?: (sessionId: string) => void
+  /** Whether a pass of the delivery loop is waiting on this child's start. */
+  deliveryAwaits?: (
+    sessionId: string,
+    child: StructuredAgentSessionProviderChildIdentity
+  ) => boolean
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
   logger: StructuredAgentSessionLogger
@@ -165,7 +172,12 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
           )),
       ...(!expected && exit.failure ? { exitFailure: exit.failure } : {}),
       ...(!expected && exitedDuringStartup && child.generation
-        ? { exitedDuringStartup: { generation: child.generation } }
+        ? {
+            exitedDuringStartup: {
+              generation: child.generation,
+              chargedToQueued: startChargedToQueued(context, sessionId, session, child)
+            }
+          }
         : {})
     })
     if (!settled.ok) {
@@ -207,6 +219,24 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
     }
     context.wakeDelivery?.(sessionId)
   }
+}
+
+/** Whether a queued message is still waiting on this start, so the delivery loop rejects it with
+ *  the start's failure: the message it was started for, or the one a pass waits on it for. */
+function startChargedToQueued(
+  context: { deliveryAwaits?: StructuredAgentSessionChildExitContext['deliveryAwaits'] },
+  sessionId: string,
+  session: StructuredAgentSessionChildExitSession,
+  child: StructuredAgentSessionProviderChild
+): boolean {
+  const { startedFor } = child
+  const startedForQueued =
+    startedFor !== undefined &&
+    (session.journal.submissions?.() ?? []).some(
+      (submission) =>
+        submission.clientMessageId === startedFor && isQueuedAgentJournalSubmission(submission)
+    )
+  return startedForQueued || context.deliveryAwaits?.(sessionId, child) === true
 }
 
 function logExitFailure(

@@ -25,7 +25,7 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import {
-  messageCarriesFailedStart,
+  rejectedAsFailedStartAt,
   structuredAgentSessionStartFailureRow
 } from './structured-agent-session-start-failure-settlement'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
@@ -130,8 +130,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** Who a failed start's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's
-   *  generation, for the row a start no message carries leaves. */
-  exitedDuringStartup?: { generation: string | null }
+   *  generation, for the row a start no message carries leaves. `chargedToQueued`: a queued
+   *  message is still waiting on this start, so the delivery loop rejects it with its own row. */
+  exitedDuringStartup?: { generation: string | null; chargedToQueued?: boolean }
 }): Promise<StructuredAgentSessionDeadGenerationSettlement> {
   try {
     const hasUnfinishedWork = hasUnfinishedStructuredAgentSessionWork(input.journal)
@@ -156,16 +157,16 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
       const startKey = input.exitedDuringStartup.generation ?? input.settlementId
-      // One row per failed start. A queued message is the delivery loop's to record with its own
-      // row, and one already rejected as this start's failure has its writer's; this row is for the
-      // messages handed to this child, or a command, goal or rewind start no message waited on.
-      const settledHere = new Set(settled)
-      const recordedElsewhere = messageCarriesFailedStart(
-        (input.journal.submissions?.() ?? []).filter(
-          (submission) => !settledHere.has(submission.clientMessageId)
-        ),
-        input.fence
-      )
+      // The messages handed to this child take this row. With none, a message still waiting on the
+      // start is the delivery loop's to record with its own row, and one already rejected as this
+      // start's failure has its writer's; anything else — a command, goal or rewind start, or one
+      // no message is charged with — has only this row to say why.
+      const recordedElsewhere =
+        settled.length === 0 &&
+        (input.exitedDuringStartup.chargedToQueued === true ||
+          (input.journal.submissions?.() ?? []).some((submission) =>
+            rejectedAsFailedStartAt(submission, input.fence)
+          ))
       if (!recordedElsewhere) {
         mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
       }

@@ -452,7 +452,9 @@ describe('a start another operation made that dies while a sent message waits on
   const EXIT = START_EXIT
   const TEXT = START_TEXT
 
-  it("is not the message's: the message makes its own start, which says why it failed (R2)", async () => {
+  // The exit lands between the message's accept and its first step: no pass waits on that start,
+  // and it was for no message, so its exit's row is the only place its failure is said.
+  it("is not the message's: its exit's row says why, and the message's own start says why it failed (R2)", async () => {
     adapterExtras = { awaitStarted: vi.fn(async () => START_FAILURE) }
     await restartHost()
     acquire.mockImplementation(spawnStartingChild)
@@ -484,9 +486,10 @@ describe('a start another operation made that dies while a sent message waits on
     // The setup's child, the operation's, and the message's own.
     expect(acquire).toHaveBeenCalledTimes(3)
     expect(dispatch).not.toHaveBeenCalled()
-    // A message was waiting, so the operation's exit adds no row saying the same thing.
-    // The message's own start leaves its row; the operation's exit adds none beside it.
-    expect((await statusRows()).map((row) => row.itemId)).toEqual([startRowKey(id)])
+    expect((await statusRows()).map((row) => row.itemId)).toEqual([
+      startRowKey(operationChild.acquisitionGeneration),
+      startRowKey(id)
+    ])
   })
 
   it('leaves a message sent after that start failed to a fresh start (R2)', async () => {

@@ -4,7 +4,8 @@ import { stopAgentSessionProviderRoot } from './structured-agent-session-provide
 import type {
   StructuredAgentSessionHostDeps,
   StructuredAgentSessionHostSession,
-  StructuredAgentSessionProviderChild
+  StructuredAgentSessionProviderChild,
+  StructuredAgentSessionProviderChildIdentity
 } from './structured-agent-session-host-types'
 import type { StructuredAgentSessionSinkBarrier } from './structured-agent-session-event-sink'
 import { settleStructuredAgentSessionProviderStarted } from './structured-agent-session-provider-started'
@@ -31,6 +32,10 @@ export class StructuredAgentSessionEventRecovery {
       now: () => number
       runtimeState: StructuredAgentSessionHostRuntimeState
       wakeDelivery: (sessionId: string) => void
+      deliveryAwaits: (
+        sessionId: string,
+        child: StructuredAgentSessionProviderChildIdentity
+      ) => boolean
     }
   ) {}
 

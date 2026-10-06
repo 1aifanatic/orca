@@ -154,7 +154,8 @@ export class StructuredAgentSessionHost {
       serialize: (sessionId, task) => this.tasks.trackAttach(this.serialize(sessionId, task)),
       now: () => this.now(),
       runtimeState: this.runtimeState,
-      wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId)
+      wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
+      deliveryAwaits: (sessionId, child) => this.conversationDelivery.loop.awaits(sessionId, child)
     })
     this.restartResume = createStructuredAgentSessionRestartResume(deps, this.sessions, {
       ...structuredAgentSessionRestartResumeSurfaces(this, this.now),

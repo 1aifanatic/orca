@@ -443,6 +443,32 @@ describe('a start that fails while its child exits', () => {
     expect(await startRows()).toEqual([rowFor(queued)])
   })
 
+  // A message queued behind it waits on the same start; the exit still writes the handed one's row.
+  it('gives a handed message its row though a message is queued behind it on the same start', async () => {
+    awaitStarted.mockImplementationOnce(async () => undefined)
+    const handed = await send('handed')
+    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+    const queued = await send('queued')
+    // The next pass waits on the same child's start for the queued message.
+    await eventually(() => expect(awaitStarted).toHaveBeenCalledTimes(2))
+
+    await exitBeforeProof()
+    settleStart(undefined)
+
+    await eventually(async () =>
+      expect(await submission(queued)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    expect(await submission(handed)).toMatchObject({
+      dispatchState: 'rejected',
+      rejection: PROVIDER_START_FAILED
+    })
+    // One row each: the exit's for the handed message, the loop's for the queued one.
+    expect(await startRows()).toEqual([
+      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2')),
+      rowFor(queued)
+    ])
+  })
+
   it('rejects a message its unproven child was handed with the start, never in doubt', async () => {
     awaitStarted.mockImplementation(async () => undefined)
     const handed = await send('hello')
