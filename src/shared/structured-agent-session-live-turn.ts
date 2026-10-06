@@ -122,14 +122,28 @@ export function latestStructuredAgentSessionTurn(
 /** The turn the session's own agent is running, for a client: the host's answer over the whole
  *  journal, which no loaded window can hide. Temporary: an older host sends none, so its clients
  *  still read the loaded rows' newest record; delete that arm once such hosts age out. */
-export function runningStructuredAgentSessionTurnId(state: {
-  items: readonly AgentJournalRenderItem[]
-  latestTurn?: AgentSessionLatestTurn | null
-}): string | null {
+export function runningStructuredAgentSessionTurnId(state: HostTurnSource): string | null {
   if (state.latestTurn === undefined) {
     return activeStructuredAgentSessionTurnId(state.items)
   }
   return state.latestTurn?.turn.state === 'running' ? state.latestTurn.turn.turnId : null
+}
+
+/** The scope a row of that running turn names, read the same way. */
+export function runningStructuredAgentSessionTurnScope(
+  state: HostTurnSource
+): AgentJournalTurnScope {
+  if (state.latestTurn === undefined) {
+    return liveStructuredAgentSessionTurnScope(state.items)
+  }
+  return state.latestTurn?.turn.state === 'running'
+    ? { kind: 'turn', turnItemId: state.latestTurn.itemId }
+    : AGENT_JOURNAL_THREAD_SCOPE
+}
+
+type HostTurnSource = {
+  items: readonly AgentJournalRenderItem[]
+  latestTurn?: AgentSessionLatestTurn | null
 }
 
 /**

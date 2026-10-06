@@ -49,6 +49,7 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
+import type { AgentSessionLatestTurn } from '../../../../shared/agent-session-wire'
 import { isStructuredAgentSessionThinking } from '../../../../shared/structured-agent-session-live-turn'
 import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
 import {
@@ -70,6 +71,7 @@ export function NativeChatMessageList({
   session,
   journalItems,
   journalSubmissions,
+  journalLatestTurn,
   subagentRoster,
   railOutline = null,
   isVisible = true,
@@ -89,6 +91,8 @@ export function NativeChatMessageList({
   journalItems?: readonly AgentJournalRenderItem[]
   /** With the items, what places each row in its turn (structured lane). */
   journalSubmissions?: readonly AgentJournalSubmission[]
+  /** The host's newest turn record, which places a live turn whose record is not loaded. */
+  journalLatestTurn?: AgentSessionLatestTurn | null
   /** Every subagent the session's rosters named, whether or not its roster row is loaded. */
   subagentRoster?: Parameters<typeof useNativeChatSubagentSections>[2]
   /** User messages older than the loaded window, from the host's outline. */
@@ -137,7 +141,8 @@ export function NativeChatMessageList({
   const { messages, subagentRows } = useNativeChatTranscriptProjection(
     session,
     journalItems,
-    journalSubmissions
+    journalSubmissions,
+    journalLatestTurn
   )
   const {
     sections: subagentSections,
@@ -153,7 +158,7 @@ export function NativeChatMessageList({
     messages: rows,
     turnKeys,
     liveTurnKey
-  } = useNativeChatTurnMembership(messages, journalItems, journalSubmissions)
+  } = useNativeChatTurnMembership(messages, journalItems, journalSubmissions, journalLatestTurn)
   const turnDiffs = useMemo(() => {
     if (!journalItems) {
       return new Map<string, NativeChatTurnDiff>()

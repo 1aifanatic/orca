@@ -39,7 +39,10 @@ export function useMobileStructuredAgentTurnTiming(
     () => selectStructuredAgentTurnBars(items, submissions, turnId, latestTurn),
     [items, submissions, turnId, latestTurn]
   )
-  const turnJournal = useMemo(() => ({ items, submissions }), [items, submissions])
+  const turnJournal = useMemo(
+    () => ({ items, submissions, latestTurn }),
+    [items, submissions, latestTurn]
+  )
   const [latch, setLatch] = useState<StructuredAgentTurnClockLatch | null>(null)
   // Stamp during render (React's derive-from-props pattern) so the first paint of
   // a new turn already counts from the right instant.

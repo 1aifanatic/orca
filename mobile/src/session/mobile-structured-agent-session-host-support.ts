@@ -4,6 +4,7 @@ import {
   AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY,
   AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY
 } from '../../../src/shared/protocol-version'
+import { AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY } from '../../../src/shared/agent-session-stop-capabilities'
 
 /** Structured-session features the connected host advertised; null until the status probe answers. */
 export type StructuredAgentSessionHostSupport = {
@@ -13,6 +14,8 @@ export type StructuredAgentSessionHostSupport = {
   queuedMessages: boolean
   /** A Stop that stopped nothing adds no row, so a repeated Stop is quiet. */
   quietRepeatedStop: boolean
+  /** A Stop naming no turn stops what the conversation has in flight, before a turn opens too. */
+  conversationStop: boolean
 }
 
 export function structuredAgentSessionHostSupport(
@@ -22,6 +25,7 @@ export function structuredAgentSessionHostSupport(
     promptCancel: capabilities.includes(AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY),
     questionAnswers: capabilities.includes(AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY),
     queuedMessages: capabilities.includes(AGENT_SESSION_QUEUED_MESSAGES_RUNTIME_CAPABILITY),
-    quietRepeatedStop: capabilities.includes(AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY)
+    quietRepeatedStop: capabilities.includes(AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY),
+    conversationStop: capabilities.includes(AGENT_SESSION_CONVERSATION_STOP_RUNTIME_CAPABILITY)
   }
 }

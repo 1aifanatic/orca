@@ -53,8 +53,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function turnRecord(turnId: string): AgentJournalItemIdentity {
-  return { provider: 'codex', threadId: 'thread-1', turnId, ordinal: 0 }
+function turnRecord(turnId: string, ordinal = 0): AgentJournalItemIdentity {
+  return { provider: 'codex', threadId: 'thread-1', turnId, ordinal }
 }
 
 async function writeTurn(turnId: string, turn: Omit<AgentJournalTurnLifecycle, 'turnId'>) {
@@ -71,7 +71,7 @@ async function runLongTurn(turnId: string, rows: number): Promise<void> {
   const turnScope = { kind: 'turn' as const, turnItemId: agentJournalItemKey(turnRecord(turnId)) }
   for (let ordinal = 1; ordinal <= rows; ordinal += 1) {
     await journal.appendItem(
-      { ...turnRecord(turnId), ordinal },
+      turnRecord(turnId, ordinal),
       { kind: 'message', role: 'assistant', blocks: [{ type: 'text', text: `row ${ordinal}` }] },
       { fence: 1, turnScope }
     )

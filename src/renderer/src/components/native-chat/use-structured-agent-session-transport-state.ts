@@ -39,6 +39,7 @@ export function useStructuredAgentSessionTransportState(
   )
   return {
     journalItems,
+    latestTurn,
     subagentRoster,
     submissions,
     fence,

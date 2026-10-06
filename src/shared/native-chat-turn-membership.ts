@@ -26,7 +26,11 @@ import {
 } from './native-chat-turn-grouping'
 import type { NativeChatRole } from './native-chat-types'
 import { isStructuredAgentSessionCommandTurn } from './structured-agent-session-command-entry'
-import { liveStructuredAgentSessionTurnScope } from './structured-agent-session-live-turn'
+import {
+  liveStructuredAgentSessionTurnScope,
+  runningStructuredAgentSessionTurnScope
+} from './structured-agent-session-live-turn'
+import type { AgentSessionLatestTurn } from './agent-session-wire'
 
 /** Whether the host writing this journal states each row's turn. Only a host that runs `/compact`
  *  as a turn of the send path does, so this is also how a client tells that host from an older one. */
@@ -37,6 +41,9 @@ export function hostStatesTurnScopes(items: readonly AgentJournalRenderItem[]): 
 export type NativeChatTurnJournal = {
   items: readonly AgentJournalRenderItem[]
   submissions: readonly AgentJournalSubmission[]
+  /** The host's newest turn record: it names the live turn, and anchors it when the record is not
+   *  loaded, so the turn's loaded rows still draw under its bar. Absent from older hosts. */
+  latestTurn?: AgentSessionLatestTurn | null
 }
 
 /**
@@ -48,7 +55,9 @@ export type NativeChatTurnJournal = {
  */
 export function structuredAgentTurnAnchors(
   items: readonly AgentJournalRenderItem[],
-  submissions: readonly AgentJournalSubmission[] = []
+  submissions: readonly AgentJournalSubmission[] = [],
+  /** Anchored too when its record is above the loaded rows; nothing loaded precedes it. */
+  latestTurn?: AgentSessionLatestTurn | null
 ): ReadonlyMap<string, string> {
   const userItemIds = new Set(
     items.flatMap((item) =>
@@ -88,6 +97,12 @@ export function structuredAgentTurnAnchors(
       anchorOf(item.itemId, turn, userItemIds, aliases, precedingUserItemId, inFlightSinceLastTurn)
     )
     inFlightSinceLastTurn = null
+  }
+  if (latestTurn && !anchors.has(latestTurn.itemId)) {
+    anchors.set(
+      latestTurn.itemId,
+      anchorOf(latestTurn.itemId, latestTurn.turn, userItemIds, aliases, null, null)
+    )
   }
   return anchors
 }
@@ -144,8 +159,8 @@ export function nativeChatTurnMembership(
     const turnKeys = withoutUnsent(messages, nativeChatRowTurnKeys(messages, null, opens))
     return { turnKeys, liveTurnKey: newestUserTurnKey(messages, turnKeys), drawOrder: null }
   }
-  const anchors = structuredAgentTurnAnchors(journal.items, journal.submissions)
-  const running = liveStructuredAgentSessionTurnScope(journal.items)
+  const anchors = structuredAgentTurnAnchors(journal.items, journal.submissions, journal.latestTurn)
+  const running = runningStructuredAgentSessionTurnScope(journal)
   if (!hostStatesTurnScopes(journal.items)) {
     const recordKeys = namedRecordKeys(journal.items, anchors)
     const turnKeys = withoutUnsent(

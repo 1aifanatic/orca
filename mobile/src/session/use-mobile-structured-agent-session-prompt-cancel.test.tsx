@@ -109,10 +109,12 @@ const client: RpcClient = {
 
 function Harness({
   promptCancelSupported,
-  questionAnswersSupported = false
+  questionAnswersSupported = false,
+  conversationStop = false
 }: {
   promptCancelSupported: boolean
   questionAnswersSupported?: boolean
+  conversationStop?: boolean
 }): null {
   hook = useMobileStructuredAgentSession({
     client,
@@ -125,7 +127,8 @@ function Harness({
       promptCancel: promptCancelSupported,
       questionAnswers: questionAnswersSupported,
       queuedMessages: false,
-      quietRepeatedStop: false
+      quietRepeatedStop: false,
+      conversationStop
     },
     onSendError: vi.fn()
   })
@@ -283,6 +286,49 @@ describe('mobile structured prompt cancellation', () => {
     expect(mocks.sendRequest).toHaveBeenCalledWith(
       'agentSession.cancel',
       expect.objectContaining({ prompt: renderedIdentity }),
+      expect.any(Object)
+    )
+  })
+
+  it('stops the conversation before a turn opens, on a host that takes that Stop', async () => {
+    state = { ...state, items: [], latestTurn: null }
+    act(() => {
+      renderer = create(
+        createElement(Harness, { promptCancelSupported: true, conversationStop: true })
+      )
+    })
+    await act(async () => {
+      hook.cancel()
+    })
+    const call = mocks.sendRequest.mock.calls.find(([method]) => method === 'agentSession.cancel')
+    expect(call?.[1]).not.toHaveProperty('turnId')
+    expect(call?.[1]).not.toHaveProperty('prompt')
+  })
+
+  it('still names the host turn for a card cancel, which the host requires', async () => {
+    state = {
+      ...state,
+      items: [pendingApproval()],
+      latestTurn: {
+        itemId: 'turn-status',
+        observedAt: 1,
+        turn: { turnId: 'turn-1', state: 'running' }
+      }
+    }
+    act(() => {
+      renderer = create(
+        createElement(Harness, { promptCancelSupported: true, conversationStop: true })
+      )
+    })
+    await act(async () => {
+      expect(await hook.cancelPrompt()).toBe(true)
+    })
+    expect(mocks.sendRequest).toHaveBeenCalledWith(
+      'agentSession.cancel',
+      expect.objectContaining({
+        turnId: 'turn-1',
+        prompt: { itemId: 'approval-1', expectedRevision: 4 }
+      }),
       expect.any(Object)
     )
   })

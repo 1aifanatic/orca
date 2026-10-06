@@ -55,7 +55,13 @@ function mergeBatch(
       : {}),
     ...(right.activity !== undefined || left.activity !== undefined
       ? { activity: right.activity !== undefined ? right.activity : (left.activity ?? null) }
-      : {})
+      : {}),
+    // Latest wins, and an explicit null (no turn) is an answer, so only absence falls back.
+    ...(right.latestTurn !== undefined
+      ? { latestTurn: right.latestTurn }
+      : left.latestTurn !== undefined
+        ? { latestTurn: left.latestTurn }
+        : {})
   }
 }
 

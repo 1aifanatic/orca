@@ -22,6 +22,7 @@ import {
   type AgentSessionHistoryPage,
   type AgentSessionHistoryRequest,
   type AgentSessionHistoryResult,
+  type AgentSessionLatestTurn,
   type AgentSessionSubagentRosterEntry
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
@@ -311,6 +312,18 @@ function buildPage(input: {
     hasNewer: input.hasNewer,
     ...(input.subagentRoster === undefined ? {} : { subagentRoster: input.subagentRoster }),
     // From the whole timeline, never the page: a long turn's record sits below any window.
-    latestTurn: latestStructuredAgentSessionTurn(input.snapshot.items)
+    latestTurn: snapshotLatestTurn(input.snapshot)
   }
+}
+
+// A catch-up run pages one snapshot many times; its scan back to the turn record is paid once.
+const latestTurnBySnapshot = new WeakMap<AgentJournalSnapshot, AgentSessionLatestTurn | null>()
+
+function snapshotLatestTurn(snapshot: AgentJournalSnapshot): AgentSessionLatestTurn | null {
+  let latest = latestTurnBySnapshot.get(snapshot)
+  if (latest === undefined) {
+    latest = latestStructuredAgentSessionTurn(snapshot.items)
+    latestTurnBySnapshot.set(snapshot, latest)
+  }
+  return latest
 }

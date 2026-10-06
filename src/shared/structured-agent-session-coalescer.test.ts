@@ -125,4 +125,26 @@ describe('structured agent session event coalescer', () => {
     coalescer.flush()
     expect(events[1]).toMatchObject({ queuePause: { reason: 'stopped' } })
   })
+
+  it('keeps the latest turn a coalesced frame carried, and a null one as an answer', () => {
+    const events: AgentSessionSubscribeEvent[] = []
+    const coalescer = createStructuredAgentSessionEventCoalescer((event) => events.push(event))
+    const running = {
+      itemId: 'turn-1',
+      observedAt: 1,
+      turn: { turnId: 'turn-1', state: 'running' as const }
+    }
+
+    coalescer.push({ ...batch(1), latestTurn: running })
+    coalescer.push(batch(2))
+    coalescer.flush()
+    coalescer.push({ ...batch(3), latestTurn: running })
+    coalescer.push({ ...batch(4), latestTurn: null })
+    coalescer.flush()
+
+    expect(events.map((event) => (event.type === 'batch' ? event.latestTurn : 'other'))).toEqual([
+      running,
+      null
+    ])
+  })
 })
