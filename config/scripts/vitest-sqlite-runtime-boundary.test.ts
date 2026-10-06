@@ -12,8 +12,11 @@ const sqliteHarnesses = new Set([
 ])
 const sqliteModules = new Set([
   resolve('src/main/sqlite/sync-database'),
+  resolve('src/main/native-chat/agent-session-journal/journal-host-database'),
   resolve('src/main/runtime/orchestration/db'),
-  resolve('src/main/runtime/orchestration/db/orchestration-db')
+  resolve('src/main/runtime/orchestration/db/orchestration-db'),
+  resolve('src/main/runtime/structured-agent-session-runtime'),
+  resolve('src/main/runtime/agent-session-record-store-slot')
 ])
 
 it('keeps real SQLite fixtures and database consumers in the Node runtime project', () => {
@@ -25,6 +28,9 @@ it('keeps real SQLite fixtures and database consumers in the Node runtime projec
     if (
       ![...sqliteHarnesses].some((name) => source.includes(name)) &&
       !source.includes('sync-database') &&
+      !source.includes('journal-host-database') &&
+      !source.includes('structured-agent-session-runtime') &&
+      !source.includes('agent-session-record-store-slot') &&
       !source.includes('db')
     ) {
       continue
