@@ -8,6 +8,10 @@ type IndexedBucket = {
 export type TerminalTabOwnerIndex = {
   getOwners(tabsByWorktree: TerminalTabOwnerBuckets): ReadonlyMap<string, string>
   getOwner(tabsByWorktree: TerminalTabOwnerBuckets, tabId: string): string | null
+  getOwnerWorktreeIds(
+    tabsByWorktree: TerminalTabOwnerBuckets,
+    tabId: string
+  ): ReadonlySet<string> | undefined
   adoptMetadataOnlyBucketReplacements(
     previousTabsByWorktree: TerminalTabOwnerBuckets,
     nextTabsByWorktree: TerminalTabOwnerBuckets,
@@ -153,6 +157,10 @@ export function createTerminalTabOwnerIndex(): TerminalTabOwnerIndex {
   return {
     getOwners: update,
     getOwner: (tabsByWorktree, tabId) => update(tabsByWorktree).get(tabId) ?? null,
+    getOwnerWorktreeIds: (tabsByWorktree, tabId) => {
+      update(tabsByWorktree)
+      return worktreeIdsByTabId.get(tabId)
+    },
     adoptMetadataOnlyBucketReplacements
   }
 }
@@ -170,6 +178,13 @@ export function getTerminalTabOwnerWorktreeId(
   tabId: string
 ): string | null {
   return sharedTerminalTabOwnerIndex.getOwner(tabsByWorktree, tabId)
+}
+
+export function getTerminalTabOwnerWorktreeIds(
+  tabsByWorktree: TerminalTabOwnerBuckets,
+  tabId: string
+): ReadonlySet<string> | undefined {
+  return sharedTerminalTabOwnerIndex.getOwnerWorktreeIds(tabsByWorktree, tabId)
 }
 
 export function adoptTerminalTabOwnerMetadataOnlyBuckets(

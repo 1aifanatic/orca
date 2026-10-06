@@ -15,6 +15,10 @@ import { applyBrowserRecordUpdates } from './apply-browser-records'
 import { applyWorktreeRecordUpdates } from './apply-worktree-records'
 import { applyActiveStateUpdates } from './apply-active-state'
 import { buildWebSessionTabsFinalPatch } from './apply-final-patch'
+import {
+  findForeignTerminalSnapshotIdentity,
+  indexTerminalSnapshotHosts
+} from './terminal-snapshot-host-ownership'
 
 /** Reconcile one host frame through the staged terminal/browser/layout pipeline. */
 export function applyWebSessionTabsSnapshotWithContext(
@@ -32,6 +36,19 @@ export function applyWebSessionTabsSnapshotWithContext(
     return state
   }
   const worktreeId = rawSnapshot.worktree
+  const terminalHostById = indexTerminalSnapshotHosts(state, worktreeId)
+  const foreignTabId =
+    options?.contentScope === 'agent-session'
+      ? undefined
+      : findForeignTerminalSnapshotIdentity(state, rawSnapshot, environmentId, terminalHostById)
+  if (foreignTabId) {
+    console.warn('[web-session-tabs-sync] snapshot conflicts with another host’s terminal:', {
+      environmentId,
+      worktreeId,
+      tabId: foreignTabId
+    })
+    return state
+  }
   const base = prepareWebSessionTabsSnapshotBase(
     state,
     rawSnapshot,
@@ -39,7 +56,8 @@ export function applyWebSessionTabsSnapshotWithContext(
     worktreeId,
     now,
     batchContext,
-    options
+    options,
+    terminalHostById
   )
   const browser = prepareWebSessionTabsSnapshotBrowser(base)
   const unified = prepareWebSessionTabsSnapshotUnified(browser)
