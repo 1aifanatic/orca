@@ -17547,7 +17547,7 @@
         "notSignedIn": "{{agent}} no tiene la sesión iniciada con la cuenta seleccionada.",
         "claudeSystemNotSignedIn": "Claude no ha iniciado sesión. Ejecuta `claude` e inicia sesión con /login, o elige una cuenta en la configuración de Cuentas de Claude.",
         "claudeManagedNotSignedIn": "Esta cuenta de Claude no ha iniciado sesión. Vuelve a iniciar sesión en la configuración de Cuentas de Claude.",
-        "codexSystemNotSignedIn": "Codex no ha iniciado sesión. Ejecuta `codex login` o elige una cuenta en la configuración de Cuentas de Codex.",
+        "codexSystemNotSignedIn": "Codex no ha iniciado sesión. Ejecuta `codex login`.",
         "codexManagedNotSignedIn": "Esta cuenta de Codex no ha iniciado sesión. Vuelve a iniciar sesión en la configuración de Cuentas de Codex.",
         "cliMissing": "{{agent}} no está instalado en el equipo que ejecuta este chat.",
         "signInFirst": "Inicie sesión primero.",

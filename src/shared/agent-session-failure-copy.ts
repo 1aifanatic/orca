@@ -25,8 +25,7 @@ export const AGENT_SESSION_FAILURE_COPY = {
     "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
   claudeManagedNotSignedIn:
     "This Claude account isn't signed in. Sign in again in Claude Accounts settings.",
-  codexSystemNotSignedIn:
-    "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings.",
+  codexSystemNotSignedIn: "Codex isn't signed in. Run `codex login`.",
   codexManagedNotSignedIn:
     "This Codex account isn't signed in. Sign in again in Codex Accounts settings.",
   cliMissing: "{{agent}} isn't installed on the computer running this chat.",

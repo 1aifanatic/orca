@@ -34,8 +34,7 @@ import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-
 const CALLER = { callerKey: 'client-1' }
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
 const ADAPTER_FAILURE = agentSessionFailureFact('notSignedIn')
-const ADAPTER_FAILURE_TEXT =
-  "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings."
+const ADAPTER_FAILURE_TEXT = "Codex isn't signed in. Run `codex login`."
 // The exit's reason is Orca's log text; the row says only that the start stopped.
 const EXIT_TEXT = 'Codex stopped before it finished starting. Send your message to try again.'
 // The first child (generation-1) is lost at setup; the send starts generation-2.

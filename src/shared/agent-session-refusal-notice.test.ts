@@ -419,9 +419,7 @@ describe('the notice for every reason a host names', () => {
           details: { reason: 'notSignedIn' }
         })
       )
-    ).toBe(
-      "Your message was not sent. Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings."
-    )
+    ).toBe("Your message was not sent. Codex isn't signed in. Run `codex login`.")
     expect(
       agentSessionWriteNoticeEnglish(
         send({

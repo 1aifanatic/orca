@@ -566,8 +566,7 @@ describe("the replacement's first send", () => {
     {
       name: 'not signed in',
       error: () => new AgentSessionAcquisitionRefusal('Codex is not signed in.', 'notSignedIn'),
-      words:
-        "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings.",
+      words: "Codex isn't signed in. Run `codex login`.",
       kind: 'notSignedIn'
     },
     {

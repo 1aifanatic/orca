@@ -17582,7 +17582,7 @@
         "notSignedIn": "{{agent}} は選択したアカウントでサインインしていません。",
         "claudeSystemNotSignedIn": "Claude にサインインしていません。`claude` を実行して /login でサインインするか、設定の Claude アカウントでアカウントを選択してください。",
         "claudeManagedNotSignedIn": "この Claude アカウントにサインインしていません。設定の Claude アカウントで再度サインインしてください。",
-        "codexSystemNotSignedIn": "Codex にサインインしていません。`codex login` を実行するか、設定の Codex アカウントでアカウントを選択してください。",
+        "codexSystemNotSignedIn": "Codex にサインインしていません。`codex login` を実行してください。",
         "codexManagedNotSignedIn": "この Codex アカウントにサインインしていません。設定の Codex アカウントで再度サインインしてください。",
         "cliMissing": "このチャットを実行しているコンピューターに {{agent}} がインストールされていません。",
         "signInFirst": "先にサインインしてください。",

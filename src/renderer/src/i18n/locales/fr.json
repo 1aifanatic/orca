@@ -17648,7 +17648,7 @@
         "notSignedIn": "{{agent}} n'est pas connecté avec le compte sélectionné.",
         "claudeSystemNotSignedIn": "Claude n’est pas connecté. Exécutez `claude` et connectez-vous avec /login, ou choisissez un compte dans les paramètres des Comptes Claude.",
         "claudeManagedNotSignedIn": "Ce compte Claude n’est pas connecté. Reconnectez-vous dans les paramètres des Comptes Claude.",
-        "codexSystemNotSignedIn": "Codex n’est pas connecté. Exécutez `codex login` ou choisissez un compte dans les paramètres des Comptes Codex.",
+        "codexSystemNotSignedIn": "Codex n’est pas connecté. Exécutez `codex login`.",
         "codexManagedNotSignedIn": "Ce compte Codex n’est pas connecté. Reconnectez-vous dans les paramètres des Comptes Codex.",
         "cliMissing": "{{agent}} n’est pas installé sur l’ordinateur qui exécute cette conversation.",
         "signInFirst": "Connectez-vous d'abord.",

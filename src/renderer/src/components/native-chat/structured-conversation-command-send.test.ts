@@ -94,7 +94,7 @@ describe('the line under the composer after a conversation command failed', () =
       "Codex couldn't start. Start a new chat to continue."
     )
     expect((await sent(hostResult('clear', { kind: 'notSignedIn' }, 'codex'), 'codex')).error).toBe(
-      "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings. Run /clear again."
+      "Codex isn't signed in. Run `codex login`. Run /clear again."
     )
   })
 

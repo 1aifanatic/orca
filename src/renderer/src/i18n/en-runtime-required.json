@@ -2779,7 +2779,7 @@
         "claudeSystemNotSignedIn": "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings.",
         "cliMissing": "{{agent}} isn't installed on the computer running this chat.",
         "codexManagedNotSignedIn": "This Codex account isn't signed in. Sign in again in Codex Accounts settings.",
-        "codexSystemNotSignedIn": "Codex isn't signed in. Run `codex login`, or choose an account in Codex Accounts settings.",
+        "codexSystemNotSignedIn": "Codex isn't signed in. Run `codex login`.",
         "commandRefused": "This command didn't run.",
         "commandRefusedTryAgain": "This command didn't run. Try it again.",
         "compactionFailed": "Compaction failed.",
