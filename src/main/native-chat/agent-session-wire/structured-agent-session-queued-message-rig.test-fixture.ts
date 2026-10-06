@@ -32,7 +32,7 @@ import {
 import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 
 export const QUEUED_RIG_CALLER = { callerKey: 'client-1' }
-type RigSendOptions = { internal?: true; source?: AgentMessageSource }
+type RigSendOptions = { source?: AgentMessageSource }
 
 export function eventually(assertion: () => void | Promise<void>): Promise<void> {
   return vi.waitFor(assertion, { timeout: 10_000 })
@@ -82,9 +82,8 @@ export async function createQueuedMessageTestRig(
     }
   }
 
-  /** A client's send, as the `agentSession.send` RPC hands it to the host;
-   *  `internal` is a host-side sender (orchestration mail, a restart continuation), and `source`
-   *  who it is from. */
+  /** A send as the host takes it: a client's over the `agentSession.send` RPC, or Orca's own,
+   *  with `source` naming who it is from. */
   function send(text: string, delivery?: 'queue-if-active', options?: RigSendOptions) {
     const body = hostTestMessage(text)
     const clientOperationId = hostTestOperationId()
@@ -92,7 +91,7 @@ export async function createQueuedMessageTestRig(
     const result = host.send(QUEUED_RIG_CALLER, {
       envelope: envelope(fields, 'agentSession.send', clientOperationId),
       ...fields,
-      ...(options?.internal ? { source: options.source } : { userSend: true as const })
+      ...(options?.source ? { source: options.source } : {})
     })
     return { id: clientOperationId, result }
   }

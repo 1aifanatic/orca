@@ -222,7 +222,9 @@ export function NativeChatStructuredSession(
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
-        props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
+        props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
+      queueHold: controller.queuedMessages.queueHold,
+      queueResume: controller.queuedMessages.queueResume
     }
   }, [
     controller,
@@ -389,8 +391,10 @@ export function NativeChatStructuredSession(
               draftScopeKey={structuredAgentSessionDraftScopeKey(props.sessionId)}
               targetPtyId={null}
               agent={props.agent}
-              isWorking={controller.canStop}
+              // Stop is offered whenever the chat looks busy, live only once a turn can be stopped.
+              isWorking={controller.canStop || controller.queueSendsNext}
               {...stopControls.composer}
+              onStop={controller.canStop ? stopControls.composer.onStop : undefined}
               structuredTransport={structuredTransport}
               launchSeed={{ ...launchDraftSignal, ownsTabWideLaunchDraft: true }}
             />

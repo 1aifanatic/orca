@@ -30,7 +30,7 @@ import type {
   NativeChatComposerProps
 } from './native-chat-composer-types'
 import { useNativeChatPtyComposerSend } from './use-native-chat-pty-composer-send'
-import { useNativeChatStructuredComposerSend } from './use-native-chat-structured-composer-send'
+import { useNativeChatHeldQueueComposerSend } from './use-native-chat-held-queue-composer-send'
 import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-event'
 import { useNativeChatComposerAppMenuSelection } from './use-native-chat-composer-app-menu-selection'
 import { useNativeChatWorkspaceFileDrop } from './use-native-chat-workspace-file-drop'
@@ -243,7 +243,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const contextUsageSummary = useNativeChatContextUsageSummary(structuredTransport)
     const sessionOptionsSnapshot = structuredTransport?.optionSnapshot ?? ptySessionOptionsSnapshot
 
-    const sendStructured = useNativeChatStructuredComposerSend({
+    const { send: sendStructured, confirm: queueSendConfirm } = useNativeChatHeldQueueComposerSend({
       agent,
       draftScopeKey,
       imageAttachments,
@@ -417,6 +417,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         onDictationHoldEnd={dictation.stopHoldDictation}
         onSend={send}
         onStop={interrupt}
+        queueResume={structuredTransport?.queueResume}
+        queueSendConfirm={queueSendConfirm}
         sessionOptionsSurface={sessionOptionsSurface}
         sessionOptionsSnapshot={sessionOptionsSnapshot}
         contextUsage={contextUsageSummary}

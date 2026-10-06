@@ -124,7 +124,9 @@ export function createStructuredSessionMocks() {
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
       launchSeed?: NativeChatLaunchSeed
-      structuredTransport?: Record<string, unknown>
+      structuredTransport?: Record<string, unknown> & {
+        queueResume?: { resume: () => void; resuming: boolean }
+      }
       isWorking?: boolean
       isStopping?: boolean
       afterStop?: 'queue' | 'send'
@@ -163,7 +165,10 @@ export function createStructuredSessionMocks() {
     queuedSteer: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedRemove: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
-    queuedSteerNewest: vi.fn<() => boolean>(() => false)
+    queuedSteerNewest: vi.fn<() => boolean>(() => false),
+    queuedResumable: false,
+    queueSendsNext: false,
+    queuedResume: vi.fn<() => Promise<void>>(async () => {})
   }
 
   const moduleFactories = {
@@ -241,13 +246,17 @@ export function createStructuredSessionMocks() {
             canStop: mocks.canStop ?? mocks.turnId !== null,
             stopPressed: mocks.stopPressed,
             sendsQueue: mocks.sendsQueue,
+            queueSendsNext: mocks.queueSendsNext,
             stop: mocks.stop,
             queuedMessages: {
               cards: mocks.queuedCards,
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
-              steerNewest: mocks.queuedSteerNewest
+              steerNewest: mocks.queuedSteerNewest,
+              queueResume: mocks.queuedResumable
+                ? { resume: mocks.queuedResume, resuming: false }
+                : undefined
             },
             threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,
@@ -386,6 +395,9 @@ export function createStructuredSessionMocks() {
     mocks.loadingOlder = false
     mocks.olderHistoryGeneration = 0
     mocks.loadOlder.mockReset()
+    mocks.queuedResumable = false
+    mocks.queueSendsNext = false
+    mocks.queuedResume.mockReset()
   }
 
   return { mocks, moduleFactories, resetStructuredSessionMocks }
