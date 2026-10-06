@@ -12,11 +12,11 @@ import type { NativeChatTurnJournal } from '../../../src/shared/native-chat-turn
 import type { NativeChatSettledTurns } from '../../../src/shared/native-chat-turn-status'
 import { useMobileNativeChatTurnDisclosure } from './use-mobile-native-chat-turn-disclosure'
 
-function userMessage(id: string): NativeChatMessage {
+function userMessage(id: string, text = id): NativeChatMessage {
   return {
     id,
     role: 'user',
-    blocks: [{ type: 'text', text: id }],
+    blocks: [{ type: 'text', text }],
     timestamp: null,
     source: 'transcript'
   }
@@ -66,15 +66,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
   })
 
   it('does not scan bridge-lane transcripts', () => {
-    const messages: NativeChatMessage[] = [
-      {
-        id: 'u1',
-        role: 'user',
-        blocks: [{ type: 'text', text: 'go' }],
-        timestamp: null,
-        source: 'transcript'
-      }
-    ]
+    const messages: NativeChatMessage[] = [userMessage('u1', 'go')]
     const findLastIndex = vi.spyOn(messages, 'findLastIndex')
     const slice = vi.spyOn(messages, 'slice')
     const filter = vi.spyOn(messages, 'filter')
@@ -94,15 +86,7 @@ describe('useMobileNativeChatTurnDisclosure', () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(1_000)
-      const messages: NativeChatMessage[] = [
-        {
-          id: 'u1',
-          role: 'user',
-          blocks: [{ type: 'text', text: 'go' }],
-          timestamp: null,
-          source: 'transcript'
-        }
-      ]
+      const messages: NativeChatMessage[] = [userMessage('u1', 'go')]
       act(() => {
         renderer = create(createElement(Harness, { messages, enabled: true }))
       })
