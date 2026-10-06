@@ -17377,11 +17377,7 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "消息传递未经确认。",
-            "93ef441197": "消息未发送。",
-            "a5e7f14068": "重试"
-          },
+          "NativeChatStructuredSession": {},
           "NativeChatLaunchRetry": {
             "failed": "无法开始聊天。",
             "unknown": "无法确认聊天连接。",
@@ -17993,6 +17989,8 @@
         "estimated": "根据上一次响应的估算值。"
       },
       "dismissDeliveryNotice": "关闭",
+      "sendAgain": "重新发送",
+      "deliveryInDoubt": "Orca 无法确认此消息已送达 {{value0}}。",
       "messageNotSent": "消息未发送",
       "deliveryUnconfirmed": "无法确认送达 — 重试前请检查聊天",
       "messageSending": "正在发送…",

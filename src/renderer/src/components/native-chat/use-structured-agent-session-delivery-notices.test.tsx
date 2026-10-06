@@ -8,7 +8,6 @@ import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent
 
 afterEach(cleanup)
 
-const NONE = new Set<string>()
 const NO_CARDS: readonly string[] = []
 const EMPTY: never[] = []
 
@@ -61,12 +60,11 @@ it('keeps the same notices across batches in a chat whose only rejection a Stop 
   const { result, rerender } = renderHook(
     ({ submissions }: { submissions: readonly AgentJournalSubmission[] }) =>
       useStructuredAgentSessionDeliveryNotices({
-        outbox: EMPTY,
+        pending: EMPTY,
         submissions,
         journalItems: EMPTY,
-        failedHere: NONE,
         queuedMessageIds: NO_CARDS,
-        retry: () => {},
+        sendAgain: () => {},
         agentName: 'Claude'
       }),
     { initialProps: { submissions: [withdrawn('stopped')] } }
@@ -83,12 +81,11 @@ function renderNotices(submissions: readonly AgentJournalSubmission[]) {
   return renderHook(
     ({ submissions: current }: { submissions: readonly AgentJournalSubmission[] }) =>
       useStructuredAgentSessionDeliveryNotices({
-        outbox: EMPTY,
+        pending: EMPTY,
         submissions: current,
         journalItems: EMPTY,
-        failedHere: NONE,
         queuedMessageIds: NO_CARDS,
-        retry: () => {},
+        sendAgain: () => {},
         agentName: 'Claude'
       }),
     { initialProps: { submissions } }

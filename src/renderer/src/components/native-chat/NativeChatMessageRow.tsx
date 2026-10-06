@@ -32,8 +32,8 @@ import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
  *  place of its time, or that it did not go through, with its own Retry when the surface can send
  *  it again. */
 export type NativeChatDeliveryNotice =
-  | { sending: true; text?: never; onRetry?: never; onDismiss?: never }
-  | { sending?: never; text: string; onRetry?: () => void; onDismiss?: () => void }
+  | { sending: true; text?: never; onSendAgain?: never; onDismiss?: never }
+  | { sending?: never; text: string; onSendAgain?: () => void; onDismiss?: () => void }
 
 const USER_META_REVEAL =
   'transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 [.group:has(:focus-visible)_&]:pointer-events-auto [.group:has(:focus-visible)_&]:opacity-100'
@@ -224,13 +224,10 @@ export const MessageRow = memo(function MessageRow({
                 {translate('components.native-chat.dismissDeliveryNotice', 'Dismiss')}
               </Button>
             ) : null}
-            {deliveryNotice.onRetry ? (
-              <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onRetry}>
+            {deliveryNotice.onSendAgain ? (
+              <Button type="button" variant="ghost" size="xs" onClick={deliveryNotice.onSendAgain}>
                 <RotateCcw className="size-3" />
-                {translate(
-                  'auto.components.native.chat.NativeChatStructuredSession.a5e7f14068',
-                  'Retry'
-                )}
+                {translate('components.native-chat.sendAgain', 'Send again')}
               </Button>
             ) : null}
           </div>

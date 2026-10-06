@@ -10,7 +10,7 @@ import type {
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 }))
 let items: AgentJournalRenderItem[] = []
 let submissions: AgentJournalSubmission[] = []
-let outbox: StructuredAgentSessionOutboxEntry[] = []
+let outbox: StructuredAgentSessionPendingSend[] = []
 let fence = 3
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -36,13 +36,13 @@ vi.mock('./use-structured-agent-session-read', () => ({
   })
 }))
 
-vi.mock('./use-structured-agent-session-outbox', () => ({
-  structuredSessionOperationId: () => `operation-${++mocks.operations}`,
-  useStructuredAgentSessionOutbox: () => ({
-    outbox,
+vi.mock('./use-structured-agent-session-sends', () => ({
+  useStructuredAgentSessionSends: () => ({
+    pending: outbox,
     error: null,
+    clearError: vi.fn(),
     send: vi.fn(),
-    retry: vi.fn(),
+    sendAgain: vi.fn(),
     withdrawUnsent: mocks.withdrawUnsent
   })
 }))
@@ -57,17 +57,16 @@ import { structuredAgentSessionAgentStatus } from '../../../../shared/structured
 import { useStructuredAgentSession } from './use-structured-agent-session'
 
 function entry(
-  state: StructuredAgentSessionOutboxEntry['state']
-): StructuredAgentSessionOutboxEntry {
+  phase: StructuredAgentSessionPendingSend['phase']
+): StructuredAgentSessionPendingSend {
   return {
     clientMessageId: 'client-1',
     sessionId: 'session-1',
     body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hi' }] },
     previewUris: [],
-    state,
+    phase,
     queuedAt: 1,
-    lastAttemptAt: null,
-    retryAfterUnknownSubmittedAt: null
+    issued: phase !== 'waiting'
   }
 }
 
@@ -96,7 +95,7 @@ const RUNNING_TURN: AgentJournalRenderItem = {
 // Every way work can be in flight after a send, in the order a message passes through them.
 const IN_FLIGHT = {
   'the send is on its way to the host': () => {
-    outbox = [entry('dispatching')]
+    outbox = [entry('sending')]
   },
   'the host has queued it': () => {
     submissions = [submission({ handoverRecorded: true })]
@@ -289,7 +288,7 @@ describe('Stop against a host that stops the conversation', () => {
       first = result.current.stop()
     })
     // The next message goes out, and reaches the host ahead of the second Stop.
-    outbox = [entry('dispatching')]
+    outbox = [entry('sending')]
     rerender()
     act(() => {
       second = result.current.stop()
@@ -385,20 +384,20 @@ describe('Stop against a host that stops the conversation', () => {
     expect(ids[1]).not.toBe(ids[0])
   })
 
-  it('is hidden at rest, and with only a message that will not run', () => {
+  it('is hidden at rest, and with only a message the host settled or nobody confirmed', () => {
     expect(render().result.current.canStop).toBe(false)
-    outbox = [entry('rejected')]
+    outbox = [entry('recorded')]
     submissions = [submission({ dispatchState: 'accepted', resolvedAt: 2 })]
     expect(render().result.current.canStop).toBe(false)
   })
 
-  it('is hidden with only a message that waits on its Retry', () => {
-    // A send that failed waits, with its saved failure, until the user retries it.
-    outbox = [{ ...entry('queued'), lastFailure: { kind: 'failed' } }]
+  it('is hidden with only a message in doubt', () => {
+    // A send nothing answered in time holds nothing and starts nothing.
+    outbox = [entry('in-doubt')]
     expect(render().result.current.canStop).toBe(false)
 
-    // A send the host restarted under is parked for the user, and the chat reads idle.
-    outbox = [{ ...entry('unconfirmed'), retryAfterUnknownSubmittedAt: -1 }]
+    // A send the host restarted under reads idle.
+    outbox = []
     submissions = [
       submission({
         dispatchState: 'unknown',

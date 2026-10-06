@@ -1,13 +1,23 @@
-import type { AgentJournalRenderItem, AgentJournalSubmission } from './agent-session-journal-types'
+import type {
+  AgentJournalMessageItem,
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from './agent-session-journal-types'
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isQueuedAgentJournalSubmission } from './agent-session-queued-submission'
 import { collapseProviderRetryRuns } from './native-chat-provider-retry-runs'
 import type { NativeChatMessage } from './native-chat-types'
 import { dispatchWasWithdrawn } from './structured-agent-session-dispatch-rejection'
-import type { StructuredAgentSessionOutboxEntry } from './structured-agent-session-outbox'
-import { structuredAgentSessionEntryHeldForRetry } from './structured-agent-session-outbox-admission'
-import { reconcileStructuredAgentSessionOutboxWithQueue } from './structured-agent-session-draft-hand-off'
 import { projectStructuredItemsToNativeChat } from './structured-agent-session-projection'
+
+/** A message this client sent that the host has not drawn yet: its bubble until the row lands. */
+export type StructuredAgentSessionOptimisticMessage = {
+  clientMessageId: string
+  body: AgentJournalMessageItem
+  queuedAt: number
+  /** Nothing answered it in time: in no turn, so a running turn's bar never lands on it. */
+  inDoubt?: boolean
+}
 
 export type StructuredAgentSessionMessageProjectionOptions = {
   /** Draw a message the host accepted and then rejected where the host recorded it, as not sent.
@@ -80,12 +90,11 @@ export function structuredAgentSessionRejectedShownInPlace(
 
 export function projectStructuredAgentSessionMessages(
   items: readonly AgentJournalRenderItem[],
-  outbox: readonly StructuredAgentSessionOutboxEntry[],
+  optimistic: readonly StructuredAgentSessionOptimisticMessage[],
   submissions: readonly AgentJournalSubmission[],
   options: StructuredAgentSessionMessageProjectionOptions,
   projectItems = projectStructuredItemsToNativeChat
 ): NativeChatMessage[] {
-  const optimistic = reconcileStructuredAgentSessionOutboxWithQueue(outbox, submissions, items)
   // Refused sends are ledger evidence, not conversation history, unless drawn in place as not sent.
   const rejected = new Set(
     submissions
@@ -129,19 +138,22 @@ export function projectStructuredAgentSessionMessages(
     // After the held sends leave: they are drawn after the conversation, never inside a run.
     ...collapseProviderRetryRuns(delivered),
     ...held,
-    // In no turn, like the outbox's not-sent rows; the journal position keeps their place.
+    // In no turn; the journal position keeps their place.
     ...projectItems(unsentItems).map((message) => ({ ...message, unsent: true as const })),
+    // The host's row draws a message once it has one, under its own id or the provider's.
     ...optimistic
-      .filter((entry) => !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)))
+      .filter(
+        (entry) =>
+          !journalled.has(agentJournalSubmissionKey(entry.clientMessageId)) &&
+          !submissions.some((submission) => submission.clientMessageId === entry.clientMessageId)
+      )
       .map((entry): NativeChatMessage => ({
         id: agentJournalSubmissionKey(entry.clientMessageId),
         role: 'user',
         source: 'transcript',
         timestamp: entry.queuedAt,
         blocks: entry.body.blocks,
-        ...(entry.state === 'rejected' || structuredAgentSessionEntryHeldForRetry(entry)
-          ? { unsent: true as const }
-          : {})
+        ...(entry.inDoubt ? { unsent: true as const } : {})
       }))
   ]
 }

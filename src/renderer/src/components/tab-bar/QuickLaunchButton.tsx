@@ -158,15 +158,7 @@ function QuickLaunchAgentMenuItemsInner({
         return
       }
       if (onPromptHandedOff && result.promptDeliveryResult) {
-        onPromptHandedOff(
-          newAgentPromptOutcome({
-            prompt: prompt ?? '',
-            ...(result.surface.kind === 'local-agent-session'
-              ? { sessionId: result.surface.sessionId }
-              : {}),
-            delivery: result.promptDeliveryResult
-          })
-        )
+        onPromptHandedOff(newAgentPromptOutcome({ delivery: result.promptDeliveryResult }))
       }
       if (result.surface.kind !== 'local-terminal') {
         return

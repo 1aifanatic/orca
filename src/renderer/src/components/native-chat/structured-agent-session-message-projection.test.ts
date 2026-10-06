@@ -4,8 +4,23 @@ import type {
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
-import { createStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionOptimisticMessage } from '../../../../shared/structured-agent-session-message-projection'
+import { structuredAgentSessionSendBody } from '../../../../shared/structured-agent-session-send-mutation'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
+
+function optimisticMessage(args: {
+  clientMessageId: string
+  sessionId?: string
+  text: string
+  attachments: readonly { path: string; previewUri: string }[]
+  queuedAt: number
+}): StructuredAgentSessionOptimisticMessage {
+  return {
+    clientMessageId: args.clientMessageId,
+    body: structuredAgentSessionSendBody(args.text, args.attachments),
+    queuedAt: args.queuedAt
+  }
+}
 
 const NO_CARDS: readonly string[] = []
 
@@ -37,7 +52,7 @@ describe('structured agent session message projection', () => {
   it("draws a send the host rejected from the host's row, not the outbox copy", () => {
     const rejected = { ...submission(0), dispatchState: 'rejected' as const, providerItemId: null }
     const refusedItem = { ...item(0), itemId: agentJournalSubmissionKey(rejected.clientMessageId) }
-    const draft = createStructuredAgentSessionOutboxEntry({
+    const draft = optimisticMessage({
       clientMessageId: rejected.clientMessageId,
       sessionId: 'session-1',
       text: 'An unsent draft',
@@ -57,7 +72,7 @@ describe('structured agent session message projection', () => {
 
   it.each([5, 10])('renders %i rapid accepted desktop sends exactly once', (sendCount) => {
     const outbox = Array.from({ length: sendCount }, (_, index) =>
-      createStructuredAgentSessionOutboxEntry({
+      optimisticMessage({
         clientMessageId: `client-${index}`,
         sessionId: 'session-1',
         text: `send ${index}`,
@@ -80,7 +95,7 @@ describe('structured agent session message projection', () => {
 
   it('renders one bubble while the submission is still dispatching', () => {
     const outbox = [
-      createStructuredAgentSessionOutboxEntry({
+      optimisticMessage({
         clientMessageId: 'client-pending',
         sessionId: 'session-1',
         text: 'Ok thanks',
@@ -114,7 +129,7 @@ describe('structured agent session message projection', () => {
 
   it('keeps an optimistic send until its acceptance arrives', () => {
     const outbox = [
-      createStructuredAgentSessionOutboxEntry({
+      optimisticMessage({
         clientMessageId: 'client-pending',
         sessionId: 'session-1',
         text: 'pending',

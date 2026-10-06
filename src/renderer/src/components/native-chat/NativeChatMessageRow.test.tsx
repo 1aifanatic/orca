@@ -181,27 +181,27 @@ describe('what a user message says about its delivery', () => {
     )
   }
 
-  it('says why under the message, with a Retry that sends this one', () => {
-    const onRetry = vi.fn()
-    renderUser({ text: "The agent couldn't restart. Your message was not sent.", onRetry })
+  it('says why under the message, with a Send again that sends it as a new message', () => {
+    const onSendAgain = vi.fn()
+    renderUser({ text: "Orca couldn't confirm this message reached Claude.", onSendAgain })
 
     expect(
-      screen.getByText("The agent couldn't restart. Your message was not sent.")
+      screen.getByText("Orca couldn't confirm this message reached Claude.")
     ).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(onRetry).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: 'Send again' }))
+    expect(onSendAgain).toHaveBeenCalledOnce()
   })
 
-  it('offers no Retry where the surface cannot send it again', () => {
+  it('offers no Send again where the surface cannot send it again', () => {
     renderUser({ text: 'Not delivered — check the terminal' })
 
     expect(screen.getByText('Not delivered — check the terminal')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull()
   })
 
   it('says nothing when it went through', () => {
     renderUser()
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull()
   })
 
   // Muted, in the time's place, and shown without hover: a message nothing confirmed yet never
@@ -217,7 +217,7 @@ describe('what a user message says about its delivery', () => {
     expect(sending.parentElement!.parentElement).toHaveClass('group')
     expect(copy).toHaveClass('can-hover:opacity-0', 'group-hover:opacity-100')
     expect(screen.queryByRole('time')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull()
   })
 
   it('keeps the same row when the message is confirmed, with the time back in its place', () => {

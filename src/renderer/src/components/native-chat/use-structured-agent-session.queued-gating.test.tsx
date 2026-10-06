@@ -11,19 +11,16 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
-import {
-  createStructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  outboxArgs: Array.of<{ queueDelivery?: { capability: string; enabled: boolean } }>(),
+  outboxArgs: Array.of<{ queue?: { capability: string; enabled: boolean } }>(),
   operations: 0
 }))
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
-let outboxEntries: StructuredAgentSessionOutboxEntry[] = []
+let outboxEntries: StructuredAgentSessionPendingSend[] = []
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call,
@@ -46,17 +43,15 @@ vi.mock('./use-structured-agent-session-read', () => ({
   })
 }))
 
-vi.mock('./use-structured-agent-session-outbox', () => ({
-  structuredSessionOperationId: () => `operation-${++mocks.operations}`,
-  useStructuredAgentSessionOutbox: (args: {
-    queueDelivery?: { capability: string; enabled: boolean }
-  }) => {
+vi.mock('./use-structured-agent-session-sends', () => ({
+  useStructuredAgentSessionSends: (args: { queue?: { capability: string; enabled: boolean } }) => {
     mocks.outboxArgs.push(args)
     return {
-      outbox: outboxEntries,
+      pending: outboxEntries,
       error: null,
+      clearError: vi.fn(),
       send: vi.fn(),
-      retry: vi.fn(),
+      sendAgain: vi.fn(),
       withdrawUnsent: vi.fn()
     }
   }
@@ -146,13 +141,13 @@ describe('against a capable host', () => {
 
   it('queues sends while the setting is on, immediately when it is off', () => {
     render()
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+    expect(mocks.outboxArgs.at(-1)?.queue).toEqual({
       capability: 'supported',
       enabled: true
     })
     mocks.outboxArgs.length = 0
     render(false)
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+    expect(mocks.outboxArgs.at(-1)?.queue).toEqual({
       capability: 'supported',
       enabled: false
     })
@@ -185,14 +180,14 @@ describe('against a capable host', () => {
     const newer = approval({ kind: 'diff', path: 'a.ts' })
     items = [newer]
     render()
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+    expect(mocks.outboxArgs.at(-1)?.queue).toEqual({
       capability: 'supported',
       enabled: false
     })
     mocks.outboxArgs.length = 0
     items = [newer, approval({ kind: 'plan', text: 'do it' })]
     render()
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery).toEqual({
+    expect(mocks.outboxArgs.at(-1)?.queue).toEqual({
       capability: 'supported',
       enabled: true
     })
@@ -279,24 +274,25 @@ describe('against a capable host', () => {
   })
 
   it('a mid-turn queue send is never a transcript bubble, before or after the host holds it', () => {
-    const entry = (id: string, text: string) =>
-      createStructuredAgentSessionOutboxEntry({
-        clientMessageId: id,
-        sessionId: 'session-1',
-        text,
-        attachments: [],
-        queuedAt: 1
-      })
+    const entry = (
+      id: string,
+      text: string,
+      delivery?: 'queue-if-active'
+    ): StructuredAgentSessionPendingSend => ({
+      clientMessageId: id,
+      sessionId: 'session-1',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] },
+      previewUris: [],
+      queuedAt: 1,
+      phase: 'sending',
+      issued: true,
+      ...(delivery ? { delivery } : {})
+    })
     outboxEntries = [
-      // Not sent yet: against a host that queues, with the setting on, it will ask to be queued.
-      entry('pending-queue', 'awaiting the answer'),
-      // Sent plain: a bubble, whatever the capability now says.
-      {
-        ...entry('plain', 'immediate send'),
-        state: 'dispatching',
-        lastAttemptAt: 2,
-        sentDelivery: null
-      }
+      // On its way asking to be queued: its card, not a bubble, shows it.
+      entry('pending-queue', 'awaiting the answer', 'queue-if-active'),
+      // Sent plain: a bubble.
+      entry('plain', 'immediate send')
     ]
     const working = render()
     const workingText = JSON.stringify(working.result.current.messages)
@@ -328,7 +324,7 @@ describe('against a host without the capability', () => {
 
   it('never asks for queue delivery, whatever the setting says', () => {
     render()
-    expect(mocks.outboxArgs.at(-1)?.queueDelivery?.capability).toBe('unsupported')
+    expect(mocks.outboxArgs.at(-1)?.queue?.capability).toBe('unsupported')
   })
 
   it("Stop stays exactly today's conversation Stop — no withdrawQueued key at all", async () => {

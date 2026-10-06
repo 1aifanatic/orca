@@ -59,13 +59,17 @@ vi.mock('./use-structured-agent-session-read', () => ({
     loadOlder: vi.fn()
   })
 }))
-vi.mock('./use-structured-agent-session-outbox', () => ({
-  structuredSessionOperationId: vi.fn(),
-  useStructuredAgentSessionOutbox: () => ({
-    outbox: [],
+vi.mock('./structured-agent-session-operation-id', () => ({
+  structuredSessionOperationId: vi.fn()
+}))
+vi.mock('./use-structured-agent-session-sends', () => ({
+  useStructuredAgentSessionSends: () => ({
+    pending: [],
     error: null,
+    clearError: vi.fn(),
     send: vi.fn(),
-    retry: vi.fn()
+    sendAgain: vi.fn(),
+    withdrawUnsent: vi.fn()
   })
 }))
 

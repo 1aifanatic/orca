@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type {
+  AgentJournalMessageItem,
   AgentJournalRenderItem,
   AgentJournalSubmission
 } from '../../../../shared/agent-session-journal-types'
 import { dispatchWasWithdrawn } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionCommandItemIds } from '../../../../shared/structured-agent-session-message-projection'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 import { useStructuredAgentSessionStartFailureFacts } from './use-structured-agent-session-start-failure-facts'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 
@@ -15,59 +16,54 @@ const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
 /** The structured chat's delivery notices, by the message id each row renders under. */
 export function useStructuredAgentSessionDeliveryNotices(args: {
-  outbox: readonly StructuredAgentSessionOutboxEntry[]
+  pending: readonly StructuredAgentSessionPendingSend[]
   submissions: readonly AgentJournalSubmission[]
   journalItems: readonly AgentJournalRenderItem[]
-  failedHere: ReadonlySet<string>
   queuedMessageIds: readonly string[]
-  retry: (clientMessageId: string) => void
+  sendAgain: (clientMessageId: string, body: AgentJournalMessageItem) => void
   agentName: string
 }): ReadonlyMap<string, NativeChatDeliveryNotice> {
-  const { agentName, failedHere, outbox, queuedMessageIds, submissions } = args
-  // Read at click time, so the notices stay put while the outbox's Retry is rebuilt each render.
-  const retryRef = useRef(args.retry)
+  const { agentName, pending, queuedMessageIds, submissions } = args
+  // Read at click time, so the notices stay put while Send again is rebuilt each render.
+  const sendAgainRef = useRef(args.sendAgain)
   useEffect(() => {
-    retryRef.current = args.retry
+    sendAgainRef.current = args.sendAgain
   })
-  const retry = useCallback((clientMessageId: string) => {
-    retryRef.current(clientMessageId)
+  const sendAgain = useCallback((clientMessageId: string, body: AgentJournalMessageItem) => {
+    sendAgainRef.current(clientMessageId, body)
   }, [])
-  // Only a message shown as not sent (a withdrawn one draws nothing) or still in the outbox reads
-  // the journal's rows, so in a chat with neither a new batch of them re-renders no row.
-  const hasRejected =
-    outbox.some((entry) => entry.state === 'rejected') ||
-    submissions.some(
-      (submission) => submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission)
-    )
-  const journalRows = hasRejected || outbox.length > 0 ? submissions : NO_SUBMISSIONS
-  // Only an outbox copy of a rejected message reads the loaded rows, so a streaming turn rebuilds
-  // no notice otherwise.
-  const loadedItems = hasRejected && outbox.length > 0 ? args.journalItems : NO_ITEMS
-  const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasRejected)
-  const commandItemIds = useCommandItemIds(args.journalItems, hasRejected)
+  // Only a chat with a message in doubt or shown as not sent reads the journal's rows and loaded
+  // items, so in a chat with neither a streaming turn rebuilds no notice.
+  const hasHostNotice = submissions.some(
+    (submission) =>
+      submission.dispatchState === 'unknown' ||
+      (submission.dispatchState === 'rejected' && !dispatchWasWithdrawn(submission))
+  )
+  const journalRows = hasHostNotice ? submissions : NO_SUBMISSIONS
+  const loadedItems = hasHostNotice ? args.journalItems : NO_ITEMS
+  const startFailures = useStructuredAgentSessionStartFailureFacts(args.journalItems, hasHostNotice)
+  const commandItemIds = useCommandItemIds(args.journalItems, hasHostNotice)
   const notices = useMemo(
     () =>
-      structuredAgentSessionDeliveryNotices(
-        outbox,
+      structuredAgentSessionDeliveryNotices({
+        pending,
+        submissions: journalRows,
+        journalItems: loadedItems,
         agentName,
-        retry,
-        journalRows,
+        sendAgain,
         startFailures,
-        failedHere,
         queuedMessageIds,
-        commandItemIds,
-        loadedItems
-      ),
+        commandItemIds
+      }),
     [
-      outbox,
-      agentName,
-      retry,
+      pending,
       journalRows,
+      loadedItems,
+      agentName,
+      sendAgain,
       startFailures,
-      failedHere,
       queuedMessageIds,
-      commandItemIds,
-      loadedItems
+      commandItemIds
     ]
   )
   // A submission batch rebuilds the map; one that says the same keeps the old, so no row re-renders.
@@ -113,11 +109,12 @@ function sameNoticesKept(
   const kept = new Map<string, NativeChatDeliveryNotice>()
   for (const [id, notice] of next) {
     const before = previous.get(id)
-    // Each Retry calls the stable `retry` with its own id, so one under the same key is the same.
+    // Each Send again calls the stable `sendAgain` with its own id, so one under the same key is the
+    // same.
     const same =
       before !== undefined &&
       before.text === notice.text &&
-      (before.onRetry === undefined) === (notice.onRetry === undefined) &&
+      (before.onSendAgain === undefined) === (notice.onSendAgain === undefined) &&
       (before.onDismiss === undefined) === (notice.onDismiss === undefined)
     allKept &&= same
     kept.set(id, same ? before : notice)

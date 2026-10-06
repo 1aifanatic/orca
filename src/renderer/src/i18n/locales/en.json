@@ -17544,11 +17544,7 @@
       },
       "native": {
         "chat": {
-          "NativeChatStructuredSession": {
-            "1f772bb5d0": "Message delivery is unconfirmed.",
-            "93ef441197": "Message was not sent.",
-            "a5e7f14068": "Retry"
-          },
+          "NativeChatStructuredSession": {},
           "NativeChatLaunchRetry": {
             "failed": "Chat could not be started.",
             "unknown": "Chat connection could not be confirmed.",
@@ -18212,6 +18208,8 @@
         "orcaSessionIdTooltip": "Orca's ID for this chat, separate from the agent CLI's own session ID. Agents use it to refer to each other through Orca."
       },
       "dismissDeliveryNotice": "Dismiss",
+      "sendAgain": "Send again",
+      "deliveryInDoubt": "Orca couldn't confirm this message reached {{value0}}.",
       "messageNotSent": "Message not sent",
       "deliveryUnconfirmed": "Delivery unconfirmed — check chat before retrying",
       "messageSending": "Sending…",

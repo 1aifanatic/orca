@@ -67,7 +67,7 @@ function registerLaunch(
     kind: 'first',
     requestId: `${agent}-pick`,
     blank: true,
-    stagedEntry: null
+    stagedPrompt: null
   }
 ): void {
   const sessionId = `${agent}-session`

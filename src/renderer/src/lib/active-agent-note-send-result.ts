@@ -33,7 +33,7 @@ export type ActiveAgentNotesSendFailureCode =
   | 'submit-send-error'
   | 'runtime-unverifiable'
   | 'runtime-timeout'
-  | 'session-outbox-unsaved'
+  | 'session-send-refused'
 
 export type ActiveAgentNotesSendResult = {
   status: ActiveAgentNotesSendStatus

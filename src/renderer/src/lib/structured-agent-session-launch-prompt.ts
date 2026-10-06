@@ -1,22 +1,11 @@
-import type {
-  AgentSessionMutationResult,
-  AgentSessionSendResult
-} from '../../../shared/agent-session-wire'
+import { structuredAgentSessionSendBody } from '../../../shared/structured-agent-session-send-mutation'
+import { handBackStructuredAgentSessionMessage } from '@/components/native-chat/structured-agent-session-message-hand-back'
 import {
-  requeueStructuredAgentSessionSendRefusal,
-  stageStructuredAgentSessionOutboxEntryForSend,
-  structuredAgentSessionSendRequest,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../shared/structured-agent-session-outbox'
-import { agentSessionRefusalFailure } from '../../../shared/agent-session-write-failure'
-import { createStructuredAgentSessionOperationId } from '../../../shared/structured-agent-session-mutation'
-import {
-  mutateStructuredAgentSessionLaunchPrompt,
-  type StructuredAgentSessionLaunchPromptMutation
-} from '@/components/native-chat/structured-agent-session-outbox-storage'
-import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
+  dropStructuredAgentSessionSends,
+  sendStructuredAgentSessionMessage
+} from '@/components/native-chat/structured-agent-session-message-sender'
+import { noteStructuredAgentSessionFence } from '@/components/native-chat/structured-agent-session-send-attempt'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
-import { createBrowserUuid } from '@/lib/browser-uuid'
 
 export type StructuredPromptDeliveryResult = {
   delivered: boolean
@@ -31,153 +20,128 @@ export type StructuredLaunchPromptOptions = {
 
 type LaunchReceipt = { sessionId: string; fence: number }
 
-type SharedDispatchStart = {
-  promise: Promise<boolean>
-  started: boolean
+/** A launch's text, held in memory from the click until its chat exists, then sent once: every
+ *  caller waiting on it shares the one send. */
+export type StagedStructuredLaunchPrompt = {
+  sessionId: string
+  text: string
+  delivery?: Promise<boolean>
+  /** Its launch was cancelled: never sent, never given back. */
+  discarded?: true
+  /** Settles once it is discarded, so its callers need not wait on a create that may never end. */
+  whenDiscarded: Promise<void>
+  discard: () => void
 }
 
-// A provisional chat can mount before its launch settlement runs. Both paths own the same
-// persisted entry, so share the in-flight admission by operation id instead of issuing two RPCs.
-const inFlightDispatches = new Map<string, Promise<boolean>>()
+const staged = new Map<string, Set<StagedStructuredLaunchPrompt>>()
 
-function dispatchKey(sessionId: string, clientMessageId: string, fence: number): string {
-  return `${sessionId}:${clientMessageId}:${fence}`
-}
-
-export function getStructuredAgentLaunchPromptDispatch(
+export function stageStructuredLaunchPrompt(
   sessionId: string,
-  clientMessageId: string,
-  fence?: number
-): Promise<boolean> | undefined {
-  if (fence !== undefined) {
-    return inFlightDispatches.get(dispatchKey(sessionId, clientMessageId, fence))
-  }
-  const prefix = `${sessionId}:${clientMessageId}:`
-  for (const [key, promise] of inFlightDispatches) {
-    if (key.startsWith(prefix)) {
-      return promise
-    }
-  }
-  return undefined
+  text: string
+): StagedStructuredLaunchPrompt {
+  let discard = (): void => {}
+  const whenDiscarded = new Promise<void>((resolve) => {
+    discard = resolve
+  })
+  const prompt: StagedStructuredLaunchPrompt = { sessionId, text, whenDiscarded, discard }
+  const forSession = staged.get(sessionId) ?? new Set()
+  forSession.add(prompt)
+  staged.set(sessionId, forSession)
+  return prompt
 }
 
-export function shareStructuredAgentLaunchPromptDispatch(
-  sessionId: string,
-  clientMessageId: string,
-  fence: number,
-  start: () => Promise<boolean>
-): SharedDispatchStart {
-  const key = dispatchKey(sessionId, clientMessageId, fence)
-  const existing = inFlightDispatches.get(key)
-  if (existing) {
-    return { promise: existing, started: false }
+function unstage(prompt: StagedStructuredLaunchPrompt): void {
+  const forSession = staged.get(prompt.sessionId)
+  forSession?.delete(prompt)
+  if (forSession?.size === 0) {
+    staged.delete(prompt.sessionId)
   }
-  const promise = Promise.resolve().then(start)
-  inFlightDispatches.set(key, promise)
-  const clear = (): void => {
-    if (inFlightDispatches.get(key) === promise) {
-      inFlightDispatches.delete(key)
-    }
-  }
-  void promise.then(clear, clear)
-  return { promise, started: true }
 }
 
-function mutateEntry(
-  entry: StructuredAgentSessionOutboxEntry,
-  update: StructuredAgentSessionLaunchPromptMutation,
-  options: { onlyIfSaved?: boolean } = {}
-): boolean {
-  return mutateStructuredAgentSessionLaunchPrompt(
-    entry.sessionId,
-    entry.clientMessageId,
-    update,
-    options
-  )
+/** The launch was cancelled: what it staged is dropped with its chat. */
+export function discardStructuredLaunchPrompts(sessionId: string): void {
+  for (const prompt of staged.get(sessionId) ?? []) {
+    prompt.discarded = true
+    prompt.discard()
+  }
+  staged.delete(sessionId)
 }
 
-async function dispatchStructuredLaunchPrompt(
-  entry: StructuredAgentSessionOutboxEntry,
+/** The chat is closing or its launch was cancelled: nothing it was sending goes out any more. */
+export function discardStructuredAgentSessionChatSends(sessionId: string): void {
+  discardStructuredLaunchPrompts(sessionId)
+  dropStructuredAgentSessionSends(sessionId)
+}
+
+/** Whether a launch still holds text for this chat that has not reached its host. */
+export function hasStagedStructuredLaunchPrompt(sessionId: string): boolean {
+  return (staged.get(sessionId)?.size ?? 0) > 0
+}
+
+function sendStagedPrompt(
+  prompt: StagedStructuredLaunchPrompt,
   receipt: LaunchReceipt,
   target: RuntimeClientTarget
 ): Promise<boolean> {
-  // Why: an unsaved stage must leave the entry queued; a held 'dispatching' copy is never drained.
-  if (
-    !mutateEntry(
-      entry,
-      (current) => stageStructuredAgentSessionOutboxEntryForSend(current, Date.now()),
-      { onlyIfSaved: true }
-    )
-  ) {
-    return false
-  }
-  try {
-    const result = await callStructuredAgentSession<
-      AgentSessionMutationResult<AgentSessionSendResult>
-    >(target, 'agentSession.send', structuredAgentSessionSendRequest(entry, receipt.fence))
-    if (!result.ok) {
-      mutateEntry(entry, (current) =>
-        requeueStructuredAgentSessionSendRefusal(
-          current,
-          agentSessionRefusalFailure(result.refusal),
-          () => createStructuredAgentSessionOperationId(createBrowserUuid),
-          entry.lastAttemptAt !== null
-        )
-      )
-      return false
+  prompt.delivery ??= (async () => {
+    noteStructuredAgentSessionFence(prompt.sessionId, receipt.fence)
+    const { outcome } = sendStructuredAgentSessionMessage({
+      sessionId: prompt.sessionId,
+      target,
+      text: prompt.text
+    })
+    try {
+      return (await outcome) === 'recorded'
+    } finally {
+      unstage(prompt)
     }
-    if ('queued' in result.value) {
-      // The host holds the draft; the outbox entry is spent.
-      mutateEntry(entry, () => null)
-      return true
-    }
-    const dispatchState = result.value.submission.dispatchState
-    mutateEntry(entry, (current) =>
-      dispatchState === 'accepted'
-        ? null
-        : {
-            ...current,
-            state:
-              dispatchState === 'unknown'
-                ? 'unconfirmed'
-                : dispatchState === 'pending'
-                  ? 'dispatching'
-                  : 'queued'
-          }
-    )
-    return dispatchState === 'accepted' || dispatchState === 'pending'
-  } catch {
-    mutateEntry(entry, (current) => ({ ...current, state: 'unconfirmed' }))
-    return false
-  }
+  })()
+  return prompt.delivery
 }
 
 export function settleStructuredAgentLaunchPrompt(args: {
   launchResult: Promise<LaunchReceipt>
   target: RuntimeClientTarget
   options: StructuredLaunchPromptOptions
-  stagedEntry: StructuredAgentSessionOutboxEntry | null
+  stagedPrompt: StagedStructuredLaunchPrompt | null
 }): Promise<StructuredPromptDeliveryResult> | undefined {
   // Why: a draft has no delivery event — the composer adopts it and the user sends it — so
   // `onPromptDelivered` never fires and no result is reported.
   if (args.options.promptDelivery === 'draft' || !args.options.prompt?.trim()) {
     return undefined
   }
-  return args.launchResult.then(async (receipt) => {
-    if (!args.stagedEntry) {
-      return { delivered: false, failureNotified: true }
+  const prompt = args.stagedPrompt
+  const settled = args.launchResult.then(
+    async (receipt) => {
+      if (!prompt || prompt.discarded) {
+        return { delivered: false, failureNotified: true }
+      }
+      const delivered = await sendStagedPrompt(prompt, receipt, args.target)
+      if (delivered) {
+        args.options.onPromptDelivered?.()
+      }
+      return { delivered, failureNotified: false }
+    },
+    (error: unknown) => {
+      // The chat never started: its text waits in the chat's composer for the person's own Send.
+      if (prompt && !prompt.discarded && !prompt.delivery) {
+        unstage(prompt)
+        prompt.discarded = true
+        handBackStructuredAgentSessionMessage(
+          prompt.sessionId,
+          `launch-${prompt.sessionId}`,
+          structuredAgentSessionSendBody(prompt.text, [])
+        )
+      }
+      throw error
     }
-    const entry = args.stagedEntry
-    const dispatch = shareStructuredAgentLaunchPromptDispatch(
-      entry.sessionId,
-      entry.clientMessageId,
-      receipt.fence,
-      () => dispatchStructuredLaunchPrompt(entry, receipt, args.target)
-    )
-    const delivered = await dispatch.promise
-    if (delivered) {
-      args.options.onPromptDelivered?.()
-    }
-    return { delivered, failureNotified: false }
-  })
+  )
+  if (!prompt || prompt.delivery) {
+    return settled
+  }
+  const cancelled = prompt.whenDiscarded.then((): StructuredPromptDeliveryResult => ({
+    delivered: false,
+    failureNotified: true
+  }))
+  return Promise.race([settled, cancelled])
 }

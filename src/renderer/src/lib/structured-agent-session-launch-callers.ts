@@ -1,6 +1,8 @@
 import { settleStructuredAgentLaunchPrompt } from '@/lib/structured-agent-session-launch-prompt'
-import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
-import type { StructuredAgentSessionOutboxEntry } from '../../../shared/structured-agent-session-outbox'
+import type {
+  StagedStructuredLaunchPrompt,
+  StructuredPromptDeliveryResult
+} from '@/lib/structured-agent-session-launch-prompt'
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { RuntimeClientTarget } from '@/runtime/runtime-client-target'
 import type { ExecutionHostId } from '../../../shared/execution-host'
@@ -67,7 +69,7 @@ export function addStructuredLaunchCaller(args: {
   launchResult: Promise<{ sessionId: string; fence: number }>
   target: RuntimeClientTarget
   options: StructuredAgentLaunchOptions
-  stagedEntry: StructuredAgentSessionOutboxEntry | null
+  stagedPrompt: StagedStructuredLaunchPrompt | null
 }): StructuredLaunchCaller {
   const caller: StructuredLaunchCaller = {}
   args.group.entries.add(caller)
@@ -75,7 +77,7 @@ export function addStructuredLaunchCaller(args: {
     launchResult: args.launchResult,
     target: args.target,
     options: args.options,
-    stagedEntry: args.stagedEntry
+    stagedPrompt: args.stagedPrompt
   })
   caller.promptDeliveryResult = promptDeliveryResult?.catch(() => ({
     delivered: false,

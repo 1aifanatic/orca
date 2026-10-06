@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
-import { useStructuredAgentSessionOutbox } from './use-structured-agent-session-outbox'
+import { useStructuredAgentSessionSends } from './use-structured-agent-session-sends'
 import type {
   AgentSessionConversationCommand,
   AgentSessionConversationCommandResult
@@ -17,7 +17,6 @@ import {
   useStructuredAgentSessionHostQueuesMessagesState,
   useStructuredAgentSessionHostStopsConversation
 } from '@/runtime/structured-agent-session-host-capability'
-import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 import {
   legacyAgentSessionSelectedOptionId,
   type AgentSessionPromptResponse
@@ -35,7 +34,7 @@ import { useStructuredAgentSessionThreadGoal } from './use-structured-agent-sess
 import { useStructuredAgentSessionContextUsage } from './use-structured-agent-session-context-usage'
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
-import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
+import { pendingSendsOutsideQueuedCards } from './structured-agent-session-queued-cards'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
@@ -56,7 +55,7 @@ export function useStructuredAgentSession(args: {
   providerStarting?: boolean
   /** This view started the session; only then does the stored selection name what it runs. */
   launch?: StructuredAgentSessionLaunchView
-  /** The composer Edit copies a card's text into, and that gets back unsent outbox text. */
+  /** The composer Edit copies a card's text into. */
   composerScopeKey?: string
   /** The chat-wide "queue follow-ups" setting; off keeps mid-turn sends immediate. */
   queueFollowUps?: boolean
@@ -122,19 +121,18 @@ export function useStructuredAgentSession(args: {
   // A host's queue waits on any pending prompt, and nothing here can settle one this build cannot
   // answer: the send must start a turn, after which the card's cancel works.
   const queueEnabled = queueFollowUps && !pendingPromptsAllUnanswerableHere(prompts)
-  const queueDelivery = useMemo(
+  const queue = useMemo(
     () => ({ capability: queueCapability, enabled: queueEnabled }),
     [queueCapability, queueEnabled]
   )
-  const outboxController = useStructuredAgentSessionOutbox({
+  const sends = useStructuredAgentSessionSends({
     sessionId,
     target,
     fence: transportState.fence,
     submissions: transportState.submissions,
-    journalItems: transportState.journalItems,
-    composerScopeKey,
-    queueDelivery,
-    queuedMessageIds
+    queuedMessageIds,
+    queue,
+    historyLoaded: transportEnabled && state.status === 'ready'
   })
 
   const threadGoal = useStructuredAgentSessionThreadGoal({
@@ -154,21 +152,23 @@ export function useStructuredAgentSession(args: {
     enabled: providerVisible
   })
 
-  const { outbox } = outboxController
+  const { pending } = sends
+  // On its way to the host: Stop takes back what has not gone out, and stops what it opens.
+  const sending = pending.some((entry) => entry.phase === 'waiting' || entry.phase === 'sending')
   // A host that takes a Stop naming no turn gets Stop from the send until the work settles; every
   // Stop before a turn opens needs that form. An older host can stop only a turn it has opened.
   const stopsConversation =
     useStructuredAgentSessionHostStopsConversation(target) && transportState.fence !== null
   const canStop =
-    transportState.turnId !== null ||
-    (stopsConversation &&
-      (transportState.isWorking ||
-        hasUnsentStructuredAgentSessionOutboxEntry(outbox, transportState.submissions)))
+    transportState.turnId !== null || (stopsConversation && (transportState.isWorking || sending))
   // A queued send is a card, never a transcript bubble.
   const isWorking = transportState.isWorking
-  const transcriptOutbox = useMemo(
-    () => outboxOutsideQueuedCards(outbox, queuedMessageIds, isWorking, queueDelivery),
-    [isWorking, outbox, queueDelivery, queuedMessageIds]
+  const transcriptPending = useMemo(
+    () =>
+      pendingSendsOutsideQueuedCards(pending, queuedMessageIds, isWorking).map((entry) =>
+        entry.phase === 'in-doubt' ? { ...entry, inDoubt: true } : entry
+      ),
+    [isWorking, pending, queuedMessageIds]
   )
   // What the transcript reads: the journal plus the one notice a cut turn with no row gets.
   const transcriptItems = useMemo(
@@ -180,7 +180,7 @@ export function useStructuredAgentSession(args: {
   )
   const messages = useStructuredAgentSessionMessages(
     transcriptItems,
-    transcriptOutbox,
+    transcriptPending,
     transportState.submissions,
     queuedMessageIds
   )
@@ -204,7 +204,7 @@ export function useStructuredAgentSession(args: {
           transportState.turnId ||
           prompts.length ||
           transportState.backgroundTasks.isMonitoring ||
-          outbox.length
+          sending
         ),
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
         send: (command) =>
@@ -218,8 +218,9 @@ export function useStructuredAgentSession(args: {
     subagentRoster: transportState.subagentRoster,
     messages,
     status: transportEnabled ? state.status : 'ready',
-    /** The outbox's own line; a failed read is worded from `readRefusal`, never its text. */
-    error: outboxController.error,
+    /** Why the last message came back to the composer; a failed read is worded from
+     *  `readRefusal`, never its text. */
+    error: sends.error,
     /** The refusal the failed read met, while `status` is `error`. */
     readRefusal: transportEnabled ? state.readRefusal : undefined,
     hasOlder: transportEnabled && state.hasOlder,
@@ -228,18 +229,17 @@ export function useStructuredAgentSession(args: {
     olderHistoryGeneration,
     loadOlder,
     prompts,
-    outbox,
-    failedHere: outboxController.failedHere,
+    pending,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
     /** The host's queued cards, which hold their own rejected hand-offs. */
     queuedMessageIds,
     // A message typed during a command queues behind it on the host.
-    send: (...input: Parameters<typeof outboxController.send>) =>
+    send: (...input: Parameters<typeof sends.send>) =>
       // Legacy: an older host refuses sends while a command runs; removable once those hosts age out.
       (!commandPending.current || hostStatesTurnScopes(transportState.journalItems)) &&
-      outboxController.send(...input),
-    retry: outboxController.retry,
+      sends.send(...input),
+    sendAgain: sends.sendAgain,
     isWorking: transportState.isWorking,
     workingStartedAt: transportState.turnTiming.workingStartedAt,
     settledTurns: transportState.turnTiming.settledTurns,
@@ -249,10 +249,10 @@ export function useStructuredAgentSession(args: {
     canStop,
     stop: () => {
       if (stopsConversation) {
-        // Unsent text this client still owns goes back to its composer — a local move.
-        // Host-held drafts are never withdrawn by a Stop: the host pauses them and
-        // they stay visible as cards, on every device, until the user acts on one.
-        outboxController.withdrawUnsent()
+        // A message that has not gone out goes back to its composer instead of starting a turn.
+        // Host-held cards are never withdrawn by a Stop: the host pauses them and they stay
+        // visible, on every device, until the user acts on one.
+        sends.withdrawUnsent()
         return mutate('agentSession.cancel', 'agentSession.cancel', {})
       }
       return transportState.turnId

@@ -12,6 +12,7 @@ import {
   AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
   AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY,
+  AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import {
@@ -53,6 +54,16 @@ export function supportsStructuredAgentSessionQuietRepeatedStop(
   target: RuntimeClientTarget
 ): Promise<boolean> {
   return structuredAgentSessionHostSupports(target, AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY)
+}
+
+/** Whether a refusal the host returns for a resent message id proves it holds no such message. */
+export function supportsStructuredAgentSessionSendAnswersProof(
+  target: RuntimeClientTarget
+): Promise<boolean> {
+  return structuredAgentSessionHostSupports(
+    target,
+    AGENT_SESSION_SEND_ANSWERS_PROOF_RUNTIME_CAPABILITY
+  )
 }
 
 export function supportsStructuredAgentSessionQuestionAnswers(

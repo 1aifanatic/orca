@@ -17,8 +17,8 @@ vi.mock('@/lib/structured-agent-session-launch-registry', () => ({
   hasStructuredAgentSessionLaunchCancellationTombstone: mocks.hasTombstone,
   markStructuredAgentSessionLaunchCancelled: mocks.markCancelled
 }))
-vi.mock('@/components/native-chat/structured-agent-session-outbox-storage', () => ({
-  discardStructuredAgentSessionLaunchOutbox: mocks.discardOutbox
+vi.mock('@/lib/structured-agent-session-launch-prompt', () => ({
+  discardStructuredAgentSessionChatSends: mocks.discardOutbox
 }))
 vi.mock('./structured-agent-session-close', () => ({
   closeStructuredAgentSession: mocks.closeSession

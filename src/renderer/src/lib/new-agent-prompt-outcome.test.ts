@@ -5,7 +5,7 @@ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-ses
 import type { StructuredAgentSessionLaunchIntent } from '@/lib/launch-structured-agent-session'
 
 const mocks = vi.hoisted(() => ({
-  callStructuredAgentSession: vi.fn(),
+  callRuntimeRpc: vi.fn(),
   createIntent: vi.fn(),
   launch: vi.fn()
 }))
@@ -28,8 +28,14 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
   refreshLocalStructuredSessionTabs: vi.fn()
 }))
 
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: mocks.callRuntimeRpc,
+  ensureRuntimeEnvironmentCompatible: vi.fn(async () => undefined)
+}))
+
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.callStructuredAgentSession
+  callStructuredAgentSession: vi.fn(),
+  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
 }))
 
 vi.mock('@/store', () => ({
@@ -52,10 +58,12 @@ vi.mock('@/lib/agent-catalog', () => ({
 
 import { StructuredAgentSessionCreateRefusalError } from '@/lib/launch-structured-agent-session'
 import { refreshLocalStructuredSessionTabs } from '@/runtime/local-structured-session-tabs-sync'
+import { resetStructuredAgentSessionSendsForTests } from '@/components/native-chat/structured-agent-session-message-sender'
 import {
-  mutateStructuredAgentSessionLaunchPrompt,
-  readOutbox
-} from '@/components/native-chat/structured-agent-session-outbox-storage'
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from '@/components/native-chat/native-chat-draft-cache'
+import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
 import {
   cancelStructuredAgentLaunch,
   getStructuredAgentSessionLaunchLifecycle,
@@ -124,7 +132,7 @@ async function settle(): Promise<void> {
 const chat = launchIntent('session-notes')
 
 /** What the notes menu does with a "New agent" pick: the launch, then the hold on its outcome. */
-function sendNotesToNewAgent(options: { paired?: boolean } = {}) {
+function sendNotesToNewAgent() {
   const onDelivered = vi.fn()
   const launch = startStructuredAgentLaunch(WORKTREE_ID, 'codex', {
     requestId: 'request-1',
@@ -133,14 +141,14 @@ function sendNotesToNewAgent(options: { paired?: boolean } = {}) {
   })
   holdNotesForSend(
     ['note-a'],
-    newAgentPromptOutcome({
-      prompt: NOTES,
-      ...(options.paired ? {} : { sessionId: launch.sessionId }),
-      delivery: launch.promptDeliveryResult!
-    }),
+    newAgentPromptOutcome({ delivery: launch.promptDeliveryResult! }),
     onDelivered
   )
   return { launch, onDelivered }
+}
+
+function sentMessages(): unknown[] {
+  return mocks.callRuntimeRpc.mock.calls.filter(([, method]) => method === 'agentSession.send')
 }
 
 /** A start the host refused outright: the chat shows it failed, with Retry. */
@@ -156,9 +164,11 @@ describe('notes sent to a new agent', () => {
     resetStructuredAgentLaunchPersistenceForTests()
     resetStructuredAgentLaunchRegistryForTests()
     resetNotesInFlightForTests()
+    resetStructuredAgentSessionSendsForTests()
+    clearNativeChatDraftCacheForTests()
     mocks.createIntent.mockReturnValue(chat)
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([published(chat.sessionId)])
-    mocks.callStructuredAgentSession.mockResolvedValue({
+    mocks.callRuntimeRpc.mockResolvedValue({
       ok: true,
       value: { submission: { dispatchState: 'accepted' } }
     })
@@ -175,31 +185,29 @@ describe('notes sent to a new agent', () => {
     expect(isNoteInFlight('note-a')).toBe(false)
   })
 
-  it('stay held, not resendable, while a failed chat keeps them for its Retry', async () => {
+  it("come back to the shelf when the start fails, and wait in that chat's composer", async () => {
     mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
     const { onDelivered } = sendNotesToNewAgent()
     await failTheStart()
 
-    expect(readOutbox(chat.sessionId)).toHaveLength(1)
-    expect(isNoteInFlight('note-a')).toBe(true)
+    expect(isNoteInFlight('note-a')).toBe(false)
     expect(onDelivered).not.toHaveBeenCalled()
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(chat.sessionId))).toBe(
+      NOTES
+    )
+    expect(sentMessages()).toHaveLength(0)
   })
 
-  it("leave the shelf when that chat's Retry delivers them", async () => {
+  it("are not sent again by that chat's Retry", async () => {
     mocks.launch.mockRejectedValueOnce(new StructuredAgentSessionCreateRefusalError('unsupported'))
-    const { onDelivered } = sendNotesToNewAgent()
+    sendNotesToNewAgent()
     await failTheStart()
     mocks.launch.mockResolvedValue({ sessionId: chat.sessionId, fence: 1 })
 
     expect(retryStructuredAgentSessionLaunch(WORKTREE_ID, chat.sessionId)).toBe(true)
     await settle()
-    // The open chat's own send accepts the staged prompt, as every dispatch does.
-    const [entry] = readOutbox(chat.sessionId)
-    mutateStructuredAgentSessionLaunchPrompt(chat.sessionId, entry.clientMessageId, () => null)
-    await settle()
 
-    expect(onDelivered).toHaveBeenCalledOnce()
-    expect(isNoteInFlight('note-a')).toBe(false)
+    expect(sentMessages()).toHaveLength(0)
   })
 
   it('come back to the shelf when the failed chat is closed', async () => {
@@ -223,13 +231,5 @@ describe('notes sent to a new agent', () => {
 
     expect(isNoteInFlight('note-a')).toBe(false)
     expect(onDelivered).not.toHaveBeenCalled()
-  })
-
-  it("stay held by a paired server's failed chat, found once its start settles", async () => {
-    mocks.launch.mockRejectedValue(new StructuredAgentSessionCreateRefusalError('unsupported'))
-    sendNotesToNewAgent({ paired: true })
-    await failTheStart()
-
-    expect(isNoteInFlight('note-a')).toBe(true)
   })
 })

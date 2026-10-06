@@ -7,6 +7,7 @@ import type { StructuredAgentSessionLaunchIntent } from '@/lib/launch-structured
 const mocks = vi.hoisted(() => ({
   abandonIntent: vi.fn(),
   callStructuredAgentSession: vi.fn(),
+  callRuntimeRpc: vi.fn(),
   createIntent: vi.fn(),
   retryIntent: vi.fn(),
   restoreIntent: vi.fn(),
@@ -34,7 +35,13 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
 }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
-  callStructuredAgentSession: mocks.callStructuredAgentSession
+  callStructuredAgentSession: mocks.callStructuredAgentSession,
+  supportsStructuredAgentSessionSendAnswersProof: vi.fn(async () => true)
+}))
+
+vi.mock('@/runtime/runtime-rpc-client', () => ({
+  callRuntimeRpc: mocks.callRuntimeRpc,
+  ensureRuntimeEnvironmentCompatible: vi.fn(async () => undefined)
 }))
 
 vi.mock('@/store', () => ({
@@ -66,7 +73,12 @@ import {
   retryStructuredAgentSessionLaunch,
   startStructuredAgentLaunch
 } from './structured-agent-session-launch'
-import { readOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { resetStructuredAgentSessionSendsForTests } from '@/components/native-chat/structured-agent-session-message-sender'
+import {
+  clearNativeChatDraftCacheForTests,
+  readNativeChatDraftCache
+} from '@/components/native-chat/native-chat-draft-cache'
+import { structuredAgentSessionDraftScopeKey } from '@/components/native-chat/native-chat-composer-draft-store'
 import { resetStructuredAgentLaunchPersistenceForTests } from './structured-agent-session-launch-persistence'
 import { resetStructuredAgentLaunchRegistryForTests } from './structured-agent-session-launch-registry'
 
@@ -136,6 +148,8 @@ describe('a new launch after a failed one', () => {
     localStorage.clear()
     resetStructuredAgentLaunchPersistenceForTests()
     resetStructuredAgentLaunchRegistryForTests()
+    resetStructuredAgentSessionSendsForTests()
+    clearNativeChatDraftCacheForTests()
     mocks.retryIntent.mockImplementation((intent: StructuredAgentSessionLaunchIntent) => ({
       ...intent,
       params: {
@@ -149,9 +163,9 @@ describe('a new launch after a failed one', () => {
     vi.mocked(refreshLocalStructuredSessionTabs).mockResolvedValue([
       publishedSnapshot(failed.sessionId, fresh.sessionId)
     ])
-    mocks.callStructuredAgentSession.mockResolvedValue({
+    mocks.callStructuredAgentSession.mockResolvedValue({ ok: true, page: { fence: 1 } })
+    mocks.callRuntimeRpc.mockResolvedValue({
       ok: true,
-      page: { fence: 1 },
       value: { submission: { dispatchState: 'accepted' } }
     })
   })
@@ -175,21 +189,20 @@ describe('a new launch after a failed one', () => {
       failureNotified: false
     })
     expect(mocks.retryIntent).not.toHaveBeenCalled()
-    expect(mocks.callStructuredAgentSession).toHaveBeenCalledWith(
+    expect(mocks.callRuntimeRpc).toHaveBeenCalledWith(
       { kind: 'local' },
       'agentSession.send',
       expect.objectContaining({
         envelope: expect.objectContaining({ sessionId: fresh.sessionId }),
         body: expect.objectContaining({ blocks: [{ type: 'text', text: 'review notes' }] })
-      })
+      }),
+      { skipCompatibilityCheck: true }
     )
-    // The failed chat keeps its own preserved prompt for its own Retry.
+    // The failed chat keeps its own prompt, in its own composer.
     expect(getStructuredAgentSessionLaunchLifecycle(WORKTREE_ID, failed.sessionId)).toBe('failed')
-    expect(readOutbox(failed.sessionId)).toEqual([
-      expect.objectContaining({
-        body: expect.objectContaining({ blocks: [{ type: 'text', text: 'first task' }] })
-      })
-    ])
+    expect(readNativeChatDraftCache(structuredAgentSessionDraftScopeKey(failed.sessionId))).toBe(
+      'first task'
+    )
   })
 
   it('retries the failed chat beside an in-flight new launch without taking it over', async () => {

@@ -9,8 +9,7 @@ const mocks = vi.hoisted(() => ({
   hold: vi.fn<(args: { enabled?: boolean }) => void>(),
   read: vi.fn<(args: { isVisible?: boolean }) => void>(),
   outbox: vi.fn<(args: { fence: number | null; submissions: readonly unknown[] }) => void>(),
-  send: vi.fn<(text: string) => boolean>(),
-  retry: vi.fn<(clientMessageId: string) => void>()
+  send: vi.fn<(text: string) => boolean>()
 }))
 
 let readState: StructuredAgentSessionState
@@ -35,18 +34,22 @@ vi.mock('./use-structured-agent-session-read', () => ({
   }
 }))
 
-vi.mock('./use-structured-agent-session-outbox', () => ({
-  structuredSessionOperationId: () => 'operation-1',
-  useStructuredAgentSessionOutbox: (args: {
+vi.mock('./structured-agent-session-operation-id', () => ({
+  structuredSessionOperationId: () => 'operation-1'
+}))
+vi.mock('./use-structured-agent-session-sends', () => ({
+  useStructuredAgentSessionSends: (args: {
     fence: number | null
     submissions: readonly unknown[]
   }) => {
     mocks.outbox(args)
     return {
-      outbox: [],
+      pending: [],
       error: null,
+      clearError: vi.fn(),
       send: mocks.send,
-      retry: mocks.retry
+      sendAgain: vi.fn(),
+      withdrawUnsent: vi.fn()
     }
   }
 }))

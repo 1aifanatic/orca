@@ -8,7 +8,7 @@ import {
   markStructuredAgentSessionLaunchCancelled
 } from '@/lib/structured-agent-session-launch-registry'
 import { toRuntimeExecutionHostId } from '../../../shared/execution-host'
-import { discardStructuredAgentSessionLaunchOutbox } from '@/components/native-chat/structured-agent-session-outbox-storage'
+import { discardStructuredAgentSessionChatSends } from '@/lib/structured-agent-session-launch-prompt'
 import { closeStructuredAgentSession } from './structured-agent-session-close'
 import { withLocalSessionTabCloseOwner } from './local-session-tab-close-owner'
 import { executionHostIdForStructuredTarget } from './structured-agent-session-owner'
@@ -76,7 +76,7 @@ export function beginStructuredAgentSessionTabClose(args: {
       executionHostIdForStructuredTarget(args.target)
     )
   }
-  discardStructuredAgentSessionLaunchOutbox(args.sessionId)
+  discardStructuredAgentSessionChatSends(args.sessionId)
   retireStructuredAgentSessionTab(args)
 }
 

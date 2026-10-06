@@ -5,15 +5,7 @@ import type { UnreadAgentSessionFailureFact } from '../../../../shared/agent-ses
 import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 import { handedOffQueuedMessageIds } from '../../../../shared/structured-agent-session-draft-hand-off'
-import {
-  structuredAgentSessionEntryAsksToQueue,
-  type StructuredAgentSessionQueueDelivery
-} from '../../../../shared/structured-agent-session-outbox-delivery'
-import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
-import {
-  admitStructuredAgentSessionOutboxEntry,
-  structuredAgentSessionEntryHeldForRetry
-} from '../../../../shared/structured-agent-session-outbox-admission'
+import type { StructuredAgentSessionPendingSend } from './structured-agent-session-pending-sends'
 
 /** Why a card is not on its way right now; decides the caption under the text. */
 export type QueuedMessageCardHold =
@@ -99,31 +91,25 @@ export function newestSteerableQueuedMessageCard(
 }
 
 /**
- * The outbox entries the transcript may show as pending bubbles. A send the host holds
- * as a draft (same id) is a card, and so is a send on its way out asking to be queued —
- * read from what its request carries — otherwise it paints
- * in the transcript until the queued answer retires it. A plain send stays a bubble. From
- * the entry the drain is stopped on (read through the drain's own rule), nothing is on its
- * way, nor is one held for its Retry: those stay bubbles so their text is visible beside the
- * Retry row.
+ * The sends the transcript draws as pending bubbles. One the host holds as a card (same id) is a
+ * card, and so is one on its way asking to be queued while the agent works, which would otherwise
+ * paint in the transcript until its card appears. One the host recorded is its row's to draw.
  */
-export function outboxOutsideQueuedCards(
-  outbox: readonly StructuredAgentSessionOutboxEntry[],
+export function pendingSendsOutsideQueuedCards(
+  pending: readonly StructuredAgentSessionPendingSend[],
   heldIds: readonly string[],
-  isWorking: boolean,
-  host: StructuredAgentSessionQueueDelivery
-): readonly StructuredAgentSessionOutboxEntry[] {
+  isWorking: boolean
+): readonly StructuredAgentSessionPendingSend[] {
   const held = new Set(heldIds)
-  const admission = admitStructuredAgentSessionOutboxEntry(outbox)
-  const stalledFrom = admission.state === 'blocked' ? outbox.indexOf(admission.entry) : -1
-  const next = outbox.filter((entry, index) => {
-    const onItsWay =
-      isWorking &&
-      (stalledFrom === -1 || index < stalledFrom) &&
-      (entry.state === 'queued' || entry.state === 'dispatching') &&
-      !structuredAgentSessionEntryHeldForRetry(entry) &&
-      structuredAgentSessionEntryAsksToQueue(entry, host)
-    return !held.has(entry.clientMessageId) && !onItsWay
-  })
-  return next.length === outbox.length ? outbox : next
+  const next = pending.filter(
+    (entry) =>
+      entry.phase !== 'recorded' &&
+      !held.has(entry.clientMessageId) &&
+      !(
+        isWorking &&
+        entry.delivery === 'queue-if-active' &&
+        (entry.phase === 'waiting' || entry.phase === 'sending')
+      )
+  )
+  return next.length === pending.length ? pending : next
 }

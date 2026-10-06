@@ -16,15 +16,27 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
 import type { NativeChatSettledTurns } from '../../../../shared/native-chat-turn-status'
-import {
-  createStructuredAgentSessionOutboxEntry,
-  type StructuredAgentSessionOutboxEntry
-} from '../../../../shared/structured-agent-session-outbox'
+import type { StructuredAgentSessionOptimisticMessage } from '../../../../shared/structured-agent-session-message-projection'
+import { structuredAgentSessionSendBody } from '../../../../shared/structured-agent-session-send-mutation'
 import { DISPATCH_REJECTED_HOST_RESTARTED } from '../../../../shared/structured-agent-session-dispatch-rejection'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 import { installNativeChatMessageListTestViewport } from './native-chat-message-list-test-viewport'
 import { projectStructuredAgentSessionMessages } from './structured-agent-session-message-projection'
+
+function optimisticMessage(args: {
+  clientMessageId: string
+  sessionId?: string
+  text: string
+  attachments: readonly { path: string; previewUri: string }[]
+  queuedAt: number
+}): StructuredAgentSessionOptimisticMessage {
+  return {
+    clientMessageId: args.clientMessageId,
+    body: structuredAgentSessionSendBody(args.text, args.attachments),
+    queuedAt: args.queuedAt
+  }
+}
 
 const NO_CARDS: readonly string[] = []
 
@@ -109,24 +121,20 @@ function submission(
   }
 }
 
-function unsentEntry(kind: 'held' | 'rejected'): StructuredAgentSessionOutboxEntry {
-  const entry = createStructuredAgentSessionOutboxEntry({
-    clientMessageId: 'held',
-    sessionId: 'session-1',
-    text: 'HELD PROMPT',
-    attachments: [],
-    queuedAt: 500
-  })
-  return kind === 'held'
-    ? {
-        ...entry,
-        lastAttemptAt: 500,
-        lastFailure: { kind: 'refused', code: 'agent_session_journal_unreadable' }
-      }
-    : { ...entry, state: 'rejected', lastFailure: { kind: 'rejected', reason: null } }
+function unsentEntry(): StructuredAgentSessionOptimisticMessage {
+  return {
+    ...optimisticMessage({
+      clientMessageId: 'held',
+      sessionId: 'session-1',
+      text: 'HELD PROMPT',
+      attachments: [],
+      queuedAt: 500
+    }),
+    inDoubt: true
+  }
 }
 
-function list(phase: Phase, scoped: boolean, outbox: StructuredAgentSessionOutboxEntry[]) {
+function list(phase: Phase, scoped: boolean, outbox: StructuredAgentSessionOptimisticMessage[]) {
   const items = journal(phase, scoped)
   const submissions = [
     submission('seed', 'accepted'),
@@ -177,17 +185,14 @@ function drawn(container: HTMLElement): string[] {
   return out
 }
 
-describe.each([
-  ['held for its Retry', 'held'],
-  ['rejected', 'rejected']
-] as const)('a message %s, below a newer turn', (_label, kind) => {
+describe('a message nothing confirmed in time, below a newer turn', () => {
   it.each([
     ['states each row turn', true],
     ['states no turn scope', false]
   ])(
     'keeps the newer turn bar with that turn while it runs and once done (host %s)',
     (_host, scoped) => {
-      const outbox = [unsentEntry(kind)]
+      const outbox = [unsentEntry()]
       const { container, rerender } = render(list('in flight', scoped, outbox))
       expect(drawn(container)).toEqual([
         'SEED PROMPT',
@@ -263,14 +268,14 @@ describe('a message the host rejected after a crash, with no outbox entry left',
         }}
         journalItems={items}
         journalSubmissions={submissions}
-        deliveryNotices={structuredAgentSessionDeliveryNotices(
-          [],
-          'Claude',
-          vi.fn(),
+        deliveryNotices={structuredAgentSessionDeliveryNotices({
+          pending: [],
           submissions,
-          [],
-          new Set()
-        )}
+          journalItems: items,
+          agentName: 'Claude',
+          sendAgain: vi.fn(),
+          startFailures: []
+        })}
         isWorking={phase !== 'done'}
         workingStartedAt={phase === 'done' ? null : Date.now() - 1500}
         settledTurns={settledTurns}

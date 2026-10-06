@@ -33,3 +33,23 @@ export function structuredAgentSessionMessageSendMutation(message: {
     ...fields
   }
 }
+
+export type StructuredAgentSessionAttachment = {
+  path: string
+  previewUri: string
+}
+
+/** The journal body for a message a person sends: its text, then its images. */
+export function structuredAgentSessionSendBody(
+  text: string,
+  attachments: readonly StructuredAgentSessionAttachment[]
+): AgentJournalMessageItem {
+  return {
+    kind: 'message',
+    role: 'user',
+    blocks: [
+      ...(text.trim().length > 0 ? [{ type: 'text' as const, text: text.trimEnd() }] : []),
+      ...attachments.map((attachment) => ({ type: 'image-ref' as const, path: attachment.path }))
+    ]
+  }
+}
