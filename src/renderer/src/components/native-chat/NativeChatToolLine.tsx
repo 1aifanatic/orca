@@ -1,4 +1,3 @@
-import { toolInputCommand } from '../../../../shared/native-chat-tool-summary'
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -121,9 +120,7 @@ export function NativeChatToolLine({
               label?.command &&
                 'rounded-md border border-chat-inline-code-border bg-chat-inline-code-surface px-1.5 font-mono text-xs'
             )}
-            data-native-chat-code-content={
-              isCall && toolInputCommand(block.input) ? true : undefined
-            }
+            data-native-chat-code-content={label?.command ? true : undefined}
             title={label?.title ?? preview}
             aria-hidden={label?.filePath ? true : undefined}
           >
