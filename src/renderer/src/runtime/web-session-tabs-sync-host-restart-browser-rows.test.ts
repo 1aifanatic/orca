@@ -223,6 +223,28 @@ describe('reading whether a snapshot answers for a worktree', () => {
     ).toBe(true)
   })
 
+  // A paired client's projection renames the epoch and adds its navigation revision to the version.
+  it('treats a paired client projection of the placeholder as no answer at any version', () => {
+    expect(
+      hostSnapshotAffirmsWorktreeContents({
+        publicationEpoch: 'none:client-navigation',
+        snapshotVersion: 0
+      })
+    ).toBe(false)
+    expect(
+      hostSnapshotAffirmsWorktreeContents({
+        publicationEpoch: 'none:client-navigation',
+        snapshotVersion: 2
+      })
+    ).toBe(false)
+    expect(
+      hostSnapshotAffirmsWorktreeContents({
+        publicationEpoch: 'epoch-1:client-navigation',
+        snapshotVersion: 0
+      })
+    ).toBe(true)
+  })
+
   it('answers for the placeholder epoch once it carries a version', () => {
     expect(
       hostSnapshotAffirmsWorktreeContents({ publicationEpoch: 'none', snapshotVersion: 1 })

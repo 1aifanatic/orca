@@ -10,18 +10,22 @@ const GRAPH_CHANNEL = 'runtime:syncWindowGraph'
  */
 export async function holdWindowGraphPublication(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }, channel) => {
-    const gate = globalThis as { __e2eGraphHeld?: boolean; __e2eGraphPublished?: number }
-    gate.__e2eGraphHeld = true
-    gate.__e2eGraphPublished = 0
+    Reflect.set(globalThis, '__e2eGraphHeld', true)
+    Reflect.set(globalThis, '__e2eGraphPublished', 0)
     type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
     const wrap =
       (handler: Handler): Handler =>
       async (event, ...args) => {
-        while (gate.__e2eGraphHeld) {
+        while (Reflect.get(globalThis, '__e2eGraphHeld') === true) {
           await new Promise((resolve) => setTimeout(resolve, 25))
         }
         const result = await handler(event, ...args)
-        gate.__e2eGraphPublished = (gate.__e2eGraphPublished ?? 0) + 1
+        const published: unknown = Reflect.get(globalThis, '__e2eGraphPublished')
+        Reflect.set(
+          globalThis,
+          '__e2eGraphPublished',
+          (typeof published === 'number' ? published : 0) + 1
+        )
         return result
       }
     // Electron keeps invoke handlers in a private map; patch both an existing and a later registration.
@@ -41,8 +45,8 @@ export async function holdWindowGraphPublication(app: ElectronApplication): Prom
  */
 export async function releaseWindowGraphPublication(app: ElectronApplication): Promise<number> {
   return app.evaluate(() => {
-    const gate = globalThis as { __e2eGraphHeld?: boolean; __e2eGraphPublished?: number }
-    gate.__e2eGraphHeld = false
-    return gate.__e2eGraphPublished ?? 0
+    Reflect.set(globalThis, '__e2eGraphHeld', false)
+    const published: unknown = Reflect.get(globalThis, '__e2eGraphPublished')
+    return typeof published === 'number' ? published : 0
   })
 }

@@ -1,5 +1,8 @@
 import { UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH } from '../../../shared/runtime-types'
 
+// Why: hosts project the placeholder per paired client (client-session-tab-selection.ts), renaming its epoch.
+const UNPUBLISHED_CLIENT_NAVIGATION_PUBLICATION_EPOCH = `${UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH}:client-navigation`
+
 type SnapshotPublication = {
   publicationEpoch: string
   snapshotVersion: number
@@ -26,6 +29,10 @@ type AgentSessionPublication = SnapshotPublication & {
  * would also drop the terminal reconciliation that legitimately rides on it.
  */
 export function hostSnapshotAffirmsWorktreeContents(snapshot: SnapshotPublication): boolean {
+  if (snapshot.publicationEpoch === UNPUBLISHED_CLIENT_NAVIGATION_PUBLICATION_EPOCH) {
+    // Why: a paired client's projection adds its own navigation revision to the version, so only the epoch can tell.
+    return false
+  }
   return !(
     snapshot.publicationEpoch === UNPUBLISHED_WORKTREE_PUBLICATION_EPOCH &&
     snapshot.snapshotVersion === 0

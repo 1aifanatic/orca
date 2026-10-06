@@ -70,6 +70,7 @@ import { replaceDriverPtyId, setDriverForPty } from '@/lib/pane-manager/mobile-d
 import { isWebTerminalSurfaceTabId, toHostSessionTabId } from '@/runtime/web-terminal-surface-id'
 import { listRemoteRuntimeSessionTabsDeduped } from '@/runtime/remote-runtime-session-tabs-inflight'
 import { subscribeAcceptedWebSessionTerminalHandle } from '@/runtime/web-session-terminal-handle-events'
+import { hostSnapshotAffirmsWorktreeContents } from '@/runtime/host-session-snapshot-authority'
 import { runRemoteAgentSessionLaunch } from '@/runtime/remote-agent-session-launch'
 import { useAppStore } from '@/store'
 import { recordWebAgentSessionHandoff } from '@/runtime/web-agent-session-handoff'
@@ -849,9 +850,11 @@ export function createRemoteRuntimePtyTransport(
         }
         if (request === 'list') {
           if (!hasHostSessionTerminalSurface(listed, hostTabId)) {
-            return { handle: null, inventoryFailed: false }
-          }
-          if (!nextHandle) {
+            if (hostSnapshotAffirmsWorktreeContents(listed)) {
+              return { handle: null, inventoryFailed: false }
+            }
+            // Why: a relaunched host answers before its renderer publishes; that absence is unknown liveness, so keep asking.
+          } else if (!nextHandle) {
             // Why: the surface is published but unmaterialized, and only activation can mint its PTY.
             nextRequest = 'activate'
           }
@@ -1640,8 +1643,16 @@ export function createRemoteRuntimePtyTransport(
           return
         }
         if (update.terminalHandle === previousHandle) {
+          // Why: an inventory wait that ended without evidence parked recovery; this snapshot is the evidence it waited for.
+          const inventoryWaitParked =
+            recovery.currentPhase === 'recovering' &&
+            resubscribeEpoch === null &&
+            getRecoveryReplacementPolicy(previousHandle) !== 'require-replacement'
           // Why: once the auto-recovery window is spent, a host still publishing this surface is evidence the fenced handle outlived the stale error.
-          if (!autoRecoveryWindowSpent || getCurrentMultiplexedStream(previousHandle)) {
+          if (
+            !(autoRecoveryWindowSpent || inventoryWaitParked) ||
+            getCurrentMultiplexedStream(previousHandle)
+          ) {
             return
           }
           // Why: one reattach per spent window, so a handle that really is dead is not retried on every host snapshot.

@@ -2,6 +2,7 @@ import type {
   RuntimeMobileSessionTabsResult,
   RuntimeMobileSessionTerminalClientTab
 } from '../../../shared/runtime-types'
+import { hostSnapshotAffirmsWorktreeContents } from './host-session-snapshot-authority'
 
 export type WebSessionTerminalHandleUpdate = {
   surfacePresent: boolean
@@ -30,7 +31,7 @@ function sessionKey(environmentId: string, worktreeId: string): string {
 function resolveSubscriberUpdate(
   snapshot: RuntimeMobileSessionTabsResult,
   subscriber: TerminalHandleSubscriber
-): WebSessionTerminalHandleUpdate {
+): WebSessionTerminalHandleUpdate | null {
   const surfaces = snapshot.tabs.filter(
     (tab): tab is RuntimeMobileSessionTerminalClientTab =>
       tab.type === 'terminal' &&
@@ -38,7 +39,10 @@ function resolveSubscriberUpdate(
       (!subscriber.leafId || tab.leafId === subscriber.leafId)
   )
   if (surfaces.length === 0) {
-    return { surfacePresent: false, terminalHandle: null }
+    // Why: a frame the host synthesized before publishing says nothing about this surface.
+    return hostSnapshotAffirmsWorktreeContents(snapshot)
+      ? { surfacePresent: false, terminalHandle: null }
+      : null
   }
   const mirroredSurfaces = surfaces.filter(
     (surface) => surface.parentTabId === subscriber.hostTabId
@@ -104,8 +108,11 @@ export function queueAcceptedWebSessionTerminalSnapshot(
     pendingSnapshotBySession.delete(key)
     const currentSubscribers = subscribersBySession.get(key)
     for (const subscriber of pendingSnapshot.eligibleSubscribers) {
-      if (currentSubscribers?.has(subscriber)) {
-        subscriber.listener(resolveSubscriberUpdate(pendingSnapshot.snapshot, subscriber))
+      const update = currentSubscribers?.has(subscriber)
+        ? resolveSubscriberUpdate(pendingSnapshot.snapshot, subscriber)
+        : null
+      if (update) {
+        subscriber.listener(update)
       }
     }
   })
