@@ -11,7 +11,7 @@ import {
 // Why: closing the resume dialog is a snooze, not a decline — the host keeps the offer. This is
 // then the only surface left carrying it, so it is always rendered rather than gated by
 // `statusBarItems`. Pressing Resume closes the dialog too, so this entry carries the run while it
-// is in flight. It is also the lasting summary of chats the resume could not carry on: a click's
+// is in flight. It is also the lasting summary of chats the resume could not carry on: its
 // toast says so once, and each chat it reached carries its own note.
 
 function Segment({

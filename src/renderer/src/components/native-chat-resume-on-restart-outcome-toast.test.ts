@@ -55,17 +55,27 @@ function hostLostAfterListing(): void {
   })
 }
 
-// With the host unreachable there is no list to narrow by: every chat the click named failed, and
-// nothing is listed for Show to open.
-it('counts every chat of a lost click when the host cannot be read either', async () => {
-  hostLostAfterListing()
-  await refreshNativeChatRestartOffer()
-  await continueNativeChatRestartOffer(['a', 'b'])
-  expect(vi.mocked(toast).mock.calls).toEqual([['2 chats couldn’t be resumed', {}]])
-})
+/** How each caller starts a resume: a click names its chats; an opted-in launch names none and
+ *  reports the ones it offered. */
+const resumes = {
+  click: () => continueNativeChatRestartOffer(['a', 'b']),
+  launch: () => continueNativeChatRestartOffer(undefined, ['a', 'b'])
+}
 
-// An opted-in launch names no chats, only the ones it reports: no click, so no toast.
-it('raises no toast when an opted-in launch loses its resume request', async () => {
+// With the host unreachable there is no list to narrow by: every chat the resume reported failed,
+// and nothing is listed for Show to open.
+it.each(['click', 'launch'] as const)(
+  'counts every chat of a lost %s resume when the host cannot be read either',
+  async (caller) => {
+    hostLostAfterListing()
+    await refreshNativeChatRestartOffer()
+    await resumes[caller]()
+    expect(vi.mocked(toast).mock.calls).toEqual([['2 chats couldn’t be resumed', {}]])
+  }
+)
+
+// The re-read lists the chats the lost request reported as failed, so the one toast keeps Show.
+it('answers an opted-in launch that loses its resume request with one toast and Show', async () => {
   rpc.mockImplementation(async (_target, method) => {
     if (method === 'agentSession.restartResumable') {
       return { sessions: offered, failed: [] }
@@ -73,8 +83,49 @@ it('raises no toast when an opted-in launch loses its resume request', async () 
     throw new Error('response lost')
   })
   await refreshNativeChatRestartOffer()
-  await continueNativeChatRestartOffer(undefined, ['a', 'b'])
+  await resumes.launch()
   expect(getNativeChatRestartOffer().failed.map((entry) => entry.sessionId)).toEqual(['a', 'b'])
+  expect(vi.mocked(toast).mock.calls.map(([title]) => title)).toEqual([
+    '2 chats couldn’t be resumed'
+  ])
+  expect(lastToastShow()).toBeDefined()
+})
+
+// The same toast and copy as a click: the chats it resumed ride along under the one it could not.
+it('answers a mixed opted-in launch with one toast', async () => {
+  const failed = [{ ...offered[1]!, failedAt: 1, outcome: 'refused', reason: 'unknown' }]
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? { sessions: offered, failed: [] }
+      : {
+          continued: [
+            { sessionId: 'a', outcome: 'continued' },
+            { sessionId: 'b', outcome: 'refused' }
+          ],
+          sessions: [],
+          failed
+        }
+  )
+  await refreshNativeChatRestartOffer()
+  await resumes.launch()
+  expect(vi.mocked(toast).mock.calls).toEqual([
+    [
+      '1 chat couldn’t be resumed',
+      expect.objectContaining({ description: 'Resumed 1 chat and asked it to continue' })
+    ]
+  ])
+  expect(lastToastShow()).toBeDefined()
+})
+
+// Between the listing and the request every chat moved on by itself: nothing happened to report.
+it('raises no toast when the host had nothing left for an opted-in launch to resume', async () => {
+  rpc.mockImplementation(async (_target, method) =>
+    method === 'agentSession.restartResumable'
+      ? { sessions: offered, failed: [] }
+      : { continued: [], sessions: [], failed: [] }
+  )
+  await refreshNativeChatRestartOffer()
+  await resumes.launch()
   expect(toast).not.toHaveBeenCalled()
 })
 

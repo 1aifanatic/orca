@@ -4,8 +4,8 @@ import { translate } from '@/i18n/i18n'
 import type { ResumeFailure } from './native-chat-resume-on-restart-grouping'
 
 /**
- * The one toast a user's Resume click raises: what that click did across chats that are mostly
- * off-screen. Each chat's own note stays the record of what happened to it.
+ * The one toast a resume raises, clicked or automatic at launch: what it did across chats that are
+ * mostly off-screen. Each chat's own note stays the record of what happened to it.
  */
 
 /** One `continued` row as the host reports it. */
@@ -78,10 +78,10 @@ function descriptionFrom(lines: readonly string[]): ReactNode {
       )
 }
 
-/** One toast per click. No names: the dialog behind Show has the list. Unconfirmed chats get their
+/** One toast per resume. No names: the dialog behind Show has the list. Unconfirmed chats get their
  *  own count because the agent may well be working; "couldn't be resumed" would invite a second
  *  send. Without a failure list there is nothing for Show to open. */
-function announceClick(
+function announceResume(
   continued: number,
   refused: number,
   unconfirmed: number,
@@ -145,7 +145,7 @@ export function announceRestartResults(
   const sentUnconfirmed = (sessionId: string): boolean =>
     outcomes.get(sessionId) === 'pending' || outcomes.get(sessionId) === 'unknown'
   // An unconfirmed send the host no longer lists was seen carrying on (or answered by the user), so
-  // it was resumed and asked to continue; left out of both counts, the click would say nothing.
+  // it was resumed and asked to continue; left out of both counts, the resume would say nothing.
   const seenCarryingOn = notContinued.filter(
     (sessionId) => hostFailed !== undefined && !failed.has(sessionId) && sentUnconfirmed(sessionId)
   )
@@ -154,7 +154,7 @@ export function announceRestartResults(
     (failed.get(sessionId) ?? (sentUnconfirmed(sessionId) ? 'unconfirmed' : 'refused')) ===
     'unconfirmed'
   const unconfirmedCount = reported.filter(unconfirmed).length
-  announceClick(
+  announceResume(
     new Set(requested).size - notContinued.length + seenCarryingOn.length,
     reported.length - unconfirmedCount,
     unconfirmedCount,

@@ -19,7 +19,7 @@ function titles(): unknown[] {
   return vi.mocked(toast).mock.calls.map(([text]) => text)
 }
 
-it('says how many chats a click resumed', () => {
+it('says how many chats were resumed', () => {
   announceRestartResults(
     ['a', 'b'],
     [
@@ -32,7 +32,7 @@ it('says how many chats a click resumed', () => {
   expect(vi.mocked(toast).mock.calls).toEqual([['Resumed 2 chats and asked them to continue']])
 })
 
-it('offers Show for chats a click could not resume', () => {
+it('offers Show for chats a resume could not carry on', () => {
   announceRestartResults(['a', 'b'], refusedBoth, refusedBoth, show)
   expect(titles()).toEqual(['2 chats couldn’t be resumed'])
   const options = vi.mocked(toast).mock.calls[0]?.[1]
@@ -42,8 +42,8 @@ it('offers Show for chats a click could not resume', () => {
   expect(show).toHaveBeenCalledTimes(1)
 })
 
-// One click, one toast: the chats it resumed ride along under the ones it could not.
-it('reports a mixed click in one toast', () => {
+// One resume, one toast: the chats it resumed ride along under the ones it could not.
+it('reports a mixed resume in one toast', () => {
   announceRestartResults(
     ['a', 'b', 'c'],
     [
@@ -62,7 +62,7 @@ it('reports a mixed click in one toast', () => {
   ])
 })
 
-it('puts each extra count on its own line when a click had all three outcomes', () => {
+it('puts each extra count on its own line when a resume had all three outcomes', () => {
   announceRestartResults(
     ['a', 'b', 'c'],
     [
@@ -114,7 +114,7 @@ it('counts every chat as unconfirmed when the answer carried no outcomes', () =>
   expect(titles()).toEqual(['Couldn’t confirm 2 chats were resumed'])
 })
 
-// The host retires an unconfirmed send once the agent is seen carrying on it; the click must still
+// The host retires an unconfirmed send once the agent is seen carrying on it; the resume must still
 // report the chat, and as resumed, not as a failure the list can no longer show.
 it('counts an unconfirmed chat the host no longer lists as resumed', () => {
   announceRestartResults(['a'], [{ sessionId: 'a', outcome: 'unknown' }], [], show)

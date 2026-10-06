@@ -258,7 +258,7 @@ export async function refreshNativeChatRestartOffer(): Promise<void> {
   await readNativeChatRestartOffer()
 }
 
-/** The status bar entry and a click's Show: re-read, then open only over rows, since the dialog
+/** The status bar entry and a toast's Show: re-read, then open only over rows, since the dialog
  *  draws nothing without them. Opening a chat from it is read-only and keeps the offer. */
 export async function reopenNativeChatRestartOffer(): Promise<void> {
   // Mid-resume the host's answer is already on its way; a re-read racing it could undo it.
@@ -279,9 +279,9 @@ export async function reopenNativeChatRestartOffer(): Promise<void> {
  * whatever it still offers rather than on a list this side captured a moment earlier, and passes
  * `reported` instead: the chats the status bar shows as resuming.
  *
- * A click ends in one toast saying what it did across those chats; an opted-in launch raises none,
- * leaving each chat's note and the status bar to say it. Never rejects; a lost answer is followed by
- * a re-read, never a retry. The chats a rejected request named and the host still offers show as
+ * Ends in one toast saying what it did across those chats, whether a click or an opted-in launch
+ * started it; each chat's note stays the record. Never rejects; a lost answer is followed by a
+ * re-read, never a retry. The chats a rejected request named and the host still offers show as
  * failed, with Retry.
  */
 export async function continueNativeChatRestartOffer(
@@ -291,7 +291,7 @@ export async function continueNativeChatRestartOffer(
   actionsBegun += 1
   forgetUnsentResumes(sessionIds)
   const batch = [...reported]
-  let outcome: Parameters<typeof announceRestartResults> | undefined
+  let outcome: Parameters<typeof announceRestartResults>
   resumeBatches.add(batch)
   syncResuming()
   try {
@@ -310,7 +310,7 @@ export async function continueNativeChatRestartOffer(
     console.warn('[native-chat-resume] resume request failed before reaching the chats', error)
     markUnsentResumes(batch, Date.now())
     const read = await readNativeChatRestartOffer()
-    // Nothing reached the chats, so each is a failure of this click as the list now shows it.
+    // Nothing reached the chats, so each is a failure of this resume as the list now shows it.
     const listed = read.available ? offer.failed : undefined
     outcome = [batch, [], listed, reopenNativeChatRestartOffer]
   } finally {
@@ -318,10 +318,7 @@ export async function continueNativeChatRestartOffer(
     resumeBatches.delete(batch)
     syncResuming()
   }
-  // Only a click names chats; an opted-in launch leaves it to each chat's note and the status bar.
-  if (sessionIds && outcome) {
-    announceRestartResults(...outcome)
-  }
+  announceRestartResults(...outcome)
 }
 
 /**

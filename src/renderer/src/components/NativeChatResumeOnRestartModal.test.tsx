@@ -426,8 +426,8 @@ it('resumes and continues once when the launch begins opted in', async () => {
     ['agentSession.restartResumable', undefined],
     ['agentSession.restartContinue', {}]
   ])
-  // The status bar carried the run and each chat's note says what happened; no toast repeats it.
-  expect(toast).not.toHaveBeenCalled()
+  // Answered once, as a click is, however often the settings above re-render the surfaces.
+  expect(toasts()).toEqual([['Resumed 2 chats and asked them to continue']])
   expect(offerIds()).toEqual([])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
@@ -461,8 +461,8 @@ it('shows an opted-in launch resume in the status bar while it runs', async () =
   expect(document.body.textContent).not.toContain('Resuming')
 })
 
-// An opted-in launch had no click to answer: its failures are one status bar entry, no toast.
-it('reports chats an opted-in launch could not carry on only in the status bar', async () => {
+// An opted-in launch is answered as a click is: one toast with Show, and one status bar entry.
+it('reports chats an opted-in launch could not carry on in one toast and the status bar', async () => {
   useAppStore.setState({
     settings: {
       ...getDefaultSettings(''),
@@ -488,7 +488,9 @@ it('reports chats an opted-in launch could not carry on only in the status bar',
   )
   expect(button('1 chat failed to resume. Click for details.')).toBeTruthy()
   expect(document.body.textContent).toContain('1 chat to resume')
-  expect(toast).not.toHaveBeenCalled()
+  expect(toasts()).toEqual([['1 chat couldn’t be resumed']])
+  await act(async () => lastToastShow()?.())
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Prompt a')
 })
 
 it('dispatches the selected action while a future preference save is still pending', async () => {
@@ -898,4 +900,6 @@ it('dismisses one failed chat by name, and every record through Dismiss all', as
   await act(async () => button('Dismiss all').click())
   expect(rpc.mock.calls.at(-1)?.slice(1)).toEqual(['agentSession.restartResumableDismiss', {}])
   expect(document.querySelector('[role="dialog"]')).toBeNull()
+  // Dismissing is bookkeeping, not a resume: neither form raises a toast.
+  expect(toast).not.toHaveBeenCalled()
 })
