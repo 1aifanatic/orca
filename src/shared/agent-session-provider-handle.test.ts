@@ -645,6 +645,36 @@ describe('replacing a conversation the provider could not restore', () => {
     ).toThrow('agent_session_provider_handle_invalid')
   })
 
+  it('refuses a supersession key that names no creation in the chain', () => {
+    expect(() =>
+      appendAgentSessionProviderHandleLink(
+        [created, resumed],
+        fresh({ supersedesKey: agentSessionProviderHandleKey(acp('s-9')) })
+      )
+    ).toThrow('agent_session_provider_handle_invalid')
+  })
+
+  it('is refused in a Claude or Codex chain, whose rows older builds read', () => {
+    for (const [first, lost, next] of [
+      [CLAUDE, CLAUDE, claudeProviderHandle('sess-2', null)],
+      [codexProviderHandle('t-1'), codexProviderHandle('t-1'), codexProviderHandle('t-2')]
+    ] as const) {
+      expect(() =>
+        appendAgentSessionProviderHandleLink(
+          [link({ handle: first })],
+          fresh({
+            handle: next,
+            replaces: {
+              key: agentSessionProviderHandleKey(lost),
+              reason: 'restore-failed',
+              replacedAt: 3_000
+            }
+          })
+        )
+      ).toThrow('agent_session_provider_handle_invalid')
+    }
+  })
+
   it('still supersedes only a creation the provider never saved', () => {
     const chain = appendAgentSessionProviderHandleLink([created, resumed], fresh())
     const proven = appendAgentSessionProviderHandleLink(

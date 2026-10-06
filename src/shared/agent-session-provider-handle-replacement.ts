@@ -4,7 +4,10 @@
  */
 
 import type { AgentSessionProviderHandle } from './agent-session-provider-handle'
-import { isAgentSessionProviderHandleKeyFor } from './agent-session-provider-handle-encoding'
+import {
+  isAgentSessionProviderHandleKeyFor,
+  isAgentSessionProviderHandleReadByOlderBuilds
+} from './agent-session-provider-handle-encoding'
 
 const MAX_REPLACEMENT_REASON_LENGTH = 64
 
@@ -36,6 +39,10 @@ export function isAgentSessionProviderHandleReplacement(
   }
   const { key, reason, replacedAt } = value
   return (
+    // Why: older builds read Claude and Codex rows and refuse a creation anywhere but first in a
+    // chain, so a replacement there would set the whole chat aside after a downgrade. Every other
+    // agent's row is one they never read. A Claude or Codex fallback must first pick a stored shape.
+    !isAgentSessionProviderHandleReadByOlderBuilds(handle) &&
     isAgentSessionProviderHandleKeyFor(handle, key) &&
     typeof reason === 'string' &&
     reason.length > 0 &&

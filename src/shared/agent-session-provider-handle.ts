@@ -171,7 +171,7 @@ export function isAgentSessionProviderHandleChain(
       if (!isAgentSessionProviderHandleLink(link)) {
         return false
       }
-      const next = appendAgentSessionProviderHandleLink(validated, link)
+      const next = appendLink(validated, link, true)
       // A persisted chain must name every link exactly once; retry elision belongs at append time.
       if (next.length !== validated.length + 1) {
         return false
@@ -191,6 +191,15 @@ export function isAgentSessionProviderHandleChain(
 export function appendAgentSessionProviderHandleLink(
   chain: AgentSessionProviderHandleChain,
   link: AgentSessionProviderHandleLink
+): AgentSessionProviderHandleLink[] {
+  return appendLink(chain, link, false)
+}
+
+/** `supersededHead`: the replacement already took the place of a creation no longer in `chain`. */
+function appendLink(
+  chain: AgentSessionProviderHandleChain,
+  link: AgentSessionProviderHandleLink,
+  supersededHead: boolean
 ): AgentSessionProviderHandleLink[] {
   if (!isAgentSessionProviderHandleLink(link)) {
     throw new Error('agent_session_provider_handle_invalid')
@@ -212,13 +221,7 @@ export function appendAgentSessionProviderHandleLink(
   const sameRoot =
     agentSessionProviderHandleRoot(link.handle) === agentSessionProviderHandleRoot(head.handle)
   if (link.origin === 'created') {
-    // A replacement's `supersedesKey` names a creation already gone from the chain; only one that
-    // names the head is a supersession now.
-    if (
-      link.supersedesKey !== undefined &&
-      (link.replaces === undefined ||
-        link.supersedesKey === agentSessionProviderHandleKey(head.handle))
-    ) {
+    if (link.supersedesKey !== undefined && !supersededHead) {
       return supersedeUnsavedCreation(chain, head, link)
     }
     if (
@@ -298,89 +301,45 @@ function supersedeUnsavedCreation(
   }
   const next = head.replaces ? { ...link, replaces: head.replaces } : link
   // Why: in place, so a chat reopened unused across many restarts never grows toward the cap.
-  return earlier.length === 0 ? [next] : appendAgentSessionProviderHandleLink(earlier, next)
+  return earlier.length === 0 ? [next] : appendLink(earlier, next, true)
 }
 
 // ─── Stored form ────────────────────────────────────────────────────────────
-//
-// Builds before replacements existed refuse a creation anywhere but first in a chain, and only a
-// row they can read survives a downgrade. So the row stores the chain from its latest replacement
-// on, and that replacement carries every earlier link inside `replaces.chain`, which they keep as
-// an unknown field. They resume the right conversation; only the earlier links are out of sight.
 
 /** A link as a record row stores it: only the handle has a stored form of its own. */
 export type PersistedAgentSessionProviderHandleLink = Omit<
   AgentSessionProviderHandleLink,
-  'handle' | 'replaces'
+  'handle'
 > & {
   handle: PersistedAgentSessionProviderHandle
-  replaces?: AgentSessionProviderHandleReplacement & {
-    /** The stored chain this replacement followed; the in-memory chain holds it in line. */
-    chain: PersistedAgentSessionProviderHandleLink[]
-  }
 }
 
 export function encodePersistedAgentSessionProviderHandleChain(
   chain: AgentSessionProviderHandleChain
 ): PersistedAgentSessionProviderHandleLink[] {
-  let start = chain.length - 1
-  while (start > 0 && chain[start]?.replaces === undefined) {
-    start -= 1
-  }
-  const stored = chain.slice(Math.max(start, 0)).map(encodePersistedLink)
-  const replaces = chain[start]?.replaces
-  if (start > 0 && replaces && stored[0]) {
-    const earlier = encodePersistedAgentSessionProviderHandleChain(chain.slice(0, start))
-    stored[0] = { ...stored[0], replaces: { ...replaces, chain: earlier } }
-  }
-  return stored
-}
-
-function encodePersistedLink(
-  link: AgentSessionProviderHandleLink
-): PersistedAgentSessionProviderHandleLink {
-  const { replaces: _inLine, ...stored } = link
-  return { ...stored, handle: encodePersistedAgentSessionProviderHandle(link.handle) }
+  return chain.map((link) => ({
+    ...link,
+    handle: encodePersistedAgentSessionProviderHandle(link.handle)
+  }))
 }
 
 /** The in-memory chain a stored one names, or null when any link or the chain itself is invalid. */
 export function decodePersistedAgentSessionProviderHandleChain(
   value: unknown
 ): AgentSessionProviderHandleLink[] | null {
+  if (!Array.isArray(value) || value.length > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
+    return null
+  }
   const decoded: unknown[] = []
-  return decodePersistedLinks(value, decoded, 0) && isAgentSessionProviderHandleChain(decoded)
-    ? decoded
-    : null
-}
-
-function decodePersistedLinks(value: unknown, decoded: unknown[], depth: number): boolean {
-  if (!Array.isArray(value) || depth > MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
-    return false
+  for (const link of value) {
+    const handle =
+      typeof link === 'object' && link !== null && 'handle' in link
+        ? decodePersistedAgentSessionProviderHandle(link.handle)
+        : null
+    if (!handle) {
+      return null
+    }
+    decoded.push({ ...link, handle })
   }
-  for (const [index, link] of value.entries()) {
-    if (typeof link !== 'object' || link === null || !('handle' in link)) {
-      return false
-    }
-    const handle = decodePersistedAgentSessionProviderHandle(link.handle)
-    const replaces: unknown = 'replaces' in link ? link.replaces : undefined
-    const nested =
-      typeof replaces === 'object' && replaces !== null && 'chain' in replaces ? replaces : null
-    // Only a row's first link carries earlier ones; a link inside it never does.
-    if (
-      !handle ||
-      (nested && (index > 0 || !decodePersistedLinks(nested.chain, decoded, depth + 1)))
-    ) {
-      return false
-    }
-    if (decoded.length >= MAX_AGENT_SESSION_PROVIDER_HANDLE_LINKS) {
-      return false
-    }
-    if (nested) {
-      const { chain: _chain, ...replacement } = nested
-      decoded.push({ ...link, handle, replaces: replacement })
-    } else {
-      decoded.push({ ...link, handle })
-    }
-  }
-  return true
+  return isAgentSessionProviderHandleChain(decoded) ? decoded : null
 }
