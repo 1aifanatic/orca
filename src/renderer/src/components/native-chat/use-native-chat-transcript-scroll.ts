@@ -43,8 +43,11 @@ function hasMeasurableViewport(element: HTMLElement | null): element is HTMLElem
 
 export type NativeChatTranscriptScroll = {
   showJump: boolean
+  /** More than a viewport below the top of what is loaded. */
+  awayFromTop: boolean
   onScroll: UIEventHandler<HTMLDivElement>
   scrollToBottom: () => void
+  scrollToTop: () => void
   /** Align an element inside the transcript with the top of the viewport. */
   scrollMessageToTop: (element: HTMLElement) => void
   /** A reader gesture left the end: the only thing besides a row jump that stops following. */
@@ -78,6 +81,7 @@ export function useNativeChatTranscriptScroll({
   reconcileReaderScroll: (isTakingOver: boolean) => void
 }): NativeChatTranscriptScroll {
   const [showJump, setShowJump] = useState(false)
+  const [awayFromTop, setAwayFromTop] = useState(false)
   const followingRef = useRef(true)
   const detachedScrollTopRef = useRef<number | null>(null)
   const isVisibleRef = useRef(isVisible)
@@ -92,6 +96,7 @@ export function useNativeChatTranscriptScroll({
     const geometry = geometryOf(element)
     detachedScrollTopRef.current = followingRef.current ? null : geometry.scrollTop
     setShowJump(shouldShowJumpToLatest(followingRef.current, geometry))
+    setAwayFromTop(geometry.scrollTop > geometry.clientHeight)
     return geometry
   }, [scrollRef])
 
@@ -141,6 +146,13 @@ export function useNativeChatTranscriptScroll({
     scrollToEndWhenMeasurable()
     setShowJump(false)
   }, [scrollToEndWhenMeasurable])
+
+  const scrollToTop = useCallback(() => {
+    followingRef.current = false
+    // Also where a hidden pane lands once revealed, since the write below waits for layout.
+    detachedScrollTopRef.current = 0
+    restoreScrollOffset(0)
+  }, [restoreScrollOffset])
 
   const scrollMessageToTop = useCallback(
     (element: HTMLElement) => {
@@ -207,5 +219,13 @@ export function useNativeChatTranscriptScroll({
     return () => observer.disconnect()
   }, [contentRef, scrollRef, scrollToEndWhenMeasurable, syncScrollState])
 
-  return { showJump, onScroll, scrollToBottom, scrollMessageToTop, readerLeavesEnd }
+  return {
+    showJump,
+    awayFromTop,
+    onScroll,
+    scrollToBottom,
+    scrollToTop,
+    scrollMessageToTop,
+    readerLeavesEnd
+  }
 }

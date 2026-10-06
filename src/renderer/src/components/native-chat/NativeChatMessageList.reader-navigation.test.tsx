@@ -2,7 +2,8 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { render } from './native-chat-app-root-test-render'
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -20,7 +21,8 @@ import {
   session,
   stubLayout,
   stubResizeObserver,
-  TRANSCRIPT_LENGTH
+  TRANSCRIPT_LENGTH,
+  VIEWPORT_PX
 } from './native-chat-windowing-test-harness'
 
 afterEach(cleanup)
@@ -328,6 +330,22 @@ describe('reader navigation', () => {
       expect(insertTypedText).toHaveBeenCalledWith('a')
     }
   )
+
+  it('offers the way to the top only once the start of a loaded transcript is out of view', () => {
+    const { container } = render(list(transcript))
+    paint(container)
+    scrollTranscript(container, VIEWPORT_PX / 2)
+    paint(container)
+    // Anti-vacuous: the reader has left the end, so the way back down is offered.
+    expect(offersJumpToLatest()).toBe(true)
+    // The first message is still on screen: there is nowhere further up to go.
+    expect(screen.queryByRole('button', { name: 'Jump to top' })).toBeNull()
+
+    scrollTranscript(container, VIEWPORT_PX * 2)
+    paint(container)
+
+    expect(screen.getByRole('button', { name: 'Jump to top' })).not.toHaveAttribute('inert')
+  })
 
   it('makes the transcript a keyboard stop, so the scroll keys can reach it', () => {
     const { container } = render(list(transcript))
