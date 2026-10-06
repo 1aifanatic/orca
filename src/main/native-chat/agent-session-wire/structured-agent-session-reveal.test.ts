@@ -53,7 +53,7 @@ describe('the host answer a client acts on', () => {
 
       await expect(
         revealStructuredAgentSession(
-          { store: { getRecord: () => stored } as never },
+          { store: { getRecord: () => stored } },
           'session-answered',
           open
         )
@@ -70,11 +70,7 @@ describe('the host answer a client acts on', () => {
   it('refuses a session this host holds no record for, opening nothing', async () => {
     const open = vi.fn(async () => undefined)
     await expect(
-      revealStructuredAgentSession(
-        { store: { getRecord: () => null } as never },
-        'session-absent',
-        open
-      )
+      revealStructuredAgentSession({ store: { getRecord: () => null } }, 'session-absent', open)
     ).rejects.toThrow('agent_session_identity_required')
     expect(open).not.toHaveBeenCalled()
   })
@@ -85,7 +81,7 @@ describe('the host answer a client acts on', () => {
     await expect(
       revealStructuredAgentSession(
         {
-          store: { getRecord: () => record('codex', 'workspace-1') } as never
+          store: { getRecord: () => record('codex', 'workspace-1') }
         },
         'session-answered',
         open
@@ -99,7 +95,7 @@ describe('the host answer a client acts on', () => {
     await expect(
       revealStructuredAgentSession(
         {
-          store: { getRecord: () => record('codex', 'workspace-1') } as never
+          store: { getRecord: () => record('codex', 'workspace-1') }
         },
         'session-answered',
         async () => {

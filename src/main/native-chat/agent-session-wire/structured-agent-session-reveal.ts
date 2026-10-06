@@ -26,7 +26,7 @@ import type {
 
 /** Throws its refusal as the code itself. */
 export async function revealStructuredAgentSession(
-  deps: Pick<StructuredAgentSessionHostDeps, 'store'>,
+  deps: { store: Pick<StructuredAgentSessionHostDeps['store'], 'getRecord'> },
   sessionId: string,
   openConversation: (sessionId: string) => Promise<unknown>
 ): Promise<StructuredAgentSessionReveal> {
