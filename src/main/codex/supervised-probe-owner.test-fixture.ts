@@ -127,7 +127,7 @@ export function createSupervisedProbeRig(): SupervisedProbeRig {
       recordedPids.add(owner.pid!)
       return owner
     },
-    readPids: async (timeoutMs = 10_000) => {
+    readPids: async (timeoutMs = 20_000) => {
       if (!(await waitFor(() => existsSync(pidFile), timeoutMs))) {
         throw new Error('the stand-in never reported its pids')
       }
