@@ -98,10 +98,51 @@ describe('launchAgentInNewTab terminal tab activation', () => {
     async (worktreeId) => {
       const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-      launchAgentInNewTab({ agent: 'codex', worktreeId })
+      launchAgentInNewTab({ requestId: 'request-1', agent: 'codex', worktreeId })
 
       expect(mockCreateTab.mock.calls[0]?.[3]).not.toHaveProperty('activate')
       expect(mockSetActiveTabType).toHaveBeenCalledExactlyOnceWith('terminal', worktreeId)
     }
   )
+
+  it('honours the chat default in a floating launch and scopes its surface to the floating workspace', async () => {
+    store.settings = placementSettings({
+      experimentalNativeChat: true,
+      experimentalStructuredNativeChat: true,
+      openAgentTabsInChatByDefault: true,
+      nativeChatSessionOptions: {
+        codex: {
+          model: 'gpt-5.2-codex',
+          valuesByModel: { 'gpt-5.2-codex': { effort: 'medium' } }
+        }
+      }
+    })
+    const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
+
+    launchAgentInNewTab({
+      requestId: 'request-2',
+      agent: 'codex',
+      worktreeId: FLOATING_TERMINAL_WORKTREE_ID
+    })
+
+    expect(mockCreateTab).toHaveBeenCalledWith(
+      FLOATING_TERMINAL_WORKTREE_ID,
+      undefined,
+      undefined,
+      {
+        launchAgent: 'codex',
+        viewMode: 'chat'
+      }
+    )
+    expect(mockSetActiveTabType).toHaveBeenCalledExactlyOnceWith(
+      'terminal',
+      FLOATING_TERMINAL_WORKTREE_ID
+    )
+    // Why: the panel hosts the chat pane itself, so the launch carries the user's model/effort
+    // preferences the same way a main-window launch does.
+    expect(mockSeedNativeChatAppliedSessionOptions).toHaveBeenCalledWith('tab-1', 'codex', {
+      model: 'gpt-5.2-codex',
+      effort: 'medium'
+    })
+  })
 })

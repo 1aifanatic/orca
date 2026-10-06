@@ -243,6 +243,8 @@ export default function ActivityPrototypePage(): React.JSX.Element {
   const {
     markThreadRead,
     markThreadUnread,
+    markThreadsRead,
+    markThreadsUnread,
     selectThread,
     jumpToWorkspace,
     markAllThreadsRead,
@@ -339,6 +341,8 @@ export default function ActivityPrototypePage(): React.JSX.Element {
           onJumpToWorkspace={jumpToWorkspace}
           onMarkThreadRead={markThreadRead}
           onMarkThreadUnread={markThreadUnread}
+          onMarkThreadsRead={markThreadsRead}
+          onMarkThreadsUnread={markThreadsUnread}
           canJumpToWorkspace={canJumpToWorkspace}
           isThreadListResizing={isThreadListResizing}
           onResizeStart={onResizeStart}

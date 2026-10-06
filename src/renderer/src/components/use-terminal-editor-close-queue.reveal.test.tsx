@@ -15,7 +15,7 @@ const revealFloatingWorkspacePanel = vi.hoisted(() => vi.fn())
 vi.mock('../store', () => ({
   useAppStore: { getState: () => store, subscribe: () => () => {} }
 }))
-vi.mock('@/lib/floating-workspace-terminal-actions', () => ({ revealFloatingWorkspacePanel }))
+vi.mock('@/lib/floating-workspace-panel-reveal', () => ({ revealFloatingWorkspacePanel }))
 vi.mock('./terminal/window-close-running-work', () => ({ assessWindowCloseRunningWork: vi.fn() }))
 vi.mock('./window-close-request-coordinator', () => ({
   runWithWindowCloseCheckpointScope: (fn: () => unknown) => fn()

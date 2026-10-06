@@ -13,7 +13,6 @@ import {
   isFloatingWorkspacePanelShortcutTarget,
   isFloatingWorkspaceTerminalInputTarget,
   matchFloatingWorkspacePanelChord,
-  revealFloatingWorkspacePanel,
   shouldMinimizeFloatingWorkspacePanelOnCloseShortcut,
   switchFloatingWorkspaceTab
 } from './floating-workspace-terminal-actions'
@@ -161,32 +160,6 @@ it('counts tabs in every floating split group when deciding whether a close empt
       })
     )
   ).toBe(2)
-})
-
-describe('revealFloatingWorkspacePanel', () => {
-  it('toggles the panel open only while the store says it is closed', () => {
-    const dispatchEvent = vi.fn()
-    vi.stubGlobal('window', { dispatchEvent })
-    // A DOM a frame behind the store must not decide: it still shows the panel as it was.
-    vi.stubGlobal('document', { querySelector: vi.fn().mockReturnValue({}) })
-
-    revealFloatingWorkspacePanel(floatingPanelState({ open: true }))
-    expect(dispatchEvent).not.toHaveBeenCalled()
-
-    revealFloatingWorkspacePanel(floatingPanelState({ open: false }))
-    expect(dispatchEvent).toHaveBeenCalledOnce()
-    expect(dispatchEvent.mock.calls[0][0]).toMatchObject({ type: 'orca-toggle-floating-terminal' })
-  })
-
-  it('sends no toggle once the feature is disabled, even if the panel was left open', () => {
-    const dispatchEvent = vi.fn()
-    vi.stubGlobal('window', { dispatchEvent })
-    vi.stubGlobal('document', { querySelector: vi.fn().mockReturnValue(null) })
-
-    revealFloatingWorkspacePanel(floatingPanelState({ enabled: false, open: false }))
-    revealFloatingWorkspacePanel(floatingPanelState({ enabled: false, open: true }))
-    expect(dispatchEvent).not.toHaveBeenCalled()
-  })
 })
 
 describe('isFloatingWorkspacePanelFocused', () => {

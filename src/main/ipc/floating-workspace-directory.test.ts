@@ -1,21 +1,14 @@
 import { mkdtemp, mkdir, realpath, rm, symlink, unlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 
-const { authorizeExternalPathMock } = vi.hoisted(() => ({
-  authorizeExternalPathMock: vi.fn()
-}))
-
-vi.mock('./filesystem-auth', () => ({
-  authorizeExternalPath: authorizeExternalPathMock
-}))
 
 import {
   ensureDefaultFloatingWorkspacePath,
-  grantFloatingWorkspaceDirectory,
+  trustFloatingWorkspaceDirectory,
   resolveFloatingTerminalCwd,
   sanitizeFloatingWorkspaceDirectorySetting
 } from './floating-workspace-directory'
@@ -42,7 +35,7 @@ function createStore(settings: Partial<GlobalSettings> = {}): TestStore {
   return store
 }
 
-describe('floating workspace directory authorization', () => {
+describe('floating workspace directory', () => {
   let tempRoot: string
   let homeDir: string
   let userDataDir: string
@@ -63,7 +56,6 @@ describe('floating workspace directory authorization', () => {
         throw new Error(`unexpected app path: ${name}`)
       }
     })
-    authorizeExternalPathMock.mockClear()
   })
 
   afterEach(async () => {
@@ -74,46 +66,37 @@ describe('floating workspace directory authorization', () => {
     await symlink(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir')
   }
 
-  it('defaults terminal cwd to home without authorizing home for markdown writes', async () => {
+  it('defaults terminal cwd to home', async () => {
     const store = createStore()
 
     await expect(resolveFloatingTerminalCwd(store as never)).resolves.toBe(homeDir)
-
-    expect(authorizeExternalPathMock).not.toHaveBeenCalledWith(homeDir)
   })
 
   it('keeps the app-owned directory for floating markdown notes', async () => {
     await expect(ensureDefaultFloatingWorkspacePath()).resolves.toBe(
       path.join(userDataDir, 'floating-workspace')
     )
-
-    expect(authorizeExternalPathMock).toHaveBeenCalledWith(
-      path.join(userDataDir, 'floating-workspace')
-    )
   })
 
-  it('persists picker-approved directories and reauthorizes them on resolution', async () => {
+  it('persists picker-approved directories and resolves them as the cwd', async () => {
     const store = createStore()
     const selectedDir = path.join(tempRoot, 'notes')
     await mkdir(selectedDir)
     const canonicalSelectedDir = await realpath(selectedDir)
 
-    await grantFloatingWorkspaceDirectory(store as never, selectedDir)
+    await trustFloatingWorkspaceDirectory(store, selectedDir)
 
     expect(store.settings.floatingTerminalTrustedCwds).toEqual([canonicalSelectedDir])
-    expect(authorizeExternalPathMock).toHaveBeenCalledWith(canonicalSelectedDir)
 
-    authorizeExternalPathMock.mockClear()
     await expect(
       resolveFloatingTerminalCwd(store as never, {
         path: selectedDir,
         requireTrusted: true
       })
     ).resolves.toBe(canonicalSelectedDir)
-    expect(authorizeExternalPathMock).toHaveBeenCalledWith(canonicalSelectedDir)
   })
 
-  it('stores symlink grants as canonical targets and rejects the link after retargeting', async () => {
+  it('stores a symlinked choice as its canonical target and rejects the link after retargeting', async () => {
     const store = createStore()
     const originalTarget = path.join(tempRoot, 'original-target')
     const retargetedTarget = path.join(tempRoot, 'retargeted-target')
@@ -123,16 +106,12 @@ describe('floating workspace directory authorization', () => {
     await symlinkDirectory(originalTarget, selectedLink)
     const canonicalOriginalTarget = await realpath(originalTarget)
 
-    await grantFloatingWorkspaceDirectory(store as never, selectedLink)
+    await trustFloatingWorkspaceDirectory(store, selectedLink)
 
     expect(store.settings.floatingTerminalTrustedCwds).toEqual([canonicalOriginalTarget])
-    expect(authorizeExternalPathMock).toHaveBeenCalledWith(canonicalOriginalTarget)
 
     await unlink(selectedLink)
     await symlinkDirectory(retargetedTarget, selectedLink)
-    const canonicalRetargetedTarget = await realpath(retargetedTarget)
-
-    authorizeExternalPathMock.mockClear()
     await expect(
       resolveFloatingTerminalCwd(store as never, {
         path: selectedLink,
@@ -142,10 +121,9 @@ describe('floating workspace directory authorization', () => {
     await expect(
       sanitizeFloatingWorkspaceDirectorySetting(store as never, selectedLink)
     ).resolves.toBe('')
-    expect(authorizeExternalPathMock).not.toHaveBeenCalledWith(canonicalRetargetedTarget)
   })
 
-  it('keeps temporarily inaccessible trusted directories when adding a new grant', async () => {
+  it('keeps temporarily inaccessible trusted directories when adding a new one', async () => {
     const missingTrustedDir = path.join(tempRoot, 'offline-drive', 'notes')
     const selectedDir = path.join(tempRoot, 'new-notes')
     await mkdir(selectedDir)
@@ -154,7 +132,7 @@ describe('floating workspace directory authorization', () => {
       floatingTerminalTrustedCwds: [missingTrustedDir]
     })
 
-    await grantFloatingWorkspaceDirectory(store as never, selectedDir)
+    await trustFloatingWorkspaceDirectory(store, selectedDir)
 
     expect(store.settings.floatingTerminalTrustedCwds).toEqual([
       missingTrustedDir,
@@ -196,6 +174,5 @@ describe('floating workspace directory authorization', () => {
     await expect(resolveFloatingTerminalCwd(store as never, { path: arbitraryDir })).resolves.toBe(
       arbitraryDir
     )
-    expect(authorizeExternalPathMock).not.toHaveBeenCalledWith(arbitraryDir)
   })
 })

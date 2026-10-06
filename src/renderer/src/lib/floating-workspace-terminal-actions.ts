@@ -12,9 +12,7 @@ import type { AppState } from '@/store/types'
 import {
   selectEmptyFloatingWorkspacePanelVisible,
   selectFloatingVisibleTabCount,
-  selectFloatingWorkspacePanelVisible,
-  type EmptyFloatingWorkspacePanelState,
-  type FloatingWorkspacePanelVisibilityState
+  type EmptyFloatingWorkspacePanelState
 } from '@/store/floating-workspace-panel-selector'
 import { resolveBrowserWorkspaceOwner } from './browser-workspace-source-resolution'
 import { TOGGLE_FLOATING_TERMINAL_EVENT } from './floating-terminal'
@@ -196,22 +194,6 @@ function getNextFloatingWorkspaceTerminalTab(
   return terminalTabs[
     (normalizedCurrentIndex + direction + terminalTabs.length) % terminalTabs.length
   ]
-}
-
-export function isFloatingWorkspacePanelVisible(
-  doc: Pick<Document, 'querySelector'> = document
-): boolean {
-  return Boolean(doc.querySelector('[data-floating-terminal-panel][aria-hidden="false"]'))
-}
-
-/** Opens the floating panel unless it is already on screen. */
-export function revealFloatingWorkspacePanel(state: FloatingWorkspacePanelVisibilityState): void {
-  if (
-    state.settings?.floatingTerminalEnabled === true &&
-    !selectFloatingWorkspacePanelVisible(state)
-  ) {
-    window.dispatchEvent(new CustomEvent(TOGGLE_FLOATING_TERMINAL_EVENT))
-  }
 }
 
 export function isFloatingWorkspacePanelFocused(

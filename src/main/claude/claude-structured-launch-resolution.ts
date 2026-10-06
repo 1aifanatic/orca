@@ -5,10 +5,14 @@ import type {
   PermissionMode
 } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
-import { agentSessionProviderHandleChainHead } from '../../shared/agent-session-provider-handle'
+import {
+  agentSessionProviderHandleChainHead,
+  agentSessionProviderHandleRoot
+} from '../../shared/agent-session-provider-handle'
+import { claudeProviderHandleLeafUuid } from '../../shared/agent-session-provider-handle-encoding'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { withCliRuntimeOnPath } from '../../shared/node-cli-command-resolution'
-import { structuredWorkerChildIdentityEnv } from '../runtime/structured-worker-child-identity-env'
+import { structuredSessionChildIdentityEnv } from '../runtime/structured-session-child-identity-env'
 import {
   CLAUDE_AUTH_ENV_CONFLICT_MESSAGE,
   CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE,
@@ -22,6 +26,7 @@ import {
 } from '../claude-accounts/live-pty-gate'
 import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
+  hasWslBoundClaudeAccount,
   structuredClaudeMatchesActiveManagedAccount,
   type ClaudeManagedAccountGateSettings
 } from '../native-chat/claude-structured-managed-account-support'
@@ -145,6 +150,61 @@ async function claudeTranscriptExists(input: {
   return path !== null
 }
 
+export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
+
+/**
+ * The one place a structured Claude child's binary and environment are
+ * resolved. The session launch and the session-less catalog probe both build
+ * on it, so a probe can never list under a different binary or env than the
+ * session it stands in for. Env VALUES stay out of the catalog fingerprint:
+ * drift there heals on the next refresh.
+ */
+export async function resolveClaudeStructuredInvocation(
+  deps: Pick<
+    ClaudeStructuredLaunchResolverDeps,
+    'resolveCommand' | 'resolveEnv' | 'resolveInheritedEnv' | 'resolveAuthPolicy'
+  > & { authSwitchSettleTimeoutMs?: number },
+  decorateEnv: (env: Record<string, string>) => Record<string, string> = (env) => env
+): Promise<ClaudeStructuredInvocation> {
+  const command = (deps.resolveCommand ?? resolveClaudeCommand)()
+  const auth = await deps.resolveAuthPolicy()
+  const overlay = await deps.resolveEnv?.()
+  const inheritedEnv = deps.resolveInheritedEnv
+    ? await deps.resolveInheritedEnv()
+    : cloneDefinedEnv(process.env)
+  // A switch can begin while the policy and overlay resolve, exactly as it can
+  // during the terminal preflight's prepareClaudeAuth — recheck after the awaits.
+  await assertClaudeAuthSwitchSettled(deps.authSwitchSettleTimeoutMs)
+  // Under a managed account the pinned credential is the only auth this launch may
+  // use, so an explicit override is refused rather than silently beating the pin.
+  if (auth.stripAuthEnv && hasClaudeAuthEnvConflict(overlay)) {
+    throw new AgentSessionPreSpawnError(new Error(CLAUDE_AUTH_ENV_CONFLICT_MESSAGE), {
+      reason: 'managedAccountEnvOverride'
+    })
+  }
+  // Why the overlay merges onto the inherited env rather than replacing it: the child
+  // still needs PATH and the rest of the shell environment, and withCliRuntimeOnPath
+  // derives PATH from what it is handed. Ambient Anthropic auth is stripped from the
+  // inherited half only when a managed account owns the credential; a system-auth
+  // user's own key is their sign-in and must reach the child.
+  const env = withCliRuntimeOnPath(
+    command,
+    decorateEnv({
+      ...applyClaudeEnvPatch(
+        withoutInheritedClaudeConfigDir(inheritedEnv, process.platform),
+        {},
+        {
+          stripAuthEnv: auth.stripAuthEnv,
+          platform: process.platform
+        }
+      ),
+      ...(overlay ? cloneDefinedEnv(overlay) : {})
+    }),
+    { platform: process.platform }
+  )
+  return { command, env }
+}
+
 /**
  * Wait a running account switch out, and refuse only if it never settles.
  *
@@ -157,7 +217,9 @@ export async function assertClaudeAuthSwitchSettled(
   timeoutMs = CLAUDE_AUTH_SWITCH_SETTLE_TIMEOUT_MS
 ): Promise<void> {
   if (!(await whenClaudeAuthSwitchSettles(timeoutMs))) {
-    throw new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE)
+    throw new AgentSessionPreSpawnError(new Error(CLAUDE_AUTH_SWITCH_IN_PROGRESS_MESSAGE), {
+      reason: 'accountSwitchInProgress'
+    })
   }
 }
 
@@ -195,32 +257,33 @@ export function createClaudeStructuredLaunchResolver(
     // Every acquisition, not just the first: the account state can change under a live session, and
     // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
     // Codex has no gate here — it resolves its account on a different path.
-    if (
-      deps.readManagedAccountGate &&
-      !structuredClaudeMatchesActiveManagedAccount(deps.readManagedAccountGate())
-    ) {
+    const gate = deps.readManagedAccountGate?.()
+    if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
+      // Unreadable account state names no situation a person can act on, so only the log reads it.
       throw new AgentSessionPreSpawnError(
-        'structured Claude is not offered under the active managed Claude account'
+        'structured Claude is not offered under the active managed Claude account',
+        gate && hasWslBoundClaudeAccount(gate) ? { reason: 'managedAccountUnsupported' } : {}
       )
     }
-    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
+    // A Claude record's chain holds only Claude handles; the record store refuses anything else.
+    const head = agentSessionProviderHandleChainHead(record.providerHandleChain)?.handle ?? null
     if (
-      head?.handle.provider === 'claude' &&
-      (identity.providerHandle.kind !== 'claude' ||
-        identity.providerHandle.sessionId !== head.handle.sessionId)
+      head &&
+      (!identity.providerHandle ||
+        agentSessionProviderHandleRoot(identity.providerHandle) !==
+          agentSessionProviderHandleRoot(head))
     ) {
       throw new Error('claude durable resume identity changed before spawn')
     }
-    const providerSessionId =
-      head?.handle.provider === 'claude'
-        ? head.handle.sessionId
-        : claudeSessionIdForOrcaSession(identity.sessionId)
-    const continuesChain = head?.handle.provider === 'claude'
+    const providerSessionId = head
+      ? head.nativeId
+      : claudeSessionIdForOrcaSession(identity.sessionId)
+    const continuesChain = head !== null
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const resumesTranscript =
-      head?.handle.provider === 'claude' &&
-      (head.handle.leafUuid !== null ||
+      head !== null &&
+      (claudeProviderHandleLeafUuid(head) !== null ||
         (await (deps.hasTranscript ?? claudeTranscriptExists)({
           providerSessionId,
           claudeConfigDir: record.accountHome.path
@@ -230,43 +293,13 @@ export function createClaudeStructuredLaunchResolver(
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const command = (deps.resolveCommand ?? resolveClaudeCommand)()
-    const auth = await deps.resolveAuthPolicy()
-    const overlay = await deps.resolveEnv?.()
-    const inheritedEnv = deps.resolveInheritedEnv
-      ? await deps.resolveInheritedEnv()
-      : cloneDefinedEnv(process.env)
-    // A switch can begin while the policy and overlay resolve, exactly as it can
-    // during the terminal preflight's prepareClaudeAuth — recheck after the awaits.
-    await assertClaudeAuthSwitchSettled(deps.authSwitchSettleTimeoutMs)
-    // Under a managed account the pinned credential is the only auth this launch may
-    // use, so an explicit override is refused rather than silently beating the pin.
-    if (auth.stripAuthEnv && hasClaudeAuthEnvConflict(overlay)) {
-      throw new Error(CLAUDE_AUTH_ENV_CONFLICT_MESSAGE)
-    }
-    // Why the overlay merges onto the inherited env rather than replacing it: the child
-    // still needs PATH and the rest of the shell environment, and withCliRuntimeOnPath
-    // derives PATH from what it is handed. Ambient Anthropic auth is stripped from the
-    // inherited half only when a managed account owns the credential; a system-auth
-    // user's own key is their sign-in and must reach the child.
-    const env = withCliRuntimeOnPath(
-      command,
-      // Only a dispatched structured worker gets the orchestration identity and the Orca CLI on
-      // PATH; an ordinary chat session's env passes through untouched.
-      structuredWorkerChildIdentityEnv(record.sessionId, {
-        ...applyClaudeEnvPatch(
-          withoutInheritedClaudeConfigDir(inheritedEnv, process.platform),
-          {},
-          {
-            stripAuthEnv: auth.stripAuthEnv,
-            platform: process.platform
-          }
-        ),
-        ...(overlay ? cloneDefinedEnv(overlay) : {}),
+    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) =>
+      // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
+      structuredSessionChildIdentityEnv(record.sessionId, {
+        ...base,
         // The turn translator relies on Claude's authoritative idle frame when no result arrives.
         [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-      }),
-      { platform: process.platform }
+      })
     )
     return {
       pathToClaudeCodeExecutable: command,
@@ -281,8 +314,7 @@ export function createClaudeStructuredLaunchResolver(
       env,
       claudeConfigDir: record.accountHome.path,
       providerSessionId,
-      resumeLeafUuid:
-        resumesTranscript && head?.handle.provider === 'claude' ? head.handle.leafUuid : null,
+      resumeLeafUuid: resumesTranscript && head ? claudeProviderHandleLeafUuid(head) : null,
       resumesTranscript,
       continuesChain
     }

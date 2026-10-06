@@ -47,7 +47,9 @@ vi.mock('@/store', async () => {
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
   getRuntimeEnvironmentIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
-    state.testRuntimeOwner ?? null
+    state.testRuntimeOwner ?? null,
+  getExecutionHostIdForWorktree: (state: { testRuntimeOwner?: string | null }) =>
+    state.testRuntimeOwner ? `runtime:${state.testRuntimeOwner}` : 'local'
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', async (importOriginal) => ({
@@ -685,6 +687,20 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(feed().target).toEqual({ kind: 'environment', environmentId: 'env-1' })
   })
 
+  // Two hosts can publish the same workspace id; the tab records which one holds this chat.
+  it("reads a chat's status from the host recorded on its tab, not its workspace", async () => {
+    mocks.store?.setState({
+      testRuntimeOwner: null,
+      unifiedTabsByWorktree: {
+        'wt-1': [{ ...structuredTab, executionHostId: 'runtime:server-1' }]
+      }
+    })
+    render(<StructuredAgentSessionStatusBridge />)
+    await waitFor(() => expect(mocks.subscribeStatus).toHaveBeenCalledOnce())
+
+    expect(feed().target).toEqual({ kind: 'environment', environmentId: 'server-1' })
+  })
+
   it('does not project an unknown provider as Codex', async () => {
     mocks.store?.setState({
       unifiedTabsByWorktree: {
@@ -698,8 +714,8 @@ describe('StructuredAgentSessionStatusBridge', () => {
     expect(mocks.setAgentStatus).not.toHaveBeenCalled()
   })
 
-  it('re-renders a startup-phase reader only when the phase changes', async () => {
-    const phases: (string | null)[] = []
+  it('re-renders a startup reader only when its phase changes', async () => {
+    const phases: ReturnType<typeof useStructuredAgentSessionHostExecutionPhase>[] = []
     function PhaseProbe(): null {
       phases.push(useStructuredAgentSessionHostExecutionPhase('session-1', { kind: 'local' }))
       return null
@@ -716,10 +732,20 @@ describe('StructuredAgentSessionStatusBridge', () => {
       })
     )
     expect(phases).toHaveLength(rendersWhileStarting)
+    // Older hosts (v1.4.218 on) also send which provider child is starting; nothing reads it.
+    const olderHostChild = { hostExecutionChild: { generation: 'child-1', fence: 2 } }
+    act(() =>
+      feed().emit({
+        type: 'status',
+        session: summary({ hostExecutionPhase: 'starting', ...olderHostChild })
+      })
+    )
+    expect(phases).toHaveLength(rendersWhileStarting)
 
     act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'ready' }) }))
     expect(phases.at(-1)).toBe('ready')
-    expect(phases).toContain('starting')
+    act(() => feed().emit({ type: 'status', session: summary({ hostExecutionPhase: 'starting' }) }))
+    expect(phases.at(-1)).toBe('starting')
   })
 })
 

@@ -2,12 +2,17 @@
 // runtime/browser error allowlists define the contract the CLI relies on to
 // format human-facing messages. Centralizing this mapping keeps the allowlist
 // auditable in one place instead of spread across per-method branches.
+import {
+  agentSessionRefusalReference,
+  isAgentSessionRefusalError,
+  type AgentSessionRefusalError
+} from '../../../shared/agent-session-wire-refusals'
 import type { RpcEnvelopeMeta, RpcFailure, RpcSuccess } from './core'
+import { ORCHESTRATION_SESSION_CALLER_ERROR_CODES } from '../../../shared/orchestration-session-caller-codes'
 import { computerUseErrorRecoveryData } from '../../../shared/computer-use-error-recovery'
 import { COMPUTER_ERROR_CODES } from '../../../shared/runtime-types'
 import { LINEAR_ERROR_CODES } from '../../../shared/linear/agent-access'
 import { AGENT_SESSION_RPC_ERROR_CODES } from '../../../shared/agent-session-host-authority'
-import { AgentSessionRefusalError } from '../../native-chat/agent-session-wire/structured-agent-session-refusal-error'
 import { ARTIFACT_SHARING_DISABLED_CODE } from '../../../shared/artifact-sharing-gate'
 import { AGENT_SKILL_SHARING_DISABLED_CODE } from '../../../shared/agent-skill-sharing-gate'
 import {
@@ -154,11 +159,15 @@ const STRUCTURED_RUNTIME_PASSTHROUGH_CODES: ReadonlySet<string> = new Set([
   SKILL_INSTALL_RPC_ERROR_CODE,
   // Why: an owner conflict is a distinct client decision (reload the host, re-adopt,
   // stop offering the action) — flattened to runtime_error it can only be guessed at.
-  ...Object.values(AUTOMATION_OWNER_CONFLICT_CODES)
+  ...Object.values(AUTOMATION_OWNER_CONFLICT_CODES),
+  ...Object.values(ORCHESTRATION_SESSION_CALLER_ERROR_CODES)
 ])
 
 export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknown): RpcFailure {
   const message = error instanceof Error ? error.message : String(error)
+  if (isAgentSessionRefusalError(error)) {
+    return agentSessionRefusalErrorResponse(id, meta, error)
+  }
   if (
     error instanceof Error &&
     'code' in error &&
@@ -210,15 +219,6 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
       (error as { data?: unknown }).data
     )
   }
-  // Same code a bare-code throw of this refusal gets; the message is the refusal's own text.
-  if (error instanceof AgentSessionRefusalError) {
-    return errorResponse(
-      id,
-      meta,
-      RUNTIME_PASSTHROUGH_CODES.has(error.code) ? error.code : 'runtime_error',
-      message
-    )
-  }
   if (RUNTIME_PASSTHROUGH_CODES.has(message)) {
     return errorResponse(id, meta, message, message)
   }
@@ -236,6 +236,27 @@ export function mapRuntimeError(id: string, meta: RpcEnvelopeMeta, error: unknow
     return errorResponse(id, meta, 'invalid_argument', 'Missing terminal send payload')
   }
   return errorResponse(id, meta, 'runtime_error', message)
+}
+
+/**
+ * A thrown agent-session refusal, mapped before any `'code' in error` passthrough so no other
+ * subsystem's code set can claim it. Wire code and message are exactly what the bare `Error(code)`
+ * it replaced produced — released clients classify both — and the refusal's details ride only in
+ * `data`, which they ignore.
+ */
+function agentSessionRefusalErrorResponse(
+  id: string,
+  meta: RpcEnvelopeMeta,
+  error: AgentSessionRefusalError
+): RpcFailure {
+  const { code } = error.refusal
+  return errorResponse(
+    id,
+    meta,
+    RUNTIME_PASSTHROUGH_CODES.has(code) ? code : 'runtime_error',
+    code,
+    { refusal: agentSessionRefusalReference(error.refusal) }
+  )
 }
 
 export const computerErrorData = computerUseErrorRecoveryData

@@ -13,7 +13,7 @@ const IDENTITY: AgentSessionJournalIdentity = {
   workspaceId: 'workspace-1',
   hostId: 'local',
   agent: 'claude',
-  providerHandle: { kind: 'opaque', agent: 'claude', value: 'pending' }
+  providerHandle: null
 }
 
 describe('Claude structured processless acquisition', () => {
@@ -37,7 +37,7 @@ describe('Claude structured processless acquisition', () => {
         getContextUsage: async () => ({}),
         supportedModels: async () => [],
         interrupt: async () => undefined,
-        cancelAsyncMessage: async () => {},
+        cancelAsyncMessage: async () => false,
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},

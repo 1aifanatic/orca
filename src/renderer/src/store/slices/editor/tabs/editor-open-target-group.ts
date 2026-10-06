@@ -1,6 +1,5 @@
 import type { AppState } from '../../../types'
 import type { Tab, TabGroup, WorkspaceVisibleTabType } from '../../../../../../shared/tab-types'
-import type { EditorSlice } from '../types/editor-slice'
 import { isEditorTabContentType } from './editor-tab-content-type'
 import { ownsGlobalSelection } from '../../../global-selection-owner'
 
@@ -81,8 +80,7 @@ export function resolveEditorOpenTargetGroupId(
 }
 
 export function buildEditorActiveResult(
-  state: Pick<EditorSlice, 'activeFileIdByWorktree' | 'activeTabTypeByWorktree'> &
-    Pick<AppState, 'activeWorktreeId'>,
+  state: Pick<AppState, 'activeFileIdByWorktree' | 'activeTabTypeByWorktree' | 'activeWorktreeId'>,
   worktreeId: string,
   fileId: string
 ): {
@@ -92,6 +90,7 @@ export function buildEditorActiveResult(
   activeTabTypeByWorktree: Record<string, WorkspaceVisibleTabType>
 } {
   return {
+    // Why: only the on-screen worktree owns the main editor; a background or floating open updates only the per-worktree maps.
     ...(ownsGlobalSelection(state, worktreeId)
       ? { activeFileId: fileId, activeTabType: 'editor' as const }
       : {}),

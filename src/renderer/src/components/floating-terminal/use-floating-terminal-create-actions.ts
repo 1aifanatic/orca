@@ -4,7 +4,7 @@ import { resolveGroupTabFromVisibleId } from '@/components/tab-group/tab-group-v
 import { getConnectionId } from '@/lib/connection-context'
 import { createUntitledMarkdownFileWithTemplateSelection } from '@/lib/create-untitled-markdown'
 import { ensureClientCreationActionAllowed } from '@/lib/client-creation-action-error'
-import { openMarkdownDocumentInFloatingWorkspace } from '@/lib/open-markdown-in-floating-workspace'
+import { openDocumentInFloatingWorkspace } from '@/lib/open-document-in-floating-workspace'
 import { extractIpcErrorMessage } from '@/lib/ipc-error'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { translate } from '@/i18n/i18n'
@@ -120,7 +120,7 @@ export function useFloatingTerminalCreateActions({
         if (!document) {
           return
         }
-        openMarkdownDocumentInFloatingWorkspace(openFile, document, {
+        openDocumentInFloatingWorkspace(openFile, document, {
           targetGroupId: activeGroup?.id
         })
       } catch (error) {

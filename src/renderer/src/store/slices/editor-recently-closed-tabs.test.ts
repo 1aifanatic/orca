@@ -265,7 +265,7 @@ describe('createEditorSlice recently closed editor tabs', () => {
     const liveWt1Id = openShared('wt-1')
     expect(liveWt1Id).toBe(ownedEditorFileId(sharedPath, 'wt-1', null))
     store.getState().closeFile(wt2Id)
-    // Why: reopening runs in the active worktree; closing wt-1's last tab above left it.
+    // Why: closing wt-1's last tab above left the landing state; reopen runs for the on-screen worktree.
     store.setState({ activeWorktreeId: 'wt-1' })
 
     expect(store.getState().reopenClosedEditorTab('wt-1')).toBe(true)

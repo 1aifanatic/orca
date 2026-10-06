@@ -1,8 +1,10 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithResolveTerminalPane } from './orca-runtime-resolve-terminal-pane'
+import { wrapTerminalBracketedPasteText } from '../../shared/terminal-bracketed-paste-text'
 import { PROVEN_ABSENT_LEAF_PTY_TTL_MS } from './orca-runtime-core'
 import { pruneExpiredProvenAbsentLeafPtyVerdicts } from './proven-absent-leaf-pty-verdicts'
 import type { RuntimeTerminalSend } from '../../shared/runtime-types'
+import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { RuntimeAgentPromptWriteOptions } from './runtime-terminal-contracts'
 import {
   assertTerminalInputWithinLimitWithYield,
@@ -103,7 +105,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       reserveWrite?: (ptyId: string) => void
       afterWrite?: (ptyId: string) => void | Promise<void>
       suffixFailureError?: string
-    } = {}
+      inputKind: TerminalInputKind
+    }
   ): Promise<RuntimeTerminalSend> {
     const pty = this.getLivePtyForHandle(handle)
     if (pty) {
@@ -152,10 +155,14 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
   async sendTerminalAgentPrompt(
     handle: string,
     prompt: string,
-    options: RuntimeAgentPromptWriteOptions = {}
+    options: RuntimeAgentPromptWriteOptions
   ): Promise<RuntimeTerminalSend> {
     // Why the consuming agent: the foreground process reads the bytes; launchAgent covers startup.
     const payloadFor = (ptyId: string): string => {
+      // Why: a launch prompt replaced the desktop's draft paste, so it sends that paste's bytes.
+      if (options.inputKind === 'launch') {
+        return wrapTerminalBracketedPasteText(prompt)
+      }
       const pty = this.ptysById.get(ptyId)
       const agent = pty?.foregroundAgent ?? pty?.launchAgent
       return buildAgentPromptPasteBytes(

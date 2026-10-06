@@ -177,14 +177,14 @@ export function renderFloatingTerminalPanelSurface({
                   onActivateBrowserTab={model.commands.activateBrowser}
                   onActivateAgentSession={model.commands.activateAgentSession}
                   onCloseBrowserTab={closeFloatingItemConfirmed}
-                  onDuplicateBrowserTab={(browserTabId) => {
+                  onDuplicateBrowserTab={(browserTabId, sourceUnifiedTabId) => {
                     const source = model.browserItems.find((tab) => tab.id === browserTabId)
                     if (!source) {
                       return
                     }
                     createBrowserTab(FLOATING_TERMINAL_WORKTREE_ID, source.url, {
                       ...buildDuplicatedBrowserTabOptions(source),
-                      targetGroupId: activeGroup?.id,
+                      afterTabId: sourceUnifiedTabId,
                       browserRuntimeEnvironmentId: null
                     })
                   }}

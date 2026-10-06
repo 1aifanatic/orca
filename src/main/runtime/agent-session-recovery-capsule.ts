@@ -1,10 +1,6 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import {
-  AGENT_SESSION_RESUME_MARKER_TTL_MS,
-  isExpiredAgentSessionResumeMarker,
-  type AgentSessionResumeMarker
-} from '../../shared/agent-session-resume-marker'
+import type { AgentSessionResumeMarker } from '../../shared/agent-session-resume-marker'
 import { readNodeFileWithinLimit } from '../../shared/node-bounded-file-reader'
 import { stringifyJsonWithinByteLimit } from '../../shared/node-bounded-json-stringify'
 import {
@@ -19,8 +15,10 @@ import {
   normalizeState,
   parseState,
   shouldReplaceMarker,
+  splitDismissedAll,
   type AgentSessionResumeFailureInput,
   type AgentSessionResumeFailureRecord,
+  type KeepRecord,
   type RecoveryCapsuleState,
   type RecoveryEntry
 } from './agent-session-recovery-capsule-entries'
@@ -32,6 +30,9 @@ export type {
 
 export const AGENT_SESSION_RECOVERY_CAPSULE_FILE = 'agent-session-recovery.json'
 const MAX_CAPSULE_BYTES = 4 * 1024 * 1024
+
+/** Crash-leftover temp files only; offers themselves have no expiry. */
+const STALE_WRITE_TEMP_FILE_AGE_MS = 24 * 60 * 60 * 1000
 
 type StoredRecords = Pick<RecoveryCapsuleState, 'entries' | 'failed'>
 
@@ -67,10 +68,7 @@ export class AgentSessionRecoveryCapsule {
       const failedBySession = new Map(failed.map((failure) => [failure.marker.sessionId, failure]))
       const dismissedAt = state.dismissedAt
       for (const marker of markers) {
-        if (
-          isExpiredAgentSessionResumeMarker(marker, now) ||
-          (dismissedAt !== undefined && marker.recordedAt <= dismissedAt)
-        ) {
+        if (dismissedAt !== undefined && marker.recordedAt <= dismissedAt) {
           continue
         }
         const existing = bySession.get(marker.sessionId)
@@ -205,15 +203,20 @@ export class AgentSessionRecoveryCapsule {
 
   /** Forgets the named sessions whatever their state. Unlike `clearAll`, this is not a fence: a
    *  later teardown of the same chat may record a fresh offer. */
-  dismiss(sessionIds: readonly string[], now: number): Promise<number> {
+  dismiss(
+    sessionIds: readonly string[],
+    now: number,
+    /** A record this answers true for stays: read against the stored marker, under the lock. */
+    keep: (marker: AgentSessionResumeMarker) => boolean = () => false
+  ): Promise<number> {
     return withFileTransactionLock(this.filePath, async () => {
       const named = new Set(sessionIds)
       const state = await this.readState()
       const { entries, failed } = normalizeState(state, now)
       const dismissed = new Set(
         [...entries, ...failed]
+          .filter((record) => named.has(record.marker.sessionId) && !keep(record.marker))
           .map((record) => record.marker.sessionId)
-          .filter((sessionId) => named.has(sessionId))
       )
       if (dismissed.size > 0) {
         await this.publish(
@@ -229,24 +232,35 @@ export class AgentSessionRecoveryCapsule {
     })
   }
 
-  /** Drops failure records the chat itself has since superseded. Keyed by filing time as well, so a
-   *  failure refiled after the caller read the old one is kept. */
-  forgetFailures(
-    superseded: readonly { sessionId: string; failedAt: number }[],
+  /** Drops records the chat itself has since superseded — the user's own newer message ends both a
+   *  pending offer and a recorded failure. Witness-keyed (`recordedAt`, and `failedAt` for a
+   *  failure) so a fresh record written after the caller read the stale one is kept. */
+  forgetSuperseded(
+    superseded: readonly { sessionId: string; recordedAt: number; failedAt?: number }[],
     now: number
   ): Promise<void> {
     return withFileTransactionLock(this.filePath, async () => {
       const state = await this.readState()
       const { entries, failed } = normalizeState(state, now)
-      const kept = failed.filter(
+      const keptEntries = entries.filter(
+        (entry) =>
+          entry.state !== 'pending' ||
+          !superseded.some(
+            (gone) =>
+              gone.failedAt === undefined &&
+              gone.sessionId === entry.marker.sessionId &&
+              gone.recordedAt === entry.marker.recordedAt
+          )
+      )
+      const keptFailures = failed.filter(
         (failure) =>
           !superseded.some(
             (gone) =>
               gone.sessionId === failure.marker.sessionId && gone.failedAt === failure.failedAt
           )
       )
-      if (kept.length !== failed.length) {
-        await this.publish({ entries, failed: kept }, now, state.dismissedAt)
+      if (keptEntries.length !== entries.length || keptFailures.length !== failed.length) {
+        await this.publish({ entries: keptEntries, failed: keptFailures }, now, state.dismissedAt)
       }
     })
   }
@@ -265,23 +279,24 @@ export class AgentSessionRecoveryCapsule {
     })
   }
 
-  clearAll(now: number): Promise<number> {
+  /** `keep` names records this host does not list; they stay for the Orca that can act on them. */
+  clearAll(now: number, keep: KeepRecord = () => false): Promise<number> {
     return withFileTransactionLock(this.filePath, async () => {
-      let entries: RecoveryEntry[]
+      let state: Pick<RecoveryCapsuleState, 'entries' | 'failed'>
       try {
-        entries = normalizeState(await this.readState(), now).entries
+        state = normalizeState(await this.readState(), now)
       } catch {
         // Dismiss is an explicit request to forget this advisory file. Replace unreadable bytes
         // with an empty, fenced capsule so a late teardown writer cannot resurrect the offer.
         await this.publish({ entries: [], failed: [] }, now, now)
         return 0
       }
-      const pending = entries.filter((entry) => entry.state === 'pending')
-      // Dismiss is the explicit user request to forget every recovery record. An in-flight
-      // action may still finish, but its later complete/rollback becomes a no-op and cannot
-      // resurrect a row the user dismissed.
-      await this.publish({ entries: [], failed: [] }, now, now)
-      return pending.length
+      const { kept, dismissedPending } = splitDismissedAll(state, keep)
+      // Dismiss is the explicit user request to forget every recovery record it was shown. An
+      // in-flight action may still finish, but its later complete/rollback becomes a no-op and
+      // cannot resurrect a row the user dismissed.
+      await this.publish(kept, now, now)
+      return dismissedPending
     })
   }
 
@@ -320,7 +335,7 @@ export class AgentSessionRecoveryCapsule {
       MAX_CAPSULE_BYTES
     )
     await removeStaleDurableWriteTempFiles(this.filePath, {
-      minimumAgeMs: AGENT_SESSION_RESUME_MARKER_TTL_MS
+      minimumAgeMs: STALE_WRITE_TEMP_FILE_AGE_MS
     })
     const tempPath = durableWriteTempPath(this.filePath)
     try {

@@ -16,6 +16,7 @@ import {
   createClaudeStructuredLaunchResolver
 } from './claude-structured-launch-resolution'
 import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
+import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
 const SESSION_ID = 'orca-session-1'
 const IDENTITY = { sessionId: SESSION_ID } as Parameters<
@@ -41,7 +42,7 @@ function record(overrides: Partial<AgentSessionRecord> = {}): AgentSessionRecord
 function identityAt(leafUuid: string | null): typeof IDENTITY {
   return {
     ...IDENTITY,
-    providerHandle: { kind: 'claude', sessionId: 'provider-current', leafUuid }
+    providerHandle: claudeProviderHandle('provider-current', leafUuid)
   }
 }
 
@@ -100,8 +101,9 @@ const WSL_ONLY_NORMALIZED: ClaudeManagedAccountGateSettings = {
 }
 
 const RESUMABLE = record({
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads only each link's handle, so the link's other fields stay unset.
   providerHandleChain: [
-    { handle: { provider: 'claude', sessionId: 'provider-current', leafUuid: 'leaf-current' } }
+    { handle: claudeProviderHandle('provider-current', 'leaf-current') }
   ] as AgentSessionRecord['providerHandleChain']
 })
 
@@ -149,14 +151,11 @@ describe('claude structured launch resolution', () => {
   it('resumes the durable chain head by session id and carries its leaf as bookkeeping', async () => {
     const launch = await resolverFor(
       record({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads only each link's handle, so the link's other fields stay unset.
         providerHandleChain: [
-          { handle: { provider: 'claude', sessionId: 'provider-old', leafUuid: 'leaf-old' } },
+          { handle: claudeProviderHandle('provider-old', 'leaf-old') },
           {
-            handle: {
-              provider: 'claude',
-              sessionId: 'provider-current',
-              leafUuid: 'leaf-current'
-            }
+            handle: claudeProviderHandle('provider-current', 'leaf-current')
           }
         ] as AgentSessionRecord['providerHandleChain']
       })
@@ -172,6 +171,19 @@ describe('claude structured launch resolution', () => {
     // Claude owns where the conversation continues; a stored leaf would cut or branch it.
     expect(launch.options).not.toHaveProperty('resumeSessionAt')
     expect(launch.options.sessionId).toBeUndefined()
+  })
+
+  it('names the child by the Orca session id, over any id the configured overlay carries', async () => {
+    // The Orca-minted id, never the provider's: the provider id rotates on /clear.
+    const launch = await resolverFor(record(), () => ({
+      ORCA_AGENT_SESSION_ID: 'a0b1c2d3-0000-4000-8000-00000000abcd'
+    }))({ identity: IDENTITY })
+
+    expect(launch.env).toMatchObject({
+      ORCA_AGENT_SESSION_ID: SESSION_ID,
+      ORCA_CLI_COMMAND: expect.stringMatching(/^[^:;]*[\\/]cli[\\/]bin[\\/]orca-dev$/)
+    })
+    expect(launch.env?.ORCA_AGENT_SESSION_ID).not.toBe(launch.providerSessionId)
   })
 
   it('forces session-state events on when the inherited overlay disables them', async () => {
@@ -194,7 +206,7 @@ describe('claude structured launch resolution', () => {
       resolve({
         identity: {
           ...IDENTITY,
-          providerHandle: { kind: 'claude', sessionId: 'provider-other', leafUuid: 'leaf-current' }
+          providerHandle: claudeProviderHandle('provider-other', 'leaf-current')
         }
       })
     ).rejects.toThrow('durable resume identity changed before spawn')
@@ -203,13 +215,10 @@ describe('claude structured launch resolution', () => {
   it('keeps session-only resume when the durable handle has no leaf', async () => {
     const launch = await resolverFor(
       record({
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads only each link's handle, so the link's other fields stay unset.
         providerHandleChain: [
           {
-            handle: {
-              provider: 'claude',
-              sessionId: 'provider-current',
-              leafUuid: null
-            }
+            handle: claudeProviderHandle('provider-current', null)
           }
         ] as AgentSessionRecord['providerHandleChain']
       })
@@ -226,7 +235,7 @@ describe('claude structured launch resolution', () => {
       record({
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resolver reads only each link's handle.
         providerHandleChain: [
-          { handle: { provider: 'claude', sessionId: 'provider-current', leafUuid: null } }
+          { handle: claudeProviderHandle('provider-current', null) }
         ] as AgentSessionRecord['providerHandleChain']
       }),
       undefined,
@@ -505,16 +514,17 @@ describe('claude structured launch resolution', () => {
 
       gate = WSL_ONLY_NORMALIZED
 
-      // Reacquire after the account state changed: refused before anything spawns.
-      await expect(resolve({ identity: identityAt('leaf-current') })).rejects.toBeInstanceOf(
-        AgentSessionPreSpawnError
-      )
+      // Reacquire after the account state changed: refused before anything spawns, naming the
+      // account shape a person can change.
+      const refused = resolve({ identity: identityAt('leaf-current') })
+      await expect(refused).rejects.toBeInstanceOf(AgentSessionPreSpawnError)
+      await expect(refused).rejects.toMatchObject({ reason: 'managedAccountUnsupported' })
     })
 
-    it('fails closed when the account state cannot be read', async () => {
-      await expect(
-        resolverWithGate(() => null)({ identity: identityAt('leaf-current') })
-      ).rejects.toBeInstanceOf(AgentSessionPreSpawnError)
+    it('fails closed when the account state cannot be read, naming no situation', async () => {
+      const refused = resolverWithGate(() => null)({ identity: identityAt('leaf-current') })
+      await expect(refused).rejects.toBeInstanceOf(AgentSessionPreSpawnError)
+      await expect(refused).rejects.toMatchObject({ reason: undefined })
     })
 
     it('keeps resolving when no gate is wired, so other embedders are unaffected', async () => {

@@ -9,7 +9,9 @@ import type { AgentSessionConversationOutline } from '../../../shared/agent-sess
 import {
   AGENT_SESSION_CONVERSATION_OUTLINE_RUNTIME_CAPABILITY,
   AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY,
+  AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY,
   AGENT_SESSION_REWIND_RUNTIME_CAPABILITY,
+  AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY,
   type RuntimeCapability
 } from '../../../shared/protocol-version'
 import {
@@ -46,6 +48,22 @@ export function supportsStructuredAgentSessionPromptCancel(
   return structuredAgentSessionHostSupports(target, AGENT_SESSION_PROMPT_CANCEL_RUNTIME_CAPABILITY)
 }
 
+/** Whether the host writes no row for a Stop that stopped nothing, so a repeated Stop is quiet. */
+export function supportsStructuredAgentSessionQuietRepeatedStop(
+  target: RuntimeClientTarget
+): Promise<boolean> {
+  return structuredAgentSessionHostSupports(target, AGENT_SESSION_REPEATED_STOP_RUNTIME_CAPABILITY)
+}
+
+export function supportsStructuredAgentSessionQuestionAnswers(
+  target: RuntimeClientTarget
+): Promise<boolean> {
+  return structuredAgentSessionHostSupports(
+    target,
+    AGENT_SESSION_QUESTION_ANSWERS_RUNTIME_CAPABILITY
+  )
+}
+
 /** Null when the host predates the outline, without calling it. A failed read
  *  rejects, so the caller can retry it; the rail maps loaded messages meanwhile. */
 export async function readStructuredAgentSessionConversationOutline(
@@ -67,6 +85,13 @@ export async function readStructuredAgentSessionConversationOutline(
   )
 }
 
+const STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS: ReadonlyMap<string, number> = new Map([
+  ['agentSession.conversationCommand', 195_000],
+  // A waiting catalog read lasts as long as the host's listing: Claude's is 60 s, after up to 15 s
+  // for an account switch to settle and 5 s of login-shell environment.
+  ['agentSession.modelCatalog', 90_000]
+])
+
 export async function callStructuredAgentSession<TResult>(
   target: RuntimeClientTarget,
   method: string,
@@ -82,9 +107,10 @@ export async function callStructuredAgentSession<TResult>(
   ) {
     throw new Error('Rewinding requires a newer Orca server. Update the server and try again.')
   }
-  return method === 'agentSession.conversationCommand'
-    ? callRuntimeRpc<TResult>(target, method, params, { timeoutMs: 195_000 })
-    : callRuntimeRpc<TResult>(target, method, params)
+  const timeoutMs = STRUCTURED_AGENT_SESSION_METHOD_TIMEOUT_MS.get(method)
+  return timeoutMs === undefined
+    ? callRuntimeRpc<TResult>(target, method, params)
+    : callRuntimeRpc<TResult>(target, method, params, { timeoutMs })
 }
 
 async function subscribeStructuredAgentSessionMethod<TEvent>(

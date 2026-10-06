@@ -3,9 +3,9 @@ import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   AgentSessionPreSpawnError,
   isAgentSessionPreSpawnError,
-  rethrowAfterAgentSessionAcquisitionCleanup,
   type StructuredAgentSessionProviderChildPhase
 } from './structured-agent-session-adapter'
+import { rethrowAfterAgentSessionAcquisitionCleanup } from './structured-agent-session-provider-exit-proof'
 import { journalIdentityFor } from './structured-agent-session-attach'
 import type { AttachFlowInput } from './structured-agent-session-attach-flow'
 import { readNativeSessionOptions } from './structured-agent-session-option-restoration'
@@ -26,16 +26,8 @@ export async function acquireOwner(
   if (!spawnToken) {
     throw new Error('agent_session_ownership_unknown')
   }
-  // Pre-spawn proof is single-use: this retry may create a child after the durable clear.
   try {
     try {
-      record = await input.store.setReservationProcesslessProof({
-        sessionId: record.sessionId,
-        fence,
-        spawnToken,
-        processlessAt: null,
-        now: input.now()
-      })
       await input.onAcquiring?.()
     } catch (error) {
       throw new AgentSessionPreSpawnError(error)
@@ -47,7 +39,15 @@ export async function acquireOwner(
       spawnToken,
       ...(record.options ? { options: record.options } : {}),
       ...(input.eventSink ? { events: input.eventSink } : {}),
-      ...(input.recordPhase ? { recordPhase: input.recordPhase } : {})
+      ...(input.recordPhase ? { recordPhase: input.recordPhase } : {}),
+      onSpawned: async (process) => {
+        record = await input.store.commitProcessIdentity({
+          sessionId: record.sessionId,
+          fence,
+          process,
+          now: input.now()
+        })
+      }
     })
     const providerChildPhase = acquired.providerChildPhase ?? 'ready'
     // A starting child has proven nothing: the record keeps the reservation's saved options as

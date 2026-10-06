@@ -3,7 +3,7 @@ import { useAppStore } from '../store'
 import { appendUniqueOpenFileIds } from './terminal/unsaved-close-queue'
 import { isPinnedActiveEditorTab } from './terminal-workspace-model'
 import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
-import { revealFloatingWorkspacePanel } from '@/lib/floating-workspace-terminal-actions'
+import { revealFloatingWorkspacePanel } from '@/lib/floating-workspace-panel-reveal'
 import type { TerminalEditorCloseFoundation } from './use-terminal-editor-close-foundation'
 
 export function useTerminalEditorCloseQueue(controller: TerminalEditorCloseFoundation) {

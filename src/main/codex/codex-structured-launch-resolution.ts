@@ -14,7 +14,7 @@ import type { AgentSessionRecordStore } from '../runtime/agent-session-record-st
 import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import type { CodexStructuredLaunch } from './codex-structured-session-adapter'
 import type { CodexStructuredPermissionPolicy } from './codex-structured-permission-policy'
-import { resolvePinnedCodexRolloutProof } from './codex-tui-rollout-proof'
+import { resolvePinnedCodexRolloutProof } from './codex-pinned-rollout-proof'
 import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
 
 export type CodexStructuredLaunchResolverDeps = {
@@ -32,6 +32,31 @@ export type CodexStructuredLaunchResolverDeps = {
   /** The user's Agent Permissions setting as thread policy, re-read per acquisition.
    *  States both postures outright — a resume inherits the last one for any field left absent. */
   resolvePermissionPolicy?: () => CodexStructuredPermissionPolicy
+}
+
+export type CodexStructuredInvocation = {
+  command: string
+  environment: NodeJS.ProcessEnv | undefined
+}
+
+/**
+ * The one place a structured Codex child's binary and environment are
+ * resolved. The session launch and the session-less catalog probe both build
+ * on it, so a probe can never list under a different binary or env than the
+ * session it stands in for. Env VALUES stay out of the catalog fingerprint:
+ * drift there heals on the next refresh.
+ */
+export async function resolveCodexStructuredInvocation(
+  deps: Pick<CodexStructuredLaunchResolverDeps, 'resolveCommand' | 'resolveEnvironment'>
+): Promise<CodexStructuredInvocation> {
+  const environment = await deps.resolveEnvironment?.()
+  const pathEnv = environment?.PATH ?? environment?.Path ?? null
+  const homePath = environment?.HOME ?? environment?.USERPROFILE
+  const command = (deps.resolveCommand ?? resolveCodexCommand)({
+    pathEnv,
+    ...(homePath ? { homePath } : {})
+  })
+  return { command, environment }
 }
 
 export function createCodexStructuredLaunchResolver(
@@ -64,18 +89,15 @@ export function createCodexStructuredLaunchResolver(
     if (accountHome.variable !== 'CODEX_HOME') {
       throw new Error(`codex sessions pin CODEX_HOME, not ${accountHome.variable}`)
     }
-    const environment = await deps.resolveEnvironment?.()
-    const pathEnv = environment?.PATH ?? environment?.Path ?? null
-    const homePath = environment?.HOME ?? environment?.USERPROFILE
-    const command = (deps.resolveCommand ?? resolveCodexCommand)({
-      pathEnv,
-      ...(homePath ? { homePath } : {})
-    })
+    const { command, environment } = await resolveCodexStructuredInvocation(deps)
     // `record.launchArgs` is deliberately not read: the configured CLI arguments are a terminal
     // concern, and the permission posture they used to smuggle in is derived per acquisition.
     const permissionPolicy = deps.resolvePermissionPolicy?.()
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
-    const resumeThreadId = head?.handle.provider === 'codex' ? head.handle.threadId : null
+    // A Codex record's chain holds only Codex handles; the record store refuses anything else.
+    const resumeThreadId = head?.handle.nativeId ?? null
+    // The same saved options every turn sends, so the thread and its turns name one model.
+    const model = record.options?.model
     return {
       command,
       args: ['app-server'],
@@ -85,7 +107,11 @@ export function createCodexStructuredLaunchResolver(
       // An empty chain is a session that has never proved a thread, so it
       // starts one; anything else resumes the last link this session proved.
       resumeThreadId,
+      // Only a thread this session created may still be one Codex never saved: a resumed,
+      // forked or adopted head names a conversation Codex held.
+      ...(resumeThreadId && head?.origin === 'created' ? { supersedeIfUnsaved: true } : {}),
       ...(permissionPolicy ? { permissionPolicy } : {}),
+      ...(model ? { model } : {}),
       ...(resumeThreadId
         ? {
             resumePath: await (deps.resolveRollout ?? resolvePinnedCodexRolloutProof)(
