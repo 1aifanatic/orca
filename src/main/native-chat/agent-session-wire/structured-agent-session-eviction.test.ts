@@ -43,7 +43,7 @@ function runtimeState(): StructuredAgentSessionHostRuntimeState {
     adapter: {},
     logger: recordingStructuredAgentSessionLogger().logger
   } as never
-  return new StructuredAgentSessionHostRuntimeState(deps, undefined, () => false)
+  return new StructuredAgentSessionHostRuntimeState(deps, new Map())
 }
 
 describe("the route release after a child's exit", () => {

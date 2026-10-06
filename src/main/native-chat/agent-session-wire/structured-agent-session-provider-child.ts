@@ -61,16 +61,21 @@ export function holdsLiveProviderChild(
   )
 }
 
+/** The host's conversations, as lease renewal reads their children. */
+export type ProviderChildSessions = {
+  get(sessionId: string): Pick<ChildBearer, 'child'> | undefined
+}
+
 /** Lease renewal's held-child read, from the host's child record and the adapter's own handle. */
 export function heldProviderChildReader(
-  sessions: { get(sessionId: string): Pick<ChildBearer, 'child'> | undefined },
-  adapter: Pick<StructuredAgentSessionAdapter, 'holdsLiveProviderProcess'>
+  sessions: ProviderChildSessions,
+  adapter: Pick<StructuredAgentSessionAdapter, 'holdsLiveProviderProcess'> | undefined
 ): (sessionId: string, fence: number) => boolean {
   return (sessionId, fence) =>
     holdsLiveProviderChild(
       sessions.get(sessionId),
       fence,
-      (generation) => adapter.holdsLiveProviderProcess?.(sessionId, generation) === true
+      (generation) => adapter?.holdsLiveProviderProcess?.(sessionId, generation) === true
     )
 }
 

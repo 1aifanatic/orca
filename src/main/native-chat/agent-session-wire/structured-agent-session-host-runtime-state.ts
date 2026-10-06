@@ -7,6 +7,10 @@ import {
 } from './structured-agent-session-event-sink'
 import type { StructuredAgentSessionHostDeps } from './structured-agent-session-host'
 import { StructuredAgentSessionLeaseRenewer } from './structured-agent-session-lease-renewer'
+import {
+  heldProviderChildReader,
+  type ProviderChildSessions
+} from './structured-agent-session-provider-child'
 import { resolveStructuredSessionRecovery } from './structured-agent-session-recovery-resolution'
 
 export class StructuredAgentSessionHostRuntimeState {
@@ -16,16 +20,16 @@ export class StructuredAgentSessionHostRuntimeState {
 
   constructor(
     private readonly deps: StructuredAgentSessionHostDeps,
-    onEventSinkFailure: ((sessionId: string, error: unknown) => void) | undefined,
-    /** Required: dropping it silently sends every held child back to the PID probe. */
-    holdsLiveChild: (sessionId: string, fence: number) => boolean
+    /** Required: a child held here renews its lease without a PID probe. */
+    sessions: ProviderChildSessions,
+    onEventSinkFailure?: (sessionId: string, error: unknown) => void
   ) {
     this.onEventSinkFailure = onEventSinkFailure
     this.leaseRenewer = new StructuredAgentSessionLeaseRenewer({
       store: deps.store,
       probe: (record) => this.probeRecord(record),
       ...(deps.probeOwners ? { probeMany: deps.probeOwners } : {}),
-      holdsLiveChild,
+      holdsLiveChild: heldProviderChildReader(sessions, deps.adapter),
       now: () => deps.now?.() ?? Date.now(),
       // Lease/ownership failures are transient and stay on the visible lease-error path.
       // Only deferred sink I/O failures are terminal and may force-close a provider.

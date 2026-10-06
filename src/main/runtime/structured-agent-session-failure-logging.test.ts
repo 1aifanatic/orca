@@ -133,7 +133,7 @@ describe('failures the desktop host used to drop', () => {
     const log = recordingStructuredAgentSessionLogger()
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: minting and binding a sink reads no other host dependency.
     const deps = { logger: log.logger } as unknown as StructuredAgentSessionHostDeps
-    const runtime = new StructuredAgentSessionHostRuntimeState(deps, undefined, () => false)
+    const runtime = new StructuredAgentSessionHostRuntimeState(deps, new Map())
     const sink = runtime.eventSinkFor(SESSION)
     const error = new Error('journal append failed')
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the sink calls only appendItem before it fails.

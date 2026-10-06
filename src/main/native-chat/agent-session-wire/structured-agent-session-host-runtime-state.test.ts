@@ -73,7 +73,7 @@ function runtimeState(
     probeOwner,
     logger: createStructuredAgentSessionLogger()
   } as StructuredAgentSessionHostDeps
-  return new StructuredAgentSessionHostRuntimeState(deps, undefined, () => false)
+  return new StructuredAgentSessionHostRuntimeState(deps, new Map())
 }
 
 function liveRecord(): AgentSessionRecord {
@@ -149,7 +149,7 @@ describe('host runtime-state owner probe', () => {
       probeOwner,
       logger: log.logger
     } as unknown as StructuredAgentSessionHostDeps
-    const state = new StructuredAgentSessionHostRuntimeState(deps, onEventSinkFailure, () => false)
+    const state = new StructuredAgentSessionHostRuntimeState(deps, new Map(), onEventSinkFailure)
 
     await (
       state as unknown as { leaseRenewer: { renewNow: () => Promise<void> } }
