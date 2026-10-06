@@ -394,6 +394,7 @@ describe('ClaudeAccountService credential capture', () => {
     const service = new ClaudeAccountService(
       store as never,
       rateLimits as never,
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only the runtime-auth methods this fake defines.
       runtimeAuth as never,
       { onSignInChanged: recheck }
     )
