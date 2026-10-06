@@ -55,7 +55,12 @@ function benchmark() {
     configuration,
     restoreMs,
     buildMs,
-    files
+    files,
+    css: Object.fromEntries(
+      files
+        .filter((file) => file.path.endsWith('.css'))
+        .map((file) => [file.path, readFileSync(join(root, 'out', file.path), 'utf8')])
+    )
   }
   mkdirSync(reportDir, { recursive: true })
   writeFileSync(
