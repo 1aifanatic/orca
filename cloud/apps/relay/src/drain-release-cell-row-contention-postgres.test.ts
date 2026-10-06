@@ -120,6 +120,8 @@ type DepartingReport = {
   firstAttempt: { placed: number; rejected: Tally; failed: Tally }
   // Row-busy refusals on any attempt, and errors no client would retry.
   busyRefusals: number
+  // Hosts refused more than once, for any reason, before being placed.
+  hostsRefusedTwice: number
   unexpected: Tally
   redials: number
   // Release start to the grant that re-placed the host, redials included.
@@ -508,6 +510,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
     const timeToPlaced: number[] = []
     let redials = 0
     let busyRefusals = 0
+    let hostsRefusedTwice = 0
     const unexpected: Tally = {}
     let placedInWindow = 0
     const activationWork: Promise<unknown>[] = []
@@ -576,6 +579,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
           break
         }
         if (!outcome.startsWith('rejected:')) break
+        if (attempt === 1) hostsRefusedTwice += 1
         const nextAt =
           sentAt +
           HOST_ASSIGN_MIN_INTERVAL_MS +
@@ -598,6 +602,7 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
       placed: timeToPlaced.length,
       firstAttempt,
       busyRefusals,
+      hostsRefusedTwice,
       unexpected,
       redials,
       timeToPlacedMs: {
@@ -719,11 +724,11 @@ describePostgres('PostgreSQL drain releases against director placement', () => {
           report.firstAttempt.rejected
         expect(total(slotRejections)).toBeLessThan(0.1 * report.hosts)
         expect(report.lockWaitingMean).toBeLessThan(0.5)
-        // Measured 16-80 refusals of 180 and a p95 of 5.6-6.5s; before, p95 was 11-16s.
-        // Refusals rose from 16-20 when releases began committing in one round trip:
-        // the ~100 releases that used to time out waiting for the pool now run, and
-        // hold their own host's row when a 1s redial arrives. The wait stays bounded.
-        expect(report.busyRefusals).toBeLessThanOrEqual(0.5 * report.hosts)
+        // A redial that beats its own release meets its own row (16-80 of 180, by how many
+        // releases are still in flight at the dial) and is answered at once. That release
+        // has finished by the next dial, so no host is refused twice. Measured p95 5.6-6.5s;
+        // before the row-busy answer, p95 was 11-16s.
+        expect(report.hostsRefusedTwice).toBe(0)
         expect(report.timeToPlacedMs.p95).toBeLessThanOrEqual(8_000)
       }
     }
