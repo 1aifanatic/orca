@@ -71,12 +71,13 @@ function fixture() {
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
   }
-  const setup = { calls: 0, fail: false }
+  const setup = { calls: 0, fail: false, gate: Promise.resolve() }
   const router = new ClaudeWslProfileRouter({
     getSettings: () => settings,
     dataRoot: join(root, 'orca-dev'),
     runSetup: async () => {
       setup.calls += 1
+      await setup.gate
       if (setup.fail) {
         throw new Error('refused')
       }
@@ -85,7 +86,7 @@ function fixture() {
   })
   const profileHome = join(guest.home, '.local/share/orca/claude-profiles/a/home')
   const pointer = join(guest.home, '.local/share/orca/claude-profiles/selected-wsl-orca-dev')
-  return { settings, wsl, setup, router, profileHome, pointer }
+  return { settings, wsl, setup, router, profileHome, pointer, account }
 }
 
 describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
@@ -139,6 +140,34 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     mkdirSync(f.profileHome, { recursive: true })
     writeFileSync(join(f.profileHome, '..', 'profile.json'), '{}')
     expect(existsSync(f.pointer)).toBe(false)
+    await f.router.prepareLaunch('Ubuntu')
+    expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
+  })
+
+  it('a launch waiting on setup leaves a selection made meanwhile in the pointer', async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    let release = () => {}
+    f.setup.gate = new Promise((resolve) => (release = resolve))
+    const launch = f.router.prepareLaunch('Ubuntu')
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+
+    f.settings.claudeManagedAccounts = [f.account('a'), f.account('b')]
+    f.wsl.Ubuntu = 'b'
+    await f.router.publish('Ubuntu')
+    const homeB = join(f.profileHome, '../../b/home')
+    expect(readFileSync(f.pointer, 'utf8')).toBe(homeB)
+    release()
+    await launch
+    expect(readFileSync(f.pointer, 'utf8')).toBe(homeB)
+  })
+
+  it('overwrites a guest pointer that names another account before a launch returns', async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    writeFileSync(join(f.profileHome, '..', 'profile.json'), '{}')
+    mkdirSync(join(f.pointer, '..'), { recursive: true })
+    writeFileSync(f.pointer, join(f.profileHome, '../../b/home'))
     await f.router.prepareLaunch('Ubuntu')
     expect(readFileSync(f.pointer, 'utf8')).toBe(f.profileHome)
   })
