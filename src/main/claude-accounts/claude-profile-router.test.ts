@@ -81,9 +81,9 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
 
 describe('ClaudeProfileRouter', () => {
   it('prepares an account folder for sign-in only when setup succeeds', async () => {
-    const f = fixture({ CLAUDE_CONFIG_DIR: '/custom/claude' })
+    const f = fixture({ CLAUDE_CONFIG_DIR: resolve('/custom/claude') })
     expect(f.router.accountHome('b')).toBe(f.home('b'))
-    expect(f.router.userConfigDir()).toBe('/custom/claude')
+    expect(f.router.userConfigDir()).toBe(resolve('/custom/claude'))
     const prepared = f.router.prepareAccount('b')
     f.setup.settle()
     await expect(prepared).resolves.toBe(f.home('b'))
