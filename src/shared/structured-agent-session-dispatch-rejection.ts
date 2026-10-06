@@ -188,27 +188,6 @@ export function isFailedStartOrHostFault(
   )
 }
 
-/**
- * Whether a queued card holds every card behind it until the person acts: one returned for
- * something about it that only they can resolve — the provider or Orca refused its content or
- * attachments, its command did not run, the queue was full, Orca could not hand it over or faulted.
- * One returned because its agent failed to start holds nothing: each card behind it starts the
- * agent again for itself.
- */
-export function queuedCardHoldsQueue(card: {
-  state: string
-  returnedReason?: string | null
-  returnedRejection?: unknown
-}): boolean {
-  return (
-    card.state === 'returned' &&
-    !isFailedStartRejection({
-      reason: card.returnedReason ?? null,
-      rejection: card.returnedRejection
-    })
-  )
-}
-
 /** A Stop withdrew it before it ran: it will not land, and only its sender can send it again. */
 export function dispatchWasWithdrawn(
   submission: Pick<AgentJournalSubmission, 'dispatchState' | 'reason' | 'rejection'> | undefined

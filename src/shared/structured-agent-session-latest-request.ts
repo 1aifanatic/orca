@@ -17,10 +17,7 @@ import type {
 import { agentJournalSubmissionKey } from './agent-session-journal-item-key'
 import { isRootAgentJournalItem } from './agent-session-journal-producer'
 import { readAgentJournalTurn, readAgentJournalTurnOutcome } from './agent-session-turn-record'
-import {
-  classifyDispatchRejection,
-  isFailedStartOrHostFault
-} from './structured-agent-session-dispatch-rejection'
+import { classifyDispatchRejection } from './structured-agent-session-dispatch-rejection'
 import { isUnansweredStructuredAgentSessionDispatch } from './structured-agent-session-unanswered-dispatch'
 import {
   isStructuredAgentSessionCommandEntry,
@@ -88,39 +85,6 @@ export function latestStructuredAgentSessionRequest(
     }
   }
   return null
-}
-
-/** A send whose start failed: its item key, when it was sent, and when its failure landed. */
-export type StructuredAgentSessionFailedStart = {
-  id: string
-  submittedAt: number
-  resolvedAt: number
-}
-
-/** The sends whose start failed, or that Orca's own fault kept from their agent, in journal order:
- *  each one's failure is final the moment it is written, whatever else the session still owes. A
- *  conversation command is not a request. */
-export function structuredAgentSessionFailedStarts(
-  items: readonly AgentJournalRenderItem[],
-  submissions: readonly AgentJournalSubmission[]
-): StructuredAgentSessionFailedStart[] {
-  const commands = new Set(
-    items.flatMap((item) => (isStructuredAgentSessionCommandEntry(item.body) ? [item.itemId] : []))
-  )
-  return submissions.flatMap((submission) => {
-    const id = agentJournalSubmissionKey(submission.clientMessageId)
-    return submission.dispatchState === 'rejected' &&
-      !commands.has(id) &&
-      isFailedStartOrHostFault(submission)
-      ? [
-          {
-            id,
-            submittedAt: submission.submittedAt,
-            resolvedAt: submission.resolvedAt ?? submission.submittedAt
-          }
-        ]
-      : []
-  })
 }
 
 /** Whether the session has a request to list. A send that failed nobody and never became a turn

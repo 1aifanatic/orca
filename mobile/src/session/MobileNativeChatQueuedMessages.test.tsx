@@ -35,7 +35,6 @@ function card(
     state: 'waiting',
     paused: false,
     needsAttention: false,
-    holdsQueue: overrides.state === 'returned',
     caption: null,
     ...overrides
   }

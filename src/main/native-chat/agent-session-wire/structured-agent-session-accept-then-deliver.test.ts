@@ -356,7 +356,9 @@ describe('a start the chat needed and did not get', () => {
     )
   })
 
-  it('notifies once for queued messages whose starts all fail alike, each rejected on its own', async () => {
+  // Messages sent straight to the chat, not queued as cards: each makes its own start, and the
+  // session announces once, when it owes nothing more.
+  it('notifies once, for the last, when sent messages whose starts all fail alike are each rejected', async () => {
     await host.close(SESSION, 'evict')
     acquire.mockRejectedValue(new Error('spawn codex ENOENT'))
     const completions: AgentSessionTurnCompletionEvent[] = []
@@ -382,7 +384,7 @@ describe('a start the chat needed and did not get', () => {
         type: 'completion',
         completion: expect.objectContaining({
           sessionId: SESSION,
-          turnId: agentJournalSubmissionKey(first),
+          turnId: agentJournalSubmissionKey(third),
           outcome: 'failure'
         })
       }

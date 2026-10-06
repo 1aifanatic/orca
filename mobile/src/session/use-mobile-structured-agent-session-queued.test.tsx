@@ -533,7 +533,6 @@ describe('mobile structured queued messages', () => {
           state: 'waiting',
           paused: false,
           needsAttention: false,
-          holdsQueue: false,
           caption: null
         }
       ])

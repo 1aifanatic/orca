@@ -5,10 +5,7 @@
 import { readWholeAgentSessionFailureFact } from '../../../src/shared/agent-session-failure'
 import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import { agentSessionWriteNoticeEnglish } from '../../../src/shared/agent-session-refusal-notice'
-import {
-  dispatchWasWithdrawn,
-  queuedCardHoldsQueue
-} from '../../../src/shared/structured-agent-session-dispatch-rejection'
+import { dispatchWasWithdrawn } from '../../../src/shared/structured-agent-session-dispatch-rejection'
 import { structuredAgentSessionAttemptFailureParts } from '../../../src/shared/structured-agent-session-send-disposition'
 import {
   QUEUED_MESSAGE_PAUSED_SEND_FAILED,
@@ -24,8 +21,6 @@ export type MobileQueuedMessageCard = {
   paused: boolean
   /** Returned, or its own send failed: the row leads with an alert. */
   needsAttention: boolean
-  /** Returned for something only the person can resolve: the cards behind it wait. */
-  holdsQueue: boolean
   /** Status under the text; null for a card plainly waiting its turn, the paused queue's too. */
   caption: string | null
 }
@@ -69,11 +64,10 @@ const QUEUE_PAUSE_LABELS: Readonly<Record<string, string>> = {
 }
 
 /** Whether Resume would send anything: a waiting card with no hold of its own, ahead of any
- *  returned card that holds the queue. The drain stops at such a card, so cards behind it never
- *  go. */
+ *  returned card. The drain stops at a returned card, so cards behind one never go. */
 export function mobileQueueHasResumableCard(cards: readonly MobileQueuedMessageCard[]): boolean {
   for (const card of cards) {
-    if (card.holdsQueue) {
+    if (card.state === 'returned') {
       return false
     }
     if (!card.paused) {
@@ -129,7 +123,6 @@ export function mobileQueuedMessageCards(
               : facts.pendingPrompt
                 ? 'Waiting for your answer'
                 : null
-    const holdsQueue = queuedCardHoldsQueue(draft)
     cards.push({
       messageId: draft.messageId,
       text: queuedMessageBodyText(draft.body),
@@ -138,10 +131,11 @@ export function mobileQueuedMessageCards(
       needsAttention:
         draft.state === 'returned' ||
         (paused && draft.pausedReason === QUEUED_MESSAGE_PAUSED_SEND_FAILED),
-      holdsQueue,
       caption
     })
-    behindReturned = behindReturned || holdsQueue
+    if (draft.state === 'returned') {
+      behindReturned = true
+    }
   }
   return cards
 }

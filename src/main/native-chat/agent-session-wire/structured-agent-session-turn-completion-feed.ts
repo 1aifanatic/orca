@@ -16,10 +16,7 @@ import type {
   AgentSessionTurnCompletion,
   AgentSessionTurnCompletionEvent
 } from '../../../shared/agent-session-wire'
-import type {
-  StructuredAgentSessionFailedStart,
-  StructuredAgentSessionLatestRequest
-} from '../../../shared/structured-agent-session-latest-request'
+import type { StructuredAgentSessionLatestRequest } from '../../../shared/structured-agent-session-latest-request'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionStatusState } from './structured-agent-session-status-feed'
 
@@ -47,30 +44,9 @@ export type StructuredAgentSessionTurnCompletionFeedDeps = {
 
 type RequestMark = Pick<StructuredAgentSessionLatestRequest, 'kind' | 'id'>
 
-/** Per-session baseline. `settled` is the last settled request this feed has accounted for, and
- *  `failedStarts` the sends whose start had failed as of the last observation; absence of the whole
- *  entry — not a null field — is what makes the first observation silent. */
-type SessionBaseline = CompletionFeedCursor & {
-  settled: RequestMark | null
-  failedStarts: ReadonlySet<string>
-}
-
-/** Whether a failed start is part of an earlier one's run: it was already waiting when that one's
- *  failure landed, as each queued message is when the agent's CLI is missing. A failure sent after
- *  every earlier one landed starts a run of its own. */
-function inEarlierRun(
-  failed: StructuredAgentSessionFailedStart,
-  index: number,
-  all: readonly StructuredAgentSessionFailedStart[]
-): boolean {
-  return all.some(
-    (earlier, earlierIndex) =>
-      earlierIndex !== index &&
-      (earlier.resolvedAt < failed.resolvedAt ||
-        (earlier.resolvedAt === failed.resolvedAt && earlierIndex < index)) &&
-      failed.submittedAt <= earlier.resolvedAt
-  )
-}
+/** Per-session baseline. `settled` is the last settled request this feed has accounted for;
+ *  absence of the whole entry — not a null field — is what makes the first observation silent. */
+type SessionBaseline = CompletionFeedCursor & { settled: RequestMark | null }
 
 function settledMark(request: StructuredAgentSessionLatestRequest | null): RequestMark | null {
   return request && request.turnState !== 'running' ? { kind: request.kind, id: request.id } : null
@@ -124,10 +100,9 @@ export class StructuredAgentSessionTurnCompletionFeed {
     const cursor = (journal ?? session.journal).cursor()
     const request = state.latestRequest
     const baseline = this.baselines.get(sessionId)
-    const failedStarts = new Set(state.failedStarts.map((failed) => failed.id))
     if (!baseline) {
       // Baseline only. Whatever the session was already holding is history, not news.
-      this.baselines.set(sessionId, { ...cursor, settled: settledMark(request), failedStarts })
+      this.baselines.set(sessionId, { ...cursor, settled: settledMark(request) })
       return
     }
     if (baseline.epoch !== cursor.epoch || cursor.sequence < baseline.sequence) {
@@ -137,18 +112,9 @@ export class StructuredAgentSessionTurnCompletionFeed {
       baseline.epoch = cursor.epoch
       baseline.sequence = cursor.sequence
       baseline.settled = settledMark(request)
-      baseline.failedStarts = failedStarts
       return
     }
     baseline.sequence = cursor.sequence
-    // A send whose start failed is announced the moment it is final, whatever else the session
-    // still owes, and never again as the latest request below. A run of them is announced once.
-    state.failedStarts.forEach((failed, index, all) => {
-      if (!baseline.failedStarts.has(failed.id) && !inEarlierRun(failed, index, all)) {
-        this.announce(session, sessionId, state, failed.id, 'failure')
-      }
-    })
-    baseline.failedStarts = failedStarts
     if (request?.turnState === 'running') {
       // A running turn clears the mark, so this detector fires on each running → settled
       // transition rather than on an id it happens not to have seen.
@@ -167,31 +133,18 @@ export class StructuredAgentSessionTurnCompletionFeed {
       return
     }
     baseline.settled = settledMark(request)
-    if (request.kind === 'refused-send' && failedStarts.has(request.id)) {
-      return
-    }
     // ABSENT OUTCOME IS UNKNOWN: a turn the host only saw stop carries no verdict and gets no
     // event. Inferring success here is the one mistake that would light the dot on a failure.
     if (!request.outcome) {
       return
     }
-    this.announce(session, sessionId, state, request.id, request.outcome)
-  }
-
-  private announce(
-    session: CompletionFeedSession,
-    sessionId: string,
-    state: StructuredAgentSessionStatusState,
-    turnId: string,
-    outcome: AgentSessionTurnCompletion['outcome']
-  ): void {
     this.broadcast({
       type: 'completion',
       completion: {
         scope: session.params.location,
         sessionId,
-        turnId,
-        outcome,
+        turnId: request.id,
+        outcome: request.outcome,
         completedAt: this.deps.now(),
         // Stated here, not joined from the status stream: remote clients receive the two unordered.
         ...(state.summary.status === 'attention' ? { awaitingUser: true } : {})
