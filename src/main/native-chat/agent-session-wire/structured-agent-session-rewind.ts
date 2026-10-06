@@ -36,6 +36,7 @@ export async function rewindStructuredAgentSession(
     const result = await admitAndRunAgentSessionMutation<AgentSessionRewindResult>({
       store,
       adapter: context.deps.adapter,
+      agents: context.deps.agents,
       logger: context.deps.logger,
       callerKey: caller.callerKey,
       envelope: params.envelope,
@@ -64,7 +65,7 @@ export async function rewindStructuredAgentSession(
         run: async (ctx) => {
           await attachContext.runtimeState.flushEventSink(sessionId)
           const record = store.getRecord(sessionId)!
-          const support = ctx.adapter.rewindSupport?.(sessionId)
+          const support = ctx.adapter.rewindSupport?.(sessionId, ctx.agent)
           if (!support?.supported) {
             return rewindRefusal(support?.reason ?? 'unsupported')
           }
@@ -120,13 +121,19 @@ export async function rewindStructuredAgentSession(
           }
           const retained = snapshot.items
             .slice(0, boundary)
-            .map(({ itemId, body, observedAt, turnScope, ...linkage }) => ({
-              itemId: providerKey(itemId),
-              body: withRenamedTurnOpener(body, providerKey),
-              observedAt,
-              ...(turnScope ? { turnScope } : {}),
-              ...agentJournalLinkageFields(linkage)
-            }))
+            .map(({ itemId, observedAt, turnScope, ...linkage }) => {
+              const body = ctx.journal.itemBody(itemId)
+              if (!body) {
+                throw new Error('agent_session_rewind:missing-retained-item')
+              }
+              return {
+                itemId: providerKey(itemId),
+                body: withRenamedTurnOpener(body, providerKey),
+                observedAt,
+                ...(turnScope ? { turnScope } : {}),
+                ...agentJournalLinkageFields(linkage)
+              }
+            })
           if (
             retained.length > 10_000 ||
             Buffer.byteLength(JSON.stringify(retained), 'utf8') >
