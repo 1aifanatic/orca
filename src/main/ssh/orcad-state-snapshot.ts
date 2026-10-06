@@ -23,6 +23,7 @@ import {
   ORCAD_STATE_MUTATION_BUSY,
   ORCAD_STATE_MUTATION_DEADLINE,
   ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
+  ORCAD_WAKE_OWNER_FILENAME,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME
 } from './orcad-state-snapshot-members'
@@ -87,8 +88,10 @@ export function serializedStateMutationCommand(
     `rm -rf "$lock"; mkdir "$lock" 2>/dev/null || { echo ${ORCAD_STATE_MUTATION_BUSY}; exit 0; }; fi;`,
     'echo $$ > "$lock/pid";',
     // `-c` never creates a fence that is gone; the beat ends within one sleep of this shell.
-    'touch -c -m "$fence" 2>/dev/null;',
-    `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do touch -c -m "$fence" 2>/dev/null; done ) >/dev/null 2>&1 & beat=$!;`,
+    // A wake's fence ages toward takeover on its own, so its token stops the refresh.
+    `beat_fence() { [ -e "$fence/${ORCAD_WAKE_OWNER_FILENAME}" ] || touch -c -m "$fence" 2>/dev/null; };`,
+    'beat_fence;',
+    `( while sleep ${heartbeatSeconds} && kill -0 $$ 2>/dev/null; do beat_fence; done ) >/dev/null 2>&1 & beat=$!;`,
     `trap 'kill "$beat" 2>/dev/null; rm -rf "$lock"' EXIT;`,
     script
   ].join(' ')

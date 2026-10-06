@@ -2,7 +2,15 @@
  * A state mutation can outlast the activation fence's stale window, so it keeps the fence
  * fresh while it runs. Run for real with a one-second beat and the real steal command.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -67,6 +75,14 @@ describe.skipIf(process.platform === 'win32')(
       } finally {
         run.kill('SIGKILL')
       }
+    }, 20_000)
+
+    it('leaves a wake’s fence to age, and keeps its token', async () => {
+      writeFileSync(join(fence, '.orca-wake-owner'), 'wake-1')
+      await backdate()
+      await sh(serializedStateMutationCommand(base, 'sleep 2', 1))
+      expect(age()).toBeGreaterThan(STALE_SECONDS)
+      expect(readFileSync(join(fence, '.orca-wake-owner'), 'utf8')).toBe('wake-1')
     }, 20_000)
 
     it('stops refreshing once the mutation finishes, and never creates a missing fence', async () => {

@@ -16,6 +16,7 @@ import {
   ORCAD_SNAPSHOT_MEMBERS,
   ORCAD_STATE_MUTATION_BUSY,
   ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS,
+  ORCAD_WAKE_OWNER_FILENAME,
   ORCAD_STATE_MUTATION_LOCK_DIRNAME,
   ORCAD_STATE_RESTORE_STAGE_DIRNAME,
   ORCAD_WINDOWS_SNAPSHOT_STATE_DIRNAME
@@ -45,6 +46,8 @@ const FENCE = path.join(__dirname, ${text(ORCAD_ACTIVATION_TRANSACTION_DIRNAME)}
 function refreshFence() {
   try {
     if (!lstatOrNull(FENCE)?.isDirectory()) return
+    // A wake's fence ages toward takeover on its own, so its token stops the refresh.
+    if (lstatOrNull(path.join(FENCE, ${text(ORCAD_WAKE_OWNER_FILENAME)}))) return
     const now = new Date()
     fs.utimesSync(FENCE, now, now)
   } catch {}
