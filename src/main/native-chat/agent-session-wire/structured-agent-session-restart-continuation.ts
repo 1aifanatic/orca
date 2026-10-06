@@ -27,6 +27,7 @@ import {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { RESTART_CONTINUATION_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
+import { isFailedStartRejection } from '../../../shared/structured-agent-session-dispatch-rejection'
 import {
   AGENT_SESSION_RESTART_CONTINUATION_NOTE,
   AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
@@ -200,9 +201,13 @@ export type StructuredAgentSessionContinuationDeps = {
 }
 
 /** A continuation handed to its agent, or already decided. */
-export type StartedStructuredAgentSessionContinuation =
-  | { done: StructuredAgentSessionContinuationOutcome }
-  | { verdict: () => Promise<StructuredAgentSessionContinuationOutcome> }
+export type StartedStructuredAgentSessionContinuation<
+  TOutcome = StructuredAgentSessionContinuationOutcome
+> = { done: TOutcome } | { verdict: () => Promise<TOutcome> }
+
+/** `saidOnMessage`: its agent did not start for it, which the continuation message itself says in
+ *  the chat, as any message's failed start does; a note would say it twice. Never reported. */
+type ContinuationResult = StructuredAgentSessionContinuationOutcome & { saidOnMessage?: true }
 
 /**
  * Sends the continuation to ONE session and returns once the agent has taken it or its start
@@ -216,7 +221,7 @@ export async function startStructuredAgentSessionContinuation(
   /** This action's continuation, as its offer recorded it. */
   continuationId: string
 ): Promise<StartedStructuredAgentSessionContinuation> {
-  let started: StartedStructuredAgentSessionContinuation
+  let started: StartedStructuredAgentSessionContinuation<ContinuationResult>
   try {
     started = await sendContinuation(deps, sessionId, marker, continuationId)
   } catch (error) {
@@ -227,24 +232,17 @@ export async function startStructuredAgentSessionContinuation(
     throw error
   }
   if ('done' in started) {
-    await noteOutcome(deps, sessionId, started.done)
-    return started
+    return { done: await noteOutcome(deps, sessionId, started.done) }
   }
   const { verdict } = started
-  return {
-    verdict: async () => {
-      const outcome = await verdict()
-      await noteOutcome(deps, sessionId, outcome)
-      return outcome
-    }
-  }
+  return { verdict: async () => noteOutcome(deps, sessionId, await verdict()) }
 }
 
 async function noteOutcome(
   deps: Pick<StructuredAgentSessionContinuationDeps, 'note' | 'logger'>,
   sessionId: string,
-  result: StructuredAgentSessionContinuationOutcome
-): Promise<void> {
+  { saidOnMessage, ...result }: ContinuationResult
+): Promise<StructuredAgentSessionContinuationOutcome> {
   if (result.outcome === 'continued') {
     // Only an accepted dispatch gets the note: it is a durable claim that Orca asked this agent to
     // carry on. Best effort — losing it must not turn a delivered continuation into a failure.
@@ -253,7 +251,7 @@ async function noteOutcome(
     } catch {
       reportNoteFailed(deps, sessionId)
     }
-  } else {
+  } else if (!saidOnMessage) {
     await noteNotContinued(
       deps,
       sessionId,
@@ -264,6 +262,7 @@ async function noteOutcome(
           : 'refused'
     )
   }
+  return result
 }
 
 /** The chat itself carries the failure, so it survives the toast, a dismissed record and a restart,
@@ -293,7 +292,7 @@ async function sendContinuation(
   sessionId: string,
   marker: AgentSessionResumeMarker,
   continuationId: string
-): Promise<StartedStructuredAgentSessionContinuation> {
+): Promise<StartedStructuredAgentSessionContinuation<ContinuationResult>> {
   const fence = deps.currentFence(sessionId)
   if (fence === null) {
     return { done: { sessionId, outcome: 'refused', reason: 'agent_session_not_attached' } }
@@ -342,24 +341,25 @@ async function sendContinuation(
   }
 }
 
-function refusedBy(
-  sessionId: string,
-  submission: ContinuationSubmission
-): StructuredAgentSessionContinuationOutcome {
+function refusedBy(sessionId: string, submission: ContinuationSubmission): ContinuationResult {
   // A start the agent was refused files that refusal's code, which the failure guidance keys on.
   const refusal = readAgentSessionFailureFact(submission.rejection)?.refusal
+  const reason = submission.reason ?? null
   return {
     sessionId,
     outcome: 'refused',
-    reason: refusal?.code ?? submission.reason ?? 'agent_session_dispatch_rejected',
-    ...(refusal ? { refusal } : {})
+    reason: refusal?.code ?? reason ?? 'agent_session_dispatch_rejected',
+    ...(refusal ? { refusal } : {}),
+    ...(isFailedStartRejection({ reason, rejection: submission.rejection })
+      ? { saidOnMessage: true as const }
+      : {})
   }
 }
 
 function verdictOf(
   sessionId: string,
   submission: ContinuationSubmission | undefined
-): StructuredAgentSessionContinuationOutcome {
+): ContinuationResult {
   const dispatch = submission?.dispatchState
   if (submission && dispatch === 'rejected') {
     return refusedBy(sessionId, submission)

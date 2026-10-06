@@ -167,8 +167,8 @@ it('keeps a continuation unconfirmed when its send throws after acceptance', asy
   ).toMatchObject({ outcome: { status: 'succeeded' } })
 })
 
-// The continuation is accepted, then its start fails: the message is rejected with the cause and
-// the failure is filed, and nothing is stopped because nothing started.
+// The continuation is accepted, then its start fails: the message is rejected with the cause, which
+// it says in the chat, the failure is filed, and nothing is stopped because nothing started.
 it('rejects the continuation when its start fails, and files a retryable refusal', async () => {
   const { host, acquire, dispatch, closeSession } = await interruptedRestart()
   acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
@@ -177,12 +177,11 @@ it('rejects the continuation when its start fails, and files a retryable refusal
   expect(result.continued).toMatchObject([{ outcome: 'refused' }])
   // Nothing ran, so the offer stands as a failure a retry can act on.
   expect(result.failed).toMatchObject([{ sessionId: SESSION, outcome: 'refused', retryable: true }])
-  expect(await statusNotes(host)).toContainEqual({
-    text: AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
-    tone: 'error'
-  })
+  expect((await statusNotes(host)).map((note) => note.text)).not.toContain(
+    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE
+  )
   expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
-    { dispatchState: 'rejected' }
+    { dispatchState: 'rejected', rejection: { kind: 'restartFailed' } }
   ])
   expect(acquire).toHaveBeenCalledTimes(1)
   expect(dispatch).not.toHaveBeenCalled()

@@ -51,8 +51,9 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
 })
 
 // The continuation is accepted and its agent then fails to start: the message is rejected with the
-// cause, the failure is filed, and the chat says the agent did not carry on.
-it('says so in the chat when the agent cannot start for the continuation', async () => {
+// cause and says so in the chat, as any message's failed start does, and the failure is filed. No
+// note says it a second time.
+it('says so on the continuation message when the agent cannot start for it', async () => {
   const { host, acquire } = await interruptedRestart()
   await host.restartResume.list()
   acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
@@ -64,12 +65,13 @@ it('says so in the chat when the agent cannot start for the continuation', async
   expect(await host.restartResume.listFailures()).toMatchObject([
     { sessionId: SESSION, outcome: 'refused', retryable: true }
   ])
-  expect(await statusNotes(host)).toContainEqual({
-    text: AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
-    tone: 'error'
-  })
-  // The refusal note is now the one explanation: the cut is not said a second time beside it.
-  expect(await readerNotes(host)).toEqual(await statusNotes(host))
+  expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
+    { dispatchState: 'rejected', rejection: { kind: 'restartFailed' } }
+  ])
+  expect((await statusNotes(host)).map((note) => note.text)).not.toContain(
+    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE
+  )
+  expect(await readerNotes(host)).toEqual([QUIT_CUT_NOTICE])
 })
 
 // A continuation that carries on, chosen in the prompt or automatically at launch, does not stand in
