@@ -1,8 +1,9 @@
 // Making a reservation real for an ACP agent: spawn the child, record it before any handshake,
 // initialize with the client's file system and terminals off, then reattach the session this chat
 // proved with `session/load` (`session/resume` only for an agent that cannot load) or start a new
-// one; a saved session the agent cannot reopen is replaced by a new one, with a warning row. The journal already holds a reattached chat, so whatever the agent sends while it reattaches
-// is not written, except context usage. The handshake has no time bound: the acquire's abort signal
+// one; a saved session the agent cannot reopen is replaced by a new one, with a warning row. The
+// journal already holds a reattached chat, so whatever the agent sends while it reattaches is not
+// written, except context usage. The handshake has no time bound: the acquire's abort signal
 // (Close, Stop, quit) stops it at any point.
 
 import type { AgentSessionProviderHandleLink } from '../../shared/agent-session-provider-handle'
