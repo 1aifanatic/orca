@@ -164,7 +164,7 @@ export function useStructuredAgentSession(args: {
   })
 
   const { outbox } = outboxController
-  // What the host refuses a conversation command or a rewind behind.
+  // What the host refuses a rewind behind; a command's own hold is the runner's below.
   const conversationBusy = Boolean(
     transportState.turnId ||
     prompts.length ||

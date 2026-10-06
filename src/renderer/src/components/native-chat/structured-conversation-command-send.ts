@@ -16,11 +16,13 @@ import {
   structuredAgentSessionDeliveryNotices,
   structuredAgentSessionStartFailureFacts
 } from './structured-agent-session-delivery-notices'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import type { StructuredPromptItem } from './structured-agent-session-message-projection'
 import { agentJournalSubmissionKey } from '../../../../shared/agent-session-journal-item-key'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import {
   structuredAgentSessionEntryRejectedByHost,
   type StructuredAgentSessionOutboxEntry

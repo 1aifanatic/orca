@@ -25,7 +25,9 @@ import { structuredAgentSessionDeliveryNotices } from './structured-agent-sessio
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   outboxArgs: Array.of<{ queueDelivery?: { capability: string; enabled: boolean } }>(),
-  operations: 0
+  operations: 0,
+  /** A rewind this pane started is on its way. */
+  rewindPending: false
 }))
 let items: AgentJournalRenderItem[] = []
 let queuedMessages: AgentSessionQueuedMessage[] | undefined
@@ -52,6 +54,20 @@ vi.mock('./use-structured-agent-session-read', () => ({
     loadOlder: vi.fn()
   })
 }))
+
+// The real rewind hook, with only its in-flight latch forced when a test says so.
+vi.mock('./use-native-chat-rewind', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./use-native-chat-rewind')>()
+  return {
+    ...actual,
+    useStructuredAgentSessionRewind: (
+      ...args: Parameters<typeof actual.useStructuredAgentSessionRewind>
+    ) => {
+      const rewind = actual.useStructuredAgentSessionRewind(...args)
+      return mocks.rewindPending ? { ...rewind, blockedRef: { current: true } } : rewind
+    }
+  }
+})
 
 vi.mock('./use-structured-agent-session-outbox', () => ({
   structuredSessionOperationId: () => `operation-${++mocks.operations}`,
@@ -122,6 +138,7 @@ function cancels(): unknown[] {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.outboxArgs.length = 0
+  mocks.rewindPending = false
   mocks.call.mockImplementation(async (_target, method) =>
     method === 'agentSession.cancel'
       ? {
@@ -581,6 +598,23 @@ describe('a /compact against a host that holds commands in line', () => {
       await idle.result.current.runConversationCommand('clear')
     })
     expect(ConversationCommandParams.parse(commandCalls()[0])).not.toHaveProperty('delivery')
+  })
+
+  it('a rewind on its way holds /clear and /compact alike, in the same words, and writes nothing', async () => {
+    items = []
+    mocks.rewindPending = true
+    const { result } = render()
+    for (const command of ['clear', 'compact'] as const) {
+      let outcome: unknown
+      await act(async () => {
+        outcome = await result.current.runConversationCommand(command)
+      })
+      expect(outcome).toEqual({
+        accepted: false,
+        error: 'Wait for pending work and messages to finish before using this command.'
+      })
+    }
+    expect(commandCalls()).toHaveLength(0)
   })
 
   it('a send behind a waiting command card queues, even with follow-ups off', () => {
