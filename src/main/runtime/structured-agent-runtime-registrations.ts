@@ -217,7 +217,7 @@ export const STRUCTURED_AGENT_RUNTIME_REGISTRATIONS: readonly StructuredAgentRun
             store: context.store,
             resolveWorkspacePath: context.deps.resolveWorkspacePath,
             resolveEnvironment: async () => ({
-              ...(await context.environment.resolveClaudeInheritedEnv()),
+              ...(await context.environment.resolveBaseEnvironment()),
               ...(await context.deps.resolvePiLaunchEnv?.())
             }),
             ...(context.deps.resolvePiCommand

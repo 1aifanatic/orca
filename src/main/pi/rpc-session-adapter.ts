@@ -10,7 +10,7 @@ import {
   type StructuredAgentSessionAcquireInput,
   type StructuredAgentSessionAdapter
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
-import { codexSpawnedProcessIdentity } from '../codex/codex-structured-owner-identity'
+import { providerSpawnedProcessIdentity } from '../provider-process/provider-spawned-process-identity'
 import { JsonlRpcResponseError } from '../jsonl-rpc/peer'
 import { buildPiRpcLaunch } from './rpc-launch'
 import { piRpcProviderLink, type PiRpcResolvedLaunch } from './rpc-launch-resolution'
@@ -60,8 +60,11 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       })
       session = new PiRpcSession(input, randomUUID(), spec, this.deps)
       this.sessions.set(id, session)
-      // The shared acquisition helper replaces this delegate when its extraction lands.
-      const spawned = codexSpawnedProcessIdentity(input, this.deps.readProcessStartTime)
+      const spawned = providerSpawnedProcessIdentity(
+        input,
+        'Pi RPC',
+        this.deps.readProcessStartTime
+      )
       if (session.connection.pid !== undefined) {
         await spawned.onSpawned(session.connection.pid)
       }
