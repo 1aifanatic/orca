@@ -37,6 +37,15 @@ export const styles = StyleSheet.create({
   reasoning: {
     opacity: 0.7
   },
+  agentMessage: {
+    paddingLeft: spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.borderSubtle
+  },
+  agentAttribution: {
+    color: colors.textMuted,
+    fontSize: typography.metaSize
+  },
   toolRun: {
     marginTop: spacing.xs
   },

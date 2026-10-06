@@ -78,10 +78,14 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
     expect(chat.turns).toHaveLength(1)
     const [card] = queuedRows()
     const [mail] = db.getAllMessages(`run:${runId}`)
-    expect(card?.source).toEqual({
+    const from = {
       kind: 'agent',
       senders: [
-        { party: { address: 'term_worker', terminalHandle: 'term_worker', orcaSessionId: null } }
+        {
+          party: { address: 'term_worker', terminalHandle: 'term_worker', orcaSessionId: null },
+          // No tab this runtime knows of names it, and an agent-set title never does.
+          name: null
+        }
       ],
       orchestration: {
         message: 'mail-notice',
@@ -89,11 +93,18 @@ describe("a busy chat's orchestration pointer waits in its queue", () => {
         dispatchId: null,
         messages: [{ messageId: mail!.id, runId, from: 'term_worker' }]
       }
-    })
+    }
+    // On the card's body: the turn the queue sends carries it, and the provider never sees it.
+    expect(card?.body.from).toEqual(from)
 
     await endTurn()
     await vi.waitFor(() => expect(chat.turns).toHaveLength(2), WAIT)
     expect(turnText(chat.turns[1]!)).toBe(ptyPointer(`run:${runId}`))
+    expect(JSON.stringify(chat.turns[1])).not.toContain('term_worker')
+    const sent = (await host.journalSnapshot(COORDINATOR)).items.filter(
+      (item) => item.body.kind === 'message' && item.body.from
+    )
+    expect(sent.map((item) => item.body.kind === 'message' && item.body.from)).toEqual([from])
     expect(await queuedCardTexts()).toEqual([])
     await settleTurn(COORDINATOR, 1)
     await idleEdgesSettled()

@@ -5,25 +5,31 @@
  */
 
 import { parseOrcaSessionAddress } from '../../../shared/orca-session-address'
-import type {
-  AgentMessageSource,
-  AgentMessageSender
+import {
+  agentMessageSenderName,
+  type AgentMessageSource,
+  type AgentMessageSender
 } from '../../../shared/agent-session-message-source'
 import type { MessageRow, OrchestrationDb } from './db'
 import { resolveOrchestrationParty } from './orchestration-party'
 
 export type MailSourceMessage = Pick<MessageRow, 'id' | 'from_handle' | 'run_id'>
 
+/** A name Orca controls for a party (never an agent-set title); null when it has none. */
+export type SenderNameResolver = (party: AgentMessageSender['party']) => string | null
+
 export function structuredMailSource(input: {
   db: OrchestrationDb | null
   mailboxHandle: string
   dispatchId: string | null
   batch: readonly MailSourceMessage[]
+  senderName: SenderNameResolver
 }): AgentMessageSource {
   const senders = new Map<string, AgentMessageSender>()
   for (const { from_handle: address } of input.batch) {
     if (!senders.has(address)) {
-      senders.set(address, { party: senderParty(address, input.db) })
+      const party = senderParty(address, input.db)
+      senders.set(address, { party, name: snapshotName(input.senderName, party) })
     }
   }
   return {
@@ -49,5 +55,17 @@ function senderParty(address: string, db: OrchestrationDb | null): AgentMessageS
   } catch {
     // A worker this host lost the identity of: what the address itself says.
     return { address, terminalHandle: null, orcaSessionId: parseOrcaSessionAddress(address) }
+  }
+}
+
+function snapshotName(
+  senderName: SenderNameResolver,
+  party: AgentMessageSender['party']
+): string | null {
+  try {
+    return agentMessageSenderName(senderName(party))
+  } catch {
+    // A name is a label, never a reason the mail is not delivered.
+    return null
   }
 }

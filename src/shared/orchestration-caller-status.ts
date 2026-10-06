@@ -25,3 +25,11 @@ export type OrchestrationCallerShowResult = { caller: OrchestrationCallerSession
 
 /** `orchestration.sessionAddress`: a session's Orca session ID, its `/clear` root's. */
 export type OrchestrationSessionAddressResult = { orcaSessionId: string }
+
+/** Where a party is now: a chat at its `/clear` lineage's live session, or a terminal. */
+export type OrchestrationPartyLocation =
+  | { kind: 'chat'; sessionId: string; worktreeId: string }
+  | { kind: 'terminal'; handle: string }
+
+/** `orchestration.partyLocation`: null when this host no longer knows where the party is. */
+export type OrchestrationPartyLocationResult = { location: OrchestrationPartyLocation | null }

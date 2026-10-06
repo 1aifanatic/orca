@@ -19,7 +19,10 @@ import type {
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionConversationCommandResult } from '../../../shared/agent-session-conversation-command'
 import { DISPATCH_DOUBT_SUBMISSION_MISSING } from '../agent-session-journal/journal-dispatch-doubt-reasons'
-import { structuredAgentSessionPayloadFingerprint } from '../../../shared/structured-agent-session-mutation'
+import {
+  agentSessionMessagePayload,
+  agentSessionSendBodyFingerprint
+} from '../../../shared/structured-agent-session-send-mutation'
 import {
   STRUCTURED_AGENT_SESSION_COMPACT_COMMAND,
   structuredAgentSessionCompactBody
@@ -34,16 +37,6 @@ import {
 } from './structured-agent-session-turns'
 import type { AgentSessionPromptRequest } from './structured-agent-session-turns-prompt'
 import { queuedSendAnswer } from './structured-agent-session-queued-send-answer'
-
-/** The body-only hash: what the reducer recomputes to alias a provider echo
- *  onto its submission, so the stored value must never include control fields. */
-function sendBodyFingerprint(sessionId: string, body: AgentJournalMessageItem): string {
-  return structuredAgentSessionPayloadFingerprint({
-    method: 'agentSession.send',
-    sessionId,
-    fields: { body }
-  })
-}
 
 export type MutationPlan<TValue> = {
   method: string
@@ -89,7 +82,10 @@ export function sendPlan(params: {
     settlesWithWrite: true,
     // `delivery` joins the OPERATION fingerprint only; the submission row keeps
     // the body-only fingerprint the reducer's echo-aliasing recomputes.
-    fields: { body: params.body, ...(params.delivery ? { delivery: params.delivery } : {}) },
+    fields: {
+      body: agentSessionMessagePayload(params.body),
+      ...(params.delivery ? { delivery: params.delivery } : {})
+    },
     recoverUnknownFromDurableState: true,
     // `retryUnknown` is a compatibility-only client signal. A recorded send
     // always replays and never reaches the provider twice.
@@ -99,7 +95,8 @@ export function sendPlan(params: {
       return performSend(ctx, {
         origin: params.userSend ? 'client' : 'host',
         clientMessageId,
-        payloadFingerprint: sendBodyFingerprint(params.envelope.sessionId, params.body),
+        // Body-only, so the reducer's echo aliasing never sees control fields or the sender.
+        payloadFingerprint: agentSessionSendBodyFingerprint(params.envelope.sessionId, params.body),
         body: params.body
       })
     },

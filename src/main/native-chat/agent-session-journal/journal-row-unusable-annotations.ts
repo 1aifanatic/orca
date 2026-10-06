@@ -2,6 +2,7 @@
 // the row's content is checked (journal-row-schema.ts).
 
 import { isAdmissibleAgentSessionContextUsage } from '../../../shared/agent-session-context-usage-schema'
+import { normalizeAgentMessageBodyFrom } from '../../../shared/agent-session-message-source'
 
 export function dropUnusableRowAnnotations(record: Record<string, unknown>): void {
   dropUnusableProducerLinkage(record)
@@ -15,6 +16,23 @@ export function dropUnusableRowAnnotations(record: Record<string, unknown>): voi
     }
   }
   dropUnusableContextUsage(record)
+  normalizeMessageSenders(record)
+}
+
+/** A message's sender read through its one reader: what it cannot read is dropped, and the
+ *  message stays (an agent's with whatever senders read, else the person's). */
+function normalizeMessageSenders(record: Record<string, unknown>): void {
+  const bodies = [
+    record.kind === 'item' || record.kind === 'submission' ? record.body : undefined,
+    ...(record.kind === 'lifecycle-batch' && Array.isArray(record.mutations)
+      ? record.mutations.map((mutation) => (isPlainObject(mutation) ? mutation.body : undefined))
+      : [])
+  ]
+  for (const body of bodies) {
+    if (isPlainObject(body) && body.kind === 'message') {
+      normalizeAgentMessageBodyFrom(body)
+    }
+  }
 }
 
 /** Linkage ids this build cannot trust, removed from a row it still keeps.

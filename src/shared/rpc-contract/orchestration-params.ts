@@ -111,6 +111,11 @@ export const SessionAddressParams = z.object({
   sessionId: requiredString('Missing sessionId')
 })
 
+/** A party's mailbox address, as a message's sender recorded it. */
+export const PartyLocationParams = z.object({
+  address: requiredString('Missing address')
+})
+
 export const DispatchShowParams = z.object({
   task: OptionalString,
   preamble: OptionalBoolean,

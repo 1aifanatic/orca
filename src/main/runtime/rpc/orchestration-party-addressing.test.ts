@@ -21,6 +21,7 @@ import {
   sessionRecord,
   WORKER_HANDLE,
   WORKER_PANE,
+  WORKSPACE_X,
   type SessionCallerHarness
 } from './orchestration-session-caller-test-fixture'
 
@@ -106,7 +107,8 @@ describe('every target param resolves both spellings of a party to one canonical
         'orchestration.ask',
         'orchestration.dispatch',
         'orchestration.inbox',
-        'orchestration.sessionAddress'
+        'orchestration.sessionAddress',
+        'orchestration.partyLocation'
       ].sort()
     )
   })
@@ -217,6 +219,28 @@ describe('every target param resolves both spellings of a party to one canonical
     expect(await as(undefined, 'orchestration.sessionAddress', { sessionId: SESSION_Y })).toEqual({
       orcaSessionId: ADDRESS_Y
     })
+  })
+
+  it.each(WORKER_SPELLINGS)(
+    'partyLocation: a worker at %s opens as its chat',
+    async (_l, address) => {
+      expect(await as(undefined, 'orchestration.partyLocation', { address })).toEqual({
+        location: { kind: 'chat', sessionId: SESSION_Y, worktreeId: WORKSPACE_X }
+      })
+    }
+  )
+
+  it('partyLocation: a dispatch opens as its assignee, a terminal as itself, a lost one as nothing', async () => {
+    const dispatchId = assignWorker(await chatRun())
+    expect(
+      await as(undefined, 'orchestration.partyLocation', { address: `dispatch:${dispatchId}` })
+    ).toEqual({ location: { kind: 'chat', sessionId: SESSION_Y, worktreeId: WORKSPACE_X } })
+    expect(await as(undefined, 'orchestration.partyLocation', { address: 'term_peer' })).toEqual({
+      location: { kind: 'terminal', handle: 'term_peer' }
+    })
+    expect(
+      await as(undefined, 'orchestration.partyLocation', { address: 'dispatch:gone' })
+    ).toEqual({ location: null })
   })
 })
 

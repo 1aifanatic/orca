@@ -17,6 +17,7 @@ import type { NativeChatToolMetadata } from './native-chat-tool-identity'
 import type { AgentSessionContextUsage } from './agent-session-context-usage'
 import type { AgentSessionProviderHandle } from './agent-session-provider-handle'
 import type { NativeChatBlock, NativeChatRole } from './native-chat-types'
+import type { AgentMessageSource } from './agent-session-message-source'
 
 export { type AgentType }
 
@@ -110,6 +111,9 @@ export type AgentJournalMessageItem = {
   /** Present on a conversation command the user sent, such as `/compact`. The text is what the
    *  user typed; this names the command so no reader parses it. Open like `sentAs`. */
   command?: { name: string }
+  /** Present on a message another agent sent through Orca; absent, the person's. Host-written,
+   *  outside every fingerprint, never sent to the provider. */
+  from?: AgentMessageSource
 }
 
 export type AgentJournalToolCallState = 'running' | 'completed' | 'failed'

@@ -2,6 +2,11 @@
 import { OrchestrationStructuredMailboxPointerDelivery } from './orchestration/structured-mailbox-pointer-delivery'
 import { createStructuredMailboxPointerHost } from './orchestration/structured-mailbox-pointer-host'
 import { localOrchestrationCliCommand } from './orchestration/cli-command'
+import { readAgentSessionRecordStore } from './orchestration/structured-session-lineage'
+import {
+  orchestrationSenderName,
+  type TerminalSenderNaming
+} from './orchestration/orchestration-sender-name'
 import { isStructuredWorkerHandle } from './structured-worker-identity'
 import { resolveStructuredWorkerAuthority } from './structured-worker-authority'
 import { OrcaRuntimeWithRuntimeId } from './orca-runtime-runtime-id'
@@ -255,8 +260,29 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       resolveStructuredTarget: (mailboxHandle) =>
         this.resolveStructuredMailboxTarget(mailboxHandle),
       getCliCommand: localOrchestrationCliCommand,
+      senderName: (party) =>
+        orchestrationSenderName(party, {
+          db: this._orchestrationDb,
+          records: readAgentSessionRecordStore(),
+          terminal: (handle) => this.terminalSenderNaming(handle)
+        }),
       host: createStructuredMailboxPointerHost()
     })
+
+  protected terminalSenderNaming(handle: string): TerminalSenderNaming | null {
+    const record = this.handles.get(handle)
+    if (!record) {
+      return null
+    }
+    const pty = record.ptyId ? this.ptysById.get(record.ptyId) : undefined
+    const tab = this.getWorkspaceSessionForWorktree(record.worktreeId)?.tabsByWorktree?.[
+      record.worktreeId
+    ]?.find((candidate) => candidate.id === record.tabId)
+    return {
+      customTitle: tab?.customTitle ?? null,
+      agent: pty?.launchAgent ?? pty?.foregroundAgent ?? null
+    }
+  }
 
   protected readonly orchestrationMailboxNotifications =
     new OrchestrationMailboxNotificationCoordinator<RuntimeMessageWaiter>({

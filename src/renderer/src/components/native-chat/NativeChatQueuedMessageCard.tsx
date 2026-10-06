@@ -24,6 +24,7 @@ import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
 import { QUEUED_MESSAGE_PAUSED_SEND_FAILED } from '../../../../shared/agent-session-wire'
 import { isMacPlatform } from './native-chat-shortcut'
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
+import { queuedCardSenderLine } from './native-chat-agent-message-sender-label'
 
 /** The visible caption under the text; the default waiting hold needs none. */
 export function queuedMessageCardCaption(card: QueuedMessageCard): string | null {
@@ -135,6 +136,11 @@ export function NativeChatQueuedMessageCard({
         <ListEnd className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       )}
       <div className="min-w-0 flex-1">
+        {card.from ? (
+          <p className="truncate text-xs text-muted-foreground">
+            {queuedCardSenderLine(card.from)}
+          </p>
+        ) : null}
         <p className="truncate text-sm" title={card.text}>
           {card.text}
         </p>

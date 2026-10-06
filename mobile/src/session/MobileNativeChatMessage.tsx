@@ -17,6 +17,7 @@ import { ToolRun } from './MobileNativeChatToolRun'
 import type { NativeChatTurnStatus } from './use-mobile-native-chat-turn-status'
 import { isRenderableImageUri } from './mobile-native-chat-image-preview'
 import { styles, TEXT_SIZE } from './mobile-native-chat-message-styles'
+import { agentMessageAttribution } from './mobile-agent-message-attribution'
 
 function Prose({
   block,
@@ -140,7 +141,9 @@ function MobileNativeChatMessageImpl({
   /** Structured lane only: live tool progress plus the turn-status disclosure. */
   structuredActivityUi?: boolean
 }): React.JSX.Element {
-  const isUser = message.role === 'user'
+  // Another agent's message is set apart from the person's bubble, left-aligned and named.
+  const attribution = agentMessageAttribution('Message from', message.from)
+  const isUser = message.role === 'user' && attribution === null
   const isReasoning = message.role === 'reasoning'
   // Separate the agent's words from its tool activity: prose renders first, the
   // tool calls fold into a collapsible run beneath. The user's own messages get
@@ -182,8 +185,18 @@ function MobileNativeChatMessageImpl({
       <View style={[styles.row, isUser && styles.rowUser]}>
         <Content
           onLongPress={onLongPress}
-          style={[styles.content, isUser && styles.userBubble, isReasoning && styles.reasoning]}
+          style={[
+            styles.content,
+            isUser && styles.userBubble,
+            isReasoning && styles.reasoning,
+            attribution !== null && styles.agentMessage
+          ]}
         >
+          {attribution !== null ? (
+            <Text selectable={INLINE_TEXT_SELECTION} style={styles.agentAttribution}>
+              {attribution}
+            </Text>
+          ) : null}
           {prose.map((block, index) => (
             <Prose
               key={index}
