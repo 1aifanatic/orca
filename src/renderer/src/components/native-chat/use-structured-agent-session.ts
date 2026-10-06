@@ -40,7 +40,6 @@ import { structuredAgentSessionStartFailureFacts } from './structured-agent-sess
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
-import { TUI_AGENT_DISPLAY_NAMES } from '../../../../shared/tui-agent-display-names'
 import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
 
@@ -197,7 +196,7 @@ export function useStructuredAgentSession(args: {
   const transcriptItems = useMemo(
     () =>
       withNativeChatCutTurnNotices(transportState.journalItems, {
-        agentName: TUI_AGENT_DISPLAY_NAMES[agent === 'codex' ? 'codex' : 'claude']
+        agentName: structuredAgentLabel(agent)
       }),
     [agent, transportState.journalItems]
   )
@@ -223,7 +222,7 @@ export function useStructuredAgentSession(args: {
     runConversationCommand: (command: AgentSessionConversationCommand) =>
       structuredConversationCommands.sendStructuredConversationCommand({
         command,
-        agentName: structuredAgentLabel(agent === 'codex' ? 'codex' : 'claude'),
+        agentName: structuredAgentLabel(agent),
         pending: commandPending,
         blocked: conversationBusy || rewind.blockedRef.current,
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
