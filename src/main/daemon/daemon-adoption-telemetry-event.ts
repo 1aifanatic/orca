@@ -4,12 +4,15 @@
 
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
 import {
+  classifyDaemonLaunchMethod,
   classifyDaemonPtyCwd,
   classifyDaemonSpawnerPath,
   isMacTccFolderClass,
   type DaemonAdoptedAppVersionMatch,
+  type DaemonLaunchMethod,
   type DaemonSpawnerPathClass
 } from '../../shared/daemon-adoption-telemetry'
 import { bucketDaemonLiveSessionCount } from '../../shared/daemon-lifecycle-telemetry'
@@ -17,6 +20,7 @@ import type { EventProps } from '../../shared/telemetry-events'
 import { track } from '../telemetry/client'
 import { readDaemonPidRecord } from './daemon-endpoint-incarnation'
 import { getDaemonMacCodeIdentity } from './daemon-mac-code-identity'
+import { getMacDaemonBundleRoot } from './macos-daemon-bundle'
 import { enumerateDirectoryOnce } from './directory-enumeration-probe'
 import type { ParsedDaemonPid } from './daemon-pid-file-parse'
 import type { MacDaemonTccAttributionHealth } from './daemon-tcc-attribution'
@@ -28,8 +32,20 @@ import {
 
 export type DaemonAdoptionOrigin = Pick<
   EventProps<'daemon_pty_cwd_denied'>,
-  'app_version_match' | 'code_identity' | 'spawner_path_class'
+  'app_version_match' | 'code_identity' | 'spawner_path_class' | 'launch_method'
 >
+
+function classifyLaunchMethod(spawnerExecPath: string | null): DaemonLaunchMethod {
+  try {
+    const userDataPath = getAppEnvironment().getPath('userData')
+    return classifyDaemonLaunchMethod(
+      spawnerExecPath,
+      join(getMacDaemonBundleRoot(userDataPath), 'runtime-')
+    )
+  } catch {
+    return 'unknown'
+  }
+}
 
 /** Classifies the adopted daemon's pid record against the running app; enum-only by construction. */
 export async function classifyDaemonAdoptionOrigin(
@@ -47,7 +63,8 @@ export async function classifyDaemonAdoptionOrigin(
   return {
     app_version_match: appVersionMatch,
     code_identity: await getDaemonMacCodeIdentity(pidRecord?.pid),
-    spawner_path_class: spawnerPathClass
+    spawner_path_class: spawnerPathClass,
+    launch_method: classifyLaunchMethod(pidRecord?.spawnerExecPath ?? null)
   }
 }
 

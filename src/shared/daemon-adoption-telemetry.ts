@@ -20,6 +20,24 @@ export const DAEMON_SPAWNER_PATH_CLASSES = [
 ] as const
 export type DaemonSpawnerPathClass = (typeof DAEMON_SPAWNER_PATH_CLASSES)[number]
 
+/**
+ * How the daemon was started, read from the spawner path it recorded. `stable-copy`: a launchd job
+ * running Orca's private signed bundle copy (#25848). `app-fork`: forked from the app's own bundle.
+ * `unknown`: the record names no spawner.
+ */
+export const DAEMON_LAUNCH_METHODS = ['stable-copy', 'app-fork', 'unknown'] as const
+export type DaemonLaunchMethod = (typeof DAEMON_LAUNCH_METHODS)[number]
+
+export function classifyDaemonLaunchMethod(
+  spawnerExecPath: string | null,
+  stableCopyPrefix: string
+): DaemonLaunchMethod {
+  if (!spawnerExecPath) {
+    return 'unknown'
+  }
+  return spawnerExecPath.startsWith(stableCopyPrefix) ? 'stable-copy' : 'app-fork'
+}
+
 export const DAEMON_TCC_ATTRIBUTION_VALUES = ['intact', 'severed', 'unknown'] as const
 
 /**

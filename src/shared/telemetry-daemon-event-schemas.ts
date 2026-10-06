@@ -17,6 +17,7 @@ import {
 import {
   DAEMON_ADOPTED_APP_VERSION_MATCH,
   DAEMON_CODE_IDENTITY_VALUES,
+  DAEMON_LAUNCH_METHODS,
   DAEMON_PTY_CWD_CLASSES,
   DAEMON_SPAWNER_PATH_CLASSES,
   DAEMON_TCC_ATTRIBUTION_VALUES
@@ -61,7 +62,9 @@ export const mainThreadHangDetectedSchema = z
 const daemonOriginProps = {
   app_version_match: z.enum(DAEMON_ADOPTED_APP_VERSION_MATCH),
   spawner_path_class: z.enum(DAEMON_SPAWNER_PATH_CLASSES),
-  code_identity: z.enum(DAEMON_CODE_IDENTITY_VALUES)
+  code_identity: z.enum(DAEMON_CODE_IDENTITY_VALUES),
+  // Splits each event by whether #25848's stable-copy launcher started the daemon.
+  launch_method: z.enum(DAEMON_LAUNCH_METHODS)
 }
 
 // Why: #17696 — a macOS app adopting a daemon from an earlier bundle is invisible to

@@ -8,6 +8,7 @@ const {
   existsSyncMock,
   readFileSyncMock,
   getVersionMock,
+  getPathMock,
   codeIdentityMock
 } = vi.hoisted(() => ({
   trackMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   existsSyncMock: vi.fn(() => true),
   readFileSyncMock: vi.fn(),
   getVersionMock: vi.fn(() => '1.4.191'),
+  getPathMock: vi.fn((_name: string) => '/Users/alice/Library/Application Support/Orca'),
   codeIdentityMock: vi.fn(async () => 'parked')
 }))
 vi.mock('../telemetry/client', () => ({ track: trackMock }))
@@ -35,7 +37,7 @@ vi.mock('node:os', async (importOriginal) => ({
   homedir: () => '/Users/alice'
 }))
 vi.mock('../../shared/app-environment', () => ({
-  getAppEnvironment: () => ({ getVersion: getVersionMock })
+  getAppEnvironment: () => ({ getVersion: getVersionMock, getPath: getPathMock })
 }))
 
 import {
@@ -78,7 +80,8 @@ const stalePidRecord: ParsedDaemonPid = {
 const origin = {
   app_version_match: 'different',
   code_identity: 'parked',
-  spawner_path_class: 'updater-cache'
+  spawner_path_class: 'updater-cache',
+  launch_method: 'app-fork'
 } as const
 const PID_PATH = '/fake/daemon.pid'
 
@@ -106,9 +109,29 @@ describe('classifyDaemonAdoptionOrigin', () => {
     expect(await classifyDaemonAdoptionOrigin(null)).toEqual({
       app_version_match: 'unknown',
       code_identity: 'parked',
-      spawner_path_class: 'unknown'
+      spawner_path_class: 'unknown',
+      launch_method: 'unknown'
     })
     expect(codeIdentityMock).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('reports a daemon started from the private stable copy', async () => {
+    const stableCopy = {
+      ...stalePidRecord,
+      spawnerExecPath:
+        '/Users/alice/Library/Application Support/Orca/daemon-host/macos/runtime-x1/Orca.app/Contents/MacOS/Orca'
+    }
+    expect(await classifyDaemonAdoptionOrigin(stableCopy)).toMatchObject({
+      spawner_path_class: 'other',
+      launch_method: 'stable-copy'
+    })
+    expect(getPathMock).toHaveBeenCalledWith('userData')
+    getPathMock.mockImplementationOnce(() => {
+      throw new Error('AppEnvironment not initialized')
+    })
+    expect(await classifyDaemonAdoptionOrigin(stableCopy)).toMatchObject({
+      launch_method: 'unknown'
+    })
   })
 })
 
@@ -193,7 +216,8 @@ describe('trackDaemonPtyCwdVerdict', () => {
       cwd_class: 'documents',
       app_version_match: 'same',
       code_identity: 'parked',
-      spawner_path_class: 'applications'
+      spawner_path_class: 'applications',
+      launch_method: 'app-fork'
     })
   })
 

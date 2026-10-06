@@ -42,6 +42,11 @@ async function codesignRequirement(bundlePath: string, deadlineMs: number): Prom
   return requirement
 }
 
+/** Private signed runtime copies; telemetry reads a daemon's launch method from this prefix. */
+export function getMacDaemonBundleRoot(userDataPath: string): string {
+  return join(userDataPath, 'daemon-host', 'macos')
+}
+
 /** Keep signed bytes and their bundle layout outside the updater's rename/delete window. */
 export async function materializeMacDaemonBundle(
   userDataPath: string,
@@ -64,7 +69,7 @@ export async function materializeMacDaemonBundle(
     throw new Error('The terminal daemon entry is outside the app bundle')
   }
   const requirement = await codesignRequirement(sourceBundle, deadlineMs)
-  const root = join(userDataPath, 'daemon-host', 'macos')
+  const root = getMacDaemonBundleRoot(userDataPath)
   ensurePrivateDir(root)
   void retireAbandonedMacDaemonBundles(root)
   const directory = await mkdtemp(join(root, 'runtime-'))
