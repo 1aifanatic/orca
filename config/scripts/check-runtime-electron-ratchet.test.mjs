@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -9,8 +9,7 @@ import {
   defaultEntryPoints,
   diffAgainstBaseline,
   main,
-  readBaseline,
-  STRUCTURED_CHAT_LANES
+  readBaseline
 } from './check-runtime-electron-ratchet.mjs'
 
 describe('structured chat coverage', () => {
@@ -32,12 +31,14 @@ describe('structured chat coverage', () => {
     return root
   }
 
-  // Every lane that must exist; acp/ and provider-process/ may be absent until they land.
+  // Every lane that must exist.
   const requiredLanes = {
     'src/main/native-chat/reader.ts': 'export {}',
     'src/main/claude/claude-session.ts': 'export {}',
     'src/main/codex/codex-session.ts': 'export {}',
     'src/main/runtime/structured-agent-session-host.ts': 'export {}',
+    'src/main/provider-process/provider-process-teardown.ts': 'export {}',
+    'src/main/acp/acp-structured-session-adapter.ts': 'export {}',
     'src/shared/agent-session-record.ts': 'export {}'
   }
 
@@ -89,7 +90,7 @@ describe('structured chat coverage', () => {
         Object.entries(requiredLanes).filter(([file]) => !file.startsWith(`${lane}/`))
       )
       expect(() => collectStructuredChatEntryPoints(fixture(without))).toThrow(`${lane} is missing`)
-      expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(5)
+      expect(collectStructuredChatEntryPoints(fixture(requiredLanes))).toHaveLength(7)
     }
   )
 
@@ -125,16 +126,6 @@ describe('the default entry points', () => {
     ])
     for (const lane of [...lanes, 'src/shared/']) {
       expect(entries.some((file) => file.startsWith(lane))).toBe(true)
-    }
-  })
-
-  // Retires the temporary flag: the PR that adds acp/ or provider-process/ must make it required.
-  it('lets only directories that have not landed yet be absent', () => {
-    for (const lane of STRUCTURED_CHAT_LANES.filter((candidate) => candidate.mayBeAbsent)) {
-      expect(
-        existsSync(path.join(process.cwd(), ...lane.directory)),
-        lane.directory.join('/')
-      ).toBe(false)
     }
   })
 })
