@@ -6,13 +6,17 @@ param(
  [Parameter(Mandatory=$true)][hashtable]$Context,
  [Parameter(Mandatory=$true)][ValidateSet('win32-arm64','win32-x64')][string]$Target,
  [Parameter(Mandatory=$true)][string]$ReceiptRoot,
- [ValidateSet('pinned-cmd','pinned-powershell','legacy-opt-out','orcad-cmd','orcad-powershell','orcad-convert')][string[]]$Cells=@('pinned-cmd','pinned-powershell','legacy-opt-out','orcad-cmd','orcad-powershell')
+ [ValidateSet('pinned-cmd','pinned-powershell','legacy-opt-out','orcad-cmd','orcad-powershell','orcad-convert','orcad-cli-managed','orcad-cli-convert','orcad-cli-relay-kept')][string[]]$Cells=@('pinned-cmd','pinned-powershell','legacy-opt-out','orcad-cmd','orcad-powershell')
 )
 $ErrorActionPreference='Stop'
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:ORCA_ISOLATED_SSH_CI -ne '1'){throw 'Disposable CI only'}
-$shells=@{'pinned-cmd'='cmd';'pinned-powershell'='powershell';'legacy-opt-out'='cmd';'orcad-cmd'='cmd';'orcad-powershell'='powershell';'orcad-convert'='cmd'}
+$shells=@{'pinned-cmd'='cmd';'pinned-powershell'='powershell';'legacy-opt-out'='cmd';'orcad-cmd'='cmd';'orcad-powershell'='powershell';'orcad-convert'='cmd';'orcad-cli-managed'='cmd';'orcad-cli-convert'='cmd';'orcad-cli-relay-kept'='cmd'}
+# App-level cells drive the e2e build (and the bundled CLI) against the host; each greps one tagged test.
+$appCells=@{'orcad-convert'=@('tests/e2e/ssh-orcad-auto-convert.spec.ts','');'orcad-cli-managed'=@('tests/e2e/ssh-orcad-windows-cli-matrix.spec.ts','@orcad-cli-managed');'orcad-cli-convert'=@('tests/e2e/ssh-orcad-windows-cli-matrix.spec.ts','@orcad-cli-convert');'orcad-cli-relay-kept'=@('tests/e2e/ssh-orcad-windows-cli-matrix.spec.ts','@orcad-cli-relay-kept')}
+$electronBuilt=$false
 if($Context.accounts.Count -lt $Cells.Count){throw 'Each cell needs its own private account'}
-if($Cells -contains 'orcad-convert' -and $Cells[-1] -ne 'orcad-convert'){throw 'orcad-convert must be the last cell: it switches native modules to Electron'}
+$seenApp=$false
+foreach($id in $Cells){if($appCells.ContainsKey($id)){$seenApp=$true}elseif($seenApp){throw 'App cells must run last: they switch native modules to Electron'}}
 if(-not $Context.forbiddenToolLog){throw 'Run the provisioning with -HiddenTools so toolchain calls are logged'}
 $openSshKey='HKLM:\SOFTWARE\OpenSSH'
 $windowsPowerShell=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -54,25 +58,32 @@ function Test-PrivateWmiLaunch([string]$Account) {
   if($match.Success){return $match.Groups[1].Value}else{return 'no-output'}
 }
 
-# The app converts a relay-era host on connect (tests/e2e/ssh-orcad-auto-convert.spec.ts). Last in
-# the run: it switches native modules to Electron's ABI, which the vitest cells cannot load.
-function Invoke-ConvertCell($Account,[string]$Descriptor,[string]$Log) {
+# App-level cells (tests/e2e/ssh-orcad-auto-convert.spec.ts, ssh-orcad-windows-cli-matrix.spec.ts). Last
+# in the run: they switch native modules to Electron's ABI, which the vitest cells cannot load.
+function Invoke-AppCell($Account,[string]$Descriptor,[string]$Log,[string]$Spec,[string]$Grep) {
   $ready=Invoke-PrivateSsh $Account.name 'git init -q orca-convert-repo && git -C orca-convert-repo -c user.name=orca -c user.email=orca@example.invalid commit -q --allow-empty -m init && echo ORCA_REPO_READY'
   if($ready -notmatch 'ORCA_REPO_READY'){throw 'Could not create the convert cell repository as the account'}
   # Out of the app's default lookup, so the relay phase runs without a template.
   $template=Join-Path $env:RUNNER_TEMP 'orcad-convert-template'
-  Copy-Item -LiteralPath 'out\orcad-template' -Destination $template -Recurse -Force
+  # Why guarded: Copy-Item into an existing folder nests the copy instead of replacing it.
+  if(-not (Test-Path -LiteralPath $template)){Copy-Item -LiteralPath 'out\orcad-template' -Destination $template -Recurse -Force}
   Rename-Item -LiteralPath 'out\orcad-template' -NewName 'orcad-template.convert-hidden'
   try {
-    & node config/scripts/ensure-native-runtime.mjs --runtime=electron 2>&1 | Tee-Object -FilePath $Log | Out-Host
-    if($global:LASTEXITCODE -ne 0){Write-Host 'Switching native modules to Electron failed';return $global:LASTEXITCODE}
-    & pnpm exec electron-vite build --mode e2e 2>&1 | Tee-Object -FilePath $Log -Append | Out-Host
-    if($global:LASTEXITCODE -ne 0){Write-Host 'The e2e app build failed';return $global:LASTEXITCODE}
+    if(-not $script:electronBuilt){
+      & node config/scripts/ensure-native-runtime.mjs --runtime=electron 2>&1 | Tee-Object -FilePath $Log | Out-Host
+      if($global:LASTEXITCODE -ne 0){Write-Host 'Switching native modules to Electron failed';return $global:LASTEXITCODE}
+      & pnpm exec electron-vite build --mode e2e 2>&1 | Tee-Object -FilePath $Log -Append | Out-Host
+      if($global:LASTEXITCODE -ne 0){Write-Host 'The e2e app build failed';return $global:LASTEXITCODE}
+      $script:electronBuilt=$true
+    }
     $env:ORCA_E2E_ORCAD_CONVERT_HOST=$Descriptor;$env:ORCA_E2E_ORCAD_CONVERT_TEMPLATE=$template;$env:SKIP_BUILD='1'
-    & pnpm exec playwright test --config tests/playwright.config.ts tests/e2e/ssh-orcad-auto-convert.spec.ts --project=electron-headless --workers=1 2>&1 | Tee-Object -FilePath $Log -Append | Out-Host
+    $grepArgs=if($Grep){@('--grep',$Grep)}else{@()}
+    & pnpm exec playwright test --config tests/playwright.config.ts $Spec @grepArgs --project=electron-headless --workers=1 2>&1 | Tee-Object -FilePath $Log -Append | Out-Host
     # Functions return uncaptured output, so only the exit code may reach the caller.
     return $global:LASTEXITCODE
   } finally {
+    # Screenshots, traces and error context: Playwright clears test-results on the next cell's run.
+    if(Test-Path -LiteralPath 'test-results'){Copy-Item -LiteralPath 'test-results' -Destination ($Log -replace '\.log$','.test-results') -Recurse -Force}
     Remove-Item Env:ORCA_E2E_ORCAD_CONVERT_HOST,Env:ORCA_E2E_ORCAD_CONVERT_TEMPLATE,Env:SKIP_BUILD -ErrorAction SilentlyContinue
     Rename-Item -LiteralPath 'out\orcad-template.convert-hidden' -NewName 'orcad-template'
   }
@@ -103,8 +114,8 @@ try {
     @{cell=$cell;target=$Target;host='127.0.0.1';port=[int]$Context.port;username=$account.name;identityFile=$Context.identityFile;home=$account.home;forbiddenToolLog=$Context.forbiddenToolLog;receipt=(Join-Path $ReceiptRoot "$cell.json")} | ConvertTo-Json | Set-Content -LiteralPath $descriptor -Encoding utf8NoBOM
     $env:ORCA_RUN_SSH_WINDOWS_HOST='1';$env:ORCA_SSH_WINDOWS_HOST_CELL=$descriptor
     Write-Host "Windows host cell $cell ($Target, DefaultShell $shell, account $($account.name))"
-    if($cell -eq 'orcad-convert'){
-      $code=Invoke-ConvertCell $account $descriptor (Join-Path $ReceiptRoot "$cell.log")
+    if($appCells.ContainsKey($cell)){
+      $code=Invoke-AppCell $account $descriptor (Join-Path $ReceiptRoot "$cell.log") $appCells[$cell][0] $appCells[$cell][1]
     } else {
       # orcad cells deploy managed orcad instead of the relay; same account and descriptor shape.
       $lane=if($cell.StartsWith('orcad-')){'src/main/ssh/orcad-windows-host-lane.test.ts'}else{'src/main/ssh/ssh-relay-windows-host-lane.test.ts'}
@@ -113,7 +124,8 @@ try {
       $code=$global:LASTEXITCODE
     }
     # The relay's own log is the only record of why it closed a client.
-    foreach($log in @(Get-ChildItem -Path (Join-Path $account.home '.orca-remote\relay-*\relay*.log'),(Join-Path $account.home '.orca-remote\orcad-*\orcad.log') -File -ErrorAction SilentlyContinue)){Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $ReceiptRoot "$cell.$($log.Directory.Name).$($log.Name)")}
+    # orcad.log holds only the last launch on Windows; orcad.log.1 is the one before a restart.
+    foreach($log in @(Get-ChildItem -Path (Join-Path $account.home '.orca-remote\relay-*\relay*.log'),(Join-Path $account.home '.orca-remote\orcad-*\orcad.log'),(Join-Path $account.home '.orca-remote\orcad-*\orcad.log.1') -File -ErrorAction SilentlyContinue)){Copy-Item -LiteralPath $log.FullName -Destination (Join-Path $ReceiptRoot "$cell.$($log.Directory.Name).$($log.Name)")}
     if(Test-Path -LiteralPath $Context.forbiddenToolLog){Copy-Item -LiteralPath $Context.forbiddenToolLog -Destination (Join-Path $ReceiptRoot "$cell.forbidden-tool-calls.log")}
     $summary.Add(@{cell=$cell;shell=$shell;account=$account.name;exitCode=$code})
     if($code -ne 0){$failed.Add($cell)}
