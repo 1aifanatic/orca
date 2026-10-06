@@ -288,6 +288,8 @@ function structuredSessionNeverStarted(record: AgentSessionRecord): boolean {
   return (
     lease.claimStatus === 'released' &&
     lease.runtimeFence === AGENT_SESSION_FOUNDING_FENCE &&
+    // A fence floor marks a copy restored from backup, which may hide a reservation it lost.
+    lease.minimumNextFence === undefined &&
     lease.ownerProcess === null &&
     lease.reservedSpawnToken === null &&
     lease.handoffStage === null &&

@@ -324,6 +324,14 @@ function rpcRuntime(db: Db): {
   }
 }
 
+/** The coordinator releases a worker whose Dispatch succeeded. */
+function releaseSucceeded(dispatchId: string): Promise<unknown> {
+  db.db
+    .prepare("UPDATE worker_dispatches SET state = 'succeeded' WHERE dispatch_id = ?")
+    .run(dispatchId)
+  return rpcRuntime(db).call('orchestration.workerRelease', { dispatch: dispatchId })
+}
+
 function readJournal(identity: ReturnType<typeof registerWorker>, cursor?: string) {
   return readStructuredWorkerJournal({
     identity,
@@ -553,37 +561,36 @@ describe('a successor no agent ever ran', () => {
     expect(observeStructuredWorker(identity).status).toBe('exited')
   })
 
-  it('lets a stopped worker be released', async () => {
-    const identity = registerWorker()
-    const { runtime, call } = rpcRuntime(db)
-    const dispatchId = startWorkerDispatch(db, identity, runtime.getRuntimeId())
-    await expect(call('orchestration.workerStop', { dispatch: dispatchId })).resolves.toMatchObject(
-      { state: 'stopped' }
-    )
-    structuredWorkerIdentities.clear()
-    await expect(
-      call('orchestration.workerRelease', { dispatch: dispatchId })
-    ).resolves.toMatchObject({ state: 'released' })
-  })
-
-  it('lets a stopped worker be released after its output was read, which reopens the chat', async () => {
-    const identity = registerWorker()
-    const { runtime, call } = rpcRuntime(db)
-    const dispatchId = startWorkerDispatch(db, identity, runtime.getRuntimeId())
-    await expect(call('orchestration.workerStop', { dispatch: dispatchId })).resolves.toMatchObject(
-      { state: 'stopped' }
-    )
-    await readJournal(identity)
-    expect(open.has(SUCCESSOR)).toBe(true)
-    structuredWorkerIdentities.clear()
-    await expect(
-      call('orchestration.workerRelease', { dispatch: dispatchId })
-    ).resolves.toMatchObject({ state: 'released' })
-  })
+  it.each([false, true])(
+    'lets a stopped worker be released (output read in between, reopening the chat: %s)',
+    async (readBetween) => {
+      const identity = registerWorker()
+      const { runtime, call } = rpcRuntime(db)
+      const dispatchId = startWorkerDispatch(db, identity, runtime.getRuntimeId())
+      await expect(
+        call('orchestration.workerStop', { dispatch: dispatchId })
+      ).resolves.toMatchObject({ state: 'stopped' })
+      if (readBetween) {
+        await readJournal(identity)
+        expect(open.has(SUCCESSOR)).toBe(true)
+      }
+      structuredWorkerIdentities.clear()
+      await expect(
+        call('orchestration.workerRelease', { dispatch: dispatchId })
+      ).resolves.toMatchObject({ state: 'released' })
+    }
+  )
 
   it('stays unverifiable when the tab index cannot be read', () => {
     visibleTabs = []
     tabIndexPresent = false
+    expect(observeStructuredSession(SUCCESSOR).status).toBe('unverifiable')
+  })
+
+  it('stays unverifiable when restored from a backup that may have lost a reservation', () => {
+    visibleTabs = []
+    const founded = foundedRecord(SUCCESSOR)
+    records.set(SUCCESSOR, { ...founded, lease: { ...founded.lease, minimumNextFence: 3 } })
     expect(observeStructuredSession(SUCCESSOR).status).toBe('unverifiable')
   })
 })
@@ -702,30 +709,28 @@ describe('worker-stop on a structured worker that reads exited without any /clea
   })
 })
 
-describe('a retired lineage whose newest session cannot be read', () => {
+describe.each([
+  { clears: 1, warning: /latest session .* could not be preserved; earlier sessions were/ },
+  { clears: 2, warning: /latest 2 sessions .* could not be preserved; earlier sessions were/ }
+])('a retired lineage of $clears clear(s) whose later sessions cannot be read', (lineage) => {
   beforeEach(() => {
-    installClearedWorker('at-rest')
-    // The user closed the cleared chat, and its journal is gone; the pre-clear one is not.
-    visibleTabs = []
-    unreadable.add(SUCCESSOR)
+    // The user closed the cleared chat, and every journal after the first is gone.
+    const later = lineage.clears === 1 ? [SUCCESSOR] : [SUCCESSOR, SECOND]
+    const newest = later.at(-1) ?? SUCCESSOR
+    const chain = lineage.clears === 1 ? [] : [clearedRecord(SUCCESSOR, SECOND)]
+    installSessions([clearedRecord(MINTED, SUCCESSOR), ...chain, foundedRecord(newest)], [])
+    later.forEach((sessionId) => unreadable.add(sessionId))
   })
 
-  it('archives the readable earlier sessions and says the latest could not be read', async () => {
+  it('archives the readable earliest session and says how many later ones were lost', async () => {
     const archive = await captureStructuredWorkerArchive(registerWorker(), 'claude')
     expect(texts(archive.messages)).toContain('PRE-CLEAR')
-    expect(archive.warnings.join(' ')).toMatch(/latest session .* could not be preserved/)
+    expect(archive.warnings.join(' ')).toMatch(lineage.warning)
   })
 
   it('commits that archive when the worker is released', async () => {
-    const identity = registerWorker()
-    const dispatchId = startWorkerDispatch(db, identity)
-    db.db
-      .prepare("UPDATE worker_dispatches SET state = 'succeeded' WHERE dispatch_id = ?")
-      .run(dispatchId)
-    const { call } = rpcRuntime(db)
-    await expect(
-      call('orchestration.workerRelease', { dispatch: dispatchId })
-    ).resolves.toMatchObject({ state: 'released' })
+    const dispatchId = startWorkerDispatch(db, registerWorker())
+    await expect(releaseSucceeded(dispatchId)).resolves.toMatchObject({ state: 'released' })
     expect(db.getWorkerTerminalArchive(dispatchId)?.content).toContain('PRE-CLEAR')
   })
 })
@@ -858,15 +863,11 @@ describe('a running session that cannot be verified is refused, never declared e
 
   it('and a release of it ends unknown, not requested forever', async () => {
     installMissingSuccessor()
-    const identity = registerWorker()
-    const dispatchId = startWorkerDispatch(db, identity)
-    db.db
-      .prepare("UPDATE worker_dispatches SET state = 'succeeded' WHERE dispatch_id = ?")
-      .run(dispatchId)
-    const { call } = rpcRuntime(db)
-    await expect(
-      call('orchestration.workerRelease', { dispatch: dispatchId })
-    ).resolves.toMatchObject({ state: 'release_unknown', processAction: 'none' })
+    const dispatchId = startWorkerDispatch(db, registerWorker())
+    await expect(releaseSucceeded(dispatchId)).resolves.toMatchObject({
+      state: 'release_unknown',
+      processAction: 'none'
+    })
     expect(db.getWorkerTerminalResourceByOwner(dispatchId)?.release_state).toBe('unknown')
   })
 

@@ -71,3 +71,20 @@ export async function readStructuredLineageJournalPage(
   }
   return { items, sessionIds, hasOlder: false }
 }
+
+/**
+ * For a lineage whose running session cannot be read and is retired: the newest page of the latest
+ * sessions that can still be read, walking back past every unreadable trailing one. `unreadable`
+ * counts those skipped (all of them when `page` is null).
+ */
+export async function readRetiredLineageJournalPage(
+  lineage: readonly string[]
+): Promise<{ page: StructuredLineageJournalPage | null; unreadable: number }> {
+  for (let unreadable = 1; unreadable < lineage.length; unreadable += 1) {
+    const page = await readStructuredLineageJournalPage(lineage.slice(0, -unreadable))
+    if (page) {
+      return { page, unreadable }
+    }
+  }
+  return { page: null, unreadable: lineage.length }
+}
