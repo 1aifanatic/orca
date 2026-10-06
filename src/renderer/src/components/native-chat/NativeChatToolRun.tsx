@@ -1,5 +1,6 @@
 import type { CommentMarkdownLinkClickHandler } from '@/components/sidebar/CommentMarkdown'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNativeChatDisclosure } from './native-chat-disclosure-store'
 import { NativeChatToolLine } from './NativeChatToolLine'
 import { Check, ChevronRight } from 'lucide-react'
@@ -95,6 +96,8 @@ export function NativeChatToolRun({
   disclosureId?: string
   onLinkClick?: CommentMarkdownLinkClickHandler
 }): React.JSX.Element | null {
+  // This row owns the language subscription for its tool, diff, and task labels.
+  useTranslation()
   // A reader's deviation belongs to the controlling disclosure state, so returning
   // to that state restores the same choice without writing to the store mid-render.
   const runKey =
