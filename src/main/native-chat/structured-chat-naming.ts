@@ -1,6 +1,6 @@
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
-import { deriveGeneratedTabTitle } from '../../shared/agent-tab-title'
+import { deriveConversationNamePlaceholder } from '../../shared/conversation-name-generation'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { STRUCTURED_CHAT_NAME_PROMPT_LIMIT } from '../../shared/structured-agent-session-first-prompt'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
@@ -58,7 +58,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
       prompt = summary.latestPrompt
     }
     const firstPrompt = prompt.slice(0, STRUCTURED_CHAT_NAME_PROMPT_LIMIT).trim()
-    const placeholder = deriveGeneratedTabTitle(firstPrompt)
+    const placeholder = deriveConversationNamePlaceholder(firstPrompt)
     if (!placeholder) {
       return
     }
@@ -78,7 +78,7 @@ export function createStructuredChatNamingHandler(deps: StructuredChatNamingDeps
     const named = await store.compareAndSetConversationName(
       summary.sessionId,
       generated,
-      placeholder
+      seeded.conversationName ?? null
     )
     if (named) {
       refresh(named)

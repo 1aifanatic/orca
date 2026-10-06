@@ -1,5 +1,7 @@
 import { normalizeAgentSessionConversationName } from './agent-session-conversation-name'
+import { deriveGeneratedTabTitle, GENERATED_TAB_TITLE_MAX_LENGTH } from './agent-tab-title'
 import { cleanGeneratedCommitMessage } from './commit-message-agent-output'
+import { hasStructuredChatPromptText } from './structured-agent-session-first-prompt'
 import { sliceAtCodeUnitLimit } from './surrogate-safe-text-slice'
 
 export type ConversationNameContext = { firstPrompt: string }
@@ -9,6 +11,19 @@ const MAX_GENERATED_NAME_LENGTH = 48
 
 export function clampConversationNameFirstPrompt(firstPrompt: string): string {
   return sliceAtCodeUnitLimit(firstPrompt.trim(), MAX_FIRST_PROMPT_LENGTH)
+}
+
+export function deriveConversationNamePlaceholder(firstPrompt: string): string | null {
+  const prompt = clampConversationNameFirstPrompt(firstPrompt)
+  if (!hasStructuredChatPromptText(prompt)) {
+    return null
+  }
+  const title = deriveGeneratedTabTitle(prompt)
+  if (title) {
+    return title
+  }
+  const normalized = normalizeAgentSessionConversationName(prompt)
+  return normalized ? sliceAtCodeUnitLimit(normalized, GENERATED_TAB_TITLE_MAX_LENGTH).trim() : null
 }
 
 export function buildConversationNamePrompt(

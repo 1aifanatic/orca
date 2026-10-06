@@ -4,6 +4,10 @@ import { isStructuredAgentSessionCommandEntry } from './structured-agent-session
 
 export const STRUCTURED_CHAT_NAME_PROMPT_LIMIT = 4000
 
+export function hasStructuredChatPromptText(prompt: string): boolean {
+  return /[\p{L}\p{N}]/u.test(prompt)
+}
+
 export function firstStructuredAgentSessionPrompt(
   items: readonly AgentJournalRenderItem[]
 ): string {
@@ -29,7 +33,7 @@ export function firstStructuredAgentSessionPrompt(
         }
       }
     }
-    if (prompt.trim()) {
+    if (hasStructuredChatPromptText(prompt)) {
       return prompt.trim()
     }
   }

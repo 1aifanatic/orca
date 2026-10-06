@@ -63,6 +63,18 @@ describe('first structured chat prompt', () => {
     expect(result.endsWith('\ny')).toBe(true)
   })
 
+  it('skips punctuation-only entries in favor of the first text request', () => {
+    expect(
+      firstStructuredAgentSessionPrompt([message('?!'), message('修复登录'), message('Later')])
+    ).toBe('修复登录')
+    expect(firstStructuredAgentSessionPrompt([message('?!')])).toBe('')
+  })
+
+  it('retains a URL-only first request', () => {
+    const url = 'https://example.test/issues/123'
+    expect(firstStructuredAgentSessionPrompt([message(url), message('Later')])).toBe(url)
+  })
+
   it('returns empty when no user prose exists', () => {
     expect(firstStructuredAgentSessionPrompt([])).toBe('')
     expect(firstStructuredAgentSessionPrompt([message('  ')])).toBe('')

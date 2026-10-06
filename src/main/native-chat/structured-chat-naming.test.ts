@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import type { AgentSessionStatusSummary } from '../../shared/agent-session-wire'
+import type { AgentJournalRenderItem } from '../../shared/agent-session-journal-types'
+import { firstStructuredAgentSessionPrompt } from '../../shared/structured-agent-session-first-prompt'
 import { setAgentSessionRecordConversationName } from '../runtime/agent-session-record-conversation-name'
 import {
   createStructuredChatNamingHandler,
@@ -21,6 +23,16 @@ function deferred<T>() {
 async function settle() {
   for (let index = 0; index < 12; index += 1) {
     await Promise.resolve()
+  }
+}
+
+function journalMessage(text: string): AgentJournalRenderItem {
+  return {
+    itemId: text,
+    sequence: 1,
+    revision: 1,
+    observedAt: 1,
+    body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text }] }
   }
 }
 
@@ -78,6 +90,20 @@ describe.each(['claude', 'codex'] as const)('structured %s chat naming', (provid
     await settle()
     expect(state.read()?.conversationName).toBe('Repair the login flow')
     expect(state.deps.onNamed).toHaveBeenCalledTimes(1)
+    generation.resolve('auth/login')
+    await settle()
+    expect(state.read()?.conversationName).toBe('auth/login')
+    expect(state.deps.onNamed).toHaveBeenCalledTimes(2)
+  })
+
+  it('replaces the committed title when storage normalizes its Unicode boundary', async () => {
+    const state = rig(provider)
+    const generation = deferred<string | null>()
+    state.deps.readFirstPrompt = async () => `A${'𠮷'.repeat(20)}`
+    state.deps.generate = vi.fn(() => generation.promise)
+    state.handle(state.summary, { replay: false })
+    await settle()
+    expect(state.read()?.conversationName).toBe(`A${'𠮷'.repeat(19)}`)
     generation.resolve('auth/login')
     await settle()
     expect(state.read()?.conversationName).toBe('auth/login')
@@ -222,6 +248,56 @@ describe.each(['claude', 'codex'] as const)('structured %s chat naming', (provid
     await settle()
     expect(state.read()?.conversationName).toBe('auth/login')
   })
+
+  it('names a later prose message after a punctuation-only journal entry', async () => {
+    const state = rig(provider)
+    const items = [journalMessage('?!')]
+    state.deps.readFirstPrompt = async () => firstStructuredAgentSessionPrompt(items)
+    state.handle(state.summary, { replay: false })
+    await settle()
+    expect(state.deps.generate).not.toHaveBeenCalled()
+    items.push(journalMessage('Repair the login flow'))
+    state.handle(state.summary, { replay: false })
+    await settle()
+    expect(state.deps.generate).toHaveBeenCalledWith(expect.anything(), 'Repair the login flow')
+    expect(state.read()?.conversationName).toBe('auth/login')
+  })
+
+  it('seeds and generates from a URL-only first message', async () => {
+    const state = rig(provider)
+    const prompt = 'https://example.test/issues/123'
+    const generation = deferred<string | null>()
+    state.deps.readFirstPrompt = async () =>
+      firstStructuredAgentSessionPrompt([journalMessage(prompt)])
+    state.deps.generate = vi.fn(() => generation.promise)
+    state.handle(state.summary, { replay: false })
+    await settle()
+    expect(state.read()?.conversationName).toBe(prompt)
+    expect(state.deps.generate).toHaveBeenCalledWith(expect.anything(), prompt)
+    generation.resolve('auth/login')
+    await settle()
+    expect(state.read()?.conversationName).toBe('auth/login')
+  })
+
+  it.each(['disabled', 'failed'] as const)(
+    'settles a %s URL-only naming attempt',
+    async (outcome) => {
+      const state = rig(provider)
+      const prompt = 'https://example.test/issues/123'
+      state.deps.readFirstPrompt = async () =>
+        firstStructuredAgentSessionPrompt([journalMessage(prompt)])
+      state.deps.getSettings = () => ({ nativeChatAutoName: outcome !== 'disabled' })
+      state.deps.generate = vi.fn(async () => {
+        throw new Error('Generation failed')
+      })
+      state.handle(state.summary, { replay: false })
+      await settle()
+      state.handle(state.summary, { replay: false })
+      await settle()
+      expect(state.read()?.conversationName).toBe(prompt)
+      expect(state.deps.generate).toHaveBeenCalledTimes(outcome === 'disabled' ? 0 : 1)
+    }
+  )
 
   it('falls back to the published prompt if the journal cannot be read', async () => {
     const state = rig(provider)

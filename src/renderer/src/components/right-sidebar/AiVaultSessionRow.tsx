@@ -29,6 +29,7 @@ import type { AiVaultSearchHit } from '../../../../shared/ai-vault-search-types'
 import { AiVaultSearchEvidence } from './AiVaultSearchEvidence'
 import { useAppStore } from '@/store'
 import { structuredChatTabBySessionId } from '@/lib/structured-chat-tab-index'
+import { structuredChatRowName } from '../../../../shared/structured-chat-row-name'
 
 export function VaultSessionRow({
   session,
@@ -95,16 +96,18 @@ export function VaultSessionRow({
     ? translate('aiVault.continueInCli', 'Continue in CLI')
     : defaultResumeLabel
   const updatedAt = session.updatedAt ?? session.modifiedAt
-  const customLabel = useAppStore((state) => {
+  const liveTitle = useAppStore((state) => {
     const owner = session.structuredSession
     return owner
-      ? structuredChatTabBySessionId(
-          state.unifiedTabsByWorktree[owner.workspaceId],
-          owner.sessionId
-        )?.customLabel
+      ? structuredChatRowName(
+          structuredChatTabBySessionId(
+            state.unifiedTabsByWorktree[owner.workspaceId],
+            owner.sessionId
+          )
+        )
       : null
   })
-  const title = customLabel?.trim() || session.title
+  const title = liveTitle ?? session.title
   const detailsId = getSessionDetailsId(session.id)
   const latestTurn = latestSessionConversationTurn(session)
   // Computed once so the dropdown menu and the context menu never disagree.

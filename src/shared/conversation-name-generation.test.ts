@@ -2,10 +2,20 @@ import { describe, expect, it } from 'vitest'
 import {
   buildConversationNamePrompt,
   clampConversationNameFirstPrompt,
+  deriveConversationNamePlaceholder,
   sanitizeGeneratedConversationName
 } from './conversation-name-generation'
 
 describe('conversation name generation', () => {
+  it('uses a bounded Unicode-safe prompt excerpt when a title cannot be derived', () => {
+    const url = `https://example.test/${'𠮷'.repeat(20)}`
+    expect(deriveConversationNamePlaceholder(url)).toBe(url.slice(0, 39))
+    expect(deriveConversationNamePlaceholder('?!')).toBeNull()
+    expect(deriveConversationNamePlaceholder('Please repair the login flow')).toBe(
+      'Repair the login flow'
+    )
+  })
+
   it('bounds the first prompt in both the built-in prompt and template variable', () => {
     const firstPrompt = `Start ${'x'.repeat(5000)}`
     const clamped = clampConversationNameFirstPrompt(firstPrompt)
