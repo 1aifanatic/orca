@@ -108,13 +108,13 @@ describe('useAgentRowConversationName', () => {
   })
 
   it('reads the host-published name ahead of the tab label, under a manual rename', () => {
-    const tab = {
+    const tab: { customLabel: string | null } & Record<string, unknown> = {
       id: 'tab-1',
       entityId: 'native-session',
       contentType: 'agent-session',
       agentSessionAgent: 'claude',
       label: 'Claude Chat',
-      customLabel: null as string | null
+      customLabel: null
     }
     storeState.current = {
       settings: {},
