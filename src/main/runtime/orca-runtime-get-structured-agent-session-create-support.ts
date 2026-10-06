@@ -111,17 +111,12 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
         })
       )
     }
-    return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) => {
-      await applyStructuredCodexWorkspaceTrust({
-        workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
-        launchEnv,
-        settings: this.requireStore().getSettings()
-      })
-      return resolveStructuredCodexAccountHomePath({
+    return this.resolveStructuredAgentSessionIntent(input, async ({ launchEnv }) =>
+      resolveStructuredCodexAccountHomePath({
         launchEnv,
         resolveLaunchHome: this.prepareCodexStructuredLaunchFn
       })
-    })
+    )
   }
 
   /**
@@ -210,6 +205,15 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
           selectedAccountHomePath
         })
       : null
+    const accountHomePath = adoption ? adoption.accountHomePath : selectedAccountHomePath
+    if (input.agent === 'codex') {
+      // Why after adoption: trust goes into the home this chat's Codex runs on, which a resume repins.
+      await applyStructuredCodexWorkspaceTrust({
+        workspacePath: (await this.resolveRuntimeFileTarget(input.worktree)).worktree.path,
+        accountHomePath,
+        settings
+      })
+    }
     return {
       envelope: {
         sessionId: input.envelope.sessionId,
@@ -220,10 +224,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       location,
       provider: input.agent,
       agent: input.agent,
-      accountHome: agentSessionAccountHome(
-        input.agent,
-        adoption ? adoption.accountHomePath : selectedAccountHomePath
-      ),
+      accountHome: agentSessionAccountHome(input.agent, accountHomePath),
       ...(options ? { options } : {}),
       ...(input.resumeFrom && adoption
         ? {

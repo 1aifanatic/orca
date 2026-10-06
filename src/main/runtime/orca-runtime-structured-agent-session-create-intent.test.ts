@@ -2,11 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const applyAgentWorkspaceTrust = vi.hoisted(() => vi.fn(async () => ({})))
 vi.mock('../agent-workspace-trust', () => ({ applyAgentWorkspaceTrust }))
+const adoption = vi.hoisted(() => ({
+  committedReplay: vi.fn<() => unknown>(() => null),
+  forCreate: vi.fn<() => Promise<unknown>>(async () => null)
+}))
+vi.mock('./structured-agent-session-create-adoption', () => ({
+  resolveCommittedStructuredAgentSessionAdoptionIntent: adoption.committedReplay,
+  resolveStructuredAgentSessionAdoptionForCreate: adoption.forCreate
+}))
 
 import { OrcaRuntimeService } from './orca-runtime'
 
 beforeEach(() => {
   applyAgentWorkspaceTrust.mockClear()
+  adoption.committedReplay.mockReset().mockReturnValue(null)
+  adoption.forCreate.mockReset().mockResolvedValue(null)
 })
 
 function createCodexIntentRuntime(settings: Record<string, unknown>) {
@@ -29,30 +39,59 @@ function createCodexIntentRuntime(settings: Record<string, unknown>) {
     })),
     resolveRuntimeFileTarget: vi.fn(async () => ({ worktree: { path: '/repos/workspace-1' } }))
   })
-  const createIntent = () =>
+  const createIntent = (resumeFrom?: { providerSessionId: string }) =>
     runtime.resolveStructuredAgentSessionCreateIntent({
       envelope: { sessionId: 'session-1', clientOperationId: 'operation-1' },
       worktree: 'id:workspace-1',
-      agent: 'codex'
+      agent: 'codex',
+      ...(resumeFrom ? { resumeFrom, callerKey: 'caller-1' } : {})
     })
   return { prepareCodexStructuredLaunch, createIntent }
 }
 
 describe('structured Codex folder trust', () => {
-  it('pre-trusts the chat folder before launch preparation, as a Codex terminal launch does', async () => {
+  it('pre-trusts the chat folder in the account home launch preparation picks', async () => {
     const { prepareCodexStructuredLaunch, createIntent } = createCodexIntentRuntime({})
 
     await createIntent()
 
     expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith('codex', '/repos/workspace-1', {
-      env: expect.any(Object),
+      env: undefined,
       claudeAuth: null,
       wslDistro: null,
-      connectionId: null
+      connectionId: null,
+      codexHome: '/accounts/selected/home'
     })
-    expect(applyAgentWorkspaceTrust.mock.invocationCallOrder[0]).toBeLessThan(
-      prepareCodexStructuredLaunch.mock.invocationCallOrder[0]
+    expect(prepareCodexStructuredLaunch.mock.invocationCallOrder[0]).toBeLessThan(
+      applyAgentWorkspaceTrust.mock.invocationCallOrder[0]
     )
+  })
+
+  it('pre-trusts a resumed chat in the home its conversation lives in', async () => {
+    adoption.forCreate.mockResolvedValue({
+      accountHomePath: '/accounts/original/home',
+      transcriptPath: null
+    })
+    const { createIntent } = createCodexIntentRuntime({})
+
+    const intent = await createIntent({ providerSessionId: 'thread-1' })
+
+    expect(intent.accountHome).toEqual({ variable: 'CODEX_HOME', path: '/accounts/original/home' })
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledTimes(1)
+    expect(applyAgentWorkspaceTrust).toHaveBeenCalledWith(
+      'codex',
+      '/repos/workspace-1',
+      expect.objectContaining({ codexHome: '/accounts/original/home' })
+    )
+  })
+
+  it('writes nothing for a replay of a create that already committed', async () => {
+    const replay = { replayed: true }
+    adoption.committedReplay.mockReturnValue(replay)
+    const { createIntent } = createCodexIntentRuntime({})
+
+    await expect(createIntent({ providerSessionId: 'thread-1' })).resolves.toBe(replay)
+    expect(applyAgentWorkspaceTrust).not.toHaveBeenCalled()
   })
 
   it('writes nothing with the setting off, and still prepares the launch', async () => {

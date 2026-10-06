@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -192,7 +192,8 @@ async function launch(workspacePath: string): Promise<string | null> {
     env: undefined,
     claudeAuth: null,
     wslDistro: null,
-    connectionId: null
+    connectionId: null,
+    codexHome: home
   })
   return home
 }
@@ -285,11 +286,20 @@ describe('a Codex launch while the real-home approval hangs', () => {
 
       const managedHooks = readFileSync(join(getOrcaManagedCodexHomePath(), 'hooks.json'), 'utf-8')
       expect(managedHooks).toContain('codex-hook')
-      const systemConfig = readFileSync(join(homes.tmpHome, '.codex', 'config.toml'), 'utf-8')
+      // Why: trust goes where the launched Codex reads it, not into the ~/.codex it does not run on.
+      const managedConfig = readFileSync(
+        join(getOrcaManagedCodexHomePath(), 'config.toml'),
+        'utf-8'
+      )
+      const systemConfigPath = join(homes.tmpHome, '.codex', 'config.toml')
+      const systemConfig = existsSync(systemConfigPath)
+        ? readFileSync(systemConfigPath, 'utf-8')
+        : ''
       for (const workspace of workspaces) {
-        expect(systemConfig).toContain(workspace)
+        expect(managedConfig).toContain(workspace)
+        expect(systemConfig).not.toContain(workspace)
       }
-      expect(systemConfig.match(/trust_level = "trusted"/g)).toHaveLength(2)
+      expect(managedConfig.match(/trust_level = "trusted"/g)).toHaveLength(2)
     } finally {
       release()
       await realHomeInternals.settledVerdictForTesting()
