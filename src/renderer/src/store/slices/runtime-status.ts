@@ -254,7 +254,7 @@ export const createRuntimeStatusSlice: StateCreator<AppState, [], [], RuntimeSta
       }
     })
     if (runtimeRestarted || contactRegained) {
-      void ensureBrowserClientHostOnRuntimeContact(get(), environmentId, runtimeRestarted)
+      void ensureBrowserClientHostOnRuntimeContact(get(), environmentId)
     }
     if (options?.suppressDisconnectToast) {
       dismissRuntimeDisconnectedToast(environmentId)
