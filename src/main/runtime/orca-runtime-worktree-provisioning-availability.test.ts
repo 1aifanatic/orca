@@ -15,13 +15,17 @@ import { createMobileCreateTestNotifier } from './orca-runtime-test-scenario-bui
 
 describe('host worktree creation while its renderer is unavailable', () => {
   it.each([
-    ['git', 'reload'],
-    ['git', 'crash'],
-    ['folder', 'reload'],
-    ['folder', 'crash']
+    ['git', 'reload', 'host'],
+    ['git', 'crash', 'host'],
+    ['folder', 'reload', 'host'],
+    ['folder', 'crash', 'host'],
+    ['git', 'reload', 'all'],
+    ['git', 'crash', 'all'],
+    ['folder', 'reload', 'all'],
+    ['folder', 'crash', 'all']
   ] as const)(
-    'provisions %s work after a renderer %s with its notifier retained',
-    async (kind, loss) => {
+    'provisions %s work after a renderer %s for %s navigation with its notifier retained',
+    async (kind, loss, navigation) => {
       const repo = { ...store.getRepo('repo-1')!, kind }
       const runtime = new OrcaRuntimeService({
         ...store,
@@ -72,7 +76,7 @@ describe('host worktree creation while its renderer is unavailable', () => {
         repoSelector: `id:${repo.id}`,
         name: 'renderer-unavailable',
         activate: true,
-        navigation: 'host',
+        navigation,
         setupDecision: 'run'
       })
       expect(createTerminal).toHaveBeenCalled()
