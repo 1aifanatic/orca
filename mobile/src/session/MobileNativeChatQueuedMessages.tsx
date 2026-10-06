@@ -228,6 +228,7 @@ function MobileQueuedCardText({ text }: { text: string }): React.JSX.Element {
   const measure = (
     <Text
       style={[styles.body, styles.measure]}
+      pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       onTextLayout={(event) => setClipped(event.nativeEvent.lines.length > 2)}
