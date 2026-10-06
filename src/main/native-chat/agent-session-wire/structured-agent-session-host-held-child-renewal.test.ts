@@ -11,6 +11,7 @@ import {
   openTestJournalHostDatabase
 } from '../agent-session-journal/journal-host-database-test-support'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import { claudeAndCodexDeclared } from './structured-agent-session-adapter-router-test-support'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import {
   HOST_TEST_NOW as NOW,
@@ -75,6 +76,7 @@ async function hostWithStartTimeLessChild(platform: NodeJS.Platform) {
     logger: recordingProductionStructuredAgentSessionLogger().logger,
     store,
     adapter,
+    agents: claudeAndCodexDeclared(),
     journalDatabase: openTestJournalHostDatabase(root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',

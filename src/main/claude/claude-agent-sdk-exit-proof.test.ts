@@ -10,6 +10,7 @@ import {
   proveClaudeChildExit,
   type ClaudeChildTreeReaper
 } from './claude-agent-sdk-exit-proof'
+import { managedChild } from './claude-child-exit-proof-fixture'
 import { GRACEFUL_EXIT_MS } from './claude-child-exit-proof-ladder'
 
 // The descendant models an MCP server: it either cooperates or, when it traps
@@ -98,11 +99,13 @@ async function proveExitWithRetries(
 }
 
 function spawnScript(script: string): ReturnType<typeof spawnProcess> {
-  return spawnProcess({
+  const child = spawnProcess({
     program: process.execPath,
     args: ['-e', script],
     stdio: ['pipe', 'pipe', 'pipe']
   })
+  managedChild(child)
+  return child
 }
 
 function firstStdoutLine(child: ReturnType<typeof spawnProcess>): Promise<string> {
@@ -111,28 +114,19 @@ function firstStdoutLine(child: ReturnType<typeof spawnProcess>): Promise<string
   })
 }
 
-function observeExit(child: EventEmitter): { exitPromise: Promise<void>; exited: () => boolean } {
-  let exited = false
-  const exitPromise = new Promise<void>((resolve) => {
-    child.once('exit', () => {
-      exited = true
-      resolve()
-    })
-  })
-  return { exitPromise, exited: () => exited }
-}
-
 /** `null` models a spawn that failed before a pid existed. */
 function mockChild(
   pid: number | null = 424242
 ): EventEmitter &
-  Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin'> & { kill: ReturnType<typeof vi.fn> } {
-  const child = new EventEmitter()
-  return Object.assign(child, {
+  Pick<SpawnedProcess, 'pid' | 'kill' | 'stdin' | 'stderr'> & { kill: ReturnType<typeof vi.fn> } {
+  const child = Object.assign(new EventEmitter(), {
     pid: pid ?? undefined,
     stdin: new PassThrough(),
+    stderr: new PassThrough(),
     kill: vi.fn(() => true)
-  }) as never
+  })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The proof reads only pid, events, kill, stdin and stderr from this fixture.
+  return child as never
 }
 
 /** A tree whose verdict is scripted per reap, recording when it was armed. */
@@ -182,7 +176,7 @@ describe('claude child exit proof', () => {
       await ageDescendantPastTheCaptureSecond()
 
       try {
-        const proven = await proveExitWithRetries({ child, ...observeExit(child) })
+        const proven = await proveExitWithRetries({ managed: managedChild(child) })
         // Evaluated AT the boundary, not by polling until a deferred sweep timer
         // wins: true releases the lease, so a descendant still running here is
         // exactly the orphan the proof exists to prevent. False would be the
@@ -219,7 +213,7 @@ describe('claude child exit proof', () => {
       await ageDescendantPastTheCaptureSecond()
 
       try {
-        const proven = await proveExitWithRetries({ child, ...observeExit(child) })
+        const proven = await proveExitWithRetries({ managed: managedChild(child) })
         expect({ proven, descendant: descendantState(descendantPid) }).toEqual({
           proven: true,
           descendant: 'exited'
@@ -245,7 +239,7 @@ describe('claude child exit proof', () => {
         descendantPid: number
       }
       try {
-        const proven = await proveExitWithRetries({ child, ...observeExit(child) })
+        const proven = await proveExitWithRetries({ managed: managedChild(child) })
         expect({ proven, descendant: descendantState(descendantPid) }).toEqual({
           proven: true,
           descendant: 'exited'
@@ -264,29 +258,27 @@ describe('claude child exit proof', () => {
   it('arms the snapshot before stdin closes and verifies it after a clean exit', async () => {
     const child = spawnScript(COOPERATIVE_CHILD)
     expect(await firstStdoutLine(child)).toBe('ready')
-    const exit = observeExit(child)
+    const managed = managedChild(child)
     const tree = mockTree(['exited'])
     let exitedWhenArmed: boolean | null = null
     tree.capture.mockImplementation(async () => {
-      exitedWhenArmed = exit.exited()
+      exitedWhenArmed = managed.rootVerdict === 'exited'
     })
 
-    // POSIX: on Windows a root that leaves on its own after stdin end is the close itself.
-    await expect(proveClaudeChildExit({ child, ...exit, tree, platform: 'linux' })).resolves.toBe(
-      true
-    )
+    // The fixture closes under POSIX rules; on Windows a self-exit after stdin end is the close.
+    await expect(proveClaudeChildExit({ managed, tree })).resolves.toBe(true)
     // The snapshot is the only proof that survives the root: taken while it lived,
     // verified once it left. A reap before the exit would have been the forced ladder.
     expect(exitedWhenArmed).toBe(false)
     expect(tree.reap).toHaveBeenCalledTimes(1)
-    expect(exit.exited()).toBe(true)
+    expect(managed.rootVerdict).toBe('exited')
   }, 20_000)
 
   it('proves a clean close of a childless root with one snapshot and no signal', async () => {
     const child = spawnScript(COOPERATIVE_CHILD)
     expect(await firstStdoutLine(child)).toBe('ready')
 
-    await expect(proveClaudeChildExit({ child, ...observeExit(child) })).resolves.toBe(true)
+    await expect(proveClaudeChildExit({ managed: managedChild(child) })).resolves.toBe(true)
   }, 20_000)
 
   it('reports an unprovable exit as false rather than assuming the child died', async () => {
@@ -294,9 +286,7 @@ describe('claude child exit proof', () => {
     try {
       const tree = mockTree(['exited'])
       const proof = proveClaudeChildExit({
-        child: mockChild(),
-        exitPromise: new Promise<void>(() => {}),
-        exited: () => false,
+        managed: managedChild(mockChild()),
         tree
       })
       await new Promise((resolve) => setImmediate(resolve))
@@ -315,18 +305,18 @@ describe('claude child exit proof', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       const child = mockChild()
-      const exit = observeExit(child)
+      const managed = managedChild(child)
       const tree = mockTree(['live'])
       tree.reap.mockImplementation(async () => {
         child.emit('exit', null, 'SIGKILL')
         return 'live'
       })
-      const proof = proveClaudeChildExit({ child, ...exit, tree })
+      const proof = proveClaudeChildExit({ managed, tree })
       await new Promise((resolve) => setImmediate(resolve))
       await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
 
       await expect(proof).resolves.toBe(false)
-      expect(exit.exited()).toBe(true)
+      expect(managed.rootVerdict).toBe('exited')
       // One verification per attempt: the retried close re-verifies, this one does not.
       expect(tree.reap).toHaveBeenCalledTimes(1)
       expect(vi.getTimerCount()).toBe(0)
@@ -337,39 +327,29 @@ describe('claude child exit proof', () => {
 
   it('re-verifies an unproven tree on a retried close instead of trusting the dead root', async () => {
     const child = mockChild()
+    const managed = managedChild(child)
+    child.emit('exit', 0, null)
     const tree = mockTree(['exited'])
 
-    await expect(
-      proveClaudeChildExit({
-        child,
-        exitPromise: Promise.resolve(),
-        exited: () => true,
-        tree,
-        platform: 'linux'
-      })
-    ).resolves.toBe(true)
+    await expect(proveClaudeChildExit({ managed, tree })).resolves.toBe(true)
     expect(tree.reap).toHaveBeenCalledTimes(1)
   })
 
   it('on Windows re-asks the tree on a retried close once a forced reap has run', async () => {
     const child = mockChild()
+    const managed = managedChild(child, 'win32')
+    child.emit('exit', 0, null)
     // The earlier close forced a reap whose taskkill failed; the root has since exited.
     const tree = mockTree(['unverifiable'], true)
 
-    await expect(
-      proveClaudeChildExit({
-        child,
-        exitPromise: Promise.resolve(),
-        exited: () => true,
-        tree,
-        platform: 'win32'
-      })
-    ).resolves.toBe(false)
+    await expect(proveClaudeChildExit({ managed, tree })).resolves.toBe(false)
     expect(tree.reap).toHaveBeenCalledTimes(1)
   })
 
   it('stays unproven for a root that left before any snapshot could be armed', async () => {
     const child = mockChild()
+    const managed = managedChild(child)
+    child.emit('exit', 0, null)
     const captureDescendants = vi.fn(async () => snapshotOf(4243))
     const terminateDescendants = vi.fn()
     const tree = createClaudeChildTreeReaper(child, {
@@ -379,15 +359,7 @@ describe('claude child exit proof', () => {
       terminateDescendants
     })
 
-    await expect(
-      proveClaudeChildExit({
-        child,
-        exitPromise: Promise.resolve(),
-        exited: () => true,
-        tree,
-        platform: 'darwin'
-      })
-    ).resolves.toBe(false)
+    await expect(proveClaudeChildExit({ managed, tree })).resolves.toBe(false)
     // A dead root's descendants have reparented: walking its pid now could only
     // sweep a stranger, so no walk is attempted and nothing is proven.
     expect(captureDescendants).not.toHaveBeenCalled()
