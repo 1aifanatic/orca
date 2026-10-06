@@ -119,7 +119,8 @@ export function isAgentSessionAccountHome(value: unknown): value is AgentSession
     !('locator' in value) ||
     typeof value.locator !== 'object' ||
     value.locator === null ||
-    Array.isArray(value.locator)
+    Array.isArray(value.locator) ||
+    !('kind' in value.locator)
   ) {
     return false
   }
@@ -142,7 +143,8 @@ export function isAgentSessionAccountHome(value: unknown): value is AgentSession
     !('databaseSelection' in locator) ||
     typeof locator.databaseSelection !== 'object' ||
     locator.databaseSelection === null ||
-    Array.isArray(locator.databaseSelection)
+    Array.isArray(locator.databaseSelection) ||
+    !('kind' in locator.databaseSelection)
   ) {
     return false
   }
