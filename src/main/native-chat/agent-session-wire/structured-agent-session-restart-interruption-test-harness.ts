@@ -40,6 +40,7 @@ import {
 } from './structured-agent-session-host-test-data'
 import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
 import { recordingProductionStructuredAgentSessionLogger } from './structured-agent-session-logger-test-support'
+import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 import { rotateStructuredAgentSessionHostInstanceForTests } from './structured-agent-session-queued-pause'
 
 /** What `interruptedRestart('queued-cards')` queues behind the running turn, in order. */
@@ -152,6 +153,7 @@ export async function interruptedRestart(
   const clock = { now: NOW + 1 }
   const log = recordingProductionStructuredAgentSessionLogger()
   const host = new StructuredAgentSessionHost({
+    agents: NO_STRUCTURED_AGENTS,
     logger: log.logger,
     store,
     adapter: {
