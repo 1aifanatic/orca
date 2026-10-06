@@ -4,11 +4,11 @@ import type {
   BrowserClientHostCommandResult,
   BrowserClientHostLeaseAuthority
 } from '../../shared/browser-client-host-protocol'
+import { isBrowserClientHostAuthorityReplaced } from './browser-client-host-authority-replacement'
 import { browserHostRefusal, isFinalBrowserHostRefusal } from './browser-host-admission-recovery'
 import {
   asCompositionError,
   closeBrowserClientHostComposition,
-  releaseBrowserClientGuests,
   scheduleParkedGuestDiscard,
   warnParkedCleanup
 } from './paired-runtime-browser-client-host-teardown'
@@ -34,9 +34,8 @@ export class PairedRuntimeBrowserClientHostComposition<
   private errorReported = false
   private inventoryRefreshPromise: Promise<void> | null = null
   private input: Start
-  private attached = false
-  /** The current lease's attach inventory: the only guests its runtime was told about. */
-  private publishedInventory: readonly BrowserClientHostedPageInventory[] | null = null
+  /** The current runtime can rekey kept guests; without that an outage fails as it always did. */
+  private reclaimable = false
   /** Set while the runtime is unreachable: pages and suspended routes are kept for its return. */
   private parked: { discardTimer: ReturnType<typeof setTimeout> | null } | null = null
 
@@ -66,14 +65,22 @@ export class PairedRuntimeBrowserClientHostComposition<
     return this.parked !== null
   }
 
-  replaceAuthority(input: Start): Promise<BrowserClientHostLeaseAuthority> {
-    this.input = input
-    return this.beginReattach(false)
+  get canPark(): boolean {
+    return this.reclaimable
   }
 
-  /** Swaps the lease for a fresh one with the same runtime, keeping every guest. */
+  replaceAuthority(input: Start): Promise<BrowserClientHostLeaseAuthority> {
+    this.input = input
+    return this.reattach()
+  }
+
+  /** Swaps the lease for a fresh one under the current input, keeping every guest. */
   reattach(): Promise<BrowserClientHostLeaseAuthority> {
-    return this.beginReattach(true)
+    if (this.closed) {
+      return Promise.reject(new Error('paired_runtime_browser_client_host_composition_closed'))
+    }
+    this.startPromise = this.swapLease()
+    return this.startPromise
   }
 
   /** One re-attach for a parked composition; a live one answers with its current lease. */
@@ -143,21 +150,21 @@ export class PairedRuntimeBrowserClientHostComposition<
 
   private createHost(input: Start, requiresReconciliation: boolean): ComposedClientHost {
     const generation = ++this.hostGeneration
-    this.publishedInventory = null
+    let publishedInventory: readonly BrowserClientHostedPageInventory[] | null = null
     return this.options.createHost(input, {
       handler: (event, signal) => this.handleCommand(generation, event, signal),
       getPageInventory: () => {
         if (this.hostGeneration !== generation) {
           return []
         }
-        this.publishedInventory = this.executor.snapshotPageInventory()
-        return this.publishedInventory
+        publishedInventory = this.executor.snapshotPageInventory()
+        return publishedInventory
       },
       onAuthority: (authority) => {
         if (this.hostGeneration === generation) {
           if (
             requiresReconciliation &&
-            this.publishedInventory?.length &&
+            publishedInventory?.length &&
             authority.pageReconciliationProtocolVersion !== 1
           ) {
             throw browserHostRefusal(
@@ -166,7 +173,7 @@ export class PairedRuntimeBrowserClientHostComposition<
             )
           }
           this.routeSets.activate(input, authority)
-          this.attached = true
+          this.reclaimable = authority.returningHostReclaimProtocolVersion === 1
         }
       },
       onTransportLost: (error) => {
@@ -192,15 +199,7 @@ export class PairedRuntimeBrowserClientHostComposition<
    * Swaps the lease for a fresh one under `input`, keeping the executor so its guests survive; the
    * attach inventory is what lets the runtime rekey them in place.
    */
-  private beginReattach(sameRuntime: boolean): Promise<BrowserClientHostLeaseAuthority> {
-    if (this.closed) {
-      return Promise.reject(new Error('paired_runtime_browser_client_host_composition_closed'))
-    }
-    this.startPromise = this.swapLease(sameRuntime)
-    return this.startPromise
-  }
-
-  private async swapLease(sameRuntime: boolean): Promise<BrowserClientHostLeaseAuthority> {
+  private async swapLease(): Promise<BrowserClientHostLeaseAuthority> {
     const input = this.input
     this.clearGuestDiscard()
     const error = new Error('Browser client host is re-attaching')
@@ -222,13 +221,6 @@ export class PairedRuntimeBrowserClientHostComposition<
       this.host = this.createHost(input, true)
       const generation = this.hostGeneration
       const authority = await this.host.start()
-      // An older runtime cannot rekey a kept guest and leaves it placed nowhere. Only its answer
-      // says so; freeing what it was told about lets its recovery reload them at their URL, and
-      // spares any page that recovery already placed under a newer generation.
-      if (sameRuntime && authority.returningHostReclaimProtocolVersion !== 1) {
-        await releaseBrowserClientGuests(this.executor, this.publishedInventory ?? [])
-        await this.host.refreshPageInventory()
-      }
       if (generation !== this.hostGeneration) {
         throw new Error('browser_client_host_reattach_superseded')
       }
@@ -240,9 +232,15 @@ export class PairedRuntimeBrowserClientHostComposition<
     }
   }
 
-  /** Only the runtime's own refusal is final; anything else may be lost contact and is waited out. */
+  /**
+   * A replaced runtime is waited for, as always. Lost contact is waited out only when the runtime
+   * can take the kept guests back; a runtime's own refusal is final either way.
+   */
   private parkOrFail(error: Error): void {
-    if (this.closed || !this.attached || isFinalBrowserHostRefusal(error)) {
+    const waits =
+      isBrowserClientHostAuthorityReplaced(error) ||
+      (this.reclaimable && !isFinalBrowserHostRefusal(error))
+    if (this.closed || !waits) {
       this.handleHostError(error)
     } else {
       this.park(error)

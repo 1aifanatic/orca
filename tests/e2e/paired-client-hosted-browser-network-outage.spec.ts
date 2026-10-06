@@ -292,7 +292,7 @@ test('a host that quits and stays down past the grace gets the tab back when it 
   )
 })
 
-test('an older host that cannot rekey a kept page gets it back by reloading it', async ({
+test('an older host that cannot take back a kept page fails the outage as it always did', async ({
   testRepoPath
 }, testInfo) => {
   test.setTimeout(300_000)
@@ -302,22 +302,18 @@ test('an older host that cannot rekey a kept page gets it back by reloading it',
     { name: 'older host', hostEnv: { ORCA_E2E_DISABLE_RETURNING_HOST_RECLAIM: '1' } },
     async (rig) => {
       await stampGuest(rig)
-      const generationBefore = await readPageHostGeneration(rig.client, rig.opened.localPageId)
 
       rig.proxy!.cut('reset')
       await new Promise((resolve) => setTimeout(resolve, OUTAGE_MS.reset))
       rig.proxy!.restore()
 
-      await waitForNewPlacement(rig, generationBefore)
-      expect(
-        await waitForRenderedClientWebview(
-          rig.client.page,
-          { urlPrefix: rig.fixture.markerUrl, remotePageId: rig.opened.remotePageId },
-          'the reloaded page never rendered'
-        )
-      ).toBe('outage-survivor')
-      expect(await readGuestStamp(rig), 'an older host can only reload the page').toBeNull()
-      await expectPageServing(rig)
+      // No regression and no fix: nothing parks, so the guest is closed exactly as before.
+      await expect
+        .poll(() => readGuestStamp(rig), {
+          timeout: 90_000,
+          message: 'an older host must not keep the guest'
+        })
+        .toBeNull()
     }
   )
 })

@@ -89,12 +89,11 @@ export function scheduleParkedGuestDiscard(
 }
 
 /** Frees every live guest; the runtime recreates each page at its last URL when it can. */
-export async function releaseBrowserClientGuests(
-  executor: ReleasableGuests,
-  pages = executor.snapshotPageInventory()
-): Promise<void> {
+async function releaseBrowserClientGuests(executor: ReleasableGuests): Promise<void> {
   const results = await Promise.allSettled(
-    pages.map((page) => executor.retirePage(page.browserPageId, page.pageHostGeneration))
+    executor
+      .snapshotPageInventory()
+      .map((page) => executor.retirePage(page.browserPageId, page.pageHostGeneration))
   )
   const failures = results.flatMap((result) =>
     result.status === 'rejected' ? [result.reason] : []

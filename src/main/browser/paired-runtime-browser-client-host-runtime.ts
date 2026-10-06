@@ -90,13 +90,14 @@ const browserClientHosts =
         onParkedChange: (parked, error) =>
           publishBrowserClientHostParked(input.environmentId, parked, error),
         initialInput: input,
-        // Why re-attach, not retire: a route that stayed dark is lost contact, not lost pages. If
-        // the fresh lease fails too, the composition parks or fails on that answer.
+        // Why re-attach, not retire: a route that stayed dark is lost contact, not lost pages, for a
+        // runtime that can take them back. If the fresh lease fails too, the composition decides.
         createRoutes: (next, authority) =>
-          createNetworkRoutes(next.pairing, authority, next.storageScope, (error) => {
-            reportBrowserClientHostError(error)
-            void browserClientHosts.reattach(input.environmentId)
-          }),
+          createNetworkRoutes(next.pairing, authority, next.storageScope, (error) =>
+            composition.canPark
+              ? void browserClientHosts.reattach(input.environmentId)
+              : retireFailedEnvironmentHost(input.environmentId, error)
+          ),
         createExecutor: (next, { retainNetworkRoute, onPageUnavailable }) => {
           executor = new BrowserClientPageCommandExecutor({
             orcaProfileId: next.orcaProfileId,
