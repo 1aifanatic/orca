@@ -19,7 +19,13 @@ import {
 
 const toastErrorMock = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast: { error: toastErrorMock } }))
-beforeEach(() => toastErrorMock.mockClear())
+beforeEach(() => {
+  toastErrorMock.mockClear()
+  // No local main holds these sessions, so each move stays in the renderer.
+  vi.stubGlobal('window', {
+    api: { pty: { moveLeafToNewTab: () => Promise.resolve({ status: 'not_held' }) } }
+  })
+})
 
 function rect(args: { left: number; top: number; width: number; height: number }): DOMRect {
   return {

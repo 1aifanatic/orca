@@ -22,7 +22,6 @@ beforeEach(() => {
   toastErrorMock.mockClear()
   closeTerminalSurface.mockClear()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
-  vi.stubGlobal('window', { api: { session: { closeTerminalSurface } } })
 })
 
 /** Answers each call with the next result; an Error throws. */
@@ -41,12 +40,18 @@ function managerWithPanes(paneIds: () => number[] = () => [1, 2]) {
   }
 }
 
+type CommitMove = (request: TerminalLeafMoveRequest) => Promise<TerminalLeafMoveResult>
+
 function detach(
   overrides: Partial<Parameters<typeof detachTerminalPaneToTab>[0]> & {
+    commitMove?: CommitMove
     store?: ReturnType<typeof createStore>
   }
 ) {
-  const { store = createStore(), ...rest } = overrides
+  const { commitMove = mainAnswering([]), store = createStore(), ...rest } = overrides
+  vi.stubGlobal('window', {
+    api: { pty: { moveLeafToNewTab: commitMove }, session: { closeTerminalSurface } }
+  })
   return detachTerminalPaneToTab({
     getStore: () => store,
     manager: managerWithPanes(),
@@ -148,6 +153,23 @@ describe('detachTerminalPaneToTab rolls a committed move forward', () => {
     await expect(detach({ commitMove, manager })).resolves.toMatchObject({ leafId: LEAF_2 })
 
     expect(manager.detachPaneForExternalMove).toHaveBeenCalledWith(7)
+  })
+
+  it('closes main’s new tab when the pane manager refuses to detach the pane', async () => {
+    const manager = managerWithPanes()
+    manager.detachPaneForExternalMove.mockReturnValue(false)
+    const commitMove = mainAnswering([moved])
+    const store = createStore()
+
+    await expect(detach({ commitMove, manager, store })).resolves.toBeNull()
+
+    expect(closeTerminalSurface).toHaveBeenCalledWith({
+      worktreeId: WORKTREE_ID,
+      target: { kind: 'tab', tabId: commitMove.mock.calls[0]?.[0]?.targetTabId },
+      reason: 'cleanup'
+    })
+    expect(store.createTab).not.toHaveBeenCalled()
+    expect(store.setTabLayout).not.toHaveBeenCalled()
   })
 
   it('moves the last pane, after a sibling closed meanwhile, without killing its PTY', async () => {

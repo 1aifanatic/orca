@@ -143,8 +143,7 @@ export type PtyApi = {
     ids: string[]
   ) => Promise<{ id: string; authoritative: boolean | null }[]>
   hasPty: (id: string) => Promise<boolean | null>
-  /** Absent where no local main owns the session (paired web clients). */
-  moveLeafToNewTab?: (request: TerminalLeafMoveRequest) => Promise<TerminalLeafMoveResult>
+  moveLeafToNewTab: (request: TerminalLeafMoveRequest) => Promise<TerminalLeafMoveResult>
   getMainBufferSnapshot: (
     id: string,
     opts?: { scrollbackRows?: number }

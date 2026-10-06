@@ -236,9 +236,7 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
       const sourceTransport = paneTransportsRef.current.get(sourcePaneId)
       const livePtyId = sourceTransport?.getPtyId() ?? null
       const sourcePaneCwd = paneCwdRef.current.get(sourcePaneId)
-      const commitMove = window.api?.pty?.moveLeafToNewTab
       void detachTerminalPaneToTab({
-        ...(commitMove ? { commitMove } : {}),
         livePtyId,
         getStore: useAppStore.getState,
         manager: managerRef.current,
