@@ -11,8 +11,6 @@ import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { appendReturnedDraftText } from '../../../src/shared/returned-draft-text'
 import {
   countUserTextOccurrences,
-  sendBaselineTailMessageId,
-  sendBaselineUnsentMessageIds,
   findLandedImagePreviewEchoes,
   mergeLandedImagePreviewEchoes,
   migrateImagePreviewMessageIds,
@@ -82,11 +80,18 @@ export function useMobileNativeChatDrafts(args: {
   clearDraftForSend: (origin: MobileNativeChatSendOrigin, text: string) => void
   /** Put the text back after a definite rejection, after whatever the composer holds now. */
   restoreRejectedDraft: (origin: MobileNativeChatSendOrigin, text: string) => void
-  acceptSend: (origin: MobileNativeChatSendOrigin, text: string, images?: string[]) => void
+  /** `clientMessageId`: the structured send's own id, so its row alone retires the echo. */
+  acceptSend: (
+    origin: MobileNativeChatSendOrigin,
+    text: string,
+    images?: string[],
+    clientMessageId?: string
+  ) => void
   holdUnconfirmedSend: (
     origin: MobileNativeChatSendOrigin,
     text: string,
-    onUnconfirmed: () => void
+    onUnconfirmed: () => void,
+    clientMessageId?: string
   ) => void
 } {
   const {
@@ -177,8 +182,7 @@ export function useMobileNativeChatDrafts(args: {
         pendingKey,
         normalizedText,
         baselineOccurrences: countUserTextOccurrences(messagesRef.current, normalizedText),
-        baselineTailMessageId: sendBaselineTailMessageId(messagesRef.current),
-        ...unsentBaseline(sendBaselineUnsentMessageIds(messagesRef.current)),
+        baselineTailMessageId: messagesRef.current.at(-1)?.id ?? null,
         // Only a settled read makes this a boundary. Anything else — hydrating,
         // or a read that failed — hands back an empty list that reads as "the
         // conversation was empty", which lets any row claim this send later.
@@ -213,7 +217,12 @@ export function useMobileNativeChatDrafts(args: {
   }, [])
 
   const acceptSend = useCallback(
-    (origin: MobileNativeChatSendOrigin, text: string, images?: string[]) => {
+    (
+      origin: MobileNativeChatSendOrigin,
+      text: string,
+      images?: string[],
+      clientMessageId?: string
+    ) => {
       if (!origin.pendingKey && !images?.length) {
         return
       }
@@ -222,11 +231,19 @@ export function useMobileNativeChatDrafts(args: {
       const key = origin.pendingKey
       if (key) {
         setPendingBySession((previous) =>
-          appendMobileNativeChatPending(previous, key, id, origin, text, images)
+          appendMobileNativeChatPending(previous, key, id, origin, text, images, clientMessageId)
         )
       } else {
         setPendingWaitingForSession((previous) =>
-          appendMobileNativeChatPending(previous, origin.draftKey, id, origin, text, images)
+          appendMobileNativeChatPending(
+            previous,
+            origin.draftKey,
+            id,
+            origin,
+            text,
+            images,
+            clientMessageId
+          )
         )
       }
     },
@@ -276,7 +293,7 @@ export function useMobileNativeChatDrafts(args: {
     // excluding the send's own echo, which is a separate change.
     const landedImagePreviews = findLandedImagePreviewEchoes(
       messages,
-      pending.filter((item) => item.baselineResolved)
+      pending.filter((item) => item.baselineResolved || item.clientMessageId !== undefined)
     )
     const landedImagePendingIds = new Set(landedImagePreviews.map((preview) => preview.pendingId))
     if (landedImagePreviews.length > 0) {
@@ -321,8 +338,4 @@ export function useMobileNativeChatDrafts(args: {
     acceptSend,
     holdUnconfirmedSend
   }
-}
-
-function unsentBaseline(ids: string[]): { baselineUnsentMessageIds?: readonly string[] } {
-  return ids.length > 0 ? { baselineUnsentMessageIds: ids } : {}
 }

@@ -1,3 +1,4 @@
+import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countImageSourceTurnsAfter,
@@ -36,8 +37,7 @@ export function selectGluedPendingIds(
   const turns: UserTurn[] = []
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
-    // A not-sent row is one refused structured send, never several glued on an input line.
-    const text = message.unsent === true ? null : normalizedUserText(message)
+    const text = normalizedUserText(message)
     if (text) {
       turns.push({ index, text })
     }
@@ -53,7 +53,9 @@ export function selectGluedPendingIds(
     // unbound it stays a barrier: retiring it early would drop the phone-local photo,
     // which the transcript's host path cannot render.
     const unboundImage = Boolean(item.images?.length) && !reboundImagePendingIds.has(item.id)
+    // A structured send is settled by its own row and never glued onto another.
     return excludedPendingIds.has(item.id) ||
+      item.clientMessageId !== undefined ||
       !item.baselineResolved ||
       unboundImage ||
       text === '' ||
@@ -148,25 +150,13 @@ export function retireLandedMobileNativeChatPending(
   landedImagePendingIds: ReadonlySet<string>
 ): MobileNativeChatPendingMessage[] {
   const landedCounts = new Map<string, number>()
-  const unsentByText = new Map<string, string[]>()
+  const messageIds = new Set<string>()
   for (const message of messages) {
+    messageIds.add(message.id)
     const text = normalizedUserText(message)
-    if (!text) {
-      continue
-    }
-    if (message.unsent === true) {
-      unsentByText.set(text, [...(unsentByText.get(text) ?? []), message.id])
-    } else {
+    if (text) {
       landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
     }
-  }
-  // A not-sent row settles a send only when it appeared after the send: then it is the send's own.
-  const landedFor = (item: MobileNativeChatPendingMessage, text: string): number => {
-    const baselineUnsent = new Set(item.baselineUnsentMessageIds)
-    return (
-      (landedCounts.get(text) ?? 0) +
-      (unsentByText.get(text) ?? []).filter((id) => !baselineUnsent.has(id)).length
-    )
   }
   const landedPendingIds = new Set<string>()
   // Why a separate set: a barrier preserves adjacency after a landing consumed a whole
@@ -178,6 +168,14 @@ export function retireLandedMobileNativeChatPending(
       landedPendingIds.add(item.id)
       continue
     }
+    if (item.clientMessageId !== undefined) {
+      // An image echo waits for its preview to bind to that row, above.
+      if (!item.images?.length && messageIds.has(agentJournalSubmissionKey(item.clientMessageId))) {
+        landedPendingIds.add(item.id)
+        exactLandedIds.add(item.id)
+      }
+      continue
+    }
     // Keep image echoes until their local preview reaches the authoritative message.
     // An unresolved baseline has nothing to count against yet — `messages` is not
     // known to be the transcript this send was issued into.
@@ -186,12 +184,9 @@ export function retireLandedMobileNativeChatPending(
     }
     const landed =
       item.text.trim() === ''
-        ? countImageSourceTurnsAfter(
-            messages,
-            item.baselineTailMessageId,
-            item.baselineUnsentMessageIds
-          ) >= item.expectedOccurrence
-        : landedFor(item, normalizeReconcileText(item.text)) >= item.expectedOccurrence
+        ? countImageSourceTurnsAfter(messages, item.baselineTailMessageId) >=
+          item.expectedOccurrence
+        : (landedCounts.get(normalizeReconcileText(item.text)) ?? 0) >= item.expectedOccurrence
     if (landed) {
       landedPendingIds.add(item.id)
       exactLandedIds.add(item.id)

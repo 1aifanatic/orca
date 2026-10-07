@@ -13,9 +13,12 @@ import {
 import type { StructuredAgentSessionComposerOptions } from '../../../src/shared/structured-agent-session-composer'
 import type { StructuredAgentSessionState } from '../../../src/shared/structured-agent-session-reducer'
 import type { RpcClient } from '../transport/rpc-client'
-import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import { dispatchMobileStructuredCommand } from './mobile-structured-composer-command'
-import { sendMobileStructuredAgentSessionMessage } from './mobile-structured-agent-session-send'
+import {
+  MOBILE_STRUCTURED_SEND_NOT_SENT,
+  sendMobileStructuredAgentSessionMessage,
+  type MobileStructuredSendResult
+} from './mobile-structured-agent-session-send'
 import { timeoutForDeadline } from './mobile-structured-agent-session-rpc'
 import {
   pendingStructuredApproval,
@@ -56,7 +59,7 @@ export function useMobileStructuredSendWithOutcome(args: {
   images?: string[],
   deadline?: number,
   attachments?: readonly StructuredMobileSendAttachment[]
-) => Promise<MobileNativeChatSendOutcome> {
+) => Promise<MobileStructuredSendResult> {
   const {
     agent,
     callerIdentity,
@@ -76,20 +79,20 @@ export function useMobileStructuredSendWithOutcome(args: {
       images?: string[],
       deadline?: number,
       attachments?: readonly StructuredMobileSendAttachment[]
-    ): Promise<MobileNativeChatSendOutcome> => {
+    ): Promise<MobileStructuredSendResult> => {
       const currentFence = stateRef.current.fence
       if (!client || !sessionId || !enabled || currentFence === null) {
         onSendError('Message not sent (disconnected)')
-        return 'rejected'
+        return MOBILE_STRUCTURED_SEND_NOT_SENT
       }
       const timeoutMs = timeoutForDeadline(deadline)
       if (timeoutMs === null) {
         onSendError('Message not sent')
-        return 'rejected'
+        return MOBILE_STRUCTURED_SEND_NOT_SENT
       }
       if (attachments === undefined && images !== undefined && images.length > 0) {
         onSendError('Message not sent')
-        return 'rejected'
+        return MOBILE_STRUCTURED_SEND_NOT_SENT
       }
       const sendAttachments = attachments ?? []
       const commandOutcome = await dispatchMobileStructuredCommand({
@@ -112,11 +115,11 @@ export function useMobileStructuredSendWithOutcome(args: {
         timeoutMs
       })
       if (commandOutcome !== null) {
-        return commandOutcome
+        return { outcome: commandOutcome, clientMessageId: null }
       }
       const body = structuredAgentSessionSendBody(text, sendAttachments)
       if (body.blocks.length === 0) {
-        return 'rejected'
+        return MOBILE_STRUCTURED_SEND_NOT_SENT
       }
       return sendMobileStructuredAgentSessionMessage({
         client,

@@ -19,8 +19,8 @@
 //     retained replay it cannot be told from a new send of the same text, and it
 //     provably never ran, so the caller sends it again under a fresh id.
 //   recorded, then rejected — the chat draws it as not sent and its row holds the
-//     text, so it spends the id and answers `queued`: no banner, nothing handed
-//     back. As a retained replay it cannot be told from a new send of the same
+//     text, so it spends the id and answers `recorded-unsent`: no banner, nothing
+//     handed back. As a retained replay it cannot be told from a new send of the same
 //     text, so the caller sends it again under a fresh id.
 //   rejected — a terminal refusal or rejected submission spends a fresh id. A
 //     pending-admission refusal, or any refusal after earlier transport doubt,
@@ -152,7 +152,11 @@ export function mobileStructuredSendDelivery(
   if (mobileStructuredSendRecordedNotSent(result)) {
     // Its row in the chat holds the text and says why it was not sent, so nothing is handed back
     // and no banner repeats it. A retained replay is resent by the caller.
-    return { outcome: retained ? 'rejected' : 'queued', operationIdSpent: true, error: null }
+    return {
+      outcome: retained ? 'rejected' : 'recorded-unsent',
+      operationIdSpent: true,
+      error: null
+    }
   }
   if (submission.dispatchState === 'rejected') {
     return {

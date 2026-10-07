@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { encodeNativeChatTranscriptIdentity } from '../../../src/shared/native-chat-transcript-retention'
-import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
+import type { MobileStructuredSendResult } from './mobile-structured-agent-session-send'
 import { projectStructuredAgentSessionMessages } from '../../../src/shared/structured-agent-session-message-projection'
 import { withNativeChatCutTurnNotices } from '../../../src/shared/native-chat-cut-turn-notice'
 import { TUI_AGENT_DISPLAY_NAMES } from '../../../src/shared/tui-agent-display-names'
@@ -58,7 +58,7 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
       images?: string[],
       deadline?: number,
       attachments?: readonly StructuredMobileSendAttachment[]
-    ) => Promise<MobileNativeChatSendOutcome>
+    ) => Promise<MobileStructuredSendResult>
     cancel: () => void
     permission: MobileChatPermission | null
     question: MobileChatQuestion | null

@@ -1,3 +1,4 @@
+import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import { isImageRefBlock, type NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   hasImagePromptMarker,
@@ -18,8 +19,8 @@ export type UnconfirmedSend = {
   baselineTailMessageId: string | null
   /** Queued-draft cards on screen at send time; see `findQueuedUnconfirmedSends`. */
   baselineQueuedMessageIds?: readonly string[]
-  /** Rows shown as not sent at send time; see `sendBaselineUnsentMessageIds`. */
-  baselineUnsentMessageIds?: readonly string[]
+  /** Structured lane: settled by its own row or card, never by text; see the pending echo's. */
+  clientMessageId?: string
   deadline: ReturnType<typeof setTimeout> | null
 }
 
@@ -27,32 +28,13 @@ export function normalizedUserText(message: NativeChatMessage): string | null {
   return normalizedNativeChatUserMessageText(message)
 }
 
-/** Rows shown as not sent when a send went out. Only these can't be its echo: one that appears
- *  later is the send's own row, settled as not sent. The count, image and unconfirmed matchers
- *  all apply this. */
-export function sendBaselineUnsentMessageIds(messages: readonly NativeChatMessage[]): string[] {
-  return messages.filter((message) => message.unsent === true).map((message) => message.id)
-}
-
-/** The row a send's echo must land after: the newest one, past any shown as not sent, which are in
- *  the send's baseline and so never its echo. */
-export function sendBaselineTailMessageId(messages: readonly NativeChatMessage[]): string | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.unsent !== true) {
-      return messages[index]?.id ?? null
-    }
-  }
-  return null
-}
-
-/** At send time: every row shown as not sent is then in the send's baseline, so none is counted. */
 export function countUserTextOccurrences(
   messages: readonly NativeChatMessage[],
   text: string
 ): number {
   let count = 0
   for (const message of messages) {
-    if (message.unsent !== true && normalizedUserText(message) === text) {
+    if (normalizedUserText(message) === text) {
       count++
     }
   }
@@ -65,16 +47,13 @@ export function countUserTextOccurrences(
  *  only image echoes keeps an unrelated text send's echo from clearing it. */
 export function countImageSourceTurnsAfter(
   messages: readonly NativeChatMessage[],
-  tailId: string | null,
-  /** See `sendBaselineUnsentMessageIds`: one can sit past the tail, never the send's own. */
-  baselineUnsentMessageIds: readonly string[] = []
+  tailId: string | null
 ): number {
   const tailIndex = tailId ? messages.findIndex((message) => message.id === tailId) : -1
-  const baselineUnsent = new Set(baselineUnsentMessageIds)
   let count = 0
   for (let i = tailIndex + 1; i < messages.length; i++) {
     const message = messages[i]
-    if (message && isImageSourceUserTurn(message) && !baselineUnsent.has(message.id)) {
+    if (message && isImageSourceUserTurn(message)) {
       count++
     }
   }
@@ -87,8 +66,7 @@ export type PendingImagePreviewEcho = {
   images?: string[]
   expectedOccurrence: number
   baselineTailMessageId: string | null
-  /** See `sendBaselineUnsentMessageIds`. */
-  baselineUnsentMessageIds?: readonly string[]
+  clientMessageId?: string
 }
 
 export type LandedImagePreviewEcho = {
@@ -202,10 +180,16 @@ export function findLandedImagePreviewEchoes(
     if (!entry.images?.length) {
       continue
     }
+    if (entry.clientMessageId !== undefined) {
+      const ownId = agentJournalSubmissionKey(entry.clientMessageId)
+      if (messages.some((message) => message.id === ownId)) {
+        landed.push({ pendingId: entry.id, messageId: ownId, images: entry.images })
+      }
+      continue
+    }
     const targetText = normalizeNativeChatUserText(entry.text)
-    const baselineUnsent = new Set(entry.baselineUnsentMessageIds)
     const candidates = normalized.filter((message) => {
-      if (message.role !== 'user' || (message.unsent === true && baselineUnsent.has(message.id))) {
+      if (message.role !== 'user') {
         return false
       }
       if (targetText) {
@@ -261,11 +245,12 @@ export function findQueuedUnconfirmedSends(
   const claimed = new Set<string>()
   const held: UnconfirmedSend[] = []
   for (const entry of entries) {
-    const card = cards.find(
-      (candidate) =>
-        !claimed.has(candidate.messageId) &&
-        !(entry.baselineQueuedMessageIds ?? []).includes(candidate.messageId) &&
-        normalizeNativeChatUserText(candidate.text) === entry.normalizedText
+    const card = cards.find((candidate) =>
+      entry.clientMessageId !== undefined
+        ? candidate.messageId === entry.clientMessageId
+        : !claimed.has(candidate.messageId) &&
+          !(entry.baselineQueuedMessageIds ?? []).includes(candidate.messageId) &&
+          normalizeNativeChatUserText(candidate.text) === entry.normalizedText
     )
     if (card) {
       claimed.add(card.messageId)
@@ -284,7 +269,7 @@ export function findLandedUnconfirmedSends(
   // (`[Image: source: …]` or no text) keys under '' so an empty-text send can
   // claim it.
   const messageIndexById = new Map<string, number>()
-  const userMessagesByText = new Map<string, { id: string; index: number; unsent: boolean }[]>()
+  const userMessagesByText = new Map<string, Array<{ id: string; index: number }>>()
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
     if (message.role !== 'user') {
@@ -292,28 +277,28 @@ export function findLandedUnconfirmedSends(
     }
     const key = isImageSourceUserTurn(message) ? '' : (normalizedUserText(message) ?? '')
     const current = userMessagesByText.get(key) ?? []
-    current.push({ id: message.id, index, unsent: message.unsent === true })
+    current.push({ id: message.id, index })
     userMessagesByText.set(key, current)
   }
 
   const claimedMessageIds = new Set<string>()
   const landed: UnconfirmedSend[] = []
   for (const entry of entries) {
+    if (entry.clientMessageId !== undefined) {
+      if (messageIndexById.has(agentJournalSubmissionKey(entry.clientMessageId))) {
+        landed.push(entry)
+      }
+      continue
+    }
     const tailIndex = entry.baselineTailMessageId
       ? messageIndexById.get(entry.baselineTailMessageId)
       : -1
     if (tailIndex === undefined) {
       continue
     }
-    const baselineUnsent = new Set(entry.baselineUnsentMessageIds)
     const echo = userMessagesByText
       .get(entry.normalizedText)
-      ?.find(
-        (message) =>
-          message.index > tailIndex &&
-          !claimedMessageIds.has(message.id) &&
-          !(message.unsent && baselineUnsent.has(message.id))
-      )
+      ?.find((message) => message.index > tailIndex && !claimedMessageIds.has(message.id))
     if (echo) {
       claimedMessageIds.add(echo.id)
       landed.push(entry)

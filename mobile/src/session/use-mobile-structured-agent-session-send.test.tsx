@@ -143,9 +143,9 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('retry me')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('retry me')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('retry me')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
     })
 
     expect(calls()).toHaveLength(3)
@@ -172,8 +172,8 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('stopped one')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('stopped one')).toBe('accepted')
+      expect((await hook!.sendWithOutcome('stopped one')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('stopped one')).outcome).toBe('accepted')
     })
 
     expect(onSendError).not.toHaveBeenCalled()
@@ -195,8 +195,8 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('stopped first')).toBe('accepted')
-      expect(await hook!.sendWithOutcome('stopped first')).toBe('accepted')
+      expect((await hook!.sendWithOutcome('stopped first')).outcome).toBe('accepted')
+      expect((await hook!.sendWithOutcome('stopped first')).outcome).toBe('accepted')
     })
 
     expect(onSendError).not.toHaveBeenCalled()
@@ -246,7 +246,7 @@ describe('mobile structured send retries', () => {
   })
 
   // The transcript owns a message the host recorded, so the composer never gets it back.
-  it('answers a recorded, rejected send as held: no banner and no hand-back', async () => {
+  it('answers a recorded, rejected send as not sent in the chat: no banner and no hand-back', async () => {
     sendRequest.mockImplementation(async (method) =>
       method === 'agentSession.send'
         ? sendResult('rejected', 'provider_write_failed: broken pipe')
@@ -257,7 +257,9 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('recorded, then rejected')).toBe('queued')
+      expect((await hook!.sendWithOutcome('recorded, then rejected')).outcome).toBe(
+        'recorded-unsent'
+      )
     })
     expect(onSendError).not.toHaveBeenCalled()
   })
@@ -275,7 +277,7 @@ describe('mobile structured send retries', () => {
     })
     await mountSession()
     await act(async () => {
-      expect(await hook!.sendWithOutcome('same text, later intent')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('same text, later intent')).outcome).toBe('unknown')
     })
     const firstRequest = calls()[0]![1] as {
       envelope: { clientOperationId: string; payloadFingerprint: string }
@@ -299,7 +301,7 @@ describe('mobile structured send retries', () => {
     await vi.waitFor(() => expect(storedOperations.size).toBe(0))
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('same text, later intent')).toBe('accepted')
+      expect((await hook!.sendWithOutcome('same text, later intent')).outcome).toBe('accepted')
     })
 
     expect(sentIds()).toHaveLength(2)
@@ -319,7 +321,7 @@ describe('mobile structured send retries', () => {
     })
     await mountSession()
     await act(async () => {
-      expect(await hook!.sendWithOutcome('survive remount')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('survive remount')).outcome).toBe('unknown')
     })
     act(() => renderer?.unmount())
     renderer = null
@@ -328,7 +330,7 @@ describe('mobile structured send retries', () => {
 
     await mountSession()
     await act(async () => {
-      expect(await hook!.sendWithOutcome('survive remount')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('survive remount')).outcome).toBe('unknown')
     })
 
     expect(new Set(sentIds()).size).toBe(1)
@@ -359,8 +361,8 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('possibly delivered')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('possibly delivered')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('possibly delivered')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('possibly delivered')).outcome).toBe('unknown')
     })
 
     expect(calls()).toHaveLength(2)
@@ -384,22 +386,26 @@ describe('mobile structured send retries', () => {
 
     await act(async () => {
       expect(
-        await hook!.sendWithOutcome('describe', undefined, undefined, [
-          {
-            path: '/tmp/original.png',
-            previewUri: 'file:///photo.jpg',
-            contentFingerprint
-          }
-        ])
+        (
+          await hook!.sendWithOutcome('describe', undefined, undefined, [
+            {
+              path: '/tmp/original.png',
+              previewUri: 'file:///photo.jpg',
+              contentFingerprint
+            }
+          ])
+        ).outcome
       ).toBe('unknown')
       expect(
-        await hook!.sendWithOutcome('describe', undefined, undefined, [
-          {
-            path: '/tmp/reuploaded.png',
-            previewUri: 'file:///photo.jpg',
-            contentFingerprint
-          }
-        ])
+        (
+          await hook!.sendWithOutcome('describe', undefined, undefined, [
+            {
+              path: '/tmp/reuploaded.png',
+              previewUri: 'file:///photo.jpg',
+              contentFingerprint
+            }
+          ])
+        ).outcome
       ).toBe('unknown')
     })
 
@@ -431,8 +437,8 @@ describe('mobile structured send retries', () => {
       await mountSession()
 
       await act(async () => {
-        expect(await hook!.sendWithOutcome('never reached the handler')).toBe('rejected')
-        expect(await hook!.sendWithOutcome('never reached the handler')).toBe('accepted')
+        expect((await hook!.sendWithOutcome('never reached the handler')).outcome).toBe('rejected')
+        expect((await hook!.sendWithOutcome('never reached the handler')).outcome).toBe('accepted')
       })
 
       expect(sentIds()).toHaveLength(2)
@@ -461,8 +467,8 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('retry at the current fence')).toBe('rejected')
-      expect(await hook!.sendWithOutcome('retry at the current fence')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('retry at the current fence')).outcome).toBe('rejected')
+      expect((await hook!.sendWithOutcome('retry at the current fence')).outcome).toBe('unknown')
     })
 
     expect(sentIds()).toHaveLength(2)
@@ -492,9 +498,9 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('old host replay')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('old host replay')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('old host replay')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('old host replay')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('old host replay')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('old host replay')).outcome).toBe('unknown')
     })
 
     expect(new Set(sentIds()).size).toBe(1)
@@ -525,9 +531,9 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('old ambiguity')).toBe('unknown')
-      expect(await hook!.sendWithOutcome('old ambiguity')).toBe('rejected')
-      expect(await hook!.sendWithOutcome('old ambiguity')).toBe('accepted')
+      expect((await hook!.sendWithOutcome('old ambiguity')).outcome).toBe('unknown')
+      expect((await hook!.sendWithOutcome('old ambiguity')).outcome).toBe('rejected')
+      expect((await hook!.sendWithOutcome('old ambiguity')).outcome).toBe('accepted')
     })
 
     expect(calls()).toHaveLength(3)
@@ -543,7 +549,9 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('never attempted', undefined, 0)).toBe('rejected')
+      expect((await hook!.sendWithOutcome('never attempted', undefined, 0)).outcome).toBe(
+        'rejected'
+      )
     })
 
     expect(calls()).toHaveLength(0)
@@ -561,7 +569,9 @@ describe('mobile structured send retries', () => {
     await mountSession()
 
     await act(async () => {
-      expect(await hook!.sendWithOutcome('the journal will not take this')).toBe('rejected')
+      expect((await hook!.sendWithOutcome('the journal will not take this')).outcome).toBe(
+        'rejected'
+      )
     })
 
     expect(onSendError).toHaveBeenCalledWith('Message not sent')

@@ -45,7 +45,9 @@ export function useMobileNativeChatUnconfirmedSends(args: {
   holdUnconfirmedSend: (
     origin: MobileNativeChatSendOrigin,
     text: string,
-    onUnconfirmed: () => void
+    onUnconfirmed: () => void,
+    /** Structured lane: the id the send went out under; its row or card settles the hold. */
+    clientMessageId?: string
   ) => void
 } {
   const { draftKey, pendingKey, messages, queuedCards = NO_QUEUED_CARDS } = args
@@ -63,7 +65,12 @@ export function useMobileNativeChatUnconfirmedSends(args: {
   const mountedRef = useRef(false)
   const unconfirmedRef = useRef<UnconfirmedSend[]>([])
   const holdUnconfirmedSend = useCallback(
-    (origin: MobileNativeChatSendOrigin, text: string, onUnconfirmed: () => void) => {
+    (
+      origin: MobileNativeChatSendOrigin,
+      text: string,
+      onUnconfirmed: () => void,
+      clientMessageId?: string
+    ) => {
       if (!mountedRef.current) {
         return
       }
@@ -79,9 +86,7 @@ export function useMobileNativeChatUnconfirmedSends(args: {
         ...(origin.baselineQueuedMessageIds
           ? { baselineQueuedMessageIds: origin.baselineQueuedMessageIds }
           : {}),
-        ...(origin.baselineUnsentMessageIds
-          ? { baselineUnsentMessageIds: origin.baselineUnsentMessageIds }
-          : {}),
+        ...(clientMessageId !== undefined ? { clientMessageId } : {}),
         deadline: null
       }
       // Why: the transcript event (or the card) can beat the lost RPC acknowledgement.

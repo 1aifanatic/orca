@@ -368,7 +368,7 @@ describe('useMobileStructuredAgentSession', () => {
 
     let outcome: MobileNativeChatSendOutcome = 'rejected'
     await act(async () => {
-      outcome = await hook!.sendWithOutcome('hello')
+      outcome = (await hook!.sendWithOutcome('hello')).outcome
     })
 
     expect(outcome).toBe('accepted')
@@ -499,9 +499,11 @@ describe('useMobileStructuredAgentSession', () => {
 
     let outcome: MobileNativeChatSendOutcome = 'rejected'
     await act(async () => {
-      outcome = await hook.sendWithOutcome('look at this', undefined, undefined, [
-        { path: '/tmp/a.png', previewUri: 'file:///a.jpg' }
-      ])
+      outcome = (
+        await hook.sendWithOutcome('look at this', undefined, undefined, [
+          { path: '/tmp/a.png', previewUri: 'file:///a.jpg' }
+        ])
+      ).outcome
     })
 
     expect(outcome).toBe('accepted')
@@ -537,7 +539,7 @@ describe('useMobileStructuredAgentSession', () => {
 
     let outcome: MobileNativeChatSendOutcome = 'accepted'
     await act(async () => {
-      outcome = await hook!.sendWithOutcome('look at this', ['file:///a.jpg'])
+      outcome = (await hook!.sendWithOutcome('look at this', ['file:///a.jpg'])).outcome
     })
 
     expect(outcome).toBe('rejected')

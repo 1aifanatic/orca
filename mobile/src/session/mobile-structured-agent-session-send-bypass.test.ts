@@ -137,10 +137,10 @@ describe('a resend past a saved record storage would not clear', () => {
       'waiting'
     ])
     const onError = vi.fn()
-    expect(await sendAgain(client, onError)).toBe('unknown')
+    expect((await sendAgain(client, onError)).outcome).toBe('unknown')
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
-    expect(await sendAgain(client, onError)).toBe('unknown')
+    expect((await sendAgain(client, onError)).outcome).toBe('unknown')
     // Storage recovers: the lost send's record now clears, and the queue capability is gone.
     asyncStorage.setItem.mockImplementation(async (key: string, value: string) => {
       stored.set(key, value)
@@ -148,7 +148,7 @@ describe('a resend past a saved record storage would not clear', () => {
     asyncStorage.removeItem.mockImplementation(async (key: string) => {
       stored.delete(key)
     })
-    expect(await sendAgain(client, onError, false)).toBe('queued')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('queued')
     expect(ids).toHaveLength(5)
     // The resend's id is replayed, as first sent, never replaced by a fresh one.
     expect(ids[4]).toBe(ids[2])
@@ -172,16 +172,16 @@ describe('a resend past a saved record storage would not clear', () => {
         delivery: 'queue-if-active',
         onError
       })
-    expect(await send()).toBe('unknown')
+    expect((await send()).outcome).toBe('unknown')
     // From here the lost send's record can never be cleared.
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
 
-    expect(await send()).toBe('unknown')
+    expect((await send()).outcome).toBe('unknown')
     // An unconfirmed resend may not have gone out, so nothing says it was sent.
     expect(onError).not.toHaveBeenCalled()
 
-    expect(await send()).toBe('queued')
+    expect((await send()).outcome).toBe('queued')
     expect(ids).toHaveLength(5)
     expect(ids[1]).toBe(ids[0])
     expect(ids[3]).toBe(ids[0])
@@ -198,12 +198,12 @@ describe('a resend past a saved record storage would not clear', () => {
   it('sends a withdrawn replay once more at most, then hands a queued draft back', async () => {
     const { client, ids } = hostAnswering(['lost', 'withdrawn', 'lost', 'withdrawn', 'withdrawn'])
     const onError = vi.fn()
-    expect(await sendAgain(client, onError)).toBe('unknown')
+    expect((await sendAgain(client, onError)).outcome).toBe('unknown')
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
-    expect(await sendAgain(client, onError)).toBe('unknown')
+    expect((await sendAgain(client, onError)).outcome).toBe('unknown')
 
-    expect(await sendAgain(client, onError)).toBe('rejected')
+    expect((await sendAgain(client, onError)).outcome).toBe('rejected')
     expect(ids).toHaveLength(5)
     expect(ids[4]).toBe(ids[2])
     expect(onError).toHaveBeenCalledWith('Message not sent')
@@ -212,12 +212,12 @@ describe('a resend past a saved record storage would not clear', () => {
   it('reads a resend a Stop took back again as sent, since the chat draws it, not as not sent', async () => {
     const { client, ids } = hostAnswering(['lost', 'stopped', 'lost', 'stopped', 'stopped'])
     const onError = vi.fn()
-    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('unknown')
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
-    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('unknown')
 
-    expect(await sendAgain(client, onError, false)).toBe('accepted')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('accepted')
     expect(ids).toHaveLength(5)
     expect(ids[4]).toBe(ids[2])
     // Only the storage failure is reported; nothing says the message was not sent.
@@ -230,9 +230,14 @@ describe('a resend past a saved record storage would not clear', () => {
   it('sends the same text as a new message when its kept id answers as recorded and rejected', async () => {
     const { client, ids } = hostAnswering(['lost', 'recorded', 'accepted'])
     const onError = vi.fn()
-    expect(await sendAgain(client, onError, false)).toBe('unknown')
-    expect(await sendAgain(client, onError, false)).toBe('accepted')
+    expect(await sendAgain(client, onError, false)).toEqual({
+      outcome: 'unknown',
+      clientMessageId: ids[0]
+    })
+    // The answer names the fresh id, so the phone waits for that row, not the not-sent one.
+    const resent = await sendAgain(client, onError, false)
     expect(ids).toHaveLength(3)
+    expect(resent).toEqual({ outcome: 'accepted', clientMessageId: ids[2] })
     expect(ids[1]).toBe(ids[0])
     expect(ids[2]).not.toBe(ids[0])
     expect(onError).not.toHaveBeenCalled()
@@ -241,10 +246,10 @@ describe('a resend past a saved record storage would not clear', () => {
   it('never says a resend went out when the host recorded and rejected it', async () => {
     const { client, ids } = hostAnswering(['lost', 'withdrawn', 'recorded'])
     const onError = vi.fn()
-    expect(await sendAgain(client, onError)).toBe('unknown')
+    expect((await sendAgain(client, onError)).outcome).toBe('unknown')
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
-    expect(await sendAgain(client, onError)).toBe('queued')
+    expect((await sendAgain(client, onError)).outcome).toBe('recorded-unsent')
     expect(ids).toHaveLength(3)
     expect(onError).not.toHaveBeenCalled()
   })
@@ -252,12 +257,12 @@ describe('a resend past a saved record storage would not clear', () => {
   it('leaves a replay of its own recorded rejection to the row once it was resent', async () => {
     const { client, ids } = hostAnswering(['lost', 'recorded', 'lost', 'recorded', 'recorded'])
     const onError = vi.fn()
-    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('unknown')
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
-    expect(await sendAgain(client, onError, false)).toBe('unknown')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('unknown')
     // The resend's own id replays a recorded rejection: its row holds the text, nothing comes back.
-    expect(await sendAgain(client, onError, false)).toBe('queued')
+    expect((await sendAgain(client, onError, false)).outcome).toBe('recorded-unsent')
     expect(ids).toHaveLength(5)
     expect(ids[4]).toBe(ids[2])
     expect(onError).not.toHaveBeenCalled()

@@ -96,7 +96,7 @@ const structured = {
   respondPermission: vi.fn(async () => true),
   respondQuestion: vi.fn(async () => true),
   cancelPrompt: vi.fn(async () => true),
-  sendWithOutcome: vi.fn(async () => 'accepted'),
+  sendWithOutcome: vi.fn(async () => ({ outcome: 'accepted', clientMessageId: 'op-1' })),
   cancel: vi.fn(),
   setStructuredOption: vi.fn(),
   invokeStructuredOption: vi.fn()

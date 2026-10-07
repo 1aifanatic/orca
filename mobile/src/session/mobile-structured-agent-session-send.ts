@@ -28,6 +28,19 @@ import {
   rememberBypassedMobileStructuredSendOperation
 } from './mobile-structured-send-operation-journal'
 
+/** A structured send's answer, with the id it went out under: the host records the send, and
+ *  draws its row, under that id. Null when nothing went out. */
+export type MobileStructuredSendResult = {
+  outcome: MobileNativeChatSendOutcome
+  clientMessageId: string | null
+}
+
+/** Refused before anything went out. */
+export const MOBILE_STRUCTURED_SEND_NOT_SENT: MobileStructuredSendResult = {
+  outcome: 'rejected',
+  clientMessageId: null
+}
+
 export async function sendMobileStructuredAgentSessionMessage(input: {
   client: RpcClient
   sessionId: string
@@ -49,11 +62,11 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   /** Internal: on that resend, the key the settled record matched. The remembered id is keyed
    *  by it, so a capability change since the lost answer never mints another id. */
   resendOperationKey?: string
-}): Promise<MobileNativeChatSendOutcome> {
+}): Promise<MobileStructuredSendResult> {
   const timeoutMs = timeoutForDeadline(input.deadline)
   if (timeoutMs === null) {
     input.onError('Message not sent')
-    return 'rejected'
+    return MOBILE_STRUCTURED_SEND_NOT_SENT
   }
   const requestedBody = structuredAgentSessionSendBody(input.text, input.attachments)
   const requestedPayloadFingerprint = structuredAgentSessionPayloadFingerprint({
@@ -119,7 +132,7 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     }
   } catch {
     input.onError('Message not sent')
-    return 'rejected'
+    return MOBILE_STRUCTURED_SEND_NOT_SENT
   }
   const operationKey = operation.operationKey
   const delivery = operationKey === queuedOperationKey ? 'queue-if-active' : undefined
@@ -134,7 +147,7 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
   })
   if (payloadFingerprint !== operation.payloadFingerprint) {
     input.onError('Message not sent')
-    return 'rejected'
+    return MOBILE_STRUCTURED_SEND_NOT_SENT
   }
   const result = await requestStructuredAgentSessionMutation<AgentSessionSendResult>({
     client: input.client,
@@ -191,21 +204,18 @@ export async function sendMobileStructuredAgentSessionMessage(input: {
     // Not resent: no card and no bubble holds the text, so it goes back to the
     // composer rather than vanishing.
     input.onError('Message not sent')
-    return 'rejected'
+    return MOBILE_STRUCTURED_SEND_NOT_SENT
   }
   // Not resent, but the chat draws it with its stop row or as not sent: no hand-back as well.
-  const answer = withdrawnReplay ? 'accepted' : recordedReplay ? 'queued' : outcome.outcome
+  const answer = withdrawnReplay ? 'accepted' : recordedReplay ? 'recorded-unsent' : outcome.outcome
   if (outcome.error !== null) {
     input.onError(outcome.error)
   }
-  // Only once the resend is known to have gone out: an unconfirmed one may not have, and one the
-  // host recorded and rejected shows as not sent.
-  const wentOut =
-    answer === 'accepted' || (answer === 'queued' && !mobileStructuredSendRecordedNotSent(result))
-  if (input.bypassRetainedRecord && wentOut) {
+  // Only once the resend is known to have gone out: an unconfirmed one may not have.
+  if (input.bypassRetainedRecord && (answer === 'accepted' || answer === 'queued')) {
     input.onError("Sent, but this phone couldn't update its record of sent messages.")
   }
-  return answer
+  return { outcome: answer, clientMessageId: operation.operationId }
 }
 
 /** The id a resend past an uncleared record goes out under: the one this app run already used

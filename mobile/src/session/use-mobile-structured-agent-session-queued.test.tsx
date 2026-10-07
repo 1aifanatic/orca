@@ -156,7 +156,7 @@ describe('mobile structured queued messages', () => {
       })
       await mountSession(CAPABLE)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('queue me')).toBe('queued')
+        expect((await hook!.sendWithOutcome('queue me')).outcome).toBe('queued')
       })
       const { params, envelope } = requestOf('agentSession.send')
       expect(params.delivery).toBe('queue-if-active')
@@ -194,7 +194,7 @@ describe('mobile structured queued messages', () => {
       })
       await mountSession(LEGACY)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('plain send')).toBe('accepted')
+        expect((await hook!.sendWithOutcome('plain send')).outcome).toBe('accepted')
       })
       const { params, envelope } = requestOf('agentSession.send')
       expect('delivery' in params).toBe(false)
@@ -218,7 +218,7 @@ describe('mobile structured queued messages', () => {
       })
       await mountSession(CAPABLE)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('retry me')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
       })
       unmountSession()
       // The capability probe has not answered after the reload, but the recorded
@@ -226,7 +226,7 @@ describe('mobile structured queued messages', () => {
       // delivery field — or the host would refuse it as a fingerprint conflict.
       await mountSession(LEGACY)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('retry me')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('retry me')).outcome).toBe('unknown')
       })
       expect(attempts).toBe(2)
       const first = requestOf('agentSession.send', 0)
@@ -273,13 +273,13 @@ describe('mobile structured queued messages', () => {
       })
       await mountSession(CAPABLE)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('downgraded')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('downgraded')).outcome).toBe('unknown')
       })
       unmountSession()
       await mountSession(LEGACY)
       // A lost answer is still doubt: the replay keeps the id and its delivery.
       await act(async () => {
-        expect(await hook!.sendWithOutcome('downgraded')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('downgraded')).outcome).toBe('unknown')
       })
       const first = requestOf('agentSession.send', 0)
       expect(requestOf('agentSession.send', 1).envelope.clientOperationId).toBe(
@@ -288,14 +288,14 @@ describe('mobile structured queued messages', () => {
       expect(stored.get(journalKey)).toContain(String(first.envelope.clientOperationId))
       // The host answering that it cannot take the request retires the entry, once.
       await act(async () => {
-        expect(await hook!.sendWithOutcome('downgraded')).toBe('rejected')
+        expect((await hook!.sendWithOutcome('downgraded')).outcome).toBe('rejected')
       })
       const refused = requestOf('agentSession.send', 2)
       expect(refused.params.delivery).toBe('queue-if-active')
       expect(refused.envelope.clientOperationId).toBe(first.envelope.clientOperationId)
       expect(onSendError).toHaveBeenCalledTimes(1)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('downgraded')).toBe('accepted')
+        expect((await hook!.sendWithOutcome('downgraded')).outcome).toBe('accepted')
       })
       const plain = requestOf('agentSession.send', 3)
       expect('delivery' in plain.params).toBe(false)
@@ -322,10 +322,10 @@ describe('mobile structured queued messages', () => {
       })
       await mountSession(CAPABLE)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('in doubt')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('in doubt')).outcome).toBe('unknown')
       })
       await act(async () => {
-        expect(await hook!.sendWithOutcome('in doubt')).toBe('rejected')
+        expect((await hook!.sendWithOutcome('in doubt')).outcome).toBe('rejected')
       })
       await act(async () => {
         await hook!.sendWithOutcome('in doubt')
@@ -355,7 +355,7 @@ describe('mobile structured queued messages', () => {
     })
     await mountSession(CAPABLE, snapshotEvent({ runningTurn: true }))
     await act(async () => {
-      expect(await hook!.sendWithOutcome('held')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('held')).outcome).toBe('unknown')
     })
     const operationId = String(requestOf('agentSession.send').envelope.clientOperationId)
     expect(stored.get(journalKey)).toContain(operationId)
@@ -369,7 +369,7 @@ describe('mobile structured queued messages', () => {
     // Deleted elsewhere: no submission will ever settle it, and nothing has to.
     act(() => listener?.(batchEvent(null)))
     await act(async () => {
-      expect(await hook!.sendWithOutcome('held')).toBe('queued')
+      expect((await hook!.sendWithOutcome('held')).outcome).toBe('queued')
     })
     expect(requestOf('agentSession.send', 1).envelope.clientOperationId).not.toBe(operationId)
   })
@@ -397,12 +397,12 @@ describe('mobile structured queued messages', () => {
     })
     await mountSession(CAPABLE)
     await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('again')).outcome).toBe('unknown')
     })
     // A Delete spent the ack-lost draft before it reached the agent; typing the
     // same words again is a new message, not a replay to swallow.
     await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('queued')
+      expect((await hook!.sendWithOutcome('again')).outcome).toBe('queued')
     })
     expect(attempts).toBe(3)
     const ids = [0, 1, 2].map(
@@ -430,13 +430,13 @@ describe('mobile structured queued messages', () => {
     })
     await mountSession(CAPABLE)
     await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+      expect((await hook!.sendWithOutcome('again')).outcome).toBe('unknown')
     })
     // The retained record cannot be cleared; that must not keep this text from being sent.
     asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
     asyncStorage.removeItem.mockRejectedValue(new Error('disk full'))
     await act(async () => {
-      expect(await hook!.sendWithOutcome('again')).toBe('queued')
+      expect((await hook!.sendWithOutcome('again')).outcome).toBe('queued')
     })
     expect(attempts).toBe(3)
     const ids = [0, 1, 2].map(
@@ -484,7 +484,7 @@ describe('mobile structured queued messages', () => {
     it('spends the record once the stream carries the hand-off naming it; a direct send does not', async () => {
       await mountSession(CAPABLE)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('unknown')
       })
       expect(stored.get(journalKey)).toContain(lostId)
       // A direct send's submission names no draft, so it settles nothing here.
@@ -495,7 +495,7 @@ describe('mobile structured queued messages', () => {
       act(() => listener?.(batchEvent(undefined, [acceptedSubmission('fresh-hand-off', lostId)])))
       await vi.waitFor(() => expect(stored.has(journalKey)).toBe(false))
       await act(async () => {
-        expect(await hook!.sendWithOutcome('again')).toBe('queued')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('queued')
       })
       expect(attempts).toBe(2)
       expect(requestOf('agentSession.send', 1).envelope.clientOperationId).not.toBe(lostId)
@@ -504,17 +504,17 @@ describe('mobile structured queued messages', () => {
     it('spends the record from a replay answered by the hand-off, which no page carries', async () => {
       await mountSession(CAPABLE)
       await act(async () => {
-        expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('unknown')
       })
       // The host holds that message now; the phone paints no bubble for it. The stream never
       // carries the hand-off, so the answer's link is what spends the record.
       await act(async () => {
-        expect(await hook!.sendWithOutcome('again')).toBe('unknown')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('unknown')
       })
       expect(requestOf('agentSession.send', 1).envelope.clientOperationId).toBe(lostId)
       await vi.waitFor(() => expect(stored.has(journalKey)).toBe(false))
       await act(async () => {
-        expect(await hook!.sendWithOutcome('again')).toBe('queued')
+        expect((await hook!.sendWithOutcome('again')).outcome).toBe('queued')
       })
       expect(requestOf('agentSession.send', 2).envelope.clientOperationId).not.toBe(lostId)
     })

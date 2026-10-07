@@ -221,7 +221,7 @@ describe('useMobileNativeChatController handleNativeChatSend', () => {
     })
     resetMobileNativeChatStaleInputForTests()
     captureSendOrigin.mockReturnValue(ORIGIN)
-    structuredSendWithOutcome.mockResolvedValue('accepted')
+    structuredSendWithOutcome.mockResolvedValue({ outcome: 'accepted', clientMessageId: 'op-1' })
     act(() => {
       renderer = create(createElement(Harness))
     })

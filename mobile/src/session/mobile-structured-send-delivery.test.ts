@@ -121,7 +121,7 @@ describe('mobileStructuredSendDelivery', () => {
     // holds it and says why it was not sent: no banner, no hand-back.
     for (const reason of ['provider_write_failed: broken pipe', 'Claude does not support .bmp']) {
       expect(mobileStructuredSendDelivery(accepted('rejected', reason))).toEqual({
-        outcome: 'queued',
+        outcome: 'recorded-unsent',
         operationIdSpent: true,
         error: null
       })
