@@ -1,0 +1,1634 @@
+{
+  "sourceHead": "30bc964e7b6c88832caffb87eb62282459dbf218",
+  "planSha256": "ca1abb3fe7469c9ebe3ae2cdc292dd87766918cfc9af70120d7ded84e591c40c",
+  "executedOwnedOptimizerOutputsQualified": true,
+  "observations": [
+    {
+      "phase": "before",
+      "runtime": "bun",
+      "seed": 104729,
+      "sourceProofSha256": "e228bd7825d8f0cdcbc1ba894f7242b70c771e84e0cb18635108891536b083ee",
+      "detailsSha256": "984887e1320c08669d548993458245fca27ff9cfdaf7196cb6ba91931973ee99",
+      "metadata": [],
+      "sourceMaps": [],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        }
+      ]
+    },
+    {
+      "phase": "before",
+      "runtime": "bun",
+      "seed": 130363,
+      "sourceProofSha256": "831449ad229b29d6a670391ab2d019fb3abe455b0c047611b494d92e57eef554",
+      "detailsSha256": "0002dba7257704c2f728d92fab07997d392de244fb050a915ee0e2b5fe37b8c2",
+      "metadata": [],
+      "sourceMaps": [],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        }
+      ]
+    },
+    {
+      "phase": "before",
+      "runtime": "node",
+      "seed": 104729,
+      "sourceProofSha256": "3e3202f1f5f6e5c4436d0151d3c55f2c44601a2428a5ea2b925014baf2186465",
+      "detailsSha256": "92ab335e46c3a77b5ef79a496498df138ff3430572a34854bc98453fd8488465",
+      "metadata": [],
+      "sourceMaps": [],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        }
+      ]
+    },
+    {
+      "phase": "before",
+      "runtime": "node",
+      "seed": 130363,
+      "sourceProofSha256": "403db49fd7a482ca57e1787799a539f7616dce19aa3ed20b355f04493e4a0831",
+      "detailsSha256": "e76e5f5e971d519270ac2dd4a754367797b7bd4f3e0eda72d923020bbc080961",
+      "metadata": [],
+      "sourceMaps": [],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": []
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "runtime": "bun",
+      "seed": 104729,
+      "sourceProofSha256": "0258352e139b9ea31440ae9c7c0171c2b33b2d0684f0293211b513cf97028ca7",
+      "detailsSha256": "79edc253af59d07ece27cc3345ff2f037c0cff4741cef0ff10b5b1b22e2a5df9",
+      "metadata": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/_metadata.json",
+          "sha256": "8d0b09e9bb6e81c5d88fab0de4eaffc8b70b0c09867a73e3c733a644949b5d13",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "c242b77d",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "4e8857d3",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "12106f38",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps/_metadata.json",
+          "sha256": "4188d9f4eb58ec6e880963837b1cd0a494a32a1c1338d0f646c5e2bcaa503ed1",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "96bb23e8",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "e628737c",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "0642c6de",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        }
+      ],
+      "sourceMaps": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        }
+      ],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 115.59412499999999,
+                "totalTime": 133.25020800000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-validation-work.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 13.90100000000001,
+                "totalTime": 13.90100000000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.7550830000000133,
+                "totalTime": 3.7550830000000133,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.0791679999999957,
+                "totalTime": 20.198583999999997,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/zod-salvage-absence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.259374999999999,
+                "totalTime": 14.259374999999999,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.8600410000000025,
+                "totalTime": 3.8600410000000025,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.273791000000003,
+                "totalTime": 19.951958000000005,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-salvage-equivalence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.170083000000005,
+                "totalTime": 14.170083000000005,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.5080839999999966,
+                "totalTime": 3.5080839999999966,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.0118750000000105,
+                "totalTime": 20.134708000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.124040999999998,
+                "totalTime": 14.124040999999998,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.9987919999999946,
+                "totalTime": 3.9987919999999946,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4_core.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6844590000000039,
+                "totalTime": 0.6844590000000039,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6304580000000044,
+                "totalTime": 0.6304580000000044,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.128998999999993,
+                "totalTime": 20.531124999999996,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.381917000000001,
+                "totalTime": 14.381917000000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 4.020209000000001,
+                "totalTime": 4.020209000000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4_core.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.7135829999999999,
+                "totalTime": 0.7135829999999999,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6233749999999958,
+                "totalTime": 0.6233749999999958,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 1.9556259999999952,
+                "totalTime": 20.263458999999997,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.560958,
+                "totalTime": 14.560958,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.746875000000003,
+                "totalTime": 3.746875000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4_core.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6649999999999991,
+                "totalTime": 0.6649999999999991,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-104729/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.5492920000000012,
+                "totalTime": 0.5492920000000012,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "runtime": "bun",
+      "seed": 130363,
+      "sourceProofSha256": "57f5c7225619128a26ac17aa27ac5bb0fe433228afd33f8a7e094e7093554db6",
+      "detailsSha256": "020c59475fb0a05212b3fb29655f4afa7ad7ab539ffb9794df931446fc3a3111",
+      "metadata": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/_metadata.json",
+          "sha256": "8ee83723a8e28e83af1a4cb16eee1a339173ebb232d9fb06b2e20d1b868a4414",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "004903af",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "b1ad69de",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "e02415ce",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps/_metadata.json",
+          "sha256": "df7a234ade2cbeb740ffb6348d38c12e04e4db7efd082f82c95c42de178ed138",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "f973e921",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "f0415712",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "190dfa35",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        }
+      ],
+      "sourceMaps": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        }
+      ],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 100.88925,
+                "totalTime": 121.14108300000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-validation-work.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 16.07970800000001,
+                "totalTime": 16.07970800000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 4.172124999999994,
+                "totalTime": 4.172124999999994,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.146165999999994,
+                "totalTime": 21.241583,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/zod-salvage-absence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 15.154875000000004,
+                "totalTime": 15.154875000000004,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.9405420000000007,
+                "totalTime": 3.9405420000000007,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.481790999999994,
+                "totalTime": 21.006375,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-salvage-equivalence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.796166999999997,
+                "totalTime": 14.796166999999997,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.7284170000000074,
+                "totalTime": 3.7284170000000074,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.0437089999999998,
+                "totalTime": 20.125667,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.363,
+                "totalTime": 14.363,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.7189580000000007,
+                "totalTime": 3.7189580000000007,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4_core.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6662910000000011,
+                "totalTime": 0.6662910000000011,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6072500000000005,
+                "totalTime": 0.6072500000000005,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.0833760000000012,
+                "totalTime": 20.439208999999998,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.774082999999997,
+                "totalTime": 14.774082999999997,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.5817499999999995,
+                "totalTime": 3.5817499999999995,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4_core.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6844590000000039,
+                "totalTime": 0.6844590000000039,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.5787499999999994,
+                "totalTime": 0.5787499999999994,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "bun",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038",
+              "record": {
+                "selfTime": 2.236666999999997,
+                "totalTime": 20.786291999999996,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/core-D6CNf4Ff.js?v=c8b51038",
+              "record": {
+                "selfTime": 14.688959000000004,
+                "totalTime": 14.688959000000004,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/external-DPujmiiI.js?v=c8b51038",
+              "record": {
+                "selfTime": 3.860665999999995,
+                "totalTime": 3.860665999999995,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod.js?v=c8b51038"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4_core.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6829169999999962,
+                "totalTime": 0.6829169999999962,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-bun-130363/bun/vitest/b14615a7fdef95956475d555b4973df802dd3ebf/deps_ssr/zod_v4.js?v=c8b51038",
+              "record": {
+                "selfTime": 0.6197080000000028,
+                "totalTime": 0.6197080000000028,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "runtime": "node",
+      "seed": 104729,
+      "sourceProofSha256": "5240c19632c8e3d72f3fd341a6fccaac28bd39322d869b3f5148fe00a92536fe",
+      "detailsSha256": "def7ca627af0c0c4325c2a559a7b829e09a17bf89d1b47f613eccaae4603cf2e",
+      "metadata": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/_metadata.json",
+          "sha256": "38169cd2df16b07be5fb068082e83eb1cb200e5a9781cebb1bbec96f1f7d0dd1",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "e44ac13f",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "374d72f1",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "5482ea77",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps/_metadata.json",
+          "sha256": "cb5acda2d4c8684ccd7a4ef1463b279146bbb861e3e3fd42aa85b0821e769fc8",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "4ffd66bf",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "698a94a0",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "fcb02900",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        }
+      ],
+      "sourceMaps": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        }
+      ],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.799499999999995,
+                "totalTime": 29.512708000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-salvage-equivalence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 20.189999999999998,
+                "totalTime": 20.189999999999998,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.523208000000011,
+                "totalTime": 4.523208000000011,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 136.35220700000002,
+                "totalTime": 161.189,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-validation-work.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 20.120708999999977,
+                "totalTime": 20.120708999999977,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.716083999999995,
+                "totalTime": 4.716083999999995,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 3.9877079999999907,
+                "totalTime": 27.595415999999993,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/zod-salvage-absence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.338458000000003,
+                "totalTime": 19.338458000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.2692499999999995,
+                "totalTime": 4.2692499999999995,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 3.8140420000000006,
+                "totalTime": 27.101042,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.097084000000002,
+                "totalTime": 19.097084000000002,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.189915999999997,
+                "totalTime": 4.189915999999997,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4_core.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.5573329999999999,
+                "totalTime": 0.5573329999999999,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.426249999999996,
+                "totalTime": 0.426249999999996,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 3.9282089999999883,
+                "totalTime": 27.292916999999996,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.144625000000005,
+                "totalTime": 19.144625000000005,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.2200830000000025,
+                "totalTime": 4.2200830000000025,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4_core.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.5398329999999874,
+                "totalTime": 0.5398329999999874,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.45112500000000466,
+                "totalTime": 0.45112500000000466,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 3.806291999999992,
+                "totalTime": 27.13112499999999,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.072208000000003,
+                "totalTime": 19.072208000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.252624999999995,
+                "totalTime": 4.252624999999995,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4_core.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.49499999999999034,
+                "totalTime": 0.49499999999999034,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-104729/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.47433299999998724,
+                "totalTime": 0.47433299999998724,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "phase": "after",
+      "runtime": "node",
+      "seed": 130363,
+      "sourceProofSha256": "d9c2397f1bd84857d181bed11d63b098ca16df991fbf48af7f6eec3a5d62c7d5",
+      "detailsSha256": "56e1843dd8147a22c90c47516e6fce8c269ec1860111f7a04bc9c422276cf99d",
+      "metadata": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/_metadata.json",
+          "sha256": "9cd49f36644aeee9024c71f84278c76e95eeac8c2ea327e39e3b32e4fb7fbf7c",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "f4b96bd8",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "5089ce0f",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "99a3621d",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps/_metadata.json",
+          "sha256": "32477fc8956f8a92f2cb012cd81300e7e4a1884eb37392db21d47d19acbec0bc",
+          "entries": {
+            "zod": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/index.js",
+              "file": "zod.js",
+              "fileHash": "99dc4728",
+              "needsInterop": false
+            },
+            "zod/v4": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/index.js",
+              "file": "zod_v4.js",
+              "fileHash": "acfd2813",
+              "needsInterop": false
+            },
+            "zod/v4/core": {
+              "src": "../../../../../../../../../../../node_modules/.pnpm/zod@4.6.5/node_modules/zod/v4/core/index.js",
+              "file": "zod_v4_core.js",
+              "fileHash": "39fb5835",
+              "needsInterop": false
+            }
+          },
+          "chunks": {
+            "core-D6CNf4Ff": {
+              "file": "core-D6CNf4Ff.js",
+              "isDynamicEntry": false
+            },
+            "external-DPujmiiI": {
+              "file": "external-DPujmiiI.js",
+              "isDynamicEntry": false
+            }
+          }
+        }
+      ],
+      "sourceMaps": [
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps/core-D6CNf4Ff.js.map",
+          "sha256": "4ceb76f7531c2d789821275d6a93e8f89d29b87bdd0a824e7b9871aec2d1595b",
+          "verifiedCanonicalSourceContents": 82
+        },
+        {
+          "file": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps/external-DPujmiiI.js.map",
+          "sha256": "7cabb584d1939d6c36d827639c29e785ee7da9fe6e48a9abaf3c7b49813564a2",
+          "verifiedCanonicalSourceContents": 12
+        }
+      ],
+      "modules": [
+        {
+          "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.799167000000011,
+                "totalTime": 29.34554100000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-salvage-equivalence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.927583,
+                "totalTime": 19.927583,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.618791000000002,
+                "totalTime": 4.618791000000002,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/workspace-session-validation-work.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 125.492458,
+                "totalTime": 150.208667,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/workspace-session-validation-work.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 20.01325,
+                "totalTime": 20.01325,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.702958999999993,
+                "totalTime": 4.702958999999993,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "src/shared/zod-salvage-absence.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.154917000000005,
+                "totalTime": 28.842208000000007,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/src/shared/zod-salvage-absence.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 20.047083,
+                "totalTime": 20.047083,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.640208000000001,
+                "totalTime": 4.640208000000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.20283400000001,
+                "totalTime": 28.790917000000007,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.931665999999993,
+                "totalTime": 19.931665999999993,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.656417000000005,
+                "totalTime": 4.656417000000005,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4_core.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.5837910000000051,
+                "totalTime": 0.5837910000000051,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.47666699999999196,
+                "totalTime": 0.47666699999999196,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/first-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.216625999999991,
+                "totalTime": 28.526667000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 20.05850000000001,
+                "totalTime": 20.05850000000001,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.251541000000003,
+                "totalTime": 4.251541000000003,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4_core.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.600625000000008,
+                "totalTime": 0.600625000000008,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.5067080000000033,
+                "totalTime": 0.5067080000000033,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc-state-boundary-audit/second-file.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        },
+        {
+          "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+          "project": "node",
+          "pool": "forks",
+          "executedOwnedOptimizedIds": [
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.0531660000000045,
+                "totalTime": 28.282416999999995,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/core-D6CNf4Ff.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 19.678708999999998,
+                "totalTime": 19.678708999999998,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "471344b40333ddfd4224e3e0143a15095e70b55c26d32bacc75ecec7909bc769"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/external-DPujmiiI.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 4.550541999999993,
+                "totalTime": 4.550541999999993,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod.js?v=e8fb48b8"
+              },
+              "outputSha256": "40d694c7c3716c5771de481f0069384fd082c779887e70874e141b4f3fae4fd7"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4_core.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.5805000000000007,
+                "totalTime": 0.5805000000000007,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "24dd7df0b16c856953220b5febeb2e1b11f0d69adb1e673104ca05b699b765f1"
+            },
+            {
+              "id": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-state-events-inline-output-epoch/owned-optimizer-cache/after-node-130363/node/vitest/f8e966d1e207d02c44511a58dccff2f5429e9a3b/deps_ssr/zod_v4.js?v=e8fb48b8",
+              "record": {
+                "selfTime": 0.48970800000000736,
+                "totalTime": 0.48970800000000736,
+                "importer": "/Users/nwparker/orca/workspaces/orca/bun-tests/notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts"
+              },
+              "outputSha256": "80dcee0508663132ce7878c3f81cd0695b0c4ffff2be2e066f2be380220db8d3"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "scope": "Untimed worker import ledger demonstrates owned generated entries/chunks executing through transformed module runner in all six files on everyONarm; metadata entries bind installed canonicalZod4.6.5 and94source-mapcontents peroptimizer environment (188across client/SSR in eachcache) match actualownerbytes. This is mechanism evidence, not performance or full adoption. OFF has no owned optimized outputs. Raw64 maps/events/reset parity verified separately by peer.",
+  "testsOrBuildsLaunchedByReviewer": false,
+  "performanceQualified": false
+}

@@ -1,0 +1,73 @@
+{
+  "sourceHead": "30bc964e7b6c88832caffb87eb62282459dbf218",
+  "definitionHead": "4c4dcdbfd1d65dea38f8e2b857c0597ad2a0aea0",
+  "runId": 37670629249,
+  "runAttempt": 1,
+  "collectorPassed": true,
+  "collectorResultPath": "notes/bun-migration/performance/zod-optimizer-30bc-inline-run-37670629249-raw/zod-broad-evidence-37670629249-1/zod-broad-result.json",
+  "collectorResultSha256": "7f6b0c9c819104416f98ffad648a7391d426b78d2861f4dd9b40ee62fb5fce27",
+  "finalDefinitionSha256": "887077950100438d2e49d9b71e4e18c1b9e53208d00555a303b4f4a33be02728",
+  "planSha256": "f9b8847580d42edac4cfb21a8da43ebd69ebeb27f961ea1b7ca96be33acbfebc",
+  "allEightCollectorSnapshotsExact": true,
+  "casesPerSnapshot": 1669,
+  "originalTwentyOneCases": 1668,
+  "old104729Original21MapByteSemanticsExact": true,
+  "old104DonorPath": "notes/bun-migration/performance/zod-optimizer-a576-broad-definition-publication/run-37657972556-raw/zod-broad-bun-104729/runs/bun-104729/before.json",
+  "old104DonorSha256": "1577078c1fda8cf7f79e7dbac2caab22fcab80b6266131262e4959c204e08991",
+  "originalMapSha256": "6d4f927064282d97f4ce7514f51dd56ab94a8d067428a288fcbe488bf19c9737",
+  "bindingPathOnlyOwnedNewFixtureDifference": true,
+  "actualContexts": [
+    {
+      "runtime": "bun",
+      "seed": 104729,
+      "path": "notes/bun-migration/performance/zod-optimizer-30bc-inline-run-37670629249-raw/zod-broad-bun-104729/runs/bun-104729/ci-context.json",
+      "sha256": "c828abf78fcd8690b62f977e63a4f202f9d3379369f81bdbc5a32339ec598535",
+      "sourceSha": "30bc964e7b6c88832caffb87eb62282459dbf218",
+      "definitionSha": "4c4dcdbfd1d65dea38f8e2b857c0597ad2a0aea0",
+      "runId": "37670629249",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "vitestVersion": "5.0.3"
+    },
+    {
+      "runtime": "bun",
+      "seed": 130363,
+      "path": "notes/bun-migration/performance/zod-optimizer-30bc-inline-run-37670629249-raw/zod-broad-bun-130363/runs/bun-130363/ci-context.json",
+      "sha256": "5f745e0c3f697c4c729c97a7578beb4d16b31934b9946b3685082aff2ef125d8",
+      "sourceSha": "30bc964e7b6c88832caffb87eb62282459dbf218",
+      "definitionSha": "4c4dcdbfd1d65dea38f8e2b857c0597ad2a0aea0",
+      "runId": "37670629249",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "vitestVersion": "5.0.3"
+    },
+    {
+      "runtime": "node",
+      "seed": 104729,
+      "path": "notes/bun-migration/performance/zod-optimizer-30bc-inline-run-37670629249-raw/zod-broad-node-104729/runs/node-104729/ci-context.json",
+      "sha256": "0eb96b1d722b5b511d53e032be51a27dd3bb8d44d9a1760b0e217f0fbbdca1e9",
+      "sourceSha": "30bc964e7b6c88832caffb87eb62282459dbf218",
+      "definitionSha": "4c4dcdbfd1d65dea38f8e2b857c0597ad2a0aea0",
+      "runId": "37670629249",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "vitestVersion": "5.0.3"
+    },
+    {
+      "runtime": "node",
+      "seed": 130363,
+      "path": "notes/bun-migration/performance/zod-optimizer-30bc-inline-run-37670629249-raw/zod-broad-node-130363/runs/node-130363/ci-context.json",
+      "sha256": "e23da0c502e19039211805d7a4e431bd9a976e316856b883ad912a6368d05b7a",
+      "sourceSha": "30bc964e7b6c88832caffb87eb62282459dbf218",
+      "definitionSha": "4c4dcdbfd1d65dea38f8e2b857c0597ad2a0aea0",
+      "runId": "37670629249",
+      "nodeVersion": "24.21.0",
+      "bunVersion": "1.4.2",
+      "vitestVersion": "5.0.3"
+    }
+  ],
+  "independentRawRuntimeCorrectnessReviewPending": true,
+  "broadOnlyNoPerformanceOrGlobalAdoption": true,
+  "copiedOutputsWorkerUseNotClaimedFromThisCollector": true,
+  "testsLaunchedByReviewer": false
+}

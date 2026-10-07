@@ -1,0 +1,29 @@
+{
+  "sourceHead": "30bc964e7b6c88832caffb87eb62282459dbf218",
+  "reviewedForTimingAdmission": true,
+  "experimentOnly": true,
+  "optimizerGlobalAdoptionQualified": false,
+  "performanceQualified": false,
+  "scope": "Root-authorized12originalconsumer1468case experiment only, stock4/isolation/sixsetups/fsfalse; complete coldOFF/INLINE-ON plus3warmAB/BA/AB pairs.",
+  "inline64x8RawResetParityStockIdentical": true,
+  "inlineWorkerEntriesChunksCanonicalOwnerProven": true,
+  "originalNativeONIdentityDeviationPreserved": true,
+  "sourceProofs": {
+    "state-independent-runtime-proof.json": {
+      "path": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-inline-output-twelve-consumer-held-timing-draft/state-independent-runtime-proof.json",
+      "sha256": "7ebfaacb51f6738e92a0da4cb164809120dbbc4c35fa55ee46bf67e7918c482d"
+    },
+    "worker-owner-proof.json": {
+      "path": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-inline-output-twelve-consumer-held-timing-draft/worker-owner-proof.json",
+      "sha256": "a571d71f02aabd3554d9852dc35885c6d3f139eb5d1296d032318dd6ea8e7192"
+    },
+    "broad-independent-runtime-proof.json": {
+      "path": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-inline-output-twelve-consumer-held-timing-draft/broad-independent-runtime-proof.json",
+      "sha256": "ca1e3f5f74cb1e8ea0d39a08a753b330c8a465e7b7f817a4dabfd3c4678775a1"
+    },
+    "broad-original-map-source-proof.json": {
+      "path": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e-inline-output-twelve-consumer-held-timing-draft/broad-original-map-source-proof.json",
+      "sha256": "d58db2f14165d398b491058d980ee0a18b49bc03513443d48f4dd12d2a91dbd5"
+    }
+  }
+}
