@@ -6,13 +6,21 @@ import type { AgentSessionRecord } from '../../../../shared/agent-session-record
 import { agentSessionRecordFixture } from '../../../../shared/agent-session-record.test-fixture'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
 import { nativeChatVisualsFolderFor } from '../../../native-chat/native-chat-visuals-folder'
+import { ALL_RPC_METHODS } from '.'
+import { STRUCTURED_AGENT_SESSION_VISUAL_METHODS } from './structured-agent-session-visual'
 import {
-  call,
+  call as callStructured,
   clearStructuredHostStub,
   hostStub,
   SESSION,
   STRUCTURED_CLIENT
 } from './structured-agent-session-rpc.test-fixture'
+
+type CallClient = Parameters<typeof callStructured>[2]
+
+function call(method: string, params: unknown, client: CallClient) {
+  return callStructured(method, params, client, {}, STRUCTURED_AGENT_SESSION_VISUAL_METHODS)
+}
 
 let stateDirectory: string
 let record: AgentSessionRecord | null
@@ -42,6 +50,10 @@ async function writeVisual(name: string, html: string): Promise<void> {
 }
 
 describe('agentSession.readVisual', () => {
+  it('is registered on the runtime manifest', () => {
+    expect(ALL_RPC_METHODS.map((method) => method.name)).toContain('agentSession.readVisual')
+  })
+
   it("reads a file from the chat's own folder under the host's state directory", async () => {
     await writeVisual('chart.html', '<p>chart</p>')
     const reply = await call(
@@ -63,14 +75,20 @@ describe('agentSession.readVisual', () => {
       STRUCTURED_CLIENT
     )
     const result: unknown = first.ok ? first.result : null
-    const revision = String(Reflect.get(result ?? {}, 'revision'))
+    const revision =
+      typeof result === 'object' && result !== null && 'revision' in result
+        ? String(result.revision)
+        : ''
     const again = await call(
       'agentSession.readVisual',
       { sessionId: SESSION, file: 'chart.html', knownRevision: revision },
       STRUCTURED_CLIENT
     )
     expect(again).toMatchObject({ ok: true, result: { ok: true, unchanged: true, revision } })
-    expect(again.ok ? Reflect.has(Object(again.result), 'html') : true).toBe(false)
+    const againResult: unknown = again.ok ? again.result : null
+    expect(typeof againResult === 'object' && againResult !== null && 'html' in againResult).toBe(
+      false
+    )
   })
 
   it('reports a session this host has no record of', async () => {
