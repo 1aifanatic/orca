@@ -128,4 +128,46 @@ describe('project removal stays on its owner host (#13071)', () => {
     })
     expect(runtimeCall).not.toHaveBeenCalled()
   })
+
+  it('keeps a same-id row on another host that sits outside the deleted group', async () => {
+    const store = createTestStore()
+    const otherGroup: ProjectGroup = { ...group, id: 'group-2', name: 'Other' }
+    const outsideSshRow: Repo = { ...sshRow, projectGroupId: otherGroup.id }
+    store.setState({
+      projectGroups: [group, otherGroup],
+      repos: [{ ...localRow, projectGroupId: group.id }, outsideSshRow]
+    })
+
+    const result = await store.getState().deleteProjectGroupWithContainedProjects(group.id, {
+      removeContainedProjects: true,
+      hostId: 'local'
+    })
+
+    expect(result).toMatchObject({
+      removedProjectIds: ['same-repo'],
+      failedProjectRemovals: []
+    })
+    expect(store.getState().repos).toEqual([outsideSshRow])
+    expect(reposRemoveForHost).toHaveBeenCalledTimes(1)
+    expect(reposRemoveForHost).toHaveBeenCalledWith({ repoId: 'same-repo', hostId: 'local' })
+  })
+
+  it('removes only the member row of an unstamped group, not the focused-host non-member', async () => {
+    const store = createTestStore()
+    const unstampedGroup: ProjectGroup = { ...group, executionHostId: undefined }
+    const memberSshRow: Repo = { ...sshRow, projectGroupId: unstampedGroup.id }
+    store.setState({ projectGroups: [unstampedGroup], repos: [localRow, memberSshRow] })
+
+    const result = await store.getState().deleteProjectGroupWithContainedProjects(group.id, {
+      removeContainedProjects: true
+    })
+
+    expect(result).toMatchObject({
+      removedProjectIds: ['same-repo'],
+      failedProjectRemovals: []
+    })
+    expect(store.getState().repos).toEqual([localRow])
+    expect(reposRemoveForHost).toHaveBeenCalledTimes(1)
+    expect(reposRemoveForHost).toHaveBeenCalledWith({ repoId: 'same-repo', hostId: 'ssh:target-1' })
+  })
 })

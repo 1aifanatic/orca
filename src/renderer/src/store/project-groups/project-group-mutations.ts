@@ -4,7 +4,6 @@ import type { ProjectGroup } from '../../../../shared/project-group-types'
 import type { Repo } from '../../../../shared/repo-types'
 import { selectProjectGroupRemovalTargets } from '../slices/project-group-removal-targets'
 import {
-  catalogOwnsHost,
   getProjectGroupHostId,
   projectGroupMatchesOwnerHost,
   resolveProjectGroupOwnerHostId,
@@ -180,29 +179,36 @@ export function createProjectGroupMutationActions(
 
       const removedProjectIds: string[] = []
       const failedProjectRemovals: ProjectRemovalFailure[] = []
-      // Why: the group's catalog can hold rows from several hosts (a local catalog also owns SSH rows),
-      // so each project is removed on its own host rather than on the group's.
-      const findOwnedProjects = (projectId: string): Repo[] =>
-        get().repos.filter(
-          (repo) =>
-            repo.id === projectId &&
-            (!ownerHostId || catalogOwnsHost(ownerHostId, getRepoExecutionHostId(repo)))
-        )
+      // Why: members were captured before the cascade cleared membership; a same-id row on another
+      // host outside the group must survive, so each member row is removed on its own host.
+      const membersById = new Map<string, Repo[]>()
+      for (const member of targets.projects) {
+        const row = findRepoForHost(get().repos, member.id, { hostId: member.hostId })
+        if (row) {
+          membersById.set(member.id, [...(membersById.get(member.id) ?? []), row])
+        }
+      }
       for (const projectId of new Set(targets.projectIds)) {
-        const ownedProjects = findOwnedProjects(projectId)
-        // Why: an owned catalog's rows under the id are all members; an unstamped group already routes to the focused host.
-        const focusedProject = ownerHostId
+        const members = membersById.get(projectId) ?? []
+        // Why: an unstamped group already routes to the focused host, so only that host's member is removed.
+        const focusedMember = ownerHostId
           ? null
-          : findRepoForHost(ownedProjects, projectId, { settings: get().settings })
-        const removable = ownerHostId ? ownedProjects : focusedProject ? [focusedProject] : []
-        for (const ownedProject of removable) {
+          : findRepoForHost(members, projectId, { settings: get().settings })
+        const removable = ownerHostId ? members : focusedMember ? [focusedMember] : []
+        const removableHostIds = removable.map((row) => getRepoExecutionHostId(row))
+        for (const hostId of removableHostIds) {
           try {
-            await get().removeProject(projectId, { hostId: getRepoExecutionHostId(ownedProject) })
+            await get().removeProject(projectId, { hostId })
           } catch (err) {
             console.error('Failed to remove contained project:', err)
           }
         }
-        const stillExists = findOwnedProjects(projectId).length > 0
+        // Why: an ambiguous unstamped member with no focused-host row was left in place, so it counts as remaining.
+        const stillExists =
+          (members.length > 0 && removableHostIds.length === 0) ||
+          removableHostIds.some((hostId) =>
+            get().repos.some((repo) => repoMatchesHostIdentity(repo, projectId, hostId))
+          )
         if (stillExists) {
           failedProjectRemovals.push({
             projectId,
