@@ -382,6 +382,37 @@ describe('runtime create base without a tracking ref', () => {
     expect(result.worktree.baseRef).toBe('refs/remotes/origin/main')
   })
 
+  it('names the workspace only after the fetch has settled', async () => {
+    let refreshSettled = false
+    mocks.refresh.mockImplementation(async () => {
+      await Promise.resolve()
+      mocks.hasRemoteRef.mockResolvedValue(true)
+      refreshSettled = true
+      return { ok: true }
+    })
+    const settledAtNaming: boolean[] = []
+    mocks.canCheckout.mockImplementation(async () => {
+      settledAtNaming.push(refreshSettled)
+      return false
+    })
+
+    await createWorktree({ baseBranch: 'origin/main', branchNameOverride: 'app' })
+
+    expect(settledAtNaming).toEqual([true])
+    expect(mocks.canCheckout).toHaveBeenCalledWith('/repo', 'app', 'origin/main', {})
+    expect(mocks.branchConflict).toHaveBeenCalledWith('/repo', 'app', 'origin/main', {}, undefined)
+  })
+
+  it('keeps the not-found error when the fetch works but the tracking ref is still missing', async () => {
+    mocks.hasBase.mockResolvedValue(false)
+    mocks.refresh.mockResolvedValue({ ok: true })
+
+    await expect(createWorktree({ baseBranch: 'origin/main' })).rejects.toThrow(
+      'Base ref "origin/main" was not found after fetching.'
+    )
+    expect(mocks.consume).not.toHaveBeenCalled()
+  })
+
   it('creates from the local branch and reports it when the fetch fails', async () => {
     mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
 
