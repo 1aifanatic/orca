@@ -17,6 +17,7 @@ import type { StructuredAgentSessionAdapter } from './structured-agent-session-a
 import type { StructuredAgentSessionEventSink } from './structured-agent-session-event-sink'
 import { StructuredAgentSessionHost } from './structured-agent-session-host'
 import { isStructuredAgentSessionStopNote } from './structured-agent-session-command-turn'
+import { holdLane } from './structured-agent-session-delivery-hold.test-fixture'
 import {
   HOST_TEST_NOW as NOW,
   HOST_TEST_SESSION as SESSION,
@@ -47,7 +48,6 @@ let store: AgentSessionRecordStore
 let host: StructuredAgentSessionHost
 let dispatch: Mock<StructuredAgentSessionAdapter['dispatch']>
 let cancelTurn: Mock<StructuredAgentSessionAdapter['cancelTurn']>
-let awaitStarted: Mock<NonNullable<StructuredAgentSessionAdapter['awaitStarted']>>
 let closeSession: Mock<NonNullable<StructuredAgentSessionAdapter['closeSession']>>
 let setOption: Mock<StructuredAgentSessionAdapter['setOption']>
 let acknowledgeSessionRelease: Mock<
@@ -69,7 +69,6 @@ beforeEach(async () => {
   // Admitted, not accepted: the message is written and its turn has not opened.
   dispatch = vi.fn(async () => ({ state: 'admitted' as const }))
   cancelTurn = vi.fn(async () => ({ cancelled: true }))
-  awaitStarted = vi.fn(async () => undefined)
   closeSession = vi.fn(async () => true)
   setOption = vi.fn(async () => undefined)
   acknowledgeSessionRelease = vi.fn()
@@ -101,7 +100,6 @@ beforeEach(async () => {
         }
       },
       dispatch,
-      awaitStarted,
       closeSession,
       acknowledgeSessionRelease,
       releaseAcquisition: vi.fn(async () => true),
@@ -379,14 +377,14 @@ describe('a Stop that names no turn', () => {
   })
 
   it('withdraws what is queued on a ready child and asks the provider for nothing more', async () => {
-    const started = Promise.withResolvers<undefined>()
-    awaitStarted.mockImplementationOnce(() => started.promise)
+    // Held, the send is accepted and the Stop runs next, ahead of the handover the send asks for.
+    const release = holdLane(host, SESSION)
     const { id, result } = send('hello')
+    const stopped = stop()
+    release()
     await result
-    await eventually(() => expect(awaitStarted).toHaveBeenCalled())
 
-    expect(await stop()).toMatchObject({ ok: true, value: { cancelled: true } })
-    started.resolve(undefined)
+    expect(await stopped).toMatchObject({ ok: true, value: { cancelled: true } })
 
     expect(await submission(id)).toMatchObject({
       dispatchState: 'rejected',
@@ -606,21 +604,20 @@ describe('a Stop that names its turn, as an older client sends it', () => {
     expect(await statusRows()).toEqual([])
   })
 
-  async function queueOnHost(): Promise<{ id: string; release: () => void }> {
-    const started = Promise.withResolvers<undefined>()
-    awaitStarted.mockImplementationOnce(() => started.promise)
-    const { id, result } = send('hello')
-    await result
-    await eventually(() => expect(awaitStarted).toHaveBeenCalled())
-    return { id, release: () => started.resolve(undefined) }
+  /** A send queued on the host and not yet handed over: the lane is held until `release`, so a
+   *  step asked for before it runs ahead of the handover. */
+  function queueOnHost(): { id: string; release: () => void } {
+    const release = holdLane(host, SESSION)
+    return { id: send('hello').id, release }
   }
 
   it('reports success with no row when it withdrew a queued message and the turn had ended', async () => {
-    const queued = await queueOnHost()
+    const queued = queueOnHost()
     cancelTurn.mockResolvedValueOnce({ cancelled: false })
 
-    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    const stopped = stop('turn-1')
     queued.release()
+    expect(await stopped).toMatchObject({ ok: true, value: { cancelled: true } })
 
     expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
     expect(await statusRows()).toEqual([])
@@ -628,14 +625,15 @@ describe('a Stop that names its turn, as an older client sends it', () => {
 
   // Codex refuses an interrupt for a turn that has ended.
   it('reports success with no row when the provider refused a turn that had ended', async () => {
-    const queued = await queueOnHost()
+    const queued = queueOnHost()
     cancelTurn.mockResolvedValueOnce({
       cancelled: false,
       refusal: { detail: { text: 'no such turn', audience: 'person' } }
     })
 
-    expect(await stop('turn-1')).toMatchObject({ ok: true, value: { cancelled: true } })
+    const stopped = stop('turn-1')
     queued.release()
+    expect(await stopped).toMatchObject({ ok: true, value: { cancelled: true } })
 
     expect(await submission(queued.id)).toMatchObject({ dispatchState: 'rejected' })
     expect(await statusRows()).toEqual([])
