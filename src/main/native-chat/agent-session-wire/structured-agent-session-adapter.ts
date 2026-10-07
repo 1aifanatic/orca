@@ -133,7 +133,6 @@ export type AgentSessionPreSpawnReason = Extract<
   | 'accountSwitchInProgress'
   | 'managedAccountUnsupported'
   | 'launchFolderMissing'
-  | 'agentCommandNotRunnable'
 >
 
 /** Acquisition failed with first-hand proof that no provider process existed. */

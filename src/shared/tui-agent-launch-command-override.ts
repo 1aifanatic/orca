@@ -1,13 +1,27 @@
 import type { GlobalSettings } from './global-settings-types'
 import type { TuiAgent } from './tui-agent'
+import { tokenizeCustomCommandTemplate } from './commit-message-prompt'
 
-/**
- * Whether the user replaced this agent's launch command.
- *
- * Never a route input: a terminal types it as a command line, and structured native chat runs it as
- * the program. Terminal-backed chat reads it to skip the structured model catalog, which models
- * only that program, not the whole command line this terminal runs.
- */
+/** A single literal executable; the execution host verifies that the file is runnable. */
+export function structuredAgentCommandToken(command: string): string | null {
+  const input = command.trim()
+  if (!input || /[\0\r\n$`]/.test(input)) {
+    return null
+  }
+  const windowsPath = /^(?:["']?)(?:[A-Za-z]:[\\/]|\\\\)/.test(input)
+  const parsed = tokenizeCustomCommandTemplate(input, windowsPath ? 'literal' : 'escape')
+  if (
+    !parsed.ok ||
+    parsed.tokens.length !== 1 ||
+    parsed.spans.some((span) => span.divergesFromShell)
+  ) {
+    return null
+  }
+  const token = parsed.tokens[0]
+  return token && !/[|&;<>(){}[\]*?!]/.test(token) ? token : null
+}
+
+/** Terminal-backed chat skips the structured catalog when its launch command is customized. */
 export function hasExplicitTuiLaunchCommand(
   settings: Partial<Pick<GlobalSettings, 'agentCmdOverrides'>> | null | undefined,
   agent: TuiAgent

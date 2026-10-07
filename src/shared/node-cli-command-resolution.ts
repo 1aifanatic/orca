@@ -3,20 +3,14 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { getSystemCliInstallDirectories } from './system-cli-install-dirs'
 
-export type ResolveCommandOptions = {
+type ResolveCommandOptions = {
   pathEnv?: string | null
   platform?: NodeJS.Platform
   homePath?: string
 }
 
-/** What Orca's spawn can start on Windows: `.exe`/`.com` directly, `.cmd`/`.bat` as shims. */
-export const WINDOWS_SPAWNABLE_EXTENSION = /\.(exe|com|cmd|bat)$/i
-
-export function getExecutableNames(platform: NodeJS.Platform, commandName: string): string[] {
+function getExecutableNames(platform: NodeJS.Platform, commandName: string): string[] {
   if (platform === 'win32') {
-    if (WINDOWS_SPAWNABLE_EXTENSION.test(commandName)) {
-      return [commandName]
-    }
     return [`${commandName}.cmd`, `${commandName}.exe`, `${commandName}.bat`, commandName]
   }
 
@@ -77,7 +71,7 @@ function findFirstExecutable(
   return null
 }
 
-export function isRunnableCommand(platform: NodeJS.Platform, candidate: string): boolean {
+function isRunnableCommand(platform: NodeJS.Platform, candidate: string): boolean {
   try {
     const stats = statSync(candidate)
     if (!stats.isFile()) {
@@ -263,12 +257,12 @@ function getCliInstallDirectories(platform: NodeJS.Platform, homePath: string): 
   ]
 }
 
-/** The first runnable of `executableNames` on PATH, then in the install directories; null if none. */
-export function findCliExecutable(
-  executableNames: string[],
+export function resolveCliCommand(
+  commandName: string,
   options: ResolveCommandOptions = {}
-): string | null {
+): string {
   const platform = options.platform ?? process.platform
+  const executableNames = getExecutableNames(platform, commandName)
   const pathEnv = options.pathEnv ?? process.env.PATH ?? process.env.Path ?? null
   const pathCandidate = findFirstExecutable(platform, splitPath(pathEnv), executableNames)
   if (pathCandidate) {
@@ -276,19 +270,33 @@ export function findCliExecutable(
   }
 
   const homePath = options.homePath ?? homedir()
-  return findFirstExecutable(
+  const installCandidate = findFirstExecutable(
     platform,
     getCliInstallDirectories(platform, homePath),
     executableNames
   )
+  return installCandidate ?? commandName
 }
 
-export function resolveCliCommand(
-  commandName: string,
+/** Resolve a literal override without falling back to an unverified command name. */
+export function resolveExecutableCommand(
+  command: string,
   options: ResolveCommandOptions = {}
-): string {
+): string | null {
   const platform = options.platform ?? process.platform
-  return findCliExecutable(getExecutableNames(platform, commandName), options) ?? commandName
+  const expanded =
+    command.startsWith('~/') || command.startsWith('~\\')
+      ? join(options.homePath ?? homedir(), command.slice(2))
+      : command
+  if (isAbsolute(expanded)) {
+    return isRunnableCommand(platform, expanded) ? expanded : null
+  }
+  // Relative paths depend on the workspace, which a session-less catalog cannot name.
+  if (expanded.includes('/') || expanded.includes('\\')) {
+    return null
+  }
+  const resolved = resolveCliCommand(expanded, options)
+  return isAbsolute(resolved) && isRunnableCommand(platform, resolved) ? resolved : null
 }
 
 export function resolveCliCommands(
@@ -334,17 +342,6 @@ function firstWindowsPathEnvKey(env: NodeJS.ProcessEnv): string {
     }
   }
   return 'Path'
-}
-
-/** The PATH a `child_process` child launched with `env` reads. On Windows Node keeps only the
- *  lexicographically first of case-insensitive twins (`PATH` before `Path`), not the first inserted. */
-export function pathEnvOf(
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform
-): string | null {
-  const twins =
-    platform === 'win32' ? Object.keys(env).filter((name) => name.toUpperCase() === 'PATH') : []
-  return env[twins.sort()[0] ?? 'PATH'] ?? null
 }
 
 /**

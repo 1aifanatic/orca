@@ -30,7 +30,7 @@ export type StructuredNativeChatBlocker =
   | 'reused-terminal'
   | 'agent-without-structured-session'
   /** The launch names a start directory outside its workspace, which only a PTY can apply. The
-   *  configured launch command and arguments are not read: neither decides the surface. */
+   *  configured launch command and arguments are not read: they apply to terminal launches only. */
   | 'custom-start-directory'
   | 'remote-execution-host'
   | 'project-runtime'

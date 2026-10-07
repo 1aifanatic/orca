@@ -4,7 +4,6 @@ import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   getVersionManagerBinPaths,
-  pathEnvOf,
   withCliRuntimeOnPath,
   resolveClaudeCommand,
   resolveCliCommands,
@@ -389,20 +388,5 @@ describe('withCliRuntimeOnPath', () => {
     // Why the whole string: splitting on the host delimiter while joining on ';'
     // shredded every drive letter into `C;\\Windows`.
     expect(paired.Path).toBe([v20, 'C:\\Windows', 'C:\\Windows\\System32'].join(';'))
-  })
-})
-
-describe('pathEnvOf', () => {
-  // Node's child_process on win32 sorts env keys and keeps the first of each case-insensitive twin.
-  it('reads the PATH twin a Windows child keeps, whatever the insertion order', () => {
-    expect(pathEnvOf({ Path: 'C:\\inherited', PATH: 'C:\\overlay' }, 'win32')).toBe('C:\\overlay')
-    expect(pathEnvOf({ path: 'C:\\lower', Path: 'C:\\mixed' }, 'win32')).toBe('C:\\mixed')
-    expect(pathEnvOf({ Path: 'C:\\only' }, 'win32')).toBe('C:\\only')
-    expect(pathEnvOf({}, 'win32')).toBeNull()
-  })
-
-  it('reads only PATH elsewhere', () => {
-    expect(pathEnvOf({ Path: '/ignored', PATH: '/usr/bin' }, 'linux')).toBe('/usr/bin')
-    expect(pathEnvOf({ Path: '/ignored' }, 'linux')).toBeNull()
   })
 })
