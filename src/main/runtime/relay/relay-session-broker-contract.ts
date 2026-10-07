@@ -30,6 +30,7 @@ export type RelaySessionBrokerOptions = {
   mobileSocketWiring: MobileSocketWiring
   isCurrent: () => boolean
   refreshAccessToken: () => Promise<RelayAccessTokenRefresh>
+  onRenewalExpired?: () => void
   resolvePreferredRegion?: () => Promise<RelayRegion | undefined>
   measureRegionDecision?: (window: RelayRegionWindow) => Promise<RelayRegionDecision>
   onAssignedCellActive?: (cellUrl: string) => void

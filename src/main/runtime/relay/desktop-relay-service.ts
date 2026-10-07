@@ -88,6 +88,8 @@ export class DesktopRelayService {
           mobileSocketWiring,
           isCurrent,
           refreshAccessToken,
+          // Why: without this, recovery waits for the next liveness tick.
+          onRenewalExpired: () => this.ensureLive(),
           resolvePreferredRegion: regionPreference.resolvePreferredRegion,
           measureRegionDecision: regionPreference.measureRegionDecision,
           onAssignedCellActive: regionPreference.noteAssignedCell,

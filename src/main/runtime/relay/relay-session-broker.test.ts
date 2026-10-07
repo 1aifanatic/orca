@@ -668,6 +668,109 @@ describe('RelaySessionBroker renewal close reason', () => {
   })
 })
 
+// Why: a renewal that runs past expiry closes the broker with no retry armed; the
+// coordinator must reopen at once instead of waiting for the 5-minute liveness tick.
+describe('RelaySessionBroker renewal expiry', () => {
+  const signedInContext: RelayAuthContext = {
+    identity: { userId: 'user-1', profileId: 'profile-1', organizationId: 'org-1' },
+    accessToken: 'access-token',
+    relayEntitled: true
+  }
+
+  beforeEach(() => {
+    fakes.controls.length = 0
+    fakes.transports.length = 0
+    fakes.controlConnect.mockReset().mockResolvedValue({
+      type: 'host-hello-ack',
+      v: 1,
+      generation: 1,
+      controlResumeSecret: 'A'.repeat(43),
+      leaseExpiresAt: 1_000_000,
+      activeConnIds: [],
+      pendingConns: []
+    } satisfies RelayHostHelloAckMessage)
+    // An already-spent token makes the renewal tick fire on the next turn.
+    fakes.exchange.mockReset().mockResolvedValue({ relayToken: 'relay-jwt', expiresAt: 0 })
+    fakes.assign.mockReset().mockResolvedValue({
+      cellUrl: 'https://relay.example.test',
+      assignmentEpoch: 1,
+      leaseExpiresAt: 60_000
+    })
+  })
+
+  it('has the coordinator reopen a broker whose renewal failed past expiry', async () => {
+    let reads = 0
+    const coordinator: RelayAuthCoordinator = new RelayAuthCoordinator({
+      readContext: async () => {
+        reads += 1
+        // The first broker's renewal read is the one that fails (network drop).
+        if (reads === 2) {
+          throw new Error('fetch failed')
+        }
+        return signedInContext
+      },
+      openBroker: ({ context, isCurrent, refreshAccessToken }) =>
+        RelaySessionBroker.connect(
+          brokerOptions({
+            accessToken: context.accessToken,
+            isCurrent,
+            refreshAccessToken,
+            onRenewalExpired: () => coordinator.ensureLive(),
+            now: () => 120_000
+          })
+        ),
+      onStatus: vi.fn(),
+      random: () => 0
+    })
+    coordinator.reconcile()
+    try {
+      await vi.waitFor(() => expect(fakes.controls.length).toBeGreaterThanOrEqual(2))
+      expect(fakes.controls[0]!.closeNow).toHaveBeenCalled()
+    } finally {
+      coordinator.stop()
+    }
+  })
+
+  it('keeps retrying renewal itself while the token is still within its grace', async () => {
+    vi.useFakeTimers()
+    try {
+      const onRenewalExpired = vi.fn()
+      const refreshAccessToken = vi.fn(async () => {
+        throw new Error('fetch failed')
+      })
+      const broker = await RelaySessionBroker.connect(
+        brokerOptions({ refreshAccessToken, onRenewalExpired, now: () => 0 })
+      )
+      await vi.advanceTimersByTimeAsync(0)
+      expect(refreshAccessToken).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(refreshAccessToken).toHaveBeenCalledTimes(2)
+      expect(onRenewalExpired).not.toHaveBeenCalled()
+      broker.closeNow()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not ask a superseded broker owner to reconcile', async () => {
+    let current = true
+    const onRenewalExpired = vi.fn()
+    await RelaySessionBroker.connect(
+      brokerOptions({
+        isCurrent: () => current,
+        refreshAccessToken: async () => {
+          current = false
+          throw new Error('fetch failed')
+        },
+        onRenewalExpired,
+        now: () => 120_000
+      })
+    )
+    await vi.waitFor(() => expect(fakes.controls[0]!.closeNow).toHaveBeenCalled())
+    expect(onRenewalExpired).not.toHaveBeenCalled()
+  })
+})
+
 function brokerBasisIds(broker: RelaySessionBroker): string[] {
   const pool = (broker as unknown as { originPool: unknown }).originPool
   return [...(pool as { basisOrigins: Map<string, unknown> }).basisOrigins.keys()]
