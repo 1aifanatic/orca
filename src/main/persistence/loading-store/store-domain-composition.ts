@@ -21,7 +21,6 @@ import {
   RepoLifecycleOperations,
   installRepoLifecycleOperationsContext
 } from './repo-lifecycle-operations'
-import { TerminalBindingRecoveryOperations } from './terminal-binding-recovery'
 import {
   SessionHostPartitionOperations,
   installSessionHostPartitionOperationsContext
@@ -101,7 +100,6 @@ export type StoreDomains = {
   flushBarriers: WriteFlushBarrierOperations
   preferences: ProfilePreferences
   repos: RepoLifecycleOperations
-  bindingRecovery: TerminalBindingRecoveryOperations
   sessions: SessionHostPartitionOperations
   sessionSnapshots: SessionSnapshotOperations
   metadata: MetadataLineageOperations
@@ -169,14 +167,8 @@ export function createStoreDomains(runtime: StoreRuntimeState): StoreDomains {
   const flushBarriers = new WriteFlushBarrierOperations(runtime, writes)
   const preferences = new ProfilePreferences(runtime, scheduling)
   const repos = new RepoLifecycleOperations(runtime, scheduling)
-  const bindingRecovery = new TerminalBindingRecoveryOperations(runtime)
-  const sessions = new SessionHostPartitionOperations(runtime, scheduling, bindingRecovery)
-  const sessionSnapshots = new SessionSnapshotOperations(
-    runtime,
-    sessions,
-    bindingRecovery,
-    scheduling
-  )
+  const sessions = new SessionHostPartitionOperations(runtime, scheduling)
+  const sessionSnapshots = new SessionSnapshotOperations(runtime, sessions, scheduling)
   const metadata = new MetadataLineageOperations(runtime, scheduling, sessions)
   const projects = new ProjectCollectionOperations(runtime, repos, scheduling, metadata)
   const automations = new AutomationPersistence(runtime, flushBarriers, preferences)
@@ -185,12 +177,7 @@ export function createStoreDomains(runtime: StoreRuntimeState): StoreDomains {
   const ptyBindings = new PtyBindingPersistenceOperations(runtime, sessions)
   const sshProfiles = new SshProfileOperations(runtime, scheduling, flushBarriers, repos)
   const retiredWorktreeNames = new RetiredWorktreeNamePersistence(runtime, scheduling)
-  const sshLeases = new SshLeaseRecoveryOperations(
-    runtime,
-    flushBarriers,
-    bindingRecovery,
-    scheduling
-  )
+  const sshLeases = new SshLeaseRecoveryOperations(runtime, flushBarriers, scheduling)
   const orcadCatalogImports = new OrcadCatalogImportPersistence(runtime, repos, scheduling)
   return {
     adaptation,
@@ -202,7 +189,6 @@ export function createStoreDomains(runtime: StoreRuntimeState): StoreDomains {
     flushBarriers,
     preferences,
     repos,
-    bindingRecovery,
     sessions,
     sessionSnapshots,
     metadata,

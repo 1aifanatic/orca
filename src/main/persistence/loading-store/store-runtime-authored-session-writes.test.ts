@@ -1,11 +1,8 @@
 import { closeTestStores, createSqliteTestStore } from '../../persistence-test-harness'
 /**
- * Drives the real `Store`, not the helper and not a fake.
- *
- * `preserveRuntimeAuthoredWorkspaceSessionFields` is only worth anything where the shipping writers
- * call it, and a mutation that unwires it at the call site survives every test that drives the
- * helper directly. Both desktop write paths belong here: the ordinary session write and the
- * before-unload stage, which is the one the desktop actually takes when the user quits.
+ * Drives the real `Store` through the window's save entries, not a fake. Both desktop write paths
+ * belong here: the ordinary session write and the before-unload stage, which is the one the desktop
+ * actually takes when the user quits.
  */
 import { mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -33,6 +30,8 @@ vi.mock('electron', () => ({
 }))
 
 const { Store } = await import('./store')
+const { setRendererSession, stageRendererSessionBeforeUnload } =
+  await import('../terminal-topology/terminal-renderer-presentation-save')
 
 const HOST_ID = 'ssh:user@host'
 const WT = 'repo-1::/tmp/worktree-a'
@@ -94,7 +93,7 @@ describe('Store keeps runtime-authored session fields across desktop writes', ()
     const store = createStore()
     seedRuntimeRows(store)
 
-    store.setWorkspaceSession(rendererSession('after-write'))
+    setRendererSession(store, rendererSession('after-write'))
 
     expect(store.getWorkspaceSession().clientHostedBrowserPagesByWorktree).toEqual({
       [WT]: [page()]
@@ -108,7 +107,7 @@ describe('Store keeps runtime-authored session fields across desktop writes', ()
 
     // The beforeunload chain (use-app-session-persistence -> stageBeforeUnloadSync ->
     // renderer-shutdown-checkpoint) lands here, and it is the last write before the process exits.
-    store.stageWorkspaceSessionBeforeUnload(rendererSession('before-unload'))
+    stageRendererSessionBeforeUnload(store, rendererSession('before-unload'))
 
     expect(store.getWorkspaceSession().clientHostedBrowserPagesByWorktree).toEqual({
       [WT]: [page()]
@@ -119,12 +118,12 @@ describe('Store keeps runtime-authored session fields across desktop writes', ()
     const store = createStore()
     seedRuntimeRows(store, HOST_ID)
 
-    store.setWorkspaceSession(rendererSession('after-write'), HOST_ID)
+    setRendererSession(store, rendererSession('after-write'), HOST_ID)
     expect(store.getWorkspaceSession(HOST_ID).clientHostedBrowserPagesByWorktree).toEqual({
       [WT]: [page()]
     })
 
-    store.stageWorkspaceSessionBeforeUnload(rendererSession('before-unload'), HOST_ID)
+    stageRendererSessionBeforeUnload(store, rendererSession('before-unload'), HOST_ID)
     expect(store.getWorkspaceSession(HOST_ID).clientHostedBrowserPagesByWorktree).toEqual({
       [WT]: [page()]
     })
@@ -195,8 +194,8 @@ describe('a host partition written from a per-host renderer snapshot', () => {
       activeWorktreeId: null,
       unifiedTabs: {}
     } as unknown as WorkspaceSessionState
-    store.setWorkspaceSession(slice, 'runtime:env-1')
-    store.stageWorkspaceSessionBeforeUnload(slice, HOST_ID)
+    setRendererSession(store, slice, 'runtime:env-1')
+    stageRendererSessionBeforeUnload(store, slice, HOST_ID)
     for (const hostId of ['runtime:env-1', HOST_ID]) {
       expect(store.getWorkspaceSession(hostId)).toMatchObject({
         tabsByWorktree: {},

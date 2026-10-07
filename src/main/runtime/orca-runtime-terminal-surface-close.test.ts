@@ -19,10 +19,8 @@ import {
   createHarness,
   makeSession
 } from './__fixtures__/orca-runtime-terminal-close-continuity-fixtures'
-import {
-  retireTerminalSurfaceFromPersistence,
-  sanitizeWorkspaceSessionTerminalRetirements
-} from './mobile-session-terminal-persistence-retirement'
+import { retireTerminalSurfaceFromPersistence } from './mobile-session-terminal-persistence-retirement'
+import { mergeRendererPresentationSave } from '../persistence/terminal-topology/terminal-renderer-presentation-save'
 import { advanceTerminalTopologyRevision } from '../persistence/terminal-topology/terminal-topology-membership'
 
 const splitLayout = {
@@ -247,9 +245,10 @@ describe('CLI close of one pane in a split tab', () => {
       const receipt = await harness.runtime.closeTerminal(terminal.handle)
 
       // A stale renderer save that still lists the pane can neither restore it nor drop the sibling.
-      const saved = sanitizeWorkspaceSessionTerminalRetirements(
+      const saved = mergeRendererPresentationSave(
         { ...harness.getSession(), terminalLayoutsByTabId: { [TAB_ID]: splitLayout } },
-        harness.getSession()
+        harness.getSession(),
+        'local'
       )
       expect(saved.tabsByWorktree[WORKTREE_ID]).toEqual([expect.objectContaining({ id: TAB_ID })])
       expect(saved.terminalLayoutsByTabId[TAB_ID]?.root).toEqual({

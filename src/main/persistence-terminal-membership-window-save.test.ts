@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDefaultWorkspaceSession } from '../shared/constants'
 import type { WorkspaceSessionState } from '../shared/workspace-session-state-types'
 import { retireTerminalSurfaceFromPersistence } from './runtime/mobile-session-terminal-persistence-retirement'
+import { setRendererSession } from './persistence/terminal-topology/terminal-renderer-presentation-save'
 import { TEST_LEAF_1, TEST_LEAF_2 } from './persistence-session-fixtures'
 
 vi.mock('electron', () => ({
@@ -47,7 +48,7 @@ function persistedTabIds(session: WorkspaceSessionState, worktreeId: string): st
   return (session.tabsByWorktree?.[worktreeId] ?? []).map((tab) => tab.id)
 }
 
-describe('host-admitted terminal membership survives a stale renderer replay', () => {
+describe('terminal membership main holds survives a stale window save', () => {
   beforeEach(() => {
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-host-membership-'))
   })
@@ -57,7 +58,7 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
-  it('keeps the first host-admitted tab when the renderer replays its pre-create tab list', async () => {
+  it('keeps a host-created tab when the window saves its pre-create tab list', async () => {
     const store = await createStore()
     store.setWorkspaceSession(rendererSession())
 
@@ -67,19 +68,18 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
         worktreeId: WORKTREE,
         tabId: 'host-tab',
         leafId: TEST_LEAF_2,
-        ptyId: 'host-pty',
-        hostAdmittedMembership: true
+        ptyId: 'host-pty'
       })
     ).toBe(true)
     expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toContain('host-tab')
 
     // The renderer's debounced writer flushes a snapshot taken before the create.
-    store.setWorkspaceSession(rendererSession())
+    setRendererSession(store, rendererSession())
 
     expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toContain('host-tab')
   })
 
-  it('keeps a host-admitted tab in a second worktree of the same repo', async () => {
+  it('keeps a host-created tab in a second worktree of the same repo', async () => {
     const store = await createStore()
     store.setWorkspaceSession(rendererSession())
 
@@ -87,10 +87,9 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
       worktreeId: OTHER_WORKTREE,
       tabId: 'host-tab-other',
       leafId: TEST_LEAF_2,
-      ptyId: 'host-pty-other',
-      hostAdmittedMembership: true
+      ptyId: 'host-pty-other'
     })
-    store.setWorkspaceSession(rendererSession())
+    setRendererSession(store, rendererSession())
 
     expect(persistedTabIds(store.getWorkspaceSession(), OTHER_WORKTREE)).toContain('host-tab-other')
   })
@@ -104,23 +103,21 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
         worktreeId: WORKTREE,
         tabId: 'host-tab',
         leafId: TEST_LEAF_2,
-        ptyId: 'host-pty',
-        hostAdmittedMembership: true
+        ptyId: 'host-pty'
       })
     ).toBe(true)
     expect(store.getWorkspaceSession().defaultTerminalTabsAppliedByWorktreeId?.[WORKTREE]).toBe(
       true
     )
 
-    store.setWorkspaceSession(rendererSession())
+    setRendererSession(store, rendererSession())
     expect(store.getWorkspaceSession().defaultTerminalTabsAppliedByWorktreeId?.[WORKTREE]).toBe(
       true
     )
   })
 
-  // Polarity: without the flag the renderer still owns membership, so a renderer
-  // spawn racing its own writer must not freeze the tab list.
-  it('leaves renderer-owned membership alone when the binding is not host-admitted', async () => {
+  // A window's own spawn is main's too: its save no longer authors membership for any repo.
+  it('keeps a window-spawned tab when the window saves a tab list from before the spawn', async () => {
     const store = await createStore()
     store.setWorkspaceSession(rendererSession())
 
@@ -130,15 +127,16 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
       leafId: TEST_LEAF_2,
       ptyId: 'renderer-second-pty'
     })
-    store.setWorkspaceSession(rendererSession())
+    setRendererSession(store, rendererSession())
 
-    expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toEqual(['renderer-tab'])
+    expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toEqual([
+      'renderer-tab',
+      'renderer-second-tab'
+    ])
   })
 
-  // Closing must still work afterwards. Closes are host-driven: the retirement is
-  // computed from the store's own session (see stageTerminalSurfaceRetirements),
-  // which is what outranks the fence this create just raised.
-  it('still lets the authoritative retirement path close the host-admitted tab', async () => {
+  // Closes are main's: the retirement is computed from the store's own session.
+  it('still lets the retirement path close the host-created tab', async () => {
     const store = await createStore()
     store.setWorkspaceSession(rendererSession())
     await store.persistPtyBinding({
@@ -146,8 +144,7 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
       tabId: 'host-tab',
       leafId: TEST_LEAF_2,
       ptyId: 'host-pty',
-      incarnationId: 'host-incarnation',
-      hostAdmittedMembership: true
+      incarnationId: 'host-incarnation'
     })
 
     store.setWorkspaceSession(
@@ -159,8 +156,8 @@ describe('host-admitted terminal membership survives a stale renderer replay', (
         incarnationId: 'host-incarnation'
       })
     )
-    // A stale renderer replay must not resurrect it either.
-    store.setWorkspaceSession(rendererSession())
+    // A stale window save must not resurrect it either.
+    setRendererSession(store, rendererSession())
 
     expect(persistedTabIds(store.getWorkspaceSession(), WORKTREE)).toEqual(['renderer-tab'])
   })

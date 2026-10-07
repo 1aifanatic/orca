@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { getDefaultWorkspaceSession } from '../shared/constants'
 
 import { TEST_LEAF_1, TEST_LEAF_2 } from './persistence-session-fixtures'
+import { setRendererSession } from './persistence/terminal-topology/terminal-renderer-presentation-save'
 
 // Stub the ~/.ssh/config parser so the SSH-import test drives the real Store with deterministic hosts, not the operator's actual ~/.ssh/config.
 const { loadUserSshConfigMock, sshConfigHostsToTargetsMock } = vi.hoisted(() => ({
@@ -148,7 +149,7 @@ describe('Store', () => {
       }
     })
 
-    store.setWorkspaceSession({
+    setRendererSession(store, {
       activeRepoId: 'r1',
       activeWorktreeId: 'wt1',
       activeTabId: 'tab1',
@@ -250,7 +251,7 @@ describe('Store', () => {
       expect.objectContaining({ id: 'fresh-tab', ptyId: 'fresh-pty' })
     ])
 
-    store.setWorkspaceSession({
+    setRendererSession(store, {
       ...admitted,
       tabsByWorktree: {
         ...admitted.tabsByWorktree,
@@ -278,7 +279,7 @@ describe('Store', () => {
       [TEST_LEAF_1]: 'Fresh pane title'
     })
 
-    store.setWorkspaceSession({
+    setRendererSession(store, {
       ...getDefaultWorkspaceSession(),
       tabsByWorktree: {
         wt1: [
@@ -424,7 +425,7 @@ describe('Store', () => {
         [TEST_LEAF_2]: 'pty-split'
       })
 
-      store.setWorkspaceSession(staleRendererSession, hostId)
+      setRendererSession(store, staleRendererSession, hostId)
       expect(
         store.getWorkspaceSession(hostId).terminalLayoutsByTabId.tab1.ptyIdsByLeafId
       ).toMatchObject({

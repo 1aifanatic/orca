@@ -144,7 +144,6 @@ async function commitReservedRuntimePtySpawn(ctx: RuntimePtySpawnState) {
         tabId,
         leafId,
         ptyId: ctx.result.id,
-        hostAdmittedMembership: true,
         ...(ctx.result.incarnationId ? { incarnationId: ctx.result.incarnationId } : {}),
         ...(ctx.cwd ? { startupCwd: ctx.cwd } : {}),
         ...(expectedSourceBinding ? { expectedSourceBinding } : {}),

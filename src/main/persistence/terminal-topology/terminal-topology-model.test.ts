@@ -10,8 +10,13 @@ import type { TerminalPaneLayoutNode, TerminalTab } from '../../../shared/termin
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { projectTerminalTopologySlice } from '../../runtime/terminal-topology-projection'
 import type { TerminalSurfaceCloseTarget } from '../../../shared/terminal-surface-close-target'
+import type { TerminalSleepingRecordChanges } from '../../../shared/terminal-topology-slice'
 import { collectTerminalLeafOwners, isSameTerminal } from './terminal-owner-invariants'
-import { closeLeafOrTab } from './terminal-topology-commit'
+import { closeLeafOrTab, commitSleepingRecords } from './terminal-topology-commit'
+import {
+  setRendererSession,
+  stageRendererSessionBeforeUnload
+} from './terminal-renderer-presentation-save'
 import {
   emptyTerminalSessionProfile,
   FIXTURE_FOLDER_WORKTREE_ID,
@@ -28,7 +33,7 @@ vi.mock('../../ssh/ssh-config-parser', () => ({
 
 /**
  * Model test for terminal layout as main holds it. Seeded gesture sequences run against main's
- * real Store, written the way today's desktop window writes them; a plain reference model says
+ * real Store, written the way the desktop window writes them; a plain reference model says
  * what main must hold after each one. Making the window a mirror of main changes who writes, not
  * this outcome, so every seed must stay green through that refactor.
  * Replay one seed: FUZZ_SEED=<n> FUZZ_ITERATIONS=1 pnpm test <this file>.
@@ -272,7 +277,15 @@ async function runSeed(seed: number): Promise<string[]> {
   const window = new WindowSession(structuredClone(store.getWorkspaceSession()))
   const model: Model = new Map()
   const log: string[] = []
-  const save = (): void => store.setWorkspaceSession(window.snapshot())
+  const save = (): void => setRendererSession(store, window.snapshot())
+  // The window's own sleeping-record changes commit to main; its saves no longer carry them.
+  const commitSleeping = (changes: TerminalSleepingRecordChanges): void =>
+    commitSleepingRecords(
+      store,
+      changes,
+      () => LOCAL_EXECUTION_HOST_ID,
+      () => false
+    )
   const panes = () =>
     [...model].flatMap(([tabId, tab]) =>
       [...tab.leaves].map(([leafId, pane]) => ({ tabId, leafId, tab, pane }))
@@ -305,7 +318,7 @@ async function runSeed(seed: number): Promise<string[]> {
 
   const reopen = async (stageQuit: boolean): Promise<void> => {
     if (stageQuit) {
-      store.stageWorkspaceSessionBeforeUnload(window.snapshot())
+      stageRendererSessionBeforeUnload(store, window.snapshot())
     }
     store = await reopenTopologyStore(store, directory)
     window.session = structuredClone(store.getWorkspaceSession())
@@ -374,10 +387,12 @@ async function runSeed(seed: number): Promise<string[]> {
         const { [leafId]: _closed, ...bindings } = layout.ptyIdsByLeafId ?? {}
         void _closed
         window.setLayout(tabId, withoutLeaf(layout.root!, leafId)!, bindings)
-        const { [`${tabId}:${leafId}`]: _record, ...sleeping } =
+        const { [`${tabId}:${leafId}`]: record, ...sleeping } =
           window.session.sleepingAgentSessionsByPaneKey ?? {}
-        void _record
         window.setSleeping(sleeping)
+        if (record) {
+          commitSleeping({ sleep: {}, wake: [`${tabId}:${leafId}`] })
+        }
         tab.leaves.delete(leafId)
         await commitClose(tab.worktreeId, { kind: 'pane', tabId, leafId })
         save()
@@ -477,12 +492,18 @@ async function runSeed(seed: number): Promise<string[]> {
         log.push(`${op} ${target.tabId}:${target.leafId}`)
         const paneKey = `${target.tabId}:${target.leafId}`
         const records = { ...window.session.sleepingAgentSessionsByPaneKey }
+        const record = sleepingRecord(target.tab.worktreeId, target.tabId, target.leafId)
         if (op === 'sleep') {
-          records[paneKey] = sleepingRecord(target.tab.worktreeId, target.tabId, target.leafId)
+          records[paneKey] = record
         } else {
           delete records[paneKey]
         }
         window.setSleeping(records)
+        commitSleeping(
+          op === 'sleep'
+            ? { sleep: { [paneKey]: record }, wake: [] }
+            : { sleep: {}, wake: [paneKey] }
+        )
         target.pane.sleeping = op === 'sleep'
         save()
         break

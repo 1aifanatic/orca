@@ -159,7 +159,6 @@ describe('registerPtyHandlers', () => {
       leafId,
       ptyId: expect.any(String),
       incarnationId: expect.any(String),
-      hostAdmittedMembership: true,
       origin: 'spawn'
     })
   })
@@ -519,7 +518,6 @@ describe('registerPtyHandlers', () => {
       leafId,
       ptyId: 'pty-shared',
       startupCwd: '/tmp',
-      hostAdmittedMembership: true,
       origin: 'spawn'
     })
   })

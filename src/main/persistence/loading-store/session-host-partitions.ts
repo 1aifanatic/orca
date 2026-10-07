@@ -1,6 +1,5 @@
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
-import { sanitizeWorkspaceSessionTerminalRetirements } from '../../runtime/mobile-session-terminal-persistence-retirement'
 import {
   LOCAL_EXECUTION_HOST_ID,
   normalizeExecutionHostId,
@@ -12,7 +11,6 @@ import { pruneWorkspaceSessionBrowserHistory } from '../../../shared/workspace-s
 import { withoutRedundantGlobalFields } from '../../../shared/workspace-session-host-field-ownership'
 import { getRepoIdFromWorktreeId } from '../../../shared/worktree/id'
 import { readTerminalScrollbackSnapshotSync } from '../../terminal-scrollback-snapshots'
-import { preserveRuntimeAuthoredWorkspaceSessionFields } from '../runtime-authored-workspace-session-fields'
 import { findWorktreeIdForTab } from '../restoring-sessions/pane-identity-migration'
 import { invalidateLocalWorktreeMetadataPruneInputs } from '../../local-worktree-metadata-prune-gate'
 import {
@@ -23,11 +21,6 @@ import {
 import type { StoreRuntimeState } from './store-runtime-state'
 import type { WriteSchedulingOperations } from './write-scheduling'
 import { scheduleSave } from './write-scheduling'
-import {
-  preserveMissingWorkspaceSessionTerminalBindings,
-  sshTargetIdForWorkspaceSessionHost
-} from './workspace-session-terminal-binding-replay'
-import type { TerminalBindingRecoveryOperations } from './terminal-binding-recovery'
 
 type SessionHostPartitionOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -38,7 +31,6 @@ const sessionHostPartitionOperationsContext = Symbol('SessionHostPartitionOperat
 type SessionHostPartitionOperationsContext = {
   runtime: SessionHostPartitionOperationsRuntime
   scheduling: WriteSchedulingOperations
-  bindingRecovery: TerminalBindingRecoveryOperations
 }
 
 export class SessionHostPartitionOperations {
@@ -46,10 +38,9 @@ export class SessionHostPartitionOperations {
 
   constructor(
     runtime: SessionHostPartitionOperationsRuntime,
-    scheduling: WriteSchedulingOperations,
-    bindingRecovery: TerminalBindingRecoveryOperations
+    scheduling: WriteSchedulingOperations
   ) {
-    this[sessionHostPartitionOperationsContext] = { runtime, scheduling, bindingRecovery }
+    this[sessionHostPartitionOperationsContext] = { runtime, scheduling }
   }
 
   getWorkspaceSession(hostId?: string | null): PersistedState['workspaceSession'] {
@@ -193,22 +184,6 @@ export function setHostWorkspaceSession(
   hostId: ExecutionHostId,
   session: WorkspaceSessionState
 ): void {
-  const prior =
-    owner[sessionHostPartitionOperationsContext].runtime.state.workspaceSessionsByHostId?.[hostId]
-  // Why here and not at the callers: the before-unload stage path writes the renderer's payload
-  // straight through, so a per-caller guard leaves the quit write erasing runtime-authored rows.
-  session = preserveRuntimeAuthoredWorkspaceSessionFields(session, prior)
-  // Why: each partition owns its topology fence; renderer writes omit it and must rebase locally.
-  session = sanitizeWorkspaceSessionTerminalRetirements(session, prior)
-  session = preserveMissingWorkspaceSessionTerminalBindings(
-    session,
-    prior,
-    owner[sessionHostPartitionOperationsContext].bindingRecovery,
-    {
-      targetIdForWorktree: sshTargetIdForWorkspaceSessionHost(hostId),
-      executionHostId: hostId
-    }
-  )
   // Why here too: the load-side drop only survives until the next full snapshot write. A renderer
   // or runtime payload that still carries local's globals would re-inject them into this partition.
   const pruned = withoutRedundantGlobalFields(

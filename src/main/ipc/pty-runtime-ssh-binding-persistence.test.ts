@@ -202,7 +202,6 @@ describe('registerPtyHandlers', () => {
           tabId: 'tab-remote',
           leafId,
           ptyId: 'ssh:ssh-reattach-ok@@relay-pty',
-          hostAdmittedMembership: true,
           origin: 'reattach'
         },
         'ssh:ssh-reattach-ok'

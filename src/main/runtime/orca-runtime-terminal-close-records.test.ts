@@ -20,6 +20,7 @@ import {
   makeSession
 } from './__fixtures__/orca-runtime-terminal-close-continuity-fixtures'
 import { advanceTerminalTopologyRevision } from '../persistence/terminal-topology/terminal-topology-membership'
+import { setRendererSession } from '../persistence/terminal-topology/terminal-renderer-presentation-save'
 
 const SSH_REPO_ID = 'ssh-repo'
 const SSH_HOST_ID = 'ssh:target-1'
@@ -89,7 +90,7 @@ describe('close records', () => {
         target: { kind: 'tab', tabId: TAB_ID },
         reason
       })
-      store.setWorkspaceSession(rendererSave(store.getWorkspaceSession()))
+      setRendererSession(store, rendererSave(store.getWorkspaceSession()))
 
       const reloaded = (await reload()).getWorkspaceSession()
       expect(reloaded.tabsByWorktree[WORKTREE_ID]).toEqual([])
@@ -101,7 +102,7 @@ describe('close records', () => {
     }
   )
 
-  // The store keeps main's map only when a write omits it; main's own writes carry it and win.
+  // A window save never carries the records; main's own writes do and win.
   it("keeps main's own record writes across later store writes", async () => {
     const { store, runtime } = createPersistedRuntime()
 
@@ -113,7 +114,7 @@ describe('close records', () => {
       worktreeId: WORKTREE_ID,
       target: { kind: 'tab', tabId: LATE_TAB_ID }
     })
-    store.setWorkspaceSession(rendererSave(store.getWorkspaceSession()))
+    setRendererSession(store, rendererSave(store.getWorkspaceSession()))
 
     expect(
       Object.keys(store.getWorkspaceSession().closedTerminalTabTombstonesByTabId ?? {}).sort()

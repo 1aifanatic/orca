@@ -16,6 +16,10 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { WorkspaceSessionState } from '../shared/workspace-session-state-types'
 import { getDefaultWorkspaceSession } from '../shared/constants'
+import {
+  patchRendererSession,
+  setRendererSession
+} from './persistence/terminal-topology/terminal-renderer-presentation-save'
 import { isTerminalLeafId } from '../shared/stable-pane-id'
 
 import { worktreeWorkspaceKey } from '../shared/workspace-scope'
@@ -352,13 +356,14 @@ describe('Store host-partitioned workspace sessions', () => {
       'runtime:env-b'
     )
 
-    store.setWorkspaceSession(
+    setRendererSession(
+      store,
       { ...getDefaultWorkspaceSession(), tabsByWorktree: staleTabs },
       'runtime:env-a'
     )
-    store.patchWorkspaceSession({ tabsByWorktree: staleTabs }, 'runtime:env-a')
+    patchRendererSession(store, { tabsByWorktree: staleTabs }, 'runtime:env-a')
 
-    expect(store.getWorkspaceSession('runtime:env-a').tabsByWorktree[worktreeId]).toEqual([])
+    expect(store.getWorkspaceSession('runtime:env-a').tabsByWorktree[worktreeId]).toBeUndefined()
     expect(
       store.getWorkspaceSession('runtime:env-a').terminalTopologyRevisionByRepoId?.duplicate
     ).toBe(2)
@@ -408,7 +413,7 @@ describe('Store host-partitioned workspace sessions', () => {
     store.setWorkspaceSession(session, 'runtime:env-b')
 
     store.removeWorkspaceSessionStateForWorktree(worktreeId, 'runtime:env-a')
-    store.setWorkspaceSession(session, 'runtime:env-a')
+    setRendererSession(store, session, 'runtime:env-a')
     store.flush()
 
     const reloaded = await createStore()

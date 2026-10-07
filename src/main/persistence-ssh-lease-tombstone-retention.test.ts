@@ -71,7 +71,7 @@ describe('operator-closed SSH lease tombstones', () => {
 
     store.markSshRemotePtyLease('ssh-1', 'ssh:ssh-1@@remote-pty', 'terminated')
 
-    // `isRestorablePtyBinding` still consults this row to refuse replaying that binding.
+    // A persisted binding still names the pty, so the row stays.
     expect(store.getSshRemotePtyLeases('ssh-1')).toEqual([
       expect.objectContaining({ ptyId: 'remote-pty', state: 'terminated' })
     ])

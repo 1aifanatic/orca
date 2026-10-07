@@ -4,6 +4,7 @@ import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { Store } from '../persistence'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
+import { stageRendererSessionBeforeUnload } from '../persistence/terminal-topology/terminal-renderer-presentation-save'
 
 type StageBeforeUnloadSyncArgs = {
   sessions: { state: WorkspaceSessionState; hostId?: ExecutionHostId }[]
@@ -51,7 +52,7 @@ export function registerRendererShutdownCheckpointHandler(store: Store): void {
     try {
       for (const { state, hostId } of args.sessions) {
         if (!isFrozenOrcadSourceSessionPartition(store, hostId)) {
-          store.stageWorkspaceSessionBeforeUnload(state, hostId)
+          stageRendererSessionBeforeUnload(store, state, hostId)
         }
       }
       store.updateUI(args.ui)

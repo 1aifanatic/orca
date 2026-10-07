@@ -10,6 +10,11 @@ import { collectLayoutLeafIdsInOrder } from '../restoring-sessions/terminal-layo
 const sortedLeafIds = (root: TerminalPaneLayoutNode | null | undefined): string[] =>
   collectLayoutLeafIdsInOrder(root).sort()
 
+export const sameTerminalLeafSet = (
+  a: TerminalPaneLayoutNode | null | undefined,
+  b: TerminalPaneLayoutNode | null | undefined
+): boolean => isDeepStrictEqual(sortedLeafIds(a), sortedLeafIds(b))
+
 /**
  * Replaces a tab's tree in the worktree's home partition with the window's, when it holds exactly
  * the same panes. A geometry edit never adds, removes or moves a pane; a tree that would is
@@ -23,7 +28,7 @@ export function planTerminalLayoutSet(
   if (!layout?.root || !home.tabsByWorktree?.[worktreeId]?.some((tab) => tab.id === tabId)) {
     return { result: { status: 'refused', reason: 'tab_not_held' }, session: null }
   }
-  if (!isDeepStrictEqual(sortedLeafIds(layout.root), sortedLeafIds(root))) {
+  if (!sameTerminalLeafSet(layout.root, root)) {
     return { result: { status: 'refused', reason: 'leaves_differ' }, session: null }
   }
   return {

@@ -19,9 +19,12 @@ import type {
 import { sleepingAgentSessionsByPaneKeySchema } from '../../shared/workspace-session-sleeping-agents'
 import {
   bindLeaf,
-  sleepLeaf,
-  wakeLeaf
+  commitSleepingRecords
 } from '../persistence/terminal-topology/terminal-topology-commit'
+import {
+  patchRendererSession,
+  setRendererSession
+} from '../persistence/terminal-topology/terminal-renderer-presentation-save'
 
 export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeService): void {
   // Why: renderer saves would change a fenced host's frozen source partition.
@@ -44,13 +47,13 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
 
   ipcMain.handle('session:set', (_event, args: WorkspaceSessionState, hostId?: string | null) => {
     if (!isFenced(hostId)) {
-      store.setWorkspaceSession(args, hostId)
+      setRendererSession(store, args, hostId)
     }
   })
 
   ipcMain.handle('session:patch', (_event, args: WorkspaceSessionPatch, hostId?: string | null) => {
     if (!isFenced(hostId)) {
-      store.patchWorkspaceSession(args, hostId)
+      patchRendererSession(store, args, hostId)
     }
   })
 
@@ -84,25 +87,17 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
   ipcMain.handle(
     'session:commit-terminal-sleeping-records',
     (_event, changes: { sleep?: unknown; wake?: unknown } | undefined) => {
-      const sleep = sleepingAgentSessionsByPaneKeySchema.safeParse(changes?.sleep).data ?? {}
-      const wake = Array.isArray(changes?.wake)
-        ? changes.wake.filter((paneKey) => typeof paneKey === 'string')
-        : []
-      for (const hostId of store.getWorkspaceSessionHostIds()) {
-        if (isFenced(hostId)) {
-          continue
-        }
-        const isHome = (worktreeId: string): boolean =>
-          runtime.getTerminalTopologyHomeHostId(worktreeId) === hostId
-        const session = store.getWorkspaceSession(hostId)
-        const next = sleepLeaf(wakeLeaf(session, wake, isHome), sleep, isHome)
-        if (next !== session) {
-          store.patchWorkspaceSession(
-            { sleepingAgentSessionsByPaneKey: next.sleepingAgentSessionsByPaneKey },
-            hostId
-          )
-        }
-      }
+      commitSleepingRecords(
+        store,
+        {
+          sleep: sleepingAgentSessionsByPaneKeySchema.safeParse(changes?.sleep).data ?? {},
+          wake: Array.isArray(changes?.wake)
+            ? changes.wake.filter((paneKey) => typeof paneKey === 'string')
+            : []
+        },
+        (worktreeId) => runtime.getTerminalTopologyHomeHostId(worktreeId),
+        isFenced
+      )
     }
   )
 
@@ -148,7 +143,7 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     void (async () => {
       try {
         if (!isFenced(hostId)) {
-          store.setWorkspaceSession(args, hostId)
+          setRendererSession(store, args, hostId)
         }
         await store.flushPendingOrThrowAsync({ drainToStableGeneration: false })
       } catch (error) {

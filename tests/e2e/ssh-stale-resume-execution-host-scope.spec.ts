@@ -134,6 +134,8 @@ async function resumeAcrossRestart(
       .toBe(remote.worktreeId)
     await waitForActiveTerminalManager(firstLaunch.page, 60_000)
     const descriptor = await waitForActivePaneHookDescriptor(firstLaunch.page, 60_000)
+    // A real agent reports from inside a bound PTY; main holds the tab (and its sleeping record) from then.
+    await waitForActivePanePtyId(firstLaunch.page, 60_000)
 
     // Why seeded rather than driven by a real agent: a real `claude` run needs an install and auth
     // in the container. This is the same store entry the hook server writes, so the capture,

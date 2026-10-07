@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import type { TerminalTab } from '../shared/terminal-tab-types'
 import { getDefaultWorkspaceSession } from '../shared/constants'
 import { toRuntimeExecutionHostId } from '../shared/execution-host'
+import { setRendererSession } from './persistence/terminal-topology/terminal-renderer-presentation-save'
 
 let hasCreatedStoreInCase = false
 
@@ -131,14 +132,15 @@ describe('worktree removal across host session partitions', () => {
     expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toBeUndefined()
     expect(store.getWorkspaceSession(ENV_A).terminalTopologyRevisionByRepoId?.['repo-gone']).toBe(1)
 
-    store.setWorkspaceSession(
+    setRendererSession(
+      store,
       {
         ...getDefaultWorkspaceSession(),
         tabsByWorktree: { [STALE]: [makeTerminalTab({ id: 'stale-tab', worktreeId: STALE })] }
       },
       ENV_A
     )
-    expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toEqual([])
+    expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toBeUndefined()
   })
 
   // Regression: runtime removal purged only the host partition, so tabs the renderer had parked in the
@@ -215,7 +217,8 @@ describe('worktree removal across host session partitions', () => {
 
     expect(store.getWorkspaceSession(ENV_A).terminalTopologyRevisionByRepoId?.['repo-gone']).toBe(1)
 
-    store.setWorkspaceSession(
+    setRendererSession(
+      store,
       {
         ...getDefaultWorkspaceSession(),
         tabsByWorktree: { [STALE]: [makeTerminalTab({ id: 'delayed-tab', worktreeId: STALE })] }
@@ -223,7 +226,7 @@ describe('worktree removal across host session partitions', () => {
       ENV_A
     )
 
-    expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toEqual([])
+    expect(store.getWorkspaceSession(ENV_A).tabsByWorktree[STALE]).toBeUndefined()
   })
 
   // The widened local purge must not fence the local blob when only siblings live there.

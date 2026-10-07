@@ -12,6 +12,7 @@ import type {
   TerminalLayoutSetResult
 } from '../../../shared/terminal-layout-set'
 import type { TerminalLeafBindRequest } from '../../../shared/terminal-leaf-bind'
+import type { TerminalSleepingRecordChanges } from '../../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import type { PtyBindingPersistenceOperations } from '../loading-store/pty-binding-persistence'
 import { startSpan } from '../../observability/tracer'
@@ -20,6 +21,7 @@ import {
   type TerminalSurfaceCloseCommit
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
+import type { Store } from '../loading-store/store'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { planTerminalLayoutSet } from './terminal-layout-set'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
@@ -89,6 +91,32 @@ export function setLayout(
     },
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
+}
+
+/** A window's own sleeping-record changes, each written in its worktree's home partition. */
+export function commitSleepingRecords(
+  store: Pick<
+    Store,
+    'getWorkspaceSessionHostIds' | 'getWorkspaceSession' | 'patchWorkspaceSession'
+  >,
+  changes: TerminalSleepingRecordChanges,
+  homeHostId: (worktreeId: string) => ExecutionHostId | null,
+  isFenced: (hostId: ExecutionHostId) => boolean
+): void {
+  for (const hostId of store.getWorkspaceSessionHostIds()) {
+    if (isFenced(hostId)) {
+      continue
+    }
+    const isHome = (worktreeId: string): boolean => homeHostId(worktreeId) === hostId
+    const session = store.getWorkspaceSession(hostId)
+    const next = sleepLeaf(wakeLeaf(session, changes.wake, isHome), changes.sleep, isHome)
+    if (next !== session) {
+      store.patchWorkspaceSession(
+        { sleepingAgentSessionsByPaneKey: next.sleepingAgentSessionsByPaneKey },
+        hostId
+      )
+    }
+  }
 }
 
 /** A sleeping agent's record lands beside its tab, in its worktree's home partition. */

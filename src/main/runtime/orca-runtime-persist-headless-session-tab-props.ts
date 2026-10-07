@@ -10,6 +10,7 @@ import type {
   TerminalPaneLayoutNode
 } from '../../shared/terminal-tab-types'
 import { cloneTerminalLayoutSnapshot } from './mobile-session-layout-projection'
+import { sameTerminalLeafSet } from '../persistence/terminal-topology/terminal-layout-set'
 
 export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWithCloseHeadlessMobileTerminalTab {
   protected persistHeadlessSessionTabProps(
@@ -130,25 +131,22 @@ export class OrcaRuntimeWithPersistHeadlessSessionTabProps extends OrcaRuntimeWi
     if (!existing) {
       return undefined
     }
-    const candidate = {
-      ...session,
-      terminalLayoutsByTabId: {
-        ...session.terminalLayoutsByTabId,
-        [args.tabId]: {
-          ...cloneTerminalLayoutSnapshot(existing),
-          root: args.root ?? existing.root,
-          expandedLeafId: args.expandedLeafId,
-          ...(args.chatLeafId !== undefined ? { chatLeafId: args.chatLeafId ?? undefined } : {}),
-          ...(args.titlesByLeafId ? { titlesByLeafId: args.titlesByLeafId } : {})
-        }
-      }
+    // A client edits geometry, focus and titles; a tree with other panes is stale, so main's stands.
+    if (args.root && !sameTerminalLeafSet(existing.root, args.root)) {
+      return existing
     }
-    this.setWorkspaceSessionForWorktree(worktreeId, candidate)
-    // Why: persistence may reject stale membership while accepting its metadata; publish only that rebased layout.
-    return (
-      this.getWorkspaceSessionForWorktree(worktreeId)?.terminalLayoutsByTabId[args.tabId] ??
-      candidate.terminalLayoutsByTabId[args.tabId]
-    )
+    const layout = {
+      ...cloneTerminalLayoutSnapshot(existing),
+      root: args.root ?? existing.root,
+      expandedLeafId: args.expandedLeafId,
+      ...(args.chatLeafId !== undefined ? { chatLeafId: args.chatLeafId ?? undefined } : {}),
+      ...(args.titlesByLeafId ? { titlesByLeafId: args.titlesByLeafId } : {})
+    }
+    this.setWorkspaceSessionForWorktree(worktreeId, {
+      ...session,
+      terminalLayoutsByTabId: { ...session.terminalLayoutsByTabId, [args.tabId]: layout }
+    })
+    return layout
   }
 
   protected applyHeadlessTerminalPaneLayoutToSnapshot(

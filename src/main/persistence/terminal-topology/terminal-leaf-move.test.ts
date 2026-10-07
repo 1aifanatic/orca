@@ -4,6 +4,7 @@ import { toSshExecutionHostId } from '../../../shared/execution-host'
 import { _resetTracerForTests, setActiveSink } from '../../observability/tracer'
 import { makeRepo, makeTerminalTab } from '../../persistence-test-harness'
 import { planTerminalLeafMove } from './terminal-leaf-move'
+import { setRendererSession } from './terminal-renderer-presentation-save'
 import {
   closeMoveTestStores,
   FROM,
@@ -293,7 +294,7 @@ describe('STA-9259 move sequence', () => {
     })
     expect(reattached).toBe(true)
     // A debounced renderer save that predates the move must not resurrect the source copy.
-    store.setWorkspaceSession(preMoveRendererSnapshot)
+    setRendererSession(store, preMoveRendererSnapshot)
     expect(ownersOf(store.getWorkspaceSession(), 'pty-agent')).toEqual([TO])
     expect(tabsHoldingLeaf(store.getWorkspaceSession(), MOVED)).toEqual([TARGET])
 

@@ -17,7 +17,7 @@ const DEFAULT_TABS = {
   tabs: [{ title: 'Claude' }]
 }
 
-function preserveRuntimeAuthoredWorkspaceSessionFields<T extends Record<string, unknown>>(
+function unionDefaultTabMarksLikeMainSave<T extends Record<string, unknown>>(
   next: T,
   prior: T
 ): T {
@@ -66,7 +66,7 @@ describe('defaultTerminalTabsAppliedByWorktreeId persist round-trip', () => {
     }
     // Persist snapshots omit this write-once slice (empty payload / renderer never mentioned it).
     const omittedSnapshot = getDefaultWorkspaceSession()
-    const preserved = preserveRuntimeAuthoredWorkspaceSessionFields(omittedSnapshot, patched)
+    const preserved = unionDefaultTabMarksLikeMainSave(omittedSnapshot, patched)
     const parsed = parseWorkspaceSession(JSON.parse(JSON.stringify(preserved)))
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) {

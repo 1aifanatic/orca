@@ -6,7 +6,6 @@ import {
   retireLeavesFromTerminalLayout,
   type RetiredTerminalSurface
 } from './mobile-session-terminal-retirement'
-import { rebaseWorkspaceSessionTerminalMembership } from './workspace-session-terminal-membership-authority'
 import { advanceTerminalTopologyRevision } from '../persistence/terminal-topology/terminal-topology-membership'
 
 function visibleTypeForContentType(
@@ -217,41 +216,5 @@ export function retireTerminalSurfaceFromPersistence(
     },
     surface,
     paneKey
-  )
-}
-
-export function sanitizeWorkspaceSessionTerminalRetirements(
-  incoming: WorkspaceSessionState,
-  prior: WorkspaceSessionState | undefined
-): WorkspaceSessionState {
-  if (
-    !prior?.terminalSurfaceTombstonesByPaneKey &&
-    !incoming.terminalSurfaceTombstonesByPaneKey &&
-    !prior?.terminalTopologyRevisionByRepoId
-  ) {
-    return incoming
-  }
-  const bindings = {
-    ...prior?.terminalPtyIncarnationsByPaneKey,
-    ...incoming.terminalPtyIncarnationsByPaneKey
-  }
-  const tombstones = {
-    ...prior?.terminalSurfaceTombstonesByPaneKey,
-    ...incoming.terminalSurfaceTombstonesByPaneKey
-  }
-  const hasLegacyTombstones = Object.keys(tombstones).length > 0
-  let next: WorkspaceSessionState = {
-    ...incoming,
-    terminalPtyIncarnationsByPaneKey: hasLegacyTombstones
-      ? bindings
-      : incoming.terminalPtyIncarnationsByPaneKey,
-    terminalSurfaceTombstonesByPaneKey: tombstones
-  }
-  for (const tombstone of Object.values(tombstones)) {
-    next = retireTerminalSurfaceFromPersistence(next, tombstone)
-  }
-  return rebaseWorkspaceSessionTerminalMembership(
-    { ...next, terminalSurfaceTombstonesByPaneKey: {} },
-    prior
   )
 }

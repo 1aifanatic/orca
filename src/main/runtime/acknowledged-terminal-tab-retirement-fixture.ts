@@ -13,6 +13,7 @@ import { OrcaRuntimeService } from './orca-runtime'
 import { buildHeadlessMobileSessionTerminalTabs } from './mobile-session-terminal-projection'
 import { setRuntimeDesktopSurface } from './runtime-desktop-surface'
 import { advanceTerminalTopologyRevision } from '../persistence/terminal-topology/terminal-topology-membership'
+import { setRendererSession } from '../persistence/terminal-topology/terminal-renderer-presentation-save'
 
 export const ACK_WORKTREE = 'repo1::/tmp/worktree'
 export const ACK_TAB = '11111111-1111-4111-8111-111111111111'
@@ -160,7 +161,8 @@ export function createAcknowledgedTabRetirementFixture(bound = false) {
       ACK_WORKTREE,
       ACK_TAB
     )
-    store.setWorkspaceSession({ ...closed.session, terminalTopologyRevisionByRepoId: undefined })
+    // The window's save after its close: presentation only, so main still holds the tab.
+    setRendererSession(store, { ...closed.session, terminalTopologyRevisionByRepoId: undefined })
     await store.flushPendingOrThrowAsync()
     entered.resolve()
     await acknowledgement.promise

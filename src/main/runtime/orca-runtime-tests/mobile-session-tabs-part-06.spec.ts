@@ -254,6 +254,13 @@ describe('OrcaRuntimeService', () => {
 
   it('persists a headless pane layout (ratio/expand) so it survives a cold rehydrate', async () => {
     const session = makeWorkspaceSessionWithHeadlessTerminal()
+    // A client edits the geometry of panes main holds; it cannot add one.
+    session.terminalLayoutsByTabId['host-tab']!.root = {
+      type: 'split',
+      direction: 'vertical',
+      first: { type: 'leaf', leafId: HEADLESS_LEAF_ID },
+      second: { type: 'leaf', leafId: 'leaf-2' }
+    }
     const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
     const runtime = new OrcaRuntimeService(runtimeStore as never)
 

@@ -1,10 +1,6 @@
 /**
- * Seam: store.persistPtyBinding must not arm the repo's topology fence. An
- * armed fence makes rebaseWorkspaceSessionTerminalMembership treat a later
- * renderer close as a stale replay and restore the row, leaving the durable
- * de-persist to ride the PTY exit — asynchronous, and able to fail outright.
- * Safety is one guard away: advanceTopologyFence's
- * `currentRevision <= 0 && !establishesSplitAuthority` early return.
+ * Seam: main's binding write advances the repo's topology fence on every membership change, and
+ * a window save cannot change membership, so a close is main's commit and stays durable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -12,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { createStore, testState } from '../persistence-test-harness'
+import { setRendererSession } from '../persistence/terminal-topology/terminal-renderer-presentation-save'
+import { retireTerminalSurfaceFromPersistence } from './mobile-session-terminal-persistence-retirement'
 
 vi.mock('electron', () => ({
   app: { getPath: () => testStateDirRef.dir, getName: () => 'orca', getVersion: () => '0.0.0' },
@@ -28,13 +26,11 @@ const WT = `${REPO_ID}::/tmp/wt-cli`
 const TAB = 'cli-tab-1'
 const LEAF = '11111111-1111-4111-8111-111111111111'
 const PTY = `${WT}@@a1b2c3d4`
+const SECOND_LEAF = '22222222-2222-4222-8222-222222222222'
+const INCARNATION = '33333333-3333-4333-8333-333333333333'
 
-function rendererWriteWithout(
-  session: WorkspaceSessionState,
-  tabId: string
-): WorkspaceSessionState {
-  // A renderer session write after closing `tabId`: the row is gone, and the
-  // renderer never writes the host-private topology fence.
+function windowSaveWithout(session: WorkspaceSessionState, tabId: string): WorkspaceSessionState {
+  // A window save after hiding `tabId`: the row is gone, and the window never writes the fence.
   const next: WorkspaceSessionState = {
     ...session,
     tabsByWorktree: {
@@ -42,7 +38,7 @@ function rendererWriteWithout(
       [WT]: (session.tabsByWorktree?.[WT] ?? []).filter((tab) => tab.id !== tabId)
     }
   }
-  delete (next as { terminalTopologyRevisionByRepoId?: unknown }).terminalTopologyRevisionByRepoId
+  delete next.terminalTopologyRevisionByRepoId
   return next
 }
 
@@ -60,54 +56,41 @@ describe('host-created terminal close durability', () => {
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
-  it('a host-created terminal does NOT push a fresh repo into host-authoritative membership', async () => {
+  it('a window save that omits a row main holds does not remove it', async () => {
     const store = await makeStore()
     await store.persistPtyBinding({ worktreeId: WT, tabId: TAB, leafId: LEAF, ptyId: PTY })
-    const session = store.getWorkspaceSession()
-    expect(session.tabsByWorktree?.[WT]?.map((t) => t.id)).toContain(TAB)
-    // advanceTopologyFence (store.ts:3284) deliberately declines to arm the
-    // fence while currentRevision <= 0 and no split authority is established.
-    // That is what keeps a renderer close authoritative for this repo.
-    expect(session.terminalTopologyRevisionByRepoId?.[REPO_ID] ?? 0).toBe(0)
+    setRendererSession(store, windowSaveWithout(store.getWorkspaceSession(), TAB))
+    expect(store.getWorkspaceSession().tabsByWorktree?.[WT]?.map((t) => t.id)).toEqual([TAB])
   })
 
-  it('a renderer close write durably removes the row it persisted', async () => {
+  it("main's close stays durable through later stale window saves", async () => {
     const store = await makeStore()
-    await store.persistPtyBinding({ worktreeId: WT, tabId: TAB, leafId: LEAF, ptyId: PTY })
-    store.setWorkspaceSession(rendererWriteWithout(store.getWorkspaceSession(), TAB))
-    expect(store.getWorkspaceSession().tabsByWorktree?.[WT] ?? []).toEqual([])
-  })
-
-  it('stays removed with the PTY still connected and no exit ever delivered', async () => {
-    const store = await makeStore()
-    await store.persistPtyBinding({ worktreeId: WT, tabId: TAB, leafId: LEAF, ptyId: PTY })
-    store.setWorkspaceSession(rendererWriteWithout(store.getWorkspaceSession(), TAB))
-    // Kill-failure shape: no retirement, no exit, just more renderer writes.
+    await store.persistPtyBinding({
+      worktreeId: WT,
+      tabId: TAB,
+      leafId: LEAF,
+      ptyId: PTY,
+      incarnationId: INCARNATION
+    })
+    const stale = structuredClone(store.getWorkspaceSession())
+    store.setWorkspaceSession(
+      retireTerminalSurfaceFromPersistence(store.getWorkspaceSession(), {
+        worktreeId: WT,
+        parentTabId: TAB,
+        leafId: LEAF,
+        ptyId: PTY,
+        incarnationId: INCARNATION
+      })
+    )
+    // Kill-failure shape: no exit, just more window saves that still list the tab.
     for (let i = 0; i < 3; i += 1) {
-      store.setWorkspaceSession({ ...store.getWorkspaceSession() })
+      setRendererSession(store, structuredClone(stale))
     }
     expect(store.getWorkspaceSession().tabsByWorktree?.[WT] ?? []).toEqual([])
   })
-
-  it('pre-existing host-authoritative membership rebases the close away (not ours)', async () => {
-    const store = await makeStore()
-    // A serve/SSH host arms the fence long before any CLI terminal exists.
-    store.setWorkspaceSession({
-      ...store.getWorkspaceSession(),
-      terminalTopologyRevisionByRepoId: { [REPO_ID]: 1 }
-    })
-    await store.persistPtyBinding({ worktreeId: WT, tabId: TAB, leafId: LEAF, ptyId: PTY })
-    store.setWorkspaceSession(rendererWriteWithout(store.getWorkspaceSession(), TAB))
-    // Documents PRE-EXISTING behavior: with the fence already armed, a renderer
-    // write that omits a row is treated as a stale replay and the row survives
-    // until an exit-driven retirement advances the fence. This is independent of
-    // host-created terminals — it applies to every tab in such a repo.
-    expect(store.getWorkspaceSession().tabsByWorktree?.[WT]?.map((t) => t.id)).toContain(TAB)
-  })
 })
 
-/** Pins the fence seam itself rather than spot-checking callers: a new
- *  fence-advancing path, or arming the fence from the create path, fails here. */
+/** Pins the fence seam itself: every membership change main's binding write makes advances it. */
 describe('topology fence census', () => {
   beforeEach(() => {
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-fence-census-'))
@@ -118,10 +101,10 @@ describe('topology fence census', () => {
     rmSync(testState.dir, { recursive: true, force: true })
   })
 
-  it('no host-create binding shape arms a fresh repo fence', async () => {
+  it('every host-create binding shape advances a fresh repo fence', async () => {
     for (const [index, extra] of [
       {},
-      { incarnationId: '33333333-3333-4333-8333-333333333333' },
+      { incarnationId: INCARNATION },
       { startupCwd: '/tmp/wt-cli' }
     ].entries()) {
       const store = await makeStore()
@@ -132,23 +115,21 @@ describe('topology fence census', () => {
         ptyId: `${PTY}-${index}`,
         ...extra
       })
-      expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[REPO_ID] ?? 0).toBe(0)
+      expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[REPO_ID]).toBe(1)
     }
   })
 
-  it('a second pane in the same tab still does not arm the fence', async () => {
+  it('a second pane advances it; rebinding a held pane does not', async () => {
     const store = await makeStore()
     await store.persistPtyBinding({ worktreeId: WT, tabId: TAB, leafId: LEAF, ptyId: PTY })
-    await store.persistPtyBinding({
-      worktreeId: WT,
-      tabId: TAB,
-      leafId: '22222222-2222-4222-8222-222222222222',
-      ptyId: `${PTY}-b`
-    })
-    expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[REPO_ID] ?? 0).toBe(0)
+    const second = { worktreeId: WT, tabId: TAB, leafId: SECOND_LEAF, ptyId: `${PTY}-b` }
+    await store.persistPtyBinding(second)
+    expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[REPO_ID]).toBe(2)
+    await store.persistPtyBinding({ ...second, ptyId: `${PTY}-c` })
+    expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.[REPO_ID]).toBe(2)
   })
 
-  it('an armed fence keeps climbing, so exit-driven retirement still outranks replays', async () => {
+  it('an armed fence keeps climbing', async () => {
     const store = await makeStore()
     store.setWorkspaceSession({
       ...store.getWorkspaceSession(),

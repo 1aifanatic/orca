@@ -34,25 +34,14 @@ export function applyPtyBinding(
   const reconciledIncarnation =
     args.expectedBinding !== undefined && args.incarnationId !== args.expectedBinding.incarnationId
   let terminalMembershipChanged = false
-  let hostAdmittedTabCreated = false
   const advanceTopologyFence = (): void => {
-    const repoId = getRepoIdFromWorktreeId(bindingWorktreeId)
-    const currentRevision = session.terminalTopologyRevisionByRepoId?.[repoId] ?? 0
-    // Why: a split, or a host-admitted tab the renderer has never seen, is itself
-    // the authority — with no fence the renderer's pre-create tab list replays
-    // over it and the tab is lost even on the repo's first such change.
-    const establishesMembershipAuthority =
-      args.expectedSourceBinding !== undefined || hostAdmittedTabCreated
-    if (
-      !reconciledIncarnation &&
-      (!terminalMembershipChanged || (currentRevision <= 0 && !establishesMembershipAuthority))
-    ) {
+    if (!reconciledIncarnation && !terminalMembershipChanged) {
       return
     }
-    // Why: host-admitted membership or incarnation changes must outrank a stale renderer replay.
+    const repoId = getRepoIdFromWorktreeId(bindingWorktreeId)
     session.terminalTopologyRevisionByRepoId = {
       ...session.terminalTopologyRevisionByRepoId,
-      [repoId]: currentRevision + 1
+      [repoId]: (session.terminalTopologyRevisionByRepoId?.[repoId] ?? 0) + 1
     }
   }
   if (args.incarnationId) {
@@ -78,7 +67,6 @@ export function applyPtyBinding(
     )
   } else {
     terminalMembershipChanged = true
-    hostAdmittedTabCreated = args.hostAdmittedMembership === true
     // Why: pty:spawn can beat the debounced writer; persist a minimal tab so hydration won't prune the binding as orphaned.
     const minted = createMinimalPersistedTerminalTab({
       ...args,

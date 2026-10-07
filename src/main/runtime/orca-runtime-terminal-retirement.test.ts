@@ -7,7 +7,6 @@ import type {
   RuntimeMobileSessionTabsSnapshot
 } from '../../shared/runtime-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
-import { sanitizeWorkspaceSessionTerminalRetirements } from './mobile-session-terminal-persistence-retirement'
 import { OrcaRuntimeService } from './orca-runtime'
 
 const WORKTREE_ID = 'repo::/worktree'
@@ -417,7 +416,7 @@ describe('OrcaRuntimeService terminal surface retirement', () => {
     expect(tabs[0]).toMatchObject({ type: 'terminal', ptyId: 'pty-right' })
   })
 
-  it('publishes the host-rebased layout after a stale client pane update', async () => {
+  it('keeps the host layout after a stale client pane update with other panes', async () => {
     let session = makePersistedSplitSession()
     session.tabsByWorktree[WORKTREE_ID]![0]!.ptyId = 'pty-right'
     session.terminalLayoutsByTabId.tab = {
@@ -433,7 +432,7 @@ describe('OrcaRuntimeService terminal surface retirement', () => {
       runtimeStore({
         getWorkspaceSession: () => session,
         setWorkspaceSession: (incoming: WorkspaceSessionState) => {
-          session = sanitizeWorkspaceSessionTerminalRetirements(incoming, session)
+          session = incoming
         }
       })
     )

@@ -4,6 +4,7 @@
  * this file against two builds and diffs the outputs; see tests/e2e/AGENTS.md.
  */
 
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -27,8 +28,10 @@ import {
   seededRepoPathOrSkip
 } from './helpers/terminal-restart-persistence'
 import { createTerminalTabFromMenu, SORTABLE_TAB } from './helpers/terminal-tab-menu'
+import { activateWorkspaceByClick, sleepWorkspaceViaSidebar } from './helpers/slept-workspace-probe'
 import { RuntimeClient } from '../../src/cli/runtime/client'
 import type { RuntimeTerminalListResult } from '../../src/shared/runtime-types'
+import type { RuntimeWorktreeCreateResult } from '../../src/shared/runtime-worktree-contracts'
 import {
   TERMINAL_LAYOUT_PARITY_OUT_ENV,
   type RawParityCheckpoint,
@@ -175,10 +178,15 @@ type ScenarioSetup = {
 
 type ParityScenario = {
   id: string
-  setup?: (page: Page) => Promise<ScenarioSetup>
+  setup?: (page: Page, userDataDir: string) => Promise<ScenarioSetup>
   journey: (journey: Journey) => Promise<void>
   /** Relaunch (`times`, default once) and capture each restored renderer and the next save. */
-  restart?: { expectedPaneCount: number; times?: number }
+  restart?: {
+    expectedPaneCount: number
+    times?: number
+    /** How the user gets back to the worktree; default: it is still the active one. */
+    reopen?: (page: Page, worktreeId: string) => Promise<void>
+  }
 }
 
 /** Quit through the shared helper and report how the process ended; a forced kill skips the final save. */
@@ -208,7 +216,7 @@ async function runScenario(testInfo: TestInfo, scenario: ParityScenario): Promis
     const first = await session.launch()
     app = first.app
     setup = scenario.setup
-      ? await scenario.setup(first.page)
+      ? await scenario.setup(first.page, session.userDataDir)
       : await bootstrapFirstLaunch(first.page, repoPath)
     await waitForBoundPanes(first.page, 1)
     const journey = {
@@ -224,11 +232,15 @@ async function runScenario(testInfo: TestInfo, scenario: ParityScenario): Promis
     const persisted = readPersistedSessions(session.userDataDir)
     checkpoints.push({ label: 'after-quit', renderer, persisted, exit })
 
-    const { expectedPaneCount = 0, times: restarts = 1 } = scenario.restart ?? { times: 0 }
+    const {
+      expectedPaneCount = 0,
+      times: restarts = 1,
+      reopen = bootstrapRestoredLaunch
+    } = scenario.restart ?? { times: 0 }
     for (let restart = 1; restart <= restarts; restart += 1) {
       const next = await session.launch()
       app = next.app
-      await bootstrapRestoredLaunch(next.page, setup.worktreeId)
+      await reopen(next.page, setup.worktreeId)
       await waitForBoundPanes(next.page, expectedPaneCount)
       const restored = await readSettledRendererLayout(next.page)
       const restartExit = await quitAndReadExit(session, app)
@@ -291,6 +303,118 @@ async function addFolderWorkspace(page: Page): Promise<ScenarioSetup> {
 }
 
 /**
+ * STA-9417's shape: the CLI creates a worktree whose setup script runs in a split of its first
+ * terminal, with the window open on another worktree; the user then opens it for the first time.
+ */
+async function addHostCreatedSetupSplitWorktree(
+  page: Page,
+  userDataDir: string
+): Promise<ScenarioSetup> {
+  const { worktreeId } = await bootstrapFirstLaunch(page, seededRepoPathOrSkip())
+  const repoPath = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'orca-e2e-parity-setup-')))
+  const git = (...args: string[]): void => {
+    execFileSync('git', args, { cwd: repoPath, stdio: 'pipe' })
+  }
+  git('init', '-b', 'main')
+  git('config', 'user.email', 'e2e@test.local')
+  git('config', 'user.name', 'E2E Test')
+  writeFileSync(path.join(repoPath, 'orca.yaml'), 'scripts:\n  setup: echo SETUP_COMPLETE\n')
+  git('add', '-A')
+  git('commit', '-m', 'setup hook')
+  await page.evaluate(() =>
+    window.__store!.getState().updateSettings({ setupScriptLaunchMode: 'split-vertical' })
+  )
+  const client = new RuntimeClient(userDataDir, 30_000)
+  const added = await client.call<{ repo: { id: string } }>('repo.add', {
+    path: repoPath,
+    kind: 'git'
+  })
+  const created = await client.call<RuntimeWorktreeCreateResult>('worktree.create', {
+    repo: `id:${added.result.repo.id}`,
+    name: 'parity-setup',
+    noParent: true,
+    activate: false,
+    setupDecision: 'run'
+  })
+  const worktreePath = created.result.worktree.path
+  return {
+    worktreeId,
+    pathLabels: { [repoPath]: '<setup-repo>', [worktreePath]: '<setup-worktree>' },
+    cleanup: () => {
+      rmSync(worktreePath, { recursive: true, force: true })
+      rmSync(repoPath, { recursive: true, force: true })
+    }
+  }
+}
+
+async function openSetupSplitWorktree({ page, userDataDir }: Journey): Promise<void> {
+  let setupWorktreeId: string | undefined
+  await expect
+    .poll(async () => {
+      setupWorktreeId = await page.evaluate(async () => {
+        const store = window.__store!
+        await store.getState().fetchRepos()
+        for (const repo of store.getState().repos) {
+          await store.getState().fetchWorktrees(repo.id)
+        }
+        return Object.values(store.getState().worktreesByRepo)
+          .flat()
+          .find((worktree) => worktree.branch === 'refs/heads/parity-setup')?.id
+      })
+      return setupWorktreeId
+    })
+    .toBeDefined()
+  const client = new RuntimeClient(userDataDir, 30_000)
+  // Main has spawned the first terminal and the setup split before the user opens the worktree.
+  await expect
+    .poll(async () => {
+      const listed = await client
+        .call<RuntimeTerminalListResult>('terminal.list', { worktree: `id:${setupWorktreeId!}` })
+        .catch(() => null)
+      return listed?.result.terminals.length ?? 0
+    })
+    .toBe(2)
+  await activateWorkspaceByClick(page, setupWorktreeId!)
+  await waitForActiveTerminalManager(page)
+  await waitForBoundPanes(page, 2)
+}
+
+/** A slept agent pane, through the user's sidebar Sleep, so the quit and relaunch resume it. */
+async function sleepAgentPane({ page, worktreeId }: Journey): Promise<void> {
+  await splitActiveTerminalPane(page, 'vertical')
+  await waitForBoundPanes(page, 2)
+  await page.evaluate((id) => {
+    const state = window.__store!.getState()
+    const tabId = state.activeTabId!
+    const manager = window.__paneManagers!.get(tabId)!
+    const leafId = manager.getLeafId(manager.getActivePane()!.id)!
+    state.setAgentStatus(
+      `${tabId}:${leafId}`,
+      { state: 'working', prompt: 'finish the task', agentType: 'codex' },
+      'Codex',
+      undefined,
+      { worktreeId: id },
+      { providerSession: { key: 'session_id', id: 'parity-sleep-session' } }
+    )
+  }, worktreeId)
+  await sleepWorkspaceViaSidebar(page, worktreeId)
+  await expect
+    .poll(() =>
+      page.evaluate((id) => {
+        const state = window.__store!.getState()
+        const slept = Object.values(state.sleepingAgentSessionsByPaneKey).some(
+          (record) => record.worktreeId === id
+        )
+        const live = (state.tabsByWorktree[id] ?? []).some(
+          (tab) => (state.ptyIdsByTabId[tab.id]?.length ?? 0) > 0
+        )
+        return slept && !live
+      }, worktreeId)
+    )
+    .toBe(true)
+}
+
+/**
  * The user's close-pane chord, so the close reaches main through the real commit path; driving
  * PaneManager.closePane directly leaves main to learn of it from the PTY exit, which races quit.
  */
@@ -347,6 +471,14 @@ async function splitThenNewTab(page: Page): Promise<void> {
   await createTerminalTabFromMenu(page)
   await waitForActiveTerminalManager(page)
   await waitForBoundPanes(page, 1)
+}
+
+/** A slept worktree is not active after relaunch; the user's click wakes it and resumes the agent. */
+async function wakeByClick(page: Page, worktreeId: string): Promise<void> {
+  await waitForSessionReady(page)
+  await activateWorkspaceByClick(page, worktreeId)
+  await ensureTerminalVisible(page)
+  await waitForActiveTerminalManager(page, 30_000)
 }
 
 const SCENARIOS: ParityScenario[] = [
@@ -431,6 +563,16 @@ const SCENARIOS: ParityScenario[] = [
     id: 'folder-workspace',
     setup: addFolderWorkspace,
     journey: ({ page }) => splitThenNewTab(page)
+  },
+  {
+    id: 'setup-split-first-activation',
+    setup: addHostCreatedSetupSplitWorktree,
+    journey: openSetupSplitWorktree
+  },
+  {
+    id: 'sleep-quit-resume',
+    journey: sleepAgentPane,
+    restart: { expectedPaneCount: 2, reopen: wakeByClick }
   }
 ]
 

@@ -58,10 +58,9 @@ function boundRelayPtyIds(
  * the id the row answers no question any reader asks. Reattach refuses it
  * (`sshRemotePtyLeaseAllowsReattach`), pane recovery matches on `expired` only, the orphan sweep
  * already classes it neither routed nor expired, and `ssh:reset` / `ssh:terminateSessions` skip it
- * outright — every one of those behaves identically on an absent row. The one reader that can still
- * observe it is `isRestorablePtyBinding`, and only through a binding whose pty id matches, which is
- * exactly what the reachability test rules out. A `pendingKill` is an undelivered stop, so those
- * rows stay until the replay retires them.
+ * outright — every one of those behaves identically on an absent row. A row a persisted binding still
+ * names is kept all the same, which is what the reachability test checks. A `pendingKill` is an
+ * undelivered stop, so those rows stay until the replay retires them.
  *
  * The reachability test is not redundant with the scrub: a lease freezes its `tabId`, so a pane
  * broken out into a new tab leaves a binding the scrub's tab-qualified match no longer reaches.

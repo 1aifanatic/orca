@@ -26,7 +26,6 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
   // Several runtime files only check it exists, then write through setWorkspaceSessionForWorktree.
   setWorkspaceSession: [
     'ipc/pty/pane/stable-owner.ts',
-    'ipc/session.ts',
     // Store-internal: patchWorkspaceSession -> setWorkspaceSession.
     'persistence/loading-store/session-snapshot-operations.ts',
     // Test support: seeds sessions for the acknowledged-tab retirement audit.
@@ -52,10 +51,9 @@ const ALLOWED_REFERENCES: Record<string, readonly string[]> = {
   setForWorktree: ['runtime/orca-runtime-get-runtime-id.ts'],
   patchWorkspaceSession: [
     // A window's SSH snapshot import, committed with the pull it came from.
-    'ipc/remote-workspace.ts',
-    'ipc/session.ts'
+    'ipc/remote-workspace.ts'
   ],
-  stageWorkspaceSessionBeforeUnload: ['ipc/renderer-shutdown-checkpoint.ts'],
+  stageWorkspaceSessionBeforeUnload: [],
   setWorkspaceSessionForWorktree: [
     // Headless editor-tab retirement, like the headless mobile-session tab writers below.
     'runtime/mobile-session-editor-projection.ts',

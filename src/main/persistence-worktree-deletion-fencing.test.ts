@@ -9,6 +9,7 @@ import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { getDefaultWorkspaceSession } from '../shared/constants'
+import { setRendererSession } from './persistence/terminal-topology/terminal-renderer-presentation-save'
 
 import { TEST_LEAF_1, TEST_LEAF_2 } from './persistence-session-fixtures'
 
@@ -183,8 +184,8 @@ describe('Store', () => {
     expect(store.getWorkspaceSession().terminalLayoutsByTabId['old-tab']).toBeUndefined()
     expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.wt1).toBe(2)
 
-    store.setWorkspaceSession(stale)
-    expect(store.getWorkspaceSession().tabsByWorktree.wt1).toEqual([])
+    setRendererSession(store, stale)
+    expect(store.getWorkspaceSession().tabsByWorktree.wt1).toBeUndefined()
 
     await store.persistPtyBinding({
       worktreeId: 'wt1',
@@ -213,9 +214,9 @@ describe('Store', () => {
     store.removeWorktreeMeta(worktreeId)
     expect(store.getWorkspaceSession().terminalTopologyRevisionByRepoId?.repo).toBe(1)
 
-    store.setWorkspaceSession(stale)
+    setRendererSession(store, stale)
 
-    expect(store.getWorkspaceSession().tabsByWorktree[worktreeId]).toEqual([])
+    expect(store.getWorkspaceSession().tabsByWorktree[worktreeId]).toBeUndefined()
   })
 
   it('advances deletion authority when only a legacy retirement fence existed', async () => {
@@ -258,7 +259,7 @@ describe('Store', () => {
       terminalTopologyRevisionByRepoId: { repo: 1 }
     })
 
-    store.setWorkspaceSession({
+    setRendererSession(store, {
       ...getDefaultWorkspaceSession(),
       tabsByWorktree: {
         [worktreeB]: [makeTerminalTab({ id: 'stale-tab', worktreeId: worktreeB })]
@@ -378,7 +379,7 @@ describe('Store', () => {
       ptyId: 'daemon-pty'
     })
 
-    store.setWorkspaceSession({
+    setRendererSession(store, {
       activeRepoId: 'r1',
       activeWorktreeId: 'wt1',
       activeTabId: 'tab1',

@@ -39,9 +39,9 @@ import {
   type SshPtyBindingCleanupOperations
 } from '../leasing-ssh-ptys/ssh-pty-binding-cleanup'
 
+import { toComparableRelaySshPtyId, toRelaySshPtyId } from '../../providers/ssh-pty-id'
 import type { StoreRuntimeState } from './store-runtime-state'
 import type { WriteFlushBarrierOperations } from './write-flush-barriers'
-import type { TerminalBindingRecoveryOperations } from './terminal-binding-recovery'
 import type { WriteSchedulingOperations } from './write-scheduling'
 import { scheduleSave } from './write-scheduling'
 import {
@@ -56,7 +56,6 @@ const sshLeaseRecoveryOperationsContext = Symbol('SshLeaseRecoveryOperations')
 type SshLeaseRecoveryOperationsContext = {
   runtime: SshLeaseRecoveryOperationsRuntime
   flushBarriers: WriteFlushBarrierOperations
-  bindingRecovery: TerminalBindingRecoveryOperations
   scheduling: WriteSchedulingOperations
 }
 
@@ -66,15 +65,9 @@ export class SshLeaseRecoveryOperations {
   constructor(
     runtime: SshLeaseRecoveryOperationsRuntime,
     flushBarriers: WriteFlushBarrierOperations,
-    bindingRecovery: TerminalBindingRecoveryOperations,
     scheduling: WriteSchedulingOperations
   ) {
-    this[sshLeaseRecoveryOperationsContext] = {
-      runtime,
-      flushBarriers,
-      bindingRecovery,
-      scheduling
-    }
+    this[sshLeaseRecoveryOperationsContext] = { runtime, flushBarriers, scheduling }
   }
 
   getSshPtyConsumerRecovery(targetId: string): SshPtyConsumerRecovery | null {
@@ -224,11 +217,7 @@ export function getSshPtyBindingCleanupOperations(
 ): SshPtyBindingCleanupOperations {
   return {
     state: owner[sshLeaseRecoveryOperationsContext].runtime.state,
-    toComparablePtyId: (targetId, ptyId) =>
-      owner[sshLeaseRecoveryOperationsContext].bindingRecovery.getRelayPtyIdForSshLeaseComparison(
-        targetId,
-        ptyId
-      ),
+    toComparablePtyId: toComparableRelaySshPtyId,
     scheduleSave: () => scheduleSave(owner[sshLeaseRecoveryOperationsContext].scheduling)
   }
 }
@@ -236,16 +225,8 @@ export function getSshPtyBindingCleanupOperations(
 export function getSshPtyLeaseOperations(owner: SshLeaseRecoveryOperations): SshPtyLeaseOperations {
   return {
     state: owner[sshLeaseRecoveryOperationsContext].runtime.state,
-    toStoredPtyId: (targetId, ptyId) =>
-      owner[sshLeaseRecoveryOperationsContext].bindingRecovery.getRelayPtyIdForSshLeaseStorage(
-        targetId,
-        ptyId
-      ),
-    toComparablePtyId: (targetId, ptyId) =>
-      owner[sshLeaseRecoveryOperationsContext].bindingRecovery.getRelayPtyIdForSshLeaseComparison(
-        targetId,
-        ptyId
-      ),
+    toStoredPtyId: toRelaySshPtyId,
+    toComparablePtyId: toComparableRelaySshPtyId,
     clearBindingsForTarget: (targetId) =>
       clearSshRemotePtyBindingsForTargetOperation(
         getSshPtyBindingCleanupOperations(owner),

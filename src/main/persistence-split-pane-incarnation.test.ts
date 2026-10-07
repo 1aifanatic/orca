@@ -10,6 +10,7 @@ import { rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ProfileStateSqliteAuthority } from './persistence/profile-state/profile-state-sqlite-authority'
+import { setRendererSession } from './persistence/terminal-topology/terminal-renderer-presentation-save'
 import type { WorkspaceSessionState } from '../shared/workspace-session-state-types'
 import { getDefaultWorkspaceSession } from '../shared/constants'
 
@@ -327,7 +328,7 @@ describe('Store', () => {
       const rendererSnapshot = structuredClone(store.getWorkspaceSession(hostId))
       delete rendererSnapshot.terminalPtyIncarnationsByPaneKey
       delete rendererSnapshot.terminalTopologyRevisionByRepoId
-      store.setWorkspaceSession(rendererSnapshot, hostId)
+      setRendererSession(store, rendererSnapshot, hostId)
 
       expect(store.getWorkspaceSession(hostId).terminalPtyIncarnationsByPaneKey?.[paneKey]).toBe(
         'inc-live'

@@ -104,9 +104,17 @@ class IdLabeler {
     walk(root)
     while (pending.length > 0) {
       const ready = pending.filter(([key]) => this.knows(key))
-      // Fallback for ids seen only as keys: raw order, the one place a label can depend on value.
+      // Fallback for ids seen only as keys: key shape first (unlabeled ids masked), then raw order,
+      // the one place a label can depend on value.
+      const shape = (key: string): string => key.replace(new RegExp(ID_SOURCE, 'gi'), '#')
       const next =
-        ready.length > 0 ? ready : [pending.toSorted((a, b) => a[0].localeCompare(b[0]))[0]!]
+        ready.length > 0
+          ? ready
+          : [
+              pending.toSorted(
+                (a, b) => shape(a[0]).localeCompare(shape(b[0])) || a[0].localeCompare(b[0])
+              )[0]!
+            ]
       const rank = (key: string): string =>
         this.replaceIn(key).replace(/\d+/g, (n) => n.padStart(6, '0'))
       next.sort((a, b) => rank(a[0]).localeCompare(rank(b[0])))

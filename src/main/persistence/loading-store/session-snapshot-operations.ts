@@ -11,7 +11,6 @@ import { workspaceSessionPatchNeedsFullNormalization } from './terminal-session-
 import { setLocalWorkspaceSession } from './workspace-session-snapshot-publication'
 import type { StoreRuntimeState } from './store-runtime-state'
 import type { SessionHostPartitionOperations } from './session-host-partitions'
-import type { TerminalBindingRecoveryOperations } from './terminal-binding-recovery'
 import type { WriteSchedulingOperations } from './write-scheduling'
 import {
   resolveHostId,
@@ -36,7 +35,6 @@ const sessionSnapshotOperationsContext = Symbol('SessionSnapshotOperations')
 type SessionSnapshotOperationsContext = {
   runtime: SessionSnapshotOperationsRuntime
   sessions: SessionHostPartitionOperations
-  bindingRecovery: TerminalBindingRecoveryOperations
   scheduling: WriteSchedulingOperations
 }
 
@@ -46,10 +44,9 @@ export class SessionSnapshotOperations {
   constructor(
     runtime: SessionSnapshotOperationsRuntime,
     sessions: SessionHostPartitionOperations,
-    bindingRecovery: TerminalBindingRecoveryOperations,
     scheduling: WriteSchedulingOperations
   ) {
-    this[sessionSnapshotOperationsContext] = { runtime, sessions, bindingRecovery, scheduling }
+    this[sessionSnapshotOperationsContext] = { runtime, sessions, scheduling }
   }
 
   setWorkspaceSession(session: PersistedState['workspaceSession'], hostId?: string | null): void {
@@ -57,7 +54,7 @@ export class SessionSnapshotOperations {
     const { runtime } = this[sessionSnapshotOperationsContext]
     if (runtime.durableMutationPhase === 'rollback') {
       this.assertSnapshotAdmission(true)
-      // The fieldwise rollback already preserves newer edits; renderer rebasing would undo it.
+      // The fieldwise rollback already holds the newer edits; it is published as is.
       this.publishSession(session, resolved)
       return
     }

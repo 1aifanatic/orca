@@ -281,9 +281,8 @@ describe('STA-3077: an SSH reattach binds panes without grafting them back', () 
   })
 
   // A close raises the repo's topology revision, and that is what the fence reads. Pinned as
-  // behavior because `terminalSurfaceTombstonesByPaneKey` — the older per-surface fence — is
-  // consumed and cleared by `sanitizeWorkspaceSessionTerminalRetirements` on every session write,
-  // so it is never present by the time a binding write could consult it.
+  // behavior because `terminalSurfaceTombstonesByPaneKey` — the older per-surface fence — is no
+  // longer written, so a binding write cannot count on it.
   it('treats a raised topology revision as the authority that makes absence a close', async () => {
     const store = await createStore()
     store.setWorkspaceSession(sessionWithPane({ tabId: TAB, leafId: TEST_LEAF_1, ptyId: 'pty-1' }))

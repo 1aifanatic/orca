@@ -24,6 +24,7 @@ vi.mock('electron', () => ({
   }
 }))
 
+import { getDefaultWorkspaceSession } from '../../shared/constants'
 import {
   registerRendererShutdownCheckpointHandler,
   SHUTDOWN_CHECKPOINT_FLUSH_DEADLINE_MS
@@ -41,6 +42,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
   it('stages every shutdown mutation before queueing persistence', () => {
     const callOrder: string[] = []
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn((_state, hostId?: string) => {
         callOrder.push(`session:${hostId ?? 'local'}`)
       }),
@@ -64,12 +66,12 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
     expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenNthCalledWith(
       1,
-      localSession,
+      expect.objectContaining(localSession),
       undefined
     )
     expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenNthCalledWith(
       2,
-      remoteSession,
+      expect.objectContaining(remoteSession),
       'runtime:host-1'
     )
     expect(store.updateUI).toHaveBeenCalledWith({ activeView: 'settings' })
@@ -84,6 +86,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
   it('never stages the source partition of a fenced host', () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       getSshTarget: vi.fn(() => ({ orcadFence: { environmentId: 'env-1' } })),
       updateUI: vi.fn(),
@@ -98,12 +101,16 @@ describe('registerRendererShutdownCheckpointHandler', () => {
     })
 
     expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenCalledTimes(1)
-    expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenCalledWith({}, undefined)
+    expect(store.stageWorkspaceSessionBeforeUnload).toHaveBeenCalledWith(
+      expect.any(Object),
+      undefined
+    )
     expect(event.returnValue).toEqual({ ok: true })
   })
 
   it('reports a staging failure so the renderer can retry', () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(() => {
         throw new Error('disk full')
@@ -121,6 +128,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
   it('does not queue persistence when staging is incomplete', async () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(),
       flushPendingOrThrowAsync: vi.fn(() => Promise.resolve())
@@ -141,6 +149,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
   it('stages synchronously without waiting on the durable write', () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(),
       flushPendingOrThrowAsync: vi.fn(() => new Promise<void>(() => {}))
@@ -157,6 +166,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
   it('holds the checkpoint open until the durable write settles', async () => {
     let resolveFlush!: () => void
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(),
       flushPendingOrThrowAsync: vi.fn(
@@ -184,6 +194,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
   it('reports a failed durable write instead of a successful checkpoint', async () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(),
       flushPendingOrThrowAsync: vi.fn(() => Promise.reject(new Error('disk full')))
@@ -200,6 +211,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
   it('fails the checkpoint when the durable write outlives its deadline', async () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(),
       flushPendingOrThrowAsync: vi.fn(
@@ -224,6 +236,7 @@ describe('registerRendererShutdownCheckpointHandler', () => {
 
   it('reports success before any checkpoint is staged', async () => {
     const store = {
+      getWorkspaceSession: () => getDefaultWorkspaceSession(),
       stageWorkspaceSessionBeforeUnload: vi.fn(),
       updateUI: vi.fn(),
       flushPendingOrThrowAsync: vi.fn(() => Promise.resolve())

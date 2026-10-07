@@ -184,7 +184,7 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
         return finishCommittedClose()
       }
       if (closingWholeParent && this.notifier?.closeTerminalTab) {
-        // The renderer flush can rebase its omission; the host commits the acknowledged identity.
+        // The window's close commits through main; the host also commits the acknowledged identity.
         const acknowledgeRetirement = this.captureTerminalTabRetirement(worktreeId, tab.parentTabId)
         // Wait for the renderer's pin guard, retirement and forced session flush.
         const win = this.getAvailableAuthoritativeWindow()
