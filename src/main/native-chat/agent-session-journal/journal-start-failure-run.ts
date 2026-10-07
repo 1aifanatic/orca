@@ -40,7 +40,7 @@ export function withoutRestatedStartFailureRows(
 }
 
 /** Whether the latest start-failure row states this failure, with no turn delivered since. */
-export function journalStartFailureAlreadyStated(
+function journalStartFailureAlreadyStated(
   state: Pick<JournalReducerState, 'items' | 'latestAcceptedSequence'>,
   failure: AgentSessionFailureFact
 ): boolean {
