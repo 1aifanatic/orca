@@ -79,7 +79,7 @@ describe('structured agent session event coalescer', () => {
       state: 'waiting' as const
     }
 
-    coalescer.push({ ...batch(1), queuedMessages: [draft], queuePause: { reason: 'cleared' } })
+    coalescer.push({ ...batch(1), queuedMessages: [draft], queuePause: { reason: 'stopped' } })
     coalescer.push({ ...batch(2), queuedMessages: [], queuePause: null })
     // A later frame with no list leaves the delivered ones as they are.
     coalescer.push(batch(3))
@@ -88,7 +88,7 @@ describe('structured agent session event coalescer', () => {
     expect(events).toHaveLength(3)
     expect(events[0]).toMatchObject({
       queuedMessages: [draft],
-      queuePause: { reason: 'cleared' }
+      queuePause: { reason: 'stopped' }
     })
     expect(events[1]).toMatchObject({ queuedMessages: [], queuePause: null })
     expect(events[2]).not.toHaveProperty('queuedMessages')

@@ -60,7 +60,6 @@ export function settleOwedQueuedMessages(
       consumedRef,
       reason: submission?.reason ?? null,
       rejection: submission?.rejection,
-      origin: submission?.origin,
       commandTurnReported: commandTurnReported(input.state, consumedRef),
       now: input.now
     })
@@ -127,7 +126,6 @@ export function settleQueuedMessagesForRow(
     consumedRef: row.clientMessageId,
     reason: row.reason,
     rejection: row.rejection,
-    origin: submission?.origin,
     commandTurnReported: commandTurnReported(input.state, row.clientMessageId),
     now: input.now
   })

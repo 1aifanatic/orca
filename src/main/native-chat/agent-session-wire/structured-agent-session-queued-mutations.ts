@@ -7,13 +7,12 @@
 
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
 import { agentSessionOperationKey } from '../../../shared/agent-session-operation-ledger'
-import {
-  QUEUED_MESSAGE_PAUSED_KEPT,
-  type AgentSessionMutationEnvelope,
-  type AgentSessionMutationResult,
-  type AgentSessionQueuedMessageDeleteResult,
-  type AgentSessionQueuedMessagesResumeResult,
-  type AgentSessionSendResult
+import type {
+  AgentSessionMutationEnvelope,
+  AgentSessionMutationResult,
+  AgentSessionQueuedMessageDeleteResult,
+  AgentSessionQueuedMessagesResumeResult,
+  AgentSessionSendResult
 } from '../../../shared/agent-session-wire'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import { QueuedMessageNotConsumableError } from '../agent-session-journal/journal-queued-messages'
@@ -104,8 +103,7 @@ export async function carryQueuedMessagesToClearReplacement(
     if (rows.length === 0) {
       return
     }
-    // A command card was for the context the clear discards, kept or not: withdrawn below, never
-    // carried.
+    // A command belongs to the discarded context, so it is withdrawn instead of carried.
     const carried = rows.filter((row) => !row.body.command)
     if (carried.length > 0) {
       const replacement = await input.openReplacementJournal()
@@ -121,11 +119,7 @@ export async function carryQueuedMessagesToClearReplacement(
           body: row.body,
           fingerprint: agentSessionSendBodyFingerprint(input.replacementSessionId, row.body),
           hostInstance: structuredAgentSessionHostInstance(),
-          carriedFrom: ctx.sessionId,
-          // A kept send stays held there too: no later message may release it.
-          ...(row.holdReason === QUEUED_MESSAGE_PAUSED_KEPT
-            ? { holdReason: QUEUED_MESSAGE_PAUSED_KEPT }
-            : {})
+          carriedFrom: ctx.sessionId
         })
       }
     }

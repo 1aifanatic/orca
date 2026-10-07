@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
 import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
-import { QUEUED_MESSAGE_PAUSED_KEPT } from '../../../shared/agent-session-queued-message-wire'
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { ConversationCommandParams } from '../../../shared/rpc-contract/structured-agent-session-params'
 import {
@@ -390,18 +389,56 @@ describe('a /compact that waits in line', () => {
     expect(rig.compact).not.toHaveBeenCalled()
   })
 
-  it('cut short by a restart after the person sent it: kept, never spent', async () => {
+  it('cut short by a restart after the person sent it: waits again, never spent', async () => {
     const compactId = await consumedThenCrashed('sendNow')
-    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting', paused: true }])
+    expect(await rig.drafts()).toEqual([{ messageId: compactId, state: 'waiting' }])
+    expect(await rig.queuePause()).toBeNull()
     const card = rig.host
       .collaboratorsForTests()
       .sessions.get(SESSION)
       ?.journal.queuedMessages.get(compactId)
     expect(card).toMatchObject({
-      holdReason: QUEUED_MESSAGE_PAUSED_KEPT,
+      holdReason: null,
       body: { command: { name: 'compact' } }
     })
     expect(rig.compact).not.toHaveBeenCalled()
+  })
+
+  it('a kept message stays ahead of a waiting /compact after the next turn releases both', async () => {
+    await rig.dispose()
+    rig = await createQueuedMessageTestRig({ restartable: true })
+    const working = await rig.workingSend()
+    const compactId = await queuedCompact()
+    await rig.stop()
+    await rig.settleAccepted(working, 'a')
+    await rig.host.close(SESSION, 'evict')
+    const release = rig.holdNextStart()
+    const startsBefore = rig.starts.mock.calls.length
+    const kept = rig.send('kept message')
+    await kept.result
+    await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
+    rig.crashRestartHostProcess()
+    release()
+
+    expect(await rig.drafts()).toEqual([
+      { messageId: kept.id, state: 'waiting' },
+      { messageId: compactId, state: 'waiting' }
+    ])
+    expect(rig.compact).not.toHaveBeenCalled()
+    const next = rig.send('next turn')
+    await next.result
+    await eventually(async () =>
+      expect((await rig.submission(next.id))?.handedOverAt).toBeDefined()
+    )
+    await rig.settleAccepted(next.id, 'next')
+    await eventually(async () => expect(await rig.handoff(kept.id)).toBeDefined())
+    expect(rig.dispatch.mock.calls.at(-1)?.[0].body.blocks).toEqual([
+      { type: 'text', text: 'kept message' }
+    ])
+    expect(rig.compact).not.toHaveBeenCalled()
+    await rig.settleAccepted(await rig.handoffId(kept.id), 'kept')
+    await eventually(() => expect(rig.compact).toHaveBeenCalledOnce())
+    expect(await rig.drafts()).toEqual([])
   })
 
   it('a direct /compact (no opt-in, as on a host without the queue) cut short by a restart is never a card', async () => {
