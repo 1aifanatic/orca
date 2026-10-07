@@ -12,11 +12,11 @@ import type { AppState } from '../types'
 import { emptyLayoutSnapshot } from '../slices/terminal-helpers'
 import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
 import { mirrorTerminalUnifiedTabs } from './terminal-topology-mirror-unified-tabs'
-import { holdTerminalLayoutGestures } from './terminal-layout-gestures'
 import {
   isPendingTerminalTab,
   isRuntimeHostedTab,
-  pendingAfterTerminalTopologySlice
+  pendingAfterTerminalTopologySlice,
+  pendingTerminalLayoutRoot
 } from './terminal-pending-panes'
 
 const OPTIONAL_ROW_FIELDS = [
@@ -126,14 +126,14 @@ export function mirrorTerminalTopologySlice(
   const keptIds = new Set(tabs.map((tab) => tab.id))
   const removedIds = currentTabs.filter((tab) => !keptIds.has(tab.id)).map((tab) => tab.id)
 
-  const gestures = holdTerminalLayoutGestures(
-    state.terminalLayoutGesturesByWorktree[worktreeId] ?? {},
-    slice
-  )
   const layouts = { ...state.terminalLayoutsByTabId }
-  for (const [tabId, layout] of Object.entries(gestures.layouts)) {
+  for (const [tabId, layout] of Object.entries(slice.layouts)) {
     if (!isPending(tabId, 'remove')) {
-      layouts[tabId] = mirrorLayout(layouts[tabId], layout)
+      const heldRoot = pendingTerminalLayoutRoot(pending, worktreeId, tabId)
+      layouts[tabId] = mirrorLayout(
+        layouts[tabId],
+        heldRoot ? { ...layout, root: heldRoot } : layout
+      )
     }
   }
   for (const tab of added) {
@@ -156,14 +156,6 @@ export function mirrorTerminalTopologySlice(
       ? { sleepingAgentSessionsByPaneKey: sleeping }
       : {}),
     ...mirrorTerminalUnifiedTabs(state, worktreeId, added, removedIds),
-    ...(worktreeId in state.terminalLayoutGesturesByWorktree
-      ? {
-          terminalLayoutGesturesByWorktree: {
-            ...state.terminalLayoutGesturesByWorktree,
-            [worktreeId]: gestures.held
-          }
-        }
-      : {}),
     ...(pending !== state.pendingTerminalPanes ? { pendingTerminalPanes: pending } : {}),
     terminalTopologySeqByWorktree: {
       ...state.terminalTopologySeqByWorktree,

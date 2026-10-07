@@ -8,7 +8,11 @@ const RIGHT = '22222222-2222-4222-8222-222222222222'
 
 const store = vi.hoisted(() => {
   const terminalLayoutsByTabId: Record<string, unknown> = {}
-  return { terminalLayoutsByTabId, commitTerminalLayoutGesture: vi.fn() }
+  return {
+    terminalLayoutsByTabId,
+    markPendingTerminalPane: vi.fn(),
+    settlePendingTerminalPane: vi.fn()
+  }
 })
 vi.mock('../../store', () => ({ useAppStore: { getState: () => store } }))
 vi.mock('@/runtime/web-runtime-session', () => ({ clearWebRuntimeTerminalBuffer: () => true }))
@@ -72,7 +76,7 @@ function renderPersistence(ptyIdForPane = (paneId: number) => `remote:host:${pan
 afterEach(() => {
   cleanup()
   store.terminalLayoutsByTabId = {}
-  store.commitTerminalLayoutGesture.mockClear()
+  store.markPendingTerminalPane.mockClear()
 })
 
 describe('terminal layout gesture persist', () => {
@@ -117,7 +121,7 @@ describe('terminal layout gesture persist', () => {
   it('never commits a remote tab to main; its host takes the push', () => {
     const { hook } = renderPersistence()
     hook.result.current.persistLayoutSnapshot('gesture')
-    expect(store.commitTerminalLayoutGesture).not.toHaveBeenCalled()
+    expect(store.markPendingTerminalPane).not.toHaveBeenCalled()
   })
 })
 
@@ -129,16 +133,17 @@ describe('local terminal layout gestures', () => {
       tab: { root: { type: 'leaf', leafId: LEFT }, activeLeafId: LEFT, expandedLeafId: null }
     }
     const { hook, setTabLayout } = renderPersistence(local)
-    store.commitTerminalLayoutGesture.mockClear()
+    store.markPendingTerminalPane.mockClear()
 
     hook.result.current.persistLayoutSnapshot('gesture')
 
     const saved = setTabLayout.mock.calls.at(-1)?.[1]
-    expect(store.commitTerminalLayoutGesture).toHaveBeenCalledExactlyOnceWith(
-      'wt',
-      'tab',
-      saved.root
-    )
+    expect(store.markPendingTerminalPane).toHaveBeenCalledExactlyOnceWith({
+      worktreeId: 'wt',
+      tabId: 'tab',
+      change: 'layout',
+      root: saved.root
+    })
   })
 
   it('commits nothing for an automatic persist or a gesture that left the tree as it was', () => {
@@ -148,7 +153,7 @@ describe('local terminal layout gestures', () => {
     hook.result.current.persistLayoutSnapshot()
     hook.result.current.removePaneTitle(1)
 
-    expect(store.commitTerminalLayoutGesture).not.toHaveBeenCalled()
+    expect(store.markPendingTerminalPane).not.toHaveBeenCalled()
   })
 
   it("saves main's bindings, not the live transports' PTY ids", () => {

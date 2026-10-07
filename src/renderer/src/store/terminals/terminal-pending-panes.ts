@@ -1,5 +1,9 @@
 import { parseExecutionHostId } from '../../../../shared/execution-host'
-import type { TerminalTopologySlice } from '../../../../shared/terminal-topology-slice'
+import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
+import type {
+  TerminalTopologyReply,
+  TerminalTopologySlice
+} from '../../../../shared/terminal-topology-slice'
 import { collectLeafIds } from '@/components/terminal-pane/terminal-pane-layout-tree'
 import type { AppState } from '../types'
 import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
@@ -8,24 +12,35 @@ import type { TerminalSlice, TerminalStoreSet } from './terminal-state'
 export type PendingTerminalPaneKey = { worktreeId: string; tabId: string; leafId?: string }
 
 /**
- * A tab or pane this window shows (`add`) or hides (`remove`) before main's topology does. An add
- * stands until a slice names it; a remove until the slice holding main's reply (`publishSeq`).
+ * A tab or pane this window shows (`add`) or hides (`remove`), or a tab tree it keeps (`layout`,
+ * a user's geometry edit), before main's topology does. An add stands until a slice names it; a
+ * remove or layout until the slice holding main's reply (`publishSeq`). A layout also ends once
+ * main's tab has other panes, since main refuses it then.
  */
-export type PendingTerminalPane = PendingTerminalPaneKey & {
-  change: 'add' | 'remove'
-  publishSeq?: number
-}
+export type PendingTerminalPane = PendingTerminalPaneKey & { publishSeq?: number } & (
+    | { change: 'add' | 'remove' }
+    | { change: 'layout'; root: TerminalPaneLayoutNode }
+  )
+
+type PendingTerminalLayout = Extract<PendingTerminalPane, { change: 'layout' }>
 
 function isSamePane(a: PendingTerminalPaneKey, b: PendingTerminalPaneKey): boolean {
   return a.worktreeId === b.worktreeId && a.tabId === b.tabId && a.leafId === b.leafId
 }
 
-/** A newer change to the same tab or pane replaces the older one: a close supersedes its add. */
+/** A newer change to the same tab or pane replaces the older one: a close its add, a drag the
+ *  previous drag. A tab's tree and its membership are separate changes. */
 export function withPendingTerminalPane(
   pending: readonly PendingTerminalPane[],
   entry: PendingTerminalPane
 ): PendingTerminalPane[] {
-  return [...pending.filter((current) => !isSamePane(current, entry)), entry]
+  const isLayout = entry.change === 'layout'
+  return [
+    ...pending.filter(
+      (current) => !isSamePane(current, entry) || (current.change === 'layout') !== isLayout
+    ),
+    entry
+  ]
 }
 
 export function withoutPendingTerminalTab(
@@ -64,6 +79,21 @@ export function pendingTerminalLeafIds(
   )
 }
 
+/** The tree a pending gesture keeps over main's for this tab, if any. */
+export function pendingTerminalLayoutRoot(
+  pending: readonly PendingTerminalPane[],
+  worktreeId: string,
+  tabId: string
+): TerminalPaneLayoutNode | undefined {
+  return pending.find(
+    (entry): entry is PendingTerminalLayout =>
+      entry.change === 'layout' && entry.worktreeId === worktreeId && entry.tabId === tabId
+  )?.root
+}
+
+const leafSet = (root: TerminalPaneLayoutNode | null | undefined): string =>
+  collectLeafIds(root).sort().join('\n')
+
 /** Tabs a `runtime:` host publishes share the worktree id but never ride main's slice. */
 export function isRuntimeHostedTab(state: AppState, worktreeId: string, tabId: string): boolean {
   const entry = state.unifiedTabsByWorktree[worktreeId]?.find(
@@ -90,35 +120,59 @@ export function pendingAfterTerminalTopologySlice(
 ): PendingTerminalPane[] {
   const tabIds = new Set(slice.tabs.map((tab) => tab.id))
   const leafIds = new Set(Object.values(slice.layouts).flatMap(({ root }) => collectLeafIds(root)))
-  const settled = (entry: PendingTerminalPane): boolean =>
-    entry.worktreeId === slice.worktreeId &&
-    (entry.change === 'add'
-      ? entry.leafId
-        ? leafIds.has(entry.leafId)
-        : tabIds.has(entry.tabId)
-      : entry.publishSeq !== undefined && entry.publishSeq <= slice.publishSeq)
+  const settled = (entry: PendingTerminalPane): boolean => {
+    if (entry.worktreeId !== slice.worktreeId) {
+      return false
+    }
+    if (entry.change === 'add') {
+      return entry.leafId ? leafIds.has(entry.leafId) : tabIds.has(entry.tabId)
+    }
+    if (
+      entry.change === 'layout' &&
+      leafSet(slice.layouts[entry.tabId]?.root) !== leafSet(entry.root)
+    ) {
+      return true
+    }
+    return entry.publishSeq !== undefined && entry.publishSeq <= slice.publishSeq
+  }
   return pending.some(settled) ? pending.filter((entry) => !settled(entry)) : pending
+}
+
+/**
+ * Holds `entry` over main's pushes while `send` commits it in main, and until the push holding
+ * main's reply is applied. Not superseded meanwhile: a later change to the same target owns it.
+ */
+export function commitPendingTerminalChange(
+  store: Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPane'>,
+  entry: PendingTerminalPane,
+  send: () => Promise<TerminalTopologyReply> | undefined
+): void {
+  store.markPendingTerminalPane(entry)
+  void Promise.resolve(send()).then(
+    (reply) => store.settlePendingTerminalPane(entry, reply?.publishSeq),
+    (error: unknown) => {
+      console.warn(`[terminal-topology] main did not commit the ${entry.change}`, error)
+      store.settlePendingTerminalPane(entry)
+    }
+  )
 }
 
 export function createTerminalPendingPaneActions(
   set: TerminalStoreSet
-): Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPaneRemoval'> {
+): Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPane'> {
   return {
     markPendingTerminalPane: (entry) => {
       set((s) => ({ pendingTerminalPanes: withPendingTerminalPane(s.pendingTerminalPanes, entry) }))
     },
-    settlePendingTerminalPaneRemoval: (pane, publishSeq) => {
+    settlePendingTerminalPane: (entry, publishSeq) => {
       set((s) => {
-        const entry = s.pendingTerminalPanes.find(
-          (candidate) => candidate.change === 'remove' && isSamePane(candidate, pane)
-        )
-        if (!entry) {
+        if (!s.pendingTerminalPanes.includes(entry)) {
           return s
         }
         // No publishSeq (refused, or no mirror) or one already applied: main's state stands.
         const stands =
           publishSeq === undefined ||
-          publishSeq <= (s.terminalTopologySeqByWorktree[pane.worktreeId] ?? 0)
+          publishSeq <= (s.terminalTopologySeqByWorktree[entry.worktreeId] ?? 0)
         return {
           pendingTerminalPanes: stands
             ? s.pendingTerminalPanes.filter((candidate) => candidate !== entry)

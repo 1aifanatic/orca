@@ -3,6 +3,7 @@ import { useAppStore } from '@/store'
 import type { TerminalLayoutSetResult } from '../../../../shared/terminal-layout-set'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 import type { TerminalTopologySlice } from '../../../../shared/terminal-topology-slice'
+import { commitPendingTerminalChange, withPendingTerminalPane } from './terminal-pending-panes'
 
 const WT = 'repo::/wt'
 const TAB = 'tab'
@@ -31,7 +32,7 @@ const initial = useAppStore.getState()
 const originalWindow = globalThis.window
 let replies: { resolve: (reply: Reply) => void; reject: (error: Error) => void }[] = []
 const setTerminalLayout = vi.fn(
-  () =>
+  (_request: unknown) =>
     new Promise<Reply>((resolve, reject) => {
       replies.push({ resolve, reject })
     })
@@ -59,7 +60,9 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 function dragEnd(root: TerminalPaneLayoutNode): void {
   const layout = state().terminalLayoutsByTabId[TAB]
   state().setTabLayout(TAB, { ...layout!, root })
-  state().commitTerminalLayoutGesture(WT, TAB, root)
+  commitPendingTerminalChange(state(), { worktreeId: WT, tabId: TAB, change: 'layout', root }, () =>
+    setTerminalLayout({ worktreeId: WT, tabId: TAB, root })
+  )
 }
 
 beforeEach(() => {
@@ -129,7 +132,7 @@ describe('a divider drag committed to main', () => {
     apply(2, DRAGGED)
     replies[0]!.resolve({ status: 'committed', publishSeq: 2 })
     await flush()
-    expect(state().terminalLayoutGesturesByWorktree[WT]).toEqual({})
+    expect(state().pendingTerminalPanes).toEqual([])
 
     apply(3, BEFORE)
     expect(rootInStore()).toEqual(BEFORE)
@@ -140,7 +143,7 @@ describe('a divider drag committed to main', () => {
     const closed = split(leaf(A), leaf(C))
     apply(2, closed)
     expect(rootInStore()).toEqual(closed)
-    expect(state().terminalLayoutGesturesByWorktree[WT]).toEqual({})
+    expect(state().pendingTerminalPanes).toEqual([])
   })
 
   it('keeps the latest of two drags when the first reply lands', async () => {
@@ -162,5 +165,15 @@ describe('a divider drag committed to main', () => {
 
     apply(2, BEFORE)
     expect(rootInStore()).toEqual(BEFORE)
+  })
+
+  it("leaves the tab's pending add in place; only a later drag replaces a drag", () => {
+    const add = { worktreeId: WT, tabId: TAB, change: 'add' } as const
+    const first = { worktreeId: WT, tabId: TAB, change: 'layout', root: DRAGGED } as const
+    const second = { ...first, root: BEFORE }
+    expect(withPendingTerminalPane(withPendingTerminalPane([add], first), second)).toEqual([
+      add,
+      second
+    ])
   })
 })

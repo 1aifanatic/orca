@@ -5,6 +5,7 @@ import { serializeTerminalLayout } from './layout-serialization'
 import { mergeCapturedLeafState } from './merge-captured-leaf-state'
 import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
 import { terminalLayoutNodeEqual } from '@/lib/terminal-layout-equality'
+import { commitPendingTerminalChange } from '@/store/terminals/terminal-pending-panes'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
 import { clearTerminalScrollbackAndFollowOutput } from '@/lib/pane-manager/terminal-scrollback-clear'
 import { clearWebRuntimeTerminalBuffer } from '@/runtime/web-runtime-session'
@@ -126,7 +127,13 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
       if (hasRemotePane) {
         remotePaneLayoutPusherRef.current?.push({ worktreeId, tabId, layout, intent })
       } else if (geometryEdit && layout.root) {
-        useAppStore.getState().commitTerminalLayoutGesture(worktreeId, tabId, layout.root)
+        const root = layout.root
+        commitPendingTerminalChange(
+          useAppStore.getState(),
+          { worktreeId, tabId, change: 'layout', root },
+          // Why optional: an older preload can linger through an in-place renderer reload.
+          () => globalThis.window?.api?.session?.setTerminalLayout?.({ worktreeId, tabId, root })
+        )
       }
       for (const leafId of currentLeafIds) {
         clearedScrollbackLeafIds.delete(leafId)
