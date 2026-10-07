@@ -1,10 +1,11 @@
-// A structured send's bubble and its unconfirmed hold are settled by the row the host records under
-// the send's own id, delivered or not sent, and never by another row with the same text.
+// A structured send's bubble and its unconfirmed hold are settled by the journal's record of the
+// send's own id (or of its card's hand-off), drawn or not, and never by another row with its text.
 
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
 
@@ -18,6 +19,23 @@ function user(clientMessageId: string, text: string, unsent = false): NativeChat
     timestamp: null,
     blocks: [{ type: 'text', text }],
     ...(unsent ? { unsent: true as const } : {})
+  }
+}
+
+function recorded(
+  clientMessageId: string,
+  patch: Partial<AgentJournalSubmission> = {}
+): AgentJournalSubmission {
+  return {
+    clientMessageId,
+    fence: 1,
+    payloadFingerprint: `body:${clientMessageId}`,
+    dispatchState: 'accepted',
+    providerItemId: null,
+    reason: null,
+    submittedAt: 1,
+    resolvedAt: 1,
+    ...patch
   }
 }
 
@@ -44,7 +62,11 @@ describe('useMobileNativeChatDrafts with a structured send id', () => {
     vi.useRealTimers()
   })
 
-  function Harness(props: { messages: NativeChatMessage[]; queuedCards: QueuedCard[] }): null {
+  function Harness(props: {
+    messages: NativeChatMessage[]
+    queuedCards: QueuedCard[]
+    submissions: AgentJournalSubmission[]
+  }): null {
     state = useMobileNativeChatDrafts({
       hostId: 'host',
       worktreeId: 'worktree',
@@ -54,14 +76,19 @@ describe('useMobileNativeChatDrafts with a structured send id', () => {
       launchDraft: null,
       transcriptLoading: false,
       transcriptSettled: true,
-      queuedCards: props.queuedCards
+      queuedCards: props.queuedCards,
+      submissions: props.submissions
     })
     return null
   }
 
-  async function render(messages: NativeChatMessage[], queuedCards: QueuedCard[] = []) {
+  async function render(
+    messages: NativeChatMessage[],
+    queuedCards: QueuedCard[] = [],
+    submissions: AgentJournalSubmission[] = SUBMITTED
+  ) {
     await act(async () => {
-      const element = createElement(Harness, { messages, queuedCards })
+      const element = createElement(Harness, { messages, queuedCards, submissions })
       if (renderer) {
         renderer.update(element)
       } else {
@@ -92,6 +119,7 @@ describe('useMobileNativeChatDrafts with a structured send id', () => {
   }
 
   const BEFORE = [ANSWER, user('m1', 'fix the test', true)]
+  const SUBMITTED = [recorded('m1', { dispatchState: 'rejected' })]
 
   it('retires the bubble on its own row, even once the not-sent original is gone', async () => {
     await render(BEFORE)
@@ -99,21 +127,36 @@ describe('useMobileNativeChatDrafts with a structured send id', () => {
     act(() => state?.acceptSend(captured, 'fix the test', undefined, 'm2'))
     expect(state?.pending.map((item) => item.text)).toEqual(['fix the test'])
     // Once the resend is recorded the projection drops the not-sent original it copies.
-    await render([ANSWER, user('m2', 'fix the test')])
+    await render([ANSWER, user('m2', 'fix the test')], [], [...SUBMITTED, recorded('m2')])
     expect(state?.pending).toEqual([])
   })
 
   it('stays quiet when its own row arrives already shown as not sent', async () => {
     await render(BEFORE)
     const settle = holdLostSend('later', 'm2')
-    await render([...BEFORE, user('m2', 'later', true)])
+    await render(
+      [...BEFORE, user('m2', 'later', true)],
+      [],
+      [...SUBMITTED, recorded('m2', { dispatchState: 'rejected' })]
+    )
     expect(settle()).not.toHaveBeenCalled()
+  })
+
+  it('retires the bubble on its record while the host has not answered it yet', async () => {
+    await render(BEFORE)
+    act(() => state?.acceptSend(origin('later'), 'later', undefined, 'm2'))
+    await render(
+      [...BEFORE, user('m2', 'later')],
+      [],
+      [...SUBMITTED, recorded('m2', { dispatchState: 'pending', resolvedAt: null })]
+    )
+    expect(state?.pending).toEqual([])
   })
 
   it('still warns when only another row with its text is there', async () => {
     await render(BEFORE)
     const settle = holdLostSend('fix the test', 'm2')
-    await render([...BEFORE, user('m3', 'fix the test')])
+    await render([...BEFORE, user('m3', 'fix the test')], [], [...SUBMITTED, recorded('m3')])
     expect(settle()).toHaveBeenCalledTimes(1)
   })
 
@@ -124,6 +167,18 @@ describe('useMobileNativeChatDrafts with a structured send id', () => {
       { messageId: 'other', text: 'queued words' },
       { messageId: 'm2', text: 'queued words' }
     ])
+    expect(settle()).not.toHaveBeenCalled()
+  })
+
+  // Its card went out under a fresh id before the phone saw the card, so no row carries its id.
+  it('stays quiet when its card was handed off before the phone saw it', async () => {
+    await render(BEFORE)
+    const settle = holdLostSend('queued words', 'm2')
+    await render(
+      [...BEFORE, user('fresh', 'queued words')],
+      [],
+      [...SUBMITTED, recorded('fresh', { queuedMessageId: 'm2' })]
+    )
     expect(settle()).not.toHaveBeenCalled()
   })
 

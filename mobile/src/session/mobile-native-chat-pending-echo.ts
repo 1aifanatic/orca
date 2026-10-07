@@ -12,8 +12,9 @@ export type MobileNativeChatPendingMessage = {
    *  and rebased onto the first authoritative read instead of reconciling
    *  against rows that may belong to another tab. */
   baselineResolved: boolean
-  /** Structured lane: the id the host records the send under. Its row settles it, in any state,
-   *  wherever the host places it; text and position are not consulted. */
+  /** Structured lane: the id the host records the send under. The journal's record of it, or of
+   *  its card's hand-off, settles it, whether or not its row is drawn; text and position are not
+   *  consulted. */
   clientMessageId?: string
 }
 

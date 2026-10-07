@@ -1,6 +1,6 @@
-// A structured send is recorded under the id it went out under, and its row carries that id. The
-// phone settles the send's bubble, its photo preview and any unconfirmed hold by that row alone,
-// whatever its text, wherever the host places it, delivered or not sent.
+// A structured send is recorded under the id it went out under. The phone settles the send's bubble
+// and any unconfirmed hold once its journal holds that record, or a hand-off of its card, whatever
+// the text and wherever, or whether, its row is drawn. Its photo binds to that row when drawn.
 
 import { describe, expect, it } from 'vitest'
 import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
@@ -14,13 +14,19 @@ import {
   countUserTextOccurrences,
   findLandedImagePreviewEchoes,
   findLandedUnconfirmedSends,
-  normalizeReconcileText
+  findQueuedUnconfirmedSends,
+  normalizeReconcileText,
+  type MobileStructuredSendReachedHost
 } from './mobile-native-chat-draft-reconcile'
 import {
   appendMobileNativeChatPending,
   type MobileNativeChatPendingMessage
 } from './mobile-native-chat-pending-echo'
 import { retireLandedMobileNativeChatPending } from './mobile-native-chat-pending-retirement'
+import {
+  mobileStructuredSendInJournal,
+  mobileStructuredSendsInJournal
+} from './mobile-structured-send-operation-journal'
 
 const TEXT = 'fix the test'
 
@@ -81,17 +87,23 @@ function rejected(id: string, text: string, at: number): AgentJournalSubmission 
   })
 }
 
-/** What the phone draws: the journal, with a recorded, rejected send in place as not sent. */
-function phone(
-  items: AgentJournalRenderItem[],
-  submissions: AgentJournalSubmission[]
-): NativeChatMessage[] {
-  return projectStructuredAgentSessionMessages(items, [], submissions, { rejectedInPlace: true })
+type Chat = { messages: NativeChatMessage[]; reachedHost: MobileStructuredSendReachedHost }
+
+/** What the phone holds: the journal drawn with a recorded, rejected send in place as not sent,
+ *  and what that journal says reached the host. */
+function phone(items: AgentJournalRenderItem[], submissions: AgentJournalSubmission[]): Chat {
+  const sends = mobileStructuredSendsInJournal(submissions, false)
+  return {
+    messages: projectStructuredAgentSessionMessages(items, [], submissions, {
+      rejectedInPlace: true
+    }),
+    reachedHost: (clientMessageId) => mobileStructuredSendInJournal(sends, clientMessageId)
+  }
 }
 
 /** One bubble for a structured send, captured against `before`. */
 function bubble(
-  before: readonly NativeChatMessage[],
+  before: Chat,
   clientMessageId: string,
   text: string,
   images?: string[]
@@ -107,8 +119,8 @@ function bubble(
         draftEditGeneration: 0,
         pendingKey: 'pending',
         normalizedText,
-        baselineOccurrences: countUserTextOccurrences(before, normalizedText),
-        baselineTailMessageId: before.at(-1)?.id ?? null,
+        baselineOccurrences: countUserTextOccurrences(before.messages, normalizedText),
+        baselineTailMessageId: before.messages.at(-1)?.id ?? null,
         baselineResolved: true
       },
       text,
@@ -118,50 +130,58 @@ function bubble(
   )
 }
 
-/** The bubbles still drawn once `after` is the transcript. */
-function left(after: readonly NativeChatMessage[], pending: MobileNativeChatPendingMessage[]) {
-  const bound = new Set(findLandedImagePreviewEchoes(after, pending).map((echo) => echo.pendingId))
-  return retireLandedMobileNativeChatPending(after, pending, bound).map((item) => item.id)
-}
-
-function held(
-  before: readonly NativeChatMessage[],
-  after: readonly NativeChatMessage[],
-  clientMessageId: string,
-  text: string
-): boolean {
-  return (
-    findLandedUnconfirmedSends(after, [
-      {
-        draftKey: 'draft',
-        pendingKey: 'pending',
-        text,
-        normalizedText: normalizeReconcileText(text),
-        baselineTailMessageId: before.at(-1)?.id ?? null,
-        clientMessageId,
-        deadline: null
-      }
-    ]).length === 0
+/** The bubbles still drawn once `after` is the chat. */
+function left(after: Chat, pending: MobileNativeChatPendingMessage[]): string[] {
+  const bound = new Set(
+    findLandedImagePreviewEchoes(after.messages, pending).map((echo) => echo.pendingId)
+  )
+  return retireLandedMobileNativeChatPending(after.messages, pending, bound, after.reachedHost).map(
+    (item) => item.id
   )
 }
+
+/** Whether an ack-lost send under `clientMessageId` is still held once `after` is the chat. */
+function held(
+  before: Chat,
+  after: Chat,
+  clientMessageId: string,
+  text: string,
+  cards: { messageId: string; text: string }[] = []
+): boolean {
+  const entry = {
+    draftKey: 'draft',
+    pendingKey: 'pending',
+    text,
+    normalizedText: normalizeReconcileText(text),
+    baselineTailMessageId: before.messages.at(-1)?.id ?? null,
+    clientMessageId,
+    deadline: null
+  }
+  return (
+    findLandedUnconfirmedSends(after.messages, [entry], after.reachedHost).length === 0 &&
+    findQueuedUnconfirmedSends(cards, [entry]).length === 0
+  )
+}
+
+const drawn = (chat: Chat, clientMessageId: string): boolean =>
+  chat.messages.some((message) => message.id === agentJournalSubmissionKey(clientMessageId))
 
 const ORIGINAL = rejected('m1', TEXT, 10)
 const BEFORE = phone([answer('hi', 5), said('m1', 11, TEXT)], [ORIGINAL])
 
 describe('a same-text resend after a not-sent message', () => {
-  it('keeps its bubble until its own row arrives, never settled by the original', () => {
-    const pending = bubble(BEFORE, 'm2', TEXT)
-    expect(left(BEFORE, pending)).toEqual(['pending-m2'])
+  it('stays unsettled until the journal holds it, never settled by the original', () => {
+    expect(left(BEFORE, bubble(BEFORE, 'm2', TEXT))).toEqual(['pending-m2'])
     expect(held(BEFORE, BEFORE, 'm2', TEXT)).toBe(true)
   })
 
   // The projection drops the original once the resend is recorded after its rejection.
-  it('retires its bubble and settles its hold on its own row, with the original gone', () => {
+  it('settles once the journal holds it, with the original gone', () => {
     const after = phone(
       [answer('hi', 5), said('m1', 11, TEXT), said('m2', 20, TEXT), answer('done', 21)],
       [ORIGINAL, submission('m2', TEXT, 20)]
     )
-    expect(after.some((message) => message.id === agentJournalSubmissionKey('m1'))).toBe(false)
+    expect(drawn(after, 'm1')).toBe(false)
     expect(left(after, bubble(BEFORE, 'm2', TEXT))).toEqual([])
     expect(held(BEFORE, after, 'm2', TEXT)).toBe(false)
   })
@@ -174,7 +194,10 @@ describe('a send whose own row arrives already not sent', () => {
   )
 
   it('settles an ack-lost send, so no "Delivery unconfirmed" banner follows', () => {
-    expect(after.at(-1)).toMatchObject({ id: agentJournalSubmissionKey('m2'), unsent: true })
+    expect(after.messages.at(-1)).toMatchObject({
+      id: agentJournalSubmissionKey('m2'),
+      unsent: true
+    })
     expect(held(BEFORE, after, 'm2', 'later')).toBe(false)
   })
 
@@ -198,7 +221,7 @@ describe('a send whose boundary row the host moves past it', () => {
 
   it('binds its photo to its own row and retires its bubble', () => {
     const pending = bubble(before, 'm2', '', ['file:///a.jpg'])
-    expect(findLandedImagePreviewEchoes(after, pending)).toEqual([
+    expect(findLandedImagePreviewEchoes(after.messages, pending)).toEqual([
       {
         pendingId: 'pending-m2',
         messageId: agentJournalSubmissionKey('m2'),
@@ -228,7 +251,7 @@ describe('a captioned photo send', () => {
       [photo('m1', 10), photo('m3', 12), photo('m2', 21)],
       [rejected('m1', 'look', 10), rejected('m2', 'look', 20)]
     )
-    expect(findLandedImagePreviewEchoes(after, pending)).toEqual([
+    expect(findLandedImagePreviewEchoes(after.messages, pending)).toEqual([
       {
         pendingId: 'pending-m2',
         messageId: agentJournalSubmissionKey('m2'),
@@ -239,21 +262,99 @@ describe('a captioned photo send', () => {
   })
 })
 
-// Two quick sends of the same text: the first is recorded and rejected before the second's row
-// arrives. Its row is the first send's own, never the second's (R1P-3).
+// Two quick sends of the same text: the first recorded and rejected, the second delivered. Each
+// settles on its own record, whichever state the phone first sees (R1P-3).
 describe('two quick sends of the same text', () => {
-  it('retires each bubble on its own row only', () => {
-    const before = phone([answer('a0', 5)], [])
-    const pending = [...bubble(before, 'm1', TEXT), ...bubble(before, 'm2', TEXT)]
+  const before = phone([answer('a0', 5)], [])
+  const pending = () => [...bubble(before, 'm1', TEXT), ...bubble(before, 'm2', TEXT)]
+
+  it("settles only the first while only the first's record is there", () => {
     const firstOnly = phone([answer('a0', 5), said('m1', 11, TEXT)], [rejected('m1', TEXT, 10)])
-    const bound = new Set<string>()
-    const afterFirst = retireLandedMobileNativeChatPending(firstOnly, pending, bound)
-    expect(afterFirst.map((item) => item.id)).toEqual(['pending-m2'])
-    // The resend went out once the first was known not sent, so the first's row leaves.
+    expect(left(firstOnly, pending())).toEqual(['pending-m2'])
+  })
+
+  it('settles both at once, though the first row is hidden by the copy sent after it', () => {
     const both = phone(
       [answer('a0', 5), said('m1', 11, TEXT), said('m2', 12, TEXT)],
       [rejected('m1', TEXT, 10), submission('m2', TEXT, 12)]
     )
-    expect(retireLandedMobileNativeChatPending(both, afterFirst, bound)).toEqual([])
+    expect(drawn(both, 'm1')).toBe(false)
+    expect(left(both, pending())).toEqual([])
+  })
+})
+
+// A send's own row can be hidden, or never exist, before the phone ever draws it: the journal still
+// holds the send, or the hand-off of the card the host made of it.
+describe('a send the chat never draws under its own id', () => {
+  it('settles a held send whose card went out under a fresh id after its answer was lost', () => {
+    const after = phone(
+      [answer('hi', 5), said('drained', 20, 'run tests')],
+      [submission('drained', 'run tests', 20, { queuedMessageId: 'op-a' })]
+    )
+    expect(held(BEFORE, after, 'op-a', 'run tests')).toBe(false)
+  })
+
+  it('retires a bubble whose row a same-text copy hid before the phone drew it', () => {
+    const after = phone(
+      [said('o', 5, 'go'), said('n', 7, 'go')],
+      [{ ...rejected('o', 'go', 5), resolvedAt: 6 }, submission('n', 'go', 7)]
+    )
+    expect(drawn(after, 'o')).toBe(false)
+    expect(left(after, bubble(BEFORE, 'o', 'go', ['file:///o.jpg']))).toEqual([])
+  })
+
+  it('retires a bubble kept as a card that then went out under a fresh id', () => {
+    const after = phone(
+      [said('o', 5, 'go'), said('fresh', 8, 'go')],
+      [
+        { ...rejected('o', 'go', 5), keptAsQueuedMessageId: 'o' },
+        submission('fresh', 'go', 8, { queuedMessageId: 'o' })
+      ]
+    )
+    expect(drawn(after, 'o')).toBe(false)
+    expect(left(after, bubble(BEFORE, 'o', 'go'))).toEqual([])
+  })
+
+  it('settles a held send on its own card, never on another card with its text', () => {
+    expect(
+      held(BEFORE, BEFORE, 'op-a', 'run tests', [{ messageId: 'op-a', text: 'run tests' }])
+    ).toBe(false)
+    expect(
+      held(BEFORE, BEFORE, 'op-a', 'run tests', [{ messageId: 'other', text: 'run tests' }])
+    ).toBe(true)
+  })
+})
+
+describe('a send the host has recorded but not yet answered', () => {
+  it('settles on its pending record: its row is drawn as sent', () => {
+    const after = phone(
+      [answer('hi', 5), said('m2', 20, 'later')],
+      [submission('m2', 'later', 20, { dispatchState: 'pending', resolvedAt: null })]
+    )
+    expect(left(after, bubble(BEFORE, 'm2', 'later'))).toEqual([])
+    expect(held(BEFORE, after, 'm2', 'later')).toBe(false)
+  })
+})
+
+describe('what never settles a send', () => {
+  it('another send of the same text', () => {
+    const after = phone([said('z', 5, 'go')], [submission('z', 'go', 5)])
+    expect(left(after, bubble(BEFORE, 'o', 'go'))).toEqual(['pending-o'])
+    expect(held(BEFORE, after, 'o', 'go')).toBe(true)
+  })
+
+  it('a journal without its record yet', () => {
+    const empty = phone([], [])
+    expect(left(empty, bubble(BEFORE, 'o', 'go'))).toEqual(['pending-o'])
+    expect(held(BEFORE, empty, 'o', 'go')).toBe(true)
+  })
+
+  it("another card's hand-off", () => {
+    const after = phone(
+      [said('fresh', 5, 'go')],
+      [submission('fresh', 'go', 5, { queuedMessageId: 'card-other' })]
+    )
+    expect(left(after, bubble(BEFORE, 'o', 'go'))).toEqual(['pending-o'])
+    expect(held(BEFORE, after, 'o', 'go')).toBe(true)
   })
 })

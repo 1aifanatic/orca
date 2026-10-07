@@ -1,9 +1,10 @@
-import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-journal-item-key'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import {
   countImageSourceTurnsAfter,
   normalizeReconcileText,
-  normalizedUserText
+  normalizedUserText,
+  NO_STRUCTURED_SENDS,
+  type MobileStructuredSendReachedHost
 } from './mobile-native-chat-draft-reconcile'
 import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
 
@@ -147,12 +148,11 @@ function matchGluedRun(
 export function retireLandedMobileNativeChatPending(
   messages: readonly NativeChatMessage[],
   current: MobileNativeChatPendingMessage[],
-  landedImagePendingIds: ReadonlySet<string>
+  landedImagePendingIds: ReadonlySet<string>,
+  reachedHost: MobileStructuredSendReachedHost = NO_STRUCTURED_SENDS
 ): MobileNativeChatPendingMessage[] {
   const landedCounts = new Map<string, number>()
-  const messageIds = new Set<string>()
   for (const message of messages) {
-    messageIds.add(message.id)
     const text = normalizedUserText(message)
     if (text) {
       landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
@@ -169,8 +169,8 @@ export function retireLandedMobileNativeChatPending(
       continue
     }
     if (item.clientMessageId !== undefined) {
-      // An image echo waits for its preview to bind to that row, above.
-      if (!item.images?.length && messageIds.has(agentJournalSubmissionKey(item.clientMessageId))) {
+      // A photo has bound to its row above when that row is drawn; one the chat hides retires unbound.
+      if (reachedHost(item.clientMessageId)) {
         landedPendingIds.add(item.id)
         exactLandedIds.add(item.id)
       }

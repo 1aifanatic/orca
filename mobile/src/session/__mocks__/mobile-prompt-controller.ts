@@ -87,6 +87,7 @@ const structured = {
   isWorking: false,
   turnId: null,
   turnIndicator: null,
+  submissions: [],
   workingStartedAt: null,
   settledTurns: null,
   turnJournal: null,

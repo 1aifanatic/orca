@@ -191,33 +191,67 @@ export async function clearMobileStructuredSendOperation(input: {
   })
 }
 
+/** The structured sends the journal shows reached the host, by the operation id each went out
+ *  under: one recorded under the id (with the bodies recorded), or one whose queued draft went out
+ *  as a submission naming the id as its `queuedMessageId`, in whatever state. */
+export type MobileStructuredSendsInJournal = {
+  recorded: ReadonlyMap<string, ReadonlySet<string>>
+  handedOff: ReadonlySet<string>
+}
+
+/** `settledOnly`: a recorded send counts only once accepted or rejected, for reconciling an id;
+ *  otherwise in any state, as for the phone's own echo of the send. */
+export function mobileStructuredSendsInJournal(
+  submissions: readonly AgentJournalSubmission[],
+  settledOnly: boolean
+): MobileStructuredSendsInJournal {
+  const recorded = new Map<string, Set<string>>()
+  const handedOff = new Set<string>()
+  for (const submission of submissions) {
+    if (submission.queuedMessageId !== undefined) {
+      handedOff.add(submission.queuedMessageId)
+    }
+    if (
+      !settledOnly ||
+      submission.dispatchState === 'accepted' ||
+      submission.dispatchState === 'rejected'
+    ) {
+      const bodies = recorded.get(submission.clientMessageId) ?? new Set<string>()
+      bodies.add(submission.payloadFingerprint)
+      recorded.set(submission.clientMessageId, bodies)
+    }
+  }
+  return { recorded, handedOff }
+}
+
+/** Whether the send under `operationId` reached the host; with `payloadFingerprint`, only a
+ *  recording of that body counts. */
+export function mobileStructuredSendInJournal(
+  sends: MobileStructuredSendsInJournal,
+  operationId: string,
+  payloadFingerprint?: string
+): boolean {
+  const bodies = sends.recorded.get(operationId)
+  return (
+    sends.handedOff.has(operationId) ||
+    (bodies !== undefined && (payloadFingerprint === undefined || bodies.has(payloadFingerprint)))
+  )
+}
+
 /** Reconcile an ack-lost operation once the authoritative journal settles it, or hands it off:
  *  a submission naming the operation's id as its `queuedMessageId` is that send's queued draft
  *  going out, in whatever state, so the send reached the host and its id is spent. */
 export async function clearMobileStructuredSettledSendOperations(input: {
   submissions: readonly AgentJournalSubmission[]
 }): Promise<void> {
-  const settled = new Set(
-    input.submissions.flatMap((submission) =>
-      submission.dispatchState === 'accepted' || submission.dispatchState === 'rejected'
-        ? [`${submission.payloadFingerprint}\u0000${submission.clientMessageId}`]
-        : []
-    )
-  )
-  const handedOff = new Set(
-    input.submissions.flatMap((submission) =>
-      submission.queuedMessageId !== undefined ? [submission.queuedMessageId] : []
-    )
-  )
-  if (settled.size === 0 && handedOff.size === 0) {
+  const sends = mobileStructuredSendsInJournal(input.submissions, true)
+  if (sends.recorded.size === 0 && sends.handedOff.size === 0) {
     return
   }
   return serialize(async () => {
     const journal = parseJournal(await AsyncStorage.getItem(STORAGE_KEY))
     const entries = journal.entries.filter(
-      (entry) =>
-        !settled.has(`${entry.payloadFingerprint}\u0000${entry.operationId}`) &&
-        !handedOff.has(entry.operationId)
+      (entry) => !mobileStructuredSendInJournal(sends, entry.operationId, entry.payloadFingerprint)
     )
     if (entries.length !== journal.entries.length) {
       await writeEntries(entries)

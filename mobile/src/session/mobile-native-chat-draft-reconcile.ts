@@ -9,6 +9,12 @@ import {
 } from './mobile-native-chat-image-transcript-markers'
 export { normalizeNativeChatUserText as normalizeReconcileText } from './mobile-native-chat-image-transcript-markers'
 
+/** Whether the host's journal holds the structured send made under this id: a submission recorded
+ *  under it, in any state, or one its queued draft went out as. Its own row may be hidden. */
+export type MobileStructuredSendReachedHost = (clientMessageId: string) => boolean
+
+export const NO_STRUCTURED_SENDS: MobileStructuredSendReachedHost = () => false
+
 /** An ack-lost ('unknown' outcome) send held until its transcript echo lands or
  *  the deadline surfaces the uncertainty. */
 export type UnconfirmedSend = {
@@ -19,7 +25,7 @@ export type UnconfirmedSend = {
   baselineTailMessageId: string | null
   /** Queued-draft cards on screen at send time; see `findQueuedUnconfirmedSends`. */
   baselineQueuedMessageIds?: readonly string[]
-  /** Structured lane: settled by its own row or card, never by text; see the pending echo's. */
+  /** Structured lane: settled by the journal's record of it or by its own card, never by text. */
   clientMessageId?: string
   deadline: ReturnType<typeof setTimeout> | null
 }
@@ -262,7 +268,8 @@ export function findQueuedUnconfirmedSends(
 
 export function findLandedUnconfirmedSends(
   messages: readonly NativeChatMessage[],
-  entries: readonly UnconfirmedSend[]
+  entries: readonly UnconfirmedSend[],
+  reachedHost: MobileStructuredSendReachedHost = NO_STRUCTURED_SENDS
 ): UnconfirmedSend[] {
   // Why: pagination prepends old equal text; only unclaimed matches after each
   // captured tail prove new echoes. User turns are keyed by text; an image echo
@@ -285,7 +292,7 @@ export function findLandedUnconfirmedSends(
   const landed: UnconfirmedSend[] = []
   for (const entry of entries) {
     if (entry.clientMessageId !== undefined) {
-      if (messageIndexById.has(agentJournalSubmissionKey(entry.clientMessageId))) {
+      if (reachedHost(entry.clientMessageId)) {
         landed.push(entry)
       }
       continue

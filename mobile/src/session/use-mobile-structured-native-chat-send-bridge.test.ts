@@ -18,7 +18,7 @@ const ORIGIN: MobileNativeChatSendOrigin = {
 
 describe('useMobileStructuredNativeChatSendBridge', () => {
   let renderer: ReactTestRenderer | null = null
-  let sendWithOutcome: (text: string) => Promise<MobileNativeChatSendOutcome>
+  let sendWithOutcome: (text: string, images?: string[]) => Promise<MobileNativeChatSendOutcome>
   const acceptSend = vi.fn()
   const captureSendOrigin = vi.fn(() => ORIGIN)
   const clearDraftForSend = vi.fn()
@@ -110,9 +110,9 @@ describe('useMobileStructuredNativeChatSendBridge', () => {
     sendStructured.mockResolvedValue({ outcome: 'recorded-unsent', clientMessageId: 'op-2' })
     mount('claude')
 
-    await expect(sendWithOutcome('look')).resolves.toBe('recorded-unsent')
+    await expect(sendWithOutcome('look', ['file:///photo.jpg'])).resolves.toBe('recorded-unsent')
 
-    expect(acceptSend).toHaveBeenCalledWith(ORIGIN, 'look', undefined, 'op-2')
+    expect(acceptSend).toHaveBeenCalledWith(ORIGIN, 'look', ['file:///photo.jpg'], 'op-2')
     expect(restoreRejectedDraft).not.toHaveBeenCalled()
     expect(onSendError).not.toHaveBeenCalled()
   })

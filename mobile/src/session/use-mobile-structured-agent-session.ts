@@ -17,6 +17,7 @@ import {
   projectStructuredPermission,
   projectStructuredQuestion
 } from './mobile-structured-agent-prompts'
+import type { AgentJournalSubmission } from '../../../src/shared/agent-session-journal-types'
 import type { RpcClient } from '../transport/rpc-client'
 import type { MobileChatPermission } from './mobile-native-chat-permission'
 import type { MobileChatQuestion } from './mobile-native-chat-question'
@@ -53,6 +54,8 @@ type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions
     turnId: string | null
     /** What labels the live turn's one indicator row. */
     turnIndicator: NativeChatLiveTurnIndicator
+    /** The journal's submissions: what settles the phone's own sends. */
+    submissions: readonly AgentJournalSubmission[]
     sendWithOutcome: (
       text: string,
       images?: string[],
@@ -281,6 +284,7 @@ export function useMobileStructuredAgentSession(args: {
     isWorking,
     turnId,
     turnIndicator,
+    submissions: state.submissions,
     ...turnTiming,
     sendWithOutcome,
     cancel: () => {

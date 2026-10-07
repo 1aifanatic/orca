@@ -180,6 +180,18 @@ describe('mobile structured send operation journal', () => {
 
     await clearMobileStructuredSettledSendOperations({ submissions: [submission] })
     expect(values.size).toBe(1)
+    // Settled under the id but with another body: not this record's send.
+    await clearMobileStructuredSettledSendOperations({
+      submissions: [
+        {
+          ...submission,
+          dispatchState: 'accepted',
+          reason: null,
+          payloadFingerprint: 'e'.repeat(64)
+        }
+      ]
+    })
+    expect(values.size).toBe(1)
 
     await clearMobileStructuredSettledSendOperations({
       submissions: [{ ...submission, dispatchState: 'accepted', reason: null }]
