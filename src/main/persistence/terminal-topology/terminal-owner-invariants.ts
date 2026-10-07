@@ -1,14 +1,15 @@
-import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import { parseAppSshPtyId } from '../../../shared/ssh-pty-id'
 import { isTerminalLeafId } from '../../../shared/stable-pane-id'
 import type { TerminalTab } from '../../../shared/terminal-tab-types'
-import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { collectLayoutLeafIdsInOrder } from '../restoring-sessions/terminal-layout-normalization'
+import {
+  isTerminalOwnerPartition,
+  type TerminalSessionPartition
+} from './terminal-topology-membership'
 
 // The two terminal-layout invariants: a terminal is bound to at most one leaf, and a leaf id is in
 // at most one tab. The binding write reports breaches; nothing removes them yet.
-
-export type TerminalSessionPartition = { hostId: ExecutionHostId; session: WorkspaceSessionState }
 
 export type TerminalLeafOwner = {
   hostId: ExecutionHostId
@@ -26,12 +27,6 @@ export type TerminalOwnerConflictReason =
   | 'leaf_in_other_tab'
   // Kept apart: the relay reattach writes SSH panes into `local`, so this may be one moved surface.
   | 'leaf_in_other_tab_on_other_host'
-
-/** `runtime:` partitions belong to a remote Orca server and are written only by its tab sync. */
-export function isTerminalOwnerPartition(hostId: ExecutionHostId): boolean {
-  const kind = parseExecutionHostId(hostId)?.kind
-  return kind === 'local' || kind === 'ssh'
-}
 
 /** Every leaf of every tab row; a layout left behind by a removed tab row owns nothing. */
 export function collectTerminalLeafOwners({

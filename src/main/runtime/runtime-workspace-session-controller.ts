@@ -10,7 +10,9 @@ import type { WorkspaceSessionState } from '../../shared/workspace-session-state
 import { getRepoIdFromWorktreeId } from '../../shared/worktree/id'
 import { workspaceSessionPartitionHostId } from '../../shared/workspace-session-partition-owner'
 import { parseWorkspaceKey } from '../../shared/workspace-scope'
+import { isTerminalOwnerPartition } from '../persistence/terminal-topology/terminal-topology-membership'
 import type { RuntimeStore } from './runtime-store-contract'
+import type { TerminalTopologyOwners } from './terminal-topology-publisher'
 
 type RuntimeWorkspaceSessionDependencies = {
   getStore: () => RuntimeStore | null
@@ -51,6 +53,15 @@ export class RuntimeWorkspaceSessionController {
     return repo
       ? workspaceSessionPartitionHostId(getRepoExecutionHostId(repo))
       : LOCAL_EXECUTION_HOST_ID
+  }
+
+  /** An ambiguous folder throws; its owner is unverifiable, not absent. */
+  private tryGetPreferredHostId(worktreeId: string, store: RuntimeStore): ExecutionHostId | null {
+    try {
+      return this.getPreferredHostId(worktreeId, store)
+    } catch {
+      return null
+    }
   }
 
   private resolveHostId(
@@ -138,6 +149,33 @@ export class RuntimeWorkspaceSessionController {
       }
     }
     return worktreeIds
+  }
+
+  /**
+   * Worktrees with terminal rows in their home partition. `runtime:` homes are another server's;
+   * a home that can't be resolved (a missing or ambiguous folder) maps to null.
+   */
+  getTerminalTopologyOwners(): TerminalTopologyOwners {
+    const owners: TerminalTopologyOwners = new Map()
+    const store = this.deps.getStore()
+    if (!store?.getWorkspaceSession) {
+      return owners
+    }
+    for (const hostId of store.getWorkspaceSessionHostIds?.() ?? []) {
+      if (!isTerminalOwnerPartition(hostId)) {
+        continue
+      }
+      const session = store.getWorkspaceSession(hostId)
+      for (const worktreeId of Object.keys(session.tabsByWorktree ?? {})) {
+        const homeHostId = this.tryGetPreferredHostId(worktreeId, store)
+        if (!homeHostId) {
+          owners.set(worktreeId, null)
+        } else if (homeHostId === hostId) {
+          owners.set(worktreeId, { hostId, session })
+        }
+      }
+    }
+    return owners
   }
 
   getHydrationTargets(includeAllPersistedWorktrees: boolean): Map<string, WorkspaceSessionState> {

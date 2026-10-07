@@ -3,10 +3,8 @@ import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { TEST_LEAF_1 } from '../persistence-session-fixtures'
-import {
-  TerminalTopologyPublisher,
-  type WorkspaceSessionOwner
-} from './terminal-topology-publisher'
+import type { TerminalSessionPartition } from '../persistence/terminal-topology/terminal-topology-membership'
+import { TerminalTopologyPublisher } from './terminal-topology-publisher'
 
 const WT = 'repo-1::/tmp/wt-a'
 const WT_B = 'repo-1::/tmp/wt-b'
@@ -39,12 +37,13 @@ function sessionWith(worktreeIds: string[]): WorkspaceSessionState {
 
 function harness(initial: WorkspaceSessionState) {
   let session = initial
+  const unresolved = new Set<string>()
   const readOwners = vi.fn(
     () =>
-      new Map<string, WorkspaceSessionOwner>(
+      new Map<string, TerminalSessionPartition | null>(
         Object.keys(session.tabsByWorktree).map((worktreeId) => [
           worktreeId,
-          { hostId: 'local', session }
+          unresolved.has(worktreeId) ? null : { hostId: 'local', session }
         ])
       )
   )
@@ -72,6 +71,9 @@ function harness(initial: WorkspaceSessionState) {
     },
     failSink(error: Error) {
       sinkError = error
+    },
+    unresolve(worktreeId: string) {
+      unresolved.add(worktreeId)
     }
   }
 }
@@ -86,7 +88,7 @@ describe('TerminalTopologyPublisher', () => {
     const session = sessionWith([WT, WT_B])
     const publisher = new TerminalTopologyPublisher(
       () =>
-        new Map<string, WorkspaceSessionOwner>([
+        new Map<string, TerminalSessionPartition>([
           [WT, { hostId: 'local', session }],
           [WT_B, { hostId: 'local', session }]
         ]),
@@ -200,5 +202,36 @@ describe('TerminalTopologyPublisher', () => {
     expect(() => h.publisher.settle(WT)).not.toThrow()
     expect(h.readOwners).toHaveBeenCalledTimes(3)
     expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an unresolved worktree on its last slice instead of sending it empty', async () => {
+    const h = harness(sessionWith([WT, WT_B]))
+    const before = h.publisher.snapshot()
+    h.unresolve(WT)
+    const next = structuredClone(h.session)
+    next.tabsByWorktree[WT] = []
+    next.tabsByWorktree[WT_B]![0]!.ptyId = 'pty-b'
+    h.replace(next)
+
+    h.publisher.markDirty()
+    await Promise.resolve()
+
+    expect(h.pushes.map((slice) => slice.worktreeId)).toEqual([WT_B])
+    expect(h.publisher.snapshot().find((slice) => slice.worktreeId === WT)).toEqual(
+      before.find((slice) => slice.worktreeId === WT)
+    )
+  })
+
+  it('pulls the slices it pushed, including ones the window missed', async () => {
+    const h = harness(sessionWith([WT]))
+    h.replace(sessionWith([WT, WT_B]))
+    h.publisher.markDirty()
+    await Promise.resolve()
+
+    expect(h.publisher.snapshot()).toEqual([
+      expect.objectContaining({ worktreeId: WT, publishSeq: 1 }),
+      ...h.pushes
+    ])
+    expect(h.pushes).toHaveLength(1)
   })
 })

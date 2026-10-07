@@ -14,6 +14,8 @@ import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { peekOpenedAgentSessionRecordStore } from './agent-session-record-store-slot'
 import { createAgentLaunchRecordWarmupGate } from './agent-launch-record-warmup-gate'
 import { registerDetectedWorktreeScanInvalidation } from '../ipc/worktrees/listing/register-detected-worktree-scan-invalidation'
+import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
+import { TerminalTopologyPublisher } from './terminal-topology-publisher'
 
 class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
   constructor(...args: ConstructorParameters<typeof OrcaRuntimeWithResolveWaiter>) {
@@ -23,6 +25,22 @@ class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
     // module registers the generation bump at load; a headless host never loads it.
     registerDetectedWorktreeScanInvalidation()
     registerWorktreeChangeInvalidator((repoId) => this.invalidateWorktreeCatalog(repoId))
+    this.store?.onWorkspaceSessionWritten?.(() => this.terminalTopology.markDirty())
+  }
+
+  private readonly terminalTopology = new TerminalTopologyPublisher(
+    () => this.workspaceSessions.getTerminalTopologyOwners(),
+    (slice) => this.notifier?.terminalTopologyChanged?.(slice)
+  )
+
+  /** Every worktree's current terminal layout, for a window that missed pushes while loading. */
+  getTerminalTopologySlices(): TerminalTopologySlice[] {
+    return this.terminalTopology.snapshot()
+  }
+
+  /** The publishSeq of the push holding every topology write made so far, for a reply to name. */
+  settleTerminalTopology(worktreeId?: string): number {
+    return this.terminalTopology.settle(worktreeId)
   }
 
   /** Whether a window owns the layout and can show a launch's tab ahead of its process. */

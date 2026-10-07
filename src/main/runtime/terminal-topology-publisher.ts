@@ -1,15 +1,14 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
-import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import type { TerminalSessionPartition } from '../persistence/terminal-topology/terminal-topology-membership'
 import {
   emptyTerminalTopologySlice,
   projectTerminalTopologySlice,
   type UnsequencedTerminalTopologySlice
 } from './terminal-topology-projection'
 
-/** A persisted worktree and the host partition that owns its rows. */
-export type WorkspaceSessionOwner = { hostId: ExecutionHostId; session: WorkspaceSessionState }
+/** Each worktree's owning partition; null when it can't be resolved now (unverifiable, not absent). */
+export type TerminalTopologyOwners = Map<string, TerminalSessionPartition | null>
 
 type PublishedSlice = { publishSeq: number; snapshot: UnsequencedTerminalTopologySlice }
 
@@ -26,7 +25,7 @@ export class TerminalTopologyPublisher {
   private failureLogged = false
 
   constructor(
-    private readonly readOwners: () => Map<string, WorkspaceSessionOwner>,
+    private readonly readOwners: () => TerminalTopologyOwners,
     private readonly sink: TerminalTopologySink
   ) {}
 
@@ -61,10 +60,21 @@ export class TerminalTopologyPublisher {
     return (worktreeId ? this.published.get(worktreeId)?.publishSeq : undefined) ?? this.lastSeq
   }
 
+  /** Every current slice, for a window that loaded after pushes it never saw. */
+  snapshot(): TerminalTopologySlice[] {
+    // Owners also follow the repo catalog, which changes without a session write.
+    this.dirty = true
+    this.flush()
+    return [...this.published.values()].map(sequenced)
+  }
+
   private reconcile(): void {
     const owners = this.readOwners()
     const changed: UnsequencedTerminalTopologySlice[] = []
     for (const [worktreeId, owner] of owners) {
+      if (!owner) {
+        continue // The last slice stands until the owner resolves.
+      }
       const next = projectTerminalTopologySlice(owner.session, owner.hostId, worktreeId)
       if (!isDeepStrictEqual(this.published.get(worktreeId)?.snapshot, next)) {
         changed.push(structuredClone(next))
@@ -78,16 +88,16 @@ export class TerminalTopologyPublisher {
     }
     for (const snapshot of removed) {
       this.published.delete(snapshot.worktreeId)
-      this.send({ publishSeq: ++this.lastSeq, snapshot })
+      this.sink(sequenced({ publishSeq: ++this.lastSeq, snapshot }))
     }
     for (const snapshot of changed) {
       const entry = { publishSeq: ++this.lastSeq, snapshot }
       this.published.set(snapshot.worktreeId, entry)
-      this.send(entry)
+      this.sink(sequenced(entry))
     }
   }
+}
 
-  private send({ publishSeq, snapshot }: PublishedSlice): void {
-    this.sink({ ...snapshot, publishSeq })
-  }
+function sequenced({ publishSeq, snapshot }: PublishedSlice): TerminalTopologySlice {
+  return { ...snapshot, publishSeq }
 }

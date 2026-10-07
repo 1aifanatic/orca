@@ -22,7 +22,13 @@ const TAB = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
 const LEAF = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
 const OTHER_LEAF = '6fa459ea-ee8a-4ca4-894e-db77e160355e'
 
-const closeTerminalSurfaceFromRenderer = vi.fn(async () => {})
+let committed = false
+const closeTerminalSurfaceFromRenderer = vi.fn(async () => {
+  await Promise.resolve()
+  committed = true
+})
+// Names the push only once the close has committed.
+const settleTerminalTopology = vi.fn(() => (committed ? 7 : 0))
 
 function closeSurface(args: unknown): unknown {
   return mocks.handlers.get('session:close-terminal-surface')?.({}, args)
@@ -35,8 +41,9 @@ function launchIn(leafId: string) {
 beforeEach(() => {
   mocks.handlers.clear()
   closeTerminalSurfaceFromRenderer.mockClear()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler under test reaches only the runtime's renderer close.
-  const runtime = { closeTerminalSurfaceFromRenderer } as never
+  committed = false
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler under test reaches only the runtime's renderer close and topology settle.
+  const runtime = { closeTerminalSurfaceFromRenderer, settleTerminalTopology } as never
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the close handler never touches the store.
   registerSessionHandlers({} as never, runtime)
 })
@@ -91,5 +98,12 @@ describe("the user's close of a launch's tab or pane", () => {
     })
 
     expect(running.closedByUser()).toBe(false)
+  })
+
+  it('replies with the publishSeq of the push that carries the close', async () => {
+    await expect(
+      closeSurface({ worktreeId: WT, target: { kind: 'tab', tabId: TAB }, reason: 'user' })
+    ).resolves.toEqual({ publishSeq: 7 })
+    expect(settleTerminalTopology).toHaveBeenLastCalledWith(WT)
   })
 })

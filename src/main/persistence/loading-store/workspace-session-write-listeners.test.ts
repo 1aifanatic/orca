@@ -3,10 +3,8 @@ import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { TerminalTopologySlice } from '../../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { TEST_LEAF_1, TEST_LEAF_2 } from '../../persistence-session-fixtures'
-import {
-  TerminalTopologyPublisher,
-  type WorkspaceSessionOwner
-} from '../../runtime/terminal-topology-publisher'
+import { TerminalTopologyPublisher } from '../../runtime/terminal-topology-publisher'
+import type { TerminalSessionPartition } from '../terminal-topology/terminal-topology-membership'
 import { ProfileStateWriterError } from '../profile-state/profile-state-writer-errors'
 import { fixture } from './profile-state-delayed-authority-fixture'
 import type { Store } from './store'
@@ -32,8 +30,8 @@ const binding = {
 
 type Mode = 'none' | 'publisher' | 'throwing'
 
-function ownersOf(store: Store): Map<string, WorkspaceSessionOwner> {
-  const owners = new Map<string, WorkspaceSessionOwner>()
+function ownersOf(store: Store): Map<string, TerminalSessionPartition> {
+  const owners = new Map<string, TerminalSessionPartition>()
   for (const hostId of store.getWorkspaceSessionHostIds()) {
     const session = store.getWorkspaceSession(hostId)
     for (const worktreeId of Object.keys(session.tabsByWorktree)) {

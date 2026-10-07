@@ -53,6 +53,7 @@ export function installPtyLeafMoveIpcHandler(deps: {
     if (!isTerminalLeafMoveRequest(args)) {
       return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLeafMoveResult
     }
-    return commitLeafMoveAndRekey(deps, args)
+    const result = await commitLeafMoveAndRekey(deps, args)
+    return { ...result, publishSeq: deps.runtime?.settleTerminalTopology(args.worktreeId) }
   })
 }

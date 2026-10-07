@@ -34,7 +34,10 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
   // Why: a renderer save cannot shrink membership main owns, so each close commits it explicitly.
   ipcMain.handle(
     'session:close-terminal-surface',
-    (_event, args: { worktreeId?: unknown; target?: unknown; reason?: unknown } | undefined) => {
+    async (
+      _event,
+      args: { worktreeId?: unknown; target?: unknown; reason?: unknown } | undefined
+    ) => {
       const target = parseTerminalSurfaceCloseTarget(args?.target)
       if (typeof args?.worktreeId !== 'string' || !target) {
         throw new Error('invalid_terminal_surface')
@@ -45,13 +48,17 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
         // A launch still starting or delivering in what the user closed stops, and says so.
         markAgentLaunchesClosedByUser(args.worktreeId, target)
       }
-      return runtime.closeTerminalSurfaceFromRenderer({
+      await runtime.closeTerminalSurfaceFromRenderer({
         worktreeId: args.worktreeId,
         target,
         reason
       })
+      return { publishSeq: runtime.settleTerminalTopology(args.worktreeId) }
     }
   )
+
+  // Pull-after-listen: a window subscribes to pushes first, then reads what it missed.
+  ipcMain.handle('session:get-terminal-topology-slices', () => runtime.getTerminalTopologySlices())
 
   ipcMain.handle('session:flush', () => {
     // Why: durable lifecycle RPCs must propagate disk failures instead of

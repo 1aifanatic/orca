@@ -3,7 +3,8 @@ import { agentHookServer } from '../../../agent-hooks/server'
 import type { Store } from '../../../persistence'
 import type { OrcaRuntimeService } from '../../../runtime/orca-runtime'
 import type { TerminalLeafMoveResult } from '../../../../shared/terminal-leaf-move'
-import { commitLeafMoveAndRekey } from './leaf-move'
+import { setPtyHostBindings } from '../../pty-host-bindings'
+import { commitLeafMoveAndRekey, installPtyLeafMoveIpcHandler } from './leaf-move'
 
 const LEAF = '22222222-2222-4222-8222-222222222222'
 const request = {
@@ -27,6 +28,7 @@ function deps(result: TerminalLeafMoveResult) {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  setPtyHostBindings({})
 })
 
 describe('pty:moveLeafToNewTab', () => {
@@ -66,5 +68,33 @@ describe('pty:moveLeafToNewTab', () => {
 
     expect(transfer).not.toHaveBeenCalled()
     expect(rekeyWorkerTerminalResourcePaneKey).not.toHaveBeenCalled()
+  })
+
+  it('replies with the publishSeq of the push that carries the move', async () => {
+    vi.spyOn(agentHookServer, 'transferPaneAuthority').mockImplementation(() => {})
+    const handlers = new Map<string, (event: never, args: unknown) => unknown>()
+    setPtyHostBindings({
+      ipc: {
+        handle: (channel, listener) => handlers.set(channel, listener),
+        on: () => {},
+        removeHandler: () => {},
+        removeAllListeners: () => {}
+      }
+    })
+    const { store, runtime } = deps({ status: 'moved', ptyId: 'pty-agent' })
+    const settleTerminalTopology = vi.fn(() => 12)
+    installPtyLeafMoveIpcHandler({
+      store,
+      runtime: Object.assign(runtime, { settleTerminalTopology })
+    })
+
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler never reads the IPC event.
+    const reply = handlers.get('pty:moveLeafToNewTab')!({} as never, request)
+    await expect(reply).resolves.toEqual({
+      status: 'moved',
+      ptyId: 'pty-agent',
+      publishSeq: 12
+    })
+    expect(settleTerminalTopology).toHaveBeenCalledWith(request.worktreeId)
   })
 })

@@ -1,7 +1,7 @@
 import { hasClosedTerminalTabRecord } from '../../../shared/closed-terminal-tab-tombstones'
 import { isTerminalLeafId } from '../../../shared/stable-pane-id'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
-import type { TerminalSessionPartition } from '../terminal-topology/terminal-owner-invariants'
+import type { TerminalSessionPartition } from '../terminal-topology/terminal-topology-membership'
 import { layoutContainsLeafId } from '../restoring-sessions/terminal-layout-normalization'
 import type { PtyBindingSourceExpectation } from './store'
 
