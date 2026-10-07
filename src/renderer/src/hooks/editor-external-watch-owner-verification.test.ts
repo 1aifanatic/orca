@@ -34,6 +34,33 @@ beforeEach(() => {
 })
 
 describe('external editor verification ownership', () => {
+  it('keeps verification reads separate when workspace selectors differ', async () => {
+    const releases: (() => void)[] = []
+    vi.mocked(readRuntimeFileContent).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(() => resolve({ content: 'saved', isBinary: false }))
+        })
+    )
+    try {
+      for (const worktreeId of [target.worktreeId, 'other-repo::/repo']) {
+        scheduleSelfWriteAwareEditorExternalReload(
+          target,
+          notification,
+          { ...file('hub-a'), worktreeId },
+          { content: 'saved' }
+        )
+      }
+      expect(readRuntimeFileContent).toHaveBeenCalledTimes(2)
+      expect(readRuntimeFileContent).toHaveBeenLastCalledWith(
+        expect.objectContaining({ worktreeId: 'other-repo::/repo' })
+      )
+    } finally {
+      releases.forEach((release) => release())
+      await Promise.resolve()
+    }
+  })
+
   it.each([false, true])(
     'shares reads only for the same recorded owner (%s)',
     async (different) => {

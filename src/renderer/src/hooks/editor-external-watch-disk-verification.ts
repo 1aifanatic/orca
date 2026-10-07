@@ -57,13 +57,15 @@ function readFileForEchoVerification(args: {
   expectedExternalSshTargetId?: string
   expectedRuntimeEnvironmentId?: string | null
 }): ReturnType<typeof readRuntimeFileContent> {
-  const key = [
-    args.runtimeEnvironmentId ?? '',
-    args.connectionId ?? '',
-    args.expectedExternalSshTargetId ?? '',
-    args.expectedRuntimeEnvironmentId ?? '',
+  const key = JSON.stringify([
+    args.runtimeEnvironmentId ?? null,
+    args.connectionId ?? null,
+    args.expectedExternalSshTargetId ?? null,
+    args.expectedRuntimeEnvironmentId ?? null,
+    args.worktreeId ?? null,
+    args.relativePath,
     args.filePath
-  ].join('::')
+  ])
   let pending = inFlightEchoVerificationReads.get(key)
   if (!pending) {
     pending = readRuntimeFileContent({
