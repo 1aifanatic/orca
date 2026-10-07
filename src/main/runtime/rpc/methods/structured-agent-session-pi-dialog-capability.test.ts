@@ -19,6 +19,7 @@ import type {
   AgentSessionStatusSummary,
   AgentSessionTurnCompletion
 } from '../../../../shared/agent-session-wire'
+import type { AgentSessionPromptAttention } from '../../../../shared/agent-session-turn-completion-wire'
 import type { StructuredAgentSessionStatusSubscriber } from '../../../native-chat/agent-session-wire/structured-agent-session-status-feed'
 import type { StructuredAgentSessionTurnCompletionSubscriber } from '../../../native-chat/agent-session-wire/structured-agent-session-turn-completion-feed'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
@@ -345,7 +346,7 @@ describe('Pi dialog-shape client capability', () => {
     )
     hostCalls.subscribeTurnCompletions = vi.fn(
       (subscriber: StructuredAgentSessionTurnCompletionSubscriber) => {
-        const prompt = {
+        const prompt: AgentSessionPromptAttention = {
           scope: {
             executionHostId: 'local',
             wslDistro: null,
