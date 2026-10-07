@@ -417,21 +417,23 @@ describe('a /compact that waits in line', () => {
     const kept = rig.send('kept message')
     await kept.result
     await eventually(() => expect(rig.starts.mock.calls.length).toBeGreaterThan(startsBefore))
-    rig.crashRestartHostProcess()
+    // Finish the old host before reopening so its delayed start cannot keep writing.
+    const restarted = rig.quitRestartHostProcess()
     release()
+    await restarted
 
     expect(await rig.drafts()).toEqual([
       { messageId: kept.id, state: 'waiting' },
       { messageId: compactId, state: 'waiting' }
     ])
     expect(rig.compact).not.toHaveBeenCalled()
-    const next = rig.send('next turn')
-    await next.result
+    const next = rig.send('next turn', 'queue-if-active')
+    expect(await next.result).toMatchObject({ ok: true, value: { submission: expect.anything() } })
     await eventually(async () =>
       expect((await rig.submission(next.id))?.handedOverAt).toBeDefined()
     )
     await rig.settleAccepted(next.id, 'next')
-    await eventually(async () => expect(await rig.handoff(kept.id)).toBeDefined())
+    await eventually(async () => expect((await rig.handoff(kept.id))?.handedOverAt).toBeDefined())
     expect(rig.dispatch.mock.calls.at(-1)?.[0].body.blocks).toEqual([
       { type: 'text', text: 'kept message' }
     ])
