@@ -81,7 +81,9 @@ describe('pty spawn placement threading', () => {
       noteTerminalSpawnCommand: vi.fn(),
       onPtySpawned: vi.fn(),
       onPtyExit: vi.fn(),
-      onPtyData: vi.fn()
+      onPtyData: vi.fn(),
+      // Names a push only once the binding is written.
+      settleTerminalTopology: vi.fn(() => (store.persistPtyBinding.mock.calls.length > 0 ? 9 : 0))
     }
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: spawn reads only the window, runtime and store members these fakes define.
     const args = [
@@ -104,8 +106,8 @@ describe('pty spawn placement threading', () => {
     }
   }
 
-  async function ipcSpawn(extra: Record<string, unknown>): Promise<void> {
-    await handlers.get('pty:spawn')!(null, {
+  async function ipcSpawn(extra: Record<string, unknown>): Promise<unknown> {
+    return await handlers.get('pty:spawn')!(null, {
       cols: 80,
       rows: 24,
       cwd: '/tmp',
@@ -140,6 +142,11 @@ describe('pty spawn placement threading', () => {
         origin: 'spawn'
       }
     ])
+  })
+
+  it('replies with the publishSeq of the push that carries the binding', async () => {
+    register()
+    await expect(ipcSpawn({ placement: SPLIT })).resolves.toMatchObject({ publishSeq: 9 })
   })
 
   it('drops a malformed or future-kind placement instead of failing the spawn', async () => {
