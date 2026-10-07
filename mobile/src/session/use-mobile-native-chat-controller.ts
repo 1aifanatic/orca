@@ -251,15 +251,7 @@ export function useMobileNativeChatController(args: {
       isWorking: nativeChatAgentWorking,
       reportedModel: activeSessionTab?.agentStatus?.model ?? null,
       modelSwitchCommand: activeSessionTab?.agentStatus?.modelSwitchCommand,
-      structured: {
-        optionPickerRequest: structuredNativeChat.optionPickerRequest,
-        conversationCommands: structuredNativeChat.conversationCommands,
-        snapshot: structuredNativeChat.optionSnapshot,
-        pendingId: structuredNativeChat.pendingOptionId,
-        setOption: structuredNativeChat.setStructuredOption,
-        invokeAction: structuredNativeChat.invokeStructuredOption,
-        permissionPicker: structuredNativeChat.permissionPicker
-      },
+      structured: structuredNativeChat,
       toggleTabChatView,
       worktreeId
     })

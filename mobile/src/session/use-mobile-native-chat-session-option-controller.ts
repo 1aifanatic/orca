@@ -29,10 +29,10 @@ export function useMobileNativeChatSessionOptionController(args: {
   structured: {
     conversationCommands?: readonly AgentSessionConversationCommand[]
     optionPickerRequest?: { id: string; sequence: number } | null
-    snapshot: SessionOptionDescriptor[]
-    pendingId: string | null
-    setOption: (id: string, value: SessionOptionValue) => Promise<boolean>
-    invokeAction: (id: string) => Promise<boolean>
+    optionSnapshot: SessionOptionDescriptor[]
+    pendingOptionId: string | null
+    setStructuredOption: (id: string, value: SessionOptionValue) => Promise<boolean>
+    invokeStructuredOption: (id: string) => Promise<boolean>
     permissionPicker?: MobileNativeChatPermissionPickerState | null
   }
   toggleTabChatView: (tabId: string) => void
@@ -55,10 +55,10 @@ export function useMobileNativeChatSessionOptionController(args: {
     worktreeId
   } = args
   const {
-    invokeAction: invokeStructuredAction,
-    pendingId: structuredPendingId,
-    setOption: setStructuredOption,
-    snapshot: structuredSnapshot
+    invokeStructuredOption: invokeStructuredAction,
+    pendingOptionId: structuredPendingId,
+    setStructuredOption,
+    optionSnapshot: structuredSnapshot
   } = structured
 
   const handleAgentPicker = useCallback(() => {
