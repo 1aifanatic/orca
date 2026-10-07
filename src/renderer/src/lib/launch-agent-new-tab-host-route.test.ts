@@ -72,6 +72,19 @@ describe('an AI button launched through the host, which delivers its prompt', ()
     expect(tabId).toBe(TAB)
   })
 
+  it('stamps the chat copy at the click, before the agent’s turn, though it is seeded on start', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000)
+    const answer = deferredOutcome()
+    const { promptDeliveryResult } = launch()
+    now.mockReturnValue(9_000)
+    answer({ kind: 'started', prompt: { delivery: 'submit', outcome: 'handed-to-terminal' } })
+    await promptDeliveryResult
+    expect(store.seedNativeChatLaunchPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ createdAt: 1_000 })
+    )
+    now.mockRestore()
+  })
+
   it('says the delivery was unconfirmed when the host wrote it without seeing the composer', async () => {
     const order: string[] = []
     deferredOutcome()({
@@ -113,12 +126,13 @@ describe('an AI button launched through the host, which delivers its prompt', ()
     expect(store.seedNativeChatLaunchPrompt).not.toHaveBeenCalled()
   })
 
-  it('never says "paste it" for an answer that may have landed', async () => {
+  it('offers nothing to send again for an answer that may have landed, and keeps its caller quiet', async () => {
     for (const prompt of [{ delivery: 'submit', outcome: 'unconfirmed' } as const, undefined]) {
       deferredOutcome()({ kind: 'started', ...(prompt ? { prompt } : {}) })
+      // Reported as already said: the caller adds no "could not be sent" of its own.
       await expect(launch().promptDeliveryResult).resolves.toEqual({
         delivered: false,
-        failureNotified: false
+        failureNotified: true
       })
     }
     expect(notice.onTimeout).not.toHaveBeenCalled()

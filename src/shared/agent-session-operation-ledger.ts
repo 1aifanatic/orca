@@ -100,7 +100,14 @@ export type AgentSessionOperationRow = {
  * `writing`: the write may have begun, so nothing may write it again.
  */
 export type AgentLaunchOwedPrompt =
-  | { state: 'owed'; text: string; agent: TuiAgent; deadline: number }
+  | {
+      state: 'owed'
+      text: string
+      agent: TuiAgent
+      deadline: number
+      /** The PTY the launch started its agent in: a resume pastes into that one only. */
+      terminal: { ptyId: string; incarnationId: string | null } | null
+    }
   | { state: 'writing'; since: number }
 
 /** Unexpired rows naming this pane as theirs. */

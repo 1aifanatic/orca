@@ -3,6 +3,7 @@
  *
  *   owed, the agent's terminal still there  ->  pasted once, as the launch would have pasted it
  *   owed, its terminal not found yet        ->  left owed: its provider (an SSH relay) may report later
+ *   owed, another PTY holds the pane        ->  not-delivered: the agent is gone, whatever runs there now
  *   owed, past its deadline                 ->  not-delivered: too late to paste into an idle agent
  *   writing                                 ->  unconfirmed: the paste may have landed, so never again
  *
@@ -34,8 +35,11 @@ export type OwedLaunchPromptResumeDeps = {
     AgentSessionRecordStore,
     'listOperationRows' | 'transactOperations' | 'recordOperationOutcome'
   >
-  /** The pane's terminal as this runtime knows it now, or null when nothing holds it. */
-  terminalHandleForPane: (paneKey: string) => string | null
+  /** The pane's terminal as this runtime knows it now, and the PTY it is; null when the runtime
+   *  knows nothing there yet. */
+  terminalForPane: (
+    paneKey: string
+  ) => { handle: string; terminal: { ptyId: string; incarnationId: string | null } | null } | null
   /** The launch's own guarded paste, with W2 before its first byte. */
   deliver: (args: {
     callerKey: string
@@ -77,9 +81,11 @@ export function resumeOwedLaunchPrompt(
   }
   const resume = settleOwedPrompt(deps, row)
     .catch((error: unknown): OwedLaunchPromptResume => {
-      // Bookkeeping: the row stays as it was, and the next sweep tries again until its deadline.
+      // Bookkeeping: the row stays as it was. Only a prompt still owed, and inside its deadline, is
+      // worth another sweep; one that may have been written never is.
       console.warn('[agent-launch] could not finish an owed launch prompt', error)
-      return 'retry'
+      const [entry] = listOwedLaunchPromptRows([row], deps.now())
+      return entry?.owed.state === 'owed' && deps.now() <= entry.owed.deadline ? 'retry' : 'settled'
     })
     .finally(() => {
       resumesInFlight.delete(key)
@@ -116,11 +122,16 @@ async function settleOwedPrompt(
   if (!paneKey) {
     return settle({ outcome: 'not-delivered' })
   }
-  const handle = deps.terminalHandleForPane(paneKey)
-  if (!handle) {
+  const found = deps.terminalForPane(paneKey)
+  if (!found?.terminal) {
     // Not found is not gone: its terminal's provider (an SSH relay) may not have reported yet.
     return 'retry'
   }
+  if (!samePty(entry.owed.terminal, found.terminal)) {
+    // The pane holds another PTY now (the window respawned a shell, say): never paste into it.
+    return settle({ outcome: 'not-delivered' })
+  }
+  const { handle } = found
   let taken = false
   const delivered = await deps.deliver({
     callerKey: row.callerKey,
@@ -138,6 +149,19 @@ async function settleOwedPrompt(
     return 'settled'
   }
   return settle({ outcome: delivered ? 'handed-to-terminal' : 'not-delivered' })
+}
+
+/** The launch's own PTY: by incarnation where both know one, else by id. */
+function samePty(
+  recorded: { ptyId: string; incarnationId: string | null } | null,
+  current: { ptyId: string; incarnationId: string | null }
+): boolean {
+  if (!recorded) {
+    return false
+  }
+  return recorded.incarnationId && current.incarnationId
+    ? recorded.incarnationId === current.incarnationId
+    : recorded.ptyId === current.ptyId
 }
 
 function withPromptDisposal(

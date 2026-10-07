@@ -52,11 +52,11 @@ function showLaunchNotStartedNotice(outcome: HostAgentLaunchOutcome, prompt: str
 }
 
 /** The chat view's copy of a submitted prompt, as main's paste seeds it at the launch. */
-function seedChatCopy(tabId: string, agent: TuiAgent, text: string): boolean {
+function seedChatCopy(tabId: string, agent: TuiAgent, text: string, createdAt: number): boolean {
   if (text.trim().length === 0 || !isNativeChatSupportedAgent(agent)) {
     return false
   }
-  useAppStore.getState().seedNativeChatLaunchPrompt({ tabId, agent, text, createdAt: Date.now() })
+  useAppStore.getState().seedNativeChatLaunchPrompt({ tabId, agent, text, createdAt })
   return true
 }
 
@@ -88,8 +88,9 @@ function settleHostPrompt(
     useAppStore.getState().markNativeChatLaunchPromptFailed(tabId)
   }
   if (receipt?.outcome !== 'not-delivered') {
-    // An unconfirmed or missing answer may have landed: "paste it" would invite a second send.
-    return { delivered: false, failureNotified: false }
+    // An unconfirmed or missing answer may have landed: anything that offers to send it again, here
+    // or from the caller, would invite a second send. Reported as said, so the caller stays quiet.
+    return { delivered: false, failureNotified: true }
   }
   const notice = createPasteReadinessTimeoutNotice({
     worktreeId: args.worktreeId,
@@ -123,11 +124,13 @@ export function launchNewTabPromptThroughHost(
     ...launch
   } = args
   const { tabId, outcome } = launchAgentThroughHost({ ...launch, hostPrompt: pasteContent })
+  // Stamped at the click: the chat view matches the agent's turn to a copy made before it.
+  const clickedAt = Date.now()
   const promptDeliveryResult = outcome.then((launched) => {
     if (launched.kind === 'started') {
       // Seeded once the host started the agent, as main's paste seeded it: a launch that never
       // started leaves no chat copy behind.
-      const seeded = seedChatCopy(tabId, args.agent, pasteContent)
+      const seeded = seedChatCopy(tabId, args.agent, pasteContent, clickedAt)
       return settleHostPrompt(args, tabId, launched.prompt, seeded)
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.

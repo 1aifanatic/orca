@@ -46,6 +46,8 @@ export type AgentLaunchRuntimeStubOptions = {
   /** Panes this runtime found already running, by the handle it issued them: a restarted host
    *  that could not re-adopt a surviving PTY's handle issues a new one for the same pane. */
   adoptedPanes?: Record<string, string>
+  /** The PTY each terminal handle is; one PTY for every handle unless set. */
+  ptyIdentity?: (handle: string) => { ptyId: string; incarnationId: string | null } | null
   /** A window owning the layout, answering an early tab publish; absent models a host with none. */
   publishAgentLaunchTab?: (
     request: Omit<AgentLaunchTabPublishRequest, 'requestId'>
@@ -134,6 +136,9 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
     }),
     showTerminal: vi.fn(async (handle: string) => ({ handle, worktreeId: 'wt-7' })),
     getTerminalHandleForPaneKey: vi.fn((paneKey: string) => handlesByPaneKey.get(paneKey) ?? null),
+    getTerminalPtyIdentity: vi.fn(
+      options.ptyIdentity ?? ((_handle: string) => ({ ptyId: 'pty-1', incarnationId: null }))
+    ),
     isTerminalRunningAgent: vi.fn(async () => true),
     showManagedTerminalWorkspace: vi.fn(async (selector: string) => ({
       id: selector.replace(/^id:/, '')

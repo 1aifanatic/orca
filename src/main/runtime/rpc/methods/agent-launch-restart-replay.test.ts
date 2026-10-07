@@ -296,6 +296,33 @@ describe('a host restart mid-launch', () => {
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 
+  it('records the desktop’s prompt with a 5-minute deadline and the PTY its agent runs in', async () => {
+    const before = Date.now()
+    await launchUntilAgentReadinessWait(hostRuntime())
+    const owed = row('trusted-local:desktop')?.promptDelivery
+    expect(owed).toMatchObject({
+      state: 'owed',
+      terminal: { ptyId: 'pty-1', incarnationId: null }
+    })
+    const deadline = owed?.state === 'owed' ? owed.deadline : 0
+    expect(deadline - before).toBeGreaterThanOrEqual(5 * 60_000)
+    expect(deadline - Date.now()).toBeLessThanOrEqual(5 * 60_000)
+  })
+
+  it('never pastes the desktop’s prompt into another process its pane holds after a restart', async () => {
+    await launchUntilAgentReadinessWait(hostRuntime())
+
+    await restartHost()
+    // The daemon lost the agent; the window respawned a shell in the same pane.
+    const restarted = Object.assign(restartedHostRuntime(), {})
+    restarted.getTerminalPtyIdentity.mockReturnValue({ ptyId: 'pty-2', incarnationId: null })
+
+    await expect(launch(restarted, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toMatchObject({
+      prompt: { delivery: 'submit', outcome: 'not-delivered' }
+    })
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+  })
+
   it('owes nothing for a phone’s launch: after a restart it answers as main did, with no paste', async () => {
     await launchUntilAgentReadinessWait(hostRuntime(), UPGRADED_PHONE)
 

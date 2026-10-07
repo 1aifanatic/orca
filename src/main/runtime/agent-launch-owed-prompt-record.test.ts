@@ -55,14 +55,15 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000, terminal: null }
     })
     expect(current()?.outcome).toEqual(SUCCEEDED)
     expect(readOwedLaunchPrompt(current()!)).toEqual({
       state: 'owed',
       text: 'fix the checks',
       agent: 'claude',
-      deadline: 9_000
+      deadline: 9_000,
+      terminal: null
     })
   })
 
@@ -71,7 +72,7 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000, terminal: null }
     })
     await expect(beginOwedLaunchPromptWrite(store, REF, 500)).resolves.toBe('began')
     expect(current()?.promptDelivery).toEqual({ state: 'writing', since: 500 })
@@ -89,7 +90,7 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000, terminal: null }
     })
     await recordLaunchOutcome(store, { ...REF, outcome: { status: 'failed', code: 'boom' } })
     expect(current()?.promptDelivery).toBeUndefined()
@@ -102,7 +103,7 @@ describe('the launch record around an owed first prompt', () => {
     await recordLaunchOutcome(store, {
       ...REF,
       outcome: SUCCEEDED,
-      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000 }
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000, terminal: null }
     })
     expect(listOwedLaunchPromptRows(draft.operations.values(), 20_000)).toEqual([])
     const kept = pruneAgentSessionOperationRows(draft.operations, 20_000)
@@ -114,6 +115,8 @@ describe('the launch record around an owed first prompt', () => {
       { state: 'owed', text: 'x' },
       { state: 'owed', text: 'x', agent: 'not-an-agent', deadline: 1 },
       { state: 'owed', text: 'x', agent: 'claude' },
+      { state: 'owed', text: 'x', agent: 'claude', deadline: 1 },
+      { state: 'owed', text: 'x', agent: 'claude', deadline: 1, terminal: { ptyId: 3 } },
       { state: 'writing' },
       'owed',
       null

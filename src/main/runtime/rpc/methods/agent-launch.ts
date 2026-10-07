@@ -54,7 +54,10 @@ import {
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
 import { activeAgentLaunchesFor } from './agent-launch-active-operations'
-import { settleOwedLaunchPromptBeforeReplay } from './agent-launch-owed-prompt-host'
+import {
+  launchedTerminal,
+  settleOwedLaunchPromptBeforeReplay
+} from './agent-launch-owed-prompt-host'
 import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
@@ -240,7 +243,10 @@ async function executeAdmittedAgentLaunch(
       attachOperationId: admission.attachOperationId,
       callerKey: admission.callerKey,
       terminalSpawn,
-      recordSurface: (provisional) => void settleQuietly(admission.record(provisional)),
+      recordSurface: (provisional) =>
+        void settleQuietly(
+          admission.record(provisional, launchedTerminal(context.runtime, provisional))
+        ),
       beginPromptWrite: admission.beginPromptWrite
     })
   } catch (error) {

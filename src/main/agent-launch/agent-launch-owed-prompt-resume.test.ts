@@ -12,6 +12,8 @@ import {
   type OwedLaunchPromptResumeDeps
 } from './agent-launch-owed-prompt-resume'
 
+const PTY = { ptyId: 'pty-7', incarnationId: 'inc-1' }
+
 const LAUNCH: AgentLaunchResult = {
   outcome: { kind: 'terminal', handle: 'term-old', paneKey: 'tab-1:leaf-1' },
   worktreeId: 'wt-1',
@@ -50,7 +52,7 @@ function harness(
       recordOperationOutcome: async (args: Parameters<typeof settleAgentSessionOperationInto>[1]) =>
         settleAgentSessionOperationInto(draft, args)
     },
-    terminalHandleForPane: () => 'term-live',
+    terminalForPane: () => ({ handle: 'term-live', terminal: PTY }),
     deliver: vi.fn(async (args) => {
       if ((await args.beginPromptWrite()) === 'taken') {
         return false
@@ -77,7 +79,13 @@ beforeEach(() => resetOwedLaunchPromptResumesForTests())
 describe('a first prompt the host still owed when it stopped', () => {
   it('is pasted once into the agent that is still running, then settled', async () => {
     const h = harness(
-      owingRow({ state: 'owed', text: 'fix the checks', agent: 'claude', deadline: 5_000 })
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      })
     )
     await resumeOwedLaunchPrompts(h.deps)
     expect(h.writes).toEqual(['fix the checks'])
@@ -95,8 +103,14 @@ describe('a first prompt the host still owed when it stopped', () => {
   it('stays owed, and asks for another sweep, while its terminal is not found yet', async () => {
     // Not found is not gone: an SSH relay reports its terminals after the window's startup step.
     const h = harness(
-      owingRow({ state: 'owed', text: 'fix the checks', agent: 'claude', deadline: 5_000 }),
-      { terminalHandleForPane: () => null }
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      }),
+      { terminalForPane: () => null }
     )
     await expect(resumeOwedLaunchPrompts(h.deps)).resolves.toBe(true)
     expect(h.deps.deliver).not.toHaveBeenCalled()
@@ -104,9 +118,68 @@ describe('a first prompt the host still owed when it stopped', () => {
     expect(h.current()?.promptDelivery).toMatchObject({ state: 'owed' })
   })
 
+  it('is never pasted into another process the pane holds now: not delivered', async () => {
+    // The daemon lost the agent's PTY, and the window respawned a shell in its pane.
+    const h = harness(
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      }),
+      {
+        terminalForPane: () => ({
+          handle: 'term-new',
+          terminal: { ptyId: 'pty-9', incarnationId: 'inc-2' }
+        })
+      }
+    )
+    await expect(resumeOwedLaunchPrompts(h.deps)).resolves.toBe(false)
+    expect(h.deps.deliver).not.toHaveBeenCalled()
+    expect(h.promptOutcome()).toBe('not-delivered')
+  })
+
+  it('looks again after a failure only while the prompt is owed and inside its deadline', async () => {
+    const failing = {
+      deliver: vi.fn(async () => {
+        throw new Error('boom')
+      })
+    }
+    const owed = harness(
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      }),
+      failing
+    )
+    await expect(resumeOwedLaunchPrompts(owed.deps)).resolves.toBe(true)
+    const writing = harness(owingRow({ state: 'writing', since: 50 }), {
+      store: {
+        listOperationRows: () => [owingRow({ state: 'writing', since: 50 })],
+        transactOperations: async () => {
+          throw new Error('SQLITE_BUSY')
+        },
+        recordOperationOutcome: async () => {
+          throw new Error('SQLITE_BUSY')
+        }
+      }
+    })
+    await expect(resumeOwedLaunchPrompts(writing.deps)).resolves.toBe(false)
+  })
+
   it('is not delivered, and its text is gone, once past its deadline', async () => {
     const h = harness(
-      owingRow({ state: 'owed', text: 'fix the checks', agent: 'claude', deadline: 50 })
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 50,
+        terminal: PTY
+      })
     )
     await expect(resumeOwedLaunchPrompts(h.deps)).resolves.toBe(false)
     expect(h.deps.deliver).not.toHaveBeenCalled()
@@ -124,7 +197,13 @@ describe('a first prompt the host still owed when it stopped', () => {
 
   it('is pasted once when two resumes run at the same time', async () => {
     const h = harness(
-      owingRow({ state: 'owed', text: 'fix the checks', agent: 'claude', deadline: 5_000 })
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      })
     )
     await Promise.all([resumeOwedLaunchPrompts(h.deps), resumeOwedLaunchPrompts(h.deps)])
     expect(h.writes).toEqual(['fix the checks'])
@@ -132,7 +211,13 @@ describe('a first prompt the host still owed when it stopped', () => {
 
   it('is left to the launch this process is still running', async () => {
     const h = harness(
-      owingRow({ state: 'owed', text: 'fix the checks', agent: 'claude', deadline: 5_000 }),
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      }),
       {
         isLaunchRunning: () => true
       }
@@ -143,7 +228,8 @@ describe('a first prompt the host still owed when it stopped', () => {
       state: 'owed',
       text: 'fix the checks',
       agent: 'claude',
-      deadline: 5_000
+      deadline: 5_000,
+      terminal: PTY
     })
   })
 })

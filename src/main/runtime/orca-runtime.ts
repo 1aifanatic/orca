@@ -41,6 +41,20 @@ class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
     return this.notifier.publishAgentLaunchTab(request)
   }
 
+  /** The PTY a terminal handle names now: a launch's own agent, told apart from a later process the
+   *  same pane holds. Null when the runtime does not know the handle. */
+  getTerminalPtyIdentity(handle: string): { ptyId: string; incarnationId: string | null } | null {
+    let ptyId = this.getLivePtyForHandle(handle)?.pty.ptyId ?? null
+    if (!ptyId) {
+      try {
+        ptyId = this.getLiveLeafForHandle(handle).leaf.ptyId ?? null
+      } catch {
+        ptyId = null
+      }
+    }
+    return ptyId ? { ptyId, incarnationId: this.ptysById.get(ptyId)?.incarnationId ?? null } : null
+  }
+
   /** Tells the window a launch pane's fate: it keeps a final one on the tab, clears a settled one,
    *  and takes a withdrawn pane back (the pane alone when the user split the tab). */
   reportAgentLaunchPaneVerdict(

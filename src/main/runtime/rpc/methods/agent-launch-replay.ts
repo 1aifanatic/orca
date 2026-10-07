@@ -31,14 +31,17 @@ import { resolveAgentSessionReplayOutcome } from '../../../native-chat/agent-ses
 import type { RpcContext } from '../core'
 import { rpcCallerOperationKey } from '../rpc-caller-identity'
 import type { AgentLaunchParams } from './agent-launch-schemas'
-import type { TuiAgent } from '../../../../shared/tui-agent'
 import { isDesktopLaunchCaller } from './agent-launch-desktop-caller'
 import {
   OWED_LAUNCH_PROMPT_DEADLINE_MS,
+  type OwedLaunchPrompt,
   beginOwedLaunchPromptWrite,
   recordLaunchOutcome,
   type OwedLaunchPromptWriteStart
 } from '../../agent-launch-owed-prompt-record'
+
+/** The PTY a launch started its agent in, as the runtime names it (`getTerminalPtyIdentity`). */
+export type LaunchedTerminal = { ptyId: string; incarnationId: string | null }
 
 /**
  * The ledger namespace of whoever the transport says is calling. A transport that could not name its
@@ -65,7 +68,7 @@ export type AgentLaunchAdmission =
       decision: 'execute'
       /** The surface exists: records the launch as it stands, so a restart before `settle` replays
        *  the running agent instead of refusing an unknown outcome. */
-      record: (provisional: AgentLaunchResult) => Promise<void>
+      record: (provisional: AgentLaunchResult, terminal?: LaunchedTerminal) => Promise<void>
       settle: (result: AgentLaunchResult) => Promise<void>
       fail: (code: string) => Promise<void>
       /** W2 of `agent-launch-owed-prompt-record`: immediately before the prompt's first byte. */
@@ -251,10 +254,7 @@ export async function admitAgentLaunchOperation(
       ? presentRecordedAnswer(context, operationId, answer)
       : refusal(operationId, 'agent_session_operation_unknown', 'is claimed but unsettled')
   }
-  const succeeded = (
-    result: AgentLaunchResult,
-    owedPrompt?: { text: string; agent: TuiAgent; deadline: number }
-  ) =>
+  const succeeded = (result: AgentLaunchResult, owedPrompt?: OwedLaunchPrompt) =>
     recordLaunchOutcome(store, {
       callerKey,
       operationId,
@@ -271,8 +271,11 @@ export async function admitAgentLaunchOperation(
     attachOperationId,
     callerKey,
     // The same row shape twice: a build that predates the first write reads either one.
-    record: (provisional) =>
-      succeeded(provisional, owedTerminalPrompt(params, provisional, callerKey, Date.now())),
+    record: (provisional, terminal) =>
+      succeeded(
+        provisional,
+        owedTerminalPrompt(params, provisional, callerKey, Date.now(), terminal ?? null)
+      ),
     settle: (result) => succeeded(result),
     fail: (code) =>
       recordLaunchOutcome(store, { callerKey, operationId, outcome: { status: 'failed', code } }),
@@ -287,8 +290,9 @@ function owedTerminalPrompt(
   params: AgentLaunchParams,
   provisional: AgentLaunchResult,
   callerKey: string,
-  now: number
-): { text: string; agent: TuiAgent; deadline: number } | undefined {
+  now: number,
+  terminal: LaunchedTerminal | null
+): OwedLaunchPrompt | undefined {
   // Temporary, desktop only: the phone and the CLI keep main's answer, which owes nothing.
   return isDesktopLaunchCaller(callerKey) &&
     provisional.outcome.kind === 'terminal' &&
@@ -298,7 +302,8 @@ function owedTerminalPrompt(
     ? {
         text: params.prompt.text,
         agent: params.agent,
-        deadline: now + OWED_LAUNCH_PROMPT_DEADLINE_MS
+        deadline: now + OWED_LAUNCH_PROMPT_DEADLINE_MS,
+        terminal
       }
     : undefined
 }

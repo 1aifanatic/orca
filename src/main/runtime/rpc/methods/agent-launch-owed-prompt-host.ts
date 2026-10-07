@@ -15,6 +15,8 @@ import type { OrcaRuntimeService } from '../../orca-runtime'
 import { hasPersistedStructuredAgentSessionStore } from '../../structured-agent-session-runtime'
 import { activeAgentLaunchesFor } from './agent-launch-active-operations'
 import { deliverTerminalAgentLaunchPrompt } from './agent-launch-terminal-prompt'
+import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
+import type { LaunchedTerminal } from './agent-launch-replay'
 
 function resumeDeps(
   runtime: OrcaRuntimeService,
@@ -22,7 +24,10 @@ function resumeDeps(
 ): OwedLaunchPromptResumeDeps {
   return {
     store,
-    terminalHandleForPane: (paneKey) => runtime.getTerminalHandleForPaneKey(paneKey),
+    terminalForPane: (paneKey) => {
+      const handle = runtime.getTerminalHandleForPaneKey(paneKey)
+      return handle ? { handle, terminal: runtime.getTerminalPtyIdentity(handle) } : null
+    },
     deliver: ({ callerKey, handle, agent, text, beginPromptWrite }) =>
       deliverTerminalAgentLaunchPrompt({
         runtime,
@@ -55,6 +60,22 @@ function sweepAgainSoon(runtime: OrcaRuntimeService): void {
   }, RESWEEP_MS)
   timer.unref?.()
   resweepTimers.set(runtime, timer)
+}
+
+/** The PTY a launch's terminal surface holds as it is recorded (W1), for a resume to match. */
+export function launchedTerminal(
+  runtime: Partial<Pick<OrcaRuntimeService, 'getTerminalPtyIdentity'>>,
+  result: AgentLaunchResult
+): LaunchedTerminal | undefined {
+  if (result.outcome.kind !== 'terminal') {
+    return undefined
+  }
+  try {
+    return runtime.getTerminalPtyIdentity?.(result.outcome.handle) ?? undefined
+  } catch {
+    // Runs while the surface is recorded, which must not throw: an unknown PTY is never resumed.
+    return undefined
+  }
 }
 
 /** Startup, after the terminal inventory refresh. Bookkeeping: it never throws. */
