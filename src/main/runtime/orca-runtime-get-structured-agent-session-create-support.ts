@@ -45,7 +45,10 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       worktreeSelector,
       location: await this.resolveStructuredAgentSessionLocation(worktreeSelector),
       runtime: this,
-      getSettings: () => this.requireStore().getSettings()
+      getSettings: () => this.requireStore().getSettings(),
+      // The resolver create runs, read-only: an account it cannot pin is refused here, before a
+      // chat exists, rather than as a failed chat start.
+      resolveAccountHome: () => this.resolveStructuredAgentAccountHome(agent)
     })
   }
 

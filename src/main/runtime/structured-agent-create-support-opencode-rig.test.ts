@@ -30,13 +30,29 @@ async function fakeOpencode(dir: string, version: string): Promise<string> {
   return file
 }
 
-function rigSettings(command: string) {
+function rigSettings(command: string, extraEnv: Record<string, string> = {}) {
   return {
     nativeChatInheritShellEnvironment: true,
     nativeChatShellEnvironmentVariables: [],
     agentCmdOverrides: { opencode: command },
-    agentDefaultEnv: { opencode: { PATH: `${join(root, 'oc-prefix', 'bin')}:/usr/bin:/bin` } }
+    agentDefaultEnv: {
+      opencode: { PATH: `${join(root, 'oc-prefix', 'bin')}:/usr/bin:/bin`, ...extraEnv }
+    }
   }
+}
+
+const managedAccounts = {
+  list: () => ({ accounts: [], activeAccountId: null }),
+  restoreOriginalEnvironment: restoreManagedDataAccountEnvironment,
+  environmentForAccount: () => ({})
+}
+
+/** OpenCode's account binding, as create resolves it: the account a new chat would pin. */
+function pinnedAccount(launchEnv: Record<string, string>) {
+  return openCodeAcpAccountBinding(() => managedAccounts).resolve({
+    launchEnv,
+    baseEnvironment: async () => loginShell.env
+  })
 }
 
 /** `agentSession.createSupport` on this host for a local git worktree under the rig's settings. */
@@ -54,7 +70,8 @@ function createSupport(settings: ReturnType<typeof rigSettings>) {
       requireStore: () => ({ getSettings: () => settings }),
       resolveRuntimeFileTarget: async () => ({ worktree: { path: join(root, 'proj') } })
     },
-    getSettings: () => ({ claudeManagedAccounts: [], activeClaudeManagedAccountId: null })
+    getSettings: () => ({ claudeManagedAccounts: [], activeClaudeManagedAccountId: null }),
+    resolveAccountHome: () => pinnedAccount(settings.agentDefaultEnv.opencode)
   })
 }
 
@@ -101,19 +118,24 @@ describe.skipIf(process.platform === 'win32')('OpenCode create support under the
     )
   })
 
-  it('pins the rig XDG directories as the account rather than refusing it', async () => {
-    const managedAccounts = {
-      list: () => ({ accounts: [], activeAccountId: null }),
-      restoreOriginalEnvironment: restoreManagedDataAccountEnvironment,
-      environmentForAccount: () => ({})
-    }
-    const binding = openCodeAcpAccountBinding(() => managedAccounts)
+  it('refuses at create support an account Orca cannot pin, as create itself still does', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    // Inline credentials: pinning them would mean storing them.
+    const settings = rigSettings(privateOpencode, { OPENCODE_AUTH_CONTENT: '{}' })
 
+    expect(await createSupport(settings)).toEqual({ supported: false, reason: 'agent' })
+    expect(warn).toHaveBeenCalledWith(
+      '[structured-create-support] opencode unsupported: account-pin check refused (reason agent)'
+    )
+    await expect(pinnedAccount(settings.agentDefaultEnv.opencode)).rejects.toMatchObject({
+      refusal: { code: 'structured_agent_session_unsupported' }
+    })
+  })
+
+  it('pins the rig XDG directories as the account rather than refusing it', async () => {
     await expect(
-      binding.resolve({
-        launchEnv: rigSettings(privateOpencode).agentDefaultEnv.opencode,
-        baseEnvironment: async () => loginShell.env
-      })
+      pinnedAccount(rigSettings(privateOpencode).agentDefaultEnv.opencode)
     ).resolves.toEqual({
       kind: 'opencode',
       locator: {

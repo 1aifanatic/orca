@@ -1,6 +1,7 @@
 import type { AgentSessionExecutionLocation } from '../../shared/agent-session-record'
 import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import { isAgentSessionRefusalError } from '../../shared/agent-session-wire-refusals'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { isTuiAgent } from '../../shared/tui-agent-config'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
@@ -58,15 +59,32 @@ export async function structuredAgentSupportsLaunch(
   return supportsLaunch({ cwd, env, commandSettings: settings })
 }
 
-/** `agentSession.createSupport` on this host: the agent's location rule and installed-agent check
- *  from its registration, without installing the host, then the account gate. A refusal logs which
- *  check said no. */
+/** Whether the account a new chat would pin resolves on this host. False only for the host's own
+ *  refusal (an account it cannot pin); any other failure is left for create to state. */
+async function structuredAgentAccountPins(resolveAccountHome: () => Promise<unknown>) {
+  try {
+    await resolveAccountHome()
+    return true
+  } catch (error) {
+    return !(
+      isAgentSessionRefusalError(error) &&
+      error.refusal.code === 'structured_agent_session_unsupported'
+    )
+  }
+}
+
+/** `agentSession.createSupport` on this host: every refusal it can know before spawning. The
+ *  agent's location rule and installed-agent check from its registration, without installing the
+ *  host; the account the new chat would pin, through the same resolver create uses (read-only
+ *  here); then Claude's managed-account gate. A refusal logs which check said no. */
 export async function resolveHostStructuredAgentCreateSupport(input: {
   agent: StructuredAgentId
   worktreeSelector: string
   location: AgentSessionExecutionLocation
   runtime: LaunchSupportRuntime
   getSettings: () => ClaudeManagedAccountGateSettings
+  /** Resolves the account a new chat here would pin, without side effects. */
+  resolveAccountHome: () => Promise<unknown>
 }): Promise<StructuredAgentSessionCreateSupport> {
   const { agent, location } = input
   const supportsLocation =
@@ -74,16 +92,23 @@ export async function resolveHostStructuredAgentCreateSupport(input: {
   const supportsLaunch =
     supportsLocation &&
     (await structuredAgentSupportsLaunch(agent, input.worktreeSelector, input.runtime))
+  const pinsAccount = supportsLaunch && (await structuredAgentAccountPins(input.resolveAccountHome))
   const support = resolveStructuredAgentSessionCreateSupport({
     agent,
     location,
-    adapterSupportsCreate: supportsLaunch,
+    adapterSupportsCreate: pinsAccount,
     getSettings: input.getSettings
   })
   warnStructuredAgentSessionCreateUnsupported(
     agent,
     support,
-    !supportsLocation ? 'location' : !supportsLaunch ? 'installed-agent' : 'account'
+    !supportsLocation
+      ? 'location'
+      : !supportsLaunch
+        ? 'installed-agent'
+        : !pinsAccount
+          ? 'account-pin'
+          : 'managed-account'
   )
   return support
 }
