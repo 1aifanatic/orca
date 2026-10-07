@@ -50,6 +50,34 @@ export function journalDatabaseHoldsAgentSessions(dbPath: string): boolean {
   }
 }
 
+/** A launch-record field whose presence means the host still owes that launch work. */
+export type LaunchOperationObligation = 'promptDelivery'
+
+/** Whether any launch record holds `field`, read-only. */
+export function journalDatabaseHoldsLaunchObligation(
+  dbPath: string,
+  field: LaunchOperationObligation
+): boolean {
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    const table = db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_session_operations'"
+      )
+      .get()
+    return (
+      table !== undefined &&
+      db
+        .prepare(
+          `SELECT 1 FROM agent_session_operations WHERE json_extract(row_json, '$.${field}') IS NOT NULL LIMIT 1`
+        )
+        .get() !== undefined
+    )
+  } finally {
+    db.close()
+  }
+}
+
 export function openJournalDatabase(dbPath: string): OpenJournalDatabase {
   const probe = new Database(dbPath)
   let stored: number

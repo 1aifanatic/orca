@@ -47,8 +47,9 @@ function readTerminal(value: unknown): OwedLaunchPrompt['terminal'] | undefined 
 export const OWED_LAUNCH_PROMPT_DEADLINE_MS = 5 * 60_000
 type OperationRef = { callerKey: string; operationId: string }
 
-/** What W2 found: the write is this caller's, another writer began it, or the row cannot say. */
-export type OwedLaunchPromptWriteStart = 'began' | 'taken' | 'absent'
+/** What W2 found: the write is this caller's, another writer began it, the deadline passed (the
+ *  window no longer waits for it, so nothing may write it), or the row cannot say. */
+export type OwedLaunchPromptWriteStart = 'began' | 'taken' | 'expired' | 'absent'
 
 /** The field as a row holds it, or null for a row that owes nothing or holds a value this build
  *  cannot read. */
@@ -115,6 +116,9 @@ export function beginOwedLaunchPromptWriteInto(
   }
   if (owed.state === 'writing') {
     return 'taken'
+  }
+  if (now > owed.deadline) {
+    return 'expired'
   }
   // The text is no longer needed: nothing may write it again.
   updateRow(state, ref, (current) => ({

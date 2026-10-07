@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionOperationRow } from '../../../../shared/agent-session-operation-ledger'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 
-vi.mock('../../structured-agent-session-runtime', () => ({
-  hasPersistedStructuredAgentSessionStore: () => true
+const persisted = vi.hoisted(() => ({ owed: true }))
+vi.mock('../../agent-launch-persisted-obligations', () => ({
+  hasPersistedLaunchObligation: () => persisted.owed
 }))
 vi.mock('../../../orca-profiles/profile-storage-paths', () => ({
   getProfileUserDataPath: () => '/x'
@@ -42,7 +43,7 @@ function owedRow(deadline: number): AgentSessionOperationRow {
 }
 
 /** A host whose agent's terminal is not found yet, as before an SSH relay reconnects. */
-function host(row: AgentSessionOperationRow) {
+function host(row: AgentSessionOperationRow, { storeOpen = true } = {}) {
   // One look for the agent's terminal per sweep.
   const lookups = vi.fn((_paneKey: string): string | null => null)
   const store = {
@@ -50,17 +51,19 @@ function host(row: AgentSessionOperationRow) {
     transactOperations: vi.fn(),
     recordOperationOutcome: vi.fn(async () => {})
   }
+  const openStore = vi.fn(async () => store)
   const runtime = {
-    openedAgentSessionRecordStore: () => store,
-    openAgentSessionRecordStore: async () => store,
+    openedAgentSessionRecordStore: () => (storeOpen ? store : null),
+    openAgentSessionRecordStore: openStore,
     getTerminalHandleForPaneKey: lookups,
     getTerminalPtyIdentity: () => null
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the sweep reaches only these runtime and store members.
-  return { runtime: runtime as unknown as OrcaRuntimeService, lookups, store }
+  return { runtime: runtime as unknown as OrcaRuntimeService, lookups, store, openStore }
 }
 
 beforeEach(() => {
+  persisted.owed = true
   vi.useFakeTimers({ now: 0 })
   resetOwedLaunchPromptResumesForTests()
 })
@@ -87,5 +90,21 @@ describe('looking again for an owed prompt’s terminal', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     expect(h.lookups).toHaveBeenCalledTimes(1)
     expect(h.store.recordOperationOutcome).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the sweep at a cold start, before anything opened the record store', () => {
+  it('opens the store when a launch record still owes its prompt, whatever chats exist', async () => {
+    const h = host(owedRow(60_000), { storeOpen: false })
+    await resumeOwedAgentLaunchPrompts(h.runtime)
+    expect(h.openStore).toHaveBeenCalledOnce()
+    expect(h.lookups).toHaveBeenCalledOnce()
+  })
+
+  it('neither opens nor creates it when no launch owes a prompt', async () => {
+    persisted.owed = false
+    const h = host(owedRow(60_000), { storeOpen: false })
+    await resumeOwedAgentLaunchPrompts(h.runtime)
+    expect(h.openStore).not.toHaveBeenCalled()
   })
 })

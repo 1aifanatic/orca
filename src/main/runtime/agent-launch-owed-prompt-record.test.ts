@@ -79,6 +79,17 @@ describe('the launch record around an owed first prompt', () => {
     await expect(beginOwedLaunchPromptWrite(store, REF, 600)).resolves.toBe('taken')
   })
 
+  it('W2 refuses a write past the deadline, and leaves the prompt owed for its settle', async () => {
+    const { store, current } = ledger()
+    await recordLaunchOutcome(store, {
+      ...REF,
+      outcome: SUCCEEDED,
+      owedPrompt: { text: 'fix the checks', agent: 'claude', deadline: 9_000, terminal: null }
+    })
+    await expect(beginOwedLaunchPromptWrite(store, REF, 9_001)).resolves.toBe('expired')
+    expect(current()?.promptDelivery).toMatchObject({ state: 'owed' })
+  })
+
   it('W2 on a row that owes nothing says so, and never blocks the write', async () => {
     const { store } = ledger()
     await expect(beginOwedLaunchPromptWrite(store, REF, 500)).resolves.toBe('absent')

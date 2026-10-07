@@ -536,20 +536,23 @@ describe('the record write that marks the paste begun (W2)', () => {
     expect(events).toEqual(['guard', 'W2', 'paste', 'enter'])
   })
 
-  it('writes nothing when another writer already began the prompt', async () => {
-    const events: string[] = []
-    const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
-    const delivered = await deliverTerminalAgentLaunchPrompt({
-      runtime: stub.runtime,
-      handle: 'term_1',
-      agent: 'claude',
-      freshLaunch: true,
-      text: 'fix the checks',
-      beginPromptWrite: async () => 'taken'
-    })
-    expect(delivered).toBe(false)
-    expect(events).toEqual([])
-  })
+  it.each(['taken', 'expired'] as const)(
+    'writes nothing when the record says %s: another writer began it, or its deadline passed',
+    async (start) => {
+      const events: string[] = []
+      const stub = runtimeStub({ composerSignal: true, send: sendThroughGuard(events) })
+      const delivered = await deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent: 'claude',
+        freshLaunch: true,
+        text: 'fix the checks',
+        beginPromptWrite: async () => start
+      })
+      expect(delivered).toBe(false)
+      expect(events).toEqual([])
+    }
+  )
 
   it('still writes when the record cannot be written: bookkeeping never gates the prompt', async () => {
     const events: string[] = []

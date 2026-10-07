@@ -203,6 +203,30 @@ describe('a first prompt the host still owed when it stopped', () => {
     expect(JSON.stringify(h.current())).not.toContain('fix the checks')
   })
 
+  it('writes nothing when its wait for the agent runs past the deadline: not delivered', async () => {
+    // Started inside the deadline; the agent became ready only after it.
+    let now = 4_000
+    const h = harness(
+      owingRow({
+        state: 'owed',
+        text: 'fix the checks',
+        agent: 'claude',
+        deadline: 5_000,
+        terminal: PTY
+      }),
+      {
+        now: () => now,
+        deliver: vi.fn(async (args) => {
+          now = 6_000
+          return (await args.beginPromptWrite()) === 'began'
+        })
+      }
+    )
+    await expect(resumeOwedLaunchPrompts(h.deps)).resolves.toBe(false)
+    expect(h.promptOutcome()).toBe('not-delivered')
+    expect(h.current()?.promptDelivery).toBeUndefined()
+  })
+
   it('is never written again once its write may have begun: unconfirmed', async () => {
     const h = harness(owingRow({ state: 'writing', since: 50 }))
     await resumeOwedLaunchPrompts(h.deps)

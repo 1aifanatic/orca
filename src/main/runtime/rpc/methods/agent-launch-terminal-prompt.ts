@@ -117,7 +117,7 @@ function beforeFirstByte(
       console.warn('[agent-launch] could not record that its prompt write began', error)
       return 'absent' as const
     })
-    if (start === 'taken' || (writeOnlyWhenRecorded && start !== 'began')) {
+    if (start === 'taken' || start === 'expired' || (writeOnlyWhenRecorded && start !== 'began')) {
       throw new Error('agent_launch_prompt_write_taken')
     }
   }

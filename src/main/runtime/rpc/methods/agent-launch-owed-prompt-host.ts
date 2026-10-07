@@ -12,7 +12,7 @@ import {
 import { readOwedLaunchPrompt } from '../../agent-launch-owed-prompt-record'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import type { OrcaRuntimeService } from '../../orca-runtime'
-import { hasPersistedStructuredAgentSessionStore } from '../../structured-agent-session-runtime'
+import { hasPersistedLaunchObligation } from '../../agent-launch-persisted-obligations'
 import { activeAgentLaunchesFor } from './agent-launch-active-operations'
 import { deliverTerminalAgentLaunchPrompt } from './agent-launch-terminal-prompt'
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
@@ -81,10 +81,10 @@ export function launchedTerminal(
 /** Startup, after the terminal inventory refresh. Bookkeeping: it never throws. */
 export async function resumeOwedAgentLaunchPrompts(runtime: OrcaRuntimeService): Promise<void> {
   try {
-    // Only a host that has written records can owe a prompt; none must not create the database.
+    // Only a launch record can owe a prompt; a profile with none must not open or create the store.
     const store =
       runtime.openedAgentSessionRecordStore() ??
-      (hasPersistedStructuredAgentSessionStore(getProfileUserDataPath())
+      (hasPersistedLaunchObligation(getProfileUserDataPath(), 'promptDelivery')
         ? await runtime.openAgentSessionRecordStore()
         : null)
     if (store && (await resumeOwedLaunchPrompts(resumeDeps(runtime, store)))) {
