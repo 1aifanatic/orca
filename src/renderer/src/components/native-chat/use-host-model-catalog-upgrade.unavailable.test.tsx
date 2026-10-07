@@ -25,7 +25,7 @@ import type { StructuredAgentSessionMutate } from './use-structured-agent-sessio
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 
 // The host's sign-in verdict as a chat holds it: kept until the next answer replaces it, read
-// again on focus only while it blocks, and cleared by a failed read.
+// again on window focus only while it is said, and cleared by a failed read.
 
 const LOCAL_TARGET = { kind: 'local' } as const
 const SIGNED_OUT = { reason: 'notSignedIn', account: 'system' } as const
@@ -103,7 +103,7 @@ describe("a chat's sign-in verdict", () => {
     sessionCount += 1
     sessionId = `verdict-session-${sessionCount}`
   })
-  // A mounted chat still blocked from an earlier test would read on this test's focus.
+  // A mounted chat still holding a verdict from an earlier test would read on this test's focus.
   afterEach(cleanup)
 
   it('holds the verdict through a re-read and lets only its answer clear it', async () => {
@@ -113,35 +113,26 @@ describe("a chat's sign-in verdict", () => {
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
     expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
 
-    await act(async () => {
-      result.current.recheckUnavailable?.()
-    })
+    await focusWindow()
     expect(reads.count()).toBe(2)
     await reads.answer(1, { ...HOST_CATALOG, unavailable: SIGNED_OUT })
     await focusWindow()
     expect(reads.count()).toBe(3)
-    // No enable flash while the re-read is out.
+    // The notice does not flicker off while the re-read is out.
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
     await reads.answer(2, HOST_CATALOG)
     expect(result.current.unavailable).toBeNull()
-    expect(result.current.recheckUnavailable).toBeUndefined()
   })
 
-  it('reads again on window focus or a recheck only while blocked', async () => {
+  it('reads again on window focus only while a verdict is said', async () => {
     const reads = catalogReads()
-    const { result } = renderOptions()
+    renderOptions()
     await reads.answer(0, HOST_CATALOG)
     await focusWindow()
     expect(reads.count()).toBe(1)
-    expect(result.current.recheckUnavailable).toBeUndefined()
-
-    await act(async () => {
-      result.current.recheckUnavailable?.()
-    })
-    expect(reads.count()).toBe(1)
   })
 
-  it('clears on a failed read: unknown never blocks', async () => {
+  it('clears on a failed read: unknown shows nothing', async () => {
     const reads = catalogReads()
     const { result } = renderOptions()
     await reads.answer(0, { origin: 'unknown', unavailable: SIGNED_OUT })
@@ -156,7 +147,7 @@ describe("a chat's sign-in verdict", () => {
     await reads.answer(0, { ...HOST_CATALOG, unavailable: SIGNED_OUT, listingInProgress: true })
     expect(reads.count()).toBe(2)
     expect(reads.params(1)).toEqual({ agent: 'codex', sessionId, waitForListing: true })
-    // The catalog in hand is shown; only Send waits on the answer.
+    // The catalog in hand is shown; only the notice waits on the answer.
     const model = result.current.optionSnapshot.find((entry) => entry.id === 'model')!
     expect(model.choicesPending).toBeUndefined()
     expect(result.current.unavailable).toEqual(SIGNED_OUT)
@@ -164,7 +155,7 @@ describe("a chat's sign-in verdict", () => {
     expect(result.current.unavailable).toBeNull()
   })
 
-  it('a blocked past-TTL re-read with no catalog does not set choicesPending', async () => {
+  it('a past-TTL re-read of a verdict with no catalog does not set choicesPending', async () => {
     const reads = catalogReads()
     const { result } = renderOptions()
     await reads.answer(0, { origin: 'unknown', unavailable: SIGNED_OUT, listingInProgress: true })

@@ -1,7 +1,4 @@
-import {
-  claudeInitializationSignedOut,
-  type AgentSessionAccountKind
-} from '../../shared/agent-session-availability'
+import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
 import { CLAUDE_DEFAULT_SETTING_SOURCES } from './claude-structured-launch-resolution'
 import type { ClaudeAuthDiagnostic } from './claude-structured-session-state'
 import { AgentSessionAcquisitionRefusal } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
@@ -75,7 +72,12 @@ export function claudeInitializationAuthError(
   initialization: unknown,
   accountKind?: AgentSessionAccountKind
 ): AgentSessionAcquisitionRefusal | null {
-  return claudeInitializationSignedOut(initialization)
+  const account =
+    isRecord(initialization) && isRecord(initialization.account) ? initialization.account : {}
+  // An API key (ANTHROPIC_API_KEY or a Console /login key) reports tokenSource "none".
+  const apiKeySource = readClaudeFrameString(account, 'apiKeySource')
+  return readClaudeFrameString(account, 'tokenSource') === 'none' &&
+    (apiKeySource === null || apiKeySource === 'none')
     ? new AgentSessionAcquisitionRefusal(
         'Claude is not signed in for the selected account. Sign in with the Claude CLI for this CLAUDE_CONFIG_DIR, then retry.',
         'notSignedIn',

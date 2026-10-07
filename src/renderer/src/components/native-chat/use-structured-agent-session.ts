@@ -41,7 +41,6 @@ import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-sess
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
-import { nativeChatComposerSendGate } from './native-chat-composer-send-state'
 
 export type { StructuredPromptItem } from './structured-agent-session-message-projection'
 
@@ -96,11 +95,14 @@ export function useStructuredAgentSession(args: {
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
+    conversationCommands,
+    optionSnapshot,
+    optionSurface,
+    setStructuredOption,
+    unavailable,
     threadGoal: threadGoalSupport,
     contextUsage: contextUsageSupport,
-    rewind: rewindSupport,
-    // The picker, conversation commands and the host's sign-in verdict pass straight through.
-    ...sessionOptions
+    rewind: rewindSupport
   } = useStructuredAgentSessionOptions({
     agent,
     sessionId,
@@ -214,15 +216,10 @@ export function useStructuredAgentSession(args: {
     composerScopeKey,
     mutate
   })
-  const stopOffer = structuredAgentSessionStopControl({
-    published: transportEnabled,
-    host: stopControl,
-    transportState,
-    outbox: outboxController
-  })
   return {
     epoch: state.epoch,
     rewind,
+    conversationCommands,
     runConversationCommand: (command: AgentSessionConversationCommand) =>
       structuredConversationCommands.sendStructuredConversationCommand({
         command,
@@ -271,7 +268,12 @@ export function useStructuredAgentSession(args: {
     turnActivity: transportState.turnActivity,
     backgroundTasks: transportState.backgroundTasks,
     turnId: transportState.turnId,
-    ...stopOffer,
+    ...structuredAgentSessionStopControl({
+      published: transportEnabled,
+      host: stopControl,
+      transportState,
+      outbox: outboxController
+    }),
     stopPressed: stopControl.pressed,
     queuedMessages: queuedController,
     /** A send made now while the agent works is held as a queued card: the host queues, and this
@@ -319,12 +321,12 @@ export function useStructuredAgentSession(args: {
         fields
       )
     },
-    ...sessionOptions,
-    unavailable: nativeChatComposerSendGate(
-      sessionOptions.unavailable,
-      stopOffer.canStop || transportState.queueSendsNext
-    ),
+    optionSnapshot,
+    optionSurface,
     sessionCommands: transportEnabled ? (state.commands ?? undefined) : undefined,
+    setStructuredOption,
+    /** Why the host's catalog probe says no chat can start here; the chat shows it as a notice. */
+    unavailable,
     threadGoal,
     contextUsage
   }

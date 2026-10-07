@@ -1,4 +1,3 @@
-import { CLAUDE_CATALOG_STDIN, claudeCatalogSignedOut } from '../../shared/claude-model-list-probe'
 import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-unavailable'
 import { discoverModelsLocal } from '../text-generation/commit-message-model-discovery'
 import { commandBackslashMode } from '../text-generation/commit-message-text-generation'
@@ -35,16 +34,13 @@ export function createClaudeModelCatalogProbe(
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     // Same pin rule as the session spawn: naming the CLI's default dir would move
     // it off the default Keychain item and list under another identity.
-    const { command, env, account } = await resolveClaudeStructuredInvocation(deps, (base) => ({
+    const { command, env } = await resolveClaudeStructuredInvocation(deps, (base) => ({
       ...base,
       ...claudeConfigDirEnvPatch(accountHomePath, { env: base })
     }))
     const result = await (deps.discover ?? discoverModelsLocal)({
       agentId: 'claude',
       binary: command,
-      stdinPayload: CLAUDE_CATALOG_STDIN,
-      inspectOutput: (stdout) =>
-        claudeCatalogSignedOut(stdout) ? { reason: 'notSignedIn', account } : undefined,
       env,
       options: {},
       backslash: commandBackslashMode({ kind: 'local', cwd: '' }),

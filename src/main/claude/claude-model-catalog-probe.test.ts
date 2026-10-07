@@ -1,5 +1,5 @@
 import { createMockDiscoveryChild } from '../text-generation/commit-message-text-generation-test-harness'
-import { CLAUDE_CATALOG_STDIN } from '../../shared/claude-model-list-probe'
+import { CLAUDE_MODEL_LIST_STDIN } from '../../shared/claude-model-list-probe'
 import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-unavailable'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -200,13 +200,10 @@ describe('Claude catalog availability', () => {
 })
 
 describe('Claude catalog fake-child contract', () => {
-  it.each([
-    ['none', false],
-    ['none', true],
-    ['oauth', false]
-  ] as const)(
-    'initializes and lists in one process for tokenSource=%s, managed=%s',
-    async (tokenSource, managed) => {
+  // Claude has no pre-send sign-in verdict: its real start refusal is the only one.
+  it.each([false, true])(
+    'lists in one process with no sign-in verdict, managed=%s',
+    async (managed) => {
       const child = createMockDiscoveryChild()
       const spawnAgent = vi.fn<SpawnSourceControlAgent>(() => {
         queueMicrotask(() => {
@@ -214,13 +211,6 @@ describe('Claude catalog fake-child contract', () => {
             'data',
             Buffer.from(
               `${JSON.stringify({
-                type: 'control_response',
-                response: {
-                  request_id: 'orca-catalog-initialize',
-                  subtype: 'success',
-                  response: { account: { tokenSource } }
-                }
-              })}\n${JSON.stringify({
                 type: 'control_response',
                 response: {
                   request_id: 'orca-model-discovery',
@@ -241,16 +231,11 @@ describe('Claude catalog fake-child contract', () => {
         resolveAuthPolicy: () => ({ stripAuthEnv: managed }),
         spawnAgent
       })
-      const result = await probe('/homes/a').catch((error: unknown) => error)
-      if (tokenSource === 'none') {
-        expect(result).toMatchObject({
-          unavailable: { reason: 'notSignedIn', account: managed ? 'managed' : 'system' }
-        })
-      } else {
-        expect(result).toMatchObject({ models: [{ id: 'sonnet' }] })
-      }
+      const result = await probe('/homes/a')
+      expect(result).toMatchObject({ models: [{ id: 'sonnet' }] })
+      expect(result).not.toHaveProperty('unavailable')
       expect(spawnAgent).toHaveBeenCalledTimes(1)
-      expect(child.stdin.end).toHaveBeenCalledWith(CLAUDE_CATALOG_STDIN)
+      expect(child.stdin.end).toHaveBeenCalledWith(CLAUDE_MODEL_LIST_STDIN)
     }
   )
   it('preserves the resolved executable missing error from a child', async () => {

@@ -1,4 +1,3 @@
-import type { AgentSessionUnavailable } from '../../shared/agent-session-availability'
 import { isMissingProviderExecutable } from '../provider-process/provider-executable-missing'
 import { mergeCommandEnvironment } from '../../shared/command-environment'
 import type { CommandTemplateBackslash } from '../../shared/commit-message-prompt'
@@ -41,9 +40,8 @@ export async function discoverModelsLocal(input: {
   options: CommitMessageModelDiscoveryLocalOptions
   backslash: CommandTemplateBackslash
   spawnAgent: SpawnSourceControlAgent
+  /** The command actually spawned, when the caller replaces the plan's; a missing one is typed. */
   binary?: string
-  stdinPayload?: string
-  inspectOutput?: (stdout: string) => AgentSessionUnavailable | undefined
 }): Promise<DiscoverCommitMessageModelsResult> {
   const spec = getAgentModelProbeSpec(input.agentId)
   if (!spec) {
@@ -64,7 +62,6 @@ export async function discoverModelsLocal(input: {
   )
 
   const binary = input.binary ?? planned.plan.binary
-  const stdinPayload = input.stdinPayload ?? planned.plan.stdinPayload
   const couldNotStart = `${spec.label} model discovery could not be started. Check the agent CLI configuration and try again.`
   const startFailure = (error: unknown): DiscoverCommitMessageModelsResult => ({
     success: false,
@@ -88,12 +85,12 @@ export async function discoverModelsLocal(input: {
           env: input.options.wslDistro ? input.env : env,
           commandEnv: planned.plan.env,
           wslDistro: input.options.wslDistro,
-          stdinMode: stdinPayload === null ? 'ignore' : 'pipe',
+          stdinMode: planned.plan.stdinPayload === null ? 'ignore' : 'pipe',
           useCwdForNative: false
         })
-        if (stdinPayload !== null) {
+        if (planned.plan.stdinPayload !== null) {
           child.stdin?.on?.('error', () => {})
-          child.stdin?.end(stdinPayload)
+          child.stdin?.end(planned.plan.stdinPayload)
         }
       } catch (error) {
         markProcessClosed()
@@ -180,11 +177,6 @@ export async function discoverModelsLocal(input: {
         }
         if (spawnFailure) {
           onError(spawnFailure.error)
-          return
-        }
-        const unavailable = input.inspectOutput?.(stdout)
-        if (unavailable) {
-          finish({ success: false, error: unavailable.reason, unavailable })
           return
         }
         finish(

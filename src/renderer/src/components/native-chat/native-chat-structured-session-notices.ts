@@ -4,7 +4,6 @@ import { agentSessionRefusalCauseParts } from '../../../../shared/agent-session-
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
 import { joinSentences } from '../../../../shared/sentence-joining'
 import { agentSessionWriteNoticeText } from './agent-session-write-notice-text'
-import { isNativeChatSendGateFailure } from './native-chat-start-failure-presentation'
 import type {
   NativeChatComposerNotice,
   NativeChatComposerNoticeContent
@@ -15,7 +14,6 @@ function nativeChatLaunchNotice({
   lifecycle,
   failure = null,
   agentLabel,
-  hasUnsentMessage = false,
   onRetry
 }: {
   lifecycle: StructuredAgentSessionLaunchLifecycle | null
@@ -23,25 +21,9 @@ function nativeChatLaunchNotice({
   failure?: AgentSessionWriteRefusal | null
   /** Names the agent in a start failure's words. */
   agentLabel?: string
-  /** A message of yours waits on this start, so its Retry stays. */
-  hasUnsentMessage?: boolean
   onRetry: () => void
 }): NativeChatComposerNotice | null {
   if (lifecycle !== 'failed' && lifecycle !== 'visibility-unknown') {
-    return null
-  }
-  const parts =
-    lifecycle === 'failed' && failure
-      ? agentSessionRefusalCauseParts(failure, agentLabel ? { agentName: agentLabel } : {})
-      : []
-  // The disabled Send already says it, in the same words.
-  if (
-    !hasUnsentMessage &&
-    parts.some(
-      (part) =>
-        typeof part !== 'string' && 'failure' in part && isNativeChatSendGateFailure(part.failure)
-    )
-  ) {
     return null
   }
   const message =
@@ -54,7 +36,12 @@ function nativeChatLaunchNotice({
           'auto.components.native.chat.NativeChatLaunchRetry.unknown',
           'Chat connection could not be confirmed.'
         )
-  const cause = agentSessionWriteNoticeText(parts)
+  const cause =
+    lifecycle === 'failed' && failure
+      ? agentSessionWriteNoticeText(
+          agentSessionRefusalCauseParts(failure, agentLabel ? { agentName: agentLabel } : {})
+        )
+      : ''
   // An argument problem already says the start failed; the generic lead would repeat it.
   const saysStartFailure =
     failure?.code === 'agent_session_operation_invalid' && failure.details?.argumentProblem
@@ -74,26 +61,28 @@ export function structuredSessionNotices({
   launch,
   agentLabel,
   sessionError,
-  composerError
+  composerError,
+  availability = null
 }: {
   launch: {
     lifecycle: StructuredAgentSessionLaunchLifecycle | null
     failure: AgentSessionWriteRefusal | null
     retry: () => void
-    hasUnsentMessage?: boolean
   }
   agentLabel: string
   sessionError: string | null
   composerError: (NativeChatComposerNoticeContent & { onDismiss: () => void }) | null
+  /** Why the host says no chat can start here, from `useNativeChatAvailabilityNotice`. */
+  availability?: NativeChatComposerNotice | null
 }): NativeChatComposerNotice[] {
   const launchNotice = nativeChatLaunchNotice({
     lifecycle: launch.lifecycle,
     failure: launch.failure,
     agentLabel,
-    hasUnsentMessage: launch.hasUnsentMessage,
     onRetry: launch.retry
   })
   return [
+    ...(availability ? [availability] : []),
     ...(launchNotice ? [launchNotice] : []),
     ...(sessionError ? [{ key: 'session', kind: 'error' as const, text: sessionError }] : []),
     ...(composerError ? [{ key: 'composer-error', kind: 'error' as const, ...composerError }] : [])

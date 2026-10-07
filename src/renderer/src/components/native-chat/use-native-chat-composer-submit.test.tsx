@@ -38,16 +38,14 @@ function harness(options: {
   imageAttachments?: NativeChatComposerImageAttachment[]
   /** The PTY lane has no structured transport at all. */
   lane?: 'pty'
-  gated?: boolean
 }) {
   const onError = vi.fn()
   const onSubmitted = vi.fn()
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: submit reads only threadGoal, unavailable, onError and onSubmitted.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: submit reads only threadGoal, onError and onSubmitted.
   const structuredTransport = {
     onError,
     onSubmitted,
-    ...(options.threadGoal ? { threadGoal: options.threadGoal } : {}),
-    ...(options.gated ? { unavailable: { reason: 'notSignedIn' } } : {})
+    ...(options.threadGoal ? { threadGoal: options.threadGoal } : {})
   } as unknown as NativeChatStructuredComposerTransport
   const calls = {
     sendPty: vi.fn(),
@@ -123,19 +121,6 @@ describe('composer goal mode', () => {
     expect(calls.sendStructured).not.toHaveBeenCalled()
     expect(readNativeChatDraftCache(SCOPE)).toBe('')
     expect(hook.result.current.goalMode.active).toBe(false)
-  })
-
-  it('sets no goal while the send gate is up, keeping the draft and goal mode', async () => {
-    const setObjective = vi.fn(async () => true)
-    const { hook, type } = harness({ draft: '/go', threadGoal: { setObjective }, gated: true })
-    act(() => hook.result.current.goalMode.interceptPick(vi.fn())(GOAL_ITEM))
-    type('Ship the parser', 0)
-
-    await act(async () => hook.result.current.send())
-
-    expect(setObjective).not.toHaveBeenCalled()
-    expect(readNativeChatDraftCache(SCOPE)).toBe('Ship the parser')
-    expect(hook.result.current.goalMode.active).toBe(true)
   })
 
   it('keeps the draft and goal mode when the goal is refused', async () => {

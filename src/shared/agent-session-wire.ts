@@ -412,7 +412,7 @@ export type AgentSessionModelCatalogResult = {
    *  from a host that predates it; such a host sends it only with `unknown`. */
   listingInProgress?: true
   /** Why no chat can start under the account, as the host's probe last found it. Absent is
-   *  unknown, which never blocks; an older host never sends it. */
+   *  unknown, which shows nothing; an older host never sends it. */
   unavailable?: AgentSessionUnavailable
 } & (
   | { origin: 'unknown' }

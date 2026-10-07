@@ -37,8 +37,8 @@ import {
  * read waits for it — one per chat, joined by every later run and remount.
  * Reports that wait, and why the host's latest answer says no chat can start
  * (kept until the next answer replaces it; a failed read is unknown). Only
- * while blocked, the window gaining focus or `recheck` reads again: the host
- * pushes no change, and the fix (signing in, installing) happens elsewhere.
+ * while it says so, the window gaining focus reads again: the host pushes no
+ * change, and the fix (signing in, installing) happens elsewhere.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -56,12 +56,7 @@ export function useHostModelCatalogUpgrade(args: {
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
   ) => void
-}): {
-  awaitingListing: boolean
-  unavailable: AgentSessionUnavailable | null
-  /** Present only while blocked. */
-  recheck?: () => void
-} {
+}): { awaitingListing: boolean; unavailable: AgentSessionUnavailable | null } {
   const {
     activeOptionRecordRef,
     agent,
@@ -85,14 +80,14 @@ export function useHostModelCatalogUpgrade(args: {
   const unavailable = verdict?.key === waitKey ? verdict.unavailable : null
   const [rereads, setRereads] = useState(0)
   const recheck = useCallback(() => setRereads((count) => count + 1), [])
-  const blocked = unavailable !== null
+  const said = unavailable !== null
   useEffect(() => {
-    if (!blocked) {
+    if (!said) {
       return
     }
     window.addEventListener('focus', recheck)
     return () => window.removeEventListener('focus', recheck)
-  }, [blocked, recheck])
+  }, [said, recheck])
   useEffect(() => {
     // Any agent the host registered: it answers `unknown` for one whose catalog it does not keep.
     if (!enabled || !optionCatalog) {
@@ -167,5 +162,5 @@ export function useHostModelCatalogUpgrade(args: {
     waitKey,
     worktree
   ])
-  return { awaitingListing, unavailable, ...(blocked ? { recheck } : {}) }
+  return { awaitingListing, unavailable }
 }

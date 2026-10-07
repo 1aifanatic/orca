@@ -104,7 +104,7 @@ export function useStructuredAgentSessionOptions(args: {
     updateOptionState
   })
   // A list in hand, the running provider's or the host's, ends the wait for the host's; so does a
-  // verdict, whose re-check is for Send, not the picker.
+  // verdict, whose re-check is for the chat's notice, not the picker.
   const modelListPending =
     hostCatalog.awaitingListing &&
     hostCatalog.unavailable === null &&
@@ -293,7 +293,6 @@ export function useStructuredAgentSessionOptions(args: {
     optionSnapshot,
     optionSurface,
     setStructuredOption,
-    unavailable: hostCatalog.unavailable,
-    recheckUnavailable: hostCatalog.recheck
+    unavailable: hostCatalog.unavailable
   }
 }

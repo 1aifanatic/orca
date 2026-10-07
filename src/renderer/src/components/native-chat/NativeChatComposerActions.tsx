@@ -199,11 +199,8 @@ export function NativeChatComposerActions({
         {sendReason ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              {/* A disabled button gets no pointer events or focus, so the wrapper carries the
-                  hover and keyboard focus. */}
-              <span tabIndex={0} className="inline-flex">
-                {sendButton}
-              </span>
+              {/* A disabled button gets no pointer events, so the wrapper carries the hover. */}
+              <span className="inline-flex">{sendButton}</span>
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={4}>
               {sendReason}

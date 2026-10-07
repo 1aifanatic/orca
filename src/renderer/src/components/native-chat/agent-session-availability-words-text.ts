@@ -5,7 +5,7 @@ import {
   type AgentSessionFailureCopyValues
 } from '../../../../shared/agent-session-failure-copy'
 
-// Desktop words for why no chat can start under an account: also the disabled Send's own words.
+// Desktop words for why no chat can start under an account, before and after a send.
 
 type AvailabilityCopyId = Extract<
   AgentSessionFailureCopyId,

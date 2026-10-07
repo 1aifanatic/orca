@@ -13,11 +13,7 @@ import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { useStructuredNativeChatSubmitReveal } from './use-structured-native-chat-submit-reveal'
 import { NativeChatQuestionCard } from './NativeChatQuestionCard'
-import {
-  selectNativeChatViewState,
-  structuredChatHistoryPhase,
-  structuredChatLiveSession
-} from './native-chat-view-state'
+import { selectNativeChatViewState, structuredChatHistoryPhase } from './native-chat-view-state'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
@@ -48,8 +44,8 @@ import { structuredAgentSessionReadFailureNotice } from './structured-agent-sess
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
 import { useNativeChatHostOutage } from './use-native-chat-host-outage'
 import { NativeChatHostOutageNotice } from './NativeChatHostOutageNotice'
+import { useNativeChatAvailabilityNotice } from './use-native-chat-availability-notice'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
-import { hasUnsentStructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox-stop-withdrawal'
 
 type OptionPickerRequest = { id: string; sequence: number }
 
@@ -106,13 +102,33 @@ export function NativeChatStructuredSession(
   const historyPhase = structuredChatHistoryPhase(provisionalLaunch, controller.status)
   const hostOutage = useNativeChatHostOutage(props.target)
   const session = useMemo<NativeChatLiveSession>(
-    () =>
-      structuredChatLiveSession(
-        // Older pages can't load while the host is unreachable, so the row waits for it.
-        { ...controller, hasOlder: controller.hasOlder && hostOutage === null },
-        historyPhase,
-        { sessionId: props.sessionId, agent: props.agent }
-      ),
+    () => ({
+      messages: controller.messages,
+      status:
+        controller.status === 'error'
+          ? 'error'
+          : historyPhase !== 'known'
+            ? 'loading'
+            : controller.isWorking
+              ? 'working'
+              : controller.messages.length === 0
+                ? 'empty'
+                : 'ready',
+      sessionId: props.sessionId,
+      agent: props.agent,
+      ...(controller.error ? { error: controller.error } : {}),
+      // Older pages can't load while the host is unreachable, so the row waits for it.
+      hasMore: controller.hasOlder && hostOutage === null,
+      loadingEarlier: controller.loadingOlder,
+      olderHistoryGeneration: controller.olderHistoryGeneration,
+      loadEarlier: controller.loadOlder,
+      readPhase:
+        controller.status === 'loading'
+          ? 'loading'
+          : controller.status === 'error'
+            ? 'error'
+            : 'ready'
+    }),
     [controller, historyPhase, hostOutage, props.agent, props.sessionId]
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
@@ -186,15 +202,21 @@ export function NativeChatStructuredSession(
   // Said once: on the pane when the failure took it, else in the composer's notices.
   const sessionError =
     viewState.kind === 'error' || !readFailure ? controller.error : readFailure.text
-  const launch = {
-    ...provisionalLaunch,
-    retry: submits.retryLaunch,
-    hasUnsentMessage: hasUnsentStructuredAgentSessionOutboxEntry(
-      controller.outbox,
-      controller.submissions
-    )
-  }
-  const notices = structuredSessionNotices({ launch, agentLabel, sessionError, composerError })
+  const launch = { ...provisionalLaunch, retry: submits.retryLaunch }
+  const availability = useNativeChatAvailabilityNotice({
+    unavailable: controller.unavailable,
+    agent: props.agent,
+    agentLabel,
+    launchFailure: provisionalLaunch.lifecycle === 'failed' ? provisionalLaunch.failure : null,
+    journalItems: controller.journalItems
+  })
+  const notices = structuredSessionNotices({
+    launch,
+    agentLabel,
+    sessionError,
+    composerError,
+    availability
+  })
   return (
     <div
       ref={rootRef}
@@ -210,8 +232,6 @@ export function NativeChatStructuredSession(
       onKeyUpCapture={paneCommands.onSelectionCapture}
       onKeyDownCapture={paneCommands.onKeyDownCapture}
       onContextMenuCapture={paneCommands.onContextMenuCapture}
-      // While Send is blocked, coming back to the chat reads the verdict again.
-      onFocus={controller.recheckUnavailable}
       className={cn(
         NATIVE_CHAT_APPEARANCE_ROOT_CLASS,
         'flex h-full min-h-0 w-full flex-col focus:outline-none'

@@ -1,7 +1,7 @@
 export type AgentSessionAccountKind = 'managed' | 'system'
 
 /** Why no chat can start under the account a chat runs with, as the host's catalog probe found it.
- *  Absent (an older host, or no verdict yet) is unknown, which never blocks. */
+ *  Absent (an older host, or no verdict yet) is unknown, which shows nothing. */
 export type AgentSessionUnavailable =
   | { reason: 'notSignedIn'; account?: AgentSessionAccountKind }
   | { reason: 'cliMissing' }
@@ -35,25 +35,4 @@ export function agentSessionSignInCopyId(
     : account === 'managed'
       ? 'codexManagedNotSignedIn'
       : 'codexSystemNotSignedIn'
-}
-
-export function claudeInitializationSignedOut(initialization: unknown): boolean {
-  if (
-    typeof initialization !== 'object' ||
-    initialization === null ||
-    !('account' in initialization)
-  ) {
-    return false
-  }
-  const account = initialization.account
-  if (typeof account !== 'object' || account === null) {
-    return false
-  }
-  // An API key (ANTHROPIC_API_KEY or a Console /login key) reports tokenSource "none".
-  const apiKeySource = 'apiKeySource' in account ? account.apiKeySource : undefined
-  return (
-    'tokenSource' in account &&
-    account.tokenSource === 'none' &&
-    (typeof apiKeySource !== 'string' || apiKeySource === '' || apiKeySource === 'none')
-  )
 }

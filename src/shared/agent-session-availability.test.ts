@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  readAgentSessionUnavailable,
-  claudeInitializationSignedOut,
-  agentSessionSignInCopyId
-} from './agent-session-availability'
+import { readAgentSessionUnavailable, agentSessionSignInCopyId } from './agent-session-availability'
 import { agentSessionFailureSentence } from './agent-session-failure-words'
 import { AGENT_SESSION_FAILURE_COPY } from './agent-session-failure-copy'
 
@@ -27,28 +23,6 @@ describe("the host's sign-in and CLI verdict", () => {
     expect(readAgentSessionUnavailable({ reason: 'cliMissing', account: 'system' })).toEqual({
       reason: 'cliMissing'
     })
-  })
-  it.each([
-    null,
-    {},
-    { account: null },
-    { account: { tokenSource: 'oauth' } },
-    { account: { tokenSource: true } }
-  ])('unknown Claude initialization is not signed out %j', (value) => {
-    expect(claudeInitializationSignedOut(value)).toBe(false)
-  })
-  it('accepts only the explicit Claude token source none', () => {
-    expect(claudeInitializationSignedOut({ account: { tokenSource: 'none' } })).toBe(true)
-  })
-  it('an API key source is a sign-in beside tokenSource none', () => {
-    expect(
-      claudeInitializationSignedOut({
-        account: { tokenSource: 'none', apiKeySource: 'ANTHROPIC_API_KEY' }
-      })
-    ).toBe(false)
-    expect(
-      claudeInitializationSignedOut({ account: { tokenSource: 'none', apiKeySource: 'none' } })
-    ).toBe(true)
   })
   it.each([
     ['claude', 'system', 'claudeSystemNotSignedIn'],

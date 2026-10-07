@@ -1,17 +1,13 @@
-import { claudeInitializationSignedOut } from './agent-session-availability'
 import { assertJsonTextStructureWithinLimits } from './json-text-structure-limit'
 
 // Why: the Claude CLI has no model-listing subcommand (`claude models` starts a
-// chat session). A `list_models` control request over --print stream-json
-// returns the CLI's /model picker catalog without starting an API turn; the
-// catalog probe sends `initialize` before it in the same child, so the listing
-// is read only from the reply to its own request id. CLIs that predate the
-// request answer `{"subtype":"error"}` and still exit 0, so parsing yields no
-// models and callers keep their seed list.
-export const CLAUDE_MODEL_LIST_REQUEST_ID = 'orca-model-discovery'
+// chat session). One `list_models` control request over --print stream-json
+// returns the CLI's /model picker catalog without starting an API turn. CLIs
+// that predate the request answer `{"subtype":"error"}` and still exit 0, so
+// parsing yields no models and callers keep their seed list.
 export const CLAUDE_MODEL_LIST_STDIN = `${JSON.stringify({
   type: 'control_request',
-  request_id: CLAUDE_MODEL_LIST_REQUEST_ID,
+  request_id: 'orca-model-discovery',
   request: { subtype: 'list_models' }
 })}\n`
 
@@ -46,7 +42,6 @@ type RawControlResponse = {
   type?: unknown
   response?: {
     subtype?: unknown
-    request_id?: unknown
     response?: { models?: unknown }
   }
 }
@@ -102,11 +97,7 @@ export function parseClaudeModelList(stdout: string): ClaudeListedModel[] {
     } catch {
       continue
     }
-    if (
-      parsed.type !== 'control_response' ||
-      parsed.response?.subtype !== 'success' ||
-      parsed.response.request_id !== CLAUDE_MODEL_LIST_REQUEST_ID
-    ) {
+    if (parsed.type !== 'control_response' || parsed.response?.subtype !== 'success') {
       continue
     }
     const models = parsed.response.response?.models
@@ -130,48 +121,4 @@ export function parseClaudeModelList(stdout: string): ClaudeListedModel[] {
     }
   }
   return []
-}
-
-export const CLAUDE_CATALOG_INITIALIZE_ID = 'orca-catalog-initialize'
-export const CLAUDE_CATALOG_STDIN = `${JSON.stringify({
-  type: 'control_request',
-  request_id: CLAUDE_CATALOG_INITIALIZE_ID,
-  request: { subtype: 'initialize' }
-})}\n${CLAUDE_MODEL_LIST_STDIN}`
-
-export function claudeCatalogSignedOut(stdout: string): boolean {
-  for (const line of stdout.split(/\r?\n/)) {
-    if (!line.includes(CLAUDE_CATALOG_INITIALIZE_ID)) {
-      continue
-    }
-    try {
-      assertJsonTextStructureWithinLimits(line, CLAUDE_MODEL_LIST_JSON_LIMITS)
-      const parsed: unknown = JSON.parse(line)
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        !('type' in parsed) ||
-        parsed.type !== 'control_response' ||
-        !('response' in parsed)
-      ) {
-        continue
-      }
-      const response = parsed.response
-      if (
-        typeof response !== 'object' ||
-        response === null ||
-        !('request_id' in response) ||
-        response.request_id !== CLAUDE_CATALOG_INITIALIZE_ID ||
-        !('subtype' in response) ||
-        response.subtype !== 'success' ||
-        !('response' in response)
-      ) {
-        continue
-      }
-      return claudeInitializationSignedOut(response.response)
-    } catch {
-      /* Malformed provider output is unknown. */
-    }
-  }
-  return false
 }

@@ -5,7 +5,6 @@ import type {
 import type { StructuredAgentSessionOutboxEntry } from '../../../../shared/structured-agent-session-outbox'
 import { projectStructuredAgentSessionMessages as projectMessages } from '../../../../shared/structured-agent-session-message-projection'
 import { projectStructuredQuestionMessages } from './structured-agent-question-projection'
-import { isNativeChatHiddenStartFailureRow } from './native-chat-start-failure-presentation'
 
 /** The desktop's transcript: a message the host accepted and then rejected stays where it was
  *  sent, as not sent, unless the queue holds it as a card. */
@@ -15,7 +14,7 @@ export function projectStructuredAgentSessionMessages(
   submissions: readonly AgentJournalSubmission[]
 ) {
   return projectMessages(
-    items.filter((item) => !isNativeChatHiddenStartFailureRow(item)),
+    items,
     outbox,
     submissions,
     { rejectedInPlace: true },

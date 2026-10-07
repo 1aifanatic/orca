@@ -4,7 +4,7 @@ import type { AgentSessionFailureSay } from './agent-session-failure-copy'
 import type { AgentSessionFailureWordsContext } from './agent-session-failure-words'
 import { joinSentences } from './sentence-joining'
 
-// The sentences for a start no account or CLI on this host can make: also the disabled Send's.
+// The sentences for a start no account or CLI on this host can make: also the chat's notice.
 
 function agent(say: AgentSessionFailureSay, { agentName }: AgentSessionFailureWordsContext) {
   return { agent: agentName ?? say('theAgent') }

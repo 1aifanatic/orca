@@ -1,4 +1,3 @@
-import { nativeChatComposerSendState } from './native-chat-composer-send-state'
 import { useNativeChatComposerNotice } from './use-native-chat-composer-notice'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { forwardRef, useCallback, useState } from 'react'
@@ -12,6 +11,7 @@ import { useNativeChatLaunchDraftAdoption } from './use-native-chat-launch-draft
 import { NativeChatComposerField } from './NativeChatComposerField'
 import type { NativeChatResolvedTarget } from './native-chat-composer-target'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
+import { nativeChatImageSendBlock } from './native-chat-image-reattach'
 import { useNativeChatComposerHandle } from './use-native-chat-composer-handle'
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
 import { useNativeChatComposerKeyDown } from './use-native-chat-composer-keydown'
@@ -188,6 +188,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       attachResolvedPaths,
       setNotice
     })
+    const imageBlock = nativeChatImageSendBlock(imageAttachments)
+    const sendButtonDisabled = isWorking
+      ? !hasPty || !onStop
+      : disabled || imageBlock.holdsSend || (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
       terminalTabId,
@@ -370,12 +374,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         activeSuggestion={activeSuggestion}
         notices={notices}
         imageAttachments={imageAttachments}
-        {...nativeChatComposerSendState(
-          { agent, isWorking, hasPty, onStop, disabled },
-          draft,
-          imageAttachments,
-          structuredTransport?.unavailable ?? null
-        )}
+        sendButtonDisabled={sendButtonDisabled}
+        sendBlockedReason={imageBlock.reason}
         isWorking={isWorking}
         isStopping={isStopping}
         afterStop={afterStop}
