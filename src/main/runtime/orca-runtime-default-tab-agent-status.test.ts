@@ -3,6 +3,10 @@
 // phone must still read the agent's own titles for its status.
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
+import { getDefaultWorkspaceSession } from '../../shared/constants'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
+import { createMinimalPersistedTerminalTab } from '../persistence/restoring-sessions/session-owner-fields'
+import { buildHeadlessMobileSessionTerminalTabs } from './mobile-session-terminal-projection'
 import {
   provisionWorktreeTerminals,
   type WorktreeTerminalProvisioningHost
@@ -21,9 +25,10 @@ const AGENT_LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const AGENT_PTY_ID = 'pty-agent'
 
 async function createHeadlessRuntimeWithAgent(
-  connectionId: string | null = null
+  connectionId: string | null = null,
+  store: unknown = null
 ): Promise<{ runtime: OrcaRuntimeService; handle: string }> {
-  const runtime = new OrcaRuntimeService(null)
+  const runtime = new OrcaRuntimeService(store as never)
   const internals = runtime as unknown as {
     resolveTerminalWorkspaceLaunchScope: (selector: string) => Promise<unknown>
   }
@@ -112,22 +117,78 @@ describe('the agent tab a host-side create dresses as the first default tab', ()
   })
 
   it('titles the tab, never the pane, and keeps the title across a restart', async () => {
-    const { runtime, handle } = await createHeadlessRuntimeWithAgent()
+    // The spawn's pty binding has already saved the agent's tab when provisioning runs.
+    let session: WorkspaceSessionState = {
+      ...getDefaultWorkspaceSession(),
+      tabsByWorktree: {
+        [WORKTREE_ID]: [
+          createMinimalPersistedTerminalTab({
+            worktreeId: WORKTREE_ID,
+            tabId: AGENT_TAB_ID,
+            ptyId: AGENT_PTY_ID,
+            existingTabCount: 0
+          })
+        ]
+      }
+    }
+    const store = {
+      getSettings: () => ({}),
+      getRepos: () => [],
+      getRepo: () => undefined,
+      getWorkspaceSession: () => session,
+      setWorkspaceSession: (next: WorkspaceSessionState) => {
+        session = next
+      }
+    }
+    const { runtime, handle } = await createHeadlessRuntimeWithAgent(null, store)
     const renameTerminal = vi.fn()
     runtime.setNotifier({ renameTerminal } as never)
-    const persistHeadlessTerminalTitle = vi.spyOn(
-      runtime as unknown as {
-        persistHeadlessTerminalTitle: (worktreeId: string, tabId: string, title: string) => void
-      },
-      'persistHeadlessTerminalTitle'
-    )
 
     await dressAgentTab(runtime, handle)
 
     expect(renameTerminal).toHaveBeenCalledWith(AGENT_TAB_ID, 'Dev', { recordInteraction: false })
-    expect(persistHeadlessTerminalTitle).toHaveBeenCalledWith(WORKTREE_ID, AGENT_TAB_ID, 'Dev')
     const ptys = (runtime as unknown as { ptysById: Map<string, { title: string | null }> })
       .ptysById
     expect(ptys.get(AGENT_PTY_ID)?.title).toBeNull()
+    // A restarted headless host rebuilds the phone's tabs from the saved session.
+    const restored = buildHeadlessMobileSessionTerminalTabs(
+      WORKTREE_ID,
+      session.tabsByWorktree[WORKTREE_ID]!,
+      session
+    )
+    expect(restored).toEqual([
+      expect.objectContaining({ parentTabId: AGENT_TAB_ID, title: 'Dev', color: '#ff0000' })
+    ])
+  })
+
+  it("still titles the tab once the window's graph has taken over the handle", async () => {
+    const { runtime, handle } = await createHeadlessRuntimeWithAgent()
+    const renameTerminal = vi.fn()
+    runtime.setNotifier({ renameTerminal } as never)
+    runtime.attachWindow(1)
+    runtime.syncWindowGraph(1, {
+      tabs: [
+        {
+          tabId: AGENT_TAB_ID,
+          worktreeId: WORKTREE_ID,
+          title: 'Terminal',
+          activeLeafId: AGENT_LEAF_ID,
+          layout: null
+        }
+      ],
+      leaves: [
+        {
+          tabId: AGENT_TAB_ID,
+          worktreeId: WORKTREE_ID,
+          leafId: AGENT_LEAF_ID,
+          paneRuntimeId: 1,
+          ptyId: AGENT_PTY_ID
+        }
+      ]
+    })
+
+    await provisioningHost(runtime).setTabTitle(handle, 'Dev')
+
+    expect(renameTerminal).toHaveBeenCalledWith(AGENT_TAB_ID, 'Dev', { recordInteraction: false })
   })
 })
