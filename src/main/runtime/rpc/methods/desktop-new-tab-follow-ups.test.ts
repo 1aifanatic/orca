@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentLaunchFollowUpTake } from '../../../../shared/agent-launch-follow-up'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
@@ -21,10 +22,6 @@ import { activeAgentLaunchesFor } from './agent-launch-active-operations'
 const delivery = vi.hoisted(() =>
   vi.fn(async (_args: { onWriteUnconfirmed?: () => void }): Promise<boolean> => true)
 )
-// Exercise the admitted implementation while production advertisement stays disabled.
-vi.mock('./agent-launch-desktop-prompt-compatibility', () => ({
-  requireDesktopPromptCompatibility: () => {}
-}))
 vi.mock('./agent-launch-terminal-prompt', () => ({
   deliverTerminalAgentLaunchPrompt: delivery
 }))
@@ -39,6 +36,7 @@ const CALLER = {
   clientKind: 'runtime',
   clientCapabilities: [
     AGENT_LAUNCH_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
     AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
   ]
 } as const
@@ -93,7 +91,7 @@ describe('a reloaded desktop retains its live compatibility follow-up', () => {
       const take = () => TAKE.handler(TAKE.params.parse({}), context)
       const pendingLaunch = LAUNCH.handler(params, context)
       const result = pendingLaunch.catch((error: unknown) => error)
-      await entered
+      await Promise.race([entered, pendingLaunch])
       // Flush the real provisional record transaction before the reload asks.
       await store.transactOperations(() => undefined)
       expect(store.listOperationRows()[0]).toMatchObject({

@@ -9,7 +9,10 @@ import type { RuntimePtyController } from '../../runtime-pty-controller-contract
 import type { RpcContext } from '../core'
 import { methodNamed } from './agent-launch.test-fixture'
 import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
+import {
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+} from '../../../../shared/agent-launch-runtime-capability'
 import { desktopNewTabPromptDelivery } from '../../../../shared/desktop-new-tab-prompt'
 import { wrapTerminalBracketedPasteText } from '../../../../shared/terminal-bracketed-paste-text'
 
@@ -24,10 +27,6 @@ vi.mock('../../../git/worktree', () => ({
     .mockResolvedValue([
       { path: '/tmp/worktree-a', head: 'abc', branch: 'test', isBare: false, isMainWorktree: false }
     ])
-}))
-// Exercise the additive route without advertising it to production clients.
-vi.mock('./agent-launch-desktop-prompt-compatibility', () => ({
-  requireDesktopPromptCompatibility: () => {}
 }))
 const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
 const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
@@ -89,7 +88,10 @@ describe('desktop live input uses the existing optional-identity public route', 
           runtime,
           caller: DESKTOP_RPC_CALLER,
           clientKind: 'runtime',
-          clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+          clientCapabilities: [
+            AGENT_LAUNCH_RUNTIME_CAPABILITY,
+            AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+          ]
         }
         const params = LAUNCH.params.parse({
           agent: scenario.agent,
@@ -107,9 +109,12 @@ describe('desktop live input uses the existing optional-identity public route', 
           ? REPLAY.handler(REPLAY.params.parse(params), context)
           : LAUNCH.handler(params, context)
         if (scenario.pasted) {
-          await vi.waitFor(() =>
-            expect(writes).toHaveLength(params.prompt?.delivery === 'submit' ? 2 : 1)
-          )
+          await Promise.race([
+            pending,
+            vi.waitFor(() =>
+              expect(writes).toHaveLength(params.prompt?.delivery === 'submit' ? 2 : 1)
+            )
+          ])
         }
         await vi.runAllTimersAsync()
         const result = await pending

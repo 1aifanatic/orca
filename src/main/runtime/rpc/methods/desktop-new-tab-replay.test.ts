@@ -6,10 +6,20 @@ import { AgentLaunchReplay } from '../../../../shared/rpc-contract/agent-launch-
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import { desktopNewTabPromptDelivery } from '../../../../shared/desktop-new-tab-prompt'
-import { AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
+import {
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
+} from '../../../../shared/agent-launch-runtime-capability'
 import { admitAgentLaunchOperation } from './agent-launch-replay'
 import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
-import { rpcContext, runtimeStub, setAgentLaunchRecordStore } from './agent-launch.test-fixture'
+import {
+  methodNamed,
+  rpcContext,
+  runtimeStub,
+  setAgentLaunchRecordStore
+} from './agent-launch.test-fixture'
+import { AGENT_LAUNCH_METHODS } from './agent-launch'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { resumeOwedLaunchPrompts } from '../../../agent-launch/agent-launch-owed-prompt-resume'
@@ -32,10 +42,15 @@ beforeEach(async () => {
 afterEach(() => setAgentLaunchRecordStore(null))
 
 const PANE = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+const REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 const CALLER = {
   caller: DESKTOP_RPC_CALLER,
   clientKind: 'runtime',
-  clientCapabilities: [AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY]
+  clientCapabilities: [
+    AGENT_LAUNCH_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY,
+    AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
+  ]
 } as const
 const receipt = {
   mode: 'terminal',
@@ -141,6 +156,10 @@ describe('desktop compatibility records admission without a new future paste', (
             outcome: { ...provisional.outcome, handle: 'surviving-handle' }
           }
         })
+        if (replayed.decision !== 'replay') {
+          throw new Error('missing replay')
+        }
+        expect(await REPLAY.handler(params, context)).toEqual(replayed.result)
         expect(runtime.createTerminal).not.toHaveBeenCalled()
         expect(runtime.createManagedWorktree).not.toHaveBeenCalled()
         expect(store.listOperationRows()).toHaveLength(1)

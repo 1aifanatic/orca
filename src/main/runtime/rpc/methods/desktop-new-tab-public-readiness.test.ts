@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TerminalProcessInspection } from '../../../../shared/terminal-process-inspection'
-import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
+import {
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+} from '../../../../shared/agent-launch-runtime-capability'
 import { wrapTerminalBracketedPasteText } from '../../../../shared/terminal-bracketed-paste-text'
 import { createAgentPromptSubmissionRuntime } from '../../agent-prompt-submission-runtime-test-fixture'
 import { settledWriteStub } from '../../../providers/settled-pty-write-stub'
@@ -15,10 +18,6 @@ vi.mock('../../../git/worktree', () => {
   ]
   return { listWorktrees: list, listWorktreesStrict: list }
 })
-// The production capability stays disabled; only its admission gate is opened in this fixture.
-vi.mock('./agent-launch-desktop-prompt-compatibility', () => ({
-  requireDesktopPromptCompatibility: () => {}
-}))
 const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
 const LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const PANE = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
@@ -70,7 +69,10 @@ async function publicLaunchRig({
     runtime,
     caller: DESKTOP_RPC_CALLER,
     clientKind: 'runtime',
-    clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+    clientCapabilities: [
+      AGENT_LAUNCH_RUNTIME_CAPABILITY,
+      AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY
+    ]
   }
   const params = LAUNCH.params.parse({
     agent,
@@ -95,9 +97,12 @@ async function publicLaunchRig({
     startedAt: Date.now(),
     start: async () => {
       const pending = LAUNCH.handler(params, context)
-      await vi.waitFor(() =>
-        expect(composer.mock.calls.length + idle.mock.calls.length).toBeGreaterThan(0)
-      )
+      await Promise.race([
+        pending,
+        vi.waitFor(() =>
+          expect(composer.mock.calls.length + idle.mock.calls.length).toBeGreaterThan(0)
+        )
+      ])
       return { pending }
     }
   }
