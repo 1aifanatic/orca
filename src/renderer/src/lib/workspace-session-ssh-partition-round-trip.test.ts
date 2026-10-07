@@ -162,6 +162,17 @@ describe('ssh host partition hydration', () => {
     ])
   })
 
+  it('keeps local tabs when the ssh partition names the workspace but holds no tabs', async () => {
+    const read = await fetchWorkspaceSessionWithRuntimeHostOwners(
+      partitionedApi(strandedPartitions([], [tab('tab-local')])),
+      repos
+    )
+
+    expect(read.session.tabsByWorktree[WORKTREE_ID]?.map((entry) => entry.id)).toEqual([
+      'tab-local'
+    ])
+  })
+
   it("replaces a stray local copy's records for a tab id the ssh partition shares", async () => {
     // Relay reattach copied tab ids into `local`, so the stale and live rows can share a key.
     const partitions = strandedPartitions([tab('tab-shared')], [tab('tab-shared')])

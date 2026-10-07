@@ -312,8 +312,11 @@ export function adoptStrandedHostPartitionSession(
   for (const key of options.contestedSessionKeys ?? []) {
     contested.add(normalizeWorkspaceSessionKeyToWorkspaceId(key))
   }
+  // An owned workspace the host holds no tabs for keeps the base's tabs: no tabs is not a close.
   const hostOwns = (workspaceId: string): boolean =>
-    !contested.has(workspaceId) && !!options.ownedSessionKeys?.has(workspaceId)
+    !contested.has(workspaceId) &&
+    !!options.ownedSessionKeys?.has(workspaceId) &&
+    !hostHasNothingFor(host.tabsByWorktree?.[workspaceId])
   const adoptable = adoptableWorkspaceIds(base, host, hostOwns)
   for (const key of options.foreignSessionKeys ?? []) {
     adoptable.delete(normalizeWorkspaceSessionKeyToWorkspaceId(key))
