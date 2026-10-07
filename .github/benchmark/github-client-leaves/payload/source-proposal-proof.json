@@ -1,0 +1,166 @@
+{
+  "sourceHead": "29ad785b1cd000b580ba3b3da87affb835a601ad",
+  "sourceOnly": true,
+  "testsLaunched": false,
+  "trackedEdits": false,
+  "originalProposalImmutable": "notes/bun-migration/performance/github-client-unit-public-leaf-proposal-29ad/v2-preserved-public-facade",
+  "originalProposalHashes": {
+    "shipping.patch": "a4724bec4c9219c8f4828bf43b5496fd3f5babdaaecf44f9de4dc0b268461439",
+    "source-proof.json": "6144419d3ccbb892bccc85d7f844eb45c44bab7066bac12ed7c2d713c0f7511d",
+    "formatted-target-hashes.json": "e4a7b5bb55f7a7dcd4f6adeb04d8c914e2b96f8778d0a5a5c2c4b2e4478c2848",
+    "formatted-binding-and-mock-seam-proof.json": "6194f6802f689537ce19352e3384e729c6ee89f835d940b73e969995f7603d43",
+    "named-source-proof.json": "6b40cc7a70aa96eb760c92b07bfac5f97df1ee885dde534bb4b12e96800dd7f7",
+    "qualification-and-pilot-source-plan.json": "4f810a547726201f896f156d4dadc343ad4a59d446a34307bff61d5bd21f4465",
+    "README.md": "9040a446b257a3d4269c87882e9f0d113dd509841979bd560c477132227667dc",
+    "source-inventory.mjs": "05ed2ca3e5458a50bb6e60e11c86ea61d92fe65e6da00cd42cfb6ba5af963cdb",
+    "verify-formatted-source.mjs": "96c4d08976a3299b47ca97a644308829d3d42f5c1bfe2904134f4bccda611e63"
+  },
+  "testOnly27Targets": true,
+  "qualifiedFiles": [
+    "src/main/github/client-create-pr.test.ts",
+    "src/main/github/client-file-viewed.test.ts",
+    "src/main/github/client-issue-origin-preference.test.ts",
+    "src/main/github/client-issue-source.test.ts",
+    "src/main/github/client-merge-queue-auto-merge.test.ts",
+    "src/main/github/client-merged-pr-visibility.test.ts",
+    "src/main/github/client-pr-branch-discovery.test.ts",
+    "src/main/github/client-pr-check-details.test.ts",
+    "src/main/github/client-pr-checks.test.ts",
+    "src/main/github/client-pr-comment-reactions.test.ts",
+    "src/main/github/client-pr-conflict-summary.test.ts",
+    "src/main/github/client-pr-fallback-number.test.ts",
+    "src/main/github/client-pr-linked-lookup.test.ts",
+    "src/main/github/client-pr-push-target.test.ts",
+    "src/main/github/client-pr-state.test.ts",
+    "src/main/github/client-rate-limit-block.test.ts",
+    "src/main/github/client-ssh-provider-execution-boundary.test.ts",
+    "src/main/github/client-stack-merge-guard.test.ts",
+    "src/main/github/client-starred.test.ts",
+    "src/main/github/client-tracked-upstream-fork-owner.test.ts",
+    "src/main/github/client-tracked-upstream-snapshot.test.ts",
+    "src/main/github/client-work-item-check-summary.test.ts",
+    "src/main/github/client-work-items-query-paging.test.ts",
+    "src/main/github/client-work-items.test.ts",
+    "src/main/github/default-branch-stale-pr.test.ts",
+    "src/main/github/github-repository-identity.fork-owner-repo.test.ts",
+    "src/main/github/client-pr-local-runtime.test.ts"
+  ],
+  "preservedPublicFacadeFile": "src/main/github/client-pr-local-runtime.test.ts",
+  "preservedPublicFacadeSha256": "972fd5e9eee642702be023f39f9c4e33b95ebe16afdd1e618e4d2c6cd9365ee1",
+  "canonicalBindingAndMockProofSha256": "6194f6802f689537ce19352e3384e729c6ee89f835d940b73e969995f7603d43",
+  "publicFacadeAndProductionSourcesUnchanged": true,
+  "sourceRegistrationCountNotRuntimeCount": true,
+  "routeMatcher": "Node path.matchesGlob against491 actual named29ad patterns; actualCI runtime routes remain required",
+  "matchedNodePatterns": [
+    {
+      "file": "src/main/github/client-create-pr.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-file-viewed.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-issue-origin-preference.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-issue-source.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-merge-queue-auto-merge.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-merged-pr-visibility.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-branch-discovery.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-check-details.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-checks.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-comment-reactions.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-conflict-summary.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-fallback-number.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-linked-lookup.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-push-target.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-state.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-rate-limit-block.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-ssh-provider-execution-boundary.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-stack-merge-guard.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-starred.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-tracked-upstream-fork-owner.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-tracked-upstream-snapshot.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-work-item-check-summary.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-work-items-query-paging.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-work-items.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/default-branch-stale-pr.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/github-repository-identity.fork-owner-repo.test.ts",
+      "matches": []
+    },
+    {
+      "file": "src/main/github/client-pr-local-runtime.test.ts",
+      "matches": []
+    }
+  ],
+  "runtimeCountAndMap": null,
+  "safety": "Broad CI-only, native graph not declared locally safe."
+}
