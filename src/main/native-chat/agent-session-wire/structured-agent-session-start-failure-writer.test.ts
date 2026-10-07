@@ -15,12 +15,19 @@ import {
 import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
-import type { AgentSessionSubscribeEvent } from '../../../shared/agent-session-wire'
+import type {
+  AgentSessionSubscribeEvent,
+  AgentSessionTurnCompletionEvent
+} from '../../../shared/agent-session-wire'
+import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import {
   isStructuredAgentSessionStartFailureRow,
   structuredAgentSessionStartFailureRowIdentity
 } from '../../../shared/structured-agent-session-start-failure-row-key'
-import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
+import {
+  agentJournalItemKey,
+  agentJournalSubmissionKey
+} from '../../../shared/agent-session-journal-item-key'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import {
@@ -45,6 +52,7 @@ import { codexProviderHandle } from '../../../shared/agent-session-provider-hand
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
 
 const CALLER = { callerKey: 'client-1' }
+const SETUP_FAILURE = agentSessionFailureFact('managedAccountUnsupported')
 const SETUP_ROW = agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-1'))
 const EXIT_REASON = 'Claude Code is not signed in. Sign in with the Claude CLI'
 // A situation that could clear on its own, seen after the child was spawned.
@@ -82,7 +90,7 @@ let dispatch = vi.fn<StructuredAgentSessionAdapter['dispatch']>()
 let closeSession = vi.fn<NonNullable<StructuredAgentSessionAdapter['closeSession']>>()
 let frames: AgentSessionSubscribeEvent[] = []
 
-function exitBeforeProof(): Promise<void> {
+function exitBeforeProof(failure?: SubmissionRejectionFact): Promise<void> {
   return host.handleAdapterEvent({
     type: 'ended',
     sessionId: SESSION,
@@ -90,7 +98,8 @@ function exitBeforeProof(): Promise<void> {
     acquisitionGeneration: `generation-${generation}`,
     reason: EXIT_REASON,
     cause: 'unexpected-exit',
-    startupUnproven: true
+    startupUnproven: true,
+    ...(failure ? { failure } : {})
   })
 }
 
@@ -246,8 +255,9 @@ beforeEach(async () => {
   await expect(host.attach(CALLER, hostTestAttachParams(null))).resolves.toMatchObject({
     ok: true
   })
-  // The first child (generation-1) is lost at setup; the first send starts generation-2.
-  await exitBeforeProof()
+  // The first child (generation-1) is lost at setup; the first send starts generation-2. Its row
+  // states another failure, so it never speaks for a test's own failed start.
+  await exitBeforeProof(SETUP_FAILURE)
   await host.subscribe({ id: 'pane', sessionId: SESSION, emit: (event) => frames.push(event) })
 })
 
@@ -458,14 +468,15 @@ describe('a start that fails while its child exits', () => {
     await eventually(async () =>
       expect(await submission(queued)).toMatchObject({ dispatchState: 'rejected' })
     )
-    expect(await submission(handed)).toMatchObject({
-      dispatchState: 'rejected',
-      rejection: PROVIDER_START_FAILED
-    })
-    // One row each: the exit's for the handed message, the loop's for the queued one.
+    for (const id of [handed, queued]) {
+      expect(await submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: PROVIDER_START_FAILED
+      })
+    }
+    // The exit's row for the handed message; the queued one failed alike, so it reads under it.
     expect(await startRows()).toEqual([
-      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2')),
-      rowFor(queued)
+      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
     ])
   })
 
@@ -489,6 +500,162 @@ describe('a start that fails while its child exits', () => {
     // Never in doubt on the way: the child it was handed to took nothing.
     expect(framedStates(handed)).not.toContain('unknown')
     // The exit rejected it, so the exit writes the start's one row.
+    expect(await startRows()).toEqual([
+      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
+    ])
+  })
+})
+
+// One row speaks for a run of starts that fail alike, until a turn is delivered. Each message still
+// makes its own start and is rejected on its own; the run's row says why for all of them.
+describe('a run of starts that fail alike', () => {
+  const accepted: StructuredAgentSessionAdapter['dispatch'] = async () => ({
+    state: 'accepted',
+    providerIdentity: {
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: `turn-${dispatch.mock.calls.length}`,
+      ordinal: dispatch.mock.calls.length
+    }
+  })
+
+  const NOT_SIGNED_IN = agentSessionFailureFact('notSignedIn')
+
+  it('writes one row when every start fails not signed in, each message making its own attempt', async () => {
+    const completions: AgentSessionTurnCompletionEvent[] = []
+    host.subscribeTurnCompletions({ id: 'dot', emit: (event) => completions.push(event) })
+    const first = await sendQueued('first')
+    const second = await send('second')
+    const third = await send('third')
+    awaitStarted.mockImplementation(async () => NOT_SIGNED_IN)
+
+    settleStart(NOT_SIGNED_IN)
+
+    await eventually(async () =>
+      expect(await submission(third)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    for (const id of [first, second, third]) {
+      expect(await submission(id)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: NOT_SIGNED_IN
+      })
+    }
+    // Setup's child was generation-1; each message made its own start.
+    expect(generation).toBe(4)
+    expect(await startRows()).toEqual([rowFor(first)])
+    await host.flushStreamedEvents(SESSION)
+    expect(completions).toHaveLength(1)
+    // A client that hides rejected messages reads the run's one row, as before.
+    const snapshot = await host.journalSnapshot(SESSION)
+    const row = snapshot.items.find((item) => item.itemId === rowFor(first))?.body
+    const drawn = projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
+      rejectedInPlace: false
+    })
+    const texts = drawn.flatMap((message) =>
+      message.blocks.flatMap((block) => ('text' in block ? [block.text] : []))
+    )
+    expect(row?.kind === 'status' ? texts.filter((text) => text === row.text) : []).toHaveLength(1)
+    for (const id of [first, second, third]) {
+      expect(drawn.map((message) => message.id)).not.toContain(agentJournalSubmissionKey(id))
+    }
+  })
+
+  it('writes one row when a start fails once and the messages behind it are delivered', async () => {
+    dispatch.mockImplementation(accepted)
+    const first = await sendQueued('first')
+    const second = await send('second')
+    const third = await send('third')
+
+    await exitBeforeProof()
+    awaitStarted.mockImplementation(async () => undefined)
+    settleStart(undefined)
+
+    await eventually(() => expect(dispatched()).toEqual([second, third]))
+    expect(await submission(first)).toMatchObject({
+      dispatchState: 'rejected',
+      rejection: PROVIDER_START_FAILED
+    })
+    for (const id of [second, third]) {
+      expect(await submission(id)).toMatchObject({ dispatchState: 'accepted' })
+    }
+    expect(await startRows()).toEqual([rowFor(first)])
+  })
+
+  it('writes a row for each failure when the starts fail differently', async () => {
+    const first = await sendQueued('first')
+    const second = await send('second')
+    awaitStarted.mockImplementation(async () => TRANSIENT)
+
+    settleStart(DISPATCH_FAULT)
+
+    await eventually(async () =>
+      expect(await submission(second)).toMatchObject({
+        dispatchState: 'rejected',
+        ...TRANSIENT_WORDS
+      })
+    )
+    expect(await startRows()).toEqual([rowFor(first), rowFor(second)])
+  })
+
+  it('writes a row again for a failure alike once a turn was delivered after the last row', async () => {
+    dispatch.mockImplementation(accepted)
+    const first = await sendQueued('first')
+    awaitStarted.mockImplementationOnce(async () => undefined)
+    settleStart(DISPATCH_FAULT)
+    await eventually(async () =>
+      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    const delivered = await send('delivered')
+    await eventually(async () =>
+      expect(await submission(delivered)).toMatchObject({ dispatchState: 'accepted' })
+    )
+    // The delivered turn's child proved its start and later ends, so the next message makes its own.
+    const child = {
+      sessionId: SESSION,
+      fence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0,
+      acquisitionGeneration: `generation-${generation}`
+    }
+    await host.handleAdapterEvent({
+      type: 'started',
+      ...child,
+      reportedOptions: { model: 'gpt-5' },
+      restoreSkippedOptions: []
+    })
+    await host.handleAdapterEvent({
+      type: 'ended',
+      ...child,
+      reason: 'codex app-server exited',
+      cause: 'unexpected-exit'
+    })
+    awaitStarted.mockImplementation(async () => DISPATCH_FAULT)
+
+    const last = await send('last')
+
+    await eventually(async () =>
+      expect(await submission(last)).toMatchObject({ dispatchState: 'rejected', ...DISPATCH_WORDS })
+    )
+    expect(await startRows()).toEqual([rowFor(first), rowFor(last)])
+  })
+
+  it("writes no row for an exit that fails alike its run's row, though it rejected the message", async () => {
+    awaitStarted.mockImplementation(async () => undefined)
+    const first = await send('first')
+    await eventually(() => expect(dispatch).toHaveBeenCalledOnce())
+    await exitBeforeProof()
+    await eventually(async () =>
+      expect(await submission(first)).toMatchObject({ dispatchState: 'rejected' })
+    )
+    const second = await send('second')
+    await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
+
+    await exitBeforeProof()
+
+    await eventually(async () =>
+      expect(await submission(second)).toMatchObject({
+        dispatchState: 'rejected',
+        rejection: PROVIDER_START_FAILED
+      })
+    )
     expect(await startRows()).toEqual([
       agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
     ])

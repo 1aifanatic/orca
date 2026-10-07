@@ -19,6 +19,7 @@
 import {
   readAgentSessionFailureFact,
   readWholeAgentSessionFailureFact,
+  sameAgentSessionFailureFact,
   type AgentSessionFailureFact
 } from '../../../../shared/agent-session-failure'
 import {
@@ -80,24 +81,6 @@ export function structuredAgentSessionStartFailureFacts(
     }
   }
   return stated
-}
-
-/** Whether two facts are one failure: a start's row and the messages it rejected share one. */
-export function sameAgentSessionFailureFact(
-  a: AgentSessionFailureFact,
-  b: AgentSessionFailureFact
-): boolean {
-  return (
-    a.kind === b.kind &&
-    a.detail?.text === b.detail?.text &&
-    a.detail?.audience === b.detail?.audience &&
-    a.refusal?.code === b.refusal?.code &&
-    a.refusal?.details?.reason === b.refusal?.details?.reason &&
-    a.attachment?.reason === b.attachment?.reason &&
-    a.attachment?.limit === b.attachment?.limit &&
-    a.retry?.error === b.retry?.error &&
-    a.retry?.status === b.retry?.status
-  )
 }
 
 /** Whether one of these start-failure rows already states this failure. Matching is identity, not

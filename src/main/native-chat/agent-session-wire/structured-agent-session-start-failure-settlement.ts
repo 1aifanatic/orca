@@ -3,7 +3,8 @@
 // writes it for the queued message a start was for, the handover for the message it was handing
 // over; the exit writes one row keyed by the start for the handed messages it rejected, or for a
 // start no message carries. Each message state has one writer, and `rejected` is terminal, so no
-// message is failed twice.
+// message is failed twice. A start failing as its run's row already says writes no row; its message
+// is read under that one.
 
 import type {
   AgentJournalDispatchRejection,
@@ -28,7 +29,7 @@ import { structuredAgentSessionFailureWordsContext } from './structured-agent-se
 
 type StartFailureJournal = Pick<
   AgentSessionJournal,
-  'submissions' | 'itemBody' | 'appendLifecycleBatch'
+  'submissions' | 'itemBody' | 'appendLifecycleBatch' | 'startFailureAlreadyStated'
 >
 
 /** A failed start's row in the chat: an error row keyed by its message (or by the start, from the
@@ -47,10 +48,10 @@ export function structuredAgentSessionStartFailureRow(
 }
 
 /** Rejects a message its start failed and writes that start's row with it, keyed by the message, in
- *  one append. Writes nothing once `which` no longer holds for it: Stop withdrew it, or another
- *  writer settled it. */
+ *  one append; no row when the run's row already states it. Writes nothing once `which` no longer
+ *  holds for it: Stop withdrew it, or another writer settled it. */
 export async function rejectWithStartFailureRow(
-  journal: Pick<AgentSessionJournal, 'appendLifecycleBatch'>,
+  journal: Pick<AgentSessionJournal, 'appendLifecycleBatch' | 'startFailureAlreadyStated'>,
   input: {
     clientMessageId: string
     words: AgentJournalDispatchRejection
@@ -63,7 +64,9 @@ export async function rejectWithStartFailureRow(
     settlementId: `start-failure:${clientMessageId}`,
     fence,
     recovered: true,
-    mutations: [structuredAgentSessionStartFailureRow(clientMessageId, words)],
+    mutations: journal.startFailureAlreadyStated(words.rejection)
+      ? []
+      : [structuredAgentSessionStartFailureRow(clientMessageId, words)],
     rejects: { clientMessageId, ...words, which }
   })
 }
@@ -119,6 +122,35 @@ export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence
     submission.fence === fence &&
     isFailedStartOrHostFault({ reason: submission.reason ?? null, rejection: submission.rejection })
   )
+}
+
+/** The row an exit during startup writes for its start. The messages it rejected take this row.
+ *  With none, a message still waiting on the start is the delivery loop's to record with its own
+ *  row, and one already rejected as this start's failure has its writer's; anything else — a
+ *  command, goal or rewind start, or one no message is charged with — has only this row to say why.
+ *  None when its run's row already says it. */
+export function exitStartFailureRow(
+  journal: {
+    submissions?: () => FailedStartSubmission[]
+    startFailureAlreadyStated?: AgentSessionJournal['startFailureAlreadyStated']
+  },
+  exit: {
+    startKey: string
+    fence: number
+    rejectedAny: boolean
+    chargedToQueued: boolean
+    words: AgentJournalDispatchRejection
+  }
+): JournalLifecycleMutationInput[] {
+  const recordedElsewhere =
+    !exit.rejectedAny &&
+    (exit.chargedToQueued ||
+      (journal.submissions?.() ?? []).some((submission) =>
+        rejectedAsFailedStartAt(submission, exit.fence)
+      ))
+  return recordedElsewhere || journal.startFailureAlreadyStated?.(exit.words.rejection) === true
+    ? []
+    : [structuredAgentSessionStartFailureRow(exit.startKey, exit.words)]
 }
 
 export function oldestQueuedSubmission(

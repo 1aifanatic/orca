@@ -158,6 +158,33 @@ describe('a message rejected by a start whose row already says why', () => {
     ).toEqual({ [key('first')]: NOT_SENT, [key('second')]: NOT_SENT })
   })
 
+  // This host: a run of starts that fail alike writes only its first message's row.
+  it('hushes the messages of a run under its one row, and not one that failed otherwise', () => {
+    expect(
+      noticesFor(
+        [
+          ['first', startFailed],
+          ['second', startFailed],
+          ['third', startFailed],
+          ['other', otherRefusal]
+        ],
+        [
+          messageAt('first', 1),
+          row('first', startFailed, 2),
+          messageAt('second', 3),
+          messageAt('third', 4),
+          messageAt('other', 5)
+        ]
+      )
+    ).toEqual({
+      [key('first')]: NOT_SENT,
+      [key('second')]: NOT_SENT,
+      [key('third')]: NOT_SENT,
+      [key('other')]:
+        "Claude couldn't start. This chat is still open in a terminal agent. Quit that agent to continue the chat here."
+    })
+  })
+
   it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
     const stated = { itemId: rowKey('first'), fact: startFailed }
     expect(texts([rejected('first', startFailed)], [], [stated])).toEqual({

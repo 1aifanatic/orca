@@ -31,11 +31,13 @@ export class JournalLifecycleBatchAppender {
     const { rejects } = input
     if (rejects) {
       // Planned on the lane: the send if it is still `which` then, and this batch unless it already
-      // landed. With the send settled meanwhile it failed no one, so nothing is written.
+      // landed or is empty. With the send settled meanwhile it failed no one, so nothing is written.
       return this.deps
         .enqueueRows(() => {
           const rejections = journalBatchRejectionRowBuilders(this.deps.state, input.fence, rejects)
-          return rejections.length === 0 || this.wasApplied(input.settlementId)
+          return rejections.length === 0 ||
+            input.mutations.length === 0 ||
+            this.wasApplied(input.settlementId)
             ? rejections
             : [
                 ...rejections,

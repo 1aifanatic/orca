@@ -24,10 +24,7 @@ import {
   type AgentSessionFailureWordsContext
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
-import {
-  rejectedAsFailedStartAt,
-  structuredAgentSessionStartFailureRow
-} from './structured-agent-session-start-failure-settlement'
+import { exitStartFailureRow } from './structured-agent-session-start-failure-settlement'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   endedByPersonsStop,
@@ -62,6 +59,7 @@ export type DeadGenerationJournal = Omit<UnopenedSendJournal, 'submissions'> & {
   markPendingSubmissionsUnknown: AgentSessionJournal['markPendingSubmissionsUnknown']
   rejectPendingSubmissions: AgentSessionJournal['rejectPendingSubmissions']
   pendingSubmissions?: AgentSessionJournal['pendingSubmissions']
+  startFailureAlreadyStated?: AgentSessionJournal['startFailureAlreadyStated']
 }
 
 export type StructuredAgentSessionUnfinishedWork = {
@@ -156,20 +154,15 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     const items = input.journal.snapshot().items
     const mutations: JournalLifecycleMutationInput[] = []
     if (showUnexpectedExitOutcome && input.exitedDuringStartup && startupFailure) {
-      const startKey = input.exitedDuringStartup.generation ?? input.settlementId
-      // The messages handed to this child take this row. With none, a message still waiting on the
-      // start is the delivery loop's to record with its own row, and one already rejected as this
-      // start's failure has its writer's; anything else — a command, goal or rewind start, or one
-      // no message is charged with — has only this row to say why.
-      const recordedElsewhere =
-        settled.length === 0 &&
-        (input.exitedDuringStartup.chargedToQueued === true ||
-          (input.journal.submissions?.() ?? []).some((submission) =>
-            rejectedAsFailedStartAt(submission, input.fence)
-          ))
-      if (!recordedElsewhere) {
-        mutations.push(structuredAgentSessionStartFailureRow(startKey, startupFailure))
-      }
+      mutations.push(
+        ...exitStartFailureRow(input.journal, {
+          startKey: input.exitedDuringStartup.generation ?? input.settlementId,
+          fence: input.fence,
+          rejectedAny: settled.length > 0,
+          chargedToQueued: input.exitedDuringStartup.chargedToQueued === true,
+          words: startupFailure
+        })
+      )
     } else if (showUnexpectedExitOutcome) {
       // The turn the exit ended, and an error so no fold ever hides why it stopped.
       mutations.push({

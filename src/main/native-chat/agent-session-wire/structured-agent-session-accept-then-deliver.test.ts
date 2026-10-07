@@ -376,8 +376,8 @@ describe('a start the chat needed and did not get', () => {
       })
     }
     expect(acquire.mock.calls.length).toBeGreaterThanOrEqual(4)
-    // One row per failed start: each message's own.
-    expect(await errorRows()).toHaveLength(3)
+    // One row for the run: the starts all failed alike, with nothing delivered between.
+    expect(await errorRows()).toHaveLength(1)
     await host.flushAllStreamedEvents()
     expect(completions).toEqual([
       {
@@ -601,7 +601,7 @@ describe('a child that exits before its message is handed over', () => {
 })
 
 describe('a start whose failure the delivery loop settles before the exit is published', () => {
-  it('rejects each message in the words of its own start, one row each, and the exit adds none', async () => {
+  it('rejects each message in the words of its own start, one row for the run, and the exit adds none', async () => {
     // The adapter's startup answer and its later exit event word the same start differently.
     const awaitStarted = vi.fn(async () => agentSessionFailureFact('startFailed'))
     adapterExtras = { awaitStarted }
@@ -642,8 +642,8 @@ describe('a start whose failure the delivery loop settles before the exit is pub
         rejection: words.rejection
       })
     }
-    // One row per failed start; the exit adds none.
-    expect(await errorRows()).toEqual([words.reason, words.reason])
+    // Both starts failed alike with nothing delivered between: one row; the exit adds none.
+    expect(await errorRows()).toEqual([words.reason])
   })
 })
 

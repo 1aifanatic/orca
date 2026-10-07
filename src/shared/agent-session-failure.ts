@@ -251,6 +251,25 @@ export function readWholeAgentSessionFailureFact(
   return fact && structuralValuesEqualIgnoringUndefined(fact, value) ? fact : undefined
 }
 
+/** Whether two facts are one failure, compared by their fields, never their words: a start's row
+ *  and the messages it rejected share one, and the host writes one row for a run of them. */
+export function sameAgentSessionFailureFact(
+  a: AgentSessionFailureFact,
+  b: AgentSessionFailureFact
+): boolean {
+  return (
+    a.kind === b.kind &&
+    a.detail?.text === b.detail?.text &&
+    a.detail?.audience === b.detail?.audience &&
+    a.refusal?.code === b.refusal?.code &&
+    a.refusal?.details?.reason === b.refusal?.details?.reason &&
+    a.attachment?.reason === b.attachment?.reason &&
+    a.attachment?.limit === b.attachment?.limit &&
+    a.retry?.error === b.retry?.error &&
+    a.retry?.status === b.retry?.status
+  )
+}
+
 /** The provider-authored diagnostic an error carries, set only where it was composed. Follows the
  *  `cause` chain, since wrappers such as the acquisition errors keep the original as their cause. */
 export function providerDiagnosticOf(error: unknown): ProviderDiagnostic | undefined {

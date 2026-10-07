@@ -16,6 +16,7 @@ import {
 } from '../../../shared/agent-session-journal-types'
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import type { AgentSessionJournal } from './journal-store'
+import { MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS } from './journal-row-schema'
 import {
   closeTestJournalHostDatabases,
   createTrackedJournalOpener
@@ -101,13 +102,27 @@ it('writes neither when the row cannot be written', async () => {
   const journal = await openWithQueued('first')
   const before = journal.cursor().sequence
 
-  // An empty batch breaks the row's bound, so the transaction rolls back as a whole.
-  await expect(journal.appendLifecycleBatch(startFailureBatch(0))).rejects.toThrow(
-    'journal_lifecycle_batch_mutation_bound_exceeded'
-  )
+  // A batch over the row's bound fails to build, so the transaction rolls back as a whole.
+  await expect(
+    journal.appendLifecycleBatch(startFailureBatch(MAX_JOURNAL_LIFECYCLE_BATCH_MUTATIONS + 1))
+  ).rejects.toThrow('journal_lifecycle_batch_mutation_bound_exceeded')
 
   expect(journal.cursor().sequence).toBe(before)
   expect(journal.submissions().map((entry) => entry.dispatchState)).toEqual(['pending'])
+})
+
+// A start failing as its run's row already says rejects its message and writes no row.
+it('writes only the rejection when the batch carries no row', async () => {
+  const journal = await openWithQueued('first', 'second')
+  const before = journal.cursor().sequence
+
+  await journal.appendLifecycleBatch(startFailureBatch(0))
+
+  expect(journal.cursor().sequence).toBe(before + 1)
+  expect(journal.submissions().map((entry) => entry.dispatchState)).toEqual(['rejected', 'pending'])
+  expect(journal.snapshot().items.map((item) => item.itemId)).not.toContain(
+    'orca:start-failure%3Afirst'
+  )
 })
 
 // A Stop that reaches the lane first takes the message back; the failed start then failed no one.
