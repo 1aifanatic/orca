@@ -6,7 +6,8 @@ import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
   CLAUDE_PROFILE_MISSING_MESSAGE,
   CLAUDE_PROFILE_POINTER_ENV,
-  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
+  CLAUDE_USER_CONFIG_DIR_ENV
 } from '../../shared/claude-profile-routing'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
@@ -207,7 +208,12 @@ export class ClaudeProfileRouter {
       return { [CLAUDE_PROFILE_POINTER_ENV]: `~/${wslClaudeProfilePointer(this.args.dataRoot)}` }
     }
     try {
-      return this.launchEnv()
+      const env = this.launchEnv()
+      const userConfigDir = this.userConfigDir()
+      // Why: the injected value replaces the user's own; the claude function restores it on System default.
+      return env.CLAUDE_CONFIG_DIR && userConfigDir
+        ? { ...env, [CLAUDE_USER_CONFIG_DIR_ENV]: userConfigDir }
+        : env
     } catch {
       return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath }
     }

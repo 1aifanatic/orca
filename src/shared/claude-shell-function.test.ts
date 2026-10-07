@@ -84,6 +84,22 @@ describe.each(SHELLS)('the claude function in %s', (shell) => {
     expect(f.run(shell, injected(f.a)).stdout).toBe('HOME=default KEY=fake TWIN=none\n')
   })
 
+  it('restores the user’s own value Orca replaced when switched back to System default', () => {
+    const f = fixture()
+    const own = ['ORCA_CLAUDE_USER_CONFIG_DIR=/user/own']
+    writeFileSync(f.pointer, f.a)
+    const account = f.run(shell, [...injected(f.a), ...own])
+    expect(account.stdout).toBe(`HOME=${f.a} KEY=none TWIN=${f.a}\n`)
+    writeFileSync(f.pointer, '')
+    const restored = f.run(shell, [...injected(f.a), ...own])
+    expect(restored.stdout).toBe('HOME=/user/own KEY=fake TWIN=none\n')
+    // An rc export still wins, and a value the user unset stays unset.
+    const rc = ['CLAUDE_CONFIG_DIR=/rc/own', `ORCA_CLAUDE_INJECTED_CONFIG_DIR=${f.a}`, ...own]
+    expect(f.run(shell, rc).stdout).toBe(`HOME=/rc/own KEY=fake TWIN=${f.a}\n`)
+    const unset = f.run(shell, [`ORCA_CLAUDE_INJECTED_CONFIG_DIR=${f.a}`, ...own])
+    expect(unset.stdout).toBe('HOME=default KEY=fake TWIN=none\n')
+  })
+
   it('reads a WSL pane’s home-relative pointer against $HOME', () => {
     const f = fixture()
     writeFileSync(f.pointer, f.a)
@@ -123,5 +139,15 @@ it('restores PowerShell process env without creating empty variables', () => {
 it('trims the PowerShell pointer read as POSIX command substitution does', () => {
   expect(getPowerShellClaudeShellFunction()).toContain(
     '[IO.File]::ReadAllText($env:ORCA_CLAUDE_PROFILE_POINTER).TrimEnd()'
+  )
+})
+
+it('restores the user’s own value on PowerShell System default rather than removing it', () => {
+  const script = getPowerShellClaudeShellFunction()
+  expect(script).toContain(
+    'if ($env:CLAUDE_CONFIG_DIR -and $env:ORCA_CLAUDE_USER_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR = $env:ORCA_CLAUDE_USER_CONFIG_DIR }'
+  )
+  expect(script).not.toContain(
+    'Remove-Item Env:CLAUDE_CONFIG_DIR, Env:ORCA_CLAUDE_INJECTED_CONFIG_DIR'
   )
 })

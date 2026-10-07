@@ -149,6 +149,10 @@ if [[ -n "${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "${__orca_claude_binary:-}" &&
       [ -z "$__orca_claude_home" ] || [ "$__orca_claude_home" = "$CLAUDE_CONFIG_DIR" ] || printf '%s\n' 'Orca: CLAUDE_CONFIG_DIR is set in this shell, so the Claude account selected in Orca is not used here.' >&2
       command claude "$@"; return
     fi
+    # Why: Orca's value replaced the user's own at spawn, so System default restores theirs.
+    if [ -z "$__orca_claude_home" ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ -n "${ORCA_CLAUDE_USER_CONFIG_DIR:-}" ]; then
+      ( unset ORCA_CLAUDE_INJECTED_CONFIG_DIR; export CLAUDE_CONFIG_DIR="$ORCA_CLAUDE_USER_CONFIG_DIR"; command claude "$@" ); return
+    fi
     if [ -z "$__orca_claude_home" ]; then
       ( unset CLAUDE_CONFIG_DIR ORCA_CLAUDE_INJECTED_CONFIG_DIR; command claude "$@" ); return
     fi

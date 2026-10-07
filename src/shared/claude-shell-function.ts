@@ -12,8 +12,8 @@ const MISSING_NOTE = `Orca: ${CLAUDE_PROFILE_MISSING_MESSAGE}`
 /**
  * `claude` re-reads the which-account file on every launch, so a switch reaches open terminals
  * (superset's wrapper rule). Defined only in a pane Orca routed (pointer env set) where `claude` is
- * a real executable. A missing or empty file is System default; a CLAUDE_CONFIG_DIR the user set,
- * as opposed to Orca's twin-marked value, wins.
+ * a real executable. A missing or empty file is System default, which restores the user's own value
+ * Orca's replaced; a CLAUDE_CONFIG_DIR the user set, as opposed to Orca's twin-marked value, wins.
  */
 export function getPosixClaudeShellFunction(): string {
   return `__orca_claude_binary="$(unalias claude 2>/dev/null || :; command -v claude 2>/dev/null || :)"
@@ -26,6 +26,10 @@ if [[ -n "\${ORCA_CLAUDE_PROFILE_POINTER:-}" && -n "\${__orca_claude_binary:-}" 
     if [ -n "\${CLAUDE_CONFIG_DIR:-}" ] && [ "$CLAUDE_CONFIG_DIR" != "\${ORCA_CLAUDE_INJECTED_CONFIG_DIR:-}" ]; then
       [ -z "$__orca_claude_home" ] || [ "$__orca_claude_home" = "$CLAUDE_CONFIG_DIR" ] || printf '%s\\n' '${OVERRIDE_NOTE}' >&2
       command claude "$@"; return
+    fi
+    # Why: Orca's value replaced the user's own at spawn, so System default restores theirs.
+    if [ -z "$__orca_claude_home" ] && [ -n "\${CLAUDE_CONFIG_DIR:-}" ] && [ -n "\${ORCA_CLAUDE_USER_CONFIG_DIR:-}" ]; then
+      ( unset ORCA_CLAUDE_INJECTED_CONFIG_DIR; export CLAUDE_CONFIG_DIR="$ORCA_CLAUDE_USER_CONFIG_DIR"; command claude "$@" ); return
     fi
     if [ -z "$__orca_claude_home" ]; then
       ( unset CLAUDE_CONFIG_DIR ORCA_CLAUDE_INJECTED_CONFIG_DIR; command claude "$@" ); return
@@ -52,6 +56,10 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
         echo '${OVERRIDE_NOTE}' >&2
       end
       command claude $argv
+      return $status
+    end
+    if test -z "$profile"; and test -n "$CLAUDE_CONFIG_DIR"; and test -n "$ORCA_CLAUDE_USER_CONFIG_DIR"
+      env -u ORCA_CLAUDE_INJECTED_CONFIG_DIR CLAUDE_CONFIG_DIR="$ORCA_CLAUDE_USER_CONFIG_DIR" claude $argv
       return $status
     end
     if test -z "$profile"
@@ -90,7 +98,9 @@ function Global:claude {
         if ($env:CLAUDE_CONFIG_DIR -and $env:CLAUDE_CONFIG_DIR -ne $env:ORCA_CLAUDE_INJECTED_CONFIG_DIR) {
             if ($orcaClaudeHome -and $orcaClaudeHome -ne $env:CLAUDE_CONFIG_DIR) { [Console]::Error.WriteLine('${OVERRIDE_NOTE}') }
         } elseif (-not $orcaClaudeHome) {
-            Remove-Item Env:CLAUDE_CONFIG_DIR, Env:ORCA_CLAUDE_INJECTED_CONFIG_DIR -ErrorAction SilentlyContinue
+            Remove-Item Env:ORCA_CLAUDE_INJECTED_CONFIG_DIR -ErrorAction SilentlyContinue
+            if ($env:CLAUDE_CONFIG_DIR -and $env:ORCA_CLAUDE_USER_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR = $env:ORCA_CLAUDE_USER_CONFIG_DIR }
+            else { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue }
         } elseif (-not [IO.Directory]::Exists($orcaClaudeHome)) {
             throw "${MISSING_NOTE}"
         } else {

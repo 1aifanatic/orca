@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -22,6 +24,7 @@ import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
   CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
 } from '../../shared/claude-profile-routing'
+import { getPosixClaudeShellFunction } from '../../shared/claude-shell-function'
 import { ClaudeProfileRouter, type ClaudeProfileRouterSettings } from './claude-profile-router'
 import {
   claudeProfileHistoryDirs,
@@ -243,6 +246,51 @@ describe('ClaudeProfileRouter', () => {
     expect(f.router.preparation().envPatch).not.toHaveProperty('CLAUDE_CONFIG_DIR')
   })
 
+  it('carries the user’s own value beside an account terminal’s injected one', () => {
+    const f = fixture({ CLAUDE_CONFIG_DIR: resolve('/user/own') })
+    mkdirSync(f.home('a'), { recursive: true })
+    expect(f.router.terminalEnv()).toEqual({
+      ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath,
+      CLAUDE_CONFIG_DIR: f.home('a'),
+      ORCA_CLAUDE_INJECTED_CONFIG_DIR: f.home('a'),
+      ORCA_CLAUDE_USER_CONFIG_DIR: resolve('/user/own')
+    })
+    expect(f.router.preparation().envPatch).not.toHaveProperty('ORCA_CLAUDE_USER_CONFIG_DIR')
+    f.settings.activeClaudeManagedAccountId = null
+    expect(f.router.terminalEnv()).toEqual({ ORCA_CLAUDE_PROFILE_POINTER: f.router.pointerPath })
+    const none = fixture()
+    mkdirSync(none.home('a'), { recursive: true })
+    expect(none.router.terminalEnv()).not.toHaveProperty('ORCA_CLAUDE_USER_CONFIG_DIR')
+  })
+
+  // Why not win32: runs the POSIX claude function under bash.
+  it.skipIf(process.platform === 'win32')(
+    'gives an account terminal back the inherited CLAUDE_CONFIG_DIR, or none, on System default',
+    () => {
+      for (const inherited of [{ CLAUDE_CONFIG_DIR: resolve('/user/own') }, {}]) {
+        const f = fixture(inherited)
+        mkdirSync(f.home('a'), { recursive: true })
+        const bin = join(f.root, 'bin')
+        mkdirSync(bin)
+        writeFileSync(join(bin, 'claude'), '#!/bin/sh\nprintf "%s" "${CLAUDE_CONFIG_DIR-unset}"\n')
+        chmodSync(join(bin, 'claude'), 0o700)
+        const claude = (env: Record<string, string>): string =>
+          spawnSync(
+            '/bin/bash',
+            ['--norc', '--noprofile', '-c', `${getPosixClaudeShellFunction()}\nclaude`],
+            { env: { ...env, PATH: `${bin}:/usr/bin:/bin` }, encoding: 'utf8' }
+          ).stdout
+        // The pane opens while account A is selected, so Orca replaces the inherited value.
+        f.router.publish()
+        const pane = { ...inherited, ...f.router.terminalEnv() }
+        expect(claude(pane)).toBe(f.home('a'))
+        f.settings.activeClaudeManagedAccountId = null
+        f.router.publish()
+        expect(claude(pane)).toBe(inherited.CLAUDE_CONFIG_DIR ?? 'unset')
+      }
+    }
+  )
+
   it('removes a folder only after its running setup, so the setup cannot bring it back', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
@@ -278,6 +326,12 @@ describe('ClaudeProfileRouter', () => {
       ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/outer/profile'
     })
     expect(f.router.systemDefaultHome()).toBe(join(f.userHome, '.claude'))
+    const carried = fixture({
+      CLAUDE_CONFIG_DIR: '/outer/profile',
+      ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/outer/profile',
+      ORCA_CLAUDE_USER_CONFIG_DIR: '/user/own'
+    })
+    expect(carried.router.systemDefaultHome()).toBe(resolve('/user/own'))
   })
 
   // Why not win32: creating the link needs privileges there.

@@ -1,7 +1,8 @@
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import {
   CLAUDE_INJECTED_CONFIG_DIR_ENV,
-  CLAUDE_PROFILE_POINTER_ENV
+  CLAUDE_PROFILE_POINTER_ENV,
+  CLAUDE_USER_CONFIG_DIR_ENV
 } from '../../shared/claude-profile-routing'
 
 export const CLAUDE_AUTH_ENV_VARS = [
@@ -14,6 +15,7 @@ export const CLAUDE_AUTH_ENV_VARS = [
 export type ClaudeEnvPatch = {
   [CLAUDE_PROFILE_POINTER_ENV]?: string
   [CLAUDE_INJECTED_CONFIG_DIR_ENV]?: string
+  [CLAUDE_USER_CONFIG_DIR_ENV]?: string
   CLAUDE_CONFIG_DIR?: string
   ANTHROPIC_CUSTOM_HEADERS?: string
 }
@@ -39,7 +41,11 @@ export function applyClaudeEnvPatch(
     }
   }
 
-  for (const key of [CLAUDE_PROFILE_POINTER_ENV, CLAUDE_INJECTED_CONFIG_DIR_ENV] as const) {
+  for (const key of [
+    CLAUDE_PROFILE_POINTER_ENV,
+    CLAUDE_INJECTED_CONFIG_DIR_ENV,
+    CLAUDE_USER_CONFIG_DIR_ENV
+  ] as const) {
     const value = patch[key]
     if (value) {
       baseEnv[key] = value
