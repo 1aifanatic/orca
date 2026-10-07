@@ -10,7 +10,6 @@ import {
   WorktreeCardMetaBadges
 } from './WorktreeCardMeta'
 import { WorktreeCardPortsDetails, WorktreeCardPortsTrigger } from './WorktreeCardPorts'
-import { getWorktreeCardSurfacePadding } from './worktree-card-spacing'
 import type { WorktreeCardController } from './use-worktree-card-controller'
 
 export function buildWorktreeCardPresentation(card: WorktreeCardController) {
@@ -21,8 +20,6 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     hideRepoBadge,
     hostContextLabel,
     affiliateListMode,
-    interactive,
-    agentRows,
     flushSurface,
     contentIndent,
     newCardStyle,
@@ -130,9 +127,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
       ? trimmedVisibleCardTitle
       : undefined
   const hasHoverIdentity = Boolean(hoverWorkspaceTitle || hoverBranchName)
-  // Why: the details popover carries edit and open actions, so only an interactive card opens it.
   const hasHoverDetails =
-    interactive &&
     newCardStyle &&
     (hasWorktreeCardDetails({
       issue: hoverIssue,
@@ -150,7 +145,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     ? hasHoverDetails
       ? (title: React.ReactElement): React.ReactElement => title
       : undefined
-    : interactive && compactCards && (showBranchIdentityHover || hasDetails || hasPorts)
+    : compactCards && (showBranchIdentityHover || hasDetails || hasPorts)
       ? (title: React.ReactElement): React.ReactElement => (
           <WorktreeCardDetailsHover
             issue={metaIssue}
@@ -226,7 +221,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
       </div>
     ) : null
   const detailsAndPorts =
-    detailsAndPortsContent && !newCardStyle && interactive ? (
+    detailsAndPortsContent && !newCardStyle ? (
       <WorktreeCardDetailsHover
         issue={metaIssue}
         linearIssue={metaLinearIssue}
@@ -263,20 +258,8 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     <div className="ml-auto flex shrink-0 items-center gap-1 pr-1.5">{detailsAndPorts}</div>
   ) : null
   const hasSecondaryCardContent =
-    hasMetaRow ||
-    !!remoteBranchConflict ||
-    showInlineAgentList ||
-    showLineageChildChip ||
-    agentRows != null
+    hasMetaRow || !!remoteBranchConflict || showInlineAgentList || showLineageChildChip
   const titleOnlyCard = !hasSecondaryCardContent
-  const surfacePaddingClassName = getWorktreeCardSurfacePadding(
-    hasMetaRow ||
-      card.cacheTimerAffectsSurfacePadding ||
-      !!remoteBranchConflict ||
-      card.inlineAgentRowsAffectSurfacePadding ||
-      showLineageChildChip ||
-      (card.callerRowsAffectSurfacePadding && agentRows != null)
-  )
 
   return {
     showPinnedRepoIcon,
@@ -303,8 +286,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     cardStyle,
     detailsAndPorts,
     titleRowIndicators,
-    titleOnlyCard,
-    surfacePaddingClassName
+    titleOnlyCard
   }
 }
 

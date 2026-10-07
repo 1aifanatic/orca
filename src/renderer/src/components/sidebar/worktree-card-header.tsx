@@ -55,7 +55,6 @@ export function WorktreeCardHeader({
     worktree,
     repo,
     affiliateListMode,
-    interactive,
     renameRowKey,
     compactCards,
     newCardStyle,
@@ -112,7 +111,6 @@ export function WorktreeCardHeader({
             targetRemoved={sshTargetRemoved}
             sshOwnerEnvironmentId={sshOwnerEnvironmentId}
             iconOnly={compactCards || newCardStyle}
-            interactive={interactive}
             onPointerDown={stopQuickActionPointerPropagation}
           />
         )}
@@ -188,8 +186,7 @@ export function WorktreeCardHeader({
 
         {typeof worktree.firstAgentMessageRenameError === 'string' &&
         worktree.firstAgentMessageRenameError.length > 0 &&
-        !titleRenaming &&
-        interactive ? (
+        !titleRenaming ? (
           // Why: the error can be raw agent CLI output, so the badge opens a dialog rather than a tooltip.
           <Tooltip>
             <TooltipTrigger asChild>

@@ -7,7 +7,10 @@ import {
   groupResumeWorkspacesByRepo,
   nestResumeWorkspaces,
   resolveResumeGroupHeader,
+  resumeSelectionState,
   resumeWorkspaceKind,
+  resumeWorkspaceSessionIds,
+  toggleResumeSelection,
   type ResumeCandidate
 } from './native-chat-resume-on-restart-grouping'
 
@@ -176,6 +179,51 @@ describe('nesting child workspaces', () => {
         ]
       ],
       ['d', []]
+    ])
+  })
+})
+
+describe('group checkboxes', () => {
+  it('covers a workspace and every workspace nested under it', () => {
+    const chats = (workspaceId: string, ...sessionIds: string[]) => ({
+      workspaceId,
+      candidates: sessionIds.map((sessionId) => candidate({ sessionId, workspaceId }))
+    })
+    const [root] = nestResumeWorkspaces(
+      [chats('parent', 'p1'), chats('child', 'c1', 'c2'), chats('grandchild', 'g1')],
+      (id) => ({ child: ['parent'], grandchild: ['child', 'parent'] })[id] ?? []
+    )
+
+    expect(resumeWorkspaceSessionIds(root!)).toEqual(['p1', 'c1', 'c2', 'g1'])
+  })
+
+  it.each([
+    [['a', 'b'], true, 2],
+    [['a'], 'indeterminate', 1],
+    [[], false, 0]
+  ] as const)('with %j ticked reads %s', (ticked, checked, selectedCount) => {
+    expect(resumeSelectionState(['a', 'b'], new Set(ticked))).toEqual({
+      checked,
+      selectedCount,
+      total: 2
+    })
+  })
+
+  it('reads unchecked when it covers nothing', () => {
+    expect(resumeSelectionState([], new Set(['a'])).checked).toBe(false)
+  })
+
+  it('ticks everything unless everything is ticked, then unticks it', () => {
+    const calls: [string, boolean][] = []
+    const record = (sessionId: string, checked: boolean) => calls.push([sessionId, checked])
+    toggleResumeSelection(['a', 'b'], resumeSelectionState(['a', 'b'], new Set(['a'])), record)
+    toggleResumeSelection(['a', 'b'], resumeSelectionState(['a', 'b'], new Set(['a', 'b'])), record)
+
+    expect(calls).toEqual([
+      ['a', true],
+      ['b', true],
+      ['a', false],
+      ['b', false]
     ])
   })
 })

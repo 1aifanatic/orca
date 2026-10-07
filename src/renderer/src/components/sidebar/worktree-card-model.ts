@@ -1,7 +1,6 @@
 import type React from 'react'
 
 import type { Repo } from '../../../../shared/repo-types'
-import type { WorktreeCardProperty } from '../../../../shared/ui-chrome-types'
 import type { WorkspaceStatus, Worktree } from '../../../../shared/worktree/types'
 import type { WorktreeCardPrDisplay } from './worktree-card-pr-display'
 
@@ -53,9 +52,6 @@ export type WorktreeCardProps = {
   onCardDragEnd?: (event: React.DragEvent<HTMLDivElement>) => void
   nativeDragEnabled?: boolean
   affiliateListMode?: boolean
-  /** Passive sidebar layout without live state; caller-owned `agentRows` remain interactive. */
-  readOnly?: boolean
-  agentRows?: React.ReactNode
   statusPrDisplay?: WorktreeCardPrDisplay | null
 }
 
@@ -73,7 +69,6 @@ type DefaultedWorktreeCardProp =
   | 'lineageCollapsed'
   | 'isLineageDropTarget'
   | 'affiliateListMode'
-  | 'readOnly'
   | 'statusPrDisplay'
 
 export type ResolvedWorktreeCardProps = Omit<WorktreeCardProps, DefaultedWorktreeCardProp> & {
@@ -90,46 +85,7 @@ export type ResolvedWorktreeCardProps = Omit<WorktreeCardProps, DefaultedWorktre
   lineageCollapsed: boolean
   isLineageDropTarget: boolean
   affiliateListMode: boolean
-  readOnly: boolean
   statusPrDisplay: WorktreeCardPrDisplay | null
-}
-
-// Why: allowlist presentation props so caller-supplied handlers cannot make a read-only card act.
-export function toReadOnlyCardProps(props: ResolvedWorktreeCardProps): ResolvedWorktreeCardProps {
-  return {
-    worktree: props.worktree,
-    repo: props.repo,
-    hideRepoBadge: props.hideRepoBadge,
-    hostContextLabel: props.hostContextLabel,
-    inPinnedSection: props.inPinnedSection,
-    contentIndent: props.contentIndent,
-    flushSurface: props.flushSurface,
-    lineageChildren: props.lineageChildren,
-    lineageChildrenStyle: props.lineageChildrenStyle,
-    agentRows: props.agentRows,
-    isActive: false,
-    isActiveSurface: false,
-    activeSurfaceVariant: 'primary',
-    isMultiSelected: false,
-    revealHighlight: false,
-    revealHighlightTone: 'default',
-    nativeDragEnabled: false,
-    lineageChildCount: props.lineageChildCount,
-    lineageCollapsed: false,
-    isLineageDropTarget: false,
-    affiliateListMode: true,
-    readOnly: true,
-    statusPrDisplay: null
-  }
-}
-
-// Why: recovery cards replace live ports and agents while keeping the sidebar's quiet status lane.
-const READ_ONLY_HIDDEN_CARD_PROPERTIES = new Set<WorktreeCardProperty>(['ports', 'inline-agents'])
-
-export function getReadOnlyCardProperties(
-  cardProps: readonly WorktreeCardProperty[]
-): WorktreeCardProperty[] {
-  return cardProps.filter((property) => !READ_ONLY_HIDDEN_CARD_PROPERTIES.has(property))
 }
 
 export const EMPTY_WORKSPACE_PORTS = []

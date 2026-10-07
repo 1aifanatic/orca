@@ -11,7 +11,6 @@ import type { WorktreeCardProps } from './worktree-card-model'
 import type { useWorktreeCardFoundation } from './use-worktree-card-foundation'
 import type { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details'
 import type { useWorktreeCardReviewDetails } from './use-worktree-card-review-details'
-import { hasInlineWorktreeAgentRows } from './worktree-card-spacing'
 
 type Foundation = ReturnType<typeof useWorktreeCardFoundation>
 type LinkedDetails = ReturnType<typeof useWorktreeCardLinkedDetails>
@@ -21,7 +20,6 @@ export function useWorktreeCardSecondaryDetails({
   worktree,
   repo,
   statusPrDisplay,
-  showLiveState,
   showStatus,
   showIssue,
   showLinearIssue,
@@ -65,7 +63,6 @@ export function useWorktreeCardSecondaryDetails({
     ReviewDetails,
     'prDisplay' | 'linkedGitLabMR' | 'linkedBitbucketPR' | 'linkedAzureDevOpsPR' | 'linkedGiteaPR'
   > & {
-    showLiveState: boolean
     showStatus: boolean
     showIssue: boolean
     showLinearIssue: boolean
@@ -77,7 +74,7 @@ export function useWorktreeCardSecondaryDetails({
     showPorts: boolean
   }) {
   // Why: unread lives in the left status lane, so the Status toggle owns both the dot/PR slot and unread emphasis.
-  const showUnreadEmphasis = showLiveState && showStatus && worktree.isUnread
+  const showUnreadEmphasis = showStatus && worktree.isUnread
   const hoverIssue = issueDisplay
   const hoverLinearIssue = linearIssueDisplay
   const hoverJiraIssue = jiraIssueDisplay
@@ -91,11 +88,7 @@ export function useWorktreeCardSecondaryDetails({
   const metaAutomationProvenance = showAutomation ? worktree.automationProvenance : null
   const metaCliProvenance = showCli ? worktree.cliProvenance : null
   const metaComment = showComment ? hoverComment : null
-  const showInlineAgentList = hasInlineWorktreeAgentRows({
-    cardProperties: cardProps,
-    newCardStyle,
-    compactCards
-  })
+  const showInlineAgentList = cardProps.includes('inline-agents') && (newCardStyle || !compactCards)
   const compactInlineAgentRows = useWorktreeAgentRows(
     worktree.id,
     showInlineAgentList && agentActivityDisplayMode === 'compact'
@@ -104,7 +97,7 @@ export function useWorktreeCardSecondaryDetails({
     showInlineAgentList &&
     agentActivityDisplayMode === 'compact' &&
     compactInlineAgentRows.length > 0
-  const showAggregateCacheTimer = showLiveState && !compactCards && !compactInlineAgentRowsVisible
+  const showAggregateCacheTimer = !compactCards && !compactInlineAgentRowsVisible
   const handleOpenGitHubIssueInOrca = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
@@ -244,12 +237,7 @@ export function useWorktreeCardSecondaryDetails({
     cliProvenance: metaCliProvenance
   })
   const hasPorts = showPorts && workspacePorts.length > 0
-  // Hidden live metadata still determines the sidebar's header padding.
-  const cacheStartedAtForSurfacePadding = usePromptCacheCountdownStartedAt(
-    worktree.id,
-    !compactCards && !compactInlineAgentRowsVisible
-  )
-  const cacheStartedAt = showAggregateCacheTimer ? cacheStartedAtForSurfacePadding : null
+  const cacheStartedAt = usePromptCacheCountdownStartedAt(worktree.id, showAggregateCacheTimer)
   // Why: derived from the settings the card already subscribes to — a third store
   // subscription for this one field costs a listener per card on every store write.
   const cacheTtlMs = showAggregateCacheTimer ? (settings?.promptCacheTtlMs ?? 0) : 0
@@ -281,7 +269,6 @@ export function useWorktreeCardSecondaryDetails({
     handleOpenLinearIssueInOrca,
     hasDetails,
     hasPorts,
-    cacheTimerAffectsSurfacePadding: cacheStartedAtForSurfacePadding != null,
     cacheStartedAt,
     cacheTtlMs
   }

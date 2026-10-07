@@ -1,18 +1,16 @@
 import { useMemo } from 'react'
 import { Folder, FolderTree, GitBranch } from 'lucide-react'
 import { RepoIconGlyph } from '@/components/repo/repo-icon'
-import WorktreeCard from '@/components/sidebar/WorktreeCard'
 import { WorktreeHostContextBadge } from '@/components/sidebar/WorktreeHostContextBadge'
-import {
-  getLineageChildrenInlineStyle,
-  LINEAGE_CHILDREN_INLINE_OFFSET
-} from '@/components/sidebar/worktree-list/rows/indentation'
-import { getWorktreeRowGeometry } from '@/components/sidebar/worktree-list/rows/worktree-row-geometry'
-import { WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP } from '@/components/sidebar/worktree-list/viewport/virtual-rows'
 import {
   getCyclicProjectedWorktreeLineageIds,
   getSidebarLineageAncestors
 } from '@/components/sidebar/worktree-lineage-projection'
+import { translate } from '@/i18n/i18n'
+import {
+  resolveWorktreeBranchLabel,
+  resolveWorktreeDisplayName
+} from '@/lib/worktree-default-display-name'
 import {
   getAllWorktreesFromState,
   getWorktreeMapFromState,
@@ -26,34 +24,43 @@ import { getHostContextLabel } from '../../../shared/worktree/host-context-label
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../../shared/execution-host'
 import type { AgentSessionWorkspaceKind } from '../../../shared/agent-session-record'
 import { useAppStore } from '../store'
+import { Checkbox } from './ui/checkbox'
 import { ResumeCandidateRow } from './NativeChatResumeOnRestartAgentRow'
 import {
   groupResumeCandidates,
   groupResumeWorkspacesByRepo,
   nestResumeWorkspaces,
   resolveResumeGroupHeader,
+  resumeSelectionState,
   resumeWorkspaceKind,
+  resumeWorkspaceSessionIds,
+  toggleResumeSelection,
   type ResumeCandidate,
   type ResumeFailure,
   type ResumeWorkspaceGroup,
   type ResumeWorkspaceNode
 } from './native-chat-resume-on-restart-grouping'
-import type { ResumeFailureAction } from './native-chat-resume-failure-guidance'
+import {
+  resumeFailureSelectable,
+  type ResumeFailureAction
+} from './native-chat-resume-failure-guidance'
 
 export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 
 /**
- * The offered chats in the sidebar's three tiers: repo/project, then workspace, then agent sessions.
+ * The offered chats as a checkbox list in the sidebar's three tiers: repo/project, then workspace,
+ * then agent sessions.
  *
- * Each workspace IS the sidebar's own `WorktreeCard`, rendered read-only, so the user recognizes it
- * exactly as they know it — title, branch, PR and host as their sidebar settings show them —
- * with the offered chats in place of its live agent rows. Child workspaces nest under a listed
- * parent the way the sidebar nests them.
+ * Every row's checkbox sits in one column at the left edge; nesting indents only what follows it.
+ * A workspace row's checkbox covers its own chats and those of the workspaces nested under it,
+ * which follow the sidebar's own lineage rule. A repo row is a label with no checkbox.
  *
- * A workspace the store does not know yet (its host still connecting, or since deleted) falls back
- * to a plain header: glyph, name, host chip. The sidebar has no git-worktree vs folder glyph
- * resolver; that header follows its status lane, which picks `GitBranch` for a branch identity.
+ * A workspace the store does not know yet (its host still connecting, or since deleted) is named
+ * by its id. The kind glyph comes from the host's record of the chat, never from a name.
  */
+
+/** Indent per nesting level, applied right of the checkbox column. */
+const RESUME_INDENT_PX = 20
 
 /** Lets a row that an earlier resume could not carry on show what went wrong and what to do. */
 type FailureProps = {
@@ -147,31 +154,35 @@ function RepoHeader({ repoId }: { repoId: string | null }): React.JSX.Element {
   const projectGroups = useAppStore((store) => store.projectGroups)
   const header = resolveResumeGroupHeader(repoId, repos, projectGroups)
   return (
-    <div className="flex items-center gap-1.5 px-0.5">
-      {/* A repo shows its own configured glyph; a project group uses the FolderTree the sidebar's
-          own PROJECT_GROUP_META uses. */}
-      {header.kind === 'project' ? (
-        <FolderTree className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      ) : (
-        <RepoIconGlyph repoIcon={header.repoIcon} className="size-3.5" iconClassName="size-3.5" />
-      )}
-      <span className="min-w-0 flex-1 truncate text-xs font-semibold">{header.name}</span>
+    // The empty first cell keeps the title in the content column.
+    <div className="grid h-7 grid-cols-[1.75rem_minmax(0,1fr)] items-center border-t border-worktree-sidebar-border">
+      <span />
+      <span className="flex min-w-0 items-center gap-1.5 pr-2.5">
+        {/* A repo shows its own configured glyph; a project group uses the FolderTree the sidebar's
+            own PROJECT_GROUP_META uses. */}
+        {header.kind === 'project' ? (
+          <FolderTree className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        ) : (
+          <RepoIconGlyph repoIcon={header.repoIcon} className="size-3.5" iconClassName="size-3.5" />
+        )}
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{header.name}</span>
+      </span>
     </div>
   )
 }
 
-const NO_FOLDER_BACKED_GROUPS: ReadonlySet<string> = new Set()
-
 type RowProps = {
-  /** Whether the listed workspaces span machines; the sidebar names hosts only then. */
+  /** Whether the listed chats span machines; every workspace then names its host. */
   mixedHosts: boolean
   listedAt: number
   busy: boolean
   selected: ReadonlySet<string>
   onToggle: (sessionId: string, checked: boolean) => void
+  /** Whether a group checkbox may tick this chat; a failure a retry cannot fix is left out. */
+  selectable: (sessionId: string) => boolean
 } & FailureProps
 
-function WorkspaceCard({
+function WorkspaceRows({
   node,
   depth,
   ...rowProps
@@ -180,98 +191,79 @@ function WorkspaceCard({
   const first = group.candidates[0]
   const hostId = first?.executionHostId
   const worktree = useWorkspaceWorktree(group.workspaceId, hostId)
-  const repo = useAppStore((store) =>
-    worktree ? store.repos.find((entry) => entry.id === worktree.repoId) : undefined
-  )
-  const newCardStyle = useAppStore(
-    (store) => store.settings?.experimentalNewWorktreeCardStyle === true
-  )
-  const name = worktree?.displayName ?? group.workspaceId
-  const hostLabel = getHostContextLabel(hostId ?? LOCAL_EXECUTION_HOST_ID)
-  const { mixedHosts, listedAt, busy, selected, onToggle, failureFor, onFailureAction } = rowProps
-  // Remote folders have no repo, so no title-row SSH identity can name their host.
+  const kind = first ? resumeWorkspaceKind(first) : 'git-worktree'
+  const name = (worktree && resolveWorktreeDisplayName(worktree)) || group.workspaceId
+  const branch = worktree && kind === 'git-worktree' ? resolveWorktreeBranchLabel(worktree) : ''
+  const { mixedHosts, listedAt, busy, selected, onToggle, selectable } = rowProps
+  // Why: a remote workspace is named by its machine even when it is the only one listed.
   const showHostLabel =
-    mixedHosts ||
-    (!repo &&
-      first &&
-      resumeWorkspaceKind(first) === 'folder' &&
-      hostId &&
-      hostId !== LOCAL_EXECUTION_HOST_ID)
-  const rows = (
-    <ul className="flex flex-col">
-      {group.candidates.map((candidate) => (
-        <ResumeCandidateRow
-          key={candidate.sessionId}
-          candidate={candidate}
-          workspaceName={name}
-          listedAt={listedAt}
-          checked={selected.has(candidate.sessionId)}
-          disabled={busy}
-          onCheckedChange={(checked) => onToggle(candidate.sessionId, checked)}
-          failure={failureFor?.(candidate.sessionId)}
-          onFailureAction={onFailureAction}
-        />
-      ))}
-    </ul>
-  )
-  // Why: the sidebar's own row geometry for a repo-grouped list, so the cards line up as there.
-  const geometry = getWorktreeRowGeometry({
-    groupBy: 'repo',
-    folderBackedProjectGroupIds: NO_FOLDER_BACKED_GROUPS,
-    newCardStyle,
-    projectGroupId: repo?.projectGroupId,
-    depth,
-    groupDepth: 0,
-    nested: depth > 0
-  })
-  const children = node.children.map((child) => (
-    <WorkspaceCard key={child.group.workspaceId} node={child} depth={depth + 1} {...rowProps} />
-  ))
-
-  if (!worktree) {
-    const kind = first ? resumeWorkspaceKind(first) : 'git-worktree'
-    return (
-      <section className="flex flex-col gap-0.5">
-        <div className="flex items-center gap-1.5 px-0.5">
-          <WorkspaceKindGlyph kind={kind} />
-          <span className="min-w-0 truncate text-xs font-medium">{name}</span>
-          <WorktreeHostContextBadge label={hostLabel} />
-        </div>
-        <div className="pl-1">{rows}</div>
-        {children.length > 0 && <div className="flex flex-col gap-1 pl-3">{children}</div>}
-      </section>
-    )
+    mixedHosts || (hostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
+  const covered = resumeWorkspaceSessionIds(node).filter(selectable)
+  const selection = resumeSelectionState(covered, selected)
+  const chatIndent: React.CSSProperties & Record<'--resume-chat-indent', string> = {
+    '--resume-chat-indent': `${(depth + 1) * RESUME_INDENT_PX}px`
   }
-
-  // Why: like a sidebar row, each card is inset for its own depth.
   return (
-    <div
-      style={geometry.surfaceInset > 0 ? { paddingLeft: `${geometry.surfaceInset}px` } : undefined}
-    >
-      <WorktreeCard
-        worktree={worktree}
-        repo={repo}
-        isActive={false}
-        isActiveSurface={false}
-        readOnly
-        // The repo header above already names it.
-        hideRepoBadge
-        hostContextLabel={showHostLabel ? hostLabel : undefined}
-        nativeDragEnabled={false}
-        flushSurface
-        contentIndent={geometry.cardContentIndent}
-        agentRows={rows}
-        lineageChildCount={children.length}
-        lineageChildren={children.length > 0 ? children : undefined}
-        lineageChildrenStyle={
-          children.length > 0
-            ? getLineageChildrenInlineStyle(
-                geometry.lineageChildrenInlineOffset ?? LINEAGE_CHILDREN_INLINE_OFFSET
-              )
-            : undefined
-        }
-      />
-    </div>
+    <>
+      <label className="grid h-7.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center border-t border-worktree-sidebar-border hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+        <span className="flex justify-center">
+          <Checkbox
+            checked={selection.checked}
+            disabled={busy || selection.total === 0}
+            onCheckedChange={() => toggleResumeSelection(covered, selection, onToggle)}
+            aria-label={translate(
+              'auto.components.NativeChatResumeOnRestartModal.selectWorkspace',
+              'Select all chats in {{value0}}',
+              { value0: name }
+            )}
+          />
+        </span>
+        <span
+          className="flex min-w-0 items-center gap-1.5 pr-2.5"
+          style={depth > 0 ? { paddingLeft: depth * RESUME_INDENT_PX } : undefined}
+        >
+          <WorkspaceKindGlyph kind={kind} />
+          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{name}</span>
+          {branch && (
+            <span className="min-w-0 shrink-2 truncate text-[11px] text-muted-foreground">
+              {branch}
+            </span>
+          )}
+          {showHostLabel && (
+            <WorktreeHostContextBadge
+              label={getHostContextLabel(hostId ?? LOCAL_EXECUTION_HOST_ID)}
+            />
+          )}
+          {selection.total > 0 && (
+            <span className="ml-auto shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
+              {translate(
+                'auto.components.NativeChatResumeOnRestartModal.workspaceSelectedCount',
+                '{{value0}} of {{value1}}',
+                { value0: selection.selectedCount, value1: selection.total }
+              )}
+            </span>
+          )}
+        </span>
+      </label>
+      <ul style={chatIndent}>
+        {group.candidates.map((candidate) => (
+          <ResumeCandidateRow
+            key={candidate.sessionId}
+            candidate={candidate}
+            workspaceName={name}
+            listedAt={listedAt}
+            checked={selected.has(candidate.sessionId)}
+            disabled={busy}
+            onCheckedChange={(checked) => onToggle(candidate.sessionId, checked)}
+            failure={rowProps.failureFor?.(candidate.sessionId)}
+            onFailureAction={rowProps.onFailureAction}
+          />
+        ))}
+      </ul>
+      {node.children.map((child) => (
+        <WorkspaceRows key={child.group.workspaceId} node={child} depth={depth + 1} {...rowProps} />
+      ))}
+    </>
   )
 }
 
@@ -297,27 +289,30 @@ export function ResumeOnRestartGroups({
   const mixedHosts =
     new Set(candidates.map((candidate) => candidate.executionHostId ?? LOCAL_EXECUTION_HOST_ID))
       .size > 1
+  const selectable = (sessionId: string): boolean => {
+    const failure = failureFor?.(sessionId)
+    return !failure || resumeFailureSelectable(failure)
+  }
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col">
       {repoGroups.map((repoGroup) => (
-        <section key={repoGroup.repoId ?? 'no-repo'} className="flex flex-col gap-1">
+        <section key={repoGroup.repoId ?? 'no-repo'} className="flex flex-col">
           <RepoHeader repoId={repoGroup.repoId} />
-          <div className="flex flex-col" style={{ rowGap: WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP }}>
-            {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
-              <WorkspaceCard
-                key={node.group.workspaceId}
-                node={node}
-                depth={0}
-                mixedHosts={mixedHosts}
-                listedAt={listedAt}
-                busy={busy}
-                selected={selected}
-                onToggle={onToggle}
-                failureFor={failureFor}
-                onFailureAction={onFailureAction}
-              />
-            ))}
-          </div>
+          {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
+            <WorkspaceRows
+              key={node.group.workspaceId}
+              node={node}
+              depth={0}
+              mixedHosts={mixedHosts}
+              listedAt={listedAt}
+              busy={busy}
+              selected={selected}
+              onToggle={onToggle}
+              selectable={selectable}
+              failureFor={failureFor}
+              onFailureAction={onFailureAction}
+            />
+          ))}
         </section>
       ))}
     </div>

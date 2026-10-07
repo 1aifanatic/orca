@@ -1,8 +1,6 @@
-import { useMemo } from 'react'
-
 import { canShowWorkspaceDeleteQuickAction } from './workspace-delete-quick-action'
 import { useWorktreeCardDetailsHoverControl } from './worktree-card-details-hover-state'
-import { getReadOnlyCardProperties, type ResolvedWorktreeCardProps } from './worktree-card-model'
+import type { ResolvedWorktreeCardProps } from './worktree-card-model'
 import { useWorktreeCardActivationActions } from './use-worktree-card-activation-actions'
 import { useWorktreeCardFoundation } from './use-worktree-card-foundation'
 import { useWorktreeCardLifecycleEffects } from './use-worktree-card-lifecycle-effects'
@@ -10,33 +8,22 @@ import { useWorktreeCardLinkedDetails } from './use-worktree-card-linked-details
 import { useWorktreeCardReviewDetails } from './use-worktree-card-review-details'
 import { useWorktreeCardSecondaryDetails } from './use-worktree-card-secondary-details'
 import { useWorktreeCardWorkspaceActions } from './use-worktree-card-workspace-actions'
-import { useIsSleepingWorktree } from './use-worktree-sleep-state'
-import { hasInlineWorktreeAgentRows } from './worktree-card-spacing'
 
 export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
-  const { worktree, repo, readOnly } = props
+  const { worktree, repo } = props
   const foundation = useWorktreeCardFoundation({ worktree, repo })
-  // Why: resolve read-only policy here so views share one quiet, passive presentation.
-  const interactive = !readOnly
-  const quietStatusLane = readOnly
-  const cardProps = useMemo(
-    () => (readOnly ? getReadOnlyCardProperties(foundation.cardProps) : foundation.cardProps),
-    [readOnly, foundation.cardProps]
-  )
-  const isSleeping = useIsSleepingWorktree(worktree.id) && !readOnly
-  const deleteState = readOnly ? undefined : foundation.deleteState
   const review = useWorktreeCardReviewDetails({
     worktree,
     repo,
     settings: foundation.settings,
     projectGroups: foundation.projectGroups,
-    cardProps,
+    cardProps: foundation.cardProps,
     newCardStyle: foundation.newCardStyle
   })
   const linked = useWorktreeCardLinkedDetails({
     worktree,
     newCardStyle: foundation.newCardStyle,
-    deleteState,
+    deleteState: foundation.deleteState,
     branch: review.branch,
     issueEntry: review.issueEntry,
     linearIssueEntry: review.linearIssueEntry,
@@ -44,15 +31,15 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     prDisplay: review.prDisplay
   })
 
-  const showStatus = cardProps.includes('status')
-  const showIssue = cardProps.includes('issue')
-  const showLinearIssue = cardProps.includes('linear-issue')
-  const showJiraIssue = cardProps.includes('jira-issue')
-  const showPR = cardProps.includes('pr')
-  const showAutomation = cardProps.includes('automation')
-  const showCli = cardProps.includes('cli')
-  const showComment = cardProps.includes('comment')
-  const showPorts = cardProps.includes('ports')
+  const showStatus = foundation.cardProps.includes('status')
+  const showIssue = foundation.cardProps.includes('issue')
+  const showLinearIssue = foundation.cardProps.includes('linear-issue')
+  const showJiraIssue = foundation.cardProps.includes('jira-issue')
+  const showPR = foundation.cardProps.includes('pr')
+  const showAutomation = foundation.cardProps.includes('automation')
+  const showCli = foundation.cardProps.includes('cli')
+  const showComment = foundation.cardProps.includes('comment')
+  const showPorts = foundation.cardProps.includes('ports')
   const shouldRefreshHostedReview = foundation.newCardStyle ? showStatus : showPR
   const detailsHoverControl = useWorktreeCardDetailsHoverControl()
   const hoverDetailsOpen = detailsHoverControl.hoverOpen
@@ -125,7 +112,6 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     worktree,
     repo,
     statusPrDisplay: props.statusPrDisplay,
-    showLiveState: !readOnly,
     showStatus,
     showIssue,
     showLinearIssue,
@@ -144,7 +130,7 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     linkedBitbucketPR: review.linkedBitbucketPR,
     linkedAzureDevOpsPR: review.linkedAzureDevOpsPR,
     linkedGiteaPR: review.linkedGiteaPR,
-    cardProps,
+    cardProps: foundation.cardProps,
     newCardStyle: foundation.newCardStyle,
     compactCards: foundation.compactCards,
     agentActivityDisplayMode: foundation.agentActivityDisplayMode,
@@ -157,18 +143,6 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
   return {
     ...props,
     ...foundation,
-    cardProps,
-    deleteState,
-    interactive,
-    quietStatusLane,
-    // Caller-owned recovery rows keep the sidebar header's padding even when compact cards hide live agents.
-    callerRowsAffectSurfacePadding: !readOnly,
-    inlineAgentRowsAffectSurfacePadding: hasInlineWorktreeAgentRows({
-      cardProperties: foundation.cardProps,
-      newCardStyle: foundation.newCardStyle,
-      compactCards: foundation.compactCards
-    }),
-    isSleeping,
     ...review,
     ...linked,
     detailsHoverControl,
@@ -185,10 +159,6 @@ export function useWorktreeCardController(props: ResolvedWorktreeCardProps) {
     ...activation,
     showDeleteQuickAction,
     ...workspaceActions,
-    // Why: a read-only card's children are always listed, so its chip names them without a toggle.
-    showLineageChildChip: readOnly
-      ? props.lineageChildCount > 0
-      : workspaceActions.showLineageChildChip,
     ...secondary
   }
 }

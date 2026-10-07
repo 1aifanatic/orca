@@ -75,7 +75,6 @@ function secondaryDetailsArgs(settings: GlobalSettings) {
     worktree: makeWorktree(),
     repo: undefined,
     statusPrDisplay: null,
-    showLiveState: true,
     showStatus: false,
     showIssue: false,
     showLinearIssue: false,

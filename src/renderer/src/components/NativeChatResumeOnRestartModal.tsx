@@ -20,7 +20,12 @@ import {
   resumeFailureSelectable,
   type ResumeFailureAction
 } from './native-chat-resume-failure-guidance'
-import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
+import {
+  resumeSelectionState,
+  toggleResumeSelection,
+  type ResumeCandidate,
+  type ResumeFailure
+} from './native-chat-resume-on-restart-grouping'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
   getNativeChatResumeOnRestartDialogRequest,
@@ -64,6 +69,23 @@ function selectedByDefault(failure: ResumeFailure | undefined): boolean {
   return guidance.primary === 'retry' || guidance.secondary === 'retry'
 }
 
+/** Up/Down step between the list's checkboxes; Space toggles the focused one natively. */
+function moveCheckboxFocus(event: React.KeyboardEvent<HTMLElement>): void {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+    return
+  }
+  const target = event.target
+  if (!(target instanceof HTMLElement) || target.getAttribute('role') !== 'checkbox') {
+    return
+  }
+  const boxes = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>('[role="checkbox"]:not(:disabled)')
+  ]
+  const next = boxes[boxes.indexOf(target) + (event.key === 'ArrowDown' ? 1 : -1)]
+  event.preventDefault()
+  next?.focus()
+}
+
 export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const offerEnabled = useNativeChatRestartOfferEnabled()
   const { candidates, failed, listedAt } = useNativeChatRestartOffer(offerEnabled)
@@ -98,24 +120,31 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
       setOverrides(new Map())
     }
   }
-  /** Derived from the host's own list, so an action can never name a chat it did not list. */
-  const chosen = useMemo(
+  /** Every chat a tick can name; a failure the host marks unretryable is left out. */
+  const selectable = useMemo(
     () =>
       rows
         .filter((row) => {
           const failure = failureBySession.get(row.sessionId)
-          // A tick made before the host marked it unretryable must not carry into the action.
-          return (
-            (!failure || resumeFailureSelectable(failure)) &&
-            (overrides.get(row.sessionId) ?? selectedByDefault(failure))
-          )
+          return !failure || resumeFailureSelectable(failure)
         })
         .map((row) => row.sessionId),
-    [rows, overrides, failureBySession]
+    [rows, failureBySession]
+  )
+  /** Derived from the host's own list, so an action can never name a chat it did not list. */
+  const chosen = useMemo(
+    () =>
+      // A tick made before the host marked it unretryable must not carry into the action.
+      selectable.filter(
+        (sessionId) =>
+          overrides.get(sessionId) ?? selectedByDefault(failureBySession.get(sessionId))
+      ),
+    [selectable, overrides, failureBySession]
   )
   const selected = useMemo(() => new Set(chosen), [chosen])
   // Mid-run the ticks show what is running; this opening's own ticks may name chats left out of it.
   const ticked = useMemo(() => (busy ? new Set(resuming) : selected), [busy, resuming, selected])
+  const allSelection = resumeSelectionState(selectable, ticked)
 
   const toggleSelected = useCallback((sessionId: string, checked: boolean) => {
     setOverrides((current) => new Map(current).set(sessionId, checked))
@@ -189,7 +218,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
     >
       {/* Height is capped, never the data: the list scrolls inside the dialog so the header and
           the primary action stay put however many chats were interrupted. */}
-      {/* Wide enough for a sidebar card's chat row to keep its name, model and age on one line. */}
+      {/* Wide enough for a nested chat row to keep its name, model and age on one line. */}
       <DialogContent
         className="grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-3xl max-h-[85vh]"
         // Keep the scrollable list out of initial focus, including while Resume is disabled.
@@ -233,9 +262,41 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             'auto.components.NativeChatResumeOnRestartModal.listLabel',
             'Chats that would be resumed'
           )}
-          // The sidebar's own surface, so its cards read here as they do there.
+          // The sidebar's own surface, so its workspaces read here as they do there.
           className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar p-1.5"
+          onKeyDown={moveCheckboxFocus}
         >
+          {/* Here, not in the groups: a list may hold one set of groups per machine. */}
+          <label className="grid h-7.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+            <span className="flex justify-center">
+              <Checkbox
+                checked={allSelection.checked}
+                disabled={busy || allSelection.total === 0}
+                onCheckedChange={() =>
+                  toggleResumeSelection(selectable, allSelection, toggleSelected)
+                }
+                aria-label={translate(
+                  'auto.components.NativeChatResumeOnRestartModal.selectAll',
+                  'Select all chats'
+                )}
+              />
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 pr-2.5">
+              <span className="min-w-0 truncate text-xs font-semibold text-muted-foreground">
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.selectAllLabel',
+                  'Select all'
+                )}
+              </span>
+              <span className="ml-auto shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
+                {translate(
+                  'auto.components.NativeChatResumeOnRestartModal.selectedCount',
+                  '{{value0}} of {{value1}} selected',
+                  { value0: allSelection.selectedCount, value1: allSelection.total }
+                )}
+              </span>
+            </span>
+          </label>
           <ResumeOnRestartGroups
             candidates={rows}
             listedAt={listedAt}

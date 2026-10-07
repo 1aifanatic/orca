@@ -1,38 +1,21 @@
 // @vitest-environment happy-dom
 
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '../store'
 import { getDefaultSettings } from '../../../shared/constants'
-import type { SshConnectionStatus } from '../../../shared/ssh-types'
-import { worktreeCardTitleXSignature } from './sidebar/worktree-card-title-geometry.test-support'
-import {
-  describeWorktreeVerticalGeometry,
-  worktreeCardRootGap,
-  worktreeCardVerticalOffsets,
-  worktreeCardVerticalSignature
-} from './sidebar/worktree-card-vertical-geometry.test-support'
+import { getHostContextLabel } from '../../../shared/worktree/host-context-labels'
 import type { ExecutionHostId } from '../../../shared/execution-host'
+import type { WorktreeLineage } from '../../../shared/worktree/lineage-types'
 import type { Worktree } from '../../../shared/worktree/types'
-import type { WorktreeCardProperty } from '../../../shared/ui-chrome-types'
 import { ResumeOnRestartGroups } from './NativeChatResumeOnRestartGroups'
 import { TooltipProvider } from './ui/tooltip'
-import {
-  renderWorktreeItemRow,
-  renderWorktreeLineageDescendants,
-  type WorktreeItemRowContext
-} from './sidebar/worktree-list/rows/item-row'
-import { WORKTREE_ROW_DRAG_INITIAL_STATE } from './sidebar/worktree-list/drag/row-state'
-import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
-import { buildRows } from './sidebar/worktree-list/grouping/build-rows'
-import { buildRenderableRows } from './sidebar/worktree-list/listing/renderable-rows'
-import { WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP } from './sidebar/worktree-list/viewport/virtual-rows'
+import type { ResumeCandidate, ResumeFailure } from './native-chat-resume-on-restart-grouping'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 let root: Root
 let container: HTMLElement
-const liveRoots: { root: Root; element: HTMLElement }[] = []
 
 function worktree(name: string, overrides: Partial<Worktree> = {}): Worktree {
   return {
@@ -41,7 +24,7 @@ function worktree(name: string, overrides: Partial<Worktree> = {}): Worktree {
     repoId: 'repo-1',
     path: `/repo/${name}`,
     displayName: name,
-    branch: `refs/heads/${name}`,
+    branch: `refs/heads/${name}-branch`,
     head: 'abc123',
     isBare: false,
     isMainWorktree: false,
@@ -71,117 +54,137 @@ function candidate(sessionId: string, workspace: Worktree): ResumeCandidate {
   }
 }
 
-function render(
-  newCardStyle: boolean,
-  hosts: { parent?: ExecutionHostId; child?: ExecutionHostId } = {
-    parent: 'local',
-    child: 'local'
-  },
-  compactCards = false,
-  sshStatus?: SshConnectionStatus,
-  includeSiblings = false,
-  cardProperties?: WorktreeCardProperty[]
-): void {
-  const parent = worktree('parent', { hostId: hosts.parent })
-  const child = worktree('child', { hostId: hosts.child })
-  const sibling = worktree('sibling', { hostId: hosts.child })
-  const nextRoot = worktree('next-root', { hostId: hosts.parent })
-  const candidates = [
+function lineage(child: Worktree, parent: Worktree): WorktreeLineage {
+  return {
+    worktreeId: child.id,
+    worktreeInstanceId: child.instanceId!,
+    parentWorktreeId: parent.id,
+    parentWorktreeInstanceId: parent.instanceId!,
+    origin: 'cli',
+    capture: { source: 'explicit-cli-flag', confidence: 'explicit' },
+    createdAt: 1
+  }
+}
+
+/** parent (1 chat) > child (2 chats), plus an unrelated root workspace. */
+function seedTree(hosts: { parent?: ExecutionHostId; child?: ExecutionHostId } = {}) {
+  // An explicit undefined is a row with no host id (older metadata).
+  const parentHost = 'parent' in hosts ? hosts.parent : 'local'
+  const parent = worktree('parent', { hostId: parentHost })
+  const child = worktree('child', { hostId: 'child' in hosts ? hosts.child : 'local' })
+  const other = worktree('other', { hostId: parentHost })
+  useAppStore.setState({
+    settings: getDefaultSettings(''),
+    repos: [
+      { id: 'repo-1', path: '/repo', displayName: 'orca', badgeColor: '#999999', addedAt: 1 }
+    ],
+    worktreesByRepo: { 'repo-1': [parent, child, other] },
+    worktreeLineageById: { [child.id]: lineage(child, parent) }
+  })
+  return [
     candidate('in-child', child),
     candidate('in-parent', parent),
     candidate('also-in-child', child),
-    ...(includeSiblings
-      ? [candidate('in-sibling', sibling), candidate('in-next-root', nextRoot)]
-      : [])
+    candidate('in-other', other)
   ]
-  useAppStore.setState({
-    worktreeCardProperties: cardProperties ?? useAppStore.getState().worktreeCardProperties,
-    settings: {
-      ...getDefaultSettings(''),
-      experimentalNewWorktreeCardStyle: newCardStyle,
-      compactWorktreeCards: compactCards
-    },
-    repos: [
-      {
-        id: 'repo-1',
-        path: '/repo',
-        displayName: 'orca',
-        badgeColor: '#999999',
-        addedAt: 1,
-        connectionId: sshStatus ? 'build-server' : undefined
-      }
-    ],
-    sshConnectionStates: new Map(
-      sshStatus
-        ? [
-            [
-              'build-server',
-              {
-                targetId: 'build-server',
-                status: sshStatus,
-                error: null,
-                reconnectAttempt: 0,
-                remotePlatform: 'linux'
-              }
-            ]
-          ]
-        : []
-    ),
-    sshTargetLabels: new Map([['build-server', 'build-server']]),
-    worktreesByRepo: { 'repo-1': [parent, child, ...(includeSiblings ? [sibling, nextRoot] : [])] },
-    worktreeLineageById: {
-      [child.id]: {
-        worktreeId: child.id,
-        worktreeInstanceId: 'instance-child',
-        parentWorktreeId: parent.id,
-        parentWorktreeInstanceId: 'instance-parent',
-        origin: 'cli',
-        capture: { source: 'explicit-cli-flag', confidence: 'explicit' },
-        createdAt: 1
-      },
-      ...(includeSiblings
-        ? {
-            [sibling.id]: {
-              worktreeId: sibling.id,
-              worktreeInstanceId: 'instance-sibling',
-              parentWorktreeId: parent.id,
-              parentWorktreeInstanceId: 'instance-parent',
-              origin: 'cli' as const,
-              capture: { source: 'explicit-cli-flag' as const, confidence: 'explicit' as const },
-              createdAt: 1
+}
+
+const onToggleSpy = vi.fn()
+
+/** Owns the selection the way the dialog does, so group toggles show their effect. */
+function Harness({
+  candidates,
+  initiallySelected,
+  busy = false,
+  failureFor
+}: {
+  candidates: ResumeCandidate[]
+  initiallySelected?: string[]
+  busy?: boolean
+  failureFor?: (sessionId: string) => ResumeFailure | undefined
+}): React.JSX.Element {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () => new Set(initiallySelected ?? candidates.map((entry) => entry.sessionId))
+  )
+  return (
+    <TooltipProvider>
+      <ResumeOnRestartGroups
+        candidates={candidates}
+        listedAt={1_800_000_060_000}
+        busy={busy}
+        selected={selected}
+        onToggle={(sessionId, checked) => {
+          onToggleSpy(sessionId, checked)
+          setSelected((current) => {
+            const next = new Set(current)
+            if (checked) {
+              next.add(sessionId)
+            } else {
+              next.delete(sessionId)
             }
-          }
-        : {})
-    }
-  })
-  act(() =>
-    root.render(
-      <TooltipProvider>
-        <ResumeOnRestartGroups
-          candidates={candidates}
-          listedAt={1_800_000_060_000}
-          busy={false}
-          selected={new Set(candidates.map((entry) => entry.sessionId))}
-          onToggle={() => {}}
-        />
-      </TooltipProvider>
-    )
+            return next
+          })
+        }}
+        failureFor={failureFor}
+      />
+    </TooltipProvider>
   )
 }
 
-function cardTitled(title: string): HTMLElement {
-  const card = [
-    ...container.querySelectorAll<HTMLElement>('[data-worktree-card-surface="true"]')
-  ].find(
-    (surface) => surface.querySelector('[data-worktree-title-inline-rename]')?.textContent === title
+function render(props: React.ComponentProps<typeof Harness>): void {
+  act(() => root.render(<Harness {...props} />))
+}
+
+function workspaceBox(name: string): HTMLElement {
+  const box = container.querySelector<HTMLElement>(
+    `[role="checkbox"][aria-label="Select all chats in ${name}"]`
   )
-  if (!card) {
-    throw new Error(`Missing card: ${title}`)
+  if (!box) {
+    throw new Error(`Missing workspace checkbox: ${name}`)
   }
-  return card
+  return box
+}
+
+function chatBox(sessionId: string): HTMLElement {
+  const box = container.querySelector<HTMLElement>(
+    `[role="checkbox"][aria-label*="Prompt ${sessionId}"]`
+  )
+  if (!box) {
+    throw new Error(`Missing chat checkbox: ${sessionId}`)
+  }
+  return box
+}
+
+function rowOf(box: HTMLElement): HTMLElement {
+  return box.closest('label')!
+}
+
+/** A row's grid cell: 1 is the checkbox column, 2 the indented content. */
+function cell(row: HTMLElement, column: 1 | 2): HTMLElement {
+  return row.querySelector<HTMLElement>(`:scope > :nth-child(${column})`)!
+}
+
+/** The workspace row's "x of y". */
+function workspaceCount(name: string): string | undefined {
+  return rowOf(workspaceBox(name)).querySelector('.tabular-nums')?.textContent ?? undefined
+}
+
+/** Each row in list order, as kind:label@indent-of-its-content. */
+function rowOutline(): string[] {
+  return [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map((box) => {
+    const label = box.getAttribute('aria-label') ?? ''
+    const workspace = /^Select all chats in (.+)$/.exec(label)?.[1]
+    if (workspace) {
+      const content = cell(rowOf(box), 2)
+      return `ws:${workspace}@${content.style.paddingLeft || '0px'}`
+    }
+    const indent = box.closest('ul')?.style.getPropertyValue('--resume-chat-indent')
+    return `chat:${/Prompt ([\w-]+)/.exec(label)?.[1]}@${indent}`
+  })
 }
 
 beforeEach(() => {
+  onToggleSpy.mockReset()
   useAppStore.setState(useAppStore.getInitialState(), true)
   container = document.createElement('div')
   document.body.append(container)
@@ -191,18 +194,194 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   container.remove()
-  for (const live of liveRoots.splice(0)) {
-    act(() => live.root.unmount())
-    live.element.remove()
-  }
   useAppStore.setState(useAppStore.getInitialState(), true)
 })
 
-function checkedBoxes(): (string | null)[] {
-  return [...container.querySelectorAll('[role="checkbox"]')].map((box) =>
-    box.getAttribute('aria-checked')
+it('lists every chat with its checkbox in the shared left column, indenting only the content', () => {
+  const candidates = seedTree()
+  render({ candidates })
+
+  expect(rowOutline()).toEqual([
+    'ws:parent@0px',
+    'chat:in-parent@20px',
+    'ws:child@20px',
+    'chat:in-child@40px',
+    'chat:also-in-child@40px',
+    'ws:other@0px',
+    'chat:in-other@20px'
+  ])
+  for (const box of container.querySelectorAll<HTMLElement>('[role="checkbox"]')) {
+    const row = rowOf(box)
+    // The checkbox cell is the row's first grid column and is never indented.
+    expect(row.classList.contains('grid-cols-[1.75rem_minmax(0,1fr)]')).toBe(true)
+    expect(row.firstElementChild?.contains(box)).toBe(true)
+    expect(cell(row, 1).style.paddingLeft).toBe('')
+  }
+})
+
+it('names the repo in a header row with no checkbox, aligned to the content column', () => {
+  render({ candidates: seedTree() })
+
+  const header = container.querySelector('section')!.firstElementChild!
+  expect(header.textContent).toBe('orca')
+  expect(header.querySelector('[role="checkbox"]')).toBeNull()
+  expect(header.classList.contains('grid-cols-[1.75rem_minmax(0,1fr)]')).toBe(true)
+  expect(header.firstElementChild?.textContent).toBe('')
+})
+
+it('separates every row with the sidebar divider', () => {
+  render({ candidates: seedTree() })
+
+  const rows = [
+    container.querySelector('section')!.firstElementChild!,
+    ...[...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map(
+      (box) => box.closest('li') ?? rowOf(box)
+    )
+  ]
+  for (const row of rows) {
+    expect(row.classList.contains('border-t')).toBe(true)
+    expect(row.classList.contains('border-worktree-sidebar-border')).toBe(true)
+  }
+})
+
+it('shows the branch for a git worktree, muted after its name', () => {
+  render({ candidates: seedTree() })
+
+  const content = rowOf(workspaceBox('parent')).children[1]!
+  expect(content.textContent).toContain('parentparent-branch')
+  const branch = [...content.querySelectorAll('span')].find(
+    (span) => span.textContent === 'parent-branch'
   )
-}
+  expect(branch?.classList.contains('text-muted-foreground')).toBe(true)
+})
+
+it('covers nested child workspaces with a tri-state workspace checkbox', () => {
+  render({ candidates: seedTree() })
+  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('true')
+  expect(workspaceCount('parent')).toBe('3 of 3')
+
+  act(() => chatBox('in-child').click())
+  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('mixed')
+  expect(workspaceCount('parent')).toBe('2 of 3')
+  expect(workspaceBox('child').getAttribute('aria-checked')).toBe('mixed')
+  expect(workspaceCount('child')).toBe('1 of 2')
+  expect(workspaceBox('other').getAttribute('aria-checked')).toBe('true')
+
+  // Partly selected: ticking selects everything it covers, child workspace included.
+  act(() => workspaceBox('parent').click())
+  expect(chatBox('in-child').getAttribute('aria-checked')).toBe('true')
+  expect(workspaceCount('parent')).toBe('3 of 3')
+
+  act(() => workspaceBox('parent').click())
+  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('false')
+  expect(workspaceCount('parent')).toBe('0 of 3')
+  for (const id of ['in-parent', 'in-child', 'also-in-child']) {
+    expect(chatBox(id).getAttribute('aria-checked')).toBe('false')
+  }
+  expect(chatBox('in-other').getAttribute('aria-checked')).toBe('true')
+})
+
+it('selects a whole row by clicking anywhere on it', () => {
+  render({ candidates: seedTree(), initiallySelected: [] })
+
+  act(() => cell(rowOf(workspaceBox('child')), 2).click())
+  expect(chatBox('in-child').getAttribute('aria-checked')).toBe('true')
+  expect(chatBox('also-in-child').getAttribute('aria-checked')).toBe('true')
+
+  act(() => cell(rowOf(chatBox('in-other')), 2).click())
+  expect(chatBox('in-other').getAttribute('aria-checked')).toBe('true')
+})
+
+it('leaves a failure a retry cannot fix out of its workspace checkbox', () => {
+  const candidates = seedTree()
+  const stuck: ResumeFailure = {
+    ...candidates[0]!,
+    failedAt: 1_800_000_030_000,
+    outcome: 'refused',
+    reason: 'agent_session_restart_work_superseded',
+    retryable: false
+  }
+  render({
+    candidates,
+    initiallySelected: ['in-parent'],
+    failureFor: (sessionId) => (sessionId === 'in-child' ? stuck : undefined)
+  })
+
+  expect(chatBox('in-child').hasAttribute('disabled')).toBe(true)
+  expect(workspaceCount('child')).toBe('0 of 1')
+  expect(workspaceCount('parent')).toBe('1 of 2')
+
+  act(() => workspaceBox('parent').click())
+  expect(onToggleSpy.mock.calls.map(([sessionId]) => sessionId)).not.toContain('in-child')
+  expect(chatBox('in-child').getAttribute('aria-checked')).toBe('false')
+  expect(workspaceBox('parent').getAttribute('aria-checked')).toBe('true')
+})
+
+it('disables a workspace checkbox with nothing it could select', () => {
+  const candidates = seedTree()
+  const stuck = (sessionId: string): ResumeFailure => ({
+    ...candidates.find((entry) => entry.sessionId === sessionId)!,
+    failedAt: 1_800_000_030_000,
+    outcome: 'refused',
+    reason: 'agent_session_restart_work_superseded',
+    retryable: false
+  })
+  render({
+    candidates,
+    initiallySelected: [],
+    failureFor: (sessionId) => (sessionId === 'in-other' ? stuck(sessionId) : undefined)
+  })
+
+  expect(workspaceBox('other').hasAttribute('disabled')).toBe(true)
+  expect(workspaceCount('other')).toBeUndefined()
+})
+
+it('disables every checkbox while a resume runs', () => {
+  render({ candidates: seedTree(), busy: true })
+
+  const boxes = [...container.querySelectorAll('[role="checkbox"]')]
+  expect(boxes).toHaveLength(7)
+  for (const box of boxes) {
+    expect(box.hasAttribute('disabled')).toBe(true)
+  }
+})
+
+it('names the machine of a single-host SSH offer', () => {
+  const remote: ExecutionHostId = 'ssh:build-server'
+  render({ candidates: seedTree({ parent: remote, child: remote }) })
+
+  const label = getHostContextLabel(remote)
+  for (const name of ['parent', 'child', 'other']) {
+    expect(rowOf(workspaceBox(name)).textContent).toContain(label)
+  }
+})
+
+it('names hosts only when the machine is not obvious', () => {
+  render({ candidates: seedTree() })
+  const local = getHostContextLabel('local')
+  expect(container.textContent).not.toContain(local)
+
+  act(() => root.unmount())
+  root = createRoot(container)
+  const remote: ExecutionHostId = 'ssh:build-server'
+  render({ candidates: seedTree({ parent: 'local', child: remote }) })
+  expect(rowOf(workspaceBox('parent')).textContent).toContain(local)
+  expect(rowOf(workspaceBox('child')).textContent).toContain(getHostContextLabel(remote))
+})
+
+it('names a workspace the store does not know by its id, with the kind the host recorded', () => {
+  const unknown: ResumeCandidate = {
+    ...candidate('lost', worktree('gone')),
+    workspaceId: 'folder:missing-folder',
+    workspaceKind: 'folder'
+  }
+  render({ candidates: [unknown] })
+
+  const row = rowOf(workspaceBox('folder:missing-folder'))
+  expect(row.textContent).toContain('folder:missing-folder')
+  expect(row.querySelector('svg.lucide-folder')).not.toBeNull()
+  expect(chatBox('lost').getAttribute('aria-label')).toContain('in folder:missing-folder')
+})
 
 // Why: the sidebar nests a child only under a parent on its own host; no host id matches only none.
 it.each([
@@ -213,441 +392,25 @@ it.each([
 ] as const)(
   '%s: nests the child exactly as the sidebar does',
   (_, parentHost, childHost, nests) => {
-    render(false, { parent: parentHost, child: childHost })
+    const candidates = seedTree({ parent: parentHost, child: childHost })
+    render({ candidates })
 
-    expect(checkedBoxes()).toEqual(['true', 'true', 'true'])
-    expect(cardTitled('parent').contains(cardTitled('child'))).toBe(nests)
-    expect(cardTitled('child').textContent).toContain('Prompt in-child')
-    expect(cardTitled('child').textContent).toContain('Prompt also-in-child')
+    expect(rowOutline()).toContain(nests ? 'ws:child@20px' : 'ws:child@0px')
+    expect(workspaceCount('parent')).toBe(nests ? '3 of 3' : '1 of 1')
+    expect(container.querySelectorAll('[role="checkbox"][aria-label^="Resume"]')).toHaveLength(4)
   }
 )
 
-function titleXSignature(title: string, stopAt: Element): string[] {
-  return worktreeCardTitleXSignature(
-    cardTitled(title).querySelector('[data-worktree-title-inline-rename]'),
-    stopAt
-  )
-}
+it('lists every chat when workspace lineage loops', () => {
+  const a = worktree('a')
+  const b = worktree('b')
+  useAppStore.setState({
+    settings: getDefaultSettings(''),
+    worktreesByRepo: { 'repo-1': [a, b] },
+    worktreeLineageById: { [a.id]: lineage(a, b), [b.id]: lineage(b, a) }
+  })
+  render({ candidates: [candidate('in-a', a), candidate('in-b', b)] })
 
-function surfaceClasses(title: string): string[] {
-  // Why: caller-owned chat rows change compact card height; borders and surfaces must still match.
-  return [...cardTitled(title).classList]
-    .filter((name) => /^(border($|-)|rounded-|bg-|ring-|shadow-)/.test(name))
-    .toSorted()
-}
-
-function renderLiveSidebarRows(): HTMLElement {
-  const state = useAppStore.getState()
-  const [parent, child] = state.worktreesByRepo['repo-1'] ?? []
-  const repo = state.repos[0]
-  if (!parent || !child) {
-    throw new Error('Missing sidebar fixture')
-  }
-  const ctx: WorktreeItemRowContext = {
-    settings: state.settings,
-    groupBy: 'repo',
-    folderBackedProjectGroupIds: new Set(),
-    groupKeyByRowKey: new Map(),
-    groupIndexByRowKey: new Map(),
-    agentSendTargetWorktreeId: null,
-    worktreeDragState: WORKTREE_ROW_DRAG_INITIAL_STATE,
-    nativeLineageDropTargetId: null,
-    activeWorktreeId: null,
-    activeWorkspaceExecutionHostId: null,
-    currentWorktreeId: null,
-    highlightedRevealRowKey: null,
-    selectedWorktreeIds: new Set(),
-    selectedWorktrees: [],
-    getActiveSurfaceVariant: () => 'primary',
-    getLineageToggleHandler: () => vi.fn(),
-    onSelectionGesture: () => false,
-    onContextMenuSelect: () => [],
-    onImmediateActivate: vi.fn(),
-    onRowClickCapture: vi.fn(),
-    onRowPointerDown: vi.fn(),
-    onCardDragStart: vi.fn(),
-    onCardDragEnd: vi.fn()
-  }
-  const rows = buildRenderableRows(
-    buildRows(
-      'repo',
-      state.worktreesByRepo['repo-1'] ?? [],
-      new Map(repo ? [[repo.id, repo]] : []),
-      null,
-      new Set(),
-      undefined,
-      undefined,
-      undefined,
-      state.worktreeLineageById,
-      undefined,
-      true
-    )
-  ).filter((row) => row.type === 'item' || row.type === 'lineage-group')
-  const live = document.createElement('div')
-  live.style.display = 'flex'
-  live.style.flexDirection = 'column'
-  live.style.rowGap = `${WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP}px`
-  document.body.append(live)
-  const liveRoot = createRoot(live)
-  act(() =>
-    liveRoot.render(
-      <TooltipProvider>
-        {rows.map((row) => {
-          if (row.type === 'item') {
-            return renderWorktreeItemRow(ctx, row, false)
-          }
-          const [lineageParent, ...descendants] = row.rows
-          return lineageParent
-            ? renderWorktreeItemRow(
-                ctx,
-                lineageParent,
-                false,
-                renderWorktreeLineageDescendants(ctx, lineageParent, descendants)
-              )
-            : null
-        })}
-      </TooltipProvider>
-    )
-  )
-  liveRoots.push({ root: liveRoot, element: live })
-  return live
-}
-
-it.each(
-  [
-    { style: 'legacy', newCardStyle: false, compactCards: false },
-    { style: 'compact', newCardStyle: false, compactCards: true },
-    { style: 'new', newCardStyle: true, compactCards: false }
-  ].flatMap((style) =>
-    ([undefined, 'connected', 'disconnected'] as const).map((sshStatus) => ({
-      ...style,
-      sshStatus
-    }))
-  )
-)(
-  '$style/$sshStatus: places parent and child titles where the live sidebar does',
-  ({ newCardStyle, compactCards, sshStatus }) => {
-    render(
-      newCardStyle,
-      sshStatus ? { parent: 'ssh:build-server', child: 'ssh:build-server' } : undefined,
-      compactCards,
-      sshStatus
-    )
-    const dialogList = cardTitled('parent').parentElement?.parentElement
-    if (!dialogList) {
-      throw new Error('Missing dialog list')
-    }
-    const dialog = {
-      parent: titleXSignature('parent', dialogList),
-      child: titleXSignature('child', dialogList),
-      parentSurface: surfaceClasses('parent'),
-      childSurface: surfaceClasses('child')
-    }
-    const live = renderLiveSidebarRows()
-    const liveContainer = container
-    container = live
-    const sidebar = {
-      parent: titleXSignature('parent', live),
-      child: titleXSignature('child', live),
-      parentSurface: surfaceClasses('parent'),
-      childSurface: surfaceClasses('child')
-    }
-    container = liveContainer
-
-    expect(dialog.parent.length).toBeGreaterThan(3)
-    expect(dialog).toEqual(sidebar)
-    if (sshStatus) {
-      const identity = cardTitled('parent').querySelector('[data-ssh-target-label="build-server"]')
-      expect(identity?.tagName).toBe('SPAN')
-      expect(cardTitled('parent').textContent).toContain('build-server')
-      expect(identity?.matches('button, [tabindex], [role="button"]')).toBe(false)
-      expect(dialog.parent).toContain('gaps-before: 1')
-      if (sshStatus === 'connected') {
-        expect(identity?.querySelector('svg')?.classList.contains('size-3')).toBe(true)
-        expect(dialog.parent).toContain('before: size-3 width=24')
-      } else if (newCardStyle || compactCards) {
-        expect(identity?.querySelector('svg')?.classList.contains('size-2.5')).toBe(true)
-      } else {
-        expect(identity?.textContent).toContain('Connect')
-      }
-    }
-  }
-)
-
-it('lays a read-only parent out with its status lane and passive child chip', () => {
-  render(false)
-
-  const parentCard = cardTitled('parent')
-  expect(parentCard.querySelector('[data-worktree-card-status-slot]')).not.toBeNull()
-  expect(parentCard.textContent).toContain('1 child')
-  expect(parentCard.querySelector('button[aria-expanded]')).toBeNull()
+  expect(chatBox('in-a')).toBeTruthy()
+  expect(chatBox('in-b')).toBeTruthy()
 })
-
-it.each([
-  { style: 'legacy', newCardStyle: false, compactCards: false },
-  { style: 'compact', newCardStyle: false, compactCards: true },
-  { style: 'new', newCardStyle: true, compactCards: false }
-])(
-  '$style: matches the live sidebar vertical card and lineage geometry',
-  ({ newCardStyle, compactCards }) => {
-    render(newCardStyle, undefined, compactCards, undefined, true)
-    const dialog = {
-      parent: worktreeCardVerticalSignature(cardTitled('parent')),
-      child: worktreeCardVerticalSignature(cardTitled('child')),
-      sibling: worktreeCardVerticalSignature(cardTitled('sibling')),
-      nextRoot: worktreeCardVerticalSignature(cardTitled('next-root'))
-    }
-    const live = renderLiveSidebarRows()
-    const dialogContainer = container
-    container = live
-    const sidebar = {
-      parent: worktreeCardVerticalSignature(cardTitled('parent')),
-      child: worktreeCardVerticalSignature(cardTitled('child')),
-      sibling: worktreeCardVerticalSignature(cardTitled('sibling')),
-      nextRoot: worktreeCardVerticalSignature(cardTitled('next-root'))
-    }
-    container = dialogContainer
-    expect(sidebar.parent.surface).toEqual(['border', 'pb-1.5', 'pt-1.25'])
-    expect(sidebar.child.surface).toEqual(
-      compactCards ? ['border', 'py-2'] : ['border', 'pb-1.5', 'pt-1.25']
-    )
-    expect(sidebar.parent.children).toHaveLength(2)
-    for (const childPath of sidebar.parent.children) {
-      expect(childPath).toContainEqual(['mt-1.5', 'space-y-1'])
-    }
-    expect(dialog).toEqual(sidebar)
-  }
-)
-
-it.each([
-  { style: 'legacy', newCardStyle: false, compactCards: false },
-  { style: 'compact', newCardStyle: false, compactCards: true },
-  { style: 'new', newCardStyle: true, compactCards: false }
-])('$style: leaves the sidebar gap before the next root card', ({ newCardStyle, compactCards }) => {
-  render(newCardStyle, undefined, compactCards, undefined, true)
-  const list = cardTitled('parent').parentElement?.parentElement
-  if (!list) {
-    throw new Error('Missing dialog list')
-  }
-  const live = renderLiveSidebarRows()
-  expect(WORKTREE_SIDEBAR_VIRTUAL_ROW_GAP).toBe(6)
-  expect(describeWorktreeVerticalGeometry(list)).toEqual(describeWorktreeVerticalGeometry(live))
-})
-
-it.each(
-  [
-    { style: 'legacy', newCardStyle: false, compactCards: false },
-    { style: 'compact', newCardStyle: false, compactCards: true },
-    { style: 'new', newCardStyle: true, compactCards: false }
-  ].flatMap((style) => [true, false].map((inlineAgents) => ({ ...style, inlineAgents })))
-)(
-  '$style/inline=$inlineAgents: follows sidebar padding when branch metadata is hidden',
-  ({ newCardStyle, compactCards, inlineAgents }) => {
-    render(newCardStyle, undefined, compactCards, undefined, true, [
-      'status',
-      ...(inlineAgents ? ['inline-agents' as const] : [])
-    ])
-    const titles = ['parent', 'child', 'sibling', 'next-root']
-    const dialog = titles.map((title) => worktreeCardVerticalSignature(cardTitled(title)))
-    const live = renderLiveSidebarRows()
-    const dialogContainer = container
-    container = live
-    const sidebar = titles.map((title) => worktreeCardVerticalSignature(cardTitled(title)))
-    container = dialogContainer
-    expect(sidebar[1]?.surface).toEqual(
-      (newCardStyle && !inlineAgents) || compactCards
-        ? ['border', 'py-2']
-        : ['border', 'pb-1.5', 'pt-1.25']
-    )
-    expect(dialog).toEqual(sidebar)
-  }
-)
-
-it.each([
-  { style: 'legacy', newCardStyle: false, compactCards: false, chip: 18, sibling: 10, root: 19 },
-  { style: 'compact', newCardStyle: false, compactCards: true, chip: 21, sibling: 13, root: 22 },
-  { style: 'new', newCardStyle: true, compactCards: false, chip: 12, sibling: 10, root: 19 }
-])(
-  '$style: matches computed chip, sibling and next-root title offsets',
-  ({ newCardStyle, compactCards, chip, sibling, root: nextRootOffset }) => {
-    render(newCardStyle, undefined, compactCards, undefined, true)
-    const list = cardTitled('parent').parentElement?.parentElement
-    if (!list) {
-      throw new Error('Missing dialog list')
-    }
-    const dialog = worktreeCardVerticalOffsets(
-      cardTitled('parent'),
-      cardTitled('next-root'),
-      worktreeCardRootGap(list)
-    )
-    const live = renderLiveSidebarRows()
-    const dialogContainer = container
-    container = live
-    const sidebar = worktreeCardVerticalOffsets(
-      cardTitled('parent'),
-      cardTitled('next-root'),
-      worktreeCardRootGap(live)
-    )
-    container = dialogContainer
-    expect(sidebar).toEqual({
-      chipToChildTitle: chip,
-      childToSiblingTitle: sibling,
-      lastChildToNextRootTitle: nextRootOffset
-    })
-    expect(dialog).toEqual(sidebar)
-  }
-)
-
-it.each([true, false])(
-  'cache-only metadata/enabled=%s: preserves sidebar header geometry without showing live state',
-  (enabled) => {
-    useAppStore.setState({ fetchHostedReviewForBranch: vi.fn().mockResolvedValue(undefined) })
-    render(true, undefined, false, undefined, true, ['status'])
-    const child = worktree('child', { hostId: 'local' })
-    const state = useAppStore.getState()
-    act(() =>
-      useAppStore.setState({
-        settings: {
-          ...(state.settings ?? getDefaultSettings('')),
-          promptCacheTimerEnabled: enabled,
-          promptCacheTtlMs: 300_000
-        },
-        tabsByWorktree: {
-          [child.id]: [
-            {
-              id: 'child-claude',
-              worktreeId: child.id,
-              ptyId: null,
-              title: 'Claude',
-              customTitle: null,
-              color: null,
-              launchAgent: 'claude',
-              sortOrder: 0,
-              createdAt: 1
-            }
-          ]
-        },
-        cacheTimerByKey: { 'child-claude:seed': Date.now() }
-      })
-    )
-    const dialogChild = cardTitled('child')
-    const dialog = worktreeCardVerticalSignature(dialogChild)
-    const list = cardTitled('parent').parentElement?.parentElement
-    if (!list) {
-      throw new Error('Missing dialog list')
-    }
-    const dialogOffsets = worktreeCardVerticalOffsets(
-      cardTitled('parent'),
-      cardTitled('next-root'),
-      worktreeCardRootGap(list)
-    )
-    expect(dialogChild.querySelector('[data-worktree-card-meta-row]')).toBeNull()
-    expect(dialogChild.textContent).toContain('Prompt in-child')
-    expect(dialogChild.textContent).toContain('Prompt also-in-child')
-
-    const live = renderLiveSidebarRows()
-    const dialogContainer = container
-    container = live
-    const sidebarChild = cardTitled('child')
-    const sidebar = worktreeCardVerticalSignature(sidebarChild)
-    const sidebarOffsets = worktreeCardVerticalOffsets(
-      cardTitled('parent'),
-      cardTitled('next-root'),
-      worktreeCardRootGap(live)
-    )
-    container = dialogContainer
-    expect(sidebarChild.querySelector('[data-worktree-card-meta-row]') !== null).toBe(enabled)
-    expect(sidebar.surface).toEqual(enabled ? ['border', 'pb-1.5', 'pt-1.25'] : ['border', 'py-2'])
-    expect(dialog).toEqual(sidebar)
-    expect(sidebarOffsets.chipToChildTitle).toBe(enabled ? 12 : 15)
-    expect(dialogOffsets).toEqual(sidebarOffsets)
-  }
-)
-
-it('counts only listed child workspaces in the passive chip', () => {
-  render(false)
-  const state = useAppStore.getState()
-  const parent = state.worktreesByRepo['repo-1']?.[0]
-  const childLineage = Object.values(state.worktreeLineageById)[0]
-  if (!parent || !childLineage) {
-    throw new Error('Missing lineage fixture')
-  }
-  const unlisted = worktree('unlisted', { hostId: 'local' })
-  act(() =>
-    useAppStore.setState({
-      worktreesByRepo: { 'repo-1': [...(state.worktreesByRepo['repo-1'] ?? []), unlisted] },
-      worktreeLineageById: {
-        ...state.worktreeLineageById,
-        [unlisted.id]: {
-          ...childLineage,
-          worktreeId: unlisted.id,
-          worktreeInstanceId: 'instance-unlisted'
-        }
-      }
-    })
-  )
-  expect(cardTitled('parent').textContent).toContain('1 child')
-  expect(cardTitled('parent').textContent).not.toContain('2 children')
-})
-
-it.each([
-  ['legacy', false, false, true],
-  ['legacy, host disabled', false, false, false],
-  ['compact', false, true, true],
-  ['new', true, false, true],
-  ['new, host disabled', true, false, false]
-] as const)(
-  '%s: keeps a remote folder identifiable when its host chip is enabled',
-  async (_style, newCardStyle, compactCards, showHost) => {
-    useAppStore.setState({
-      settings: {
-        ...getDefaultSettings(''),
-        experimentalNewWorktreeCardStyle: newCardStyle,
-        compactWorktreeCards: compactCards
-      },
-      worktreeCardProperties: showHost ? ['status', 'host'] : ['status'],
-      folderWorkspaces: [
-        {
-          id: 'remote-folder',
-          projectGroupId: 'folder-project',
-          name: 'Remote folder',
-          folderPath: '/remote/folder',
-          connectionId: 'build-server',
-          executionHostId: 'ssh:build-server',
-          linkedTask: null,
-          comment: '',
-          isArchived: false,
-          isUnread: false,
-          isPinned: false,
-          sortOrder: 0,
-          lastActivityAt: 1,
-          createdAt: 1,
-          updatedAt: 1
-        }
-      ]
-    })
-    const entry: ResumeCandidate = {
-      ...candidate('folder-chat', worktree('folder')),
-      workspaceId: 'folder:remote-folder',
-      executionHostId: 'ssh:build-server',
-      workspaceKind: 'folder'
-    }
-    await act(async () =>
-      root.render(
-        <TooltipProvider>
-          <ResumeOnRestartGroups
-            candidates={[entry]}
-            listedAt={entry.recordedAt}
-            busy={false}
-            selected={new Set([entry.sessionId])}
-            onToggle={() => {}}
-          />
-        </TooltipProvider>
-      )
-    )
-    const card = cardTitled('Remote folder')
-    expect(card.textContent?.includes('build-server')).toBe(showHost && !compactCards)
-    expect(card.querySelector('[data-ssh-target-label]')).toBeNull()
-    expect(card.querySelector('button:not([role="checkbox"]), [tabindex]')).toBeNull()
-  }
-)

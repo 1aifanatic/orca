@@ -4,6 +4,7 @@ import { LoaderCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AutoRenameFailedDialog } from './AutoRenameFailedDialog'
 import WorktreeContextMenu from './WorktreeContextMenu'
+import { useIsSleepingWorktree } from './use-worktree-sleep-state'
 import { WorktreeCardParentContent } from './worktree-card-parent-content'
 import { buildWorktreeCardPresentation } from './worktree-card-presentation'
 import type { WorktreeCardController } from './use-worktree-card-controller'
@@ -15,7 +16,6 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     selectedWorktrees,
     onAssignWorkspaceStatus,
     affiliateListMode,
-    interactive,
     isActiveSurface,
     activeSurfaceVariant,
     isMultiSelected,
@@ -29,7 +29,6 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     newCardStyle,
     titleRenaming,
     isDeleting,
-    isSleeping,
     isRuntimeDisconnected,
     isQueuedForDeletion,
     deleteLabel,
@@ -41,16 +40,16 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
     showRenameErrorDialog,
     setShowRenameErrorDialog
   } = card
-  const { surfacePaddingClassName, cardStyle } = presentation
+  const { titleOnlyCard, cardStyle } = presentation
+  const isSleeping = useIsSleepingWorktree(worktree.id)
 
   const parentCardContent = <WorktreeCardParentContent card={card} presentation={presentation} />
 
   const cardBody = (
     <div
       className={cn(
-        'relative flex flex-col pr-1.5 transition-[background-color,border-color,opacity,box-shadow] duration-200 outline-none select-none',
-        interactive && 'cursor-pointer',
-        surfacePaddingClassName,
+        'relative flex cursor-pointer flex-col pr-1.5 transition-[background-color,border-color,opacity,box-shadow] duration-200 outline-none select-none',
+        titleOnlyCard ? 'py-2' : 'pt-1.25 pb-1.5',
         flushSurface ? 'ml-1 w-[calc(100%-0.25rem)]' : 'ml-1',
         'overflow-hidden rounded-lg',
         // Why: the live data attribute updates before React state during navigation,
@@ -59,9 +58,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
           ? 'border border-worktree-sidebar-foreground/40 bg-worktree-sidebar-accent text-worktree-sidebar-accent-foreground ring-1 ring-inset ring-worktree-sidebar-ring/60'
           : isActiveSurface
             ? 'border border-transparent'
-            : interactive
-              ? 'border border-transparent worktree-sidebar-card-hover'
-              : 'border border-transparent',
+            : 'border border-transparent worktree-sidebar-card-hover',
         isActiveSurface && isMultiSelected && 'ring-1 ring-worktree-sidebar-ring/35',
         revealHighlight && [
           'scroll-to-current-workspace-reveal-highlight',
@@ -85,7 +82,7 @@ export function WorktreeCardSurface({ card }: { card: WorktreeCardController }):
         (isMultiSelected && !isActiveSurface && !isLineageDropTarget) || undefined
       }
       data-worktree-lineage-drop-target={isLineageDropTarget || undefined}
-      onClick={interactive ? handleClick : undefined}
+      onClick={handleClick}
       onDoubleClick={affiliateListMode ? undefined : handleDoubleClick}
       draggable={!affiliateListMode && nativeDragEnabled && !isDeleting && !titleRenaming}
       onDragStart={!affiliateListMode && nativeDragEnabled ? handleDragStart : undefined}

@@ -12,9 +12,9 @@ import { ResumeFailureGuidanceLine, ResumeFailureStatus } from './NativeChatResu
 import { resumeActivityLabel } from './native-chat-resume-activity-label'
 
 /**
- * One offered chat, laid out like the sidebar's compact agent row — provider glyph, then "name -
- * what it was doing" on one line, then the model and an age on the right — with the checkbox in
- * the state dot's slot. It sits inside the workspace's own read-only sidebar card.
+ * One offered chat as a row of the resume list: its checkbox in the list's shared left column, then,
+ * indented for its depth, the provider glyph, "name - what it was doing", the model and an age —
+ * the pieces of the sidebar's compact agent row.
  *
  * The sidebar's own `CompactAgentRow` cannot be reused — it takes a `DashboardAgentRow`, which
  * requires a live pane, tab and status entry, and every chat here is by definition stopped. The
@@ -32,6 +32,8 @@ import { resumeActivityLabel } from './native-chat-resume-activity-label'
  *
  * A chat an earlier resume could not carry on is the same row — selectable where a retry can run,
  * so Resume retries it — plus a status icon, a dismiss control, and a line saying what to do.
+ *
+ * The enclosing list sets `--resume-chat-indent` for the row's depth.
  */
 export function ResumeCandidateRow({
   candidate,
@@ -61,54 +63,56 @@ export function ResumeCandidateRow({
   const model = candidate.model?.trim() ?? ''
   const activity = resumeActivityLabel(candidate.activity)
   const row = (
-    // Same box and type scale as the sidebar's `CompactAgentRow`.
-    <label className="flex h-6 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm px-1 text-[11px] leading-none text-muted-foreground worktree-agent-row-hover">
-      {/* Identifies the agent AND its workspace: the accessible name has to distinguish rows that
+    <label className="grid h-7.5 min-w-0 flex-1 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+      <span className="flex justify-center">
+        {/* Identifies the agent AND its workspace: the accessible name has to distinguish rows that
             would otherwise all read the same. */}
-      <Checkbox
-        checked={checked}
-        disabled={disabled || (failure !== undefined && !resumeFailureSelectable(failure))}
-        onCheckedChange={(next) => onCheckedChange(next === true)}
-        className="shrink-0"
-        aria-label={translate(
-          'auto.components.NativeChatResumeOnRestartModal.selectAgent',
-          'Resume {{value0}} chat "{{value1}}" in {{value2}}',
-          { value0: agentLabel, value1: title, value2: workspaceName }
-        )}
-      />
-      {/* AgentIcon carries no label of its own, so the provider was invisible to assistive tech. */}
-      <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
-        <AgentIcon agent={agentTypeToIconAgent(candidate.agent)} size={13} />
+        <Checkbox
+          checked={checked}
+          disabled={disabled || (failure !== undefined && !resumeFailureSelectable(failure))}
+          onCheckedChange={(next) => onCheckedChange(next === true)}
+          aria-label={translate(
+            'auto.components.NativeChatResumeOnRestartModal.selectAgent',
+            'Resume {{value0}} chat "{{value1}}" in {{value2}}',
+            { value0: agentLabel, value1: title, value2: workspaceName }
+          )}
+        />
       </span>
-      <span
-        className="min-w-0 flex-1 truncate"
-        title={activity ? `${title} - ${activity.detail || activity.summary}` : title}
-      >
-        <span className="text-foreground/90">{title}</span>
-        {activity && <span className="text-muted-foreground/80"> - {activity.summary}</span>}
-      </span>
-      {model && (
-        <span
-          className="min-w-0 max-w-24 shrink-0 truncate font-mono text-[10px] text-muted-foreground/70"
-          title={model}
-        >
-          {model}
+      <span className="flex min-w-0 items-center gap-1.5 pr-2.5 pl-(--resume-chat-indent) text-[11px] leading-none text-muted-foreground">
+        {/* AgentIcon carries no label of its own, so the provider was invisible to assistive tech. */}
+        <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
+          <AgentIcon agent={agentTypeToIconAgent(candidate.agent)} size={13} />
         </span>
-      )}
-      {/* `formatShortTimeAgo` takes (timestamp, now) and subtracts internally — NOT a delta. */}
-      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
-        {formatShortTimeAgo(candidate.recordedAt, listedAt)}
+        <span
+          className="min-w-0 flex-1 truncate"
+          title={activity ? `${title} - ${activity.detail || activity.summary}` : title}
+        >
+          <span className="text-foreground/90">{title}</span>
+          {activity && <span className="text-muted-foreground/80"> - {activity.summary}</span>}
+        </span>
+        {model && (
+          <span
+            className="min-w-0 max-w-24 shrink-0 truncate font-mono text-[10px] text-muted-foreground/70"
+            title={model}
+          >
+            {model}
+          </span>
+        )}
+        {/* `formatShortTimeAgo` takes (timestamp, now) and subtracts internally — NOT a delta. */}
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
+          {formatShortTimeAgo(candidate.recordedAt, listedAt)}
+        </span>
       </span>
     </label>
   )
   if (!failure) {
-    return <li>{row}</li>
+    return <li className="border-t border-worktree-sidebar-border">{row}</li>
   }
   const act = (action: ResumeFailureAction) => onFailureAction?.(action, candidate.sessionId)
   return (
-    <li className="flex flex-col">
+    <li className="flex flex-col border-t border-worktree-sidebar-border">
       {/* Outside the label, so pressing them never toggles the checkbox. */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 pr-1">
         {row}
         <ResumeFailureStatus
           failure={failure}
@@ -118,7 +122,10 @@ export function ResumeCandidateRow({
           onAction={act}
         />
       </div>
-      <ResumeFailureGuidanceLine failure={failure} disabled={disabled} onAction={act} />
+      {/* Lined up with the row's content, past the checkbox column. */}
+      <div className="pr-2.5 pl-[calc(1.75rem+var(--resume-chat-indent,0px))]">
+        <ResumeFailureGuidanceLine failure={failure} disabled={disabled} onAction={act} />
+      </div>
     </li>
   )
 }

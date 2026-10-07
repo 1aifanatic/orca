@@ -10,9 +10,6 @@ import WorktreeCardAgents from './WorktreeCardAgents'
 import type { WorktreeCardPresentation } from './worktree-card-presentation'
 import type { WorktreeCardController } from './use-worktree-card-controller'
 
-const LINEAGE_CHIP_LOOK =
-  'relative z-10 h-[18px] max-w-[8rem] gap-1 rounded-md border border-worktree-sidebar-border bg-worktree-sidebar px-1.5 text-[10px] font-medium leading-none text-muted-foreground shadow-none'
-
 export function WorktreeCardSecondaryRows({
   card,
   presentation
@@ -25,7 +22,6 @@ export function WorktreeCardSecondaryRows({
     repo,
     settings,
     isActive,
-    agentRows,
     newCardStyle,
     lineageChildren,
     lineageCollapsed,
@@ -37,19 +33,9 @@ export function WorktreeCardSecondaryRows({
     showLineageChildChip,
     lineageChildAriaLabel,
     childWorkspaceShortLabel,
-    isDeleting,
-    interactive
+    isDeleting
   } = card
   const { hasMetaRow } = presentation
-  const lineageChipContent = (
-    <>
-      <Workflow className="size-2.5" />
-      <span className="truncate">{childWorkspaceShortLabel}</span>
-      <ChevronDown
-        className={cn('size-2.5 transition-transform', lineageCollapsed && '-rotate-90')}
-      />
-    </>
-  )
 
   return (
     <>
@@ -100,16 +86,12 @@ export function WorktreeCardSecondaryRows({
       ) : null}
 
       {/* Why: counterbalance the card stack gap (-mt-1) so agents right after the title read as one header group. */}
-      {agentRows != null ? (
-        <div className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}>{agentRows}</div>
-      ) : (
-        showInlineAgentList && (
-          <WorktreeCardAgents
-            worktreeId={worktree.id}
-            agents={agentActivityDisplayMode === 'compact' ? compactInlineAgentRows : undefined}
-            className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}
-          />
-        )
+      {showInlineAgentList && (
+        <WorktreeCardAgents
+          worktreeId={worktree.id}
+          agents={agentActivityDisplayMode === 'compact' ? compactInlineAgentRows : undefined}
+          className={hasMetaRow || remoteBranchConflict ? 'mt-0' : '-mt-1'}
+        />
       )}
 
       {showLineageChildChip && (
@@ -119,44 +101,36 @@ export function WorktreeCardSecondaryRows({
             color: 'color-mix(in srgb, var(--muted-foreground) 42%, var(--worktree-sidebar))'
           }}
         >
-          {interactive ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  className="relative z-10 h-[18px] max-w-[8rem] gap-1 rounded-md border border-worktree-sidebar-border bg-worktree-sidebar px-1.5 text-[10px] font-medium leading-none text-muted-foreground shadow-none hover:bg-worktree-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-worktree-sidebar-ring"
-                  aria-label={lineageChildAriaLabel}
-                  aria-expanded={!lineageCollapsed}
-                  onClick={onLineageToggle}
-                >
-                  {lineageChipContent}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
-                {lineageCollapsed
-                  ? translate(
-                      'auto.components.sidebar.WorktreeCard.8cb634cda6',
-                      'Show child workspaces'
-                    )
-                  : translate(
-                      'auto.components.sidebar.WorktreeCard.57eaa61b55',
-                      'Hide child workspaces'
-                    )}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            // Why: a read-only card always lists its children, so the chip only names them.
-            <span
-              className={cn(
-                'inline-flex shrink-0 items-center justify-center whitespace-nowrap',
-                LINEAGE_CHIP_LOOK
-              )}
-            >
-              {lineageChipContent}
-            </span>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="relative z-10 h-[18px] max-w-[8rem] gap-1 rounded-md border border-worktree-sidebar-border bg-worktree-sidebar px-1.5 text-[10px] font-medium leading-none text-muted-foreground shadow-none hover:bg-worktree-sidebar-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-worktree-sidebar-ring"
+                aria-label={lineageChildAriaLabel}
+                aria-expanded={!lineageCollapsed}
+                onClick={onLineageToggle}
+              >
+                <Workflow className="size-2.5" />
+                <span className="truncate">{childWorkspaceShortLabel}</span>
+                <ChevronDown
+                  className={cn('size-2.5 transition-transform', lineageCollapsed && '-rotate-90')}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              {lineageCollapsed
+                ? translate(
+                    'auto.components.sidebar.WorktreeCard.8cb634cda6',
+                    'Show child workspaces'
+                  )
+                : translate(
+                    'auto.components.sidebar.WorktreeCard.57eaa61b55',
+                    'Hide child workspaces'
+                  )}
+            </TooltipContent>
+          </Tooltip>
         </div>
       )}
 

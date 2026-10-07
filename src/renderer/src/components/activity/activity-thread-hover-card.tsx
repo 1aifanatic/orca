@@ -133,7 +133,6 @@ function ActivityThreadHoverCardContent({
     worktree,
     repo: repo ?? undefined,
     statusPrDisplay: null,
-    showLiveState: true,
     showStatus: true,
     showIssue: true,
     showLinearIssue: true,

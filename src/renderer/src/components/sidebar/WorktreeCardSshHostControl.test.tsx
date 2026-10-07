@@ -82,52 +82,6 @@ describe('WorktreeCardSshHostControl', () => {
     cleanup()
   })
 
-  it.each(
-    (
-      [
-        'connected',
-        'disconnected',
-        'connecting',
-        'deploying-relay',
-        'reconnecting',
-        'error',
-        'auth-failed',
-        'reconnection-failed',
-        null
-      ] as const
-    ).flatMap((status) => [false, true].map((iconOnly) => ({ status, iconOnly })))
-  )(
-    'renders $status (iconOnly=$iconOnly) passively without a tooltip or reconnect action',
-    async ({ status, iconOnly }) => {
-      const connect = vi.fn()
-      const onPointerDown = vi.fn()
-      installSshApi(connect)
-      const { container } = renderControl({ status, iconOnly, interactive: false, onPointerDown })
-      const identity = container.querySelector('[data-ssh-target-label]')
-      expect(identity?.tagName).toBe('SPAN')
-      expect(
-        [...(identity?.classList ?? [])].filter((name) =>
-          /(?:^|:)(?:hover|focus|focus-visible|focus-within|active|disabled|aria-invalid):/.test(
-            name
-          )
-        )
-      ).toEqual([])
-      expect(identity?.textContent).toContain('devbox')
-      expect(
-        container.querySelector('button, [tabindex], [role="button"], [data-tooltip]')
-      ).toBeNull()
-      const user = userEvent.setup()
-      if (!(identity instanceof HTMLElement)) {
-        throw new Error('Missing passive SSH identity')
-      }
-      await user.click(identity)
-      await user.dblClick(identity)
-      expect(connect).not.toHaveBeenCalled()
-      expect(onPointerDown).not.toHaveBeenCalled()
-      expect(environmentSshMocks.connectRuntimeEnvironmentSshTarget).not.toHaveBeenCalled()
-    }
-  )
-
   it('offers a Connect control naming the host for a disconnected target', () => {
     renderControl()
 
