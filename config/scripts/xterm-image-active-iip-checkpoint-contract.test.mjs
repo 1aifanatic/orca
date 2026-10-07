@@ -54,7 +54,13 @@ describe('active IIP image checkpoint component', () => {
   })
 
   it('resumes every split in a header containing typed unknown fields and a UTF8 filename', () => {
-    const header = `${file};ignored=abc;name=${Buffer.from('图.png').toString('base64')}:`
+    const headerRgba = new Uint8ClampedArray(
+      Array.from({ length: 12 * 12 }, (_, i) => [i % 256, 100, 0, 255]).flat()
+    )
+    const headerImage = new PNG({ width: 12, height: 12 })
+    headerImage.data.set(headerRgba)
+    const headerBody = PNG.sync.write(headerImage, { deflateLevel: 0 }).toString('base64')
+    const header = `${file.replaceAll('200px', '12px')};ignored=abc;name=${Buffer.from('图.png').toString('base64')}:`
     for (let cut = 0; cut <= header.length; cut++) {
       const source = terminal(),
         target = terminal()
@@ -62,8 +68,8 @@ describe('active IIP image checkpoint component', () => {
       try {
         write(source, `\x1b]1337;${header.slice(0, cut)}`)
         checkpoint = restore(source, target)
-        write(target, `${header.slice(cut)}${encoded}\x07`)
-        expect(rendered(target), `header cut ${cut}`).toEqual(new Uint8ClampedArray(rgba))
+        write(target, `${header.slice(cut)}${headerBody}\x07`)
+        expect(rendered(target), `header cut ${cut}`).toEqual(headerRgba)
         expect(handler(target)._header.name).toBe('图.png')
       } finally {
         checkpoint?.dispose()
