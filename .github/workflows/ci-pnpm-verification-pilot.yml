@@ -1,65 +1,92 @@
-name: pnpm verification cache pilot
-
+name: Original Node4 source admission
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+    inputs:
+      source_sha:
+        description: Exact reviewed original source5b8a982f8f76afea8bacbab437173fb617f0e6aa only.
+        required: true
+        type: string
 env:
   ORCA_BACKGROUND_LAUNCH: '1'
-
+permissions:
+  contents: read
+concurrency:
+  group: original-node4-source-admission
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
-        with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
+  original_shard:
+    name: Original correctness and resources ${{ matrix.shard }}/5
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 5
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Reject source drift before dependency installation
+        env:
+          REQUESTED_SOURCE: ${{ inputs.source_sha }}
+        run: |
+          test "$REQUESTED_SOURCE" = 5b8a982f8f76afea8bacbab437173fb617f0e6aa
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SOURCE"
+      - name: Checkout reviewed definition separately
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
+          persist-credentials: false
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          node-version: '24.21.0'
+          native-runtime: node
+          cache-electron-package: 'true'
+      - name: Install original Electron package binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Materialize original discovery and stock shard map
+        env:
+          BENCH_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node .benchmark-definition/.github/benchmark/original-node4-admission/materialize.mjs
+      - name: Original complete stock shard admission
+        run: node .github/benchmark/original-node4-admission/admit-original-shard.mjs ${{ matrix.shard }}
+      - name: Preserve original evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-node4-admission-shard-${{ matrix.shard }}
+          retention-days: 14
+          if-no-files-found: warn
+          include-hidden-files: true
+          path: .github/benchmark/original-node4-admission/
+  admission_evidence:
+    name: Original complete admission proof
+    if: always()
+    needs: original_shard
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
+      - uses: actions/setup-node@v6
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
-        run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          node-version: '24.21.0'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: original-node4-admission-shard-*
+          path: original-admission-artifacts
+      - name: Require all five original full shards
+        run: node .github/benchmark/original-node4-admission/collect-admission.mjs original-admission-artifacts
+      - name: Preserve aggregate admission and failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-node4-admission-evidence
+          retention-days: 14
+          if-no-files-found: warn
+          path: original-node4-admission-result.json

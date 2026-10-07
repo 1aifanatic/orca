@@ -1,0 +1,69 @@
+{
+  "classification": "Source-only draft, no execution/admission result",
+  "sourceSha": "5b8a982f8f76afea8bacbab437173fb617f0e6aa",
+  "sourceTree": "c7fd696b77bbb433154fc5a2f6213eb13efaa285",
+  "nodeVersion": "24.21.0",
+  "vitestVersion": "4.1.11",
+  "pnpmVersion": "12.8.1",
+  "physicalFiles": 11117,
+  "shards": 5,
+  "maxWorkers": 4,
+  "setupFiles": [
+    "config/scripts/vitest-real-agent-home-write-guard.ts",
+    "config/scripts/happy-dom-offscreen-canvas.ts",
+    "config/scripts/happy-dom-mutation-observer-retention.ts",
+    "config/scripts/vitest-host-ports-setup.ts",
+    "config/scripts/vitest-caller-identity-env-setup.ts"
+  ],
+  "execArgv": [
+    "--no-experimental-webstorage",
+    "--expose-gc"
+  ],
+  "originalTestScript": "node config/scripts/ensure-native-runtime.mjs --runtime=node && vitest run --config config/vitest.config.ts",
+  "sourceSha256": {
+    "package.json": "eda683904697d016547e925c8c30ff5d0256adfd669682da4731f3d9c77b0401",
+    "pnpm-lock.yaml": "2c49436a2fce3b7544fcf3c55569cecb90320ea9ad8bc5871cffbfdb6c248110",
+    "pnpm-workspace.yaml": "c6a151d1b5d2734bc6be54d48104a0aa6a18da0cd22e3e4799c99fd9665f7d04",
+    "config/vitest.config.ts": "03d8379e0b87709ebcbcffcb84ec7e76ef4780f91c13730286b8469dd06e1fdd",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "dfb2e80091ff2963e6fb8c1730ab38bed48b31f5b82bed9e1277388e3ca7522a",
+    "config/scripts/ci-shard-assignment.mjs": "a7b57ff68bdbfab909b753bc117edbcc0da2029b552ab1176d815b2d2142f49b",
+    "config/scripts/ci-shard-timings.json": "3196551a1d2c12c45ff4c382a6da9541a4b70ae519b9e117cab7ab0a38dcbdbe",
+    "config/scripts/ci-unit-selection.mjs": "6de346fd1fa9135a52203f1df839672de6273fbb1ef53a082c11fcf9a3d61f3b",
+    "config/scripts/ci-unit-timing-reporter.mjs": "8283d4b7791fd253244d7b639ae8c139cda3dd280d19137e1769d7e47d87634a",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d",
+    "config/scripts/ensure-native-runtime.mjs": "ba33bac7159cc8cd9375f20617d662a7ab5ef85120f94ea3b4f0877569f97365",
+    "config/scripts/install-electron-package-binary.mjs": "a7ff9aff6349faaf85cc9d04cabc5928e8492f91c0c3a235c688a8416674ae06",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/actions/prepare-native-runtime/action.yml": "81b368e1b7dcb97fdb7ad8f499ca53b48e592334c62ec5ae2c087cc12c879cc8",
+    ".github/workflows/unit-tests.yml": "f11c67e466a53eb049cef4ac8e8edbd364dd42cd54087feb8b78f656c3d72451",
+    "config/scripts/check-runtime-electron-ratchet.mjs": "13d8331c6de6c2d954b043301fc0e290dfd62b2492784b53a8cf2ca7227afbf4",
+    "config/scripts/check-runtime-electron-ratchet.test.mjs": "492c4dd5b830d3e23af139e0c05611f15225f6e9d58dc5193979c7fb0913b86d",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "13bad1952f2da1a3c0042d06cbc375dc03ec112552d91661589ea2c64d159b21",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3"
+  },
+  "payloadSha256": {
+    "admit-original-shard.mjs": "62a25a06f0fba523ff5b579d72c85a54b729a11731eab9ff0a51787a0aa78410",
+    "materialize.mjs": "fb9fdb348fd78b74f586d70884d54f2bc01dc4a073e14bd85806536b030f4804",
+    "admission-reporter.mjs": "1bc23c07a9a42c616b5dc04021cb5e1e138f15091000fcef34c975c8a9e81da1",
+    "collect-admission.mjs": "56b91ca7b7b8ff0f7054b6dc1e3ee13f607c906856ceec2a6b9283449915ea2d",
+    "original-manifest.json": "753f6b238345df6180badaa2d651cca8ddb4f864e38183db8a18fc7221303af5"
+  },
+  "method": "One complete original-source correctness/resource admission on five isolated ARM4 runners; no timing comparison or package/config/source repair. Original locked install, default/forks/isolation/experimental-cache policy, five setups and all stock unit exclusions preserved. Raw assertions retain titles/status/ancestors/ordinal with zero normalization.",
+  "ciJobTimeoutMinutes": 60,
+  "resourcePolicy": "Observe only: 5s resource samples and highest RSS in realtime CI log. No resource threshold or child timeout, no signals/PGID/numeric cleanup; GitHub job deadline is infrastructure-side termination. A timeout/OOM/shutdown/incomplete report leaves admission false.",
+  "originalPathAuditSha256": "6d8e42d006abd1d2554c220d83e9d884f5450dfca4ac2f778af92358f8b32168",
+  "limitations": [
+    "Original11117 is canonical unit inventory, not every separate shell/relay/nonunit workflow.",
+    "Fresh exact Node24.21.0 is a current-runtime choice, not historical installed patch.",
+    "Original config/case bodies and CJS ratchet remain untouched; do not backport allocation fix if original fails.",
+    "Naturalclose/no-error one-pass is correctness/resource admission only, not reproducibility or whole2x evidence.",
+    "Raw skip states are retained; optional tools from original source workflow are not silently installed/substituted to inflate original coverage.",
+    "Original native numeric-PID/process-tree hazards require disposable CI; desktop execution blocked."
+  ],
+  "definitionWorkflowSha256": "ab1c31c9182a58d00a35494c4c5db65954bc388c38a9e32995f026c06a2e64e8"
+}
