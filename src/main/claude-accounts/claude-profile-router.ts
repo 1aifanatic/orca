@@ -209,11 +209,18 @@ export class ClaudeProfileRouter {
     }
     try {
       const env = this.launchEnv()
-      const userConfigDir = this.userConfigDir()
-      // Why: the injected value replaces the user's own; the claude function restores it on System default.
-      return env.CLAUDE_CONFIG_DIR && userConfigDir
-        ? { ...env, [CLAUDE_USER_CONFIG_DIR_ENV]: userConfigDir }
-        : env
+      const user = this.userConfigDir()
+      if (!user) {
+        return env
+      }
+      // Why marked even on System default: a later switch must replace it, and the claude function restores it.
+      const configDir = env.CLAUDE_CONFIG_DIR ?? user
+      return {
+        ...env,
+        CLAUDE_CONFIG_DIR: configDir,
+        [CLAUDE_INJECTED_CONFIG_DIR_ENV]: configDir,
+        [CLAUDE_USER_CONFIG_DIR_ENV]: user
+      }
     } catch {
       return { [CLAUDE_PROFILE_POINTER_ENV]: this.pointerPath }
     }
