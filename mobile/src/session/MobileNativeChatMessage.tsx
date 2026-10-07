@@ -1,5 +1,5 @@
 import { MobileSelectableText as Text } from '../components/MobileSelectableText'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useContext, useState } from 'react'
 import { Image, Text as NativeText, View } from 'react-native'
 import { INLINE_TEXT_SELECTION } from '../components/inline-text-selection'
 import { MobileNativeChatMessageActionsSheet } from './MobileNativeChatMessageActionsSheet'
@@ -21,17 +21,29 @@ import type { NativeChatTurnStatus } from './use-mobile-native-chat-turn-status'
 import { isRenderableImageUri } from './mobile-native-chat-image-preview'
 import { styles, TEXT_SIZE } from './mobile-native-chat-message-styles'
 import { agentMessageAttribution } from './mobile-agent-message-attribution'
+import { withoutPendingNativeChatVisualDirectiveTail } from '../../../src/shared/native-chat-visual-directive'
+import { MOBILE_NATIVE_CHAT_STREAMING_MESSAGE_ID } from './mobile-native-chat-render-data'
+import {
+  MobileNativeChatVisualContext,
+  type MobileNativeChatVisualRender
+} from './mobile-native-chat-visual-context'
 
 function Prose({
   block,
   invert,
   fontScale,
   onOpenFile,
-  onLongPress
+  onLongPress,
+  renderVisual,
+  streaming = false
 }: {
   block: NativeChatBlock
   invert?: boolean
   fontScale: number
+  /** Assistant prose of a structured chat only. */
+  renderVisual?: MobileNativeChatVisualRender
+  /** Live partial text: a directive still being typed at its tail is held back. */
+  streaming?: boolean
   onOpenFile?: (relativePath: string) => void
   /** Android only: routes a long press on a link span to the row's actions sheet. */
   onLongPress?: () => void
@@ -61,7 +73,12 @@ function Prose({
     }
     return (
       <MobileMarkdown
-        content={block.text}
+        content={
+          streaming && renderVisual
+            ? withoutPendingNativeChatVisualDirectiveTail(block.text)
+            : block.text
+        }
+        renderVisual={renderVisual}
         rangeSelectable
         textScale={1.25 * fontScale}
         onOpenFile={onOpenFile}
@@ -160,6 +177,16 @@ function MobileNativeChatMessageImpl({
   // Keep the memoized Markdown context stable as the message streams.
   const openActions = useCallback(() => setActionsOpen(true), [])
   const onLongPress = INLINE_TEXT_SELECTION ? undefined : openActions
+  const visuals = useContext(MobileNativeChatVisualContext)
+  const streaming = message.id === MOBILE_NATIVE_CHAT_STREAMING_MESSAGE_ID
+  // A streaming reply's directives hold their space; the frame mounts once, in the transcript row
+  // that replaces the streaming one.
+  const renderVisual =
+    visuals && message.role === 'assistant'
+      ? streaming
+        ? visuals.renderStreaming
+        : visuals.render
+      : undefined
 
   const statusRow = turnStatus ? (
     <MobileNativeChatTurnStatus
@@ -228,6 +255,8 @@ function MobileNativeChatMessageImpl({
               fontScale={fontScale}
               onOpenFile={onOpenFile}
               onLongPress={onLongPress}
+              renderVisual={renderVisual}
+              streaming={streaming}
             />
           ))}
           {showToolRun ? (

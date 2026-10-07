@@ -71,6 +71,9 @@ export function foldMobileNativeChatMessages(messages: NativeChatMessage[]): Nat
   )
 }
 
+/** The synthetic row holding live partial assistant text; it is replaced, not kept, when it ends. */
+export const MOBILE_NATIVE_CHAT_STREAMING_MESSAGE_ID = 'streaming'
+
 /** Assemble the folded transcript, streaming text, and optimistic user echoes. */
 export function buildMobileNativeChatTransientData({
   messages,
@@ -195,7 +198,7 @@ export function buildMobileNativeChatTransientData({
   }
   if (streaming) {
     data.push({
-      id: 'streaming',
+      id: MOBILE_NATIVE_CHAT_STREAMING_MESSAGE_ID,
       role: 'assistant',
       blocks: [{ type: 'text', text: streaming }],
       timestamp: null,
