@@ -8799,6 +8799,7 @@
           "18968ede9e": "Error",
           "f0871e6bfb": "connect",
           "47e94bd6ba": "connected",
+          "hostNodeFallback": "Unsupported configuration: Orca-managed Node isn’t available for this connection, so Orca runs on this host’s Node.js with terminal support installed by npm on the host.",
           "hostNodeUnsupported": "Unsupported configuration: Orca runs on this host’s Node.js with terminal support installed by npm on the host. Set Runtime to Auto in this host’s SSH settings to use Orca-managed Node."
         },
         "SshTargetDestructiveActions": {

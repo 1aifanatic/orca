@@ -11,7 +11,7 @@ import {
 } from './ssh-relay-pinned-node-install'
 import type { PrebuiltRelayPlan } from './ssh-relay-host-node-addons'
 import {
-  nextRelayRuntimeStep,
+  relayRuntimeStepAfterRefusal,
   relayRuntimeLadder,
   relayRuntimeStorePins,
   type RelayRuntimeStep
@@ -465,7 +465,10 @@ async function deployAndLaunchRelayInner(
           `[ssh-relay] Relay runtime rung ${step} unavailable (${err.reason}): ${err.detail}`
         )
         run.refused(step, err.reason, err.remembered)
-        step = nextRelayRuntimeStep(ladder, step, err.reason, err.remembered)
+        step = relayRuntimeStepAfterRefusal(ladder, step, err.reason, err.remembered, {
+          hostOs: run.host?.os ?? null,
+          clientArtifactGap: run.clientArtifactGap
+        })
         run.enter(step)
         continue
       }

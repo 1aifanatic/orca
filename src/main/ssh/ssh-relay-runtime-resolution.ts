@@ -83,6 +83,8 @@ export class RelayRuntimeLadderRun {
   pinnedRefusal: PinnedRuntimeRefusal | null = null
   /** A noexec this pass replayed from a cache rather than proved. */
   noexecRemembered = false
+  /** A rung refused because this client lacked Orca's artifacts; nothing it proves is the host's. */
+  clientArtifactGap = false
   selfTest: RelayRuntimeSelfTestOutcome = 'not_run'
   runtimeTransfer: RelayRuntimeTransfer = 'none'
   hostNode: HostNodeVersion | null = null
@@ -99,6 +101,9 @@ export class RelayRuntimeLadderRun {
   refused(step: RelayRuntimeStep, reason: RelayRuntimeFallbackReason, remembered = false): void {
     this.firstRefusal ??= reason
     this.lastRefusal = reason
+    if (reason === 'artifacts_unavailable') {
+      this.clientArtifactGap = true
+    }
     if (reason === 'noexec' && remembered) {
       this.noexecRemembered = true
     }
@@ -126,7 +131,10 @@ export class RelayRuntimeLadderRun {
         forgetPinnedRuntimeRefusal(this.targetId, this.facts.target)
       }
     }
-    this.persist(rung)
+    // Why: a host-Node landing forced by this client's missing artifacts is no decision about the host.
+    if (!(rung === 'legacy' && this.clientArtifactGap)) {
+      this.persist(rung)
+    }
     this.track(rung, 'resolved')
   }
 
@@ -192,7 +200,8 @@ export class RemoteRuntimeUnavailableError extends Error {
         reason,
         run.firstRefusal,
         run.noexecRemembered,
-        run.lastRefusal
+        run.lastRefusal,
+        run.host?.os ?? null
       )
     )
     this.name = 'RemoteRuntimeUnavailableError'
@@ -220,7 +229,7 @@ export class RemoteRuntimeUnavailableError extends Error {
 
 export function remoteRuntimeUnavailableError(run: RelayRuntimeLadderRun): Error {
   return new RemoteRuntimeUnavailableError(
-    remoteRuntimeUnavailableReason(run.lastRefusal, run.noexecRemembered),
+    remoteRuntimeUnavailableReason(run.lastRefusal, run.noexecRemembered, run.host?.os ?? null),
     run
   )
 }

@@ -5,6 +5,7 @@ import {
   nextRelayRuntimeStep,
   pinnedRuntimeTargetForHost,
   relayRuntimeLadder,
+  relayRuntimeStepAfterRefusal,
   relayRuntimeStorePins,
   remoteRuntimeUnavailableMessage,
   remoteRuntimeUnavailableReason,
@@ -50,6 +51,35 @@ describe('relay runtime ladder (design D6)', () => {
   it('lets a remembered noexec skip only its own rung, so a remounted home is re-proved', () => {
     const ladder = relayRuntimeLadder('pinned-node')
     expect(nextRelayRuntimeStep(ladder, 'A', 'noexec', true)).toBe('B')
+  })
+
+  it('keeps a Windows host on host Node after any rung A refusal, since B and C do not exist there', () => {
+    const ladder = relayRuntimeLadder('pinned-node')
+    const windows = { hostOs: 'win32' as const, clientArtifactGap: false }
+    for (const reason of [
+      'missing_lib',
+      'security_software',
+      'noexec',
+      'target_unresolved'
+    ] as const) {
+      expect(relayRuntimeStepAfterRefusal(ladder, 'A', reason, false, windows)).toBe('legacy')
+    }
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'missing_lib', true, windows)).toBe('legacy')
+  })
+
+  it('never settles D on a client artifact gap, unless the host proved noexec', () => {
+    const ladder = relayRuntimeLadder('pinned-node')
+    const gap = { hostOs: 'linux' as const, clientArtifactGap: true }
+    expect(relayRuntimeStepAfterRefusal(ladder, 'A', 'artifacts_unavailable', false, gap)).toBe('B')
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'artifacts_unavailable', false, gap)).toBe(
+      'legacy'
+    )
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, gap)).toBe(
+      'legacy'
+    )
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'noexec', false, gap)).toBe('D')
+    const noGap = { hostOs: 'linux' as const, clientArtifactGap: false }
+    expect(relayRuntimeStepAfterRefusal(ladder, 'C', 'host_node_missing', false, noGap)).toBe('D')
   })
 
   it('chooses rung B only when a listed compat runtime serves the host', () => {
@@ -168,5 +198,21 @@ describe('relay runtime ladder (design D6)', () => {
     const message = remoteRuntimeUnavailableMessage('home_noexec', 'noexec', true)
     expect(message).toContain('earlier connect found the home directory')
     expect(message).not.toContain('Install Node.js')
+  })
+
+  it('words a Windows rung D for Windows, offering Host Node rather than a noexec mount', () => {
+    expect(remoteRuntimeUnavailableReason('noexec', false, 'win32')).toBe('no_runtime')
+    const message = remoteRuntimeUnavailableMessage(
+      'no_runtime',
+      'noexec',
+      false,
+      'windows_host_unsupported',
+      'win32'
+    )
+    expect(message).toContain('Windows host')
+    expect(message).toContain("set this host's Runtime to Host Node")
+    expect(message).not.toContain('noexec,')
+    expect(message).not.toContain('mounted')
+    expect(message).not.toContain('~/.orca-remote')
   })
 })

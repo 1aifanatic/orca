@@ -352,7 +352,7 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     )
     vi.mocked(planPinnedNodeRelay)
       .mockResolvedValueOnce(pinnedPlan())
-      .mockResolvedValueOnce({ kind: 'host-node', fallbackReason: 'artifacts_unavailable' })
+      .mockResolvedValueOnce({ kind: 'host-node', fallbackReason: 'missing_lib' })
     vi.mocked(execCommand)
       .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
       .mockResolvedValueOnce('/home/user')
@@ -374,12 +374,93 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
     ).toBe(false)
     expect(detachedLaunchCommand(conn)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('rung A unavailable (missing_lib)'))
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('rung B unavailable (artifacts_unavailable)')
-    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('rung B unavailable (missing_lib)'))
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('rung C unavailable (libc_floor)'))
     warn.mockRestore()
   })
+
+  it('keeps the host-Node relay, never rung D or a persisted decision, when this build lacks the orcad template', async () => {
+    const registry = {
+      getTarget: vi.fn(() => ({ id: 'target-1' })),
+      updateTarget: vi.fn()
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the ladder reads and writes only these two registry members.
+    vi.mocked(getSshTargetRegistryStore).mockReturnValue(registry as unknown as SshConnectionStore)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const missing = 'The packaged orcad deployment template is missing'
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'artifacts_unavailable'
+    })
+    vi.mocked(planHostNodeAddonRelay)
+      .mockReset()
+      .mockRejectedValueOnce(new PinnedRelayFallbackError('artifacts_unavailable', missing))
+    const conn = makeConnection()
+    queueInstalledLegacyLaunch()
+
+    const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
+
+    expect(result.nodePath).toBe('/usr/bin/node')
+    expect(detachedLaunchCommand(conn)).toContain("'/usr/bin/node' relay.js --detached")
+    expect(isSshRelayOnHostNodeRuntime('target-1')).toBe(true)
+    expect(registry.updateTarget).not.toHaveBeenCalled()
+    expect(track).toHaveBeenCalledWith(
+      'ssh_remote_runtime_resolved',
+      expect.objectContaining({ rung: 'legacy', first_refusal: 'artifacts_unavailable' })
+    )
+  })
+
+  it('still lands on rung D when a host proved noexec after a client artifact gap', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+      kind: 'host-node',
+      fallbackReason: 'artifacts_unavailable'
+    })
+    vi.mocked(planHostNodeAddonRelay)
+      .mockReset()
+      .mockRejectedValueOnce(new PinnedRelayFallbackError('noexec', 'exit 126'))
+    vi.mocked(execCommand).mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Linux x86_64')
+
+    const failure = await deployAndLaunchRelay(
+      makeConnection(),
+      undefined,
+      undefined,
+      'target-1'
+    ).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(RemoteRuntimeUnavailableError)
+    expect(resolveRemoteNodePath).not.toHaveBeenCalled()
+  })
+
+  it.each(['missing_lib', 'security_software', 'noexec', 'artifacts_unavailable'] as const)(
+    'keeps a Windows host on the host-Node relay after rung A refuses for %s',
+    async (reason) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const conn = makeConnection()
+      Object.assign(conn, { writeFile: vi.fn().mockResolvedValue(undefined) })
+      vi.mocked(planPinnedNodeRelay).mockResolvedValueOnce({
+        kind: 'host-node',
+        fallbackReason: reason
+      })
+      vi.mocked(execCommand)
+        .mockRejectedValueOnce(new Error('uname not found'))
+        .mockResolvedValueOnce('__ORCA_REMOTE_PLATFORM__ Windows X64')
+        .mockResolvedValueOnce('C:\\Users\\me')
+        .mockResolvedValueOnce('ORCA-NATIVE-DEPS-OK')
+        .mockResolvedValueOnce('') // no persisted active pipe
+        .mockResolvedValueOnce('WAITING') // named pipe probe
+        .mockResolvedValueOnce('') // WMI relay launch
+        .mockResolvedValueOnce('READY') // named pipe poll
+        .mockResolvedValueOnce('') // persist active pipe marker
+
+      const result = await deployAndLaunchRelay(conn, undefined, 300, 'target-1')
+
+      expect(resolveRemoteNodePath).toHaveBeenCalled()
+      expect(result.serverBuildId).toBe('0.1.0+abcdef012345')
+      expect(planHostNodeAddonRelay).not.toHaveBeenCalled()
+      expect(isSshRelayOnHostNodeRuntime('target-1')).toBe(true)
+    }
+  )
 
   it('runs rung B on the glibc 2.17 compat runtime when rung A is below its glibc floor', async () => {
     const conn = makeConnection('pinned-node')

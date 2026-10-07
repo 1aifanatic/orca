@@ -6,7 +6,8 @@
  *   C  the host's Node >= 18 + Orca's N-API prebuilds, no npm
  *   D  nothing runs: plain SSH terminals and SFTP, recording the classified reason
  *
- * The host's Node + npm install (`legacy`) sits outside the ladder, reached only by opting in.
+ * The host's Node + npm install (`legacy`) sits outside the ladder, reached by opting in, or in
+ * place of D where the ladder could not judge the host (see `relayRuntimeStepAfterRefusal`).
  *
  * The ladder steps down only on a classified refusal (a `PinnedRelayFallbackError`); an
  * unverifiable probe or self-test throws and the next connect retries the same rung.
@@ -21,6 +22,7 @@ import {
 } from '../../shared/node-runtime-pin'
 import type { SshRemoteRuntime, SshRemoteRuntimeRung } from '../../shared/ssh-types'
 import type { GlibcVersion } from './orcad-deployment-target'
+import type { RemoteOperatingSystem } from './ssh-remote-platform'
 import {
   isGlibcBelow,
   isPinnedRuntimeRefusal,
@@ -139,6 +141,35 @@ export function nextRelayRuntimeStep(
   return ladder[index + 1] ?? 'D'
 }
 
+/** What a ladder pass knows beyond the refusal it is stepping past. */
+export type RelayRuntimeStepContext = {
+  hostOs: RemoteOperatingSystem | null
+  /** A rung was refused because this client lacked Orca's artifacts, which says nothing of the host. */
+  clientArtifactGap: boolean
+}
+
+/**
+ * `nextRelayRuntimeStep`, except where D would strand a host the ladder never judged: Windows,
+ * where B and C don't exist yet, and a client missing Orca's artifacts. Both keep the host-Node
+ * route they had before the ladder, marked unsupported. A proved noexec still lands on D.
+ */
+export function relayRuntimeStepAfterRefusal(
+  ladder: readonly RelayRuntimeStep[],
+  current: RelayRuntimeStep,
+  reason: RelayRuntimeStepReason,
+  remembered: boolean,
+  context: RelayRuntimeStepContext
+): RelayRuntimeStep {
+  if (context.hostOs === 'win32') {
+    return 'legacy'
+  }
+  const next = nextRelayRuntimeStep(ladder, current, reason, remembered)
+  if (next === 'D' && context.clientArtifactGap && reason !== 'noexec') {
+    return 'legacy'
+  }
+  return next
+}
+
 /** The machine-readable part of a rung D failure; the message is what the user reads. */
 export const REMOTE_RUNTIME_UNAVAILABLE_REASONS = ['home_noexec', 'no_runtime'] as const
 export type RemoteRuntimeUnavailableReason = (typeof REMOTE_RUNTIME_UNAVAILABLE_REASONS)[number]
@@ -146,8 +177,13 @@ export type RemoteRuntimeUnavailableReason = (typeof REMOTE_RUNTIME_UNAVAILABLE_
 /** A noexec seen anywhere in the pass, remembered or proved, rules out advising a host Node. */
 export function remoteRuntimeUnavailableReason(
   lastReason: RelayRuntimeStepReason | null,
-  noexecSeen = false
+  noexecSeen = false,
+  hostOs: RemoteOperatingSystem | null = null
 ): RemoteRuntimeUnavailableReason {
+  // Why not on Windows: its 'noexec' is an application-control block, not a mount the user can fix.
+  if (hostOs === 'win32') {
+    return 'no_runtime'
+  }
   return lastReason === 'noexec' || noexecSeen ? 'home_noexec' : 'no_runtime'
 }
 
@@ -179,13 +215,24 @@ const NO_SUPPORTED_RUNTIME_MESSAGE =
   "Orca can't run its remote runtime on this host: its bundled Node.js was refused and no other " +
   'supported runtime could start. Reconnect to retry.'
 
+// Why Host Node here: Windows has no rung below A yet, so the host-Node route is the only other one.
+const WINDOWS_HOST_MESSAGE =
+  "Orca can't run its remote runtime on this Windows host: its bundled Node.js was refused, which " +
+  'can mean security software or an application control policy blocks it. Host Node, which ' +
+  "builds terminal support with npm on the host, is an unsupported configuration; to opt in, set this host's " +
+  'Runtime to Host Node in its SSH settings, then reconnect.'
+
 export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
   refusal: RelayRuntimeStepReason | null,
   noexecRemembered = false,
   /** Rung C's refusal: the last rung before D. */
-  hostNodeRefusal: RelayRuntimeStepReason | null = null
+  hostNodeRefusal: RelayRuntimeStepReason | null = null,
+  hostOs: RemoteOperatingSystem | null = null
 ): string {
+  if (hostOs === 'win32') {
+    return `${WINDOWS_HOST_MESSAGE} (Orca's Node: ${refusal ?? 'none'})`
+  }
   if (reason === 'home_noexec') {
     return noexecRemembered
       ? REMEMBERED_NOEXEC_MESSAGE
