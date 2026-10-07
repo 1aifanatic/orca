@@ -44,6 +44,16 @@ for (const acceleration of ['off', 'on'] as const) {
       { policy: acceleration, worktree: worktreeId }
     )
     await waitForActiveTerminalManager(orcaPage, 30_000)
+    await expect
+      .poll(() =>
+        orcaPage.evaluate(() => {
+          const tab = window.__store!.getState().activeTabId
+          const manager = tab && window.__paneManagers?.get(tab)
+          const pane = manager && manager.getActivePane()
+          return Boolean(manager && pane && manager.hasWebglRenderer(pane.id))
+        })
+      )
+      .toBe(acceleration === 'on')
     const ptyId = await waitForActivePanePtyId(orcaPage)
     const producer = testInfo.outputPath('image-model-transfer.cjs')
     writeFileSync(producer, inlineImageProducer(true))
