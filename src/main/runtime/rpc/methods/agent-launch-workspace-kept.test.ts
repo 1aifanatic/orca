@@ -14,12 +14,22 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } from '../../../../shared/agent-launch-agent-not-started'
+import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import {
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_WORKSPACE_KEPT_CLIENT_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
-import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
+import {
+  editPersistedTestAgentSessionStore,
+  openTestAgentSessionRecordStore,
+  readPersistedTestAgentSessionStore
+} from '../../agent-session-record-store-test-harness'
+import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
+import {
+  importReleaseCheckoutModule,
+  materializeReleaseCheckout
+} from '../../../../../tests/e2e/cross-version-wire/release-checkout'
 import type { RpcContext } from '../core'
 import { mapRuntimeError } from '../errors'
 import {
@@ -129,7 +139,7 @@ describe.each([
       expect(await call(keepsWorkspace(), method, params, caller)).toMatchObject(KEPT)
       expect(store.listOperationRows()[0]?.outcome).toMatchObject({
         status: 'failed',
-        code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
+        code: 'agent_session_operation_unknown',
         keptWorktreeId: 'wt-new'
       })
 
@@ -150,6 +160,104 @@ describe.each([
     expect(replayed).not.toHaveProperty('error.data')
     expect(retry.createManagedWorktree).not.toHaveBeenCalled()
   })
+})
+
+describe('stored workspace-kept enrichment', () => {
+  const params = { ...CREATE_LAUNCH, operationId: OPERATION_ID }
+
+  it('remains unknown when the prior main host loads and replays the new row', async () => {
+    await call(keepsWorkspace(), 'agent.launchReplay', params, OLDER_PHONE)
+    const legacy = await materializeReleaseCheckout('80d45095d2f', {
+      cacheRoot: join(directory, 'rollback-source')
+    })
+    const rows = await importReleaseCheckoutModule(
+      legacy,
+      '/src/main/runtime/agent-session-record-rows.ts'
+    )
+    const replay = await importReleaseCheckoutModule(
+      legacy,
+      '/src/main/runtime/rpc/methods/agent-launch-replay.ts'
+    )
+    const errors = await importReleaseCheckoutModule(legacy, '/src/main/runtime/rpc/errors.ts')
+    if (
+      typeof rows.loadAgentSessionStoreRows !== 'function' ||
+      typeof replay.admitAgentLaunchOperation !== 'function' ||
+      typeof errors.mapRuntimeError !== 'function'
+    ) {
+      throw new Error(
+        'The prior host must export its real row loader, launch reader and error mapper'
+      )
+    }
+    const persisted = await readPersistedTestAgentSessionStore(directory)
+    const loaded = rows.loadAgentSessionStoreRows(openTestJournalHostDatabase(directory).db)
+    expect(loaded.operations).toEqual(new Map(Object.entries(persisted.operations)))
+    store = await openTestAgentSessionRecordStore(directory)
+    setAgentLaunchRecordStore(store)
+    const retry = keepsWorkspace()
+    const parsed = AGENT_LAUNCH_REPLAY.params.parse(params)
+    const answer = await replay.admitAgentLaunchOperation(
+      rpcContext(retry, OLDER_PHONE),
+      parsed,
+      computeAgentLaunchFingerprint(parsed)
+    )
+    expect(answer).toMatchObject({
+      decision: 'refuse',
+      refusal: { code: 'agent_session_operation_unknown' }
+    })
+    expect(answer).not.toHaveProperty('refusal.data')
+    expect(
+      errors.mapRuntimeError(
+        'request-1',
+        { runtimeId: 'runtime-1' },
+        new Error(answer.refusal.code)
+      )
+    ).toMatchObject(UNKNOWN)
+    expect(retry.createManagedWorktree).not.toHaveBeenCalled()
+  }, 180_000)
+
+  it.each(['agent_session_operation_unknown', AGENT_LAUNCH_AGENT_NOT_STARTED_CODE])(
+    'reads a valid settled workspace identity beside %s',
+    async (code) => {
+      await call(keepsWorkspace(), 'agent.launchReplay', params, PHONE_THAT_READS_IT)
+      await editPersistedTestAgentSessionStore(directory, (persisted) => {
+        for (const row of Object.values(persisted.operations)) {
+          row.outcome = { status: 'failed', code, keptWorktreeId: 'wt-new' }
+        }
+      })
+      store = await openTestAgentSessionRecordStore(directory)
+      setAgentLaunchRecordStore(store)
+      expect(
+        await call(keepsWorkspace(), 'agent.launchReplay', params, PHONE_THAT_READS_IT)
+      ).toMatchObject(KEPT)
+      const older = await call(keepsWorkspace(), 'agent.launchReplay', params, OLDER_PHONE)
+      expect(older).toMatchObject(UNKNOWN)
+      expect(older).not.toHaveProperty('error.data')
+    }
+  )
+
+  it.each(['agent_session_operation_unknown', AGENT_LAUNCH_AGENT_NOT_STARTED_CODE])(
+    'keeps %s rows replayable without a valid workspace identity',
+    async (code) => {
+      await call(keepsWorkspace(), 'agent.launchReplay', params, PHONE_THAT_READS_IT)
+      for (const keptWorktreeId of [undefined, null, '', '  ', 42, true, {}, ['wt-new']]) {
+        await editPersistedTestAgentSessionStore(directory, (persisted) => {
+          for (const row of Object.values(persisted.operations)) {
+            row.outcome = { status: 'failed', code, keptWorktreeId }
+          }
+        })
+        store = await openTestAgentSessionRecordStore(directory)
+        setAgentLaunchRecordStore(store)
+        expect(store.listOperationRows()).toHaveLength(1)
+        const retry = keepsWorkspace()
+        for (const method of ['agent.launch', 'agent.launchReplay'] as const) {
+          const response = await call(retry, method, params, PHONE_THAT_READS_IT)
+          expect(response).toMatchObject(UNKNOWN)
+          expect(response).not.toHaveProperty('error.data')
+        }
+        expect(retry.createManagedWorktree).not.toHaveBeenCalled()
+      }
+    }
+  )
 })
 
 describe('agent.launch without an operation id', () => {

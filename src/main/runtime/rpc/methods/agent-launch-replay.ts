@@ -88,6 +88,19 @@ function answerFromRecordedRow(
   outcome: AgentSessionOperationOutcome
 ): AgentLaunchAdmission | null {
   if (outcome.status === 'failed') {
+    // Only a settled live no-dispatch failure carries this enrichment; validate it at the reader.
+    const keptWorktreeId =
+      (outcome.code === 'agent_session_operation_unknown' ||
+        outcome.code === AGENT_LAUNCH_AGENT_NOT_STARTED_CODE) &&
+      typeof outcome.keptWorktreeId === 'string' &&
+      outcome.keptWorktreeId.trim().length > 0
+        ? outcome.keptWorktreeId
+        : undefined
+    const code = keptWorktreeId
+      ? AGENT_LAUNCH_AGENT_NOT_STARTED_CODE
+      : outcome.code === AGENT_LAUNCH_AGENT_NOT_STARTED_CODE
+        ? 'agent_session_operation_unknown'
+        : outcome.code
     // Replayed verbatim rather than narrowed to the `agentSession.*` vocabulary. A launch fails
     // with its own codes — `worktree_not_found` and the reuse-terminal guards — none of which is on
     // that closed list, so narrowing would answer every one of them with
@@ -97,10 +110,9 @@ function answerFromRecordedRow(
     return {
       decision: 'refuse',
       refusal: {
-        code: outcome.code,
-        message:
-          outcome.message ?? `Launch operation ${operationId} already failed: ${outcome.code}.`,
-        ...(outcome.keptWorktreeId ? { data: { worktreeId: outcome.keptWorktreeId } } : {})
+        code,
+        message: outcome.message ?? `Launch operation ${operationId} already failed: ${code}.`,
+        ...(keptWorktreeId ? { data: { worktreeId: keptWorktreeId } } : {})
       }
     }
   }

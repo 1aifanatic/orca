@@ -21,10 +21,7 @@
 
 import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
-import {
-  AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
-  AgentLaunchWorkspaceKeptError
-} from '../../../../shared/agent-launch-agent-not-started'
+import { AgentLaunchWorkspaceKeptError } from '../../../../shared/agent-launch-agent-not-started'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchIntent, AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import { agentSessionOperationKey } from '../../../../shared/agent-session-operation-ledger'
@@ -251,8 +248,8 @@ async function executeAdmittedAgentLaunch(
       await settleLaunchWhoseTabWasClosed(context, view.early, admission)
     }
     if (error instanceof AgentLaunchWorkspaceKeptError) {
-      // The workspace stays; the one settle names it, so every replay answers the same.
-      await settleQuietly(admission.fail(AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, error.worktreeId))
+      // Older hosts replay the base code; new readers enrich it from the same atomic settle.
+      await settleQuietly(admission.fail('agent_session_operation_unknown', error.worktreeId))
     }
     const failedWithoutEffects = launchFailureWithoutEffectsCode(
       error,

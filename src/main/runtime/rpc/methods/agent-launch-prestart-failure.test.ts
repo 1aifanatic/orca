@@ -186,7 +186,7 @@ describe('a launch whose terminal fails', () => {
     })
     expect(outcomeOf(OPERATION_ID)).toMatchObject({
       status: 'failed',
-      code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
+      code: 'agent_session_operation_unknown',
       keptWorktreeId: 'wt-new'
     })
 
