@@ -27,6 +27,7 @@ export function useStructuredAgentSessionStartFailureFacts(
       return (
         next !== undefined &&
         stated.itemId === next.itemId &&
+        stated.ofCommand === next.ofCommand &&
         sameAgentSessionFailureFact(stated.fact, next.fact)
       )
     })

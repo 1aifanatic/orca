@@ -96,7 +96,7 @@ describe('a message rejected by a start whose row already says why', () => {
         row('gen', startFailed, 2),
         { ...row('gen', { kind: 'providerExited' }, 3), itemId: key('exit-row') }
       ])
-    ).toEqual([{ itemId: rowKey('gen'), fact: startFailed }])
+    ).toEqual([{ itemId: rowKey('gen'), fact: startFailed, ofCommand: false }])
   })
 
   // This host: each failed start rejects its message and writes the row keyed by it, in one write.
@@ -219,8 +219,30 @@ describe('a message rejected by a start whose row already says why', () => {
     ).not.toBe(NOT_SENT)
   })
 
+  // A command's row says to run the command again: never the next step for a message.
+  it("hushes a /compact under its own row, and never a message under the command's row", () => {
+    const compactAt = (id: string, sequence: number): AgentJournalRenderItem => ({
+      ...messageAt(id, sequence),
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '/compact' }],
+        command: { name: 'compact' }
+      }
+    })
+    expect(
+      noticesFor(
+        [
+          ['compacted', startFailed],
+          ['later', startFailed]
+        ],
+        [compactAt('compacted', 1), row('compacted', startFailed, 2), messageAt('later', 3)]
+      )
+    ).toEqual({ [key('compacted')]: NOT_SENT, [key('later')]: START_FAILED_WORDS })
+  })
+
   it('keeps the full notice when the rejection is not loaded, or no start row states it', () => {
-    const stated = { itemId: rowKey('first'), fact: startFailed }
+    const stated = { itemId: rowKey('first'), fact: startFailed, ofCommand: false }
     expect(texts([rejected('first', startFailed)], [], [stated])).toEqual({
       [key('first')]: 'Written by the host.'
     })

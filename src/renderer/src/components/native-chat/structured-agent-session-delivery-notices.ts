@@ -32,6 +32,7 @@ import type {
 } from '../../../../shared/agent-session-journal-types'
 import { agentSessionWriteNotDoneParts } from '../../../../shared/agent-session-refusal-notice'
 import {
+  isStructuredAgentSessionCommandStartFailureRow,
   isStructuredAgentSessionStartFailureRow,
   structuredAgentSessionStartFailureRowIdentity
 } from '../../../../shared/structured-agent-session-start-failure-row-key'
@@ -61,10 +62,12 @@ const STRUCTURED_AGENT_SESSION_DELIVERY_SENDING: NativeChatDeliveryNotice = { se
 const NO_COMMANDS: ReadonlySet<string> = new Set()
 const NO_ITEMS: readonly AgentJournalRenderItem[] = []
 
-/** A loaded start-failure row: its item id, and the failure it states. */
+/** A loaded start-failure row: its item id, the failure it states, and whether a command's start
+ *  wrote it (its words name the command's next step, so it speaks for no message). */
 export type StatedStartFailure = {
   itemId: string
   fact: AgentSessionFailureFact
+  ofCommand: boolean
 }
 
 /** What the chat's loaded start-failure rows state. */
@@ -72,11 +75,18 @@ export function structuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[]
 ): StatedStartFailure[] {
   const stated: StatedStartFailure[] = []
+  let bodies: Map<string, AgentJournalRenderItem['body']> | undefined
+  const bodyOf = (id: string) =>
+    (bodies ??= new Map(items.map((entry) => [entry.itemId, entry.body]))).get(id)
   for (const item of items) {
     if (item.body.kind === 'status' && isStructuredAgentSessionStartFailureRow(item.itemId)) {
       const fact = readAgentSessionFailureFact(item.body.failure)
       if (fact) {
-        stated.push({ itemId: item.itemId, fact })
+        stated.push({
+          itemId: item.itemId,
+          fact,
+          ofCommand: isStructuredAgentSessionCommandStartFailureRow(item.itemId, bodyOf)
+        })
       }
     }
   }
@@ -99,7 +109,8 @@ export function agentSessionFailureStatedByStartRow(
 /** Whether the row of the start that rejected this message already says why. A row keyed by the
  *  message is its own start's and speaks for it alone, so its failure decides. With none, as in a
  *  chat an older host wrote — one row for a batch, keyed by its start or by its oldest message —
- *  any loaded row with the same failure does. */
+ *  or a run this host left one row for, any loaded row with the same failure does, but a
+ *  command's. */
 function rejectionStatedByItsStartRow(
   recorded: AgentJournalSubmission,
   startFailures: readonly StatedStartFailure[]
@@ -110,7 +121,7 @@ function rejectionStatedByItsStartRow(
   const own = startFailures.filter(({ itemId }) => itemId === ownRow)
   return agentSessionFailureStatedByStartRow(
     recorded.rejection,
-    own.length > 0 ? own : startFailures
+    own.length > 0 ? own : startFailures.filter(({ ofCommand }) => !ofCommand)
   )
 }
 

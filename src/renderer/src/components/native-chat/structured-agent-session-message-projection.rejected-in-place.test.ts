@@ -195,9 +195,7 @@ describe('a message the host accepted and then rejected, on the desktop', () => 
       () => {},
       [failedStart],
       // The start's row, written right after the rejection it states.
-      [
-        { itemId: 'orca:start-failure%3Afirst', fact: { kind: 'notSignedIn' } }
-      ],
+      [{ itemId: 'orca:start-failure%3Afirst', fact: { kind: 'notSignedIn' }, ofCommand: false }],
       new Set()
     )
 

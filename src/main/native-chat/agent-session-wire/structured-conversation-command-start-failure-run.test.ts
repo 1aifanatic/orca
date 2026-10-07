@@ -1,5 +1,6 @@
-// A run of failed starts against conversation commands. A send the provider accepted ends a run,
-// a /compact Codex takes without an item of its own too. Against the real host, store and journal.
+// A run of failed starts against conversation commands. A command's failed start always writes its
+// own row, which never speaks for a message's; and a send the provider accepted ends a run, a
+// /compact Codex takes without an item of its own too. Against the real host, store and journal.
 
 import { beforeEach, expect, it, vi, type Mock } from 'vitest'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
@@ -8,6 +9,7 @@ import {
   isStructuredAgentSessionStartFailureRow,
   structuredAgentSessionStartFailureRowIdentity
 } from '../../../shared/structured-agent-session-start-failure-row-key'
+import { projectStructuredAgentSessionMessages } from '../../../shared/structured-agent-session-message-projection'
 import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
 import {
   attach,
@@ -117,4 +119,36 @@ it('starts a new run after a /compact the provider took with no item of its own'
 
   // The same crash, but a turn was delivered between: news, with its own row.
   expect(await startRows()).toEqual([rowFor(first), rowFor(second)])
+})
+
+it('gives a /compact that fails like the message before it a row of its own', async () => {
+  await attach()
+  await startsCrash()
+  const first = await send('first')
+  await settled(first, 'rejected')
+
+  const compacted = await compactCommand()
+  await settled(compacted, 'rejected')
+
+  expect(await startRows()).toEqual([rowFor(first), rowFor(compacted)])
+  // A client that hides rejected messages still reads the command's own row.
+  const snapshot = await state.host.journalSnapshot(SESSION)
+  const drawn = projectStructuredAgentSessionMessages(snapshot.items, [], snapshot.submissions, {
+    rejectedInPlace: false
+  })
+  expect(drawn.flatMap((message) => message.blocks)).toContainEqual(
+    expect.objectContaining({ text: "Codex couldn't restart. Run /compact again." })
+  )
+})
+
+it('gives a message that fails like the /compact before it a row of its own', async () => {
+  await attach()
+  await startsCrash()
+  const compacted = await compactCommand()
+  await settled(compacted, 'rejected')
+
+  const later = await send('later')
+  await settled(later, 'rejected')
+
+  expect(await startRows()).toEqual([rowFor(compacted), rowFor(later)])
 })

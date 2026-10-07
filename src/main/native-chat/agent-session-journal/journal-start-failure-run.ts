@@ -10,7 +10,10 @@ import {
 } from '../../../shared/agent-session-failure'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
-import { isStructuredAgentSessionStartFailureRow } from '../../../shared/structured-agent-session-start-failure-row-key'
+import {
+  isStructuredAgentSessionCommandStartFailureRow,
+  isStructuredAgentSessionStartFailureRow
+} from '../../../shared/structured-agent-session-start-failure-row-key'
 import type { JournalReducerState } from './journal-reducer'
 import type { JournalLifecycleMutationInput } from './journal-row-builders'
 
@@ -20,10 +23,14 @@ export function withoutRestatedStartFailureRows(
   mutations: readonly JournalLifecycleMutationInput[]
 ): readonly JournalLifecycleMutationInput[] {
   return mutations.filter((mutation) => {
+    if (mutation.kind !== 'item' || mutation.body.kind !== 'status') {
+      return true
+    }
+    const itemId = agentJournalItemKey(mutation.identity)
     if (
-      mutation.kind !== 'item' ||
-      mutation.body.kind !== 'status' ||
-      !isStructuredAgentSessionStartFailureRow(agentJournalItemKey(mutation.identity))
+      !isStructuredAgentSessionStartFailureRow(itemId) ||
+      // A command's failed start always says so: a client that hides its message has only this.
+      isStructuredAgentSessionCommandStartFailureRow(itemId, (id) => state.items.get(id)?.body)
     ) {
       return true
     }
@@ -48,6 +55,13 @@ export function journalStartFailureAlreadyStated(
   }
   const stated =
     latest?.body.kind === 'status' ? readAgentSessionFailureFact(latest.body.failure) : undefined
+  // A command's row names the command's next step, so it starts no run for a message.
+  if (
+    latest !== undefined &&
+    isStructuredAgentSessionCommandStartFailureRow(latest.itemId, (id) => state.items.get(id)?.body)
+  ) {
+    return false
+  }
   if (
     latest === undefined ||
     stated === undefined ||
