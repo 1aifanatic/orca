@@ -53,7 +53,11 @@ function ensureOwnedPrivateDir(dir: string, uid: number): void {
   }
 }
 
-/** Creates the relocated socket's directory before a bind; a no-op for the default endpoint. */
+/**
+ * Creates and validates the relocated socket's directories; a no-op for the default endpoint.
+ * Why before every connect, not just the bind: the `/tmp` path is predictable, so a listener another
+ * user planted there would otherwise receive the hello token before any bind-time check ran.
+ */
 export function ensureDaemonSocketDir(
   socketPath: string,
   uid: number | undefined = process.getuid?.()
@@ -64,4 +68,14 @@ export function ensureDaemonSocketDir(
   const runtimeDir = posix.dirname(socketPath)
   ensureOwnedPrivateDir(posix.dirname(runtimeDir), uid)
   ensureOwnedPrivateDir(runtimeDir, uid)
+}
+
+/** Non-throwing form for probes that must fail closed instead of connecting. */
+export function daemonSocketDirIsTrusted(socketPath: string): boolean {
+  try {
+    ensureDaemonSocketDir(socketPath)
+    return true
+  } catch {
+    return false
+  }
 }

@@ -71,6 +71,9 @@ export function createOutOfProcessLauncher(
     // what makes a bare module-scoped slot safe — keep it that way or a concurrent launch can steal it.
     const attributedReason = attributedReplaceReason
     attributedReplaceReason = null
+    // Why first: adoption, the preflight probes and health checks all talk to this endpoint, and a
+    // relocated one is only safe to talk to once its directories are proven private and ours.
+    ensureDaemonSocketDir(socketPath)
     let adoptionClient: DaemonClient | null = new DaemonClient({
       socketPath,
       tokenPath
@@ -119,7 +122,6 @@ export function createOutOfProcessLauncher(
         return preservedHandle
       }
 
-      ensureDaemonSocketDir(socketPath)
       const userDataPath = getAppEnvironment().getPath('userData')
       // Why: on win32 packaged, stage a daemon-host copy in userData so its image escapes the NSIS updater's kill zone; lazy so it's off first-paint. Fail-open: null → in-dir host.
       const relocatedHost = materializeRelocatedDaemonHost()
