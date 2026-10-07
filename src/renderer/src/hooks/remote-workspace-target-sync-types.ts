@@ -1,8 +1,7 @@
 import type {
-  RemoteWorkspaceObservedPatchResult,
-  RemoteWorkspaceObservedSnapshot
+  RemoteWorkspaceObservedSnapshot,
+  RemoteWorkspacePeerImport
 } from '../../../shared/remote-workspace-types'
-import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import type { DirectSshAuthority } from '../../../shared/ssh-types'
 import type {
   DirectSshPreparationInput,
@@ -13,12 +12,7 @@ import type { RemoteWorkspaceSnapshotPlacementStore } from './remote-workspace-s
 
 export type RemoteWorkspaceApi = {
   get: (args: { targetId: string }) => Promise<RemoteWorkspaceObservedSnapshot | null>
-  setForConnectedTargets: (args: {
-    session?: WorkspaceSessionState
-    hydratedTargetIds?: string[]
-    expectedRevisionsByTargetId: Record<string, number>
-    expectedHostObservationTokensByTargetId: Record<string, string>
-  }) => Promise<{ targetId: string; result: RemoteWorkspaceObservedPatchResult }[]>
+  importPeerTopology: (pull: RemoteWorkspacePeerImport) => Promise<void>
 }
 
 export type RemoteWorkspaceTargetSyncDeps = {

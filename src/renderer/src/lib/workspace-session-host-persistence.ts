@@ -66,6 +66,11 @@ type DurableSessionApi = SessionApi & {
   flush: () => Promise<void>
 }
 
+export type WorkspaceSessionHostPatch = {
+  patch: WorkspaceSessionPatch
+  hostId?: ExecutionHostId
+}
+
 export type WorkspaceSessionHostSnapshot = {
   state: WorkspaceSessionState
   hostId?: ExecutionHostId
@@ -231,33 +236,40 @@ function splitWorkspaceSessionForWrite(
   return slices
 }
 
-/** Patch path of the debounced session writer: split the partial patch by owner host and patch
- *  each partition. `localWrite` orders the SSH remote-workspace upload; `written` settles once
- *  every partition did and rejects if any failed, so the writer re-queues those fields. */
+/** A partial patch split by owner host, local first. */
+export function buildWorkspaceSessionHostPatches(
+  patch: WorkspaceSessionPatch,
+  state: HostPersistenceState
+): WorkspaceSessionHostPatch[] {
+  const slices = splitWorkspaceSessionForWrite(patch as WorkspaceSessionState, state, 'patch')
+  return [
+    { patch: slices[LOCAL_EXECUTION_HOST_ID] ?? patch },
+    ...nonLocalHostSessionEntries(slices).map(([hostId, slice]) => ({ hostId, patch: slice }))
+  ]
+}
+
+/** Patch path of the debounced session writer: patch each owner partition. Settles once every
+ *  partition did and rejects if any failed, so the writer re-queues those fields. */
 export function patchWorkspaceSessionByHost(
   api: SessionApi,
   patch: WorkspaceSessionPatch,
   state: HostPersistenceState
-): { localWrite: Promise<void>; written: Promise<void> } {
-  const slices = splitWorkspaceSessionForWrite(patch as WorkspaceSessionState, state, 'patch')
-  const local = (slices[LOCAL_EXECUTION_HOST_ID] ?? patch) as WorkspaceSessionPatch
-  const localWrite = api.patch(local)
-  const hostWrites = nonLocalHostSessionEntries(slices).map(([hostId, slice]) =>
-    api.patch(slice, hostId).catch((err: unknown) => {
-      console.warn(`[session] host partition patch failed for ${hostId}:`, err)
-      throw err
-    })
+): Promise<void> {
+  const writes = buildWorkspaceSessionHostPatches(patch, state).map(({ hostId, patch: slice }) =>
+    hostId
+      ? api.patch(slice, hostId).catch((err: unknown) => {
+          console.warn(`[session] host partition patch failed for ${hostId}:`, err)
+          throw err
+        })
+      : api.patch(slice)
   )
   // Why allSettled: every partition finishes before a retry rewrites the same fields.
-  const written = Promise.allSettled([localWrite, ...hostWrites]).then((results) => {
+  return Promise.allSettled(writes).then((results) => {
     const failure = results.find((result) => result.status === 'rejected')
     if (failure) {
       throw failure.reason
     }
   })
-  // Why: a host failure must not surface as an unhandled rejection on the upload chain's promise.
-  localWrite.catch(() => {})
-  return { localWrite, written }
 }
 
 /** Persist a fresh full snapshot to every owning host partition, then force the

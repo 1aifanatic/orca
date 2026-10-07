@@ -36,9 +36,12 @@ vi.mock('./remote-workspace-events', () => ({
 
 import {
   _resetRemoteWorkspaceCachesForTests,
-  handleRemoteWorkspaceNotification,
-  registerRemoteWorkspaceHandlers
+  handleRemoteWorkspaceNotification
 } from './remote-workspace'
+import {
+  createRemoteWorkspaceExportDriver,
+  type RemoteWorkspaceExportDriver
+} from './remote-workspace-export-test-driver'
 import { CLIENT_ID } from './remote-workspace-client-identity'
 import { queueRemoteWorkspacePatch } from './remote-workspace-patch-queue'
 import {
@@ -73,16 +76,20 @@ function patchSession(params: Record<string, unknown>): RemoteWorkspaceSession {
   return (params.patch as { session: RemoteWorkspaceSession }).session
 }
 
-describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
-  const handlers = new Map<string, (event: unknown, args: unknown) => unknown>()
+describe('main export patch queue', () => {
+  let driver: RemoteWorkspaceExportDriver
   const muxByTargetId = new Map<string, { request: ReturnType<typeof vi.fn> }>()
   const getRepoMock = vi.fn<Store['getRepo']>()
   // Ownership resolution reads the catalog, not one id-keyed row, so the fake has to project one.
   const KNOWN_REPO_IDS = ['repo-target-1', 'repo-target-2', 'repo-reset', 'repo-newer']
-  const store = {
+  const store: Partial<Store> = {
     getRepo: getRepoMock,
-    getRepos: () => KNOWN_REPO_IDS.map((repoId) => getRepoMock(repoId)).filter(Boolean)
-  } as unknown as Store
+    getRepos: () =>
+      KNOWN_REPO_IDS.flatMap((repoId) => {
+        const repo = getRepoMock(repoId)
+        return repo ? [repo] : []
+      })
+  }
 
   const target: SshTarget = {
     id: 'target-1',
@@ -94,12 +101,8 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
 
   beforeEach(() => {
     _resetRemoteWorkspaceCachesForTests()
-    handlers.clear()
     muxByTargetId.clear()
     vi.mocked(ipcMain.handle).mockReset()
-    vi.mocked(ipcMain.handle).mockImplementation((channel, handler) => {
-      handlers.set(channel, handler as (event: unknown, args: unknown) => unknown)
-    })
     vi.mocked(ipcMain.removeHandler).mockReset()
     getSshConnectionStoreMock.mockReset()
     getSshConnectionStoreMock.mockReturnValue({
@@ -123,21 +126,8 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     getActiveMultiplexerMock.mockImplementation((targetId: string) => muxByTargetId.get(targetId))
     registerRemoteWorkspaceNotificationHandlerMock.mockClear()
 
-    registerRemoteWorkspaceHandlers(store, () => null, { readMachineName: () => 'Build server' })
+    driver = createRemoteWorkspaceExportDriver(store)
   })
-
-  async function callSetForConnectedTargets(args: {
-    session: WorkspaceSessionState
-    hydratedTargetIds?: unknown
-    expectedRevisionsByTargetId?: unknown
-    expectedHostObservationTokensByTargetId?: unknown
-  }): Promise<unknown> {
-    const handler = handlers.get('remoteWorkspace:setForConnectedTargets')
-    if (!handler) {
-      throw new Error('remoteWorkspace:setForConnectedTargets handler was never registered')
-    }
-    return handler(null, args)
-  }
 
   function observeSnapshot(targetId: string, value: RemoteWorkspaceSnapshot): string {
     return rememberRemoteWorkspaceSnapshot(targetId, value).hostObservationToken
@@ -151,7 +141,7 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     return cached.hostObservationToken
   }
 
-  it('serializes overlapping writes for the same target so they use fresh base revisions', async () => {
+  it('serializes overlapping exports for the same target so they use fresh base revisions', async () => {
     let currentRevision = 7
     let releaseFirstPatch!: () => void
     const firstPatchCanFinish = new Promise<void>((resolve) => {
@@ -204,43 +194,32 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
       )
     )
 
-    const first = callSetForConnectedTargets({
-      session: sessionWithTab('repo-target-1::/remote/workspace-a', 'tab-a'),
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-    })
+    driver.agree('target-1', { revision: 7, hostObservationToken: observationToken })
+    const pushes = driver.nextPushes(2)
+    driver.write(sessionWithTab('repo-target-1::/remote/workspace-a', 'tab-a'))
     await vi.waitFor(() => expect(patchBaseRevisions).toEqual([7]))
 
-    const second = callSetForConnectedTargets({
-      session: sessionWithTab('repo-target-1::/remote/workspace-b', 'tab-b'),
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-    })
+    driver.write(sessionWithTab('repo-target-1::/remote/workspace-b', 'tab-b'))
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(patchBaseRevisions).toEqual([7])
 
     releaseFirstPatch()
-    await expect(Promise.all([first, second])).resolves.toMatchObject([
-      [
-        {
-          targetId: 'target-1',
-          result: {
-            ok: true,
-            snapshot: { revision: 8, hostObservationToken: observationToken }
-          }
+    await expect(pushes).resolves.toMatchObject([
+      {
+        targetId: 'target-1',
+        result: {
+          ok: true,
+          snapshot: { revision: 8, hostObservationToken: observationToken }
         }
-      ],
-      [
-        {
-          targetId: 'target-1',
-          result: {
-            ok: true,
-            snapshot: { revision: 9, hostObservationToken: observationToken }
-          }
+      },
+      {
+        targetId: 'target-1',
+        authority: { revision: 8 },
+        result: {
+          ok: true,
+          snapshot: { revision: 9, hostObservationToken: observationToken }
         }
-      ]
+      }
     ])
     expect(patchBaseRevisions).toEqual([7, 8])
   })
@@ -272,16 +251,13 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
       )
     )
 
+    driver.agree('target-1', { revision: 7, hostObservationToken: observationToken })
     handleRemoteWorkspaceNotification('target-1', 'workspace.changed', {
       snapshot: remoteSnapshot,
       sourceClientId: 'other-client'
     })
-    const result = await callSetForConnectedTargets({
-      session: sessionWithTab('repo-target-1::/remote/workspace', 'stale-local-tab'),
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-    })
+    driver.write(sessionWithTab('repo-target-1::/remote/workspace', 'stale-local-tab'))
+    const result = await driver.nextPushes()
 
     expect(result).toMatchObject([
       {
@@ -296,7 +272,7 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  it('rejects a renderer upload when a host snapshot arrives while it is queued', async () => {
+  it('drops a queued export when a host snapshot arrives while the first one is in flight', async () => {
     const remoteSnapshot = snapshot(
       {
         activeWorktreePath: '/other-device',
@@ -344,21 +320,12 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
       )
     )
 
-    const first = callSetForConnectedTargets({
-      session: sessionWithTab('repo-target-1::/remote/first', 'first-local-tab'),
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-    })
+    driver.agree('target-1', { revision: 7, hostObservationToken: observationToken })
+    driver.write(sessionWithTab('repo-target-1::/remote/first', 'first-local-tab'))
     await vi.waitFor(() =>
       expect(request.mock.calls.filter(([method]) => method === 'workspace.patch')).toHaveLength(1)
     )
-    const queued = callSetForConnectedTargets({
-      session: sessionWithTab('repo-target-1::/remote/queued', 'queued-local-tab'),
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-    })
+    driver.write(sessionWithTab('repo-target-1::/remote/queued', 'queued-local-tab'))
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     handleRemoteWorkspaceNotification('target-1', 'workspace.changed', {
@@ -367,14 +334,16 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     })
     releasePatch()
 
-    await expect(Promise.all([first, queued])).resolves.toMatchObject([
-      [{ targetId: 'target-1', result: { ok: false, reason: 'stale-revision' } }],
-      [{ targetId: 'target-1', result: { ok: false, reason: 'stale-revision' } }]
+    await expect(driver.nextPushes()).resolves.toMatchObject([
+      { targetId: 'target-1', result: { ok: false, reason: 'stale-revision' } }
     ])
+    // The stale reply ended the agreement; the queued export waits for the window's next pull.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(driver.pushes).toHaveLength(1)
     expect(request.mock.calls.filter(([method]) => method === 'workspace.patch')).toHaveLength(1)
   })
 
-  it('rejects a queued upload after a same-revision host observation replaces its lineage', async () => {
+  it('rejects a queued export after a same-revision host observation replaces its lineage', async () => {
     const baseline = snapshot(
       {
         activeWorktreePath: '/baseline',
@@ -422,12 +391,9 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     })
     await blockerDidStart
 
-    const queued = callSetForConnectedTargets({
-      session: sessionWithTab('repo-target-1::/remote/workspace', 'stale-local-tab'),
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-    })
+    driver.agree('target-1', { revision: 7, hostObservationToken: observationToken })
+    const queued = driver.nextPushes()
+    driver.write(sessionWithTab('repo-target-1::/remote/workspace', 'stale-local-tab'))
     await new Promise((resolve) => setTimeout(resolve, 0))
     handleRemoteWorkspaceNotification('target-1', 'workspace.changed', {
       snapshot: replacement,
@@ -469,14 +435,9 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     })
     muxByTargetId.set('target-1', { request })
 
-    await expect(
-      callSetForConnectedTargets({
-        session: sessionWithTab('repo-target-1::/remote/workspace', 'stale-local-tab'),
-        hydratedTargetIds: ['target-1'],
-        expectedRevisionsByTargetId: { 'target-1': 7 },
-        expectedHostObservationTokensByTargetId: { 'target-1': observationToken }
-      })
-    ).resolves.toMatchObject([
+    driver.agree('target-1', { revision: 7, hostObservationToken: observationToken })
+    driver.write(sessionWithTab('repo-target-1::/remote/workspace', 'stale-local-tab'))
+    await expect(driver.nextPushes()).resolves.toMatchObject([
       {
         targetId: 'target-1',
         result: { ok: false, reason: 'stale-revision', snapshot: { revision: 7 } }
@@ -485,7 +446,7 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     expect(request.mock.calls.map(([method]) => method)).toEqual(['workspace.get'])
   })
 
-  it('patches independent hydrated targets concurrently', async () => {
+  it('patches independent agreed targets concurrently', async () => {
     const secondTarget: SshTarget = {
       id: 'target-2',
       label: 'Target 2',
@@ -557,33 +518,28 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     const firstObservationToken = observeSnapshot('target-1', previousSnapshot)
     const secondObservationToken = observeSnapshot('target-2', previousSnapshot)
 
-    const resultPromise = callSetForConnectedTargets({
-      session: {
-        ...sessionWithTab('repo-target-1::/remote/workspace-a', 'tab-a'),
-        tabsByWorktree: {
-          'repo-target-1::/remote/workspace-a': [
-            {
-              id: 'tab-a',
-              type: 'terminal',
-              title: 'Shell A',
-              worktreeId: 'repo-target-1::/remote/workspace-a'
-            } as never
-          ],
-          'repo-target-2::/remote/workspace-b': [
-            {
-              id: 'tab-b',
-              type: 'terminal',
-              title: 'Shell B',
-              worktreeId: 'repo-target-2::/remote/workspace-b'
-            } as never
-          ]
-        }
-      },
-      hydratedTargetIds: ['target-1', 'target-2'],
-      expectedRevisionsByTargetId: { 'target-1': 7, 'target-2': 7 },
-      expectedHostObservationTokensByTargetId: {
-        'target-1': firstObservationToken,
-        'target-2': secondObservationToken
+    driver.agree('target-1', { revision: 7, hostObservationToken: firstObservationToken })
+    driver.agree('target-2', { revision: 7, hostObservationToken: secondObservationToken })
+    const resultPromise = driver.nextPushes(2)
+    driver.write({
+      ...sessionWithTab('repo-target-1::/remote/workspace-a', 'tab-a'),
+      tabsByWorktree: {
+        'repo-target-1::/remote/workspace-a': [
+          {
+            id: 'tab-a',
+            type: 'terminal',
+            title: 'Shell A',
+            worktreeId: 'repo-target-1::/remote/workspace-a'
+          } as never
+        ],
+        'repo-target-2::/remote/workspace-b': [
+          {
+            id: 'tab-b',
+            type: 'terminal',
+            title: 'Shell B',
+            worktreeId: 'repo-target-2::/remote/workspace-b'
+          } as never
+        ]
       }
     })
 
@@ -595,9 +551,10 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
     )
 
     releaseFirstPatch()
+    // The fast target reports first: neither waited on the other.
     await expect(resultPromise).resolves.toMatchObject([
-      { targetId: 'target-1', result: { ok: true } },
-      { targetId: 'target-2', result: { ok: true } }
+      { targetId: 'target-2', result: { ok: true } },
+      { targetId: 'target-1', result: { ok: true } }
     ])
   })
 
@@ -678,14 +635,11 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
       )
     )
 
-    await expect(
-      callSetForConnectedTargets({
-        session: sessionWithTab('repo-reset::/remote/workspace', 'tab-reset'),
-        hydratedTargetIds: ['target-reset'],
-        expectedRevisionsByTargetId: { 'target-reset': 7 },
-        expectedHostObservationTokensByTargetId: { 'target-reset': observationToken }
-      })
-    ).resolves.toMatchObject([{ targetId: 'target-reset', result: { ok: true } }])
+    driver.agree('target-reset', { revision: 7, hostObservationToken: observationToken })
+    driver.write(sessionWithTab('repo-reset::/remote/workspace', 'tab-reset'))
+    await expect(driver.nextPushes()).resolves.toMatchObject([
+      { targetId: 'target-reset', result: { ok: true } }
+    ])
     expect(patchBaseRevisions).toEqual([7, 0])
   })
 
@@ -760,14 +714,9 @@ describe('remoteWorkspace:setForConnectedTargets patch queue', () => {
       )
     )
 
-    await expect(
-      callSetForConnectedTargets({
-        session: sessionWithTab('repo-newer::/remote/workspace', 'tab-local'),
-        hydratedTargetIds: ['target-newer'],
-        expectedRevisionsByTargetId: { 'target-newer': 7 },
-        expectedHostObservationTokensByTargetId: { 'target-newer': observationToken }
-      })
-    ).resolves.toMatchObject([
+    driver.agree('target-newer', { revision: 7, hostObservationToken: observationToken })
+    driver.write(sessionWithTab('repo-newer::/remote/workspace', 'tab-local'))
+    await expect(driver.nextPushes()).resolves.toMatchObject([
       { targetId: 'target-newer', result: { ok: false, reason: 'stale-revision' } }
     ])
     expect(patchBaseRevisions).toEqual([7])

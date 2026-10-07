@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type {
-  RemoteWorkspaceObservedPatchResult,
   RemoteWorkspaceObservedSnapshot,
   RemoteWorkspaceSnapshot
 } from '../../../shared/remote-workspace-types'
 import type { SshProviderEpoch } from '../../../shared/ssh-types'
-import { i18n } from '@/i18n/i18n'
-import { PSEUDO_LOCALIZATION_LOCALE } from '@/i18n/pseudo-localization'
-import type { DirectSshPreparationInput } from './direct-ssh-reconnect-coordinator'
 import {
   appState,
   createHarness,
@@ -21,84 +17,25 @@ import {
 } from './__tests__/remote-workspace-target-sync-test-harness'
 
 describe('createRemoteWorkspaceTargetSync', () => {
-  it('captures local tabs before get when deciding a revision-zero upload', async () => {
+  it('records a revision-zero pull with main, which seeds the empty host', async () => {
     const state = appState({
       tabsByWorktree: {
         'repo-a::/remote/work': [{ id: 'tab-a', worktreeId: 'repo-a::/remote/work', ptyId: null }]
       }
     })
-    const pendingGet = deferred<RemoteWorkspaceObservedSnapshot | null>()
-    const harness = createHarness(state, () => pendingGet.promise)
-
-    const pending = harness.sync.syncAfterConnect(token())
-    await flush()
-    state.tabsByWorktree = {}
-    pendingGet.resolve(snapshot(0))
-    await pending
-
-    expect(harness.setForConnectedTargets).toHaveBeenCalledOnce()
-    expect(harness.setForConnectedTargets).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hydratedTargetIds: ['target-a'],
-        expectedRevisionsByTargetId: { 'target-a': 0 }
-      })
-    )
-  })
-
-  it('acknowledges the captured blank-host edit when a newer null-root edit arrives', async () => {
-    const firstEdit = { targetId: 'target-a', root: null }
-    const newerEdit = { targetId: 'target-a', root: null }
-    const acknowledgeDirectSshLayoutEdits = vi.fn()
-    const state = appState({
-      tabsByWorktree: {
-        'repo-a::/remote/work': [{ id: 'tab-a', worktreeId: 'repo-a::/remote/work', ptyId: null }]
-      },
-      pendingDirectSshLayoutEditsByTabId: { 'tab-a': firstEdit },
-      acknowledgeDirectSshLayoutEdits
-    })
     const harness = createHarness(state, async () => snapshot(0))
-    const uploaded = snapshot(1)
-    uploaded.session.terminalLayoutsByTabId = {
-      'tab-a': { root: null, activeLeafId: null, expandedLeafId: null }
-    }
-    harness.setForConnectedTargets.mockImplementationOnce(async () => {
-      state.pendingDirectSshLayoutEditsByTabId = { 'tab-a': newerEdit }
-      return [{ targetId: owner.targetId, result: { ok: true, snapshot: uploaded } }]
-    })
 
     await harness.sync.syncAfterConnect(token())
 
-    const acknowledged = acknowledgeDirectSshLayoutEdits.mock.calls[0]?.[0]?.['tab-a']
-    expect(acknowledged).toBe(firstEdit)
-    expect(state.pendingDirectSshLayoutEditsByTabId['tab-a']).toBe(newerEdit)
-  })
-
-  it.each([
-    ['stale-revision', 'Workspace changed on another device'],
-    ['unavailable', 'Remote workspace sync unavailable']
-  ] as const)('localizes the %s upload fallback', async (reason, message) => {
-    const previousLanguage = i18n.language
-    await i18n.changeLanguage(PSEUDO_LOCALIZATION_LOCALE)
-    try {
-      const state = appState({
-        tabsByWorktree: {
-          'repo-a::/remote/work': [{ id: 'tab-a', worktreeId: 'repo-a::/remote/work', ptyId: null }]
-        }
-      })
-      const harness = createHarness(state, async () => snapshot(0), {
-        ok: false,
-        reason
-      })
-
-      await harness.sync.syncAfterConnect(token())
-
-      expect(state.setRemoteWorkspaceSyncStatus).toHaveBeenLastCalledWith(
-        'target-a',
-        expect.objectContaining({ message: `[${message}]` })
-      )
-    } finally {
-      await i18n.changeLanguage(previousLanguage)
-    }
+    expect(state.markRemoteWorkspaceHydrated).toHaveBeenCalledWith('target-a')
+    expect(harness.importPeerTopology).toHaveBeenCalledOnce()
+    expect(harness.importPeerTopology).toHaveBeenCalledWith({
+      targetId: 'target-a',
+      revision: 0,
+      hostObservationToken: snapshot(0).hostObservationToken,
+      outcome: 'synced',
+      patches: []
+    })
   })
 
   it('publishes nothing from a snapshot response after its authority turns stale', async () => {
@@ -610,45 +547,6 @@ describe('createRemoteWorkspaceTargetSync', () => {
       harness.sync.stop()
       vi.useRealTimers()
     }
-  })
-
-  it('does not publish a revision-zero push after a newer snapshot arrives', async () => {
-    const state = appState({
-      tabsByWorktree: {
-        'repo-a::/remote/work': [{ id: 'tab-a', worktreeId: 'repo-a::/remote/work', ptyId: null }]
-      }
-    })
-    const pendingPush =
-      deferred<{ targetId: string; result: RemoteWorkspaceObservedPatchResult }[]>()
-    const pendingCapture = deferred<DirectSshPreparationInput>()
-    const harness = createHarness(state, async () => snapshot(0))
-    harness.setForConnectedTargets.mockImplementationOnce(() => pendingPush.promise)
-
-    const first = harness.sync.syncAfterConnect(token())
-    await flush()
-    expect(harness.setForConnectedTargets).toHaveBeenCalledOnce()
-
-    harness.capturePreparationInput.mockImplementationOnce(() => pendingCapture.promise)
-    const second = harness.sync.applyUnsolicitedSnapshot('target-a', snapshot(85))
-    await flush()
-    pendingPush.resolve([{ targetId: 'target-a', result: { ok: true, snapshot: snapshot(1) } }])
-    await first
-
-    expect(state.setRemoteWorkspaceSyncStatus).not.toHaveBeenCalledWith(
-      'target-a',
-      expect.objectContaining({ direction: 'push' })
-    )
-
-    harness.sync.stop()
-    pendingCapture.resolve({
-      ...owner,
-      catalogRevision: 1,
-      repoRefs: [{ repoId: 'repo-a', executionHostId: 'ssh:target-a' }],
-      authorityRequirement: 'required',
-      reason: 'workspace-snapshot',
-      snapshotRevision: 85
-    })
-    await second
   })
 
   it('stopping snapshot sync cancels the active placement waiter immediately', async () => {

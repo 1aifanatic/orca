@@ -1,10 +1,8 @@
 import { closeTestStores, createSqliteTestStore } from '../persistence-test-harness'
 /**
- * What the remote-workspace export publishes when the renderer omits `session`, against the real
- * `Store`.
+ * What main's remote-workspace export publishes after a session write, against the real `Store`.
  *
- * The shipping debounced writer takes that fallback on every session write, and it used to read the
- * 'local' blob alone — so an SSH worktree whose tabs the main-process runtime had written to
+ * The export reads main's persisted session, and it used to read the 'local' blob alone — so an SSH worktree whose tabs the main-process runtime had written to
  * `ssh:<targetId>` was projected as an explicit empty tab list. The upload is a
  * `replace-session` patch, which turns that absence into deletion on the host (#12721, #18173).
  *
@@ -177,13 +175,6 @@ function createStrandedStore(): InstanceType<typeof Store> {
   store.setWorkspaceSession(
     {
       ...getDefaultWorkspaceSession(),
-      tabsByWorktree: { [WORKTREE_ID]: [runtimeAuthoredTab()] }
-    },
-    SSH_HOST_ID
-  )
-  store.setWorkspaceSession(
-    {
-      ...getDefaultWorkspaceSession(),
       tabsByWorktree: {
         [OTHER_WORKTREE_ID]: [
           { ...runtimeAuthoredTab(), id: 'tab-other', worktreeId: OTHER_WORKTREE_ID }
@@ -195,11 +186,12 @@ function createStrandedStore(): InstanceType<typeof Store> {
   return store
 }
 
-async function publishToConnectedTarget(store: InstanceType<typeof Store>): Promise<void> {
+/** The window agrees with the host, then the runtime writes its tab into `ssh:<targetId>`. */
+async function publishRuntimeWrite(store: InstanceType<typeof Store>): Promise<void> {
   registerRemoteWorkspaceHandlers(store, () => null, { readMachineName: () => 'Build server' })
   const get = ipcHandlers.get('remoteWorkspace:get')
-  const set = ipcHandlers.get('remoteWorkspace:setForConnectedTargets')
-  if (!get || !set) {
+  const importPeerTopology = ipcHandlers.get('remoteWorkspace:importPeerTopology')
+  if (!get || !importPeerTopology) {
     throw new Error('remote workspace handlers were never registered')
   }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the remote-workspace get handler answers with this revision/token pair; the IPC return type is unknown.
@@ -207,19 +199,28 @@ async function publishToConnectedTarget(store: InstanceType<typeof Store>): Prom
     revision: number
     hostObservationToken: string
   }
-  await set(null, {
-    // The shipping debounced writer omits `session` and relies on the main-side fallback.
-    hydratedTargetIds: [TARGET_ID],
-    expectedRevisionsByTargetId: { [TARGET_ID]: observed.revision },
-    expectedHostObservationTokensByTargetId: { [TARGET_ID]: observed.hostObservationToken }
+  await importPeerTopology(null, {
+    targetId: TARGET_ID,
+    ...observed,
+    outcome: 'synced',
+    patches: []
   })
+  const revisionBefore = hostSnapshot.revision
+  store.setWorkspaceSession(
+    {
+      ...getDefaultWorkspaceSession(),
+      tabsByWorktree: { [WORKTREE_ID]: [runtimeAuthoredTab()] }
+    },
+    SSH_HOST_ID
+  )
+  await vi.waitFor(() => expect(hostSnapshot.revision).toBe(revisionBefore + 1))
 }
 
-describe('remoteWorkspace:setForConnectedTargets session fallback', () => {
+describe('main export reads the target ssh partition', () => {
   it('publishes tabs the runtime persisted into the target ssh partition', async () => {
     const store = createStrandedStore()
 
-    await publishToConnectedTarget(store)
+    await publishRuntimeWrite(store)
 
     expect(hostSnapshot.session.tabsByWorktreePath[WORKTREE_PATH]?.map((tab) => tab.id)).toEqual([
       'tab-runtime'
@@ -231,7 +232,7 @@ describe('remoteWorkspace:setForConnectedTargets session fallback', () => {
     // publishing one for a populated worktree is what destroyed the host's copy on every launch.
     const store = createStrandedStore()
 
-    await publishToConnectedTarget(store)
+    await publishRuntimeWrite(store)
 
     expect(hostSnapshot.session.tabsByWorktreePath[WORKTREE_PATH]).not.toEqual([])
   })

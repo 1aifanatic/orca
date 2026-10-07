@@ -209,7 +209,8 @@ async function applySnapshot(
       isArrivalCurrent: () => true,
       isPreparationTokenCurrent: () => true,
       waitForWorkspaceSessionReady: async () => true,
-      finalizeHydratedTerminals: () => 0
+      finalizeHydratedTerminals: () => 0,
+      importPeerTopology: async () => {}
     })
     // Exercise the real placement deadline without spending ten wall-clock seconds per snapshot.
     await vi.advanceTimersByTimeAsync(10_000)
@@ -251,7 +252,8 @@ describe('a host snapshot whose terminal tabs cannot be placed locally', () => {
         isArrivalCurrent: () => true,
         isPreparationTokenCurrent: () => true,
         waitForWorkspaceSessionReady: async () => true,
-        finalizeHydratedTerminals: () => 0
+        finalizeHydratedTerminals: () => 0,
+        importPeerTopology: async () => {}
       })
       await Promise.resolve()
       await Promise.resolve()

@@ -1,4 +1,5 @@
 import { useAppStore } from '../../store'
+import { applyRemoteWorkspacePushStatusEvent } from '../remote-workspace-push-status'
 import type { DirectSshBridgeRuntime } from './direct-ssh-bridge-runtime'
 
 export function registerRemoteWorkspaceIpcBridge(
@@ -45,6 +46,9 @@ export function registerRemoteWorkspaceIpcBridge(
             })
           })
       })()
-    })
+    }),
+    window.api.remoteWorkspace.onPushStatus((event) =>
+      applyRemoteWorkspacePushStatusEvent(useAppStore.getState(), event)
+    )
   )
 }

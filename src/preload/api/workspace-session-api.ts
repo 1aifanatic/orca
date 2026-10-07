@@ -12,8 +12,9 @@ import type {
 import type {
   RemoteWorkspaceChangedEvent,
   RemoteWorkspaceConnectedClient,
-  RemoteWorkspaceObservedPatchResult,
-  RemoteWorkspaceObservedSnapshot
+  RemoteWorkspaceObservedSnapshot,
+  RemoteWorkspacePeerImport,
+  RemoteWorkspacePushStatusEvent
 } from '../../shared/remote-workspace-types'
 
 export type WorkspaceSessionApi = {
@@ -51,17 +52,15 @@ export type WorkspaceSessionApi = {
   }
   remoteWorkspace: {
     get: (args: { targetId: string }) => Promise<RemoteWorkspaceObservedSnapshot | null>
-    setForConnectedTargets: (args: {
-      session?: WorkspaceSessionState
-      hydratedTargetIds?: string[]
-      expectedRevisionsByTargetId: Record<string, number>
-      expectedHostObservationTokensByTargetId: Record<string, string>
-    }) => Promise<{ targetId: string; result: RemoteWorkspaceObservedPatchResult }[]>
+    /** Commits a pull's session writes in main and records what this desktop and the host agree on. */
+    importPeerTopology: (pull: RemoteWorkspacePeerImport) => Promise<void>
     listEnabledConnectedTargets: () => Promise<string[]>
     listConnectedClients: (args?: {
       targetIds?: string[]
     }) => Promise<{ targetId: string; clients: RemoteWorkspaceConnectedClient[] }[]>
     clientId: () => Promise<string>
     onChanged: (callback: (event: RemoteWorkspaceChangedEvent) => void) => () => void
+    /** Main's report of each export it ran. */
+    onPushStatus: (callback: (event: RemoteWorkspacePushStatusEvent) => void) => () => void
   }
 }

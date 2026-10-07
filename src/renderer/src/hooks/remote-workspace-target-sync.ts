@@ -1,7 +1,6 @@
 import type { RemoteWorkspaceObservedSnapshot } from '../../../shared/remote-workspace-types'
 import type { DirectSshAuthority } from '../../../shared/ssh-types'
 import { translate } from '@/i18n/i18n'
-import { buildWorkspaceSessionPayload } from '../lib/workspace-session'
 import type {
   DirectSshPreparationToken,
   DirectSshSnapshotApplyToken
@@ -11,8 +10,6 @@ import { resolveExactDirectSshTargetWorktreeIds } from './remote-workspace-snaps
 import { applyDirectSshRemoteWorkspaceSnapshot } from './remote-workspace-snapshot-apply'
 import { createRemoteWorkspaceSnapshotArrivalCoordinator } from './remote-workspace-snapshot-arrival-coordinator'
 import { createDeferredSnapshotPlacementRetries } from './remote-workspace-deferred-placement-retry'
-import { applyRemoteWorkspacePushStatus } from './remote-workspace-push-status'
-import { terminalLayoutNodeEqual } from '../lib/terminal-layout-equality'
 import { waitForRemoteWorkspaceSessionReady } from './remote-workspace-session-readiness'
 import type {
   RemoteWorkspaceTargetSync,
@@ -79,6 +76,7 @@ export function createRemoteWorkspaceTargetSync(
         waitForWorkspaceSessionReady: (signal) =>
           waitForRemoteWorkspaceSessionReady(deps.store, signal),
         finalizeHydratedTerminals: deps.finalizeHydratedTerminals,
+        importPeerTopology: deps.remoteWorkspace.importPeerTopology,
         onUnplacedTabWorktreePaths: (worktreePaths) => {
           unplacedTabWorktreePaths = worktreePaths
         }
@@ -178,49 +176,30 @@ export function createRemoteWorkspaceTargetSync(
       }
       return
     }
+    const agreed = {
+      revision: snapshot.revision,
+      updatedAt: snapshot.updatedAt,
+      hostObservationToken: snapshot.hostObservationToken
+    }
     deps.store.getState().markRemoteWorkspaceHydrated(authority.targetId)
-    if (!hasLocalTabs) {
-      deps.store.getState().setRemoteWorkspaceSyncStatus(authority.targetId, {
-        phase: 'idle',
-        revision: snapshot.revision,
-        updatedAt: snapshot.updatedAt,
-        hostObservationToken: snapshot.hostObservationToken,
-        message: translate('auto.hooks.useIpcEvents.2ec42e1c52', 'No remote workspace yet')
-      })
-      return
-    }
-    if (!isArrivalCurrent(authority.targetId, arrival) || !deps.isPreparationTokenCurrent(token)) {
-      return
-    }
-    const pendingLayoutEdits = deps.store.getState().pendingDirectSshLayoutEditsByTabId
-    const results = await deps.remoteWorkspace.setForConnectedTargets({
-      session: buildWorkspaceSessionPayload(deps.store.getState()),
-      hydratedTargetIds: [authority.targetId],
-      expectedRevisionsByTargetId: { [authority.targetId]: snapshot.revision },
-      expectedHostObservationTokensByTargetId: {
-        [authority.targetId]: snapshot.hostObservationToken
-      }
+    deps.store.getState().setRemoteWorkspaceSyncStatus(
+      authority.targetId,
+      hasLocalTabs
+        ? { phase: 'pulling', direction: 'pull', ...agreed }
+        : {
+            phase: 'idle',
+            ...agreed,
+            message: translate('auto.hooks.useIpcEvents.2ec42e1c52', 'No remote workspace yet')
+          }
+    )
+    // An empty host has nothing to import; main seeds it from this desktop and reports the push.
+    await deps.remoteWorkspace.importPeerTopology({
+      targetId: authority.targetId,
+      revision: snapshot.revision,
+      hostObservationToken: snapshot.hostObservationToken,
+      outcome: 'synced',
+      patches: []
     })
-    if (!isArrivalCurrent(authority.targetId, arrival) || !deps.isPreparationTokenCurrent(token)) {
-      return
-    }
-    const result = results.find((entry) => entry.targetId === authority.targetId)?.result
-    if (result?.ok) {
-      const currentState = deps.store.getState()
-      currentState.acknowledgeDirectSshLayoutEdits(
-        Object.fromEntries(
-          Object.entries(pendingLayoutEdits ?? {}).flatMap(([tabId, entry]) => {
-            const uploaded = result.snapshot.session.terminalLayoutsByTabId[tabId]
-            return entry.targetId === authority.targetId &&
-              uploaded &&
-              terminalLayoutNodeEqual(entry.root, uploaded.root)
-              ? [[tabId, entry]]
-              : []
-          })
-        )
-      )
-    }
-    applyRemoteWorkspacePushStatus(deps.store.getState(), authority.targetId, result, snapshot)
   }
 
   const syncAfterConnect = (token: DirectSshPreparationToken): Promise<void> =>

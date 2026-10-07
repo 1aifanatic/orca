@@ -1,4 +1,6 @@
+import type { ExecutionHostId } from './execution-host'
 import type { TerminalLayoutSnapshot, TerminalTab } from './terminal-tab-types'
+import type { WorkspaceSessionPatch } from './workspace-session-state-types'
 
 // Transient client-local fields are omitted, not merely unset: `recovery` is
 // this client's in-flight heal, stamped with this machine's clock, so the type
@@ -64,6 +66,30 @@ export type RemoteWorkspaceObservedPatchResult =
       snapshot?: RemoteWorkspaceObservedSnapshot
       message?: string
     }
+
+/** The CAS inputs an export to a host runs under: the host revision and observation this desktop last agreed on. */
+export type RemoteWorkspaceExportAuthority = {
+  revision: number
+  hostObservationToken: string
+}
+
+/** A window's pull from one host: the session writes it imports and whether the import is whole. */
+export type RemoteWorkspacePeerImport = RemoteWorkspaceExportAuthority & {
+  targetId: string
+  /** `conflict`: the window could not place every host tab, so this desktop must not export. */
+  outcome: 'synced' | 'conflict'
+  /** The import's session patch per owning partition; empty when the host had nothing to import. */
+  patches: { hostId?: ExecutionHostId; patch: WorkspaceSessionPatch }[]
+}
+
+/** Main's report of one export it ran, for the window's sync status. */
+export type RemoteWorkspacePushStatusEvent = {
+  targetId: string
+  authority: RemoteWorkspaceExportAuthority
+  result: RemoteWorkspaceObservedPatchResult | null
+  /** Set instead of a result when the export threw. */
+  error?: string
+}
 
 export const REMOTE_WORKSPACE_CHANGED_NOTIFICATION = 'workspace.changed'
 

@@ -1,7 +1,7 @@
 import { vi } from 'vitest'
 import type {
-  RemoteWorkspaceObservedPatchResult,
-  RemoteWorkspaceObservedSnapshot
+  RemoteWorkspaceObservedSnapshot,
+  RemoteWorkspacePeerImport
 } from '../../../../shared/remote-workspace-types'
 import type { DirectSshAuthority, SshProviderEpoch } from '../../../../shared/ssh-types'
 import type { AppState } from '../../store/types'
@@ -135,15 +135,9 @@ export function appState(overrides: Record<string, unknown> = {}): AppState {
 
 export function createHarness(
   state: AppState,
-  get: (args: { targetId: string }) => Promise<RemoteWorkspaceObservedSnapshot | null>,
-  patchResult: RemoteWorkspaceObservedPatchResult = { ok: true, snapshot: snapshot(1) }
+  get: (args: { targetId: string }) => Promise<RemoteWorkspaceObservedSnapshot | null>
 ) {
-  const setForConnectedTargets = vi.fn(async () => [
-    {
-      targetId: owner.targetId,
-      result: patchResult
-    }
-  ])
+  const importPeerTopology = vi.fn(async (_pull: RemoteWorkspacePeerImport) => {})
   let current = true
   let catalogRevision = 1
   const stateListeners = new Set<(current: AppState, previous: AppState) => void>()
@@ -191,7 +185,7 @@ export function createHarness(
         return () => stateListeners.delete(listener)
       }
     },
-    remoteWorkspace: { get, setForConnectedTargets },
+    remoteWorkspace: { get, importPeerTopology },
     getCurrentAuthority: () => (current ? owner : null),
     isPreparationTokenCurrent: (candidate) =>
       current && candidate.catalogRevision === catalogRevision,
@@ -201,7 +195,7 @@ export function createHarness(
   })
   return {
     sync,
-    setForConnectedTargets,
+    importPeerTopology,
     publishState,
     capturePreparationInput,
     prepareOnly,

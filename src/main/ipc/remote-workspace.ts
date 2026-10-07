@@ -5,31 +5,23 @@ import {
   REMOTE_WORKSPACE_CHANGED_NOTIFICATION,
   REMOTE_WORKSPACE_STALE_NOTIFICATION,
   type RemoteWorkspaceChangedEvent,
-  type RemoteWorkspaceObservedPatchResult,
-  type RemoteWorkspaceObservedSnapshot
+  type RemoteWorkspaceObservedSnapshot,
+  type RemoteWorkspacePeerImport,
+  type RemoteWorkspacePushStatusEvent
 } from '../../shared/remote-workspace-types'
-import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
-import { createRepoRowExecutionHostLookup } from '../../shared/worktree-execution-host-resolution'
-import {
-  createWorktreeOwnerResolver,
-  createWorktreeTargetResolver,
-  exportSessionForTarget,
-  persistedSessionForTarget
-} from './remote-workspace-target-session-export'
+import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
+import { createRemoteWorkspaceExports } from './remote-workspace-export'
 import { getRemoteWorkspaceNamespace } from './remote-workspace-namespace'
 import { registerRemoteWorkspaceNotificationHandler } from './remote-workspace-events'
 import { CLIENT_ID, type RemoteWorkspaceClientNameSource } from './remote-workspace-client-identity'
 import { listRemoteWorkspaceConnectedClients } from './remote-workspace-connected-clients'
 import {
   clearRemoteWorkspacePatchTails,
-  getRemoteWorkspacePatchTailCount,
-  queueRemoteWorkspacePatch
+  getRemoteWorkspacePatchTailCount
 } from './remote-workspace-patch-queue'
-import { getRemoteSnapshot, patchRemoteWorkspaceSession } from './remote-workspace-relay-sync'
+import { getRemoteSnapshot } from './remote-workspace-relay-sync'
 import {
-  cachedRemoteWorkspaceSnapshotAuthorizesRevision,
   clearRemoteWorkspaceSnapshotCache,
-  getCachedRemoteWorkspaceSnapshot,
   getRemoteWorkspaceSnapshotCacheSize,
   rememberLocallyPatchedRemoteWorkspaceSnapshot,
   rememberRemoteWorkspaceSnapshot
@@ -42,6 +34,7 @@ import {
 
 let mainWindowGetter: (() => BrowserWindow | null) | null = null
 let unregisterRemoteWorkspaceNotifications: (() => void) | null = null
+let unsubscribeSessionWrites: (() => void) | null = null
 
 export function _resetRemoteWorkspaceCachesForTests(): void {
   clearRemoteWorkspaceSnapshotCache()
@@ -59,51 +52,19 @@ export function _getRemoteWorkspaceCacheSizesForTests(): {
   }
 }
 
-function getExplicitHydratedTargetIds(value: unknown): Set<string> | null {
-  if (
-    !Array.isArray(value) ||
-    value.length === 0 ||
-    value.some((targetId) => typeof targetId !== 'string' || targetId.length === 0)
-  ) {
-    return null
-  }
-  return new Set(value)
-}
-
-function getExpectedTargetRevisions(
-  value: unknown,
-  targetIds: ReadonlySet<string>
-): Map<string, number> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  const revisions = new Map<string, number>()
-  for (const targetId of targetIds) {
-    const revision = (value as Record<string, unknown>)[targetId]
-    if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
-      return null
-    }
-    revisions.set(targetId, revision)
-  }
-  return revisions
-}
-
-function getExpectedHostObservationTokens(
-  value: unknown,
-  targetIds: ReadonlySet<string>
-): Map<string, string> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  const tokens = new Map<string, string>()
-  for (const targetId of targetIds) {
-    const token = (value as Record<string, unknown>)[targetId]
-    if (typeof token !== 'string' || token.length === 0 || token.length > 128) {
-      return null
-    }
-    tokens.set(targetId, token)
-  }
-  return tokens
+/** A malformed pull records nothing, so the target stays out of exports until a valid one. */
+function isValidPeerImport(pull: RemoteWorkspacePeerImport): boolean {
+  return (
+    typeof pull.targetId === 'string' &&
+    pull.targetId.length > 0 &&
+    Number.isSafeInteger(pull.revision) &&
+    pull.revision >= 0 &&
+    typeof pull.hostObservationToken === 'string' &&
+    pull.hostObservationToken.length > 0 &&
+    pull.hostObservationToken.length <= 128 &&
+    (pull.outcome === 'synced' || pull.outcome === 'conflict') &&
+    Array.isArray(pull.patches)
+  )
 }
 
 function sendRemoteWorkspaceChanged(
@@ -119,6 +80,13 @@ function sendRemoteWorkspaceChanged(
   const win = mainWindowGetter?.()
   if (win && !win.isDestroyed()) {
     win.webContents.send('remoteWorkspace:changed', event)
+  }
+}
+
+function sendRemoteWorkspacePushStatus(event: RemoteWorkspacePushStatusEvent): void {
+  const win = mainWindowGetter?.()
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('remoteWorkspace:pushStatus', event)
   }
 }
 
@@ -167,8 +135,11 @@ export function registerRemoteWorkspaceHandlers(
   unregisterRemoteWorkspaceNotifications = registerRemoteWorkspaceNotificationHandler(
     handleRemoteWorkspaceNotification
   )
+  const exports = createRemoteWorkspaceExports(store, sendRemoteWorkspacePushStatus)
+  unsubscribeSessionWrites?.()
+  unsubscribeSessionWrites = store.onWorkspaceSessionWritten(exports.exportChanged)
   ipcMain.removeHandler('remoteWorkspace:get')
-  ipcMain.removeHandler('remoteWorkspace:setForConnectedTargets')
+  ipcMain.removeHandler('remoteWorkspace:importPeerTopology')
   ipcMain.removeHandler('remoteWorkspace:listEnabledConnectedTargets')
   ipcMain.removeHandler('remoteWorkspace:listConnectedClients')
   ipcMain.removeHandler('remoteWorkspace:clientId')
@@ -181,91 +152,20 @@ export function registerRemoteWorkspaceHandlers(
     return getRemoteSnapshot(target)
   })
 
+  // The window imports a host's snapshot through main, so the import's writes are main's commit
+  // and the agreement they set keeps them from exporting back.
   ipcMain.handle(
-    'remoteWorkspace:setForConnectedTargets',
-    async (
-      _event,
-      args: {
-        session?: WorkspaceSessionState
-        hydratedTargetIds?: unknown
-        expectedRevisionsByTargetId?: unknown
-        expectedHostObservationTokensByTargetId?: unknown
+    'remoteWorkspace:importPeerTopology',
+    (_event, pull: RemoteWorkspacePeerImport | undefined) => {
+      if (!pull || !isValidPeerImport(pull)) {
+        return
       }
-    ) => {
-      const hydratedTargetIds = getExplicitHydratedTargetIds(args.hydratedTargetIds)
-      if (!hydratedTargetIds) {
-        // Why: an omitted hydration set used to broadcast one session to every
-        // SSH target, overwriting unrelated remote workspace snapshots.
-        return []
+      for (const { hostId, patch } of pull.patches) {
+        if (!isFrozenOrcadSourceSessionPartition(store, hostId)) {
+          store.patchWorkspaceSession(patch, hostId)
+        }
       }
-      const expectedRevisions = getExpectedTargetRevisions(
-        args.expectedRevisionsByTargetId,
-        hydratedTargetIds
-      )
-      if (!expectedRevisions) {
-        return []
-      }
-      const expectedHostObservationTokens = getExpectedHostObservationTokens(
-        args.expectedHostObservationTokensByTargetId,
-        hydratedTargetIds
-      )
-      if (!expectedHostObservationTokens) {
-        return []
-      }
-      const targets =
-        getSshConnectionStore()
-          ?.listTargets()
-          .filter(
-            (target) => hydratedTargetIds.has(target.id) && getActiveMultiplexer(target.id)
-          ) ?? []
-
-      if (targets.length === 0) {
-        // Nothing to project onto, so skip the session and repo-catalog reads entirely.
-        return []
-      }
-
-      // One repo read, and ownership resolutions shared across targets: neither depends on the
-      // target. The publish fallback's catalog attribution reads the same lookup for the same
-      // reason — building it per target re-hydrates every repo row once per connected host.
-      const resolveWorktreeOwner = createWorktreeOwnerResolver(
-        createRepoRowExecutionHostLookup(store.getRepos())
-      )
-      const resolveWorktreeTarget = createWorktreeTargetResolver(resolveWorktreeOwner)
-      const results = await Promise.all(
-        targets.map(async (target) => {
-          // Why: each target has its own revision stream. Keep same-target
-          // writes queued, but do not let one slow relay block others.
-          const session = exportSessionForTarget(
-            resolveWorktreeTarget,
-            target.id,
-            args.session ?? persistedSessionForTarget(store, target.id, resolveWorktreeOwner)
-          )
-          const result = await queueRemoteWorkspacePatch(target.id, async () => {
-            const current =
-              getCachedRemoteWorkspaceSnapshot(target.id) ?? (await getRemoteSnapshot(target))
-            const expectedRevision = expectedRevisions.get(target.id)
-            const expectedHostObservationToken = expectedHostObservationTokens.get(target.id)
-            if (
-              !current ||
-              expectedRevision === undefined ||
-              expectedHostObservationToken === undefined ||
-              current.hostObservationToken !== expectedHostObservationToken ||
-              !cachedRemoteWorkspaceSnapshotAuthorizesRevision(target.id, expectedRevision)
-            ) {
-              const latest = getCachedRemoteWorkspaceSnapshot(target.id) ?? current
-              return latest
-                ? ({ ok: false, reason: 'stale-revision', snapshot: latest } as const)
-                : null
-            }
-            return patchRemoteWorkspaceSession(target, session)
-          })
-          return result ? { targetId: target.id, result } : null
-        })
-      )
-      return results.filter(
-        (entry): entry is { targetId: string; result: RemoteWorkspaceObservedPatchResult } =>
-          entry !== null
-      )
+      exports.recordPull(pull)
     }
   )
 

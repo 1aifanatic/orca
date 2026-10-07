@@ -96,11 +96,13 @@ export function remoteWorkspaceSessionMatchesSnapshot(
   snapshot: RemoteWorkspaceSnapshot | undefined,
   session: RemoteWorkspaceSession
 ): boolean {
-  if (!snapshot) {
-    return false
-  }
-  return isDeepStrictEqual(
-    normalizeRemoteSession(snapshot.session),
-    normalizeRemoteSession(session)
-  )
+  return snapshot !== undefined && remoteWorkspaceSessionsMatch(snapshot.session, session)
+}
+
+/** Equal once empty optional projection fields and absent ones read the same. */
+export function remoteWorkspaceSessionsMatch(
+  a: RemoteWorkspaceSession,
+  b: RemoteWorkspaceSession
+): boolean {
+  return isDeepStrictEqual(normalizeRemoteSession(a), normalizeRemoteSession(b))
 }

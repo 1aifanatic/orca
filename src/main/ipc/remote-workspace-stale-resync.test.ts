@@ -65,7 +65,12 @@ function snapshot(revision: number, tabId: string): RemoteWorkspaceSnapshot {
 describe('workspace.stale resync', () => {
   const sent: RemoteWorkspaceChangedEvent[] = []
   const request = vi.fn()
-  const store = { getRepo: vi.fn(), getWorkspaceSession: vi.fn() } as unknown as Store
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: resync reads no store member; registration only subscribes to session writes.
+  const store = {
+    getRepo: vi.fn(),
+    getWorkspaceSession: vi.fn(),
+    onWorkspaceSessionWritten: vi.fn(() => () => {})
+  } as unknown as Store
 
   beforeEach(() => {
     sent.length = 0

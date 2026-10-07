@@ -89,7 +89,7 @@ async function saveDebouncedPatch(api: ReturnType<typeof createSessionBoundary>)
       terminalLayoutsByTabId: payload.terminalLayoutsByTabId
     },
     state
-  ).written
+  )
 }
 
 async function saveQuitSnapshot(api: ReturnType<typeof createSessionBoundary>) {

@@ -113,7 +113,8 @@ describe('useIpcEvents agent status snapshot integration', () => {
           onChanged: (cb: typeof onChangedListenerRef.current) => {
             onChangedListenerRef.current = cb
             return () => {}
-          }
+          },
+          onPushStatus: () => () => {}
         }
       })
     )

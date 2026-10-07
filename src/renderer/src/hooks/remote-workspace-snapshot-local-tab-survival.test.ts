@@ -98,7 +98,8 @@ async function applySnapshot(
     isArrivalCurrent: () => true,
     isPreparationTokenCurrent: () => true,
     waitForWorkspaceSessionReady: async () => true,
-    finalizeHydratedTerminals: () => 0
+    finalizeHydratedTerminals: () => 0,
+    importPeerTopology: async () => {}
   })
 }
 

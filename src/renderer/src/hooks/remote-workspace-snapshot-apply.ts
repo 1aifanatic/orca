@@ -1,9 +1,17 @@
-import type { RemoteWorkspaceObservedSnapshot } from '../../../shared/remote-workspace-types'
+import type {
+  RemoteWorkspaceObservedSnapshot,
+  RemoteWorkspacePeerImport
+} from '../../../shared/remote-workspace-types'
+import type {
+  WorkspaceSessionPatch,
+  WorkspaceSessionState
+} from '../../../shared/workspace-session-state-types'
 import { importRemoteWorkspaceSession } from '../../../shared/remote-workspace-session-projection'
 import type { DirectSshAuthority } from '../../../shared/ssh-types'
 import { toSshExecutionHostId } from '../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 import { buildWorkspaceSessionPayload } from '../lib/workspace-session'
+import { buildWorkspaceSessionHostPatches } from '../lib/workspace-session-host-persistence'
 import type { AppState } from '../store/types'
 import {
   admitDirectSshSnapshotApplyToken,
@@ -79,6 +87,8 @@ type RemoteWorkspaceSnapshotApplyInput = {
   isPreparationTokenCurrent: (token: DirectSshPreparationToken) => boolean
   waitForWorkspaceSessionReady: (signal?: AbortSignal) => Promise<boolean>
   finalizeHydratedTerminals: (authority: DirectSshAuthority) => number
+  /** Main commits the import and records it as agreed with the host, so it never exports back. */
+  importPeerTopology: (pull: RemoteWorkspacePeerImport) => Promise<void>
   /**
    * Host paths still carrying terminal tabs when this apply gave up placing them. `unverifiable`,
    * never proof the rows are not ours, so the caller owns getting back to a placed picture — this
@@ -88,6 +98,17 @@ type RemoteWorkspaceSnapshotApplyInput = {
 }
 
 export type RemoteWorkspaceSnapshotApplyResult = 'applied' | 'stale' | 'failed'
+
+/** The fields the merge rewrote; the rest of its result is the window's own session. */
+function mergedFields(
+  merged: WorkspaceSessionState,
+  current: WorkspaceSessionState
+): WorkspaceSessionPatch {
+  const before = new Map(Object.entries(current))
+  return Object.fromEntries(
+    Object.entries(merged).filter(([field, value]) => value !== before.get(field))
+  )
+}
 
 function currentRecoveryTabIds(
   state: AppState,
@@ -122,6 +143,7 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
   isPreparationTokenCurrent,
   waitForWorkspaceSessionReady,
   finalizeHydratedTerminals,
+  importPeerTopology,
   onUnplacedTabWorktreePaths
 }: RemoteWorkspaceSnapshotApplyInput): Promise<RemoteWorkspaceSnapshotApplyResult> {
   const { authority } = token
@@ -175,8 +197,9 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
       onUnplacedTerminalTabs: (worktreePath) => unplacedTabWorktreePaths.push(worktreePath)
     })
   }
+  const current = buildWorkspaceSessionPayload(state)
   const merged = mergeDirectSshRemoteWorkspaceSession(
-    buildWorkspaceSessionPayload(state),
+    current,
     remoteSession,
     worktreeIds,
     state.tabsByWorktree,
@@ -203,6 +226,14 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
   try {
     const currentStore = store.getState()
     const replaceWorkspaceKeys = [...worktreeIds]
+    // Sent before the window's own apply; IPC order puts it ahead of any save that apply causes.
+    importPeerTopology({
+      targetId: authority.targetId,
+      revision: snapshot.revision,
+      hostObservationToken: snapshot.hostObservationToken,
+      outcome: hasUnplacedTerminalTabs ? 'conflict' : 'synced',
+      patches: buildWorkspaceSessionHostPatches(mergedFields(merged, current), currentStore)
+    }).catch((error: unknown) => console.warn('[remote-workspace] import commit failed:', error))
     currentStore.hydrateWorkspaceSession(merged, {
       directSshAuthority: authority,
       replaceWorkspaceKeys
@@ -224,15 +255,16 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
       // The host listed tabs on paths this client cannot place, so adopting zero of them is not
       // the host's picture. `conflict` is the phase that says exactly that, and it is load-bearing
       // twice over:
-      //   - use-app-session-persistence.ts filters conflicted targets out of uploads, and an
-      //     upload is a `replace-session` patch (remote-workspace-relay-sync.ts) that wholesale
+      //   - main keeps conflicted targets out of exports (remote-workspace-export.ts), and an
+      //     export is a `replace-session` patch (remote-workspace-relay-sync.ts) that wholesale
       //     replaces the host snapshot - it would delete the very tabs we failed to adopt;
       //   - workspace-terminal-host-authority.ts treats `offline`/`error` on an un-hydrated target
       //     as `none`, its bounded floor, which authorises seeding AND sleeping-agent resume.
       //     `conflict` is deliberately not in that set: the unplaced paths stay `unverifiable`,
       //     and only the worktrees this apply did place read `none`.
       // Hydration is cleared, not merely withheld: the set is add-only, so a target that synced
-      // cleanly before would otherwise keep uploading from this incomplete picture (STA-3593).
+      // cleanly before would otherwise keep reading as hydrated from this incomplete picture
+      // (STA-3593).
       currentStore.clearRemoteWorkspaceHydrated(authority.targetId)
       currentStore.setRemoteWorkspaceSyncStatus(authority.targetId, {
         phase: 'conflict',

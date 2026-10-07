@@ -158,7 +158,8 @@ describe('session writes deferred by a direct-SSH apply', () => {
       finalizeHydratedTerminals: () => {
         onApplied()
         return 0
-      }
+      },
+      importPeerTopology: async () => {}
     })
     expect(result).toBe('applied')
   }

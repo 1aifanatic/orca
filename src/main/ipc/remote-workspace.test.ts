@@ -52,10 +52,11 @@ vi.mock('./remote-workspace-events', () => ({
   registerRemoteWorkspaceNotificationHandler: registerRemoteWorkspaceNotificationHandlerMock
 }))
 
+import { _resetRemoteWorkspaceCachesForTests } from './remote-workspace'
 import {
-  _resetRemoteWorkspaceCachesForTests,
-  registerRemoteWorkspaceHandlers
-} from './remote-workspace'
+  createRemoteWorkspaceExportDriver,
+  type RemoteWorkspaceExportDriver
+} from './remote-workspace-export-test-driver'
 import { remoteWorkspaceSessionMatchesSnapshot } from './remote-workspace-snapshot-normalization'
 
 function snapshot(session: RemoteWorkspaceSession, revision = 7): RemoteWorkspaceSnapshot {
@@ -75,6 +76,8 @@ const baseSession = {
   tabsByWorktree: {},
   terminalLayoutsByTabId: {}
 } as WorkspaceSessionState
+
+type PatchParams = { patch: { session: RemoteWorkspaceSession } }
 
 const targets: SshTarget[] = [
   {
@@ -164,29 +167,56 @@ describe('remoteWorkspaceSessionMatchesSnapshot', () => {
   })
 })
 
-describe('remoteWorkspace:setForConnectedTargets', () => {
-  const handlers = new Map<string, (event: unknown, args: unknown) => unknown>()
+describe('main exports a session write to the hosts it agrees with', () => {
   const requestByTargetId = new Map<string, ReturnType<typeof vi.fn>>()
   const muxByTargetId = new Map<string, { request: ReturnType<typeof vi.fn> }>()
   const getRepoMock = vi.fn<Store['getRepo']>()
-  const getWorkspaceSessionMock = vi.fn<Store['getWorkspaceSession']>()
   // Ownership resolution reads the catalog, not one id-keyed row, so the fake has to project one.
-  const getReposMock = vi.fn(() => [getRepoMock('repo-target-1')].filter(Boolean))
-  const store = {
-    getRepo: getRepoMock,
-    getRepos: getReposMock,
-    getWorkspaceSession: getWorkspaceSessionMock
-  } as unknown as Store
+  const getReposMock = vi.fn(() => {
+    const repo = getRepoMock('repo-target-1')
+    return repo ? [repo] : []
+  })
+  let driver: RemoteWorkspaceExportDriver
+
+  const sessionWithTab: WorkspaceSessionState = {
+    activeRepoId: 'repo-target-1',
+    activeWorktreeId: 'repo-target-1::/repo',
+    activeTabId: 'tab-store',
+    tabsByWorktree: {
+      'repo-target-1::/repo': [
+        {
+          id: 'tab-store',
+          title: 'Store shell',
+          ptyId: 'pty-store',
+          worktreeId: 'repo-target-1::/repo',
+          customTitle: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }
+      ]
+    },
+    terminalLayoutsByTabId: {}
+  }
+
+  const emptyRemoteSession: RemoteWorkspaceSession = {
+    activeWorktreePath: null,
+    activeTabId: null,
+    tabsByWorktreePath: {},
+    terminalLayoutsByTabId: {}
+  }
+
+  function patchRequests(targetId: string): unknown[][] {
+    return (requestByTargetId.get(targetId)?.mock.calls ?? []).filter(
+      ([method]) => method === 'workspace.patch'
+    )
+  }
 
   beforeEach(() => {
     _resetRemoteWorkspaceCachesForTests()
-    handlers.clear()
     requestByTargetId.clear()
     muxByTargetId.clear()
     vi.mocked(ipcMain.handle).mockReset()
-    vi.mocked(ipcMain.handle).mockImplementation((channel, handler) => {
-      handlers.set(channel, handler as (event: unknown, args: unknown) => unknown)
-    })
     vi.mocked(ipcMain.removeHandler).mockReset()
     getSshConnectionStoreMock.mockReset()
     getSshConnectionStoreMock.mockReturnValue({
@@ -195,8 +225,6 @@ describe('remoteWorkspace:setForConnectedTargets', () => {
     })
     getRepoMock.mockReset()
     getReposMock.mockClear()
-    getWorkspaceSessionMock.mockReset()
-    getWorkspaceSessionMock.mockReturnValue(baseSession)
     getRepoMock.mockImplementation((repoId: string) =>
       repoId === 'repo-target-1'
         ? ({
@@ -213,7 +241,7 @@ describe('remoteWorkspace:setForConnectedTargets', () => {
     getActiveMultiplexerMock.mockImplementation((targetId: string) => {
       let mux = muxByTargetId.get(targetId)
       if (!mux) {
-        const request = vi.fn().mockImplementation((method: string) => {
+        const request = vi.fn().mockImplementation((method: string, params: PatchParams) => {
           if (method === 'workspace.get') {
             return Promise.resolve(
               snapshot({
@@ -226,12 +254,7 @@ describe('remoteWorkspace:setForConnectedTargets', () => {
           }
           return Promise.resolve({
             ok: true,
-            snapshot: snapshot({
-              activeWorktreePath: null,
-              activeTabId: null,
-              tabsByWorktreePath: {},
-              terminalLayoutsByTabId: {}
-            })
+            snapshot: snapshot(params.patch.session, 8)
           })
         })
         mux = { request }
@@ -241,209 +264,204 @@ describe('remoteWorkspace:setForConnectedTargets', () => {
       return mux
     })
     registerRemoteWorkspaceNotificationHandlerMock.mockClear()
-
-    registerRemoteWorkspaceHandlers(store, () => null, { readMachineName: () => 'Build server' })
+    driver = createRemoteWorkspaceExportDriver({ getRepo: getRepoMock, getRepos: getReposMock })
   })
 
-  async function callSetForConnectedTargets(args: {
-    session?: WorkspaceSessionState
-    hydratedTargetIds?: unknown
-    expectedRevisionsByTargetId?: unknown
-    expectedHostObservationTokensByTargetId?: unknown
-  }): Promise<unknown> {
-    const handler = handlers.get('remoteWorkspace:setForConnectedTargets')
-    if (!handler) {
-      throw new Error('remoteWorkspace:setForConnectedTargets handler was never registered')
-    }
-    return handler(null, args)
-  }
-
   async function observeTarget(targetId: string): Promise<RemoteWorkspaceObservedSnapshot> {
-    const handler = handlers.get('remoteWorkspace:get')
-    if (!handler) {
-      throw new Error('remoteWorkspace:get handler was never registered')
-    }
-    const observed = await handler(null, { targetId })
+    const observed = await driver.handlers.get('remoteWorkspace:get')?.(null, { targetId })
     if (!observed || typeof observed !== 'object' || !('hostObservationToken' in observed)) {
       throw new Error(`remoteWorkspace:get did not observe ${targetId}`)
     }
     return observed as RemoteWorkspaceObservedSnapshot
   }
 
-  it('reads the repo catalog once per publish, not once per worktree', async () => {
+  async function agreeWith(targetId: string): Promise<void> {
+    const { revision, hostObservationToken } = await observeTarget(targetId)
+    driver.agree(targetId, { revision, hostObservationToken })
+  }
+
+  it('reads the repo catalog once per export, not once per worktree', async () => {
     // `store.getRepos()` re-hydrates every repo row. The export asks "is this worktree mine?" once
     // per worktree, so reading the catalog inside that callback multiplied hydration by the
     // worktree count — 413 on the session that surfaced this.
+    await agreeWith('target-1')
+    await Promise.resolve()
+    getReposMock.mockClear()
     const worktrees = Object.fromEntries(
       Array.from({ length: 12 }, (_, index) => [`repo-target-1::/remote/repo-${index}`, []])
     )
-    getWorkspaceSessionMock.mockReturnValue({
-      ...baseSession,
-      tabsByWorktree: worktrees
-    } as WorkspaceSessionState)
-    const observed = await observeTarget('target-1')
-    getReposMock.mockClear()
 
-    await callSetForConnectedTargets({
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': observed.revision },
-      expectedHostObservationTokensByTargetId: {
-        'target-1': observed.hostObservationToken
-      }
-    })
+    driver.write({ ...baseSession, tabsByWorktree: worktrees })
+    await driver.nextPushes()
 
     expect(getReposMock).toHaveBeenCalledTimes(1)
   })
 
-  it('resolves each worktree ownership once for the whole publish, not once per target', async () => {
+  it('resolves each worktree ownership once for the whole export, not once per target', async () => {
     // Ownership is a function of the repo catalog alone; only the final `=== targetId` differs, so
     // exporting to N targets used to repeat the identical resolution N times per worktree key.
+    for (const target of targets) {
+      await agreeWith(target.id)
+    }
+    await Promise.resolve()
+    getReposMock.mockClear()
+    resolveWorktreeExecutionHostCalls.count = 0
     const worktrees = Object.fromEntries(
       Array.from({ length: 6 }, (_, index) => [`repo-target-1::/remote/repo-${index}`, []])
     )
-    getWorkspaceSessionMock.mockReturnValue({
-      ...baseSession,
-      tabsByWorktree: worktrees
-    } as WorkspaceSessionState)
-    const observed = await Promise.all(targets.map((target) => observeTarget(target.id)))
-    getReposMock.mockClear()
-    resolveWorktreeExecutionHostCalls.count = 0
 
-    await callSetForConnectedTargets({
-      hydratedTargetIds: targets.map((target) => target.id),
-      expectedRevisionsByTargetId: Object.fromEntries(
-        targets.map((target, index) => [target.id, observed[index].revision])
-      ),
-      expectedHostObservationTokensByTargetId: Object.fromEntries(
-        targets.map((target, index) => [target.id, observed[index].hostObservationToken])
-      )
-    })
+    driver.write({ ...baseSession, tabsByWorktree: worktrees })
+    await driver.nextPushes()
 
     expect(getReposMock).toHaveBeenCalledTimes(1)
-    // 6 worktree keys resolved once each, regardless of how many targets are published to.
+    // 6 worktree keys resolved once each, regardless of how many targets are exported to.
     expect(resolveWorktreeExecutionHostCalls.count).toBe(6)
   })
 
-  it('skips the session and repo-catalog reads when no hydrated target is connected', async () => {
-    // A hydrated but disconnected target leaves nothing to project onto, so hoisting the catalog
-    // read must not make the idle path pay for a full repo hydration it never used before.
+  it('skips the session and repo-catalog reads when no agreed target is connected', async () => {
+    // A disconnected target leaves nothing to project onto, so a session write must not pay for a
+    // full repo hydration it never uses.
+    driver.agree('target-1', { revision: 7, hostObservationToken: 'token' })
     getActiveMultiplexerMock.mockReturnValue(undefined)
+    await Promise.resolve()
     getReposMock.mockClear()
-    getWorkspaceSessionMock.mockClear()
 
-    await expect(
-      callSetForConnectedTargets({
-        hydratedTargetIds: ['target-1'],
-        expectedRevisionsByTargetId: { 'target-1': 7 },
-        expectedHostObservationTokensByTargetId: { 'target-1': 'token' }
-      })
-    ).resolves.toEqual([])
+    driver.write(sessionWithTab)
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(getReposMock).not.toHaveBeenCalled()
-    expect(getWorkspaceSessionMock).not.toHaveBeenCalled()
+    expect(driver.pushes).toEqual([])
   })
 
-  it('does not write without an explicit non-empty hydrated target set', async () => {
-    await expect(callSetForConnectedTargets({ session: baseSession })).resolves.toEqual([])
-    await expect(
-      callSetForConnectedTargets({ session: baseSession, hydratedTargetIds: [] })
-    ).resolves.toEqual([])
-    await expect(
-      callSetForConnectedTargets({ session: baseSession, hydratedTargetIds: ['target-1', 42] })
-    ).resolves.toEqual([])
-    await expect(
-      callSetForConnectedTargets({ session: baseSession, hydratedTargetIds: ['target-1'] })
-    ).resolves.toEqual([])
-    await expect(
-      callSetForConnectedTargets({
-        session: baseSession,
-        hydratedTargetIds: ['target-1'],
-        expectedRevisionsByTargetId: { 'target-1': 7 }
-      })
-    ).resolves.toEqual([])
-
-    expect(getSshConnectionStoreMock).not.toHaveBeenCalled()
-    expect(getActiveMultiplexerMock).not.toHaveBeenCalled()
-  })
-
-  it('writes only to explicitly hydrated connected targets', async () => {
-    const observation = await observeTarget('target-1')
-    const result = await callSetForConnectedTargets({
-      session: baseSession,
-      hydratedTargetIds: ['target-1', 'missing-target'],
-      expectedRevisionsByTargetId: { 'target-1': 7, 'missing-target': 7 },
-      expectedHostObservationTokensByTargetId: {
-        'target-1': observation.hostObservationToken,
-        'missing-target': 'unreachable-target-observation'
-      }
+  it('exports nothing to a host this desktop has no valid agreement with', async () => {
+    driver.importPeer({
+      targetId: 'target-1',
+      revision: -1,
+      hostObservationToken: 'token',
+      outcome: 'synced',
+      patches: []
+    })
+    driver.importPeer({
+      targetId: 'target-1',
+      revision: 7,
+      hostObservationToken: '',
+      outcome: 'synced',
+      patches: []
     })
 
-    expect(result).toMatchObject([{ targetId: 'target-1', result: { ok: true } }])
-    expect(getActiveMultiplexerMock).toHaveBeenCalledWith('target-1')
+    driver.write(sessionWithTab)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(getActiveMultiplexerMock).not.toHaveBeenCalled()
+    expect(driver.pushes).toEqual([])
+  })
+
+  it('writes only to agreed connected targets', async () => {
+    await agreeWith('target-1')
+    driver.agree('missing-target', { revision: 7, hostObservationToken: 'unreachable' })
+
+    driver.write(sessionWithTab)
+    const [push] = await driver.nextPushes()
+
+    expect(push).toMatchObject({ targetId: 'target-1', result: { ok: true } })
     expect(getActiveMultiplexerMock).not.toHaveBeenCalledWith('target-2')
-    expect(requestByTargetId.get('target-1')).toHaveBeenCalledWith(
-      'workspace.patch',
-      expect.objectContaining({
-        patch: expect.objectContaining({ kind: 'replace-session' })
-      })
-    )
+    expect(patchRequests('target-1')).toEqual([
+      [
+        'workspace.patch',
+        expect.objectContaining({ patch: expect.objectContaining({ kind: 'replace-session' }) })
+      ]
+    ])
     expect(requestByTargetId.get('target-2')).toBeUndefined()
   })
 
-  it('can export from the persisted store session when no session argument is provided', async () => {
-    getWorkspaceSessionMock.mockReturnValue({
-      activeRepoId: 'repo-target-1',
-      activeWorktreeId: 'repo-target-1::/repo',
-      activeTabId: 'tab-store',
-      tabsByWorktree: {
-        'repo-target-1::/repo': [
-          {
-            id: 'tab-store',
-            title: 'Store shell',
-            ptyId: 'pty-store',
-            worktreeId: 'repo-target-1::/repo'
-          } as never
-        ]
-      },
-      terminalLayoutsByTabId: {}
-    })
+  it('exports the persisted store session', async () => {
+    await agreeWith('target-1')
 
-    const observation = await observeTarget('target-1')
-    await callSetForConnectedTargets({
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': 7 },
-      expectedHostObservationTokensByTargetId: {
-        'target-1': observation.hostObservationToken
-      }
-    })
+    driver.write(sessionWithTab)
+    await driver.nextPushes()
 
-    expect(requestByTargetId.get('target-1')).toHaveBeenCalledWith(
-      'workspace.patch',
-      expect.objectContaining({
-        patch: expect.objectContaining({
-          session: expect.objectContaining({
-            activeWorktreePath: '/repo',
-            activeTabId: 'tab-store'
+    expect(patchRequests('target-1')).toEqual([
+      [
+        'workspace.patch',
+        expect.objectContaining({
+          patch: expect.objectContaining({
+            session: expect.objectContaining({
+              activeWorktreePath: '/repo',
+              activeTabId: 'tab-store'
+            })
           })
         })
-      })
-    )
+      ]
+    ])
   })
 
-  it('does not invalidate an upload authority when an unchanged snapshot is polled', async () => {
+  it('does not invalidate an agreement when an unchanged snapshot is polled', async () => {
     const first = await observeTarget('target-1')
     const second = await observeTarget('target-1')
     expect(second.hostObservationToken).toBe(first.hostObservationToken)
+    driver.agree('target-1', first)
 
-    const result = await callSetForConnectedTargets({
-      session: baseSession,
-      hydratedTargetIds: ['target-1'],
-      expectedRevisionsByTargetId: { 'target-1': first.revision },
-      expectedHostObservationTokensByTargetId: {
-        'target-1': first.hostObservationToken
-      }
+    driver.write(sessionWithTab)
+
+    await expect(driver.nextPushes()).resolves.toMatchObject([
+      { targetId: 'target-1', result: { ok: true } }
+    ])
+  })
+
+  it('exports nothing for an import, and once for the next local change', async () => {
+    const observed = await observeTarget('target-1')
+    driver.importPeer({
+      ...observed,
+      targetId: 'target-1',
+      outcome: 'synced',
+      patches: [{ patch: sessionWithTab }]
     })
+    // The window saves back what it applied from the import.
+    driver.write(sessionWithTab)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(patchRequests('target-1')).toEqual([])
 
-    expect(result).toMatchObject([{ targetId: 'target-1', result: { ok: true } }])
+    driver.write({ ...sessionWithTab, activeTabId: null })
+    await driver.nextPushes()
+    expect(patchRequests('target-1')).toHaveLength(1)
+  })
+
+  it('keeps a conflicted target out of exports until a whole pull agrees again', async () => {
+    const observed = await observeTarget('target-1')
+    driver.agree('target-1', observed)
+    driver.agree('target-1', observed, 'conflict')
+
+    driver.write(sessionWithTab)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(patchRequests('target-1')).toEqual([])
+
+    driver.agree('target-1', observed)
+    driver.write({ ...sessionWithTab, activeTabId: null })
+    await driver.nextPushes()
+    expect(patchRequests('target-1')).toHaveLength(1)
+  })
+
+  it.each([
+    ['seeds an empty host from a desktop that has tabs for it', true],
+    ['leaves an empty host alone when this desktop has nothing for it', false]
+  ])('%s', async (_name, hasTabs) => {
+    const request = vi.fn(async (method: string, params: Partial<PatchParams>) =>
+      method === 'workspace.get'
+        ? snapshot(emptyRemoteSession, 0)
+        : { ok: true, snapshot: snapshot(params.patch?.session ?? emptyRemoteSession, 1) }
+    )
+    muxByTargetId.set('target-1', { request })
+    requestByTargetId.set('target-1', request)
+    driver.write(hasTabs ? sessionWithTab : baseSession)
+    const observed = await observeTarget('target-1')
+    expect(observed.revision).toBe(0)
+
+    driver.agree('target-1', observed)
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(patchRequests('target-1')).toHaveLength(hasTabs ? 1 : 0)
+    expect(driver.pushes).toMatchObject(
+      hasTabs ? [{ targetId: 'target-1', authority: { revision: 0 }, result: { ok: true } }] : []
+    )
   })
 })
