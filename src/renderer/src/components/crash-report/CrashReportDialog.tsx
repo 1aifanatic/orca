@@ -17,7 +17,7 @@ const CrashReportDialogSurface = lazy(() =>
   }))
 )
 
-/** Help > Report Crash's own entry, unless it took over a report already on screen. */
+/** Help > Report Crash's own entry. */
 const USER_DIALOG_TOKEN = 'crash-report-dialog:user'
 
 function crashReportToken(reportId: string): string {
@@ -33,8 +33,8 @@ type AutomaticCrashReport = {
   open: boolean
 }
 
-/** Help > Report Crash. `key` is one dialog per report: taking over the report on screen keeps it. */
-type UserDialog = { report: CrashReportRecord | null; key: string }
+/** Help > Report Crash, opened over no report: the latest one, once loaded. */
+type UserDialog = { report: CrashReportRecord | null }
 
 export function CrashReportDialog(): React.JSX.Element | null {
   const promptedThisLaunch = useRef(false)
@@ -48,8 +48,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
   )
   const admitted = useDialogRegistry((s) => selectAdmittedDialog(s, 'crash-report'))
   const admittedReport = admitted ? reports.get(admitted.token) : undefined
-  const takenOver = userDialog !== null && userDialog.key === admitted?.token
-  useHostDialogEntry(USER_DIALOG_TOKEN, 'dialog', 'user', userDialog !== null && !takenOver)
+  useHostDialogEntry(USER_DIALOG_TOKEN, 'dialog', 'user', userDialog !== null)
 
   const reportsRef = useRef(reports)
   // The registry follows this list: queued while open, closed once done. The launch check answers
@@ -197,7 +196,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
       if (mountedRef.current && latest) {
         // Only into a dialog still waiting for one; a report already shown is never swapped.
         setUserDialog((current) =>
-          current && current.report === null ? { ...current, report: latest } : current
+          current && current.report === null ? { report: latest } : current
         )
       }
     } catch (error) {
@@ -209,34 +208,27 @@ export function CrashReportDialog(): React.JSX.Element | null {
     }
   }, [mountedRef])
 
-  const admittedOpen = admitted !== undefined && admitted.phase !== 'closing' ? admitted : undefined
-  const admittedOpenReport = admittedOpen ? reports.get(admittedOpen.token)?.report : undefined
+  const reportOnScreen = admitted !== undefined && admitted.phase !== 'closing'
   useEffect(() => {
     return window.api.ui.onOpenCrashReport(() => {
-      if (userDialog !== null) {
+      // A report dialog already up is the one Help would show: it stays as it is, notes and all.
+      if (userDialog !== null || reportOnScreen) {
         return
       }
-      // Over a report already on screen, Help takes that dialog over, notes and all.
-      if (admittedOpen && admittedOpenReport) {
-        setUserDialog({ report: admittedOpenReport, key: admittedOpen.token })
-        return
-      }
-      setUserDialog({ report: null, key: USER_DIALOG_TOKEN })
+      setUserDialog({ report: null })
       void loadUserCrashReport()
     })
-  }, [admittedOpen, admittedOpenReport, loadUserCrashReport, userDialog])
+  }, [loadUserCrashReport, reportOnScreen, userDialog])
 
   if (userDialog === null && !admittedReport) {
     return null
   }
   const report = userDialog ? userDialog.report : (admittedReport?.report ?? null)
-  const surfaceKey = userDialog ? userDialog.key : admitted?.token
+  const surfaceKey = userDialog ? USER_DIALOG_TOKEN : admitted?.token
   const open = userDialog !== null || admitted?.phase !== 'closing'
 
   return (
-    <AdoptDialogEntry
-      token={userDialog && !takenOver ? USER_DIALOG_TOKEN : (admitted?.token ?? null)}
-    >
+    <AdoptDialogEntry token={userDialog ? USER_DIALOG_TOKEN : (admitted?.token ?? null)}>
       <Suspense fallback={null}>
         <CrashReportDialogSurface
           key={surfaceKey}

@@ -260,7 +260,7 @@ it('Help with nothing on screen opens at once and fills in the latest report', a
   expect(notes()).toBe('typed while loading')
 })
 
-it('a latest-report load that lands after Help took over a report on screen never swaps it', async () => {
+it('a latest-report load that lands after Help over a report on screen never swaps it', async () => {
   const pending = Promise.withResolvers<CrashReportRecord | null>()
   crashReports.getLatestPending.mockReturnValue(pending.promise)
   const latest = Promise.withResolvers<CrashReportRecord | null>()
