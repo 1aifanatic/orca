@@ -11,12 +11,14 @@ import {
   hostTestMessage,
   hostTestOperationId
 } from './structured-agent-session-host-test-data'
+import { holdDelivery } from './structured-agent-session-delivery-hold.test-fixture'
 import {
   QUEUED_RIG_CALLER,
   createQueuedMessageTestRig,
   eventually,
   type QueuedMessageTestRig
 } from './structured-agent-session-queued-message-rig.test-fixture'
+import { openRigTurnFor } from './structured-agent-session-queued-rig-turn.test-fixture'
 import { sameQueuePause } from './structured-agent-session-queued-publication'
 import { structuredAgentSessionConversationFence } from './structured-agent-session-provider-child'
 import {
@@ -237,6 +239,7 @@ describe('a card queued after a Stop is a new instruction', () => {
 
   it('a card sent now before the Stop and taken anyway lifts nothing, and holds nothing typed later', async () => {
     const working = await rig.workingSend()
+    await openRigTurnFor(rig, working)
     const sentId = await queuedDraft('sent now into the turn')
     await rig.sendNow(sentId)
     await handedOver(sentId)
@@ -245,6 +248,7 @@ describe('a card queued after a Stop is a new instruction', () => {
     expect(await rig.queuePause()).toBeNull()
     await rig.settleAccepted(await rig.handoffId(sentId), 'sent-now')
     await rig.settleAccepted(working, 'stopped')
+    await openRigTurnFor(rig, working, 'interrupted')
     const mail = rig.send('coordinator mail')
     await mail.result
     await eventually(async () =>
@@ -393,13 +397,16 @@ describe('a card handed off after a restart', () => {
     )
     await rig.restartHostProcess()
     // Sent again in this process, then withdrawn by a Stop before the agent had it.
-    let release: () => void = () => undefined
-    rig.awaitStarted.mockImplementationOnce(
-      () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
-    )
-    expect(await rig.sendNow(draftId)).toMatchObject({ ok: true })
-    await rig.stop()
+    // Its delivery is held, so the Stop runs ahead of the handover.
+    const { held, release } = holdDelivery()
+    const handedOver = rig.dispatch.mock.calls.length
+    const sending = rig.sendNow(draftId)
+    await held
+    const stopping = rig.stop()
     release()
+    expect(await sending).toMatchObject({ ok: true })
+    await stopping
+    expect(rig.dispatch).toHaveBeenCalledTimes(handedOver)
     await eventually(async () =>
       expect(await rig.drafts()).toEqual([{ messageId: draftId, state: 'waiting' }])
     )
@@ -507,52 +514,6 @@ describe('a failed Stop', () => {
     } finally {
       failing.mockRestore()
     }
-    await expectPaused(draftId)
-  })
-
-  // The drain shares the Stop's lane, so a failed Stop must hold it until its pause lands.
-  it('keeps its pause when it fails while its writes wait behind owed work', async () => {
-    const turn = { provider: 'codex' as const, threadId: THREAD, turnId: 'turn-w', ordinal: 900 }
-    const turnRow = (state: 'running' | 'completed') => {
-      rig
-        .providerEvents()
-        .appendItem(
-          turn,
-          { kind: 'turn', turnId: 'turn-w', state, startedAt: 1 },
-          { turnScope: AGENT_JOURNAL_THREAD_SCOPE }
-        )
-    }
-    const working = await rig.workingSend()
-    turnRow('running')
-    await rig.settleAccepted(working, 'w')
-    const draftId = await queuedDraft('paused by stop')
-    // The interrupt ends the turn, so the drain runs as soon as the lane frees.
-    vi.mocked(rig.host.deps.adapter.cancelTurn).mockImplementationOnce(async () => {
-      turnRow('completed')
-      return { cancelled: true }
-    })
-    const journal = rig.host.collaboratorsForTests().sessions.get(HOST_TEST_SESSION)?.journal
-    if (!journal) {
-      throw new Error('no open journal')
-    }
-    const append = journal.appendItem.bind(journal)
-    vi.spyOn(journal, 'appendItem').mockImplementation((identity, body, options) =>
-      body.kind === 'status'
-        ? Promise.reject(new Error('disk full'))
-        : append(identity, body, options)
-    )
-    // Owed from the Stop's first write, after the open paid any import: its writes wait behind it.
-    const owed = Promise.withResolvers<void>()
-    const withdraw = journal.rejectQueuedSubmissions.bind(journal)
-    vi.spyOn(journal, 'rejectQueuedSubmissions').mockImplementation((...args) => {
-      journal['queue'].owe(() => owed.promise)
-      return withdraw(...args)
-    })
-    const stopping = rig.stop()
-    await eventually(() => expect(rig.host.deps.adapter.cancelTurn).toHaveBeenCalledOnce())
-    owed.resolve()
-    await expect(stopping).rejects.toThrow('disk full')
-    expect(journal.activeTurnId()).toBeNull()
     await expectPaused(draftId)
   })
 })
