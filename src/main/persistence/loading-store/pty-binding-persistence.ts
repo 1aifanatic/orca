@@ -18,6 +18,7 @@ import { startPtyBindingSpan, type PtyBindingOrigin, type PtyBindingSpan } from 
 import { applyPtyBinding } from './pty-binding-session-update'
 import type { TerminalPanePlacement } from '../../../shared/terminal-pane-placement'
 import { terminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
+import { findTerminalBindingConflict } from '../terminal-topology/terminal-owner-invariants'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
   StoreRuntimeState,
@@ -153,7 +154,7 @@ export class PtyBindingPersistenceOperations {
         const session = sessions.getWorkspaceSession(resolvedHostId)
         const partitions = sessions
           .getWorkspaceSessionHostIds()
-          .map((hostId) => sessions.getWorkspaceSession(hostId))
+          .map((hostId) => ({ hostId, session: sessions.getWorkspaceSession(hostId) }))
         if (ptyBindingIsRefused(args, session, bindingWorktreeId, paneKey, partitions)) {
           outcome = 'refused'
           return { value: false, persist: false }
@@ -182,6 +183,16 @@ export class PtyBindingPersistenceOperations {
         if (verdict.eligible) {
           outcome = 'fast_lane'
           return { value: true, persist: false }
+        }
+        // Report-only: the binding is written even when it breaks an invariant, or the check throws.
+        // After the fast lane, so a no-op rebind skips the scan.
+        try {
+          const conflict = findTerminalBindingConflict(args, resolvedHostId, partitions)
+          if (conflict) {
+            span.setOwnerConflict(conflict.reason)
+          }
+        } catch {
+          span.setOwnerConflict('check_threw')
         }
         return {
           value: true,

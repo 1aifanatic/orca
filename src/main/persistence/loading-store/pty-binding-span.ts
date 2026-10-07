@@ -1,6 +1,7 @@
 import { startSpan } from '../../observability/tracer'
 import type { PtyBindingFastLaneMiss } from './pty-binding-fast-lane'
 import type { TerminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
+import type { TerminalOwnerConflictReason } from '../terminal-topology/terminal-owner-invariants'
 
 export type PtyBindingSpanOutcome = 'fast_lane' | 'flushed' | 'refused' | 'threw'
 
@@ -46,6 +47,8 @@ function admitFastLaneSpan(nowMs: number): boolean {
 export type PtyBindingSpan = {
   setEligibility(verdict: { eligible: boolean; misses: readonly PtyBindingFastLaneMiss[] }): void
   setPlacement(agreement: TerminalPanePlacementAgreement): void
+  /** A binding that breaks a layout invariant (report-only: it is still written). */
+  setOwnerConflict(reason: TerminalOwnerConflictReason | 'check_threw'): void
   finish(outcome: PtyBindingSpanOutcome, error?: unknown): void
 }
 
@@ -82,6 +85,9 @@ export function startPtyBindingSpan(entry: {
     },
     setPlacement(agreement) {
       span.setAttribute('binding.placement', agreement)
+    },
+    setOwnerConflict(reason) {
+      span.setAttribute('binding.owner_conflict', reason)
     },
     finish(outcome, error) {
       span.setAttribute('binding.outcome', outcome)
