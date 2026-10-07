@@ -76,6 +76,27 @@ describe('structured extension question cards', () => {
     })
   })
 
+  it('submits the text the user edited in the editor, not its prefill', () => {
+    const { onAnswer } = render({
+      ...input,
+      freeTextInput: { allowEmpty: true, multiline: true, initialValue: 'prefill' }
+    })
+    const textarea = container.querySelector('textarea')
+    if (!textarea) {
+      throw new Error('Missing editor textarea')
+    }
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    act(() => {
+      setValue?.call(textarea, 'prefill, then edited\nsecond line')
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    submit()
+    expect(onAnswer).toHaveBeenCalledWith({
+      kind: 'answers',
+      answers: [{ questionId: 'text', optionIds: [], other: 'prefill, then edited\nsecond line' }]
+    })
+  })
+
   it('keeps legacy empty input disabled', () => {
     const { onAnswer } = render({ ...input, freeTextInput: undefined })
     expect(

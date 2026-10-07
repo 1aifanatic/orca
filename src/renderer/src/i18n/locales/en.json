@@ -17934,6 +17934,7 @@
       },
       "receipt": {
         "unavailable": "Selected answer unavailable",
+        "emptyAnswer": "Empty answer",
         "cancelled": "Cancelled",
         "resolved": "Resolved",
         "resolver": "Answered on {{device}}",
