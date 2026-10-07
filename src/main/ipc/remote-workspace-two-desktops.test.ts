@@ -107,6 +107,8 @@ type Desktop = {
   clientId: string
   /** Set to make this desktop's next imports conflicted (unplaceable host tabs). */
   conflicted: boolean
+  /** Tabs the window created during a download and has not saved yet; its merge keeps them. */
+  unsavedTabs: WorkspaceSessionState['tabsByWorktree'][string]
   imports: number
 }
 
@@ -165,9 +167,10 @@ async function bootDesktop(): Promise<Desktop> {
   const desktop: Desktop = {
     clientId: CLIENT_ID,
     conflicted: false,
+    unsavedTabs: [],
     imports: 0,
-    // The window's importer: today's projection of the host snapshot, committed through main,
-    // then saved back once the window has applied it.
+    // The window's importer: the host snapshot's projection plus the unsaved tabs the merge keeps,
+    // committed through main, then saved back once the window has applied it.
     driver: createRemoteWorkspaceExportDriver(
       { getRepos: () => [repo] },
       (event: RemoteWorkspaceChangedEvent) => {
@@ -178,8 +181,13 @@ async function bootDesktop(): Promise<Desktop> {
           resolveWorktreeId: (path) => (path === WORKTREE_PATH ? WORKTREE_ID : null),
           executionHostId: `ssh:${TARGET.id}`
         })
+        const hostTabs = imported.tabsByWorktree[WORKTREE_ID] ?? []
+        const keptTabs = desktop.unsavedTabs.filter(
+          (local) => !hostTabs.some((host) => host.id === local.id)
+        )
+        desktop.unsavedTabs = []
         const patch = {
-          tabsByWorktree: imported.tabsByWorktree,
+          tabsByWorktree: { ...imported.tabsByWorktree, [WORKTREE_ID]: [...hostTabs, ...keptTabs] },
           terminalLayoutsByTabId: imported.terminalLayoutsByTabId
         }
         desktop.imports += 1
@@ -187,7 +195,7 @@ async function bootDesktop(): Promise<Desktop> {
           targetId: TARGET.id,
           revision: event.snapshot.revision,
           hostObservationToken: event.snapshot.hostObservationToken,
-          outcome: desktop.conflicted ? 'conflict' : 'synced',
+          outcome: desktop.conflicted ? 'conflict' : keptTabs.length > 0 ? 'kept-local' : 'synced',
           patches: [{ hostId: `ssh:${TARGET.id}`, patch }]
         })
         desktop.driver.write(patch)
@@ -261,6 +269,39 @@ describe('two desktops, one relay', () => {
     ])
     expect(a.imports).toBe(1)
     expect(relay.revision).toBe(5)
+  })
+
+  it('uploads a tab created during a download once, and the desktops converge', async () => {
+    // B stands on the shared worktree and A does not, so each merge keeps a different active
+    // worktree; that difference alone must not bounce uploads between them.
+    b.driver.write({ activeRepoId: 'repo-1', activeWorktreeId: WORKTREE_ID })
+    await settle()
+    expect(relay.patches).toEqual([{ clientId: b.clientId, baseRevision: 3 }])
+    relay.patches = []
+    a.imports = 0
+    b.unsavedTabs = [tab('tab-b')]
+
+    a.driver.write(
+      withSplit(
+        {
+          ...a.driver.readSession(),
+          tabsByWorktree: { [WORKTREE_ID]: [tab('tab-a')] }
+        },
+        'tab-a'
+      )
+    )
+    await settle()
+
+    expect(relay.patches).toEqual([
+      { clientId: a.clientId, baseRevision: 4 },
+      { clientId: b.clientId, baseRevision: 5 }
+    ])
+    expect(relay.session.tabsByWorktreePath[WORKTREE_PATH]?.map(({ id }) => id)).toEqual([
+      'tab-a',
+      'tab-b'
+    ])
+    expect(a.imports).toBe(1)
+    expect(b.imports).toBe(1)
   })
 
   it('keeps a desktop whose import conflicted out of exports', async () => {

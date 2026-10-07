@@ -142,11 +142,11 @@ export function createRemoteWorkspaceExports(
       agreements.delete(targetId)
       return
     }
-    // An import agrees on what this desktop now holds, so it never exports back. A host never
-    // written (revision 0) had nothing to import: agree on its own copy, and anything this desktop
-    // holds beyond it seeds the host.
+    // An import agrees on what this desktop now holds, so it never exports back. When the window
+    // kept local state the host lacks, agree on the host's own copy instead, so that state exports
+    // once, as the window's save-back did.
     const session =
-      revision === 0
+      outcome === 'kept-local'
         ? (getCachedRemoteWorkspaceSnapshot(targetId)?.session ?? null)
         : sessionForTarget(readWorktreeOwners(), targetId)
     agreements.set(targetId, { revision, hostObservationToken, session })

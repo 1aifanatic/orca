@@ -76,8 +76,12 @@ export type RemoteWorkspaceExportAuthority = {
 /** A window's pull from one host: the session writes it imports and whether the import is whole. */
 export type RemoteWorkspacePeerImport = RemoteWorkspaceExportAuthority & {
   targetId: string
-  /** `conflict`: the window could not place every host tab, so this desktop must not export. */
-  outcome: 'synced' | 'conflict'
+  /**
+   * `kept-local`: this desktop holds state the host lacks (tabs it never saw, unsent layout edits,
+   * or anything at all for a host never written), which must export. `conflict`: the window could
+   * not place every host tab, so this desktop must not export.
+   */
+  outcome: 'synced' | 'kept-local' | 'conflict'
   /** The import's session patch per owning partition; empty when the host had nothing to import. */
   patches: { hostId?: ExecutionHostId; patch: WorkspaceSessionPatch }[]
 }

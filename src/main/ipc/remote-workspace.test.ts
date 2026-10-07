@@ -493,7 +493,7 @@ describe('main exports a session write to the hosts it agrees with', () => {
     const observed = await observeTarget('target-1')
     expect(observed.revision).toBe(0)
 
-    driver.agree('target-1', observed)
+    driver.agree('target-1', observed, 'kept-local')
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(patchRequests('target-1')).toHaveLength(hasTabs ? 1 : 0)

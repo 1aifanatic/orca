@@ -197,7 +197,7 @@ export function createRemoteWorkspaceTargetSync(
       targetId: authority.targetId,
       revision: snapshot.revision,
       hostObservationToken: snapshot.hostObservationToken,
-      outcome: 'synced',
+      outcome: 'kept-local',
       patches: []
     })
   }

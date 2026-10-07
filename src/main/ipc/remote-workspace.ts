@@ -62,7 +62,7 @@ function isValidPeerImport(pull: RemoteWorkspacePeerImport): boolean {
     typeof pull.hostObservationToken === 'string' &&
     pull.hostObservationToken.length > 0 &&
     pull.hostObservationToken.length <= 128 &&
-    (pull.outcome === 'synced' || pull.outcome === 'conflict') &&
+    ['synced', 'kept-local', 'conflict'].includes(pull.outcome) &&
     Array.isArray(pull.patches)
   )
 }

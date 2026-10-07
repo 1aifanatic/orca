@@ -157,6 +157,37 @@ describe('direct SSH snapshot import commit', () => {
     }
   })
 
+  it('reports kept-local when the merge keeps a tab the host has not seen', async () => {
+    const store = createTestStore()
+    seedCatalog(store)
+    await importOf(store, snapshot(1, ['agent']))
+    // Created during the download, so the host's next snapshot still lists only `agent`.
+    store.setState({
+      tabsByWorktree: {
+        [WORKTREE_ID]: [
+          ...(store.getState().tabsByWorktree[WORKTREE_ID] ?? []),
+          {
+            id: 'setup',
+            ptyId: null,
+            worktreeId: WORKTREE_ID,
+            title: 'setup',
+            customTitle: null,
+            color: null,
+            sortOrder: 1,
+            createdAt: 2
+          }
+        ]
+      }
+    })
+
+    await expect(importOf(store, snapshot(2, ['agent']))).resolves.toMatchObject({
+      outcome: 'kept-local'
+    })
+    await expect(importOf(store, snapshot(3, ['agent', 'setup']))).resolves.toMatchObject({
+      outcome: 'synced'
+    })
+  })
+
   it('reports a conflict when the window cannot place every host tab', async () => {
     vi.useFakeTimers()
     try {

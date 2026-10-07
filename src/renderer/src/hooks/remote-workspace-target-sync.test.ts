@@ -33,7 +33,7 @@ describe('createRemoteWorkspaceTargetSync', () => {
       targetId: 'target-a',
       revision: 0,
       hostObservationToken: snapshot(0).hostObservationToken,
-      outcome: 'synced',
+      outcome: 'kept-local',
       patches: []
     })
   })

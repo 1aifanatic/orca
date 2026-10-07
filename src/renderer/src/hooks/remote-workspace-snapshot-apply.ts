@@ -11,6 +11,7 @@ import type { DirectSshAuthority } from '../../../shared/ssh-types'
 import { toSshExecutionHostId } from '../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 import { buildWorkspaceSessionPayload } from '../lib/workspace-session'
+import { terminalLayoutNodeEqual } from '../lib/terminal-layout-equality'
 import { buildWorkspaceSessionHostPatches } from '../lib/workspace-session-host-persistence'
 import type { AppState } from '../store/types'
 import {
@@ -110,6 +111,30 @@ function mergedFields(
   )
 }
 
+/** Whether the merge kept, on the target's worktrees, tabs or layout edits the host does not hold. */
+function mergeKeptLocalState(
+  merged: WorkspaceSessionState,
+  remote: WorkspaceSessionState,
+  worktreeIds: ReadonlySet<string>,
+  localLayoutTabIds: ReadonlySet<string>
+): boolean {
+  const hostTabIds = new Set(
+    Object.values(remote.tabsByWorktree).flatMap((tabs) => tabs.map((tab) => tab.id))
+  )
+  return (
+    [...worktreeIds].some((worktreeId) =>
+      (merged.tabsByWorktree[worktreeId] ?? []).some((tab) => !hostTabIds.has(tab.id))
+    ) ||
+    [...localLayoutTabIds].some(
+      (tabId) =>
+        !terminalLayoutNodeEqual(
+          merged.terminalLayoutsByTabId[tabId]?.root,
+          remote.terminalLayoutsByTabId[tabId]?.root
+        )
+    )
+  )
+}
+
 function currentRecoveryTabIds(
   state: AppState,
   authority: DirectSshAuthority,
@@ -198,6 +223,15 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
     })
   }
   const current = buildWorkspaceSessionPayload(state)
+  const localLayoutTabIds = new Set(
+    [...worktreeIds].flatMap((id) =>
+      (state.tabsByWorktree[id] ?? [])
+        .filter(
+          (tab) => state.pendingDirectSshLayoutEditsByTabId[tab.id]?.targetId === authority.targetId
+        )
+        .map((tab) => tab.id)
+    )
+  )
   const merged = mergeDirectSshRemoteWorkspaceSession(
     current,
     remoteSession,
@@ -206,16 +240,7 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
     currentRecoveryTabIds(state, authority, worktreeIds),
     toSshExecutionHostId(authority.targetId),
     state.closedTerminalTabTombstonesByTabId,
-    new Set(
-      [...worktreeIds].flatMap((id) =>
-        (state.tabsByWorktree[id] ?? [])
-          .filter(
-            (tab) =>
-              state.pendingDirectSshLayoutEditsByTabId[tab.id]?.targetId === authority.targetId
-          )
-          .map((tab) => tab.id)
-      )
-    )
+    localLayoutTabIds
   )
   if (!isArrivalCurrent(authority.targetId, arrival) || !isPreparationTokenCurrent(token)) {
     return 'stale'
@@ -231,7 +256,11 @@ export async function applyDirectSshRemoteWorkspaceSnapshot({
       targetId: authority.targetId,
       revision: snapshot.revision,
       hostObservationToken: snapshot.hostObservationToken,
-      outcome: hasUnplacedTerminalTabs ? 'conflict' : 'synced',
+      outcome: hasUnplacedTerminalTabs
+        ? 'conflict'
+        : mergeKeptLocalState(merged, remoteSession, worktreeIds, localLayoutTabIds)
+          ? 'kept-local'
+          : 'synced',
       patches: buildWorkspaceSessionHostPatches(mergedFields(merged, current), currentStore)
     }).catch((error: unknown) => console.warn('[remote-workspace] import commit failed:', error))
     currentStore.hydrateWorkspaceSession(merged, {
