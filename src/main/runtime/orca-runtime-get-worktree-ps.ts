@@ -15,6 +15,10 @@ import type { Repo } from '../../shared/repo-types'
 import { enrichMissingRepoGitRemoteIdentities } from '../repo-git-remote-identity-enrichment'
 import { ensureStructuredAgentSessionHost as installStructuredAgentSessionHost } from './structured-agent-session-runtime'
 import {
+  createStructuredAttentionMobileDelivery,
+  readStructuredAttentionWorkspaceLabels
+} from './structured-agent-session-mobile-attention'
+import {
   createStructuredAgentSessionLogger,
   neverThrowingStructuredAgentSessionLogger
 } from '../native-chat/agent-session-wire/structured-agent-session-logger'
@@ -28,7 +32,11 @@ import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { buildWorktreeListingPage } from './worktree-listing-host-scope'
 import { structuredWorkerOwesWork } from './structured-worker-custody'
-import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import {
+  resolvedTuiAgentArgsBypassPermissions,
+  resolveTuiAgentLaunchEnv
+} from '../../shared/tui-agent-launch-defaults'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { claudeStructuredPermissionModeForSettings } from '../claude/claude-structured-permission-mode'
 import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-structured-permission-policy'
@@ -174,7 +182,7 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
           getAgentEnvResolvers: () => this.getCommitMessageAgentEnvironmentResolvers(),
           hasOpenDispatch: (record) =>
             structuredWorkerOwesWork(this.getOrchestrationDbIfAvailable?.() ?? null, record),
-          onNamed: (workspaceId, sessionId) =>
+          retitleOpenTab: (workspaceId, sessionId) =>
             this.refreshStructuredConversationTabTitle(workspaceId, sessionId)
         },
         logger
@@ -212,6 +220,17 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         claudeStructuredPermissionModeForSettings(this.requireStore().getSettings()),
       resolveCodexPermissionPolicy: () =>
         codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings()),
+      resolveAgentFullAccess: (agent) =>
+        isTuiAgent(agent) &&
+        resolvedTuiAgentArgsBypassPermissions(
+          agent,
+          this.requireStore().getSettings(),
+          process.platform
+        ),
+      resolveAgentLaunchEnv: (agent) =>
+        isTuiAgent(agent)
+          ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv)
+          : {},
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),
@@ -227,6 +246,16 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         )
       },
       ...(this.structuredAgentStatusSinkFn ? { statusSink: this.structuredAgentStatusSinkFn } : {}),
+      // A closed chat settles the Dispatch it was working, as a closed terminal does.
+      onSessionTabHidden: (sessionId) => this.onStructuredSessionTabHidden(sessionId),
+      attentionDelivery: createStructuredAttentionMobileDelivery({
+        readNotificationSettings: () => this.requireStore().getSettings().notifications,
+        readWorkspaceLabels: (scope) =>
+          readStructuredAttentionWorkspaceLabels(this.requireStore(), scope),
+        dispatch: (event) => this.mobileNotifications.dispatch(event),
+        reconcile: (state) => this.mobileNotifications.reconcileStructuredPromptAttention(state),
+        now: () => Date.now()
+      }),
       // Read per sweep tick from the orchestration database: a worker whose dispatch is open keeps
       // its agent running. No database answers no.
       hasOpenDispatch: (record) =>
