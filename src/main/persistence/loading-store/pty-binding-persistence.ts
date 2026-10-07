@@ -59,7 +59,7 @@ export type PersistPtyBindingArgs = {
   mayReviveRetiredSurface?: boolean
   /** Span metadata only; see `PtyBindingOrigin`. The write path never reads it. */
   origin?: PtyBindingOrigin
-  /** Where a new leaf goes. Report-only for now: the span records whether it names today's tab. */
+  /** Where a new leaf goes; applied only when it names the tab's current shape, see `applyPtyBinding`. */
   placement?: TerminalPanePlacement
 }
 
@@ -164,20 +164,15 @@ export class PtyBindingPersistenceOperations {
           outcome = 'refused'
           return { value: false, persist: false }
         }
-        // Report-only: a malformed session must not fail the binding it is reporting on.
-        try {
-          span.setPlacement(
-            terminalPanePlacementAgreement(
-              args.placement,
-              session,
-              bindingWorktreeId,
-              args.tabId,
-              args.leafId
-            )
+        span.setPlacement(
+          terminalPanePlacementAgreement(
+            args.placement,
+            session,
+            bindingWorktreeId,
+            args.tabId,
+            args.leafId
           )
-        } catch {
-          span.setPlacement('check_threw')
-        }
+        )
         const verdict = evaluatePtyBindingFastLane(
           args,
           session,
