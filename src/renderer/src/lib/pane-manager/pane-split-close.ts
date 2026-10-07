@@ -67,7 +67,7 @@ export function splitManagedPane(args: SplitManagedPaneArgs): ManagedPane | null
 
   wrapInSplit(existingContainer, newPane.container, isVertical, divider, args.opts)
   args.setActivePaneId(newPane.id)
-  openSplitPane(args, newPane, args.opts?.cwd)
+  openSplitPane(args, newPane, existing.leafId, args.opts?.cwd)
 
   for (const movedPaneState of movedPaneStates) {
     scheduleSplitScrollRestore(
@@ -139,6 +139,7 @@ function findManagedPanesInContainer(
 function openSplitPane(
   args: SplitManagedPaneArgs,
   newPane: ManagedPaneInternal,
+  parentLeafId: string,
   cwd?: string
 ): void {
   openTerminal(newPane, {
@@ -151,12 +152,17 @@ function openSplitPane(
   updateMultiPaneState(args.getDragCallbacks())
   // Why: forward one-shot spawn/adoption hints so the new pane inherits the
   // source cwd for local splits or attaches a runtime-spawned PTY for web splits.
-  const spawnHints = {
+  args.publishPaneCreated(newPane, {
     ...(cwd ? { cwd } : {}),
     ...(args.opts?.cwdPromise ? { cwdPromise: args.opts.cwdPromise } : {}),
-    ...(args.opts?.ptyId ? { ptyId: args.opts.ptyId } : {})
-  }
-  args.publishPaneCreated(newPane, Object.keys(spawnHints).length > 0 ? spawnHints : undefined)
+    ...(args.opts?.ptyId ? { ptyId: args.opts.ptyId } : {}),
+    placement: {
+      kind: 'split',
+      parentLeafId,
+      direction: args.direction,
+      ...(args.opts?.ratio !== undefined ? { ratio: args.opts.ratio } : {})
+    }
+  })
   args.managerOptions.onLayoutChanged?.()
 }
 
