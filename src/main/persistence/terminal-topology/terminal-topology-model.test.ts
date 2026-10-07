@@ -406,13 +406,16 @@ async function runSeed(seed: number): Promise<string[]> {
         const pane = source.leaves.get(leafId)!
         log.push(`${op} ${sourceTabId}:${leafId} → ${targetTabId}`)
         await expect(
-          store.moveTerminalLeafToNewTab({
-            worktreeId: source.worktreeId,
-            sourceTabId,
-            targetTabId,
-            leafId,
-            ptyId: pane.ptyId ?? null
-          })
+          store.moveTerminalLeafToNewTab(
+            {
+              worktreeId: source.worktreeId,
+              sourceTabId,
+              targetTabId,
+              leafId,
+              ptyId: pane.ptyId ?? null
+            },
+            'local'
+          )
         ).resolves.toEqual({ status: 'moved', ptyId: pane.ptyId ?? null })
         // The window then shows what main moved, as the drag-out does today.
         const layout = window.session.terminalLayoutsByTabId[sourceTabId]!

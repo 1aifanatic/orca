@@ -2,6 +2,14 @@ import { ipcMain } from 'electron'
 import type { Store } from '../persistence'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { parseTerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
+import {
+  parseTerminalLayoutSetRequest,
+  type TerminalLayoutSetResult
+} from '../../shared/terminal-layout-set'
+import {
+  parseTerminalLeafBindRequest,
+  type TerminalLeafBindResult
+} from '../../shared/terminal-leaf-bind'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
 import { markAgentLaunchesClosedByUser } from '../agent-launch/agent-launch-pane-attachment'
 import type {
@@ -9,7 +17,11 @@ import type {
   WorkspaceSessionState
 } from '../../shared/workspace-session-state-types'
 import { sleepingAgentSessionsByPaneKeySchema } from '../../shared/workspace-session-sleeping-agents'
-import { sleepLeaf, wakeLeaf } from '../persistence/terminal-topology/terminal-topology-commit'
+import {
+  bindLeaf,
+  sleepLeaf,
+  wakeLeaf
+} from '../persistence/terminal-topology/terminal-topology-commit'
 
 export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeService): void {
   // Why: renderer saves would change a fenced host's frozen source partition.
@@ -93,6 +105,34 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
       }
     }
   )
+
+  // A gesture's geometry; the reply's publishSeq tells the window when main's push holds it.
+  ipcMain.handle('session:terminal-set-layout', async (_event, args: unknown) => {
+    const request = parseTerminalLayoutSetRequest(args)
+    if (!request) {
+      return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLayoutSetResult
+    }
+    // One home per worktree; an unresolved one is unverifiable, so nothing is written.
+    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const result: TerminalLayoutSetResult = hostId
+      ? await store.setTerminalTabLayout(request, hostId)
+      : { status: 'refused', reason: 'home_unresolved' }
+    return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
+  })
+
+  // An adopted live PTY: main records it on its pane, and the push carries it to the window.
+  ipcMain.handle('session:terminal-bind-leaf', async (_event, args: unknown) => {
+    const request = parseTerminalLeafBindRequest(args)
+    if (!request) {
+      return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLeafBindResult
+    }
+    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const bound = hostId !== null && (await bindLeaf(store, request, hostId))
+    const result: TerminalLeafBindResult = bound
+      ? { status: 'bound' }
+      : { status: 'refused', reason: hostId ? 'not_bound' : 'home_unresolved' }
+    return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
+  })
 
   // Pull-after-listen: a window subscribes to pushes first, then reads what it missed.
   ipcMain.handle('session:get-terminal-topology-slices', () => runtime.getTerminalTopologySlices())

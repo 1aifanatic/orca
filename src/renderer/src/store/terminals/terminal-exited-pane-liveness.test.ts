@@ -9,8 +9,8 @@ vi.mock('sonner', () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.f
 createStoreSessionMockApi()
 
 // "Is this pane running" reads the liveness map; an exit leaves the pane's layout binding in place
-// for its one stale reattach. The mirror refactor keeps this split: liveness stays in the window,
-// the binding becomes main's.
+// for its one stale reattach (R17; the reattach-then-spawn itself is pinned in
+// pty-connection-reattach-binding.test.ts). Liveness stays in the window; the binding is main's.
 
 const WORKTREE = 'repo1::/path/wt1'
 const LEFT = '11111111-1111-4111-8111-111111111111'
@@ -72,5 +72,16 @@ describe('exited pane in a split', () => {
       [LEFT]: 'pty-left',
       [RIGHT]: 'pty-right'
     })
+  })
+
+  it("never writes main's binding, on a spawn, a handle rotation or an exit", () => {
+    const store = storeWithSplitTab()
+
+    store.getState().updateTabPtyId('tab-1', 'pty-left-2', 'pty-left')
+    store.getState().updateTabPtyId('tab-1', 'pty-extra')
+    store.getState().clearTabPtyId('tab-1', 'pty-right')
+    store.getState().clearTabPtyId('tab-1')
+
+    expect(store.getState().terminalLayoutsByTabId['tab-1']).toEqual(splitLayout())
   })
 })

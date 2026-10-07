@@ -4,6 +4,11 @@ import type { ManagedPane } from '@/lib/pane-manager/pane-manager'
 import { serializeTerminalLayout } from './layout-serialization'
 import { mergeCapturedLeafState } from './merge-captured-leaf-state'
 import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
+import { terminalLayoutNodeEqual } from '@/lib/terminal-layout-equality'
+import {
+  commitPendingTerminalChange,
+  terminalTabPanesNamed
+} from '@/store/terminals/terminal-pending-panes'
 import { isRemoteRuntimePtyId } from '@/runtime/runtime-terminal-inspection'
 import { clearTerminalScrollbackAndFollowOutput } from '@/lib/pane-manager/terminal-scrollback-clear'
 import { clearWebRuntimeTerminalBuffer } from '@/runtime/web-runtime-session'
@@ -82,27 +87,19 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
       if (Object.keys(mergedScrollbackRefs).length > 0) {
         layout.scrollbackRefsByLeafId = mergedScrollbackRefs
       }
-      const livePtyEntries = currentPanes
-        .map(
-          (pane) =>
-            [pane.leafId, paneTransportsRef.current.get(pane.id)?.getPtyId() ?? null] as const
-        )
-        .filter(
-          (entry): entry is readonly [(typeof currentPanes)[number]['leafId'], string] =>
-            entry[1] !== null
-        )
-      const mergedPtyIds = mergeCapturedLeafState({
+      // Bindings are main's (the mirror writes them); this save only drops closed leaves.
+      const ptyIdsByLeafId = mergeCapturedLeafState({
         prior: existing?.ptyIdsByLeafId,
-        fresh: Object.fromEntries(livePtyEntries),
+        fresh: {},
         currentLeafIds
       })
-      if (Object.keys(mergedPtyIds).length > 0) {
-        layout.ptyIdsByLeafId = mergedPtyIds
+      if (Object.keys(ptyIdsByLeafId).length > 0) {
+        layout.ptyIdsByLeafId = ptyIdsByLeafId
       }
       layout.activeLeafId = resolveTerminalLayoutActiveLeafId({
         root: layout.root,
         activeLeafId: layout.activeLeafId,
-        ptyIdsByLeafId: mergedPtyIds
+        ptyIdsByLeafId
       })
       const titlesByLeafId: Record<string, string> = {}
       const removedTitleLeafIds = removedTitleLeafIdsRef.current
@@ -123,12 +120,26 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
       if (Object.keys(titlesByLeafId).length > 0) {
         layout.titlesByLeafId = titlesByLeafId
       }
+      const geometryEdit =
+        intent === 'gesture' && !terminalLayoutNodeEqual(existing?.root, layout.root)
       setTabLayout(tabId, layout)
-      const hasRemotePane = Object.values(mergedPtyIds).some(
-        (ptyId) => typeof ptyId === 'string' && isRemoteRuntimePtyId(ptyId)
-      )
+      const hasRemotePane = [
+        ...Object.values(ptyIdsByLeafId),
+        ...currentPanes.map((pane) => paneTransportsRef.current.get(pane.id)?.getPtyId())
+      ].some((ptyId) => typeof ptyId === 'string' && isRemoteRuntimePtyId(ptyId))
       if (hasRemotePane) {
         remotePaneLayoutPusherRef.current?.push({ worktreeId, tabId, layout, intent })
+      } else if (geometryEdit && layout.root) {
+        const root = layout.root
+        commitPendingTerminalChange(
+          useAppStore.getState(),
+          { worktreeId, tabId, change: 'layout', root },
+          () =>
+            terminalTabPanesNamed(useAppStore.subscribe, useAppStore.getState, tabId).then(() =>
+              // Why optional: an older preload can linger through an in-place renderer reload.
+              globalThis.window?.api?.session?.setTerminalLayout?.({ worktreeId, tabId, root })
+            )
+        )
       }
       for (const leafId of currentLeafIds) {
         clearedScrollbackLeafIds.delete(leafId)

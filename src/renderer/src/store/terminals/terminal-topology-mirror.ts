@@ -15,7 +15,9 @@ import { mirrorTerminalUnifiedTabs } from './terminal-topology-mirror-unified-ta
 import {
   isPendingTerminalTab,
   isRuntimeHostedTab,
-  pendingAfterTerminalTopologySlice
+  pendingAfterTerminalTopologySlice,
+  pendingTerminalLayoutRoot,
+  terminalStoreReady
 } from './terminal-pending-panes'
 
 const OPTIONAL_ROW_FIELDS = [
@@ -33,7 +35,10 @@ type _UnmirroredRowField = Exclude<
 >
 void (true satisfies [_UnmirroredRowField] extends [never] ? true : never)
 
-/** Main's row fields replace the window's; presentation stays, and so does `ptyId`, the live attachment (D1). */
+/**
+ * Main's row fields replace the window's; presentation stays, and so does `ptyId`. In the window it
+ * is the PTY the tab is attached to now (liveness, D1), not main's persisted binding.
+ */
 function mirrorTabRow(current: TerminalTab, row: TerminalTopologyTabRow): TerminalTab {
   const next: TerminalTab = { ...current, ...row, ptyId: current.ptyId }
   for (const field of OPTIONAL_ROW_FIELDS) {
@@ -128,7 +133,11 @@ export function mirrorTerminalTopologySlice(
   const layouts = { ...state.terminalLayoutsByTabId }
   for (const [tabId, layout] of Object.entries(slice.layouts)) {
     if (!isPending(tabId, 'remove')) {
-      layouts[tabId] = mirrorLayout(layouts[tabId], layout)
+      const heldRoot = pendingTerminalLayoutRoot(pending, worktreeId, tabId)
+      layouts[tabId] = mirrorLayout(
+        layouts[tabId],
+        heldRoot ? { ...layout, root: heldRoot } : layout
+      )
     }
   }
   for (const tab of added) {
@@ -181,19 +190,10 @@ export function terminalTopologyApplied(
   worktreeId: string,
   publishSeq: number | undefined
 ): Promise<void> {
-  const applied = (): boolean =>
-    publishSeq === undefined ||
-    (getState().terminalTopologySeqByWorktree[worktreeId] ?? 0) >= publishSeq
-  return new Promise((resolve) => {
-    if (applied()) {
-      resolve()
-      return
-    }
-    const unsubscribe = subscribe(() => {
-      if (applied()) {
-        unsubscribe()
-        resolve()
-      }
-    })
-  })
+  return terminalStoreReady(
+    subscribe,
+    () =>
+      publishSeq === undefined ||
+      (getState().terminalTopologySeqByWorktree[worktreeId] ?? 0) >= publishSeq
+  )
 }

@@ -64,7 +64,7 @@ async function openMovedStore() {
   const store = openStore(dataFile)
   store.addRepo(makeRepo({ id: 'repo-1', path: '/tmp/move-worktree' }))
   await seedSplitSource(store)
-  await expect(store.moveTerminalLeafToNewTab(request)).resolves.toMatchObject({
+  await expect(store.moveTerminalLeafToNewTab(request, 'local')).resolves.toMatchObject({
     status: 'moved'
   })
   return { dataFile, store }
@@ -108,7 +108,7 @@ describe('a close that lands while main commits the move', () => {
 it('grafts a late spawn result for the moved leaf back into its source tab', async () => {
   const store = openStore(newDataFile())
   await seedSplitSource(store)
-  await store.moveTerminalLeafToNewTab({ ...request, ptyId: null })
+  await store.moveTerminalLeafToNewTab({ ...request, ptyId: null }, 'local')
   await store.persistPtyBinding({
     worktreeId: WT,
     tabId: SOURCE,

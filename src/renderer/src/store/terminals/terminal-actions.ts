@@ -4,7 +4,7 @@ import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalLayoutSnapshot, TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { TerminalTopologySlice } from '../../../../shared/terminal-topology-slice'
-import type { PendingTerminalPane, PendingTerminalPaneKey } from './terminal-pending-panes'
+import type { PendingTerminalPane } from './terminal-pending-panes'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
 import type { SetupSplitDirection } from '../../../../shared/worktree/launch-types'
 import type {
@@ -289,8 +289,8 @@ export type TerminalActions = {
   /** Mirrors main's terminal topology for one worktree; a slice older than the last applied is ignored. */
   applyTerminalTopologySlice: (slice: TerminalTopologySlice) => void
   markPendingTerminalPane: (entry: PendingTerminalPane) => void
-  /** Main answered a close; the pending remove ends once the mirror holds `publishSeq`. */
-  settlePendingTerminalPaneRemoval: (pane: PendingTerminalPaneKey, publishSeq?: number) => void
+  /** Main answered `entry`'s commit; it ends once the mirror holds `publishSeq`. */
+  settlePendingTerminalPane: (entry: PendingTerminalPane, publishSeq?: number) => void
   /** Hydrates canonical rows first, then transfers normalized pane authority post-publication. */
   hydrateWorkspaceSession: (
     session: WorkspaceSessionState,

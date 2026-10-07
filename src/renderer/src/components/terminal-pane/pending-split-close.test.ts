@@ -16,7 +16,10 @@ it.each(['reattach', 'cold-restore-new', 'ordinary-fresh'] as const)(
     expect(p.transport.getPtyId()).toBeNull()
     p.actions.executeClosePane(1)
     expect(p.transports.has(1)).toBe(false)
-    expect(p.state.terminalLayoutsByTabId[p.tabId].ptyIdsByLeafId?.[p.leafId]).toBeUndefined()
+    // The leaf's binding is main's until its push drops the leaf; the window only hides the pane.
+    expect(p.pendingTerminalPanes).toContainEqual(
+      expect.objectContaining({ tabId: p.tabId, leafId: p.leafId, change: 'remove' })
+    )
     expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith('pty-restored')
     p.spawn.resolve(replyFor(kind))
     await p.connecting
@@ -83,7 +86,8 @@ it.each(['same-leaf', 'different-tab', 'new-transport-map'] as const)(
     const { createIpcPtyTransport } = await import('./pty-transport')
     const replacement = createIpcPtyTransport({})
     if (owner === 'same-leaf') {
-      p.state.terminalLayoutsByTabId[p.tabId].ptyIdsByLeafId = { [p.leafId]: 'pty-restored' }
+      // Main refused the close, so the pane is back and its leaf owns the PTY again.
+      p.pendingTerminalPanes.length = 0
     } else if (owner === 'different-tab') {
       p.state.tabsByWorktree.workspace.push(makeCloseTestTab('new-owner', 'pty-restored'))
     } else {
@@ -203,6 +207,5 @@ it('commits the explicit split close in main by its leaf without waiting for its
     target: { kind: 'pane', tabId: p.tabId, leafId: p.leafId }
   })
   expect(p.transports.has(1)).toBe(false)
-  expect(p.state.terminalLayoutsByTabId[p.tabId].ptyIdsByLeafId?.[p.leafId]).toBeUndefined()
   expect(window.api.pty.kill).toHaveBeenCalledExactlyOnceWith('pty-restored')
 })

@@ -57,6 +57,13 @@ export function bindLivePtyToExactSurface(
       return false
     }
     store.updateTabPtyId(terminal.tabId, terminal.ptyId)
+    // The pane's binding is main's: it records the adopted PTY, and its push brings it to the pane.
+    void globalThis.window?.api?.session?.bindTerminalLeaf?.({
+      worktreeId: existing.ownerWorktreeId,
+      tabId: terminal.tabId,
+      leafId: pane.leafId,
+      ptyId: terminal.ptyId
+    })
     return true
   }
   const created = store.createTab(worktreeId, undefined, undefined, {
@@ -81,14 +88,16 @@ function tabExists(store: LiveSurfaceAdoptionStore, tabId: string): boolean {
 function bindToRecordedSurface(
   store: LiveSurfaceAdoptionStore,
   worktreeId: string,
-  recorded: LiveTerminalSurfaceOwner
+  recorded: LiveTerminalSurfaceOwner,
+  liveSurfaceOwners: LiveTerminalSurfaceOwnerIndex
 ): boolean {
   const pane = parsePaneKey(recorded.paneKey)
   if (!pane || !tabExists(store, recorded.tabId)) {
     return false
   }
   const heldPtyId = store.terminalLayoutsByTabId[recorded.tabId]?.ptyIdsByLeafId?.[pane.leafId]
-  if (heldPtyId && heldPtyId !== recorded.ptyId) {
+  // Main keeps an exited pane's binding (R17), so only a PTY the host still lists holds the pane.
+  if (heldPtyId && heldPtyId !== recorded.ptyId && liveSurfaceOwners.has(heldPtyId)) {
     return false
   }
   return bindLivePtyToExactSurface(store, worktreeId, recorded)
@@ -159,11 +168,12 @@ export async function adoptLiveWorkspacePtySurfaces(
   if (unbound.length === 0) {
     return { surfaced, declinedPtyIds }
   }
-  let surfaceOwners: LiveTerminalSurfaceOwnerIndex | null
+  // An unreadable census lists nothing, so it proves no PTY unowned.
+  let surfaceOwners: LiveTerminalSurfaceOwnerIndex
   try {
-    surfaceOwners = await listSurfaceOwners(worktreeId)
+    surfaceOwners = (await listSurfaceOwners(worktreeId)) ?? new Map()
   } catch {
-    surfaceOwners = null
+    surfaceOwners = new Map()
   }
   const materializedTabIds = new Set<string>()
   for (const ptyId of unbound) {
@@ -173,7 +183,7 @@ export async function adoptLiveWorkspacePtySurfaces(
       surfaced = true
       continue
     }
-    const owner = surfaceOwners?.get(ptyId)
+    const owner = surfaceOwners.get(ptyId)
     // Why: only the execution host can prove a live PTY is unowned, and minting
     // on anything weaker forks a running agent onto a second empty surface.
     if (!owner) {
@@ -189,7 +199,10 @@ export async function adoptLiveWorkspacePtySurfaces(
       continue
     }
     surfaced = true
-    if (owner.recorded && bindToRecordedSurface(getState(), worktreeId, owner.recorded)) {
+    if (
+      owner.recorded &&
+      bindToRecordedSurface(getState(), worktreeId, owner.recorded, surfaceOwners)
+    ) {
       continue
     }
     getState().createTab(worktreeId, undefined, undefined, {

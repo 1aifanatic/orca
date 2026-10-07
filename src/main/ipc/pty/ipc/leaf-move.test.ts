@@ -15,15 +15,17 @@ const request = {
   ptyId: 'pty-agent'
 }
 
-function deps(result: TerminalLeafMoveResult) {
+function deps(result: TerminalLeafMoveResult, homeHostId: string | null = 'ssh:target-1') {
   const rekeyWorkerTerminalResourcePaneKey = vi.fn(() => 1)
+  const moveTerminalLeafToNewTab = vi.fn(async () => result)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the move reads only this Store method.
-  const store = { moveTerminalLeafToNewTab: vi.fn(async () => result) } as unknown as Store
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the move reads only the orchestration DB accessor.
+  const store = { moveTerminalLeafToNewTab } as unknown as Store
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the move reads only the home resolver and the orchestration DB accessor.
   const runtime = {
+    getTerminalTopologyHomeHostId: () => homeHostId,
     getExistingOrchestrationDb: () => ({ rekeyWorkerTerminalResourcePaneKey })
   } as unknown as OrcaRuntimeService
-  return { store, runtime, rekeyWorkerTerminalResourcePaneKey }
+  return { store, runtime, rekeyWorkerTerminalResourcePaneKey, moveTerminalLeafToNewTab }
 }
 
 afterEach(() => {
@@ -68,6 +70,28 @@ describe('pty:moveLeafToNewTab', () => {
 
     expect(transfer).not.toHaveBeenCalled()
     expect(rekeyWorkerTerminalResourcePaneKey).not.toHaveBeenCalled()
+  })
+
+  it("writes only the worktree's home partition", async () => {
+    vi.spyOn(agentHookServer, 'transferPaneAuthority').mockImplementation(() => {})
+    const { store, runtime, moveTerminalLeafToNewTab } = deps({ status: 'moved', ptyId: null })
+
+    await commitLeafMoveAndRekey({ store, runtime }, request)
+
+    expect(moveTerminalLeafToNewTab).toHaveBeenCalledExactlyOnceWith(request, 'ssh:target-1')
+  })
+
+  it('writes nothing when the home is unresolved', async () => {
+    const { store, runtime, moveTerminalLeafToNewTab } = deps(
+      { status: 'moved', ptyId: null },
+      null
+    )
+
+    await expect(commitLeafMoveAndRekey({ store, runtime }, request)).resolves.toEqual({
+      status: 'refused',
+      reason: 'home_unresolved'
+    })
+    expect(moveTerminalLeafToNewTab).not.toHaveBeenCalled()
   })
 
   it('replies with the publishSeq of the push that carries the move', async () => {

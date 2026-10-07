@@ -7,7 +7,13 @@ import type {
   TerminalLeafMoveRequest,
   TerminalLeafMoveResult
 } from '../../../shared/terminal-leaf-move'
+import type {
+  TerminalLayoutSetRequest,
+  TerminalLayoutSetResult
+} from '../../../shared/terminal-layout-set'
+import type { TerminalLeafBindRequest } from '../../../shared/terminal-leaf-bind'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import type { PtyBindingPersistenceOperations } from '../loading-store/pty-binding-persistence'
 import { startSpan } from '../../observability/tracer'
 import {
   terminalSurfaceCloseMutation,
@@ -15,6 +21,7 @@ import {
 } from '../../runtime/terminal-surface-close'
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
+import { planTerminalLayoutSet } from './terminal-layout-set'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 
 // The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings, sleeping agents).
@@ -22,7 +29,7 @@ import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 // move here later.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
-type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf'
+type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf' | 'set_layout'
 
 export function closeLeafOrTab(
   commit: TerminalSurfaceCloseCommit
@@ -35,14 +42,51 @@ export function closeLeafOrTab(
   )
 }
 
-/** Moves a leaf, its binding and its pane-keyed records into a new tab in one durable mutation. */
+/** Moves a leaf, its binding and its pane-keyed records into a new tab in `hostId`, the worktree's home. */
 export function moveLeaf(
   request: TerminalLeafMoveRequest,
+  hostId: ExecutionHostId,
   context: TerminalTopologyCommitContext
 ): () => DurableProfileStateMutation<TerminalLeafMoveResult> {
   return traced(
     'move_leaf',
-    () => commitLeafMove(request, context),
+    () => commitLeafMove(request, hostId, context),
+    (result) => (result.status === 'refused' ? result.reason : undefined)
+  )
+}
+
+/** Records a live PTY the window adopted onto a pane main holds, as a reattach: never creates the pane. */
+export function bindLeaf(
+  bindings: Pick<PtyBindingPersistenceOperations, 'persistPtyBinding'>,
+  request: TerminalLeafBindRequest,
+  hostId: ExecutionHostId
+): Promise<boolean> {
+  return bindings.persistPtyBinding(
+    { ...request, mayCreate: false, mayReviveRetiredSurface: false, origin: 'reattach' },
+    hostId
+  )
+}
+
+/** Replaces a tab's tree in `hostId`, the worktree's home, with the user's same-pane geometry edit. */
+export function setLayout(
+  request: TerminalLayoutSetRequest,
+  hostId: ExecutionHostId,
+  context: TerminalTopologyCommitContext
+): () => DurableProfileStateMutation<TerminalLayoutSetResult> {
+  return traced(
+    'set_layout',
+    () => {
+      const planned = planTerminalLayoutSet(context.getSession(hostId), request)
+      if (!planned.session) {
+        return { value: planned.result, persist: false }
+      }
+      const rollback = writeRestorable(
+        () => context.getSession(hostId),
+        (value) => context.markDirty(assignWorkspaceSessionPartition(context.state, hostId, value)),
+        planned.session
+      )
+      return { value: planned.result, rollback }
+    },
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
 }
@@ -131,7 +175,6 @@ type TopologyState = Pick<
 
 type TerminalTopologyCommitContext = {
   state: TopologyState
-  hostIds: () => ExecutionHostId[]
   getSession: (hostId: ExecutionHostId) => WorkspaceSessionState
   markDirty: (
     domain: 'workspaceSession' | 'workspaceSessionsByHostId' | 'ui' | 'sshRemotePtyLeases'
@@ -151,23 +194,21 @@ function writeRestorable<V>(read: () => V, write: (value: V) => void, next: V): 
 
 function commitLeafMove(
   request: TerminalLeafMoveRequest,
+  hostId: ExecutionHostId,
   context: TerminalTopologyCommitContext
 ): DurableProfileStateMutation<TerminalLeafMoveResult> {
   const { state } = context
-  const planned = planTerminalLeafMove(
-    context.hostIds().map((hostId) => ({ hostId, session: context.getSession(hostId) })),
-    request
-  )
-  if (planned.sessions.length === 0) {
+  const planned = planTerminalLeafMove(context.getSession(hostId), request)
+  if (!planned.session) {
     return { value: planned.result, persist: false }
   }
-  const restores = planned.sessions.map(({ hostId, session }) =>
+  const restores = [
     writeRestorable(
       () => context.getSession(hostId),
       (value) => context.markDirty(assignWorkspaceSessionPartition(state, hostId, value)),
-      session
+      planned.session
     )
-  )
+  ]
   const rekeyed = rekeyMovedLeafProfileRecords(state, request)
   if (rekeyed.ui) {
     restores.push(

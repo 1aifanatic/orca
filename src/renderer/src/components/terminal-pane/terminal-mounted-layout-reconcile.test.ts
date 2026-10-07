@@ -168,6 +168,23 @@ describe('reconcileMountedTerminalLayout', () => {
     expect(view.onLayoutChanged).not.toHaveBeenCalled()
   })
 
+  it('rebuilds nothing when main publishes the tree a local split proposed', () => {
+    const view = mount([A, B])
+    view.manager.splitPane(view.manager.getNumericIdForLeaf(B)!, 'horizontal', { leafId: NEW })
+    // Main keeps the split's proposedRoot verbatim (C1), so its push names the DOM's own tree.
+    const published = tree(view)!
+    const panes = view.manager.getPanes().map((pane) => [pane.id, pane.container])
+    const observer = new MutationObserver(() => {})
+    observer.observe(view.root, { attributes: true, childList: true, subtree: true })
+
+    const ptyIdsByLeafId = { [A]: 'pty-a', [B]: 'pty-b', [NEW]: 'pty-new' }
+    expect(reconcile(view, published, { ptyIdsByLeafId })).toBe(false)
+
+    expect(observer.takeRecords()).toEqual([])
+    observer.disconnect()
+    expect(view.manager.getPanes().map((pane) => [pane.id, pane.container])).toEqual(panes)
+  })
+
   it('leaves a divider the user is dragging alone', () => {
     const view = mount([A, B])
     view.root.querySelector('.pane-divider')?.classList.add('is-dragging')
