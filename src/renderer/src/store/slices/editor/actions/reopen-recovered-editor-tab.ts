@@ -37,14 +37,12 @@ export function reopenRecoveredEditorTab(
   const readOnlyCollisionToast = (): void => {
     toast.info(recoveredDraftBlockedMessage('read-only', file))
   }
-  // Why both halves: setActiveFile promotes the record's unified tab inside its group, and the
-  // open-target result raises the editor surface the normal open path would have raised.
+  // Raise both the unified tab and its editor surface.
   const activateLiveRecord = (liveFileId: string): void => {
     get().setActiveFile(liveFileId)
     set((s) => buildEditorActiveResult(s, file.worktreeId, liveFileId))
   }
-  // Why only when the record has none: a snapshot baseline older than the live record's would
-  // manufacture a conflict, but a dirty record with no baseline at all is unverifiable.
+  // Keep newer live baselines; a missing baseline cannot authorize autosave.
   const adoptSnapshotDiskBaseline = (liveFileId: string): void => {
     const liveFile = get().openFiles.find((f) => f.id === liveFileId)
     if (!liveFile || liveFile.lastKnownDiskSignature !== undefined) {
@@ -58,11 +56,9 @@ export function reopenRecoveredEditorTab(
     get().setPendingDiskBaselineVerification(liveFileId, true)
   }
   if (dirtyDraftContent !== undefined) {
-    // Why decided before the open: openFile would give the live record a second unified tab in
-    // the snapshot's group, and the writes below would then land on the wrong document.
+    // Check collisions before openFile can reuse a live record or add a second tab.
     const beforeCollisionCheck = get()
-    // Why the surface-blind key: openFile's reuse rule ignores readOnly/liveTail, so a writable
-    // snapshot whose identity key differs from a live read-only log still lands on that record.
+    // Match openFile's reuse rule, which ignores readOnly and liveTail.
     const identity = editorDocumentPathOwnerKey(file)
     const modes = getReusableOpenFileModes(file.mode)
     const candidateIdentity = (
@@ -92,37 +88,31 @@ export function reopenRecoveredEditorTab(
       (candidate) =>
         matchesEditorMode(candidate, modes) && candidateIdentity(candidate) === identity
     )
-    // Why writable first: a read-only twin only blocks the draft when nothing writable can hold it.
+    // Prefer a writable twin that can retain the draft.
     const live = matches.find((candidate) => candidate.readOnly !== true) ?? matches[0]
     const liveDraft = live ? beforeCollisionCheck.editorDrafts[live.id] : undefined
     if (live?.readOnly === true) {
-      // Why no open: openFile would reuse this record and hang a second unified tab off the
-      // snapshot's group, and a read-only record can hold neither the draft nor its baseline.
+      // A read-only record cannot retain this draft or its baseline.
       set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
       activateLiveRecord(live.id)
       readOnlyCollisionToast()
       return true
     }
     if (live && liveDraft === dirtyDraftContent) {
-      // Why nothing is written: the live record already holds this exact text, so the draft and
-      // baseline writes would only replace a newer baseline with the snapshot's older one.
+      // Identical text must not replace a newer live baseline.
       adoptSnapshotDiskBaseline(live.id)
       activateLiveRecord(live.id)
       return true
     }
     if (live && (liveDraft !== undefined || live.isDirty === true)) {
-      // Why deferred rather than dropped: the snapshot holds the only copy of that unsaved text.
+      // Preserve the rival unsaved text for a later reopen.
       set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
-      // Why activate: the toast names a document the user must act on, so show it to them.
       activateLiveRecord(live.id)
       collisionToast()
       return true
     }
   }
-  // Why captured before the open: openFile's reuse rule is coarser than the identity key above
-  // (it also reuses across local/WSL path aliases), so a collision can still surface here.
-  // Why targetGroupId is still passed: only that alias case can reuse a live record here, and
-  // the snapshot's own group is where the user closed it from.
+  // Path aliases can still reuse a live record; preserve its draft before opening.
   const beforeOpen = get()
   const reusableRecordIds = new Set(beforeOpen.openFiles.map((f) => f.id))
   const draftsBeforeOpen = beforeOpen.editorDrafts
@@ -143,8 +133,7 @@ export function reopenRecoveredEditorTab(
     dirtyDraftContent !== undefined &&
     get().openFiles.find((f) => f.id === restoredFileId)?.readOnly === true
   ) {
-    // Why: openFile's reuse rule ignores readOnly, and setEditorDraft/markFileDirty hard no-op
-    // on a read-only record — writing the draft below would consume the snapshot and lose it.
+    // Reuse may select a read-only record, whose draft setters do nothing.
     set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
     readOnlyCollisionToast()
     return true
@@ -155,24 +144,19 @@ export function reopenRecoveredEditorTab(
     (draftsBeforeOpen[restoredFileId] !== undefined || dirtyBeforeOpen.has(restoredFileId))
   if (dirtyDraftContent !== undefined && reusedRecordHasUnsavedWork) {
     if (draftsBeforeOpen[restoredFileId] === dirtyDraftContent) {
-      // Why nothing is written: the reused record already holds this exact text, so the draft
-      // and baseline writes would only replace a newer baseline with the snapshot's older one.
+      // Identical text must not replace a newer live baseline.
       adoptSnapshotDiskBaseline(restoredFileId)
       return true
     }
-    // Why put the snapshot back: its buffer has nowhere to restore to yet, and dropping it here
-    // would destroy the only copy of that unsaved text.
+    // Preserve the draft until the reused record can safely accept it.
     set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
     collisionToast()
     return true
   }
-  // Why: a live `OpenFile` has no dirtyDraftContent — only the hydration heal parks one on a
-  // snapshot, for a record the restore could not give an id of its own. Reopen restores it.
   if (dirtyDraftContent !== undefined) {
     get().setEditorDraft(restoredFileId, dirtyDraftContent)
     get().markFileDirty(restoredFileId, true)
-    // Why: the draft derives from the disk state this baseline was taken over, so the
-    // restored-tab conflict scan must re-verify it before autosave resumes.
+    // Verify the recovered draft's disk baseline before autosave resumes.
     if (next.lastKnownDiskSignature !== undefined) {
       get().setLastKnownDiskSignature(restoredFileId, next.lastKnownDiskSignature)
       get().setPendingDiskBaselineVerification(restoredFileId, true)
