@@ -193,7 +193,8 @@ function rowOutline(): string[] {
   return [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map((box) => {
     const label = box.getAttribute('aria-label') ?? ''
     const row = rowOf(box)
-    if (row.parentElement?.tagName === 'SECTION' && row.parentElement.firstElementChild === row) {
+    // Only a workspace band carries data-nested; a project header is the other band.
+    if (row.parentElement?.tagName === 'SECTION' && !row.hasAttribute('data-nested')) {
       return `project:${/^Select all chats in (.+)$/.exec(label)?.[1]}`
     }
     const workspace = /^Select all chats in (.+)$/.exec(label)?.[1]
@@ -489,6 +490,34 @@ it('names a workspace the store does not know by its id, with the kind the host 
   expect(row.textContent).toContain('folder:missing-folder')
   expect(row.querySelector('svg.lucide-folder')).not.toBeNull()
   expect(chatBox('lost').getAttribute('aria-label')).toContain('in folder:missing-folder')
+})
+
+// Its project is unknown too: a nameless "Select all chats in " checkbox would help no one.
+it('gives workspaces the store cannot place no project row, leaving them to Select all', () => {
+  const candidates = seedTree()
+  const unknown: ResumeCandidate = {
+    ...candidate('lost', worktree('gone')),
+    workspaceId: 'folder:missing-folder',
+    workspaceKind: 'folder'
+  }
+  render({ candidates: [...candidates, unknown] })
+
+  expect(rowOutline()).toEqual([
+    'project:orca',
+    'ws:parent@0px',
+    'chat:in-parent@20px',
+    'ws:child@20px',
+    'chat:in-child@40px',
+    'chat:also-in-child@40px',
+    'ws:other@0px',
+    'chat:in-other@20px',
+    'ws:folder:missing-folder@0px',
+    'chat:lost@20px'
+  ])
+  expect(container.querySelector('[aria-label="Select all chats in "]')).toBeNull()
+  const [, unplaced] = container.querySelectorAll('section')
+  expect(unplaced?.firstElementChild).toBe(rowOf(workspaceBox('folder:missing-folder')))
+  expect(projectCount('orca')).toBe('4 of 4')
 })
 
 // Why: the sidebar nests a child only under a parent on its own host; no host id matches only none.

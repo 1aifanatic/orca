@@ -158,7 +158,7 @@ function RepoHeader({
   selected,
   onToggle
 }: {
-  repoId: string | null
+  repoId: string
   /** Every selectable chat in the project, nested workspaces included. */
   covered: readonly string[]
   busy: boolean
@@ -346,15 +346,19 @@ export function ResumeOnRestartGroups({
     <div className="flex flex-col">
       {repoGroups.map((repoGroup) => (
         <section key={repoGroup.repoId ?? 'no-repo'} className="flex flex-col">
-          <RepoHeader
-            repoId={repoGroup.repoId}
-            covered={repoGroup.workspaces
-              .flatMap((group) => group.candidates.map((candidate) => candidate.sessionId))
-              .filter(selectable)}
-            busy={busy}
-            selected={selected}
-            onToggle={onToggle}
-          />
+          {/* Workspaces the store cannot place have no project to name or select; Select all
+              still covers them. */}
+          {repoGroup.repoId !== null && (
+            <RepoHeader
+              repoId={repoGroup.repoId}
+              covered={repoGroup.workspaces
+                .flatMap((group) => group.candidates.map((candidate) => candidate.sessionId))
+                .filter(selectable)}
+              busy={busy}
+              selected={selected}
+              onToggle={onToggle}
+            />
+          )}
           {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
             <WorkspaceRows
               key={node.group.workspaceId}

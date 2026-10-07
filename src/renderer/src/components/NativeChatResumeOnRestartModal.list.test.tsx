@@ -184,7 +184,7 @@ it('disables Select all and the workspace checkbox while a resume runs', async (
   await act(async () => button('Resuming 2 chats').click())
   const list = document.querySelector('[aria-label="Chats that would be resumed"]')!
   const boxes = [...list.querySelectorAll('[role="checkbox"]')]
-  expect(boxes).toHaveLength(5)
+  expect(boxes).toHaveLength(4)
   for (const box of boxes) {
     expect(box.hasAttribute('disabled')).toBe(true)
   }
@@ -194,11 +194,9 @@ it('disables Select all and the workspace checkbox while a resume runs', async (
 it('moves between the list’s checkboxes with the arrow keys', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
-  const list = document.querySelector('[aria-label="Chats that would be resumed"]')!
+  // This workspace has no repo the store knows, so no project row sits between.
   const order = [
     namedBox('Select all chats'),
-    // The project row's checkbox; this workspace has no repo the store knows.
-    list.querySelector<HTMLElement>('section [role="checkbox"]')!,
     namedBox('Select all chats in workspace'),
     chatBox('a'),
     chatBox('b')
@@ -214,7 +212,7 @@ it('moves between the list’s checkboxes with the arrow keys', async () => {
   }
   // The last checkbox is the end of the list: focus never leaves it for the footer.
   await press('ArrowDown')
-  expect(document.activeElement).toBe(order[4])
-  await press('ArrowUp')
   expect(document.activeElement).toBe(order[3])
+  await press('ArrowUp')
+  expect(document.activeElement).toBe(order[2])
 })
