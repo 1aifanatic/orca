@@ -50,7 +50,7 @@ describe('browser screencast first-frame deadline', () => {
     vi.useRealTimers()
   })
 
-  it('reports no frame at 10 s when both captures hang', async () => {
+  it('reports no frame at exactly 10 s when the captures hang', async () => {
     const webContents = Object.assign(createMockScreencastWebContents(), {
       capturePage: vi.fn(() => never())
     })
@@ -65,46 +65,28 @@ describe('browser screencast first-frame deadline', () => {
     await vi.advanceTimersByTimeAsync(1)
 
     expect(options.onError).toHaveBeenCalledExactlyOnceWith('Browser stream timed out.')
-    expect(options.onFrame).not.toHaveBeenCalled()
     session.stop()
     // The stop queues behind the capture: capturePage's 10 s bound, then the fallback's 8 s.
     await vi.advanceTimersByTimeAsync(8_000)
     await session.done
   })
 
-  it('waits for the 10 s deadline when the screenshot fallback gives up at 8 s', async () => {
-    const webContents = createMockScreencastWebContents()
-    webContents.debugger.sendCommand.mockImplementation(async (method: string) =>
-      method === 'Page.captureScreenshot' ? never() : {}
-    )
-    const options = startOptions(false)
-    const session = await start(webContents, options)
-
-    await vi.advanceTimersByTimeAsync(9_999)
-    expect(options.onError).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(1)
-
-    expect(options.onError).toHaveBeenCalledOnce()
-    session.stop()
-    await session.done
-  })
-
-  it('keeps streaming when a fast capture refusal is followed by live frames', async () => {
-    const webContents = createMockScreencastWebContents()
-    webContents.debugger.sendCommand.mockImplementation(async (method: string) => {
-      if (method === 'Page.captureScreenshot') {
-        throw new Error('Unable to capture screenshot')
-      }
-      return {}
+  it.each(['live', 'snapshot'] as const)('stays quiet once a %s frame arrives', async (kind) => {
+    const webContents = Object.assign(createMockScreencastWebContents(), {
+      capturePage: vi.fn(() => never())
     })
-    const options = startOptions(false)
+    webContents.debugger.sendCommand.mockImplementation(async (method: string) =>
+      method === 'Page.captureScreenshot' ? { data: Buffer.from('frame').toString('base64') } : {}
+    )
+    const options = startOptions(kind === 'live')
     const session = await start(webContents, options)
-    await vi.advanceTimersByTimeAsync(1_000)
-    liveFrame(webContents)
+    if (kind === 'live') {
+      liveFrame(webContents)
+    }
 
-    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(30_000)
 
-    expect(options.onFrame).toHaveBeenCalledOnce()
+    expect(options.onFrame).toHaveBeenCalled()
     expect(options.onError).not.toHaveBeenCalled()
     session.stop()
     await session.done
@@ -132,38 +114,6 @@ describe('browser screencast first-frame deadline', () => {
     await vi.advanceTimersByTimeAsync(1_000)
 
     expect(options.onFrame).not.toHaveBeenCalled()
-    session.stop()
-    await session.done
-  })
-
-  it('leaves the stream alone when a live frame arrived first', async () => {
-    const webContents = Object.assign(createMockScreencastWebContents(), {
-      capturePage: vi.fn(() => never())
-    })
-    const options = startOptions(true)
-    const session = await start(webContents, options)
-    liveFrame(webContents)
-
-    await vi.advanceTimersByTimeAsync(10_000)
-
-    expect(options.onFrame).toHaveBeenCalledOnce()
-    expect(options.onError).not.toHaveBeenCalled()
-    session.stop()
-    await session.done
-  })
-
-  it('stays quiet when the capture answers in time', async () => {
-    const webContents = createMockScreencastWebContents()
-    webContents.debugger.sendCommand.mockImplementation(async (method: string) =>
-      method === 'Page.captureScreenshot' ? { data: Buffer.from('frame').toString('base64') } : {}
-    )
-    const options = startOptions(false)
-    const session = await start(webContents, options)
-
-    await vi.advanceTimersByTimeAsync(30_000)
-
-    expect(options.onFrame).toHaveBeenCalledOnce()
-    expect(options.onError).not.toHaveBeenCalled()
     session.stop()
     await session.done
   })

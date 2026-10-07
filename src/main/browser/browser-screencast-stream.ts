@@ -47,7 +47,6 @@ export async function startBrowserScreencast(
   let dialogSettlement: Promise<boolean> | null = null
   let dialogGeneration = 0
   let resolveDone!: () => void
-  let noFrameTimer: ReturnType<typeof setTimeout> | null = null
   // Serializes viewport and frame-budget changes against the snapshot capture they trigger.
   let pendingUpdate = Promise.resolve()
   const done = new Promise<void>((resolve) => {
@@ -100,10 +99,6 @@ export async function startBrowserScreencast(
       return
     }
     closed = true
-    if (noFrameTimer) {
-      clearTimeout(noFrameTimer)
-      noFrameTimer = null
-    }
     dialogOpen = false
     dialogSettlement = null
     snapshotCapture.clearNavigationCaptureTimer()
@@ -129,14 +124,13 @@ export async function startBrowserScreencast(
     await deviceMetrics.apply()
     await startScreencast()
     pendingUpdate = snapshotCapture.emitSnapshotFrame(true)
-    // Why: a page whose embedder stopped compositing yields no frame at all; the owner ends the
-    // stream on this error so the viewer leaves its spinner. A failed capture alone is not proof.
-    noFrameTimer = setTimeout(() => {
-      noFrameTimer = null
+    // Why: a page whose embedder stopped compositing never yields a frame; the owner ends on this.
+    const noFrameTimer = setTimeout(() => {
       if (!closed && !stopping && framePacer.getSeq() === 0) {
         options.onError?.('Browser stream timed out.')
       }
     }, NO_FRAME_TIMEOUT_MS)
+    void done.then(() => clearTimeout(noFrameTimer))
   } catch (error) {
     if (deviceMetrics.isOverridden()) {
       await deviceMetrics.clear().catch(() => {})
