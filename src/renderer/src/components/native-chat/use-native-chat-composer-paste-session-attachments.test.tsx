@@ -215,6 +215,16 @@ describe('pasting into a structured chat on a paired server', () => {
     expect(probe.chips).toHaveLength(0)
   })
 
+  it('keeps the save error apart from the image-paste notice', async () => {
+    mocks.saveClipboardImageAsTempFile.mockRejectedValue(
+      new Error("Error invoking remote method 'ui:saveClipboardImageAsTempFile': Error: disk full")
+    )
+    const setNotice = vi.fn()
+    const probe = await renderPaste({ setNotice })
+    await act(async () => probe.api().handlePaste(imagePasteEvent()))
+    expect(setNotice).toHaveBeenLastCalledWith('Image paste failed.', 'disk full')
+  })
+
   it('pastes rich text into a chat on an older server without a refusal beside the text', async () => {
     mocks.prepareNativeChatSessionAttachmentUpload.mockResolvedValue({
       ok: false,

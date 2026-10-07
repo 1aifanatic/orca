@@ -97,8 +97,13 @@ export function useNativeChatComposerPaste({
         setNotice: (notice, cause, errorText) => {
           void (cause === 'serverTooOld' ? besidePastedText() : Promise.resolve(false)).then(
             (quiet) => {
-              if (!quiet && canPaste()) {
+              if (quiet || !canPaste()) {
+                return
+              }
+              if (errorText) {
                 setNotice(notice, errorText)
+              } else {
+                setNotice(notice)
               }
             }
           )
