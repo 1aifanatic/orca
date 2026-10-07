@@ -107,10 +107,9 @@ export function agentSessionFailureStatedByStartRow(
 }
 
 /** Whether the row of the start that rejected this message already says why. A row keyed by the
- *  message is its own start's and speaks for it alone, so its failure decides. With none, as in a
- *  chat an older host wrote — one row for a batch, keyed by its start or by its oldest message —
- *  or a run this host left one row for, any loaded row with the same failure does, but a
- *  command's. */
+ *  message is its own start's and speaks for it alone, so its failure decides. With none — a run
+ *  left one row for it, or an exit wrote one keyed by its start — any loaded row with the same
+ *  failure does, but a command's. */
 function rejectionStatedByItsStartRow(
   recorded: AgentJournalSubmission,
   startFailures: readonly StatedStartFailure[]

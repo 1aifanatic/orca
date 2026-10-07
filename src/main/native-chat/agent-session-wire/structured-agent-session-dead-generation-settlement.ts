@@ -25,6 +25,7 @@ import {
 } from '../../../shared/agent-session-failure-words'
 import { structuredAgentSessionStartFailure } from './structured-agent-session-failure-text'
 import { exitStartFailureRow } from './structured-agent-session-start-failure-settlement'
+import { structuredAgentSessionAwaitedMessage } from './structured-agent-session-command-turn'
 import type { AgentSessionDeathEvidence } from '../../../shared/agent-session-record'
 import {
   endedByPersonsStop,
@@ -147,6 +148,8 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
     if (!startupFailure) {
       await withdrawCodexSendsNoTurnOpenedFor(input.journal, input.fence)
     }
+    // Read before it is rejected: the message a failed start's words are for.
+    const wordedFor = structuredAgentSessionAwaitedMessage(input.journal)
     const settled = await (startupFailure
       ? input.journal.rejectPendingSubmissions(input.fence, startupFailure)
       : input.journal.markPendingSubmissionsUnknown(input.fence, input.pendingSubmissionReason))
@@ -156,8 +159,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
       mutations.push(
         ...exitStartFailureRow(input.journal, {
           startKey: input.exitedDuringStartup.generation ?? input.settlementId,
+          wordedFor,
           fence: input.fence,
-          rejectedAny: settled.length > 0,
+          rejected: settled,
           chargedToQueued: input.exitedDuringStartup.chargedToQueued === true,
           words: startupFailure
         })

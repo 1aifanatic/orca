@@ -1,8 +1,8 @@
 // The writer of a failed start's record: the message it failed, rejected, and its row keyed by that
 // message, in one write, so a client that hides rejected messages still sees why. The delivery loop
 // writes it for the queued message a start was for, the handover for the message it was handing
-// over; the exit writes one row keyed by the start for the handed messages it rejected, or for a
-// start no message carries. Each message state has one writer, and `rejected` is terminal, so no
+// over; the exit writes one row for the handed messages it rejected, keyed by the oldest, whose
+// words it carries, or one keyed by the start for a start no message carries. Each message state has one writer, and `rejected` is terminal, so no
 // message is failed twice. A start failing as its run's row already says writes no row; its message
 // is read under that one.
 
@@ -32,8 +32,9 @@ type StartFailureJournal = Pick<
   'submissions' | 'itemBody' | 'appendLifecycleBatch'
 >
 
-/** A failed start's row in the chat: an error row keyed by its message (or by the start, from the
- *  exit), repeating the message's sentence, so the reason outlives any client that hides it. */
+/** A failed start's row in the chat: an error row keyed by its message (or by the start, for one no
+ *  message carries), repeating the message's sentence, so the reason outlives any client that hides
+ *  it. */
 export function structuredAgentSessionStartFailureRow(
   startKey: string,
   words: AgentJournalDispatchRejection
@@ -122,27 +123,36 @@ export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence
   )
 }
 
-/** The row an exit during startup writes for its start. The messages it rejected take this row.
- *  With none, a message still waiting on the start is the delivery loop's to record with its own
- *  row, and one already rejected as this start's failure has its writer's; anything else — a
- *  command, goal or rewind start, or one no message is charged with — has only this row to say why.
- *  The journal's lane drops it when its run's row already says it. */
+/** The row an exit during startup writes for its start. The messages it rejected take this row,
+ *  keyed by the one its words are for, so a row worded for a command is that command's. With none,
+ *  a message still waiting on the start is the delivery loop's to record with its own row, and one
+ *  already rejected as this start's failure has its writer's; anything else — a command, goal or
+ *  rewind start, or one no message is charged with — has only this row, keyed by the start, to say
+ *  why. The journal's lane drops it when its run's row already says it. */
 export function exitStartFailureRow(
   journal: { submissions?: () => FailedStartSubmission[] },
   exit: {
     startKey: string
+    /** The message the words are for, if any. */
+    wordedFor: string | undefined
     fence: number
-    rejectedAny: boolean
+    rejected: readonly string[]
     chargedToQueued: boolean
     words: AgentJournalDispatchRejection
   }
 ): JournalLifecycleMutationInput[] {
+  if (exit.rejected.length > 0) {
+    const key =
+      exit.wordedFor !== undefined && exit.rejected.includes(exit.wordedFor)
+        ? exit.wordedFor
+        : exit.startKey
+    return [structuredAgentSessionStartFailureRow(key, exit.words)]
+  }
   const recordedElsewhere =
-    !exit.rejectedAny &&
-    (exit.chargedToQueued ||
-      (journal.submissions?.() ?? []).some((submission) =>
-        rejectedAsFailedStartAt(submission, exit.fence)
-      ))
+    exit.chargedToQueued ||
+    (journal.submissions?.() ?? []).some((submission) =>
+      rejectedAsFailedStartAt(submission, exit.fence)
+    )
   return recordedElsewhere ? [] : [structuredAgentSessionStartFailureRow(exit.startKey, exit.words)]
 }
 

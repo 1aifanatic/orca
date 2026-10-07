@@ -475,9 +475,7 @@ describe('a start that fails while its child exits', () => {
       })
     }
     // The exit's row for the handed message; the queued one failed alike, so it reads under it.
-    expect(await startRows()).toEqual([
-      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
-    ])
+    expect(await startRows()).toEqual([rowFor(handed)])
   })
 
   it('rejects a message its unproven child was handed with the start, never in doubt', async () => {
@@ -499,10 +497,8 @@ describe('a start that fails while its child exits', () => {
     )
     // Never in doubt on the way: the child it was handed to took nothing.
     expect(framedStates(handed)).not.toContain('unknown')
-    // The exit rejected it, so the exit writes the start's one row.
-    expect(await startRows()).toEqual([
-      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
-    ])
+    // The exit rejected it, so the exit writes the start's one row, keyed by it.
+    expect(await startRows()).toEqual([rowFor(handed)])
   })
 })
 
@@ -664,9 +660,7 @@ describe('a run of starts that fail alike', () => {
         rejection: { kind: 'providerStartFailed', detail: { audience: 'log' } }
       })
     )
-    expect(await startRows()).toEqual([
-      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
-    ])
+    expect(await startRows()).toEqual([rowFor(first)])
   })
 
   // Words written for a person name what failed: two that differ are two failures.
@@ -704,8 +698,6 @@ describe('a run of starts that fail alike', () => {
         rejection: PROVIDER_START_FAILED
       })
     )
-    expect(await startRows()).toEqual([
-      agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('generation-2'))
-    ])
+    expect(await startRows()).toEqual([rowFor(first)])
   })
 })

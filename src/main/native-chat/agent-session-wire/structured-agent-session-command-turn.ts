@@ -69,11 +69,10 @@ export type StructuredAgentSessionAwaitedCommandJournal = {
   itemBody: AgentSessionJournal['itemBody']
 }
 
-/** The command the oldest message still waiting on the provider names: a start that fails now
- *  fails that message first, so its next step is to run the command again. */
-export function structuredAgentSessionAwaitedCommand(
-  journal: StructuredAgentSessionAwaitedCommandJournal
-): AgentSessionConversationCommand | undefined {
+/** The oldest message still waiting on the provider: a start that fails now fails it first. */
+export function structuredAgentSessionAwaitedMessage(
+  journal: Pick<StructuredAgentSessionAwaitedCommandJournal, 'submissions'>
+): string | undefined {
   let oldest: AwaitedSubmission | undefined
   for (const submission of journal.submissions?.() ?? []) {
     if (
@@ -83,7 +82,16 @@ export function structuredAgentSessionAwaitedCommand(
       oldest = submission
     }
   }
-  return oldest && structuredAgentSessionMessageCommand(journal, oldest.clientMessageId)
+  return oldest?.clientMessageId
+}
+
+/** The command the oldest message still waiting on the provider names: its next step is to run the
+ *  command again. */
+export function structuredAgentSessionAwaitedCommand(
+  journal: StructuredAgentSessionAwaitedCommandJournal
+): AgentSessionConversationCommand | undefined {
+  const awaited = structuredAgentSessionAwaitedMessage(journal)
+  return awaited && structuredAgentSessionMessageCommand(journal, awaited)
 }
 
 /** The command a message's own body sends: a start that fails it leaves that command to run again,

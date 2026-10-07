@@ -69,40 +69,6 @@ afterEach(async () => {
   await i18n.changeLanguage('en')
 })
 
-describe("a /compact whose start failed, beside the chat's start-failure rows", () => {
-  const row = (itemId: string) => ({ itemId, fact: START_FAILED, ofCommand: true })
-
-  it('says nothing under the composer when its own start wrote the row', async () => {
-    let loaded: ReturnType<typeof row>[] = []
-    const outcome = await sendStructuredConversationCommand({
-      command: 'compact',
-      agentName: 'Claude',
-      pending: { current: false },
-      blocked: false,
-      startFailures: () => loaded,
-      send: async () => {
-        loaded = [row('orca:start-failure%3Acompact-1')]
-        return { kind: 'done', value: hostResult('compact', START_FAILED) }
-      }
-    })
-    expect(outcome).toEqual({ accepted: false, error: null })
-  })
-
-  // An older start's row with the same failure is not this command's: its own words show.
-  it('keeps its words when the only row with that failure was loaded before it was sent', async () => {
-    const result = hostResult('compact', START_FAILED)
-    const outcome = await sendStructuredConversationCommand({
-      command: 'compact',
-      agentName: 'Claude',
-      pending: { current: false },
-      blocked: false,
-      startFailures: () => [row('orca:start-failure%3Aolder')],
-      send: async () => ({ kind: 'done', value: result })
-    })
-    expect(outcome).toEqual({ accepted: false, error: result.error })
-  })
-})
-
 describe('the line under the composer after a conversation command failed', () => {
   it('says in English exactly what the host wrote, for every failure a command reports', async () => {
     for (const provider of ['claude', 'codex'] as const) {

@@ -199,7 +199,7 @@ describe('the one row a failed start leaves', () => {
     })
   }
 
-  it("is the exit's for the messages it rejected", async () => {
+  it("is the exit's for the messages it rejected, keyed by the one its words are for", async () => {
     const session = startingSession(
       [{ clientMessageId: 'handed-1', dispatchState: 'pending', handedOverAt: 1, fence: 7 }],
       ['handed-1']
@@ -209,7 +209,30 @@ describe('the one row a failed start leaves', () => {
 
     expect(rowsWritten(session)).toEqual([
       expect.objectContaining({
-        identity: { provider: 'orca', clientMessageId: `start-failure:${GENERATION}` }
+        identity: { provider: 'orca', clientMessageId: 'start-failure:handed-1' }
+      })
+    ])
+  })
+
+  // Keyed by the /compact, it is a command's row: it never speaks for a later message's failure.
+  it('is keyed by the /compact it rejected when its words name the command', async () => {
+    const base = startingSession(
+      [{ clientMessageId: 'compact-1', dispatchState: 'pending', handedOverAt: 1, fence: 7 }],
+      ['compact-1']
+    )
+    const session = {
+      ...base,
+      journal: { ...base.journal, itemBody: () => structuredAgentSessionCompactBody() }
+    }
+
+    await settleStructuredAgentSessionChildExit(contextFor(session), ended)
+
+    expect(rowsWritten(session)).toEqual([
+      expect.objectContaining({
+        identity: { provider: 'orca', clientMessageId: 'start-failure:compact-1' },
+        body: expect.objectContaining({
+          text: 'Claude stopped before it finished starting. Run /compact again.'
+        })
       })
     ])
   })
