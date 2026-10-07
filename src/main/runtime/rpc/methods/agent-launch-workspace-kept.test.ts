@@ -41,7 +41,7 @@ const AGENT_LAUNCH_REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchRepla
 
 const OPERATION_ID = `${Date.now()}-000000000000000000000000000000e1`
 // Regular CI shards are shallow; opt in to the real historical reader where its source is present.
-const ROLLBACK_REF = process.env.ORCA_AGENT_LAUNCH_ROLLBACK_REF?.trim()
+const ROLLBACK_ROOT = process.env.ORCA_AGENT_LAUNCH_ROLLBACK_ROOT?.trim()
 const NO_LAUNCH_COMMAND = 'Could not build launch command for claude.'
 const CREATE_LAUNCH = {
   agent: 'claude',
@@ -168,33 +168,27 @@ describe.each([
 describe('stored workspace-kept enrichment', () => {
   const params = { ...CREATE_LAUNCH, operationId: OPERATION_ID }
 
-  it.skipIf(!ROLLBACK_REF)(
+  it.skipIf(!ROLLBACK_ROOT)(
     'remains unknown when the prior main host loads and replays the new row',
     async () => {
-      if (!ROLLBACK_REF) {
-        throw new Error('The rollback oracle requires a historical host ref')
+      if (!ROLLBACK_ROOT) {
+        throw new Error('The rollback oracle requires an extracted historical host source')
       }
       await call(keepsWorkspace(), 'agent.launchReplay', params, OLDER_PHONE)
-      const { materializeReleaseCheckout, importReleaseCheckoutModule } = await import(
+      const records = await import(
+        /* @vite-ignore */ join(ROLLBACK_ROOT, 'src/main/runtime/agent-session-record-store.ts')
+      )
+      const replay = await import(
         /* @vite-ignore */ join(
-          import.meta.dirname,
-          '../../../../../tests/e2e/cross-version-wire/release-checkout.ts'
+          ROLLBACK_ROOT,
+          'src/main/runtime/rpc/methods/agent-launch-replay.ts'
         )
       )
-      const legacy = await materializeReleaseCheckout(ROLLBACK_REF, {
-        cacheRoot: join(directory, 'rollback-source')
-      })
-      const rows = await importReleaseCheckoutModule(
-        legacy,
-        '/src/main/runtime/agent-session-record-rows.ts'
+      const errors = await import(
+        /* @vite-ignore */ join(ROLLBACK_ROOT, 'src/main/runtime/rpc/errors.ts')
       )
-      const replay = await importReleaseCheckoutModule(
-        legacy,
-        '/src/main/runtime/rpc/methods/agent-launch-replay.ts'
-      )
-      const errors = await importReleaseCheckoutModule(legacy, '/src/main/runtime/rpc/errors.ts')
       if (
-        typeof rows.loadAgentSessionStoreRows !== 'function' ||
+        typeof records.AgentSessionRecordStore?.open !== 'function' ||
         typeof replay.admitAgentLaunchOperation !== 'function' ||
         typeof errors.mapRuntimeError !== 'function'
       ) {
@@ -203,11 +197,13 @@ describe('stored workspace-kept enrichment', () => {
         )
       }
       const persisted = await readPersistedTestAgentSessionStore(directory)
-      const loaded = rows.loadAgentSessionStoreRows(openTestJournalHostDatabase(directory).db)
-      expect(loaded.operations).toEqual(new Map(Object.entries(persisted.operations)))
-      store = await openTestAgentSessionRecordStore(directory)
-      setAgentLaunchRecordStore(store)
+      const legacyStore = records.AgentSessionRecordStore.open({
+        journalDatabase: openTestJournalHostDatabase(directory),
+        hostId: 'local'
+      })
+      expect(legacyStore.listOperationRows()).toEqual(Object.values(persisted.operations))
       const retry = keepsWorkspace()
+      retry.openAgentSessionRecordStore.mockResolvedValue(legacyStore)
       const parsed = AGENT_LAUNCH_REPLAY.params.parse(params)
       const answer = await replay.admitAgentLaunchOperation(
         rpcContext(retry, OLDER_PHONE),
