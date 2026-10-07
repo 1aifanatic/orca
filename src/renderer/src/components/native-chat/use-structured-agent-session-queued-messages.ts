@@ -35,9 +35,9 @@ export type StructuredAgentSessionQueuedMessagesController = {
   /** Why the queue holds cards Resume would send: the header row above them. A string reason: a
    *  newer host may name one this build does not know. */
   pause: { reason: string } | null
-  /** Lift the queue's pause; a failure is a toast, and Resume is the retry. Shared by the header
-   *  row and the composer. */
-  resume: () => Promise<void>
+  /** Whether the host lifted the pause; a failure is a toast, and Resume is the retry. Shared by
+   *  the header row and the composer. */
+  resume: () => Promise<boolean>
   /** A Resume is in flight. */
   resuming: boolean
   /** Send-now into the running turn; the transcript shows it at delivery position. */
@@ -55,7 +55,8 @@ export type StructuredAgentSessionQueuedMessagesController = {
 }
 
 export type StructuredAgentSessionQueueResume = {
-  resume: () => Promise<void>
+  /** Whether the host lifted the pause (`resume`). */
+  resume: () => Promise<boolean>
   /** A Resume is in flight. */
   resuming: boolean
 }
@@ -196,18 +197,19 @@ export function useStructuredAgentSessionQueuedMessages(args: {
 
   const resumingRef = useRef(false)
   const [resuming, setResuming] = useState(false)
-  const resume = useCallback(async (): Promise<void> => {
+  const resume = useCallback(async (): Promise<boolean> => {
     if (resumingRef.current) {
-      return
+      return false
     }
     resumingRef.current = true
     setResuming(true)
     try {
-      await mutate<AgentSessionQueuedMessagesResumeResult>(
+      const result = await mutate<AgentSessionQueuedMessagesResumeResult>(
         'agentSession.queuedMessagesResume',
         'agentSession.queuedMessagesResume',
         {}
       )
+      return result?.resumed === true
     } finally {
       resumingRef.current = false
       setResuming(false)
