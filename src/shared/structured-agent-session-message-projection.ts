@@ -18,7 +18,7 @@ import { projectStructuredItemsToNativeChat } from './structured-agent-session-p
 
 export type StructuredAgentSessionMessageProjectionOptions = {
   /** Draw a message the host accepted and then rejected where the host recorded it, as not sent.
-   *  Off for a client that hands such a message back to its composer instead. */
+   *  Off only where such a message is no conversation row, as for the outline's ticks. */
   rejectedInPlace: boolean
 }
 
