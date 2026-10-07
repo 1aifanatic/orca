@@ -1,6 +1,7 @@
 import { shellEscape } from './ssh-connection-utils'
 import { powerShellCommand, powerShellLiteral } from './ssh-remote-powershell'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from './ssh-remote-platform'
+import * as exitedOwnerSteal from './ssh-relay-install-lock-exited-owner'
 
 const INSTALL_LOCK_BOOT_ID_NAME = '.boot-id'
 
@@ -100,19 +101,21 @@ export function tryStealInstallLockCommand(
   host: RemoteHostPlatform,
   lockDir: string,
   staleAfterSeconds: number,
-  owner?: InstallLockOwnerFile
+  owner?: InstallLockOwnerFile,
+  exitedOwner?: exitedOwnerSteal.InstallLockExitedOwner
 ): string {
   if (!isWindowsRemoteHost(host)) {
-    return posixStealInstallLockCommand(host, lockDir, staleAfterSeconds, owner)
+    return posixStealInstallLockCommand(host, lockDir, staleAfterSeconds, owner, exitedOwner)
   }
-  return windowsStealInstallLockCommand(lockDir, staleAfterSeconds, owner)
+  return windowsStealInstallLockCommand(lockDir, staleAfterSeconds, owner, exitedOwner)
 }
 
 function posixStealInstallLockCommand(
   host: RemoteHostPlatform,
   lockDir: string,
   staleAfterSeconds: number,
-  owner?: InstallLockOwnerFile
+  owner?: InstallLockOwnerFile,
+  exitedOwner?: exitedOwnerSteal.InstallLockExitedOwner
 ): string {
   const escapedLockDir = shellEscape(lockDir)
   const escapedStealLockPrefix = shellEscape(`${lockDir}.steal`)
@@ -122,7 +125,8 @@ function posixStealInstallLockCommand(
     'rebooted=0;',
     'if [ -n "$recorded_boot_id" ] && [ -n "$current_boot_id" ] && [ "$recorded_boot_id" != "$current_boot_id" ]; then rebooted=1; fi;',
     `${posixLockIdentityAssignment(lockDir, 'lock_key')} && mtime=\${lock_key%%:*} && now=$(date +%s) && age=$((now - mtime)) || age=0;`,
-    `if [ "\${age:-0}" -le ${staleAfterSeconds} ] 2>/dev/null && [ "$rebooted" != 1 ]; then echo BUSY; else`,
+    exitedOwnerSteal.posixCheck(lockDir, exitedOwner, 'age', 'exited'),
+    `if [ "\${age:-0}" -le ${staleAfterSeconds} ] 2>/dev/null && [ "$rebooted" != 1 ] && [ "$exited" != 1 ]; then echo BUSY; else`,
     `steal_root=${escapedStealLockPrefix};`,
     'steal_generation=0;',
     'steal="$steal_root.$steal_generation";',
@@ -136,18 +140,19 @@ function posixStealInstallLockCommand(
     'steal="$steal_root.$steal_generation";',
     'done;',
     'if [ "$owns_steal" = 1 ]; then',
-    `trap 'rm -rf "$steal_root".* 2>/dev/null || true; rm -rf "$lock_tombstone" 2>/dev/null || true' EXIT;`,
+    `held_mutation=; trap 'rm -rf "$steal_root".* 2>/dev/null || true; rm -rf "$lock_tombstone" 2>/dev/null || true;${exitedOwnerSteal.posixRelease(exitedOwner)}' EXIT;`,
     `${posixLockIdentityAssignment(lockDir, 'current_key')} && current_mtime=\${current_key%%:*} && current_now=$(date +%s) && current_age=$((current_now - current_mtime)) || current_age=0;`,
     `${posixReadBootIdentity(lockDir, 'current_recorded_boot_id')}`,
     'current_rebooted=0;',
     'if [ -n "$current_recorded_boot_id" ] && [ -n "$current_boot_id" ] && [ "$current_recorded_boot_id" != "$current_boot_id" ]; then current_rebooted=1; fi;',
-    `if [ "$current_key" = "$lock_key" ] && { [ "\${current_age:-0}" -gt ${staleAfterSeconds} ] 2>/dev/null || [ "$current_rebooted" = 1 ]; }; then`,
+    exitedOwnerSteal.posixClaimCheck(lockDir, exitedOwner, posixLockIdentityAssignment),
+    `if [ "$current_key" = "$lock_key" ] && { [ "\${current_age:-0}" -gt ${staleAfterSeconds} ] 2>/dev/null || [ "$current_rebooted" = 1 ] || [ "$current_exited" = 1 ]; }; then`,
     `lock_tombstone=${escapedLockDir}.tombstone.$$.$(date +%s);`,
     `if [ ! -e "$lock_tombstone" ] && mv ${escapedLockDir} "$lock_tombstone" 2>/dev/null; then`,
     `if mkdir ${escapedLockDir} 2>/dev/null; then`,
     posixWriteBootIdentity(lockDir, 'current_boot_id'),
     ...posixWriteOwner(lockDir, owner),
-    'if [ "$current_rebooted" = 1 ]; then echo REBOOT_OK; else echo OK; fi;',
+    'if [ "$current_rebooted" = 1 ]; then echo REBOOT_OK; elif [ "$current_exited" = 1 ]; then echo EXITED_OWNER_OK; else echo OK; fi;',
     'else echo BUSY; fi; else echo BUSY; fi;',
     'else echo BUSY; fi;',
     'else echo BUSY; fi; fi'
@@ -157,7 +162,8 @@ function posixStealInstallLockCommand(
 function windowsStealInstallLockCommand(
   lockDir: string,
   staleAfterSeconds: number,
-  owner?: InstallLockOwnerFile
+  owner?: InstallLockOwnerFile,
+  exitedOwner?: exitedOwnerSteal.InstallLockExitedOwner
 ): string {
   return powerShellCommand(
     [
@@ -170,7 +176,8 @@ function windowsStealInstallLockCommand(
       '$mtime = ([DateTimeOffset]$item.LastWriteTimeUtc).ToUnixTimeSeconds()',
       '$lockIdentity = "${mtime}:$($item.CreationTimeUtc.Ticks)"',
       '$now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()',
-      `if ((($now - $mtime) -le ${staleAfterSeconds}) -and (-not $rebooted)) { 'BUSY' } else {`,
+      exitedOwnerSteal.windowsCheck(exitedOwner, '($now - $mtime)', '$exited'),
+      `if ((($now - $mtime) -le ${staleAfterSeconds}) -and (-not $rebooted) -and (-not $exited)) { 'BUSY' } else {`,
       '$stealRoot = "$lock.steal"',
       '$stealGeneration = 0',
       '$steal = "$stealRoot.$stealGeneration"',
@@ -201,11 +208,12 @@ function windowsStealInstallLockCommand(
       '$currentNow = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()',
       ...windowsReadBootIdentityStatements('$lock', '$currentRecordedBootId'),
       '$currentRebooted = (-not [string]::IsNullOrWhiteSpace($currentRecordedBootId)) -and (-not [string]::IsNullOrWhiteSpace($currentBootId)) -and ($currentRecordedBootId -cne $currentBootId)',
-      `if (($currentIdentity -eq $lockIdentity) -and ((($currentNow - $currentMtime) -gt ${staleAfterSeconds}) -or $currentRebooted)) {`,
+      ...exitedOwnerSteal.windowsClaimCheck(exitedOwner),
+      `if (($currentIdentity -eq $lockIdentity) -and ((($currentNow - $currentMtime) -gt ${staleAfterSeconds}) -or $currentRebooted -or $currentExited)) {`,
       '$lockTombstone = "$lock.tombstone.$PID.$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"',
       'Move-Item -LiteralPath $lock -Destination $lockTombstone -ErrorAction Stop',
       '$successorStream = $null',
-      `try { $null = New-Item -ItemType Directory -Path $lock -ErrorAction Stop; $successorOwner = Join-Path $lock '.owner'; $successorStream = [System.IO.File]::Open($successorOwner, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None); ${windowsWriteBootIdentityStatement('$lock', '$currentBootId')}; ${windowsWriteOwner(owner)}if ($currentRebooted) { 'REBOOT_OK' } else { 'OK' } } catch { 'BUSY' } finally { if ($null -ne $successorStream) { $successorStream.Dispose() } }`,
+      `try { $null = New-Item -ItemType Directory -Path $lock -ErrorAction Stop; $successorOwner = Join-Path $lock '.owner'; $successorStream = [System.IO.File]::Open($successorOwner, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None); ${windowsWriteBootIdentityStatement('$lock', '$currentBootId')}; ${windowsWriteOwner(owner)}if ($currentRebooted) { 'REBOOT_OK' } elseif ($currentExited) { 'EXITED_OWNER_OK' } else { 'OK' } } catch { 'BUSY' } finally { if ($null -ne $successorStream) { $successorStream.Dispose() } }`,
       "} else { 'BUSY' }",
       '}',
       "} catch { 'BUSY' } finally {",
@@ -215,6 +223,7 @@ function windowsStealInstallLockCommand(
       'Get-ChildItem -LiteralPath $stealParent -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name.StartsWith($stealLeaf + ".", [StringComparison]::Ordinal) } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue',
       '}',
       'if ($null -ne $lockTombstone) { Remove-Item -LiteralPath $lockTombstone -Recurse -Force -ErrorAction SilentlyContinue }',
+      ...exitedOwnerSteal.windowsRelease(exitedOwner),
       '}',
       '}',
       "} catch { 'BUSY' }"

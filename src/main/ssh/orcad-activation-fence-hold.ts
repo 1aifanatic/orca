@@ -13,9 +13,8 @@ import {
 import { readOrcadActivationTransaction } from './orcad-activation-transaction-store'
 import { isRelayInstallLockStale, RELAY_INSTALL_LOCK_NAME } from './ssh-relay-install-lock'
 import { joinRemotePath } from './ssh-remote-platform'
-import { orphanExitedOwnLock } from './orcad-exited-own-lock'
+import { findExitedOwnLockToken } from './orcad-exited-own-lock'
 import { orcadRemoteBaseDir } from './orcad-remote-windows-node'
-import { ORCAD_STATE_MUTATION_LOCK_DIRNAME } from './orcad-state-snapshot-members'
 
 export const ORCAD_ACTIVATION_FENCE_BUSY_CODE = 'orcad_activation_fence_busy'
 export const ORCAD_ACTIVATION_RECOVERY_REQUIRED_CODE = 'orcad_activation_recovery_required'
@@ -38,10 +37,10 @@ export async function orcadActivationFenceRefusal(
   )
   // An unreadable answer reads as busy: retrying later is never wrong, a sticky failure can be.
   const journal = (await readOrcadActivationTransaction(options).catch(() => null)) !== null
-  const mutationLock = `${orcadRemoteBaseDir(options.host, options.remoteHome)}/${ORCAD_STATE_MUTATION_LOCK_DIRNAME}`
+  const baseDir = orcadRemoteBaseDir(options.host, options.remoteHome)
   const stale =
-    (await orphanExitedOwnLock(options, lockDir, mutationLock)) ||
-    (await isRelayInstallLockStale(options.conn, lockDir, options.host))
+    (await findExitedOwnLockToken(options, lockDir, { baseDir, guardsStateMutation: true })) !==
+      null || (await isRelayInstallLockStale(options.conn, lockDir, options.host))
   if (stale && !journal && (await clearAbandonedFence(options))) {
     // A wake or release cut short leaves a bare fence; Recover would only drop it (BUG-21).
     return {

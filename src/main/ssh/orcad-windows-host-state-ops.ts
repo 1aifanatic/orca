@@ -12,6 +12,7 @@ import { PRIMARY_RUNTIME_METADATA_FILE } from '../../shared/runtime-bootstrap'
 import { ORCAD_LOCK_FILE_NAME } from '../orcad/orcad-instance-lock'
 import { ORCAD_WINDOWS_PROCESS_TREE_FILENAME } from '../../shared/orcad-artifacts'
 import { ORCAD_INSTALL_MODEL } from './remote-install-model'
+import { ORCAD_FENCE_LOST_EXIT, ORCAD_FENCE_LOST_MARKER } from './orcad-activation-fence-scope'
 import {
   ORCAD_SNAPSHOT_MEMBERS,
   ORCAD_STATE_MUTATION_BUSY,
@@ -107,6 +108,12 @@ function takeStateMutationLock() {
 function withStateMutationLock(run) {
   return async (...opArgs) => {
     if (!takeStateMutationLock()) return answer(${text(ORCAD_STATE_MUTATION_BUSY)})
+    // Rechecked once the lock is held: an exited-owner steal holds it across the fence takeover.
+    if (FENCE_TOKEN !== null && fenceOwner(FENCE_DIR) !== FENCE_TOKEN) {
+      try { removeTree(MUTATION_LOCK) } catch {}
+      return process.stdout.write(${text(`${ORCAD_FENCE_LOST_MARKER}
+`)}, () => process.exit(${ORCAD_FENCE_LOST_EXIT}))
+    }
     let token = 'FAILED'
     // Why async ops: a synchronous copy would block this timer for the whole mutation.
     const beat = setInterval(refreshFence, ${ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS * 1000})

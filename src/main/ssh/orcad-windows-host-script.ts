@@ -64,6 +64,7 @@ export type OrcadWindowsHostOp =
   | 'remove-tree'
   | 'fence-check'
   | 'fence-release'
+  | 'fence-exited-owner'
   | 'script-present'
   | 'script-install'
   | 'stdio-bridge'

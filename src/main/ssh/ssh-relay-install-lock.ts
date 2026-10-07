@@ -10,6 +10,7 @@ import {
   tryStealInstallLockCommand,
   type InstallLockOwnerFile
 } from './ssh-relay-install-lock-commands'
+import type { InstallLockExitedOwner } from './ssh-relay-install-lock-exited-owner'
 import {
   getRemoteHostPlatform,
   joinRemotePath,
@@ -94,8 +95,8 @@ export async function acquireInstallLock(
     waitTimeoutMs?: number
     /** Written in the command that creates the lock, so a holder can prove the lock its own. */
     owner?: InstallLockOwnerFile
-    /** Runs before each stale check; it may age a lock it proves abandoned, so the check takes it. */
-    beforeStaleCheck?: (lockDir: string) => Promise<unknown>
+    /** Names a held lock's owner token this caller proved exited, so the steal may take it early. */
+    exitedOwner?: InstallLockExitedOwnerProof
   }
 ): Promise<void> {
   const lockDir = joinRemotePath(host, remoteRelayDir, options?.lockName ?? RELAY_INSTALL_LOCK_NAME)
@@ -165,13 +166,19 @@ export async function acquireInstallLock(
       Date.now() - lastStaleCheckAt >= INSTALL_LOCK_STALE_RECHECK_MS
     ) {
       lastStaleCheckAt = Date.now()
-      await options?.beforeStaleCheck?.(lockDir)
+      const exitedOwner = await exitedOwnerFor(lockDir, options)
       // Why: recover an already-stale lock immediately, then keep checking in
       // case a fresh holder crosses the stale threshold while we are waiting.
       const steal = await execHostCommand(
         conn,
         host,
-        tryStealInstallLockCommand(host, lockDir, INSTALL_LOCK_STALE_SECONDS, options?.owner),
+        tryStealInstallLockCommand(
+          host,
+          lockDir,
+          INSTALL_LOCK_STALE_SECONDS,
+          options?.owner,
+          exitedOwner
+        ),
         { signal: options?.signal }
       ).catch((err) => {
         if (isUnconfirmedSshCommandTermination(err)) {
@@ -181,7 +188,14 @@ export async function acquireInstallLock(
       })
       options?.signal?.throwIfAborted()
       if (steal.trim().endsWith('OK')) {
-        const reason = steal.trim().endsWith('REBOOT_OK') ? 'previous-boot' : 'stale'
+        const reason = steal.trim().endsWith('REBOOT_OK')
+          ? 'previous-boot'
+          : steal.trim().endsWith('EXITED_OWNER_OK')
+            ? 'exited-owner'
+            : 'stale'
+        if (exitedOwner && reason === 'exited-owner') {
+          options?.exitedOwner?.reclaimed(exitedOwner.token)
+        }
         console.warn(`[ssh-relay] Stealing ${reason} install lock at ${lockDir}`)
         const claimedAfterSteal = await isClaimed().catch((err) => {
           if (isUnconfirmedSshCommandTermination(err)) {
@@ -212,6 +226,34 @@ export async function acquireInstallLock(
     }
     await waitForInstallLockPoll(options?.signal)
   }
+}
+
+export type InstallLockExitedOwnerProof = {
+  /** The token a provably exited holder wrote into `lockDir`, or null when none is proven. */
+  find(lockDir: string): Promise<string | null>
+  reclaimed(token: string): void
+  quietSeconds: number
+  /** Held by the steal across the takeover, so no mutation is admitted under the old owner. */
+  mutationLock?: string
+}
+
+async function exitedOwnerFor(
+  lockDir: string,
+  options: { owner?: InstallLockOwnerFile; exitedOwner?: InstallLockExitedOwnerProof } | undefined
+): Promise<InstallLockExitedOwner | undefined> {
+  const proof = options?.exitedOwner
+  if (!proof || !options?.owner) {
+    return undefined
+  }
+  const token = await proof.find(lockDir)
+  return token === null
+    ? undefined
+    : {
+        fileName: options.owner.fileName,
+        token,
+        quietSeconds: proof.quietSeconds,
+        mutationLock: proof.mutationLock
+      }
 }
 
 function waitForInstallLockPoll(signal?: AbortSignal): Promise<void> {

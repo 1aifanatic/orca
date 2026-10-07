@@ -27,6 +27,8 @@ export const ORCAD_STATE_MUTATION_LOCK_DIRNAME = 'orcad-state-mutation.lock'
  * it fresh while a dead one stops within a beat.
  */
 export const ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS = 60
+/** How long a lock an exited desktop process left must sit untouched before it is reclaimed. */
+export const ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS = 3 * ORCAD_STATE_MUTATION_FENCE_HEARTBEAT_SECONDS
 
 /** A state mutation found another still running, so it did nothing. */
 export const ORCAD_STATE_MUTATION_BUSY = 'STATE_MUTATION_BUSY'

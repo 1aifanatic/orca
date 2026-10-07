@@ -16,10 +16,10 @@ import {
   clearOrcadStateSnapshotMembersCommand,
   parseOrcadSnapshotCapture,
   parseOrcadSnapshotRestore,
-  posixProcessGroupCommand,
   restoreOrcadStateSnapshotCommand,
   serializedStateMutationCommand
 } from './orcad-state-snapshot'
+import { posixProcessGroupCommand } from './orcad-state-mutation-owner-record'
 import { getRemoteHostPlatform } from './ssh-remote-platform'
 
 const posix = getRemoteHostPlatform('linux-x64')

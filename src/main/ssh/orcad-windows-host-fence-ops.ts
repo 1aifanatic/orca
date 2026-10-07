@@ -1,12 +1,14 @@
 /**
  * The activation fence's ownership check and conditional release inside the Windows host script,
- * matching the POSIX guard in `orcad-activation-fence-scope.ts`.
+ * matching the POSIX guard in `orcad-activation-fence-scope.ts`, and the exited-own-lock check of
+ * `orcad-exited-own-lock.ts`.
  */
 import {
   ORCAD_FENCE_LOST_EXIT,
   ORCAD_FENCE_LOST_MARKER,
   ORCAD_FENCE_OWNER_FILENAME
 } from './orcad-activation-fence-scope'
+import { ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS } from './orcad-state-snapshot-members'
 
 export const ORCAD_WINDOWS_FENCE_ARG = '--fence'
 
@@ -56,6 +58,17 @@ Object.assign(ops, {
     else if (!fs.existsSync(lockDir)) fs.renameSync(lockAside, lockDir)
     try { fs.rmdirSync(path.dirname(lockDir)) } catch {}
     answer('RELEASED')
+  },
+  // Read-only: names which of \`tokens\` (clients proven exited) the lock holds, once it is quiet
+  // and, with guardArg '1', no state-mutation lock exists.
+  // The steal then takes the lock under its own arbitration, so nothing here writes.
+  'fence-exited-owner'(lockDir, guardArg, ...tokens) {
+    const quiet = (target) => Date.now() - (lstatOrNull(target)?.mtimeMs ?? Date.now()) > ${ORCAD_EXITED_OWN_LOCK_QUIET_SECONDS * 1000}
+    const token = fenceOwner(lockDir)
+    if (!tokens.includes(token) || !quiet(lockDir)) return answer('KEPT')
+    // Any mutation lock refuses, as the steal does: it can only take an absent one.
+    if (guardArg === '1' && lstatOrNull(MUTATION_LOCK)) return answer('KEPT')
+    answer('EXITED_OWNER ' + token)
   }
 })
 `
