@@ -7,10 +7,10 @@ import { getDefaultWorkspaceSession } from '../../shared/constants'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { createMinimalPersistedTerminalTab } from '../persistence/restoring-sessions/session-owner-fields'
 import { buildHeadlessMobileSessionTerminalTabs } from './mobile-session-terminal-projection'
-import {
-  provisionWorktreeTerminals,
-  type WorktreeTerminalProvisioningHost
-} from './runtime-worktree-terminal-provisioning'
+import type { RuntimeNotifier } from './runtime-notifier-contract'
+import type { RuntimeStore } from './runtime-store-contract'
+import type { TerminalWorkspaceLaunchScope } from './runtime-legacy-worker-terminal-recovery-types'
+import { provisionWorktreeTerminals } from './runtime-worktree-terminal-provisioning'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -24,21 +24,84 @@ const AGENT_TAB_ID = 'agent-tab'
 const AGENT_LEAF_ID = '11111111-1111-4111-8111-111111111111'
 const AGENT_PTY_ID = 'pty-agent'
 
+class DefaultTabRuntime extends OrcaRuntimeService {
+  constructor(
+    store: RuntimeStore | null,
+    private readonly connectionId: string | null
+  ) {
+    super(store)
+  }
+
+  protected override async resolveTerminalWorkspaceLaunchScope(): Promise<TerminalWorkspaceLaunchScope> {
+    return {
+      id: WORKTREE_ID,
+      path: '/repo/app',
+      connectionId: this.connectionId,
+      repo: null,
+      folderWorkspace: null
+    }
+  }
+
+  provisioningHost() {
+    return this.getWorktreeTerminalProvisioningHost()
+  }
+
+  ptyTitle(ptyId: string): string | null | undefined {
+    return this.ptysById.get(ptyId)?.title
+  }
+}
+
+function sessionStore(initial: WorkspaceSessionState): {
+  store: RuntimeStore
+  getSession: () => WorkspaceSessionState
+} {
+  let session = initial
+  const store: RuntimeStore = {
+    getRepos: () => [],
+    getRepo: () => undefined,
+    addRepo: vi.fn<RuntimeStore['addRepo']>(),
+    updateRepo: vi.fn<RuntimeStore['updateRepo']>(),
+    getAllWorktreeMeta: () => ({}),
+    getWorktreeMeta: () => undefined,
+    setWorktreeMeta: vi.fn<RuntimeStore['setWorktreeMeta']>(),
+    removeWorktreeMeta: vi.fn<RuntimeStore['removeWorktreeMeta']>(),
+    getGitHubCache: vi.fn<RuntimeStore['getGitHubCache']>(),
+    getWorkspaceSession: () => session,
+    setWorkspaceSession: (next) => {
+      session = next
+    },
+    getSettings: () => ({
+      workspaceDir: '/workspaces',
+      nestWorkspaces: false,
+      refreshLocalBaseRefOnWorktreeCreate: false,
+      branchPrefix: 'none',
+      branchPrefixCustom: ''
+    })
+  }
+  return { store, getSession: () => session }
+}
+
+function notifierWithRename(renameTerminal: RuntimeNotifier['renameTerminal']): RuntimeNotifier {
+  return {
+    worktreesChanged: vi.fn(),
+    reposChanged: vi.fn(),
+    activateWorktree: vi.fn(),
+    createTerminal: vi.fn(),
+    splitTerminal: vi.fn(),
+    renameTerminal,
+    focusTerminal: vi.fn(),
+    closeTerminal: vi.fn(),
+    sleepWorktree: vi.fn(),
+    terminalFitOverrideChanged: vi.fn(),
+    terminalDriverChanged: vi.fn()
+  }
+}
+
 async function createHeadlessRuntimeWithAgent(
   connectionId: string | null = null,
-  store: unknown = null
-): Promise<{ runtime: OrcaRuntimeService; handle: string }> {
-  const runtime = new OrcaRuntimeService(store as never)
-  const internals = runtime as unknown as {
-    resolveTerminalWorkspaceLaunchScope: (selector: string) => Promise<unknown>
-  }
-  vi.spyOn(internals, 'resolveTerminalWorkspaceLaunchScope').mockResolvedValue({
-    id: WORKTREE_ID,
-    path: '/repo/app',
-    connectionId,
-    repo: null,
-    folderWorkspace: null
-  })
+  store: RuntimeStore | null = null
+): Promise<{ runtime: DefaultTabRuntime; handle: string }> {
+  const runtime = new DefaultTabRuntime(store, connectionId)
   let spawned = 0
   runtime.setPtyController({
     spawn: vi.fn(async () => ({ id: spawned++ === 0 ? AGENT_PTY_ID : `pty-${spawned}` })),
@@ -54,17 +117,9 @@ async function createHeadlessRuntimeWithAgent(
   return { runtime, handle: agent.handle }
 }
 
-function provisioningHost(runtime: OrcaRuntimeService): WorktreeTerminalProvisioningHost {
-  return (
-    runtime as unknown as {
-      getWorktreeTerminalProvisioningHost: () => WorktreeTerminalProvisioningHost
-    }
-  ).getWorktreeTerminalProvisioningHost()
-}
-
-async function dressAgentTab(runtime: OrcaRuntimeService, handle: string): Promise<void> {
+async function dressAgentTab(runtime: DefaultTabRuntime, handle: string): Promise<void> {
   // Only the handle crosses: the host finds the tab, as it must for a create over SSH too.
-  await provisionWorktreeTerminals(provisioningHost(runtime), {
+  await provisionWorktreeTerminals(runtime.provisioningHost(), {
     worktreeSelector: `id:${WORKTREE_ID}`,
     worktreeId: WORKTREE_ID,
     worktreePath: '/repo/app',
@@ -118,7 +173,7 @@ describe('the agent tab a host-side create dresses as the first default tab', ()
 
   it('titles the tab, never the pane, and keeps the title across a restart', async () => {
     // The spawn's pty binding has already saved the agent's tab when provisioning runs.
-    let session: WorkspaceSessionState = {
+    const { store, getSession } = sessionStore({
       ...getDefaultWorkspaceSession(),
       tabsByWorktree: {
         [WORKTREE_ID]: [
@@ -130,33 +185,24 @@ describe('the agent tab a host-side create dresses as the first default tab', ()
           })
         ]
       }
-    }
-    const store = {
-      getSettings: () => ({}),
-      getRepos: () => [],
-      getRepo: () => undefined,
-      getWorkspaceSession: () => session,
-      setWorkspaceSession: (next: WorkspaceSessionState) => {
-        session = next
-      }
-    }
+    })
     const { runtime, handle } = await createHeadlessRuntimeWithAgent(null, store)
     const renameTerminal = vi.fn()
-    runtime.setNotifier({ renameTerminal } as never)
+    runtime.setNotifier(notifierWithRename(renameTerminal))
 
     await dressAgentTab(runtime, handle)
 
     expect(renameTerminal).toHaveBeenCalledWith(AGENT_TAB_ID, 'Dev', { recordInteraction: false })
-    const ptys = (runtime as unknown as { ptysById: Map<string, { title: string | null }> })
-      .ptysById
-    expect(ptys.get(AGENT_PTY_ID)?.title).toBeNull()
+    expect(runtime.ptyTitle(AGENT_PTY_ID)).toBeNull()
     // A restarted headless host rebuilds the phone's tabs from the saved session.
-    const restored = buildHeadlessMobileSessionTerminalTabs(
-      WORKTREE_ID,
-      session.tabsByWorktree[WORKTREE_ID]!,
-      session
-    )
-    expect(restored).toEqual([
+    const session = getSession()
+    expect(
+      buildHeadlessMobileSessionTerminalTabs(
+        WORKTREE_ID,
+        session.tabsByWorktree[WORKTREE_ID] ?? [],
+        session
+      )
+    ).toEqual([
       expect.objectContaining({ parentTabId: AGENT_TAB_ID, title: 'Dev', color: '#ff0000' })
     ])
   })
@@ -164,7 +210,7 @@ describe('the agent tab a host-side create dresses as the first default tab', ()
   it("still titles the tab once the window's graph has taken over the handle", async () => {
     const { runtime, handle } = await createHeadlessRuntimeWithAgent()
     const renameTerminal = vi.fn()
-    runtime.setNotifier({ renameTerminal } as never)
+    runtime.setNotifier(notifierWithRename(renameTerminal))
     runtime.attachWindow(1)
     runtime.syncWindowGraph(1, {
       tabs: [
@@ -187,7 +233,7 @@ describe('the agent tab a host-side create dresses as the first default tab', ()
       ]
     })
 
-    await provisioningHost(runtime).setTabTitle(handle, 'Dev')
+    await runtime.provisioningHost().setTabTitle(handle, 'Dev')
 
     expect(renameTerminal).toHaveBeenCalledWith(AGENT_TAB_ID, 'Dev', { recordInteraction: false })
   })

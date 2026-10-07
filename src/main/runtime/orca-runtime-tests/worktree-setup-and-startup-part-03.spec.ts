@@ -424,11 +424,11 @@ describe('OrcaRuntimeService', () => {
     }
     const runtime = new OrcaRuntimeService(runtimeStore as never)
     const spawn = vi
-      .fn()
+      .fn<(options: { command?: string }) => Promise<{ id: string }>>()
       .mockResolvedValueOnce({ id: 'pty-default-agent' })
       .mockResolvedValueOnce({ id: 'pty-default-test' })
     const revealTerminalSession = vi
-      .fn()
+      .fn<(worktreeId: string, request: { tabId?: string }) => Promise<{ tabId: string }>>()
       .mockResolvedValueOnce({ tabId: 'tab-default-agent' })
       .mockResolvedValueOnce({ tabId: 'tab-default-test' })
     const renameTerminal = vi.fn()
@@ -481,11 +481,12 @@ describe('OrcaRuntimeService', () => {
     })
 
     await vi.waitFor(() => expect(revealTerminalSession).toHaveBeenCalledTimes(2))
-    const agentTabId = (revealTerminalSession.mock.calls[0]![1] as { tabId: string }).tabId
+    const agentTabId = revealTerminalSession.mock.calls[0]?.[1].tabId
+    expect(agentTabId).toEqual(expect.any(String))
     expect(renameTerminal).toHaveBeenCalledWith(agentTabId, 'Dev', { recordInteraction: false })
     // The first template's command never runs beside the agent; only the rest are created.
     expect(spawn).toHaveBeenCalledTimes(2)
-    expect(spawn.mock.calls.map(([options]) => (options as { command?: string }).command)).toEqual([
+    expect(spawn.mock.calls.map(([options]) => options.command)).toEqual([
       expect.stringContaining('claude'),
       'pnpm test'
     ])
