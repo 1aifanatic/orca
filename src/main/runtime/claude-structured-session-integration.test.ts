@@ -252,8 +252,8 @@ beforeEach(async () => {
         resolveLaunchArgs: () => [],
         resolveClaudeAuthPolicy: () => claudeAuthPolicy,
         openClaudeConnection: claude.openConnection,
-        claudeThinkingDisplay: {
-          argsFor: async () => ({ 'thinking-display': 'summarized' }),
+        claudeCliFlags: {
+          supports: async (flag) => flag.option === '--thinking-display',
           observeExit: () => {}
         },
         // Production's sink wiring onto a real hook server, whose records a Stop reaches.

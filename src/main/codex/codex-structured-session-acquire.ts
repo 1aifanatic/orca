@@ -23,6 +23,7 @@ import {
 } from './codex-structured-owner-identity'
 import { buildCodexStructuredChildEnvironment } from './codex-structured-child-environment'
 import { openCodexThread } from './codex-structured-thread-open'
+import { withCodexVisualsThreadConfig } from './codex-structured-visuals'
 import {
   closeCodexPublishedSession,
   handleCodexSessionExit
@@ -195,7 +196,12 @@ export async function acquireCodexStructuredSession(input: {
       })
     }
     acquisitions.assertCurrent(sessionId, attempt)
-    const opened = await openCodexThread(connection, launch, deps.requestTimeoutMs)
+    const threadLaunch = await withCodexVisualsThreadConfig(connection, launch, {
+      sessionId,
+      ...(deps.logger ? { logger: deps.logger } : {})
+    })
+    acquisitions.assertCurrent(sessionId, attempt)
+    const opened = await openCodexThread(connection, threadLaunch, deps.requestTimeoutMs)
     acquisitions.assertCurrent(sessionId, attempt)
     primaryThreadId = opened.threadId
     const restoreAdmission = translator?.restoreThread(opened.threadId, opened.thread ?? {})

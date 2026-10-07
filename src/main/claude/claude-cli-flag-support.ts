@@ -1,14 +1,26 @@
 import { realpath, stat } from 'node:fs/promises'
 import { claudeVersionReaches, probeClaudeCliVersion } from './claude-hook-event-versions'
 
-// Why: the first CLI whose parser defines the flag (2.1.93 was never published); an older one exits
-// on it before the session starts. Found by reading published packages, not by running them.
-const CLAUDE_THINKING_DISPLAY_FIRST_VERSION = '2.1.94'
+/** A launch flag an older Claude CLI exits on, and the first published CLI whose parser defines it.
+ *  Versions were found by reading published packages, not by running them. */
+export type ClaudeCliFlag = { readonly option: string; readonly firstVersion: string }
+
+// Why 2.1.94: 2.1.93 was never published.
+export const CLAUDE_THINKING_DISPLAY_FLAG: ClaudeCliFlag = {
+  option: '--thinking-display',
+  firstVersion: '2.1.94'
+}
+
+// Why 2.0.25: 2.0.24's parser has no such option.
+export const CLAUDE_PLUGIN_DIR_FLAG: ClaudeCliFlag = {
+  option: '--plugin-dir',
+  firstVersion: '2.0.25'
+}
 
 /** How long a launch waits on a binary nothing is known about yet. A warm probe answers in tens of
  *  milliseconds; this covers a cold disk, a node install and an antivirus scan, paid once per key
  *  during a start that already takes seconds. */
-export const CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS = 1_500
+export const CLAUDE_CLI_FLAG_PROBE_BUDGET_MS = 1_500
 
 /** A probe still running by now is killed, and its binary gets no flag. */
 const PROBE_KILL_AFTER_MS = 10_000
@@ -18,15 +30,13 @@ const PROBE_KILL_AFTER_MS = 10_000
  *  from a loaded boot heals. */
 const FAILED_PROBE_RETRY_AFTER_MS = 10 * 60_000
 
-/** Commander's refusal, exactly: any other startup failure says nothing about the flag. */
-const UNKNOWN_FLAG_DIAGNOSTIC = "unknown option '--thinking-display'"
+/** Commander's refusal, exactly: any other startup failure says nothing about a flag. */
+const UNKNOWN_OPTION_DIAGNOSTIC = /unknown option '(--[a-z][a-z0-9-]*)'/
 
 // One small entry per binary per workspace it launched in; enough for every worktree in active use.
 const MAX_REMEMBERED = 32
 
-const SUMMARIZED: Readonly<Record<string, string>> = { 'thinking-display': 'summarized' }
-
-export type ClaudeThinkingDisplayLaunch = {
+export type ClaudeCliLaunch = {
   command: string
   cwd: string
   env: Record<string, string>
@@ -37,16 +47,15 @@ type ClaudeVersionProbe = (
   launch: { cwd: string; env: Record<string, string>; timeoutMs: number }
 ) => Promise<string | null>
 
-export type ClaudeThinkingDisplaySupport = {
+export type ClaudeCliFlagSupport = {
   /**
-   * Asks for readable thinking: under Orca's launch the CLI otherwise streams thinking blocks with
-   * no text. Only the display is set, never `--thinking`, so a user who turned thinking off keeps
-   * it off. A binary not yet known is probed with the launch's own cwd and env, waited on for at
-   * most the budget from when its probe began; past it the launch goes without the flag.
+   * Whether this launch's CLI takes `flag`. A binary not yet known is probed once for its version
+   * with the launch's own cwd and env, waited on for at most the budget from when its probe began;
+   * past it the answer is no. Every flag shares that one probe.
    */
-  argsFor: (launch: ClaudeThinkingDisplayLaunch) => Promise<Readonly<Record<string, string>>>
-  /** A child that exited refusing the flag: that binary, in that workspace, never gets it again. */
-  observeExit: (launch: Pick<ClaudeThinkingDisplayLaunch, 'command' | 'cwd'>, error: Error) => void
+  supports: (flag: ClaudeCliFlag, launch: ClaudeCliLaunch) => Promise<boolean>
+  /** A child that exited refusing a flag: that binary, in that workspace, never gets it again. */
+  observeExit: (launch: Pick<ClaudeCliLaunch, 'command' | 'cwd'>, error: Error) => void
 }
 
 /** Which binary a command is in a workspace right now: a shim answers per project, and a
@@ -74,7 +83,10 @@ async function within<T>(pending: Promise<T>, ms: number): Promise<T | undefined
   }
 }
 
-export function createClaudeThinkingDisplaySupport(
+/** `version` undefined: not known yet; null: a probe gave none, until `expiresAt`. */
+type BinaryFacts = { version?: string | null; expiresAt?: number; refused: Set<string> }
+
+export function createClaudeCliFlagSupport(
   deps: {
     probe: ClaudeVersionProbe
     keyOf: (command: string, cwd: string) => Promise<string | null>
@@ -83,54 +95,58 @@ export function createClaudeThinkingDisplaySupport(
   } = {
     probe: probeClaudeCliVersion,
     keyOf: claudeBinaryKey,
-    budgetMs: CLAUDE_THINKING_DISPLAY_PROBE_BUDGET_MS,
+    budgetMs: CLAUDE_CLI_FLAG_PROBE_BUDGET_MS,
     now: () => performance.now()
   }
-): ClaudeThinkingDisplaySupport {
-  /** `expiresAt` only on an answer that was no answer: a version or a refusal is final. */
-  const known = new Map<string, { supported: boolean; expiresAt?: number }>()
+): ClaudeCliFlagSupport {
+  const known = new Map<string, BinaryFacts>()
   const probing = new Map<string, { settled: Promise<void>; startedAt: number }>()
-  const remember = (key: string, supported: boolean, expiresAt?: number): void => {
+  /** The key's facts, marked most recently used; the bound drops the binaries launched least recently. */
+  const touch = (key: string): BinaryFacts => {
+    const facts = known.get(key) ?? { refused: new Set<string>() }
     known.delete(key)
-    known.set(key, { supported, ...(expiresAt === undefined ? {} : { expiresAt }) })
+    known.set(key, facts)
     for (const stale of known.keys()) {
       if (known.size <= MAX_REMEMBERED) {
         break
       }
       known.delete(stale)
     }
+    return facts
   }
   // A version is kept for the binary's life. A probe that gave none is kept only for a while, so
-  // a hung CLI costs one wait per stretch and a boot-time failure heals. A refusal seen meanwhile
-  // wins over either.
-  const settle = (key: string, supported: boolean, expiresAt?: number): void => {
-    if (!known.has(key)) {
-      remember(key, supported, expiresAt)
+  // a hung CLI costs one wait per stretch and a boot-time failure heals. A refusal outlives both.
+  const settle = (key: string, version: string | null): void => {
+    const facts = touch(key)
+    facts.version = version
+    if (version === null) {
+      facts.expiresAt = deps.now() + FAILED_PROBE_RETRY_AFTER_MS
+    } else {
+      delete facts.expiresAt
     }
   }
-  const settleWithoutVersion = (key: string): void =>
-    settle(key, false, deps.now() + FAILED_PROBE_RETRY_AFTER_MS)
-  const lookup = (key: string): boolean | undefined => {
-    const entry = known.get(key)
-    if (entry?.expiresAt !== undefined && entry.expiresAt <= deps.now()) {
-      known.delete(key)
-      return undefined
+  const versionOf = (key: string): string | null | undefined => {
+    const facts = known.get(key)
+    if (facts?.expiresAt !== undefined && facts.expiresAt <= deps.now()) {
+      delete facts.version
+      delete facts.expiresAt
     }
-    if (entry) {
-      // Read as used: the bound drops the binaries launched least recently.
-      remember(key, entry.supported, entry.expiresAt)
-    }
-    return entry?.supported
+    return facts ? touch(key).version : undefined
   }
-  const probe = (key: string, launch: ClaudeThinkingDisplayLaunch) => {
+  const answer = (key: string, flag: ClaudeCliFlag): boolean => {
+    const facts = known.get(key)
+    return (
+      facts?.version != null &&
+      !facts.refused.has(flag.option) &&
+      claudeVersionReaches(facts.version, flag.firstVersion)
+    )
+  }
+  const probe = (key: string, launch: ClaudeCliLaunch) => {
     const settled = deps
       .probe(launch.command, { cwd: launch.cwd, env: launch.env, timeoutMs: PROBE_KILL_AFTER_MS })
       .then(
-        (version) =>
-          version === null
-            ? settleWithoutVersion(key)
-            : settle(key, claudeVersionReaches(version, CLAUDE_THINKING_DISPLAY_FIRST_VERSION)),
-        () => settleWithoutVersion(key)
+        (version) => settle(key, version),
+        () => settle(key, null)
       )
       .finally(() => probing.delete(key))
     const started = { settled, startedAt: deps.now() }
@@ -139,16 +155,15 @@ export function createClaudeThinkingDisplaySupport(
   }
 
   return {
-    argsFor: async (launch) => {
+    supports: async (flag, launch) => {
       // The launch never waits longer than the budget, finding the binary included.
       const deadline = deps.now() + deps.budgetMs
       const key = await within(deps.keyOf(launch.command, launch.cwd), deps.budgetMs)
       if (key === undefined || key === null) {
-        return {}
+        return false
       }
-      const supported = lookup(key)
-      if (supported !== undefined) {
-        return supported ? SUMMARIZED : {}
+      if (versionOf(key) !== undefined) {
+        return answer(key, flag)
       }
       const running = probing.get(key) ?? probe(key, launch)
       // The probe's own budget, too: one already past it is not waited on again.
@@ -156,15 +171,16 @@ export function createClaudeThinkingDisplaySupport(
         running.settled,
         Math.min(running.startedAt + deps.budgetMs, deadline) - deps.now()
       )
-      return known.get(key)?.supported === true ? SUMMARIZED : {}
+      return answer(key, flag)
     },
     observeExit: (launch, error) => {
-      if (!error.message.includes(UNKNOWN_FLAG_DIAGNOSTIC)) {
+      const option = UNKNOWN_OPTION_DIAGNOSTIC.exec(error.message)?.[1]
+      if (!option) {
         return
       }
       void deps.keyOf(launch.command, launch.cwd).then((key) => {
         if (key !== null) {
-          remember(key, false)
+          touch(key).refused.add(option)
         }
       })
     }
@@ -172,4 +188,4 @@ export function createClaudeThinkingDisplaySupport(
 }
 
 /** One per process: every structured launch on this host shares what it learned. */
-export const claudeThinkingDisplaySupport = createClaudeThinkingDisplaySupport()
+export const claudeCliFlagSupport = createClaudeCliFlagSupport()

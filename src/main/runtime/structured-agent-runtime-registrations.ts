@@ -16,6 +16,10 @@ import type { StructuredAgentDefinition } from '../native-chat/agent-session-wir
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import {
+  createNativeChatVisualsDelivery,
+  type PrepareNativeChatVisuals
+} from '../native-chat/native-chat-visuals-delivery'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type { createStructuredAgentSessionDispatchFollowUps } from './structured-agent-session-dispatch-followups'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
@@ -78,6 +82,19 @@ export type StructuredAgentRuntimeRegistration = {
   ) => Promise<string>
 }
 
+function nativeChatVisualsFor(deps: StructuredAgentSessionRuntimeDeps): {
+  prepareVisuals?: PrepareNativeChatVisuals
+} {
+  return deps.nativeChatVisuals
+    ? {
+        prepareVisuals: createNativeChatVisualsDelivery({
+          stateDirectory: deps.stateDirectory,
+          logger: deps.logger
+        })
+      }
+    : {}
+}
+
 function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
   const { deps, store, followUps, host } = context
   return new CodexStructuredSessionAdapter({
@@ -89,7 +106,8 @@ function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredA
       ...(deps.resolveCodexPermissionPolicy
         ? { resolvePermissionPolicy: deps.resolveCodexPermissionPolicy }
         : {}),
-      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {})
+      ...(deps.resolveCodexCommand ? { resolveCommand: deps.resolveCodexCommand } : {}),
+      ...nativeChatVisualsFor(deps)
     }),
     ...(deps.openCodexConnection ? { openConnection: deps.openCodexConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
@@ -116,7 +134,8 @@ function createClaudeAdapter(
     store,
     resolveWorkspacePath: deps.resolveWorkspacePath,
     ...(deps.resolveClaudeCommand ? { resolveClaudeCommand: deps.resolveClaudeCommand } : {}),
-    ...(deps.claudeThinkingDisplay ? { claudeThinkingDisplay: deps.claudeThinkingDisplay } : {}),
+    ...(deps.claudeCliFlags ? { claudeCliFlags: deps.claudeCliFlags } : {}),
+    ...nativeChatVisualsFor(deps),
     ...(deps.resolveClaudeLaunchEnv ? { resolveClaudeLaunchEnv: deps.resolveClaudeLaunchEnv } : {}),
     resolveClaudeInheritedEnv: context.environment.resolveClaudeInheritedEnv,
     resolveClaudeLaunchArgs: () => deps.resolveLaunchArgs('claude'),

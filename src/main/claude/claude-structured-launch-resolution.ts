@@ -37,7 +37,17 @@ import {
   type ClaudeEnvDeps
 } from './claude-structured-child-env'
 import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
-import type { ClaudeThinkingDisplaySupport } from './claude-thinking-display-support'
+import {
+  CLAUDE_PLUGIN_DIR_FLAG,
+  CLAUDE_THINKING_DISPLAY_FLAG,
+  type ClaudeCliFlagSupport,
+  type ClaudeCliLaunch
+} from './claude-cli-flag-support'
+import {
+  withNativeChatVisualsEnv,
+  type NativeChatVisualsLaunch,
+  type PrepareNativeChatVisuals
+} from '../native-chat/native-chat-visuals-delivery'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { resolveAgentSessionLaunchDirectory } from '../runtime/agent-session-launch-directory'
 import { CLAUDE_STRUCTURED_AGENT } from './claude-structured-agent-definition'
@@ -53,6 +63,7 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'supportedDialogKinds'
   | 'extraArgs'
   | 'additionalDirectories'
+  | 'plugins'
   | 'model'
   | 'effort'
   | 'permissionMode'
@@ -132,8 +143,10 @@ export type ClaudeStructuredLaunchResolverDeps = {
   authSwitchSettleTimeoutMs?: number
   /** Account state for the managed-account gate; null when it cannot be read, which refuses. */
   readManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
-  /** Whether this CLI takes the thinking-display flag. Absent ⇒ the flag is never passed. */
-  thinkingDisplay?: Pick<ClaudeThinkingDisplaySupport, 'argsFor'>
+  /** Which version-gated flags this CLI takes. Absent ⇒ none is ever passed. */
+  cliFlags?: Pick<ClaudeCliFlagSupport, 'supports'>
+  /** This chat's visuals folder and skill; absent or null ⇒ the chat gets neither. */
+  prepareVisuals?: PrepareNativeChatVisuals
   /** Whether Claude wrote a transcript for this id; defaults to the transcript resolver. */
   hasTranscript?: (input: {
     providerSessionId: string
@@ -152,6 +165,39 @@ async function claudeTranscriptExists(input: {
 }
 
 export type ClaudeStructuredInvocation = { command: string; env: Record<string, string> }
+
+const THINKING_DISPLAY_ARGS: Readonly<Record<string, string>> = { 'thinking-display': 'summarized' }
+
+/**
+ * Asks for readable thinking: under Orca's launch the CLI otherwise streams thinking blocks with no
+ * text. Only the display is set, never `--thinking`, so a user who turned thinking off keeps it off.
+ */
+async function claudeThinkingDisplayArgs(
+  cliFlags: ClaudeStructuredLaunchResolverDeps['cliFlags'],
+  launch: ClaudeCliLaunch
+): Promise<Readonly<Record<string, string>>> {
+  return (await cliFlags?.supports(CLAUDE_THINKING_DISPLAY_FLAG, launch))
+    ? THINKING_DISPLAY_ARGS
+    : {}
+}
+
+type ClaudeVisualsLaunch = { visuals: NativeChatVisualsLaunch; pluginDir: string | null }
+
+/** The chat's visuals folder, and its skill plugin when this CLI can load one by path. */
+async function claudeVisualsLaunch(
+  deps: Pick<ClaudeStructuredLaunchResolverDeps, 'cliFlags' | 'prepareVisuals'>,
+  sessionId: string,
+  launch: ClaudeCliLaunch
+): Promise<ClaudeVisualsLaunch | null> {
+  if (!deps.prepareVisuals) {
+    return null
+  }
+  const [visuals, loadsPlugins] = await Promise.all([
+    deps.prepareVisuals(sessionId),
+    deps.cliFlags?.supports(CLAUDE_PLUGIN_DIR_FLAG, launch) ?? false
+  ])
+  return visuals ? { visuals, pluginDir: loadsPlugins ? visuals.skill.pluginDir : null } : null
+}
 
 /**
  * The one place a structured Claude child's binary and environment are
@@ -265,11 +311,9 @@ export function createClaudeStructuredLaunchResolver(
     const cwd = await resolveAgentSessionLaunchDirectory(deps, record)
     const sources = await resolveClaudeChildEnvSources(deps)
     // Asked as soon as the spawn's cwd and PATH are known, so it overlaps what is left to resolve.
-    const thinkingDisplay = deps.thinkingDisplay?.argsFor({
-      command: sources.command,
-      cwd,
-      env: claudeProbeEnv(sources)
-    })
+    const probeLaunch = { command: sources.command, cwd, env: claudeProbeEnv(sources) }
+    const thinkingDisplay = claudeThinkingDisplayArgs(deps.cliFlags, probeLaunch)
+    const visualsLaunch = claudeVisualsLaunch(deps, record.sessionId, probeLaunch)
     // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
     // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
     const resumesTranscript =
@@ -280,21 +324,31 @@ export function createClaudeStructuredLaunchResolver(
           claudeConfigDir: record.accountHome.path
         })))
     const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const { additionalDirectories } = configured
+    const visuals = await visualsLaunch
+    // The folder joins whatever the user's Arguments add; it never replaces their directories.
+    const additionalDirectories = visuals
+      ? [...configured.additionalDirectories, visuals.visuals.folder]
+      : configured.additionalDirectories
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
-    const thinkingDisplayArgs = (await thinkingDisplay) ?? {}
+    const thinkingDisplayArgs = await thinkingDisplay
     // Last: it rechecks the account switch, which may have begun during any await above.
     const { command, env } = await resolveClaudeStructuredInvocation(
       deps,
       (base) =>
         // Every structured session speaks orchestration as itself: its injected id and the Orca CLI.
-        structuredSessionChildIdentityEnv(record.sessionId, {
-          ...base,
-          // The turn translator relies on Claude's authoritative idle frame when no result arrives.
-          [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
-        }),
+        structuredSessionChildIdentityEnv(
+          record.sessionId,
+          withNativeChatVisualsEnv(
+            {
+              ...base,
+              // The turn translator relies on Claude's authoritative idle frame when no result arrives.
+              [CLAUDE_SESSION_STATE_EVENTS_ENV]: '1'
+            },
+            visuals?.visuals ?? null
+          )
+        ),
       sources
     )
     return {
@@ -303,6 +357,7 @@ export function createClaudeStructuredLaunchResolver(
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
         ...(additionalDirectories.length ? { additionalDirectories } : {}),
+        ...(visuals?.pluginDir ? { plugins: [{ type: 'local', path: visuals.pluginDir }] } : {}),
         extraArgs: {
           ...configured.extraArgs,
           ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,

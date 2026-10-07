@@ -292,3 +292,8 @@ export async function loadAgentSessionStore(
     recoveredFromBackup: false
   }
 }
+
+/** Every session id the state holds a row for, readable or not. */
+export function heldAgentSessionIds(state: AgentSessionStoreState): string[] {
+  return [...state.records.keys(), ...state.unreadableRecords.keys()]
+}

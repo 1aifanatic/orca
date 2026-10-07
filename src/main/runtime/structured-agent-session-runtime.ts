@@ -62,7 +62,11 @@ import {
   modelCatalogHostDeps,
   type RuntimeAgentAccountHomeResolver
 } from './structured-agent-model-catalog-wiring'
-import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import type { ClaudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import {
+  scheduleNativeChatVisualsSweep,
+  type NativeChatVisualsSweepDeps
+} from '../native-chat/native-chat-visuals-sweep'
 
 /** Whether this profile holds a structured chat: a record or tab in the journal database, or the
  *  records file a profile from before it carries while the database still owes its copy. */
@@ -97,8 +101,13 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
-  /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
-  claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
+  /** Which version-gated flags a Claude CLI takes; absent never passes one. */
+  claudeCliFlags?: ClaudeCliFlagSupport
+  /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat
+   *  is gone. Wired by the real hosts only, so a test runtime never loads the bundled skill. */
+  nativeChatVisuals?: {
+    workspaceVerdict: NonNullable<NativeChatVisualsSweepDeps['workspaceVerdict']>
+  }
   /** Provider transports are overridden only to drive the runtime against scripted children. */
   openCodexConnection?: CodexStructuredSessionAdapterDeps['openConnection']
   openClaudeConnection?: ClaudeStructuredSessionAdapterDeps['openConnection']
@@ -323,10 +332,20 @@ async function installOnJournal(
     })
   }
   setStructuredAgentSessionHost(host)
+  const stopVisualsSweep = deps.nativeChatVisuals
+    ? scheduleNativeChatVisualsSweep({
+        stateDirectory: deps.stateDirectory,
+        listHeldSessionIds: () => (store.readOnly ? null : store.listHeldSessionIds()),
+        locationOf: (sessionId) => store.getRecord(sessionId)?.location ?? null,
+        workspaceVerdict: deps.nativeChatVisuals.workspaceVerdict,
+        logger: deps.logger
+      })
+    : undefined
   return {
     host,
     adapter,
     journalDatabase,
-    waitForRecovery: lifecycle.drain
+    waitForRecovery: lifecycle.drain,
+    ...(stopVisualsSweep ? { stopBackgroundWork: stopVisualsSweep } : {})
   }
 }

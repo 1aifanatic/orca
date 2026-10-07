@@ -39,7 +39,8 @@ import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-struc
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import { resolveStructuredAgentCommand } from '../native-chat/structured-agent-command-resolution'
 import { structuredAgentConfiguredArgs } from '../native-chat/structured-agent-configured-args'
-import { claudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import { claudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import { createNativeChatVisualsWorkspaceVerdict } from './native-chat-visuals-workspace-verdict'
 
 export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVisibleReadProbe {
   async getWorktreePs(
@@ -205,7 +206,10 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       resolveClaudeLaunchEnv: () =>
         resolveTuiAgentLaunchEnv('claude', this.requireStore().getSettings().agentDefaultEnv),
       // Wired only here, so a test runtime never runs a real `claude --version`.
-      claudeThinkingDisplay: claudeThinkingDisplaySupport,
+      claudeCliFlags: claudeCliFlagSupport,
+      nativeChatVisuals: {
+        workspaceVerdict: createNativeChatVisualsWorkspaceVerdict(() => this.store ?? null)
+      },
       resolveShellEnvironmentPolicy: () =>
         nativeChatShellEnvironmentPolicy(this.requireStore().getSettings()),
       resolveClaudeAuthPolicy: () =>

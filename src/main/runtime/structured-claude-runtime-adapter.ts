@@ -19,15 +19,18 @@ import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-str
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { ClaudeAtRestCommandCatalog } from '../claude/claude-at-rest-commands'
 import { openClaudeStreamJsonConnection } from '../claude/claude-stream-json-connection'
-import type { ClaudeThinkingDisplaySupport } from '../claude/claude-thinking-display-support'
+import type { ClaudeCliFlagSupport } from '../claude/claude-cli-flag-support'
+import type { PrepareNativeChatVisuals } from '../native-chat/native-chat-visuals-delivery'
 
 export type StructuredClaudeRuntimeAdapterDeps = {
   store: AgentSessionRecordStore
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveClaudeLaunchArgs: () => Promise<string[]> | string[]
   resolveClaudeCommand?: () => string
-  /** Whether a Claude CLI takes the thinking-display flag; absent never passes it. */
-  claudeThinkingDisplay?: ClaudeThinkingDisplaySupport
+  /** Which version-gated flags a Claude CLI takes; absent never passes one. */
+  claudeCliFlags?: ClaudeCliFlagSupport
+  /** Each chat's visuals folder and skill; absent leaves chats without visuals. */
+  prepareVisuals?: PrepareNativeChatVisuals
   resolveClaudeLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** The env a Claude child inherits before auth stripping; absent inherits Orca's own. */
   resolveClaudeInheritedEnv?: () => Promise<Record<string, string>>
@@ -102,7 +105,8 @@ export function createStructuredClaudeRuntimeAdapter(
       ...(deps.readClaudeManagedAccountGate
         ? { readManagedAccountGate: deps.readClaudeManagedAccountGate }
         : {}),
-      ...(deps.claudeThinkingDisplay ? { thinkingDisplay: deps.claudeThinkingDisplay } : {})
+      ...(deps.claudeCliFlags ? { cliFlags: deps.claudeCliFlags } : {}),
+      ...(deps.prepareVisuals ? { prepareVisuals: deps.prepareVisuals } : {})
     }),
     persistHandle: async ({ sessionId, providerSessionId, leafUuid, fence }) => {
       const currentFence = store.getRecord(sessionId)?.lease.runtimeFence ?? fence
@@ -148,12 +152,12 @@ export function createStructuredClaudeRuntimeAdapter(
   })
 }
 
-/** The child's connection, watched for a CLI refusing the thinking-display flag, so the start that
+/** The child's connection, watched for a CLI refusing a version-gated flag, so the start that
  *  failed on it is the last one to pass it. */
 export function openClaudeConnectionOf(
-  deps: Pick<StructuredClaudeRuntimeAdapterDeps, 'openClaudeConnection' | 'claudeThinkingDisplay'>
+  deps: Pick<StructuredClaudeRuntimeAdapterDeps, 'openClaudeConnection' | 'claudeCliFlags'>
 ): Pick<ClaudeStructuredSessionAdapterDeps, 'openConnection'> {
-  const support = deps.claudeThinkingDisplay
+  const support = deps.claudeCliFlags
   if (!support) {
     return deps.openClaudeConnection ? { openConnection: deps.openClaudeConnection } : {}
   }
