@@ -82,6 +82,7 @@ describe('Claude published session close lifecycle', () => {
     const { attempt } = acquisitions.start('session-1', new ClaudePromptRegistry())
     attempt.connection = await claude.openConnection({
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo'
     })

@@ -16,7 +16,7 @@ const PROBLEM_COPY = {
   unclosedQuote: 'argumentsUnclosedQuote'
 } as const satisfies Record<AgentSessionArgumentProblem['problem'], AgentSessionFailureCopyId>
 
-/** Codex options a chat refuses that have an equivalent, or no need, in a chat. */
+/** Options a chat refuses that have an equivalent, or no need, in a chat. */
 const CODEX_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
   ['--profile', 'argumentsProfileHint'],
   ['-p', 'argumentsProfileHint'],
@@ -29,6 +29,17 @@ const CODEX_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
   ['-i', 'argumentsImageHint'],
   ['--image', 'argumentsImageHint']
 ])
+const CLAUDE_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
+  ['--worktree', 'argumentsWorkspaceHint'],
+  ['-w', 'argumentsWorkspaceHint']
+])
+const OPTION_HINTS: Record<
+  AgentSessionArgumentProblem['agent'],
+  ReadonlyMap<string, AgentSessionFailureCopyId>
+> = {
+  Codex: CODEX_OPTION_HINTS,
+  Claude: CLAUDE_OPTION_HINTS
+}
 
 function problemCopy({ option, problem }: AgentSessionArgumentProblem): AgentSessionFailureCopyId {
   if (problem === 'unsupportedOption' && option === '--?') {
@@ -42,10 +53,7 @@ export function agentSessionArgumentProblemSentences(
   say: AgentSessionFailureSay
 ): string[] {
   const { agent, option, problem } = argumentProblem
-  const hint =
-    agent === 'Codex' && problem === 'unsupportedOption'
-      ? CODEX_OPTION_HINTS.get(option)
-      : undefined
+  const hint = problem === 'unsupportedOption' ? OPTION_HINTS[agent].get(option) : undefined
   return [
     say(problemCopy(argumentProblem), { agent, option }),
     say(

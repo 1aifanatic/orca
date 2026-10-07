@@ -72,7 +72,7 @@ describe('Claude stream-json close ordering', () => {
     const seen: string[] = []
     let connection: Awaited<ReturnType<typeof openClaudeStreamJsonConnection>>
     connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       {
         onMessage: (message) => {
           seen.push(String(message.type))
@@ -121,7 +121,7 @@ describe('Claude stream-json close ordering', () => {
     }) as unknown as typeof query
     const events: string[] = []
     const connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       {
         onMessage: (message) => events.push(`message:${String(message.type)}`),
         onExit: () => events.push('exit')
@@ -167,7 +167,7 @@ describe('Claude stream-json close ordering', () => {
     }) as unknown as typeof query
     const exits: string[] = []
     const connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       { onExit: (error, exit) => exits.push(`${exit?.expected}: ${error.message}`) },
       () => child,
       queryImpl
@@ -206,7 +206,7 @@ describe('Claude stream-json close ordering', () => {
       }
     }) as unknown as typeof query
     const connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       {},
       () => child,
       queryImpl
@@ -240,7 +240,7 @@ describe('Claude stream-json close ordering', () => {
       }
     }) as unknown as typeof query
     const connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       {},
       () => child,
       queryImpl
@@ -274,7 +274,7 @@ describe('Claude stream-json close ordering', () => {
       }
     }) as unknown as typeof query
     const connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       {},
       () => child,
       queryImpl
@@ -321,7 +321,7 @@ describe('Claude stream-json close ordering', () => {
     }) as unknown as typeof query
     const exits: (boolean | undefined)[] = []
     const connection = await openClaudeStreamJsonConnection(
-      { pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: 'claude', options: {}, cwd: '/work/repo' },
       { onExit: (_error, exit) => exits.push(exit?.expected) },
       () => child,
       queryImpl
@@ -340,6 +340,7 @@ describe('Claude stream-json close ordering', () => {
     const child = fakeChild()
     const launch: ClaudeStreamJsonLaunch = {
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo'
     }
@@ -384,6 +385,7 @@ describe('Claude stream-json close ordering', () => {
     const child = fakeChild()
     const launch: ClaudeStreamJsonLaunch = {
       pathToClaudeCodeExecutable: 'claude',
+      configuredArgs: [],
       options: {},
       cwd: '/work/repo'
     }

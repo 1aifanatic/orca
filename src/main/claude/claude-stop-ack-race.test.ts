@@ -98,6 +98,7 @@ async function stoppedAsItCompleted(ahead: number) {
   const connection = await openClaudeStreamJsonConnection(
     {
       pathToClaudeCodeExecutable: FAKE_CLI,
+      configuredArgs: [],
       options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, sessionId: SESSION_ID },
       cwd: dir,
       env: {

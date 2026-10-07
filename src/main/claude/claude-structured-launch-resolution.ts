@@ -35,7 +35,10 @@ import {
   type ClaudeChildEnvSources,
   type ClaudeEnvDeps
 } from './claude-structured-child-env'
-import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
+import {
+  claudeStructuredLaunchArgs,
+  type ClaudeConfiguredArg
+} from './claude-structured-launch-args'
 import {
   claudeLaunchResumesTranscript,
   resolveClaudeStructuredLaunchHome
@@ -55,7 +58,6 @@ export type ClaudeStructuredSdkOptions = Pick<
   | 'settingSources'
   | 'supportedDialogKinds'
   | 'extraArgs'
-  | 'additionalDirectories'
   | 'model'
   | 'effort'
   | 'permissionMode'
@@ -98,6 +100,8 @@ export type ClaudeStructuredLaunch = {
   /** Always Orca's resolved user CLI: the SDK's bundled binaries are excluded from the install. */
   pathToClaudeCodeExecutable: string
   options: ClaudeStructuredSdkOptions
+  /** The saved Arguments the child gets after the SDK's own flags, as typed. Absent: none. */
+  configuredArgs?: readonly ClaudeConfiguredArg[]
   cwd: string
   env?: Record<string, string>
   claudeConfigDir: string
@@ -264,8 +268,7 @@ export function createClaudeStructuredLaunchResolver(
       cwd,
       env: claudeProbeEnv(sources)
     })
-    const configured = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const { additionalDirectories } = configured
+    const configuredArgs = claudeStructuredLaunchArgs(await deps.resolveLaunchArgs())
     const permission = claudeStructuredPermissionOptions(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
@@ -303,9 +306,7 @@ export function createClaudeStructuredLaunchResolver(
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         ...permission,
-        ...(additionalDirectories.length ? { additionalDirectories } : {}),
         extraArgs: {
-          ...configured.extraArgs,
           ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs,
           ...permission.extraArgs,
           ...thinkingDisplayArgs
@@ -313,6 +314,7 @@ export function createClaudeStructuredLaunchResolver(
         // Claude owns where a resumed conversation continues; the stored leaf is Orca's bookkeeping.
         ...(resumesTranscript ? { resume: providerSessionId } : { sessionId: providerSessionId })
       },
+      configuredArgs,
       cwd,
       env,
       claudeConfigDir: launchHome,

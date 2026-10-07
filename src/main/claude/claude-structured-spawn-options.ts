@@ -10,6 +10,7 @@ import type {
 } from './claude-structured-launch-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { restoredClaudeStructuredSessionOptions } from './claude-structured-options'
+import type { ClaudeConfiguredArg } from './claude-structured-launch-args'
 
 const EFFORT_LEVELS: ReadonlySet<string> = new Set<EffortLevel>([
   'low',
@@ -45,17 +46,13 @@ function claudeStructuredOptionsWithPermissionMode(
   return { ...options, permissionMode: mode, extraArgs }
 }
 
-/** The saved value stands in for the agent Arguments' own flag for it: the chat's pick wins, and
- *  the CLI is never handed the flag twice. */
-function withoutConfiguredFlag(
-  options: ClaudeStructuredSdkOptions,
-  flag: string
-): ClaudeStructuredSdkOptions {
-  if (!options.extraArgs || !Object.hasOwn(options.extraArgs, flag)) {
-    return options
-  }
-  const { [flag]: _configured, ...extraArgs } = options.extraArgs
-  return { ...options, extraArgs }
+/** The saved value stands in for the agent Arguments' own option for it: the chat's pick wins,
+ *  and the CLI is never handed the option twice. */
+function withoutConfiguredOption(
+  configuredArgs: readonly ClaudeConfiguredArg[],
+  option: string
+): readonly ClaudeConfiguredArg[] {
+  return configuredArgs.filter((arg) => arg.option !== option)
 }
 
 function isEffortLevel(value: string): value is EffortLevel {
@@ -68,6 +65,7 @@ function isPermissionMode(value: string): value is PermissionMode {
 
 export type ClaudeStructuredSpawnOptions = {
   sdkOptions: ClaudeStructuredSdkOptions
+  configuredArgs: readonly ClaudeConfiguredArg[]
   /** The chat's options as the session holds them: what was launched, and a Fast the start applies. */
   options: Map<string, string>
   /** Saved options left out: the provider's own value wins and is re-persisted. */
@@ -82,24 +80,27 @@ export type ClaudeStructuredSpawnOptions = {
  * the SDK's types, not the installed binary's: one that binary rejects fails its start.
  */
 export function claudeStructuredSpawnOptions(input: {
-  launch: Pick<ClaudeStructuredLaunch, 'options' | 'resumesTranscript'>
+  launch: Pick<ClaudeStructuredLaunch, 'options' | 'configuredArgs' | 'resumesTranscript'>
   saved: Readonly<Record<string, string>> | undefined
 }): ClaudeStructuredSpawnOptions {
   const saved = restoredClaudeStructuredSessionOptions(input.saved)
   const options = new Map<string, string>()
   const skipped: string[] = []
   let sdkOptions: ClaudeStructuredSdkOptions = { ...input.launch.options }
+  let configuredArgs = input.launch.configuredArgs ?? []
   let fastModeAtStart = false
   const model = saved.get('model')
   if (model !== undefined) {
     options.set('model', model)
-    sdkOptions = { ...withoutConfiguredFlag(sdkOptions, 'model'), model }
+    configuredArgs = withoutConfiguredOption(configuredArgs, '--model')
+    sdkOptions = { ...sdkOptions, model }
   }
   const effort = saved.get('effort')
   if (effort !== undefined) {
     if (isEffortLevel(effort)) {
       options.set('effort', effort)
-      sdkOptions = { ...withoutConfiguredFlag(sdkOptions, 'effort'), effort }
+      configuredArgs = withoutConfiguredOption(configuredArgs, '--effort')
+      sdkOptions = { ...sdkOptions, effort }
     } else {
       skipped.push('effort')
     }
@@ -116,7 +117,7 @@ export function claudeStructuredSpawnOptions(input: {
       // start applies the saved Fast once it has read them (`applyClaudeStartFastMode`).
       if (
         (!decoded || input.launch.resumesTranscript) &&
-        !Object.hasOwn(sdkOptions.extraArgs ?? {}, 'settings')
+        !configuredArgs.some((arg) => arg.option === '--settings')
       ) {
         sdkOptions.settings = { fastMode: decoded }
       } else {
@@ -138,7 +139,7 @@ export function claudeStructuredSpawnOptions(input: {
       skipped.push('permissionMode')
     }
   }
-  return { sdkOptions, options, skipped, fastModeAtStart }
+  return { sdkOptions, configuredArgs, options, skipped, fastModeAtStart }
 }
 
 /** The published session takes on what its child was launched with. */

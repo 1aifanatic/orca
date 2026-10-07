@@ -43,6 +43,7 @@ async function startRefusing(stderr: string) {
   const connection = await openConnection!(
     {
       pathToClaudeCodeExecutable: FAKE_CLI,
+      configuredArgs: [],
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         extraArgs: { ...CLAUDE_STRUCTURED_BASE_OPTIONS.extraArgs, ...flag }
@@ -81,7 +82,7 @@ describe('a Claude CLI that refuses the thinking-display flag', () => {
     })
     const onExit = vi.fn()
     await openConnection!(
-      { pathToClaudeCodeExecutable: FAKE_CLI, options: {}, cwd: '/w' },
+      { configuredArgs: [], pathToClaudeCodeExecutable: FAKE_CLI, options: {}, cwd: '/w' },
       { onExit }
     )
     const exited = new Error('closed')

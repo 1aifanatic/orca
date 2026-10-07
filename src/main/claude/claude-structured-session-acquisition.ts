@@ -176,6 +176,7 @@ export async function acquireClaudeSession({
         {
           pathToClaudeCodeExecutable: launch.pathToClaudeCodeExecutable,
           options: launch.options,
+          configuredArgs: launch.configuredArgs ?? [],
           cwd: launch.cwd,
           env: {
             ...launch.env,

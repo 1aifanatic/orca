@@ -84,6 +84,7 @@ async function open(sessionId: string, cwd: string, resume: boolean, frames: Fra
   const connection = await openClaudeStreamJsonConnection(
     {
       pathToClaudeCodeExecutable: CLAUDE_BIN,
+      configuredArgs: [],
       options: {
         ...CLAUDE_STRUCTURED_BASE_OPTIONS,
         model: 'haiku',

@@ -11,7 +11,7 @@ it("applies a resumed conversation's saved Fast off after start beside the Argum
   const adapter = adapterFor(claude, {
     resumesTranscript: true,
     continuesChain: true,
-    options: { extraArgs: { settings: '/repo/claude.json' } }
+    configuredArgs: [{ option: '--settings', tokens: ['--settings', '/repo/claude.json'] }]
   })
 
   await adapter.acquire({
@@ -22,9 +22,9 @@ it("applies a resumed conversation's saved Fast off after start beside the Argum
   })
 
   expect(claude.connections[0].launch.options).not.toHaveProperty('settings')
-  expect(claude.connections[0].launch.options.extraArgs).toEqual({
-    settings: '/repo/claude.json'
-  })
+  expect(claude.connections[0].launch.configuredArgs).toEqual([
+    { option: '--settings', tokens: ['--settings', '/repo/claude.json'] }
+  ])
   await vi.waitFor(() =>
     expect(claude.connections[0].calls.at(-1)).toEqual({
       subtype: 'apply_flag_settings',

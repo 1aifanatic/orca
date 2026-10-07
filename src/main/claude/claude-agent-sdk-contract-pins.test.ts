@@ -113,8 +113,10 @@ function scenarioEnv(scenario: { scenarioPath: string; reportPath: string }) {
   }
 }
 
-function recordingSpawner(spawns: SpawnSeen[]) {
-  return (opts: SdkSpawnOptions): SdkSpawnedProcess => {
+/** Appends `configuredArgs` after the SDK's argv, as Orca's own spawner does. */
+function recordingSpawner(spawns: SpawnSeen[], configuredArgs: readonly string[] = []) {
+  return (sdk: SdkSpawnOptions): SdkSpawnedProcess => {
+    const opts = { ...sdk, args: [...sdk.args, ...configuredArgs] }
     spawns.push({
       command: opts.command,
       args: [...opts.args],
@@ -348,7 +350,10 @@ describe('Claude Agent SDK contract pins', () => {
       cwd: scenario.cwd,
       env: scenarioEnv(scenario),
       canUseTool: (async () => ({ behavior: 'deny', message: 'unused' })) as CanUseTool,
-      spawnClaudeCodeProcess: recordingSpawner(spawns)
+      spawnClaudeCodeProcess: recordingSpawner(
+        spawns,
+        (launch.configuredArgs ?? []).flatMap((arg) => arg.tokens)
+      )
     })
 
     expect(spawns).toHaveLength(1)
@@ -359,10 +364,14 @@ describe('Claude Agent SDK contract pins', () => {
     expect(argv).not.toContain('--allow-dangerously-skip-permissions')
     expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('default')
     expect(argv[argv.indexOf('--model') + 1]).toBe('claude-sonnet-4-5')
-    expect(argv.flatMap((arg, index) => (arg === '--add-dir' ? [argv[index + 1]] : []))).toEqual([
+    // The saved Arguments the chat keeps come last, as typed.
+    expect(spawns[0]!.args.slice(-6)).toEqual([
+      '--model',
+      'claude-sonnet-4-5',
+      '--add-dir',
       '/repo/one',
       '/repo/two',
-      '/repo/three'
+      '--add-dir=/repo/three'
     ])
     expect(argv.filter((arg) => arg === '--model')).toHaveLength(1)
     expect(argv.filter((arg) => arg === '--output-format')).toHaveLength(1)

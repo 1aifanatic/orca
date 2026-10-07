@@ -23,6 +23,7 @@ import {
   createClaudeUserMessageQueue
 } from './claude-agent-sdk-user-message-queue'
 import type { ClaudeStructuredSdkOptions } from './claude-structured-launch-resolution'
+import type { ClaudeConfiguredArg } from './claude-structured-launch-args'
 import { providerStderrForDisplay } from '../provider-process/provider-spawn-failure-report'
 
 export { ClaudeControlRequestError }
@@ -55,6 +56,8 @@ export type ClaudeStreamJsonLaunch = {
   /** Orca's resolved user CLI; the SDK falls back to a bundled binary that is not installed. */
   pathToClaudeCodeExecutable: string
   options: ClaudeStructuredSdkOptions
+  /** Saved Arguments as typed, after the SDK's own flags. */
+  configuredArgs: readonly ClaudeConfiguredArg[]
   cwd: string
   env?: Record<string, string>
 }
@@ -129,7 +132,11 @@ export async function openClaudeStreamJsonConnection(
   queryImpl?: typeof ClaudeAgentSdk.query
 ): Promise<ClaudeStreamJsonConnection> {
   const { query } = await loadClaudeAgentSdk()
-  const spawner = createClaudeCodeProcessSpawn(spawnImpl)
+  const spawner = createClaudeCodeProcessSpawn(
+    spawnImpl,
+    process.platform,
+    launch.configuredArgs.flatMap((arg) => arg.tokens)
+  )
   const inbox = createClaudeUserMessageQueue()
   const session = (queryImpl ?? query)({
     prompt: inbox.messages,

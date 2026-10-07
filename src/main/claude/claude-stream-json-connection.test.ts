@@ -81,6 +81,7 @@ function launchFor(
 ): ClaudeStreamJsonLaunch {
   return {
     pathToClaudeCodeExecutable: FAKE_CLI,
+    configuredArgs: [],
     options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, sessionId: SESSION_ID },
     cwd: scenario.cwd,
     env: { ...scenario.env, ...env }
@@ -218,6 +219,22 @@ describe('Claude stream-json connection', () => {
     expect(launchedArgv(spawned.at(-1))).toContain(FAKE_CLI)
     expect(report.argv).toContain('--replay-user-messages')
     expect(report.argv).toContain(`--session-id=${SESSION_ID}`)
+  })
+
+  it('hands the CLI the saved Arguments after the SDK flags, as typed', async () => {
+    const scenario = scriptScenario([HOLD_OPEN])
+    const configured = ['--mcp-config', 'a.json', 'b.json', '--append-system-prompt', '- be terse']
+    await open({
+      ...launchFor(scenario),
+      configuredArgs: [
+        { option: '--mcp-config', tokens: configured.slice(0, 3) },
+        { option: '--append-system-prompt', tokens: configured.slice(3) }
+      ]
+    })
+
+    const report = await until(() => readReportSafely(scenario), 'the scripted CLI report')
+    expect(report.argv.slice(-configured.length)).toEqual(configured)
+    expect(report.argv).toContain('--replay-user-messages')
   })
 
   it('leaves the default CLI home unpinned so macOS Keychain OAuth keeps working', async () => {

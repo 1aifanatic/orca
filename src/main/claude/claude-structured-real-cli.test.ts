@@ -9,6 +9,7 @@ import type { AgentSessionJournalIdentity } from '../../shared/agent-session-jou
 import { resolveSessionFilePath } from '../native-chat/session-file-resolver'
 import { CLAUDE_STRUCTURED_BASE_OPTIONS } from './claude-structured-launch-resolution'
 import { readClaudeInit } from './claude-structured-init-proof'
+import { claudeStructuredLaunchArgs } from './claude-structured-launch-args'
 import {
   realClaudeAuthenticated,
   realClaudeAuthStatus,
@@ -35,12 +36,14 @@ function realAdapter(
   cwd = process.cwd(),
   onDispatchSettledLate?: ClaudeStructuredSessionAdapterDeps['onDispatchSettledLate'],
   env = realClaudeLaunchHome().env,
-  waitsForStartup = true
+  waitsForStartup = true,
+  configuredArgs: readonly string[] = []
 ): ClaudeStructuredSessionAdapter {
   const adapter = new ClaudeStructuredSessionAdapter({
     resolveLaunch: async () => ({
       pathToClaudeCodeExecutable: command,
       options: { ...CLAUDE_STRUCTURED_BASE_OPTIONS, sessionId: providerSessionId },
+      configuredArgs: claudeStructuredLaunchArgs(configuredArgs),
       cwd,
       env,
       claudeConfigDir,
@@ -399,6 +402,60 @@ describe.skipIf(!realClaudeAvailable)(suiteTitle, () => {
       }
     },
     120_000
+  )
+
+  // Saved Arguments ride the command line after the SDK's flags, and Orca's preset sends no
+  // system prompt of its own in initialize, so the CLI keeps the saved one. One short turn on the
+  // cheapest model reads it back; nothing else in the session exposes the prompt.
+  it.skipIf(!realClaudeAuthenticated)(
+    'applies a saved --append-system-prompt whose value starts with a dash',
+    async () => {
+      const marker = `ORCA-APPEND-${randomUUID().slice(0, 8)}`
+      const providerSessionId = randomUUID()
+      const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), '.claude')
+      const events: ClaudeStructuredSessionEvent[] = []
+      const adapter = realAdapter(
+        providerSessionId,
+        claudeConfigDir,
+        events,
+        process.cwd(),
+        undefined,
+        realClaudeLaunchHome().env,
+        true,
+        ['--model', 'haiku', '--append-system-prompt', `- The code word is ${marker}.`]
+      )
+      const messages = (): Record<string, unknown>[] =>
+        events.flatMap((event) => (event.type === 'message' ? [event.message] : []))
+
+      try {
+        await adapter.acquire({
+          identity: identity(providerSessionId),
+          fence: 1,
+          spawnToken: 'real-cli-append-system-prompt'
+        })
+        await adapter.dispatch({
+          sessionId: 'real-cli-handshake',
+          clientMessageId: 'real-cli-append-system-prompt-1',
+          body: {
+            kind: 'message',
+            role: 'user',
+            blocks: [{ type: 'text', text: 'Reply with only the code word. Do not use any tools.' }]
+          },
+          fence: 1
+        })
+        const deadline = Date.now() + 60_000
+        while (!messages().some((m) => m.type === 'result') && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+
+        const result = messages().find((m) => m.type === 'result')
+        expect(result).toMatchObject({ is_error: false })
+        expect(String(result?.result)).toContain(marker)
+      } finally {
+        await adapter.closeAll()
+      }
+    },
+    90_000
   )
 
   // The window a Stop naming no turn exists for: Orca has written the message, and Claude has not

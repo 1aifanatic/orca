@@ -46,7 +46,9 @@ function definedEnv(env: Record<string, string | undefined>): Record<string, str
  */
 export function createClaudeCodeProcessSpawn(
   spawnImpl: typeof spawnProcess = spawnProcess,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  /** The saved Arguments as typed. Last, where `extraArgs` would go, but with repeats intact. */
+  configuredArgs: readonly string[] = []
 ): ClaudeCodeProcessSpawn {
   let managed: ManagedProviderProcess | null = null
   return {
@@ -55,7 +57,7 @@ export function createClaudeCodeProcessSpawn(
       managed = spawnManagedProviderProcess(
         {
           command: options.command,
-          args: [...options.args],
+          args: [...options.args, ...configuredArgs],
           ...(options.cwd === undefined ? {} : { cwd: options.cwd })
         },
         {

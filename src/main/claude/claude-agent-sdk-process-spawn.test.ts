@@ -72,6 +72,15 @@ describe('claude agent SDK process spawn', () => {
     })
   })
 
+  // `extraArgs` holds one value per option, so saved Arguments go last on the command line as typed.
+  it('puts the saved Arguments after the SDK flags, repeats and dash-leading values intact', () => {
+    const process = fakeSpawn()
+    const configured = ['--plugin-dir', '/a', '--plugin-dir', '/b', '--append-system-prompt', '- x']
+    createClaudeCodeProcessSpawn(process.spawnImpl, 'win32', configured).spawn(sdkOptions())
+
+    expect(process.specs[0]?.args).toEqual(['--output-format', 'stream-json', ...configured])
+  })
+
   it.each(['darwin', 'linux'] as const)(
     'starts Claude under the provider supervisor on %s, which is then the pid the lease records',
     (platform) => {

@@ -321,16 +321,16 @@ describe('claude structured launch resolution', () => {
     )({ identity: IDENTITY })
 
     expect(launch.options.model).toBeUndefined()
-    expect(launch.options.extraArgs).toEqual({
-      model: 'claude-sonnet-4-5',
-      'replay-user-messages': null
-    })
+    expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
+    expect(launch.configuredArgs).toEqual([
+      { option: '--model', tokens: ['--model', 'claude-sonnet-4-5'] }
+    ])
     expect(launch.options.permissionMode).toBeUndefined()
     expect(launch.options.sessionId).toBe(launch.providerSessionId)
   })
 
   it('re-reads saved Arguments after a refusal and on resume instead of using a stale record', async () => {
-    let args = ['--model', 'one', '--model', 'two']
+    let args = ['--worktree']
     const resolve = resolverFor(
       record({ ...RESUMABLE, launchArgs: ['--model', 'stale'] }),
       undefined,
@@ -341,14 +341,11 @@ describe('claude structured launch resolution', () => {
     )
     await expect(resolve({ identity: identityAt('leaf-current') })).rejects.toThrow(/Arguments/)
     args = ['--effort', 'high']
-    expect((await resolve({ identity: identityAt('leaf-current') })).options.extraArgs).toEqual({
-      effort: 'high',
-      'replay-user-messages': null
-    })
+    expect((await resolve({ identity: identityAt('leaf-current') })).configuredArgs).toEqual([
+      { option: '--effort', tokens: ['--effort', 'high'] }
+    ])
     args = []
-    expect((await resolve({ identity: identityAt('leaf-current') })).options.extraArgs).toEqual({
-      'replay-user-messages': null
-    })
+    expect((await resolve({ identity: identityAt('leaf-current') })).configuredArgs).toEqual([])
   })
 
   it('passes configured arguments when resuming a transcript', async () => {
@@ -370,11 +367,16 @@ describe('claude structured launch resolution', () => {
     )({ identity: identityAt('leaf-current') })
 
     expect(launch.options.resume).toBe('provider-current')
-    expect(launch.options.additionalDirectories).toEqual(['/one', '/two', '/three'])
-    expect(launch.options.extraArgs).toEqual({
-      effort: 'high',
-      'replay-user-messages': null
-    })
+    expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
+    expect(launch.configuredArgs?.flatMap((arg) => arg.tokens)).toEqual([
+      '--effort',
+      'high',
+      '--add-dir',
+      '/one',
+      '/two',
+      '--add-dir',
+      '/three'
+    ])
   })
 
   it('keeps the session launch environment pinned after account settings change', async () => {
@@ -668,7 +670,8 @@ describe('readable Claude thinking', () => {
     expect((await launchWith()).options.extraArgs).toEqual({ 'replay-user-messages': null })
   })
 
-  it('keeps saved Arguments beside readable thinking, with the display left to Orca', async () => {
+  // Saved Arguments follow the SDK's flags on the command line, so a saved display is the later one.
+  it('keeps readable thinking as the default a saved display comes after', async () => {
     const launch = await launchWith(
       { argsFor: async () => ({ 'thinking-display': 'summarized' }) },
       undefined,
@@ -676,10 +679,15 @@ describe('readable Claude thinking', () => {
       ['--effort', 'high', '--thinking-display', 'omitted']
     )
     expect(launch.options.extraArgs).toEqual({
-      effort: 'high',
       'replay-user-messages': null,
       'thinking-display': 'summarized'
     })
+    expect(launch.configuredArgs?.flatMap((arg) => arg.tokens)).toEqual([
+      '--effort',
+      'high',
+      '--thinking-display',
+      'omitted'
+    ])
   })
 
   it('still rechecks an account switch that began while the probe ran', async () => {

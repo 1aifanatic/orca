@@ -767,6 +767,14 @@ describe('saved Arguments refusals', () => {
       "Codex couldn't start. Saved Arguments include a prompt. Remove it from Codex's Arguments in Settings → Agents."
     ],
     [
+      { agent: 'Claude', option: '--worktree', problem: 'unsupportedOption' },
+      "Claude couldn't start. Claude chats can't use --worktree from saved Arguments. Remove it from Claude's Arguments in Settings → Agents. A chat already works in its workspace folder."
+    ],
+    [
+      { agent: 'Claude', option: '--bg', problem: 'unsupportedOption' },
+      "Claude couldn't start. Claude chats can't use --bg from saved Arguments. Remove it from Claude's Arguments in Settings → Agents."
+    ],
+    [
       { agent: 'Claude', option: 'quote', problem: 'unclosedQuote' },
       "Claude couldn't start. Saved Arguments have a quote that isn't closed. Fix it in Claude's Arguments in Settings → Agents."
     ]

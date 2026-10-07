@@ -27,7 +27,7 @@ import {
 
 /** The launch with the chat's saved options in its spawn options. */
 export type ClaudeAcquisitionLaunch = ClaudeStructuredLaunch & {
-  savedOptions: Omit<ClaudeStructuredSpawnOptions, 'sdkOptions'>
+  savedOptions: Omit<ClaudeStructuredSpawnOptions, 'sdkOptions' | 'configuredArgs'>
 }
 
 export async function resolveClaudeAcquisitionLaunch(args: {
@@ -100,6 +100,7 @@ export async function resolveClaudeAcquisitionLaunch(args: {
     return {
       ...launch,
       options: spawn.sdkOptions,
+      configuredArgs: spawn.configuredArgs,
       savedOptions: {
         options: spawn.options,
         skipped: spawn.skipped,
