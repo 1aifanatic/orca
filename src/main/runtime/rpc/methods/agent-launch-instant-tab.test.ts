@@ -764,6 +764,7 @@ describe('whose view moves', () => {
     await plainLaunch(runtime, {}, CLI)
 
     expect(runtime.published).toHaveLength(0)
+    expect(runtime.createTerminal).toHaveBeenCalledOnce()
     expect(terminalOptions(runtime)).not.toHaveProperty('surfaceOwner')
   })
 

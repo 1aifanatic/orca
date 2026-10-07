@@ -378,6 +378,67 @@ describe('the worktree factory', () => {
   })
 })
 
+describe('whose window a new workspace moves', () => {
+  const ACTIVATING_CREATE_LAUNCH = {
+    agent: 'claude',
+    target: {
+      kind: 'create-worktree',
+      create: { ...CREATE_LAUNCH.target.create, activate: true, runHooks: true }
+    }
+  }
+  const PAIRED_DESKTOP: Partial<RpcContext> = { ...CAPABLE_CLIENT, clientKind: 'runtime' }
+
+  it.each([
+    ['a phone', 'chat', CAPABLE_CLIENT],
+    ['a phone', 'terminal', CAPABLE_CLIENT],
+    ['a paired desktop', 'chat', PAIRED_DESKTOP],
+    ['a paired desktop', 'terminal', PAIRED_DESKTOP]
+  ] as const)(
+    '%s creates without activating the host, and its setup still runs (%s)',
+    async (_name, mode, context) => {
+      const runtime = runtimeStub(mode === 'terminal' ? { settings: {} } : {})
+      await launch(ACTIVATING_CREATE_LAUNCH, runtime, context)
+
+      // Unactivated, the create provisions setup and default tabs in the background.
+      expect(createArgs(runtime)).toMatchObject({
+        activate: false,
+        runHooks: false,
+        setupDecision: 'run',
+        awaitTerminalProvisioning: true
+      })
+    }
+  )
+
+  it("keeps a paired device's own setup decision when it asked only to activate", async () => {
+    const runtime = runtimeStub()
+    await launch(
+      {
+        agent: 'claude',
+        target: {
+          kind: 'create-worktree',
+          create: { ...CREATE_LAUNCH.target.create, activate: true, setupDecision: 'skip' }
+        }
+      },
+      runtime
+    )
+
+    expect(createArgs(runtime)).toMatchObject({
+      activate: false,
+      runHooks: false,
+      setupDecision: 'skip'
+    })
+  })
+
+  it('still activates a create the CLI asked to activate', async () => {
+    const runtime = runtimeStub({ settings: {} })
+    await launch(ACTIVATING_CREATE_LAUNCH, runtime, {})
+
+    const args = createArgs(runtime)
+    expect(args).toMatchObject({ activate: true, runHooks: true })
+    expect(args.setupDecision).toBeUndefined()
+  })
+})
+
 describe('the structured session factory', () => {
   it('creates the session for the worktree the launch just made, and activates it', async () => {
     const runtime = runtimeStub()
