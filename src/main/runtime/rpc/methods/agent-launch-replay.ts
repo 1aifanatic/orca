@@ -131,7 +131,9 @@ export function readsAgentLaunchTabClosed(
 }
 
 /** A create that kept its workspace but could not start its agent answers so only to a caller
- *  that reads it; the CLI (no declared client) ships with this host. */
+ *  that reads it. A caller with no declared client (the local runtime socket, the SSH CLI bridge)
+ *  ships with this host, as for the unconfirmed prompt; no `orca` command calls `agent.launch`
+ *  today, so in practice only a client advertising the capability reads it. */
 export function readsAgentLaunchWorkspaceKept(
   context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
 ): boolean {

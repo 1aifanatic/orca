@@ -171,15 +171,15 @@ describe('a launch whose terminal fails', () => {
 
   // Every caller and method: agent-launch-workspace-kept.test.ts.
   it('names the kept workspace when no agent was asked for, and answers a retry from the record', async () => {
-    const cli = runtimeStub({ settings: {} })
+    const local = runtimeStub({ settings: {} })
     // No startup terminal came back, so the launch builds its own in the new workspace.
-    cli.createManagedWorktree.mockResolvedValueOnce({
+    local.createManagedWorktree.mockResolvedValueOnce({
       worktree: { id: 'wt-new' },
       startupTerminal: undefined
     })
-    failingCreate(cli, new Error(NO_LAUNCH_COMMAND), false)
-    const response = await replay(cli, CREATE_LAUNCH)
-    expect(cli.createTerminal).toHaveBeenCalledTimes(1)
+    failingCreate(local, new Error(NO_LAUNCH_COMMAND), false)
+    const response = await replay(local, CREATE_LAUNCH)
+    expect(local.createTerminal).toHaveBeenCalledTimes(1)
     expect(response).toMatchObject({
       ok: false,
       error: { code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, data: { worktreeId: 'wt-new' } }
