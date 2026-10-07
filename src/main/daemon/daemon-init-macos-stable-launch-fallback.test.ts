@@ -6,6 +6,7 @@ import { DAEMON_CHILD_STARTUP_TIMEOUT_MS } from './daemon-launched-child'
 
 const {
   stableLaunch,
+  retireMock,
   forkMock,
   checkDaemonHealthMock,
   spawnerInstances,
@@ -14,13 +15,15 @@ const {
   moduleFactories
 } = await vi.hoisted(async () => {
   const stableLaunch: {
-    failure: 'unavailable' | 'fatal'
+    /** `disabled` is the rollback: the stable launcher returns null and never copies. */
+    failure: 'unavailable' | 'fatal' | 'disabled'
     deadlinesMs: number[]
     /** Where the clock stands, relative to the handoff deadline, when the attempt fails. */
     failAtDeadlineOffsetMs: number | null
   } = { failure: 'unavailable', deadlinesMs: [], failAtDeadlineOffsetMs: null }
   return {
     stableLaunch,
+    retireMock: vi.fn(async (_root: string) => {}),
     ...(await (await import('./daemon-init-test-harness')).createDaemonInitMocks())
   }
 })
@@ -52,12 +55,20 @@ vi.mock('./macos-daemon-launchd', async (importOriginal) => {
         const failedAtMs = deadlineMs + stableLaunch.failAtDeadlineOffsetMs
         vi.spyOn(Date, 'now').mockReturnValue(failedAtMs)
       }
+      if (stableLaunch.failure === 'disabled') {
+        return null
+      }
       throw stableLaunch.failure === 'unavailable'
         ? new actual.MacDaemonStableLaunchUnavailableError('Could not prepare the runtime')
         : new Error('Could not start the macOS terminal service')
     }
   }
 })
+
+vi.mock('./macos-daemon-bundle-retirement', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  retireAbandonedMacDaemonBundles: retireMock
+}))
 
 function isDaemonLauncher(value: unknown): value is DaemonLauncher {
   return typeof value === 'function'
@@ -132,6 +143,16 @@ describe('daemon-init: macOS stable-bundle launch fallback', () => {
     stableLaunch.failAtDeadlineOffsetMs = 1
     await expect(launchOnce()).rejects.toThrow('Could not prepare the runtime')
     expect(forkMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps retiring copies when the stable launch is turned off', async () => {
+    stableLaunch.failure = 'disabled'
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    await expect(launchOnce()).resolves.toBeTruthy()
+    expect(forkMock).toHaveBeenCalledOnce()
+    // Copies made while it was on are only ever deleted by this collection.
+    expect(retireMock).toHaveBeenCalledOnce()
+    expect(retireMock.mock.calls[0]?.[0]).toMatch(/daemon-host[\\/]macos$/)
   })
 
   it('never forks beside a stable-bundle job whose fate is unknown', async () => {
