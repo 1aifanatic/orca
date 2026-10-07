@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { agentSessionAccountHome } from '../../shared/agent-session-account-home'
+import { isAgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { supportsSupervisedProviderChildLocation } from '../provider-process/supervised-provider-child-location'
 import type {
   StructuredAgentAdapterContext,
@@ -8,9 +9,12 @@ import type {
   StructuredAgentRuntimeRegistration
 } from '../runtime/structured-agent-runtime-registrations'
 import { PI_RPC_AGENT } from './rpc-agent-definition'
-import { createPiRpcLaunchResolver } from './rpc-launch-resolution'
+import {
+  createPiRpcLaunchResolver,
+  piRpcVersionSupported,
+  resolvePiRpcCommand
+} from './rpc-launch-resolution'
 import { PiRpcSessionAdapter } from './rpc-session-adapter'
-import { probePiRpcVersion, resolvePiRpcCommand } from './rpc-version'
 
 function createPiRpcAdapter(context: StructuredAgentAdapterContext): StructuredAgentRuntimeAdapter {
   const { deps } = context
@@ -20,9 +24,11 @@ function createPiRpcAdapter(context: StructuredAgentAdapterContext): StructuredA
       resolveWorkspacePath: deps.resolveWorkspacePath,
       resolveEnvironment: async () => ({
         ...(await context.environment.resolveBaseEnvironment()),
-        ...(await deps.resolvePiLaunchEnv?.())
+        ...deps.resolveAgentLaunchEnv?.('pi')
       }),
-      ...(deps.resolvePiCommand ? { resolveCommand: deps.resolvePiCommand } : {})
+      ...(deps.resolveAgentCommandSettings
+        ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
+        : {})
     }),
     ...(deps.openPiConnection ? { openConnection: deps.openPiConnection } : {}),
     ...(deps.readProcessStartTime ? { readProcessStartTime: deps.readProcessStartTime } : {}),
@@ -46,8 +52,19 @@ export const PI_RPC_RUNTIME_REGISTRATION: StructuredAgentRuntimeRegistration = {
   definition: PI_RPC_AGENT,
   createAdapter: createPiRpcAdapter,
   supportsLocation: supportsSupervisedProviderChildLocation,
-  supportsLaunch: ({ cwd, env }) =>
-    probePiRpcVersion({ program: resolvePiRpcCommand(env), cwd, env }),
+  supportsLaunch: async ({ cwd, env, commandSettings }) => {
+    let command: string
+    try {
+      command = resolvePiRpcCommand(env, commandSettings)
+    } catch (error) {
+      // An unrunnable Command setting is the launch's refusal to state, not a terminal.
+      if (isAgentSessionPreSpawnError(error)) {
+        return true
+      }
+      throw error
+    }
+    return piRpcVersionSupported({ command, cwd, env })
+  },
   resolveAccountHome: async ({ launchEnv }) =>
     agentSessionAccountHome(
       PI_RPC_AGENT,

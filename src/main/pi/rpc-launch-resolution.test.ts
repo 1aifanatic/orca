@@ -9,13 +9,8 @@ import { closeTestJournalHostDatabase } from '../native-chat/agent-session-journ
 import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
 import { buildPiRpcLaunch } from './rpc-launch'
 import { createPiRpcLaunchResolver, piRpcProviderLink } from './rpc-launch-resolution'
-import { probePiRpcVersion } from './rpc-version'
-import type * as PiRpcVersion from './rpc-version'
 
-vi.mock('./rpc-version', async (importOriginal) => ({
-  ...(await importOriginal<typeof PiRpcVersion>()),
-  probePiRpcVersion: vi.fn()
-}))
+const probeVersion = vi.fn(async (..._input: unknown[]) => true)
 
 const identity: AgentSessionJournalIdentity = {
   sessionId: 'session-pi-resolve',
@@ -26,7 +21,7 @@ const identity: AgentSessionJournalIdentity = {
 }
 let root: string
 beforeEach(async () => {
-  vi.mocked(probePiRpcVersion).mockReset().mockResolvedValue(true)
+  probeVersion.mockReset().mockResolvedValue(true)
   root = await mkdtemp(join(tmpdir(), 'orca-pi-resolver-'))
 })
 afterEach(async () => {
@@ -65,12 +60,15 @@ async function setup() {
     HOME: '/host/home',
     PI_CODING_AGENT_DIR: '/inherited/wrong'
   }))
-  const resolveCommand = vi.fn(() => '/host/bin/pi')
+  const resolveCommand = vi.fn((..._input: unknown[]) => '/host/bin/pi')
+  const settings: { agentCmdOverrides: Record<string, string> } = { agentCmdOverrides: {} }
   const resolver = createPiRpcLaunchResolver({
     store,
     resolveWorkspacePath: async () => workspace,
     resolveEnvironment,
-    resolveCommand
+    resolveCommandSettings: () => settings,
+    resolveCommand,
+    probeVersion
   })
   const prior = (
     file: string,
@@ -85,19 +83,22 @@ async function setup() {
   const withPrior = (link: AgentSessionProviderHandleLink) => {
     vi.spyOn(store, 'getRecord').mockReturnValue({ ...record, providerHandleChain: [link] })
   }
-  return { store, record, workspace, resolver, resolveCommand, prior, withPrior }
+  return { store, record, workspace, resolver, resolveCommand, settings, prior, withPrior }
 }
 
 describe('Pi host launch resolution', () => {
   it('refuses acquisition if the selected binary was replaced by an unsupported version', async () => {
     const h = await setup()
-    vi.mocked(probePiRpcVersion).mockResolvedValue(false)
+    probeVersion.mockResolvedValue(false)
     await expect(h.resolver(identity)).rejects.toThrow('structured_agent_session_unsupported')
-    expect(probePiRpcVersion).toHaveBeenCalledWith({
-      program: '/host/bin/pi',
-      cwd: h.workspace,
-      env: { PATH: '/host/bin', HOME: '/host/home', PI_CODING_AGENT_DIR: '/host/account' }
-    })
+    expect(probeVersion).toHaveBeenCalledWith(
+      {
+        program: '/host/bin/pi',
+        cwd: h.workspace,
+        env: { PATH: '/host/bin', HOME: '/host/home', PI_CODING_AGENT_DIR: '/host/account' }
+      },
+      expect.any(Function)
+    )
   })
 
   it('uses the runtime workspace, binary and account home for a new folder session', async () => {
@@ -110,7 +111,24 @@ describe('Pi host launch resolution', () => {
       previous: null,
       fullAccess: true
     })
-    expect(h.resolveCommand).toHaveBeenCalledWith({ pathEnv: '/host/bin', homePath: '/host/home' })
+    expect(h.resolveCommand).toHaveBeenCalledWith('pi', {
+      pathEnv: '/host/bin',
+      homePath: '/host/home'
+    })
+  })
+
+  it('spawns the binary the Command setting names, and refuses one that is not runnable', async () => {
+    const h = await setup()
+    h.settings.agentCmdOverrides = { pi: `"${process.execPath}"` }
+    await expect(h.resolver(identity)).resolves.toMatchObject({ command: process.execPath })
+    expect(h.resolveCommand).not.toHaveBeenCalled()
+
+    probeVersion.mockClear()
+    h.settings.agentCmdOverrides = { pi: '/missing/pi' }
+    await expect(h.resolver(identity)).rejects.toMatchObject({
+      reason: 'agentCommandNotRunnable'
+    })
+    expect(probeVersion).not.toHaveBeenCalled()
   })
 
   it('resumes the same directory and forks a session from a different directory', async () => {
@@ -163,7 +181,8 @@ describe('Pi host launch resolution', () => {
       store: reopened,
       resolveWorkspacePath: async () => h.workspace,
       resolveEnvironment: async () => ({ PATH: '/host/bin', HOME: '/host/home' }),
-      resolveCommand: () => '/host/bin/pi'
+      resolveCommand: () => '/host/bin/pi',
+      probeVersion
     })(identity)
     expect(launch.sessionFile).toBe(file)
     expect(buildPiRpcLaunch(launch).args).toEqual(['--mode', 'rpc', '--session', file])

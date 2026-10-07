@@ -101,9 +101,7 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   resolveCodexCommand?: (options?: { pathEnv?: string | null; homePath?: string }) => string
   resolveClaudeCommand?: () => string
-  resolvePiCommand?: (options: { pathEnv?: string | null; homePath?: string }) => string
   openPiConnection?: PiRpcSessionDeps['openConnection']
-  resolvePiLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** Which version-gated flags a Claude CLI takes; absent never passes one. */
   claudeCliFlags?: ClaudeCliFlagSupport
   /** Gives each chat a visuals folder and the skill that teaches it, and sweeps folders whose chat

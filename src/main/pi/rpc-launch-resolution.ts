@@ -10,10 +10,15 @@ import {
 import { isLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import type { resolveCliCommand } from '../../shared/node-cli-command-resolution'
+import { isStableCliVersionOnLine, probeAgentCliVersion } from '../agent-cli-version-probe'
+import {
+  resolveStructuredAgentCommand,
+  type StructuredAgentCommandSettings
+} from '../native-chat/structured-agent-command-resolution'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import { isWindowsProcessStartTimeAvailable } from '../windows/windows-process-table'
 import type { PiRpcLaunchOptions } from './rpc-launch'
-import { probePiRpcVersion, resolvePiRpcCommand } from './rpc-version'
 
 export type PiRpcResolvedLaunch = PiRpcLaunchOptions & {
   previous: AgentSessionProviderHandleLink | null
@@ -23,8 +28,39 @@ export type PiRpcLaunchResolverDeps = {
   store: AgentSessionRecordStore
   resolveWorkspacePath: (id: string) => Promise<string>
   resolveEnvironment: () => Promise<NodeJS.ProcessEnv>
-  resolveCommand?: (options: { pathEnv?: string | null; homePath?: string }) => string
+  /** The user's Pi Command setting, re-read per acquisition; none runs the stock binary. */
+  resolveCommandSettings?: () => StructuredAgentCommandSettings
+  resolveCommand?: typeof resolveCliCommand
+  probeVersion?: typeof probeAgentCliVersion
   resolveFullAccess?: () => boolean
+}
+
+/** The RPC line that emits agent_settled after retries and detached compaction; the older 0.x
+ *  package keeps the terminal chat. */
+function supportsPiRpcVersion(version: string): boolean {
+  return isStableCliVersionOnLine(version, { major: 1, floor: '1.0.0' })
+}
+
+/** The binary a Pi launch with `env` spawns; create support resolves through here too. */
+export function resolvePiRpcCommand(
+  env: Readonly<Record<string, string>>,
+  commandSettings: StructuredAgentCommandSettings = {},
+  resolve?: typeof resolveCliCommand
+): string {
+  const homePath = env.HOME ?? env.USERPROFILE
+  return resolveStructuredAgentCommand(
+    'pi',
+    commandSettings,
+    { pathEnv: env.PATH ?? env.Path ?? null, ...(homePath ? { homePath } : {}) },
+    resolve ? { resolve } : {}
+  )
+}
+
+export function piRpcVersionSupported(
+  launch: { command: string; cwd: string; env: Record<string, string> },
+  probe: typeof probeAgentCliVersion = probeAgentCliVersion
+): Promise<boolean> {
+  return probe({ program: launch.command, cwd: launch.cwd, env: launch.env }, supportsPiRpcVersion)
 }
 
 const headerSchema = z.object({ type: z.literal('session'), cwd: z.string().min(1) })
@@ -115,12 +151,9 @@ export function createPiRpcLaunchResolver(
         forkFile = source
       }
     }
-    const pathEnv = env.PATH ?? env.Path ?? null
-    const homePath = env.HOME ?? env.USERPROFILE
-    const command =
-      deps.resolveCommand?.({ pathEnv, ...(homePath ? { homePath } : {}) }) ??
-      resolvePiRpcCommand(env)
-    if (!(await probePiRpcVersion({ program: command, cwd, env }))) {
+    const command = resolvePiRpcCommand(env, deps.resolveCommandSettings?.(), deps.resolveCommand)
+    // Again at every launch: the binary on PATH may have changed since the chat was created.
+    if (!(await piRpcVersionSupported({ command, cwd, env }, deps.probeVersion))) {
       throw agentSessionRefusalError('structured_agent_session_unsupported', {
         reason: 'hostUnsupported'
       })
