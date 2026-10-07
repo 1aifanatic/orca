@@ -1,6 +1,7 @@
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { deleteStructuredAgentLaunchRecord } from './structured-agent-session-launch-persistence'
+import { confirmStructuredLaunchFirstMessagePublication } from './structured-agent-session-launch-publication-confirmation'
 import {
   getPersistedStructuredAgentLaunchRecord,
   getStructuredLaunchStateBySessionId,
@@ -20,6 +21,10 @@ export function markStructuredAgentSessionLaunchPublished(
     if (persisted?.executionHostId !== executionHostId) {
       return false
     }
+    if (persisted.firstMessage) {
+      confirmStructuredLaunchFirstMessagePublication(worktreeId, sessionId)
+      return false
+    }
     deleteStructuredAgentLaunchRecord(sessionId)
     notifyStructuredLaunchListeners()
     return true
@@ -37,6 +42,10 @@ export function markStructuredAgentSessionLaunchPublished(
   // Still in flight: its own settlement publishes once the picks held during launch land.
   if (state.callers.outcome === 'pending') {
     return true
+  }
+  if (state.intent.params.firstMessage) {
+    confirmStructuredLaunchFirstMessagePublication(worktreeId, sessionId)
+    return false
   }
   state.callers.outcome = 'published'
   deleteStructuredAgentLaunchRecord(sessionId)

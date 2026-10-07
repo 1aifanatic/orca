@@ -18,6 +18,7 @@ import * as reveal from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
+import { structuredAgentSessionCreateDelegate } from './structured-agent-session-create'
 import type { StructuredAgentSessionLifetimeContext } from './structured-agent-session-host-lifetime'
 import * as agentStart from './structured-agent-session-agent-start'
 import {
@@ -251,6 +252,8 @@ export class StructuredAgentSessionHost {
   ): Promise<SessionWire.AgentSessionMutationResult<SessionWire.AgentSessionAttachResult>> {
     return attachStructuredAgentSession(this.attachContext(), caller.callerKey, params, options)
   }
+
+  create = structuredAgentSessionCreateDelegate(() => this.attachContext())
 
   /** Test barrier: every write has landed by its call's return, so no production path needs it. */
   flushStreamedEvents = (id: string): Promise<void> => this.runtimeState.flushEventSink(id)
