@@ -23,8 +23,11 @@ export {
   type RuntimeEnvironmentStoreErrorCode
 } from './runtime-environment-store-file'
 
-export function listEnvironments(userDataPath: string): KnownRuntimeEnvironment[] {
-  return readEnvironmentStore(userDataPath).environments
+export function listEnvironments(
+  userDataPath: string,
+  options: { requireStoreFile?: boolean } = {}
+): KnownRuntimeEnvironment[] {
+  return readEnvironmentStore(userDataPath, options).environments
 }
 
 export function addEnvironmentFromPairingCode(

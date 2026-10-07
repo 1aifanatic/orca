@@ -36,9 +36,12 @@ export function getEnvironmentStorePath(userDataPath: string): string {
 }
 
 /** The orca-environments.json content, exactly as shipped builds read and rewrite it. */
-export function readPersistedEnvironmentStore(userDataPath: string): RuntimeEnvironmentStore {
+export function readPersistedEnvironmentStore(
+  userDataPath: string,
+  options: { requireStoreFile?: boolean } = {}
+): RuntimeEnvironmentStore {
   const path = getEnvironmentStorePath(userDataPath)
-  if (!existsSync(path)) {
+  if (!options.requireStoreFile && !existsSync(path)) {
     return { version: 1, environments: [] }
   }
   try {
@@ -65,11 +68,14 @@ export function readPersistedEnvironmentStore(userDataPath: string): RuntimeEnvi
 }
 
 /** Persisted environments with their sidecar state overlaid; stale sidecar entries are ignored. */
-export function readEnvironmentStore(userDataPath: string): {
+export function readEnvironmentStore(
+  userDataPath: string,
+  options: { requireStoreFile?: boolean } = {}
+): {
   version: 1
   environments: KnownRuntimeEnvironment[]
 } {
-  const store = readPersistedEnvironmentStore(userDataPath)
+  const store = readPersistedEnvironmentStore(userDataPath, options)
   let sidecar: ReturnType<typeof readRuntimeEnvironmentSidecar>
   try {
     sidecar = readRuntimeEnvironmentSidecar(userDataPath)

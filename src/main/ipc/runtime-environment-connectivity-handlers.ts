@@ -15,6 +15,7 @@ import type { RuntimeRpcFailure, RuntimeRpcResponse } from '../../shared/runtime
 import type { RuntimeStatus } from '../../shared/runtime-types'
 import type { Store } from '../persistence'
 import { retireRemovedRuntimeEnvironment } from './runtime-environment-removal-cleanup'
+import { readSettingsWithRuntimeEnvironmentPreference } from './runtime-environment-preference'
 import { verifyAndAddRuntimeEnvironmentFromPairingCode } from './runtime-environment-pairing-verification'
 import {
   closeRemoteRuntimeRequestConnection,
@@ -64,9 +65,11 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
   ipcMain.handle('runtimeEnvironments:getStatusSnapshots', () =>
     getRuntimeEnvironmentStatusSnapshots()
   )
-  ipcMain.handle('runtimeEnvironments:list', () =>
-    listEnvironments(getUserDataPath()).map(publicRuntimeEnvironmentWithHostKey)
-  )
+  ipcMain.handle('runtimeEnvironments:list', () => {
+    const environments = listEnvironments(getUserDataPath())
+    readSettingsWithRuntimeEnvironmentPreference(store, getUserDataPath())
+    return environments.map(publicRuntimeEnvironmentWithHostKey)
+  })
   ipcMain.handle(
     'runtimeEnvironments:addFromPairingCode',
     (
