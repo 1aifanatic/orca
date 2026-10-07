@@ -16,7 +16,7 @@ import type { JournalLifecycleMutationInput } from './journal-row-builders'
 
 /** A batch's mutations less any start-failure row whose failure its run's row already states. */
 export function withoutRestatedStartFailureRows(
-  state: Pick<JournalReducerState, 'items' | 'receipts'>,
+  state: Pick<JournalReducerState, 'items' | 'latestAcceptedSequence'>,
   mutations: readonly JournalLifecycleMutationInput[]
 ): readonly JournalLifecycleMutationInput[] {
   return mutations.filter((mutation) => {
@@ -34,7 +34,7 @@ export function withoutRestatedStartFailureRows(
 
 /** Whether the latest start-failure row states this failure, with no turn delivered since. */
 export function journalStartFailureAlreadyStated(
-  state: Pick<JournalReducerState, 'items' | 'receipts'>,
+  state: Pick<JournalReducerState, 'items' | 'latestAcceptedSequence'>,
   failure: AgentSessionFailureFact
 ): boolean {
   let latest: AgentJournalRenderItem | undefined
@@ -55,11 +55,6 @@ export function journalStartFailureAlreadyStated(
   ) {
     return false
   }
-  // A send accepted after the row ends its run: the next failure is news.
-  for (const receipt of state.receipts.values()) {
-    if (receipt.cursor.sequence > latest.sequence) {
-      return false
-    }
-  }
-  return true
+  // Any send accepted after the row, a command too, ends its run: the next failure is news.
+  return state.latestAcceptedSequence < latest.sequence
 }
