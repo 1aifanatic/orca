@@ -359,9 +359,41 @@ describe('worktree agent activation gate', () => {
     expect(resume).not.toHaveBeenCalled()
   })
 
+  // Main keeps an exited pane's binding (R17); a PTY the host no longer lists holds nothing.
+  it('rebinds an unowned PTY to its recorded pane over the binding of an exited process', async () => {
+    const ptyId = `${WORKTREE_ID}@@live-pty`
+    const recorded = { paneKey: `tab-live:${LIVE_LEAF_ID}`, ptyId, tabId: 'tab-live' }
+    const { deps, createTab } = testDeps({
+      sessions: [listed(ptyId)],
+      surfaceOwners: new Map([[ptyId, { unowned: true, recorded }]])
+    })
+    seedExistingSurface(deps.getState(), {
+      tabId: 'tab-live',
+      leafId: LIVE_LEAF_ID,
+      boundPtyId: `${WORKTREE_ID}@@exited-pty`
+    })
+    const bindTerminalLeaf = vi.fn(async () => ({ status: 'bound' as const }))
+    vi.stubGlobal('window', { api: { session: { bindTerminalLeaf } } })
+
+    try {
+      await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(createTab).not.toHaveBeenCalled()
+    expect(deps.getState().ptyIdsByTabId['tab-live']).toEqual([ptyId])
+    expect(bindTerminalLeaf).toHaveBeenCalledExactlyOnceWith({
+      worktreeId: WORKTREE_ID,
+      tabId: 'tab-live',
+      leafId: LIVE_LEAF_ID,
+      ptyId
+    })
+  })
+
   it.each<[string, (store: GateTestStore) => void]>([
     [
-      'the recorded pane now holds another PTY',
+      'the recorded pane now holds another live PTY',
       (store) =>
         seedExistingSurface(store, {
           tabId: 'tab-live',
@@ -386,10 +418,14 @@ describe('worktree agent activation gate', () => {
     ]
   ])('mints a tab for an unowned PTY when %s', async (_case, seed) => {
     const ptyId = `${WORKTREE_ID}@@live-pty`
+    const otherPtyId = `${WORKTREE_ID}@@other-pty`
     const recorded = { paneKey: `tab-live:${LIVE_LEAF_ID}`, ptyId, tabId: 'tab-live' }
     const { deps, createTab } = testDeps({
       sessions: [listed(ptyId)],
-      surfaceOwners: new Map([[ptyId, { unowned: true, recorded }]])
+      surfaceOwners: new Map([
+        [ptyId, { unowned: true, recorded }],
+        [otherPtyId, { unowned: true, recorded: null }]
+      ])
     })
     seed(deps.getState())
     const recordedLayoutBefore = structuredClone(deps.getState().terminalLayoutsByTabId['tab-live'])
