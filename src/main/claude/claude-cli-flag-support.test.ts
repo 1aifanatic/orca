@@ -259,4 +259,17 @@ describe('whether a launch passes a Claude CLI flag', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(calls).not.toHaveBeenCalled()
   })
+
+  it('answers from what is known without starting a probe when asked not to', async () => {
+    const { support, calls } = supportWith(async () => '2.1.280')
+    await expect(support.supports(CLAUDE_THINKING_DISPLAY_FLAG, LAUNCH, 250, false)).resolves.toBe(
+      false
+    )
+    expect(calls).not.toHaveBeenCalled()
+    await support.supports(CLAUDE_PLUGIN_DIR_FLAG, LAUNCH)
+    await expect(support.supports(CLAUDE_THINKING_DISPLAY_FLAG, LAUNCH, 250, false)).resolves.toBe(
+      true
+    )
+    expect(calls).toHaveBeenCalledOnce()
+  })
 })

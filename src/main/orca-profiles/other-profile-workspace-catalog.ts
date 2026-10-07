@@ -9,6 +9,10 @@ import {
 import { getOrcaProfileIndexPath, readProfileIndex } from './profile-index-store'
 import { readProfileStateDomains } from '../persistence/profile-state/profile-state-domain-reader'
 import { assertNoRetainedProfileStateExports } from '../persistence/profile-state/profile-state-recovery-required'
+import {
+  PROFILE_STATE_LEGACY_BACKUP_COUNT,
+  profileStateLegacyBackupPath
+} from '../persistence/profile-state/legacy-json/profile-state-legacy-backup-path'
 
 /**
  * Worktree ids owned by Orca profiles OTHER than the running one.
@@ -101,10 +105,20 @@ function readProfileWorktreeIds(
   } catch {
     return null
   }
-  if (options.neverWrittenIsEmpty && definitivelyAbsent(dataFile)) {
+  if (options.neverWrittenIsEmpty && neverWritten(dataFile)) {
     return { ids: new Set(), repoIds: new Set() }
   }
   return readProfileWorktreeIdsFromJson(dataFile)
+}
+
+/** No data file and none of Orca's own backups of it: a lost primary file is not a fresh profile. */
+function neverWritten(dataFile: string): boolean {
+  for (let index = 0; index < PROFILE_STATE_LEGACY_BACKUP_COUNT; index += 1) {
+    if (!definitivelyAbsent(profileStateLegacyBackupPath(dataFile, index))) {
+      return false
+    }
+  }
+  return definitivelyAbsent(dataFile)
 }
 
 function definitivelyAbsent(path: string): boolean {

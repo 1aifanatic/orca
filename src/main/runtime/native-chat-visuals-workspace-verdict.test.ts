@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,7 @@ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import {
   createNativeChatVisualsWorkspaceVerdicts,
+  readNativeChatVisualsWorkspaceCatalogs,
   type NativeChatVisualsFilesystem,
   type NativeChatVisualsWorkspaceCatalogs
 } from './native-chat-visuals-workspace-verdict'
@@ -166,7 +167,7 @@ describe("git's own record of a linked worktree", () => {
   })
 
   function repoWithWorktreeRecord(recordedWorktree: string | null): string {
-    const repo = mkdtempSync(join(tmpdir(), 'orca-visuals-git-'))
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), 'orca-visuals-git-')))
     scratch.push(repo)
     mkdirSync(join(repo, '.git', 'worktrees', 'feature'), { recursive: true })
     if (recordedWorktree) {
@@ -206,5 +207,65 @@ describe("git's own record of a linked worktree", () => {
       active: { ...catalogs().active, getRepo: () => ({ path: repo }) }
     }))()
     await expect(verdict(at(`repo-1::${worktree}`))).resolves.toBe('unverifiable')
+  })
+
+  it('resolves a relative record against the real path when the project was added through a link', async () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'orca-visuals-real-')))
+    scratch.push(real)
+    const nested = join(real, 'a', 'b', 'c')
+    mkdirSync(join(nested, 'repo', '.git', 'worktrees', 'wt'), { recursive: true })
+    const linkedParent = join(real, 'deep')
+    symlinkSync(nested, linkedParent)
+    const worktree = join(real, 'wts', 'wt')
+    // What git writes: relative from the record folder's real path.
+    writeFileSync(
+      join(nested, 'repo', '.git', 'worktrees', 'wt', 'gitdir'),
+      '../../../../../../../wts/wt/.git\n'
+    )
+    const verdict = createNativeChatVisualsWorkspaceVerdicts(() => ({
+      ...catalogs(),
+      active: { ...catalogs().active, getRepo: () => ({ path: join(linkedParent, 'repo') }) }
+    }))()
+    await expect(verdict(at(`repo-1::${worktree}`))).resolves.toBe('unverifiable')
+  })
+})
+
+describe('reading the catalogs for a sweep run', () => {
+  it('skips the running profile named by its own storage folder', () => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-visuals-profiles-'))
+    try {
+      mkdirSync(join(root, 'profiles', 'running'), { recursive: true })
+      mkdirSync(join(root, 'profiles', 'next'), { recursive: true })
+      const profile = (id: string) => ({
+        id,
+        name: id,
+        kind: 'local',
+        createdAt: 0,
+        updatedAt: 0,
+        lastOpenedAt: 0,
+        avatar: { kind: 'initials', initials: id.slice(0, 2), color: 'neutral' }
+      })
+      // A switch already named the next profile active; this process still runs the old one.
+      writeFileSync(
+        join(root, 'orca-profile-index.json'),
+        JSON.stringify({ activeProfileId: 'next', profiles: [profile('running'), profile('next')] })
+      )
+      for (const id of ['running', 'next']) {
+        writeFileSync(
+          join(root, 'profiles', id, 'orca-data.json'),
+          JSON.stringify({ repos: [{ id: `repo-${id}` }] })
+        )
+      }
+      const read = readNativeChatVisualsWorkspaceCatalogs(
+        {
+          ...catalogs().active,
+          getProfileStorageDirectory: () => join(root, 'profiles', 'running')
+        },
+        root
+      )
+      expect([...read.others.repoIds]).toEqual(['repo-next'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

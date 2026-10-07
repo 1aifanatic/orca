@@ -49,7 +49,13 @@ export type ClaudeCliFlagSupport = {
    * default) from when its probe began; past it the answer is no for this launch only. Every flag
    * shares that one probe.
    */
-  supports: (flag: ClaudeCliFlag, launch: ClaudeCliLaunch, budgetMs?: number) => Promise<boolean>
+  supports: (
+    flag: ClaudeCliFlag,
+    launch: ClaudeCliLaunch,
+    budgetMs?: number,
+    /** False answers from what is known or already being asked, never starting a new probe. */
+    startProbe?: boolean
+  ) => Promise<boolean>
   /** Starts the version probe for a binary nothing is known about yet, without waiting on it, so a
    *  later launch finds the answer. Never throws. */
   prewarm: (launch: ClaudeCliLaunch) => void
@@ -149,7 +155,7 @@ export function createClaudeCliFlagSupport(
   }
 
   return {
-    supports: async (flag, launch, budgetMs = deps.budgetMs) => {
+    supports: async (flag, launch, budgetMs = deps.budgetMs, startProbe = true) => {
       // The launch never waits longer than the budget, finding the binary included.
       const deadline = deps.now() + budgetMs
       const key = await within(deps.keyOf(launch.command, launch.cwd), budgetMs)
@@ -159,7 +165,10 @@ export function createClaudeCliFlagSupport(
       if (versionOf(key) !== undefined) {
         return answer(key, flag)
       }
-      const running = probing.get(key) ?? probe(key, launch)
+      const running = probing.get(key) ?? (startProbe ? probe(key, launch) : undefined)
+      if (!running) {
+        return false
+      }
       // The probe's own budget, too: one already past it is not waited on again.
       await within(running.settled, Math.min(running.startedAt + budgetMs, deadline) - deps.now())
       return answer(key, flag)

@@ -304,4 +304,12 @@ describe('readOtherProfileWorkspaceCatalog', () => {
     expect(lenient.unreadableProfiles).toBe(0)
     expect(lenient.repoIds.size).toBe(0)
   })
+
+  it('never counts a profile with only backups of its data file as empty', () => {
+    const root = userDataWithProfiles('active', [{ id: 'active', state: {} }, { id: 'lost' }])
+    writeFileSync(join(root, 'profiles', 'lost', 'orca-data.json.bak.0'), '{}')
+    expect(
+      readOtherProfileWorkspaceCatalog(root, { neverWrittenIsEmpty: true }).unreadableProfiles
+    ).toBe(1)
+  })
 })
