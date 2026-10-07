@@ -265,7 +265,7 @@ export function FeatureTipDialogs({
   }
 
   if (currentTip.action !== 'enable-voice') {
-    currentTip.action satisfies never
+    currentTip satisfies never
     return null
   }
 
