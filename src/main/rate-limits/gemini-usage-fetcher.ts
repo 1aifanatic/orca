@@ -54,6 +54,7 @@ async function fetchQuota(accessToken: string, projectId: string): Promise<Provi
       signal: controller.signal
     })
     if (!res.ok) {
+      controller.abort()
       return {
         provider: 'gemini',
         session: null,

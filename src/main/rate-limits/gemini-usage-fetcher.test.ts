@@ -75,8 +75,10 @@ describe('fetchGeminiRateLimits', () => {
 
   it('returns quota via auth.json', async () => {
     setupAuthJsonValid()
-    netFetchMock.mockImplementation((url: string) => {
+    const signals: AbortSignal[] = []
+    netFetchMock.mockImplementation((url: string, options: { signal: AbortSignal }) => {
       if (url.includes('retrieveUserQuota')) {
+        signals.push(options.signal)
         return Promise.resolve(makeResponse(quotaResponse))
       }
       if (url.includes('loadCodeAssist')) {
@@ -87,6 +89,35 @@ describe('fetchGeminiRateLimits', () => {
     const result = await fetchGeminiRateLimits(true)
     expect(result.status).toBe('ok')
     expect(result.buckets).toHaveLength(2)
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+  })
+
+  it.each([403, 429, 503])('retires rejected quota requests (%s)', async (status) => {
+    setupAuthJsonValid()
+    const signals: AbortSignal[] = []
+    const response = makeResponse({ error: 'Rejected' }, status)
+    const readBody = vi.spyOn(response, 'json')
+    netFetchMock.mockImplementation((url: string, options: { signal: AbortSignal }) => {
+      if (url.includes('retrieveUserQuota')) {
+        signals.push(options.signal)
+        return Promise.resolve(response)
+      }
+      return Promise.resolve(makeResponse({ cloudaicompanionProject: 'proj-123' }))
+    })
+    const result = await fetchGeminiRateLimits(true)
+    expect(result).toMatchObject({
+      provider: 'gemini',
+      status: 'error',
+      error: `Quota fetch failed (${status})`,
+      session: null,
+      weekly: null,
+      updatedAt: Date.now()
+    })
+    expect(readBody).not.toHaveBeenCalled()
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('deduplicates buckets', async () => {
@@ -193,8 +224,10 @@ describe('fetchGeminiRateLimits', () => {
     setupAuthJsonValid()
     extractCredsMock.mockResolvedValue({ clientId: 'cid', clientSecret: 'csec' })
     let quotaCallCount = 0
-    netFetchMock.mockImplementation((url: string) => {
+    const signals: AbortSignal[] = []
+    netFetchMock.mockImplementation((url: string, options: { signal: AbortSignal }) => {
       if (url.includes('retrieveUserQuota')) {
+        signals.push(options.signal)
         quotaCallCount += 1
         if (quotaCallCount === 1) {
           return Promise.resolve(makeResponse({ error: 'Unauthenticated' }, 401))
@@ -213,5 +246,8 @@ describe('fetchGeminiRateLimits', () => {
     expect(result.status).toBe('ok')
     // The second quota call should have been made with the refreshed token.
     expect(quotaCallCount).toBe(2)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(signals[1]?.aborted).toBe(false)
+    expect(signals[0]).not.toBe(signals[1])
   })
 })
