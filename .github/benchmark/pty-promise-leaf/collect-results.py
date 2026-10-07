@@ -1,0 +1,229 @@
+# Reuses original-map qualification gates; one strict-binding audit is removed only from original identity comparisons.
+import hashlib
+import json
+import re
+import sys
+import os
+from pathlib import Path
+
+artifact_root, payload_dir, output_path = map(Path, sys.argv[1:])
+assert not output_path.exists(), 'Never overwrite consumed evidence'
+
+def validate():
+    shipping_plan_path = payload_dir / 'shipping-launch-plan.json'
+    audit_plan_path = payload_dir / 'audit-launch-plan.json'
+    manifest_path = payload_dir / 'definition-manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    shipping = json.loads(Path(shipping_plan_path).read_text())
+    audit = json.loads(Path(audit_plan_path).read_text())
+    assert shipping['sourceHead'] == audit['sourceHead']
+    assert shipping['sourceHashes'] == audit['sourceHashes']
+    assert shipping['files'] == audit['files'] and len(shipping['files']) == 89
+    assert shipping['expectedRoutes'] == audit['expectedRoutes']
+    assert shipping['shuffleSeeds'] == audit['shuffleSeeds'] == [104729, 130363]
+    assert len(shipping['patchTargets']) == 72 and len(audit['patchTargets']) == 73
+    assert set(shipping['patchTargets']).issubset(audit['patchTargets'])
+    for file, versions in shipping['patchTargets'].items():
+        assert audit['patchTargets'][file] == versions
+    assert set(audit['patchTargets']) - set(shipping['patchTargets']) == {manifest['afterOnlyAuditCase']['file']}
+    plan = shipping
+    sha = lambda value: hashlib.sha256(value).hexdigest()
+    artifacts = {}
+
+
+    def read(path):
+        path = Path(path)
+        value = path.read_bytes()
+        artifacts[str(path)] = sha(value)
+        return json.loads(value)
+
+
+    for plan_path in [shipping_plan_path, audit_plan_path]:
+        current = read(plan_path)
+        assert sha((payload_dir / Path(current['patch']).name).read_bytes()) == current['patchSha256']
+        for target, versions in current['patchTargets'].items():
+            assert current['sourceHashes'][target] == versions['beforeSha256']
+            assert set(versions) == {'beforeSha256', 'afterSha256'}
+    plans_by_hash = {sha(Path(path).read_bytes()): (label, data) for label, path, data in
+                     [('shipping', shipping_plan_path, shipping), ('audit', audit_plan_path, audit)]}
+    assert len(plans_by_hash) == 2
+    keys = ['name', 'pool', 'fsModuleCache', 'effectiveMaxWorkers', 'isolate',
+            'testTimeout', 'hookTimeout', 'setups', 'execArgv']
+    expected_setups = ['config/scripts/vitest-real-agent-home-write-guard.ts',
+                       'config/scripts/vitest-bun-node-builtins.ts',
+                       'config/scripts/happy-dom-offscreen-canvas.ts',
+                       'config/scripts/happy-dom-mutation-observer-retention.ts',
+                       'config/scripts/vitest-host-ports-setup.ts',
+                       'config/scripts/vitest-caller-identity-env-setup.ts']
+    normalize = lambda cases: sorted(cases, key=lambda case: json.dumps(case, sort_keys=True))
+    assert manifest['sourceHead'] == shipping['sourceHead'] == os.environ['WAIT_SOURCE_SHA']
+    assert manifest['shuffleSeeds'] == plan['shuffleSeeds']
+    assert manifest['phaseOrder'] == ['before', 'shipping', 'audit']
+    assert manifest['expectedCiPins'] == {'node': '24.21.0', 'bun': '1.4.2', 'vitest': '5.0.3'}
+    assert manifest['sourceHashes'] == {key: value for key, value in shipping['sourceHashes'].items() if not key.startswith('notes/')}
+    assert manifest['controllerSha256'] == shipping['controllerSha256'] == audit['controllerSha256']
+    assert manifest['reporterSha256'] == shipping['reporterSha256'] == audit['reporterSha256']
+    for key, name in [('shippingLaunch', 'shipping-launch-plan.json'), ('auditLaunch', 'audit-launch-plan.json'),
+                      ('shippingPatch', 'shipping.patch'), ('auditPatch', 'audit.patch'), ('sourceProof', 'source-proposal-proof.json')]:
+        assert sha((payload_dir / name).read_bytes()) == manifest['payloadSha256'][key]
+    read(manifest_path)
+    contexts = sorted(artifact_root.rglob('ci-context.json'))
+    assert len(contexts) == 4
+    entries = []
+    seen = set()
+    input_signatures = []
+    for path in contexts:
+        context = read(path)
+        runtime, seed = context['runtime'], context['seed']
+        assert runtime in ['bun', 'node'] and seed in plan['shuffleSeeds']
+        assert (runtime, seed) not in seen
+        seen.add((runtime, seed))
+        directory = path.parent
+        assert directory.name == 'pty-promise-leaf-' + runtime + '-' + str(seed)
+        assert directory.resolve().is_relative_to(artifact_root.resolve())
+        assert context['sourceSha'] == plan['sourceHead']
+        assert context['definitionSha'] == os.environ['GITHUB_SHA']
+        assert context['runId'] == os.environ['GITHUB_RUN_ID']
+        assert context['runAttempt'] == os.environ['GITHUB_RUN_ATTEMPT']
+        assert context['platform'] == 'linux' and context['arch'] == 'arm64'
+        assert context['nodeVersion'] == '24.21.0' and context['bunVersion'] == '1.4.2'
+        assert context['vitestVersion'] == '5.0.3' and context['bunRevision']
+        assert context['controllerSha256'] == manifest['controllerSha256']
+        assert context['reporterSha256'] == manifest['reporterSha256']
+        assert context['definitionManifestSha256'] == sha(manifest_path.read_bytes())
+        assert context['installedOwnerHashes'] == manifest['installedOwnerHashes']
+        assert context['ciOnly'] is True and context['testsLaunchedByMaterializer'] is False
+        assert context['launchEnvironment'] == {'ORCA_BACKGROUND_LAUNCH': '1', 'ORCA_BALANCE_UNIT_SHARDS': None, 'ORCA_VITEST_RUNTIME': None, 'NODE_COMPILE_CACHE': None, 'NODE_DISABLE_COMPILE_CACHE': None, 'NODE_OPTIONS': None}
+        input_signatures.append({key: context[key] for key in ['nodeExecutable', 'nodeVersion', 'bunVersion', 'bunRevision', 'vitestVersion', 'launchEnvironment']})
+        for name in ['shipping-launch-plan.json', 'audit-launch-plan.json', 'shipping.patch', 'audit.patch', 'source-proposal-proof.json']:
+            assert (directory / name).read_bytes() == (payload_dir / name).read_bytes()
+            artifacts[str(directory / name)] = sha((directory / name).read_bytes())
+        assert context['shippingPlanSha256'] == sha(shipping_plan_path.read_bytes())
+        assert context['auditPlanSha256'] == sha(audit_plan_path.read_bytes())
+        for arm in manifest['phaseOrder']:
+            prefix = directory / 'runs' / (runtime + '-' + str(seed)) / arm
+            logical_prefix = manifest['isolatedDirectory'] + '/runs/' + runtime + '-' + str(seed) + '/' + arm
+            entries.append((runtime, seed, arm, prefix, logical_prefix))
+    assert seen == {(runtime, seed) for runtime in ['bun', 'node'] for seed in plan['shuffleSeeds']}
+    assert all(signature == input_signatures[0] for signature in input_signatures)
+    snapshots = []
+    for expected_runtime, expected_seed, expected_arm, prefix, logical_prefix in entries:
+        source = read(str(prefix) + '-source-proof.json')
+        report = read(str(prefix) + '.json')
+        details = read(str(prefix) + '-details.json')
+        runtime, phase = source['runtime'], source['phase']
+        assert runtime in ['bun', 'node'] and phase in ['before', 'after']
+        plan_sha = source['before']['planSha256']
+        assert plan_sha in plans_by_hash
+        plan_label, current_plan = plans_by_hash[plan_sha]
+        arm = 'before' if phase == 'before' else plan_label
+        assert arm == expected_arm and runtime == expected_runtime
+        assert phase != 'before' or plan_label == 'shipping'
+        seed = int(next(arg.split('=', 1)[1] for arg in source['command']
+                        if arg.startswith('--sequence.seed=')))
+        assert seed == expected_seed
+        expected = dict(current_plan['sourceHashes'])
+        if phase == 'after':
+            expected.update({file: versions['afterSha256']
+                             for file, versions in current_plan['patchTargets'].items()})
+        assert source['before'] == source['after'] and source['sourceUnchanged']
+        assert source['before']['head'] == plan['sourceHead']
+        assert source['before']['sourceHashes'] == expected
+        assert source['before']['patchSha256'] == current_plan['patchSha256']
+        assert source['result'] == 0 and source['normalClose']
+        assert not source['samplingErrors'] and not source['externalObserved']
+        assert not source['postCloseCoordinators']
+        assert source['samples'] and all(row['owned'] for sample in source['samples'] for row in sample)
+        assert source['samples'][0] == [] and source['samples'][-1] == []
+        command = ['pnpm', 'test'] if runtime == 'bun' else [
+            'pnpm', 'exec', 'node', 'node_modules/vitest/vitest.mjs', 'run',
+            '--config=config/vitest.config.ts']
+        command += plan['files'] + ['--maxWorkers=4', '--fsModuleCache=false',
+            '--sequence.shuffle', '--sequence.seed=' + str(seed), '--reporter=json',
+            '--reporter=./notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs',
+            '--outputFile=' + logical_prefix + '.json']
+        assert source['command'] == command, 'Qualification command/settings differ'
+        log_path = Path(str(prefix) + '.log')
+        log = log_path.read_bytes()
+        artifacts[str(log_path)] = sha(log)
+        assert not re.search(rb'Timeout terminating|failed to terminate.*worker|worker.*termination.*timed out|Unhandled Errors', log, re.I)
+        assert report['success'] and not report['numFailedTests'] and not report['numFailedTestSuites']
+        assert details['reason'] == 'passed' and not details['errors']
+        assert details['rootFsModuleCache'] is False and details['rootIsolation'] is True
+        assert details['resolvedRootMaxWorkers'] == 4
+        assert len(report['testResults']) == len(plan['files'])
+        case_map = {}
+        for module in report['testResults']:
+            assert module['status'] == 'passed'
+            name = module['name'].replace('\\', '/')
+            matches = [file for file in plan['files'] if name == file or name.endswith('/' + file)]
+            assert len(matches) == 1 and matches[0] not in case_map
+            case_map[matches[0]] = normalize([{key: case[key] for key in
+                ['fullName', 'title', 'ancestorTitles', 'status']} for case in module['assertionResults']])
+        assert sorted(case_map) == sorted(plan['files'])
+        raw_count = sum(len(cases) for cases in case_map.values())
+        assert raw_count == report['numTotalTests']
+        all_cases = [case for cases in case_map.values() for case in cases]
+        assert all(case['status'] in ['passed', 'pending', 'skipped'] for case in all_cases)
+        assert sum(case['status'] == 'passed' for case in all_cases) == report['numPassedTests'] > 0
+        assert sum(case['status'] in ['pending', 'skipped'] for case in all_cases) == report.get('numPendingTests', 0)
+        assert not report.get('numTodoTests', 0)
+        assert all(case_map.values()), 'Every source file registers original cases'
+        if arm == 'audit':
+            extra = manifest['afterOnlyAuditCase']
+            assert extra == audit['afterOnlyUntimedAuditCase']
+            audit_rows = case_map[extra['file']]
+            matches = [case for case in audit_rows if case['title'] == extra['title'] and case['ancestorTitles'] == extra['ancestorTitles']]
+            assert len(matches) == 1 and matches[0]['status'] == extra['status'] == 'passed'
+            audit_rows.remove(matches[0])
+            assert audit_rows, 'Binding audit does not replace original module cases'
+        observed_count = sum(len(cases) for cases in case_map.values())
+        case_map = dict(sorted(case_map.items()))
+        routes = [{key: module[key] for key in ['file', 'project', 'pool']} for module in details['modules']]
+        assert len(routes) == len(plan['files'])
+        assert sorted(routes, key=lambda row: row['file']) == sorted(plan['expectedRoutes'][runtime], key=lambda row: row['file'])
+        assert all(not module.get('diagnostic', {}).get('errors') for module in details['modules'])
+        config = sorted([{key: project[key] for key in keys} for project in details['projects']], key=lambda row: row['name'])
+        assert [project['name'] for project in config] == (
+            ['bun', 'node-measurement', 'node-runtime'] if runtime == 'bun' else ['node', 'node-measurement'])
+        for project in config:
+            assert project['fsModuleCache'] is False and project['isolate'] is True
+            assert project['effectiveMaxWorkers'] == 4
+            assert project['testTimeout'] == 30000 and project['hookTimeout'] == 60000
+            assert project['setups'] == expected_setups
+            assert project['execArgv'] == ['--no-experimental-webstorage', '--expose-gc']
+        snapshots.append({'phase': phase, 'arm': arm, 'runtime': runtime, 'seed': seed,
+                          'count': observed_count, 'reportedCount': raw_count, 'map': case_map, 'config': config,
+                          'sourceProof': str(prefix) + '-source-proof.json',
+                          'report': str(prefix) + '.json', 'details': str(prefix) + '-details.json'})
+
+    expected_rows = {(arm, runtime, seed) for arm in ['before', 'shipping', 'audit']
+                     for runtime in ['bun', 'node'] for seed in plan['shuffleSeeds']}
+    assert len({(s['arm'], s['runtime'], s['seed']) for s in snapshots}) == len(snapshots)
+    assert {(s['arm'], s['runtime'], s['seed']) for s in snapshots} == expected_rows
+    assert all(s['map'] == snapshots[0]['map'] and s['count'] == snapshots[0]['count'] for s in snapshots)
+    for runtime in ['bun', 'node']:
+        configs = [s['config'] for s in snapshots if s['runtime'] == runtime]
+        assert all(config == configs[0] for config in configs)
+    result = {'qualified': True, 'sourceHead': plan['sourceHead'], 'files': plan['files'],
+              'runtimeDerivedCaseCount': snapshots[0]['count'],
+              'caseIdentityMapByFile': snapshots[0]['map'], 'candidateAddsNoCases': True,
+              'allTwelveOriginalShippingAuditSourceCommandProcessRuntimeConfigCaseStatusMapsEqual': True,
+              'contexts': [str(path) for path in contexts], 'inputSignatures': input_signatures,
+              'snapshots': snapshots, 'artifactHashes': artifacts,
+              'scope': 'Isolated CI correctness only; pins/context verified. No timing gain, desktop launch safety or production behavior claim. Original duplicate-aware case/status maps preserved; exactly one extra strict-binding audit removed.'}
+    return result
+
+try:
+    result = validate()
+except Exception as error:
+    rejection = {'qualified': False, 'errors': [str(error)], 'scope': 'Rejected isolated CI correctness evidence; no performance claim.'}
+    try:
+        with output_path.open('x') as output:
+            output.write(json.dumps(rejection, indent=2) + '\n')
+    except OSError:
+        pass
+    raise
+with output_path.open('x') as output:
+    output.write(json.dumps(result, indent=2) + '\n')
+print(json.dumps({'qualified': True, 'cases': result['runtimeDerivedCaseCount'], 'proof': str(output_path)}))
