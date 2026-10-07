@@ -8,17 +8,18 @@
 // with the same derivation the row itself renders from.
 
 import { isAgentSessionInterruptionPresentation } from '../../../../shared/agent-session-host-status-rows'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalRenderItem,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import {
   isBackgroundTaskBlock,
   isSubagentGroupBlock,
   type NativeChatMessage
 } from '../../../../shared/native-chat-types'
 import type { NativeChatTurnStatus } from '../../../../shared/native-chat-turn-status'
-import {
-  isNativeChatRowInLiveWorkingTurn,
-  nativeChatMessagesWaitingBehindLiveTurn
-} from '../../../../shared/native-chat-turn-membership'
+import { isNativeChatRowInLiveWorkingTurn } from '../../../../shared/native-chat-turn-membership'
+import { nativeChatMessagesWaitingBehindLiveTurn } from '../../../../shared/native-chat-messages-waiting-behind-live-turn'
 import { nativeChatTurnBarRows } from '../../../../shared/native-chat-turn-grouping'
 import {
   nativeChatTurnFold,
@@ -287,12 +288,14 @@ export function nativeChatSlotIndexOf(
 export function splitNativeChatSlotsWaitingBehindLiveTurn(
   slots: readonly NativeChatTranscriptSlot[],
   journalItems: readonly AgentJournalRenderItem[] | undefined,
-  stopping = false
+  stopping = false,
+  journalSubmissions?: readonly AgentJournalSubmission[]
 ): { slots: NativeChatTranscriptSlot[]; waitingSlots: NativeChatTranscriptSlot[] } {
   const waiting = nativeChatMessagesWaitingBehindLiveTurn(
     slots.flatMap((slot) => (slot.kind === 'message' ? [slot.message] : [])),
     journalItems,
-    stopping
+    stopping,
+    journalSubmissions
   )
   const isWaiting = (slot: NativeChatTranscriptSlot): boolean =>
     slot.kind === 'message' &&
