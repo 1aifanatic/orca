@@ -2,7 +2,7 @@ import type * as DegradedRecovery from '../startup/startup-degraded-recovery'
 import { STARTUP_DISCOVERY_READ_TIMEOUT_MS } from '../startup/startup-discovery-read'
 // @vitest-environment happy-dom
 
-import { act } from 'react'
+import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
@@ -65,7 +65,9 @@ async function flush(): Promise<void> {
 /** Startup as App wires it: the gate, then the chain feeding it. */
 function App({ onGate }: { onGate: (gate: OnboardingGate) => void }): null {
   const gate = useOnboardingAndFeatureTips()
-  onGate(gate)
+  useEffect(() => {
+    onGate(gate)
+  }, [gate, onGate])
   useAppStartupHydration(gate.applyStartupOnboardingState, gate.applyStartupTipCheckInputs)
   return null
 }
