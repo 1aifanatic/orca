@@ -1,7 +1,7 @@
 import { useAppStore } from '@/store'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
 import {
-  awaitStructuredRouteHostAgents,
+  awaitStructuredRouteHostAnswer,
   planAgentSessionLaunch,
   type AgentSessionLaunchPlan,
   type AgentSessionLaunchRequest
@@ -13,27 +13,28 @@ import type {
   LaunchAgentInNewTabResult
 } from '@/lib/launch-agent-in-new-tab'
 
-/** How long a new tab waits for its host's agent list before deciding without it; the same bound
- *  a local chat's admission waits. */
-export const HOST_AGENTS_WAIT_MS = 3_000
+/** How long a new tab waits for its host's answer before deciding without it; the same bound a
+ *  local chat's admission waits. */
+export const HOST_ANSWER_WAIT_MS = 3_000
 
 const DELIVERED: StructuredPromptDeliveryResult = { delivered: true, failureNotified: false }
 const NOT_DELIVERED: StructuredPromptDeliveryResult = { delivered: false, failureNotified: false }
 
-type AwaitingHostAgents = { awaited: Promise<void>; replan: () => AgentSessionLaunchPlan }
+type AwaitingHostAnswer = { awaited: Promise<void>; replan: () => AgentSessionLaunchPlan }
 
 /** The new tab's route: the caller's own plan, a plan decided now, or, when the chat route waits
- *  only on a host agent list not learned yet, the wait for it and the plan decided after. */
+ *  only on the host's agent list or this computer's runtime capabilities, the wait for them and
+ *  the plan decided after. */
 export function routeNewTabLaunch(
   store: Parameters<typeof planAgentSessionLaunch>[0],
   args: LaunchAgentInNewTabArgs,
   request: Omit<AgentSessionLaunchRequest, 'requestId'>
-): { plan: AgentSessionLaunchPlan | undefined } | AwaitingHostAgents {
+): { plan: AgentSessionLaunchPlan | undefined } | AwaitingHostAnswer {
   const { requestId } = args
   if (requestId === undefined) {
     return { plan: args.agentSessionLaunchPlan }
   }
-  const awaited = awaitStructuredRouteHostAgents(store, request, HOST_AGENTS_WAIT_MS)
+  const awaited = awaitStructuredRouteHostAnswer(store, request, HOST_ANSWER_WAIT_MS)
   return awaited
     ? {
         awaited,
@@ -45,10 +46,10 @@ export function routeNewTabLaunch(
 /**
  * Opens nothing until the host answered or the wait ran out, then launches on the route decided
  * with what is known: the chat, or the terminal. The first launch after startup is not sent to the
- * terminal by a list that was still loading.
+ * terminal by an answer that was still loading.
  */
-export function launchOnceHostAgentsKnown(
-  route: AwaitingHostAgents,
+export function launchOnceHostAnswered(
+  route: AwaitingHostAnswer,
   args: LaunchAgentInNewTabArgs,
   startupPlan: AgentStartupPlan,
   relaunch: (args: LaunchAgentInNewTabArgs) => LaunchAgentInNewTabResult

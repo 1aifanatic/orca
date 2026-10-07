@@ -160,7 +160,8 @@ vi.mock('@/runtime/local-structured-session-tabs-sync', () => ({
   LOCAL_STRUCTURED_SESSION_OWNER: 'local-structured-session'
 }))
 vi.mock('@/runtime/local-runtime-capabilities', () => ({
-  readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities
+  readLocalRuntimeCapabilitiesOrUnknown: () => hostCapabilities,
+  ensureLocalRuntimeCapabilities: async () => hostCapabilities
 }))
 vi.mock('@/lib/worktree-runtime-owner', () => ({
   getExecutionHostIdForWorktree: () =>
@@ -356,8 +357,12 @@ describe('structured chat adoption guard on the launch path', () => {
       hostCapabilities = capabilities
       const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-      launchAgentInNewTab({ requestId: 'request-5', agent: 'claude', worktreeId: 'wt-1' })
-      launchAgentInNewTab({ requestId: 'request-6', agent: 'codex', worktreeId: 'wt-1' })
+      const launches = [
+        launchAgentInNewTab({ requestId: 'request-5', agent: 'claude', worktreeId: 'wt-1' }),
+        launchAgentInNewTab({ requestId: 'request-6', agent: 'codex', worktreeId: 'wt-1' })
+      ]
+      // With no answer yet, each launch waits (bounded) for the runtime before opening its terminal.
+      await Promise.all(launches.map((launch) => launch?.structuredSettlement))
 
       expect(mockCreateStructuredCodexSessionLaunchIntent).not.toHaveBeenCalled()
       expect(mockCreateTab).toHaveBeenCalledTimes(2)

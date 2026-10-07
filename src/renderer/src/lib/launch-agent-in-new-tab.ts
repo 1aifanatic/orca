@@ -29,7 +29,7 @@ import type { StructuredAgentLaunchSettlement } from '@/lib/structured-agent-lau
 import { workspaceKindForWorktreeId } from '@/lib/agent-launch-route-input'
 import type { AgentSessionLaunchPlan } from '@/lib/agent-session-launch-plan'
 import {
-  launchOnceHostAgentsKnown,
+  launchOnceHostAnswered,
   routeNewTabLaunch
 } from '@/lib/launch-agent-in-new-tab-host-agents'
 import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
@@ -192,7 +192,7 @@ function launchAgentInNewTabInternal(args: LaunchAgentInNewTabArgs): LaunchAgent
     onPromptDelivered
   })
   if ('awaited' in route) {
-    return launchOnceHostAgentsKnown(route, args, startupPlan, launchAgentInNewTabInternal)
+    return launchOnceHostAnswered(route, args, startupPlan, launchAgentInNewTabInternal)
   }
   const { plan } = route
   if (plan?.route === 'structured-native-chat') {

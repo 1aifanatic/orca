@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { setLocalRuntimeCapabilitiesForTests } from '@/runtime/local-runtime-capabilities'
 import { toAppSshPtyId } from '../../../shared/ssh-pty-id'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 
@@ -154,6 +155,8 @@ const COMMAND_CODE_CLICK = {
 describe('launchAgentInNewTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // The local runtime has answered (without structured support), so no launch waits on it.
+    setLocalRuntimeCapabilitiesForTests([])
     mockIsWebRuntimeSessionActive.mockReturnValue(false)
     mockCreateWebRuntimeSessionTerminal.mockResolvedValue({ status: 'created' })
     mockCreateWebRuntimeAgentSessionTerminalWithLaunchDraft.mockResolvedValue({ status: 'created' })
@@ -283,15 +286,13 @@ describe('launchAgentInNewTab', () => {
     }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    const result = launchAgentInNewTab({
+    launchAgentInNewTab({
       requestId: 'request-4',
       agent: 'grok',
       worktreeId: 'wt-1',
       prompt: 'large generated prompt',
       promptDelivery: 'submit-after-ready'
     })
-    // The local runtime has not said which agents it registers, so the tab opens once it answers.
-    await expect(result?.structuredSettlement).resolves.toEqual({ kind: 'terminal' })
 
     expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
       launchAgent: 'grok',

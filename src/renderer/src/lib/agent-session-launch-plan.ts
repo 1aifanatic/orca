@@ -27,6 +27,7 @@ import {
 import type { StructuredAgentLaunchOptions } from '@/lib/structured-agent-session-launch'
 import type { AgentLaunchRequestId } from '@/lib/agent-launch-request-id'
 import { relearnHostStructuredAgents } from '@/runtime/host-structured-agents'
+import { ensureLocalRuntimeCapabilities } from '@/runtime/local-runtime-capabilities'
 
 export type AgentSessionLaunchRequest = AgentLaunchRouteArgs & {
   /** The user action this launch serves, minted where that action is handled. */
@@ -198,38 +199,61 @@ function reportStructuredLaunchDowngrade(
   }
 }
 
-/** When a launch's chat route waits only on its host's agent list, asks that host for it and
- *  resolves once it answered or after `waitMs`, whichever is first; null when the route does not
- *  wait on that list. The caller decides the route again afterwards. */
-export function awaitStructuredRouteHostAgents(
+/** What a launch's chat route is waiting to hear from its host, if anything: the host's agent
+ *  list, or this computer's runtime capabilities while startup is still answering. */
+function structuredRouteAwaits(
+  input: AgentLaunchRoutingInput
+): 'host-agents' | 'local-capabilities' | null {
+  const downgrade = structuredAgentLaunchDowngrade(input, resolveAgentLaunchRoute(input))
+  if (
+    downgrade === 'agent-without-structured-session' &&
+    !input.hostStructuredAgents &&
+    // A host that does not publish its agents has no list to wait for.
+    input.hostCapabilities?.includes(
+      STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
+    ) !== false
+  ) {
+    return 'host-agents'
+  }
+  return downgrade === 'runtime-capability-unknown' &&
+    parseExecutionHostId(input.executionHostId)?.kind === 'local'
+    ? 'local-capabilities'
+    : null
+}
+
+/** When a launch's chat route waits only on its host's answer (the agent list, or this
+ *  computer's runtime capabilities during a slow startup), asks for it and resolves once it came
+ *  or after `waitMs`, whichever is first; null when the route waits on neither. The caller then
+ *  decides the route again. */
+export function awaitStructuredRouteHostAnswer(
   store: AgentLaunchRouteStore,
   request: AgentLaunchRouteArgs,
   waitMs: number
 ): Promise<void> | null {
   const input = buildAgentLaunchRouteInput(store, request)
-  if (
-    input.hostStructuredAgents ||
-    // A host that does not publish its agents has no list to wait for.
-    input.hostCapabilities?.includes(
-      STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
-    ) === false ||
-    structuredAgentLaunchDowngrade(input, resolveAgentLaunchRoute(input)) !==
-      'agent-without-structured-session'
-  ) {
+  const awaits = structuredRouteAwaits(input)
+  if (!awaits) {
     return null
   }
+  const ask = async (): Promise<void> => {
+    const capabilities =
+      awaits === 'local-capabilities'
+        ? await ensureLocalRuntimeCapabilities()
+        : input.hostCapabilities
+    await relearnHostStructuredAgents(
+      input.executionHostId,
+      capabilities,
+      store.runtimeStatusByEnvironmentId
+    )
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
-  const learned = relearnHostStructuredAgents(
-    input.executionHostId,
-    input.hostCapabilities,
-    store.runtimeStatusByEnvironmentId
-  ).catch((error: unknown) => {
-    console.warn('[agent-launch-route] could not ask the host for its agents', error)
+  const answered = ask().catch((error: unknown) => {
+    console.warn('[agent-launch-route] could not ask the host', error)
   })
   const deadline = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, waitMs)
   })
-  return Promise.race([learned, deadline]).finally(() => clearTimeout(timer))
+  return Promise.race([answered, deadline]).finally(() => clearTimeout(timer))
 }
 
 /** The one place a launch route is decided. Delivery mode is fixed here too, so the settle loop
