@@ -1,7 +1,5 @@
 // Database opening and lifecycle fixtures exercise Node SQLite behavior.
 export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
-  'src/main/runtime/orchestration/orchestration-party-location.test.ts',
-  'src/main/runtime/runtime-orchestration-sender-names.test.ts',
   'src/main/ai-vault-search/session-search-file-write.test.ts',
   'src/main/ai-vault-search/session-search-live-transcript.test.ts',
   'src/main/ai-vault/session-scanner-devin-contention.test.ts',
@@ -110,6 +108,7 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/runtime/orchestration/orchestration-legacy-storage-db.test.ts',
   'src/main/runtime/orchestration/orchestration-mutation-question-db.test.ts',
   'src/main/runtime/orchestration/orchestration-orca-session-column-migration.test.ts',
+  'src/main/runtime/orchestration/orchestration-party-location.test.ts',
   'src/main/runtime/orchestration/orchestration-reset-db.test.ts',
   'src/main/runtime/orchestration/orchestration-run-delivery-db.test.ts',
   'src/main/runtime/orchestration/orchestration-run-list-compatibility.test.ts',
@@ -173,6 +172,7 @@ export const SQLITE_DATABASE_RUNTIME_INCLUDE = [
   'src/main/runtime/rpc/orchestration-task-dispatch-invariant.test.ts',
   'src/main/runtime/rpc/terminal-prompt-delivery-receipt.test.ts',
   'src/main/runtime/runtime-rpc-long-poll-transport.test.ts',
+  'src/main/runtime/runtime-orchestration-sender-names.test.ts',
   'src/main/runtime/runtime-rpc-orchestration-db-migration.test.ts',
   'src/main/runtime/runtime-rpc-request-authorization.test.ts',
   'src/main/runtime/runtime-rpc-websocket-long-poll-caps.test.ts',
