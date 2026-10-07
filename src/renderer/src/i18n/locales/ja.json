@@ -17658,7 +17658,7 @@
         "argumentsApprovalValues": "保存された引数の承認ポリシーは untrusted、on-request、never のいずれかである必要があります。",
         "argumentsReviewerValues": "保存された引数の承認レビュアーは user または auto_review である必要があります。",
         "argumentsProfileHint": "プロファイルの設定を使い続けるには、config.toml に記述するか -c で指定してください。",
-        "argumentsProviderHint": "代わりに -c model_provider=… でプロバイダーを選択してください。",
+        "argumentsProviderHint": "代わりに -c model_provider=… でプロバイダーを、-m でローカルモデルを選択してください。",
         "argumentsWorkspaceHint": "チャットはすでにワークスペースフォルダーで動作しています。",
         "argumentsImageHint": "代わりにチャットで画像を添付してください。",
         "removeFromSavedArguments": "[設定] → [Agent] の {{agent}} の引数から削除してください。",

@@ -31,7 +31,8 @@ export const AGENT_SESSION_FAILURE_COPY = {
   argumentsUnclosedQuote: "Saved Arguments have a quote that isn't closed.",
   argumentsProfileHint:
     "To keep the profile's settings, put them in config.toml or pass them with -c.",
-  argumentsProviderHint: 'Choose the provider with -c model_provider=… instead.',
+  argumentsProviderHint:
+    'Choose the provider with -c model_provider=… and a local model with -m instead.',
   argumentsWorkspaceHint: 'A chat already works in its workspace folder.',
   argumentsImageHint: 'Attach the image in the chat instead.',
   removeFromSavedArguments: "Remove it from {{agent}}'s Arguments in Settings → Agents.",

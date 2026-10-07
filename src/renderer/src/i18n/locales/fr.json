@@ -17724,7 +17724,7 @@
         "argumentsApprovalValues": "La politique d'approbation des arguments enregistrés doit être untrusted, on-request ou never.",
         "argumentsReviewerValues": "Le réviseur des approbations des arguments enregistrés doit être user ou auto_review.",
         "argumentsProfileHint": "Pour conserver les réglages du profil, placez-les dans config.toml ou passez-les avec -c.",
-        "argumentsProviderHint": "Choisissez le fournisseur avec -c model_provider=… à la place.",
+        "argumentsProviderHint": "Choisissez le fournisseur avec -c model_provider=… et un modèle local avec -m à la place.",
         "argumentsWorkspaceHint": "Un chat travaille déjà dans le dossier de son espace de travail.",
         "argumentsImageHint": "Joignez plutôt l'image dans le chat.",
         "removeFromSavedArguments": "Retirez-le des arguments de {{agent}} dans Paramètres → Agents.",

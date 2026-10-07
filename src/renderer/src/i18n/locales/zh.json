@@ -17623,7 +17623,7 @@
         "argumentsApprovalValues": "已保存参数中的审批策略必须是 untrusted、on-request 或 never。",
         "argumentsReviewerValues": "已保存参数中的审批审核者必须是 user 或 auto_review。",
         "argumentsProfileHint": "如需保留该配置档的设置，请将其写入 config.toml 或通过 -c 传入。",
-        "argumentsProviderHint": "请改用 -c model_provider=… 选择提供方。",
+        "argumentsProviderHint": "请改用 -c model_provider=… 选择提供方，并用 -m 选择本地模型。",
         "argumentsWorkspaceHint": "聊天已在其工作区文件夹中运行。",
         "argumentsImageHint": "请改为在聊天中附加图片。",
         "removeFromSavedArguments": "请在设置 → 智能体中从 {{agent}} 的参数里删除它。",

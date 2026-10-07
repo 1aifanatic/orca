@@ -113,12 +113,8 @@ const RULES: Record<string, OptionRule> = {
   '--dangerously-bypass-hook-trust': 'refuse'
 }
 
-// Codex's own aliases: `on-failure` reads as `on-request` from 0.143; `guardian_subagent` is the
-// reviewer's old name.
-const VALUE_ALIASES = new Map([
-  ['on-failure', 'on-request'],
-  ['guardian_subagent', 'auto_review']
-])
+// Codex reads `on-failure` as `on-request` from 0.143, when its thread params stopped taking it.
+const VALUE_ALIASES = new Map([['on-failure', 'on-request']])
 
 function oneOf<T extends string>(
   values: readonly T[],

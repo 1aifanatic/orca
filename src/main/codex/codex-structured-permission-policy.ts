@@ -2,10 +2,11 @@ import type { GlobalSettings } from '../../shared/global-settings-types'
 import { resolvedTuiAgentArgsBypassPermissions } from '../../shared/tui-agent-launch-defaults'
 
 // The values app-server's v2 thread params accept (`AskForApproval` / `SandboxMode` /
-// `ApprovalsReviewer`).
+// `ApprovalsReviewer`). The reviewer goes as spelled: Codex before 0.124 takes only
+// `guardian_subagent`, later versions take either name.
 export const CODEX_APPROVAL_POLICIES = ['untrusted', 'on-request', 'never'] as const
 export const CODEX_SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access'] as const
-export const CODEX_APPROVALS_REVIEWERS = ['user', 'auto_review'] as const
+export const CODEX_APPROVALS_REVIEWERS = ['user', 'auto_review', 'guardian_subagent'] as const
 
 export type CodexStructuredPermissionPolicy = {
   approvalPolicy: (typeof CODEX_APPROVAL_POLICIES)[number]

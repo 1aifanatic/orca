@@ -748,7 +748,7 @@ describe('saved Arguments refusals', () => {
     ],
     [
       { agent: 'Codex', option: '--oss', problem: 'unsupportedOption' },
-      "Codex couldn't start. Codex chats can't use --oss from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Choose the provider with -c model_provider=… instead."
+      "Codex couldn't start. Codex chats can't use --oss from saved Arguments. Remove it from Codex's Arguments in Settings → Agents. Choose the provider with -c model_provider=… and a local model with -m instead."
     ],
     [
       { agent: 'Codex', option: '-C', problem: 'unsupportedOption' },

@@ -63,14 +63,22 @@ describe('codexStructuredLaunchArgs', () => {
     })
   })
 
-  it("reads Codex's own aliases as the values they stand for", () => {
-    expect(
-      codexStructuredLaunchArgs(['-c', 'approvals_reviewer=guardian_subagent', '-a', 'on-failure'])
-        .permissions
-    ).toEqual({ approvalsReviewer: 'auto_review', approvalPolicy: 'on-request' })
+  it("reads on-failure as Codex's own on-request alias", () => {
+    expect(codexStructuredLaunchArgs(['-a', 'on-failure']).permissions).toEqual({
+      approvalPolicy: 'on-request'
+    })
     expect(codexStructuredLaunchArgs(['-c', 'approval_policy="on-failure"']).permissions).toEqual({
       approvalPolicy: 'on-request'
     })
+  })
+
+  // Codex before 0.124 takes only `guardian_subagent` on the thread; later versions take either.
+  it('keeps the reviewer as spelled', () => {
+    for (const reviewer of ['user', 'auto_review', 'guardian_subagent'] as const) {
+      expect(
+        codexStructuredLaunchArgs(['-c', `approvals_reviewer="${reviewer}"`]).permissions
+      ).toEqual({ approvalsReviewer: reviewer })
+    }
   })
 
   it('reads the sandbox and approval the Arguments state, flags over config', () => {

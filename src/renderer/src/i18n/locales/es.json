@@ -17623,7 +17623,7 @@
         "argumentsApprovalValues": "La política de aprobación de los argumentos guardados debe ser untrusted, on-request o never.",
         "argumentsReviewerValues": "El revisor de aprobaciones de los argumentos guardados debe ser user o auto_review.",
         "argumentsProfileHint": "Para conservar los ajustes del perfil, póngalos en config.toml o páselos con -c.",
-        "argumentsProviderHint": "Elija el proveedor con -c model_provider=… en su lugar.",
+        "argumentsProviderHint": "Elija el proveedor con -c model_provider=… y un modelo local con -m en su lugar.",
         "argumentsWorkspaceHint": "Un chat ya trabaja en la carpeta de su espacio de trabajo.",
         "argumentsImageHint": "En su lugar, adjunte la imagen en el chat.",
         "removeFromSavedArguments": "Quítelo de los argumentos de {{agent}} en Ajustes → Agentes.",

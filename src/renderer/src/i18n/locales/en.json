@@ -17854,7 +17854,7 @@
         "argumentsApprovalValues": "The approval policy in saved Arguments must be untrusted, on-request or never.",
         "argumentsReviewerValues": "The approvals reviewer in saved Arguments must be user or auto_review.",
         "argumentsProfileHint": "To keep the profile's settings, put them in config.toml or pass them with -c.",
-        "argumentsProviderHint": "Choose the provider with -c model_provider=… instead.",
+        "argumentsProviderHint": "Choose the provider with -c model_provider=… and a local model with -m instead.",
         "argumentsWorkspaceHint": "A chat already works in its workspace folder.",
         "argumentsImageHint": "Attach the image in the chat instead.",
         "removeFromSavedArguments": "Remove it from {{agent}}'s Arguments in Settings → Agents.",
