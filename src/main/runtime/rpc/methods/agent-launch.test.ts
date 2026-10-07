@@ -482,6 +482,8 @@ describe('the terminal factory', () => {
       startupAgent: 'claude',
       // The host derives the tab's first view by the window's rule; chat view is on by default here.
       viewMode: 'chat',
+      // A paired device's launch never moves the desktop window.
+      surfaceOwner: false,
       onPtySpawnDispatched: expect.any(Function)
     })
     expect(createStructuredSession).not.toHaveBeenCalled()
@@ -506,6 +508,7 @@ describe('the terminal factory', () => {
     expect(runtime.createTerminal).toHaveBeenCalledWith('id:wt-7', {
       startupAgent: 'grok',
       viewMode: 'chat',
+      surfaceOwner: false,
       onPtySpawnDispatched: expect.any(Function)
     })
     expect(result.worktreeId).toBe('wt-7')
