@@ -359,37 +359,77 @@ describe('runtime create base without a tracking ref', () => {
   beforeEach(() => {
     mocks.remoteBase.mockResolvedValue(originMain)
     mocks.hasRemoteRef.mockResolvedValue(false)
+    // Only the local branch the remote names exists; `origin/main` itself does not resolve.
+    mocks.hasBase.mockImplementation(async (_repo: string, ref: string) => ref === 'main')
   })
 
-  it('uses the local branch a remote base names, without fetching, and reports the fallback', async () => {
-    mocks.hasBase.mockImplementation(async (_repo: string, ref: string) => ref === 'main')
+  it('fetches the remote base first and creates from it when the fetch works', async () => {
+    mocks.refresh.mockImplementation(async () => {
+      mocks.hasRemoteRef.mockResolvedValue(true)
+      return { ok: true }
+    })
 
     const result = await createWorktree({ baseBranch: 'origin/main' })
 
-    expect(mocks.refresh).not.toHaveBeenCalled()
-    expect(mocks.consume).toHaveBeenCalledWith(expect.objectContaining({ baseBranch: 'main' }))
-    expect(result.addResult.baseFallback).toEqual({ requestedRef: 'origin/main', localRef: 'main' })
+    expect(mocks.refresh).toHaveBeenCalledOnce()
+    expect(mocks.consume).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseBranch: 'origin/main',
+        options: expect.objectContaining({ remoteTrackingBase: originMain })
+      })
+    )
+    expect(result).not.toHaveProperty('baseFallback')
+    expect(result.worktree.baseRef).toBe('refs/remotes/origin/main')
   })
 
-  it('reports the fallback for a named local base too', async () => {
+  it('creates from the local branch and reports it when the fetch fails', async () => {
+    mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
+
+    const result = await createWorktree({ baseBranch: 'origin/main' })
+
+    expect(mocks.consume).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseBranch: 'main',
+        options: expect.not.objectContaining({ remoteTrackingBase: expect.anything() })
+      })
+    )
+    expect(result.baseFallback).toEqual({ requestedRef: 'origin/main', localRef: 'main' })
+    expect(result.addResult).not.toHaveProperty('baseFallback')
+    expect(result.worktree.baseRef).toBe('main')
+  })
+
+  it('decides the base before branch reuse and conflict checks', async () => {
+    mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
+
+    await createWorktree({ baseBranch: 'origin/main', branchNameOverride: 'app' })
+
+    expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.canCheckout.mock.invocationCallOrder[0]
+    )
+    expect(mocks.canCheckout).toHaveBeenCalledWith('/repo', 'app', 'main', {})
+    expect(mocks.branchConflict).toHaveBeenCalledWith('/repo', 'app', 'main', {}, undefined)
+  })
+
+  it("keeps the network error when the fetch fails and there's no local branch", async () => {
+    mocks.hasBase.mockResolvedValue(false)
+    mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
+
+    await expect(createWorktree({ baseBranch: 'origin/main' })).rejects.toThrow(
+      'Could not refresh base ref "origin/main" from "origin". Check your network and try again.'
+    )
+    expect(mocks.branchName).not.toHaveBeenCalled()
+    expect(mocks.consume).not.toHaveBeenCalled()
+  })
+
+  it('uses a local ref of the requested name without fetching or reporting a fallback', async () => {
     mocks.hasBase.mockResolvedValue(true)
 
     const result = await createWorktree({ baseBranch: 'origin/main' })
 
     expect(mocks.refresh).not.toHaveBeenCalled()
-    expect(result.addResult.baseFallback).toEqual({
-      requestedRef: 'origin/main',
-      localRef: 'origin/main'
-    })
-  })
-
-  it('still refreshes when no local base is usable', async () => {
-    mocks.hasBase.mockResolvedValue(false)
-    mocks.hasRemoteRef.mockResolvedValueOnce(false).mockResolvedValue(true)
-
-    const result = await createWorktree({ baseBranch: 'origin/main' })
-
-    expect(mocks.refresh).toHaveBeenCalledOnce()
-    expect(result.addResult.baseFallback).toBeUndefined()
+    expect(mocks.consume).toHaveBeenCalledWith(
+      expect.objectContaining({ baseBranch: 'origin/main' })
+    )
+    expect(result).not.toHaveProperty('baseFallback')
   })
 })

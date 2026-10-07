@@ -18,6 +18,7 @@ import type { HostedReviewExecutionOptions } from '../source-control/hosted-revi
 import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
 import { resolveRuntimeLocalWorktreeCreateCandidate } from './runtime-local-worktree-create-candidate'
 import { createRuntimeLocalGitWorktree } from './runtime-local-git-worktree-create'
+import { resolveRuntimeLocalWorktreeCreateBase } from './runtime-local-worktree-create-base'
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
 import type { PreparationRearmHolder } from '../worktree-create-preparation'
 import {
@@ -94,6 +95,15 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
       'Could not resolve a default base ref for this repo. Pass an explicit --base and try again.'
     )
   }
+  const base = await resolveRuntimeLocalWorktreeCreateBase({
+    repoPath: repo.path,
+    baseBranch,
+    localWorktreeGitOptions: worktreeGitOptions,
+    resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
+    hasRemoteTrackingRef: args.hasRemoteTrackingRef,
+    refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,
+    timing: args.timing
+  })
   const candidate = await args.timing.time('resolve_name', () =>
     resolveRuntimeLocalWorktreeCreateCandidate({
       request,
@@ -103,7 +113,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
       workspaceRoot: computeWorkspaceRoot(repo.path, pathSettings),
       username,
       store,
-      baseBranch,
+      baseBranch: base.baseBranch,
       localWorktreeGitOptions: worktreeGitOptions,
       hostedReviewExecutionContext: args.hostedReviewExecutionContext
     })
@@ -113,15 +123,13 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     repo,
     store,
     settings,
-    baseBranch,
+    base,
     workspaceRoot: computeWorkspaceRoot(repo.path, pathSettings),
     branchName: candidate.branchName,
     worktreePath: candidate.worktreePath,
     effectiveSanitizedName: candidate.effectiveSanitizedName,
     checkoutExistingBranch: candidate.checkoutExistingBranch,
     localWorktreeGitOptions: worktreeGitOptions,
-    resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
-    hasRemoteTrackingRef: args.hasRemoteTrackingRef,
     refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,
     fetchRemote: args.fetchRemote,
     rearm: args.rearm,
@@ -133,11 +141,11 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     store,
     settings,
     created: git.created,
-    remoteTrackingBase: git.remoteTrackingBase,
+    remoteTrackingBase: base.remoteTrackingBase,
     sparseDirectories: git.sparseDirectories,
     configuredPushTarget: git.configuredPushTarget,
     checkoutExistingBranch: candidate.checkoutExistingBranch,
-    baseBranch: git.baseBranch,
+    baseBranch: base.baseBranch,
     branchName: candidate.branchName,
     effectiveRequestedName: candidate.effectiveRequestedName,
     requestedDisplayName: candidate.requestedDisplayName,
@@ -152,7 +160,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     ...materialized,
     worktreePath: candidate.worktreePath,
     created: git.created,
-    // Why on the add's result: the base it fell back to is reported beside its other base-ref outcomes.
-    addResult: { ...git.addResult, ...(git.baseFallback ? { baseFallback: git.baseFallback } : {}) }
+    addResult: git.addResult,
+    ...(base.baseFallback ? { baseFallback: base.baseFallback } : {})
   }
 }
