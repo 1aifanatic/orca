@@ -1,7 +1,6 @@
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { resolvedTuiAgentArgsBypassPermissions } from '../../shared/tui-agent-launch-defaults'
-import type { ClaudeStructuredSdkOptions } from './claude-structured-launch-resolution'
 
 /**
  * The Agent Permissions setting as the SDK's own permission mode.
@@ -24,16 +23,4 @@ export function claudeStructuredPermissionModeForSettings(
   return resolvedTuiAgentArgsBypassPermissions('claude', settings, process.platform)
     ? 'bypassPermissions'
     : 'default'
-}
-
-/**
- * Agent Permissions as query-start options.
- *
- * The owned CLI flag preserves the user-installed binary contract. The SDK's typed bypass option
- * emits a newer allow flag that older Claude binaries reject before a structured session starts.
- */
-export function claudeStructuredPermissionOptions(
-  mode: PermissionMode
-): Pick<ClaudeStructuredSdkOptions, 'extraArgs'> {
-  return mode === 'bypassPermissions' ? { extraArgs: { 'dangerously-skip-permissions': null } } : {}
 }
