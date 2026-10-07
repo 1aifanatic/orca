@@ -91,6 +91,7 @@ function isBoundedAccountString(value: unknown, max: number): value is string {
 }
 
 const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/
+export const MAX_PATH_LENGTH = 4096
 const PROFILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 /** Shape only: whether the variable is the one the record's agent pins is a launch-time question
@@ -106,7 +107,7 @@ export function isAgentSessionAccountHome(value: unknown): value is AgentSession
       typeof value.variable === 'string' &&
       ENVIRONMENT_VARIABLE_NAME.test(value.variable) &&
       'path' in value &&
-      isBoundedAccountString(value.path, 4096)
+      isBoundedAccountString(value.path, MAX_PATH_LENGTH)
     )
   }
   if (
