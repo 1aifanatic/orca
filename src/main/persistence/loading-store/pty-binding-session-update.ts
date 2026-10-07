@@ -6,6 +6,11 @@ import {
   layoutContainsLeafId
 } from '../restoring-sessions/terminal-layout-normalization'
 import { createMinimalPersistedTerminalTab } from '../restoring-sessions/session-owner-fields'
+import { terminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
+import {
+  placedSplitRoot,
+  placedTerminalTab
+} from '../terminal-topology/terminal-pane-placement-apply'
 import { tabRowPtyIdAfterLeafBinding } from './terminal-tab-pty-ownership'
 import type { PersistPtyBindingArgs } from './pty-binding-persistence'
 
@@ -15,6 +20,17 @@ export function applyPtyBinding(
   bindingWorktreeId: string,
   paneKey: string
 ): void {
+  // Read before any write: only a placement that names this tab's current shape is applied.
+  const placement =
+    terminalPanePlacementAgreement(
+      args.placement,
+      session,
+      bindingWorktreeId,
+      args.tabId,
+      args.leafId
+    ) === 'agrees'
+      ? args.placement
+      : undefined
   const reconciledIncarnation =
     args.expectedBinding !== undefined && args.incarnationId !== args.expectedBinding.incarnationId
   let terminalMembershipChanged = false
@@ -64,14 +80,12 @@ export function applyPtyBinding(
     terminalMembershipChanged = true
     hostAdmittedTabCreated = args.hostAdmittedMembership === true
     // Why: pty:spawn can beat the debounced writer; persist a minimal tab so hydration won't prune the binding as orphaned.
-    const nextTabs = [
-      ...(tabs ?? []),
-      createMinimalPersistedTerminalTab({
-        ...args,
-        worktreeId: bindingWorktreeId,
-        existingTabCount: tabs?.length ?? 0
-      })
-    ]
+    const minted = createMinimalPersistedTerminalTab({
+      ...args,
+      worktreeId: bindingWorktreeId,
+      existingTabCount: tabs?.length ?? 0
+    })
+    const nextTabs = [...(tabs ?? []), placedTerminalTab(minted, placement)]
     session.tabsByWorktree = {
       ...session.tabsByWorktree,
       [bindingWorktreeId]: nextTabs
@@ -113,13 +127,17 @@ export function applyPtyBinding(
       layout.expandedLeafId = null
     } else if (!layoutContainsLeafId(layout.root, args.leafId)) {
       terminalMembershipChanged = true
-      // Why: splitPane spawns before its snapshot reaches main; add a minimal leaf so a crash can't strand the pane's binding.
-      layout.root = {
-        type: 'split',
-        direction: 'vertical',
-        first: cloneLayoutNode(layout.root),
-        second: { type: 'leaf', leafId: args.leafId }
-      }
+      // Why: splitPane spawns before its snapshot reaches main; a sender without placement gets a
+      // minimal leaf at the root so a crash can't strand the pane's binding.
+      layout.root =
+        placement?.kind === 'split'
+          ? placedSplitRoot(layout.root, args.leafId, placement)
+          : {
+              type: 'split',
+              direction: 'vertical',
+              first: cloneLayoutNode(layout.root),
+              second: { type: 'leaf', leafId: args.leafId }
+            }
       layout.activeLeafId = args.leafId
       if (layout.expandedLeafId && !layoutContainsLeafId(layout.root, layout.expandedLeafId)) {
         layout.expandedLeafId = null

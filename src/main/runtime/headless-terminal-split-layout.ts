@@ -2,6 +2,8 @@ import type {
   TerminalLayoutSnapshot,
   TerminalPaneLayoutNode
 } from '../../shared/terminal-tab-types'
+import { splitLayoutLeaf } from '../persistence/terminal-topology/terminal-pane-placement-apply'
+
 /**
  * Insert a newly split-off leaf into a terminal tab's persisted layout tree.
  *
@@ -33,31 +35,17 @@ export function buildHeadlessTerminalSplitLayout(
     }
     return { ...node, first, second }
   }
-  // Why: PTY admission durably appends a fallback vertical leaf before this exact-direction commit.
+  // Why: PTY admission durably binds the leaf (placed, or grafted at the root) before this commit.
   const currentRoot = existing?.root ? removeProvisionalLeaf(existing.root) : null
   const existingRoot: TerminalPaneLayoutNode = currentRoot ?? {
     type: 'leaf',
     leafId: args.splitFromLeafId
   }
-  const insertSplit = (node: TerminalPaneLayoutNode): TerminalPaneLayoutNode => {
-    if (node.type === 'leaf') {
-      if (node.leafId !== args.splitFromLeafId) {
-        return node
-      }
-      return {
-        type: 'split',
-        direction: args.direction,
-        first: node,
-        second: { type: 'leaf', leafId: args.leafId }
-      }
-    }
-    return { ...node, first: insertSplit(node.first), second: insertSplit(node.second) }
-  }
   const ptyIdsByLeafId = { ...existing?.ptyIdsByLeafId }
   delete ptyIdsByLeafId[args.leafId]
   return {
     ...existing,
-    root: insertSplit(existingRoot),
+    root: splitLayoutLeaf(existingRoot, args.splitFromLeafId, args.leafId, args.direction),
     activeLeafId: args.leafId,
     expandedLeafId: existing?.expandedLeafId ?? null,
     ptyIdsByLeafId: {
