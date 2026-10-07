@@ -11,9 +11,10 @@ import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire/structured-agent-session-attach'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
-import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
-import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
-import { structuredAgentBaseEnvironment } from './structured-agent-shell-environment'
+import {
+  resolveHostStructuredAgentBaseEnvironment,
+  structuredAgentSupportsLaunch
+} from './structured-agent-launch-support'
 import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
@@ -44,7 +45,9 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     return resolveStructuredAgentSessionCreateSupport({
       agent,
       location,
-      adapterSupportsCreate: await this.structuredAgentSupportsLocation(agent, location),
+      adapterSupportsCreate:
+        (await this.structuredAgentSupportsLocation(agent, location)) &&
+        (await structuredAgentSupportsLaunch(agent, worktreeSelector, this)),
       getSettings: () => this.requireStore().getSettings()
     })
   }
@@ -71,11 +74,8 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
       getClaudeConfigDirectory: (target) => this.accounts.getClaudeConfigDirectory(target),
       prepareCodexLaunchHome: this.prepareCodexStructuredLaunchFn,
       readCodexLaunchHome: this.resolveCodexStructuredLaunchHomeFn,
-      resolveBaseEnvironment: async () =>
-        structuredAgentBaseEnvironment({
-          shellEnv: await resolveLoginShellEnvironment(),
-          policy: nativeChatShellEnvironmentPolicy(this.requireStore().getSettings())
-        }),
+      resolveBaseEnvironment: () =>
+        resolveHostStructuredAgentBaseEnvironment(this.requireStore().getSettings()),
       workspaceTrustSettings: () => this.requireStore().getSettings()
     }
     return async ({ launchEnv, location }) =>

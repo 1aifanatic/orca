@@ -15,6 +15,7 @@ import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-accou
 import { scrubOpenCodeAcpEnvironment } from '../opencode/opencode-acp-environment'
 import { openCodeStoredUserMessagesReader } from '../opencode/opencode-acp-stored-messages'
 import type { AcpStoredUserMessagesReader } from './acp-recovery-history'
+import { isStableCliVersionOnLine } from '../agent-cli-version-probe'
 
 export type AcpLaunchSpec = {
   /** The Orca agent id (a `TuiAgent`), which names the agent's records and its catalog label. */
@@ -38,6 +39,9 @@ export type AcpLaunchSpec = {
   }): string | undefined
   /** The account each chat pins, and how a launch points the agent at it. */
   account: AcpAccountBinding
+  /** The `--version` releases a structured chat runs on, asked before a create and again at every
+   *  launch; any other release keeps the terminal chat. Absent runs whatever is installed. */
+  supportsVersion?(version: string): boolean
   /** Where the agent installs its own binary, searched after PATH. */
   installDirectories(input: { env: Readonly<Record<string, string>>; homePath: string }): string[]
   /** Images go to the agent when it also advertises them; off sends text prompts only. */
@@ -65,9 +69,9 @@ const GROK_LAUNCH_SPEC: AcpLaunchSpec = {
   installDirectories: ({ env }) => (env.GROK_HOME ? [join(env.GROK_HOME, 'bin')] : [])
 }
 
-// OpenCode 1.x serves ACP in-process through `opencode acp`. OpenCode 2 (`opencode2`) is not here:
-// its `acp` runs inside the user's own background service, which a chat's environment and account
-// pin do not reach, so it keeps its terminal-backed chat.
+// OpenCode 1.x serves ACP in-process through `opencode acp`. OpenCode 2 (`opencode2`, and any
+// `opencode` that is 2.x) is not: its `acp` runs inside the user's own background service, which a
+// chat's environment and account pin do not reach, so it keeps its terminal-backed chat.
 const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   agent: 'opencode',
   command: 'opencode',
@@ -81,6 +85,8 @@ const OPENCODE_LAUNCH_SPEC: AcpLaunchSpec = {
   loginCommand: ['opencode', 'auth', 'login'],
   account: openCodeAcpAccountBinding(),
   installDirectories: ({ homePath }) => [join(homePath, '.opencode', 'bin')],
+  // Stable 1.x from 1.18.31, the release the recorded sessions capture.
+  supportsVersion: (version) => isStableCliVersionOnLine(version, { major: 1, floor: '1.18.31' }),
   imagePrompts: true,
   readStoredUserMessages: openCodeStoredUserMessagesReader()
 }

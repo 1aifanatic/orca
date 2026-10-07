@@ -37,7 +37,11 @@ import {
 import { ACP_LAUNCH_SPECS, type AcpLaunchSpec } from '../acp/acp-launch-specs'
 import { acpStructuredAgentDefinition } from '../acp/acp-structured-agent-definitions'
 import { createAcpAgentConnection } from '../acp/acp-agent-connection'
-import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
+import {
+  acpLaunchVersionSupported,
+  createAcpStructuredLaunchResolver,
+  resolveAcpLaunchCommand
+} from '../acp/acp-structured-launch-resolution'
 import { AcpStructuredSessionAdapter } from '../acp/acp-structured-session-adapter'
 
 /** What an agent's adapter is built from: the open store and the runtime around it. */
@@ -86,6 +90,9 @@ export type StructuredAgentRuntimeRegistration = {
   createAdapter: (context: StructuredAgentAdapterContext) => StructuredAgentRuntimeAdapter
   /** Whether this agent's chats can run at `location`; answered without building the host. */
   supportsLocation: (location: AgentSessionExecutionLocation) => boolean
+  /** Whether the agent installed on this host runs a structured chat, asked at create with the
+   *  environment a launch starts from; absent when the location alone decides. */
+  supportsLaunch?: (input: { cwd: string; env: Record<string, string> }) => Promise<boolean>
   /** The account a chat of this agent pins; see `StructuredAgentAccountHomeRequest`. */
   resolveAccountHome: (
     request: StructuredAgentAccountHomeRequest,
@@ -161,6 +168,15 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
   return {
     definition: acpStructuredAgentDefinition(spec),
     supportsLocation: (location) => supportsSupervisedProviderChildLocation(location),
+    ...(spec.supportsVersion
+      ? {
+          supportsLaunch: async ({ cwd, env }) => {
+            const launchEnv = { ...env, ...spec.env }
+            const command = resolveAcpLaunchCommand(spec, launchEnv)
+            return acpLaunchVersionSupported(spec, { command, cwd, env: launchEnv })
+          }
+        }
+      : {}),
     resolveAccountHome: ({ launchEnv }, services) =>
       spec.account.resolve({ launchEnv, baseEnvironment: services.resolveBaseEnvironment }),
     createAdapter: (context) => {
