@@ -7,7 +7,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
-import type { AgentJournalSubmission } from '../../../../shared/agent-session-journal-types'
+import type {
+  AgentJournalItemBody,
+  AgentJournalSubmission
+} from '../../../../shared/agent-session-journal-types'
 import type {
   AgentSessionQueuedMessage,
   AgentSessionQueuedMessageDeleteResult,
@@ -16,6 +19,7 @@ import type {
   AgentSessionSendResult
 } from '../../../../shared/agent-session-wire'
 import { appendNativeChatDraftCache } from './native-chat-draft-cache'
+import { promptHoldingComposerSlot } from './native-chat-composer-slot'
 import { nativeChatComposerDraftWriteSettled } from './native-chat-composer-draft-store'
 import {
   newestSteerableQueuedMessageCard,
@@ -59,21 +63,15 @@ export function useStructuredAgentSessionQueuedMessages(args: {
   queuedMessages: readonly AgentSessionQueuedMessage[] | null
   queuePause: AgentSessionQueuePause | null
   submissions: readonly AgentJournalSubmission[]
-  hasPendingPrompt: boolean
-  /** A prompt card stands in the composer's slot, so there is no composer to take Edit's text. */
-  promptInComposerSlot: 'question' | 'approval' | null
+  /** Pending prompts: any holds the cards; one this build can answer also hides the composer. */
+  prompts: readonly { body: AgentJournalItemBody }[]
   composerScopeKey: string | undefined
   mutate: StructuredAgentSessionMutate
 }): StructuredAgentSessionQueuedMessagesController {
-  const {
-    composerScopeKey,
-    enabled,
-    hasPendingPrompt,
-    mutate,
-    promptInComposerSlot,
-    queuedMessages,
-    submissions
-  } = args
+  const { composerScopeKey, enabled, mutate, prompts, queuedMessages, submissions } = args
+  const hasPendingPrompt = prompts.length > 0
+  // A prompt card standing in the composer's slot leaves no composer to take Edit's text.
+  const promptInComposerSlot = promptHoldingComposerSlot(prompts)
   const pause = args.queuePause
 
   const cards = useMemo(

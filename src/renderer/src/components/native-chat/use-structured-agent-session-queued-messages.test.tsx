@@ -6,6 +6,7 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentJournalItemBody } from '../../../../shared/agent-session-journal-types'
 import type { AgentSessionQueuedMessage } from '../../../../shared/agent-session-wire'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
@@ -35,6 +36,21 @@ function draft(id: string, position: number): AgentSessionQueuedMessage {
 
 const SCOPE = 'tab-1:pane-scope'
 
+const PENDING = {
+  state: 'pending',
+  selectedOptionId: null,
+  resolvedBy: null,
+  resolvedAt: null
+} as const
+
+/** A prompt of each kind this build answers, as the journal holds it while it waits. */
+const PROMPTS: Record<'question' | 'approval', { body: AgentJournalItemBody }> = {
+  question: { body: { kind: 'question', question: 'Which?', options: [], resolution: PENDING } },
+  approval: {
+    body: { kind: 'approval', title: 'Run it?', detail: null, options: [], resolution: PENDING }
+  }
+}
+
 function createHarness(
   overrides: {
     queuedMessages?: AgentSessionQueuedMessage[]
@@ -55,8 +71,7 @@ function createHarness(
       queuedMessages: overrides.queuedMessages ?? [draft('draft-1', 1), draft('draft-2', 2)],
       queuePause: null,
       submissions: [],
-      hasPendingPrompt: overrides.promptInComposerSlot != null,
-      promptInComposerSlot: overrides.promptInComposerSlot ?? null,
+      prompts: overrides.promptInComposerSlot ? [PROMPTS[overrides.promptInComposerSlot]] : [],
       composerScopeKey: 'composerScopeKey' in overrides ? overrides.composerScopeKey : SCOPE,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each scripted answer is the result shape of the one mutate it responds to; generic erasure cannot express that.
       mutate: mutate as StructuredAgentSessionMutate

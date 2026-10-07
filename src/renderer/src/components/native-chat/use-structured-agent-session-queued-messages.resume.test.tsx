@@ -34,8 +34,7 @@ function renderController() {
       queuedMessages: [],
       queuePause: { reason: 'stopped' },
       submissions: [],
-      hasPendingPrompt: false,
-      promptInComposerSlot: null,
+      prompts: [],
       composerScopeKey: undefined,
       mutate
     })

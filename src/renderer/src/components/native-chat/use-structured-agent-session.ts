@@ -38,7 +38,6 @@ import { structuredAgentSessionStartFailureFacts } from './structured-agent-sess
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { structuredAgentSessionNewSendsQueue } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
-import { promptHoldingComposerSlot } from './native-chat-composer-slot'
 import { withNativeChatCutTurnNotices } from '../../../../shared/native-chat-cut-turn-notice'
 import { useStructuredAgentSessionRewind } from './use-native-chat-rewind'
 import type { NativeChatRewindHost } from './use-native-chat-rewind'
@@ -217,8 +216,7 @@ export function useStructuredAgentSession(args: {
     queuedMessages: transportState.queuedMessages,
     queuePause: transportState.queuePause,
     submissions: transportState.submissions,
-    hasPendingPrompt: prompts.length > 0,
-    promptInComposerSlot: promptHoldingComposerSlot(prompts),
+    prompts,
     composerScopeKey,
     mutate
   })
