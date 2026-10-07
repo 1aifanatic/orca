@@ -1,0 +1,283 @@
+{
+  "sourceHead": "a576c0bc4ee430093b24abf0a5a1840a49c76930",
+  "sourceRegistryGuardHashes": {
+    "config/scripts/vitest-node-runtime-files.mjs": "72a9cb668dc80148345ccc7bb33ee522d4770bb5aa8a84335ef22a29206e6360",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "6f01a8865d1cf22a08c437c744b173d5eb1dc51589effad48eb1b88a1582e077",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e"
+  },
+  "actualExpandedPatternCount": 491,
+  "originalRoutes": [
+    {
+      "file": "src/shared/workspace-session-terminal-buffers.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/shared/terminal-startup-cwd.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/lib/client-creation-action-policy.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/lib/user-opened-local-path.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/components/editor/editor-cmd-save-target.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/components/native-chat/native-chat-tab-directory.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/components/terminal-pane/terminal-parked-watcher-registry.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/main/ipc/pty-spawn-cwd-fallback.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/lib/launch-agent-in-new-tab.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/hooks/useAgentDetectionTarget.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/renderer/src/components/editor/MarkdownTableOfContentsPanel.test.tsx",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/main/runtime/orca-runtime.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/shared/zod-salvage-absence.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/shared/workspace-session-validation-work.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/shared/agent-session-journal-schemas.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/shared/telemetry-events.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/main/runtime/rpc/orchestration-session-caller.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": []
+    },
+    {
+      "file": "src/main/native-chat/agent-session-journal/journal-closed-sets.test.ts",
+      "bunCoordinator": {
+        "project": "node-runtime",
+        "pool": "node-runtime"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": [
+        "src/main/native-chat/agent-session-journal/**/*.test.ts"
+      ]
+    },
+    {
+      "file": "config/scripts/vitest-node-runtime-pool.test.ts",
+      "bunCoordinator": {
+        "project": "node-runtime",
+        "pool": "node-runtime"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": [
+        "config/scripts/vitest-node-runtime-pool.test.ts"
+      ]
+    },
+    {
+      "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+      "bunCoordinator": {
+        "project": "node-runtime",
+        "pool": "node-runtime"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      },
+      "matchedProtectedPatterns": [
+        "config/scripts/vitest-node-runtime-boundary.test.ts"
+      ]
+    }
+  ],
+  "bindingFixtureRoute": {
+    "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/a576c0bc/zod-public-binding.fixture.test.ts",
+    "bunCoordinator": {
+      "project": "bun",
+      "pool": "forks"
+    },
+    "nodeCoordinator": {
+      "project": "node",
+      "pool": "forks"
+    }
+  },
+  "sourceDataOnly": true,
+  "applicationAndTestModulesExecuted": false,
+  "actualResolvedRuntimeRoutesPending": true
+}
