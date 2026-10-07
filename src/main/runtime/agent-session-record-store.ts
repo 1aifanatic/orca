@@ -69,7 +69,7 @@ import {
   type AgentSessionReserveRequest,
   type AgentSessionReserveResult
 } from './agent-session-reservation-admission'
-import type { AgentSessionStoreState } from './agent-session-record-store-file'
+import type { AgentSessionStoreState } from './agent-session-store-state'
 import {
   agentSessionVisibleTabIndex,
   listVisibleAgentSessionIds,
@@ -105,7 +105,7 @@ export class AgentSessionRecordStore {
     journalDatabase: JournalHostDatabase
     hostId: string
   }): AgentSessionRecordStore {
-    const rows = loadAgentSessionStoreRows(args.journalDatabase.db, args.hostId)
+    const rows = loadAgentSessionStoreRows(args.journalDatabase.db)
     const transactions = new AgentSessionStoreTransactions(args.journalDatabase, rows)
     return new AgentSessionRecordStore(transactions, args.hostId)
   }
