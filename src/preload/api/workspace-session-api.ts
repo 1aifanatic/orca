@@ -10,6 +10,10 @@ import type {
   TerminalLayoutSetResult
 } from '../../shared/terminal-layout-set'
 import type {
+  TerminalLeafBindRequest,
+  TerminalLeafBindResult
+} from '../../shared/terminal-leaf-bind'
+import type {
   TerminalTopologyReply,
   TerminalTopologySlice
 } from '../../shared/terminal-topology-slice'
@@ -38,6 +42,10 @@ export type WorkspaceSessionApi = {
     setTerminalLayout: (
       args: TerminalLayoutSetRequest
     ) => Promise<TerminalLayoutSetResult & TerminalTopologyReply>
+    /** Has main record a live PTY the window adopted onto a pane main holds. */
+    bindTerminalLeaf: (
+      args: TerminalLeafBindRequest
+    ) => Promise<TerminalLeafBindResult & TerminalTopologyReply>
     /** Every worktree's current terminal topology; pull after subscribing to the pushes. */
     getTerminalTopologySlices: () => Promise<TerminalTopologySlice[]>
     onTerminalTopologyChanged: (callback: (slice: TerminalTopologySlice) => void) => () => void

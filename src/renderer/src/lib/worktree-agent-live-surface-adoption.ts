@@ -57,6 +57,13 @@ export function bindLivePtyToExactSurface(
       return false
     }
     store.updateTabPtyId(terminal.tabId, terminal.ptyId)
+    // The pane's binding is main's: it records the adopted PTY, and its push brings it to the pane.
+    void globalThis.window?.api?.session?.bindTerminalLeaf?.({
+      worktreeId: existing.ownerWorktreeId,
+      tabId: terminal.tabId,
+      leafId: pane.leafId,
+      ptyId: terminal.ptyId
+    })
     return true
   }
   const created = store.createTab(worktreeId, undefined, undefined, {

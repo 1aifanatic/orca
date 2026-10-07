@@ -6,6 +6,11 @@ import {
   parseTerminalLayoutSetRequest,
   type TerminalLayoutSetResult
 } from '../../shared/terminal-layout-set'
+import {
+  parseTerminalLeafBindRequest,
+  type TerminalLeafBindResult
+} from '../../shared/terminal-leaf-bind'
+import { bindLeaf } from '../persistence/terminal-topology/terminal-topology-commit'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
 import { markAgentLaunchesClosedByUser } from '../agent-launch/agent-launch-pane-attachment'
 import type {
@@ -81,6 +86,20 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     const result: TerminalLayoutSetResult = hostId
       ? await store.setTerminalTabLayout(request, hostId)
       : { status: 'refused', reason: 'home_unresolved' }
+    return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
+  })
+
+  // An adopted live PTY: main records it on its pane, and the push carries it to the window.
+  ipcMain.handle('session:terminal-bind-leaf', async (_event, args: unknown) => {
+    const request = parseTerminalLeafBindRequest(args)
+    if (!request) {
+      return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLeafBindResult
+    }
+    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const bound = hostId !== null && (await bindLeaf(store, request, hostId))
+    const result: TerminalLeafBindResult = bound
+      ? { status: 'bound' }
+      : { status: 'refused', reason: hostId ? 'not_bound' : 'home_unresolved' }
     return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
   })
 

@@ -8,7 +8,9 @@ import type {
   TerminalLayoutSetRequest,
   TerminalLayoutSetResult
 } from '../../../shared/terminal-layout-set'
+import type { TerminalLeafBindRequest } from '../../../shared/terminal-leaf-bind'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
+import type { PtyBindingPersistenceOperations } from '../loading-store/pty-binding-persistence'
 import { startSpan } from '../../observability/tracer'
 import {
   terminalSurfaceCloseMutation,
@@ -46,6 +48,18 @@ export function moveLeaf(
     'move_leaf',
     () => commitLeafMove(request, hostId, context),
     (result) => (result.status === 'refused' ? result.reason : undefined)
+  )
+}
+
+/** Records a live PTY the window adopted onto a pane main holds, as a reattach: never creates the pane. */
+export function bindLeaf(
+  bindings: Pick<PtyBindingPersistenceOperations, 'persistPtyBinding'>,
+  request: TerminalLeafBindRequest,
+  hostId: ExecutionHostId
+): Promise<boolean> {
+  return bindings.persistPtyBinding(
+    { ...request, mayCreate: false, mayReviveRetiredSurface: false, origin: 'reattach' },
+    hostId
   )
 }
 

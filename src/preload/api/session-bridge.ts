@@ -10,6 +10,7 @@ export const sessionApi = {
   patch: (args, hostId) => ipcRenderer.invoke('session:patch', args, hostId),
   closeTerminalSurface: (args) => ipcRenderer.invoke('session:close-terminal-surface', args),
   setTerminalLayout: (args) => ipcRenderer.invoke('session:terminal-set-layout', args),
+  bindTerminalLeaf: (args) => ipcRenderer.invoke('session:terminal-bind-leaf', args),
   getTerminalTopologySlices: () => ipcRenderer.invoke('session:get-terminal-topology-slices'),
   onTerminalTopologyChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, slice: TerminalTopologySlice): void =>

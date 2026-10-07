@@ -317,7 +317,7 @@ describe('worktree agent activation gate', () => {
     })
   })
 
-  it('rebinds an unowned PTY to the recorded pane this renderer still holds', async () => {
+  it('rebinds an unowned PTY to the recorded pane of a split this renderer still holds', async () => {
     const ptyId = `${WORKTREE_ID}@@live-pty`
     const recorded = { paneKey: `tab-live:${LIVE_LEAF_ID}`, ptyId, tabId: 'tab-live' }
     const { deps, createTab, resume } = testDeps({
@@ -325,13 +325,37 @@ describe('worktree agent activation gate', () => {
       surfaceOwners: new Map([[ptyId, { unowned: true, recorded }]])
     })
     seedExistingSurface(deps.getState(), { tabId: 'tab-live', leafId: LIVE_LEAF_ID })
+    deps.getState().terminalLayoutsByTabId['tab-live'] = {
+      root: {
+        type: 'split',
+        direction: 'vertical',
+        first: { type: 'leaf', leafId: SIBLING_LEAF_ID },
+        second: { type: 'leaf', leafId: LIVE_LEAF_ID }
+      },
+      activeLeafId: SIBLING_LEAF_ID,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [SIBLING_LEAF_ID]: `${WORKTREE_ID}@@shell` }
+    }
+    const bindTerminalLeaf = vi.fn(async () => ({ status: 'bound' as const }))
+    vi.stubGlobal('window', { api: { session: { bindTerminalLeaf } } })
 
-    await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    try {
+      await expect(runWorktreeAgentActivationGate(WORKTREE_ID, deps)).resolves.toBe('adopted')
+    } finally {
+      vi.unstubAllGlobals()
+    }
 
     // The host's graph omits unmounted panes; minting here forked the agent onto a second tab.
     expect(createTab).not.toHaveBeenCalled()
-    // The leaf's binding is main's; this window records only the live attachment.
+    // This window records the live attachment; main records the pane's binding, so the pane
+    // reattaches instead of starting a new shell.
     expect(deps.getState().ptyIdsByTabId['tab-live']).toEqual([ptyId])
+    expect(bindTerminalLeaf).toHaveBeenCalledExactlyOnceWith({
+      worktreeId: WORKTREE_ID,
+      tabId: 'tab-live',
+      leafId: LIVE_LEAF_ID,
+      ptyId
+    })
     expect(resume).not.toHaveBeenCalled()
   })
 
