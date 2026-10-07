@@ -26,10 +26,6 @@ import {
   readPersistedTestAgentSessionStore
 } from '../../agent-session-record-store-test-harness'
 import { openTestJournalHostDatabase } from '../../../native-chat/agent-session-journal/journal-host-database-test-support'
-import {
-  importReleaseCheckoutModule,
-  materializeReleaseCheckout
-} from '../../../../../tests/e2e/cross-version-wire/release-checkout'
 import type { RpcContext } from '../core'
 import { mapRuntimeError } from '../errors'
 import {
@@ -44,6 +40,8 @@ const AGENT_LAUNCH = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launch')
 const AGENT_LAUNCH_REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
 
 const OPERATION_ID = `${Date.now()}-000000000000000000000000000000e1`
+// Regular CI shards are shallow; opt in to the real historical reader where its source is present.
+const ROLLBACK_REF = process.env.ORCA_AGENT_LAUNCH_ROLLBACK_REF?.trim()
 const NO_LAUNCH_COMMAND = 'Could not build launch command for claude.'
 const CREATE_LAUNCH = {
   agent: 'claude',
@@ -153,6 +151,11 @@ describe.each([
     const live = await call(keepsWorkspace(), method, params, OLDER_PHONE)
     expect(live).toMatchObject(otherwise)
     expect(live).not.toHaveProperty('error.data')
+    expect(store.listOperationRows()[0]?.outcome).toEqual({
+      status: 'failed',
+      code: 'agent_session_operation_unknown',
+      keptWorktreeId: 'wt-new'
+    })
 
     const retry = keepsWorkspace()
     const replayed = await call(retry, method, params, OLDER_PHONE)
@@ -165,55 +168,68 @@ describe.each([
 describe('stored workspace-kept enrichment', () => {
   const params = { ...CREATE_LAUNCH, operationId: OPERATION_ID }
 
-  it('remains unknown when the prior main host loads and replays the new row', async () => {
-    await call(keepsWorkspace(), 'agent.launchReplay', params, OLDER_PHONE)
-    const legacy = await materializeReleaseCheckout('80d45095d2f', {
-      cacheRoot: join(directory, 'rollback-source')
-    })
-    const rows = await importReleaseCheckoutModule(
-      legacy,
-      '/src/main/runtime/agent-session-record-rows.ts'
-    )
-    const replay = await importReleaseCheckoutModule(
-      legacy,
-      '/src/main/runtime/rpc/methods/agent-launch-replay.ts'
-    )
-    const errors = await importReleaseCheckoutModule(legacy, '/src/main/runtime/rpc/errors.ts')
-    if (
-      typeof rows.loadAgentSessionStoreRows !== 'function' ||
-      typeof replay.admitAgentLaunchOperation !== 'function' ||
-      typeof errors.mapRuntimeError !== 'function'
-    ) {
-      throw new Error(
-        'The prior host must export its real row loader, launch reader and error mapper'
+  it.skipIf(!ROLLBACK_REF)(
+    'remains unknown when the prior main host loads and replays the new row',
+    async () => {
+      if (!ROLLBACK_REF) {
+        throw new Error('The rollback oracle requires a historical host ref')
+      }
+      await call(keepsWorkspace(), 'agent.launchReplay', params, OLDER_PHONE)
+      const { materializeReleaseCheckout, importReleaseCheckoutModule } = await import(
+        /* @vite-ignore */ join(
+          import.meta.dirname,
+          '../../../../../tests/e2e/cross-version-wire/release-checkout.ts'
+        )
       )
-    }
-    const persisted = await readPersistedTestAgentSessionStore(directory)
-    const loaded = rows.loadAgentSessionStoreRows(openTestJournalHostDatabase(directory).db)
-    expect(loaded.operations).toEqual(new Map(Object.entries(persisted.operations)))
-    store = await openTestAgentSessionRecordStore(directory)
-    setAgentLaunchRecordStore(store)
-    const retry = keepsWorkspace()
-    const parsed = AGENT_LAUNCH_REPLAY.params.parse(params)
-    const answer = await replay.admitAgentLaunchOperation(
-      rpcContext(retry, OLDER_PHONE),
-      parsed,
-      computeAgentLaunchFingerprint(parsed)
-    )
-    expect(answer).toMatchObject({
-      decision: 'refuse',
-      refusal: { code: 'agent_session_operation_unknown' }
-    })
-    expect(answer).not.toHaveProperty('refusal.data')
-    expect(
-      errors.mapRuntimeError(
-        'request-1',
-        { runtimeId: 'runtime-1' },
-        new Error(answer.refusal.code)
+      const legacy = await materializeReleaseCheckout(ROLLBACK_REF, {
+        cacheRoot: join(directory, 'rollback-source')
+      })
+      const rows = await importReleaseCheckoutModule(
+        legacy,
+        '/src/main/runtime/agent-session-record-rows.ts'
       )
-    ).toMatchObject(UNKNOWN)
-    expect(retry.createManagedWorktree).not.toHaveBeenCalled()
-  }, 180_000)
+      const replay = await importReleaseCheckoutModule(
+        legacy,
+        '/src/main/runtime/rpc/methods/agent-launch-replay.ts'
+      )
+      const errors = await importReleaseCheckoutModule(legacy, '/src/main/runtime/rpc/errors.ts')
+      if (
+        typeof rows.loadAgentSessionStoreRows !== 'function' ||
+        typeof replay.admitAgentLaunchOperation !== 'function' ||
+        typeof errors.mapRuntimeError !== 'function'
+      ) {
+        throw new Error(
+          'The prior host must export its real row loader, launch reader and error mapper'
+        )
+      }
+      const persisted = await readPersistedTestAgentSessionStore(directory)
+      const loaded = rows.loadAgentSessionStoreRows(openTestJournalHostDatabase(directory).db)
+      expect(loaded.operations).toEqual(new Map(Object.entries(persisted.operations)))
+      store = await openTestAgentSessionRecordStore(directory)
+      setAgentLaunchRecordStore(store)
+      const retry = keepsWorkspace()
+      const parsed = AGENT_LAUNCH_REPLAY.params.parse(params)
+      const answer = await replay.admitAgentLaunchOperation(
+        rpcContext(retry, OLDER_PHONE),
+        parsed,
+        computeAgentLaunchFingerprint(parsed)
+      )
+      expect(answer).toMatchObject({
+        decision: 'refuse',
+        refusal: { code: 'agent_session_operation_unknown' }
+      })
+      expect(answer).not.toHaveProperty('refusal.data')
+      expect(
+        errors.mapRuntimeError(
+          'request-1',
+          { runtimeId: 'runtime-1' },
+          new Error(answer.refusal.code)
+        )
+      ).toMatchObject(UNKNOWN)
+      expect(retry.createManagedWorktree).not.toHaveBeenCalled()
+    },
+    180_000
+  )
 
   it.each(['agent_session_operation_unknown', AGENT_LAUNCH_AGENT_NOT_STARTED_CODE])(
     'reads a valid settled workspace identity beside %s',
