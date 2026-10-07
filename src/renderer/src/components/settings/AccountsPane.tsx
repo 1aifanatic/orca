@@ -2,7 +2,6 @@ import type { SecretAtRestProtection } from '../../../../shared/secret-at-rest-p
 import { useEffect, useRef, useState } from 'react'
 import type {
   ClaudeRateLimitAccountsState,
-  ClaudeSignInRequest,
   CodexRateLimitAccountsState
 } from '../../../../shared/managed-account-types'
 import type { CodexConfigSyncStatus } from '../../../../shared/codex-config-sync-types'
@@ -69,7 +68,6 @@ import {
 import { renderMiniMaxAccountsSection } from './accounts-pane-minimax-section'
 import { ManagedDataAccountsSection } from './ManagedDataAccountsSection'
 import { renderAccountsRemovalDialogs } from './accounts-pane-removal-dialogs'
-import { ClaudeSignInDialog } from './ClaudeSignInDialog'
 
 export { getAccountsPaneSearchEntries }
 
@@ -163,7 +161,6 @@ export function AccountsPane({
   // can change underneath an open dialog and lose the slot to diff for restarts.
   const [removeCodexTarget, setRemoveCodexTarget] = useState<RemoveAccountTarget | null>(null)
   const [removeClaudeTarget, setRemoveClaudeTarget] = useState<RemoveAccountTarget | null>(null)
-  const [claudeSignIn, setClaudeSignIn] = useState<ClaudeSignInRequest | null>(null)
   const accountVisibilityOptions = {
     remoteOwner: isRemoteAccountScope,
     ownerPlatform: accountOwnerPlatform
@@ -346,7 +343,6 @@ export function AccountsPane({
     visibleClaudeAccounts,
     systemClaudeActive,
     setRemoveClaudeTarget,
-    setClaudeSignIn,
     runClaudeAccountAction,
     codexAccounts,
     codexAction,
@@ -428,16 +424,6 @@ export function AccountsPane({
   return (
     <div className="space-y-8">
       {renderAccountsRemovalDialogs(model, removeCodexTarget, removeClaudeTarget)}
-      <ClaudeSignInDialog
-        request={claudeSignIn}
-        onClose={() => setClaudeSignIn(null)}
-        onSignedIn={(next) =>
-          void runClaudeAccountAction(
-            claudeSignIn?.accountId ? `reauth:${claudeSignIn.accountId}` : 'adding',
-            async () => next
-          )
-        }
-      />
       <SettingsSectionStack sections={visibleSections} spacing="group" />
     </div>
   )

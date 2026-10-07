@@ -15119,7 +15119,8 @@
                 "9ddeb558f9": "Claude account added.",
                 "29d0653961": "Sign in",
                 "945865332e": "Signing in",
-                "accountStatusUnknown": "Account status unknown"
+                "accountStatusUnknown": "Account status unknown",
+                "4e71d72912": "Claude sign-in failed."
               },
               "UsagePage": {
                 "64265cb295": "29% used 5h",
@@ -19412,12 +19413,6 @@
       }
     },
     "claude": {
-      "signInAgainTitle": "Sign in to Claude again",
-      "addTitle": "Add a Claude account",
-      "signInDescription": "Press Enter to run the command, then finish signing in in your browser. The account is saved once Claude has signed in.",
-      "signInTerminal": "Claude sign-in",
-      "preparingSignIn": "Preparing the account folder…",
-      "signInDone": "Done",
       "added": "Account added. Select it to use it for the next Claude you start.",
       "nextLaunch": "{{value0}} → {{value1}}. The next Claude you start uses it. Running sessions keep their account.",
       "olderTerminals": "Terminals opened before this Orca update don't follow the selected account: claude there uses System default's login. Open a new terminal to use the selected account.",

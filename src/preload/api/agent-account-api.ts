@@ -1,8 +1,6 @@
 import type { SecretAtRestProtection } from '../../shared/secret-at-rest-protection'
 import type {
-  ClaudeAccountSignIn,
   ClaudeRateLimitAccountsState,
-  ClaudeSignInRequest,
   CodexRateLimitAccountsState
 } from '../../shared/managed-account-types'
 import type { CodexConfigSyncStatus } from '../../shared/codex-config-sync-types'
@@ -46,14 +44,12 @@ export type CodexAccountsApi = {
 
 export type ClaudeAccountsApi = {
   list: () => Promise<ClaudeRateLimitAccountsState>
-  /** A new account's folder, or a saved account's own when `accountId` is given. */
-  beginSignIn: (args?: ClaudeSignInRequest) => Promise<ClaudeAccountSignIn>
-  /** Saves the account once `claude auth login` left a login in its folder. */
-  finishSignIn: (
-    args: Omit<ClaudeAccountSignIn, 'configDir'>
-  ) => Promise<ClaudeRateLimitAccountsState>
-  /** Deletes the folder of a sign-in that never became an account. */
-  cancelSignIn: (args: Omit<ClaudeAccountSignIn, 'configDir'>) => Promise<void>
+  add: (args?: {
+    runtime?: 'host' | 'wsl'
+    wslDistro?: string | null
+  }) => Promise<ClaudeRateLimitAccountsState>
+  cancelPendingLogin: () => Promise<boolean>
+  reauthenticate: (args: { accountId: string }) => Promise<ClaudeRateLimitAccountsState>
   remove: (args: { accountId: string }) => Promise<ClaudeRateLimitAccountsState>
   select: (args: {
     accountId: string | null

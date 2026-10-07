@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { selectClaudeProviderAccount } from '@/runtime/runtime-provider-accounts-client'
 import { Badge } from '../ui/badge'
@@ -24,7 +24,6 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
     isRemoteAccountScope,
     remoteAccountScopeNotice,
     runClaudeAccountAction,
-    setClaudeSignIn,
     setRemoveClaudeTarget,
     settings,
     systemClaudeActive,
@@ -108,10 +107,12 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
               variant="outline"
               size="xs"
               onClick={() =>
-                setClaudeSignIn({
-                  runtime: accountRuntime.runtime,
-                  wslDistro: accountRuntime.wslDistro
-                })
+                void runClaudeAccountAction('adding', () =>
+                  window.api.claudeAccounts.add({
+                    runtime: accountRuntime.runtime,
+                    wslDistro: accountRuntime.wslDistro
+                  })
+                )
               }
               disabled={
                 // Why: interactive `claude login` needs a desktop browser and
@@ -123,9 +124,24 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
               }
               className="gap-1.5"
             >
-              <Plus className="size-3" />
+              {claudeAction === 'adding' ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Plus className="size-3" />
+              )}
               {translate('auto.components.settings.AccountsPane.b0e948a4f9', 'Add Account')}
             </Button>
+            {claudeAction === 'adding' ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => void window.api.claudeAccounts.cancelPendingLogin()}
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3" />
+                {translate('auto.components.settings.AccountsPane.dbb9626ed1', 'Cancel')}
+              </Button>
+            ) : null}
           </div>
         </div>
         {remoteAccountScopeNotice}
@@ -223,6 +239,7 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                 accountRuntime,
                 accountVisibilityOptions
               )
+              const isReauthing = claudeAction === `reauth:${account.id}`
               const isBusy = claudeAction !== 'idle' || accountRuntimeUnavailable
 
               return (
@@ -289,15 +306,23 @@ export function renderClaudeAccountsSection(model: AccountsPaneSectionModel): Re
                         size="xs"
                         onClick={(event) => {
                           event.stopPropagation()
-                          setClaudeSignIn({
-                            accountId: account.id,
-                            ...getProviderAccountRuntime(account)
-                          })
+                          void runClaudeAccountAction(
+                            `reauth:${account.id}`,
+                            () =>
+                              window.api.claudeAccounts.reauthenticate({
+                                accountId: account.id
+                              }),
+                            getProviderAccountRuntime(account)
+                          )
                         }}
                         disabled={isRemoteAccountScope || isBusy}
                         className="h-6 px-2 text-muted-foreground hover:text-foreground"
                       >
-                        <RefreshCw className="size-3" />
+                        {isReauthing ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-3" />
+                        )}
                         {translate('accounts.claude.signInAgain', 'Sign in again')}
                       </Button>
                       <Button

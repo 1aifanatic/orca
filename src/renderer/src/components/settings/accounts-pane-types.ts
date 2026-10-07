@@ -3,7 +3,6 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type {
   ClaudeRateLimitAccountsState,
-  ClaudeSignInRequest,
   CodexRateLimitAccountsState
 } from '../../../../shared/managed-account-types'
 import type {
@@ -84,7 +83,6 @@ export type AccountsPaneSectionModel = {
   visibleClaudeAccounts: ClaudeRateLimitAccountsState['accounts']
   systemClaudeActive: boolean
   setRemoveClaudeTarget: Dispatch<SetStateAction<RemoveAccountTarget | null>>
-  setClaudeSignIn: (request: ClaudeSignInRequest) => void
   runClaudeAccountAction: ClaudeAccountActionRunner
   codexAccounts: CodexRateLimitAccountsState
   codexAction: CodexAccountAction

@@ -11,6 +11,7 @@ import type {
   ClaudeAccountStore,
   ClaudeAccountUsage
 } from './claude-account-selection'
+import type { ClaudeCommandConfig } from './claude-command-process'
 import { findDuplicateClaudeAccount } from './claude-duplicate-account'
 import {
   getClaudeSelectionTargetForAccount,
@@ -20,10 +21,12 @@ import {
 
 export const CLAUDE_SIGN_IN_NOT_FINISHED_MESSAGE =
   'Claude has not finished signing in to this account yet. Finish the sign-in in the terminal, then try again.'
+const CLAUDE_LOGIN_WITHOUT_ACCOUNT_MESSAGE =
+  'Claude login completed, but Orca could not resolve the account email.'
 
 /**
- * Sign-in runs `claude auth login` against the account's folder in a terminal the user sees
- * (superset AddAccountDialog). A folder becomes an account only once it holds a login
+ * Sign-in runs `claude auth login` against the account's own folder: hidden from Settings, in
+ * the user's terminal from the CLI. A folder becomes an account only once it holds a login
  * (superset U/profiles.ts:132,178), so an abandoned sign-in never shows as a row.
  */
 export class ClaudeAccountRegistration {
@@ -38,11 +41,42 @@ export class ClaudeAccountRegistration {
 
   /** A new folder, or a saved account's own folder when `accountId` is given. */
   async begin(request: ClaudeSignInRequest): Promise<ClaudeAccountSignIn> {
+    const { accountId, target, folder } = await this.prepare(request)
+    return { accountId, configDir: folder.configDir, ...target }
+  }
+
+  /** Runs `login` into the account's folder, then saves it; a failed new folder is deleted. */
+  async signIn(
+    request: ClaudeSignInRequest,
+    login: (folder: ClaudeCommandConfig) => Promise<void>
+  ): Promise<ClaudeRateLimitAccountsState> {
+    const { accountId, target, folder } = await this.prepare(request)
+    const signIn = { accountId, ...target }
+    try {
+      await login({
+        windowsPath: folder.readPath,
+        linuxPath: target.runtime === 'wsl' ? folder.configDir : null,
+        wslDistro: target.runtime === 'wsl' ? (target.wslDistro ?? null) : null
+      })
+      return await this.finish(signIn, CLAUDE_LOGIN_WITHOUT_ACCOUNT_MESSAGE)
+    } catch (error) {
+      // Why caught: the sign-in's own failure is what the user needs to see.
+      await this.cancel(signIn).catch((cleanupError: unknown) =>
+        console.warn(
+          '[claude-accounts] Could not delete an unfinished sign-in folder:',
+          cleanupError
+        )
+      )
+      throw error
+    }
+  }
+
+  private async prepare(request: ClaudeSignInRequest) {
     const saved = request.accountId ? this.deps.selection.requireAccount(request.accountId) : null
     const target = saved ? getClaudeSelectionTargetForAccount(saved) : signInTarget(request)
     const accountId = saved?.id ?? randomUUID()
     const folder = await this.deps.runtimeAuth.prepareAccountFolder(accountId, target)
-    return { accountId, configDir: folder.configDir, ...target }
+    return { accountId, target, folder }
   }
 
   async cancel(signIn: Omit<ClaudeAccountSignIn, 'configDir'>): Promise<void> {
@@ -52,7 +86,8 @@ export class ClaudeAccountRegistration {
   }
 
   async finish(
-    signIn: Omit<ClaudeAccountSignIn, 'configDir'>
+    signIn: Omit<ClaudeAccountSignIn, 'configDir'>,
+    notSignedInMessage = CLAUDE_SIGN_IN_NOT_FINISHED_MESSAGE
   ): Promise<ClaudeRateLimitAccountsState> {
     const { store, rateLimits, runtimeAuth, selection } = this.deps
     const saved = selection.findAccount(signIn.accountId)
@@ -61,7 +96,7 @@ export class ClaudeAccountRegistration {
     const folder = await runtimeAuth.prepareAccountFolder(signIn.accountId, target)
     const login = readClaudeFolderLogin(claudeStateFile(folder.readPath))
     if (!login) {
-      throw new Error(CLAUDE_SIGN_IN_NOT_FINISHED_MESSAGE)
+      throw new Error(notSignedInMessage)
     }
     const accounts = store.getSettings().claudeManagedAccounts
     const scope = {

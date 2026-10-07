@@ -10,6 +10,7 @@ import {
   CLAUDE_ACCOUNT_FOLDER_IN_USE_MESSAGE,
   CLAUDE_ACCOUNT_NEEDS_SIGN_IN_MESSAGE
 } from './claude-account-selection'
+import type { ClaudeCommandConfig, ClaudeCommandOptions } from './claude-command-process'
 import type { ClaudeAccountSelectionTarget } from './runtime-selection'
 import { ClaudeAccountService } from './service'
 
@@ -64,6 +65,15 @@ function fixture(accounts: ClaudeManagedAccount[] = [account('a'), account('b')]
     removeAccountFolder: vi.fn(async (id: string) => rmSync(join(root, id), { recursive: true })),
     getRuntimeConfigDir: () => '/unused'
   }
+  // Stands in for the hidden `claude auth login`; each test decides how it ends.
+  const runLogin = vi.fn<
+    (
+      args: string[],
+      config: ClaudeCommandConfig,
+      timeoutMs: number,
+      options?: ClaudeCommandOptions
+    ) => Promise<string>
+  >(async () => '')
   const service = new ClaudeAccountService(
     {
       getSettings: () => settings,
@@ -75,9 +85,15 @@ function fixture(accounts: ClaudeManagedAccount[] = [account('a'), account('b')]
       evictInactiveClaudeCache: vi.fn(),
       refreshForClaudeAccountChange: vi.fn().mockResolvedValue(undefined)
     },
-    runtimeAuth
+    runtimeAuth,
+    runLogin
   )
-  return { root, service, runtimeAuth, signIn, settings: () => settings }
+  return { root, home, service, runtimeAuth, runLogin, signIn, settings: () => settings }
+}
+
+// The id the last sign-in prepared a folder for.
+function newId(f: ReturnType<typeof fixture>): string {
+  return f.runtimeAuth.prepareAccountFolder.mock.calls.at(-1)![0]
 }
 
 describe('ClaudeAccountService', () => {
@@ -160,6 +176,115 @@ describe('ClaudeAccountService', () => {
       email: 'other@example.test',
       createdAt: 1
     })
+  })
+
+  it('signs in with a hidden login straight into the new account folder', async () => {
+    const f = fixture()
+    f.runLogin.mockImplementationOnce(async (_args, config) => {
+      f.signIn(newId(f), 'new@example.test')
+      expect(config).toEqual({ windowsPath: f.home(newId(f)), linuxPath: null, wslDistro: null })
+      return ''
+    })
+    await f.service.addAccount({ runtime: 'host' })
+    expect(f.runLogin).toHaveBeenCalledWith(
+      ['auth', 'login', '--claudeai'],
+      expect.anything(),
+      expect.any(Number),
+      expect.objectContaining({ keepStdinOpen: true })
+    )
+    expect(f.settings().claudeManagedAccounts.at(-1)).toMatchObject({
+      id: newId(f),
+      email: 'new@example.test',
+      managedAuthPath: f.home(newId(f))
+    })
+    expect(f.runtimeAuth.removeAccountFolder).not.toHaveBeenCalled()
+  })
+
+  it('runs a WSL login against the guest folder', async () => {
+    const f = fixture()
+    f.runtimeAuth.prepareAccountFolder.mockImplementation(async (id: string) => {
+      mkdirSync(f.home(id), { recursive: true })
+      return { configDir: `/home/u/claude-profiles/${id}/home`, readPath: f.home(id) }
+    })
+    f.runLogin.mockImplementationOnce(async (_args, config) => {
+      f.signIn(newId(f), 'wsl@example.test')
+      expect(config).toEqual({
+        windowsPath: f.home(newId(f)),
+        linuxPath: `/home/u/claude-profiles/${newId(f)}/home`,
+        wslDistro: 'Ubuntu'
+      })
+      return ''
+    })
+    await f.service.addAccount({ runtime: 'wsl', wslDistro: 'Ubuntu' })
+    expect(f.settings().claudeManagedAccounts.at(-1)).toMatchObject({
+      email: 'wsl@example.test',
+      managedAuthRuntime: 'wsl',
+      wslDistro: 'Ubuntu',
+      wslLinuxAuthPath: `/home/u/claude-profiles/${newId(f)}/home`
+    })
+  })
+
+  it('leaves no row or folder when the hidden login is cancelled', async () => {
+    const f = fixture()
+    f.runLogin.mockImplementationOnce(
+      (_args, _config, _timeoutMs, options) =>
+        new Promise((_resolve, reject) =>
+          options?.signal?.addEventListener('abort', () =>
+            reject(new Error('Claude sign-in was cancelled.'))
+          )
+        )
+    )
+    const adding = f.service.addAccount({ runtime: 'host' })
+    await vi.waitFor(() => expect(f.runLogin).toHaveBeenCalled())
+    expect(f.service.cancelPendingLogin()).toBe(true)
+    await expect(adding).rejects.toThrow('Claude sign-in was cancelled.')
+    expect(f.service.cancelPendingLogin()).toBe(false)
+    expect(f.settings().claudeManagedAccounts).toHaveLength(2)
+    expect(f.runtimeAuth.removeAccountFolder).toHaveBeenCalledWith(newId(f), { runtime: 'host' })
+    expect(existsSync(join(f.root, newId(f)))).toBe(false)
+  })
+
+  it('leaves no row or folder when the hidden login times out or finds no login', async () => {
+    const f = fixture()
+    f.runLogin.mockRejectedValueOnce(new Error('Claude sign-in took too long to finish.'))
+    await expect(f.service.addAccount({ runtime: 'host' })).rejects.toThrow('took too long')
+    await expect(f.service.addAccount({ runtime: 'host' })).rejects.toThrow(
+      'could not resolve the account email'
+    )
+    expect(f.settings().claudeManagedAccounts).toHaveLength(2)
+    expect(f.runtimeAuth.removeAccountFolder).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses a hidden login to an already added account and deletes its folder', async () => {
+    const f = fixture()
+    f.runLogin.mockImplementationOnce(async () => {
+      f.signIn(newId(f), 'B@example.test')
+      return ''
+    })
+    await expect(f.service.addAccount({ runtime: 'host' })).rejects.toThrow(
+      'This Claude account is already added.'
+    )
+    expect(f.settings().claudeManagedAccounts).toHaveLength(2)
+    expect(existsSync(join(f.root, newId(f)))).toBe(false)
+  })
+
+  it('signs a saved account in again inside its own folder and keeps it on failure', async () => {
+    const f = fixture()
+    f.runLogin.mockImplementationOnce(async (_args, config) => {
+      expect(config.windowsPath).toBe(f.home('b'))
+      f.signIn('b', 'b@example.test')
+      return ''
+    })
+    await f.service.reauthenticateAccount('b')
+    expect(f.runtimeAuth.prepareAccountFolder).toHaveBeenCalledWith('b', { runtime: 'host' })
+    expect(f.settings().claudeManagedAccounts.find((entry) => entry.id === 'b')).toMatchObject({
+      email: 'b@example.test',
+      createdAt: 1
+    })
+    f.runLogin.mockRejectedValueOnce(new Error('Claude sign-in was cancelled.'))
+    await expect(f.service.reauthenticateAccount('b')).rejects.toThrow('cancelled')
+    expect(f.runtimeAuth.removeAccountFolder).not.toHaveBeenCalled()
+    expect(f.settings().claudeManagedAccounts.map((entry) => entry.id)).toEqual(['a', 'b'])
   })
 
   it('clears the selection, republishes, then deletes the folder on remove', async () => {

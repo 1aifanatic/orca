@@ -92,7 +92,6 @@ function render(
     isRemoteAccountScope: false,
     remoteAccountScopeNotice: null,
     runClaudeAccountAction: vi.fn(async () => {}),
-    setClaudeSignIn: vi.fn(),
     setRemoveClaudeTarget: vi.fn(),
     settings: { ...getDefaultSettings('/tmp'), ...settings },
     systemClaudeActive: claudeAccounts.activeAccountId === null,
