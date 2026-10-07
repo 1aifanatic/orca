@@ -162,6 +162,33 @@ describe('ssh host partition hydration', () => {
     ])
   })
 
+  it("keeps a stray local copy's unsaved draft when the ssh partition has no open files", async () => {
+    const partitions = strandedPartitions([tab('tab-runtime')], [tab('tab-local')])
+    partitions.local = session({
+      ...partitions.local,
+      openFilesByWorktree: {
+        [WORKTREE_ID]: [
+          {
+            filePath: `${WORKTREE_PATH}/src/main.ts`,
+            relativePath: 'src/main.ts',
+            worktreeId: WORKTREE_ID,
+            language: 'typescript',
+            dirtyDraftContent: 'unsaved work'
+          }
+        ]
+      }
+    })
+
+    const read = await fetchWorkspaceSessionWithRuntimeHostOwners(partitionedApi(partitions), repos)
+
+    expect(read.session.tabsByWorktree[WORKTREE_ID]?.map((entry) => entry.id)).toEqual([
+      'tab-runtime'
+    ])
+    expect(read.session.openFilesByWorktree?.[WORKTREE_ID]?.[0]?.dirtyDraftContent).toBe(
+      'unsaved work'
+    )
+  })
+
   it('leaves a populated local copy alone when the catalog cannot name its owner', async () => {
     // Without a repo row the local copy may be the live one, so the gap-filling rule still applies.
     const read = await fetchWorkspaceSessionWithRuntimeHostOwners(

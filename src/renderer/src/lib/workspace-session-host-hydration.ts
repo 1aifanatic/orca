@@ -22,7 +22,6 @@ import {
   normalizeWorkspaceSessionKeyToWorktreeId
 } from './workspace-session-host-contention'
 import { nonLocalHostSessionEntries, type HostSessionSlices } from './workspace-session-host-split'
-import { withoutLocalCopiesOfSshOwnedWorkspaces } from './workspace-session-ssh-owned-local-copy'
 
 type SessionReadApi = {
   get: (hostId?: ExecutionHostId) => Promise<WorkspaceSessionState>
@@ -206,6 +205,7 @@ export async function fetchWorkspaceSessionWithRuntimeHostOwners(
   // `ssh:<targetId>` are the same workspace written twice, so they are reunited afterwards instead
   // — and a workspace the merged session has no tabs for is adopted rather than read as a
   // deletion (#12721). Routing sends the reunited rows back to the owning partition.
+  let session = merged.session
   // Why the merge's verdict is widened here: it arbitrates only the slices it was given, and the
   // ssh ones are kept out of that claimant set on purpose. Adoption is the one place an ssh row
   // meets a bare id another host also claims.
@@ -214,7 +214,6 @@ export async function fetchWorkspaceSessionWithRuntimeHostOwners(
     sshPartitions,
     merged.contestedSessionKeys
   )
-  let session = withoutLocalCopiesOfSshOwnedWorkspaces(merged.session, attribution)
   const primaryHostBySessionKey = { ...merged.primaryHostBySessionKey }
   // Why the ssh partitions get shadow entries of their own: the contention split only parks rows
   // for the slices it arbitrates, and these are not among them. Everything this read leaves behind
@@ -223,6 +222,7 @@ export async function fetchWorkspaceSessionWithRuntimeHostOwners(
   for (const [hostId, slice] of sshPartitions) {
     const adoption = adoptStrandedHostPartitionSession(session, slice, {
       contestedSessionKeys: attribution.contestedSessionKeys,
+      ownedSessionKeys: attribution.ownedSessionKeys,
       foreignSessionKeys: unownedSessionKeys(
         session,
         attribution.contestedSessionKeys,
@@ -293,12 +293,12 @@ function sshPartitionCatalogAttribution(
 ): {
   contestedSessionKeys: Set<string>
   foreignSessionKeysByHostId: Map<ExecutionHostId, Set<string>>
-  /** Workspaces the catalog resolves to the ssh partition that names them. */
-  sshOwnedWorkspaceIds: Set<string>
+  /** Ids the catalog resolves to the ssh partition that names them. */
+  ownedSessionKeys: Set<string>
 } {
   const contestedSessionKeys = new Set(mergedContested)
   const foreignSessionKeysByHostId = new Map<ExecutionHostId, Set<string>>()
-  const sshOwnedWorkspaceIds = new Set<string>()
+  const ownedSessionKeys = new Set<string>()
   const repoLookup = createRepoRowExecutionHostLookup(repos)
   const ownedByHostId = new Map<ExecutionHostId, Set<string>>()
   for (const [hostId, slice] of sshPartitions) {
@@ -325,7 +325,7 @@ function sshPartitionCatalogAttribution(
         contestedSessionKeys.add(workspaceId)
       }
       if (resolution?.kind === 'resolved') {
-        sshOwnedWorkspaceIds.add(workspaceId)
+        ownedSessionKeys.add(workspaceId)
       }
       owned.add(workspaceId)
     }
@@ -340,7 +340,7 @@ function sshPartitionCatalogAttribution(
   for (const workspaceId of sessionKeysHeldByMultiplePartitionSets([...ownedByHostId.values()])) {
     contestedSessionKeys.add(workspaceId)
   }
-  return { contestedSessionKeys, foreignSessionKeysByHostId, sshOwnedWorkspaceIds }
+  return { contestedSessionKeys, foreignSessionKeysByHostId, ownedSessionKeys }
 }
 
 /** Ids that appear in more than one of these per-partition sets. */

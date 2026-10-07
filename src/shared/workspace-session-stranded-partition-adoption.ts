@@ -51,9 +51,9 @@ import {
  * that anything was closed (`mergeDirectSshRemoteWorkspaceSession` argues this at length, and
  * docs/reference/ssh-execution-boundary.md makes it general — "we could not see it" is
  * `unverifiable`, never proof of absence). Treating it as the truth is what published an empty tab
- * list and let `replace-session` delete the host's copy (#12721). Boot hydration removes `local`
- * copies of workspaces the repo catalog places on the SSH target before calling this, so the rule
- * only decides for workspaces whose owner it cannot name (#23390).
+ * list and let `replace-session` delete the host's copy (#12721). Nor is a copy of a workspace the
+ * repo catalog places on this host: that live copy is the partition's, and the base's tabs are
+ * residue that dropped its agent-resume records on the first save (#23390, #25616).
  */
 
 type KeyedRecord = Record<string, unknown>
@@ -108,10 +108,14 @@ export function workspaceIdsNamedByPartition(host: WorkspaceSessionState): Set<s
 /** Every workspace the host partition names in any scoped field, minus the base's live copies. */
 function adoptableWorkspaceIds(
   base: WorkspaceSessionState,
-  host: WorkspaceSessionState
+  host: WorkspaceSessionState,
+  hostOwned: (workspaceId: string) => boolean
 ): Set<string> {
   const owned = workspacesTheBaseOwns(base)
-  return collectWorkspaceIds(host, (workspaceId) => owned.has(workspaceId))
+  return collectWorkspaceIds(
+    host,
+    (workspaceId) => owned.has(workspaceId) && !hostOwned(workspaceId)
+  )
 }
 
 function collectWorkspaceIds(
@@ -262,6 +266,9 @@ export type StrandedPartitionAdoptionOptions = {
    * rows stay where they are, which is the leak direction the boundary doc asks for.
    */
   foreignSessionKeys?: ReadonlySet<string>
+  /** Keys the repo catalog attributes to this host. Unless contested, the base's tabs for them
+   *  are a stale copy, so they do not keep this partition's rows out. */
+  ownedSessionKeys?: ReadonlySet<string>
 }
 
 export type StrandedPartitionAdoption = {
@@ -280,16 +287,20 @@ export function adoptStrandedHostPartitionSession(
   if (!host) {
     return { session: base, adoptedWorkspaceIds: NOTHING_ADOPTED }
   }
-  const adoptable = adoptableWorkspaceIds(base, host)
+  const contested = new Set<string>()
+  for (const key of options.contestedSessionKeys ?? []) {
+    contested.add(normalizeWorkspaceSessionKeyToWorkspaceId(key))
+  }
+  const adoptable = adoptableWorkspaceIds(
+    base,
+    host,
+    (workspaceId) => !contested.has(workspaceId) && !!options.ownedSessionKeys?.has(workspaceId)
+  )
   for (const key of options.foreignSessionKeys ?? []) {
     adoptable.delete(normalizeWorkspaceSessionKeyToWorkspaceId(key))
   }
   if (adoptable.size === 0) {
     return { session: base, adoptedWorkspaceIds: NOTHING_ADOPTED }
-  }
-  const contested = new Set<string>()
-  for (const key of options.contestedSessionKeys ?? []) {
-    contested.add(normalizeWorkspaceSessionKeyToWorkspaceId(key))
   }
   const adopts = (key: string): boolean =>
     adoptable.has(normalizeWorkspaceSessionKeyToWorkspaceId(key))
