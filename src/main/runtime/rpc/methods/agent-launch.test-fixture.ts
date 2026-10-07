@@ -139,6 +139,11 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
     getTerminalPtyIdentity: vi.fn(
       options.ptyIdentity ?? ((_handle: string) => ({ ptyId: 'pty-1', incarnationId: null }))
     ),
+    getTerminalPromptRequestBinding: vi.fn((_handle: string) => ({
+      ptyId: 'pty-1',
+      processIncarnation: 'launch-1',
+      generation: 1
+    })),
     isTerminalRunningAgent: vi.fn(async () => true),
     showManagedTerminalWorkspace: vi.fn(async (selector: string) => ({
       id: selector.replace(/^id:/, '')

@@ -27,7 +27,7 @@ import type { RuntimeTerminalWait } from '../../../../shared/runtime-terminal-co
 import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
 import {
   waitForLaunchedAgentComposer,
-  type LaunchedAgentReadinessRuntime
+  type LaunchedAgentLaunchReadinessRuntime
 } from '../../launched-agent-composer-readiness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import type { OwedLaunchPromptWriteStart } from '../../agent-launch-owed-prompt-record'
@@ -45,9 +45,9 @@ const AGENT_READY_TIMEOUT_MS = 60_000
 /** How often a launch re-checks a blocking prompt the user may still dismiss. */
 const BLOCKED_RECHECK_MS = 1_000
 
-type TerminalPromptRuntime = LaunchedAgentReadinessRuntime &
+type TerminalPromptRuntime = LaunchedAgentLaunchReadinessRuntime &
   LaunchedAgentWriteGuardRuntime &
-  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt'>
+  Pick<OrcaRuntimeService, 'sendTerminalAgentPrompt' | 'getTerminalPromptRequestBinding'>
 
 type ReadinessClock = { now: () => number; sleep: (ms: number) => Promise<void> }
 
@@ -69,9 +69,9 @@ async function waitThroughBlockingPrompts(
   agent: TuiAgent,
   freshLaunch: boolean,
   clock: ReadinessClock,
-  /** Main's desktop paste rule: past each agent's budget, write once the agent holds the pane. */
-  desktopBudget: boolean
-): Promise<RuntimeTerminalWait | 'budget-spent' | undefined> {
+  /** Main's desktop paste rule: qualify a timed-out composer with positive fallback evidence. */
+  desktopFallback: boolean
+): Promise<RuntimeTerminalWait | 'fallback-ready' | undefined> {
   const deadline = clock.now() + AGENT_READY_TIMEOUT_MS
   for (;;) {
     // At least 1 ms: the terminal wait reads 0 as "use the 5-minute default", and a late sleep can
@@ -79,12 +79,12 @@ async function waitThroughBlockingPrompts(
     const timeoutMs = Math.max(1, deadline - clock.now())
     const wait = freshLaunch
       ? await waitForLaunchedAgentComposer(runtime, handle, agent, timeoutMs, {
-          writeWhenBudgetSpent: desktopBudget
+          desktopFallback
         })
       : // A reused pane was not freshly launched: its composer marker may be long gone.
         await runtime.waitForTerminal(handle, { condition: 'tui-idle', timeoutMs })
     if (
-      wait === 'budget-spent' ||
+      wait === 'fallback-ready' ||
       !wait?.blockedReason ||
       wait.satisfied ||
       deadline - clock.now() <= BLOCKED_RECHECK_MS
@@ -166,6 +166,18 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     processlessHostUnprovable: true
   })
   try {
+    const original = args.runtime.getTerminalPromptRequestBinding(args.handle)
+    const assertOriginal = (ptyId = original.ptyId): void => {
+      const current = args.runtime.getTerminalPromptRequestBinding(args.handle)
+      if (
+        ptyId !== original.ptyId ||
+        current.ptyId !== original.ptyId ||
+        current.processIncarnation !== original.processIncarnation ||
+        current.generation !== original.generation
+      ) {
+        throw new Error('terminal_handle_stale')
+      }
+    }
     const wait = await waitThroughBlockingPrompts(
       args.runtime,
       args.handle,
@@ -176,19 +188,29 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     )
     // An unsatisfied wait is a composer that never opened — a dialog left up, a dead process, an
     // agent that showed no readiness. Pasting anyway would answer whatever is on screen with it.
-    const composerSeen = wait !== 'budget-spent'
-    if (wait && wait !== 'budget-spent' && !wait.satisfied) {
+    assertOriginal()
+    const composerSeen = wait !== 'fallback-ready'
+    if (wait && wait !== 'fallback-ready' && !wait.satisfied) {
       console.warn(
         `[agent-launch] the terminal agent did not become ready (${wait.status}); its launch prompt was not delivered`
       )
       return false
     }
+    const beforeWrite = beforeFirstByte(
+      guard.beforeWrite,
+      args.beginPromptWrite,
+      args.resumed === true
+    )
     const sent = await args.runtime.sendTerminalAgentPrompt(args.handle, args.text, {
       inputKind: 'launch',
       // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
-      // Past its budget too: main's blind paste submitted on its normal Enter timing.
+      // The evidence-qualified fallback uses main's normal Enter timing too.
       composerReady: args.freshLaunch,
-      beforeWrite: beforeFirstByte(guard.beforeWrite, args.beginPromptWrite, args.resumed === true),
+      beforeWrite: async (ptyId) => {
+        assertOriginal(ptyId)
+        await beforeWrite(ptyId)
+        assertOriginal(ptyId)
+      },
       // Paired: together these take the queued path, which settles an unobserved turn start into
       // an `input_accepted` receipt rather than raising it. Without the id the write is verified
       // strictly and a slow first turn throws.

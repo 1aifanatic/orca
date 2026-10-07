@@ -21,7 +21,7 @@ import {
   waitForLaunchedAgentComposer,
   workerStartReadsComposerMarker,
   type LaunchedAgentReadinessLane,
-  type LaunchedAgentReadinessRuntime
+  type LaunchedAgentLaunchReadinessRuntime
 } from './launched-agent-composer-readiness'
 import { waitForWorktreeStartupDraft } from './runtime-worktree-startup-readiness'
 
@@ -253,7 +253,8 @@ function replayRuntime() {
         settleIdle = resolve
       })
   )
-  const runtime: LaunchedAgentReadinessRuntime = {
+  const runtime: LaunchedAgentLaunchReadinessRuntime = {
+    waitForAgentLaunchFallback: async () => ({ ready: false, reason: 'timeout' }),
     waitForTerminal,
     waitForFreshWorkerComposer
   }

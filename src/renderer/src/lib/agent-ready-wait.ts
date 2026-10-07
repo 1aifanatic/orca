@@ -1,25 +1,10 @@
-import { classifyTitleActivity } from '@/lib/pane-agent-evidence'
-import { isExpectedAgentProcess } from '../../../shared/agent-process-recognition'
-import { isShellProcess } from './tui-agent-startup'
+import {
+  waitForAgentReadyEvidence,
+  type AgentReadyResult
+} from '../../../shared/agent-ready-evidence'
+export type { AgentReadyReason, AgentReadyResult } from '../../../shared/agent-ready-evidence'
 import { useAppStore } from '@/store'
 import { inspectRuntimeTerminalProcess } from '@/runtime/runtime-terminal-inspection'
-
-// Why: agent CLIs vary widely in how they signal readiness. Title-based
-// detection (OSC titles parsed by detectAgentStatusFromTitle) is the tightest
-// signal we have — an agent that emits "✳ " or ". "/"* " prefixes has fully
-// taken over the PTY. For agents that don't set titles, fall back to
-// foreground-process equality (the launched binary is alive and owns the fg
-// job), then finally to the presence of any non-shell child process. A hard
-// timeout prevents the Use-button flow from hanging on a missing binary.
-export type AgentReadyReason = 'title-idle' | 'foreground-match' | 'child-process' | 'timeout'
-
-export type AgentReadyResult = {
-  ready: boolean
-  reason: AgentReadyReason
-}
-
-const DEFAULT_TIMEOUT_MS = 5000
-const POLL_INTERVAL_MS = 120
 
 function resolvePrimaryPtyId(tabId: string): string | null {
   const state = useAppStore.getState()
@@ -27,7 +12,7 @@ function resolvePrimaryPtyId(tabId: string): string | null {
   return ptyIds?.[0] ?? null
 }
 
-function titleSuggestsReady(tabId: string): boolean {
+function readReadyTitles(tabId: string): string[] {
   const state = useAppStore.getState()
   const paneTitles = state.runtimePaneTitlesByTabId[tabId]
   const titles: string[] = []
@@ -51,7 +36,7 @@ function titleSuggestsReady(tabId: string): boolean {
       }
     }
   }
-  return titles.some((title) => classifyTitleActivity(title) === 'idle')
+  return titles
 }
 
 /**
@@ -71,45 +56,15 @@ export async function waitForAgentReady(
   expectedProcess: string,
   opts?: { timeoutMs?: number }
 ): Promise<AgentReadyResult> {
-  const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const deadline = Date.now() + timeoutMs
-  let attempt = 0
-
-  while (Date.now() < deadline) {
-    if (attempt > 0) {
-      await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS))
-    }
-    attempt += 1
-
-    if (titleSuggestsReady(tabId)) {
-      return { ready: true, reason: 'title-idle' }
-    }
-
-    const ptyId = resolvePrimaryPtyId(tabId)
-    if (!ptyId) {
-      continue
-    }
-
-    try {
-      const process = await inspectRuntimeTerminalProcess(useAppStore.getState().settings, ptyId)
-      const foreground = process.foregroundProcess?.toLowerCase() ?? ''
-      if (isExpectedAgentProcess(foreground, expectedProcess)) {
-        return { ready: true, reason: 'foreground-match' }
+  return waitForAgentReadyEvidence(
+    {
+      readTitles: () => readReadyTitles(tabId),
+      inspectProcess: async () => {
+        const ptyId = resolvePrimaryPtyId(tabId)
+        return ptyId ? inspectRuntimeTerminalProcess(useAppStore.getState().settings, ptyId) : null
       }
-
-      // Why: child-process check is the weakest signal (it fires for any
-      // non-shell subprocess, including `ls` or `git`). Gate it behind a few
-      // polls so the shell's own startup children don't spoof readiness on
-      // cold-start. Never accept it while the foreground is still a shell.
-      if (attempt >= 4 && !isShellProcess(foreground)) {
-        if (process.hasChildProcesses) {
-          return { ready: true, reason: 'child-process' }
-        }
-      }
-    } catch {
-      // Swallow transient PTY inspection errors and keep polling.
-    }
-  }
-
-  return { ready: false, reason: 'timeout' }
+    },
+    expectedProcess,
+    opts?.timeoutMs ?? 5000
+  )
 }

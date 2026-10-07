@@ -13,6 +13,10 @@ import { registerWorktreeChangeInvalidator } from '../ipc/worktree-change-invali
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { peekOpenedAgentSessionRecordStore } from './agent-session-record-store-slot'
 import { createAgentLaunchRecordWarmupGate } from './agent-launch-record-warmup-gate'
+import { waitForAgentReadyEvidence, type AgentReadyResult } from '../../shared/agent-ready-evidence'
+import type { TuiAgent } from '../../shared/tui-agent'
+import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import { getLatestPtyTitle } from './runtime-worktree-status-projection'
 import { registerDetectedWorktreeScanInvalidation } from '../ipc/worktrees/listing/register-detected-worktree-scan-invalidation'
 
 class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
@@ -53,6 +57,35 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
       }
     }
     return ptyId ? { ptyId, incarnationId: this.ptysById.get(ptyId)?.incarnationId ?? null } : null
+  }
+
+  /** Main's positive desktop timeout fallback, read from this launch's execution-host PTY. */
+  waitForAgentLaunchFallback(handle: string, agent: TuiAgent): Promise<AgentReadyResult> {
+    const original = this.getTerminalPromptRequestBinding(handle)
+    const assertCurrent = (): void => {
+      const current = this.getTerminalPromptRequestBinding(handle)
+      if (
+        current.ptyId !== original.ptyId ||
+        current.processIncarnation !== original.processIncarnation ||
+        current.generation !== original.generation ||
+        !this.ptysById.get(original.ptyId)?.connected
+      ) {
+        throw new Error('terminal_handle_stale')
+      }
+    }
+    return waitForAgentReadyEvidence(
+      {
+        assertCurrent,
+        readTitles: () => {
+          const pty = this.ptysById.get(original.ptyId)
+          const title = pty ? getLatestPtyTitle(pty) : null
+          return title ? [title] : []
+        },
+        inspectProcess: () => this.inspectTerminalProcess(handle)
+      },
+      TUI_AGENT_CONFIG[agent].expectedProcess,
+      1000
+    )
   }
 
   /** Tells the window a launch pane's fate: it keeps a final one on the tab, clears a settled one,
