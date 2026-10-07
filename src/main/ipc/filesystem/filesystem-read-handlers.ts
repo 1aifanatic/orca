@@ -24,7 +24,7 @@ import { recordCrashBreadcrumb } from '../../crash-reporting/crash-breadcrumb-st
 import { buildReadDirErrorBreadcrumb, type ReadDirThrowSite } from '../readdir-error-diagnostics'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
 import { registerFilesystemChunkReadHandler } from './filesystem-chunk-read-handler'
-import { readVideoPreview } from '../../media/video-preview-protocol'
+import { readMediaPreview } from '../../media/media-preview-protocol'
 import {
   readLocalFileContent,
   readLocalLogSnapshot,
@@ -90,16 +90,16 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
     ): Promise<LocalFileContent> => {
       if (args.connectionId) {
         const provider = requireSshFilesystemProvider(args.connectionId)
-        const video = readVideoPreview(event, args, store)
-        if (video) {
-          return video
+        const media = readMediaPreview(event, args, store)
+        if (media) {
+          return media
         }
         return provider.readFile(args.filePath)
       }
       const filePath = await resolveLocalFileRequestPath(args.filePath, args.access, store)
-      const video = readVideoPreview(event, args, store)
-      if (video) {
-        return video
+      const media = readMediaPreview(event, args, store)
+      if (media) {
+        return media
       }
       return args.includeLocalLogMetadata === true
         ? readLocalLogSnapshot(filePath)

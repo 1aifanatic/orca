@@ -13,9 +13,9 @@ vi.mock('electron', () => ({ protocol: { handle: vi.fn(), registerSchemesAsPrivi
 vi.mock('../ipc/local-file-access-resolution', () => ({ resolveLocalFileRequestPath: authorize }))
 vi.mock('../providers/ssh-filesystem-dispatch', () => ({ requireSshFilesystemProvider: provider }))
 
-import { handleVideoPreviewRequest, readVideoPreview } from './video-preview-protocol'
+import { handleMediaPreviewRequest, readMediaPreview } from './media-preview-protocol'
 
-describe('video preview protocol', () => {
+describe('media preview protocol', () => {
   let directory: string
   const emitter = new EventEmitter()
   const event = {
@@ -40,20 +40,20 @@ describe('video preview protocol', () => {
     await rm(directory, { recursive: true, force: true })
   })
 
-  it.each(['mp4', 'MOV', 'm4v', 'webm'])(
+  it.each(['mp4', 'MOV', 'm4v', 'webm', 'MP3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'flac', 'opus'])(
     'streams %s without returning bytes through IPC',
     async (extension) => {
       const filePath = join(directory, `clip.${extension}`)
       await writeFile(filePath, Uint8Array.from([0, 1, 2, 3, 4, 5]))
       const target = { filePath, access: { kind: 'user-file' } as const }
-      const result = readVideoPreview(event, target, store)
+      const result = readMediaPreview(event, target, store)
       expect(result).toMatchObject({ content: '', isBinary: true })
-      expect(result?.videoUrl).not.toContain(filePath)
+      expect(result?.mediaUrl).not.toContain(filePath)
       if (!result) {
         throw new Error('Missing preview')
       }
-      const response = await handleVideoPreviewRequest(
-        new Request(result.videoUrl, { headers: { range: 'bytes=2-4' } })
+      const response = await handleMediaPreviewRequest(
+        new Request(result.mediaUrl, { headers: { range: 'bytes=2-4' } })
       )
       expect(response.status).toBe(206)
       expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([2, 3, 4])
@@ -64,34 +64,34 @@ describe('video preview protocol', () => {
   it('rechecks authorization for every seek and revokes URLs with the renderer', async () => {
     const filePath = join(directory, 'clip.mp4')
     await writeFile(filePath, 'video')
-    const result = readVideoPreview(event, { filePath }, store)
+    const result = readMediaPreview(event, { filePath }, store)
     if (!result) {
       throw new Error('Missing preview')
     }
     authorize.mockRejectedValueOnce(new Error('Access denied'))
-    expect((await handleVideoPreviewRequest(new Request(result.videoUrl))).status).toBe(404)
+    expect((await handleMediaPreviewRequest(new Request(result.mediaUrl))).status).toBe(404)
     emitter.emit('destroyed')
-    expect((await handleVideoPreviewRequest(new Request(result.videoUrl))).status).toBe(404)
+    expect((await handleMediaPreviewRequest(new Request(result.mediaUrl))).status).toBe(404)
     expect(authorize).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects directories, forged URLs and non-video paths', async () => {
-    const result = readVideoPreview(event, { filePath: join(directory, 'folder.mp4') }, store)
+  it('rejects directories, forged URLs and non-media paths', async () => {
+    const result = readMediaPreview(event, { filePath: join(directory, 'folder.mp4') }, store)
     if (!result) {
       throw new Error('Missing preview')
     }
     authorize.mockResolvedValueOnce(directory)
-    expect((await handleVideoPreviewRequest(new Request(result.videoUrl))).status).toBe(404)
-    expect(
-      (await handleVideoPreviewRequest(new Request('orca-media://video/unknown'))).status
-    ).toBe(404)
-    expect(readVideoPreview(event, { filePath: join(directory, 'secret.txt') }, store)).toBeNull()
+    expect((await handleMediaPreviewRequest(new Request(result.mediaUrl))).status).toBe(404)
+    expect((await handleMediaPreviewRequest(new Request('orca-media://file/unknown'))).status).toBe(
+      404
+    )
+    expect(readMediaPreview(event, { filePath: join(directory, 'secret.txt') }, store)).toBeNull()
   })
 
   it('serves SSH ranges on the execution host without reading a local path', async () => {
     const readFileRange = vi.fn(async () => ({ bytes: Buffer.from([7, 8, 9]), bytesRead: 3 }))
     provider.mockReturnValue({ stat: async () => ({ type: 'file', size: 10 }), readFileRange })
-    const result = readVideoPreview(
+    const result = readMediaPreview(
       event,
       { filePath: '/remote/clip.mp4', connectionId: 'ssh-owner' },
       store
@@ -99,8 +99,8 @@ describe('video preview protocol', () => {
     if (!result) {
       throw new Error('Missing preview')
     }
-    const response = await handleVideoPreviewRequest(
-      new Request(result.videoUrl, { headers: { range: 'bytes=7-' } })
+    const response = await handleMediaPreviewRequest(
+      new Request(result.mediaUrl, { headers: { range: 'bytes=7-' } })
     )
     expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([7, 8, 9])
     expect(readFileRange).toHaveBeenCalledWith('/remote/clip.mp4', 7, 3)
@@ -112,7 +112,7 @@ describe('video preview protocol', () => {
     provider.mockImplementation(() => {
       throw new Error('SSH disconnected')
     })
-    const result = readVideoPreview(
+    const result = readMediaPreview(
       event,
       { filePath: '/remote/clip.mp4', connectionId: 'ssh-owner' },
       store
@@ -120,7 +120,7 @@ describe('video preview protocol', () => {
     if (!result) {
       throw new Error('Missing preview')
     }
-    expect((await handleVideoPreviewRequest(new Request(result.videoUrl))).status).toBe(404)
+    expect((await handleMediaPreviewRequest(new Request(result.mediaUrl))).status).toBe(404)
     expect(authorize).not.toHaveBeenCalled()
   })
 })

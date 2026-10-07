@@ -3,31 +3,31 @@ import { extname } from 'node:path'
 import { protocol, type WebContents } from 'electron'
 import type { Store } from '../persistence'
 import type { LocalFileAccess } from '../../shared/local-file-access'
-import { VIDEO_FILE_MIME_TYPES, VIDEO_PREVIEW_SCHEME } from '../../shared/video-file-extensions'
+import { MEDIA_FILE_MIME_TYPES, MEDIA_PREVIEW_SCHEME } from '../../shared/media-file-extensions'
 import { resolveLocalFileRequestPath } from '../ipc/local-file-access-resolution'
 import { openLocalRegularFile } from '../ipc/filesystem/local-regular-file-read'
 import { requireSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import { readSshFileExplorerChunk } from '../runtime/ssh-file-explorer-chunk-read'
 import { abortWhenRendererGone } from '../ipc/renderer-lifetime-abort'
-import { createVideoRangeResponse } from './video-range-response'
+import { createMediaRangeResponse } from './media-range-response'
 
-type VideoTarget = { filePath: string; connectionId?: string; access?: LocalFileAccess }
-type VideoGrant = { target: VideoTarget; store: Store; mimeType: string }
-const grants = new Map<string, VideoGrant>()
+type MediaTarget = { filePath: string; connectionId?: string; access?: LocalFileAccess }
+type MediaGrant = { target: MediaTarget; store: Store; mimeType: string }
+const grants = new Map<string, MediaGrant>()
 const senders = new Map<number, Map<string, string>>()
 
-export function registerVideoPreviewSchemePrivileges(): void {
+export function registerMediaPreviewSchemePrivileges(): void {
   protocol.registerSchemesAsPrivileged([
-    { scheme: VIDEO_PREVIEW_SCHEME, privileges: { standard: true, secure: true, stream: true } }
+    { scheme: MEDIA_PREVIEW_SCHEME, privileges: { standard: true, secure: true, stream: true } }
   ])
 }
 
-export function readVideoPreview(
+export function readMediaPreview(
   event: { sender: Pick<WebContents, 'id' | 'once' | 'removeListener'> },
-  target: VideoTarget,
+  target: MediaTarget,
   store: Store
-): { content: string; isBinary: boolean; mimeType: string; videoUrl: string } | null {
-  const mimeType = VIDEO_FILE_MIME_TYPES[extname(target.filePath).toLowerCase()]
+): { content: string; isBinary: boolean; mimeType: string; mediaUrl: string } | null {
+  const mimeType = MEDIA_FILE_MIME_TYPES[extname(target.filePath).toLowerCase()]
   if (!mimeType) {
     return null
   }
@@ -60,13 +60,13 @@ export function readVideoPreview(
     content: '',
     isBinary: true,
     mimeType,
-    videoUrl: `${VIDEO_PREVIEW_SCHEME}://video/${token}?revision=${randomUUID()}`
+    mediaUrl: `${MEDIA_PREVIEW_SCHEME}://file/${token}?revision=${randomUUID()}`
   }
 }
 
-export async function handleVideoPreviewRequest(request: Request): Promise<Response> {
+export async function handleMediaPreviewRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
-  const grant = url.hostname === 'video' ? grants.get(url.pathname.slice(1)) : undefined
+  const grant = url.hostname === 'file' ? grants.get(url.pathname.slice(1)) : undefined
   if (!grant) {
     return new Response(null, { status: 404 })
   }
@@ -81,7 +81,7 @@ export async function handleVideoPreviewRequest(request: Request): Promise<Respo
       if (stats.type !== 'file') {
         throw new Error('Not a regular file')
       }
-      return await createVideoRangeResponse(request, mimeType, {
+      return await createMediaRangeResponse(request, mimeType, {
         size: stats.size,
         read: async (offset, length) => {
           const chunk = await readSshFileExplorerChunk(
@@ -98,7 +98,7 @@ export async function handleVideoPreviewRequest(request: Request): Promise<Respo
     }
     const filePath = await resolveLocalFileRequestPath(target.filePath, target.access, store)
     const { handle, stats } = await openLocalRegularFile(filePath)
-    return await createVideoRangeResponse(request, mimeType, {
+    return await createMediaRangeResponse(request, mimeType, {
       size: stats.size,
       read: async (offset, length) => {
         const buffer = Buffer.alloc(length)
@@ -112,6 +112,6 @@ export async function handleVideoPreviewRequest(request: Request): Promise<Respo
   }
 }
 
-export function installVideoPreviewProtocolHandler(): void {
-  protocol.handle(VIDEO_PREVIEW_SCHEME, handleVideoPreviewRequest)
+export function installMediaPreviewProtocolHandler(): void {
+  protocol.handle(MEDIA_PREVIEW_SCHEME, handleMediaPreviewRequest)
 }

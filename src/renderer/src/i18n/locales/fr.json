@@ -19195,8 +19195,8 @@
       "preservedBranches": "Certaines branches de worktrees imbriqués ont été conservées"
     }
   },
-  "videoPreview": {
-    "unavailable": "Impossible de lire cette vidéo. Le fichier peut être indisponible ou utiliser un codec non pris en charge.",
+  "mediaPreview": {
+    "unavailable": "Impossible de lire ce fichier multimédia. Le fichier peut être indisponible ou utiliser un codec non pris en charge.",
     "openFailed": "Impossible d’ouvrir ce fichier dans l’application par défaut.",
     "openDefault": "Ouvrir dans l’application par défaut"
   }

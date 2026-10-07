@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createVideoRangeResponse } from './video-range-response'
+import { createMediaRangeResponse } from './media-range-response'
 import { MAX_FILE_RANGE_READ_BYTES } from '../../shared/file-range-read'
 
 function fixture(size = 10) {
@@ -12,7 +12,7 @@ function fixture(size = 10) {
   }
 }
 
-describe('video range responses', () => {
+describe('media range responses', () => {
   it.each([
     ['bytes=2-5', 'bytes 2-5/10', [2, 3, 4, 5]],
     ['bytes=7-', 'bytes 7-9/10', [7, 8, 9]],
@@ -20,7 +20,7 @@ describe('video range responses', () => {
     ['bytes=8-100', 'bytes 8-9/10', [8, 9]]
   ] as const)('seeks using %s', async (range, contentRange, bytes) => {
     const reader = fixture()
-    const response = await createVideoRangeResponse(
+    const response = await createMediaRangeResponse(
       new Request('https://video.test', { headers: { range } }),
       'video/mp4',
       reader
@@ -42,7 +42,7 @@ describe('video range responses', () => {
     'bytes=-9007199254740992'
   ])('refuses invalid range %s without reading', async (range) => {
     const reader = fixture()
-    const response = await createVideoRangeResponse(
+    const response = await createMediaRangeResponse(
       new Request('https://video.test', { headers: { range } }),
       'video/mp4',
       reader
@@ -55,7 +55,7 @@ describe('video range responses', () => {
 
   it('bounds reads when streaming a multi-gigabyte file and releases it on cancellation', async () => {
     const reader = fixture(4 * 1024 ** 3)
-    const response = await createVideoRangeResponse(
+    const response = await createMediaRangeResponse(
       new Request('https://video.test'),
       'video/mp4',
       reader
@@ -76,7 +76,7 @@ describe('video range responses', () => {
       ['GET', 0]
     ] as const) {
       const reader = fixture(size)
-      const response = await createVideoRangeResponse(
+      const response = await createMediaRangeResponse(
         new Request('https://video.test', { method }),
         'video/mp4',
         reader
@@ -91,7 +91,7 @@ describe('video range responses', () => {
   it('closes a failed read and reports the stream error', async () => {
     const reader = fixture()
     reader.read.mockRejectedValue(new Error('Connection dropped'))
-    const response = await createVideoRangeResponse(
+    const response = await createMediaRangeResponse(
       new Request('https://video.test'),
       'video/mp4',
       reader
@@ -103,13 +103,13 @@ describe('video range responses', () => {
   it('releases a file when the request is aborted', async () => {
     const controller = new AbortController()
     const reader = fixture(4 * 1024 ** 3)
-    const response = await createVideoRangeResponse(
+    const response = await createMediaRangeResponse(
       new Request('https://video.test', { signal: controller.signal }),
       'video/mp4',
       reader
     )
     controller.abort()
-    await expect(response.arrayBuffer()).rejects.toThrow('Video request cancelled')
+    await expect(response.arrayBuffer()).rejects.toThrow('Media request cancelled')
     expect(reader.close).toHaveBeenCalledTimes(1)
   })
 })

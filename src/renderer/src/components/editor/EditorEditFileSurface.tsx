@@ -12,7 +12,7 @@ import {
   IpynbViewer,
   MermaidViewer,
   MonacoEditor,
-  VideoViewer
+  MediaViewer
 } from './editor-lazy-views'
 import type { EditorConflictNavigation } from './useEditorConflictNavigation'
 import { EditorFileLoadErrorView } from './EditorFileLoadErrorView'
@@ -124,11 +124,12 @@ export function EditorEditFileSurface({
     )
   }
   if (fileContent.isBinary) {
-    if (fileContent.videoUrl) {
+    if (fileContent.mediaUrl) {
       return (
-        <VideoViewer
-          key={fileContent.videoUrl}
-          src={fileContent.videoUrl}
+        <MediaViewer
+          key={fileContent.mediaUrl}
+          src={fileContent.mediaUrl}
+          mimeType={fileContent.mimeType ?? 'video/mp4'}
           filePath={activeFile.filePath}
           canOpenLocally={
             !activeFile.externalSshTargetId &&

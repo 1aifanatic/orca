@@ -26,7 +26,7 @@ export const PREVIEWABLE_BINARY_MIME_TYPES: Record<string, string> = {
 }
 
 export type LocalFileContent = {
-  videoUrl?: string
+  mediaUrl?: string
   content: string
   isBinary: boolean
   isImage?: boolean

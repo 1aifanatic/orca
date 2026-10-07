@@ -65,7 +65,7 @@ export type FilesystemApi = {
     }) => Promise<{
       content: string
       isBinary: boolean
-      videoUrl?: string
+      mediaUrl?: string
       isImage?: boolean
       mimeType?: string
       fileIdentity?: string

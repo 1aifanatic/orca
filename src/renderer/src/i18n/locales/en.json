@@ -19263,8 +19263,8 @@
     "updateFailed": "Failed to update project field"
   },
   "settings.appearance.chat.title": "Chat",
-  "videoPreview": {
-    "unavailable": "Unable to play this video. The file may be unavailable or use an unsupported codec.",
+  "mediaPreview": {
+    "unavailable": "Unable to play this media file. The file may be unavailable or use an unsupported codec.",
     "openFailed": "Could not open this file in the default app.",
     "openDefault": "Open in Default App"
   }

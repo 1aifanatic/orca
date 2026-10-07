@@ -1,19 +1,19 @@
 import { MAX_FILE_RANGE_READ_BYTES } from '../../shared/file-range-read'
 
-type VideoReader = {
+type MediaReader = {
   size: number
   read: (offset: number, length: number) => Promise<Uint8Array>
   close: () => Promise<void>
 }
 
-export async function createVideoRangeResponse(
+export async function createMediaRangeResponse(
   request: Request,
   mimeType: string,
-  reader: VideoReader
+  reader: MediaReader
 ): Promise<Response> {
   if (!Number.isSafeInteger(reader.size) || reader.size < 0) {
     await reader.close()
-    throw new Error('Invalid video file size')
+    throw new Error('Invalid media file size')
   }
   const headers = new Headers({
     'Content-Type': mimeType,
@@ -59,7 +59,7 @@ export async function createVideoRangeResponse(
     await reader.close()
   }
   const abort = (): void => {
-    streamController?.error(new Error('Video request cancelled'))
+    streamController?.error(new Error('Media request cancelled'))
     void close().catch(() => {})
   }
   request.signal.addEventListener('abort', abort, { once: true })
@@ -73,14 +73,14 @@ export async function createVideoRangeResponse(
     async pull(controller) {
       try {
         if (request.signal.aborted || closed) {
-          throw new Error('Video request cancelled')
+          throw new Error('Media request cancelled')
         }
         const bytes = await reader.read(start, Math.min(MAX_FILE_RANGE_READ_BYTES, end - start + 1))
         if (closed) {
           return
         }
         if (bytes.byteLength === 0) {
-          throw new Error('Video file changed during playback')
+          throw new Error('Media file changed during playback')
         }
         start += bytes.byteLength
         controller.enqueue(bytes)
