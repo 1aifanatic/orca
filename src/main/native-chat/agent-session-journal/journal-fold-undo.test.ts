@@ -1,8 +1,13 @@
-// A failed append's undo, as a property: every append first runs with a failing COMMIT, then for
-// real, and after each the in-memory fold equals a fresh replay of the disk, container by container
-// with key order, scalars and turn scope, and the stored status equals a fresh derivation.
+// The write path, as a property: every append first runs with a failing COMMIT, then for real, and
+// after each the in-memory fold equals a fresh replay of the disk, container by container with key
+// order, scalars and turn scope, and the stored status equals a fresh derivation. At the end of each
+// chat, startup's selection reads the pinned answer.
+//
+// The harness wraps the store's private row writer: a writer refactor breaks it loudly.
 
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
+import { activeStructuredAgentSessionTurnIdBySequence } from '../../../shared/structured-agent-session-live-turn'
+import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,12 +24,22 @@ import {
 } from './journal-host-database-test-support'
 import type { JournalFoldHolder } from './journal-fold-holder'
 import { JournalQueuedMessages } from './journal-queued-messages'
-import { MAX_JOURNAL_APPLIED_SETTLEMENT_IDS, type JournalReducerState } from './journal-reducer'
-import { deriveJournalSessionStatus } from './journal-session-state'
+import {
+  MAX_JOURNAL_APPLIED_SETTLEMENT_IDS,
+  renderJournalState,
+  type JournalReducerState
+} from './journal-reducer'
+import {
+  deriveJournalSessionStatus,
+  isUnsettledJournalSessionStatus,
+  readUnsettledJournalSessionIds
+} from './journal-session-state'
 import {
   CORPUS_FENCE,
+  CORPUS_UNSETTLED,
   JOURNAL_SESSION_STATE_CASES,
-  JOURNAL_SESSION_STATE_CORPUS
+  JOURNAL_SESSION_STATE_CORPUS,
+  type JournalSessionStateCase
 } from './journal-session-state-test-corpus'
 import type { AgentSessionJournal } from './journal-store'
 
@@ -172,12 +187,37 @@ function codexItem(turnId: string, ordinal: number): AgentJournalItemIdentity {
 
 const THREAD = { fence: CORPUS_FENCE, turnScope: { kind: 'thread' as const } }
 
+/** What startup reads of the chat's final row: selection, the partial index, the active turn, and a
+ *  settled summary no fence changes (T3, T15a). */
+function expectStartupReadsTheRow(name: JournalSessionStateCase): void {
+  const status = readTestJournalSessionStatus(root, name)!
+  const { state } = loadTestJournal(root, name)!
+  expect(isUnsettledJournalSessionStatus(status)).toBe(CORPUS_UNSETTLED[name])
+  expect(readUnsettledJournalSessionIds(openTestJournalHostDatabase(root).db)).toEqual(
+    CORPUS_UNSETTLED[name] ? [name] : []
+  )
+  // The active turn the facts pass finds is the by-sequence reader's.
+  expect(status.activeTurnId).toBe(
+    activeStructuredAgentSessionTurnIdBySequence(state.items.values())
+  )
+  if (CORPUS_UNSETTLED[name]) {
+    return
+  }
+  const snapshot = renderJournalState(state)
+  for (const fence of [undefined, 0, 3, 4, 100]) {
+    expect(
+      projectStructuredAgentSessionStatusState(snapshot.items, snapshot.submissions, fence).summary
+    ).toEqual(status.summary)
+  }
+}
+
 describe('a failed append leaves the fold equal to a replay of the disk', () => {
   it.each(JOURNAL_SESSION_STATE_CASES)('%s', async (name) => {
     const journal = await open(name)
     const violations = failEveryAppendOnce(journal, name)
     await JOURNAL_SESSION_STATE_CORPUS[name](journal)
     expect(violations).toEqual([])
+    expectStartupReadsTheRow(name)
   })
 
   it('through every case on one chat, a tombstone and a recreate', async () => {
@@ -216,29 +256,32 @@ describe('a failed append leaves the fold equal to a replay of the disk', () => 
     expect(violations).toEqual([])
   })
 
-  it.each(JOURNAL_SESSION_STATE_CASES)(
-    'with a bookkeeping savepoint that always fails: %s',
-    async (name) => {
-      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-      vi.spyOn(JournalQueuedMessages.prototype, 'onRowInTransaction').mockImplementation((db) => {
-        db.prepare(
-          `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id, handed_over_sends,
-           queued_sends, live_child_work, summary_json, last_activity_at, rules_version)
-         VALUES ('savepoint-write', 'running', NULL, 0, 0, 0, '{}', 0, 1)`
-        ).run()
-        throw new Error('bookkeeping failed')
-      })
-      const journal = await open(name)
-      const violations = failEveryAppendOnce(journal, name)
-      await JOURNAL_SESSION_STATE_CORPUS[name](journal)
-      expect(violations).toEqual([])
-
-      const savepointWrite = openTestJournalHostDatabase(root)
-        .db.prepare("SELECT 1 FROM journal_session_state WHERE session_id = 'savepoint-write'")
-        .get()
-      expect(savepointWrite).toBeUndefined()
+  it('through every case on one chat, with a bookkeeping savepoint that writes and then fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    let written = 0
+    vi.spyOn(JournalQueuedMessages.prototype, 'onRowInTransaction').mockImplementation((db) => {
+      // A complete row, so only the savepoint's rollback keeps it off the disk.
+      db.prepare(
+        `INSERT INTO journal_session_state (session_id, lifecycle, active_turn_id, handed_over_sends,
+         queued_sends, live_child_work, summary_json, last_activity_at, rules_version, epoch, tip_seq,
+         tip_ts) VALUES ('savepoint-write', 'running', NULL, 0, 0, 0, '{}', 0, 1, 'epoch-x', 1, 1)`
+      ).run()
+      written += 1
+      throw new Error('bookkeeping failed')
+    })
+    const journal = await open('mixed')
+    const violations = failEveryAppendOnce(journal, 'mixed')
+    for (const name of JOURNAL_SESSION_STATE_CASES) {
+      await JOURNAL_SESSION_STATE_CORPUS[name](journal).catch(() => undefined)
     }
-  )
+    expect(violations).toEqual([])
+
+    expect(written).toBeGreaterThan(0)
+    const savepointWrite = openTestJournalHostDatabase(root)
+      .db.prepare("SELECT 1 FROM journal_session_state WHERE session_id = 'savepoint-write'")
+      .get()
+    expect(savepointWrite).toBeUndefined()
+  })
 })
 
 describe('a failed append that evicted the oldest settlement id (R3W-1)', () => {

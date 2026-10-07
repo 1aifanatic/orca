@@ -17,6 +17,7 @@ import {
   runningTool,
   send,
   settledTurn,
+  startFailure,
   userMessage
 } from './journal-session-state-test-writes'
 
@@ -228,6 +229,13 @@ export const JOURNAL_SESSION_STATE_CORPUS = {
     })
     await journal.appendStopEvent({ reason: 'user-stop', turnId: 'turn-2' }, CORPUS_FENCE)
   },
+  // A failed start rejects every send still queued behind it, in the batch that records it.
+  'failed start rejects queued': async (journal: AgentSessionJournal) => {
+    await settledTurn(journal, 'turn-1')
+    await send(journal, 'send-first', 'first', true)
+    await send(journal, 'send-second', 'second', true)
+    await startFailure(journal)
+  },
   // An older build's repair left its notice newest; nothing here owes a rebuild, so the roster counts.
   'working roster under a former repair notice': async (journal: AgentSessionJournal) => {
     await settledTurn(journal, 'turn-1')
@@ -266,6 +274,7 @@ export const CORPUS_UNSETTLED: Record<JournalSessionStateCase, boolean> = {
   'running work settled by a batch': false,
   'unknown send recovered': false,
   "running turn a person's Stop found": true,
+  'failed start rejects queued': false,
   'working roster under a former repair notice': true
 }
 

@@ -6,6 +6,8 @@ import {
   type AgentJournalItemIdentity,
   type AgentJournalMessageItem
 } from '../../../shared/agent-session-journal-types'
+import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import { agentSessionFailureWords } from '../../../shared/agent-session-failure-words'
 import type { AgentSessionJournal } from './journal-store'
 
 /** The fence every case writes its content under; an `unverifiable` turn's writer. */
@@ -93,4 +95,24 @@ export function roster(state: 'working' | 'completed'): AgentJournalItemBody {
       }
     ]
   }
+}
+
+/** A failed agent start: its notice, and every send still queued rejected, in one batch. */
+export async function startFailure(journal: AgentSessionJournal): Promise<void> {
+  await journal.appendLifecycleBatch({
+    settlementId: 'start-failure:gen-1',
+    fence: CORPUS_FENCE,
+    recovered: true,
+    mutations: [
+      {
+        kind: 'item',
+        identity: { provider: 'orca', clientMessageId: 'start-failure:gen-1' },
+        body: { kind: 'status', tone: 'error', text: 'Codex did not start.' },
+        turnScope: AGENT_JOURNAL_THREAD_SCOPE
+      }
+    ],
+    rejectsQueued: agentSessionFailureWords(agentSessionFailureFact('providerStartFailed'), {
+      surface: 'rejection'
+    })
+  })
 }

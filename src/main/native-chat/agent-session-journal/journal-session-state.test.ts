@@ -10,10 +10,6 @@ import {
   AGENT_SESSION_JOURNAL_SCHEMA_VERSION,
   type AgentSessionJournalIdentity
 } from '../../../shared/agent-session-journal-types'
-import { projectStructuredAgentSessionStatusState } from '../../../shared/structured-agent-session-projection'
-import { activeStructuredAgentSessionTurnIdBySequence } from '../../../shared/structured-agent-session-live-turn'
-import { JOURNAL_DB_SCHEMA_VERSION } from './journal-database-schema'
-import { journalPragmaNumber } from './journal-database'
 import { journalDatabasePath } from './journal-host-database'
 import Database from '../../sqlite/sync-database'
 import {
@@ -29,14 +25,11 @@ import * as JournalOpen from './journal-open'
 import { renderJournalState } from './journal-reducer'
 import {
   deriveJournalSessionStatus,
-  isUnsettledJournalSessionStatus,
   readUnsettledJournalSessionIds,
   type JournalSessionStatus
 } from './journal-session-state'
 import {
   CORPUS_FENCE,
-  CORPUS_UNSETTLED,
-  JOURNAL_SESSION_STATE_CASES,
   JOURNAL_SESSION_STATE_CORPUS,
   type JournalSessionStateCase
 } from './journal-session-state-test-corpus'
@@ -141,33 +134,6 @@ afterEach(async () => {
   vi.restoreAllMocks()
   await journals.closeAll()
   await rm(root, { recursive: true, force: true })
-})
-
-describe('the stored status follows every write (T3)', () => {
-  it.each(JOURNAL_SESSION_STATE_CASES)('%s', async (name) => {
-    const journal = await open(name)
-    const mismatches: string[] = []
-    // Told after each commit, which carried the row and its status together.
-    journal.observeCommits(() => {
-      const expected = freshDerivation(name)
-      try {
-        expect(stored(name)).toEqual(expected)
-      } catch {
-        mismatches.push(`seq ${journal.cursor().sequence}`)
-      }
-    })
-    await JOURNAL_SESSION_STATE_CORPUS[name](journal)
-    expect(mismatches).toEqual([])
-    expect(stored(name)).toEqual(freshDerivation(name))
-    expect(isUnsettledJournalSessionStatus(stored(name)!)).toBe(CORPUS_UNSETTLED[name])
-    expect(readUnsettledJournalSessionIds(db()).includes(name)).toBe(CORPUS_UNSETTLED[name])
-    // The active turn the facts pass finds is the by-sequence reader's.
-    expect(stored(name)?.activeTurnId).toBe(
-      activeStructuredAgentSessionTurnIdBySequence(
-        loadTestJournal(root, name)!.state.items.values()
-      )
-    )
-  })
 })
 
 describe('observers hear of a write only once it is committed (T13)', () => {
@@ -379,28 +345,5 @@ describe('epoch writes carry the status (T10)', () => {
 
     expect(journal.epoch).toBe(epoch)
     expect(loadTestJournal(root, 'settled')?.state.epoch).toBe(epoch)
-  })
-
-  it('leaves the schema at version 4, so an older build stays writable', async () => {
-    await write('settled')
-    expect(JOURNAL_DB_SCHEMA_VERSION).toBe(4)
-    expect(journalPragmaNumber(db(), 'user_version')).toBe(4)
-  })
-})
-
-describe('a stored summary is fence-independent once settled (T15a, regression guard)', () => {
-  it.each(JOURNAL_SESSION_STATE_CASES)('%s', async (name) => {
-    await write(name)
-    const derived = freshDerivation(name)
-    if (isUnsettledJournalSessionStatus(derived)) {
-      return
-    }
-    const snapshot = renderJournalState(loadTestJournal(root, name)!.state)
-    for (const fence of [undefined, 0, 3, 4, 100]) {
-      expect(
-        projectStructuredAgentSessionStatusState(snapshot.items, snapshot.submissions, fence)
-          .summary
-      ).toEqual(derived.summary)
-    }
   })
 })

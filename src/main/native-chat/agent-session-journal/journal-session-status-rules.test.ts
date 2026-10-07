@@ -19,10 +19,11 @@ import {
   JOURNAL_SESSION_STATE_CORPUS
 } from './journal-session-state-test-corpus'
 
-// Recorded with the rules version: change both together, after checking the new rows are right.
+// Recorded with the rules version: change both together, after checking the new rows are right. A
+// new corpus case changes only the digest: record it, with no bump.
 const DERIVED = {
   rules: 3,
-  digest: '7ea161678a4408a2c3b0648f6c781763cab230a6ffc1d80a4aed9c1ad03a0bc6'
+  digest: 'f0118b4048c1f6e1feb53d2105557019564c08d4600c69f200a2abbd44ba1d15'
 }
 
 const journals = createTrackedJournalOpener()

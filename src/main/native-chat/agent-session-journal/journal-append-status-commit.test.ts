@@ -189,6 +189,7 @@ describe("a send's ledger answer", () => {
   })
 })
 
+// A failed COMMIT of this batch is in the fold-undo property, through the corpus's failed start.
 describe("a failed start's rows", () => {
   it('commit with one status write, from the fold that holds every row', async () => {
     const journal = await openChat()
@@ -201,26 +202,5 @@ describe("a failed start's rows", () => {
     expect(statusWrites() - writesBefore).toBe(1)
     expect(stored()).toEqual(freshDerivation())
     expect(stored()).toMatchObject({ queuedSends: 0 })
-  })
-
-  it('leave no status write and no fold change when the COMMIT fails', async () => {
-    const journal = await openChat()
-    await send(journal, 'first')
-    await send(journal, 'second')
-    const tip = journal.cursor()
-    const before = stored()
-    const writesBefore = statusWrites()
-    failNextCommit()
-
-    await expect(journal.appendLifecycleBatch(startFailureBatch())).rejects.toThrow('COMMIT failed')
-
-    expect(statusWrites()).toBe(writesBefore)
-    expect(stored()).toEqual(before)
-    expect(journal.cursor()).toEqual(tip)
-    expect(journal.submissions().map((entry) => entry.dispatchState)).toEqual([
-      'pending',
-      'pending'
-    ])
-    expect(journal.snapshot()).toEqual(renderJournalState(loadTestJournal(root, SESSION)!.state))
   })
 })
