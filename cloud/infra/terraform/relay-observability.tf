@@ -57,6 +57,14 @@ locals {
       description = "Cells whose reserved_requests disagreed with their lease units when reconciliation corrected them; should trend to zero."
       filter      = "((resource.type=\"cloud_run_revision\" AND (${local.relay_service_log_filter})) OR resource.type=\"gce_instance\") AND jsonPayload.event=\"orca_relay_reservation_drift\""
     }
+    # Why the cell's line and not the load balancer's: the LB writes a WebSocket's log entry at
+    # close but stamps it with the stream's start, and a log-based metric counts by that stamp. Of
+    # the 1,046 `internal_error` streams on 2026-10-06 18:34Z, 42 were stamped within 10 minutes of
+    # the drop; the median was 2.4 h earlier, so an LB-log rate never shows the pulse.
+    cell_control_abnormal_closes = {
+      description = "Desktop control sockets a GCE cell saw end with no close frame (1006), counted when they closed. Hundreds on one cell in a minute is the load balancer ending streams."
+      filter      = "resource.type=\"gce_instance\" AND logName=\"projects/${var.project_id}/logs/cos_containers\" AND jsonPayload.message:\"[orca-relay] control closed \" AND jsonPayload.message:\" code=1006 \""
+    }
   }
 
   relay_runtime_metrics = {
@@ -107,6 +115,7 @@ locals {
     db_waiters_max                     = { field = "databasePoolWaitersMax", description = "Maximum requests queued for a PostgreSQL connection during the interval." }
     db_oldest_wait_ms                  = { field = "databasePoolOldestWaitMs", description = "Current oldest PostgreSQL pool waiter age." }
     db_wait_ms_max                     = { field = "databasePoolWaitMsMax", description = "Maximum PostgreSQL pool wait during the interval." }
+    host_hellos_shed                   = { field = "hostHellosShedDelta", description = "Desktop control connections refused with a retryable 503 because the PostgreSQL pool queue was full." }
     cell_inventory_hold_ms_max         = { field = "cellInventoryHoldMsMax", description = "Longest cell-inventory lock hold in the interval." }
     cell_inventory_hold_ms_p95         = { field = "cellInventoryHoldMsP95", description = "Cell-inventory lock hold p95 in the interval; the bound is tuned against this." }
     cell_inventory_holds               = { field = "cellInventoryHolds", description = "Cell-inventory locks acquired in the interval; the percentiles above summarise these." }
@@ -924,6 +933,94 @@ resource "google_monitoring_alert_policy" "relay_director_cell_inventory_hold" {
 
   documentation {
     content   = "The director held the lock on every row of the relay cell table for at least one second. These holds happen a few times a day even with regional rehoming paused, and pausing rehome does not stop them, so this policy does not page. Use it to explain a `Orca Relay: lock timeout burst` alert that has no cell hold in the same minute. Do not drain or restart cells for it."
+    mime_type = "text/markdown"
+  }
+}
+
+# The bar lives in the filter, as for the long-hold metric: an exponential bucket's percentile
+# interpolation would put any value from 32 to 63 above 50.
+resource "google_logging_metric" "relay_cell_pool_herd" {
+  project     = var.project_id
+  name        = "orca_relay_cell_pool_herd"
+  description = "Cell runtime samples in which more than 50 requests queued at once for a PostgreSQL connection."
+  filter      = "${local.relay_runtime_log_filter} AND jsonPayload.role=\"cell\" AND jsonPayload.databasePoolWaitersMax>50"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_monitoring_alert_policy" "relay_cell_control_close_burst" {
+  project               = var.project_id
+  display_name          = "Orca Relay: cell desktop disconnect burst"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.relay_alert_notification_channels
+
+  conditions {
+    display_name = "Over 120 abnormal desktop control closes on one cell in a minute"
+
+    condition_threshold {
+      filter          = "resource.type=\"gce_instance\" AND metric.type=\"logging.googleapis.com/user/orca_relay_cell_control_abnormal_closes\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 120
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.\"instance_id\""]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  documentation {
+    content   = "Over 120 desktop control sockets on one relay cell ended without a close frame (code 1006) in one minute. On 2026-10-06 at 18:34 UTC the asia-east2 cells logged 213-247 each in the minute Google's load balancer ended 1,046 of their streams, against a baseline of 6-49 per minute (US cells: 17 or fewer, all codes). Smaller pulses of about 60 per cell (01:33 and 20:40 UTC that day) stay under the bar. First response: read the load balancer logs for the same minute by `receiveTimestamp`, not `timestamp` (the LB stamps a WebSocket with its start), and bucket `jsonPayload.statusDetails`. If they show `internal_error` across several cells at once, the proxy ended the streams: record the timestamps for the Google support case, and do not drain, restart or resize the cell. If `Orca Relay: cell database pool herd` fired in the same minute, the reconnecting desktops overran the cell's database pool. Otherwise look at the cell itself: a crash or restart, the event loop, or memory."
+    mime_type = "text/markdown"
+  }
+
+  depends_on = [google_logging_metric.relay_incident]
+}
+
+resource "google_monitoring_alert_policy" "relay_cell_pool_herd" {
+  project               = var.project_id
+  display_name          = "Orca Relay: cell database pool herd"
+  combiner              = "OR"
+  enabled               = true
+  notification_channels = var.relay_alert_notification_channels
+
+  conditions {
+    display_name = "Over 50 requests queued for a PostgreSQL connection on one cell"
+
+    condition_threshold {
+      # The metric filter already drops samples at or under 50, so any value present is a breach.
+      filter          = "resource.type=\"gce_instance\" AND metric.type=\"logging.googleapis.com/user/${google_logging_metric.relay_cell_pool_herd.name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.\"instance_id\""]
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  documentation {
+    content   = "More than 50 requests on one relay cell queued at once for a PostgreSQL connection. The healthy peak is 2 waiters; the 2026-10-06 18:34 UTC reconnect herd reached 124-527 on the asia-east2 cells, and requests that wait 2 s fail. This uses the interval maximum (`databasePoolWaitersMax`), so a herd shorter than the 30-second sample still shows. Cell images from #26362 on refuse new desktop connections once 32 requests wait (counted in `orca_relay_host_hellos_shed`); on those cells a breach means connections that are already open are filling the pool. First response: check `Orca Relay: cell desktop disconnect burst` for the same minute. If it fired too, a mass disconnect caused this, so follow that policy and leave the database alone. If it did not, check Cloud SQL health and lock contention (`Orca Relay: lock timeout burst`) before touching the cell."
     mime_type = "text/markdown"
   }
 }
