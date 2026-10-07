@@ -16,10 +16,9 @@ type MediaGrant = { target: MediaTarget; store: Store; mimeType: string }
 const grants = new Map<string, MediaGrant>()
 const senders = new Map<number, Map<string, string>>()
 
-export function registerMediaPreviewSchemePrivileges(): void {
-  protocol.registerSchemesAsPrivileged([
-    { scheme: MEDIA_PREVIEW_SCHEME, privileges: { standard: true, secure: true, stream: true } }
-  ])
+export const MEDIA_PREVIEW_CUSTOM_SCHEME: Electron.CustomScheme = {
+  scheme: MEDIA_PREVIEW_SCHEME,
+  privileges: { standard: true, secure: true, stream: true }
 }
 
 export function readMediaPreview(
