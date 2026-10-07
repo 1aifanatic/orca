@@ -33,7 +33,7 @@ import {
   resolveAiVaultResumeStartupShell
 } from '@/lib/ai-vault-resume-shell'
 
-type AiVaultResumeCommandSession = Pick<
+export type AiVaultResumeCommandSession = Pick<
   AiVaultSession,
   'agent' | 'sessionId' | 'cwd' | 'codexHome'
 > &
@@ -195,6 +195,7 @@ function buildAiVaultResumeForWorktree(
         shell: liveShell
       }),
       agentEnv: resolveTuiAgentLaunchEnv(args.session.agent, args.state.settings),
+      resumeInLaunchCwd: true,
       ...(args.session.agent === 'omp' && resumeFilePath
         ? { ompResumeFilePath: resumeFilePath }
         : {})
