@@ -238,6 +238,19 @@ export function createClaudeStructuredLaunchResolver(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
     const thinkingDisplayArgs = (await thinkingDisplay) ?? {}
+    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
+    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
+    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
+    const resumes = async (claudeConfigDir: string): Promise<boolean> =>
+      head !== null &&
+      (await claudeLaunchResumesTranscript({
+        router,
+        leafUuid,
+        providerSessionId,
+        claudeConfigDir,
+        hasTranscript: deps.hasTranscript
+      }))
+    const resumedWithoutRouter = router ? undefined : await resumes(record.accountHome.path)
     const { command, env } = await resolveClaudeStructuredInvocation(
       deps,
       (base) =>
@@ -250,18 +263,7 @@ export function createClaudeStructuredLaunchResolver(
       sources
     )
     const launchHome = await resolveClaudeStructuredLaunchHome(router, env, record.accountHome.path)
-    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
-    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
-    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
-    const resumesTranscript =
-      head !== null &&
-      (await claudeLaunchResumesTranscript({
-        router,
-        leafUuid,
-        providerSessionId,
-        claudeConfigDir: launchHome,
-        hasTranscript: deps.hasTranscript
-      }))
+    const resumesTranscript = resumedWithoutRouter ?? (await resumes(launchHome))
     return {
       pathToClaudeCodeExecutable: command,
       options: {

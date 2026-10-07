@@ -16,6 +16,13 @@ import { evaluatePtyBindingFastLane } from './pty-binding-fast-lane'
 import { ptyBindingIsRefused } from './pty-binding-refusals'
 import { startPtyBindingSpan, type PtyBindingOrigin, type PtyBindingSpan } from './pty-binding-span'
 import { applyPtyBinding } from './pty-binding-session-update'
+import type { TerminalPanePlacement } from '../../../shared/terminal-pane-placement'
+import { terminalPanePlacementAgreement } from '../terminal-topology/terminal-pane-placement-agreement'
+import type {
+  TerminalLeafMoveRequest,
+  TerminalLeafMoveResult
+} from '../../../shared/terminal-leaf-move'
+import { moveLeaf } from '../terminal-topology/terminal-topology-commit'
 import { findTerminalBindingConflict } from '../terminal-topology/terminal-owner-invariants'
 
 type PtyBindingPersistenceOperationsRuntime = Pick<
@@ -52,6 +59,8 @@ export type PersistPtyBindingArgs = {
   mayReviveRetiredSurface?: boolean
   /** Span metadata only; see `PtyBindingOrigin`. The write path never reads it. */
   origin?: PtyBindingOrigin
+  /** Where a new leaf goes. Report-only for now: the span records whether it names today's tab. */
+  placement?: TerminalPanePlacement
 }
 
 const ptyBindingPersistenceOperationsContext = Symbol('PtyBindingPersistenceOperations')
@@ -155,6 +164,20 @@ export class PtyBindingPersistenceOperations {
           outcome = 'refused'
           return { value: false, persist: false }
         }
+        // Report-only: a malformed session must not fail the binding it is reporting on.
+        try {
+          span.setPlacement(
+            terminalPanePlacementAgreement(
+              args.placement,
+              session,
+              bindingWorktreeId,
+              args.tabId,
+              args.leafId
+            )
+          )
+        } catch {
+          span.setPlacement('check_threw')
+        }
         const verdict = evaluatePtyBindingFastLane(
           args,
           session,
@@ -187,6 +210,22 @@ export class PtyBindingPersistenceOperations {
       span?.finish('threw', error)
       throw error
     }
+  }
+
+  /**
+   * Detach-to-new-tab, committed before the renderer mounts the target tab (STA-9259). It lives on
+   * the binding domain only for its runtime and partition access; the commit module owns the write.
+   */
+  moveTerminalLeafToNewTab(request: TerminalLeafMoveRequest): Promise<TerminalLeafMoveResult> {
+    const { runtime, sessions } = this[ptyBindingPersistenceOperationsContext]
+    return runtime.runDurableMutation(
+      moveLeaf(request, {
+        state: runtime.state,
+        hostIds: () => sessions.getWorkspaceSessionHostIds(),
+        getSession: (hostId) => sessions.getWorkspaceSession(hostId),
+        markDirty: (domain) => runtime.dirtyProfileStateDomains?.add(domain)
+      })
+    )
   }
 }
 
