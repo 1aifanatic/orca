@@ -193,5 +193,8 @@ export function withoutNativeChatVisualDirectiveLines(text: string): string {
       kept.push(line)
     }
   }
-  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return kept
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }

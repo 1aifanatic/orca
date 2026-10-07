@@ -197,6 +197,8 @@ describe('withoutNativeChatVisualDirectiveLines', () => {
   })
 
   it('returns text without a marker untouched', () => {
-    expect(withoutNativeChatVisualDirectiveLines('  plain\n\n\n text  ')).toBe('  plain\n\n\n text  ')
+    expect(withoutNativeChatVisualDirectiveLines('  plain\n\n\n text  ')).toBe(
+      '  plain\n\n\n text  '
+    )
   })
 })
