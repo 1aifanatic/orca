@@ -64,7 +64,7 @@ function buildFixtureMain(bundlePath: string, logPath: string, userDataPath: str
     `runtime.applyBackgroundActivationPolicy()`,
     `app.whenReady().then(() => {`,
     `  log('ready ' + app.getPath('userData'))`,
-    `  runtime.registerRuntimeEnvironmentHandlers({ getSettings: () => ({}) })`,
+    `  runtime.registerRuntimeEnvironmentHandlers({ getSettings: () => ({}), getWorkspaceSessionHostIds: () => [] })`,
     `  log('registered')`,
     `}).catch((error) => log('ready-failed ' + (error && error.stack)))`
   ].join('\n')
@@ -133,7 +133,7 @@ describe('runtime environment removed by the CLI', () => {
         lib: { entry: entryPath, formats: ['cjs'], fileName: () => 'runtime-environments.cjs' },
         outDir: fixtureDir,
         target: 'node20',
-        rollupOptions: { external: ['electron', /^node:/, ...builtinModules] }
+        rollupOptions: { external: ['electron', 'ssh2', /^node:/, ...builtinModules] }
       }
     })
 
