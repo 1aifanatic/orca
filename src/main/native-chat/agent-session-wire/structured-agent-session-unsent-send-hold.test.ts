@@ -208,7 +208,7 @@ describe('the next accepted turn releases a kept card', () => {
 
   it('a Resume sends it, and nothing sends it before', async () => {
     const id = await acceptWhileStarting(sendRequest('resume me'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(rig.dispatch).not.toHaveBeenCalled()
     expect(await rig.resume()).toMatchObject({ ok: true, value: { resumed: true } })
@@ -785,7 +785,7 @@ describe("the reopen's mark", () => {
     const marks = vi
       .spyOn(AgentSessionJournal.prototype, 'appendQueueReopen')
       .mockRejectedValueOnce(new Error('disk full'))
-    await rig.quitRestartHostProcess()
+    await quitRestart()
 
     expect(await rig.drafts()).toEqual([{ messageId: id, ...KEPT }])
     expect(marks).toHaveBeenCalledOnce()
