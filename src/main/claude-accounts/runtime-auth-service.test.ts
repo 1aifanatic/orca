@@ -3,7 +3,6 @@ import { getDefaultSettings } from '../../shared/constants'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 
 const fakes = vi.hoisted(() => ({
-  hostPublishes: [] as string[],
   host: {
     prepareLaunch: async () => ({ runtime: 'host' }),
     publish: () => {},
