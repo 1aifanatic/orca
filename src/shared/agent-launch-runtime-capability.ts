@@ -48,6 +48,12 @@ export const AGENT_LAUNCH_UNSTARTED_TAB_CLIENT_CAPABILITY = 'agent.launch.unstar
 // `agent_session_operation_unknown` for it, as before the host knew.
 export const AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY = 'agent.launch.tab-closed.v1' as const
 
+// Client-advertised only: the client reads `agent_launch_agent_not_started` (the launch created its
+// workspace, then could not start its agent there; `data.worktreeId` names the kept workspace) as a
+// definite answer. Others get `agent_session_operation_unknown` for it, as before the host knew.
+export const AGENT_LAUNCH_WORKSPACE_KEPT_CLIENT_CAPABILITY =
+  'agent.launch.workspace-kept.v1' as const
+
 export const AGENT_LAUNCH_RUNTIME_CAPABILITIES = [
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_REPLAY_RUNTIME_CAPABILITY,

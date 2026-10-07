@@ -1,4 +1,5 @@
 import { worktreeCreateGit } from '../git/worktree-create-git-executor'
+import { notifyCreateBookkeeping } from './worktree-create-bookkeeping'
 import { shouldRunSetupForCreate } from '../effective-hook-config'
 import { getEffectiveHooks } from '../hooks'
 import type { Repo } from '../../shared/repo-types'
@@ -114,6 +115,12 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
       baseBranch,
       localWorktreeGitOptions: worktreeGitOptions,
       hostedReviewExecutionContext: args.hostedReviewExecutionContext
+    })
+  )
+  await notifyCreateBookkeeping('candidate', () =>
+    request.onCreateCandidate?.({
+      worktreePath: candidate.worktreePath,
+      branchName: candidate.branchName
     })
   )
   const git = await createRuntimeLocalGitWorktree({

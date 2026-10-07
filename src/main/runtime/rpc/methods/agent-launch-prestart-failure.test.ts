@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
+import { AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } from '../../../../shared/agent-launch-agent-not-started'
+import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
 import type { OrcaRuntimeService } from '../../orca-runtime'
@@ -82,19 +84,23 @@ describe('a launch whose terminal fails', () => {
   async function replay(
     runtime: AgentLaunchRuntimeStub,
     launch: Launch,
-    operationId: string = OPERATION_ID
+    operationId: string = OPERATION_ID,
+    caller?: Parameters<RpcDispatcher['dispatch']>[1]
   ) {
     const dispatcher = new RpcDispatcher({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture implements every runtime method reached by agent.launch and dispatcher metadata.
       runtime: { ...runtime, getRuntimeId: () => 'runtime-1' } as unknown as OrcaRuntimeService,
       methods: AGENT_LAUNCH_METHODS
     })
-    return dispatcher.dispatch({
-      id: 'request-1',
-      authToken: 'token',
-      method: 'agent.launchReplay',
-      params: AGENT_LAUNCH_REPLAY.params.parse({ ...launch, operationId })
-    })
+    return dispatcher.dispatch(
+      {
+        id: 'request-1',
+        authToken: 'token',
+        method: 'agent.launchReplay',
+        params: AGENT_LAUNCH_REPLAY.params.parse({ ...launch, operationId })
+      },
+      caller
+    )
   }
 
   it('reports a failure before the spawn request with its real cause and records it', async () => {
@@ -161,22 +167,54 @@ describe('a launch whose terminal fails', () => {
     expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
   })
 
-  it('stays unknown for a launch that created its workspace first', async () => {
+  it('names the kept workspace to a caller that reads it, and stays unknown to one that does not', async () => {
+    const keepsWorkspace = () => {
+      const runtime = runtimeStub({ settings: {} })
+      // No startup terminal came back, so the launch builds its own in the new workspace.
+      runtime.createManagedWorktree.mockResolvedValueOnce({
+        worktree: { id: 'wt-new' },
+        startupTerminal: undefined
+      })
+      failingCreate(runtime, new Error(NO_LAUNCH_COMMAND), false)
+      return runtime
+    }
+
+    const cli = keepsWorkspace()
+    const response = await replay(cli, CREATE_LAUNCH)
+    expect(cli.createTerminal).toHaveBeenCalledTimes(1)
+    expect(response).toMatchObject({
+      ok: false,
+      error: { code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE, data: { worktreeId: 'wt-new' } }
+    })
+    expect(outcomeOf(OPERATION_ID)).toMatchObject({
+      status: 'failed',
+      code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE
+    })
+
+    const olderPhone = await replay(keepsWorkspace(), CREATE_LAUNCH, OTHER_OPERATION_ID, {
+      clientKind: 'mobile',
+      pairedDeviceId: 'device-1',
+      clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+    })
+    expect(olderPhone).toMatchObject({
+      ok: false,
+      error: { code: 'agent_session_operation_unknown' }
+    })
+  })
+
+  it('stays unknown for a created workspace whose terminal failed after its spawn left', async () => {
     const runtime = runtimeStub({ settings: {} })
-    // No startup terminal came back, so the launch builds its own in the new workspace.
     runtime.createManagedWorktree.mockResolvedValueOnce({
       worktree: { id: 'wt-new' },
       startupTerminal: undefined
     })
-    failingCreate(runtime, new Error(NO_LAUNCH_COMMAND), false)
+    failingCreate(runtime, new Error('reply lost'), true)
 
-    const response = await replay(runtime, CREATE_LAUNCH)
-
-    expect(runtime.createTerminal).toHaveBeenCalledTimes(1)
-    expect(response).toMatchObject({
+    expect(await replay(runtime, CREATE_LAUNCH)).toMatchObject({
       ok: false,
       error: { code: 'agent_session_operation_unknown' }
     })
+    expect(outcomeOf(OPERATION_ID)?.status).toBe('unknown')
   })
   it.each([
     { ...CREATE_LAUNCH, agent: 'opencode', sessionOptions: { model: 'private-proof/model-b' } },

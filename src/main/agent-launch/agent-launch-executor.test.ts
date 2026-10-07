@@ -8,6 +8,7 @@
  * workspace exists.
  */
 
+import { AgentLaunchWorkspaceKeptError } from '../../shared/agent-launch-agent-not-started'
 import { describe, expect, it, vi } from 'vitest'
 import { executeAgentLaunch, type AgentLaunchExecution } from './agent-launch-executor'
 import { AgentLaunchStructuredSessionRefusedError } from './agent-launch-surface-factories'
@@ -25,6 +26,9 @@ function harness(options: {
   createSupport?: { supported: boolean; reason?: 'agent' | 'remote' | 'wsl' }
   createSupportThrows?: boolean
   structuredCreateError?: Error
+  terminalCreateError?: Error
+  /** What the surface factory says about that error: thrown before any agent was asked for. */
+  terminalFailedBeforeStart?: boolean
   deliveredMessageId?: string | null
   terminalPromptDelivered?: boolean
   /** Whether the surface reports that its typed line took the offered prompt. */
@@ -65,6 +69,9 @@ function harness(options: {
   })
   const createTerminalAgent = vi.fn(async (args: { startupPrompt?: string }) => {
     calls.push('createTerminalAgent')
+    if (options.terminalCreateError) {
+      throw options.terminalCreateError
+    }
     return { handle: 'term_1', ...carried(args.startupPrompt) }
   })
   const deliverStructuredPrompt = vi.fn(async () => {
@@ -96,7 +103,9 @@ function harness(options: {
           createStructuredSession,
           createTerminalAgent,
           deliverStructuredPrompt,
-          deliverTerminalPrompt
+          deliverTerminalPrompt,
+          failedBeforeAgentStart: (error) =>
+            options.terminalFailedBeforeStart === true && error === options.terminalCreateError
         },
         workspaces: { createWorktree },
         ...(options.onSurfacePublished ? { onSurfacePublished: options.onSurfacePublished } : {})
@@ -189,12 +198,33 @@ describe('a structured launch that creates its own worktree', () => {
       )
     })
 
+    // An agent may exist, so the launch cannot say it never started.
     await expect(h.run(CREATE_INTENT)).rejects.toThrow('unknown')
     expect(h.calls).toEqual([
       'createWorktree(startupAgent=undefined)',
       'createSupport',
       'createStructuredSession'
     ])
+  })
+
+  it('names the kept workspace when its terminal failed before any agent was asked for', async () => {
+    const terminalCreateError = new Error('spawn failed')
+    const h = harness({
+      createSupport: { supported: false, reason: 'wsl' },
+      terminalCreateError,
+      terminalFailedBeforeStart: true
+    })
+
+    const error = await h.run(CREATE_INTENT).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(AgentLaunchWorkspaceKeptError)
+    expect(error).toMatchObject({ worktreeId: 'wt-new', cause: terminalCreateError })
+  })
+
+  it('passes a terminal failure on unchanged once its spawn was asked for', async () => {
+    const terminalCreateError = new Error('spawn failed')
+    const h = harness({ createSupport: { supported: false, reason: 'wsl' }, terminalCreateError })
+
+    await expect(h.run(CREATE_INTENT)).rejects.toBe(terminalCreateError)
   })
 
   it('strips a stale startupAgent out of a migrated create payload', async () => {

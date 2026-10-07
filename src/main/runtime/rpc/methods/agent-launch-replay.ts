@@ -18,15 +18,19 @@
 import { deriveAgentLaunchChildOperationId } from '../../../../shared/agent-launch-operation'
 import {
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
+  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY,
+  AGENT_LAUNCH_WORKSPACE_KEPT_CLIENT_CAPABILITY
 } from '../../../../shared/agent-launch-runtime-capability'
+import { AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } from '../../../../shared/agent-launch-agent-not-started'
 import { AGENT_LAUNCH_TAB_CLOSED_CODE } from '../../../../shared/agent-launch-tab-closed'
 import { isAgentLaunchResult, type AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import type {
   AgentSessionOperationOutcome,
   AgentSessionOperationOwnedPane,
-  AgentSessionOperationRefusalCode
+  AgentSessionOperationRefusalCode,
+  AgentSessionOperationRow
 } from '../../../../shared/agent-session-operation-ledger'
+import type { AgentSessionRecordStore } from '../../agent-session-record-store'
 import { resolveAgentSessionReplayOutcome } from '../../../native-chat/agent-session-wire/structured-agent-session-replay-outcome'
 import type { RpcContext } from '../core'
 import { rpcCallerOperationKey } from '../rpc-caller-identity'
@@ -49,7 +53,7 @@ export function agentLaunchOperationCallerKey(context: Pick<RpcContext, 'caller'
  * envelope. An `AgentSessionWireRefusal` still fits, which is how the shared replay resolver's
  * answers pass through unchanged.
  */
-export type AgentLaunchRefusal = { code: string; message: string }
+export type AgentLaunchRefusal = { code: string; message: string; data?: { worktreeId: string } }
 
 export type AgentLaunchAdmission =
   /** This caller owns the operation. It alone runs the effect, and it must settle the row. */
@@ -60,6 +64,10 @@ export type AgentLaunchAdmission =
       record: (provisional: AgentLaunchResult) => Promise<void>
       settle: (result: AgentLaunchResult) => Promise<void>
       fail: (code: string) => Promise<void>
+      /** Bookkeeping about a create, written before anything runs in its workspace. */
+      annotate: (
+        annotation: Pick<AgentSessionOperationRow, 'createIntent' | 'createdWorktreeId'>
+      ) => Promise<void>
       /** Distinct from the launch id: the inner attach reserves in this same ledger. */
       attachOperationId: string
       callerKey: string
@@ -116,6 +124,17 @@ export function readsAgentLaunchTabClosed(
   )
 }
 
+/** A create that kept its workspace but could not start its agent answers so only to a caller
+ *  that reads it; the CLI (no declared client) ships with this host. */
+export function readsAgentLaunchWorkspaceKept(
+  context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
+): boolean {
+  return (
+    context.clientKind === undefined ||
+    context.clientCapabilities?.includes(AGENT_LAUNCH_WORKSPACE_KEPT_CLIENT_CAPABILITY) === true
+  )
+}
+
 /** The CLI (no declared client) ships with this host; any other caller must say it reads the word. */
 function readsUnconfirmedLaunchPrompt(
   context: Pick<RpcContext, 'clientKind' | 'clientCapabilities'>
@@ -157,8 +176,14 @@ function withLiveTerminalHandle(
 function presentRecordedAnswer(
   context: RpcContext,
   operationId: string,
-  answer: AgentLaunchAdmission
+  answer: AgentLaunchAdmission,
+  row: Pick<AgentSessionOperationRow, 'createdWorktreeId'>
 ): AgentLaunchAdmission {
+  if (answer.decision === 'refuse' && answer.refusal.code === AGENT_LAUNCH_AGENT_NOT_STARTED_CODE) {
+    return row.createdWorktreeId && readsAgentLaunchWorkspaceKept(context)
+      ? { ...answer, refusal: { ...answer.refusal, data: { worktreeId: row.createdWorktreeId } } }
+      : refusal(operationId, 'agent_session_operation_unknown', 'created its workspace only')
+  }
   if (
     answer.decision === 'refuse' &&
     answer.refusal.code === AGENT_LAUNCH_TAB_CLOSED_CODE &&
@@ -220,9 +245,10 @@ export async function admitAgentLaunchOperation(
     return refusal(operationId, admitted.code, `was refused: ${admitted.code}`)
   }
   if (admitted.decision === 'replay') {
-    const answer = answerFromRecordedRow(operationId, admitted.row.outcome)
+    const row = await reconcileInterruptedCreate(context, store, callerKey, admitted.row)
+    const answer = answerFromRecordedRow(operationId, row.outcome)
     if (answer) {
-      return presentRecordedAnswer(context, operationId, answer)
+      return presentRecordedAnswer(context, operationId, answer, row)
     }
   }
   // Unreachable with both steps in one transaction; answered as uncertain rather than run twice.
@@ -236,9 +262,10 @@ export async function admitAgentLaunchOperation(
   if (claim.claim === 'lost') {
     // The handler joins same-process retries before admission. Reaching a claimed row here means
     // this runtime did not start it, so treating it as restart uncertainty is the safe answer.
-    const answer = answerFromRecordedRow(operationId, claim.row.outcome)
+    const row = await reconcileInterruptedCreate(context, store, callerKey, claim.row)
+    const answer = answerFromRecordedRow(operationId, row.outcome)
     return answer
-      ? presentRecordedAnswer(context, operationId, answer)
+      ? presentRecordedAnswer(context, operationId, answer, row)
       : refusal(operationId, 'agent_session_operation_unknown', 'is claimed but unsettled')
   }
   const succeeded = (result: AgentLaunchResult) =>
@@ -264,7 +291,8 @@ export async function admitAgentLaunchOperation(
         callerKey,
         operationId,
         outcome: { status: 'failed', code }
-      })
+      }),
+    annotate: (annotation) => store.annotateOperation({ callerKey, operationId, annotation })
   }
 }
 
@@ -277,4 +305,39 @@ function refusal(
     decision: 'refuse',
     refusal: { code, message: `Launch operation ${operationId} ${detail}.` }
   }
+}
+
+/**
+ * A create a stopped host left `unknown` between `git worktree add` and recording the workspace it
+ * made: no agent was asked for yet, so when that workspace exists the launch kept it and its agent
+ * never started. Once the workspace was recorded an agent may have been asked for, so that row stays
+ * `unknown`, as does one whose workspace never appeared. Once the host owns the first prompt, this
+ * is where the launch resumes instead.
+ */
+async function reconcileInterruptedCreate(
+  context: RpcContext,
+  store: Pick<AgentSessionRecordStore, 'annotateOperation' | 'recordOperationOutcome'>,
+  callerKey: string,
+  row: AgentSessionOperationRow
+): Promise<AgentSessionOperationRow> {
+  const intent = row.createIntent
+  if (row.outcome.status !== 'unknown' || row.createdWorktreeId || !intent) {
+    return row
+  }
+  const worktreeId = `${intent.repoId}::${intent.worktreePath}`
+  const exists = await context.runtime.showManagedWorktree(`id:${worktreeId}`).then(
+    () => true,
+    () => false
+  )
+  if (!exists) {
+    return row
+  }
+  const outcome = { status: 'failed', code: AGENT_LAUNCH_AGENT_NOT_STARTED_CODE } as const
+  const { operationId } = row
+  // Bookkeeping: a failed write still answers this caller; the next replay reconciles again.
+  await store
+    .annotateOperation({ callerKey, operationId, annotation: { createdWorktreeId: worktreeId } })
+    .catch(() => {})
+  await store.recordOperationOutcome({ callerKey, operationId, outcome }).catch(() => {})
+  return { ...row, createdWorktreeId: worktreeId, outcome }
 }

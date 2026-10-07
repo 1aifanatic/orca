@@ -21,13 +21,13 @@
 
 import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
 import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
+import {
+  AGENT_LAUNCH_AGENT_NOT_STARTED_CODE,
+  AgentLaunchWorkspaceKeptError
+} from '../../../../shared/agent-launch-agent-not-started'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchIntent, AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import { agentSessionOperationKey } from '../../../../shared/agent-session-operation-ledger'
-import {
-  WorktreeCreateCollisionError,
-  WORKTREE_CREATE_COLLISION_CODE
-} from '../../../../shared/new-workspace/worktree-create-collision'
 import { executeAgentLaunch } from '../../../agent-launch/agent-launch-executor'
 import {
   trackTerminalSpawnDispatch,
@@ -39,6 +39,8 @@ import { admitAgentLaunchOperation, agentLaunchOperationCallerKey } from './agen
 import {
   AgentLaunchExecutionError,
   agentLaunchTabClosedAnswer,
+  agentLaunchWorkspaceKeptAnswer,
+  launchReplayExecutionAnswer,
   settleLaunchWhoseTabWasClosed,
   settleQuietly,
   withEarlyTab
@@ -53,9 +55,16 @@ import {
   agentLaunchCallerNavigationId,
   selectAgentLaunchTabForCaller
 } from './agent-launch-caller-selection'
-import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
+import {
+  agentLaunchWorkspaceFactory,
+  type AgentLaunchCreateRecords
+} from './agent-launch-worktree-creation'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
-import { publishEarlyTab, withPlacement, type AgentLaunchView } from './agent-launch-tab-publication'
+import {
+  publishEarlyTab,
+  withPlacement,
+  type AgentLaunchView
+} from './agent-launch-tab-publication'
 
 /**
  * Advertising `agent.launch.v2` is a client's statement that it understands EITHER outcome — a
@@ -83,6 +92,8 @@ type ReplaySafeLaunch = {
    *  awaited: the ledger's transactions run in order, so the final settle still lands after it, and
    *  the prompt never waits on bookkeeping. */
   recordSurface: (provisional: AgentLaunchResult) => void
+  /** A create's intended path and made workspace, recorded before anything runs in it. */
+  createRecords: AgentLaunchCreateRecords
 }
 
 async function runAgentLaunch(
@@ -103,7 +114,7 @@ async function runAgentLaunch(
       replaySafe?.terminalSpawn,
       view.early
     ),
-    workspaces: agentLaunchWorkspaceFactory(context, intent.agent),
+    workspaces: agentLaunchWorkspaceFactory(context, intent.agent, replaySafe?.createRecords),
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     onSurfacePublished: (surface) => {
       view.early?.surfacePublished(surface)
@@ -191,7 +202,8 @@ async function executeReplaySafeAgentLaunch(
     // (a replay can remake the tab of an agent that survived).
     early?.finish()
     if (admission.decision === 'refuse') {
-      throw Object.assign(new Error(admission.refusal.code), { code: admission.refusal.code })
+      const { code, data } = admission.refusal
+      throw Object.assign(new Error(code), { code, ...(data ? { data } : {}) })
     }
     return admission.result
   }
@@ -227,11 +239,20 @@ async function executeAdmittedAgentLaunch(
       attachOperationId: admission.attachOperationId,
       callerKey: admission.callerKey,
       terminalSpawn,
-      recordSurface: (provisional) => void settleQuietly(admission.record(provisional))
+      recordSurface: (provisional) => void settleQuietly(admission.record(provisional)),
+      createRecords: {
+        createIntent: (createIntent) => admission.annotate({ createIntent }),
+        workspaceCreated: (createdWorktreeId) => admission.annotate({ createdWorktreeId })
+      }
     })
   } catch (error) {
     if (view.early?.closedByUser()) {
       await settleLaunchWhoseTabWasClosed(context, view.early, admission)
+    }
+    if (error instanceof AgentLaunchWorkspaceKeptError) {
+      // The workspace stays; its record names it, so every replay answers the same.
+      await settleQuietly(admission.annotate({ createdWorktreeId: error.worktreeId }))
+      await settleQuietly(admission.fail(AGENT_LAUNCH_AGENT_NOT_STARTED_CODE))
     }
     const failedWithoutEffects = launchFailureWithoutEffectsCode(
       error,
@@ -290,22 +311,9 @@ export const AGENT_LAUNCH_METHODS = [
       try {
         return await runReplaySafeAgentLaunch(params, context)
       } catch (error) {
-        // Nested failures cannot authorize another workspace, regardless of their message or code.
-        if (error instanceof AgentLaunchExecutionError) {
-          if (error.cause instanceof WorktreeCreateCollisionError) {
-            throw Object.assign(new Error(error.cause.message, { cause: error.cause }), {
-              code: WORKTREE_CREATE_COLLISION_CODE
-            })
-          }
-          if (error.cause instanceof AgentLaunchTabClosedError) {
-            throw agentLaunchTabClosedAnswer(context)
-          }
-          if (error.failedWithoutEffects) {
-            throw error.cause
-          }
-          throw new Error('agent_session_operation_unknown', { cause: error.cause })
-        }
-        throw error
+        throw error instanceof AgentLaunchExecutionError
+          ? launchReplayExecutionAnswer(context, error)
+          : error
       }
     }
   }),
@@ -317,7 +325,12 @@ export const AGENT_LAUNCH_METHODS = [
         throw new Error('agent_launch_unsupported')
       }
       if (!params.operationId) {
-        return runLegacyAgentLaunch(params, context)
+        return runLegacyAgentLaunch(params, context).catch((error: unknown) => {
+          // Unchanged for a caller that does not read it: the failure that stopped the agent.
+          throw error instanceof AgentLaunchWorkspaceKeptError
+            ? agentLaunchWorkspaceKeptAnswer(context, error, error.cause)
+            : error
+        })
       }
       return runReplaySafeAgentLaunch(
         {
@@ -328,6 +341,9 @@ export const AGENT_LAUNCH_METHODS = [
       ).catch((error: unknown) => {
         // Preserve the original error contract for callers of the optional-identity method.
         if (error instanceof AgentLaunchExecutionError) {
+          if (error.cause instanceof AgentLaunchWorkspaceKeptError) {
+            throw agentLaunchWorkspaceKeptAnswer(context, error.cause, error.cause.cause)
+          }
           throw error.cause instanceof AgentLaunchTabClosedError
             ? agentLaunchTabClosedAnswer(context)
             : error.cause

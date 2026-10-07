@@ -26,6 +26,7 @@ import {
   isAgentSessionConversationCommandResult,
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
+import type { AgentSessionOperationCreateIntent } from './agent-session-operation-create-record'
 
 export const AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT = 512
 export const AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT = 4_096
@@ -86,6 +87,13 @@ export type AgentSessionOperationRow = {
    * malformed value costs that pane its verdict, never the row.
    */
   ownedPane?: AgentSessionOperationOwnedPane
+  /**
+   * The worktree an `agent.launch` create was about to add, written before `git worktree add`, so a
+   * host that dies mid-create can find what it may have made. Not checked, as `ownedPane` is not.
+   */
+  createIntent?: AgentSessionOperationCreateIntent
+  /** The worktree the create made, written before any agent starts in it. Not checked either. */
+  createdWorktreeId?: string
 }
 
 /** Unexpired rows naming this pane as theirs. */

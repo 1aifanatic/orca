@@ -23,6 +23,7 @@ import { resolveRpcWorkspaceCreatorProvenance } from '../workspace-creator-conte
 import { buildManagedWorktreeCreateArgs } from './worktree-create-args'
 import { toAgentLaunchPreferences } from '../../../../shared/agent-launch-preferences'
 import type { AgentLaunchParams } from './agent-launch-schemas'
+import type { AgentSessionOperationCreateIntent } from '../../../../shared/agent-session-operation-create-record'
 
 type WorktreeCreateParams = Extract<
   AgentLaunchParams['target'],
@@ -31,9 +32,16 @@ type WorktreeCreateParams = Extract<
 
 const STRUCTURED_SETUP_WAIT_TIMEOUT_MS = 60_000
 
+/** What a replay-safe launch records about the workspace it creates, before anything runs in it. */
+export type AgentLaunchCreateRecords = {
+  createIntent: (intent: AgentSessionOperationCreateIntent) => Promise<void>
+  workspaceCreated: (worktreeId: string) => Promise<void>
+}
+
 export function agentLaunchWorkspaceFactory(
   context: RpcContext,
-  agent: TuiAgent
+  agent: TuiAgent,
+  records?: AgentLaunchCreateRecords
 ): AgentLaunchWorkspaceFactory {
   return {
     createWorktree: async ({
@@ -92,6 +100,13 @@ export function agentLaunchWorkspaceFactory(
           ...(launchSource ? { startupLaunchSource: launchSource } : {}),
           ...(paneKey ? { startupPaneKey: paneKey } : {}),
           ...(startupLaunchPreferences ? { startupLaunchPreferences } : {}),
+          ...(records
+            ? {
+                onCreateCandidate: (candidate: { worktreePath: string; branchName: string }) =>
+                  records.createIntent({ repoId: repo.id, ...candidate }),
+                onWorktreeCreated: records.workspaceCreated
+              }
+            : {}),
           // The launch owns the agent whichever surface it settles on, so the workspace records
           // it even when no startup terminal was created for it.
           createdWithAgent: agent,

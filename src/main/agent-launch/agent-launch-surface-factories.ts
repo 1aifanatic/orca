@@ -73,6 +73,8 @@ export type AgentLaunchSurfaceFactory = {
     freshLaunch: boolean
     prompt: AgentLaunchPrompt
   }): Promise<boolean>
+  /** True only for an error this factory's create threw before it asked for any agent process. */
+  failedBeforeAgentStart?(error: unknown): boolean
 }
 
 /** `fence` is the lease the create was admitted at, carried so the launch prompt's send can fill its
