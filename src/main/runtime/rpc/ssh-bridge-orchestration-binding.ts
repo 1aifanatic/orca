@@ -7,6 +7,7 @@
  * Routing stores mail under `run:`/`dispatch:` addresses, so ownership is resolved to those exact
  * mailboxes the caller's live pane reads, never to a Run it merely shares.
  */
+import { z } from 'zod'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { OrchestrationDb } from '../orchestration/db'
 import {
@@ -124,10 +125,27 @@ function readPayloadDispatchId(params: unknown): string | null {
   }
 }
 
-export function readStringParam(params: unknown, key: string): string | null {
-  if (typeof params !== 'object' || params === null || !(key in params)) {
-    return null
-  }
-  const value: unknown = Reflect.get(params, key)
-  return typeof value === 'string' && value.length > 0 ? value : null
+// Why: a missing, non-string or empty selector names nothing, and the handler owns rejecting it.
+const BridgeSelector = z.string().min(1).optional().catch(undefined)
+
+/** The selector fields the bridge binds to the caller's host; anything else names nothing. */
+const SshBridgeCallSelectors = z
+  .object({
+    terminal: BridgeSelector,
+    terminalPaneKey: BridgeSelector,
+    senderPaneKey: BridgeSelector,
+    from: BridgeSelector,
+    to: BridgeSelector,
+    run: BridgeSelector,
+    id: BridgeSelector,
+    payload: BridgeSelector,
+    dispatchId: BridgeSelector,
+    worktree: BridgeSelector
+  })
+  .catch({})
+
+export type SshBridgeCallSelectorKey = keyof z.infer<typeof SshBridgeCallSelectors>
+
+export function readStringParam(params: unknown, key: SshBridgeCallSelectorKey): string | null {
+  return SshBridgeCallSelectors.parse(params)[key] ?? null
 }

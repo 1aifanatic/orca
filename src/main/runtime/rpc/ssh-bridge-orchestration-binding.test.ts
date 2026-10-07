@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import type { OrchestrationDb } from '../orchestration/db'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import type { RpcResponse } from './core'
 import { RpcDispatcher } from './dispatcher'
 import { createOrchestrationRpcHarness } from './methods/orchestration/rpc-test-harness'
 import type { RpcCallerScope } from './rpc-caller-scope'
-import { readStringParam } from './ssh-bridge-orchestration-binding'
 import { ORCHESTRATION_CONTRACT_VERSION } from '../../../shared/protocol-version'
 
 const HOST_BOUND: RpcCallerScope = {
@@ -13,6 +13,7 @@ const HOST_BOUND: RpcCallerScope = {
   targetId: 'box-1',
   remoteCliControl: false
 }
+const SentMessageResult = z.object({ message: z.object({ id: z.string() }) })
 const WORKER_PANE = 'tab_worker:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const SIBLING_PANE = 'tab_sibling:cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 const LOCAL_PANE = 'tab_local:dddddddd-dddd-4ddd-8ddd-dddddddddddd'
@@ -226,12 +227,10 @@ describe('SSH bridge orchestration without the per-host opt-in', () => {
       ok: true,
       result: { message: { to_handle: `dispatch:${worker.dispatchId}` } }
     })
-    const result: unknown = sent.ok ? sent.result : null
-    const message =
-      typeof result === 'object' && result !== null ? Reflect.get(result, 'message') : null
+    const { message } = SentMessageResult.parse(sent.ok ? sent.result : null)
     const reply = await callAsBridge('orchestration.reply', {
       from: 'term_worker',
-      id: readStringParam(message, 'id'),
+      id: message.id,
       body: 'Confirmed'
     })
     expect(reply.ok).toBe(true)
