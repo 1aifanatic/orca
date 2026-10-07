@@ -30,10 +30,9 @@ import {
 } from './structured-agent-session-send-preparation'
 import {
   endStoppedStructuredAgentSession,
-  isMainAgentWorking,
-  performCancel,
   type StructuredAgentSessionStopWindDown
-} from './structured-agent-session-turns-cancel'
+} from './structured-agent-session-stop-wind-down'
+import { isMainAgentWorking, performCancel } from './structured-agent-session-turns-cancel'
 import type { AgentSessionTurnContext, TurnOutcome } from './structured-agent-session-turns'
 import { serializeStructuredAgentSessionCommand } from './structured-agent-session-command-entry'
 
@@ -56,7 +55,9 @@ export function mutateWithChatStop<TValue>(
   const { envelope, turnId } = params
   const { sessionId } = envelope
   // Set by the Stop's step only when its provider's session ends; a replay leaves it unset.
-  let windDown: StructuredAgentSessionStopWindDown | undefined
+  let windDown:
+    | { owed: StructuredAgentSessionStopWindDown; ctx: AgentSessionTurnContext }
+    | undefined
   // The Stop's event, still landing when its session ends: the next step holds the lane for it.
   let eventAfterEnd: Promise<void> | undefined
   const named = turnId !== undefined ? { turnId } : {}
@@ -152,7 +153,7 @@ export function mutateWithChatStop<TValue>(
               // The host drops its child only once the exit is proven, and nothing else runs meanwhile.
               childReleased: () => context.sessions.get(sessionId)?.child !== child,
               endSession: (owed) => {
-                windDown = owed
+                windDown = { owed, ctx }
               },
               withdrewQueued: withdrew,
               ...(ownsLatestStop ? { opensSettle: true as const } : {})
@@ -184,9 +185,10 @@ export function mutateWithChatStop<TValue>(
   // lands behind the child's end, startup's wait included.
   void serializeStructuredAgentSessionCommand(context, sessionId, async () => {
     if (windDown) {
+      const { owed, ctx } = windDown
       await endStoppedStructuredAgentSession(
-        { sessionId, adapter: context.deps.adapter },
-        windDown,
+        { ...ctx, adapter: context.deps.adapter },
+        owed,
         stopChild,
         (error) =>
           context.deps.logger.warn("ending a stopped chat's provider session failed", {

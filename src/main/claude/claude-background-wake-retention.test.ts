@@ -39,7 +39,13 @@ async function wiredSession() {
   const journal = {
     cursor: () => ({ epoch: 'epoch-1', sequence: ++sequence }),
     lastActivityAt: () => 1,
-    submissions: () => snapshot().submissions,
+    submissions: (): ReturnType<Journal['submissions']> => snapshot().submissions,
+    item: (itemId: string): ReturnType<Journal['item']> => {
+      const item = run.journalItems.get(itemId)
+      return item ? { ...item, revision: 1, observedAt: run.now() } : null
+    },
+    // No Stop was ever pressed here.
+    stopMarks: { latest: () => null, revision: () => 0 },
     // The journal's own projection, which the feed shares with the status stored beside it.
     sessionStatus: {
       at: (fence?: number) => {
@@ -54,7 +60,7 @@ async function wiredSession() {
       [
         parent.sessionId,
         {
-          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the feed reads only the cursor, activity clock, submissions and projection served here.
+          // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the fixture supplies the feed's cursor, clock, Stop marks, submissions, item reads and projection.
           journal: journal as unknown as Journal,
           params: {
             location: {

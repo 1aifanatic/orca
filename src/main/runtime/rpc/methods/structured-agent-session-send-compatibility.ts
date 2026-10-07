@@ -25,7 +25,7 @@ export async function sendStructuredAgentSessionForClient(
   // Built first when this process has none yet, so a send that arrives during startup is held
   // for the startup settle instead of refused.
   const host = await requireInstalledStructuredHost(context)
-  // Only a client's own send lifts a Stop's queue pause; host-internal senders never do.
+  // A client's own send: a restart or a close keeps it as a card if it never reached the agent.
   const result = await host.send(structuredCallerFor(context), { ...params, userSend: true })
   const capabilities = context.clientCapabilities ?? []
   if (

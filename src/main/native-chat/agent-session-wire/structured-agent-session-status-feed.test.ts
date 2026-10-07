@@ -363,6 +363,7 @@ describe('StructuredAgentSessionStatusFeed', () => {
   it('carries the record model and the running tool line the sidebar row shows', async () => {
     const journal = await openJournal()
     const { feed, events } = feedFor(new Map([[SESSION, { journal }]]), {
+      location: indexed({ journal }).params.location,
       options: { model: 'gpt-5-codex' },
       providerHandleChain: []
     })
@@ -654,12 +655,12 @@ describe('StructuredAgentSessionStatusFeed', () => {
       statusFeedChildView({ state: taskState })
     ])
     // The journal's own projection, which the status it stores beside each write reads too.
-    const projected = feed.statusState(SESSION)
+    const projected = feed.journalProjection(SESSION)?.state
     expect(projected).toBe(journal.sessionStatus.at(undefined))
     for (let tick = 1; tick <= 100; tick++) {
       taskState = tick % 2 === 1 ? 'waiting' : 'working'
       feed.publish(SESSION)
-      expect(feed.statusState(SESSION)).toBe(projected)
+      expect(feed.journalProjection(SESSION)?.state).toBe(projected)
     }
     expect(events).toHaveLength(101)
     // The row never renders the journal: the projection and the accepted send come without it.
@@ -671,7 +672,7 @@ describe('StructuredAgentSessionStatusFeed', () => {
     await journal.appendTombstone(TURN_IDENTITY, { fence: 1 })
     feed.publish(SESSION)
     expect(snapshot).not.toHaveBeenCalled()
-    expect(feed.statusState(SESSION)).not.toBe(projected)
+    expect(feed.journalProjection(SESSION)?.state).not.toBe(projected)
     expect(events.at(-1)).toMatchObject({ type: 'status', session: { status: 'idle' } })
   })
 
@@ -682,7 +683,11 @@ describe('StructuredAgentSessionStatusFeed', () => {
       { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'hello' }] },
       { fence: 1, turnScope: AGENT_JOURNAL_THREAD_SCOPE }
     )
-    const record = { options: { model: 'first-model' }, providerHandleChain: [] }
+    const record = {
+      location: indexed({ journal }).params.location,
+      options: { model: 'first-model' },
+      providerHandleChain: []
+    }
     const { feed, events } = feedFor(new Map([[SESSION, { journal }]]), record)
     record.options.model = 'second-model'
     feed.publish(SESSION)

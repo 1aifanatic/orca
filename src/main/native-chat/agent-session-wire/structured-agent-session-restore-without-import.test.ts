@@ -196,7 +196,6 @@ async function writeLegacyChat(
   await mkdir(dirname(path), { recursive: true })
   const db = new Database(path)
   try {
-    db.pragma('journal_mode = WAL')
     db.exec(`
 CREATE TABLE journal_rows (session_id TEXT NOT NULL, epoch TEXT NOT NULL, seq INTEGER NOT NULL,
   ts INTEGER NOT NULL, row_json TEXT NOT NULL, PRIMARY KEY (session_id, epoch, seq));
@@ -561,8 +560,7 @@ describe('startup restore of chats still in their per-chat files', () => {
       messageId: 'draft-1',
       body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'later' }] },
       fingerprint: 'fp-draft-1',
-      hostInstance: 'proc-1',
-      source: { kind: 'user' }
+      hostInstance: 'proc-1'
     })
 
     expect(journal.importPending).toBe(false)

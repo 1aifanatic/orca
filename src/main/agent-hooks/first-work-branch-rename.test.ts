@@ -105,9 +105,10 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
       // A real journal's sequence only ever advances, so the feed's projection
       // cache must miss on every publish here: this test is about the rename.
       let sequence = 0
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (submissions, cursor, its projection, activity).
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (submissions, cursor, Stop marks, its projection, activity).
       const journal = {
         submissions: () => [],
+        stopMarks: { latest: () => null, revision: () => 0 },
         lastActivityAt: () => 1,
         cursor: () => ({ epoch: 1, sequence: (sequence += 1) }),
         sessionStatus: {
@@ -216,9 +217,10 @@ describe('maybeAutoRenameBranchOnFirstWork', () => {
         }
       }
     ]
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (submissions, cursor, its projection, activity).
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a stand-in journal offering only what the status feed reads (submissions, cursor, Stop marks, its projection, activity).
     const journal = {
       lastActivityAt: () => 1,
+      stopMarks: { latest: () => null, revision: () => 0 },
       cursor: () => ({ epoch: 1, sequence: 1 }),
       sessionStatus: {
         at: (fence?: number) => projectStructuredAgentSessionStatusState(items, [], fence)

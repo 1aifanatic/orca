@@ -100,7 +100,7 @@ export function beginJournalFoldUndo(state: JournalReducerState): JournalFoldUnd
     lastActivityAt: state.lastActivityAt,
     oldestSequence: state.oldestSequence,
     highestFence: state.highestFence,
-    latestPersonTurnSequence: state.latestPersonTurnSequence
+    latestAcceptedTurnSequence: state.latestAcceptedTurnSequence
   }
   const derivedTurnScope = state.derivedTurnScope.clone()
   // Edited in place by the fold; its fields are replaced, never mutated, so a shallow copy restores it.

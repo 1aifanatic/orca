@@ -16,7 +16,11 @@ import type {
 import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type { AgentJournalRunningCallEnd } from '../../../shared/agent-journal-tool-call-lifecycle'
-import { requiresTerminalSettlement, terminalAgentJournalBody } from './journal-terminal-settlement'
+import {
+  endedUnseenMessageBody,
+  requiresTerminalSettlement,
+  terminalAgentJournalBody
+} from './journal-terminal-settlement'
 import type { JournalReducerState } from './journal-reducer'
 import { staleSubagentRosterRevision } from './journal-subagent-liveness'
 
@@ -29,12 +33,13 @@ export function openSettlementItemIdentity(
 }
 
 /** A running tool call ends as `end` says (its turn's row, or the death evidence), and a pending
- *  approval or question is cancelled. */
+ *  approval or question is cancelled. An open reasoning row is ended too, but is not unfinished
+ *  work: its running turn already says so. */
 export function openSettlementTerminalBody(
   item: Pick<AgentJournalRenderItem, 'body'>,
   end: AgentJournalRunningCallEnd
 ): AgentJournalItemBody | null {
-  return terminalAgentJournalBody(item.body, end)
+  return endedUnseenMessageBody(item.body) ?? terminalAgentJournalBody(item.body, end)
 }
 
 /** Every turn record still `running` gets the verdict for its own writer. */

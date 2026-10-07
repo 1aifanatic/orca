@@ -10,6 +10,7 @@ import type { StructuredAgentSessionStatusProjection } from '../../../shared/str
 import type { StructuredAgentSessionProviderChild } from './structured-agent-session-host-types'
 import { structuredAgentSessionProviderSessionMetadata } from './structured-agent-session-history-result'
 import type { StructuredStatusChildWork } from './structured-agent-session-status-child-work'
+import { agentSessionPinnedLaunchDirectory } from '../../runtime/agent-session-record-launch-directory'
 
 export function structuredAgentSessionStatusSummary(input: {
   sessionId: string
@@ -17,16 +18,19 @@ export function structuredAgentSessionStatusSummary(input: {
   record: AgentSessionRecord | null
   child?: Pick<StructuredAgentSessionProviderChild, 'phase'> | null
   projected: StructuredAgentSessionStatusProjection
+  /** A person's Stop is still ending the work it stopped. */
+  stopping: boolean
   childWork: StructuredStatusChildWork
   /** The journal's newest activity; 0 when it can date none. */
   lastActivityAt: number
   now: () => number
 }): AgentSessionStatusSummary {
-  const { record, child } = input
+  const { record, child, projected } = input
   const providerSession = structuredAgentSessionProviderSessionMetadata(record)
   // The journal has no model: the record's acknowledged options are where a mid-session
   // switch lands, so the row follows whichever is in force.
   const model = normalizeOptionalField(record?.options?.model, AGENT_MODEL_MAX_LENGTH)
+  const launchDirectory = record ? agentSessionPinnedLaunchDirectory(record) : undefined
   return {
     sessionId: input.sessionId,
     workspaceId: input.params.location.workspaceId,
@@ -37,13 +41,16 @@ export function structuredAgentSessionStatusSummary(input: {
           hostExecutionPhase: child.phase
         }
       : {}),
-    ...input.projected,
+    ...projected,
+    // Only a working session is still being stopped; any other status already ended that work.
+    ...(input.stopping && projected.status === 'working' ? { stopping: true as const } : {}),
     ...(record?.rewind?.phase === 'prepared' || record?.rewind?.phase === 'provider-succeeded'
       ? { rewindBlockedReason: 'outcome-unknown' as const }
       : {}),
     ...(model ? { model } : {}),
     ...statusSummaryChildWorkFields(input.childWork),
     ...(providerSession ? { providerSession } : {}),
+    ...(launchDirectory ? { launchDirectory } : {}),
     updatedAt: input.lastActivityAt || input.now()
   }
 }
