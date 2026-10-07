@@ -30,6 +30,7 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import type { LaunchSource } from '../../../shared/telemetry-events'
 import type { Tab } from '../../../shared/tab-types'
 import type { SessionOptionValue } from '../../../shared/native-chat-session-options'
+import type { AgentLaunchFollowUp } from '../../../shared/agent-launch-follow-up'
 
 export type HostAgentLaunchArgs = {
   agent: TuiAgent
@@ -40,6 +41,8 @@ export type HostAgentLaunchArgs = {
   prompt: string
   /** What the host pastes and submits once the agent is ready; it can differ from `prompt`. */
   hostPrompt?: string
+  /** Recorded on the launch, so a window that reloads mid-launch still runs it once. */
+  followUp?: AgentLaunchFollowUp
   /** Absent uses the settings default; `null` means no arguments. */
   agentArgs?: string | null
   cwd?: string
@@ -113,6 +116,7 @@ function launchParams(args: HostAgentLaunchArgs) {
           }
         }
       : {}),
+    ...(args.followUp ? { followUp: args.followUp } : {}),
     ...(args.agentArgs !== undefined ? { agentArgs: args.agentArgs } : {}),
     ...(args.cwd ? { cwd: args.cwd } : {}),
     ...stringSessionOptions(args.sessionOptions),
@@ -191,6 +195,7 @@ export function windowMakesHostLaunchTab(): boolean {
 
 export function launchAgentThroughHost(args: HostAgentLaunchArgs): {
   tabId: string
+  operationId: string
   outcome: Promise<HostAgentLaunchOutcome>
 } {
   const store = useAppStore.getState()
@@ -198,10 +203,11 @@ export function launchAgentThroughHost(args: HostAgentLaunchArgs): {
   const leafId = createBrowserUuid()
   // Before the tab exists, so its first mount already waits.
   const releaseHold = holdAgentLaunchPaneSpawn(tabId, leafId)
+  // A new click is a new operation; the pane is this click's too.
+  const operationId = createAgentSessionOperationId()
   const send = callRuntimeRpc<unknown>({ kind: 'local' }, 'agent.launchReplay', {
     ...launchParams(args),
-    // A new click is a new operation; the pane is this click's too.
-    operationId: createAgentSessionOperationId(),
+    operationId,
     paneKey: makePaneKey(tabId, leafId)
   })
   store.createTab(args.worktreeId, args.groupId, undefined, {
@@ -218,5 +224,5 @@ export function launchAgentThroughHost(args: HostAgentLaunchArgs): {
   // Why: without it an activated launch can stay hidden behind an editor.
   store.setActiveTabType('terminal', args.worktreeId)
   persistAgentLaunchTabOrder(args.worktreeId, tabId)
-  return { tabId, outcome: settleLaunch(args, { tabId, leafId }, send, releaseHold) }
+  return { tabId, operationId, outcome: settleLaunch(args, { tabId, leafId }, send, releaseHold) }
 }

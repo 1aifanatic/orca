@@ -34,6 +34,7 @@ import { useWorktreeAgentRows } from '@/components/sidebar/useWorktreeAgentRows'
 import type { LaunchSource } from '../../../../shared/telemetry-events'
 import { agentRowDisplayDotState } from '@/lib/agent-row-dot-state'
 import { translate } from '@/i18n/i18n'
+import type { AgentLaunchFollowUp } from '../../../../shared/agent-launch-follow-up'
 
 type OrderedSendTarget = {
   target: NotesSendAgentTarget
@@ -47,6 +48,7 @@ export function ReviewNotesSendMenuContent({
   promptDelivery = 'submit-after-ready',
   launchSource = 'notes_send',
   onPromptDelivered,
+  durableFollowUp,
   onPromptHandedOff
 }: {
   worktreeId: string
@@ -55,6 +57,8 @@ export function ReviewNotesSendMenuContent({
   promptDelivery?: 'auto-submit' | 'draft' | 'submit-after-ready'
   launchSource?: LaunchSource
   onPromptDelivered?: () => void
+  /** What `onPromptDelivered` does, recorded on a new agent's launch so a reload still runs it. */
+  durableFollowUp?: AgentLaunchFollowUp
   /** Given each send's own result the moment its prompt is handed to an agent. */
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
 }): React.JSX.Element {
@@ -212,6 +216,7 @@ export function ReviewNotesSendMenuContent({
         promptDelivery={promptDelivery}
         launchSource={launchSource}
         onPromptDelivered={onPromptDelivered}
+        {...(durableFollowUp ? { durableFollowUp } : {})}
         onPromptHandedOff={onPromptHandedOff}
         disabled={!hasPrompt}
       />

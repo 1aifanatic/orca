@@ -38,6 +38,10 @@ export const AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY =
 // may publish the launch's tab before it admits the launch.
 export const AGENT_LAUNCH_PLACEMENT_RUNTIME_CAPABILITY = 'agent.launch.placement.v1' as const
 
+// Host-advertised: records a launch's `followUp` on its row and answers `agent.takeLaunchFollowUps`.
+// A window on a host without it runs its follow-ups live, on the launch's answer, as before.
+export const AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY = 'agent.launch.follow-ups.v1' as const
+
 // Client-advertised only: the client reads a listed launch tab with no terminal yet as "not
 // started", never as proof its agent runs. The host publishes a paired caller's tab before the
 // spawn only for a client that says so.
@@ -54,5 +58,6 @@ export const AGENT_LAUNCH_RUNTIME_CAPABILITIES = [
   AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_CARRY_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_PLACEMENT_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_PLACEMENT_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY
 ] as const

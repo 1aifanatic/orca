@@ -116,6 +116,14 @@ export const uiTerminalAndSessionTabsApi = {
     ipcRenderer.on('ui:agentLaunchPaneVerdict', listener)
     return () => ipcRenderer.removeListener('ui:agentLaunchPaneVerdict', listener)
   },
+  onAgentLaunchPromptSettled: (
+    callback: (data: { operationId: string }) => void
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { operationId: string }) =>
+      callback(data)
+    ipcRenderer.on('ui:agentLaunchPromptSettled', listener)
+    return () => ipcRenderer.removeListener('ui:agentLaunchPromptSettled', listener)
+  },
   onSplitTerminal: (
     callback: (data: {
       tabId: string

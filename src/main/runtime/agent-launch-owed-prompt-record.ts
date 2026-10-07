@@ -11,10 +11,10 @@
 
 import {
   agentSessionOperationKey,
-  type AgentLaunchOwedPrompt,
   type AgentSessionOperationOutcome,
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
+import type { AgentLaunchOwedPrompt } from '../../shared/agent-launch-owed-prompt'
 import { isTuiAgent } from '../../shared/tui-agent-config'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 
@@ -134,6 +134,14 @@ export function clearOwedLaunchPromptInto(state: OperationRows, ref: OperationRe
     const { promptDelivery: _cleared, ...rest } = row
     return rest
   })
+}
+
+/**
+ * Whether the launch's prompt is still on its way: any value, even one this build cannot read,
+ * since only the settle (W3) removes the field. What depends on the prompt waits for this.
+ */
+export function launchPromptUnsettled(row: AgentSessionOperationRow): boolean {
+  return row.promptDelivery !== undefined
 }
 
 /** Unexpired rows that still owe a prompt or may be writing one. */

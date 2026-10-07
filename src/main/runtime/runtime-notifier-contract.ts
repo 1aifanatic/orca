@@ -86,6 +86,8 @@ export type RuntimeNotifier = {
   ): Promise<AgentLaunchTabPublished>
   /** A launch pane's fate, for the window to keep on its tab or act on. */
   agentLaunchPaneVerdict?(event: AgentLaunchPaneVerdictEvent): void
+  /** A desktop launch whose click recorded a follow-up has settled its prompt: the window takes it. */
+  agentLaunchPromptSettled?(event: { operationId: string }): void
   resolveLegacyWorkerTerminalRecovery?(
     paneKey: string,
     resolution: 'adopted' | 'exited' | 'rolled_back',

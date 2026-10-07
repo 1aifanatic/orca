@@ -20,6 +20,21 @@ vi.mock('@/lib/command-code-prompt-status-seed', () => ({
 }))
 const toast = vi.hoisted(() => ({ error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
+const followUps = vi.hoisted(() => {
+  const order: string[] = []
+  return {
+    hostRecords: true,
+    order,
+    takeLaunchFollowUps: vi.fn(async (_operationId?: string) => ({ taken: [], pending: [] }))
+  }
+})
+vi.mock('@/lib/agent-launch-follow-ups', () => ({
+  recordableLaunchFollowUp: (followUp: unknown) => (followUps.hostRecords ? followUp : undefined),
+  takeLaunchFollowUps: async (operationId?: string) => {
+    followUps.order.push('take')
+    return followUps.takeLaunchFollowUps(operationId)
+  }
+}))
 
 const { launchNewTabPromptThroughHost, newTabPromptLaunchesThroughHost } =
   await import('./launch-agent-new-tab-host-route')
@@ -29,7 +44,7 @@ const TAB = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
 function deferredOutcome() {
   let resolve!: (outcome: HostAgentLaunchOutcome) => void
   const promise = new Promise<HostAgentLaunchOutcome>((done) => (resolve = done))
-  host.launchAgentThroughHost.mockReturnValue({ tabId: TAB, outcome: promise })
+  host.launchAgentThroughHost.mockReturnValue({ tabId: TAB, operationId: 'op-1', outcome: promise })
   return resolve
 }
 
@@ -47,6 +62,8 @@ function launch(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  followUps.hostRecords = true
+  followUps.order = []
   notice.wasNotified.mockReturnValue(true)
   host.windowMakesHostLaunchTab.mockReturnValue(true)
 })
@@ -148,6 +165,52 @@ describe('an AI button launched through the host, which delivers its prompt', ()
     }
     expect(toast.error).not.toHaveBeenCalled()
     expect(notice.onTimeout).not.toHaveBeenCalled()
+  })
+})
+
+describe('a click whose follow-up is recorded on its launch', () => {
+  const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: {} }
+
+  it('records it, then takes it off the record before it runs, so a reload never runs it again', async () => {
+    deferredOutcome()({
+      kind: 'started',
+      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+    })
+    await launchNewTabPromptThroughHost({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt: 'p',
+      pasteContent: 'p',
+      durableFollowUp: FOLLOW_UP,
+      onPromptDelivered: () => followUps.order.push('follow-up')
+    }).promptDeliveryResult
+    expect(host.launchAgentThroughHost).toHaveBeenCalledWith(
+      expect.objectContaining({ followUp: FOLLOW_UP })
+    )
+    expect(followUps.takeLaunchFollowUps).toHaveBeenCalledWith('op-1')
+    expect(followUps.order).toEqual(['take', 'follow-up'])
+  })
+
+  it('on a host that does not record follow-ups, runs it live and records nothing, as before', async () => {
+    followUps.hostRecords = false
+    deferredOutcome()({
+      kind: 'started',
+      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+    })
+    const onPromptDelivered = vi.fn()
+    await launchNewTabPromptThroughHost({
+      agent: 'claude',
+      worktreeId: 'wt-1',
+      prompt: 'p',
+      pasteContent: 'p',
+      durableFollowUp: FOLLOW_UP,
+      onPromptDelivered
+    }).promptDeliveryResult
+    expect(host.launchAgentThroughHost).toHaveBeenCalledWith(
+      expect.not.objectContaining({ followUp: expect.anything() })
+    )
+    expect(followUps.takeLaunchFollowUps).not.toHaveBeenCalled()
+    expect(onPromptDelivered).toHaveBeenCalledOnce()
   })
 })
 

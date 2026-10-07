@@ -17,6 +17,7 @@ import { useGitStatusPolling } from '../components/right-sidebar/useGitStatusPol
 import { useOsc52ClipboardDefaultOnNotice } from '../components/terminal-pane/osc52-clipboard-default-on-notice'
 import { useWebSessionTabsSync } from '../runtime/web-session-tabs-sync'
 import { useLocalStructuredSessionTabsSync } from '../runtime/local-structured-session-tabs-sync'
+import { useRecordedLaunchFollowUps } from './use-recorded-launch-follow-ups'
 import { useHostStructuredAgentsSync } from '../runtime/host-structured-agents-sync'
 import { useRemoteRuntimeRecoveryTriggers } from '../runtime/use-remote-runtime-recovery-triggers'
 import { useTerminalViewerColorPublication } from './use-terminal-viewer-color-publication'
@@ -42,6 +43,7 @@ export function useAppShellServices(): void {
   useRadixBodyPointerEventsRecovery()
   useWebSessionTabsSync()
   useLocalStructuredSessionTabsSync()
+  useRecordedLaunchFollowUps()
   useHostStructuredAgentsSync()
   // Subscribe to IPC push events
   useIpcEvents()

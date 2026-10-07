@@ -22,6 +22,7 @@ import {
   useNotesInFlightVersion
 } from '@/lib/notes-send-in-flight'
 import { translate } from '@/i18n/i18n'
+import { reviewNotesDeliveredFollowUp } from '@/lib/agent-launch-follow-ups'
 
 const ENABLED_SEND_TOOLTIP = 'Send notes to an agent'
 
@@ -60,6 +61,8 @@ export type NotesSendMenuProps<TNote> = {
   // so it reads exact time rather than a render clock that can lag or freeze.
   openRequestExpiresAt?: number | null
   onOpenRequestHandled?: () => void
+  /** Must remove these notes from `worktreeId` (`clearDeliveredDiffComments`): a new agent's launch
+   *  records exactly that, so a window that reloads mid-launch still removes them once. */
   onDelivered: (notes: readonly TNote[]) => void
 }
 
@@ -278,6 +281,7 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                     promptDelivery="submit-after-ready"
                     launchSource="notes_send"
                     onPromptDelivered={() => markDelivered(scope.notes)}
+                    durableFollowUp={reviewNotesDeliveredFollowUp(worktreeId, scope.notes)}
                     onPromptHandedOff={holdInFlight(scope.notes)}
                   />
                 </DropdownMenuSubContent>
@@ -296,6 +300,9 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                 markDelivered(defaultScope.notes)
               }
             }}
+            {...(defaultScope
+              ? { durableFollowUp: reviewNotesDeliveredFollowUp(worktreeId, defaultScope.notes) }
+              : {})}
             onPromptHandedOff={holdInFlight(defaultScope?.notes ?? [])}
           />
         )}

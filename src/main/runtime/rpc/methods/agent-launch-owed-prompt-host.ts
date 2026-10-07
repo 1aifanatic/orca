@@ -17,6 +17,7 @@ import { activeAgentLaunchesFor } from './agent-launch-active-operations'
 import { deliverTerminalAgentLaunchPrompt } from './agent-launch-terminal-prompt'
 import type { AgentLaunchResult } from '../../../../shared/agent-launch-intent'
 import type { LaunchedTerminal } from './agent-launch-replay'
+import { announceSettledLaunchFollowUps } from './agent-launch-follow-ups'
 
 function resumeDeps(
   runtime: OrcaRuntimeService,
@@ -90,6 +91,7 @@ export async function resumeOwedAgentLaunchPrompts(runtime: OrcaRuntimeService):
     if (store && (await resumeOwedLaunchPrompts(resumeDeps(runtime, store)))) {
       sweepAgainSoon(runtime)
     }
+    announceSettledLaunchFollowUps(runtime)
   } catch (error) {
     console.warn('[agent-launch] could not resume owed launch prompts', error)
   }
@@ -112,5 +114,6 @@ export async function settleOwedLaunchPromptBeforeReplay(
     if (resumed === 'retry') {
       sweepAgainSoon(runtime)
     }
+    announceSettledLaunchFollowUps(runtime)
   }
 }

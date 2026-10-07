@@ -1,0 +1,151 @@
+/**
+ * A click's follow-up on its launch's record, against the real durable ledger: recorded with the
+ * launch, taken once by the caller that made it, and never seen by any other caller.
+ */
+
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
+import type { AgentSessionRecordStore } from '../../agent-session-record-store'
+import { openTestAgentSessionRecordStore } from '../../agent-session-record-store-test-harness'
+import type { RpcContext } from '../core'
+import { DESKTOP_RPC_CALLER } from '../rpc-caller-identity'
+import {
+  methodNamed,
+  rpcContext,
+  runtimeStub,
+  setAgentLaunchRecordStore,
+  type AgentLaunchRuntimeStub
+} from './agent-launch.test-fixture'
+
+const deliverTerminalPrompt = vi.hoisted(() =>
+  vi.fn(async (args: { beginPromptWrite?: () => Promise<unknown> }): Promise<boolean> => {
+    await args.beginPromptWrite?.()
+    return true
+  })
+)
+vi.mock('./agent-launch-terminal-prompt', () => ({
+  deliverTerminalAgentLaunchPrompt: deliverTerminalPrompt
+}))
+
+const { AGENT_LAUNCH_METHODS } = await import('./agent-launch')
+const { AGENT_LAUNCH_FOLLOW_UP_METHODS } = await import('./agent-launch-follow-ups')
+const AGENT_LAUNCH_REPLAY = methodNamed(AGENT_LAUNCH_METHODS, 'agent.launchReplay')
+const TAKE = methodNamed(AGENT_LAUNCH_FOLLOW_UP_METHODS, 'agent.takeLaunchFollowUps')
+
+const OPERATION_ID = `${Date.now()}-000000000000000000000000000000f1`
+const PANE_KEY = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+const FOLLOW_UP = { kind: 'review-notes-delivered', version: 1, payload: { worktreeId: 'wt-7' } }
+const LAUNCH = {
+  agent: 'claude',
+  target: { kind: 'existing', worktree: 'id:wt-7' },
+  prompt: { text: 'fix the notes', delivery: 'submit', transport: 'paste' },
+  followUp: FOLLOW_UP,
+  operationId: OPERATION_ID
+}
+const DESKTOP: Partial<RpcContext> = {
+  caller: DESKTOP_RPC_CALLER,
+  clientKind: 'runtime',
+  clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+}
+const PHONE: Partial<RpcContext> = {
+  clientKind: 'mobile',
+  pairedDeviceId: 'device-1',
+  clientCapabilities: [AGENT_LAUNCH_RUNTIME_CAPABILITY]
+}
+
+let directory: string
+let store: AgentSessionRecordStore
+
+function host(): AgentLaunchRuntimeStub {
+  return runtimeStub({ settings: {}, terminalPaneKey: PANE_KEY, lineCarriesPrompt: false })
+}
+
+function launch(
+  runtime: AgentLaunchRuntimeStub,
+  params: unknown = LAUNCH,
+  context: Partial<RpcContext> = DESKTOP
+) {
+  return AGENT_LAUNCH_REPLAY.handler(
+    AGENT_LAUNCH_REPLAY.params.parse(params),
+    rpcContext(runtime, context)
+  )
+}
+
+function take(runtime: AgentLaunchRuntimeStub, context: Partial<RpcContext>, operationId?: string) {
+  return TAKE.handler(
+    TAKE.params.parse(operationId ? { operationId } : {}),
+    rpcContext(runtime, context)
+  )
+}
+
+beforeEach(async () => {
+  deliverTerminalPrompt.mockClear()
+  directory = await mkdtemp(join(tmpdir(), 'orca-agent-launch-follow-ups-'))
+  store = await openTestAgentSessionRecordStore(directory)
+  setAgentLaunchRecordStore(store)
+})
+
+afterEach(async () => {
+  setAgentLaunchRecordStore(null)
+  await rm(directory, { recursive: true, force: true })
+})
+
+describe('a click’s follow-up on its launch’s record', () => {
+  it('is recorded with the launch and taken once, by the caller that made it', async () => {
+    const runtime = host()
+    await launch(runtime)
+
+    // Another caller, on a connection that proves it is someone else, sees nothing.
+    await expect(take(runtime, PHONE)).resolves.toEqual({ taken: [], pending: [] })
+    await expect(take(runtime, DESKTOP, OPERATION_ID)).resolves.toEqual({
+      taken: [
+        {
+          operationId: OPERATION_ID,
+          followUp: FOLLOW_UP,
+          promptHandedOver: true,
+          composerUnobserved: false
+        }
+      ],
+      pending: []
+    })
+    await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+  })
+
+  it('is recorded for the desktop only: a phone, which never takes one, records nothing', async () => {
+    const runtime = host()
+    await launch(runtime, LAUNCH, PHONE)
+    await expect(take(runtime, PHONE)).resolves.toEqual({ taken: [], pending: [] })
+    expect(store.listOperationRows().some((row) => row.launchFollowUp !== undefined)).toBe(false)
+  })
+
+  it('outlives a host restart until it is taken', async () => {
+    await launch(host())
+    store = await openTestAgentSessionRecordStore(directory)
+    setAgentLaunchRecordStore(store)
+
+    const after = await take(host(), DESKTOP)
+    expect(after.taken.map((entry) => entry.operationId)).toEqual([OPERATION_ID])
+  })
+
+  it('is not recorded over the size cap, and the launch still runs', async () => {
+    const runtime = host()
+    const huge = { ...FOLLOW_UP, payload: { blob: 'x'.repeat(300 * 1024) } }
+
+    const result = await launch(runtime, { ...LAUNCH, followUp: huge })
+
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+    await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+  })
+
+  it('is not part of what the launch is: a retry that names another follow-up replays it', async () => {
+    const runtime = host()
+    const first = await launch(runtime)
+    await expect(
+      launch(runtime, { ...LAUNCH, followUp: { ...FOLLOW_UP, version: 2 } })
+    ).resolves.toEqual(first)
+    expect(runtime.createTerminal).toHaveBeenCalledOnce()
+  })
+})

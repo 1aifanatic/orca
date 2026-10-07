@@ -13,6 +13,15 @@ import { seedCommandCodeSubmittedPromptStatus } from '@/lib/command-code-prompt-
 import { isNativeChatSupportedAgent } from '@/lib/native-chat-supported-agent'
 import type { AgentLaunchPromptReceipt } from '../../../shared/agent-launch-intent'
 import type { TuiAgent } from '../../../shared/tui-agent'
+import type { AgentLaunchFollowUp } from '../../../shared/agent-launch-follow-up'
+import { recordableLaunchFollowUp, takeLaunchFollowUps } from '@/lib/agent-launch-follow-ups'
+
+/** `followUpDeferred`: the click's recorded follow-up was left for the next start; don't run it. */
+export type NewTabPromptDeliveryResult = {
+  delivered: boolean
+  failureNotified: boolean
+  followUpDeferred?: boolean
+}
 
 /**
  * Whether a new agent tab starts through the host's `agent.launch`: an AI button's launch, whose
@@ -64,15 +73,26 @@ function seedChatCopy(tabId: string, agent: TuiAgent, text: string, createdAt: n
  * What the host's answer means for the click: the follow-ups run on a prompt it handed to the
  * agent, and a prompt it could not hand over gets main's own "wasn't sent" notice.
  */
-function settleHostPrompt(
+async function settleHostPrompt(
   args: HostAgentLaunchArgs & {
     onPromptDelivered?: () => void
     onPromptDeliveryUnconfirmed?: () => void
   },
-  tabId: string,
+  launch: { tabId: string; operationId: string; followUpRecorded: boolean },
   receipt: AgentLaunchPromptReceipt | undefined,
   seeded: boolean
-): { delivered: boolean; failureNotified: boolean } {
+): Promise<NewTabPromptDeliveryResult> {
+  const { tabId } = launch
+  // Runs only once this click took it off the record: a take that failed leaves it there, for the
+  // next start to run, and running it here too would run it twice.
+  let followUpRunsHere = true
+  if (launch.followUpRecorded) {
+    const take = await takeLaunchFollowUps(launch.operationId)
+    followUpRunsHere =
+      take?.taken.some(
+        (entry) => entry.operationId === launch.operationId && entry.promptHandedOver
+      ) ?? false
+  }
   if (receipt?.outcome === 'handed-to-terminal') {
     if (receipt.composerUnobserved) {
       args.onPromptDeliveryUnconfirmed?.()
@@ -80,6 +100,9 @@ function settleHostPrompt(
     if (args.agent === 'command-code') {
       // Command Code has no prompt-submit hook; seed working when the prompt is submitted.
       seedCommandCodeSubmittedPromptStatus(args.worktreeId, tabId, args.prompt)
+    }
+    if (!followUpRunsHere) {
+      return { delivered: true, failureNotified: false, followUpDeferred: true }
     }
     args.onPromptDelivered?.()
     return { delivered: true, failureNotified: false }
@@ -112,6 +135,8 @@ export function launchNewTabPromptThroughHost(
     pasteContent: string
     onPromptDelivered?: () => void
     onPromptDeliveryUnconfirmed?: () => void
+    /** What `onPromptDelivered` does, recorded so a reload mid-launch still runs it once. */
+    durableFollowUp?: AgentLaunchFollowUp
   }
 ): {
   tabId: string
@@ -121,9 +146,15 @@ export function launchNewTabPromptThroughHost(
     pasteContent,
     onPromptDelivered: _delivered,
     onPromptDeliveryUnconfirmed: _u,
+    durableFollowUp,
     ...launch
   } = args
-  const { tabId, outcome } = launchAgentThroughHost({ ...launch, hostPrompt: pasteContent })
+  const followUp = recordableLaunchFollowUp(durableFollowUp)
+  const { tabId, operationId, outcome } = launchAgentThroughHost({
+    ...launch,
+    hostPrompt: pasteContent,
+    ...(followUp ? { followUp } : {})
+  })
   // Stamped at the click: the chat view matches the agent's turn to a copy made before it.
   const clickedAt = Date.now()
   const promptDeliveryResult = outcome.then((launched) => {
@@ -131,7 +162,12 @@ export function launchNewTabPromptThroughHost(
       // Seeded once the host started the agent, as main's paste seeded it: a launch that never
       // started leaves no chat copy behind.
       const seeded = seedChatCopy(tabId, args.agent, pasteContent, clickedAt)
-      return settleHostPrompt(args, tabId, launched.prompt, seeded)
+      return settleHostPrompt(
+        args,
+        { tabId, operationId, followUpRecorded: followUp !== undefined },
+        launched.prompt,
+        seeded
+      )
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.
     showLaunchNotStartedNotice(launched, args.prompt)

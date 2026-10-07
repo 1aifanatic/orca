@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { sourceControlActionRecipeMatchesTarget } from './source-control-action-recipe-match'
 import { resolveSourceControlAgentSaveTarget } from './source-control-agent-action-dialog-support'
+import type { AgentLaunchFollowUp } from '../../../../shared/agent-launch-follow-up'
 
 type RunSourceControlAgentActionStartArgs = {
   selectedAgent: TuiAgent
@@ -52,7 +53,9 @@ type RunSourceControlAgentActionStartArgs = {
   onLaunchAccepted?: () => void
   /** Fires when a launch that already reported onLaunchAccepted failed to deliver its prompt. */
   onLaunchAborted?: () => void
-  onLaunched?: () => void
+  onLaunched?: (launch?: { followUpDeferred?: boolean }) => void
+  /** Recorded on a host launch so a reload mid-launch still runs `onLaunched`'s host writes once. */
+  durableFollowUp?: AgentLaunchFollowUp
   onClose: () => void
 }
 
@@ -77,10 +80,13 @@ export async function runSourceControlAgentActionStart({
   onLaunchAccepted,
   onLaunchAborted,
   onLaunched,
+  durableFollowUp,
   onClose
 }: RunSourceControlAgentActionStartArgs): Promise<boolean> {
   let launched = false
   let launchFailureNotified = false
+  // The recorded follow-up was left for the next start to take: running it here could run it twice.
+  let followUpDeferred = false
   let launchAcceptedNotified = false
   // Why: `undefined` is what makes the launch fall back to the global Agents arguments;
   // an empty string would beat that fallback and silently suppress them.
@@ -111,7 +117,8 @@ export async function runSourceControlAgentActionStart({
       agentArgs: launchAgentArgs,
       promptDelivery,
       launchPlatform,
-      launchSource
+      launchSource,
+      ...(durableFollowUp ? { durableFollowUp } : {})
     })
     launched = Boolean(result)
     if (result?.surface.kind === 'local-terminal') {
@@ -127,6 +134,7 @@ export async function runSourceControlAgentActionStart({
         const deliveryResult = await result.promptDeliveryResult
         launched = deliveryResult.delivered
         launchFailureNotified = deliveryResult.failureNotified
+        followUpDeferred = deliveryResult.followUpDeferred === true
       } catch (error) {
         console.error('promptDeliveryResult rejected', error)
         launched = false
@@ -173,7 +181,7 @@ export async function runSourceControlAgentActionStart({
       console.error('onSaveAgentDefault failed', error)
     }
   }
-  onLaunched?.()
+  onLaunched?.(followUpDeferred ? { followUpDeferred } : undefined)
   onClose()
   return true
 }

@@ -33,6 +33,10 @@ import { rpcCallerOperationKey } from '../rpc-caller-identity'
 import type { AgentLaunchParams } from './agent-launch-schemas'
 import { isDesktopLaunchCaller } from './agent-launch-desktop-caller'
 import {
+  agentLaunchFollowUpFits,
+  type AgentLaunchFollowUp
+} from '../../../../shared/agent-launch-follow-up'
+import {
   OWED_LAUNCH_PROMPT_DEADLINE_MS,
   type OwedLaunchPrompt,
   beginOwedLaunchPromptWrite,
@@ -222,8 +226,17 @@ export async function admitAgentLaunchOperation(
   const callerKey = agentLaunchOperationCallerKey(context)
   // The ledger alone: admitting a terminal launch has no use for the chat host.
   const store = await context.runtime.openAgentSessionRecordStore()
+  // Temporary, desktop only like its owed prompt: no other caller takes follow-ups.
+  const launchFollowUp = isDesktopLaunchCaller(callerKey) ? recordableFollowUp(params) : undefined
   const { decision: admitted, claim } = await store.admitAndClaimOperation(
-    { callerKey, operationId, fingerprint, now, ...(ownedPane ? { ownedPane } : {}) },
+    {
+      callerKey,
+      operationId,
+      fingerprint,
+      now,
+      ...(ownedPane ? { ownedPane } : {}),
+      ...(launchFollowUp ? { launchFollowUp } : {})
+    },
     // A fresh row, or a replayed one no one has answered yet, leaves the right to run open.
     (decision) =>
       decision.decision === 'admit' ||
@@ -291,6 +304,20 @@ export async function admitAgentLaunchOperation(
       )
     }
   }
+}
+
+/** A follow-up over the cap is not recorded: it runs live, as before, and never fails the launch. */
+function recordableFollowUp(params: AgentLaunchParams): AgentLaunchFollowUp | undefined {
+  if (!params.followUp) {
+    return undefined
+  }
+  if (!agentLaunchFollowUpFits(params.followUp)) {
+    console.warn(
+      `[agent-launch] a ${params.followUp.kind} follow-up is over the record's size cap; it runs live only`
+    )
+    return undefined
+  }
+  return params.followUp
 }
 
 /** The text a terminal's first write still owes: a submit nothing has delivered yet, which the

@@ -188,6 +188,8 @@ export type UiCommandEventApi = {
   onPublishAgentLaunchTab: (callback: (data: AgentLaunchTabPublishRequest) => void) => () => void
   replyAgentLaunchTabPublish: (reply: AgentLaunchTabPublishReply) => void
   onAgentLaunchPaneVerdict: (callback: (data: AgentLaunchPaneVerdictEvent) => void) => () => void
+  /** A launch whose click recorded a follow-up settled its prompt (`agent-launch-follow-ups`). */
+  onAgentLaunchPromptSettled?: (callback: (data: { operationId: string }) => void) => () => void
   onSplitTerminal: (
     callback: (data: {
       tabId: string

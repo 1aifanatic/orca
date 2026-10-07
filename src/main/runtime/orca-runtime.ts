@@ -64,6 +64,11 @@ class OrcaRuntimeService extends OrcaRuntimeWithResolveWaiter {
     this.notifier?.agentLaunchPaneVerdict?.({ ...pane, verdict })
   }
 
+  /** Tells the window a launch it recorded a follow-up for has settled its prompt. */
+  reportAgentLaunchPromptSettled(operationId: string): void {
+    this.notifier?.agentLaunchPromptSettled?.({ operationId })
+  }
+
   private readonly agentLaunchRecordWarmup = createAgentLaunchRecordWarmupGate({
     isOpen: () => peekOpenedAgentSessionRecordStore() !== null,
     open: () => this.openAgentSessionRecordStore()

@@ -21,6 +21,7 @@ import {
 import type { AgentSessionMutationEnvelope } from '../../shared/agent-session-wire'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionStoreState } from './agent-session-store-state'
+import type { AgentLaunchFollowUp } from '../../shared/agent-launch-follow-up'
 import {
   settleLaunchPromptInto,
   type LaunchPromptSettlement
@@ -191,7 +192,7 @@ export function admitAgentSessionGlobalOperationInto(
 
 export function claimAgentSessionOperationInto(
   state: { operations: Map<string, AgentSessionOperationRow> },
-  args: { callerKey: string; operationId: string; ownedPane?: AgentSessionOperationOwnedPane }
+  args: Parameters<typeof claimAgentSessionOperation>[1]
 ): AgentSessionOperationClaim {
   const claimed = claimAgentSessionOperation(state.operations, args)
   state.operations = claimed.rows
@@ -204,6 +205,8 @@ export type ClaimAfterAdmission = (decision: AgentSessionOperationDecision) => b
 /** An admission whose claimant laid out a pane before its effect; recorded only if the claim wins. */
 export type AgentSessionOperationClaimingAdmission = AgentSessionOperationAdmission & {
   ownedPane?: AgentSessionOperationOwnedPane
+  /** What the click owes once its prompt lands; recorded only if the claim wins. */
+  launchFollowUp?: AgentLaunchFollowUp
 }
 
 /** Admission and, when `claimAfter` says so, the claim, in one transaction: the same swap as

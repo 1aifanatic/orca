@@ -44,6 +44,7 @@ export function useSourceControlAgentActionDialog({
   onLaunchAccepted,
   onLaunchAborted,
   onLaunched,
+  durableFollowUp,
   onStart
 }: SourceControlAgentActionDialogProps): UseSourceControlAgentActionDialogResult {
   const settings = useAppStore((state) => state.settings)
@@ -212,6 +213,7 @@ export function useSourceControlAgentActionDialog({
       onLaunchAccepted,
       onLaunchAborted,
       onLaunched,
+      ...(durableFollowUp ? { durableFollowUp } : {}),
       onClose: closeDialog
     })
 

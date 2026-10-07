@@ -5,6 +5,10 @@ import {
   type PRCommentGroup
 } from '../../../../shared/pr-comment-groups'
 import { isPRCommentGroupQueueableForAI } from '@/lib/pr-comment-action-state'
+import {
+  isPRCommentGroupInFlight,
+  usePRCommentGroupsInFlightVersion
+} from './pr-comment-groups-in-flight'
 import type { PRComment } from '../../../../shared/github/comment-types'
 
 export type PRCommentsListSelection = {
@@ -155,9 +159,17 @@ export function usePRCommentsListSelection(
   // Why: selectable groups come from the unfiltered list so switching the
   // audience filter doesn't silently drop already-selected comments.
   const canonicalGroups = useMemo(() => groupPRComments(comments), [comments])
+  const inFlightVersion = usePRCommentGroupsInFlightVersion()
+  // A thread a launch still on its way will resolve is not offered again (`agent-launch-follow-ups`).
   const selectableGroups = useMemo(
-    () => canonicalGroups.filter(isPRCommentGroupQueueableForAI),
-    [canonicalGroups]
+    () =>
+      canonicalGroups.filter(
+        (group) =>
+          isPRCommentGroupQueueableForAI(group) &&
+          !isPRCommentGroupInFlight(getPRCommentGroupId(group))
+      ),
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- inFlightVersion re-reads the holds.
+    [canonicalGroups, inFlightVersion]
   )
   const selectableGroupsById = useMemo(() => {
     const map = new Map<string, PRCommentGroup>()

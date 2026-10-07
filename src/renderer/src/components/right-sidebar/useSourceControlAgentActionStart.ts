@@ -12,6 +12,7 @@ import { buildSourceControlAgentDeliveryPlan } from './buildSourceControlAgentDe
 import type { SourceControlAgentActionDeliveryPlanState } from './SourceControlAgentActionDialogForm'
 import { runSourceControlAgentActionStart } from './runSourceControlAgentActionStart'
 import { buildSourceControlAgentConnectionErrorPlan } from './source-control-agent-action-dialog-support'
+import type { AgentLaunchFollowUp } from '../../../../shared/agent-launch-follow-up'
 
 type UseSourceControlAgentActionStartArgs = {
   selectedAgent: TuiAgent | null
@@ -50,7 +51,8 @@ type UseSourceControlAgentActionStartArgs = {
   ) => void | Promise<void>
   onLaunchAccepted?: () => void
   onLaunchAborted?: () => void
-  onLaunched?: () => void
+  onLaunched?: (launch?: { followUpDeferred?: boolean }) => void
+  durableFollowUp?: AgentLaunchFollowUp
   onClose: () => void
 }
 
@@ -95,6 +97,7 @@ export function useSourceControlAgentActionStart({
   onLaunchAccepted,
   onLaunchAborted,
   onLaunched,
+  durableFollowUp,
   onClose
 }: UseSourceControlAgentActionStartArgs): UseSourceControlAgentActionStartResult {
   const [deliveryPlan, setDeliveryPlan] = useState<SourceControlAgentActionDeliveryPlanState>({
@@ -172,6 +175,7 @@ export function useSourceControlAgentActionStart({
           onLaunchAccepted,
           onLaunchAborted,
           onLaunched,
+          ...(durableFollowUp ? { durableFollowUp } : {}),
           onClose: () => {
             resetDeliveryPlan()
             onClose()
@@ -196,6 +200,7 @@ export function useSourceControlAgentActionStart({
       onLaunchAborted,
       onLaunchAccepted,
       onLaunched,
+      durableFollowUp,
       onSaveAgentDefault,
       onStart,
       promptDelivery,

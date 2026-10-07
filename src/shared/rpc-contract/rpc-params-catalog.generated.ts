@@ -38,7 +38,7 @@ import {
   SelectDataAccountParams
 } from './accounts-params'
 import { PrepareCodexForWslPaneParams } from './agent-hooks-params'
-import { AgentLaunch, AgentLaunchReplay } from './agent-launch-params'
+import { AgentLaunch, AgentLaunchReplay, AgentTakeLaunchFollowUps } from './agent-launch-params'
 import { CreateAgentSessionParams, EnsureAgentSessionParams } from './agent-session-params'
 import {
   AiVaultListSessionsParams,
@@ -588,6 +588,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'accounts.unsubscribe': AccountsUnsubscribeParams,
   'agent.launch': AgentLaunch,
   'agent.launchReplay': AgentLaunchReplay,
+  'agent.takeLaunchFollowUps': AgentTakeLaunchFollowUps,
   'agentHooks.prepareCodexForWslPane': PrepareCodexForWslPaneParams,
   'agentSession.acknowledgeAttention': AcknowledgeAttentionParams,
   'agentSession.agents': AgentsParams,

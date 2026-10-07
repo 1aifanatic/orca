@@ -26,7 +26,8 @@ import {
   isAgentSessionConversationCommandResult,
   type AgentSessionConversationCommandResult
 } from './agent-session-conversation-command'
-import type { TuiAgent } from './tui-agent'
+import type { AgentLaunchOwedPrompt } from './agent-launch-owed-prompt'
+import type { AgentLaunchFollowUp } from './agent-launch-follow-up'
 
 export const AGENT_SESSION_DURABLE_OPERATION_PER_CLIENT_LIMIT = 512
 export const AGENT_SESSION_DURABLE_OPERATION_GLOBAL_LIMIT = 4_096
@@ -93,22 +94,10 @@ export type AgentSessionOperationRow = {
    * Not checked by `isAgentSessionOperationRow`, like `ownedPane`.
    */
   promptDelivery?: AgentLaunchOwedPrompt
+  /** What the click owes once its prompt lands (`agent-launch-follow-up`): written with the claim,
+   *  gone when its caller takes it or with the row. Unchecked by the row validator, like `ownedPane`. */
+  launchFollowUp?: AgentLaunchFollowUp
 }
-
-/**
- * `owed`: no byte of the prompt has been written, so a host that restarts may still deliver it.
- * `writing`: the write may have begun, so nothing may write it again.
- */
-export type AgentLaunchOwedPrompt =
-  | {
-      state: 'owed'
-      text: string
-      agent: TuiAgent
-      deadline: number
-      /** The PTY the launch started its agent in: a resume pastes into that one only. */
-      terminal: { ptyId: string; incarnationId: string | null } | null
-    }
-  | { state: 'writing'; since: number }
 
 /** Unexpired rows naming this pane as theirs. */
 export function listAgentSessionOperationRowsOwningPane(
@@ -220,7 +209,12 @@ export type AgentSessionOperationClaim =
  */
 export function claimAgentSessionOperation(
   rows: ReadonlyMap<string, AgentSessionOperationRow>,
-  args: { callerKey: string; operationId: string; ownedPane?: AgentSessionOperationOwnedPane }
+  args: {
+    callerKey: string
+    operationId: string
+    ownedPane?: AgentSessionOperationOwnedPane
+    launchFollowUp?: AgentLaunchFollowUp
+  }
 ): { rows: Map<string, AgentSessionOperationRow>; claim: AgentSessionOperationClaim } {
   const key = agentSessionOperationKey(args.callerKey, args.operationId)
   const existing = rows.get(key)
@@ -233,7 +227,8 @@ export function claimAgentSessionOperation(
   const claimed: AgentSessionOperationRow = {
     ...existing,
     outcome: { status: 'unknown' },
-    ...(args.ownedPane ? { ownedPane: args.ownedPane } : {})
+    ...(args.ownedPane ? { ownedPane: args.ownedPane } : {}),
+    ...(args.launchFollowUp ? { launchFollowUp: args.launchFollowUp } : {})
   }
   const next = new Map(rows)
   next.set(key, claimed)

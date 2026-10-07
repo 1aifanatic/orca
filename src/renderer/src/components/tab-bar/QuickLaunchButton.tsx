@@ -17,6 +17,7 @@ import {
 } from '../../../../shared/tui-agent-selection'
 import { translate } from '@/i18n/i18n'
 import { newAgentPromptOutcome } from '@/lib/new-agent-prompt-outcome'
+import type { AgentLaunchFollowUp } from '../../../../shared/agent-launch-follow-up'
 
 export type QuickLaunchAgentMenuItemsProps = {
   worktreeId: string
@@ -37,6 +38,8 @@ export type QuickLaunchAgentMenuItemsProps = {
   launchSource?: LaunchSource
   /** Called after a prompt is queued into the agent, or immediately for argv prompt launches. */
   onPromptDelivered?: () => void
+  /** What `onPromptDelivered` does, recorded on the launch so a reload mid-launch still runs it. */
+  durableFollowUp?: AgentLaunchFollowUp
   /** Given the launch's own delivery result while the prompt is still on its way. */
   onPromptHandedOff?: (delivered: Promise<unknown>) => void
   /** Nothing to send: e.g. every note is already on its way, so no agent is started. */
@@ -108,6 +111,7 @@ function QuickLaunchAgentMenuItemsInner({
   promptDelivery,
   launchSource,
   onPromptDelivered,
+  durableFollowUp,
   onPromptHandedOff,
   disabled = false
 }: QuickLaunchAgentMenuItemsProps): React.JSX.Element | null {
@@ -145,7 +149,8 @@ function QuickLaunchAgentMenuItemsInner({
         ...(prompt !== undefined ? { prompt } : {}),
         ...(promptDelivery !== undefined ? { promptDelivery } : {}),
         ...(launchSource !== undefined ? { launchSource } : {}),
-        ...(onPromptDelivered !== undefined ? { onPromptDelivered } : {})
+        ...(onPromptDelivered !== undefined ? { onPromptDelivered } : {}),
+        ...(durableFollowUp !== undefined ? { durableFollowUp } : {})
       })
       if (!result) {
         toast.error(
@@ -202,6 +207,7 @@ function QuickLaunchAgentMenuItemsInner({
       promptDelivery,
       launchSource,
       onPromptDelivered,
+      durableFollowUp,
       onPromptHandedOff,
       disabled
     ]

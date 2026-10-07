@@ -15,6 +15,7 @@ import type { LaunchSource } from '../../../../shared/telemetry-events'
 import type { SourceControlAiWriteTarget } from '../../../../shared/source-control-ai-recipe-save'
 import { SourceControlAgentActionDialogForm } from './SourceControlAgentActionDialogForm'
 import { useSourceControlAgentActionDialog } from './useSourceControlAgentActionDialog'
+import type { AgentLaunchFollowUp } from '../../../../shared/agent-launch-follow-up'
 
 export type SourceControlAgentActionDialogProps = {
   open: boolean
@@ -46,7 +47,10 @@ export type SourceControlAgentActionDialogProps = {
   onLaunchAccepted?: () => void
   /** Fires when an accepted launch later failed to deliver its prompt. */
   onLaunchAborted?: () => void
-  onLaunched?: () => void
+  onLaunched?: (launch?: { followUpDeferred?: boolean }) => void
+  /** What `onLaunched` does that a reload must not turn into a second send, recorded on the launch
+   *  so a window that reloads mid-launch still runs it once (`agent-launch-follow-ups`). */
+  durableFollowUp?: AgentLaunchFollowUp
   startLabel?: string
   onStart?: (args: {
     agent: TuiAgent

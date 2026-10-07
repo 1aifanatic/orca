@@ -83,6 +83,18 @@ export const AgentLaunchFields = z.object({
       transport: z.enum(['paste']).optional()
     })
     .optional(),
+  /**
+   * What the caller still owes once the prompt lands (`agent-launch-follow-up`), kept on the launch's
+   * record so a reloaded window can run it once. Opaque to the host, and not part of the
+   * fingerprint: it is what the caller does next, not what the launch does.
+   */
+  followUp: z
+    .object({
+      kind: z.string().min(1).max(80),
+      version: z.number().int().min(1),
+      payload: z.unknown()
+    })
+    .optional(),
   /** A chat seeds the options it accepts; a terminal launch reads the model, effort and mode. */
   sessionOptions: z.record(z.string(), z.string()).optional(),
   reuseTerminal: z.object({ handle: z.string().min(1, 'Missing terminal handle') }).optional(),
@@ -167,3 +179,8 @@ export type AgentLaunchParams = z.infer<typeof AgentLaunch>
 export const AgentLaunchReplay = AgentLaunchFields.required({ operationId: true }).superRefine(
   refuseSessionIdForAnotherAgent
 )
+
+/** One launch's follow-up when the click is still on screen; all of the caller's after a reload. */
+export const AgentTakeLaunchFollowUps = z.object({
+  operationId: z.string().min(1).optional()
+})

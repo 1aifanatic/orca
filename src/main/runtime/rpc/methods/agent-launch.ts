@@ -58,6 +58,7 @@ import {
   launchedTerminal,
   settleOwedLaunchPromptBeforeReplay
 } from './agent-launch-owed-prompt-host'
+import { announceSettledLaunchFollowUps } from './agent-launch-follow-ups'
 import { clientRendersStructuredAgent } from './structured-agent-session-policy'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
 import {
@@ -270,6 +271,9 @@ async function executeAdmittedAgentLaunch(
   // Bookkeeping: a failure leaves the first write, whose owed prompt replays as `unconfirmed` (or as
   // `unknown` to a caller that cannot read it), never as `not-delivered`.
   await settleQuietly(admission.settle(result))
+  if (params.followUp) {
+    announceSettledLaunchFollowUps(context.runtime)
+  }
   return result
 }
 
