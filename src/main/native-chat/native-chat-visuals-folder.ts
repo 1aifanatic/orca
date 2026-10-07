@@ -18,7 +18,8 @@ export function nativeChatVisualsFolderName(sessionId: string): string {
 
 /**
  * `<stateDirectory>/native-chat-visuals/<sha256(session id), first 32 hex>`. Keyed by the session id
- * alone, the chat record's primary key, so the folder needs no workspace lookup to find or remove.
+ * alone, the chat record's primary key, so the folder needs no workspace lookup to find or remove;
+ * hashed so any id is one safe path segment.
  */
 export function nativeChatVisualsFolderFor(stateDirectory: string, sessionId: string): string {
   return join(nativeChatVisualsRootFor(stateDirectory), nativeChatVisualsFolderName(sessionId))
