@@ -36,7 +36,8 @@ export function selectGluedPendingIds(
   const turns: UserTurn[] = []
   for (const [index, message] of messages.entries()) {
     messageIndexById.set(message.id, index)
-    const text = normalizedUserText(message)
+    // A not-sent row is one refused structured send, never several glued on an input line.
+    const text = message.unsent === true ? null : normalizedUserText(message)
     if (text) {
       turns.push({ index, text })
     }
@@ -147,11 +148,25 @@ export function retireLandedMobileNativeChatPending(
   landedImagePendingIds: ReadonlySet<string>
 ): MobileNativeChatPendingMessage[] {
   const landedCounts = new Map<string, number>()
+  const unsentByText = new Map<string, string[]>()
   for (const message of messages) {
     const text = normalizedUserText(message)
-    if (text) {
+    if (!text) {
+      continue
+    }
+    if (message.unsent === true) {
+      unsentByText.set(text, [...(unsentByText.get(text) ?? []), message.id])
+    } else {
       landedCounts.set(text, (landedCounts.get(text) ?? 0) + 1)
     }
+  }
+  // A not-sent row settles a send only when it appeared after the send: then it is the send's own.
+  const landedFor = (item: MobileNativeChatPendingMessage, text: string): number => {
+    const baselineUnsent = new Set(item.baselineUnsentMessageIds)
+    return (
+      (landedCounts.get(text) ?? 0) +
+      (unsentByText.get(text) ?? []).filter((id) => !baselineUnsent.has(id)).length
+    )
   }
   const landedPendingIds = new Set<string>()
   // Why a separate set: a barrier preserves adjacency after a landing consumed a whole
@@ -171,9 +186,12 @@ export function retireLandedMobileNativeChatPending(
     }
     const landed =
       item.text.trim() === ''
-        ? countImageSourceTurnsAfter(messages, item.baselineTailMessageId) >=
-          item.expectedOccurrence
-        : (landedCounts.get(normalizeReconcileText(item.text)) ?? 0) >= item.expectedOccurrence
+        ? countImageSourceTurnsAfter(
+            messages,
+            item.baselineTailMessageId,
+            item.baselineUnsentMessageIds
+          ) >= item.expectedOccurrence
+        : landedFor(item, normalizeReconcileText(item.text)) >= item.expectedOccurrence
     if (landed) {
       landedPendingIds.add(item.id)
       exactLandedIds.add(item.id)

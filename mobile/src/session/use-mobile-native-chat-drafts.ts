@@ -11,6 +11,8 @@ import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
 import { appendReturnedDraftText } from '../../../src/shared/returned-draft-text'
 import {
   countUserTextOccurrences,
+  sendBaselineTailMessageId,
+  sendBaselineUnsentMessageIds,
   findLandedImagePreviewEchoes,
   mergeLandedImagePreviewEchoes,
   migrateImagePreviewMessageIds,
@@ -175,7 +177,8 @@ export function useMobileNativeChatDrafts(args: {
         pendingKey,
         normalizedText,
         baselineOccurrences: countUserTextOccurrences(messagesRef.current, normalizedText),
-        baselineTailMessageId: messagesRef.current.at(-1)?.id ?? null,
+        baselineTailMessageId: sendBaselineTailMessageId(messagesRef.current),
+        ...unsentBaseline(sendBaselineUnsentMessageIds(messagesRef.current)),
         // Only a settled read makes this a boundary. Anything else — hydrating,
         // or a read that failed — hands back an empty list that reads as "the
         // conversation was empty", which lets any row claim this send later.
@@ -318,4 +321,8 @@ export function useMobileNativeChatDrafts(args: {
     acceptSend,
     holdUnconfirmedSend
   }
+}
+
+function unsentBaseline(ids: string[]): { baselineUnsentMessageIds?: readonly string[] } {
+  return ids.length > 0 ? { baselineUnsentMessageIds: ids } : {}
 }

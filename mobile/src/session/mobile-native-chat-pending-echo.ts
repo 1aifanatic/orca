@@ -12,6 +12,8 @@ export type MobileNativeChatPendingMessage = {
    *  and rebased onto the first authoritative read instead of reconciling
    *  against rows that may belong to another tab. */
   baselineResolved: boolean
+  /** Rows shown as not sent when it was sent: they can't retire it, its own row can. */
+  baselineUnsentMessageIds?: readonly string[]
 }
 
 export type MobileNativeChatSendOrigin = {
@@ -25,6 +27,8 @@ export type MobileNativeChatSendOrigin = {
   /** Queued-draft cards already on screen at send time, so an earlier identical
    *  card cannot confirm this send. Structured lane, on any host that publishes cards. */
   baselineQueuedMessageIds?: readonly string[]
+  /** Rows shown as not sent at send time: an older not-sent copy can't settle this send. */
+  baselineUnsentMessageIds?: readonly string[]
 }
 
 type PendingByKey = Record<string, MobileNativeChatPendingMessage[]>
@@ -73,6 +77,9 @@ export function appendMobileNativeChatPending(
             : origin.baselineOccurrences + earlierOutstanding + 1,
         baselineTailMessageId: origin.baselineTailMessageId,
         baselineResolved: origin.baselineResolved,
+        ...(origin.baselineUnsentMessageIds
+          ? { baselineUnsentMessageIds: origin.baselineUnsentMessageIds }
+          : {}),
         ...(images?.length ? { images } : {})
       }
     ]

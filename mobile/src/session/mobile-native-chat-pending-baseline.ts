@@ -1,5 +1,8 @@
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
-import { normalizeReconcileText } from './mobile-native-chat-draft-reconcile'
+import {
+  normalizeReconcileText,
+  sendBaselineTailMessageId
+} from './mobile-native-chat-draft-reconcile'
 import type { MobileNativeChatPendingMessage } from './mobile-native-chat-pending-echo'
 
 /**
@@ -39,7 +42,7 @@ export function rebaseMobileNativeChatPendingBaselines(
   if (current.every((item) => item.baselineResolved)) {
     return current
   }
-  const baselineTailMessageId = messages.at(-1)?.id ?? null
+  const baselineTailMessageId = sendBaselineTailMessageId(messages)
   return current.map((item) => {
     if (item.baselineResolved) {
       return item
