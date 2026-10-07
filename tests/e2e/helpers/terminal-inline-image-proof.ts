@@ -1,7 +1,7 @@
 import { expect, type Page } from '@stablyai/playwright-test'
 import { PNG } from 'pngjs'
 
-export function inlineImageProducer(includePlaceholders = false): string {
+export function inlineImagePayload(includePlaceholders = false): string {
   const png = new PNG({ width: 120, height: 36 })
   for (let i = 0; i < png.data.length; i += 4) {
     png.data.set([240, 40, 40, 255], i)
@@ -20,7 +20,7 @@ export function inlineImageProducer(includePlaceholders = false): string {
       `\x1b_Ga=T,f=100,i=65280,U=1,c=15,r=3,q=2;${prototype}\x1b\\` +
       `\x1b[38;2;0;255;0m${cells}\x1b[0m\r\n\r\n`
   }
-  const payload =
+  return (
     `\x1bcSSH / REMOTE INLINE IMAGE PROOF\r\n\r\n` +
     `iTerm2: red\r\n` +
     `\x1b]1337;File=inline=1;width=120px;height=36px:${encoded}\x07` +
@@ -31,6 +31,11 @@ export function inlineImageProducer(includePlaceholders = false): string {
       Array.from({ length: 120 * 36 }, () => [40, 40, 240]).flat()
     ).toString('base64')}\x1b\\` +
     `\r\n\r\n${placeholderPayload}`
+  )
+}
+
+export function inlineImageProducer(includePlaceholders = false): string {
+  const payload = inlineImagePayload(includePlaceholders)
   return (
     `const payload = Buffer.from('${Buffer.from(payload).toString('base64')}', 'base64');\n` +
     `process.stdout.write(payload);\n` +
