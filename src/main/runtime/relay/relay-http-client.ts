@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { getMainHttpClient, type MainHttpClient } from '../../network/http-client'
 import type { E2EEKeypair } from '../e2ee-keypair'
 import { cancelUnreadResponseBody } from '../../lib/unread-response-body'
 import { parseRelayRetryAfterMs } from '../../../shared/relay-retry-after-header'
@@ -103,6 +104,11 @@ function isAllowedRelayOrigin(value: string): boolean {
   }
 }
 
+// Why the port: on the desktop it is Chromium's stack, which follows the system/PAC proxy.
+function relayFetch(input: { fetch?: typeof globalThis.fetch }): MainHttpClient['fetch'] {
+  return input.fetch ?? getMainHttpClient().fetch
+}
+
 export async function exchangeRelayAuthorization(input: {
   endpoint: string
   accessToken: string
@@ -111,7 +117,7 @@ export async function exchangeRelayAuthorization(input: {
   requestDeadlineMs?: number
 }): Promise<RelayAuthorization> {
   const relayHostId = deriveRelayHostId(input.keypair.publicKey)
-  const response = await (input.fetch ?? globalThis.fetch)(input.endpoint, {
+  const response = await relayFetch(input)(input.endpoint, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${input.accessToken}`,
@@ -182,7 +188,7 @@ async function sendRelayAssignment(
   if (input.isCurrent && !input.isCurrent()) {
     throw new RelayAssignAbortedError()
   }
-  const response = await (input.fetch ?? globalThis.fetch)(`${input.directorUrl}/v1/assign`, {
+  const response = await relayFetch(input)(`${input.directorUrl}/v1/assign`, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${input.relayToken}`,
