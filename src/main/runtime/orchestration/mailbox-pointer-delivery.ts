@@ -67,9 +67,6 @@ export class OrchestrationMailboxPointerDelivery<TWaiter extends OrchestrationMe
     if (!this.deps.getTerminalHandleForLeafKey(this.leafKey(leaf))) {
       return
     }
-    if (db.hasOutstandingMailboxDelivery?.(mailboxHandle)) {
-      return
-    }
     // Why the gate lives HERE and not at each caller: this method is the single point at
     // which this subsystem commits to typing the pointer into the pane, and it has four
     // callers (handle delivery, post-probe redelivery, flight settle, and the notification

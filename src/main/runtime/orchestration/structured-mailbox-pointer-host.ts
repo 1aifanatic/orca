@@ -8,6 +8,9 @@
 
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
+import { isRootAgentJournalItem } from '../../../shared/agent-session-journal-producer'
+import { readAgentJournalTurn } from '../../../shared/agent-session-turn-record'
 import type {
   StructuredMailboxPointerHost,
   StructuredPointerSessionFacts
@@ -55,7 +58,49 @@ async function readPointerSessionFacts(
   sessionId: string
 ): Promise<StructuredPointerSessionFacts | null> {
   const snapshot = await readSessionJournal(sessionId)
-  return snapshot ? { submissions: snapshot.submissions } : null
+  if (!snapshot) {
+    return null
+  }
+  const items = new Map(snapshot.items.map((item) => [item.itemId, item]))
+  const settledTurns = new Set<string>()
+  const settledOpeners = new Set<string>()
+  for (const item of snapshot.items) {
+    const turn = readAgentJournalTurn(item.body)
+    if (
+      isRootAgentJournalItem(item) &&
+      (turn?.state === 'completed' || turn?.state === 'interrupted')
+    ) {
+      settledTurns.add(item.itemId)
+      if (turn.userItemId) {
+        settledOpeners.add(turn.userItemId)
+      }
+    }
+  }
+  return {
+    submissions: snapshot.submissions.map((submission) => {
+      const submissionKey = agentJournalSubmissionKey(submission.clientMessageId)
+      const item = items.get(submissionKey)
+      const body = item?.body
+      const notice =
+        body?.kind === 'message' && body.role === 'user' ? body.from?.orchestration : null
+      const turnSettled =
+        settledOpeners.has(submissionKey) ||
+        (submission.providerItemId !== null && settledOpeners.has(submission.providerItemId)) ||
+        (item?.turnScope?.kind === 'turn' && settledTurns.has(item.turnScope.turnItemId))
+      return {
+        ...submission,
+        ...(turnSettled ? { turnSettled: true as const } : {}),
+        ...(notice?.message === 'mail-notice'
+          ? {
+              mailNotice: {
+                mailbox: notice.mailbox,
+                messageIds: notice.messages.map((message) => message.messageId)
+              }
+            }
+          : {})
+      }
+    })
+  }
 }
 
 async function readSessionJournal(sessionId: string): Promise<AgentJournalSnapshot | null> {

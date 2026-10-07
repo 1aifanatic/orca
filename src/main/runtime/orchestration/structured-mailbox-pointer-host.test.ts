@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentJournalRenderItem } from '../../../shared/agent-session-journal-types'
 import type { AgentMessageSource } from '../../../shared/agent-session-message-source'
+import { agentJournalSubmissionKey } from '../../../shared/agent-session-journal-item-key'
 
 const hostRef: { current: unknown } = { current: null }
 
@@ -64,6 +65,113 @@ describe('structured mailbox pointer host', () => {
     hostRef.current = { journalSnapshot: () => ({ items: [], submissions }) }
     expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toEqual({
       submissions
+    })
+  })
+
+  it.each(['pending', 'accepted'] as const)(
+    'projects original mailbox members from the %s submission body',
+    async (dispatchState) => {
+      const submissions = [{ clientMessageId: 'op1', dispatchState, submittedAt: 1 }]
+      const item: AgentJournalRenderItem = {
+        itemId: agentJournalSubmissionKey('op1'),
+        revision: 1,
+        sequence: 1,
+        observedAt: 1,
+        body: {
+          kind: 'message',
+          role: 'user',
+          blocks: [],
+          from: {
+            ...NOTICE_SOURCE,
+            orchestration: {
+              message: 'mail-notice',
+              mailbox: 'dispatch:d1',
+              dispatchId: 'd1',
+              messages: [
+                { messageId: 'm1', runId: 'r1', from: 'term_coord' },
+                { messageId: 'm2', runId: 'r1', from: 'term_coord' }
+              ]
+            }
+          }
+        }
+      }
+      hostRef.current = { journalSnapshot: () => ({ items: [item], submissions }) }
+      expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toEqual({
+        submissions: [
+          {
+            ...submissions[0],
+            mailNotice: { mailbox: 'dispatch:d1', messageIds: ['m1', 'm2'] }
+          }
+        ]
+      })
+    }
+  )
+
+  it.each(['completed', 'interrupted', 'running', 'unverifiable'] as const)(
+    'derives legacy operation settlement from its own %s turn',
+    async (state) => {
+      const submission = { clientMessageId: 'op1', dispatchState: 'accepted', submittedAt: 1 }
+      const turn: AgentJournalRenderItem = {
+        itemId: 'turn-item-1',
+        revision: 1,
+        sequence: 2,
+        observedAt: 2,
+        body: {
+          kind: 'turn',
+          turnId: 'turn-1',
+          state,
+          userItemId: agentJournalSubmissionKey('op1')
+        }
+      }
+      hostRef.current = { journalSnapshot: () => ({ items: [turn], submissions: [submission] }) }
+      expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toEqual({
+        submissions: [
+          {
+            ...submission,
+            ...(['completed', 'interrupted'].includes(state) ? { turnSettled: true } : {})
+          }
+        ]
+      })
+    }
+  )
+
+  it('does not treat an unrelated settled turn as the original operation settling', async () => {
+    const submission = { clientMessageId: 'op1', dispatchState: 'accepted', submittedAt: 1 }
+    const turn: AgentJournalRenderItem = {
+      itemId: 'unrelated-turn',
+      revision: 1,
+      sequence: 2,
+      observedAt: 2,
+      body: { kind: 'turn', turnId: 'turn-2', state: 'completed', userItemId: 'another-send' }
+    }
+    hostRef.current = { journalSnapshot: () => ({ items: [turn], submissions: [submission] }) }
+    expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toEqual({
+      submissions: [submission]
+    })
+  })
+
+  it('reads legacy settlement through a send`s explicit turn scope', async () => {
+    const submission = { clientMessageId: 'op1', dispatchState: 'accepted', submittedAt: 1 }
+    const items: AgentJournalRenderItem[] = [
+      {
+        itemId: agentJournalSubmissionKey('op1'),
+        revision: 1,
+        sequence: 1,
+        observedAt: 1,
+        turnScope: { kind: 'turn', turnItemId: 'turn-item-1' },
+        body: { kind: 'message', role: 'user', blocks: [] }
+      },
+      {
+        itemId: 'turn-item-1',
+        revision: 1,
+        sequence: 2,
+        observedAt: 2,
+        body: { kind: 'turn', turnId: 'turn-1', state: 'completed' }
+      }
+    ]
+    hostRef.current = { journalSnapshot: () => ({ items, submissions: [submission] }) }
+    expect(await createStructuredMailboxPointerHost().readSessionFacts('s1')).toEqual({
+      submissions: [{ ...submission, turnSettled: true }]
     })
   })
 
