@@ -72,8 +72,7 @@ vi.mock('../transport/host-client-hooks', () => ({
 vi.mock('../transport/client-context', async () => import('../transport/client-context.web'))
 
 function headerController(): MobileSessionController {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This header fixture supplies every rendered field; no tab or panel actions are exercised.
-  return {
+  const controller: Partial<MobileSessionController> = {
     hostId: 'host',
     isFolderWorkspaceRoute: true,
     isFloatingWorkspaceRoute: true,
@@ -84,7 +83,9 @@ function headerController(): MobileSessionController {
     terminalSummary: 'Claude',
     showHeaderMoreButton: false,
     requestLeaveSession: vi.fn()
-  } as MobileSessionController
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: This header fixture supplies every rendered field; no tab or panel actions are exercised.
+  return controller as MobileSessionController
 }
 
 describe('host sidebar reveal in the session header', () => {
