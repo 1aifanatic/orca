@@ -56,7 +56,7 @@ import { _resetRemoteWorkspaceCachesForTests } from './remote-workspace'
 import {
   createRemoteWorkspaceExportDriver,
   type RemoteWorkspaceExportDriver
-} from './remote-workspace-export-test-driver'
+} from './remote-workspace-export-test-harness'
 import { remoteWorkspaceSessionMatchesSnapshot } from './remote-workspace-snapshot-normalization'
 
 function snapshot(session: RemoteWorkspaceSession, revision = 7): RemoteWorkspaceSnapshot {
@@ -424,6 +424,43 @@ describe('main exports a session write to the hosts it agrees with', () => {
     driver.write({ ...sessionWithTab, activeTabId: null })
     await driver.nextPushes()
     expect(patchRequests('target-1')).toHaveLength(1)
+  })
+
+  it('keeps the agreement after an unavailable relay, so the next local change retries', async () => {
+    await agreeWith('target-1')
+    requestByTargetId
+      .get('target-1')
+      ?.mockImplementationOnce(async () => ({ ok: false, reason: 'unavailable' }))
+
+    driver.write(sessionWithTab)
+    await expect(driver.nextPushes()).resolves.toMatchObject([
+      { result: { ok: false, reason: 'unavailable' } }
+    ])
+    driver.write({ ...sessionWithTab, activeTabId: null })
+    await expect(driver.nextPushes()).resolves.toMatchObject([{ result: { ok: true } }])
+
+    expect(patchRequests('target-1')).toHaveLength(2)
+  })
+
+  it('reports nothing for an export a newer pull superseded', async () => {
+    const observed = await observeTarget('target-1')
+    driver.agree('target-1', observed)
+    let finishPatch: (result: unknown) => void = () => {}
+    const request = requestByTargetId.get('target-1')
+    request?.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPatch = resolve
+        })
+    )
+
+    driver.write(sessionWithTab)
+    await vi.waitFor(() => expect(patchRequests('target-1')).toHaveLength(1))
+    driver.importPeer({ ...observed, targetId: 'target-1', outcome: 'synced', patches: [] })
+    finishPatch({ ok: false, reason: 'stale-revision', snapshot: snapshot(emptyRemoteSession, 9) })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(driver.pushes).toEqual([])
   })
 
   it('keeps a conflicted target out of exports until a whole pull agrees again', async () => {

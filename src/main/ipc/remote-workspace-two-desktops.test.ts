@@ -17,7 +17,7 @@ import type { SshTarget } from '../../shared/ssh-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { importRemoteWorkspaceSession } from '../../shared/remote-workspace-session-projection'
 import type * as RemoteWorkspaceModule from './remote-workspace'
-import type * as ExportDriverModule from './remote-workspace-export-test-driver'
+import type * as ExportDriverModule from './remote-workspace-export-test-harness'
 
 type Relay = {
   revision: number
@@ -152,7 +152,7 @@ async function bootDesktop(): Promise<Desktop> {
   const { CLIENT_ID } = await import('./remote-workspace-client-identity')
   const remoteWorkspaceCache = await import('./remote-workspace-snapshot-cache')
   const { createRemoteWorkspaceExportDriver }: typeof ExportDriverModule =
-    await import('./remote-workspace-export-test-driver')
+    await import('./remote-workspace-export-test-harness')
   remoteWorkspace._resetRemoteWorkspaceCachesForTests()
   const repo: Repo = {
     id: 'repo-1',

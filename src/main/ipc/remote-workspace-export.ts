@@ -73,6 +73,9 @@ export function createRemoteWorkspaceExports(
     try {
       result = await patchUnderAgreement(target, session, agreement)
     } catch (error) {
+      if (agreements.get(target.id) !== agreement) {
+        return
+      }
       sendPushStatus({
         targetId: target.id,
         authority: agreement,
@@ -81,15 +84,16 @@ export function createRemoteWorkspaceExports(
       })
       return
     }
-    // An import that landed meanwhile is newer than this export's outcome.
-    if (agreements.get(target.id) === agreement) {
-      if (result?.ok) {
-        const { revision, hostObservationToken } = result.snapshot
-        agreements.set(target.id, { revision, hostObservationToken, session })
-      } else if (result?.reason === 'stale-revision') {
-        // The host moved on; the window's next pull agrees again.
-        agreements.delete(target.id)
-      }
+    // A pull that landed meanwhile is newer than this export's outcome.
+    if (agreements.get(target.id) !== agreement) {
+      return
+    }
+    if (result?.ok) {
+      const { revision, hostObservationToken } = result.snapshot
+      agreements.set(target.id, { revision, hostObservationToken, session })
+    } else if (result?.reason === 'stale-revision') {
+      // The host moved on; the window's next pull agrees again.
+      agreements.delete(target.id)
     }
     sendPushStatus({ targetId: target.id, authority: agreement, result })
   }

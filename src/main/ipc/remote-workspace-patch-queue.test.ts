@@ -41,7 +41,7 @@ import {
 import {
   createRemoteWorkspaceExportDriver,
   type RemoteWorkspaceExportDriver
-} from './remote-workspace-export-test-driver'
+} from './remote-workspace-export-test-harness'
 import { CLIENT_ID } from './remote-workspace-client-identity'
 import { queueRemoteWorkspacePatch } from './remote-workspace-patch-queue'
 import {
