@@ -36,6 +36,7 @@ import {
   OWED_LAUNCH_PROMPT_DEADLINE_MS,
   type OwedLaunchPrompt,
   beginOwedLaunchPromptWrite,
+  rememberUnrecordedLaunchPromptWrite,
   recordLaunchOutcome,
   type OwedLaunchPromptWriteStart
 } from '../../agent-launch-owed-prompt-record'
@@ -279,8 +280,16 @@ export async function admitAgentLaunchOperation(
     settle: (result) => succeeded(result),
     fail: (code) =>
       recordLaunchOutcome(store, { callerKey, operationId, outcome: { status: 'failed', code } }),
-    beginPromptWrite: () =>
-      beginOwedLaunchPromptWrite(store, { callerKey, operationId }, Date.now())
+    beginPromptWrite: () => {
+      const now = Date.now()
+      return beginOwedLaunchPromptWrite(store, { callerKey, operationId }, now).catch(
+        (error: unknown) => {
+          // The live write still goes ahead: a resume in this process must not write it again.
+          rememberUnrecordedLaunchPromptWrite({ callerKey, operationId }, now)
+          throw error
+        }
+      )
+    }
   }
 }
 

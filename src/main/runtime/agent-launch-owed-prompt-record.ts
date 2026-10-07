@@ -194,3 +194,28 @@ export function beginOwedLaunchPromptWrite(
 ): Promise<OwedLaunchPromptWriteStart> {
   return store.transactOperations((draft) => beginOwedLaunchPromptWriteInto(draft, ref, now))
 }
+
+/** Launches this process may have written without a recorded W2, until their deadline could pass. */
+const unrecordedWrites = new Map<string, number>()
+
+/** A live launch's W2 failed, and its write goes ahead anyway (bookkeeping never gates it). */
+export function rememberUnrecordedLaunchPromptWrite(ref: OperationRef, now: number): void {
+  for (const [key, until] of unrecordedWrites) {
+    if (until < now) {
+      unrecordedWrites.delete(key)
+    }
+  }
+  unrecordedWrites.set(
+    agentSessionOperationKey(ref.callerKey, ref.operationId),
+    now + OWED_LAUNCH_PROMPT_DEADLINE_MS
+  )
+}
+
+/** Whether this process may already have written the launch's prompt though its row says owed. */
+export function launchPromptMayHaveBeenWritten(ref: OperationRef): boolean {
+  return unrecordedWrites.has(agentSessionOperationKey(ref.callerKey, ref.operationId))
+}
+
+export function resetUnrecordedLaunchPromptWritesForTests(): void {
+  unrecordedWrites.clear()
+}

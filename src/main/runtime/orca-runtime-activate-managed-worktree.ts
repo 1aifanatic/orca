@@ -1,4 +1,5 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
+import { getSshPlainSshMode } from '../ssh/ssh-plain-ssh-mode'
 import { OrcaRuntimeWithListManagedWorktrees } from './orca-runtime-list-managed-worktrees'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import {
@@ -271,8 +272,13 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     )
   }
 
-  /** Whether the pane's execution host can find a launched agent in front: a Windows one cannot. */
+  /** Whether the pane's execution host can find a launched agent in front: a Windows one cannot,
+   *  nor a plain-SSH connection, whose terminals report no foreground process at all. */
   launchedAgentHostProvesAgent(ptyId: string): boolean {
+    const connectionId = this.ptysById.get(ptyId)?.connectionId
+    if (connectionId && getSshPlainSshMode(connectionId)) {
+      return false
+    }
     return !this.launchedAgentHost(ptyId).windows
   }
 

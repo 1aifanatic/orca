@@ -9,6 +9,7 @@
  * was not re-adopted, the only one in which re-deriving the handle from the pane key changes it.
  */
 
+import { resetUnrecordedLaunchPromptWritesForTests } from '../../agent-launch-owed-prompt-record'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -226,6 +227,7 @@ function dispatcherFor(runtime: AgentLaunchRuntimeStub): RpcDispatcher {
 }
 
 beforeEach(async () => {
+  resetUnrecordedLaunchPromptWritesForTests()
   deliverTerminalPrompt.mockReset()
   // A paste records that its write began (W2) before its first byte, as the real one does.
   deliverTerminalPrompt.mockImplementation(async (args: PasteArgs) => {
@@ -459,6 +461,35 @@ describe('a final write that fails', () => {
       prompt: { delivery: 'submit', outcome: 'unconfirmed' }
     })
     expect(host.createTerminal).toHaveBeenCalledOnce()
+    expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
+  })
+})
+
+describe('a desktop launch whose record missed both its write mark and its answer', () => {
+  it('is never pasted again by a later look in this process, though its row still says owed', async () => {
+    const host = hostRuntime()
+    deliverTerminalPrompt.mockImplementationOnce(async (args: PasteArgs) => {
+      vi.spyOn(store, 'transactOperations').mockRejectedValueOnce(new Error('SQLITE_FULL'))
+      // The live write goes ahead without its mark: bookkeeping never gates it.
+      await args.beginPromptWrite?.().catch(() => undefined)
+      return true
+    })
+    const recordOperationOutcome = store.recordOperationOutcome.bind(store)
+    let desktopWrites = 0
+    vi.spyOn(store, 'recordOperationOutcome').mockImplementation((input) => {
+      desktopWrites += input.operationId === OPERATION_ID ? 1 : 0
+      return desktopWrites === 2 && input.operationId === OPERATION_ID
+        ? Promise.reject(new Error('SQLITE_FULL'))
+        : recordOperationOutcome(input)
+    })
+
+    await launch(host, PROMPTED_LAUNCH, DESKTOP_IPC)
+    vi.mocked(store.recordOperationOutcome).mockImplementation(recordOperationOutcome)
+
+    // A window reload asks again once the store recovered: it answers, and writes nothing.
+    await expect(launch(host, PROMPTED_LAUNCH, DESKTOP_IPC)).resolves.toMatchObject({
+      prompt: { delivery: 'submit', outcome: 'unconfirmed' }
+    })
     expect(deliverTerminalPrompt).toHaveBeenCalledOnce()
   })
 })

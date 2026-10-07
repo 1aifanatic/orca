@@ -24,7 +24,9 @@ import {
 import type { TuiAgent } from '../../shared/tui-agent'
 import {
   beginOwedLaunchPromptWrite,
+  launchPromptMayHaveBeenWritten,
   listOwedLaunchPromptRows,
+  resetUnrecordedLaunchPromptWritesForTests,
   recordLaunchOutcome,
   type OwedLaunchPromptWriteStart
 } from '../runtime/agent-launch-owed-prompt-record'
@@ -112,7 +114,9 @@ async function settleOwedPrompt(
     })
     return 'settled'
   }
-  if (entry.owed.state === 'writing') {
+  // A row still owed after this process wrote it without recording so (its W2 and settle failed)
+  // reads like one never written: that write may have landed, so it is never written again.
+  if (entry.owed.state === 'writing' || launchPromptMayHaveBeenWritten(ref)) {
     return settle({ outcome: 'unconfirmed' })
   }
   if (deps.now() > entry.owed.deadline) {
@@ -173,4 +177,5 @@ function withPromptDisposal(
 
 export function resetOwedLaunchPromptResumesForTests(): void {
   resumesInFlight.clear()
+  resetUnrecordedLaunchPromptWritesForTests()
 }
