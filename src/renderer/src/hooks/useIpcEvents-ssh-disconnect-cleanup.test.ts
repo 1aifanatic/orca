@@ -150,6 +150,8 @@ describe('useIpcEvents updater integration', () => {
           onActivateWorktree: () => () => {},
           onCreateTerminal: () => () => {},
           onRequestTerminalCreate: () => () => {},
+          onPublishAgentLaunchTab: () => () => {},
+          onAgentLaunchPaneVerdict: () => () => {},
           onRequestTerminalTabMount: () => () => {},
           replyTerminalCreate: () => {},
           onSplitTerminal: () => () => {},
