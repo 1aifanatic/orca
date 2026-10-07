@@ -1,4 +1,4 @@
-import { opendir, readFile, writeFile } from 'node:fs/promises'
+import { opendir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
 import { rm } from '../asar-transparent-fs'
@@ -6,6 +6,10 @@ import { inspectProcessLiveness } from './daemon-process-inspection'
 import { readMacDaemonJobState, stopMacDaemonJob } from './macos-daemon-job-state'
 
 const JOB_RECORD_NAME = 'job.json'
+const LSREGISTER =
+  '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+/** Spotlight skips `.noindex` folders, so the copy is never indexed or listed as an app. */
+export const MAC_DAEMON_BUNDLE_FOLDER = 'app.noindex'
 let collectionInFlight: Promise<void> | null = null
 
 type MacDaemonJobRecord = {
@@ -50,6 +54,19 @@ async function readJobRecord(directory: string): Promise<MacDaemonJobRecord | nu
   }
 }
 
+/** Copies made before the `.noindex` folder sit directly in the runtime directory. */
+async function copiedAppBundles(directory: string): Promise<string[]> {
+  const bundles: string[] = []
+  for (const parent of [directory, join(directory, MAC_DAEMON_BUNDLE_FOLDER)]) {
+    for (const name of await readdir(parent).catch(() => [])) {
+      if (name.endsWith('.app')) {
+        bundles.push(join(parent, name))
+      }
+    }
+  }
+  return bundles
+}
+
 /** All executables and mapped libraries count, including children that survived their daemon. */
 export async function retireUnusedMacDaemonBundle(directory: string): Promise<void> {
   if (process.platform !== 'darwin') {
@@ -70,6 +87,16 @@ export async function retireUnusedMacDaemonBundle(directory: string): Promise<vo
       result.stderr.trim()
     ) {
       return
+    }
+    // Unregistered only once unused, since macOS may resolve a running daemon's Local Network
+    // grant through this record; otherwise each deleted copy leaves a stale LaunchServices entry.
+    for (const bundle of await copiedAppBundles(directory)) {
+      await runProcess({
+        program: LSREGISTER,
+        args: ['-u', bundle],
+        timeoutMs: 5_000,
+        maxOutputBytes: 8192
+      }).catch(() => {})
     }
     await rm(directory, { recursive: true, force: true })
   } catch {

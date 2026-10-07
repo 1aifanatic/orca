@@ -18,6 +18,8 @@ import {
 } from './macos-daemon-bundle-retirement'
 
 const result: ProcessResult = { code: 1, signal: null, stdout: '', stderr: '', timedOut: false }
+const LSREGISTER =
+  '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
 let root: string
 const nativePlatform = process.platform
 const originalGetuid = Object.getOwnPropertyDescriptor(process, 'getuid')
@@ -71,10 +73,66 @@ it('writes private non-secret metadata and prunes only a stopped, unused runtime
   expect(run.mock.calls.map(([spec]) => spec.program)).toEqual([
     '/bin/launchctl',
     '/bin/launchctl',
-    '/usr/sbin/lsof'
+    '/usr/sbin/lsof',
+    LSREGISTER
   ])
   // The whole runtime directory is the open-file scope, so no bundle name needs recording.
-  expect(run.mock.calls.at(-1)?.[0].args).toEqual(['-F', 'p', '+D', directory])
+  expect(run.mock.calls.at(-2)?.[0].args).toEqual(['-F', 'p', '+D', directory])
+})
+
+function launchServicesCalls(): (readonly string[])[] {
+  return run.mock.calls
+    .filter(([spec]) => spec.program === LSREGISTER)
+    .map(([spec]) => spec.args ?? [])
+}
+
+it.each([
+  { layout: 'current', bundle: ['app.noindex', 'Orca.app'] },
+  { layout: 'pre-noindex', bundle: ['Orca.app'] }
+])(
+  'unregisters a retired $layout copy from LaunchServices before deleting it',
+  async ({ bundle }) => {
+    const directory = await mkdtemp(join(root, 'runtime-'))
+    await mkdir(join(directory, ...bundle), { recursive: true })
+    await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', true)
+    let existedAtUnregister = false
+    run.mockImplementation(async (spec) => {
+      if (spec.program === LSREGISTER) {
+        existedAtUnregister = await access(join(directory, ...bundle)).then(
+          () => true,
+          () => false
+        )
+        return { ...result, code: 0 }
+      }
+      return spec.args?.[0] === 'print'
+        ? { ...result, code: 113, stderr: 'Could not find service "owned"' }
+        : result
+    })
+    await retireAbandonedMacDaemonBundles(root)
+    await expect(access(directory)).rejects.toThrow()
+    expect(launchServicesCalls()).toEqual([['-u', join(directory, ...bundle)]])
+    expect(existedAtUnregister).toBe(true)
+  }
+)
+
+it('deletes a retired copy even when LaunchServices cannot unregister it', async () => {
+  const directory = await runtime()
+  run.mockImplementation(async (spec) => {
+    if (spec.program === LSREGISTER) {
+      throw new Error('lsregister unavailable')
+    }
+    return result
+  })
+  await retireUnusedMacDaemonBundle(directory)
+  await expect(access(directory)).rejects.toThrow()
+})
+
+it('never unregisters a copy that is still in use', async () => {
+  const directory = await runtime()
+  run.mockResolvedValue({ ...result, code: 0, stdout: 'p123' })
+  await retireUnusedMacDaemonBundle(directory)
+  await expect(access(directory)).resolves.toBeUndefined()
+  expect(launchServicesCalls()).toEqual([])
 })
 
 it('keeps a stopped runtime when its job could not be unregistered', async () => {
@@ -109,7 +167,11 @@ it('retires a never-submitted copy once its producer exited and its job is absen
   )
   await retireAbandonedMacDaemonBundles(root)
   await expect(access(directory)).rejects.toThrow()
-  expect(run.mock.calls.map(([spec]) => spec.program)).toEqual(['/bin/launchctl', '/usr/sbin/lsof'])
+  expect(run.mock.calls.map(([spec]) => spec.program)).toEqual([
+    '/bin/launchctl',
+    '/usr/sbin/lsof',
+    LSREGISTER
+  ])
 })
 
 it('retires a copy whose producer crashed before writing anything but its record', async () => {

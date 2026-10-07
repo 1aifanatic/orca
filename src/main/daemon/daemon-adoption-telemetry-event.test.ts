@@ -114,14 +114,21 @@ describe('classifyDaemonAdoptionOrigin', () => {
   })
 
   it('reports a daemon started from the private stable copy', async () => {
+    const copies = '/Users/alice/Library/Application Support/Orca/daemon-host/macos'
     const stableCopy = {
       ...stalePidRecord,
-      spawnerExecPath:
-        '/Users/alice/Library/Application Support/Orca/daemon-host/macos/runtime-x1/Orca.app/Contents/MacOS/Orca'
+      spawnerExecPath: `${copies}/runtime-x1/app.noindex/Orca.app/Contents/MacOS/Orca`
     }
     expect(await classifyDaemonAdoptionOrigin(stableCopy)).toMatchObject({
       spawner_path_class: 'stable-copy'
     })
+    // An adopted daemon from a copy made before the `.noindex` folder.
+    expect(
+      await classifyDaemonAdoptionOrigin({
+        ...stalePidRecord,
+        spawnerExecPath: `${copies}/runtime-Ztpw1G/Orca.app/Contents/MacOS/Orca`
+      })
+    ).toMatchObject({ spawner_path_class: 'stable-copy' })
     expect(getPathMock).toHaveBeenCalledWith('userData')
     getPathMock.mockImplementationOnce(() => {
       throw new Error('AppEnvironment not initialized')
