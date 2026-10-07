@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { NATIVE_CHAT_VISUAL_MAX_BYTES } from '../../../src/shared/native-chat-visual-directive'
 import { bindDeferredRpcOperation, defineRpcOperation } from '../transport/rpc-operation'
 import { rpcResultVariant } from '../transport/rpc-operation-result-reader'
-import { isMethodNotFoundRefusal } from '../transport/rpc-acceptance-policies'
+import { isMobileMethodUnavailableError } from '../transport/mobile-method-unavailable'
 import type { RpcClient } from '../transport/rpc-client'
 
 /** Where a chat's visuals are read from: the host that owns the structured session. */
@@ -115,8 +115,8 @@ async function readOnce(
   } catch {
     return { kind: 'unreachable' }
   }
-  if (isMethodNotFoundRefusal(response)) {
-    // An older host: asking again will not help until it updates.
+  if (!response.ok && isMobileMethodUnavailableError(response.error.code, response.error.message)) {
+    // An older host (its mobile allowlist answers `forbidden`): asking again will not help.
     return { kind: 'refused' }
   }
   const reply = nativeChatVisualRead.interpret(response)

@@ -107,7 +107,8 @@ describe('readMobileNativeChatVisual', () => {
     for (const response of [
       success({ ok: false, error: 'not_found' }),
       success({ ok: false, error: 'some_future_error' }),
-      failure('method_not_found')
+      failure('method_not_found'),
+      failure('forbidden')
     ]) {
       resetMobileNativeChatVisualCacheForTest()
       const source = sourceWith(vi.fn().mockResolvedValue(response))
@@ -119,7 +120,6 @@ describe('readMobileNativeChatVisual', () => {
 
   it('reads an error reply and a malformed reply as no verdict, keeping the cache', async () => {
     for (const response of [
-      failure('forbidden'),
       failure('runtime_error'),
       success({ ok: true, revision: 'not-hex', html: '' }),
       success('<html>')
