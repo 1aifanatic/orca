@@ -89,7 +89,6 @@ describe('ContextualTourOverlay re-measure triggers', () => {
       activeContextualTourStepIndex: 1,
       activeModal: 'none',
       contextualToursOnboardingVisible: false,
-      promptBlockingDialogIds: [],
       activeContextualTourSuppressed: false
     })
     await mountOverlay()
@@ -115,7 +114,6 @@ describe('ContextualTourOverlay re-measure triggers', () => {
       activeContextualTourStepIndex: 1,
       activeModal: 'none',
       contextualToursOnboardingVisible: false,
-      promptBlockingDialogIds: [],
       activeContextualTourSuppressed: false
     })
     await mountOverlay()

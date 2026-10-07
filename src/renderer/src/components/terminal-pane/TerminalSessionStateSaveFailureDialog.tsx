@@ -9,7 +9,6 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
-import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { isTerminalSessionStorageCapacityFailure } from '../../../../shared/terminal-session-state-save-failure'
 
 export function TerminalSessionStateSaveFailureDialog({
@@ -23,7 +22,6 @@ export function TerminalSessionStateSaveFailureDialog({
   onDismiss: () => void
   onOpenSpaceAnalyzer: () => void
 }): React.JSX.Element {
-  usePromptBlockingDialog('terminal-session-state-save-failure', open)
   const capacityFailure = isTerminalSessionStorageCapacityFailure(failureMessage)
   return (
     <Dialog

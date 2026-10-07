@@ -16,7 +16,6 @@ import {
   type ConfirmationDialogContextValue,
   type ConfirmationDialogOptions
 } from '@/components/confirmation-dialog-context'
-import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 
@@ -45,10 +44,6 @@ export function ConfirmationDialogProvider({
   // Why: Radix keeps dialog content mounted while closing; keep labels stable without a post-render Effect.
   const displayedRequest = activeRequest ?? lastDisplayedRequestRef.current
   const Icon = displayedRequest?.options.icon
-
-  // Why: this provider's dialog is not represented by activeModal, so it registers itself; tours and
-  // automatic prompts then cannot appear behind or over it.
-  usePromptBlockingDialog('confirmation', activeRequest !== null)
 
   const confirm = useCallback<ConfirmationDialogContextValue>((options) => {
     return new Promise((resolve) => {

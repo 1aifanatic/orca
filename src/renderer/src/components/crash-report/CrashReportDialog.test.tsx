@@ -4,6 +4,8 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import { resetDialogRegistryForTests, useDialogRegistry } from '@/store/dialog-registry'
+import { AdoptDialogEntry, useHostDialogEntry } from '@/lib/dialog-registry-entry'
 import { getDefaultSettings } from '../../../../shared/constants'
 import type { CrashReportRecord } from '../../../../shared/crash-reporting'
 import { CrashReportDialog } from './CrashReportDialog'
@@ -41,6 +43,13 @@ const pendingCrash: CrashReportRecord = {
   details: {}
 }
 
+const newerCrash: CrashReportRecord = {
+  ...pendingCrash,
+  id: 'crash-2',
+  createdAt: '2026-10-05T01:00:00.000Z',
+  appVersion: '9.9.9'
+}
+
 let openCrashReportFromMenu: () => void = () => {}
 let resolveSubmit: (value: unknown) => void = () => {}
 const crashReports = {
@@ -68,9 +77,7 @@ function crashOnScreen(): boolean {
 }
 
 function sshOnScreen(): boolean {
-  return [...document.querySelectorAll('[role="dialog"]')].some((dialog) =>
-    dialog.textContent?.includes('SSH Key Passphrase')
-  )
+  return document.body.textContent?.includes('SSH Key Passphrase') === true
 }
 
 function notes(): string {
@@ -99,13 +106,25 @@ function typeNotes(text: string): void {
   })
 }
 
+/** The SSH prompt as the app hosts it. */
+function SshHost(): React.JSX.Element | null {
+  const asked = useAppStore((s) => s.sshCredentialQueue.length > 0)
+  useHostDialogEntry('ssh-credential', 'ssh-credential', 'response', asked)
+  return asked ? (
+    <AdoptDialogEntry token="ssh-credential">
+      <SshPassphraseDialog />
+    </AdoptDialogEntry>
+  ) : null
+}
+
 beforeEach(() => {
   crashReports.submit.mockClear()
   crashReports.dismiss.mockClear()
+  crashReports.getLatestPending.mockReset().mockResolvedValue(pendingCrash)
   crashReports.getLatestReport.mockReset().mockResolvedValue(null)
+  resetDialogRegistryForTests({ startupSettled: true })
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({ settings: getDefaultSettings('') })
-  useAppStore.getState().settleLaunchPromptDiscovery()
   Object.assign(window, {
     api: {
       crashReports,
@@ -134,7 +153,7 @@ async function mountBoth({ waitForCrash = true } = {}): Promise<void> {
     root.render(
       <TooltipProvider>
         <CrashReportDialog />
-        <SshPassphraseDialog />
+        <SshHost />
       </TooltipProvider>
     )
   )
@@ -153,6 +172,11 @@ function raiseSsh(): void {
       detail: '~/.ssh/id_ed25519'
     })
   })
+}
+
+async function openFromHelp(): Promise<void> {
+  await act(async () => openCrashReportFromMenu())
+  await flush()
 }
 
 it('an SSH prompt stacks over the launch crash report, which keeps its notes throughout', async () => {
@@ -186,38 +210,32 @@ it('a report sent while an SSH prompt interrupts it is sent once and the dialog 
   await flush()
   expect(crashOnScreen()).toBe(false)
   expect(crashReports.submit).toHaveBeenCalledTimes(1)
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([])
 })
 
-it('Help > Report Crash over the launch report: closing it does not bring the same report back', async () => {
-  // Same report as the launch one; the version string only marks which dialog renders it.
-  crashReports.getLatestReport.mockResolvedValue({ ...pendingCrash, appVersion: '9.9.9' })
-  await mountBoth()
-  expect(document.body.textContent).toContain('Orca 1.0.0')
-  await act(async () => openCrashReportFromMenu())
-  await flush()
-  await vi.waitFor(() => expect(document.body.textContent).toContain('Orca 9.9.9'))
-  await act(async () => button("Don't Send").click())
-  await flush()
-  expect(crashOnScreen()).toBe(false)
-  expect(useAppStore.getState().automaticPromptRequests).toEqual([])
-})
-
-it('Help > Report Crash over the report on screen keeps the same dialog and its notes', async () => {
-  crashReports.getLatestReport.mockResolvedValue(pendingCrash)
+it('Help > Report Crash over the report on screen keeps that report, its dialog and its notes', async () => {
+  crashReports.getLatestReport.mockResolvedValue(newerCrash)
   await mountBoth()
   typeNotes('it crashed when I opened the diff')
-  await act(async () => openCrashReportFromMenu())
-  await flush()
-  expect(crashOnScreen()).toBe(true)
+  const area = document.querySelector('textarea')
+  await openFromHelp()
+  expect(document.querySelector('textarea')).toBe(area)
   expect(notes()).toBe('it crashed when I opened the diff')
+  // Never swapped for a different report under the user's notes.
+  expect(document.body.textContent).toContain('Orca 1.0.0')
+  expect(document.body.textContent).not.toContain('Orca 9.9.9')
+
+  await act(async () => button("Don't Send").click())
+  await flush()
+  // One report, one dialog: closing it does not bring the same report back.
+  expect(crashOnScreen()).toBe(false)
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([])
 })
 
 it('a send in flight when Help > Report Crash opens is sent once and closes the dialog', async () => {
-  crashReports.getLatestReport.mockResolvedValue(pendingCrash)
   await mountBoth()
   await act(async () => button('Send Report').click())
-  await act(async () => openCrashReportFromMenu())
-  await flush()
+  await openFromHelp()
   await act(async () => {
     resolveSubmit({ ok: true, report: { ...pendingCrash, status: 'submitted' } })
   })
@@ -226,64 +244,39 @@ it('a send in flight when Help > Report Crash opens is sent once and closes the 
   expect(crashReports.submit).toHaveBeenCalledTimes(1)
 })
 
-const newerCrash: CrashReportRecord = {
-  ...pendingCrash,
-  id: 'crash-2',
-  createdAt: '2026-10-05T01:00:00.000Z',
-  appVersion: '9.9.9'
-}
-
-/** Real IPC answers on a later task, after React has rendered the Help click. */
-function latestAfterIpc(report: CrashReportRecord | null): void {
-  crashReports.getLatestReport.mockImplementation(
-    () => new Promise((resolve) => setTimeout(() => resolve(report), 20))
-  )
-}
-
-async function openFromHelp(): Promise<void> {
-  await act(async () => openCrashReportFromMenu())
+it('Help with nothing on screen opens at once and fills in the latest report', async () => {
+  crashReports.getLatestPending.mockResolvedValue(null)
+  const latest = Promise.withResolvers<CrashReportRecord | null>()
+  crashReports.getLatestReport.mockReturnValue(latest.promise)
+  await mountBoth({ waitForCrash: false })
+  await openFromHelp()
+  expect(crashOnScreen()).toBe(true)
+  typeNotes('typed while loading')
+  const area = document.querySelector('textarea')
+  await act(async () => latest.resolve(newerCrash))
   await flush()
-  await vi.waitFor(() => expect(document.body.textContent).toContain('Orca 9.9.9'))
-}
+  expect(document.body.textContent).toContain('Orca 9.9.9')
+  expect(document.querySelector('textarea')).toBe(area)
+  expect(notes()).toBe('typed while loading')
+})
 
 it('Help pressed again while its dialog is open keeps the same dialog and its notes', async () => {
-  crashReports.getLatestPending.mockResolvedValueOnce(null)
-  latestAfterIpc(newerCrash)
+  crashReports.getLatestPending.mockResolvedValue(null)
+  crashReports.getLatestReport.mockResolvedValue(newerCrash)
   await mountBoth({ waitForCrash: false })
   await openFromHelp()
   typeNotes('second help press')
   await openFromHelp()
   expect(notes()).toBe('second help press')
+  expect(crashReports.getLatestReport).toHaveBeenCalledTimes(1)
 })
 
-it('a send in flight when Help is pressed again is sent once and closes the dialog', async () => {
-  crashReports.getLatestPending.mockResolvedValueOnce(null)
-  latestAfterIpc(newerCrash)
+it('Help opens at once over a queued report, which then waits behind it', async () => {
+  crashReports.getLatestPending.mockResolvedValue(null)
   await mountBoth({ waitForCrash: false })
-  await openFromHelp()
-  await act(async () => button('Send Report').click())
-  await openFromHelp()
-  await act(async () => resolveSubmit({ ok: true, report: { ...newerCrash, status: 'submitted' } }))
+  raiseSsh()
   await flush()
-  expect(crashOnScreen()).toBe(false)
-  expect(crashReports.submit).toHaveBeenCalledTimes(1)
-})
-
-it('a send in flight when Help shows a newer report still settles the report it was for', async () => {
-  latestAfterIpc(newerCrash)
-  await mountBoth()
-  await act(async () => button('Send Report').click())
   await openFromHelp()
-  await act(async () =>
-    resolveSubmit({ ok: true, report: { ...pendingCrash, status: 'submitted' } })
-  )
-  await flush()
-  // The newer report the user is looking at stays open.
-  expect(document.body.textContent).toContain('Orca 9.9.9')
-
-  await act(async () => button("Don't Send").click())
-  await flush()
-  // The sent report never comes back to be sent again.
-  expect(crashOnScreen()).toBe(false)
-  expect(crashReports.submit).toHaveBeenCalledTimes(1)
+  expect(crashOnScreen()).toBe(true)
+  expect(sshOnScreen()).toBe(true)
 })

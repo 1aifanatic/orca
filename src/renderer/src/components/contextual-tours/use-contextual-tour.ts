@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
-import type { ContextualTourId } from '../../../../shared/contextual-tours'
+import { getContextualTour, type ContextualTourId } from '../../../../shared/contextual-tours'
 import {
   hasFeatureInteraction,
   type FeatureInteractionState
 } from '../../../../shared/feature-interactions'
 import { useAppStore } from '@/store'
-import { selectTourBlockedByPrompts } from '@/store/slices/ui/automatic-prompt-turns'
+import { useDialogRegistry } from '@/store/dialog-registry'
+import { selectTourBlocked } from '@/store/dialog-registry-state'
 
 const TOUR_SOURCES = {
   'workspace-board': 'workspace_board_visible',
@@ -77,7 +78,9 @@ export function useContextualTour(
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
   const contextualTourShownThisSession = useAppStore((s) => s.contextualTourShownThisSession)
   const contextualToursOnboardingVisible = useAppStore((s) => s.contextualToursOnboardingVisible)
-  const blockedByPrompts = useAppStore((s) => selectTourBlockedByPrompts(s, false))
+  const contextualToursBlockingSurfaceVisible = useDialogRegistry((s) =>
+    selectTourBlocked(s, false, getContextualTour(id).allowedActiveModals)
+  )
   const enabledInteractionSnapshotRef = useRef<{
     id: ContextualTourId
     source: string
@@ -167,7 +170,7 @@ export function useContextualTour(
       !persistedUIReady ||
       contextualToursAutoEligible !== true ||
       contextualToursOnboardingVisible ||
-      blockedByPrompts ||
+      contextualToursBlockingSurfaceVisible ||
       activeContextualTourId !== null ||
       contextualTourShownThisSession ||
       contextualToursSeenIds.includes(id)
@@ -248,7 +251,7 @@ export function useContextualTour(
     }
   }, [
     activeContextualTourId,
-    blockedByPrompts,
+    contextualToursBlockingSurfaceVisible,
     activeModal,
     contextualToursAutoEligible,
     contextualTourShownThisSession,

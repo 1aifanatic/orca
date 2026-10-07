@@ -11,7 +11,6 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
-import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import type {
   BrowserWebAuthnAccount,
   BrowserWebAuthnAccountRequest
@@ -70,8 +69,6 @@ export function BrowserWebAuthnAccountDialog(): React.JSX.Element {
       }
     }
   }, [removeRequest])
-
-  usePromptBlockingDialog('browser-webauthn-account', activeRequest !== null)
 
   useEffect(() => {
     if (!activeRequest) {

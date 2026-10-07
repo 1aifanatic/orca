@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { ShortcutKeyCombo } from '@/components/ShortcutKeyCombo'
-import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import { translate } from '@/i18n/i18n'
 
 type LinkRoutingPreferenceDialogOptions = {
@@ -67,8 +66,6 @@ export function LinkRoutingPreferenceDialogProvider({
   const openLinksInAppDefault = displayedRequest?.options.openLinksInAppDefault === true
   const isMac = navigator.userAgent.includes('Mac')
   const systemBrowserShortcutKeys = isMac ? ['⇧', '⌘'] : ['Shift', 'Ctrl']
-
-  usePromptBlockingDialog('link-routing-preference', activeRequest !== null)
 
   const requestPreference = useCallback<LinkRoutingPreferenceDialogContextValue>((options = {}) => {
     return new Promise((resolve) => {

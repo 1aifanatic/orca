@@ -79,7 +79,6 @@ describe('ContextualTourOverlay full-pass interval visibility gate', () => {
       activeContextualTourStepIndex: 1,
       activeModal: 'none',
       contextualToursOnboardingVisible: false,
-      promptBlockingDialogIds: [],
       activeContextualTourSuppressed: false
     })
     await act(async () => {

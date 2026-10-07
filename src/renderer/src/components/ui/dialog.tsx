@@ -8,10 +8,32 @@ import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
-import { DialogPresenceMarker } from '@/lib/dialog-presence'
+import { DialogEntryContent, DialogEntryRoot } from '@/lib/dialog-registry-entry'
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  // Why: the registry needs the open state, so an uncontrolled dialog's is kept here.
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen ?? false)
+  const isOpen = open ?? uncontrolledOpen
+  return (
+    <DialogEntryRoot open={isOpen}>
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        open={isOpen}
+        onOpenChange={(next) => {
+          if (open === undefined) {
+            setUncontrolledOpen(next)
+          }
+          onOpenChange?.(next)
+        }}
+        {...props}
+      />
+    </DialogEntryRoot>
+  )
 }
 
 function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
@@ -75,7 +97,7 @@ function DialogContent({
         {...props}
         onEscapeKeyDown={(event) => handleImeOverlayEscape(event, props.onEscapeKeyDown)}
       >
-        <DialogPresenceMarker />
+        <DialogEntryContent />
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

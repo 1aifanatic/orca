@@ -1,16 +1,19 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { readLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
 import { useAppStore } from '../store'
+import { useDialogRegistry } from '../store/dialog-registry'
 import {
   getNativeChatResumeLaunchDecided,
+  getNativeChatResumeOnRestartDialogRequest,
   markNativeChatResumeLaunchDecided,
   subscribeNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 
 /**
- * Tells the dialogs that open by themselves when this machine's resume read has started and when it
- * has decided, so the resume offer goes first. A machine that holds no chats reads nothing; that is
- * decided as soon as it is known, so the wait never depends on some other prompt asking for a turn.
+ * Answers this machine's resume startup check once the launch read has decided, so tours (which go
+ * after every self-opening dialog) know whether a resume offer is coming. Call it after the offer's
+ * own dialog entry, so the offer is queued before the check answers. A machine that holds no chats
+ * reads nothing; that is decided as soon as it is known.
  */
 export function useNativeChatResumeLaunchDiscovery(offerEnabled: boolean): void {
   const launchDecided = useSyncExternalStore(
@@ -19,21 +22,15 @@ export function useNativeChatResumeLaunchDiscovery(offerEnabled: boolean): void 
     getNativeChatResumeLaunchDecided
   )
   const settingsLoaded = useAppStore((store) => store.settings !== null)
-  const beginLaunchPromptDiscovery = useAppStore((store) => store.beginLaunchPromptDiscovery)
-  const settleLaunchPromptDiscovery = useAppStore((store) => store.settleLaunchPromptDiscovery)
-
-  useEffect(() => {
-    // The read starts with the offer once enabled; the wait's bound runs from here.
-    if (offerEnabled) {
-      beginLaunchPromptDiscovery()
-    }
-  }, [offerEnabled, beginLaunchPromptDiscovery])
 
   useEffect(() => {
     if (launchDecided) {
-      settleLaunchPromptDiscovery()
+      const asked = getNativeChatResumeOnRestartDialogRequest() !== null
+      useDialogRegistry
+        .getState()
+        .settleStartupSource('native-chat-resume', asked ? 'ready' : 'none')
     }
-  }, [launchDecided, settleLaunchPromptDiscovery])
+  }, [launchDecided])
 
   useEffect(() => {
     if (offerEnabled || !settingsLoaded || launchDecided) {

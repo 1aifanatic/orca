@@ -12,10 +12,11 @@ import { TooltipProvider } from './ui/tooltip'
 import { lastToastShow } from './native-chat-resume-toast.test-support'
 import type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
 import {
-  consumeNativeChatResumeOnRestartDialogRequest,
+  _resetNativeChatResumeOnRestartDialog,
   getNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
+import { resetDialogRegistryForTests } from '../store/dialog-registry'
 import {
   _resetNativeChatRestartOffer,
   getNativeChatRestartOffer,
@@ -93,7 +94,9 @@ function toasts(): unknown[][] {
 beforeEach(() => {
   rpc.mockReset()
   _resetNativeChatRestartOffer()
-  consumeNativeChatResumeOnRestartDialogRequest()
+  _resetNativeChatResumeOnRestartDialog()
+  // These cases are the offer alone, past the startup checks that go before it.
+  resetDialogRegistryForTests({ startupSettled: true })
   vi.mocked(toast).mockClear()
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({
@@ -114,7 +117,7 @@ afterEach(() => {
   container.remove()
   useAppStore.setState(useAppStore.getInitialState(), true)
   _resetNativeChatRestartOffer()
-  consumeNativeChatResumeOnRestartDialogRequest()
+  _resetNativeChatResumeOnRestartDialog()
 })
 
 it('keeps next-launch preference out of the current resume action', async () => {

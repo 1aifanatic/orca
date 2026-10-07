@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
 import type { ContextualTourId } from '../../../../shared/contextual-tours'
 import { createUIStore, makePersistedUI } from './ui-slice-test-harness'
-import { selectVisibleAutomaticPromptId } from './ui/automatic-prompt-turns'
+import { resetDialogRegistryForTests, useDialogRegistry } from '../dialog-registry'
 
 const mocks = vi.hoisted(() => ({
   sendNotesToActiveAgentSession: vi.fn(),
@@ -226,47 +226,57 @@ describe('createUISlice contextual tours', () => {
     stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
 
-    store.getState().setPromptBlockingDialogVisible('confirmation', true)
+    useDialogRegistry
+      .getState()
+      .openDialog({ token: 'confirmation', kind: 'dialog', origin: 'user' })
     store.getState().requestContextualTour('tasks', 'tasks_open')
 
     expect(store.getState().activeContextualTourId).toBeNull()
     expect(store.getState().contextualTourShownThisSession).toBe(false)
   })
 
-  it('waits for the resume offer at launch, then starts once it closes', () => {
-    const store = createUIStore({ launchPromptDiscoveryPending: true })
-    stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
+  it('runs the composer tour inside the composer, but not over a dialog opened from it', () => {
+    const store = createUIStore()
+    stubContextualTourTargets(['[data-contextual-tour-target="workspace-creation-project"]'])
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
+    store.getState().openModal('new-workspace-composer')
+    useDialogRegistry.getState().openDialog({ token: 'nested', kind: 'dialog', origin: 'user' })
+    const request = (): void =>
+      store
+        .getState()
+        .requestContextualTour('workspace-creation', 'workspace_creation_modal', false, {
+          force: true
+        })
 
-    store.getState().requestContextualTour('tasks', 'tasks_open')
+    request()
     expect(store.getState().activeContextualTourId).toBeNull()
-
-    store.getState().requestAutomaticPrompt('native-chat-resume')
-    store.getState().settleLaunchPromptDiscovery()
-    store.getState().markAutomaticPromptShown('native-chat-resume')
-    store.getState().requestContextualTour('tasks', 'tasks_open')
-    expect(store.getState().activeContextualTourId).toBeNull()
-
-    store.getState().releaseAutomaticPrompt('native-chat-resume')
-    store.getState().requestContextualTour('tasks', 'tasks_open')
-    expect(store.getState().activeContextualTourId).toBe('tasks')
+    useDialogRegistry.getState().closeDialog('nested')
+    request()
+    expect(store.getState().activeContextualTourId).toBe('workspace-creation')
   })
 
-  it('does not start behind a waiting feature tip, and the tip waits for a running tour', () => {
+  it('goes after every startup check and dialog the app opens by itself', () => {
     const store = createUIStore()
+    resetDialogRegistryForTests()
     stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
+    const registry = useDialogRegistry.getState
 
-    store.getState().requestAutomaticPrompt('feature-tip')
+    registry().settleStartupSource('crash-report', 'none')
+    registry().settleStartupSource('native-chat-resume', 'none')
+    registry().settleStartupSource('feature-tip', 'ready')
+    registry().enqueueAutomaticDialog('tip', 'feature-tip')
     store.getState().requestContextualTour('tasks', 'tasks_open')
     expect(store.getState().activeContextualTourId).toBeNull()
 
-    store.getState().releaseAutomaticPrompt('feature-tip')
+    registry().closeDialog('tip')
     store.getState().requestContextualTour('tasks', 'tasks_open')
     expect(store.getState().activeContextualTourId).toBe('tasks')
-
-    store.getState().requestAutomaticPrompt('feature-tip')
-    expect(selectVisibleAutomaticPromptId(store.getState())).toBeNull()
+    // A running tour holds the next self-opening dialog back until it ends.
+    registry().enqueueAutomaticDialog('crash', 'crash-report')
+    expect(registry().dialogEntries.find((entry) => entry.token === 'crash')?.phase).toBe('queued')
+    store.getState().dismissContextualTour('tasks')
+    expect(registry().dialogEntries.find((entry) => entry.token === 'crash')?.phase).toBe('opening')
   })
 
   it('does not auto-start tours for profiles that are not eligible', () => {

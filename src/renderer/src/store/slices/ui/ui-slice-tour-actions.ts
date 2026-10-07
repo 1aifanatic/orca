@@ -1,3 +1,4 @@
+import type { AppState } from '../../types'
 import type { UISlice, UISliceGet, UISliceSet } from './ui-slice-contract'
 import { getContextualTour } from '../../../../../shared/contextual-tours'
 import {
@@ -7,9 +8,15 @@ import {
   getPreviousVisibleContextualTourStepIndex
 } from '../../../components/contextual-tours/contextual-tour-gate'
 import { hasFeatureInteraction } from '../../../../../shared/feature-interactions'
-import { selectTourBlockedByPrompts } from './automatic-prompt-turns'
+import { useDialogRegistry } from '../../dialog-registry'
+import { selectTourBlocked } from '../../dialog-registry-state'
 
-export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<UISlice> {
+export function createUiTourActions(setState: UISliceSet, get: UISliceGet): Partial<UISlice> {
+  // Any write here may start or end the running tour; the registry's tour entry follows it.
+  const set = (update: (s: AppState) => Partial<AppState>): void => {
+    setState(update)
+    useDialogRegistry.getState().syncTour(get().activeContextualTourId)
+  }
   return {
     contextualToursSeenIds: [],
     contextualToursAutoEligible: null,
@@ -51,7 +58,11 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
           sessionConsumed: options?.force === true ? false : s.contextualTourShownThisSession,
           activeTourId: s.activeContextualTourId,
           activeModal: s.activeModal,
-          blockingSurfaceVisible: selectTourBlockedByPrompts(s, options?.force === true),
+          blockingSurfaceVisible: selectTourBlocked(
+            useDialogRegistry.getState(),
+            options?.force === true,
+            tour.allowedActiveModals
+          ),
           targetExists: hasContextualTourTarget
         })
         if (decision.kind !== 'start') {

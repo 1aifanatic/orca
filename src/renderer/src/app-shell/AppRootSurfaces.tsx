@@ -18,8 +18,13 @@ import { shouldRenderPetOverlay } from '../components/pet/pet-overlay-visibility
 import { useAppStore } from '../store'
 import type { UpdateStatus } from '../../../shared/update-status-types'
 import { useLazyModalMounts } from './use-lazy-modal-mounts'
-import { FailedFeatureTip } from '../components/feature-tips/use-app-open-feature-tip'
-import { DialogLoadingSuspense } from '@/lib/dialog-presence'
+import { AppOpenFeatureTip } from '../components/feature-tips/AppOpenFeatureTip'
+import {
+  AdoptDialogEntry,
+  ModalSlotDialogScope,
+  useHostDialogEntry
+} from '@/lib/dialog-registry-entry'
+import { OnboardingSurface } from './OnboardingSurface'
 import {
   selectAppRootSurfacePetEnabled,
   selectAppRootSurfaceTelemetryOptedIn,
@@ -87,19 +92,25 @@ const FloatingTerminalPanel = lazy(() =>
 )
 // Why: lazy so the WebP asset + overlay module aren't fetched unless the experimental flag is on.
 const PetOverlay = lazy(() => import('../components/pet/PetOverlay'))
-// Why: lazy so onboarding's step modules + assets aren't fetched for users past first-launch.
-const OnboardingFlow = lazy(() => import('../components/onboarding/OnboardingFlow'))
 
 type BoundaryProps = {
   boundaryId: string
   resetKey?: string | number | boolean | null
   title?: string
   description?: string
-  fallback?: () => React.ReactNode
   children: React.ReactNode
 }
 
+/** For a modal-slot dialog: it adopts the entry openModal reserved, which a failure here ends. */
 function ModalBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
+  return (
+    <ModalSlotDialogScope>
+      <DialogBoundary {...props}>{children}</DialogBoundary>
+    </ModalSlotDialogScope>
+  )
+}
+
+function DialogBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
   return (
     <RecoverableRenderErrorBoundary surface="modal" compact {...props}>
       {children}
@@ -107,9 +118,7 @@ function ModalBoundary({ children, ...props }: BoundaryProps): React.JSX.Element
   )
 }
 
-function renderFailedFeatureTip(): React.ReactNode {
-  return <FailedFeatureTip />
-}
+const SSH_CREDENTIAL_DIALOG_TOKEN = 'ssh-credential'
 
 function OverlayBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
   return (
@@ -153,6 +162,13 @@ export function AppRootSurfaces(props: {
   const updateStatus = useAppStore((s) => s.updateStatus)
   const activeContextualTourId = useAppStore((s) => s.activeContextualTourId)
   const hasSshCredentialRequest = useAppStore((s) => s.sshCredentialQueue.length > 0)
+  // Reserved from the request, so it counts while its code loads; it never waits for a turn.
+  useHostDialogEntry(
+    SSH_CREDENTIAL_DIALOG_TOKEN,
+    'ssh-credential',
+    'response',
+    hasSshCredentialRequest
+  )
 
   const shouldMountSetupGuideTelemetryObserver = persistedUIReady
   const shouldMountUpdateCard = shouldMountUpdateCardForStatus(updateStatus)
@@ -264,11 +280,7 @@ export function AppRootSurfaces(props: {
           </ModalBoundary>
         ) : null}
         {mountedLazyModalIds.has('feature-tips') ? (
-          <ModalBoundary
-            boundaryId="modal.feature-tips"
-            resetKey={activeModal === 'feature-tips'}
-            fallback={renderFailedFeatureTip}
-          >
+          <ModalBoundary boundaryId="modal.feature-tips" resetKey={activeModal === 'feature-tips'}>
             <FeatureTipsModal />
           </ModalBoundary>
         ) : null}
@@ -335,16 +347,17 @@ export function AppRootSurfaces(props: {
         ) : null}
       </Suspense>
       {hasSshCredentialRequest ? (
-        // Not in the modal slot, so it counts as on screen from its request while its code loads.
-        <DialogLoadingSuspense>
-          <ModalBoundary boundaryId="modal.ssh-passphrase" resetKey={activeModal}>
-            <SshPassphraseDialog />
-          </ModalBoundary>
-        </DialogLoadingSuspense>
+        <AdoptDialogEntry token={SSH_CREDENTIAL_DIALOG_TOKEN}>
+          <Suspense fallback={null}>
+            <DialogBoundary boundaryId="modal.ssh-passphrase" resetKey={activeModal}>
+              <SshPassphraseDialog />
+            </DialogBoundary>
+          </Suspense>
+        </AdoptDialogEntry>
       ) : null}
-      <ModalBoundary boundaryId="modal.markdown-template-picker" resetKey={activeModal}>
+      <DialogBoundary boundaryId="modal.markdown-template-picker" resetKey={activeModal}>
         <MarkdownTemplatePicker />
-      </ModalBoundary>
+      </DialogBoundary>
       <RecoverableRenderErrorBoundary
         boundaryId="modal.crash-report"
         surface="modal"
@@ -359,23 +372,9 @@ export function AppRootSurfaces(props: {
       >
         <CrashReportDialog />
       </RecoverableRenderErrorBoundary>
-      {onboardingGate.onboarding && onboardingGate.shouldRender ? (
-        <Suspense fallback={null}>
-          <RecoverableRenderErrorBoundary
-            boundaryId="modal.onboarding"
-            surface="modal"
-            title={translate('auto.App.f02d37278a', 'Onboarding hit an error.')}
-            description={translate(
-              'auto.App.221a95ba38',
-              'Retry onboarding or close it and continue in the app.'
-            )}
-          >
-            <OnboardingFlow
-              onboarding={onboardingGate.onboarding}
-              onOnboardingChange={onboardingGate.setOnboarding}
-            />
-          </RecoverableRenderErrorBoundary>
-        </Suspense>
+      <OnboardingSurface gate={onboardingGate} />
+      {onboardingGate.appOpenTipId ? (
+        <AppOpenFeatureTip tipId={onboardingGate.appOpenTipId} />
       ) : null}
       {shouldMountDictationController ? (
         <Suspense fallback={null}>

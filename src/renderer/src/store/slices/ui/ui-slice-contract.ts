@@ -2,7 +2,6 @@ import type { StateCreator } from 'zustand'
 import type { AppState } from '../../types'
 import type { UISliceCore } from './ui-slice-contract-core'
 import type { UISliceContextual } from './ui-slice-contract-contextual'
-import type { UISlicePromptTurns } from './ui-slice-contract-prompt-turns'
 import type {
   UISlicePersistence,
   UISlicePreferences,
@@ -28,7 +27,6 @@ export type {
 
 export type UISlice = UISliceCore &
   UISliceContextual &
-  UISlicePromptTurns &
   UISlicePreferences &
   UISliceSurfaces &
   UISlicePersistence

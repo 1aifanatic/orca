@@ -4,9 +4,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
+import { resetDialogRegistryForTests } from '@/store/dialog-registry'
+import { AdoptDialogEntry, useHostDialogEntry } from '@/lib/dialog-registry-entry'
 import { getDefaultSettings } from '../../../../shared/constants'
-import { AUTOMATIC_PROMPT_MODAL_KEY } from '@/store/slices/ui/automatic-prompt-turns'
-import FeatureTipsModal from './FeatureTipsModal'
+import { AppOpenFeatureTip } from './AppOpenFeatureTip'
 import { SshPassphraseDialog } from '../settings/SshPassphraseDialog'
 import { TooltipProvider } from '../ui/tooltip'
 
@@ -50,12 +51,23 @@ async function flush(): Promise<void> {
   }
 }
 
+/** The SSH prompt as the app hosts it. */
+function SshHost(): React.JSX.Element | null {
+  const asked = useAppStore((s) => s.sshCredentialQueue.length > 0)
+  useHostDialogEntry('ssh-credential', 'ssh-credential', 'response', asked)
+  return asked ? (
+    <AdoptDialogEntry token="ssh-credential">
+      <SshPassphraseDialog />
+    </AdoptDialogEntry>
+  ) : null
+}
+
 beforeEach(() => {
   terminal.mounts = 0
   terminal.unmounts = 0
+  resetDialogRegistryForTests({ startupSettled: true })
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({ settings: getDefaultSettings(''), persistedUIReady: true })
-  useAppStore.getState().settleLaunchPromptDiscovery()
   Object.assign(window, {
     api: {
       cli: { install: vi.fn(async () => ({})) },
@@ -73,28 +85,22 @@ afterEach(() => {
   container.remove()
 })
 
-it('an SSH prompt arriving mid CLI setup stacks over the app-open tip, which keeps its setup terminal', async () => {
-  // The app-open tip holds its turn and the modal slot, as the owner leaves it.
-  act(() => {
-    useAppStore.getState().requestAutomaticPrompt('feature-tip')
-    useAppStore.getState().openModal('feature-tips', {
-      source: 'app_open',
-      tipId: 'orca-cli',
-      [AUTOMATIC_PROMPT_MODAL_KEY]: 'feature-tip'
-    })
-  })
+it('an SSH prompt and a user modal stack over the app-open tip, which keeps its setup terminal', async () => {
   await act(async () =>
     root.render(
       <TooltipProvider>
-        <FeatureTipsModal />
-        <SshPassphraseDialog />
+        <AppOpenFeatureTip tipId="orca-cli" />
+        <SshHost />
       </TooltipProvider>
     )
   )
   await flush()
-  expect(useAppStore.getState().automaticPromptRequests).toEqual([
-    expect.objectContaining({ id: 'feature-tip', shown: true })
-  ])
+  // Its code loads on first use.
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull(), {
+    timeout: 10_000
+  })
+  await flush()
+  expect(useAppStore.getState().featureTipsSeenIds).toEqual(['orca-cli'])
   const install = [...document.querySelectorAll('button')].find((b) =>
     b.textContent?.includes('Install CLI')
   )
@@ -115,14 +121,15 @@ it('an SSH prompt arriving mid CLI setup stacks over the app-open tip, which kee
     })
   })
   await flush()
-  // The SSH prompt stacks over the tip, which stays on screen with its installer running.
   expect(document.body.textContent).toContain('SSH Key Passphrase')
   expect(tipDialog?.isConnected).toBe(true)
-  expect(terminal).toEqual({ mounts: 1, unmounts: 0 })
-
   await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
   await flush()
+
+  // Not in the modal slot, so a modal the user opens cannot replace it.
+  act(() => useAppStore.getState().openModal('add-repo'))
+  act(() => useAppStore.getState().closeModal())
+  await flush()
   expect(tipDialog?.isConnected).toBe(true)
-  expect(useAppStore.getState().activeModal).toBe('feature-tips')
   expect(terminal).toEqual({ mounts: 1, unmounts: 0 })
 })

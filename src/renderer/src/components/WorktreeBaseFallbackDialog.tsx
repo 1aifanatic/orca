@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/dialog'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
-import { usePromptBlockingDialog } from '@/components/automatic-prompts/use-automatic-prompt-turn'
 import {
   dismissWorktreeBaseFallbackNotice,
   getWorktreeBaseFallbackNotice,
@@ -34,8 +33,6 @@ export default function WorktreeBaseFallbackDialog(): React.JSX.Element {
       lastNoticeRef.current = notice
     }
   }, [notice])
-
-  usePromptBlockingDialog('worktree-base-fallback', open)
 
   return (
     <Dialog

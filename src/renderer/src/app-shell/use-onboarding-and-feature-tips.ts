@@ -7,9 +7,10 @@ import {
   isCliFeatureTipCompleted
 } from '../components/feature-tips/feature-tip-startup-gate'
 import { useAppStore } from '../store'
+import { useDialogRegistry } from '../store/dialog-registry'
 import { isWebClientLocation } from '../lib/web-client-location'
-import { useAppOpenFeatureTip } from '../components/feature-tips/use-app-open-feature-tip'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
+import type { FeatureTipId } from '../../../shared/feature-tips'
 
 export type OnboardingGate = ReturnType<typeof useOnboardingAndFeatureTips>
 
@@ -21,11 +22,10 @@ export function useOnboardingAndFeatureTips() {
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null)
   const [onboardingLoaded, setOnboardingLoaded] = useState(false)
   const [featureTipCliInstalled, setFeatureTipCliInstalled] = useState<boolean | null>(null)
+  const [appOpenTipId, setAppOpenTipId] = useState<FeatureTipId | null>(null)
   const promptedThisSessionRef = useRef(false)
-  const queueAppOpenFeatureTip = useAppOpenFeatureTip()
   const suppressedByOnboardingThisSessionRef = useRef(false)
 
-  const activeModal = useAppStore((s) => s.activeModal)
   const settings = useAppStore((s) => s.settings)
   const persistedUIReady = useAppStore((s) => s.persistedUIReady)
   const featureTipsSeenIds = useAppStore((s) => s.featureTipsSeenIds)
@@ -38,7 +38,12 @@ export function useOnboardingAndFeatureTips() {
     }))
   )
 
-  const applyStartupOnboardingState = useCallback((state: OnboardingState): void => {
+  const applyStartupOnboardingState = useCallback((state: OnboardingState | null): void => {
+    if (state === null) {
+      // Startup failed before onboarding was read: no tip this launch, and nothing waits on one.
+      useDialogRegistry.getState().settleStartupSource('feature-tip', 'unavailable')
+      return
+    }
     setOnboarding(state)
     setOnboardingLoaded(true)
   }, [])
@@ -88,7 +93,6 @@ export function useOnboardingAndFeatureTips() {
 
   useEffect(() => {
     const featureTipsDecision = getFeatureTipsAppOpenDecision({
-      activeModal,
       cliInstalled: featureTipCliInstalled,
       featureTipsSeenIds,
       featureInteractions,
@@ -100,32 +104,38 @@ export function useOnboardingAndFeatureTips() {
       webClient: isWebClientLocation()
     })
 
-    if (featureTipsDecision.kind === 'suppress-for-onboarding') {
-      // Why: first-run users should finish onboarding without a second education modal in the same session.
-      suppressedByOnboardingThisSessionRef.current = true
+    if (featureTipsDecision.kind === 'pending') {
       return
     }
 
+    if (featureTipsDecision.kind === 'suppress-for-onboarding') {
+      // Why: first-run users should finish onboarding without a second education modal in the same session.
+      suppressedByOnboardingThisSessionRef.current = true
+    }
+
     if (featureTipsDecision.kind !== 'open') {
+      // A tip already decided answers through its host, once queued.
+      if (!promptedThisSessionRef.current) {
+        useDialogRegistry.getState().settleStartupSource('feature-tip', 'none')
+      }
       return
     }
 
     promptedThisSessionRef.current = true
-    queueAppOpenFeatureTip(featureTipsDecision.tipId)
+    // Its host queues it and answers the tip check once it is queued.
+    setAppOpenTipId(featureTipsDecision.tipId)
   }, [
-    activeModal,
-    actions,
     featureTipCliInstalled,
     featureInteractions,
     featureTipsSeenIds,
     onboarding,
     persistedUIReady,
-    queueAppOpenFeatureTip,
     settings
   ])
 
   return {
     applyStartupOnboardingState,
+    appOpenTipId,
     onboarding,
     setOnboarding,
     shouldRender: onboarding !== null && shouldShowOnboarding(onboarding)

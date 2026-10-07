@@ -9,7 +9,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { useImeTextFieldProps } from '@/lib/ime-text-field'
-import { DialogPresenceMarker } from '@/lib/dialog-presence'
+import { DialogEntryContent, DialogEntryRoot } from '@/lib/dialog-registry-entry'
 
 function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>) {
   return (
@@ -48,49 +48,52 @@ function CommandDialog({
   const { className: commandClassName, ...commandRootProps } = commandProps ?? {}
 
   return (
-    <DialogPrimitive.Root {...props}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay
-          // Why: matches the DialogOverlay recipe — deeper scrim + 2px backdrop
-          // blur so the dark canvas lifts off the command palette. A flat
-          // bg-black/50 disappears in dark mode.
-          className={cn(
-            'fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
-            overlayClassName
-          )}
-        />
-        <DialogPrimitive.Content
-          // Why: matches the DialogContent recipe — translucent surface, solid
-          // 14% border, dual shadow, and 2xl backdrop blur. bg-popover equals
-          // the canvas in dark mode (#171717 vs #0a0a0a) and the previous
-          // border-border + shadow-lg was barely visible against the dark
-          // canvas.
-          className={cn(
-            'fixed top-[20%] left-[50%] z-50 w-[660px] max-w-[90vw] translate-x-[-50%] rounded-lg border border-black/14 bg-background/96 text-foreground shadow-[0_20px_60px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl outline-none dark:border-white/14 dark:bg-[rgba(23,23,23,0.96)] dark:shadow-[0_24px_72px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
-            contentClassName
-          )}
-          onEscapeKeyDown={(event) => handleImeOverlayEscape(event)}
-          onOpenAutoFocus={onOpenAutoFocus}
-          onCloseAutoFocus={onCloseAutoFocus}
-        >
-          <DialogPresenceMarker />
-          <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
-          <DialogPrimitive.Description className="sr-only">
-            {description}
-          </DialogPrimitive.Description>
-          <Command
-            shouldFilter={shouldFilter}
+    // Every palette using this is controlled; an uncontrolled one would count as closed.
+    <DialogEntryRoot open={props.open === true}>
+      <DialogPrimitive.Root {...props}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay
+            // Why: matches the DialogOverlay recipe — deeper scrim + 2px backdrop
+            // blur so the dark canvas lifts off the command palette. A flat
+            // bg-black/50 disappears in dark mode.
             className={cn(
-              '[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3',
-              commandClassName
+              'fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
+              overlayClassName
             )}
-            {...commandRootProps}
+          />
+          <DialogPrimitive.Content
+            // Why: matches the DialogContent recipe — translucent surface, solid
+            // 14% border, dual shadow, and 2xl backdrop blur. bg-popover equals
+            // the canvas in dark mode (#171717 vs #0a0a0a) and the previous
+            // border-border + shadow-lg was barely visible against the dark
+            // canvas.
+            className={cn(
+              'fixed top-[20%] left-[50%] z-50 w-[660px] max-w-[90vw] translate-x-[-50%] rounded-lg border border-black/14 bg-background/96 text-foreground shadow-[0_20px_60px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl outline-none dark:border-white/14 dark:bg-[rgba(23,23,23,0.96)] dark:shadow-[0_24px_72px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+              contentClassName
+            )}
+            onEscapeKeyDown={(event) => handleImeOverlayEscape(event)}
+            onOpenAutoFocus={onOpenAutoFocus}
+            onCloseAutoFocus={onCloseAutoFocus}
           >
-            {children}
-          </Command>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+            <DialogEntryContent />
+            <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Description className="sr-only">
+              {description}
+            </DialogPrimitive.Description>
+            <Command
+              shouldFilter={shouldFilter}
+              className={cn(
+                '[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3',
+                commandClassName
+              )}
+              {...commandRootProps}
+            >
+              {children}
+            </Command>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
+    </DialogEntryRoot>
   )
 }
 

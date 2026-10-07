@@ -15,6 +15,8 @@ export type FeatureTipsAppOpenDecision =
   | { kind: 'open'; tipId: FeatureTipId }
   | { kind: 'skip' }
   | { kind: 'suppress-for-onboarding' }
+  /** Something it depends on has not loaded yet. */
+  | { kind: 'pending' }
 
 export function isCliFeatureTipCompleted(status: CliInstallStatus): boolean {
   // Why: unsupported launch modes cannot complete setup, but an installed
@@ -55,7 +57,6 @@ export function getPendingFeatureTips(args: {
 }
 
 export function getFeatureTipsAppOpenDecision(args: {
-  activeModal: string
   cliInstalled: boolean | null
   featureTipsSeenIds: readonly FeatureTipId[]
   featureInteractions: FeatureInteractionState
@@ -70,17 +71,17 @@ export function getFeatureTipsAppOpenDecision(args: {
     return { kind: 'suppress-for-onboarding' }
   }
 
+  if (args.promptedThisSession || args.suppressedByOnboardingThisSession) {
+    return { kind: 'skip' }
+  }
+
   if (
-    args.promptedThisSession ||
-    args.suppressedByOnboardingThisSession ||
     !args.persistedUIReady ||
     !args.settings ||
     args.onboarding === null ||
-    args.activeModal !== 'none' ||
-    args.cliInstalled === null ||
-    shouldShowOnboarding(args.onboarding)
+    args.cliInstalled === null
   ) {
-    return { kind: 'skip' }
+    return { kind: 'pending' }
   }
 
   const nextTip = getPendingFeatureTips({

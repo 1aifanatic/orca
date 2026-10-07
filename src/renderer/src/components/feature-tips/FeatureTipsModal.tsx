@@ -7,12 +7,6 @@ import {
   notifyOrchestrationSetupStateChanged
 } from '@/lib/orchestration-setup-state'
 import { useAppStore } from '@/store'
-import {
-  AUTOMATIC_PROMPT_MODAL_KEY,
-  selectAutomaticPromptSlotSuspended
-} from '@/store/slices/ui/automatic-prompt-turns'
-import { AutomaticPromptDialogScope } from '@/lib/dialog-presence'
-import { useAppOpenFeatureTipShown } from './use-app-open-feature-tip'
 import { CliSetupTipDialog } from './CliSetupTipDialog'
 import { CmdJPaletteTipDialog } from './CmdJPaletteTipDialog'
 import { installCliFromFeatureTip } from './feature-tip-cli-install-action'
@@ -30,19 +24,30 @@ import { SessionSearchTipDialog } from './SessionSearchTipDialog'
 import { useSessionSearchTipSetup } from './use-session-search-tip-setup'
 import { VoiceDictationTipDialog } from './VoiceDictationTipDialog'
 
-export default function FeatureTipsModal(): JSX.Element {
-  const automaticTip = useAppStore((s) => s.modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip')
-  // Raised by the app, its own dialogs never count as another one.
+/** The tip the user opens from Help, in the modal slot. */
+export default function FeatureTipsModal(): JSX.Element | null {
+  const activeModal = useAppStore((s) => s.activeModal)
+  const modalData = useAppStore((s) => s.modalData)
+  const closeModal = useAppStore((s) => s.closeModal)
   return (
-    <AutomaticPromptDialogScope automatic={automaticTip}>
-      <FeatureTipDialogs />
-    </AutomaticPromptDialogScope>
+    <FeatureTipDialogs
+      open={activeModal === 'feature-tips'}
+      modalData={modalData}
+      onClose={closeModal}
+    />
   )
 }
 
-function FeatureTipDialogs(): JSX.Element | null {
-  const activeModal = useAppStore((s) => s.activeModal)
-  const closeModal = useAppStore((s) => s.closeModal)
+/** A tip's dialog, whoever opened it: the modal slot, or the app itself at launch. */
+export function FeatureTipDialogs({
+  open: isOpen,
+  modalData,
+  onClose: closeModal
+}: {
+  open: boolean
+  modalData: Record<string, unknown>
+  onClose: () => void
+}): JSX.Element | null {
   const openSettingsPage = useAppStore((s) => s.openSettingsPage)
   const openSettingsTarget = useAppStore((s) => s.openSettingsTarget)
   const settings = useAppStore((s) => s.settings)
@@ -50,17 +55,12 @@ function FeatureTipDialogs(): JSX.Element | null {
   const seenTipIds = useAppStore((s) => s.featureTipsSeenIds)
   const featureInteractions = useAppStore((s) => s.featureInteractions)
   const markFeatureTipsSeen = useAppStore((s) => s.markFeatureTipsSeen)
-  const modalData = useAppStore((s) => s.modalData)
   const showAiVaultSearch = useAppStore((s) => s.showAiVaultSearch)
   const mountedRef = useMountedRef()
-  const activeModalRef = useRef(activeModal)
+  const openRef = useRef(isOpen)
   const setupRequestIdRef = useRef(0)
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [skillTerminalOpen, setSkillTerminalOpen] = useState(false)
-  // Raised by the app, it waits while another prompt holds the turn.
-  const automaticTip = modalData[AUTOMATIC_PROMPT_MODAL_KEY] === 'feature-tip'
-  const suspended = useAppStore(selectAutomaticPromptSlotSuspended)
-  const isOpen = activeModal === 'feature-tips' && !(automaticTip && suspended)
   const currentTip = getFeatureTipForModal({
     cliInstalled: true,
     modalData,
@@ -69,14 +69,13 @@ function FeatureTipDialogs(): JSX.Element | null {
     settings,
     webClient: isWebClientLocation()
   })
-  useAppOpenFeatureTipShown({ visible: isOpen, tipId: currentTip?.id, automatic: automaticTip })
   const sessionSearchSetup = useSessionSearchTipSetup({
     dialogOpen: isOpen && currentTip?.id === 'agent-session-search'
   })
 
   useEffect(() => {
-    activeModalRef.current = activeModal
-  }, [activeModal])
+    openRef.current = isOpen
+  }, [isOpen])
 
   const markCurrentTipSeen = (): void => {
     if (currentTip) {
@@ -186,9 +185,7 @@ function FeatureTipDialogs(): JSX.Element | null {
         // Why: this modal is lazily mounted; closing it does not unmount the
         // component, so async install results must not reopen UI after dismissal.
         const canApplySetupResult = (): boolean =>
-          mountedRef.current &&
-          activeModalRef.current === 'feature-tips' &&
-          setupRequestIdRef.current === setupRequestId
+          mountedRef.current && openRef.current && setupRequestIdRef.current === setupRequestId
         const telemetrySource = getOrcaCliFeatureTipTelemetrySource(modalData.source)
         trackOrcaCliFeatureTipSetupClicked(telemetrySource)
         setPrimaryBusy(true)
