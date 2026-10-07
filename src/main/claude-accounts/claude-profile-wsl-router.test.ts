@@ -41,7 +41,9 @@ import {
   CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
 } from '../../shared/claude-profile-routing'
 import type { ClaudeProfileRouterSettings } from './claude-profile-router'
+import { prepareClaudeProfileDirectory } from './claude-profile-paths'
 import { ClaudeWslProfileRouter } from './claude-profile-wsl-router'
+import { wslClaudeProfile } from './claude-profile-wsl-paths'
 
 // Why skipped on Windows: the guest is Linux; these run its scripts and Node bundle as the guest.
 const posixHost = process.platform !== 'win32'
@@ -76,14 +78,14 @@ function fixture() {
   const router = new ClaudeWslProfileRouter({
     getSettings: () => settings,
     dataRoot: join(root, 'orca-dev'),
-    // Like the guest helper, marks the folder first, then finishes.
+    // Like the guest helper, marks the folder only once it finishes.
     runSetup: async () => {
       setup.calls += 1
-      writeFileSync(join(profileHome, '..', 'profile.json'), '{}')
       await setup.gate
       if (setup.fail) {
         throw new Error('refused')
       }
+      writeFileSync(join(profileHome, '..', 'profile.json'), '{}')
     }
   })
   const profileHome = join(guest.home, '.local/share/orca/claude-profiles/a/home')
@@ -121,7 +123,6 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     f.setup.gate = new Promise((resolve) => (release = resolve))
     const launch = f.router.prepareLaunch('Ubuntu')
     await vi.waitFor(() => expect(f.setup.calls).toBe(1))
-    // The marker now exists, but the first setup is still running.
     const second = f.router.prepareLaunch('Ubuntu')
     await new Promise((resolve) => setTimeout(resolve, 50))
     release()
@@ -142,6 +143,31 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
         ORCA_CLAUDE_INJECTED_CONFIG_DIR: f.profileHome
       }
     })
+    // The failed first setup left no marker, so this launch ran setup again; the next does not.
+    expect(f.setup.calls).toBe(2)
+    await f.router.prepareLaunch('Ubuntu')
+    expect(f.setup.calls).toBe(2)
+  })
+
+  it('makes a launch redo a first setup that was cut off after its ownership gate', async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    // The guest helper failed, or timed out, after the gate ran.
+    const cutOff = new ClaudeWslProfileRouter({
+      getSettings: () => f.settings,
+      dataRoot: join(guest.home, '..', 'orca-dev'),
+      runSetup: async (distro, home, accountId) => {
+        const { dataRoot, profile } = wslClaudeProfile(home, distro, accountId)
+        prepareClaudeProfileDirectory(dataRoot, profile, home)
+        throw new Error('timed out')
+      }
+    })
+    await expect(cutOff.prepareLaunch('Ubuntu')).rejects.toThrow(
+      CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+    )
+    expect(existsSync(join(f.profileHome, '..', 'profile.json'))).toBe(false)
+
+    await f.router.prepareLaunch('Ubuntu')
     expect(f.setup.calls).toBe(1)
   })
 

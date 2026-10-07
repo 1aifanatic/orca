@@ -55,11 +55,17 @@ export async function provisionClaudeAccountProfile(args: {
 }): Promise<ClaudeProfileSetupReport> {
   const platform = args.platform ?? process.platform
   const report = createClaudeProfileReport()
+  let markSetUp: () => void
   try {
     if (args.profile.target.runtime === 'wsl' && platform === 'win32') {
       throw new ClaudeProfileSurfaceError('invalid-profile', 'WSL profiles are set up in the guest')
     }
-    prepareClaudeProfileDirectory(args.dataRoot, args.profile, args.userHome, args.userConfigDir)
+    markSetUp = prepareClaudeProfileDirectory(
+      args.dataRoot,
+      args.profile,
+      args.userHome,
+      args.userConfigDir
+    )
   } catch (error) {
     report.surfaces.profile = 'failed'
     warnClaudeProfile(report, 'profile', error)
@@ -91,5 +97,7 @@ export async function provisionClaudeAccountProfile(args: {
     recordInstalledHooks(home)
     return 'merged'
   })
+  // Last: a setup cut off before here leaves no marker, so the next launch waits for a full one.
+  markSetUp()
   return { outcome: 'prepared', ...report }
 }

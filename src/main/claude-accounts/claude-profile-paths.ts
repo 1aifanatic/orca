@@ -94,23 +94,23 @@ function readOwnershipMarker(file: string): string | null {
   return ownershipRecord(version, accountId, runtime, distro)
 }
 
-/**
- * The only gate before writing into a profile: namespace, containment, no linked components,
- * outside Claude's default homes, and an ownership marker beside the home. Refuses before creating anything.
- */
-// Written by setup's ownership gate when setup starts, not when it completes: its absence means
-// setup never started here, and its presence does not prove setup finished.
+// Written when a first setup finishes, so its absence means no setup has finished here yet.
 export function claudeProfileMarkerPath(profile: ClaudeProfileDescriptor): string {
   const path = profile.target.runtime === 'wsl' ? hostPath.posix : hostPath
   return path.join(path.dirname(profile.home), 'profile.json')
 }
 
+/**
+ * The only gate before writing into a profile: namespace, containment, no linked components,
+ * outside Claude's default homes, and an ownership marker beside the home. Refuses before creating
+ * anything. Returns the step that writes the marker, which setup runs last.
+ */
 export function prepareClaudeProfileDirectory(
   dataRoot: string,
   profile: ClaudeProfileDescriptor,
   userHome: string,
   userConfigDir?: string
-): void {
+): () => void {
   let expected: ClaudeProfileDescriptor
   try {
     expected = describeClaudeProfile(dataRoot, profile.accountId, profile.target)
@@ -136,8 +136,10 @@ export function prepareClaudeProfileDirectory(
     )
   }
   mkdirSync(profile.home, { recursive: true, mode: 0o700 })
-  if (marker === null) {
-    writeFileAtomically(markerPath, `${record}\n`, { mode: 0o600 })
+  return () => {
+    if (marker === null) {
+      writeFileAtomically(markerPath, `${record}\n`, { mode: 0o600 })
+    }
   }
 }
 

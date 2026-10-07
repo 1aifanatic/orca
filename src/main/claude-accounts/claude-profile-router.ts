@@ -49,8 +49,6 @@ export type ClaudeProfileRouterSettings = Pick<
 export class ClaudeProfileRouter {
   readonly pointerPath: string
   private readonly setups = new Map<string, Promise<ClaudeProfileSetupReport>>()
-  /** Accounts whose running setup began before the folder had a marker. */
-  private readonly firstSetups = new Set<string>()
   private env: NodeJS.ProcessEnv
   private readonly envReady: Promise<unknown>
   constructor(
@@ -112,7 +110,7 @@ export class ClaudeProfileRouter {
     }
   }
 
-  /** Waits for a first setup that is running or never ran; otherwise launches at once. */
+  /** Waits for a first setup that never finished, running or not; otherwise launches at once. */
   async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
     const profile = this.selectedProfile()
     if (!profile) {
@@ -120,12 +118,8 @@ export class ClaudeProfileRouter {
       await this.envReady
       return this.preparation()
     }
-    // Why the first-setup check: setup writes its marker when it starts, not when it finishes.
-    // A re-run of a set-up folder never blocks: the folder already worked.
-    if (
-      isDirectory(profile.home) &&
-      (this.firstSetups.has(profile.accountId) || !existsSync(claudeProfileMarkerPath(profile)))
-    ) {
+    // Why the marker: setup writes it last. A re-run of a set-up folder never blocks.
+    if (isDirectory(profile.home) && !existsSync(claudeProfileMarkerPath(profile))) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
         throw claudeProfileSetupFailed()
@@ -173,13 +167,7 @@ export class ClaudeProfileRouter {
     if (running) {
       return running
     }
-    if (!existsSync(claudeProfileMarkerPath(profile))) {
-      this.firstSetups.add(profile.accountId)
-    }
-    const run = this.runSetup(profile).finally(() => {
-      this.setups.delete(profile.accountId)
-      this.firstSetups.delete(profile.accountId)
-    })
+    const run = this.runSetup(profile).finally(() => this.setups.delete(profile.accountId))
     this.setups.set(profile.accountId, run)
     return run
   }

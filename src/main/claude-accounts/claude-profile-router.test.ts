@@ -12,7 +12,12 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
-import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-profile-paths'
+import {
+  claudeProfileMarkerPath,
+  describeClaudeProfile,
+  prepareClaudeProfileDirectory,
+  type ClaudeProfileDescriptor
+} from './claude-profile-paths'
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
   CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
@@ -68,15 +73,19 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
   }
-  // Stands in for the worker; like it, writes the marker first, then stays pending until settled.
+  // Stands in for the worker; like it, stays pending until settled and marks the folder last.
   const setup: { calls: number; outcome: ClaudeProfileSetupReport['outcome']; settle: () => void } =
     { calls: 0, outcome: 'prepared', settle: () => {} }
   const runSetup = ({ profile }: { profile: ClaudeProfileDescriptor }) => {
     setup.calls += 1
     mkdirSync(profile.home, { recursive: true })
-    writeFileSync(claudeProfileMarkerPath(profile), '{}')
     return new Promise<ClaudeProfileSetupReport>((resolve) => {
-      setup.settle = () => resolve({ outcome: setup.outcome, warnings: [], surfaces: {} })
+      setup.settle = () => {
+        if (setup.outcome === 'prepared') {
+          writeFileSync(claudeProfileMarkerPath(profile), '{}')
+        }
+        resolve({ outcome: setup.outcome, warnings: [], surfaces: {} })
+      }
     })
   }
   const router = new ClaudeProfileRouter({
@@ -132,7 +141,6 @@ describe('ClaudeProfileRouter', () => {
       return prepared
     })
     await vi.waitFor(() => expect(f.setup.calls).toBe(1))
-    // The marker now exists, but the first setup is still running.
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(launched).toBe(false)
     const second = f.router.prepareLaunch()
@@ -160,6 +168,33 @@ describe('ClaudeProfileRouter', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
     expect(f.setup.calls).toBe(2)
+  })
+
+  it('makes a launch redo a first setup that was cut off after its ownership gate', async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    const profile = describeClaudeProfile(f.dataRoot, 'a', {
+      executionHostId: 'local',
+      runtime: 'host'
+    })
+    // The worker timed out, or the app quit, after the gate ran.
+    const cutOff = new ClaudeProfileRouter({
+      getSettings: () => f.settings,
+      dataRoot: f.dataRoot,
+      userHome: f.userHome,
+      env: {},
+      runSetup: async (args) => {
+        prepareClaudeProfileDirectory(args.dataRoot, args.profile, args.userHome)
+        throw new Error('Claude account setup timed out')
+      }
+    })
+    await expect(cutOff.prepareLaunch()).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    expect(existsSync(claudeProfileMarkerPath(profile))).toBe(false)
+
+    const launch = f.router.prepareLaunch()
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    f.setup.settle()
+    await expect(launch).resolves.toMatchObject({ configDir: f.home('a') })
   })
 
   it("launches a set-up account without waiting for the login shell's env", async () => {
