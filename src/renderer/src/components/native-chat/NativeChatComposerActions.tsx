@@ -7,6 +7,8 @@ import type {
   SessionOptionsSurface
 } from '../../../../shared/native-chat-session-options'
 import { NativeChatSessionOptionPickers } from './NativeChatSessionOptionPickers'
+import { NativeChatPermissionModePicker } from './NativeChatPermissionModePicker'
+import type { NativeChatPermissionModePickerState } from './native-chat-permission-mode-labels'
 import { NativeChatComposerGoalChip } from './NativeChatComposerGoalChip'
 import { NativeChatContextUsageRing } from './NativeChatContextUsageRing'
 import type { NativeChatContextUsageSummary } from './native-chat-context-usage-summary'
@@ -34,6 +36,8 @@ export type NativeChatComposerActionsProps = {
   sessionOptionsSurface: SessionOptionsSurface | null
   sessionOptionsSnapshot: SessionOptionDescriptor[]
   sessionOptionsPickerRequest?: NativeChatOptionPickerRequest | null
+  /** The chat's permission pill; absent for a terminal chat or a host that offers none. */
+  permissionPicker?: NativeChatPermissionModePickerState | null
   /** Present while the composer is in goal mode; the chip calls it to leave. */
   onExitGoalMode?: () => void
   /** Absent until the session has reported or the transcript can estimate. */
@@ -59,6 +63,7 @@ export function NativeChatComposerActions({
   sessionOptionsSurface,
   sessionOptionsSnapshot,
   sessionOptionsPickerRequest,
+  permissionPicker,
   onExitGoalMode,
   contextUsage
 }: NativeChatComposerActionsProps): React.JSX.Element {
@@ -125,6 +130,7 @@ export function NativeChatComposerActions({
       <div className="ml-auto flex items-center gap-1.5">
         {/* Why: keep session controls beside the actions they affect; the
         model trigger is ordered last so only the context ring separates it from dictation. */}
+        <NativeChatPermissionModePicker picker={permissionPicker} />
         <NativeChatSessionOptionPickers
           surface={sessionOptionsSurface}
           snapshot={sessionOptionsSnapshot}
