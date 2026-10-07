@@ -3,6 +3,7 @@ import {
   type SshTerminateSessionsResult
 } from '../../shared/ssh-types'
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
+import { UNVERIFIED_PROCESS_EXIT_CODE } from '../../shared/terminal-exit-cause'
 import { isSshPtyNotFoundError, SshPtyHeldByPreviousRelayError } from '../providers/ssh-pty-errors'
 import { toAppSshPtyId, toRelaySshPtyId } from '../providers/ssh-pty-id'
 import { isReattachHeldByPreviousRelay } from '../ssh/ssh-previous-relay-terminals'
@@ -14,7 +15,7 @@ import {
   getSshPtyProvider
 } from './pty'
 import { invalidateConnectAttempt } from './ssh-connect-attempt-registry'
-import { persistedStore } from './ssh-ipc-context'
+import { currentRuntime, persistedStore } from './ssh-ipc-context'
 import { teardownSshTargetTransport } from './ssh-session-teardown'
 import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 
@@ -104,6 +105,7 @@ export async function terminateSshTargetSessions(
       clearProviderPtyState(appPtyId)
       deletePtyOwnership(appPtyId)
       persistedStore!.markSshRemotePtyLease(targetId, relayPtyId, 'terminated')
+      reportStoppedPtyToRuntime(appPtyId)
       outcome = { ...outcome, terminated: outcome.terminated + 1 }
     }
     if (shutdownFailures.length > 0) {
@@ -135,4 +137,16 @@ async function listRelayPtyIdsToStop(
     listPreviousRelayPtyIds(targetId).catch(() => null)
   ])
   return [...current, ...(previous ?? [])]
+}
+
+/**
+ * Why: a relay that hangs up after its last shell stops never sends that exit, which left
+ * `terminal list` showing the stopped shell as connected. The relay accepting the kill is not an
+ * observed exit, so this is the stop sentinel, and a real exit already reported is kept.
+ */
+function reportStoppedPtyToRuntime(appPtyId: string): void {
+  if (currentRuntime?.getPtyLivenessVerdict(appPtyId)?.status === 'exited') {
+    return
+  }
+  currentRuntime?.onPtyExit(appPtyId, UNVERIFIED_PROCESS_EXIT_CODE)
 }

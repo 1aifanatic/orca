@@ -16,7 +16,10 @@ vi.mock('../../store', () => ({
   useAppStore: {
     getState: () => ({
       fetchReposForAllHosts: mocks.fetchReposForAllHosts,
-      sshTargetLabels: new Map([['ssh-1', 'Box']])
+      sshTargetLabels: new Map([['ssh-1', 'Box']]),
+      tabsByWorktree: {},
+      ptyIdsByTabId: {},
+      terminalLayoutsByTabId: {}
     })
   }
 }))

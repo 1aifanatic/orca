@@ -37,6 +37,7 @@ import {
   getPtyIdsForConnection
 } from './pty'
 import { createSshIpcHarness } from './ssh-ipc-test-harness'
+import { setCurrentRuntime } from './ssh-ipc-context'
 
 const { mockSshStore, mockConnectionManager, mockPtyProvider, mockPortForwardManager } = mocks
 
@@ -457,5 +458,38 @@ describe('SSH IPC handlers', () => {
       'pty-abandoned',
       'terminated'
     )
+  })
+
+  it('ssh:terminateSessions tells the runtime a stopped shell is no longer connected', async () => {
+    mockSshStore.getTarget.mockReturnValue({
+      id: 'ssh-1',
+      label: 'Server',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy'
+    })
+    mockStore.getSshRemotePtyLeases.mockReturnValue([])
+    vi.mocked(getSshPtyProvider).mockReturnValue(mockPtyProvider as never)
+    vi.mocked(getPtyIdsForConnection).mockReturnValue([
+      'ssh:ssh-1@@pty-lost-exit',
+      'ssh:ssh-1@@pty-reported-exit'
+    ])
+    mockPtyProvider.shutdown.mockResolvedValue(undefined)
+    const runtime = {
+      getPtyLivenessVerdict: vi.fn((ptyId: string) =>
+        ptyId.endsWith('pty-reported-exit') ? { status: 'exited' } : null
+      ),
+      onPtyExit: vi.fn()
+    }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: terminate reads only these two runtime methods.
+    setCurrentRuntime(runtime as never)
+
+    await expect(
+      handlers.get('ssh:terminateSessions')!(null, { targetId: 'ssh-1' })
+    ).resolves.toEqual({ terminated: 2, unverifiable: 0 })
+
+    // The stop sentinel, never a certified death; an exit the relay already reported stands.
+    expect(runtime.onPtyExit.mock.calls).toEqual([['ssh:ssh-1@@pty-lost-exit', -1]])
+    setCurrentRuntime(undefined)
   })
 })
