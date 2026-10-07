@@ -191,10 +191,8 @@ export async function launchAgentBackgroundSession(
         worktreeId,
         tabId: reservedTabId,
         leafId,
-        placement: {
-          kind: 'new-tab',
-          row: { launchAgent: agent, ...(title ? { customTitle: title } : {}) }
-        },
+        // Why no launchAgent: the adopted tab is created without one, and the row must match it.
+        placement: { kind: 'new-tab', ...(title ? { row: { customTitle: title } } : {}) },
         telemetry: {
           agent_kind: tuiAgentToAgentKind(agent),
           launch_source: launchSource ?? 'unknown',
