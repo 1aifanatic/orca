@@ -1,4 +1,5 @@
 import type { NativeChatQueueResume } from './native-chat-composer-primary-action'
+import type { NativeChatComposerNotice } from './native-chat-composer-notice'
 import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { StructuredAgentContextUsage } from '../../../../shared/structured-agent-session-context-usage'
 import type { AgentSessionSlashCommand } from '../../../../shared/agent-session-wire'
@@ -15,6 +16,13 @@ import type { NativeChatLaunchDraft } from '@/lib/native-chat-launch-prompt'
 import type { NativeChatComposerImageAttachment } from './NativeChatComposerField'
 import type { NativeChatAfterStopSend } from './native-chat-composer-target'
 import type { NativeChatLocalCommandAnswer } from './use-native-chat-local-command-answer'
+
+export type NativeChatComposerErrorDetail = {
+  /** Error text Orca did not write, shown apart and copyable. */
+  errorText?: string
+  /** A refused command's cause: its line is said only while that still holds. */
+  refusedWhile?: StructuredAgentSessionCommandRefusalCause
+}
 
 export type NativeChatOptionPickerRequest = {
   id: string
@@ -49,11 +57,7 @@ export type NativeChatStructuredComposerTransport = {
   worktreeId?: string
   /** Present only where the host can set this session's goal. */
   threadGoal?: { setObjective: (objective: string) => Promise<boolean> }
-  /** `refusedWhile`: a command's refusal, said only while what it waits on still holds. */
-  onError: (
-    message: string | null,
-    refusedWhile?: StructuredAgentSessionCommandRefusalCause
-  ) => void
+  onError: (message: string | null, detail?: NativeChatComposerErrorDetail) => void
   /** A local send: brings the latest into view at the press, not when the host answers. */
   onSubmitted?: () => void
   runtime: 'local' | 'remote'
@@ -123,6 +127,8 @@ export type NativeChatComposerProps = {
   /** Cmd/Ctrl+Enter from an empty composer: send the newest queued draft now.
    *  False = nothing queued, and the chord falls through to a plain send. */
   steerQueued?: () => boolean
+  /** The chat's own notices, shown in the composer's notice card above its input. */
+  notices?: readonly NativeChatComposerNotice[]
 }
 
 /** Launch context prefilled into the TUI input as an unsent draft, plus the two

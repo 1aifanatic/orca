@@ -55,7 +55,7 @@ function composerSays(
   if (typeof onError !== 'function') {
     throw new Error('the composer has no transport')
   }
-  act(() => onError(text, refusedWhile))
+  act(() => onError(text, { refusedWhile }))
 }
 
 it('a /clear refused while the agent works is said until the agent stops, then gone', () => {
