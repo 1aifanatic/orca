@@ -8,6 +8,7 @@ import {
   emptyPostgresPoolPressureCounts,
   isPostgresPoolConnectFailure,
   PostgresPoolPressure,
+  type PostgresPoolLane,
   type PostgresPoolPressureCounts
 } from './postgres-pool-pressure.js'
 import { applyPostgresSchema } from './postgres-schema-startup.js'
@@ -71,6 +72,9 @@ export type RelayTransactionOptions = { reportRetries?: boolean }
 export interface RelayDatabase {
   readonly dialect?: 'sqlite' | 'postgres'
   query(sql: string, params?: unknown[]): Promise<SqlRow[]>
+  // Ahead of every queued query() for the next free connection; see
+  // PostgresPoolPressure. Absent means plain query().
+  queryPriority?(sql: string, params?: unknown[]): Promise<SqlRow[]>
   queryLocked(
     sql: string,
     params?: unknown[],
@@ -1058,11 +1062,23 @@ export class PostgresDatabase implements RelayDatabase {
   }
 
   async query(sql: string, params: unknown[] = []): Promise<SqlRow[]> {
+    return await this.queryOnLane('general', sql, params)
+  }
+
+  async queryPriority(sql: string, params: unknown[] = []): Promise<SqlRow[]> {
+    return await this.queryOnLane('priority', sql, params)
+  }
+
+  private async queryOnLane(
+    lane: PostgresPoolLane,
+    sql: string,
+    params: unknown[]
+  ): Promise<SqlRow[]> {
     const startedAt = performance.now()
     let phase: 'acquire' | 'execute' = 'acquire'
     let client: pg.PoolClient | undefined
     try {
-      client = await this.pressure.connect()
+      client = await this.pressure.connect(lane)
       phase = 'execute'
       const result = await client.query(postgresSql(sql), params)
       return returnsRows(sql) ? (result.rows as SqlRow[]) : [{ changes: result.rowCount ?? 0 }]
