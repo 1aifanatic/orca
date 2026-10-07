@@ -371,10 +371,13 @@ describe('against a capable host', () => {
     const { result } = render()
     expect(result.current).toMatchObject({ isWorking: true, queueSendsNext: true, canStop: false })
     expect(result.current.queuedMessages.cards.map((card) => card.hold)).toEqual(['turn'])
+    // A command refused now is said while the pane reads working, and no longer.
+    expect(result.current.commandRefusalCauses.working).toBe(true)
     // Where the host would refuse that send, it names none: the chat reads idle.
     nextQueuedMessageId = null
     const refused = render()
     expect(refused.result.current).toMatchObject({ isWorking: false, queueSendsNext: false })
+    expect(refused.result.current.commandRefusalCauses.working).toBe(false)
   })
 
   it('shows host-held drafts as cards, never as transcript bubbles', () => {

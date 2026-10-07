@@ -200,6 +200,8 @@ export function structuredConversationCommandRunner(args: {
   chat: {
     turnId: string | null
     isWorking: boolean
+    /** The queue's send is the host's next update: the pane reads working. */
+    queueSendsNext: boolean
     backgroundTasks: { isMonitoring: boolean; show: boolean }
     submissions: readonly AgentJournalSubmission[]
   }
@@ -217,7 +219,7 @@ export function structuredConversationCommandRunner(args: {
   commandRefusalCauses: StructuredConversationCommandCauses
 } {
   const promptPending = args.prompts.length > 0
-  const agentWorking = args.chat.turnId !== null || args.chat.isWorking
+  const agentWorking = args.chat.turnId !== null || args.chat.isWorking || args.chat.queueSendsNext
   const rows = outboxRows(args.outbox, args.chat.submissions, args.agentName)
   const outboxUnsent = hasUnsentStructuredAgentSessionOutboxEntry(
     args.outbox,
