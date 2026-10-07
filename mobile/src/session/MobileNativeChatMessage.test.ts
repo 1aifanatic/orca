@@ -145,6 +145,28 @@ describe('MobileNativeChatMessage', () => {
     expect(rows.some((row) => row.props.style.includes(styles.rowUser))).toBe(false)
   })
 
+  // As on the desktop: an orchestration task the host recorded and rejected reads as not sent too.
+  it("says under another agent's message the host never delivered that it was not sent", () => {
+    const tree = render(
+      {
+        ...userMessage([{ type: 'text', text: 'Fix the parser.' }]),
+        unsent: true,
+        from: {
+          kind: 'agent',
+          senders: [
+            {
+              party: { address: 'term_a', terminalHandle: 'term_a', orcaSessionId: null },
+              name: 'Coder'
+            }
+          ],
+          orchestration: null
+        }
+      },
+      { unsentNotice: "Claude couldn't start." }
+    )
+    expect(textIn(tree.root)).toContain("Claude couldn't start.")
+  })
+
   it('preserves an ordinary assistant answer without interpreting its text as a host notice', () => {
     const tree = render(toolMessage([{ type: 'text', text: 'provider fallback' }]))
     expect(tree.root.find((node) => String(node.type) === 'MobileMarkdown').props.content).toBe(

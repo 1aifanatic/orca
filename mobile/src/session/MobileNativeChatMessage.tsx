@@ -247,7 +247,7 @@ function MobileNativeChatMessageImpl({
             />
           ) : null}
         </Content>
-        {isUser && message.unsent === true ? (
+        {message.role === 'user' && message.unsent === true ? (
           <NativeText style={styles.unsentLabel}>
             {unsentNotice ?? AGENT_SESSION_WRITE_NOTICE_COPY.notDoneSend}
           </NativeText>
