@@ -5,6 +5,7 @@
 
 import type { NativeChatSession } from '../../../../shared/native-chat-types'
 import type { StructuredAgentSessionLaunchLifecycle } from '@/lib/structured-agent-session-launch'
+import type { NativeChatLiveSession } from './native-chat-live-session-contract'
 
 /** The mutually-exclusive surfaces the chat view can show. `ready` and
  *  `working` both render the message list; `working` additionally shows the
@@ -83,4 +84,41 @@ export function structuredChatHistoryPhase(
   return launch.lifecycle === 'failed' || launch.lifecycle === 'visibility-unknown'
     ? 'unread'
     : 'known'
+}
+
+/** The session a structured chat's view shows: its read, with loading held until history is known. */
+export function structuredChatLiveSession(
+  read: {
+    messages: NativeChatLiveSession['messages']
+    status: 'idle' | 'loading' | 'ready' | 'error'
+    isWorking: boolean
+    error?: string | null
+    hasOlder: boolean
+    loadingOlder: boolean
+    olderHistoryGeneration: number
+    loadOlder: NativeChatLiveSession['loadEarlier']
+  },
+  historyPhase: 'reading' | 'unread' | 'known',
+  identity: Pick<NativeChatLiveSession, 'sessionId' | 'agent'>
+): NativeChatLiveSession {
+  return {
+    messages: read.messages,
+    status:
+      read.status === 'error'
+        ? 'error'
+        : historyPhase !== 'known'
+          ? 'loading'
+          : read.isWorking
+            ? 'working'
+            : read.messages.length === 0
+              ? 'empty'
+              : 'ready',
+    ...identity,
+    ...(read.error ? { error: read.error } : {}),
+    hasMore: read.hasOlder,
+    loadingEarlier: read.loadingOlder,
+    olderHistoryGeneration: read.olderHistoryGeneration,
+    loadEarlier: read.loadOlder,
+    readPhase: read.status === 'loading' ? 'loading' : read.status === 'error' ? 'error' : 'ready'
+  }
 }

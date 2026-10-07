@@ -14,7 +14,11 @@ import { NativeChatLoadingCue } from './NativeChatLoadingCue'
 import { NativeChatMessageList } from './NativeChatMessageList'
 import { useStructuredNativeChatSubmitReveal } from './use-structured-native-chat-submit-reveal'
 import { NativeChatQuestionCard } from './NativeChatQuestionCard'
-import { selectNativeChatViewState, structuredChatHistoryPhase } from './native-chat-view-state'
+import {
+  selectNativeChatViewState,
+  structuredChatHistoryPhase,
+  structuredChatLiveSession
+} from './native-chat-view-state'
 import { useNativeChatComposerRevealFocus } from './use-native-chat-composer-reveal-focus'
 import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
@@ -99,32 +103,11 @@ export function NativeChatStructuredSession(
   })
   const historyPhase = structuredChatHistoryPhase(provisionalLaunch, controller.status)
   const session = useMemo<NativeChatLiveSession>(
-    () => ({
-      messages: controller.messages,
-      status:
-        controller.status === 'error'
-          ? 'error'
-          : historyPhase !== 'known'
-            ? 'loading'
-            : controller.isWorking
-              ? 'working'
-              : controller.messages.length === 0
-                ? 'empty'
-                : 'ready',
-      sessionId: props.sessionId,
-      agent: props.agent,
-      ...(controller.error ? { error: controller.error } : {}),
-      hasMore: controller.hasOlder,
-      loadingEarlier: controller.loadingOlder,
-      olderHistoryGeneration: controller.olderHistoryGeneration,
-      loadEarlier: controller.loadOlder,
-      readPhase:
-        controller.status === 'loading'
-          ? 'loading'
-          : controller.status === 'error'
-            ? 'error'
-            : 'ready'
-    }),
+    () =>
+      structuredChatLiveSession(controller, historyPhase, {
+        sessionId: props.sessionId,
+        agent: props.agent
+      }),
     [controller, historyPhase, props.agent, props.sessionId]
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)

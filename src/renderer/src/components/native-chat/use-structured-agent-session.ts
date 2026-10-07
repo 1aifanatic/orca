@@ -96,11 +96,10 @@ export function useStructuredAgentSession(args: {
   const commandPending = useRef(false)
   const transportState = useStructuredAgentSessionTransportState(state, transportEnabled)
   const {
-    conversationCommands,
     threadGoal: threadGoalSupport,
     contextUsage: contextUsageSupport,
     rewind: rewindSupport,
-    // The picker and the host's availability evidence pass straight through.
+    // The picker, conversation commands and the host's availability evidence pass straight through.
     ...sessionOptions
   } = useStructuredAgentSessionOptions({
     agent,
@@ -228,7 +227,6 @@ export function useStructuredAgentSession(args: {
   return {
     epoch: state.epoch,
     rewind,
-    conversationCommands,
     runConversationCommand: (command: AgentSessionConversationCommand) =>
       structuredConversationCommands.sendStructuredConversationCommand({
         command,
