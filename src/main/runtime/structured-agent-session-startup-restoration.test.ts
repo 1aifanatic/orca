@@ -94,26 +94,34 @@ it('holds chat commands until the startup settle ends, and then lets them throug
   )
 })
 
-it('opens the gate when the startup step fails, never stranding a command', async () => {
-  await rig.crash()
-  await rig.boot()
-  const runtime = restartedRuntime()
-  const gate = internals(runtime).structuredAgentSessionStartupGate
-  internals(runtime).ensureStructuredAgentSessionHost = async () => {
-    throw new Error('host refused')
+it.each([
+  ['throws', 'step failed'],
+  ['builds no host', 'no host']
+] as const)(
+  'opens the gate when the host build %s, never stranding a command',
+  async (how, outcome) => {
+    await rig.crash()
+    await rig.boot()
+    const runtime = restartedRuntime()
+    const gate = internals(runtime).structuredAgentSessionStartupGate
+    internals(runtime).ensureStructuredAgentSessionHost = async () => {
+      if (how === 'throws') {
+        throw new Error('host refused')
+      }
+    }
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    runtime.holdStructuredAgentSessionCommandsForStartup()
+
+    const timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
+
+    expect(gate.ready()).toBeNull()
+    expect(timing).toHaveBeenCalledOnce()
+    expect(timing).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp(`\\(${outcome}\\); opened \\+\\d+ ms by ${outcome}$`))
+    )
   }
-  vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-  runtime.holdStructuredAgentSessionCommandsForStartup()
-
-  const timing = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-  await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
-
-  expect(gate.ready()).toBeNull()
-  expect(timing).toHaveBeenCalledOnce()
-  expect(timing).toHaveBeenCalledWith(
-    expect.stringMatching(/\(step failed\); opened \+\d+ ms by step failed$/)
-  )
-})
+)
 
 it('lets held commands go before the shortest client timeout on a held call (the AI vault restore, 5 s)', () => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -211,26 +219,6 @@ describe('one timing line per launch, with the real step times whoever opened th
     gate.openWhen(Promise.resolve())
 
     await expectOneCeilingLine('settle ended', /\+([5-9]|\d{2,}) ms/)
-  })
-
-  it.each([
-    ['throws', 'step failed'],
-    ['builds no host', 'no host']
-  ] as const)('writes it when a slow host build past the ceiling %s', async (how, outcome) => {
-    const runtime = restartedRuntime()
-    const internal = internals(runtime)
-    internal.structuredAgentSessionStartupGate = new StructuredAgentSessionStartupGate(CEILING_MS)
-    internal.ensureStructuredAgentSessionHost = async () => {
-      await sleep(30)
-      if (how === 'throws') {
-        throw new Error('host build failed')
-      }
-    }
-    runtime.holdStructuredAgentSessionCommandsForStartup()
-
-    await runtime.prepareStructuredAgentSessionStartupRestoration().catch(() => undefined)
-
-    await expectOneCeilingLine(outcome)
   })
 })
 

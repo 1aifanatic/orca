@@ -109,6 +109,10 @@ describe('the stored status and the plan agree (T4)', () => {
     const revisesVerdictOnly =
       name === 'unverifiable turn' && deathEvidence?.ownerFence === CORPUS_FENCE
     expect(selected(sessionId)).toBe(!openSettlementPlanIsEmpty(plan) && !revisesVerdictOnly)
+    if (name === 'queued leftover') {
+      // A queued leftover is owed with no record to read, too.
+      expect(planOpenSettlement(journal, null).leftoverQueued).toEqual(['send-queued'])
+    }
 
     // The open appends exactly the plan: a row per roster, per recovered send and per rejected
     // leftover, and one lifecycle batch for what the gone generation left.
@@ -126,6 +130,9 @@ describe('the stored status and the plan agree (T4)', () => {
     )
 
     // Every entry revised its entity out of the state that selected it (T4b, T15b).
+    for (const clientMessageId of plan.leftoverQueued) {
+      expect(journal.submission(clientMessageId)).toMatchObject({ dispatchState: 'rejected' })
+    }
     expect(selected(sessionId)).toBe(false)
     expect(openSettlementPlanIsEmpty(planOpenSettlement(journal, record))).toBe(true)
   })
@@ -222,29 +229,5 @@ describe('the stored status and the plan agree (T4)', () => {
     expect(openSettlementPlanIsEmpty(plan)).toBe(true)
     expect(storedStatus('unkeyed')).toMatchObject({ lifecycle: 'idle' })
     expect(selected('unkeyed')).toBe(false)
-  })
-
-  it('never selects a chat to revise a verdict: an unverifiable turn stays as it settled (D16 gone)', async () => {
-    const journal = await open('unverifiable')
-    await JOURNAL_SESSION_STATE_CORPUS['unverifiable turn'](journal)
-    expect(storedStatus('unverifiable')).toMatchObject({ lifecycle: 'idle' })
-    expect(selected('unverifiable')).toBe(false)
-  })
-
-  it('selects a chat whose only debt is a queued leftover, and settles it (T15b)', async () => {
-    const writer = await open('queued')
-    await JOURNAL_SESSION_STATE_CORPUS['queued leftover'](writer)
-    await writer.close()
-    const journal = await open('queued')
-    expect(storedStatus('queued')).toMatchObject({ lifecycle: 'idle', queuedSends: 1 })
-    const plan = planOpenSettlement(journal, null)
-    expect(plan.leftoverQueued).toEqual(['send-queued'])
-
-    await appendOpenSettlement(journal, plan, CORPUS_FENCE, (error) => {
-      throw error
-    })
-
-    expect(journal.submission('send-queued')).toMatchObject({ dispatchState: 'rejected' })
-    expect(storedStatus('queued')).toMatchObject({ queuedSends: 0, summary: { status: 'idle' } })
   })
 })
