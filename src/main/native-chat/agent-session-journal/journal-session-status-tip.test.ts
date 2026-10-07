@@ -15,6 +15,7 @@ import {
   liveTestJournalRows,
   loadTestJournal,
   openTestJournalHostDatabase,
+  publishTestJournalEpoch,
   readTestJournalSessionStatus
 } from './journal-host-database-test-support'
 import {
@@ -120,6 +121,20 @@ it('reads a row as missing when a repair in the same epoch regrew the history to
   // An older build's repair dropped the tip and wrote a row at the same sequence, later.
   deleteTestJournalRow(db(), 'chat', tip.seq)
   insertTestJournalRowJson(db(), 'chat', tip.seq, tip.rowJson, tip.ts + 1)
+
+  expect(stored('chat')).toBeNull()
+  expect(readUnsettledJournalSessionIds(db())).toEqual([])
+})
+
+it('reads a row as missing when an older build moved the chat to a new epoch, even at the same tip', async () => {
+  const journal = await open('chat')
+  await JOURNAL_SESSION_STATE_CORPUS['running tool'](journal)
+  await journal.close()
+  const tip = liveTestJournalRows(db(), 'chat').at(-1)!
+
+  // A new epoch whose newest row matches the old tip's sequence and time.
+  publishTestJournalEpoch(db(), 'chat', 'epoch-older-build')
+  insertTestJournalRowJson(db(), 'chat', tip.seq, tip.rowJson, tip.ts)
 
   expect(stored('chat')).toBeNull()
   expect(readUnsettledJournalSessionIds(db())).toEqual([])

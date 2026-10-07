@@ -416,7 +416,7 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
     expect(stopOwnerProcess).not.toHaveBeenCalled()
   })
 
-  it.each([
+  const LEASE_CHECK_FAILURES = [
     { check: "'s first try fails", fails: 1, command: null, checks: 2, stopped: 1 },
     { check: ' fails twice', fails: 2, command: null, checks: 2, stopped: 0 },
     {
@@ -433,9 +433,10 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
       checks: 3,
       stopped: 1
     }
-  ] as const)(
-    'settles an unlisted chat from what its recovery found when the lease check$check',
-    async ({ fails, command, checks, stopped }) => {
+  ] as const
+  // A loop, not it.each: it.each shortens a long interpolated title, which `-t` then cannot match.
+  for (const { check, fails, command, checks, stopped } of LEASE_CHECK_FAILURES) {
+    it(`settles each chat from what its recovery found when the lease check${check}`, async () => {
       const rig = await newRig()
       const stopOwnerProcess = await crashWithLiveOwner(rig, ['session-listed', 'session-closed'])
       const listed = listedIds(rig)
@@ -478,8 +479,13 @@ describe('a provider process that outlived the crash (R1T-2)', () => {
         stopped ? { deathEvidence: { kind: 'pid-absent' } } : { unreconciled: true }
       )
       expect(rig.host.hasSession('session-closed')).toBe(false)
-    }
-  )
+      // The listed chat is settled by the listed worker from the same lease answers.
+      expect(readTestJournalSessionStatus(rig.root, 'session-listed')).toMatchObject({
+        lifecycle: 'idle',
+        summary: { turnOutcome: stopped ? 'interruption' : 'unconfirmed' }
+      })
+    })
+  }
 })
 
 /** Chats whose turn was running when Orca died; the first is listed. The last one's provider
