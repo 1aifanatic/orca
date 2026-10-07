@@ -172,6 +172,22 @@ describe('local host session publication', () => {
     expect(buildMobileSessionTabSnapshots(state).flatMap((snapshot) => snapshot.tabs)).toEqual([])
   })
 
+  it.each([true, false])(
+    'withholds contradictory terminal owners in either row order (%s)',
+    (reverse) => {
+      const state = terminalState('runtime:wsl-owner')
+      const original = state.unifiedTabsByWorktree[workspaceId]![0]!
+      const rows = [
+        original,
+        { ...original, id: 'legacy-local-alias', executionHostId: 'local' as const }
+      ]
+      state.unifiedTabsByWorktree = { [workspaceId]: reverse ? rows.toReversed() : rows }
+
+      expect(buildMobileSessionTabSnapshots(state).flatMap((snapshot) => snapshot.tabs)).toEqual([])
+      expect(state.tabsByWorktree[workspaceId]).toHaveLength(1)
+    }
+  )
+
   it('withholds a legacy editor whose canonical tab proves a foreign owner', () => {
     const file = editor()
     const state = terminalState('local')
