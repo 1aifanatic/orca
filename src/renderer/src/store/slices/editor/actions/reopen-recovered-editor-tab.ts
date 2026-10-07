@@ -5,7 +5,10 @@ import { restoreRecentlyClosedTabPosition } from '../../recently-closed-tabs'
 import { buildEditorActiveResult } from '../tabs/editor-open-target-group'
 import { deferRecoveredEditorDraft } from './parked-recovered-editor-drafts'
 import { editorDocumentPathOwnerKey } from '../file-ids/editor-document-identity'
-import { recoveredDraftBlockedMessage } from './recovered-draft-block-notice'
+import {
+  recoveredDraftBlockedMessage,
+  type RecoveredDraftBlockReason
+} from './recovered-draft-block-notice'
 import {
   canReuseLocalWslAlias,
   getReusableOpenFileModes,
@@ -31,11 +34,11 @@ export function reopenRecoveredEditorTab(
   }))
   const { position, reopenId, dirtyDraftContent, ...snapshotFile } = next
   const file = { ...snapshotFile, ...getPersistedEditorOwnerFields(snapshotFile) }
-  const collisionToast = (): void => {
-    toast.info(recoveredDraftBlockedMessage('unsaved-rival', file))
+  const deferDraft = (): void => {
+    set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
   }
-  const readOnlyCollisionToast = (): void => {
-    toast.info(recoveredDraftBlockedMessage('read-only', file))
+  const notifyBlocked = (reason: RecoveredDraftBlockReason): void => {
+    toast.info(recoveredDraftBlockedMessage(reason, file))
   }
   // Raise both the unified tab and its editor surface.
   const activateLiveRecord = (liveFileId: string): void => {
@@ -80,8 +83,8 @@ export function reopenRecoveredEditorTab(
         candidateIdentity({ ...candidate, filePath: file.filePath }) !== identity
     )
     if (rivalOwner) {
-      set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
-      toast.info(recoveredDraftBlockedMessage('other-owner', file))
+      deferDraft()
+      notifyBlocked('other-owner')
       return true
     }
     const matches = beforeCollisionCheck.openFiles.filter(
@@ -93,9 +96,9 @@ export function reopenRecoveredEditorTab(
     const liveDraft = live ? beforeCollisionCheck.editorDrafts[live.id] : undefined
     if (live?.readOnly === true) {
       // A read-only record cannot retain this draft or its baseline.
-      set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
+      deferDraft()
       activateLiveRecord(live.id)
-      readOnlyCollisionToast()
+      notifyBlocked('read-only')
       return true
     }
     if (live && liveDraft === dirtyDraftContent) {
@@ -106,19 +109,14 @@ export function reopenRecoveredEditorTab(
     }
     if (live && (liveDraft !== undefined || live.isDirty === true)) {
       // Preserve the rival unsaved text for a later reopen.
-      set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
+      deferDraft()
       activateLiveRecord(live.id)
-      collisionToast()
+      notifyBlocked('unsaved-rival')
       return true
     }
   }
   // Path aliases can still reuse a live record; preserve its draft before opening.
   const beforeOpen = get()
-  const reusableRecordIds = new Set(beforeOpen.openFiles.map((f) => f.id))
-  const draftsBeforeOpen = beforeOpen.editorDrafts
-  const dirtyBeforeOpen = new Set(
-    beforeOpen.openFiles.filter((f) => f.isDirty === true).map((f) => f.id)
-  )
   let restoredFileId: string
   try {
     restoredFileId = get().openFile(file, {
@@ -126,7 +124,7 @@ export function reopenRecoveredEditorTab(
       reopenId
     })
   } catch (error) {
-    set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
+    deferDraft()
     throw error
   }
   if (
@@ -134,23 +132,23 @@ export function reopenRecoveredEditorTab(
     get().openFiles.find((f) => f.id === restoredFileId)?.readOnly === true
   ) {
     // Reuse may select a read-only record, whose draft setters do nothing.
-    set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
-    readOnlyCollisionToast()
+    deferDraft()
+    notifyBlocked('read-only')
     return true
   }
-  const reusedLiveRecord = reusableRecordIds.has(restoredFileId)
+  const reusedLiveRecord = beforeOpen.openFiles.find((f) => f.id === restoredFileId)
+  const priorDraft = beforeOpen.editorDrafts[restoredFileId]
   const reusedRecordHasUnsavedWork =
-    reusedLiveRecord &&
-    (draftsBeforeOpen[restoredFileId] !== undefined || dirtyBeforeOpen.has(restoredFileId))
+    reusedLiveRecord && (priorDraft !== undefined || reusedLiveRecord.isDirty === true)
   if (dirtyDraftContent !== undefined && reusedRecordHasUnsavedWork) {
-    if (draftsBeforeOpen[restoredFileId] === dirtyDraftContent) {
+    if (priorDraft === dirtyDraftContent) {
       // Identical text must not replace a newer live baseline.
       adoptSnapshotDiskBaseline(restoredFileId)
       return true
     }
     // Preserve the draft until the reused record can safely accept it.
-    set((s) => deferRecoveredEditorDraft(s, worktreeId, next))
-    collisionToast()
+    deferDraft()
+    notifyBlocked('unsaved-rival')
     return true
   }
   if (dirtyDraftContent !== undefined) {

@@ -29,11 +29,7 @@ export type HealedPersistedEditorFile = {
 
 export type HealedPersistedEditorFilePlan = {
   files: HealedPersistedEditorFile[]
-  /**
-   * Drafts that cannot restore as their own tab: the persisted schema identifies a document by
-   * (owner, path), so a second record with the same owner has no id of its own. Their content is
-   * handed back for the reopen stack instead of being dropped on the floor.
-   */
+  /** Same-owner drafts without a distinct tab identity go to the reopen stack. */
   recoverableDrafts: PersistedOpenFile[]
   droppedCount: number
   ownerRewrittenCount: number
@@ -45,7 +41,7 @@ const stampedRouteStateCache = new WeakMap<
   WorktreeOperationRouteState
 >()
 
-/** One focus-suppressed copy per store snapshot, so a many-workspace hydration re-spreads nothing. */
+// Cache per snapshot to avoid copying the store for every workspace.
 function stampedRouteState(state: WorktreeOperationRouteState): WorktreeOperationRouteState {
   const cached = stampedRouteStateCache.get(state)
   if (cached) {
@@ -66,12 +62,7 @@ function routeForStampedHost(hostId: string | null | undefined): WorktreeOperati
     : null
 }
 
-/**
- * A folder workspace's owner, taken only from evidence someone wrote down: the folder or project
- * group row's host, its SSH connection, or the per-host session partition it restored from.
- * `getExecutionHostIdForFolderWorkspace` cannot be used here — it defaults to `local`, and a
- * default is not evidence that the records are local.
- */
+// Use recorded ownership; the normal folder resolver's local default is not evidence.
 function resolveStampedFolderWorkspaceRoute(
   state: WorktreeOperationRouteState,
   folderWorkspaceId: string
@@ -95,14 +86,7 @@ function resolveStampedFolderWorkspaceRoute(
   )
 }
 
-/**
- * The owner a worktree's editor records must agree with, or `null` when nothing stamped can
- * place it. Both focus signals — the active workspace's host selection and the focused runtime
- * environment — are suppressed, because UI focus leaking into ownership is what wrote the
- * corrupt owners this heal removes. Git ids resolve from stamped catalog rows only; the legacy
- * unstamped fallbacks below them are inference, and inference is not a licence to rewrite an
- * owner. Folder workspaces have no catalog, so their own owner record plays that role.
- */
+/** Resolve recorded ownership without the focus defaults that caused the corruption. */
 export function resolveHealableWorktreeOwnerRoute(
   state: WorktreeOperationRouteState,
   worktreeId: string
@@ -116,8 +100,7 @@ export function resolveHealableWorktreeOwnerRoute(
   return resolution.kind === 'resolved' ? resolution.route : null
 }
 
-/** Why no liveTail term: a pinned read-only log and an SSH-pinned external path name their own host,
- *  and `editorDocumentIdentityKey` only reads liveTail on a read-only row, already excluded here. */
+// Read-only logs and explicitly targeted SSH files retain their recorded owners.
 function isOwnerHealable(file: PersistedOpenFile): boolean {
   return file.readOnly !== true && !file.externalSshTargetId?.trim()
 }
@@ -136,8 +119,7 @@ function pickSurvivor(
 ): PersistedOpenFile {
   const drafted = files.find((file) => file.dirtyDraftContent !== undefined)
   if (drafted) {
-    // Why the equal-draft scan: same text means the same document, so keep the copy that still
-    // carries the disk baseline — the restored draft has nothing to verify against without it.
+    // Equal drafts can share the baseline needed to verify recovery against disk.
     return (
       files.find(
         (file) =>
@@ -166,8 +148,7 @@ function groupByIdentity(
 ): Map<string, PersistedOpenFile[]> {
   const groups = new Map<string, PersistedOpenFile[]>()
   for (const file of files) {
-    // Why the bucket's worktreeId, not the record's: a record whose own worktreeId drifted is
-    // exactly the corruption this heal merges, so it must not split the group.
+    // A corrupt record's workspace cannot split its persisted bucket.
     const key = editorDocumentIdentityKey({ ...file, worktreeId }, ownerOf(file))
     const group = groups.get(key)
     if (group) {
@@ -179,11 +160,7 @@ function groupByIdentity(
   return groups
 }
 
-/**
- * Collapse one worktree's persisted editor records onto one survivor per document, normalizing
- * owners to the worktree's resolved route. Duplicates whose unsaved drafts disagree are kept
- * apart instead: a merge would destroy one of them.
- */
+/** Merge duplicate documents onto recorded owners while preserving every distinct draft. */
 export function planHealedPersistedEditorFiles(args: {
   files: readonly PersistedOpenFile[]
   worktreeId: string
@@ -200,8 +177,7 @@ export function planHealedPersistedEditorFiles(args: {
 
   const survivors: {
     file: PersistedOpenFile
-    /** Records whose restored ids must be redirected onto the survivor — merged siblings, plus
-     *  the survivor's own pre-heal identity when the route re-owned it. */
+    /** Includes the survivor's previous identity when its owner changed. */
     superseded: PersistedOpenFile[]
     droppedCount: number
     ownerRewritten: boolean
@@ -219,8 +195,7 @@ export function planHealedPersistedEditorFiles(args: {
           if (
             entry.dirtyDraftContent !== undefined &&
             entry.dirtyDraftContent !== file.dirtyDraftContent &&
-            // Why: a read-only row must restore clean, and the reopen snapshot drops readOnly/liveTail
-            // and reopens as 'edit' — parking its draft would hand back a writable dirty log tab.
+            // Parking a read-only log's draft would reopen it writable.
             entry.readOnly !== true
           ) {
             recoverableDrafts.push(entry)
@@ -256,8 +231,7 @@ export function planHealedPersistedEditorFiles(args: {
   const healedFiles = survivors.map((survivor) => {
     const { file, superseded, ownerRewritten } = survivor
     droppedCount += survivor.droppedCount
-    // Why the owner comparison: a divergent-draft survivor keeps its verbatim owner, so re-stamping
-    // its tabs would make them describe a record that still follows a different route.
+    // Divergent drafts keep their original owner; their tabs must agree.
     const ownerNormalized =
       route !== null &&
       isOwnerHealable(file) &&
@@ -283,12 +257,7 @@ export function planHealedPersistedEditorFiles(args: {
   }
 }
 
-/**
- * A stamp the route already names. An SSH worktree reached through a paired HUB routes as
- * `{ ssh:conn, runtime:hub }`, and `runtime:hub` is a correct stamp for it — equality alone would
- * rewrite those tabs on every hydration. A route with no host names no alias, so its tabs are
- * unstamped as before.
- */
+// A nested SSH route may validly carry its paired runtime host's stamp.
 function isEditorTabHostOnRoute(
   executionHostId: ExecutionHostId,
   route: WorktreeOperationRoute
@@ -313,10 +282,7 @@ export type HealedEditorTabHostTarget = {
   route: WorktreeOperationRoute
 }
 
-/**
- * Re-stamp editor tabs that name a host the worktree's route contradicts. Such a tab keeps
- * failing `isUnifiedTabOwnedByWorktree` for its own worktree. Unstamped tabs stay unstamped.
- */
+/** Correct contradictory host stamps so the workspace can render its recovered tabs. */
 export function alignHealedEditorTabHosts(
   tabsByWorktree: Record<string, Tab[]>,
   targetsByWorktree: Record<string, HealedEditorTabHostTarget>

@@ -5,7 +5,6 @@ import { addAdditionalValidWorkspaceKeys } from '@/lib/workspace-session-hydrati
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../../../shared/constants'
 import { folderWorkspaceKey } from '../../../../../../shared/workspace-scope'
 import type { WorkspaceVisibleTabType } from '../../../../../../shared/tab-types'
-import type { AppState } from '../../../types'
 import type { PersistedOpenFile } from '../../../../../../shared/workspace-session-state-types'
 import type { ClosedEditorTabSnapshot, OpenFile } from '../types/open-file'
 import {
@@ -47,18 +46,15 @@ function buildRecoveredDraftSnapshot(
     externalSshTargetId: file.externalSshTargetId,
     mode: 'edit',
     dirtyDraftContent: file.dirtyDraftContent,
-    // Why: without the baseline the draft derives from, a reopen restores it with nothing for the
-    // conflict scan to compare, and autosave can clobber an offline write.
+    // Carry the baseline so recovery can detect offline disk changes before autosave.
     lastKnownDiskSignature: file.lastKnownDiskSignature
   }
 }
 
 function buildRecoveredDraftReopenState(
-  state: Pick<AppState, 'recentlyClosedEditorTabsByWorktree' | 'recentlyClosedTabKindsByWorktree'>,
+  state: ParkedRecoveredEditorDrafts,
   recoveredByWorktree: Record<string, ClosedEditorTabSnapshot[]>
-): Partial<
-  Pick<AppState, 'recentlyClosedEditorTabsByWorktree' | 'recentlyClosedTabKindsByWorktree'>
-> {
+): Partial<ParkedRecoveredEditorDrafts> {
   const worktreeIds = Object.keys(recoveredByWorktree)
   if (worktreeIds.length === 0) {
     return {}
