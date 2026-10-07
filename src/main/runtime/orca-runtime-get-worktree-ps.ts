@@ -33,7 +33,11 @@ import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { buildWorktreeListingPage } from './worktree-listing-host-scope'
 import { structuredWorkerOwesWork } from './structured-worker-custody'
 import { StructuredAgentSessionStartupGate } from './structured-agent-session-startup-gate'
-import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
+import {
+  resolvedTuiAgentArgsBypassPermissions,
+  resolveTuiAgentLaunchEnv
+} from '../../shared/tui-agent-launch-defaults'
+import { isTuiAgent } from '../../shared/tui-agent-config'
 import { nativeChatShellEnvironmentPolicy } from '../../shared/native-chat-shell-environment'
 import { claudeStructuredPermissionModeForSettings } from '../claude/claude-structured-permission-mode'
 import { codexStructuredPermissionPolicyForSettings } from '../codex/codex-structured-permission-policy'
@@ -225,6 +229,17 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
         claudeStructuredPermissionModeForSettings(this.requireStore().getSettings()),
       resolveCodexPermissionPolicy: () =>
         codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings()),
+      resolveAgentFullAccess: (agent) =>
+        isTuiAgent(agent) &&
+        resolvedTuiAgentArgsBypassPermissions(
+          agent,
+          this.requireStore().getSettings(),
+          process.platform
+        ),
+      resolveAgentLaunchEnv: (agent) =>
+        isTuiAgent(agent)
+          ? resolveTuiAgentLaunchEnv(agent, this.requireStore().getSettings().agentDefaultEnv)
+          : {},
       // Same gate and same settings as agentSession.createSupport, re-read on every acquisition.
       getClaudeManagedAccountGateSettings: () => this.requireStore().getSettings(),
       resolveAgentAccountHome: (agent) => this.resolveStructuredAgentAccountHome(agent),

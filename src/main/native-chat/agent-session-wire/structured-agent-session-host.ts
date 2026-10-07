@@ -14,10 +14,7 @@ import { createRestartReconciler } from './structured-agent-session-restart-reco
 import type { AgentSessionSubscribeInput } from './structured-agent-session-subscribers'
 import { StructuredAgentSessionTaskQueue } from './structured-agent-session-task-queue'
 import * as providerSupport from './structured-agent-session-provider-support'
-import {
-  createStructuredAgentSessionHostRestore,
-  revealStructuredAgentSession
-} from './structured-agent-session-reveal'
+import * as reveal from './structured-agent-session-reveal'
 import { structuredAgentSessionOwnerStatus } from './structured-agent-session-owner-status'
 import { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
 import { attachStructuredAgentSession } from './structured-agent-session-attach-orchestration'
@@ -90,7 +87,7 @@ export class StructuredAgentSessionHost {
   private readonly reconcileLeases: ReturnType<typeof createRestartReconciler>
   /** Startup from each chat's stored state (`structured-agent-session-startup-state`), and the
    *  history restore after the listing. */
-  readonly startup: ReturnType<typeof createStructuredAgentSessionHostRestore>
+  readonly startup: ReturnType<typeof reveal.createStructuredAgentSessionHostRestore>
   private readonly lifetime: StructuredAgentSessionConversationLifetime
   private readonly conversationDelivery: conversation.StructuredAgentSessionConversationDelivery
   private readonly eventRecovery: StructuredAgentSessionEventRecovery
@@ -128,7 +125,7 @@ export class StructuredAgentSessionHost {
         agentStart.ensureStructuredAgentSessionAgent(this.attachContext(), sessionId, startedFor),
       clientDelivery: this.clientDelivery
     })
-    this.startup = createStructuredAgentSessionHostRestore(deps, {
+    this.startup = reveal.createStructuredAgentSessionHostRestore(deps, {
       reconcileLeases: this.reconcileLeases,
       resolveRecovery: (sessionId) => this.runtimeState.resolveRecovery(sessionId),
       serialize: (sessionId, task) => this.serialize(sessionId, task),
@@ -247,7 +244,7 @@ export class StructuredAgentSessionHost {
 
   /** Make one persisted session addressable again; see `structured-agent-session-reveal`. */
   revealSession = (sessionId: string): Promise<StructuredAgentSessionReveal> =>
-    revealStructuredAgentSession(this.deps, sessionId, (id) => this.lifetime.conversation(id))
+    reveal.revealStructuredAgentSession(this.deps, sessionId, this.lifetime.conversation)
 
   private serialize = this.tasks.serialize.bind(this.tasks)
 
@@ -297,6 +294,7 @@ export class StructuredAgentSessionHost {
       wakeDelivery: (sessionId) => this.conversationDelivery.loop.wake(sessionId),
       stopAgent: (sessionId, ending) => this.lifetime.stopAgent(sessionId, ending),
       wakeQueuedDrain: (sessionId) => this.queued.drain.schedule(sessionId),
+      acquireAborts: this.runtimeState.acquireAborts,
       now: () => this.now()
     }
   }

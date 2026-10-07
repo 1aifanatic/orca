@@ -15,6 +15,7 @@ import {
 import type { MutationPlan } from './structured-agent-session-mutation-plans'
 import { serializeStructuredAgentSessionCommand } from './structured-agent-session-command-entry'
 import type { StructuredAgentSessionStopEnding } from './structured-agent-session-host-lifetime'
+import type { StructuredAgentSessionAcquireAborts } from './structured-agent-session-acquire-aborts'
 import type {
   StructuredAgentSessionCaller,
   StructuredAgentSessionHostDeps,
@@ -46,6 +47,9 @@ export type StructuredAgentSessionMutationContext = {
    *  journal commit (a conversation command). Draft-table changes need no call:
    *  the draft store notifies through the journal's own commit listener. */
   wakeQueuedDrain?: (sessionId: string) => void
+  /** The provider wait each session's serialize is on (a start, an option write), which a caller
+   *  outside that serialize aborts. */
+  acquireAborts: Pick<StructuredAgentSessionAcquireAborts, 'abort' | 'begin'>
   now: () => number
 }
 
