@@ -234,7 +234,6 @@ function exit(child: ReturnType<typeof currentChild>, reason: string, startupUnp
 }
 
 /** Whether a subscriber was told the message was rejected. */
-/** Whether a subscriber was told the message was rejected. */
 function rejectedIn(events: AgentSessionSubscribeEvent[], id: string): boolean {
   return events.some(
     (event) =>

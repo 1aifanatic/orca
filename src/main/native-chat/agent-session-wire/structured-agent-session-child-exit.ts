@@ -8,7 +8,6 @@ import {
   type SubmissionRejectionFact
 } from '../../../shared/agent-session-failure'
 import { PROVIDER_EXIT_ROW_PREFIX } from '../../../shared/agent-session-stop-row-identity'
-import { isQueuedAgentJournalSubmission } from '../../../shared/agent-session-queued-submission'
 import { structuredAgentSessionFailureWordsContext } from './structured-agent-session-send-preparation'
 import type { AgentSessionJournal } from '../agent-session-journal/journal-store'
 import type { StructuredAgentSessionEndedEvent } from './structured-agent-session-adapter'
@@ -217,7 +216,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
         ? {
             exitedDuringStartup: {
               generation: child.generation,
-              chargedToQueued: startChargedToQueued(session, child)
+              startedFor: child.startedFor
             }
           }
         : {}),
@@ -263,22 +262,6 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
     }
     context.wakeDelivery?.(sessionId)
   }
-}
-
-/** Whether the message this start was for is still queued, so the delivery loop rejects it with
- *  the start's failure. */
-function startChargedToQueued(
-  session: StructuredAgentSessionChildExitSession,
-  child: StructuredAgentSessionProviderChild
-): boolean {
-  const { startedFor } = child
-  return (
-    startedFor !== undefined &&
-    (session.journal.submissions?.() ?? []).some(
-      (submission) =>
-        submission.clientMessageId === startedFor && isQueuedAgentJournalSubmission(submission)
-    )
-  )
 }
 
 function logExitFailure(

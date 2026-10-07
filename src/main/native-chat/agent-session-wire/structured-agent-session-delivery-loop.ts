@@ -266,6 +266,10 @@ export class StructuredAgentSessionDeliveryLoop {
       if (endedFailure === null) {
         return 'continue'
       }
+      // A start this message only joined fails the message it was for; this one starts afresh.
+      if (ended && ended.startedFor !== waitingFor) {
+        return 'continue'
+      }
       // A child still here is ended by the next message's step (`childWhoseStartFailed`), after any
       // exit of its own already queued: the message's failure never waits on that cleanup.
       return this.rejectStartFailure(

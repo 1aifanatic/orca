@@ -51,9 +51,8 @@ it('files nothing for a chat the user moved on in before its attempt, and spends
 })
 
 // The continuation is accepted and its agent then fails to start: the message is rejected with the
-// cause and its start's row says why, as for any message's failed start, and the failure is filed.
-// No note says it a second time; the cut keeps its own notice.
-it('says so on the continuation message when the agent cannot start for it', async () => {
+// cause, the failure is filed, and the chat says the agent did not carry on.
+it('says so in the chat when the agent cannot start for the continuation', async () => {
   const { host, acquire } = await interruptedRestart()
   await host.restartResume.list()
   acquire.mockRejectedValueOnce(new Error('provider could not reconnect'))
@@ -65,35 +64,12 @@ it('says so on the continuation message when the agent cannot start for it', asy
   expect(await host.restartResume.listFailures()).toMatchObject([
     { sessionId: SESSION, outcome: 'refused', retryable: true }
   ])
-  expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
-    { dispatchState: 'rejected', rejection: { kind: 'restartFailed' } }
-  ])
-  expect((await statusNotes(host)).map((note) => note.text)).not.toContain(
-    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE
-  )
-  expect(await readerNotes(host)).toEqual([
-    QUIT_CUT_NOTICE,
-    { text: "Codex couldn't restart. Send your message to try again.", tone: 'error' }
-  ])
-})
-
-// Orca's own fault on the way to the continuation's start says so on the message, as any failed
-// start does, so no note repeats it.
-it("notes nothing beside a continuation that Orca's own fault kept from its agent", async () => {
-  const { host } = await interruptedRestart()
-  await host.restartResume.list()
-  vi.spyOn(host['conversationDelivery'].loop['deps'], 'ensureProviderChild').mockRejectedValueOnce(
-    new Error('spawn-token mint failed')
-  )
-
-  await host.restartResume.continueAfterRestart([SESSION], 'modal')
-
-  expect((await host.journalSnapshot(SESSION)).submissions).toMatchObject([
-    { dispatchState: 'rejected', rejection: { kind: 'hostFault' } }
-  ])
-  expect((await statusNotes(host)).map((note) => note.text)).not.toContain(
-    AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE
-  )
+  expect(await statusNotes(host)).toContainEqual({
+    text: AGENT_SESSION_RESTART_CONTINUATION_REFUSED_NOTE,
+    tone: 'error'
+  })
+  // The refusal note is now the one explanation: the cut is not said a second time beside it.
+  expect(await readerNotes(host)).toEqual(await statusNotes(host))
 })
 
 // A continuation that carries on, chosen in the prompt or automatically at launch, does not stand in

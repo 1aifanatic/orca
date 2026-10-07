@@ -2,9 +2,9 @@
 // message, in one write, so a client that hides rejected messages still sees why. The delivery loop
 // writes it for the queued message a start was for, the handover for the message it was handing
 // over; the exit writes one row for the handed messages it rejected, keyed by the oldest, whose
-// words it carries, or one keyed by the start for a start no message carries. Each message state has one writer, and `rejected` is terminal, so no
-// message is failed twice. A start failing as its run's row already says writes no row; its message
-// is read under that one.
+// words it carries, or one keyed by the start for a start no message carries. Each message state
+// has one writer, and `rejected` is terminal, so no message is failed twice. A start failing as
+// its run's row already says writes no row; its message is read under that one.
 
 import type {
   AgentJournalDispatchRejection,
@@ -115,6 +115,9 @@ export function rejectStructuredAgentSessionStartFailure(
 type FailedStartSubmission = Pick<AgentJournalSubmission, 'dispatchState'> &
   Partial<Pick<AgentJournalSubmission, 'fence' | 'reason' | 'rejection'>>
 
+type ExitSubmission = FailedStartSubmission &
+  Pick<AgentJournalSubmission, 'clientMessageId' | 'handoverRecorded' | 'handedOverAt'>
+
 /** Whether a message was rejected as the failed start of the child under `fence`. */
 export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence: number): boolean {
   return (
@@ -131,14 +134,15 @@ export function rejectedAsFailedStartAt(submission: FailedStartSubmission, fence
  *  rewind start, or one no message is charged with — has only this row, keyed by the start, to say
  *  why. The journal's lane drops it when its run's row already says it. */
 export function exitStartFailureRow(
-  journal: { submissions?: () => FailedStartSubmission[] },
+  journal: { submissions?: () => ExitSubmission[] },
   exit: {
     startKey: string
     /** The message the words are for, if any. */
     wordedFor: string | undefined
+    /** The message the start was for, if any. */
+    startedFor: string | undefined
     fence: number
     rejected: readonly string[]
-    chargedToQueued: boolean
     words: AgentJournalDispatchRejection
   }
 ): JournalLifecycleMutationInput[] {
@@ -149,11 +153,12 @@ export function exitStartFailureRow(
         : exit.startKey
     return [structuredAgentSessionStartFailureRow(key, exit.words)]
   }
-  const recordedElsewhere =
-    exit.chargedToQueued ||
-    (journal.submissions?.() ?? []).some((submission) =>
+  const recordedElsewhere = (journal.submissions?.() ?? []).some(
+    (submission) =>
+      (submission.clientMessageId === exit.startedFor &&
+        isQueuedAgentJournalSubmission(submission)) ||
       rejectedAsFailedStartAt(submission, exit.fence)
-    )
+  )
   return recordedElsewhere ? [] : [structuredAgentSessionStartFailureRow(exit.startKey, exit.words)]
 }
 

@@ -256,6 +256,26 @@ describe('the one row a failed start leaves', () => {
     expect(rowsWritten(session)).toEqual([])
   })
 
+  // The /compact waits for a start of its own, which writes its own row if it fails too.
+  it('is not worded for a /compact still queued behind the start', async () => {
+    const base = startingSession([
+      { clientMessageId: 'compact-1', dispatchState: 'pending', handoverRecorded: true }
+    ])
+    const session = {
+      ...base,
+      journal: { ...base.journal, itemBody: () => structuredAgentSessionCompactBody() }
+    }
+
+    await settleStructuredAgentSessionChildExit(contextFor(session), ended)
+
+    expect(rowsWritten(session)).toEqual([
+      expect.objectContaining({
+        identity: { provider: 'orca', clientMessageId: `start-failure:${GENERATION}` },
+        body: expect.objectContaining({ text: STARTUP_TEXT })
+      })
+    ])
+  })
+
   it("is not written again beside a message already rejected as this start, with its writer's row", async () => {
     const session = startingSession([
       {

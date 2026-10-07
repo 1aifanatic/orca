@@ -55,20 +55,16 @@ function journalStartFailureAlreadyStated(
   }
   const stated =
     latest?.body.kind === 'status' ? readAgentSessionFailureFact(latest.body.failure) : undefined
-  // A command's row names the command's next step, so it starts no run for a message.
-  if (
+  return (
     latest !== undefined &&
-    isStructuredAgentSessionCommandStartFailureRow(latest.itemId, (id) => state.items.get(id)?.body)
-  ) {
-    return false
-  }
-  if (
-    latest === undefined ||
-    stated === undefined ||
-    !sameAgentSessionFailureFact(stated, failure)
-  ) {
-    return false
-  }
-  // Any send accepted after the row, a command too, ends its run: the next failure is news.
-  return state.latestAcceptedSequence < latest.sequence
+    stated !== undefined &&
+    sameAgentSessionFailureFact(stated, failure) &&
+    // A command's row names the command's next step, so it starts no run for a message.
+    !isStructuredAgentSessionCommandStartFailureRow(
+      latest.itemId,
+      (id) => state.items.get(id)?.body
+    ) &&
+    // Any send accepted after the row, a command too, ends its run: the next failure is news.
+    state.latestAcceptedSequence < latest.sequence
+  )
 }

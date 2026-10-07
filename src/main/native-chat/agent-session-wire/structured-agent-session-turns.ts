@@ -227,8 +227,13 @@ export async function handOverSubmission(
     return
   }
   try {
-    if (outcome.state === 'rejected' && isFailedStartOrHostFault(outcome)) {
+    if (
+      outcome.state === 'rejected' &&
+      isFailedStartOrHostFault(outcome) &&
+      ctx.providerChildPhase?.() !== 'ready'
+    ) {
       // A start that failed under it: the message and that start's row, as any failed start leaves.
+      // A child past its start that dies says so in its exit's own row.
       await rejectWithStartFailureRow(ctx.journal, {
         clientMessageId,
         words: { reason: outcome.reason, rejection: outcome.rejection },

@@ -73,9 +73,9 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
   /** Who a failed start's sentence names. */
   failureTextContext?: AgentSessionFailureWordsContext
   /** The provider never finished starting: the start that failed, keyed by the child's
-   *  generation, for the row a start no message carries leaves. `chargedToQueued`: a queued
-   *  message is still waiting on this start, so the delivery loop rejects it with its own row. */
-  exitedDuringStartup?: { generation: string | null; chargedToQueued?: boolean }
+   *  generation, for the row a start no message carries leaves; `startedFor`, the message it was
+   *  started for, which the delivery loop rejects with its own row while it is still queued. */
+  exitedDuringStartup?: { generation: string | null; startedFor?: string }
   /** The exit, watched: what that child's own translator could only end `unverifiable` (its stream
    *  closed before the exit was proven) is revised in this batch. */
   exit?: StructuredAgentSessionWatchedExit
@@ -116,7 +116,7 @@ export async function settleStructuredAgentSessionDeadGeneration(input: {
           wordedFor,
           fence: input.fence,
           rejected: settled,
-          chargedToQueued: input.exitedDuringStartup.chargedToQueued === true,
+          startedFor: input.exitedDuringStartup.startedFor,
           words: startupFailure
         })
       )

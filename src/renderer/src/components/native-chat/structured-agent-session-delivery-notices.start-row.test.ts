@@ -15,7 +15,7 @@ import {
 } from '../../../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
-import { entry, texts } from './structured-agent-session-delivery-notices-test-fixtures'
+import { entry, texts } from './structured-agent-session-delivery-notices.test-fixture'
 
 const startFailed: AgentSessionFailureFact = {
   kind: 'startFailed',

@@ -317,6 +317,33 @@ describe('a queued message whose start fails', () => {
     expect(closeSession).toHaveBeenCalledOnce()
     expect(generation).toBe(3)
   })
+  // A child past its start that dies says so in its exit's own row.
+  it('writes no start row for a send a started child refused because it ended', async () => {
+    dispatch.mockImplementation(accepted)
+    const first = await send('first')
+    await eventually(async () =>
+      expect(await submission(first)).toMatchObject({ dispatchState: 'accepted' })
+    )
+    await host.handleAdapterEvent({
+      type: 'started',
+      sessionId: SESSION,
+      fence: store.getRecord(SESSION)?.lease.runtimeFence ?? 0,
+      acquisitionGeneration: `generation-${generation}`,
+      reportedOptions: { model: 'gpt-5' },
+      restoreSkippedOptions: []
+    })
+    dispatch.mockResolvedValueOnce({
+      state: 'rejected',
+      ...agentSessionFailureWords(agentSessionFailureFact('providerExited'), {
+        surface: 'rejection'
+      })
+    })
+
+    const second = await send('second')
+
+    await rejected(second)
+    expect(await startRows()).toEqual([])
+  })
 })
 
 describe('a failure on the way to recording a failed start', () => {
@@ -459,6 +486,20 @@ describe('a start that fails while its child exits', () => {
     await rejected(handed)
     await eventually(() => expect(dispatched()).toEqual([handed, queued]))
     expect(framedStates(queued)).not.toContain('rejected')
+    expect(await startRows()).toEqual([rowFor(handed)])
+  })
+
+  // Its pass joined the starting child and waits to hand it over when the exit lands between steps.
+  it('gives a message that only joined the failed start its own start', async () => {
+    const handed = await sendHanded('handed')
+    dispatch.mockImplementation(accepted)
+    const joined = await send('joined')
+
+    await exitBeforeProof()
+
+    await rejected(handed)
+    await eventually(() => expect(dispatched()).toEqual([handed, joined]))
+    expect(framedStates(joined)).not.toContain('rejected')
     expect(await startRows()).toEqual([rowFor(handed)])
   })
 })

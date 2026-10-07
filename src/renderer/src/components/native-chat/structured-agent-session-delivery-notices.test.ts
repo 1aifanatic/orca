@@ -16,7 +16,7 @@ import {
   NOT_FAILED_HERE,
   SENDING,
   texts
-} from './structured-agent-session-delivery-notices-test-fixtures'
+} from './structured-agent-session-delivery-notices.test-fixture'
 
 describe('the notice on each message that did not go through', () => {
   // Recorded by the host, so sending one again is a new message: no Retry.
