@@ -226,8 +226,8 @@ export function resolveWorktreeStatus(args: {
   if (args.hasLiveMonitoring || heuristic === 'monitoring') {
     return 'monitoring'
   }
-  // Why: a failure with no expiry (a departed agent's, an old native chat's) must not pin the card
-  // over live work.
+  // Why: a failure with no expiry (a departed agent's, a native chat's) must not pin the card over
+  // live work.
   if (args.hasRetainedFailed) {
     return 'failed'
   }

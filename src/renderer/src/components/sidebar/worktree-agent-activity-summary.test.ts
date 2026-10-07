@@ -401,15 +401,21 @@ describe('selectWorktreeAgentActivitySummary', () => {
       )
     })
 
-    // A mark that never expires must not hide what another agent is doing or just finished.
-    it("shows live work and a fresh finish over a native chat's old verdict", () => {
+    // A mark that never expires must not hide what another agent is doing or just finished, and its
+    // rank must not change with its age: the card would flip on a timer with nothing changed.
+    it.each([
+      ['an old', 1_000],
+      ['a fresh', 1_000 + AGENT_STATUS_STALE_AFTER_MS]
+    ])("shows live work and a fresh finish over a native chat's %s verdict", (_age, endedAt) => {
       const at = 1_000 + AGENT_STATUS_STALE_AFTER_MS + 60_000
-      const old = (outcome: 'failure' | 'cancellation' | 'interruption'): AgentStatusEntry => ({
+      const ended = (outcome: 'failure' | 'cancellation' | 'interruption'): AgentStatusEntry => ({
         ...makeAgentStatusEntry({
           paneKey: failedKey,
           state: 'done',
-          mainAgent: { state: 'done', outcome, stateStartedAt: 1_000 }
+          mainAgent: { state: 'done', outcome, stateStartedAt: endedAt }
         }),
+        updatedAt: endedAt,
+        stateStartedAt: endedAt,
         structuredHost: 'held'
       })
       const fresh = (state: 'working' | 'done'): AgentStatusEntry => ({
@@ -436,19 +442,18 @@ describe('selectWorktreeAgentActivitySummary', () => {
         return resolveWorktreeStatus({ tabs: [], browserTabs: [], ptyIdsByTabId: {}, ...summary })
       }
 
-      expect(card([fresh('working'), old('failure')])).toBe('working')
-      expect(card([fresh('done'), old('cancellation')])).toBe('done')
-      expect(card([old('interruption')])).toBe('interrupted')
-      // A departed agent's done never expires either, so it does not take over once the chat's mark
-      // passes the freshness window: nothing in the chat changed.
+      expect(card([fresh('working'), ended('failure')])).toBe('working')
+      expect(card([fresh('done'), ended('cancellation')])).toBe('done')
+      expect(card([ended('interruption')])).toBe('interrupted')
+      // A departed agent's done never expires either, so it does not take over the chat's mark.
       const departedDone = {
         'tab-2:0': {
           ...retainedFailure['tab-2:0'],
           entry: makeAgentStatusEntry({ paneKey: 'tab-2:0', state: 'done' })
         }
       }
-      expect(card([old('interruption')], departedDone)).toBe('interrupted')
-      expect(card([old('cancellation')], departedDone)).toBe('interrupted')
+      expect(card([ended('interruption')], departedDone)).toBe('interrupted')
+      expect(card([ended('cancellation')], departedDone)).toBe('interrupted')
     })
 
     it('reads a retained cut-short agent as interrupted, not done', () => {

@@ -251,7 +251,9 @@ describe('a chat whose start failed', () => {
     })
     expect(row && agentVerdictDisplayMark(row)).toBe('failed')
     expect(tabStatus()).toBe('failed')
-    expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID).hasFailed).toBe(true)
+    expect(
+      selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID).hasRetainedFailed
+    ).toBe(true)
   })
 
   it('drops the mark while a retry starts it, and leaves the started chat to the host', async () => {
@@ -345,13 +347,16 @@ describe('a chat whose start failed', () => {
   })
 
   // A native chat's settled Failed is its state, so it stays until the chat changes, as a host's
-  // does; past the freshness window it yields to live work on the card, and a restart does not
-  // re-date it.
+  // does; on the card it yields to live work at any age, and a restart does not re-date it.
   it('stays failed like a host-reported failure, past the freshness window and a restart', async () => {
     setClock(FAILED_AT)
     await connect()
     await failStart()
     expect(tabStatus()).toBe('failed')
+    expect(selectWorktreeAgentActivitySummary(store().getState(), WORKTREE_ID)).toMatchObject({
+      hasFailed: false,
+      hasRetainedFailed: true
+    })
 
     setClock(FAILED_AT + AGENT_STATUS_STALE_AFTER_MS + 1)
     await restart()

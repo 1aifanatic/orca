@@ -25,9 +25,8 @@ export type WorktreeAgentActivitySummary = {
   hasUnconfirmed: boolean
   hasLiveDone: boolean
   hasRetainedDone: boolean
-  /** A failure with no expiry (a departed agent's, or a native chat's kept past the freshness
-   *  window); unlike `hasFailed` it yields to live work. The retained marks below yield to a
-   *  fresh finish too. */
+  /** A failure with no expiry (a departed agent's, or a native chat's settled verdict); unlike
+   *  `hasFailed` it yields to live work. The retained marks below yield to a fresh finish too. */
   hasRetainedFailed: boolean
   hasRetainedInterrupted: boolean
   hasRetainedUnconfirmed: boolean
@@ -140,7 +139,8 @@ function getWorktreeAgentActivitySummaries(
       continue
     }
     const fresh = isExplicitAgentStatusFresh(entry, now, AGENT_STATUS_STALE_AFTER_MS)
-    if (!fresh && !isSettledNativeChatVerdict(entry)) {
+    const settledNativeChat = isSettledNativeChatVerdict(entry)
+    if (!fresh && !settledNativeChat) {
       // Why: staleness ends this row's authority but not the pane's identity — see
       // `stalePaneIdsByTabId`. Dropping both let Orca's self-authored permission title outlive
       // the row it came from and pin the card to a question nobody was asking.
@@ -151,10 +151,12 @@ function getWorktreeAgentActivitySummaries(
     if (entry.state === 'done') {
       addParentPaneId(summary, orchestration, worktreeId, tabIdToWorktreeId)
     }
-    if (fresh) {
-      applyAgentPaneActivityFlags(summary, entry)
-    } else {
+    // Why: a native chat's settled mark ranks the same at any age; a tier change at the freshness
+    // window would flip the card on a timer with no change in the chat.
+    if (settledNativeChat) {
       applyRetainedAgentMark(summary, entry)
+    } else {
+      applyAgentPaneActivityFlags(summary, entry)
     }
   }
 
@@ -203,9 +205,9 @@ function getWorktreeAgentActivitySummaries(
   return summaries
 }
 
-/** A mark with no expiry: a departed agent's, or a native chat's settled verdict past the freshness
- *  window. It keeps showing, but in the retained tier, so live work and a fresh finish show over it;
- *  a failed or cut-short agent is retained so that stays visible, not so it reads done. */
+/** A mark with no expiry: a departed agent's, or a native chat's settled verdict at any age. It keeps
+ *  showing, but in the retained tier, so live work and a fresh finish show over it; a failed or
+ *  cut-short agent is retained so that stays visible, not so it reads done. */
 function applyRetainedAgentMark(
   summary: WorktreeAgentActivitySummary,
   entry: Parameters<typeof agentVerdictDisplayMark>[0]
