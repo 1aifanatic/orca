@@ -31,6 +31,7 @@ import {
 import { wslClaudeProfilePointer } from './claude-profile-wsl-paths'
 import { isDirectory, listClaudeProfileHomes } from './claude-profile-installed-router'
 import { removeClaudeAccountFolder } from './claude-account-folder'
+import { resolveLoginShellEnvironment } from '../startup/login-shell-environment'
 
 export type ClaudeProfileRouterSettings = Pick<
   GlobalSettings,
@@ -48,17 +49,25 @@ export type ClaudeProfileRouterSettings = Pick<
 export class ClaudeProfileRouter {
   readonly pointerPath: string
   private readonly setups = new Map<string, Promise<ClaudeProfileSetupReport>>()
+  private env: NodeJS.ProcessEnv
+  private readonly envReady: Promise<unknown>
   constructor(
     private readonly args: {
       getSettings: () => ClaudeProfileRouterSettings
       dataRoot: string
       userHome?: string
+      /** Tests replace the login shell's env. */
       env?: NodeJS.ProcessEnv
       /** Tests replace the worker. */
       runSetup?: typeof runClaudeProfileSetupInWorker
     }
   ) {
     this.pointerPath = join(args.dataRoot, 'claude-profiles', 'selected-host')
+    this.env = args.env ?? process.env
+    // Why the login shell's: a Dock launch lacks the CLAUDE_CONFIG_DIR an rc exports. Chats share it.
+    this.envReady = args.env
+      ? Promise.resolve()
+      : resolveLoginShellEnvironment().then((env) => (this.env = env))
   }
 
   private get userHome(): string {
@@ -103,6 +112,7 @@ export class ClaudeProfileRouter {
 
   /** Waits for a setup that is running or never ran; otherwise launches at once. */
   async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
+    await this.envReady
     const profile = this.selectedProfile()
     // Why the running check: setup writes its marker when it starts, not when it finishes.
     if (
@@ -141,7 +151,7 @@ export class ClaudeProfileRouter {
 
   /** The user's own CLAUDE_CONFIG_DIR, which wins over the selection in their terminals. */
   userConfigDir(): string | undefined {
-    return readUserClaudeConfigDir(this.args.env ?? process.env)
+    return readUserClaudeConfigDir(this.env)
   }
 
   private describe(accountId: string): ClaudeProfileDescriptor {
@@ -163,6 +173,7 @@ export class ClaudeProfileRouter {
   }
 
   private async runSetup(profile: ClaudeProfileDescriptor): Promise<ClaudeProfileSetupReport> {
+    await this.envReady
     const hooks = isAgentStatusHooksEnabledForAgent(this.args.getSettings(), 'claude')
     const claudeVersion = hooks ? await probeClaudeCliVersion(resolveClaudeCommand()) : null
     const report = await (this.args.runSetup ?? runClaudeProfileSetupInWorker)({

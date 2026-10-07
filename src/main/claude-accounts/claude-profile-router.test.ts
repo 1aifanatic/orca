@@ -24,6 +24,10 @@ import {
 } from './claude-profile-installed-router'
 
 // Why: removal deletes macOS Keychain items; the test must never reach the real Keychain.
+// The login shell exports what a Dock launch's own env lacks.
+vi.mock('../startup/login-shell-environment', () => ({
+  resolveLoginShellEnvironment: async () => ({ CLAUDE_CONFIG_DIR: resolve('/shell/own') })
+}))
 vi.mock('../macos-keychain/generic-password', () => ({
   execSecurityCommand: async () => {
     throw new Error('The specified item could not be found in the keychain.')
@@ -87,21 +91,23 @@ describe('ClaudeProfileRouter', () => {
     expect(f.router.accountHome('b')).toBe(f.home('b'))
     expect(f.router.userConfigDir()).toBe(resolve('/custom/claude'))
     const prepared = f.router.prepareAccount('b')
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
     f.setup.settle()
     await expect(prepared).resolves.toBe(f.home('b'))
     f.setup.outcome = 'refused'
     const refused = f.router.prepareAccount('b')
+    await vi.waitFor(() => expect(f.setup.calls).toBe(2))
     f.setup.settle()
     await expect(refused).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
   })
 
-  it('publishes the selected folder, System default as empty, and no file without accounts', () => {
+  it('publishes the selected folder, System default as empty, and no file without accounts', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
     f.router.publish()
     expect(readFileSync(f.router.pointerPath, 'utf8')).toBe(f.home('a'))
     // publish returned while its setup is still running in the background.
-    expect(f.setup.calls).toBe(1)
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
 
     f.settings.activeClaudeManagedAccountId = null
     f.router.publish()
@@ -179,7 +185,7 @@ describe('ClaudeProfileRouter', () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
     f.router.publish()
-    expect(f.setup.calls).toBe(1)
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
     const removal = f.router.removeAccount('a')
     await new Promise((resolve) => setTimeout(resolve, 10))
     // Setup writes into the folder before it settles, as the worker does.
@@ -188,6 +194,20 @@ describe('ClaudeProfileRouter', () => {
     f.setup.settle()
     await removal
     expect(existsSync(join(f.dataRoot, 'claude-profiles', 'a'))).toBe(false)
+  })
+
+  it('takes System default from the login shell, which a Dock launch does not inherit', async () => {
+    const f = fixture()
+    f.settings.activeClaudeManagedAccountId = null
+    const router = new ClaudeProfileRouter({
+      getSettings: () => f.settings,
+      dataRoot: f.dataRoot,
+      userHome: f.userHome
+    })
+    await expect(router.prepareLaunch()).resolves.toMatchObject({
+      configDir: resolve('/shell/own'),
+      provenance: 'system'
+    })
   })
 
   it('treats a CLAUDE_CONFIG_DIR an outer Orca injected as not the user’s', () => {
