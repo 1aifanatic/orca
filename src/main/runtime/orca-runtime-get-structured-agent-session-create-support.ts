@@ -39,10 +39,8 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   ): Promise<{ supported: boolean; reason?: 'agent' | 'remote' | 'wsl' }> {
     const location = await this.resolveStructuredAgentSessionLocation(worktreeSelector)
     return resolveStructuredAgentSessionCreateSupport({
-      agent,
       location,
-      adapterSupportsCreate: await this.structuredAgentSupportsLocation(agent, location),
-      getSettings: () => this.requireStore().getSettings()
+      adapterSupportsCreate: await this.structuredAgentSupportsLocation(agent, location)
     })
   }
 

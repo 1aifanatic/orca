@@ -19,11 +19,6 @@ import {
 import type { ClaudeStructuredAuthPolicy } from '../claude-accounts/claude-structured-auth-policy'
 import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
-  hasWslBoundClaudeAccount,
-  structuredClaudeMatchesActiveManagedAccount,
-  type ClaudeManagedAccountGateSettings
-} from '../native-chat/claude-structured-managed-account-support'
-import {
   claudeChildEnv,
   claudeProbeEnv,
   resolveClaudeChildEnvSources,
@@ -126,8 +121,6 @@ export type ClaudeStructuredLaunchResolverDeps = {
   resolveAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy
   /** The user's Agent Permissions setting, re-read per acquisition. Absent means prompting. */
   resolvePermissionMode?: () => Promise<PermissionMode> | PermissionMode
-  /** Account state for the managed-account gate; null when it cannot be read, which refuses. */
-  readManagedAccountGate?: () => ClaudeManagedAccountGateSettings | null
   /** Whether this CLI takes the thinking-display flag. Absent ⇒ the flag is never passed. */
   thinkingDisplay?: Pick<ClaudeThinkingDisplaySupport, 'argsFor'>
   /** Whether Claude wrote a transcript for this id; defaults to the transcript resolver. */
@@ -198,18 +191,7 @@ export function createClaudeStructuredLaunchResolver(
     if (record.accountHome.variable !== pinned) {
       throw new Error(`claude sessions pin ${pinned}, not ${record.accountHome.variable}`)
     }
-    // Every acquisition, not just the first: the account state can change under a live session, and
-    // a reacquire after an unexpected exit would otherwise spawn under whatever it has become.
-    // Codex has no gate here — it resolves its account on a different path.
     const router = getClaudeProfileRouter()
-    const gate = router ? undefined : deps.readManagedAccountGate?.()
-    if (gate !== undefined && !structuredClaudeMatchesActiveManagedAccount(gate)) {
-      // Unreadable account state names no situation a person can act on, so only the log reads it.
-      throw new AgentSessionPreSpawnError(
-        'structured Claude is not offered under the active managed Claude account',
-        gate && hasWslBoundClaudeAccount(gate) ? { reason: 'managedAccountUnsupported' } : {}
-      )
-    }
     // A Claude record's chain holds only Claude handles; the attach admission refuses anything else.
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)?.handle ?? null
     if (
@@ -238,19 +220,6 @@ export function createClaudeStructuredLaunchResolver(
       (await deps.resolvePermissionMode?.()) ?? 'default'
     )
     const thinkingDisplayArgs = (await thinkingDisplay) ?? {}
-    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
-    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
-    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
-    const resumes = async (claudeConfigDir: string): Promise<boolean> =>
-      head !== null &&
-      (await claudeLaunchResumesTranscript({
-        router,
-        leafUuid,
-        providerSessionId,
-        claudeConfigDir,
-        hasTranscript: deps.hasTranscript
-      }))
-    const resumedWithoutRouter = router ? undefined : await resumes(record.accountHome.path)
     const { command, env } = await resolveClaudeStructuredInvocation(
       deps,
       (base) =>
@@ -263,7 +232,18 @@ export function createClaudeStructuredLaunchResolver(
       sources
     )
     const launchHome = await resolveClaudeStructuredLaunchHome(router, env, record.accountHome.path)
-    const resumesTranscript = resumedWithoutRouter ?? (await resumes(launchHome))
+    // A start that failed before its first turn wrote no transcript, and `--resume` of an absent
+    // one exits; launch that id fresh instead. With a transcript, `--session-id` would collide.
+    const leafUuid = head ? claudeProviderHandleLeafUuid(head) : null
+    const resumesTranscript =
+      head !== null &&
+      (await claudeLaunchResumesTranscript({
+        router,
+        leafUuid,
+        providerSessionId,
+        claudeConfigDir: launchHome,
+        hasTranscript: deps.hasTranscript
+      }))
     return {
       pathToClaudeCodeExecutable: command,
       options: {

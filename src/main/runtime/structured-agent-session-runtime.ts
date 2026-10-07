@@ -31,7 +31,6 @@ import {
 import { StructuredAgentSessionAdapterRouter } from '../native-chat/agent-session-wire/structured-agent-session-adapter-router'
 import { StructuredAgentRegistry } from '../native-chat/agent-session-wire/structured-agent-registry'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
-import type { ClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import {
   openAgentSessionRecordStoreOnce,
   releaseAgentSessionRecordStore,
@@ -119,8 +118,6 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveAgentFullAccess?: (agent: string) => boolean
   /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
   resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
-  /** Raw settings getter; the reader that fails closed around it is built here, in checked code. */
-  getClaudeManagedAccountGateSettings?: () => ClaudeManagedAccountGateSettings
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
   /** Which login-shell variables Codex and Claude children inherit; absent inherits all. */
   resolveShellEnvironmentPolicy?: () => NativeChatShellEnvironmentPolicy

@@ -15,7 +15,6 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import type { StructuredAgentDefinition } from '../native-chat/agent-session-wire/structured-agent-definition'
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
-import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
 import { replayJournal } from '../native-chat/agent-session-journal/journal-open'
@@ -133,12 +132,6 @@ function createClaudeAdapter(
     resolveClaudeAuthPolicy: deps.resolveClaudeAuthPolicy,
     ...(deps.resolveClaudePermissionMode
       ? { resolveClaudePermissionMode: deps.resolveClaudePermissionMode }
-      : {}),
-    ...(deps.getClaudeManagedAccountGateSettings
-      ? {
-          readClaudeManagedAccountGate: () =>
-            readClaudeManagedAccountGateSettings(deps.getClaudeManagedAccountGateSettings!)
-        }
       : {}),
     onLifecycleEvent: context.deliverLifecycle,
     logger: deps.logger,
