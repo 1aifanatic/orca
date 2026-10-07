@@ -102,7 +102,7 @@ test('twelve image terminals release decoder and image storage across reset and 
         expect(resource.pending).toBe(2)
         expect(resource.decoderBytes).toBeGreaterThan(0)
         expect(resource.decoderBytes).toBeLessThanOrEqual(32_000_000)
-        expect(resource.blobBytes).toBeLessThanOrEqual(32_000_000)
+        expect(resource.encodedBytes).toBeLessThanOrEqual(32_000_000)
         expect(resource.storageMB).toBeLessThanOrEqual(32)
       }
       samples.push({ stage: `cycle-${cycle}-loaded`, resources: loaded, heap: await sampleHeap() })
@@ -124,10 +124,10 @@ test('twelve image terminals release decoder and image storage across reset and 
               images: resource.images,
               pending: resource.pending,
               decoderBytes: resource.decoderBytes,
-              blobBytes: resource.blobBytes
+              encodedBytes: resource.encodedBytes
             }
           })
-          .toEqual({ images: 0, pending: 0, decoderBytes: 0, blobBytes: 0 })
+          .toEqual({ images: 0, pending: 0, decoderBytes: 0, encodedBytes: 0 })
       }
       samples.push({
         stage: `cycle-${cycle}-reset`,

@@ -56,7 +56,7 @@ describe('xterm image memory contract', () => {
         expect(pending.length).toBeLessThanOrEqual(2)
       }
       await writeKitty(terminal, 'm=0,q=2', 'AA==')
-      expect(handler._kittyStorage.getImage(40).data.size).toBe(4)
+      expect(handler._kittyStorage.getImage(40).data.byteLength).toBe(4)
       terminal.dispose()
       expect(handler._pendingTransmissions.size).toBe(0)
     } finally {
@@ -82,14 +82,14 @@ describe('xterm image memory contract', () => {
       for (let id = 1; id <= 4; id++) {
         await writeKitty(terminal, `a=t,f=32,s=250,v=200,i=${id},q=2`, payload)
         const retainedBytes = [...handler._kittyStorage.images.values()].reduce(
-          (total, image) => total + image.data.size,
+          (total, image) => total + image.data.byteLength,
           0
         )
         expect(retainedBytes).toBeLessThanOrEqual(500_000)
       }
       expect(handler._kittyStorage.getImage(1)).toBeUndefined()
-      expect(handler._kittyStorage.getImage(3).data.size).toBe(200_000)
-      expect(handler._kittyStorage.getImage(4).data.size).toBe(200_000)
+      expect(handler._kittyStorage.getImage(3).data.byteLength).toBe(200_000)
+      expect(handler._kittyStorage.getImage(4).data.byteLength).toBe(200_000)
       await writeKitty(terminal, 'a=d,d=A,q=2', '')
       expect(handler._kittyStorage.images.size).toBe(0)
     } finally {
@@ -110,7 +110,7 @@ describe('xterm image memory contract', () => {
       await writeKitty(terminal, 'a=t,f=32,s=250,v=200,i=3,q=2', payload)
       expect(storage.getImage(1)).toBeDefined()
       expect(storage.getImage(2)).toBeUndefined()
-      expect(storage.getImage(3).data.size).toBe(200_000)
+      expect(storage.getImage(3).data.byteLength).toBe(200_000)
     } finally {
       terminal.dispose()
     }
@@ -121,7 +121,7 @@ describe('xterm image memory contract', () => {
     const payload = Buffer.alloc(600_000, 1).toString('base64')
     try {
       await writeKitty(terminal, 'a=t,f=32,s=500,v=300,i=1,q=2', payload)
-      expect(handler._kittyStorage.getImage(1).data.size).toBe(600_000)
+      expect(handler._kittyStorage.getImage(1).data.byteLength).toBe(600_000)
     } finally {
       terminal.dispose()
     }

@@ -10,7 +10,7 @@ import {
 afterEach(() => vi.unstubAllGlobals())
 
 function source(bytes = 1) {
-  return { data: new Blob([new Uint8Array(bytes)]), width: 1, height: 1, format: 100 }
+  return { data: new Uint8Array(bytes), width: 1, height: 1, format: 100 }
 }
 
 function place(h, id, placement = 0) {

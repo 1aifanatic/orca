@@ -124,7 +124,7 @@ describe('xterm image allocation lifecycle', () => {
       png.writeUInt32BE(100_000, 16)
       png.writeUInt32BE(100_000, 20)
       png.writeUInt32BE(crc32(png.subarray(12, 29)), 29)
-      const result = await kitty._createBitmap({ format: 100, data: new Blob([png]) }).then(
+      const result = await kitty._createBitmap({ format: 100, data: png }).then(
         () => 'accepted',
         () => 'rejected'
       )

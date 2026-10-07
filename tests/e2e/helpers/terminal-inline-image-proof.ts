@@ -58,7 +58,7 @@ export type InlineImageResources = {
   storageMB: number
   pending: number
   decoderBytes: number
-  blobBytes: number
+  encodedBytes: number
 }
 
 /** One walk of the addon's private state, shared by every image spec so the
@@ -74,7 +74,7 @@ export async function readInlineImageResources(
         string,
         {
           _pendingTransmissions?: Map<number, { decoder: { _mem: { buffer: ArrayBuffer } } }>
-          _kittyStorage?: { images: Map<number, { data: Blob }> }
+          _kittyStorage?: { images: Map<number, { data: Uint8Array }> }
         }
       >
       storageUsage?: number
@@ -102,8 +102,8 @@ export async function readInlineImageResources(
           (sum, upload) => sum + upload.decoder._mem.buffer.byteLength,
           0
         ),
-        blobBytes: [...(kitty?._kittyStorage?.images.values() ?? [])].reduce(
-          (sum, image) => sum + image.data.size,
+        encodedBytes: [...(kitty?._kittyStorage?.images.values() ?? [])].reduce(
+          (sum, image) => sum + image.data.byteLength,
           0
         )
       }
@@ -121,8 +121,8 @@ export async function readInlineImageState(page: Page) {
   if (!resources?.addon) {
     return null
   }
-  const { images, storageMB, pending, decoderBytes, blobBytes } = resources
-  return { images, storageMB, pending, decoderBytes, blobBytes }
+  const { images, storageMB, pending, decoderBytes, encodedBytes } = resources
+  return { images, storageMB, pending, decoderBytes, encodedBytes }
 }
 
 export async function assertInlineImagePixels(page: Page, screenshotPath: string): Promise<void> {

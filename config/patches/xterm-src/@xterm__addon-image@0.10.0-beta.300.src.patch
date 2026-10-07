@@ -979,7 +979,7 @@ index 53d357a973117b844ebf2e236d6892334f15c27b..10302beee5c83287d7aa24f6c42ceecb
 +  setImageLayerProvider?(provider: IImageLayerProvider | undefined): void;
  }
 diff --git a/src/kitty/KittyGraphicsHandler.ts b/src/kitty/KittyGraphicsHandler.ts
-index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b0759f8fdc3 100644
+index de889dfff75d9ecc8ab47a025e6989ffe75bb202..8075db07908f67c926ebddcd90c09a52a93d39f9 100644
 --- a/src/kitty/KittyGraphicsHandler.ts
 +++ b/src/kitty/KittyGraphicsHandler.ts
 @@ -7,6 +7,7 @@ import { IDisposable } from '@xterm/xterm';
@@ -1047,7 +1047,18 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
      }
  
      if (this._activeDecoder.put(data.subarray(start, end)) !== DECODER_OK) {
-@@ -382,7 +415,9 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -285,9 +318,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+     }
+     this._activeDecoder = null;
+ 
+-    // Handle command first — handlers create Blob/ImageData from imageBytes,
+-    // which copies the data. Only then is it safe to release the decoder's
+-    // wasm memory that imageBytes points into.
++    // The source store copies bytes before their decoder memory is released.
+     const result = this._handleCommandWithBytesAndCmd(finalCmd, imageBytes, decodeError);
+     if (decoder) {
+       decoder.release();
+@@ -382,7 +413,9 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
        this._sendResponse(id, 'ENOENT:image not found', cmd.quiet ?? 0, cmd.placementId);
        return true;
      }
@@ -1058,7 +1069,16 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
      return result.then(success => {
        this._sendResponse(id, success ? 'OK' : 'EINVAL:image rendering failed', cmd.quiet ?? 0, cmd.placementId);
        return true;
-@@ -433,7 +468,9 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -411,7 +444,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+     if (decodeError || bytes.length === 0) return true;
+ 
+     this._kittyStorage.storeImage(cmd.id, {
+-      data: new Blob([bytes as BlobPart]),
++      data: bytes,
+       width: cmd.width ?? 0,
+       height: cmd.height ?? 0,
+       format: (cmd.format ?? KittyFormat.RGBA) as 24 | 32 | 100,
+@@ -433,7 +466,9 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
      const id = cmd.id ?? this._kittyStorage.lastImageId;
      const image = this._kittyStorage.getImage(id);
      if (image) {
@@ -1069,7 +1089,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
        if (cmd.id !== undefined) {
          return result.then(success => {
            this._sendResponse(id, success ? 'OK' : 'EINVAL:image rendering failed', cmd.quiet ?? 0);
-@@ -500,28 +537,25 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -500,28 +535,25 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
      // Per spec: default delete selector is 'a' (delete all visible placements)
      const selector = cmd.deleteSelector ?? 'a';
  
@@ -1108,7 +1128,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
          }
          break;
        default:
-@@ -550,49 +584,17 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -550,49 +582,17 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
    }
  
    private async _decodeAndDisplay(image: IKittyImageData, cmd: IKittyCommand): Promise<void> {
@@ -1163,7 +1183,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
  
        let w = bitmap.width;
        let h = bitmap.height;
-@@ -613,15 +615,12 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -613,15 +613,12 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
        const savedY = buffer.y;
        const savedYbase = buffer.ybase;
  
@@ -1181,7 +1201,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
          bitmap.close();
          bitmap = scaled;
        }
-@@ -643,7 +642,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -643,7 +640,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
          }
          offsetCtx.drawImage(bitmap, xOffset, yOffset);
  
@@ -1190,7 +1210,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
          offsetCanvas.width = offsetCanvas.height = 0;
          bitmap.close();
          bitmap = offsetBitmap;
-@@ -660,6 +659,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -660,6 +657,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
          }
        }
  
@@ -1198,7 +1218,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
        const zIndex = cmd.zIndex ?? 0;
        this._kittyStorage.addImage(image.id, bitmap, true, layer, zIndex);
        bitmap = undefined;  // ownership transferred to storage
-@@ -684,6 +684,72 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -684,15 +682,87 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
      }
    }
  
@@ -1270,8 +1290,11 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
 +
    // Create ImageBitmap from already-decoded image data.
    private async _createBitmap(image: IKittyImageData): Promise<ImageBitmap> {
-     let bytes: Uint8Array = new Uint8Array(await image.data.arrayBuffer());
-@@ -693,6 +759,12 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+-    let bytes: Uint8Array = new Uint8Array(await image.data.arrayBuffer());
++    let bytes: Uint8Array = image.data;
+ 
+     if (image.compression === KittyCompression.ZLIB) {
+       bytes = await this._decompressZlib(bytes);
      }
  
      if (image.format === KittyFormat.PNG) {
@@ -1284,7 +1307,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
        const blob = new Blob([bytes as BlobPart], { type: 'image/png' });
        if (!window.createImageBitmap) {
          const url = URL.createObjectURL(blob);
-@@ -702,7 +774,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -702,7 +772,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
              URL.revokeObjectURL(url);
              const canvas = ImageRenderer.createCanvas(window.document, img.width, img.height);
              canvas.getContext('2d')?.drawImage(img, 0, 0);
@@ -1293,7 +1316,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
            });
            img.addEventListener('error', () => {
              URL.revokeObjectURL(url);
-@@ -711,7 +783,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -711,7 +781,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
            img.src = url;
          });
        }
@@ -1302,7 +1325,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
      }
  
      // Raw pixel data
-@@ -733,7 +805,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -733,7 +803,7 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
  
      if (image.format === KittyFormat.RGBA) {
        // RGBA: use bytes directly — no copy needed
@@ -1311,7 +1334,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
      }
  
      // RGB→RGBA: interleave alpha using uint32 block processing (4 pixels per iteration).
-@@ -769,33 +841,51 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
+@@ -769,33 +839,51 @@ export class KittyGraphicsHandler implements IApcHandler, IResetHandler, IDispos
        dstByte += KittyPixelConstants.BYTES_PER_PIXEL_RGBA;
      }
  
@@ -1378,7 +1401,7 @@ index de889dfff75d9ecc8ab47a025e6989ffe75bb202..4f5716930c913d33b15056275f309b07
      let offset = 0;
      for (const chunk of chunks) {
 diff --git a/src/kitty/KittyGraphicsTypes.ts b/src/kitty/KittyGraphicsTypes.ts
-index 4288dd0a4180eca8f3ae28ec0805f834b2a0a629..158df006abdd348ca35cb1134eb3923ba5810c78 100644
+index 4288dd0a4180eca8f3ae28ec0805f834b2a0a629..af35df437a20441a46eda558520d5fca86b3bacb 100644
 --- a/src/kitty/KittyGraphicsTypes.ts
 +++ b/src/kitty/KittyGraphicsTypes.ts
 @@ -78,7 +78,9 @@ export const enum KittyKey {
@@ -1400,7 +1423,17 @@ index 4288dd0a4180eca8f3ae28ec0805f834b2a0a629..158df006abdd348ca35cb1134eb3923b
    payload?: string;
  }
  
-@@ -139,6 +142,13 @@ export interface IKittyImageData {
+@@ -131,14 +134,21 @@ export interface IPendingTransmission {
+ // Stored Kitty image data.
+ export interface IKittyImageData {
+   id: number;
+-  // Decoded image data stored as Blob (off JS heap) to avoid 2GB heap limit
+-  data: Blob;
++  // Owned source bytes remain synchronously readable on every execution host.
++  data: Uint8Array;
+   width: number;
+   height: number;
+   format: 24 | 32 | 100;
    compression?: string;
  }
  
@@ -1494,7 +1527,7 @@ index 4288dd0a4180eca8f3ae28ec0805f834b2a0a629..158df006abdd348ca35cb1134eb3923b
 +  return location;
 +}
 diff --git a/src/kitty/KittyImageStorage.ts b/src/kitty/KittyImageStorage.ts
-index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..5bc968bee9003815268b638ffe1e1511a2da54e3 100644
+index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..c06fd5c2bdc37c615e77c9494e6c06e0a13708ed 100644
 --- a/src/kitty/KittyImageStorage.ts
 +++ b/src/kitty/KittyImageStorage.ts
 @@ -4,15 +4,23 @@
@@ -1605,7 +1638,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..5bc968bee9003815268b638ffe1e1511
      const oldStorageId = this._kittyIdToStorageId.get(imageId);
      if (oldStorageId !== undefined) {
        this._storage.deleteImage(oldStorageId);
-@@ -79,8 +99,23 @@ export class KittyImageStorage implements IDisposable {
+@@ -79,12 +99,28 @@ export class KittyImageStorage implements IDisposable {
        this._storageIdToKittyId.delete(oldStorageId);
      }
  
@@ -1614,8 +1647,8 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..5bc968bee9003815268b638ffe1e1511
 +    const byteLimit = this._storage.getLimit() * 1000000;
 +    this._images.delete(imageId);
 +    let retainedBytes = 0;
-+    for (const image of this._images.values()) retainedBytes += image.data.size;
-+    const needsEviction = (): boolean => retainedBytes + imageData.data.size > byteLimit
++    for (const image of this._images.values()) retainedBytes += image.data.byteLength;
++    const needsEviction = (): boolean => retainedBytes + imageData.data.byteLength > byteLimit
 +      || this._images.size >= KittyImageStorage._maxStoredImages;
 +    // Source eviction must not free a bitmap still owned by a decoded placement.
 +    const visible = needsEviction() ? this._visibleKittyIds() : new Set<number>();
@@ -1625,13 +1658,18 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..5bc968bee9003815268b638ffe1e1511
 +        const imageRank = visible.has(oldestId) ? 2
 +          : this._kittyIdToStorageId.has(oldestId) || this._virtualPlacements.has(oldestId) ? 1 : 0;
 +        if (imageRank !== rank) continue;
-+        retainedBytes -= image.data.size;
++        retainedBytes -= image.data.byteLength;
 +        this._images.delete(oldestId);
 +      }
      }
  
      this._images.set(imageId, {
-@@ -102,6 +137,7 @@ export class KittyImageStorage implements IDisposable {
+       ...imageData,
++      data: new Uint8Array(imageData.data),
+       id: imageId
+     });
+     return imageId;
+@@ -102,6 +138,7 @@ export class KittyImageStorage implements IDisposable {
      this._addImageOpts.scrolling = scrolling;
      this._addImageOpts.layer = layer;
      this._addImageOpts.zIndex = zIndex;
@@ -1639,7 +1677,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..5bc968bee9003815268b638ffe1e1511
      const storageId = this._storage.addImage(image, this._addImageOpts);
      this._kittyIdToStorageId.set(kittyId, storageId);
      this._storageIdToKittyId.set(storageId, kittyId);
-@@ -111,23 +147,68 @@ export class KittyImageStorage implements IDisposable {
+@@ -111,23 +148,68 @@ export class KittyImageStorage implements IDisposable {
      return this._images.get(kittyId);
    }
  
@@ -1716,7 +1754,7 @@ index 1f5c09ec9e2700f8f6dbd8436a1802217dfc99ef..5bc968bee9003815268b638ffe1e1511
    }
  
    public get images(): ReadonlyMap<number, IKittyImageData> {
-@@ -142,14 +223,111 @@ export class KittyImageStorage implements IDisposable {
+@@ -142,14 +224,111 @@ export class KittyImageStorage implements IDisposable {
      return this._nextImageId - 1;
    }
  

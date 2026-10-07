@@ -40,10 +40,10 @@ packages retain the source-hunk equality check. Headless bundles come from
 the registry package metadata and the runtime version found in its pristine map.
 
 The image patch bounds pending Kitty decoders by their maximum WASM capacity
-and caps transmitted image blobs by byte size. Both use the configured storage
+and caps retained encoded image sources by byte size. Both use the configured storage
 budget; upstream's displayed-pixel budget does not cover these allocations.
 Byte-budget eviction drops unplaced payloads first, so a new upload cannot erase a
-visible image while abandoned blobs still hold budget; displayed images go only
+visible image while abandoned sources still hold budget; displayed images go only
 when that is not enough, because the cap is a hard bound. The incoming image is
 always stored, so the cap overshoots by at most one payload rather than dropping
 an image the protocol already acked as `OK`. Orca uses fixed 32 MB storage and
@@ -51,6 +51,12 @@ an image the protocol already acked as `OK`. Orca uses fixed 32 MB storage and
 `config/scripts/xterm-image-memory-contract.test.mjs` exercises the installed
 bundle with unfinished uploads, chunk continuation, both eviction orders and
 disposal.
+Kitty source storage copies only the transmitted byte window before releasing the
+decoder, retaining one compact `Uint8Array`. Placement decoding reads those bytes
+directly instead of creating another encoded buffer through `Blob.arrayBuffer()`.
+This permits synchronous source access on execution hosts; browser bitmap decoding
+remains asynchronous. `config/scripts/xterm-image-source-bytes-contract.test.mjs`
+checks decoder reuse, caller-buffer isolation and unaligned RGB input windows.
 The patch also bounds decompression before joining decoded chunks, validates PNG
 dimensions before native decoding, and closes stale asynchronous image results
 after reset, disable or disposal. `config/scripts/xterm-image-lifecycle-contract.test.mjs`
