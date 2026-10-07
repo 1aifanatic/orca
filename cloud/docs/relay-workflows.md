@@ -553,9 +553,11 @@ window: about 30 minutes at `900000` and 40 at `1200000`.
   unpaced drain. The job records what the cell accepted, and a canary that did not drain at its own
   window seals `UNVERIFIED`.
 - A window above `300000` needs the cell being drained to already run an image that accepts it
-  (the cap rose with this ladder's slow rungs). An older image rejects it, and the job fails after
-  the isolate rather than drain unpaced; the cell stays isolated for an operator, as any failed
-  cell does. Re-dispatch it at `300000`.
+  (the cap rose with this ladder's slow rungs). Before the isolate, the job reads the cap the cell
+  advertises on `/health` (`drainPaceWindowMaxMs`; an image without it has `300000`) and stops
+  with the cell untouched if the window is above it. Re-dispatch at `300000`, or after the cell's
+  next roll. If a cell still rejects the window at the drain, the job fails rather than drain
+  unpaced, and the cell stays isolated for an operator, as any failed cell does.
 
 **What judges a paced drain.** The shadow health gate (report only, after each cell) judges two
 checks the pace can move. Together they are the report's `paceVerdict`, which the canary seals:

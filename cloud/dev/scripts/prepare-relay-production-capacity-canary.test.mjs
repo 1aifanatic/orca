@@ -252,6 +252,38 @@ describe('production Relay capacity cell admission', () => {
     }
   })
 
+  it('stops a slower pace than an old-cap cell accepts before anything is isolated', async () => {
+    const check = async (health, paceWindowMs) => {
+      const requests = []
+      const result = prepareProductionCapacityCell(
+        { ...config, mode: 'pace-check', paceWindowMs },
+        {
+          wait: async () => {},
+          fetch: async (url, init) => {
+            requests.push({ path: new URL(url).pathname, method: init.method ?? 'GET' })
+            return response(health)
+          }
+        }
+      )
+      return { result, requests }
+    }
+    // Every image before the cap rose answers /health without it.
+    const old = { ok: true, connectionCapacityProtocol: 2 }
+    for (const pace of [900_000, 1_200_000]) {
+      const { result, requests } = await check(old, pace)
+      await assert.rejects(result, /up to 300000 ms, not \d+ ms; it was not isolated/)
+      assert.deepEqual(requests, [{ path: '/health', method: 'GET' }])
+    }
+    assert.deepEqual(await (await check(old, 300_000)).result, {
+      paceWindowMs: 300_000, maxPaceWindowMs: 300_000
+    })
+    const current = { ...old, drainPaceWindowMaxMs: 1_200_000 }
+    assert.deepEqual(await (await check(current, 1_200_000)).result, {
+      paceWindowMs: 1_200_000, maxPaceWindowMs: 1_200_000
+    })
+    await assert.rejects((await check({ ok: false }, 300_000)).result, /cell health is not ok/)
+  })
+
   it('fails a paced drain that the cell rejects for any other reason', async () => {
     await assert.rejects(
       prepareProductionCapacityCell(

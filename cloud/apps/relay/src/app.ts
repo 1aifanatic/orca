@@ -281,8 +281,14 @@ export function createRelayApp(
   })
 
   // Not /healthz: Google Front End reserves that path before the container.
+  // The drain pace cap is read before a roll isolates a cell, so a slower pace than the cell
+  // accepts stops with the cell untouched.
   app.get('/health', (context) =>
-    context.json({ ok: true, connectionCapacityProtocol: 2 })
+    context.json({
+      ok: true,
+      connectionCapacityProtocol: 2,
+      drainPaceWindowMaxMs: DRAIN_PACE_WINDOW_MAX_MS
+    })
   )
   app.get('/ready', async (context) => {
     if (!(await operations.ready())) return context.json({ error: 'dependency_unavailable' }, 503)

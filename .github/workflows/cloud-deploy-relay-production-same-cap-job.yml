@@ -501,8 +501,8 @@ jobs:
         if: ${{ inputs.mode == 'verify' }}
         run: echo 'Exact same-cap rollback point verified.'
 
-      # The sample can age the first one-hour token by up to 20 min; the drain's 20-min
-      # restart-safe wait gets a fresh one.
+      # The sample can age the first one-hour token by up to 20 min; the drain's restart-safe
+      # wait (20 min at the default pace, 50 at the slowest) gets a fresh one.
       - id: drain-auth
         if: ${{ inputs.mode != 'verify' && env.ROLLBACK_RESUME != 'true' }}
         uses: google-github-actions/auth@v2
@@ -519,6 +519,11 @@ jobs:
         env:
           ORCA_RELAY_ADMIN_ID_TOKEN: ${{ steps.drain-auth.outputs.id_token }}
         run: |
+          # Before any mutation: a cell whose image caps the pace below this one stops untouched.
+          node dev/scripts/prepare-relay-production-capacity-canary.mjs \
+            --director-origin "${DIRECTOR_ORIGIN}" --cell-origin "${CELL_ORIGIN}" \
+            --cell-id "${TARGET_CELL_ID}" --approved-cells same-cap --mode pace-check \
+            --pace-window-ms "${DRAIN_PACE_WINDOW_MS}"
           # Opens the window the report-only shadow health gate below judges this cell over.
           echo "drain-started-at=$(date -u +%FT%TZ)" >> "${GITHUB_OUTPUT}"
           echo "MUTATION_STARTED=true" >> "${GITHUB_ENV}"
@@ -826,8 +831,8 @@ jobs:
         # read cost its full retry budget and can push the job past timeout-minutes, and a
         # cancelled job takes the whole wave with it. A healthy gate is already minutes of
         # serial reads, so both bounds sit above that: the script settles at seven minutes and
-        # reaching this eight is the pathological case. Eight on top of a ~14-minute cell still
-        # leaves the job's 120 minutes intact.
+        # reaching this eight is the pathological case. Eight on top of a cell of ~14 minutes
+        # (~45 at the slowest pace) still leaves the job's 120 minutes intact.
         timeout-minutes: 8
         env:
           DRAIN_STARTED_AT: ${{ steps.drain.outputs.drain-started-at }}

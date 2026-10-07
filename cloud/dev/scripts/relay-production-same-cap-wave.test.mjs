@@ -921,7 +921,17 @@ test('the workflows offer exactly the closed set and scale the drain wait with i
     assert.ok(timeoutMs(pace) >= 2 * pace + 600_000, String(pace))
   }
   assert.equal(timeoutMs(1_200_000), 3_000_000)
-  // Every other step plus the slowest drain step stays inside the job's own timeout.
+  const slowest = timeoutMs(Math.max(...SAME_CAP_DRAIN_PACE_WINDOWS_MS))
+  // The rest of the job keeps the 70 min it had beside the old 20-min drain step in 90.
   const jobMinutes = Number(/\n  rollout:\n(?:    [^\n]*\n)*?    timeout-minutes: (\d+)\n/.exec(job)[1])
-  assert.ok(jobMinutes * 60_000 >= timeoutMs(Math.max(...SAME_CAP_DRAIN_PACE_WINDOWS_MS)) + 60 * 60_000)
+  assert.ok(jobMinutes * 60_000 >= slowest + 70 * 60_000)
+  // The drain step's fresh one-hour ID token must outlive its wait, with room for the drain call.
+  assert.ok(slowest + 5 * 60_000 <= 60 * 60_000)
+  // The pace check runs before the isolate and before the failsafe treats the cell as touched.
+  const drainStep = job.slice(job.indexOf('- name: Reversibly isolate and drain only the selected cell'))
+  const paceCheck = drainStep.indexOf('--mode pace-check')
+  assert.notEqual(paceCheck, -1)
+  assert.match(drainStep.slice(paceCheck, drainStep.indexOf('\n', paceCheck) + 80), /--pace-window-ms "\$\{DRAIN_PACE_WINDOW_MS\}"/)
+  assert.ok(paceCheck < drainStep.indexOf('MUTATION_STARTED=true'))
+  assert.ok(paceCheck < drainStep.indexOf('--mode isolate'))
 })
