@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { isDefinitiveAbsence } from '../shared/definitive-filesystem-absence'
+import { readNodeFileSyncWithinLimit } from '../shared/node-bounded-file-reader'
 import {
   closeSync,
   mkdirSync,
@@ -207,18 +208,11 @@ export function readTerminalScrollbackSnapshotSync(
 ): string | null {
   for (const path of snapshotReadPaths(ref, storage)) {
     try {
-      if (
-        options?.purpose === 'archive' &&
-        statSync(path).size > TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT
-      ) {
-        return null
-      }
-      return readTrailingUtf8(
-        path,
-        options?.purpose === 'archive'
-          ? TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT
-          : TERMINAL_SCROLLBACK_REPLAY_BYTE_LIMIT
-      )
+      return options?.purpose === 'archive'
+        ? readNodeFileSyncWithinLimit(path, TERMINAL_SCROLLBACK_STORE_BYTE_LIMIT).buffer.toString(
+            'utf-8'
+          )
+        : readTrailingUtf8(path, TERMINAL_SCROLLBACK_REPLAY_BYTE_LIMIT)
     } catch (error) {
       if (options?.purpose === 'archive' && !isDefinitiveAbsence(error)) {
         return null
