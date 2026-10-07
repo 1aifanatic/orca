@@ -135,6 +135,14 @@ function isInsideRange(index: number, ranges: MarkdownFenceRanges): boolean {
   return ranges.some(([start, end]) => index >= start && index < end)
 }
 
+export function createDetailsMatcher(content: string): (start: number) => DetailsHtmlBlock | null {
+  let fenceRanges: MarkdownFenceRanges | undefined
+  return (start) =>
+    /^<details\b[^>]*>/i.test(content.slice(start))
+      ? matchDetailsHtmlBlock(content, start, (fenceRanges ??= markdownFenceRanges(content)))
+      : null
+}
+
 export function matchDetailsHtmlBlock(
   content: string,
   start: number,

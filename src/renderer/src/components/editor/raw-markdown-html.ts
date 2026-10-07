@@ -1,6 +1,6 @@
 import { createMarkdownTokenizerStart } from './markdown-tokenizer-start'
 import { Node, mergeAttributes } from '@tiptap/core'
-import { isEditableDetailsHtmlBlock, matchDetailsHtmlBlock } from './details-markdown-html'
+import { createDetailsMatcher, isEditableDetailsHtmlBlock } from './details-markdown-html'
 import { formatMarkdownDocLinkBody, parseMarkdownDocLink } from './markdown-doc-links'
 import { normalizeMarkdownReferenceLinks } from './markdown-reference-link-normalization'
 import type {
@@ -54,6 +54,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
   { htmlSuperscriptLinks = false }: { htmlSuperscriptLinks?: boolean } = {}
 ): string {
   const normalizedContent = normalizeMarkdownReferenceLinks(content)
+  const matchDetails = createDetailsMatcher(normalizedContent)
   const lastCommentClose = normalizedContent.lastIndexOf('-->')
   const { transport } = codec
   let index = 0
@@ -132,7 +133,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
     }
 
     if (isLineStart) {
-      const detailsHtml = matchDetailsHtmlBlock(normalizedContent, index)
+      const detailsHtml = matchDetails(index)
       if (detailsHtml && isEditableDetailsHtmlBlock(detailsHtml)) {
         // Why: <details>/<summary> is an editable rich-mode node; raw passthrough
         // would make toggle blocks reopen as inert HTML instead.
