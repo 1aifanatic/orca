@@ -1892,7 +1892,7 @@ export async function createRemoteWorktree(
     throw new Error('Sparse checkout requires at least one repo-relative directory.')
   }
   const sparsePresetId = attributedSparsePresetId(
-    store.getSparsePresets(repo.id),
+    () => store.getSparsePresets(repo.id),
     repo.id,
     args.sparseCheckout?.presetId,
     sparseDirectories
@@ -2369,7 +2369,7 @@ async function performLocalWorktreeCreate(
     throw new Error('Sparse checkout requires at least one repo-relative directory.')
   }
   const sparsePresetId = attributedSparsePresetId(
-    store.getSparsePresets(repo.id),
+    () => store.getSparsePresets(repo.id),
     repo.id,
     args.sparseCheckout?.presetId,
     sparseDirectories

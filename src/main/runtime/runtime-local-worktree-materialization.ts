@@ -93,7 +93,7 @@ export async function materializeRuntimeLocalWorktree<T>(args: {
             sparseDirectories,
             sparseBaseRef: metadataBaseRef,
             sparsePresetId: attributedSparsePresetId(
-              store.getSparsePresets?.(repo.id) ?? [],
+              () => store.getSparsePresets?.(repo.id) ?? [],
               repo.id,
               request.sparseCheckout?.presetId,
               sparseDirectories

@@ -103,6 +103,7 @@ const WEB_PRESET: SparsePreset = {
   createdAt: 0,
   updatedAt: 0
 }
+const readSparsePresets = vi.fn<(repoId: string) => SparsePreset[]>()
 
 function createWorktree(
   request: Partial<RuntimeManagedWorktreeCreateArgs> = {},
@@ -121,7 +122,7 @@ function createWorktree(
       writtenMeta.push(updates)
       return updates
     },
-    getSparsePresets: (_repoId: string): SparsePreset[] => [WEB_PRESET]
+    getSparsePresets: (repoId: string): SparsePreset[] => readSparsePresets(repoId)
   }
   return createRuntimeLocalManagedWorktree({
     request: { repoSelector: 'repo-1', name: 'app', baseBranch: 'main', ...request },
@@ -177,6 +178,7 @@ beforeEach(() => {
   mocks.resolveInclude.mockResolvedValue(['.env'])
   mocks.copyPaths.mockResolvedValue([])
   mocks.effectiveHooks.mockReturnValue(null)
+  readSparsePresets.mockReturnValue([WEB_PRESET])
 })
 
 describe('runtime prepared-worktree replenishment', () => {
@@ -359,6 +361,20 @@ describe('runtime create Git priority', () => {
     await createWorktree({ sparseCheckout: { directories, presetId: 'preset-web' } })
 
     expect(writtenMeta.find((meta) => meta.sparseDirectories)?.sparsePresetId).toBe(recorded)
+  })
+
+  it('still creates the worktree, with no sparse preset, when presets cannot be read', async () => {
+    writtenMeta.length = 0
+    readSparsePresets.mockImplementation(() => {
+      throw new Error('corrupt presets')
+    })
+    await createWorktree({
+      sparseCheckout: { directories: ['apps/web', 'packages/ui'], presetId: 'preset-web' }
+    })
+
+    const sparseMeta = writtenMeta.find((meta) => meta.sparseDirectories)
+    expect(sparseMeta?.sparseDirectories).toEqual(['apps/web', 'packages/ui'])
+    expect(sparseMeta?.sparsePresetId).toBeUndefined()
   })
 
   it('preserves priority for sparse creates and remote base refreshes', async () => {
