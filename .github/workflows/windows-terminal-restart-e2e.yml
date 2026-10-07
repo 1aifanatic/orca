@@ -12,8 +12,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: baseline
-            revision: 3fb72d135de28d61c0bbbda7bb3a40be363a7cae
           - label: candidate
             revision: ${{ github.sha }}
     env:
@@ -37,6 +35,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p ci-shards
+          cat > ci-shards/shard-start-reporter.mjs <<'JS'
+          export default class {
+            onTestModuleStart(module) { console.log('BUNDLE_DIAG_START', module.moduleId) }
+            onTestModuleEnd(module) { console.log('BUNDLE_DIAG_END', module.moduleId) }
+          }
+          JS
           (
             while true; do
               date -u
@@ -51,7 +55,7 @@ jobs:
           resource_monitor=$!
           trap 'kill "$resource_monitor" 2>/dev/null || true' EXIT
           export ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
-          node config/scripts/run-vitest.mjs run --config config/vitest.config.ts --shard=2/5 --maxWorkers=4
+          node config/scripts/run-vitest.mjs run --config config/vitest.config.ts --shard=2/5 --maxWorkers=4 --reporter=default --reporter=./ci-shards/shard-start-reporter.mjs
       - name: Upload diagnostics
         if: always()
         continue-on-error: true
