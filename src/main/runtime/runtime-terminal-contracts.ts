@@ -23,6 +23,8 @@ import type { TerminalInputKind } from '../../shared/terminal-input-kind'
 import type { RuntimePtyController } from './runtime-pty-controller-contract'
 import type { RuntimeAgentRowSnapshot } from './runtime-worktree-agent-rows'
 import type { WorkerTerminalHostScope } from './orchestration/worker-terminal-process-liveness'
+import type { DesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
+import type { SessionOptionValue } from '../../shared/native-chat-session-options'
 
 export type TerminalCreateOptions = {
   command?: string
@@ -53,6 +55,9 @@ export type TerminalCreateOptions = {
    * and post-start delivery belongs to whoever owns the live PTY.
    */
   startupPrompt?: string
+  /** Internal desktop intent; the host still builds command, environment and resume config. */
+  desktopPrompt?: DesktopNewTabPrompt
+  desktopSessionOptions?: Record<string, SessionOptionValue>
   /** Main-internal: whether `startupPrompt` rode the launch command. Called once the plan is built. */
   onStartupPromptCarry?: (carried: boolean) => void
   /**
@@ -231,6 +236,8 @@ export type RuntimeAgentPromptWriteOptions = Omit<RuntimeTerminalWriteOptions, '
   /** The caller just saw this agent's composer accept input, so Enter follows the paste on the
    *  desktop draft paste's timing instead of waiting for the render to settle. */
   composerReady?: boolean
+  /** Main desktop paste boundaries and timing, including an unsubmitted draft. */
+  desktopNewTab?: { submit: boolean; onWriteStarted?: () => void }
   /** See buildAgentPromptPasteBytes. */
   leadLine?: string
   /** Return an accepted receipt as soon as input lands, instead of waiting for the turn. */

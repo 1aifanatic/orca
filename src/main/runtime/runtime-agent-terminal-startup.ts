@@ -13,6 +13,8 @@ import {
 import { resolveTerminalStartupCwd } from '../../shared/terminal-startup-cwd'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
 import { agentStartedTelemetry } from '../agent-launch/agent-started-telemetry'
+import { planLaunchAgentStartupPrompt } from '../../shared/launch-agent-startup-prompt-plan'
+import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
 
 export async function buildRuntimeAgentTerminalStartupOptions(
   workspace: TerminalWorkspaceLaunchScope,
@@ -38,6 +40,43 @@ export async function buildRuntimeAgentTerminalStartupOptions(
     })
   if (!agent) {
     return opts
+  }
+
+  if (opts.desktopPrompt) {
+    const selected = planLaunchAgentStartupPrompt({
+      base: {
+        ...resolveAgentStartupPlanInputs({
+          agent,
+          settings,
+          platform,
+          isRemote,
+          ...(opts.agentArgs !== undefined ? { agentArgs: opts.agentArgs } : {}),
+          windowsShellOverride: opts.shellOverride,
+          sessionOptions: opts.desktopSessionOptions
+        }),
+        // Main's desktop builder lets trailing arguments override session options.
+        sessionOptionsOverrideAgentArgs: false
+      },
+      prompt: opts.desktopPrompt.text.trim(),
+      promptDelivery: opts.desktopPrompt.transport.promptDelivery,
+      isFollowupPath: TUI_AGENT_CONFIG[agent].promptInjectionMode === 'stdin-after-start'
+    })
+    const plan = selected.startupPlan
+    if (!plan) {
+      throw new Error(`Could not build launch command for ${agent}.`)
+    }
+    opts.onStartupPromptCarry?.(
+      Boolean(opts.desktopPrompt.text.trim()) && selected.pasteDraftAfterLaunch === null
+    )
+    return {
+      ...opts,
+      command: plan.launchCommand,
+      ...(plan.env ? { env: plan.env } : {}),
+      launchConfig: plan.launchConfig,
+      launchAgent: agent,
+      startupCommandDelivery: plan.startupCommandDelivery,
+      ...(opts.startupAgent ? { telemetry: agentStartedTelemetry(agent, opts.launchSource) } : {})
+    }
   }
 
   // A prompt this launch command cannot carry has nowhere to go from here — the create returns

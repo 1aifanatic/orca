@@ -22,6 +22,7 @@ import { LaunchSourceParam } from './launch-source-param'
 import { TerminalTabIdParam } from './agent-session-params'
 import { SessionId } from './structured-agent-session-params'
 import { isStructuredAgentSessionIdFor } from '../structured-agent-session-create'
+import { desktopNewTabPromptDelivery, isDesktopNewTabPrompt } from '../desktop-new-tab-prompt'
 
 const LaunchAgent = z
   .unknown()
@@ -80,7 +81,15 @@ export const AgentLaunchFields = z.object({
        * as the desktop's AI buttons deliver on main. Gone once one host delivery rule serves every
        * caller. Absent: the host's own rule.
        */
-      transport: z.enum(['paste']).optional()
+      transport: z
+        .union([
+          z.literal('paste'),
+          z.object({
+            kind: z.literal('desktop-new-tab'),
+            promptDelivery: z.enum(['auto-submit', 'draft', 'submit-after-ready'])
+          })
+        ])
+        .optional()
     })
     .optional(),
   /**
@@ -96,7 +105,7 @@ export const AgentLaunchFields = z.object({
     })
     .optional(),
   /** A chat seeds the options it accepts; a terminal launch reads the model, effort and mode. */
-  sessionOptions: z.record(z.string(), z.string()).optional(),
+  sessionOptions: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   reuseTerminal: z.object({ handle: z.string().min(1, 'Missing terminal handle') }).optional(),
   /** Nullable on purpose: `null` is "no arguments", absent is "use the settings default". */
   agentArgs: z.string().nullable().optional(),
@@ -171,14 +180,48 @@ function refuseSessionIdForAnotherAgent(
   }
 }
 
-export const AgentLaunch = AgentLaunchFields.superRefine(refuseSessionIdForAnotherAgent)
+function refuseInvalidDesktopPrompt(
+  launch: z.infer<typeof AgentLaunchFields>,
+  ctx: z.RefinementCtx
+): void {
+  if (!isDesktopNewTabPrompt(launch.prompt)) {
+    if (Object.values(launch.sessionOptions ?? {}).some((value) => typeof value !== 'string')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sessionOptions'],
+        message: 'Expected string session options'
+      })
+    }
+    return
+  }
+  if (launch.target.kind !== 'existing' || launch.reuseTerminal || !launch.operationId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Desktop new-tab delivery requires a recorded fresh launch in an existing workspace'
+    })
+  }
+  if (
+    launch.prompt.delivery !==
+    desktopNewTabPromptDelivery(launch.agent, launch.prompt.transport.promptDelivery)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['prompt', 'delivery'],
+      message: 'Desktop prompt delivery disagrees with its startup mode'
+    })
+  }
+}
+
+export const AgentLaunch = AgentLaunchFields.superRefine(
+  refuseSessionIdForAnotherAgent
+).superRefine(refuseInvalidDesktopPrompt)
 
 export type AgentLaunchParams = z.infer<typeof AgentLaunch>
 
 // A distinct method prevents an older receiver from silently dropping the replay requirement.
-export const AgentLaunchReplay = AgentLaunchFields.required({ operationId: true }).superRefine(
-  refuseSessionIdForAnotherAgent
-)
+export const AgentLaunchReplay = AgentLaunchFields.required({ operationId: true })
+  .superRefine(refuseSessionIdForAnotherAgent)
+  .superRefine(refuseInvalidDesktopPrompt)
 
 /** One launch's follow-up when the click is still on screen; all of the caller's after a reload. */
 export const AgentTakeLaunchFollowUps = z.object({

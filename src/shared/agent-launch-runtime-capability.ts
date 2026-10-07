@@ -52,6 +52,16 @@ export const AGENT_LAUNCH_UNSTARTED_TAB_CLIENT_CAPABILITY = 'agent.launch.unstar
 // `agent_session_operation_unknown` for it, as before the host knew.
 export const AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY = 'agent.launch.tab-closed.v1' as const
 
+// Not advertised until the desktop startup, paste and public readiness contract is verified.
+export const AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY =
+  'agent.launch.desktop-new-tab.v1' as const
+
+export function supportsDesktopNewTabAgentLaunch(
+  capabilities: readonly string[] | null | undefined
+): boolean {
+  return capabilities?.includes(AGENT_LAUNCH_DESKTOP_NEW_TAB_RUNTIME_CAPABILITY) === true
+}
+
 export const AGENT_LAUNCH_RUNTIME_CAPABILITIES = [
   AGENT_LAUNCH_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_REPLAY_RUNTIME_CAPABILITY,

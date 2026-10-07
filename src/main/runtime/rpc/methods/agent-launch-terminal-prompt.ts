@@ -23,6 +23,9 @@
 
 import { randomUUID } from 'node:crypto'
 import type { TuiAgent } from '../../../../shared/tui-agent'
+import type { AgentLaunchPrompt } from '../../../../shared/agent-launch-intent'
+import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
+import { waitForDesktopNewTabComposer } from '../../desktop-new-tab-composer-readiness'
 import type { RuntimeTerminalWait } from '../../../../shared/runtime-terminal-contracts'
 import { isAgentPromptStalledError } from '../../agent-prompt-submission-verification'
 import {
@@ -144,6 +147,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   /** False for a reused terminal, whose agent was already running before this launch. */
   freshLaunch: boolean
   text: string
+  prompt?: AgentLaunchPrompt
   clock?: ReadinessClock
   /** W2 of `agent-launch-owed-prompt-record`, once the guard has passed and before the first byte. */
   beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
@@ -154,6 +158,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   resumed?: boolean
   /** The text was written once the agent held the pane, its composer never seen ready. */
   onComposerUnobserved?: () => void
+  onWriteUnconfirmed?: () => void
 }): Promise<boolean> {
   if (args.text.trim().length === 0) {
     return false
@@ -165,6 +170,8 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
     // Main's window pasted into a plain-SSH pane, whose terminals report no process.
     processlessHostUnprovable: true
   })
+  const desktop = isDesktopNewTabPrompt(args.prompt) ? args.prompt : undefined
+  let writeStarted = false
   try {
     const original = args.runtime.getTerminalPromptRequestBinding(args.handle)
     const assertOriginal = (ptyId = original.ptyId): void => {
@@ -178,19 +185,26 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
         throw new Error('terminal_handle_stale')
       }
     }
-    const wait = await waitThroughBlockingPrompts(
-      args.runtime,
-      args.handle,
-      args.agent,
-      args.freshLaunch,
-      args.clock ?? REAL_CLOCK,
-      isDesktopLaunchCaller(args.callerKey)
-    )
+    const wait = desktop
+      ? await waitForDesktopNewTabComposer(
+          args.runtime,
+          args.handle,
+          args.agent,
+          desktop.delivery === 'submit'
+        )
+      : await waitThroughBlockingPrompts(
+          args.runtime,
+          args.handle,
+          args.agent,
+          args.freshLaunch,
+          args.clock ?? REAL_CLOCK,
+          isDesktopLaunchCaller(args.callerKey)
+        )
     // An unsatisfied wait is a composer that never opened — a dialog left up, a dead process, an
     // agent that showed no readiness. Pasting anyway would answer whatever is on screen with it.
     assertOriginal()
-    const composerSeen = wait !== 'fallback-ready'
-    if (wait && wait !== 'fallback-ready' && !wait.satisfied) {
+    const composerSeen = wait !== 'fallback-ready' && wait !== 'budget-spent'
+    if (wait && wait !== 'fallback-ready' && wait !== 'budget-spent' && !wait.satisfied) {
       console.warn(
         `[agent-launch] the terminal agent did not become ready (${wait.status}); its launch prompt was not delivered`
       )
@@ -201,30 +215,50 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
       args.beginPromptWrite,
       args.resumed === true
     )
-    const sent = await args.runtime.sendTerminalAgentPrompt(args.handle, args.text, {
-      inputKind: 'launch',
-      // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
-      // The evidence-qualified fallback uses main's normal Enter timing too.
-      composerReady: args.freshLaunch,
-      beforeWrite: async (ptyId) => {
-        assertOriginal(ptyId)
-        await beforeWrite(ptyId)
-        assertOriginal(ptyId)
-      },
-      // Paired: together these take the queued path, which settles an unobserved turn start into
-      // an `input_accepted` receipt rather than raising it. Without the id the write is verified
-      // strictly and a slow first turn throws.
-      acceptQueued: true,
-      requestId: randomUUID(),
-      // The launch reply should not wait out a turn that has already been handed over; what the
-      // agent does with the text is the pane's to show, and no receipt arm claims it.
-      observationTimeoutMs: 0
-    })
-    if (sent.accepted && !composerSeen) {
+    if (desktop && !composerSeen) {
+      args.onComposerUnobserved?.()
+    }
+    const sent = await args.runtime.sendTerminalAgentPrompt(
+      args.handle,
+      desktop ? args.text.trim() : args.text,
+      {
+        inputKind: 'launch',
+        ...(desktop
+          ? {
+              desktopNewTab: {
+                submit: desktop.delivery === 'submit',
+                onWriteStarted: () => {
+                  writeStarted = true
+                }
+              }
+            }
+          : {}),
+        // A fresh launch's composer was just seen ready; a reused pane's state is only inferred.
+        // Past its budget too: main's blind paste submitted on its normal Enter timing.
+        composerReady: args.freshLaunch,
+        beforeWrite: async (ptyId) => {
+          assertOriginal(ptyId)
+          await beforeWrite(ptyId)
+          assertOriginal(ptyId)
+        },
+        // Paired: together these take the queued path, which settles an unobserved turn start into
+        // an `input_accepted` receipt rather than raising it. Without the id the write is verified
+        // strictly and a slow first turn throws.
+        acceptQueued: true,
+        requestId: randomUUID(),
+        // The launch reply should not wait out a turn that has already been handed over; what the
+        // agent does with the text is the pane's to show, and no receipt arm claims it.
+        observationTimeoutMs: 0
+      }
+    )
+    if (!desktop && sent.accepted && !composerSeen) {
       args.onComposerUnobserved?.()
     }
     return sent.accepted
   } catch (error) {
+    if (desktop && writeStarted) {
+      args.onWriteUnconfirmed?.()
+    }
     if (isAgentPromptStalledError(error)) {
       return true
     }

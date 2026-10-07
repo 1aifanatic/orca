@@ -32,7 +32,7 @@ export type AgentLaunchFingerprintInput = {
     | { kind: 'existing'; worktree: string }
     | { kind: 'create-worktree'; create: Readonly<Record<string, unknown>> }
   prompt?: { text: string; delivery: string }
-  sessionOptions?: Readonly<Record<string, string>>
+  sessionOptions?: Readonly<Record<string, string | boolean>>
   reuseTerminal?: { handle: string }
   /** In: a launch carrying `--model opus` is a different operation from one without, so a retry
    *  that changed them must conflict rather than replay the first answer. `null` is a value here,

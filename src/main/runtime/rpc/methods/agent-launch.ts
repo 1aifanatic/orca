@@ -20,6 +20,7 @@
  */
 
 import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../../../shared/agent-launch-runtime-capability'
+import { requireDesktopPromptCompatibility } from './agent-launch-desktop-prompt-compatibility'
 import { AgentLaunchTabClosedError } from '../../../../shared/agent-launch-tab-closed'
 import { computeAgentLaunchFingerprint } from '../../../../shared/agent-launch-operation'
 import type { AgentLaunchIntent, AgentLaunchResult } from '../../../../shared/agent-launch-intent'
@@ -313,6 +314,7 @@ export const AGENT_LAUNCH_METHODS = [
       if (!supportsAgentLaunch(context)) {
         throw new Error('agent_launch_replay_unsupported')
       }
+      requireDesktopPromptCompatibility(params, context)
       try {
         return await runReplaySafeAgentLaunch(params, context)
       } catch (error) {
@@ -342,6 +344,7 @@ export const AGENT_LAUNCH_METHODS = [
       if (!supportsAgentLaunch(context)) {
         throw new Error('agent_launch_unsupported')
       }
+      requireDesktopPromptCompatibility(params, context)
       if (!params.operationId) {
         return runLegacyAgentLaunch(params, context)
       }

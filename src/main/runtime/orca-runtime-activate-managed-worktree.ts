@@ -210,8 +210,14 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     {
       requireComposerMarker = true,
       stopOnDialog = false,
+      submit = true,
       signal
-    }: { requireComposerMarker?: boolean; stopOnDialog?: boolean; signal?: AbortSignal } = {}
+    }: {
+      requireComposerMarker?: boolean
+      stopOnDialog?: boolean
+      submit?: boolean
+      signal?: AbortSignal
+    } = {}
   ): Promise<RuntimeTerminalWait> {
     const initialPtyId =
       this.getLivePtyForHandle(handle)?.pty.ptyId ?? this.getLiveLeafForHandle(handle).leaf.ptyId
@@ -225,8 +231,7 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
       {
         timeoutMs,
         requireComposerMarker,
-        // Every caller pastes and then presses Enter: a worker brief or a launch prompt.
-        submit: true,
+        submit,
         signal: stop.signal,
         isShellInFront: async (ownerPtyId) =>
           (await this.readLaunchedAgentForeground(ownerPtyId, agent)) === 'shell',

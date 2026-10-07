@@ -22,6 +22,7 @@ import {
   verifyAgentPromptSubmission
 } from './agent-prompt-submission-verification'
 import { TUI_AGENT_CONFIG } from '../../shared/tui-agent-config'
+import { writeDesktopNewTabPrompt } from './desktop-new-tab-prompt-writer'
 
 export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithResolveAuthoritativeTerminalWaitPermission {
   protected async writeTerminalAgentPrompt(
@@ -35,6 +36,35 @@ export class OrcaRuntimeWithWriteTerminalAgentPrompt extends OrcaRuntimeWithReso
     this.assertAgentPromptGeneration(ptyId, generation)
     const permissionBaseline = this.getAgentPromptActivity(handle, ptyId)
     this.assertAgentPromptPermissionSafe(permissionBaseline, permissionBaseline)
+    if (options.desktopNewTab) {
+      return writeDesktopNewTabPrompt({
+        text: options.promptForSchedule ?? '',
+        agent: this.getPtyAgent(ptyId),
+        submit: options.desktopNewTab.submit,
+        delay: (ms) => waitForAgentPromptDelay(ms, options.signal),
+        write: async (data) => {
+          assertAgentPromptRequestActive(options.signal)
+          this.assertAgentPromptGeneration(ptyId, generation)
+          await options.beforeWrite?.(ptyId)
+          assertAgentPromptRequestActive(options.signal)
+          this.assertAgentPromptGeneration(ptyId, generation)
+          this.assertLiveTerminalHandleTargetsPty(handle, ptyId)
+          if (
+            this.isPtyStopRequested(ptyId) ||
+            this.ptysById.get(ptyId)?.connected === false ||
+            this.getPtyLivenessVerdict(ptyId)?.status === 'unverifiable'
+          ) {
+            throw new Error('terminal_not_writable')
+          }
+          this.assertAgentPromptPermissionSafe(
+            permissionBaseline,
+            this.getAgentPromptActivity(handle, ptyId)
+          )
+          options.desktopNewTab?.onWriteStarted?.()
+          return this.ptyController?.write(ptyId, data, options.inputKind) === true
+        }
+      })
+    }
     const writeHostPlatform = this.getPtyWriteHostPlatform(ptyId)
     const pty = this.ptysById.get(ptyId)
     // OMP treats a large bracketed paste as a menu unless submit arrives in the same PTY write.

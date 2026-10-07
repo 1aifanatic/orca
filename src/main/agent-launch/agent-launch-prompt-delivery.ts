@@ -9,7 +9,7 @@
  *   terminal, line fits  ->  folded into the command that execs the agent        ->  handed-to-terminal
  *   terminal, otherwise  ->  bracketed paste into the live PTY once it is ready  ->  handed-to-terminal
  *   anything unproven    ->                                                      ->  not-delivered
- *   host stopped mid-delivery (a replayed record only)                         ->  unconfirmed
+ *   interrupted delivery or a replay with uncertain delivery                 ->  unconfirmed
  *
  * argv has no readiness race, so it is offered wherever the agent's CLI takes a prompt argument
  * (`agentPromptRidesLaunchCommand`). But that command is TYPED into the user's shell, and a long or
@@ -26,6 +26,7 @@ import { agentPromptRidesLaunchCommand } from '../../shared/tui-agent-startup'
 import type { AgentLaunchModeReceipt } from './agent-launch-mode'
 import type { AgentLaunchExecution, CreatedSurface } from './agent-launch-executor'
 import type { AgentLaunchStructuredSurface } from './agent-launch-surface-factories'
+import { isDesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 
 export const HANDED_TO_TERMINAL: AgentLaunchPromptDisposal = { outcome: 'handed-to-terminal' }
 const NOT_DELIVERED: AgentLaunchPromptDisposal = { outcome: 'not-delivered' }
@@ -33,9 +34,8 @@ const UNCONFIRMED: AgentLaunchPromptDisposal = { outcome: 'unconfirmed' }
 
 /**
  * What the record may say before any delivery runs: only what creating the surface already settled.
- * A launch command that carried the text has handed it over, and a draft is never delivered by the
- * host. A submit still owed is `unconfirmed`: a host that stops mid-delivery cannot say whether the
- * paste or the commit landed, and "not delivered" would invite a duplicate turn.
+ * Startup-carried text is handed over. Pending submissions and desktop pastes stay `unconfirmed`
+ * until delivery settles, so an interrupted launch cannot invite a duplicate paste.
  */
 export function settledAtCreation(
   intent: Pick<AgentLaunchIntent, 'prompt'>,
@@ -43,6 +43,9 @@ export function settledAtCreation(
 ): AgentLaunchPromptDisposal {
   if (created.promptRodeLaunchCommand) {
     return HANDED_TO_TERMINAL
+  }
+  if (isDesktopNewTabPrompt(intent.prompt)) {
+    return intent.prompt.text.trim() ? UNCONFIRMED : NOT_DELIVERED
   }
   return intent.prompt?.delivery === 'submit' ? UNCONFIRMED : NOT_DELIVERED
 }
@@ -93,9 +96,7 @@ async function deliverStructuredLaunchPrompt(
  * never got a terminal prompt at all. What the host cannot see is what the agent then does with
  * it — a terminal keeps no transcript — so this reports `handed-to-terminal`, never `journaled`.
  *
- * `draft` stays `not-delivered`. A terminal draft is unsent text sitting in the TUI's own
- * composer; the host could paste it without a submit, but it has no way to observe that the
- * composer accepted it, so a receipt claiming delivery would be a guess.
+ * Desktop drafts report the unsubmitted paste as handed over; generic drafts remain caller-owned.
  */
 export async function deliverTerminalLaunchPrompt(
   execution: AgentLaunchExecution,
@@ -103,9 +104,16 @@ export async function deliverTerminalLaunchPrompt(
   { freshLaunch }: { freshLaunch: boolean }
 ): Promise<AgentLaunchPromptDisposal> {
   const { intent, surfaces } = execution
-  if (!intent.prompt || intent.prompt.delivery !== 'submit') {
+  if (
+    !intent.prompt ||
+    (intent.prompt.delivery !== 'submit' && !isDesktopNewTabPrompt(intent.prompt))
+  ) {
     return NOT_DELIVERED
   }
+  if (isDesktopNewTabPrompt(intent.prompt) && !intent.prompt.text.trim()) {
+    return NOT_DELIVERED
+  }
+  let writeUnconfirmed = false
   let composerUnobserved = false
   const delivered = await surfaces.deliverTerminalPrompt?.({
     handle,
@@ -115,10 +123,17 @@ export async function deliverTerminalLaunchPrompt(
     ...(execution.beginPromptWrite ? { beginPromptWrite: execution.beginPromptWrite } : {}),
     onComposerUnobserved: () => {
       composerUnobserved = true
-    }
+    },
+    ...(isDesktopNewTabPrompt(intent.prompt)
+      ? {
+          onWriteUnconfirmed: () => {
+            writeUnconfirmed = true
+          }
+        }
+      : {})
   })
   if (!delivered) {
-    return NOT_DELIVERED
+    return writeUnconfirmed ? UNCONFIRMED : NOT_DELIVERED
   }
   return composerUnobserved
     ? { outcome: 'handed-to-terminal', composerUnobserved: true }
@@ -136,7 +151,10 @@ function launchSubmitText(intent: AgentLaunchIntent): string | undefined {
  */
 export function argvLaunchPrompt(intent: AgentLaunchIntent): string | undefined {
   const text = launchSubmitText(intent)
-  return text && intent.prompt?.transport !== 'paste' && agentPromptRidesLaunchCommand(intent.agent)
+  return text &&
+    !isDesktopNewTabPrompt(intent.prompt) &&
+    intent.prompt?.transport !== 'paste' &&
+    agentPromptRidesLaunchCommand(intent.agent)
     ? text
     : undefined
 }
@@ -156,16 +174,14 @@ export function launchCommandPrompt(
  *
  * Each arm is a consequence of the act it names, never a write-ahead of it: `journaled` is
  * reachable only from a committed message id, `handed-to-terminal` only from a launch command that
- * carried the text or a PTY write that returned, and everything else under-claims as
- * `not-delivered`. A live answer has no "maybe": `unconfirmed` is written only into the record
- * before delivery runs (`settledAtCreation`), and is read back only by a replay. Dispatch doubt is
- * not this tier's to report: the submission row carries it.
+ * carried the text or a PTY write that returned. An interrupted desktop write and a provisional
+ * recorded result stay `unconfirmed`; a refusal before any write is `not-delivered`.
  */
 export function promptReceipt(
   intent: AgentLaunchIntent,
   disposal: AgentLaunchPromptDisposal
 ): Pick<AgentLaunchResult, 'prompt'> {
-  if (!intent.prompt) {
+  if (!intent.prompt || (isDesktopNewTabPrompt(intent.prompt) && !intent.prompt.text.trim())) {
     return {}
   }
   return { prompt: { delivery: intent.prompt.delivery, ...disposal } }

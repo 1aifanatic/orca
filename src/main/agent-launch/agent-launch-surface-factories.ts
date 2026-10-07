@@ -4,10 +4,11 @@
  * implements, not part of the sequencing it runs.
  */
 
-import type { AgentLaunchPrompt } from '../../shared/agent-launch-intent'
+import type { AgentLaunchIntent, AgentLaunchPrompt } from '../../shared/agent-launch-intent'
 import type { StructuredAgentId } from '../../shared/agent-session-provider-handle'
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { OwedLaunchPromptWriteStart } from '../runtime/agent-launch-owed-prompt-record'
+import type { DesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 
 /** How a surface is built once the executor has decided which one. Injected because an
  *  orchestration worker's session carries a redrive subscription and a mailbox a plain launch
@@ -31,6 +32,7 @@ export type AgentLaunchSurfaceFactory = {
     /** Offered only for an agent whose CLI takes the prompt on argv. It rides the launch command
      *  only when the typed line can carry it; `promptRodeLaunchCommand` reports which happened. */
     startupPrompt?: string
+    desktopPrompt?: DesktopNewTabPrompt
     /** Replaces the settings default for this launch only; `null` means no arguments at all. */
     agentArgs?: string | null
     cwd?: string
@@ -79,6 +81,8 @@ export type AgentLaunchSurfaceFactory = {
     beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
     /** Written once the agent held the pane, its composer never seen ready. */
     onComposerUnobserved?: () => void
+    /** A desktop write may have started; an interrupted paste must not invite a resend. */
+    onWriteUnconfirmed?: () => void
   }): Promise<boolean>
 }
 
@@ -135,4 +139,17 @@ export type AgentLaunchWorkspaceFactory = {
     /** Reported by the create that built the startup command's typed line. */
     promptRodeLaunchCommand?: boolean
   }>
+}
+
+/** What every route that builds a terminal agent passes on, so the startup terminal of a new
+ *  workspace and the terminal of an existing one start the same agent. */
+export function terminalLaunchInputs(intent: AgentLaunchIntent) {
+  return {
+    ...(intent.sessionOptions ? { options: intent.sessionOptions } : {}),
+    // `null` is a value the caller meant, so this tests for absence rather than falsiness.
+    ...(intent.agentArgs !== undefined ? { agentArgs: intent.agentArgs } : {}),
+    ...(intent.cwd ? { cwd: intent.cwd } : {}),
+    ...(intent.launchSource ? { launchSource: intent.launchSource } : {}),
+    ...(intent.paneKey ? { paneKey: intent.paneKey } : {})
+  }
 }

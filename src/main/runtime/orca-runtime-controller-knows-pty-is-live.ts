@@ -171,6 +171,9 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     prompt: string,
     options: RuntimeAgentPromptWriteOptions
   ): Promise<RuntimeTerminalSend> {
+    if (options.desktopNewTab && options.inputKind !== 'launch') {
+      throw new Error('invalid_desktop_launch_prompt')
+    }
     // Why the consuming agent: the foreground process reads the bytes; launchAgent covers startup.
     const payloadFor = (ptyId: string): string => {
       // Why: a launch prompt replaced the desktop's draft paste, so it sends that paste's bytes.
@@ -190,7 +193,9 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
         throw new Error('terminal_not_writable')
       }
       const payload = payloadFor(pty.pty.ptyId)
-      await assertTerminalInputWithinLimitWithYield(payload)
+      if (!options.desktopNewTab) {
+        await assertTerminalInputWithinLimitWithYield(payload)
+      }
       const generation = this.getPtyLifecycleGeneration(pty.pty.ptyId)
       const delivery = await this.serializeAgentPromptSubmission(
         pty.pty.ptyId,
@@ -218,7 +223,9 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       throw new Error('terminal_not_writable')
     }
     const payload = payloadFor(leaf.ptyId)
-    await assertTerminalInputWithinLimitWithYield(payload)
+    if (!options.desktopNewTab) {
+      await assertTerminalInputWithinLimitWithYield(payload)
+    }
     // Why: same absence gate as sendTerminal — a stale graph mirror must not
     // accept a prompt into a void; unknown liveness still proceeds.
     if (await this.isLeafPtyProvenAbsent(leaf.ptyId)) {

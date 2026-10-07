@@ -59,11 +59,13 @@ import {
 } from './agent-launch-mode'
 import {
   AgentLaunchStructuredSessionRefusedError,
+  terminalLaunchInputs,
   type AgentLaunchStructuredSurface,
   type AgentLaunchSurfaceFactory,
   type AgentLaunchWorkspaceFactory
 } from './agent-launch-surface-factories'
 import type { OwedLaunchPromptWriteStart } from '../runtime/agent-launch-owed-prompt-record'
+import { isDesktopNewTabPrompt } from '../../shared/desktop-new-tab-prompt'
 
 export type AgentLaunchExecution = {
   runtime: Pick<OrcaRuntimeService, 'getStructuredAgentSessionCreateSupport' | 'getClientSettings'>
@@ -81,12 +83,7 @@ export type AgentLaunchExecution = {
   beginPromptWrite?: () => Promise<OwedLaunchPromptWriteStart>
 }
 
-/**
- * The launch as it stands once its surface exists: a complete result whose prompt receipt says only
- * what creation itself settled — carried on the launch command, a draft the host never delivers, or
- * a submit still `unconfirmed`. Complete so a host that dies during the delivery still leaves a
- * truthful answer behind.
- */
+/** Provisional receipt recorded before live delivery, leaving a replayable answer on interruption. */
 export type AgentLaunchPublishedSurface = AgentLaunchResult
 
 export async function executeAgentLaunch(
@@ -326,19 +323,6 @@ function ignoredStructuredAgentArgsWarning(
       }
 }
 
-/** What every route that builds a terminal agent passes on, so the startup terminal of a new
- *  workspace and the terminal of an existing one start the same agent. */
-function terminalLaunchInputs(intent: AgentLaunchIntent) {
-  return {
-    ...(intent.sessionOptions ? { options: intent.sessionOptions } : {}),
-    // `null` is a value the caller meant, so this tests for absence rather than falsiness.
-    ...(intent.agentArgs !== undefined ? { agentArgs: intent.agentArgs } : {}),
-    ...(intent.cwd ? { cwd: intent.cwd } : {}),
-    ...(intent.launchSource ? { launchSource: intent.launchSource } : {}),
-    ...(intent.paneKey ? { paneKey: intent.paneKey } : {})
-  }
-}
-
 /**
  * The one place a terminal agent is created, so the structured-refusal downgrade builds the same
  * surface — carrying the same argv prompt — as a launch that chose a terminal outright.
@@ -353,6 +337,7 @@ async function createTerminalSurface(
     worktreeId: workspace.worktreeId,
     agent: intent.agent,
     ...(startupPrompt ? { startupPrompt } : {}),
+    ...(isDesktopNewTabPrompt(intent.prompt) ? { desktopPrompt: intent.prompt } : {}),
     ...terminalLaunchInputs(intent),
     viewMode: deriveAgentLaunchTerminalViewMode({
       settings: readAgentLaunchModeSettings(execution.runtime),
@@ -368,7 +353,9 @@ async function createTerminalSurface(
       ...(terminal.paneKey ? { paneKey: terminal.paneKey } : {})
     },
     ...(terminal.warning ? { warning: terminal.warning } : {}),
-    ...(startupPrompt && terminal.promptRodeLaunchCommand ? { promptRodeLaunchCommand: true } : {})
+    ...((startupPrompt || isDesktopNewTabPrompt(intent.prompt)) && terminal.promptRodeLaunchCommand
+      ? { promptRodeLaunchCommand: true }
+      : {})
   }
 }
 

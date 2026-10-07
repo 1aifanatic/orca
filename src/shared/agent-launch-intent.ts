@@ -13,6 +13,7 @@
  */
 
 import type { TuiAgent } from './tui-agent'
+import type { DesktopNewTabPromptTransport } from './desktop-new-tab-prompt'
 
 /** How a launch's initial text reaches the agent. */
 export type AgentLaunchPromptDelivery =
@@ -27,7 +28,7 @@ export type AgentLaunchPrompt = {
   text: string
   delivery: AgentLaunchPromptDelivery
   /** Temporary: `paste` never rides the launch line (`agent-launch-params`). */
-  transport?: 'paste'
+  transport?: 'paste' | DesktopNewTabPromptTransport
 }
 
 /**
@@ -179,7 +180,7 @@ export type AgentLaunchPromptDisposal =
   /** Not delivered by this call; the caller still owns the text. */
   | { outcome: 'not-delivered' }
   /**
-   * Only ever replayed, never a live answer: the host recorded the running agent, then stopped
+   * A desktop compatibility write was interrupted, or the host recorded the running agent then stopped
    * before the delivery reported back, so the text may or may not have arrived. The caller must not
    * resend. Sent only to a caller advertising `agent.launch.prompt-unconfirmed.v1`; every other
    * caller is refused with `agent_session_operation_unknown` instead.

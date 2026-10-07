@@ -16,6 +16,7 @@
  */
 
 import { deriveAgentLaunchChildOperationId } from '../../../../shared/agent-launch-operation'
+import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
 import {
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
   AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
@@ -331,6 +332,7 @@ function owedTerminalPrompt(
 ): OwedLaunchPrompt | undefined {
   // Temporary, desktop only: the phone and the CLI keep main's answer, which owes nothing.
   return isDesktopLaunchCaller(callerKey) &&
+    !isDesktopNewTabPrompt(params.prompt) &&
     provisional.outcome.kind === 'terminal' &&
     provisional.prompt?.outcome === 'unconfirmed' &&
     params.prompt?.delivery === 'submit' &&

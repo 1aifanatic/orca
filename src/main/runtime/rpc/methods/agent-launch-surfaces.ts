@@ -14,6 +14,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { sessionOptionValueIsValid } from '../../../../shared/agent-session-option-catalog'
+import { isDesktopNewTabPrompt } from '../../../../shared/desktop-new-tab-prompt'
 import { narrowStructuredLaunchSeedOptions } from '../../../../shared/native-chat-session-option-defaults'
 import { createStructuredAgentSessionOperationId } from '../../../../shared/structured-agent-session-mutation'
 import { structuredAgentSessionTabId } from '../../../../shared/structured-agent-session-projection'
@@ -124,6 +126,7 @@ export function agentLaunchSurfaceFactory(
       worktreeId,
       agent,
       startupPrompt,
+      desktopPrompt,
       agentArgs,
       cwd,
       launchSource,
@@ -152,6 +155,21 @@ export function agentLaunchSurfaceFactory(
             }
           : {}),
         ...(agentArgs !== undefined ? { agentArgs } : {}),
+        ...(desktopPrompt
+          ? {
+              desktopPrompt,
+              desktopSessionOptions: options
+                ? Object.fromEntries(
+                    Object.entries(options).filter((entry): entry is [string, string | boolean] =>
+                      sessionOptionValueIsValid(entry[1])
+                    )
+                  )
+                : undefined,
+              onStartupPromptCarry: (carried: boolean) => {
+                promptRodeLaunchCommand = carried
+              }
+            }
+          : {}),
         ...(cwd ? { cwd } : {}),
         // The model the user picked outranks configured args here too, as it does on a chat.
         ...(launchPreferences ? { launchPreferences } : {}),
@@ -185,7 +203,8 @@ export function agentLaunchSurfaceFactory(
       freshLaunch,
       prompt,
       beginPromptWrite,
-      onComposerUnobserved
+      onComposerUnobserved,
+      onWriteUnconfirmed
     }) =>
       deliverTerminalAgentLaunchPrompt({
         runtime: context.runtime,
@@ -193,8 +212,10 @@ export function agentLaunchSurfaceFactory(
         agent,
         freshLaunch,
         text: prompt.text,
+        ...(isDesktopNewTabPrompt(prompt) ? { prompt } : {}),
         ...(beginPromptWrite ? { beginPromptWrite } : {}),
         ...(onComposerUnobserved ? { onComposerUnobserved } : {}),
+        ...(onWriteUnconfirmed ? { onWriteUnconfirmed } : {}),
         callerKey:
           operationCallerKey ?? (context.caller ? rpcCallerOperationKey(context.caller) : undefined)
       })
