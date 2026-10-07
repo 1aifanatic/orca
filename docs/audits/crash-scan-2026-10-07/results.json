@@ -1,0 +1,92 @@
+{
+  "crashId": "ec86e831-5efc-4c7d-9244-7593eeb75c58",
+  "verdict": "unreproduced",
+  "fixed": false,
+  "sourceChange": false,
+  "observedCrash": {
+    "orcaVersion": "1.4.222",
+    "os": "Windows 10.0.22621 x64",
+    "electron": "43.7.5",
+    "chrome": "150.0.7871.250",
+    "process": "renderer",
+    "exitCode": -1073741819,
+    "exceptionCode": "0xc0000005",
+    "frame": "Orca.exe+0x1f07125",
+    "absoluteAddress": "0x7ff7753a7125",
+    "minidumpAvailable": false,
+    "minidumpNote": "Report says 1839600 bytes captured; dump was not attached, so exception parameters (read address), registers and stack are unknown."
+  },
+  "identity": {
+    "releaseTag": "v1.4.222",
+    "releaseTagCommit": "4bb6f2072b07c1f0664b809551f77754700570e4",
+    "installer": "orca-windows-setup.exe",
+    "installerSha512MatchesLatestYml": true,
+    "installerSha256": "337de1d3127d2f5b6def4d9e8708af4e1c1e9a6017f2ac326f5dd4ffd8cf30f2",
+    "orcaExeSha256": "8a723238726eb6e7eb995ff1e59b899e84286c882d9f3e10fdd3802403a21530",
+    "appAsarSha256": "8ddf27c135773029e8edc6d931760e871b32cf6a7a479e804e245856a16efe9a",
+    "orcaExeProductVersion": "1.4.222.0",
+    "codeViewPdb": "electron.exe.pdb",
+    "codeViewId": "FA93794E22E98CCB4C4C44205044422E1",
+    "breakpadSymbolsZipSha256": "1891dfd0d60dc76bbf83601a354c866642ce1fdf5b9a2063666990fa99424799",
+    "breakpadModuleIdMatches": true,
+    "stockElectronExeTextSectionSha256": "05dcfd82ca09f7093a2ea5605bab00012fffeb8b46da599be7fc84614ea443e2",
+    "orcaExeTextSectionSha256": "05dcfd82ca09f7093a2ea5605bab00012fffeb8b46da599be7fc84614ea443e2"
+  },
+  "symbolication": {
+    "rva": "0x1f07125",
+    "function": "blink::HashTrieNode<const blink::CSSValue>::MakeShared()",
+    "functionRange": ["0x1f07120", "0x1f07393"],
+    "offsetInFunction": "0x5",
+    "sourceLine": "third_party/blink/renderer/core/style/style_variables.h:231",
+    "faultingInstruction": "cmp byte ptr [rcx + 0x100], 0",
+    "meaning": "First read of this->shared on entry; the HashTrieNode pointer itself was invalid (null+0x100, freed, or corrupted cannot be distinguished without the dump).",
+    "appCodeInStack": "unknown (only top frame reported)"
+  },
+  "attempts": [
+    {
+      "name": "released-app-hidden-soak",
+      "binary": "extracted v1.4.222 Orca.exe (not installed)",
+      "launch": "ORCA_BACKGROUND_LAUNCH=1, isolated ORCA_E2E_USER_DATA_DIR/ORCA_E2E_HOME_DIR/USERPROFILE/LOCALAPPDATA, CDP 9341, runtime WS 47622",
+      "workload": "6 repos x (main + 3 worktrees), 6 agent-like streaming TUI terminals (10 Hz redraw), worktree/tab switching, dark/light theme flips every 5 cycles, viewport resize every 7, settings open/close every 11, button hover every cycle",
+      "start": "2026-10-07T05:46:37.721Z",
+      "end": "2026-10-07T06:26:43.966Z",
+      "minutes": 40,
+      "cycles": 436,
+      "actionErrors": 0,
+      "rendererCrashes": 0,
+      "newDumps": 0,
+      "rendererJsHeapMB": { "first": 43, "max": 141, "last": 125 },
+      "domNodesMax": 4722,
+      "result": "no crash"
+    },
+    {
+      "name": "stock-electron-hidden-style-churn",
+      "binary": "node_modules/electron 43.7.5 electron.exe (.text identical to release Orca.exe)",
+      "launch": "ORCA_BACKGROUND_LAUNCH=1, 2 BrowserWindows show:false, backgroundThrottling:false, crashReporter to scratch dir",
+      "workload": "release renderer stylesheet (10 typed @property registrations) applied to 600-900 elements; class swaps across gradient/shadow/ring utilities, root dark toggle, subtree rebuild/clone, forced layout and getComputedStyle every 16 ms",
+      "start": "2026-10-07T05:47:18.000Z",
+      "end": "2026-10-07T06:17:18.011Z",
+      "minutes": 30,
+      "stepsPerWindow": 108735,
+      "renderProcessGone": 0,
+      "newDumps": 0,
+      "result": "no crash"
+    }
+  ],
+  "launchSafety": {
+    "hazardFound": "v1.4.222 pruneOldDaemonHosts deletes %LOCALAPPDATA%/Orca/daemon-host/<other version> dirs that the current profile's runtime dir has no pid record for; an isolated profile would have targeted the user's live 1.4.221-adhoc host.",
+    "mitigation": "LOCALAPPDATA redirected to a scratch dir for every launch; user's daemon-host dirs verified intact before and after.",
+    "windowsRevealed": false,
+    "userProcessesTouched": false
+  },
+  "electronUpgradeCheck": {
+    "laterReleases": ["v43.7.6", "v43.7.7", "v43.7.8", "v43.7.9"],
+    "backportsTouchingBlinkStyleOrCppgc": false
+  },
+  "limits": [
+    "No minidump: cannot tell null vs freed vs corrupted node, nor the caller chain.",
+    "awin is Windows 11 26200; field crash was 22621. GPU/driver differences unexamined.",
+    "Isolated home: no real Claude CLI, no gh-authenticated PR polling, synthetic repos; the field session ran up to ~2h01m (main start 02:59:26Z to report 05:00:31Z) with many real repos.",
+    "Single field occurrence; a rare race/heap-state bug may need far longer soaks or many machines."
+  ]
+}

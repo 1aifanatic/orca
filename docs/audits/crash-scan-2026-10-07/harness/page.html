@@ -1,0 +1,40 @@
+<!doctype html>
+<html class="dark"><head><meta charset="utf-8"><link rel="stylesheet" href="release.css"></head>
+<body class="bg-background text-foreground"><div id="root"></div>
+<script>
+// Ordinary style churn using the release stylesheet's own utility classes.
+const sets = [
+  'bg-gradient-to-br from-emerald-500 via-background to-transparent shadow-lg ring-2 ring-offset-2 ring-offset-background ring-ring',
+  'bg-gradient-to-t from-rose-500 to-background shadow-md ring-1 ring-sky-500 drop-shadow-sm',
+  'bg-gradient-to-br from-sidebar via-background to-background shadow-2xl ring-offset-1 ring-violet-500',
+  'shadow-inner ring-inset ring-2 ring-amber-500 bg-card',
+  'shadow-xs ring-0 bg-popover'
+]
+const root = document.getElementById('root')
+let tick = 0
+function build() {
+  root.textContent = ''
+  for (let i = 0; i < 600; i++) {
+    const d = document.createElement('div')
+    d.className = 'p-1 m-1 rounded ' + sets[i % sets.length]
+    d.style.setProperty('--row', String(i))
+    d.innerHTML = '<span class="ring-1 ring-border shadow-sm">x</span><span class="bg-gradient-to-t from-emerald-500 to-transparent">y</span>'
+    root.appendChild(d)
+  }
+}
+build()
+window.__stats = { tick: 0 }
+function step() {
+  tick++
+  const kids = root.children
+  for (let i = tick % 7; i < kids.length; i += 7) kids[i].className = 'p-1 m-1 rounded ' + sets[(i + tick) % sets.length]
+  if (tick % 20 === 0) document.documentElement.classList.toggle('dark')
+  if (tick % 50 === 0) build()
+  if (tick % 3 === 0) { const c = kids[tick % kids.length]; if (c) { root.appendChild(c.cloneNode(true)); } }
+  if (root.children.length > 900) root.lastElementChild.remove()
+  void root.offsetHeight
+  for (let i = 0; i < kids.length; i += 50) getComputedStyle(kids[i]).getPropertyValue('--tw-gradient-from')
+  window.__stats.tick = tick
+}
+setInterval(step, 16)
+</script></body></html>
