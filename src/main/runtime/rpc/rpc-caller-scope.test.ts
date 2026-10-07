@@ -104,7 +104,7 @@ describe('SSH bridge without the per-host opt-in', () => {
     ['settings.update', {}],
     ['skills.install', {}],
     ['terminal.create', {}],
-    ['orchestration.send', { subject: 'hi' }],
+    ['orchestration.dispatch', { task: 'task_1' }],
     ['files.read', {}]
   ])('refuses %s before any handler runs', async (method, params) => {
     const response = await dispatchAs(HOST_BOUND, method, params)
@@ -255,10 +255,21 @@ describe('paired runtime clients', () => {
     expect(errorCode(response)).not.toBe('forbidden')
   })
 
-  it('keep the standard workspace and host surface', async () => {
-    const response = await dispatchAs(PAIRED, 'settings.update', {})
-    expect(errorCode(response)).not.toBe('forbidden')
-  })
+  it.each(['settings.update', 'accounts.selectClaude', 'skills.install', 'updater.check'])(
+    'keep the remote UI surface: %s',
+    async (method) => {
+      const response = await dispatchAs(PAIRED, method, {})
+      expect(errorCode(response)).not.toBe('forbidden')
+    }
+  )
+
+  it.each(['pairing.provisionRelay', 'pairing.getEndpoints', 'notifications.registerPush'])(
+    'are refused pairing and push administration: %s',
+    async (method) => {
+      const response = await dispatchAs(PAIRED, method, {})
+      expect(errorCode(response)).toBe('forbidden')
+    }
+  )
 
   it('learn an unregistered method is missing rather than forbidden', async () => {
     const response = await dispatchAs(PAIRED, 'computer.methodFromTheFuture', {})

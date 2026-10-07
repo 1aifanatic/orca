@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DeviceRegistry } from './device-registry'
 import { OrcaRuntimeService } from './orca-runtime'
 import { OrcaRuntimeRpcServer } from './runtime-rpc'
@@ -15,11 +15,12 @@ function tempDir(): string {
 async function dispatchOverWebSocket(
   server: OrcaRuntimeRpcServer,
   deviceToken: string,
-  method: string
+  method: string,
+  params: unknown = { app: 'Finder' }
 ): Promise<Record<string, unknown>> {
   const replies: Record<string, unknown>[] = []
   await server['handleWebSocketMessage'](
-    JSON.stringify({ id: `req-${method}`, method, deviceToken, params: { app: 'Finder' } }),
+    JSON.stringify({ id: `req-${method}`, method, deviceToken, params }),
     (response) => replies.push(JSON.parse(response)),
     () => {}
   )
@@ -58,6 +59,23 @@ describe('desktop control for paired runtime clients', () => {
     ])
     const reply = await dispatchOverWebSocket(server, device.token, 'computer.click')
     expect(errorCode(reply)).not.toBe('forbidden')
+  })
+})
+
+describe('pairing and push administration for paired runtime clients', () => {
+  it.each<[string, unknown]>([
+    ['pairing.provisionRelay', {}],
+    ['notifications.registerPush', { token: 't', platform: 'ios' }]
+  ])('refuses %s without reaching its service', async (method, params) => {
+    const userDataPath = tempDir()
+    const runtime = new OrcaRuntimeService()
+    const server = new OrcaRuntimeRpcServer({ runtime, userDataPath, enableWebSocket: false })
+    server['deviceRegistry'] = new DeviceRegistry(userDataPath)
+    const device = server['deviceRegistry']!.addDevice('laptop', 'runtime')
+    const registerPush = vi.spyOn(runtime, 'registerMobilePushDevice')
+    const reply = await dispatchOverWebSocket(server, device.token, method, params)
+    expect(errorCode(reply)).toBe('forbidden')
+    expect(registerPush).not.toHaveBeenCalled()
   })
 })
 

@@ -27,8 +27,15 @@ export type RpcCallerScope =
 
 export const OWNER_RPC_CALLER_SCOPE: RpcCallerScope = { kind: 'owner' }
 
-const RUNTIME_PAIRED_DENIED_WITHOUT_GRANT: ReadonlySet<RpcMethodPermission> = new Set([
-  'desktop-control'
+// Why: a paired desktop, web client or `--host runtime:` CLI is this runtime's full remote UI, so its
+// standard set covers what that UI drives here (settings, accounts, skills, SSH and server updates).
+// Everything else (desktop control, pairing and push admin) is refused unless granted at pairing.
+const RUNTIME_PAIRED_STANDARD: ReadonlySet<RpcMethodPermission> = new Set([
+  'workspace',
+  'settings-write',
+  'accounts-admin',
+  'skills-admin',
+  'host-admin'
 ])
 
 /**
@@ -50,9 +57,9 @@ export function denyRpcMethodForCaller(
     return null
   }
   if (scope.kind === 'runtime-paired') {
-    return RUNTIME_PAIRED_DENIED_WITHOUT_GRANT.has(permission) &&
+    return !RUNTIME_PAIRED_STANDARD.has(permission) &&
       !scope.grants.some((grant) => grant === permission)
-      ? `Method '${methodName}' needs the '${permission}' permission, which this paired client was not granted. Pair again with that permission to use it.`
+      ? `Method '${methodName}' needs the '${permission}' permission, which this paired client was not granted when it paired.`
       : null
   }
   if (scope.remoteCliControl) {
