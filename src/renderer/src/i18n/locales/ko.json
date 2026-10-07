@@ -17647,6 +17647,9 @@
         "providerRateLimited": "{{agent}}이(가) 속도 제한에 걸려 다시 시도하고 있습니다.",
         "providerRetrying": "{{agent}}에 일시적인 문제가 발생하여 다시 시도하고 있습니다.",
         "providerRetryingQuoted": "{{agent}}이(가) 다시 시도하고 있습니다: {{detail}}.",
+        "providerRetryNumber": "{{attempt}}번째 재시도입니다.",
+        "providerRetryNumberOf": "{{maxRetries}}회 중 {{attempt}}번째 재시도입니다.",
+        "providerRetryLastError": "마지막 오류: {{detail}}.",
         "previousExitUnverifiable": "이전에 실행된 {{agent}}을(를) 중지하지 못했습니다."
       },
       "writeNotice": {
@@ -17775,6 +17778,10 @@
         "viewAttachment": "이미지 보기",
         "imagePreview": "전체 크기 이미지 미리보기",
         "imagePreviewUnavailable": "미리보기를 사용할 수 없습니다.",
+        "copyImage": "이미지 복사",
+        "copyImageFailed": "이미지를 복사할 수 없습니다",
+        "copyImageTooLarge": "이미지가 너무 커서 복사할 수 없습니다.",
+        "imageCopied": "이미지를 복사했습니다",
         "workspaceAttachmentMismatch": "파일은 소스 워크스페이스에만 첨부할 수 있습니다.",
         "attachmentOwnerChanged": "이 워크스페이스는 첨부하는 동안 호스트를 변경했습니다. 파일을 다시 삭제하세요.",
         "attachmentUnreadable": "삭제된 파일을 읽을 수 없습니다.",
@@ -17888,6 +17895,7 @@
         "toggleDetails": "턴 세부정보 전환"
       },
       "jumpToLatest": "최신으로 이동",
+      "transcriptLabel": "대화",
       "toggle": {
         "showTerminal": "terminal 표시",
         "showChat": "채팅 보기 표시"
