@@ -92,19 +92,25 @@ function addEntry(
   }
 }
 
+/** Admitted but not painted: its code may still be loading, so nothing of it is on screen yet. */
+function unpainted(entry: DialogEntry): boolean {
+  return entry.origin === 'automatic' && entry.phase === 'opening' && entry.mountedContent === 0
+}
+
 /**
- * Admits the next self-opening dialog, if nothing is on screen: no dialog of any origin open,
- * opening or still closing, and no tour running. Earlier kinds go first, FIFO within a kind, and a
- * kind also waits until every earlier kind's startup check has answered, so a fast late check can
- * never show ahead of a slow earlier one.
+ * Admits the next self-opening dialog when nothing is on screen: no dialog of any origin open or
+ * still closing, and no tour running. Earlier kinds go first, FIFO within a kind, and a kind also
+ * waits until every earlier kind's startup check has answered, so a fast late check never shows
+ * first. Admission holds only once painted: until then it is decided again on every change, so a
+ * dialog opened meanwhile stays on top and an earlier kind queued meanwhile goes first.
  */
 function admitNext(registry: DialogRegistry): DialogRegistry {
-  if (registry.dialogEntries.some(onScreen)) {
-    return registry
-  }
-  // Nothing on screen, so every entry left is a queued automatic one.
   let next: DialogEntry | null = null
-  for (const entry of registry.dialogEntries) {
+  const painted = registry.dialogEntries.some((entry) => onScreen(entry) && !unpainted(entry))
+  for (const entry of painted ? [] : registry.dialogEntries) {
+    if (entry.phase !== 'queued' && !unpainted(entry)) {
+      continue
+    }
     if (
       next === null ||
       orderOf(entry.kind) < orderOf(next.kind) ||
@@ -113,15 +119,29 @@ function admitNext(registry: DialogRegistry): DialogRegistry {
       next = entry
     }
   }
-  if (next === null) {
+  if (
+    next !== null &&
+    AUTOMATIC_DIALOG_ORDER.slice(0, orderOf(next.kind)).some(
+      (kind) => registry.startupSources[kind] === 'pending'
+    )
+  ) {
+    next = null
+  }
+  const unchanged = registry.dialogEntries.every((entry) =>
+    entry === next ? entry.phase === 'opening' : !unpainted(entry)
+  )
+  if (unchanged) {
     return registry
   }
-  const earlierPending = AUTOMATIC_DIALOG_ORDER.slice(0, orderOf(next.kind)).some(
-    (kind) => registry.startupSources[kind] === 'pending'
-  )
-  return earlierPending
-    ? registry
-    : replaceEntry(registry, next.token, { ...next, phase: 'opening' })
+  return {
+    ...registry,
+    dialogEntries: registry.dialogEntries.map((entry) => {
+      if (entry === next) {
+        return { ...entry, phase: 'opening' }
+      }
+      return unpainted(entry) ? { ...entry, phase: 'queued' } : entry
+    })
+  }
 }
 
 /** Opens a dialog now, never waiting. The user opening an automatic one takes it over in place. */

@@ -135,14 +135,45 @@ describe('dialogs opened over a self-opening one', () => {
   )
 
   it('a response dialog opens at once, even before every check has answered', () => {
-    let registry = enqueueAutomaticDialog(INITIAL_DIALOG_REGISTRY, 'crash', 'crash-report')
+    let registry = show(
+      enqueueAutomaticDialog(INITIAL_DIALOG_REGISTRY, 'crash', 'crash-report'),
+      'crash'
+    )
     registry = openDialogEntry(registry, {
       token: 'ssh',
       kind: 'ssh-credential',
       origin: 'response'
     })
     expect(phase(registry, 'ssh')).toBe('opening')
-    expect(phase(registry, 'crash')).toBe('opening')
+    expect(phase(registry, 'crash')).toBe('visible')
+  })
+
+  it.each(['user', 'response'] as const)(
+    'a %s dialog opened while an admitted one has not painted yet sends it back to its place',
+    (origin) => {
+      let registry = enqueueAutomaticDialog(settled, 'crash', 'crash-report')
+      const seq = registry.dialogEntries[0]?.seq
+      expect(phase(registry, 'crash')).toBe('opening')
+      registry = openDialogEntry(registry, { token: 'top', kind: 'dialog', origin })
+      // Its code was still loading: it waits under nothing, and the dialog opened now stays on top.
+      expect(registry.dialogEntries.find((entry) => entry.token === 'crash')).toEqual(
+        expect.objectContaining({ phase: 'queued', seq })
+      )
+      registry = dismiss(show(registry, 'top'), 'top')
+      expect(phase(registry, 'crash')).toBe('opening')
+    }
+  )
+
+  it('an earlier kind queued before the admitted one painted goes first', () => {
+    let registry = enqueueAutomaticDialog(settled, 'resume', 'native-chat-resume')
+    expect(phase(registry, 'resume')).toBe('opening')
+    registry = enqueueAutomaticDialog(registry, 'tip', 'feature-tip')
+    expect(phase(registry, 'tip')).toBe('opening')
+    expect(phase(registry, 'resume')).toBe('queued')
+    // Once painted it keeps its turn.
+    registry = enqueueAutomaticDialog(show(registry, 'tip'), 'crash', 'crash-report')
+    expect(phase(registry, 'tip')).toBe('visible')
+    expect(phase(registry, 'crash')).toBe('queued')
   })
 
   it('the next is admitted only once the previous one finished closing', () => {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act, useEffect, useState } from 'react'
+import { act, StrictMode, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
@@ -586,4 +586,69 @@ it('marks the tip seen only once it is on screen', async () => {
   await flush()
   expect(onScreen()).toEqual(['tip'])
   expect(markFeatureTipsSeen).toHaveBeenCalledWith(['orca-cli'])
+})
+
+it.each(['user modal', 'SSH prompt'] as const)(
+  'a %s opened while an admitted crash report is still loading stays on top; the report waits for it',
+  async (opened) => {
+    const load = Promise.withResolvers<void>()
+    surface.loaded = load.promise
+    surface.suspended = true
+    settleTip()
+    crashReports.getLatestPending.mockResolvedValue(crash('c1'))
+    await mount(
+      <>
+        <CrashReportDialog />
+        <UserModal />
+        <SshHost />
+      </>
+    )
+    expect(onScreen()).toEqual([])
+    if (opened === 'user modal') {
+      act(() => useAppStore.getState().openModal('add-repo'))
+    } else {
+      raiseSsh()
+    }
+    await flush()
+    surface.suspended = false
+    await act(async () => load.resolve())
+    await flush()
+    const top = opened === 'user modal' ? 'Add project' : 'ssh'
+    expect(onScreen()).toEqual([top])
+    expect(document.querySelector('[data-testid="crash-report"]')).toBeNull()
+
+    if (opened === 'user modal') {
+      act(() => useAppStore.getState().closeModal())
+    } else {
+      await act(async () => useAppStore.getState().removeSshCredentialRequest('r1'))
+    }
+    await flush()
+    expect(onScreen()).toEqual(['crash:c1'])
+  }
+)
+
+it('in StrictMode (dev builds) a tip decided after the resume offer was queued still goes first', async () => {
+  act(() => useDialogRegistry.getState().settleStartupSource('crash-report', 'none'))
+  const render = async (node: React.ReactNode): Promise<void> => {
+    await act(async () =>
+      root.render(
+        <StrictMode>
+          <TooltipProvider>{node}</TooltipProvider>
+        </StrictMode>
+      )
+    )
+    await flush()
+  }
+  await render(<NativeChatResumeOnRestartModal />)
+  expect(onScreen()).toEqual([])
+  await render(
+    <>
+      <NativeChatResumeOnRestartModal />
+      <AppOpenFeatureTip tipId="orca-cli" />
+    </>
+  )
+  expect(onScreen()).toEqual(['tip'])
+  click('Close tip')
+  await flush()
+  expect(onScreen()).toEqual(['resume'])
 })
