@@ -206,6 +206,13 @@ describe('withoutNativeChatVisualDirectiveLines', () => {
     )
   })
 
+  it('leaves code blocks and indentation as written for a copy', () => {
+    const code = '```\na\n\n\n\nb\n```'
+    expect(withoutNativeChatVisualDirectiveLines(`${code}\n\n${LINE}`)).toBe(code)
+    expect(withoutNativeChatVisualDirectiveLines(`    code\npara\n${LINE}`)).toBe('    code\npara')
+    expect(withoutNativeChatVisualDirectiveLines(`${LINE}\n\nText`)).toBe('Text')
+  })
+
   it('returns text without a marker untouched', () => {
     expect(withoutNativeChatVisualDirectiveLines('  plain\n\n\n text  ')).toBe(
       '  plain\n\n\n text  '

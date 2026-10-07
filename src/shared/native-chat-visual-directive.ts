@@ -167,37 +167,52 @@ const FENCE_OPEN = /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/
 
 /**
- * Reply text for plain-text surfaces (a sidebar row, a notification, a title): the visual lines are
+ * Reply text for plain-text surfaces (a sidebar row, a notification, a copy): the visual lines are
  * dropped, since only the transcript can show them. Lines inside fenced code stay, as the transcript
- * shows them too.
+ * shows them too, and everything else keeps its spacing and indentation.
  */
 export function withoutNativeChatVisualDirectiveLines(text: string): string {
   if (!text.includes(NATIVE_CHAT_VISUAL_DIRECTIVE_MARKER)) {
     return text
   }
   let fence: string | null = null
+  let skipBlank = false
   const kept: string[] = []
   for (const line of text.split('\n')) {
+    const bare = line.replace(/\r$/, '')
+    const blank = bare.trim().length === 0
+    if (skipBlank && blank) {
+      // The blank line that separated a removed visual from what follows.
+      skipBlank = false
+      continue
+    }
+    skipBlank = false
     if (fence) {
-      const closer = FENCE_CLOSE.exec(line.replace(/\r$/, ''))?.[1]
+      const closer = FENCE_CLOSE.exec(bare)?.[1]
       if (closer && closer[0] === fence[0] && closer.length >= fence.length) {
         fence = null
       }
       kept.push(line)
       continue
     }
-    const opener = FENCE_OPEN.exec(line.replace(/\r$/, ''))?.[1]
+    const opener = FENCE_OPEN.exec(bare)?.[1]
     if (opener) {
       fence = opener
       kept.push(line)
       continue
     }
-    if (!parseNativeChatVisualDirectiveLine(line)) {
-      kept.push(line)
+    if (parseNativeChatVisualDirectiveLine(line)) {
+      // Drop one blank neighbour too, so the gap closes; every other line keeps its spacing.
+      const previous = kept.at(-1)
+      skipBlank = previous === undefined || previous.replace(/\r$/, '').trim().length === 0
+      continue
     }
+    kept.push(line)
   }
+  // Only blank lines the removal left at the very start or end go; indentation is kept.
   return kept
     .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+    .replace(/^(?:[ \t]*\r?\n)+/, '')
+    .replace(/(?:\r?\n[ \t]*)+$/, '')
+    .replace(/\r$/, '')
 }
