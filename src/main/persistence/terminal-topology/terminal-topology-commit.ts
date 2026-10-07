@@ -1,5 +1,8 @@
+import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { PersistedState } from '../../../shared/persisted-state-types'
+import { parsePaneKey } from '../../../shared/stable-pane-id'
+import { structuralValuesEqual } from '../../../shared/structural-value-equality'
 import type {
   TerminalLeafMoveRequest,
   TerminalLeafMoveResult
@@ -14,8 +17,9 @@ import type { DurableProfileStateMutation } from '../loading-store/store-runtime
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 
-// The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings). Wraps the close and
-// the pane move; the close transform still lives in runtime/ and other writers move here later.
+// The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings, sleeping agents).
+// Wraps the close and the pane move; the close transform still lives in runtime/ and other writers
+// move here later.
 
 /** Bindings are not listed: `persistPtyBinding` already records `persistence.pty-binding`. */
 type TerminalTopologyCommitKind = 'close_leaf' | 'close_tab' | 'move_leaf'
@@ -41,6 +45,40 @@ export function moveLeaf(
     () => commitLeafMove(request, context),
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
+}
+
+/** A sleeping agent's record lives beside its tab, in each partition that holds the tab. */
+export function sleepLeaf(
+  session: WorkspaceSessionState,
+  records: Record<string, SleepingAgentSessionRecord>
+): WorkspaceSessionState {
+  const current = session.sleepingAgentSessionsByPaneKey ?? {}
+  const held = Object.entries(records).filter(
+    ([paneKey, record]) =>
+      session.tabsByWorktree?.[record.worktreeId]?.some(
+        (tab) => tab.id === parsePaneKey(paneKey)?.tabId
+      ) && !structuralValuesEqual(current[paneKey], record)
+  )
+  return held.length > 0
+    ? { ...session, sleepingAgentSessionsByPaneKey: { ...current, ...Object.fromEntries(held) } }
+    : session
+}
+
+export function wakeLeaf(
+  session: WorkspaceSessionState,
+  paneKeys: string[]
+): WorkspaceSessionState {
+  const current = session.sleepingAgentSessionsByPaneKey ?? {}
+  if (!paneKeys.some((paneKey) => Object.hasOwn(current, paneKey))) {
+    return session
+  }
+  const woken = new Set(paneKeys)
+  return {
+    ...session,
+    sleepingAgentSessionsByPaneKey: Object.fromEntries(
+      Object.entries(current).filter(([paneKey]) => !woken.has(paneKey))
+    )
+  }
 }
 
 /**

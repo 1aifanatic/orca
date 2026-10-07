@@ -4,6 +4,7 @@ import type { AgentStatusBatchTransaction, AgentStatusBatchUpdate } from './agen
 import type { AgentStatusSlice } from './agent-status-slice-contract'
 import type { GeneratedTabTitleUpdate } from './terminal-tab-title-batch'
 import { createFreshnessScheduler } from './agent-status-freshness-scheduler'
+import { commitSleepingRecordWrite } from '../terminals/terminal-sleeping-record-commits'
 
 export type AgentStatusStateUpdate =
   | AppState
@@ -13,6 +14,8 @@ export type AgentStatusStateUpdate =
 export type AgentStatusRuntime = {
   get: () => AppState
   set: (update: AgentStatusStateUpdate) => void
+  /** `set`, then commits this window's sleeping-record change to main. */
+  setCommittingSleepingRecords: (update: AgentStatusStateUpdate) => void
   runAfterCommit: (effect: () => void) => void
   applyGeneratedTabTitleUpdate: (update: GeneratedTabTitleUpdate) => void
   requestFreshness: (acceptedInBatch: boolean) => void
@@ -60,6 +63,9 @@ export function createAgentStatusRuntime(
     // The staged object is private until commit, so fold into it instead of cloning AppState per update.
     Object.assign(staged, nextState)
   }
+
+  const setCommittingSleepingRecords = (update: AgentStatusStateUpdate): void =>
+    commitSleepingRecordWrite(get, () => set(update))
 
   const runAfterCommit = (effect: () => void): void => {
     if (batchedAgentStatusEffects) {
@@ -187,7 +193,7 @@ export function createAgentStatusRuntime(
       return
     }
     const uniquePaneKeys = new Set(paneKeys)
-    set((s) => {
+    setCommittingSleepingRecords((s) => {
       let nextSleeping = s.sleepingAgentSessionsByPaneKey
       let nextLaunchConfigs = s.agentLaunchConfigByPaneKey
       for (const paneKey of uniquePaneKeys) {
@@ -220,6 +226,7 @@ export function createAgentStatusRuntime(
   return {
     get,
     set,
+    setCommittingSleepingRecords,
     runAfterCommit,
     applyGeneratedTabTitleUpdate,
     requestFreshness,

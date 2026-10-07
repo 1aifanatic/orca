@@ -6,6 +6,7 @@ import type {
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 import type {
+  TerminalSleepingRecordChanges,
   TerminalTopologyReply,
   TerminalTopologySlice
 } from '../../shared/terminal-topology-slice'
@@ -30,6 +31,10 @@ export type WorkspaceSessionApi = {
       target: TerminalSurfaceCloseTarget
       reason?: 'user' | 'cleanup'
     }) => Promise<TerminalTopologyReply>
+    /** Commits sleeping-agent records this window wrote, beside their tabs in main. */
+    sleepTerminalLeaves: (records: TerminalSleepingRecordChanges['sleep']) => Promise<void>
+    /** Drops sleeping-agent records this window removed. */
+    wakeTerminalLeaves: (paneKeys: TerminalSleepingRecordChanges['wake']) => Promise<void>
     /** Every worktree's current terminal topology; pull after subscribing to the pushes. */
     getTerminalTopologySlices: () => Promise<TerminalTopologySlice[]>
     onTerminalTopologyChanged: (callback: (slice: TerminalTopologySlice) => void) => () => void

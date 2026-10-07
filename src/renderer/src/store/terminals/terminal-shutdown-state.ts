@@ -13,6 +13,7 @@ import {
 } from '../slices/agent-status'
 import type { TerminalStoreGet, TerminalStoreSet } from './terminal-state'
 import { copyOnWriteRecord } from '../copy-on-write-record'
+import { commitSleepingRecordWrite } from './terminal-sleeping-record-commits'
 
 export function commitTerminalShutdownState({
   exitGuardPtyIds,
@@ -146,23 +147,25 @@ export function commitTerminalShutdownState({
   })
 
   if (keepIdentifiers) {
-    set((state) => {
-      const base =
-        shutdownReason === 'manual-sleep'
-          ? removeSleepingRecordsReplacedByManualWorktreeSleep(
-              state.sleepingAgentSessionsByPaneKey,
-              worktreeId,
-              sleepingPaneKeys,
-              sleepingAgentSessionRecords
-            ).records
-          : state.sleepingAgentSessionsByPaneKey
-      return {
-        sleepingAgentSessionsByPaneKey: {
-          ...base,
-          ...sleepingAgentSessionRecords
+    commitSleepingRecordWrite(get, () =>
+      set((state) => {
+        const base =
+          shutdownReason === 'manual-sleep'
+            ? removeSleepingRecordsReplacedByManualWorktreeSleep(
+                state.sleepingAgentSessionsByPaneKey,
+                worktreeId,
+                sleepingPaneKeys,
+                sleepingAgentSessionRecords
+              ).records
+            : state.sleepingAgentSessionsByPaneKey
+        return {
+          sleepingAgentSessionsByPaneKey: {
+            ...base,
+            ...sleepingAgentSessionRecords
+          }
         }
-      }
-    })
+      })
+    )
   } else {
     get().clearSleepingAgentSessionsByWorktree(worktreeId)
   }

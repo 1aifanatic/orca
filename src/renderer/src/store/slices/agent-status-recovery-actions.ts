@@ -25,10 +25,10 @@ export function createAgentStatusRecoveryActions(
   | 'clearSleepingAgentSessionsByWorktree'
   | 'pruneSleepingAgentSessions'
 > {
-  const { set, clearSleepingAgentSessionsByPaneKey } = runtime
+  const { setCommittingSleepingRecords, clearSleepingAgentSessionsByPaneKey } = runtime
   return {
     captureSleepingAgentSessionsByWorktree: (worktreeId, paneKeys) => {
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         const records = collectSleepingAgentSessionRecordsForWorktree(s, worktreeId, {
           paneKeys,
           captureMode: 'manual-worktree-sleep'
@@ -52,7 +52,7 @@ export function createAgentStatusRecoveryActions(
     },
 
     captureAllSleepingAgentSessions: (mode) => {
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         const capturedAt = Date.now()
         const origin = mode === 'quit' ? ('quit' as const) : ('live' as const)
         const next: Record<string, SleepingAgentSessionRecord> = {
@@ -109,7 +109,7 @@ export function createAgentStatusRecoveryActions(
     clearSleepingAgentSessionsByPaneKey,
 
     clearSleepingAgentSessionsByWorktree: (worktreeId) => {
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         let changed = false
         const next: Record<string, SleepingAgentSessionRecord> = {}
         const removed: string[] = []
@@ -139,7 +139,7 @@ export function createAgentStatusRecoveryActions(
     },
 
     pruneSleepingAgentSessions: (validWorktreeIds) => {
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         let changed = false
         const next: Record<string, SleepingAgentSessionRecord> = {}
         const removed: string[] = []

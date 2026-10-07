@@ -26,7 +26,7 @@ import { agentVerdictFields } from '../../../../shared/agent-main-agent-verdict'
 export function createAgentStatusProviderSessionActions(
   runtime: AgentStatusRuntime
 ): Pick<AgentStatusSlice, 'recordAgentProviderSession'> {
-  const { get, set, requestFreshness } = runtime
+  const { get, setCommittingSleepingRecords, requestFreshness } = runtime
   return {
     recordAgentProviderSession: (
       paneKey: string,
@@ -49,7 +49,7 @@ export function createAgentStatusProviderSessionActions(
         return
       }
       let removedLiveStatus = false
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         const existingStatus = s.agentStatusByPaneKey[paneKey]
         const existingRecord = s.sleepingAgentSessionsByPaneKey[paneKey]
         if (

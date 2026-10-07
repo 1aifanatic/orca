@@ -12,6 +12,7 @@ import {
 } from '../slices/agent-status'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
 import { equalStringSets, sortedUniquePtyIds } from './terminal-pty-identities'
+import { commitSleepingRecordWrite } from './terminal-sleeping-record-commits'
 import { resolveTerminalStopRuntimeEnvironmentId } from './terminal-workspace-routing'
 
 export function createTerminalPaneHibernationActions(
@@ -81,33 +82,37 @@ export function createTerminalPaneHibernationActions(
         }
       }
       const rollbackTargetShutdownState = (): void => {
-        set((s) => {
-          const next = { ...s.suppressedPtyExitIds }
-          for (const ptyId of exitGuardPtyIds) {
-            delete next[ptyId]
-          }
-          const nextSleeping = { ...s.sleepingAgentSessionsByPaneKey }
-          for (const key of sleepingRecordKeys) {
-            const replaced = replacedSleepingRecords[key]
-            if (replaced) {
-              nextSleeping[key] = replaced
-            } else {
-              delete nextSleeping[key]
+        commitSleepingRecordWrite(get, () =>
+          set((s) => {
+            const next = { ...s.suppressedPtyExitIds }
+            for (const ptyId of exitGuardPtyIds) {
+              delete next[ptyId]
             }
-          }
-          return { suppressedPtyExitIds: next, sleepingAgentSessionsByPaneKey: nextSleeping }
-        })
+            const nextSleeping = { ...s.sleepingAgentSessionsByPaneKey }
+            for (const key of sleepingRecordKeys) {
+              const replaced = replacedSleepingRecords[key]
+              if (replaced) {
+                nextSleeping[key] = replaced
+              } else {
+                delete nextSleeping[key]
+              }
+            }
+            return { suppressedPtyExitIds: next, sleepingAgentSessionsByPaneKey: nextSleeping }
+          })
+        )
       }
-      set((s) => ({
-        suppressedPtyExitIds: {
-          ...s.suppressedPtyExitIds,
-          ...Object.fromEntries(exitGuardPtyIds.map((ptyId) => [ptyId, true] as const))
-        },
-        sleepingAgentSessionsByPaneKey: {
-          ...s.sleepingAgentSessionsByPaneKey,
-          ...sleepingAgentSessionRecords
-        }
-      }))
+      commitSleepingRecordWrite(get, () =>
+        set((s) => ({
+          suppressedPtyExitIds: {
+            ...s.suppressedPtyExitIds,
+            ...Object.fromEntries(exitGuardPtyIds.map((ptyId) => [ptyId, true] as const))
+          },
+          sleepingAgentSessionsByPaneKey: {
+            ...s.sleepingAgentSessionsByPaneKey,
+            ...sleepingAgentSessionRecords
+          }
+        }))
+      )
       if (expectedRuntimePtyIds.length > 0) {
         if (!runtimeEnvironmentId) {
           rollbackTargetShutdownState()
