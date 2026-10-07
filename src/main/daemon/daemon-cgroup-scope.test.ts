@@ -87,17 +87,22 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         perUidDir,
         '/definitely/not/systemd-boot',
-        () => ({ code: 0, timedOut: false })
+        () => ({ code: 0, timedOut: false }),
+        () => true
       )
     ).toBe(false)
   })
 
   it('is false when there is no runtime dir to resolve at all', () => {
     expect(
-      isDurableDaemonScopeSupported({}, 'linux', null, fakeSystemdBootPath(), () => ({
-        code: 0,
-        timedOut: false
-      }))
+      isDurableDaemonScopeSupported(
+        {},
+        'linux',
+        null,
+        fakeSystemdBootPath(),
+        () => ({ code: 0, timedOut: false }),
+        () => true
+      )
     ).toBe(false)
   })
 
@@ -112,7 +117,8 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         canonical,
         fakeSystemdBootPath(),
-        () => ({ code: 0, timedOut: false })
+        () => ({ code: 0, timedOut: false }),
+        () => true
       )
     ).toBe(false)
   })
@@ -126,7 +132,8 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         perUidDir,
         bootPath,
-        () => ({ code: 1, timedOut: false })
+        () => ({ code: 1, timedOut: false }),
+        () => true
       )
     ).toBe(false)
     expect(
@@ -135,7 +142,8 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         perUidDir,
         bootPath,
-        () => ({ code: null, timedOut: true })
+        () => ({ code: null, timedOut: true }),
+        () => true
       )
     ).toBe(false)
   })
@@ -153,7 +161,8 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         realPerUidDir,
         fakeSystemdBootPath(),
-        () => ({ code: 0, timedOut: false })
+        () => ({ code: 0, timedOut: false }),
+        () => true
       )
     ).toBe(true)
   })
@@ -166,7 +175,8 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         perUidDir,
         fakeSystemdBootPath(),
-        () => ({ code: 0, timedOut: false })
+        () => ({ code: 0, timedOut: false }),
+        () => true
       )
     ).toBe(true)
   })
@@ -182,7 +192,8 @@ describe('isDurableDaemonScopeSupported', () => {
         'linux',
         canonicalWithoutBus,
         fakeSystemdBootPath(),
-        () => ({ code: 0, timedOut: false })
+        () => ({ code: 0, timedOut: false }),
+        () => true
       )
     ).toBe(true)
   })
@@ -382,7 +393,8 @@ describe('legacy daemon scope migration', () => {
       () => ({ unit: 'app-orca-1420296.scope', pids: [321, 400] }),
       fakeSystemdBootPath(),
       () => ({ code: 0, timedOut: false }),
-      runMigration
+      runMigration,
+      () => true
     )
     expect(migrated).toBe(true)
     expect(runMigration).toHaveBeenCalledOnce()
@@ -396,8 +408,71 @@ describe('legacy daemon scope migration', () => {
         () => ({ unit: 'app-orca-1420296.scope', pids: [321, 400] }),
         fakeSystemdBootPath(),
         () => ({ code: 0, timedOut: false }),
-        () => ({ code: 1, timedOut: false })
+        () => ({ code: 1, timedOut: false }),
+        () => true
       )
     ).toBe(false)
+  })
+})
+
+describe('durable scope launch environment and lifetime (#25580, #24201)', () => {
+  it("drops Chromium's disabled: bus marker so systemd-run reaches the user manager", () => {
+    const perUidDir = fakeRuntimeDirWithBus()
+    const result = buildDurableDaemonScopeCommand(
+      '/usr/bin/node',
+      [],
+      'n',
+      { PATH: '/bin', DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
+      perUidDir
+    )
+    expect(result.env).not.toHaveProperty('DBUS_SESSION_BUS_ADDRESS')
+    expect(result.env.XDG_RUNTIME_DIR).toBe(perUidDir)
+  })
+
+  it('keeps a real session bus address', () => {
+    const result = buildDurableDaemonScopeCommand(
+      '/usr/bin/node',
+      [],
+      'n',
+      { DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus' },
+      null
+    )
+    expect(result.env.DBUS_SESSION_BUS_ADDRESS).toBe('unix:path=/run/user/1000/bus')
+  })
+
+  it('refuses the scope when the user manager would not outlive the caller', () => {
+    const perUidDir = fakeRuntimeDirWithBus()
+    const versionProbe = vi.fn(() => ({ code: 0, timedOut: false }))
+    expect(
+      isDurableDaemonScopeSupported(
+        { XDG_RUNTIME_DIR: perUidDir },
+        'linux',
+        perUidDir,
+        fakeSystemdBootPath(),
+        versionProbe,
+        () => false
+      )
+    ).toBe(false)
+    expect(versionProbe).not.toHaveBeenCalled()
+  })
+
+  it('never migrates an adopted daemon into a manager that dies at logout', () => {
+    const runtimeDir = fakeRuntimeDirWithBus()
+    const runMigration = vi.fn(() => ({ code: 0, timedOut: false }))
+    expect(
+      migrateLegacyDaemonScope(
+        321,
+        'new-nonce',
+        { XDG_RUNTIME_DIR: runtimeDir },
+        'linux',
+        runtimeDir,
+        () => ({ unit: 'app-orca-1.scope', pids: [321] }),
+        fakeSystemdBootPath(),
+        () => ({ code: 0, timedOut: false }),
+        runMigration,
+        () => false
+      )
+    ).toBe(false)
+    expect(runMigration).not.toHaveBeenCalled()
   })
 })

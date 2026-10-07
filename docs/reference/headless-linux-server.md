@@ -251,6 +251,11 @@ lingering once:
 sudo loginctl enable-linger orca
 ```
 
+An open SSH login also starts a user manager, but systemd stops it, and any
+scope in it, shortly after that login's last session ends. So Orca uses the
+scope only when lingering is on (or when it already runs inside that user
+manager), and otherwise logs `daemon-scope-unavailable: linger off`.
+
 Without it — or on a host without systemd as PID 1, or without `systemd-run`
 on `PATH` — the daemon falls back to launching directly inside
 `orca-serve.service`'s cgroup, and is then killed when the stop completes:

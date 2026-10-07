@@ -24,6 +24,7 @@ import {
 } from './daemon-spawner'
 import { PROTOCOL_VERSION } from './types'
 import { prepareDaemonReplacement } from './daemon-replacement-preflight'
+import { ensureDaemonSocketDir } from './daemon-socket-endpoint-path'
 
 // Why: the adapter decides a runtime resolver replacement, but the launcher completes it — and by
 // then the daemon has usually self-retired (dropping its last authenticated client is enough), so
@@ -118,6 +119,7 @@ export function createOutOfProcessLauncher(
         return preservedHandle
       }
 
+      ensureDaemonSocketDir(socketPath)
       const userDataPath = getAppEnvironment().getPath('userData')
       // Why: on win32 packaged, stage a daemon-host copy in userData so its image escapes the NSIS updater's kill zone; lazy so it's off first-paint. Fail-open: null → in-dir host.
       const relocatedHost = materializeRelocatedDaemonHost()
