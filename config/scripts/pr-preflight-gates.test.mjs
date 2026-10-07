@@ -199,7 +199,6 @@ it('pins every foreground and background step to its selected phase', () => {
     ['Enforce ts-nocheck ratchet', staticPhase],
     ['Enforce runtime Electron-import ratchet', staticPhase],
     ['Check Node runtime pin', staticPhase],
-    ['Test unit runner diagnostics', staticPhase],
     ['Boot orcad and round-trip a terminal', staticPhase],
     ['Verify the generated RPC params catalog', staticPhase],
     ['Verify the generated ACP protocol schema', staticPhase],

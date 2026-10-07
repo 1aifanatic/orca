@@ -19,12 +19,6 @@ on:
         required: true
         type: string
 
-      diagnostic_shard:
-        description: Shard to diagnose; zero disables diagnostics and minus one diagnoses every shard.
-        required: false
-        default: 0
-        type: number
-
 permissions:
   contents: read
 
@@ -68,12 +62,10 @@ jobs:
         env:
           ORCA_BALANCE_UNIT_SHARDS: '1'
           ORCA_BACKGROUND_LAUNCH: '1'
-          ORCA_UNIT_RUNNER_DIAGNOSTICS: ${{ (inputs.diagnostic_shard == -1 || inputs.diagnostic_shard == matrix.shard.index) && '1' || '0' }}
         run: |
           ORCA_SHARD_SOURCE_SHA="$(git rev-parse HEAD)"
           export ORCA_SHARD_SOURCE_SHA
-          python3 .github/scripts/unit-runner-diagnostics.py \
-            node config/scripts/run-vitest.mjs run --config config/vitest.config.ts \
+          node config/scripts/run-vitest.mjs run --config config/vitest.config.ts \
             --shard=${{ matrix.shard.index }}/${{ matrix.shard.count }} \
             ${{ inputs.runner == 'ubuntu-24.04-arm' && '--maxWorkers=4' || '' }}
 

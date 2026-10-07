@@ -312,12 +312,6 @@ jobs:
         if: needs.code_paths.outputs.static_analysis == 'true'
         run: pnpm run check:node-runtime-pin
 
-      - name: Test unit runner diagnostics
-        if: needs.code_paths.outputs.static_analysis == 'true'
-        env:
-          ORCA_BACKGROUND_LAUNCH: '1'
-        run: python3 .github/scripts/unit-runner-diagnostics.test.py
-
       # Why: extraction writes sorted evidence to an isolated temporary path,
       # so feature PRs need one normalized AST pass rather than a three-OS matrix.
       - name: Verify localization extraction
