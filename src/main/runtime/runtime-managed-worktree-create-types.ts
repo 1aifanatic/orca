@@ -65,7 +65,7 @@ export type RuntimeManagedWorktreeCreateArgs = {
   automationProvenance?: AutomationWorkspaceProvenance
   /**
    * Host-side only, never on the wire: lets an offline create from a remote base use the local
-   * branch it names. Only callers that show the result to a person opt in.
+   * branch it names. Only creates a person initiated opt in.
    */
   allowLocalBaseFallback?: boolean
   cliProvenance?: CliWorkspaceProvenance

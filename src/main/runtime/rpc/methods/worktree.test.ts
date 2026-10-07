@@ -255,6 +255,10 @@ describe('worktree RPC methods', () => {
         })
       })
     )
+    // Why: an automation run has nobody to tell, so it keeps the network error offline.
+    expect(vi.mocked(runtime.createManagedWorktree).mock.calls[0]?.[0]).not.toHaveProperty(
+      'allowLocalBaseFallback'
+    )
   })
 
   it('stamps automation provenance with the persisted runtime host from run context', async () => {
