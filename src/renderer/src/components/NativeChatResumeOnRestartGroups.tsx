@@ -52,10 +52,12 @@ export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
  * The offered chats as a checkbox list in the sidebar's three tiers: repo/project, then workspace,
  * then agent sessions.
  *
- * A grouped list: each project and workspace heads its group with a tinted band, chats are split by
- * hairlines. Every row's checkbox sits in one column at the left edge; nesting indents only what
- * follows it. A workspace checkbox covers its own chats and those of the workspaces nested under it,
- * which follow the sidebar's own lineage rule; a project checkbox covers every chat in the project.
+ * Nested boxes: a project is a tinted band; each workspace is a bordered box, one step in, holding
+ * its header band and its chats, and a child workspace's box sits inside its parent's, after the
+ * parent's chats. Every row's checkbox stays in one column at the left edge, outside the boxes;
+ * nesting indents only what follows it. No row dividers: the boxes and bands carry the structure.
+ * A workspace checkbox covers its own chats and those of the workspaces nested under it, which
+ * follow the sidebar's own lineage rule; a project checkbox covers every chat in the project.
  *
  * A workspace the store does not know yet (its host still connecting, or since deleted) is named
  * by its id. The kind glyph comes from the host's record of the chat, never from a name.
@@ -171,7 +173,7 @@ function RepoHeader({
   const selection = resumeSelectionState(covered, selected)
   return (
     // A band a step stronger than a workspace's, so the project reads as the outer group.
-    <label className="grid h-8.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center border-t border-border bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))] hover:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--worktree-sidebar-accent))] has-[:disabled]:cursor-default">
+    <label className="group/row mt-1.5 grid h-8.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center has-[:disabled]:cursor-default">
       <span className="flex justify-center">
         <Checkbox
           checked={selection.checked}
@@ -184,7 +186,7 @@ function RepoHeader({
           )}
         />
       </span>
-      <span className="flex min-w-0 items-center gap-1.5 pr-2.5">
+      <span className="mr-1.5 flex h-full min-w-0 items-center gap-1.5 rounded-t-md bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))] pr-2.5 pl-2 group-hover/row:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--worktree-sidebar-accent))]">
         {/* A repo shows its own configured glyph; a project group uses the FolderTree the sidebar's
             own PROJECT_GROUP_META uses. */}
         {header.kind === 'project' ? (
@@ -238,16 +240,21 @@ function WorkspaceRows({
     mixedHosts || (hostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
   const covered = resumeWorkspaceSessionIds(node).filter(selectable)
   const selection = resumeSelectionState(covered, selected)
+  // Why: a top-level workspace sits one step in from its project, so its box does too.
+  const indent = (depth + 1) * RESUME_INDENT_PX
   const chatIndent: React.CSSProperties & Record<'--resume-chat-indent', string> = {
-    '--resume-chat-indent': `${(depth + 1) * RESUME_INDENT_PX}px`
+    '--resume-chat-indent': `${indent + RESUME_INDENT_PX}px`
   }
   return (
-    <>
-      {/* The workspace's band heads its group; a nested one is lighter, at its own indent. */}
-      <label
-        data-nested={depth > 0}
-        className="grid h-8 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center border-y border-border bg-worktree-sidebar-accent hover:bg-[color-mix(in_srgb,var(--foreground)_6%,var(--worktree-sidebar-accent))] has-[:disabled]:cursor-default data-[nested=true]:bg-worktree-sidebar-accent/50"
-      >
+    <div className="relative my-1.5 mr-1.5">
+      {/* The box, drawn in the content area only so the checkbox column stays outside it. A
+          child's box lands at its parent's chat indent, inside the parent's. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 right-0 rounded-md border border-border"
+        style={{ left: `calc(1.75rem + ${indent}px)` }}
+      />
+      <label className="group/row grid h-8 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center has-[:disabled]:cursor-default">
         <span className="flex justify-center">
           <Checkbox
             checked={selection.checked}
@@ -260,9 +267,11 @@ function WorkspaceRows({
             )}
           />
         </span>
+        {/* The header band inside the box; a nested one is lighter. */}
         <span
-          className="flex min-w-0 items-center gap-1.5 pr-2.5"
-          style={depth > 0 ? { paddingLeft: depth * RESUME_INDENT_PX } : undefined}
+          data-nested={depth > 0}
+          className="flex h-full min-w-0 items-center gap-1.5 rounded-t-md bg-worktree-sidebar-accent pr-2.5 pl-2 group-hover/row:bg-[color-mix(in_srgb,var(--foreground)_6%,var(--worktree-sidebar-accent))] data-[nested=true]:bg-worktree-sidebar-accent/55"
+          style={{ marginLeft: indent }}
         >
           <WorkspaceKindGlyph kind={kind} />
           <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">{name}</span>
@@ -307,7 +316,7 @@ function WorkspaceRows({
       {node.children.map((child) => (
         <WorkspaceRows key={child.group.workspaceId} node={child} depth={depth + 1} {...rowProps} />
       ))}
-    </>
+    </div>
   )
 }
 

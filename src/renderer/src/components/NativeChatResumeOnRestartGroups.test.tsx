@@ -193,14 +193,14 @@ function rowOutline(): string[] {
   return [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map((box) => {
     const label = box.getAttribute('aria-label') ?? ''
     const row = rowOf(box)
-    // Only a workspace band carries data-nested; a project header is the other band.
-    if (row.parentElement?.tagName === 'SECTION' && !row.hasAttribute('data-nested')) {
+    // A workspace row sits in its box; only a project header is the section's own row.
+    if (row.parentElement?.tagName === 'SECTION') {
       return `project:${/^Select all chats in (.+)$/.exec(label)?.[1]}`
     }
     const workspace = /^Select all chats in (.+)$/.exec(label)?.[1]
     if (workspace) {
       const content = cell(rowOf(box), 2)
-      return `ws:${workspace}@${content.style.paddingLeft || '0px'}`
+      return `ws:${workspace}@${content.style.marginLeft || '0px'}`
     }
     const indent = box.closest('ul')?.style.getPropertyValue('--resume-chat-indent')
     return `chat:${/Prompt ([\w-]+)/.exec(label)?.[1]}@${indent}`
@@ -227,13 +227,13 @@ it('lists every chat with its checkbox in the shared left column, indenting only
 
   expect(rowOutline()).toEqual([
     'project:orca',
-    'ws:parent@0px',
-    'chat:in-parent@20px',
-    'ws:child@20px',
-    'chat:in-child@40px',
-    'chat:also-in-child@40px',
-    'ws:other@0px',
-    'chat:in-other@20px'
+    'ws:parent@20px',
+    'chat:in-parent@40px',
+    'ws:child@40px',
+    'chat:in-child@60px',
+    'chat:also-in-child@60px',
+    'ws:other@20px',
+    'chat:in-other@40px'
   ])
   for (const box of container.querySelectorAll<HTMLElement>('[role="checkbox"]')) {
     const row = rowOf(box)
@@ -254,13 +254,44 @@ it('heads each project with a checkbox row in the same left column', () => {
   expect(projectBox('orca').getAttribute('aria-label')).toBe('Select all chats in orca')
 })
 
-// The grouped-list pattern: tinted header bands with a line above and below, hairlines between chats.
-it('draws project and workspace bands, and hairlines only between chats', () => {
+/** The bordered box a workspace's rows sit in. */
+function boxOf(name: string): HTMLElement {
+  return rowOf(workspaceBox(name)).parentElement!
+}
+
+// Nested boxes: the box border is the only line; a child's box sits inside its parent's.
+it("puts each workspace in a bordered box, a child's box inside its parent's after its chats", () => {
   render({ candidates: seedTree() })
 
-  const project = projectRow('orca')
-  expect(project.classList.contains('border-t')).toBe(true)
-  expect(project.classList.contains('border-border')).toBe(true)
+  const parent = boxOf('parent')
+  const child = boxOf('child')
+  expect(child.parentElement).toBe(parent)
+  expect(parent.lastElementChild).toBe(child)
+  for (const id of ['in-parent', 'in-child', 'also-in-child']) {
+    expect(parent.contains(chatBox(id))).toBe(true)
+  }
+  expect(child.contains(chatBox('in-parent'))).toBe(false)
+  expect(boxOf('other').contains(rowOf(workspaceBox('child')))).toBe(false)
+  for (const [name, left] of [
+    ['parent', '20px'],
+    ['child', '40px'],
+    ['other', '20px']
+  ] as const) {
+    const outline = boxOf(name).querySelector<HTMLElement>(':scope > [aria-hidden="true"]')!
+    expect(outline.getAttribute('aria-hidden')).toBe('true')
+    expect([...outline.classList]).toEqual(
+      expect.arrayContaining(['border', 'border-border', 'rounded-md'])
+    )
+    // Drawn past the checkbox column, at the workspace's own indent.
+    expect(outline.style.left).toBe(`calc(1.75rem + ${left})`)
+  }
+})
+
+it('draws project and workspace bands with no dividers between rows', () => {
+  render({ candidates: seedTree() })
+
+  const project = cell(projectRow('orca'), 2)
+  expect(project.classList.contains('rounded-t-md')).toBe(true)
   expect(project.className).toContain(
     'bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))]'
   )
@@ -269,22 +300,14 @@ it('draws project and workspace bands, and hairlines only between chats', () => 
     ['child', 'true'],
     ['other', 'false']
   ] as const) {
-    const band = rowOf(workspaceBox(name))
-    expect(band.classList.contains('border-y')).toBe(true)
-    expect(band.classList.contains('border-border')).toBe(true)
+    const band = cell(rowOf(workspaceBox(name)), 2)
     expect(band.classList.contains('bg-worktree-sidebar-accent')).toBe(true)
     expect(band.getAttribute('data-nested')).toBe(nested)
     expect(band.querySelector('.font-semibold')?.textContent).toBe(name)
   }
-  for (const box of container.querySelectorAll<HTMLElement>(
-    '[role="checkbox"][aria-label^="Resume"]'
-  )) {
-    const item = box.closest('li')!
-    // The band above the first chat is its separator; later chats get a hairline.
-    expect(item.classList.contains('not-first:border-t')).toBe(true)
-    expect(item.classList.contains('border-worktree-sidebar-border')).toBe(true)
+  for (const row of container.querySelectorAll('label, li, ul')) {
+    expect([...row.classList].filter((name) => /(^|:)border/.test(name))).toEqual([])
   }
-  expect(container.querySelector('.rounded-md, .rounded-sm, .rounded-lg')).toBeNull()
 })
 
 it('selects every eligible chat in a project, nested workspaces included', () => {
@@ -504,19 +527,19 @@ it('gives workspaces the store cannot place no project row, leaving them to Sele
 
   expect(rowOutline()).toEqual([
     'project:orca',
-    'ws:parent@0px',
-    'chat:in-parent@20px',
-    'ws:child@20px',
-    'chat:in-child@40px',
-    'chat:also-in-child@40px',
-    'ws:other@0px',
-    'chat:in-other@20px',
-    'ws:folder:missing-folder@0px',
-    'chat:lost@20px'
+    'ws:parent@20px',
+    'chat:in-parent@40px',
+    'ws:child@40px',
+    'chat:in-child@60px',
+    'chat:also-in-child@60px',
+    'ws:other@20px',
+    'chat:in-other@40px',
+    'ws:folder:missing-folder@20px',
+    'chat:lost@40px'
   ])
   expect(container.querySelector('[aria-label="Select all chats in "]')).toBeNull()
   const [, unplaced] = container.querySelectorAll('section')
-  expect(unplaced?.firstElementChild).toBe(rowOf(workspaceBox('folder:missing-folder')))
+  expect(unplaced?.querySelector('label')).toBe(rowOf(workspaceBox('folder:missing-folder')))
   expect(projectCount('orca')).toBe('4 of 4')
 })
 
@@ -532,7 +555,7 @@ it.each([
     const candidates = seedTree({ parent: parentHost, child: childHost })
     render({ candidates })
 
-    expect(rowOutline()).toContain(nests ? 'ws:child@20px' : 'ws:child@0px')
+    expect(rowOutline()).toContain(nests ? 'ws:child@40px' : 'ws:child@20px')
     expect(workspaceCount('parent')).toBe(nests ? '3 of 3' : '1 of 1')
     expect(container.querySelectorAll('[role="checkbox"][aria-label^="Resume"]')).toHaveLength(4)
   }

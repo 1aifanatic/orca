@@ -63,7 +63,7 @@ export function ResumeCandidateRow({
   const model = candidate.model?.trim() ?? ''
   const activity = resumeActivityLabel(candidate.activity)
   const row = (
-    <label className="grid h-7 min-w-0 flex-1 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+    <label className="group/row grid h-7 min-w-0 flex-1 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center has-[:disabled]:cursor-default">
       <span className="flex justify-center">
         {/* Identifies the agent AND its workspace: the accessible name has to distinguish rows that
             would otherwise all read the same. */}
@@ -78,7 +78,7 @@ export function ResumeCandidateRow({
           )}
         />
       </span>
-      <span className="flex min-w-0 items-center gap-1.5 pr-2.5 pl-(--resume-chat-indent) text-[11px] leading-none text-muted-foreground">
+      <span className="ml-(--resume-chat-indent) flex h-full min-w-0 items-center gap-1.5 pr-2.5 pl-2 text-[11px] leading-none text-muted-foreground group-hover/row:bg-worktree-sidebar-accent">
         {/* AgentIcon carries no label of its own, so the provider was invisible to assistive tech. */}
         <span role="img" aria-label={agentLabel} className="inline-flex shrink-0">
           <AgentIcon agent={agentTypeToIconAgent(candidate.agent)} size={13} />
@@ -106,11 +106,11 @@ export function ResumeCandidateRow({
     </label>
   )
   if (!failure) {
-    return <li className="border-worktree-sidebar-border not-first:border-t">{row}</li>
+    return <li>{row}</li>
   }
   const act = (action: ResumeFailureAction) => onFailureAction?.(action, candidate.sessionId)
   return (
-    <li className="flex flex-col border-worktree-sidebar-border not-first:border-t">
+    <li className="flex flex-col">
       {/* Outside the label, so pressing them never toggles the checkbox. */}
       <div className="flex items-center gap-1 pr-1">
         {row}
@@ -123,7 +123,7 @@ export function ResumeCandidateRow({
         />
       </div>
       {/* Lined up with the row's content, past the checkbox column. */}
-      <div className="pr-2.5 pl-[calc(1.75rem+var(--resume-chat-indent,0px))]">
+      <div className="pr-2.5 pl-[calc(1.75rem+var(--resume-chat-indent,0px)+0.5rem)]">
         <ResumeFailureGuidanceLine failure={failure} disabled={disabled} onAction={act} />
       </div>
     </li>

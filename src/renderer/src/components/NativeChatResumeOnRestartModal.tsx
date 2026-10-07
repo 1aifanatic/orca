@@ -264,11 +264,11 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
             'Chats that would be resumed'
           )}
           // The sidebar's own surface, so its workspaces read here as they do there.
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar"
+          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar pt-1 pb-1.5"
           onKeyDown={moveCheckboxFocus}
         >
           {/* Here, not in the groups: a list may hold one set of groups per machine. */}
-          <label className="grid h-7 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+          <label className="group/row grid h-7 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center has-[:disabled]:cursor-default">
             <span className="flex justify-center">
               <Checkbox
                 checked={allSelection.checked}
@@ -282,7 +282,7 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
                 )}
               />
             </span>
-            <span className="flex min-w-0 items-center gap-1.5 pr-2.5">
+            <span className="mr-1.5 flex h-full min-w-0 items-center gap-1.5 pr-2.5 pl-2 group-hover/row:bg-worktree-sidebar-accent">
               <span className="min-w-0 truncate text-xs font-semibold text-muted-foreground">
                 {translate(
                   'auto.components.NativeChatResumeOnRestartModal.selectAllLabel',
