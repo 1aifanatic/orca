@@ -11,7 +11,10 @@ import type { Worktree } from '../../../../shared/worktree/types'
 import { getProjectHeaderRevealTarget } from '../sidebar/worktree-list/grouping/project-grouping'
 import type { ProjectGroupingModel } from '../sidebar/worktree-list/grouping/project-grouping'
 import type { SidebarHostOption } from '../sidebar/sidebar-host-options'
-import { pickerExecutionHosts } from '../../../../shared/managed-orcad-execution-host'
+import {
+  expandEquivalentExecutionHostIds,
+  pickerExecutionHosts
+} from '../../../../shared/managed-orcad-execution-host'
 import { buildPaletteFilterOptionSearchText } from './palette-filter-option-list'
 
 export type PaletteFilterOption = {
@@ -54,8 +57,8 @@ export type PaletteFilterModel = {
   repoById: ReadonlyMap<string, Pick<Repo, 'connectionId' | 'executionHostId'>>
   /** The focused runtime host, which host-less repos and worktrees inherit. */
   defaultHostId: ExecutionHostId
-  /** Merged-away ids each host row also stands for; absent rows stand only for themselves. */
-  hostAliasesById?: ReadonlyMap<string, readonly ExecutionHostId[]>
+  /** Both ids of a merged SSH host, keyed by either; absent ids stand only for themselves. */
+  equivalentHostIdsById?: ReadonlyMap<string, readonly ExecutionHostId[]>
 }
 
 function buildRepoHostIndex(
@@ -151,8 +154,11 @@ export function buildPaletteFilterModel({
       )
     })
   )
-  const hostAliasesById = new Map(
-    hostRows.flatMap((host) => (host.aliasHostIds ? [[host.id, host.aliasHostIds] as const] : []))
+  // Why keyed by both ids: a filter saved before a route flip names the id now merged away.
+  const equivalentHostIdsById = new Map(
+    hostOptions
+      .filter((host) => host.aliasHostIds || host.mergedIntoHostId)
+      .map((host) => [host.id, expandEquivalentExecutionHostIds(hostOptions, [host.id])] as const)
   )
 
   // Keep repository IDs aligned with the sidebar; project grouping remains a row concern.
@@ -175,6 +181,6 @@ export function buildPaletteFilterModel({
     hostIdsByRepoId,
     repoById,
     defaultHostId,
-    hostAliasesById
+    equivalentHostIdsById
   }
 }

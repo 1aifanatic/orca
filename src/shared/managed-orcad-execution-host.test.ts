@@ -3,7 +3,8 @@ import { buildExecutionHostRegistry } from './execution-host-registry'
 import {
   expandEquivalentExecutionHostIds,
   indexExecutionHostsById,
-  pickerExecutionHosts
+  pickerExecutionHosts,
+  widenSavedExecutionHostIds
 } from './managed-orcad-execution-host'
 import type { SshConnectionState } from './ssh-types'
 
@@ -141,5 +142,18 @@ describe('managed Orca server host merging', () => {
     })
 
     expect(hosts.find((host) => host.id === 'runtime:omarchy-server')?.label).toBe('Build box')
+  })
+
+  it('widens a host scope an older build saved with only one id of the pair', () => {
+    const hosts = registry({ kind: 'managed', environmentId: 'omarchy-server' })
+
+    expect(new Set(widenSavedExecutionHostIds(hosts, ['local', 'ssh:omarchy-target']))).toEqual(
+      new Set(['local', 'ssh:omarchy-target', 'runtime:omarchy-server'])
+    )
+    expect(
+      widenSavedExecutionHostIds(hosts, ['ssh:omarchy-target', 'runtime:omarchy-server'])
+    ).toBeNull()
+    expect(widenSavedExecutionHostIds(hosts, ['local'])).toBeNull()
+    expect(widenSavedExecutionHostIds(hosts, null)).toBeNull()
   })
 })

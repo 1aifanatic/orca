@@ -114,3 +114,18 @@ export function expandEquivalentExecutionHostIds(
   }
   return [...expanded]
 }
+
+/**
+ * A saved host list widened to every id its merged rows stand for, or null when it already is.
+ * Lists saved by an older build, or before a route flip, may hold only one of a pair.
+ */
+export function widenSavedExecutionHostIds(
+  hosts: readonly MergedExecutionHost[],
+  hostIds: readonly ExecutionHostId[] | null
+): ExecutionHostId[] | null {
+  if (!hostIds) {
+    return null
+  }
+  const widened = expandEquivalentExecutionHostIds(hosts, hostIds)
+  return widened.length === new Set(hostIds).size ? null : widened
+}

@@ -129,7 +129,7 @@ export function buildPaletteFilterPredicate(
       ? new Set(
           filter.hostIds.flatMap((hostId) => [
             hostId,
-            ...(model.hostAliasesById?.get(hostId) ?? [])
+            ...(model.equivalentHostIdsById?.get(hostId) ?? [])
           ])
         )
       : null
