@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { translate } from '@/i18n/i18n'
 import { basename } from '@/lib/path'
 import { useLocalImageSrc } from '@/components/editor/useLocalImageSrc'
+import { copyableNativeChatImageSrc, keepPreviewOpenForChatMenu } from './native-chat-image-copy'
 import {
   isNativeChatImageAttachmentPath,
   isNativeChatPastedImagePath
@@ -179,6 +180,8 @@ function NativeChatImageThumbnail({
   const isFile =
     attachment.pendingName !== undefined && !isNativeChatImageAttachmentPath(attachment.pendingName)
   const KindIcon = isFile ? FileText : ImageIcon
+  // The thumbnail may be the downscaled clipboard preview; copy only the file.
+  const copySrc = copyableNativeChatImageSrc(localSrc)
 
   return (
     <>
@@ -192,6 +195,7 @@ function NativeChatImageThumbnail({
           }
           aria-busy={isPending}
           title={label}
+          data-native-chat-copy-image-src={copySrc}
           onClick={() => setIsOpen(true)}
           className="flex size-full items-center justify-center overflow-hidden rounded-md border border-border bg-chat-canvas transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -220,7 +224,10 @@ function NativeChatImageThumbnail({
         <RemoveAttachmentButton onRemove={() => onRemove(attachment.id)} />
       </div>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="flex max-h-[90vh] max-w-[90vw] flex-col gap-3 border-border bg-background p-3 sm:max-w-4xl">
+        <DialogContent
+          onInteractOutside={keepPreviewOpenForChatMenu}
+          className="flex max-h-[90vh] max-w-[90vw] flex-col sm:max-w-4xl"
+        >
           <DialogTitle className="truncate text-sm">{label}</DialogTitle>
           <DialogDescription className="sr-only">
             {translate('components.native-chat.composer.imagePreview', 'Full-size image preview')}
@@ -230,6 +237,7 @@ function NativeChatImageThumbnail({
               <img
                 src={fullSizeSrc}
                 alt={label}
+                data-native-chat-copy-image-src={copySrc}
                 className="max-h-[75vh] max-w-full object-contain"
               />
             ) : (
