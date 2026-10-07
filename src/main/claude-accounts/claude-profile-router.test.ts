@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ClaudeManagedAccount } from '../../shared/managed-account-types'
 import type { ClaudeProfileSetupReport } from './claude-profile-setup'
+import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-profile-paths'
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
   CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
@@ -59,11 +60,13 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
     agentStatusHooksEnabled: false,
     disabledTuiAgents: []
   }
-  // Stands in for the worker; each setup stays pending until the test settles it.
+  // Stands in for the worker; like it, writes the marker first, then stays pending until settled.
   const setup: { calls: number; outcome: ClaudeProfileSetupReport['outcome']; settle: () => void } =
     { calls: 0, outcome: 'prepared', settle: () => {} }
-  const runSetup = () => {
+  const runSetup = ({ profile }: { profile: ClaudeProfileDescriptor }) => {
     setup.calls += 1
+    mkdirSync(profile.home, { recursive: true })
+    writeFileSync(claudeProfileMarkerPath(profile), '{}')
     return new Promise<ClaudeProfileSetupReport>((resolve) => {
       setup.settle = () => resolve({ outcome: setup.outcome, warnings: [], surfaces: {} })
     })
@@ -110,28 +113,29 @@ describe('ClaudeProfileRouter', () => {
     expect(existsSync(f.router.pointerPath)).toBe(false)
   })
 
-  it('makes a launch wait only for a folder that was never set up, reusing the running setup', async () => {
+  it('makes a launch wait for a setup that never ran or is still running, reusing it', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
-    f.router.publish()
     let launched = false
     const launch = f.router.prepareLaunch().then((prepared) => {
       launched = true
       return prepared
     })
-    await Promise.resolve()
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
     expect(launched).toBe(false)
-    expect(f.setup.calls).toBe(1)
     f.setup.settle()
     await expect(launch).resolves.toMatchObject({ configDir: f.home('a') })
 
+    // The marker now exists, but a setup publish started is still running.
     f.setup.outcome = 'refused'
+    f.router.publish()
+    await vi.waitFor(() => expect(f.setup.calls).toBe(2))
     const refused = f.router.prepareLaunch()
+    await new Promise((resolve) => setTimeout(resolve, 10))
     f.setup.settle()
     await expect(refused).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
 
-    // Set up once (setup's marker exists): launches stop waiting.
-    writeFileSync(join(f.dataRoot, 'claude-profiles', 'a', 'profile.json'), '{}')
+    // Set up once and nothing running: launches stop waiting.
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
     expect(f.setup.calls).toBe(2)
   })

@@ -98,11 +98,16 @@ export class ClaudeWslProfileRouter {
     }
   }
 
-  /** Waits for setup only for a folder that was never set up; otherwise launches at once. */
+  /** Waits for a setup that is running or never ran; otherwise launches at once. */
   async prepareLaunch(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
     const { home, profile } = await this.resolve(distro)
     await this.assertPresent(distro, profile)
-    if (profile && !(await guestStat(distro, claudeProfileMarkerPath(profile)))?.isFile()) {
+    // Why the running check: setup writes its marker when it starts, not when it finishes.
+    if (
+      profile &&
+      (this.setups.has(profile.accountId) ||
+        !(await guestStat(distro, claudeProfileMarkerPath(profile)))?.isFile())
+    ) {
       await this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
         console.warn('[claude-profile] WSL account setup failed:', error)
         throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)

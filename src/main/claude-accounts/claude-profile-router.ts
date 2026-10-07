@@ -102,10 +102,15 @@ export class ClaudeProfileRouter {
     }
   }
 
-  /** Waits for setup only for a folder that was never set up; otherwise launches at once. */
+  /** Waits for a setup that is running or never ran; otherwise launches at once. */
   async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
     const profile = this.selectedProfile()
-    if (profile && isDirectory(profile.home) && !existsSync(claudeProfileMarkerPath(profile))) {
+    // Why the running check: setup writes its marker when it starts, not when it finishes.
+    if (
+      profile &&
+      isDirectory(profile.home) &&
+      (this.setups.has(profile.accountId) || !existsSync(claudeProfileMarkerPath(profile)))
+    ) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
         throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)

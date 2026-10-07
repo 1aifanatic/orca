@@ -76,13 +76,14 @@ function fixture() {
   const router = new ClaudeWslProfileRouter({
     getSettings: () => settings,
     dataRoot: join(root, 'orca-dev'),
+    // Like the guest helper, marks the folder first, then finishes.
     runSetup: async () => {
       setup.calls += 1
+      writeFileSync(join(profileHome, '..', 'profile.json'), '{}')
       await setup.gate
       if (setup.fail) {
         throw new Error('refused')
       }
-      writeFileSync(join(profileHome, '..', 'profile.json'), '{}')
     }
   })
   const profileHome = join(guest.home, '.local/share/orca/claude-profiles/a/home')
@@ -110,7 +111,7 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     expect(existsSync(f.pointer)).toBe(false)
   })
 
-  it('refuses a missing folder, waits for a never-set-up one, then launches at once', async () => {
+  it('refuses a missing folder, waits for a setup never run or still running, then launches at once', async () => {
     const f = fixture()
     await expect(f.router.prepareLaunch('Ubuntu')).rejects.toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
 
@@ -119,6 +120,16 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     await expect(f.router.prepareLaunch('Ubuntu')).rejects.toThrow(
       CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
     )
+    // The marker now exists, but a setup publish started is still running.
+    let release = () => {}
+    f.setup.gate = new Promise((resolve) => (release = resolve))
+    await f.router.publish('Ubuntu')
+    await vi.waitFor(() => expect(f.setup.calls).toBe(2))
+    const launch = f.router.prepareLaunch('Ubuntu')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    release()
+    await expect(launch).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+
     f.setup.fail = false
     const prepared = await f.router.prepareLaunch('Ubuntu')
     expect(prepared).toMatchObject({
