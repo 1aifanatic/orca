@@ -40,7 +40,11 @@ import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-labe
 import { NativeChatThreadGoalBanner } from './NativeChatThreadGoalBanner'
 import { structuredAgentSessionReadFailureNotice } from './structured-agent-session-read-failure-notice'
 import { useStructuredAgentSessionDeliveryNotices } from './use-structured-agent-session-delivery-notices'
+import { useNativeChatHostOutage } from './use-native-chat-host-outage'
+import { NativeChatHostOutageNotice } from './NativeChatHostOutageNotice'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
+
+type OptionPickerRequest = { id: string; sequence: number }
 
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
@@ -80,10 +84,7 @@ export function NativeChatStructuredSession(
     transcriptLoading: controller.status === 'idle' || controller.status === 'loading'
   })
   const [composerError, setComposerError] = useState<string | null>(null)
-  const [optionPickerRequest, setOptionPickerRequest] = useState<{
-    id: string
-    sequence: number
-  } | null>(null)
+  const [optionPickerRequest, setOptionPickerRequest] = useState<OptionPickerRequest | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const paneCommands = useStructuredNativeChatPaneCommands({
     tabId: props.tabId,
@@ -96,6 +97,7 @@ export function NativeChatStructuredSession(
     target: props.target
   })
   const historyPhase = structuredChatHistoryPhase(provisionalLaunch, controller.status)
+  const hostOutage = useNativeChatHostOutage(props.target)
   const session = useMemo<NativeChatLiveSession>(
     () => ({
       messages: controller.messages,
@@ -112,7 +114,8 @@ export function NativeChatStructuredSession(
       sessionId: props.sessionId,
       agent: props.agent,
       ...(controller.error ? { error: controller.error } : {}),
-      hasMore: controller.hasOlder,
+      // Older pages can't load while the host is unreachable, so the row waits for it.
+      hasMore: controller.hasOlder && hostOutage === null,
       loadingEarlier: controller.loadingOlder,
       olderHistoryGeneration: controller.olderHistoryGeneration,
       loadEarlier: controller.loadOlder,
@@ -123,7 +126,7 @@ export function NativeChatStructuredSession(
             ? 'error'
             : 'ready'
     }),
-    [controller, historyPhase, props.agent, props.sessionId]
+    [controller, historyPhase, hostOutage, props.agent, props.sessionId]
   )
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
   const { retryDelivery, revealLatest } = submits
@@ -138,8 +141,9 @@ export function NativeChatStructuredSession(
   })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
   const loadingPane = historyPhase === 'unread' ? null : <NativeChatLoadingCue />
+  // A lost contact is the host notice's to say; the read adds only a refusal the host sent.
   const readFailure =
-    controller.status === 'error'
+    controller.status === 'error' && !(hostOutage && !controller.readRefusal)
       ? structuredAgentSessionReadFailureNotice(controller.readRefusal)
       : null
   // A read no retry gets past (damage, a newer Orca's chat) takes the whole pane, whatever was
@@ -229,7 +233,9 @@ export function NativeChatStructuredSession(
       runtime: (props.target.kind === 'local' ? 'local' : 'remote') as 'local' | 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
-        props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
+        props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
+      queueHold: submits.queuedMessages.queueHold,
+      queueResume: submits.queuedMessages.queueResume
     }
   }, [
     controller,
@@ -239,7 +245,8 @@ export function NativeChatStructuredSession(
     props.sessionId,
     props.target,
     revealLatest,
-    sendThroughRelaunch
+    sendThroughRelaunch,
+    submits.queuedMessages
   ])
 
   return (
@@ -265,7 +272,7 @@ export function NativeChatStructuredSession(
       data-native-chat-scheme={appearanceStyle.colorScheme}
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        {viewState.kind === 'loading' ? (
+        {viewState.kind === 'loading' || (viewState.kind === 'error' && !readFailure) ? (
           loadingPane
         ) : viewState.kind === 'error' ? (
           <NativeChatEmptyState
@@ -317,17 +324,13 @@ export function NativeChatStructuredSession(
             steerHeld={stopControls.stopping}
             focusComposer={focusComposer}
           />
+          <NativeChatHostOutageNotice outage={hostOutage} />
           <NativeChatStructuredSessionStatus
             sessionId={props.sessionId}
             paneKey={paneKey}
-            // Said once: on the pane when the failure took it, else here beside the transcript. A
-            // failure that names nothing is only the pane reconnecting.
-            error={
-              viewState.kind === 'error' || !readFailure?.named
-                ? controller.error
-                : readFailure.text
-            }
-            reconnecting={viewState.kind !== 'error' && readFailure !== null && !readFailure.named}
+            // Said once: on the pane when the failure took it, else here. A loaded chat stores only a
+            // refusal the host sent, so one beside messages is the host's or from before any load.
+            error={viewState.kind === 'error' || !readFailure ? controller.error : readFailure.text}
             composerError={composerError}
             isVisible={props.isVisible}
             backgroundTasks={controller.backgroundTasks}
@@ -399,7 +402,6 @@ export function NativeChatStructuredSession(
               draftScopeKey={structuredAgentSessionDraftScopeKey(props.sessionId)}
               targetPtyId={null}
               agent={props.agent}
-              isWorking={controller.canStop}
               {...stopControls.composer}
               steerQueued={stopControls.stopping ? undefined : submits.queuedMessages.steerNewest}
               structuredTransport={structuredTransport}
