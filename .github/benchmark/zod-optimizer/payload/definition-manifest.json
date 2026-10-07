@@ -1,0 +1,378 @@
+{
+  "sourceHead": "30bc964e7b6c88832caffb87eb62282459dbf218",
+  "sourceHashes": {
+    "src/shared/workspace-session-terminal-buffers.test.ts": "28577a1cb0e749c78f43130ce040eff05cc784344727fede513068746020021c",
+    "src/shared/terminal-startup-cwd.test.ts": "1454bb906d2406f3c412f69424ac503fdb7698494b5c174bfe4fc26d60caf10d",
+    "src/renderer/src/lib/client-creation-action-policy.test.ts": "c4c1273a1598defd86d65e1d491b8afee428d431f216dd2c230949545a53fd08",
+    "src/renderer/src/lib/user-opened-local-path.test.ts": "b421c02e9e6d0ca22b1c0968823dd34fd4c6d73f1fccaa859c7bdab08d90b1b8",
+    "src/renderer/src/components/editor/editor-cmd-save-target.test.ts": "277f45527a50c5dda822b08c136c7afe0fb8364011591e9d913848c5e533ea9b",
+    "src/renderer/src/components/native-chat/native-chat-tab-directory.test.ts": "ff6e9804153efc6666a20853dcb3264774bb546ff7ccbd9bfec234006a33ac0e",
+    "src/renderer/src/components/terminal-pane/terminal-parked-watcher-registry.test.ts": "101f1783812505b01db1364c80df09f5ec7470cc57397be5c674799614722e24",
+    "src/main/ipc/pty-spawn-cwd-fallback.test.ts": "b333013263365ed6d36b2958e3b8ca7bb452e69e97f56a26dee536039ffc2333",
+    "src/renderer/src/lib/launch-agent-in-new-tab.test.ts": "a1617cd2f2c9aa87ab7d83b835cdfa9e4eca25c32c695d4f9eb31d7ff15121b8",
+    "src/renderer/src/hooks/useAgentDetectionTarget.test.ts": "1c182a49059c3647584df979768d82bfeb54711f3f5928eba59eed51caaea163",
+    "src/renderer/src/components/editor/MarkdownTableOfContentsPanel.test.tsx": "849e6b7b1c10503abed208d8d853dd9e8e4413b592dcea7034d246b7ccf24288",
+    "src/main/runtime/orca-runtime.test.ts": "db4d20194665604fec6d42c6ed2ebcd51bfa454e88e8588466b02098a72428dc",
+    "src/shared/workspace-session-salvage-equivalence.test.ts": "dfae8300e334fed053e9c8feec7155c052afeb64c96f1470ed20d1c75aa1a10d",
+    "src/shared/zod-salvage-absence.test.ts": "7dd0fef99eb560847cf621f8d6075598c29b5b7e9c16ce0fa7c28c4a559b0925",
+    "src/shared/workspace-session-validation-work.test.ts": "d648b792260807e47201de85fa64e6273f0426487b7a7a3789d6f759a23f6b6a",
+    "src/shared/agent-session-journal-schemas.test.ts": "33118f73097aaa02c827e6ae75f0766d8f030a7c87d7c0e98528a002c0f7e29f",
+    "src/shared/telemetry-events.test.ts": "3aee074a345110184532b1f731d3386e7624112b45b92a10c5c49edc639712ec",
+    "src/main/runtime/rpc/orchestration-session-caller.test.ts": "6fd17f263a00dfaaa6b90b7ed66005973fe079c7ca320a3833e0673de61b83f9",
+    "src/main/native-chat/agent-session-journal/journal-closed-sets.test.ts": "59e2ec52ea236bbc153c59366a71ed33e5a9be5f0dfc4bdc63a2d1fac764d13f",
+    "config/scripts/vitest-node-runtime-pool.test.ts": "87b2b8b6b4eb2bbc504d3211b88aa5522376e256431712b8dbcd10854281a9a4",
+    "config/scripts/vitest-node-runtime-boundary.test.ts": "f7dbb8e9d93c9d1542202750bdd266efa5829cb6cea503cf708aaf231ee3cf6b",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/vitest-node-runtime-files.mjs": "72a9cb668dc80148345ccc7bb33ee522d4770bb5aa8a84335ef22a29206e6360",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "6f01a8865d1cf22a08c437c744b173d5eb1dc51589effad48eb1b88a1582e077",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/vitest-node-runtime-worker.mjs": "a55b523cd62b4221cb6230445eefb0440da50d927dc6925b8e89c2402e28b957",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "src/main/runtime/orca-runtime-test-lifecycle.spec.ts": "e6fca9ddb73be95876af6474152842a3d818e76df5b9e8bbeb958bc998254e82",
+    "src/main/git/canonical-repo-key.ts": "e649e870c2bbe65ff224228a8097ec6f7e6dc154968a93cbae60d0a49f3539a8",
+    "src/main/runtime/runtime-remote-fetch-controller.ts": "186bd3971630d9ffb6d73968600fbc2c0acd781237711f8c12a0ed031dcb8774",
+    "src/main/runtime/orca-runtime-tests/hooks-and-hosted-review-part-03.spec.ts": "ba817469a28ab9823168ca780dbaa19887e8f8bfe72b5dd9f35aebee8a6af7e0",
+    "src/main/runtime/orca-runtime-test-mocks/setup.spec.ts": "d52556d9b6085d5021143471fdc39a1e756e4854604cb76df8f22afe345b17e2",
+    "src/main/runtime/orca-runtime-test-mocks/imported-values.spec.ts": "fb30c4226469f6d44ceb6c9a4b289c005bdb5b95e67a8c9e143892ea800c6f33",
+    "src/main/runtime/orca-runtime-tests/repository-project-operations.spec.ts": "8be45d7d9527b976bfa697d8341de524107bd9a93488a679b9813d4fab9096d4"
+  },
+  "installedHashes": {
+    "node_modules/zod/package.json": "a046ed85fa09571dba539fee9ef236152d12dabd1f229b014ec3bd2ebaad9000",
+    "node_modules/zod/index.js": "32e7efd49a94a765f6d10a1a0a3c02c50c246def17c80c6f0225f85525d98505",
+    "node_modules/zod/v4/index.js": "5ba6cdbd3839d2a9df5c6d91d2121ef680f3d22fd60ee9d2c0b4611b7cb49a65",
+    "node_modules/zod/v4/classic/external.js": "c6b584ae70ba4e7132b2cd78c23ea4ecedc9828abf999edee312372e1fb453d6",
+    "node_modules/zod/v4/core/index.js": "2a0e452323aa5b75b7d7de4879289e2579b9dd2d6af291c0416ba6806ca2199d",
+    "node_modules/zod/v4/core/core.js": "c7ce485c97263e42568d16b11bb4a90133221c7e807498a9273d70f41ba16ef6",
+    "node_modules/vitest/package.json": "df72ec137c86d8454d129967ed88c640012fa8db7950d58f79cee8a94df437f1",
+    "node_modules/vitest/dist/chunks/index.DpLw24bj.js": "1530a89d189ebdc57a1577e7fbfcd34eac55a0165589265b8d776b33f83678bd",
+    "node_modules/vite/package.json": "a7fba3ad4f2cd557f00045a45cf90b4499a5abf2fecc2b5ad4a244fd499eaf21",
+    "node_modules/vite/dist/node/chunks/node.js": "53fc025a8547f514defe58dcfb886ab07826b1962651855777a32309e719a664"
+  },
+  "destinationToPayload": {
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/zod-project-config.ts": "zod-project-config.ts",
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/stock-control.config.ts": "stock-control.config.ts",
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/optimized-candidate.config.ts": "optimized-candidate.config.ts",
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/zod-public-binding.fixture.test.ts": "zod-public-binding.fixture.test.ts",
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/named-registry-source-routes.json": "named-registry-source-routes.json",
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/controller-config-only-census-after.py": "controller-config-only-census-after.py",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "persistence-import-reuse-benchmark-reporter.mjs",
+    "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/broad-ci-launch-plan.json": "launch-plan.json"
+  },
+  "payloadSha256": {
+    "persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "launch-plan.json": "331ee46ef9ed90e11e1198aa88b4eadfd86e3fa7a0b4d5a402ccc8ac6360bf8e",
+    "zod-project-config.ts": "85c38b242fe2ca974a180ccfedad0360ef14e579b712fca776b9c13ffaa1a1ae",
+    "named-registry-source-routes.json": "cd3bc3415021101d667ba1dd7565dbeac6308c31825139a110468f21ce49af84",
+    "optimized-candidate.config.ts": "08cf79075d0317e7a89a7da728294b9be51c68f3e3941d094fc7199e96da444b",
+    "zod-public-binding.fixture.test.ts": "cee3ebb9f7187def97821bcd79ad30147f8da8a2a3e5cafcb3a7e80d80931593",
+    "stock-control.config.ts": "5a72afbd1e1d57c6f092f4491401fb4810ff8e248d257e780a3b42033017c03c",
+    "controller-config-only-census-after.py": "7da7707349f92646f198960b1c3abd97de614ad7a17ee8570ccbd10f23ae6da4"
+  },
+  "planPath": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/broad-ci-launch-plan.json",
+  "controllerPath": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/controller-config-only-census-after.py",
+  "epochPath": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e",
+  "expectedRoutes": {
+    "sourceHead": "a576c0bc4ee430093b24abf0a5a1840a49c76930",
+    "sourceRegistryGuardHashes": {
+      "config/scripts/vitest-node-runtime-files.mjs": "72a9cb668dc80148345ccc7bb33ee522d4770bb5aa8a84335ef22a29206e6360",
+      "config/scripts/vitest-sqlite-runtime-files.mjs": "6f01a8865d1cf22a08c437c744b173d5eb1dc51589effad48eb1b88a1582e077",
+      "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e"
+    },
+    "actualExpandedPatternCount": 491,
+    "originalRoutes": [
+      {
+        "file": "src/shared/workspace-session-terminal-buffers.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/shared/terminal-startup-cwd.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/lib/client-creation-action-policy.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/lib/user-opened-local-path.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/components/editor/editor-cmd-save-target.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/components/native-chat/native-chat-tab-directory.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/components/terminal-pane/terminal-parked-watcher-registry.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/main/ipc/pty-spawn-cwd-fallback.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/lib/launch-agent-in-new-tab.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/hooks/useAgentDetectionTarget.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/renderer/src/components/editor/MarkdownTableOfContentsPanel.test.tsx",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/main/runtime/orca-runtime.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/shared/workspace-session-salvage-equivalence.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/shared/zod-salvage-absence.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/shared/workspace-session-validation-work.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/shared/agent-session-journal-schemas.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/shared/telemetry-events.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/main/runtime/rpc/orchestration-session-caller.test.ts",
+        "bunCoordinator": {
+          "project": "bun",
+          "pool": "forks"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": []
+      },
+      {
+        "file": "src/main/native-chat/agent-session-journal/journal-closed-sets.test.ts",
+        "bunCoordinator": {
+          "project": "node-runtime",
+          "pool": "node-runtime"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": [
+          "src/main/native-chat/agent-session-journal/**/*.test.ts"
+        ]
+      },
+      {
+        "file": "config/scripts/vitest-node-runtime-pool.test.ts",
+        "bunCoordinator": {
+          "project": "node-runtime",
+          "pool": "node-runtime"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": [
+          "config/scripts/vitest-node-runtime-pool.test.ts"
+        ]
+      },
+      {
+        "file": "config/scripts/vitest-node-runtime-boundary.test.ts",
+        "bunCoordinator": {
+          "project": "node-runtime",
+          "pool": "node-runtime"
+        },
+        "nodeCoordinator": {
+          "project": "node",
+          "pool": "forks"
+        },
+        "matchedProtectedPatterns": [
+          "config/scripts/vitest-node-runtime-boundary.test.ts"
+        ]
+      }
+    ],
+    "bindingFixtureRoute": {
+      "file": "notes/bun-migration/performance/zod-dependency-optimizer-proposal/30bc964e/zod-public-binding.fixture.test.ts",
+      "bunCoordinator": {
+        "project": "bun",
+        "pool": "forks"
+      },
+      "nodeCoordinator": {
+        "project": "node",
+        "pool": "forks"
+      }
+    },
+    "sourceDataOnly": true,
+    "applicationAndTestModulesExecuted": false,
+    "actualResolvedRuntimeRoutesPending": true
+  },
+  "shuffleSeeds": [
+    104729,
+    130363
+  ],
+  "registeredWorkflowPath": ".github/workflows/ci-pnpm-verification-pilot.yml",
+  "applicationSourceEdits": false,
+  "ciOnly": true,
+  "sourceCommitPending": false,
+  "dispatchReady": true
+}
