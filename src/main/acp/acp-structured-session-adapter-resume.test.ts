@@ -34,7 +34,14 @@ const hello: AgentJournalMessageItem = {
 /** Grok's own capabilities: it loads and resumes sessions; Orca reopens with `session/load`. */
 const RESUMES = { agentCapabilities: { loadSession: true, sessionCapabilities: { resume: {} } } }
 const resume = {
-  launch: { resume: { sessionId: PROVIDER_SESSION, key: 'acp:grok:saved', mayBeUnsaved: false } }
+  launch: {
+    resume: {
+      sessionId: PROVIDER_SESSION,
+      key: 'acp:grok:saved',
+      mayBeUnsaved: () => false,
+      unannouncedLosses: () => []
+    }
+  }
 }
 
 /** Everything Grok may send while it reattaches: its saved exchange marked as replay, a task the
@@ -278,7 +285,12 @@ describe('reattaching a Grok chat the journal holds', () => {
   it('starts a new session in place of a created one that session/load reports missing', async () => {
     const rig = await openAcpAdapterRig({
       launch: {
-        resume: { sessionId: 'never-saved', key: 'acp:grok:never-saved', mayBeUnsaved: true }
+        resume: {
+          sessionId: 'never-saved',
+          key: 'acp:grok:never-saved',
+          mayBeUnsaved: () => true,
+          unannouncedLosses: () => []
+        }
       },
       initialize: RESUMES,
       script: (agent) =>
@@ -305,7 +317,14 @@ describe('reattaching a Grok chat the journal holds', () => {
     'continues %s it cannot reopen in a new one, says so once, and keeps working',
     async (_label, mayBeUnsaved, code, message) => {
       const rig = await openAcpAdapterRig({
-        launch: { resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved } },
+        launch: {
+          resume: {
+            sessionId: 'saved-1',
+            key: 'acp-key-saved-1',
+            mayBeUnsaved: () => mayBeUnsaved,
+            unannouncedLosses: () => []
+          }
+        },
         initialize: RESUMES,
         script: (agent) => agent.on('session/load', (frame) => agent.fail(frame, code, message))
       })
@@ -328,7 +347,14 @@ describe('reattaching a Grok chat the journal holds', () => {
 
   it('refuses a signed-out agent at reopen rather than replacing its session', async () => {
     const rig = await openAcpAdapterRig({
-      launch: { resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: false } },
+      launch: {
+        resume: {
+          sessionId: 'saved-1',
+          key: 'acp-key-saved-1',
+          mayBeUnsaved: () => false,
+          unannouncedLosses: () => []
+        }
+      },
       initialize: RESUMES,
       script: (agent) =>
         agent.on('session/load', (frame) => agent.fail(frame, -32000, 'Authentication required'))
@@ -343,7 +369,14 @@ describe('reattaching a Grok chat the journal holds', () => {
     const start = new AbortController()
     const logger = { warn: vi.fn(), error: vi.fn() }
     const rig = await openAcpAdapterRig({
-      launch: { resume: { sessionId: 'saved-1', key: 'acp-key-saved-1', mayBeUnsaved: false } },
+      launch: {
+        resume: {
+          sessionId: 'saved-1',
+          key: 'acp-key-saved-1',
+          mayBeUnsaved: () => false,
+          unannouncedLosses: () => []
+        }
+      },
       initialize: RESUMES,
       deps: { logger },
       script: (agent) =>

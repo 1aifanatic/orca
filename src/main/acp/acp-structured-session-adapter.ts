@@ -35,6 +35,7 @@ import type { AcpStructuredConnection } from './acp-structured-connection'
 import { waitForAcpExit } from './acp-structured-connection'
 import { AcpConnectionClosedError } from './acp-errors'
 import { acpPromptBlocks } from './acp-structured-turns'
+import { awaitAcpTurnEnd, interruptAcpTurn, windDownAcpTurn } from './acp-structured-stop'
 import {
   ACP_OPTION_WRITE_TIMEOUT_MS,
   ACP_STOP_GRACE_MS,
@@ -103,7 +104,7 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       if (connection && error instanceof AcpConnectionClosedError) {
         // A protocol that broke before the exit was seen: wait (bounded) for that exit, so the
         // failure carries the agent's last words, as a running session's end does.
-        await waitForAcpExit(connection, this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS, attempt.signal)
+        await waitForAcpExit(connection, this.stopGraceMs(), attempt.signal)
       }
       // Checked before the close below, which would make any exit look like one Orca asked for.
       const exitedOnItsOwn = connection?.exited === true && !attempt.signal.aborted
@@ -171,15 +172,9 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (!session.turns.running && session.lane.openTurnId === null && !session.turns.holdsSteers) {
       return { cancelled: false, refusal: { turnNotRunning: true } }
     }
-    session.turns.stop()
-    if (!session.turns.running && session.lane.openTurnId === null) {
-      return { cancelled: true }
-    }
-    // The agent hears its own cancelled reply to what it asked, then may end its turn its own way;
-    // the host ends the process once that lands or the grace runs out (`awaitStoppedRequestEnd`),
-    // never waiting on this write.
-    session.prompts.withdrawAll()
-    void session.connection.cancel().catch(() => undefined)
+    // The agent may end its turn its own way; the host ends the process once that lands or the
+    // grace runs out (`awaitStoppedRequestEnd`), never waiting on the cancel's write.
+    interruptAcpTurn(session)
     return { cancelled: true }
   }
 
@@ -190,25 +185,8 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
 
   awaitStoppedRequestEnd = async (sessionId: string, stoppedAt: number): Promise<void> => {
     const session = this.sessions.get(sessionId)
-    if (!session) {
-      return
-    }
-    const grace = this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const elapsed = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, Math.max(0, stoppedAt + grace - Date.now()))
-    })
-    const turnId = session.lane.openTurnId
-    try {
-      await Promise.race([
-        Promise.all([
-          session.turns.whenIdle(),
-          turnId === null ? undefined : session.lane.whenTurnLeaves(turnId)
-        ]),
-        elapsed
-      ])
-    } finally {
-      clearTimeout(timer)
+    if (session) {
+      await awaitAcpTurnEnd(session, stoppedAt, this.stopGraceMs())
     }
   }
 
@@ -291,6 +269,14 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
     if (!session || session.ended) {
       return true
     }
+    if (requested && session.journalClosed === null) {
+      // A close, dispose or quit ends a running turn as a Stop does before the child goes.
+      session.closeRequested = true
+      await windDownAcpTurn(session, this.stopGraceMs())
+      if (session.ended) {
+        return true
+      }
+    }
     // A connection loss already decided why the child ends; a later stop does not relabel it.
     if (session.journalClosed === null) {
       session.closeRequested ||= requested
@@ -347,6 +333,10 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       throw new Error(`no live ${this.deps.spec.agent} child owns ${sessionId}`)
     }
     return session
+  }
+
+  private stopGraceMs(): number {
+    return this.deps.stopGraceMs ?? ACP_STOP_GRACE_MS
   }
 
   private now(): number {

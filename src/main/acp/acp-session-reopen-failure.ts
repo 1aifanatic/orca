@@ -1,6 +1,8 @@
 // What takes over when an ACP agent cannot reopen the session a chat proved. A session this chat
-// created and the agent never saved is superseded: there was nothing to remember. Any other is
-// replaced by a new session that names it, and the chat says once that the agent forgot.
+// created and never exchanged a turn on, which the agent says it does not hold, is superseded:
+// there was nothing to remember. Any other is replaced by a new session that names it, and the
+// chat says once that the agent forgot: the row names the lost conversation, so a later start
+// can tell whether it was ever written.
 
 import { agentSessionFailureFact } from '../../shared/agent-session-failure'
 import { agentSessionFailureWords } from '../../shared/agent-session-failure-words'
@@ -26,7 +28,7 @@ export function acpReopenTakeover(
   if (
     error instanceof AcpRpcError &&
     error.code === ACP_RESOURCE_NOT_FOUND &&
-    resume.mayBeUnsaved
+    resume.mayBeUnsaved()
   ) {
     return { supersedesKey: resume.key }
   }
@@ -34,15 +36,21 @@ export function acpReopenTakeover(
   return { replaces: { key: resume.key, reason: 'restore-failed', replacedAt: start.now } }
 }
 
-/** The one row a replaced session writes: the agent no longer remembers what came before. */
+/** The provider item key of the row saying the conversation under chain key `lostKey` was lost. */
+export function acpSessionNotRestoredItem(lostKey: string): string {
+  return `session-not-restored:${lostKey}`
+}
+
+/** The one row a lost conversation gets: the agent no longer remembers what came before. */
 export function acpSessionNotRestoredRow(
+  lostKey: string,
   providerSessionId: string,
   agentName: string
 ): ProviderTimelineEvent[] {
   return [
     {
       type: 'item.update',
-      item: `session-not-restored:${providerSessionId}`,
+      item: acpSessionNotRestoredItem(lostKey),
       body: {
         kind: 'status',
         tone: 'warning',

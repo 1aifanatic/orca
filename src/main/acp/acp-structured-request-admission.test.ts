@@ -1,6 +1,6 @@
-// What Grok asks reaches the person only while the turn it belongs to may still ask: a Stop or a
+// What Grok asks reaches the person only while Orca's prompt runs and may still ask: a Stop or a
 // steer withdraws what is open and refuses what arrives later with Grok's own cancelled reply, with
-// no card; an answer the person already gave is still sent.
+// no card, as does a turn Grok began itself; an answer the person already gave is still sent.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -83,6 +83,30 @@ describe('Grok requests and the turn they belong to', () => {
       result: { outcome: 'cancelled' }
     })
     expect(await cards()).toEqual([])
+  })
+
+  it('refuses a question during a turn Grok began itself, opening no card, yet shows its plan', async () => {
+    const rig = await openAcpAdapterRig()
+    await rig.acquire()
+    const { agent } = rig.child()
+    agent.notify('session/update', replyChunk('task-completed-background-1', 'Build finished; now'))
+    await rig.settle()
+    expect(await agent.request(7, 'x.ai/ask_user_question', question('call-7'))).toMatchObject({
+      result: { outcome: 'cancelled' }
+    })
+    expect(
+      await agent.request(8, 'x.ai/exit_plan_mode', {
+        sessionId: PROVIDER_SESSION,
+        toolCallId: 'call-8',
+        planContent: '# Plan'
+      })
+    ).toMatchObject({ result: { outcome: 'abandoned' } })
+    await rig.settle()
+    const rows = await rig.rig.rows()
+    expect(rows.filter((row) => row.body.kind === 'question')).toEqual([])
+    expect(rows.map((row) => row.body)).toContainEqual(
+      expect.objectContaining({ kind: 'status', presentation: 'plan-document', text: '# Plan' })
+    )
   })
 
   it('refuses a question when no turn is open', async () => {

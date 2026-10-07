@@ -5,8 +5,16 @@ import {
 } from '../../shared/agent-session-provider-handle'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
+import type { JournalLoad } from '../native-chat/agent-session-journal/journal-open'
+import { createJournalReducerState } from '../native-chat/agent-session-journal/journal-reducer'
+import { agentJournalItemKey } from '../../shared/agent-session-journal-item-key'
+import {
+  createLegacyProviderTimelineIdentityScheme,
+  spellProviderTimelineKey
+} from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import { createProviderSpawnSpec } from '../provider-process/provider-process-supervisor'
 import { ACP_CHILD_ENV_TO_DELETE, acpLaunchSpecFor } from './acp-launch-specs'
+import { acpSessionNotRestoredItem } from './acp-session-reopen-failure'
 import { createAcpStructuredLaunchResolver } from './acp-structured-launch-resolution'
 
 const GROK = acpLaunchSpecFor('grok')!
@@ -28,12 +36,36 @@ function grokRecord(overrides: Partial<AgentSessionRecord> = {}): AgentSessionRe
   }
 }
 
-function resolver(record: AgentSessionRecord, fullAccess = false) {
+/** A journal holding one turn of each named provider session. */
+function journalWithTurns(...providerSessions: string[]): JournalLoad {
+  const state = createJournalReducerState(identity.sessionId, 'epoch-1')
+  providerSessions.forEach((providerSession, index) => {
+    const turnId = spellProviderTimelineKey(providerSession, {
+      source: 'provider',
+      value: `prompt:m${index}`
+    })
+    state.items.set(`turn-${index}`, {
+      itemId: `turn-${index}`,
+      revision: 1,
+      sequence: index + 2,
+      observedAt: 1,
+      body: { kind: 'turn', turnId, state: 'completed' }
+    })
+  })
+  return { state, newer: null, damage: null }
+}
+
+function resolver(
+  record: AgentSessionRecord,
+  fullAccess = false,
+  readJournal: () => JournalLoad | null = () => null
+) {
   const searched: (string | null | undefined)[] = []
   return {
     searched,
     resolve: createAcpStructuredLaunchResolver(GROK, {
       store: { getRecord: () => record },
+      readJournal,
       resolveWorkspacePath: async () => '/repo/worktree',
       resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
       resolveLaunchEnv: () => ({ GROK_EXTRA: '1' }),
@@ -86,11 +118,137 @@ describe('ACP launch resolution', () => {
       nativeId: 'acp-1'
     }
     const key = agentSessionProviderHandleKey(handle)
-    expect(created.resume).toEqual({ sessionId: 'acp-1', key, mayBeUnsaved: true })
+    expect(created.resume).toMatchObject({ sessionId: 'acp-1', key })
+    expect(created.resume?.mayBeUnsaved()).toBe(true)
     const resumed = await resolver(
-      grokRecord({ providerHandleChain: [link('created'), link('resumed')] })
+      grokRecord({ providerHandleChain: [link('created'), link('resumed')] }),
+      false,
+      () => journalWithTurns()
     ).resolve({ identity })
-    expect(resumed.resume).toEqual({ sessionId: 'acp-1', key, mayBeUnsaved: false })
+    expect(resumed.resume).toMatchObject({ sessionId: 'acp-1', key })
+    expect(resumed.resume?.mayBeUnsaved()).toBe(false)
+  })
+
+  it('counts a created session as possibly unsaved only while the journal proves no turn on it', async () => {
+    const created = grokRecord({
+      providerHandleChain: [
+        {
+          linkId: 'link-created',
+          origin: 'created',
+          mintedAtFence: 1,
+          observedAt: 1,
+          handle: { transport: 'acp', agent: 'grok', nativeId: 'acp-1' }
+        }
+      ]
+    })
+    const unsaved = async (readJournal: () => JournalLoad | null) =>
+      (await resolver(created, false, readJournal).resolve({ identity })).resume?.mayBeUnsaved()
+    const reads: string[] = []
+    const launch = await resolver(created, false, () => {
+      reads.push('read')
+      return null
+    }).resolve({ identity })
+    // Read only when asked: a reopen that works never replays the journal.
+    expect(reads).toEqual([])
+    expect(launch.resume?.mayBeUnsaved()).toBe(true)
+
+    expect(await unsaved(() => journalWithTurns())).toBe(true)
+    expect(await unsaved(() => journalWithTurns('acp-other'))).toBe(true)
+    expect(await unsaved(() => journalWithTurns('acp-other', 'acp-1'))).toBe(false)
+    // A journal that does not read whole, or at all, proves nothing.
+    expect(
+      await unsaved(() => ({
+        ...journalWithTurns(),
+        damage: { sequence: 3, cause: 'sequence-gap' }
+      }))
+    ).toBe(false)
+    expect(await unsaved(() => ({ ...journalWithTurns(), newer: { sequence: 3 } }))).toBe(false)
+    expect(
+      await unsaved(() => {
+        throw new Error('journal_closed')
+      })
+    ).toBe(false)
+  })
+
+  it('names the lost conversations whose warning row no session of the chat wrote', async () => {
+    const link = (nativeId: string, replaced?: string) => ({
+      linkId: `link-${nativeId}`,
+      origin: 'created' as const,
+      mintedAtFence: 1,
+      observedAt: 1,
+      handle: { transport: 'acp', agent: 'grok', nativeId },
+      ...(replaced
+        ? {
+            replaces: {
+              key: agentSessionProviderHandleKey({
+                transport: 'acp',
+                agent: 'grok',
+                nativeId: replaced
+              }),
+              reason: 'restore-failed',
+              replacedAt: 1
+            }
+          }
+        : {})
+    })
+    const lostKey = agentSessionProviderHandleKey({
+      transport: 'acp',
+      agent: 'grok',
+      nativeId: 'acp-1'
+    })
+    const replaced = grokRecord({ providerHandleChain: [link('acp-1'), link('acp-2', 'acp-1')] })
+    /** A journal holding the row for `lostKey`, written while `providerSession` ran. */
+    const withRow = (providerSession: string): JournalLoad => {
+      const load = journalWithTurns()
+      const itemId = agentJournalItemKey(
+        createLegacyProviderTimelineIdentityScheme({
+          agent: 'grok',
+          sessionId: identity.sessionId
+        }).item({
+          namespace: providerSession,
+          family: 'item',
+          key: { source: 'provider', value: acpSessionNotRestoredItem(lostKey) },
+          thread: providerSession
+        })
+      )
+      load.state.items.set(itemId, {
+        itemId,
+        revision: 1,
+        sequence: 2,
+        observedAt: 1,
+        body: { kind: 'status', tone: 'warning', text: 'forgot' }
+      })
+      return load
+    }
+    const losses = async (record: AgentSessionRecord, readJournal: () => JournalLoad | null) =>
+      (await resolver(record, false, readJournal).resolve({ identity })).resume?.unannouncedLosses()
+
+    const reads: string[] = []
+    // A chain that lost nothing never reads the journal.
+    expect(
+      await losses(grokRecord({ providerHandleChain: [link('acp-1')] }), () => {
+        reads.push('read')
+        return null
+      })
+    ).toEqual([])
+    expect(reads).toEqual([])
+    expect(await losses(replaced, () => null)).toEqual([lostKey])
+    expect(await losses(replaced, () => journalWithTurns('acp-2'))).toEqual([lostKey])
+    expect(await losses(replaced, () => withRow('acp-2'))).toEqual([])
+    // A row the superseded replacement wrote still counts.
+    expect(await losses(replaced, () => withRow('acp-gone'))).toEqual([])
+    // A journal that does not read whole proves nothing, so no row is written.
+    expect(
+      await losses(replaced, () => ({
+        ...journalWithTurns(),
+        damage: { sequence: 3, cause: 'sequence-gap' }
+      }))
+    ).toEqual([])
+    expect(
+      await losses(replaced, () => {
+        throw new Error('journal_closed')
+      })
+    ).toEqual([])
   })
 
   it('refuses a record pinned to another host or another agent', async () => {

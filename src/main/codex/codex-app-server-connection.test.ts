@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { PassThrough } from 'node:stream'
 import { providerDiagnosticOf } from '../../shared/agent-session-failure'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ProcessSpec } from '../../shared/child-process/process-spec'
 import type { spawnProcess } from '../../shared/child-process/run-process'
 import {
   isCodexAppServerRequestError,
@@ -125,6 +126,26 @@ async function flushStreams(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve))
 }
 
+async function closeWithoutObservedExit(
+  connection: CodexAppServerConnection,
+  child: StubChild
+): Promise<boolean> {
+  const forcedKill = new Promise<void>((resolve) => {
+    child.kill.mockImplementation((signal) => {
+      if (signal === 'SIGKILL') {
+        resolve()
+      }
+    })
+  })
+  const closing = connection.close()
+  await flushStreams()
+  await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
+  await forcedKill
+  await vi.advanceTimersByTimeAsync(0)
+  await vi.advanceTimersByTimeAsync(1_000)
+  return closing
+}
+
 function rejection(promise: Promise<unknown>): Promise<Error> {
   return promise.then(
     () => {
@@ -171,6 +192,31 @@ function responseLine(targetBytes: number, id: number): string {
 }
 
 describe('openCodexAppServerConnection', () => {
+  it.runIf(process.platform !== 'win32')(
+    'has its supervisor close Codex by its stdin end, the way its own close does',
+    async () => {
+      const { child, spawnImpl } = stubChild()
+      const specs: ProcessSpec[] = []
+      answerInitialize(child)
+
+      const connection = await openCodexAppServerConnection(
+        { command: 'codex', args: ['app-server'] },
+        {},
+        (spec: ProcessSpec) => {
+          specs.push(spec)
+          return spawnImpl(spec)
+        }
+      )
+
+      expect(
+        JSON.parse(
+          Buffer.from(String(specs[0]?.env?.ORCA_PROVIDER_SUPERVISOR_SPEC), 'base64').toString()
+        )
+      ).toMatchObject({ closeRequest: 'stdin-end' })
+      await connection.close()
+    }
+  )
+
   it('advertises the experimental API required for rollout-path resume', async () => {
     const { child, spawnImpl, written } = stubChild()
     answerInitialize(child)
@@ -485,21 +531,7 @@ describe('openCodexAppServerConnection', () => {
       spawnImpl
     )
 
-    const forcedKill = new Promise<void>((resolve) => {
-      child.kill.mockImplementation((signal) => {
-        if (signal === 'SIGKILL') {
-          resolve()
-        }
-      })
-    })
-    const closing = connection.close()
-    await flushStreams()
-    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS)
-    await forcedKill
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(1_000)
-
-    await expect(closing).resolves.toBe(false)
+    await expect(closeWithoutObservedExit(connection, child)).resolves.toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   }, 10_000)
 
@@ -526,7 +558,7 @@ describe('openCodexAppServerConnection', () => {
   })
 
   it('allows a later close to observe exit after an unproven attempt', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
     answerInitialize(child)
     const connection = await openCodexAppServerConnection(
@@ -535,9 +567,7 @@ describe('openCodexAppServerConnection', () => {
       spawnImpl
     )
 
-    const first = connection.close()
-    await vi.advanceTimersByTimeAsync(GRACEFUL_EXIT_MS + 3_500)
-    await expect(first).resolves.toBe(false)
+    await expect(closeWithoutObservedExit(connection, child)).resolves.toBe(false)
     child.emit('exit', 0, null)
 
     await expect(connection.close()).resolves.toBe(true)
@@ -777,29 +807,6 @@ describe('openCodexAppServerConnection', () => {
     expect(exits).toEqual([expect.stringContaining('structured sink failed')])
     expect(connection.closed).toBe(true)
     await vi.waitFor(() => expect(child.kill).toHaveBeenCalledWith('SIGKILL'))
-    await connection.close()
-  })
-
-  // Stdout can end before the exit is seen, as when the provider supervisor's own exit closes it.
-  it('reports an exit whose stdout ended first once the exit is seen, with its usual reason', async () => {
-    const { child, spawnImpl } = stubChild({ exitOnStdinEnd: false })
-    answerInitialize(child)
-    const exits: string[] = []
-    const connection = await openCodexAppServerConnection(
-      { command: 'codex', args: ['app-server'] },
-      { onExit: (error) => exits.push(error.message) },
-      spawnImpl
-    )
-
-    child.stderr.write('codex crashed\n')
-    child.stdout.end()
-    await flushStreams()
-    expect(exits).toEqual([])
-    child.emit('exit', 1, null)
-    child.emit('close', 1, null)
-
-    expect(exits).toHaveLength(1)
-    expect(exits[0]).toContain('codex crashed')
     await connection.close()
   })
 

@@ -22,6 +22,8 @@ import type { StructuredAgentDefinition } from '../native-chat/agent-session-wir
 import type { StructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-host'
 import { readClaudeManagedAccountGateSettings } from '../native-chat/claude-structured-managed-account-support'
 import { agentModelCatalogStore } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import type { JournalHostDatabase } from '../native-chat/agent-session-journal/journal-host-database'
+import { replayJournal } from '../native-chat/agent-session-journal/journal-open'
 import type { AgentSessionRecordStore } from './agent-session-record-store'
 import type { createStructuredAgentSessionDispatchFollowUps } from './structured-agent-session-dispatch-followups'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime'
@@ -44,6 +46,7 @@ import { AcpStructuredSessionAdapter } from '../acp/acp-structured-session-adapt
 export type StructuredAgentAdapterContext = {
   deps: StructuredAgentSessionRuntimeDeps
   store: AgentSessionRecordStore
+  journalDatabase: JournalHostDatabase
   environment: ReturnType<typeof createStructuredAgentEnvironmentResolvers>
   /** Hands the host an exit or other lifecycle event the agent observed. */
   deliverLifecycle: (event: StructuredAgentSessionLifecycleEvent) => void
@@ -97,6 +100,7 @@ function createCodexAdapter(context: StructuredAgentAdapterContext): StructuredA
       store,
       resolveWorkspacePath: deps.resolveWorkspacePath,
       resolveEnvironment: context.environment.resolveCodexEnvironment,
+      resolveLaunchArgs: () => deps.resolveLaunchArgs('codex'),
       ...(deps.resolveCodexPermissionPolicy
         ? { resolvePermissionPolicy: deps.resolveCodexPermissionPolicy }
         : {}),
@@ -130,6 +134,7 @@ function createClaudeAdapter(
     ...(deps.claudeThinkingDisplay ? { claudeThinkingDisplay: deps.claudeThinkingDisplay } : {}),
     ...(deps.resolveClaudeLaunchEnv ? { resolveClaudeLaunchEnv: deps.resolveClaudeLaunchEnv } : {}),
     resolveClaudeInheritedEnv: context.environment.resolveClaudeInheritedEnv,
+    resolveClaudeLaunchArgs: () => deps.resolveLaunchArgs('claude'),
     resolveClaudeAuthPolicy: deps.resolveClaudeAuthPolicy,
     ...(deps.resolveClaudePermissionMode
       ? { resolveClaudePermissionMode: deps.resolveClaudePermissionMode }
@@ -168,6 +173,7 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
         spec,
         resolveLaunch: createAcpStructuredLaunchResolver(spec, {
           store,
+          readJournal: (sessionId) => replayJournal(context.journalDatabase.db, sessionId),
           resolveWorkspacePath: deps.resolveWorkspacePath,
           resolveEnvironment: context.environment.resolveBaseEnvironment,
           ...(deps.resolveAgentLaunchEnv ? { resolveLaunchEnv: deps.resolveAgentLaunchEnv } : {}),

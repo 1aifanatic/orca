@@ -7,14 +7,24 @@
 import { delimiter } from 'node:path'
 import { homedir } from 'node:os'
 import type { AgentSessionJournalIdentity } from '../../shared/agent-session-journal-types'
+import { parseAgentJournalItemKey } from '../../shared/agent-session-journal-item-key'
 import {
   agentSessionProviderHandleChainHead,
-  agentSessionProviderHandleKey
+  agentSessionProviderHandleKey,
+  type AgentSessionProviderHandleChain
 } from '../../shared/agent-session-provider-handle'
 import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { resolveCliCommand } from '../../shared/node-cli-command-resolution'
+import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
+import type { JournalLoad } from '../native-chat/agent-session-journal/journal-open'
+import {
+  isProviderTimelineTurnInNamespace,
+  providerTimelineKeyPart,
+  spelledProviderTimelineItemKey
+} from '../native-chat/agent-session-timeline/provider-timeline-identity'
 import type { AgentSessionRecordStore } from '../runtime/agent-session-record-store'
 import type { AcpLaunchSpec } from './acp-launch-specs'
+import { acpSessionNotRestoredItem } from './acp-session-reopen-failure'
 
 export type AcpStructuredLaunch = {
   spec: AcpLaunchSpec
@@ -28,13 +38,19 @@ export type AcpStructuredLaunch = {
     sessionId: string
     /** The chain key of the session to load, which a fresh session names if it takes over. */
     key: string
-    /** Only a session this chat created may be one the agent never saved, and so be superseded. */
-    mayBeUnsaved: boolean
+    /** Only a session this chat created and never exchanged a turn on may be one the agent never
+     *  saved, and so be superseded. Read only when the agent cannot reopen it. */
+    mayBeUnsaved: () => boolean
+    /** Keys of the conversations the chain says the agent lost whose warning row the chat does not
+     *  hold, as when the attach that would have written it failed. Read once the start succeeds. */
+    unannouncedLosses: () => string[]
   } | null
 }
 
 export type AcpStructuredLaunchResolverDeps = {
   store: Pick<AgentSessionRecordStore, 'getRecord'>
+  /** The chat's journal as it stands, read without opening it; null when it has none. */
+  readJournal: (sessionId: string) => JournalLoad | null
   resolveWorkspacePath: (workspaceId: string) => Promise<string>
   /** The shared base env; re-read per acquisition. */
   resolveEnvironment: () => Promise<Record<string, string>>
@@ -98,9 +114,79 @@ export function createAcpStructuredLaunchResolver(
         ? {
             sessionId: head.handle.nativeId,
             key: agentSessionProviderHandleKey(head.handle),
-            mayBeUnsaved: head.origin === 'created'
+            mayBeUnsaved: () =>
+              head.origin === 'created' &&
+              nothingExchangedOn(deps.readJournal, identity.sessionId, head.handle.nativeId),
+            unannouncedLosses: () =>
+              unannouncedLosses(deps.readJournal, identity.sessionId, record.providerHandleChain)
           }
         : null
     }
   }
+}
+
+/** Proof the chat holds no turn of provider session `nativeId`; a journal that does not read whole,
+ *  or does not read at all, proves nothing. */
+function nothingExchangedOn(
+  readJournal: AcpStructuredLaunchResolverDeps['readJournal'],
+  sessionId: string,
+  nativeId: string
+): boolean {
+  let load: JournalLoad | null
+  try {
+    load = readJournal(sessionId)
+  } catch {
+    return false
+  }
+  if (!load) {
+    return true
+  }
+  if (load.damage || load.newer) {
+    return false
+  }
+  for (const item of load.state.items.values()) {
+    const turn = readAgentJournalTurn(item.body)
+    if (turn && isProviderTimelineTurnInNamespace(turn.turnId, nativeId)) {
+      return false
+    }
+  }
+  return true
+}
+
+/** Derived on every start, never stored: a row an attach failure dropped is written by the next
+ *  start that succeeds. A journal that does not read whole proves nothing, so none is written. */
+function unannouncedLosses(
+  readJournal: AcpStructuredLaunchResolverDeps['readJournal'],
+  sessionId: string,
+  chain: AgentSessionProviderHandleChain
+): string[] {
+  const lost = chain.flatMap((link) =>
+    link.replaces?.reason === 'restore-failed' ? [link.replaces.key] : []
+  )
+  if (lost.length === 0) {
+    return []
+  }
+  let load: JournalLoad | null
+  try {
+    load = readJournal(sessionId)
+  } catch {
+    return []
+  }
+  if (!load) {
+    return lost
+  }
+  if (load.damage || load.newer) {
+    return []
+  }
+  const written = new Set<string>()
+  for (const itemId of load.state.items.keys()) {
+    const identity = parseAgentJournalItemKey(itemId)
+    const spelled =
+      identity?.provider === 'legacy' ? spelledProviderTimelineItemKey(identity.recordId) : null
+    if (spelled !== null) {
+      written.add(spelled)
+    }
+  }
+  // Any session's row counts: one an unused replacement wrote stays when the agent supersedes it.
+  return lost.filter((key) => !written.has(providerTimelineKeyPart(acpSessionNotRestoredItem(key))))
 }

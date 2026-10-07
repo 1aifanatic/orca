@@ -70,7 +70,8 @@ export function launch(resume: () => boolean): () => Promise<AcpStructuredLaunch
             agent: 'grok',
             nativeId: PROVIDER_SESSION
           }),
-          mayBeUnsaved: false
+          mayBeUnsaved: () => false,
+          unannouncedLosses: () => []
         }
       : null
   })
@@ -88,6 +89,7 @@ export async function openHostRig(
   let generation = 0
   // As the runtime wires it: every exit and late send settlement the adapter observes reaches the host.
   const hosted: { host: StructuredAgentSessionHost | null } = { host: null }
+  const journalDatabase = openTestJournalHostDatabase(state.root)
   const rig = await openAcpAdapterRig({
     ...options,
     deps: {
@@ -106,7 +108,7 @@ export async function openHostRig(
     logger: state.log.logger,
     store,
     adapter: rig.adapter,
-    journalDatabase: openTestJournalHostDatabase(state.root),
+    journalDatabase,
     recoveryCapsule: new AgentSessionRecoveryCapsule(state.root),
     claimKeyId: 'key-1',
     mintSpawnToken: () => 'spawn-a',
@@ -140,7 +142,7 @@ export async function openHostRig(
     await rig.settle()
     await host.flushStreamedEvents(SESSION)
   }
-  return { rig, host, store, fence, messages, exchange }
+  return { rig, host, store, journalDatabase, fence, messages, exchange }
 }
 
 /** Grok's capabilities: it loads and resumes sessions; Orca reopens with `session/load`. */
