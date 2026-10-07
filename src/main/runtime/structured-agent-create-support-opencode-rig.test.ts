@@ -49,10 +49,7 @@ const managedAccounts = {
 
 /** OpenCode's account binding, as create resolves it: the account a new chat would pin. */
 function pinnedAccount(launchEnv: Record<string, string>) {
-  return openCodeAcpAccountBinding(() => managedAccounts).resolve({
-    launchEnv,
-    baseEnvironment: async () => loginShell.env
-  })
+  return openCodeAcpAccountBinding(() => managedAccounts).resolve({ launchEnv })
 }
 
 /** `agentSession.createSupport` on this host for a local git worktree under the rig's settings. */
@@ -70,8 +67,7 @@ function createSupport(settings: ReturnType<typeof rigSettings>) {
       requireStore: () => ({ getSettings: () => settings }),
       resolveRuntimeFileTarget: async () => ({ worktree: { path: join(root, 'proj') } })
     },
-    getSettings: () => ({ claudeManagedAccounts: [], activeClaudeManagedAccountId: null }),
-    resolveAccountHome: () => pinnedAccount(settings.agentDefaultEnv.opencode)
+    getSettings: () => ({ claudeManagedAccounts: [], activeClaudeManagedAccountId: null })
   })
 }
 
@@ -118,32 +114,18 @@ describe.skipIf(process.platform === 'win32')('OpenCode create support under the
     )
   })
 
-  it('refuses at create support an account Orca cannot pin, as create itself still does', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('admits inline credentials and relative folders, recording no folders for the chat', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {})
-    // Inline credentials: pinning them would mean storing them.
-    const settings = rigSettings(privateOpencode, { OPENCODE_AUTH_CONTENT: '{}' })
-
-    expect(await createSupport(settings)).toEqual({ supported: false, reason: 'agent' })
-    expect(warn).toHaveBeenCalledWith(
-      '[structured-create-support] opencode unsupported: account-pin check refused (reason agent)'
-    )
-    await expect(pinnedAccount(settings.agentDefaultEnv.opencode)).rejects.toMatchObject({
-      refusal: { code: 'structured_agent_session_unsupported' }
+    const settings = rigSettings(privateOpencode, {
+      OPENCODE_AUTH_CONTENT: '{}',
+      XDG_DATA_HOME: 'relative/data',
+      XDG_STATE_HOME: 'relative/state'
     })
-  })
 
-  it('pins the rig XDG directories as the account rather than refusing it', async () => {
-    await expect(
-      pinnedAccount(rigSettings(privateOpencode).agentDefaultEnv.opencode)
-    ).resolves.toEqual({
+    expect(await createSupport(settings)).toEqual({ supported: true })
+    await expect(pinnedAccount(settings.agentDefaultEnv.opencode)).resolves.toEqual({
       kind: 'opencode',
-      locator: {
-        kind: 'unmanaged',
-        dataHome: loginShell.env.XDG_DATA_HOME,
-        stateHome: loginShell.env.XDG_STATE_HOME,
-        databaseSelection: { kind: 'default' }
-      }
+      locator: { kind: 'unmanaged' }
     })
   })
 })

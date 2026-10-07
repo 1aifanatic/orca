@@ -35,19 +35,12 @@ describe('agent session account home', () => {
       kind: 'opencode',
       locator: { kind: 'managed', managedProfileId: '123e4567-e89b-42d3-a456-426614174000' }
     } as const
-    const unmanaged = {
-      kind: 'opencode',
-      locator: {
-        kind: 'unmanaged',
-        dataHome: '/home/user/data',
-        stateHome: '/home/user/state',
-        databaseSelection: { kind: 'override', value: 'custom.db' }
-      }
-    } as const
+    const unmanaged = { kind: 'opencode', locator: { kind: 'unmanaged' } } as const
     expect(isPersistedAgentSessionRecord({ ...record, accountHome: managed })).toBe(true)
     expect(isPersistedAgentSessionRecord({ ...record, accountHome: unmanaged })).toBe(true)
     expect(agentSessionAccountHomesEqual(managed, unmanaged)).toBe(false)
     expect(agentSessionAccountHomesEqual(managed, { ...managed })).toBe(true)
+    expect(agentSessionAccountHomesEqual(unmanaged, { ...unmanaged })).toBe(true)
     expect(
       isPersistedAgentSessionRecord({
         ...record,
@@ -63,7 +56,7 @@ describe('agent session account home', () => {
     expect(
       isPersistedAgentSessionRecord({
         ...record,
-        accountHome: { ...unmanaged, locator: { ...unmanaged.locator, dataHome: 'relative/data' } }
+        accountHome: { ...unmanaged, locator: { kind: 'detached' } }
       })
     ).toBe(false)
   })

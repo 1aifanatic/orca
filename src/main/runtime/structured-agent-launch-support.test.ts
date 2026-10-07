@@ -86,15 +86,7 @@ describe('structuredAgentSupportsLaunch', () => {
             ...agentSessionRecordFixture(),
             provider: 'opencode',
             providerHandleChain: [],
-            accountHome: {
-              kind: 'opencode',
-              locator: {
-                kind: 'unmanaged',
-                dataHome: '/home/user/.local/share',
-                stateHome: '/home/user/.local/state',
-                databaseSelection: { kind: 'default' }
-              }
-            }
+            accountHome: { kind: 'opencode', locator: { kind: 'unmanaged' } }
           })
         },
         readJournal: () => null,

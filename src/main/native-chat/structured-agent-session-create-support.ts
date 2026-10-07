@@ -49,12 +49,10 @@ export function resolveStructuredAgentSessionCreateSupport(input: {
 }
 
 /** Which create-support check said no: where the chat would run, the installed agent (its binary
- *  and version on this host), the account a new chat would pin, or Claude's managed-account
- *  binding. */
+ *  and version on this host), or Claude's managed-account binding. */
 export type StructuredAgentSessionCreateSupportCheck =
   | 'location'
   | 'installed-agent'
-  | 'account-pin'
   | 'managed-account'
 
 /** One main-log line per create-support verdict that sends a launch to the terminal; names the

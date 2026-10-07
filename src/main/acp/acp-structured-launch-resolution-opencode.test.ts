@@ -52,12 +52,7 @@ function openCodeRecord(accountHome: AgentSessionRecord['accountHome']): AgentSe
 
 const UNMANAGED: AgentSessionRecord['accountHome'] = {
   kind: 'opencode',
-  locator: {
-    kind: 'unmanaged',
-    dataHome: '/home/user/.local/share',
-    stateHome: '/home/user/.local/state',
-    databaseSelection: { kind: 'default' }
-  }
+  locator: { kind: 'unmanaged' }
 }
 
 function resolver(
@@ -93,15 +88,36 @@ describe('OpenCode ACP launch resolution', () => {
     })
   })
 
-  it('pins the unmanaged data and state directories, and unsets a database it did not select', async () => {
+  it("starts OpenCode with the user's own folders, database and inline credentials", async () => {
+    const userEnv = {
+      HOME: 'relative/home',
+      XDG_DATA_HOME: 'relative/data',
+      XDG_STATE_HOME: '/data/opencode-state',
+      OPENCODE_DB: 'work.db',
+      OPENCODE_AUTH_CONTENT: '{"secret":1}'
+    }
     const launch = await resolver(openCodeRecord(UNMANAGED), {
-      base: { XDG_DATA_HOME: '/elsewhere', OPENCODE_DB: '/elsewhere/other.db' },
-      inheritedEnv: { OPENCODE_DB: '/elsewhere/other.db', OPENCODE_AUTH_CONTENT: '{"secret":1}' }
+      base: { XDG_DATA_HOME: '/elsewhere' },
+      launchEnv: userEnv
     })({ identity })
-    // The user set a data directory, so the pinned one replaces it; the default state directory
-    // they never set stays unset.
-    expect(launch.env.XDG_DATA_HOME).toBe('/home/user/.local/share')
-    expect(launch.env.XDG_STATE_HOME).toBeUndefined()
+    expect(launch.env).toMatchObject(userEnv)
+    const child = createProviderSpawnSpec(
+      {
+        command: launch.command,
+        args: launch.args,
+        env: launch.env,
+        envToDelete: [...ACP_CHILD_ENV_TO_DELETE, ...launch.envToDelete]
+      },
+      {},
+      'darwin'
+    ).env
+    expect(child).toMatchObject(userEnv)
+  })
+
+  it('leaves unset what the user left unset, whatever Orca itself inherited', async () => {
+    const inheritedEnv = { OPENCODE_DB: '/elsewhere/other.db', OPENCODE_AUTH_CONTENT: '' }
+    const launch = await resolver(openCodeRecord(UNMANAGED), { inheritedEnv })({ identity })
+    expect(launch.env.XDG_DATA_HOME).toBeUndefined()
     expect(launch.env.OPENCODE_DB).toBeUndefined()
     const child = createProviderSpawnSpec(
       {
@@ -110,30 +126,11 @@ describe('OpenCode ACP launch resolution', () => {
         env: launch.env,
         envToDelete: launch.envToDelete
       },
-      { OPENCODE_DB: '/elsewhere/other.db', OPENCODE_AUTH_CONTENT: '{"secret":1}' },
+      inheritedEnv,
       'darwin'
     ).env
     expect(child.OPENCODE_DB).toBeUndefined()
     expect(child.OPENCODE_AUTH_CONTENT).toBeUndefined()
-  })
-
-  it('pins a directory away from the default the user no longer uses', async () => {
-    const launch = await resolver(
-      openCodeRecord({
-        kind: 'opencode',
-        locator: {
-          kind: 'unmanaged',
-          dataHome: '/data/opencode-work',
-          stateHome: '/home/user/.local/state',
-          databaseSelection: { kind: 'override', value: 'work.db' }
-        }
-      })
-    )({ identity })
-    expect(launch.env).toMatchObject({
-      XDG_DATA_HOME: '/data/opencode-work',
-      OPENCODE_DB: 'work.db'
-    })
-    expect(launch.env.XDG_STATE_HOME).toBeUndefined()
   })
 
   it('points a managed profile at its own directories', async () => {

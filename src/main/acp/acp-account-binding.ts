@@ -13,11 +13,7 @@ export type AcpAccountBinding = {
   /** What the agent's definition says its records pin. */
   pin: AccountPin
   /** The account a new chat pins: the current selection, read without side effects. */
-  resolve(input: {
-    launchEnv: NodeJS.ProcessEnv
-    /** The environment a launch inherits on this host. */
-    baseEnvironment: () => Promise<Record<string, string>>
-  }): Promise<AgentSessionAccountHome>
+  resolve(input: { launchEnv: NodeJS.ProcessEnv }): Promise<AgentSessionAccountHome>
   /** `env` pointed at the pinned account; throws for an account of another kind. */
   environment(home: AgentSessionAccountHome, env: Record<string, string>): Record<string, string>
 }

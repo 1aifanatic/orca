@@ -60,7 +60,6 @@ describe('ACP agents in the runtime registrations', () => {
       getClaudeConfigDirectory: unused,
       prepareCodexLaunchHome: unused,
       readCodexLaunchHome: unused,
-      resolveBaseEnvironment: unused,
       workspaceTrustSettings: unused
     }
     const resolve = async (launchEnv: NodeJS.ProcessEnv) =>

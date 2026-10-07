@@ -82,8 +82,6 @@ export type StructuredAgentAccountHomeServices = {
   /** Codex's home for a launch, prepared for it; and the same answer with no side effects. */
   prepareCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
   readCodexLaunchHome: StructuredCodexAccountHomeDeps['resolveLaunchHome']
-  /** The environment a launch inherits on this host, before any agent's own variables. */
-  resolveBaseEnvironment: () => Promise<Record<string, string>>
   workspaceTrustSettings: () => Parameters<typeof applyStructuredCodexWorkspaceTrust>[0]['settings']
 }
 
@@ -192,8 +190,7 @@ function acpRegistration(spec: AcpLaunchSpec): StructuredAgentRuntimeRegistratio
           }
         }
       : {}),
-    resolveAccountHome: ({ launchEnv }, services) =>
-      spec.account.resolve({ launchEnv, baseEnvironment: services.resolveBaseEnvironment }),
+    resolveAccountHome: ({ launchEnv }) => spec.account.resolve({ launchEnv }),
     createAdapter: (context) => {
       const { deps, store, followUps } = context
       const readJournal = (sessionId: string) =>

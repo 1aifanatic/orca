@@ -1,7 +1,6 @@
 /** Durable account binding: existing single-directory records or OpenCode's data context. */
 
 import type { AgentSessionStoredAgent } from './agent-session-stored-agent'
-import { isRuntimePathAbsolute } from './cross-platform-path'
 
 /** Account root pinned at launch by the account selector, so a resume cannot drift to another login. */
 export type LegacyAgentSessionAccountHome = {
@@ -13,12 +12,8 @@ export type LegacyAgentSessionAccountHome = {
 
 export type OpenCodeAccountLocator =
   | { kind: 'managed'; managedProfileId: string }
-  | {
-      kind: 'unmanaged'
-      dataHome: string
-      stateHome: string
-      databaseSelection: { kind: 'default' } | { kind: 'override'; value: string }
-    }
+  // The user's own environment, read at every launch.
+  | { kind: 'unmanaged' }
 
 export type OpenCodeAgentSessionAccountHome = {
   kind: 'opencode'
@@ -55,7 +50,7 @@ export function agentSessionAccountHomesEqual(
       left.path === right.path
     )
   }
-  if (isLegacyAgentSessionAccountHome(right) || left.locator.kind !== right.locator.kind) {
+  if (isLegacyAgentSessionAccountHome(right)) {
     return false
   }
   if (left.locator.kind === 'managed') {
@@ -64,15 +59,7 @@ export function agentSessionAccountHomesEqual(
       left.locator.managedProfileId === right.locator.managedProfileId
     )
   }
-  return (
-    right.locator.kind === 'unmanaged' &&
-    left.locator.dataHome === right.locator.dataHome &&
-    left.locator.stateHome === right.locator.stateHome &&
-    left.locator.databaseSelection.kind === right.locator.databaseSelection.kind &&
-    (left.locator.databaseSelection.kind === 'default' ||
-      (right.locator.databaseSelection.kind === 'override' &&
-        left.locator.databaseSelection.value === right.locator.databaseSelection.value))
-  )
+  return right.locator.kind === 'unmanaged'
 }
 
 /** The account home of `agent` at `path`. */
@@ -101,10 +88,6 @@ function isBoundedAccountString(value: unknown, max: number): value is string {
     value.length <= max &&
     !value.includes('\u0000')
   )
-}
-
-function isAbsoluteAccountPath(value: unknown): value is string {
-  return isBoundedAccountString(value, 4096) && isRuntimePathAbsolute(value, 'windows')
 }
 
 const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/
@@ -144,25 +127,5 @@ export function isAgentSessionAccountHome(value: unknown): value is AgentSession
       PROFILE_ID.test(locator.managedProfileId)
     )
   }
-  if (
-    locator.kind !== 'unmanaged' ||
-    !('dataHome' in locator) ||
-    !isAbsoluteAccountPath(locator.dataHome) ||
-    !('stateHome' in locator) ||
-    !isAbsoluteAccountPath(locator.stateHome) ||
-    !('databaseSelection' in locator) ||
-    typeof locator.databaseSelection !== 'object' ||
-    locator.databaseSelection === null ||
-    Array.isArray(locator.databaseSelection) ||
-    !('kind' in locator.databaseSelection)
-  ) {
-    return false
-  }
-  const databaseSelection = locator.databaseSelection
-  return (
-    databaseSelection.kind === 'default' ||
-    (databaseSelection.kind === 'override' &&
-      'value' in databaseSelection &&
-      isBoundedAccountString(databaseSelection.value, 4096))
-  )
+  return locator.kind === 'unmanaged'
 }

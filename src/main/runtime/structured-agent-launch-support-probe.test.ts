@@ -49,15 +49,7 @@ function launchWith(settings: Settings) {
         ...agentSessionRecordFixture(),
         provider: 'opencode',
         providerHandleChain: [],
-        accountHome: {
-          kind: 'opencode',
-          locator: {
-            kind: 'unmanaged',
-            dataHome: join(root, 'data'),
-            stateHome: join(root, 'state'),
-            databaseSelection: { kind: 'default' }
-          }
-        }
+        accountHome: { kind: 'opencode', locator: { kind: 'unmanaged' } }
       })
     },
     readJournal: () => null,
