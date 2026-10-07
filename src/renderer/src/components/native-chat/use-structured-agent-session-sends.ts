@@ -14,6 +14,7 @@ import {
 import {
   getStructuredAgentSessionPendingSends,
   getStructuredAgentSessionSendNotice,
+  structuredAgentSessionSendsHeld,
   subscribeToStructuredAgentSessionPendingSends
 } from './structured-agent-session-pending-sends'
 import { noteStructuredAgentSessionFence } from './structured-agent-session-send-attempt'
@@ -56,6 +57,7 @@ export function useStructuredAgentSessionSends(args: {
   const notice = useSyncExternalStore(subscribe, () =>
     getStructuredAgentSessionSendNotice(sessionId)
   )
+  const held = useSyncExternalStore(subscribe, () => structuredAgentSessionSendsHeld(sessionId))
 
   useEffect(() => {
     noteStructuredAgentSessionFence(sessionId, fence)
@@ -115,6 +117,8 @@ export function useStructuredAgentSessionSends(args: {
 
   return {
     pending,
+    /** A write such as a /clear keeps every send out meanwhile. */
+    held,
     /** Why the last message came back to the composer, until the next send. */
     error: notice,
     send,

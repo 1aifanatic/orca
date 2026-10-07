@@ -2,11 +2,9 @@ import { useMemo, useRef } from 'react'
 import * as structuredConversationCommands from './structured-conversation-command-send'
 import type { AgentSessionPromptResult } from '../../../../shared/agent-session-wire'
 import { useStructuredAgentSessionSends } from './use-structured-agent-session-sends'
+import { useStructuredAgentSessionCommandWrite } from './use-structured-agent-session-command-write'
 import { structuredAgentSessionNewSendsQueue } from './structured-agent-session-queue-request'
-import type {
-  AgentSessionConversationCommand,
-  AgentSessionConversationCommandResult
-} from '../../../../shared/agent-session-conversation-command'
+import type { AgentSessionConversationCommand } from '../../../../shared/agent-session-conversation-command'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { structuredAgentLabel } from '@/lib/structured-agent-session-launch-label'
@@ -167,6 +165,7 @@ export function useStructuredAgentSession(args: {
   })
 
   const { pending } = sends
+  const commandWrite = useStructuredAgentSessionCommandWrite(sessionId, write)
   // Out and unsettled: the chat takes no other send, and Stop stops it.
   const sending = pending.some((entry) => entry.phase === 'sending')
   // What the host refuses a conversation command or a rewind behind.
@@ -229,12 +228,7 @@ export function useStructuredAgentSession(args: {
         pending: commandPending,
         blocked: conversationBusy || rewind.blockedRef.current,
         startFailures: () => structuredAgentSessionStartFailureFacts(stateRef.current.items),
-        send: (command) =>
-          write<AgentSessionConversationCommandResult>(
-            'agentSession.conversationCommand',
-            'agentSession.conversationCommand',
-            { command }
-          )
+        send: commandWrite
       }),
     journalItems: transcriptItems,
     /** The host's newest turn record, which places a live turn whose record is not loaded. */
@@ -254,8 +248,8 @@ export function useStructuredAgentSession(args: {
     loadOlder,
     prompts,
     pending,
-    /** A send is out; the chat takes no other until it settles. */
-    sendOut: sending,
+    /** A send is out, or a /clear holds sends; the chat takes none until it settles. */
+    sendOut: sending || sends.held,
     /** The journal's rows for sent messages, which carry a rejected message's whole fact. */
     submissions: transportState.submissions,
     // A message typed during a command queues behind it on the host.

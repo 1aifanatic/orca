@@ -320,6 +320,7 @@ export function dropStructuredAgentSessionSends(sessionId: string): void {
 
 export function resetStructuredAgentSessionSendsForTests(): void {
   for (const sessionId of structuredAgentSessionsWithPendingSends()) {
+    publishStructuredAgentSessionSends(sessionId, { holds: 0 })
     dropStructuredAgentSessionSends(sessionId)
   }
   resetStructuredAgentSessionFencesForTests()

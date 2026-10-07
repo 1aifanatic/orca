@@ -29,6 +29,8 @@ type SessionSends = {
   entries: readonly StructuredAgentSessionPendingSend[]
   /** Why the last message went back to the composer; cleared by the next send. */
   notice: string | null
+  /** Writes that keep every send out meanwhile: a /clear, whose host refuses them. */
+  holds: number
   listeners: Set<() => void>
 }
 
@@ -38,7 +40,12 @@ const sessions = new Map<string, SessionSends>()
 function sessionSends(sessionId: string): SessionSends {
   let state = sessions.get(sessionId)
   if (!state) {
-    state = { entries: EMPTY_STRUCTURED_AGENT_SESSION_SENDS, notice: null, listeners: new Set() }
+    state = {
+      entries: EMPTY_STRUCTURED_AGENT_SESSION_SENDS,
+      notice: null,
+      holds: 0,
+      listeners: new Set()
+    }
     sessions.set(sessionId, state)
   }
   return state
@@ -87,9 +94,30 @@ export function structuredAgentSessionSendsWatched(sessionId: string): boolean {
   return (sessions.get(sessionId)?.listeners.size ?? 0) > 0
 }
 
-/** A send of this chat is out and not yet settled: the chat takes no other until it is. */
+/** A send of this chat is out and not yet settled, or a write holds sends: the chat takes none. */
 export function structuredAgentSessionSendOut(sessionId: string): boolean {
-  return getStructuredAgentSessionPendingSends(sessionId).some((entry) => entry.phase === 'sending')
+  return (
+    structuredAgentSessionSendsHeld(sessionId) ||
+    getStructuredAgentSessionPendingSends(sessionId).some((entry) => entry.phase === 'sending')
+  )
+}
+
+export function structuredAgentSessionSendsHeld(sessionId: string): boolean {
+  return (sessions.get(sessionId)?.holds ?? 0) > 0
+}
+
+/** Keeps every send of the chat out until the returned release runs (once). */
+export function holdStructuredAgentSessionSends(sessionId: string): () => void {
+  publishStructuredAgentSessionSends(sessionId, { holds: sessionSends(sessionId).holds + 1 })
+  let held = true
+  return () => {
+    if (held) {
+      held = false
+      publishStructuredAgentSessionSends(sessionId, {
+        holds: Math.max(0, sessionSends(sessionId).holds - 1)
+      })
+    }
+  }
 }
 
 export function getStructuredAgentSessionSendNotice(sessionId: string): string | null {
@@ -120,7 +148,7 @@ export function clearStructuredAgentSessionPendingSends(sessionId: string): void
       entries: EMPTY_STRUCTURED_AGENT_SESSION_SENDS,
       notice: null
     })
-    if (state.listeners.size === 0) {
+    if (state.listeners.size === 0 && state.holds === 0) {
       sessions.delete(sessionId)
     }
   }
