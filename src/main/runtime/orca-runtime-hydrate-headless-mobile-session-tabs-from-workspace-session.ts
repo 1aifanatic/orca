@@ -137,10 +137,9 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
       // filter, which is about terminal PTY ownership and never applies to browsers.
       const browserTabs = this.buildHeadlessMobileSessionBrowserTabs(entryWorktreeId)
       // Why not in the runtime-owned pass: that merges into a renderer's publication, which owns its editors.
-      const editorTabs =
-        options.onlyRuntimeOwnedTerminals === true
-          ? []
-          : buildHeadlessMobileSessionEditorTabs(entryWorktreeId, session)
+      const editorTabs = runtimeOwnedOnly
+        ? []
+        : buildHeadlessMobileSessionEditorTabs(entryWorktreeId, session)
       const tabs: RuntimeMobileSessionSnapshotTab[] = [
         ...terminalTabs,
         ...editorTabs,
