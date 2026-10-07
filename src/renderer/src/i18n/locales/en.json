@@ -1166,7 +1166,6 @@
         "workspaceHostUnresolved": "The target workspace spans more than one host, so this run has no single host to use."
       },
       "useComposerState": {
-        "7eb3f44ff7": "Selected agent is disabled. Choose an enabled agent before creating.",
         "b2ead86962": "Failed to resolve PR base.",
         "3db83fc58a": "No project path is available on this host for attachments.",
         "ba6cb77082": "Failed to connect to project.",
@@ -13057,7 +13056,6 @@
             "ea4788705e": "Cancel",
             "7ec6abbf2a": "Reset",
             "f4f3c9ca4a": "Prompt template",
-            "1bc0bdbb5e": "Launch:",
             "fe119187bb": "--model sonnet",
             "bc8dc39f4b": "CLI arguments",
             "b99c33cec5": "Settings",
@@ -19262,5 +19260,10 @@
   "projectField": {
     "updateFailed": "Failed to update project field"
   },
-  "settings.appearance.chat.title": "Chat"
+  "settings.appearance.chat.title": "Chat",
+  "mediaPreview": {
+    "unavailable": "Unable to play this media file. The file may be unavailable or use an unsupported codec.",
+    "openFailed": "Could not open this file in the default app.",
+    "openDefault": "Open in Default App"
+  }
 }
