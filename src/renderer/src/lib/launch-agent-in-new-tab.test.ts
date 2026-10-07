@@ -283,13 +283,15 @@ describe('launchAgentInNewTab', () => {
     }
     const { launchAgentInNewTab } = await import('./launch-agent-in-new-tab')
 
-    launchAgentInNewTab({
+    const result = launchAgentInNewTab({
       requestId: 'request-4',
       agent: 'grok',
       worktreeId: 'wt-1',
       prompt: 'large generated prompt',
       promptDelivery: 'submit-after-ready'
     })
+    // The local runtime has not said which agents it registers, so the tab opens once it answers.
+    await expect(result?.structuredSettlement).resolves.toEqual({ kind: 'terminal' })
 
     expect(mockCreateTab).toHaveBeenCalledWith('wt-1', undefined, undefined, {
       launchAgent: 'grok',

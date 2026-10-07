@@ -4,6 +4,18 @@ import type { RuntimeCapability } from '../../../shared/protocol-version'
 // different answers, and a caller that routes on them must be able to tell them apart.
 let localRuntimeCapabilities: readonly RuntimeCapability[] | null = null
 let refreshPromise: Promise<readonly RuntimeCapability[]> | null = null
+const knownListeners = new Set<(capabilities: readonly RuntimeCapability[]) => void>()
+
+/** Called each time a probe lands an answer, so work that needs the capabilities runs when they
+ *  become known instead of being skipped while they were not. Returns the unsubscribe. */
+export function subscribeLocalRuntimeCapabilitiesKnown(
+  listener: (capabilities: readonly RuntimeCapability[]) => void
+): () => void {
+  knownListeners.add(listener)
+  return () => {
+    knownListeners.delete(listener)
+  }
+}
 
 export function readLocalRuntimeCapabilities(): readonly RuntimeCapability[] {
   return localRuntimeCapabilities ?? []
@@ -47,8 +59,10 @@ function startLocalRuntimeCapabilityProbe(): ReturnType<typeof window.api.runtim
 export function refreshLocalRuntimeCapabilities(): Promise<readonly RuntimeCapability[]> {
   refreshPromise ??= startLocalRuntimeCapabilityProbe()
     .then((status) => {
-      localRuntimeCapabilities = [...(status.capabilities ?? [])]
-      return localRuntimeCapabilities
+      const capabilities = [...(status.capabilities ?? [])]
+      localRuntimeCapabilities = capabilities
+      knownListeners.forEach((listener) => listener(capabilities))
+      return capabilities
     })
     .catch(() => {
       // Stays unknown rather than becoming an empty (== unsupported) list: a failed probe

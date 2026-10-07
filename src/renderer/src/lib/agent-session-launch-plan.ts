@@ -1,6 +1,7 @@
 import type { StructuredAgentSessionResumeSource } from '../../../shared/structured-agent-session-create'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import { STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY } from '../../../shared/protocol-version'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { StructuredAgentSessionOwnerUnresolvedError } from '@/lib/launch-structured-agent-session'
@@ -195,6 +196,40 @@ function reportStructuredLaunchDowngrade(
       console.warn('[agent-launch-route] could not ask the host for its agents again', error)
     })
   }
+}
+
+/** When a launch's chat route waits only on its host's agent list, asks that host for it and
+ *  resolves once it answered or after `waitMs`, whichever is first; null when the route does not
+ *  wait on that list. The caller decides the route again afterwards. */
+export function awaitStructuredRouteHostAgents(
+  store: AgentLaunchRouteStore,
+  request: AgentLaunchRouteArgs,
+  waitMs: number
+): Promise<void> | null {
+  const input = buildAgentLaunchRouteInput(store, request)
+  if (
+    input.hostStructuredAgents ||
+    // A host that does not publish its agents has no list to wait for.
+    input.hostCapabilities?.includes(
+      STRUCTURED_AGENT_SESSION_REGISTERED_AGENTS_RUNTIME_CAPABILITY
+    ) === false ||
+    structuredAgentLaunchDowngrade(input, resolveAgentLaunchRoute(input)) !==
+      'agent-without-structured-session'
+  ) {
+    return null
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const learned = relearnHostStructuredAgents(
+    input.executionHostId,
+    input.hostCapabilities,
+    store.runtimeStatusByEnvironmentId
+  ).catch((error: unknown) => {
+    console.warn('[agent-launch-route] could not ask the host for its agents', error)
+  })
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, waitMs)
+  })
+  return Promise.race([learned, deadline]).finally(() => clearTimeout(timer))
 }
 
 /** The one place a launch route is decided. Delivery mode is fixed here too, so the settle loop
