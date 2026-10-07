@@ -18,6 +18,7 @@ import {
 } from './native-chat-composer-draft-store'
 import { nativeChatComposerDraftLeftAfterSend } from './native-chat-composer-draft-comparison'
 import type { NativeChatComposerDraft } from './native-chat-composer-draft-storage'
+import { noteNativeChatDraftSendOut } from './structured-agent-session-draft-move'
 
 export type UseNativeChatStructuredComposerSendArgs = {
   agent: AgentType
@@ -85,6 +86,8 @@ export function useNativeChatStructuredComposerSend({
         structuredTransport.onSubmitted?.()
       }
       const submitted = sentFrom ?? readNativeChatComposerDraft(draftScopeKey)
+      // A /clear can move the chat before its reply lands; its own text must not move along.
+      const settled = noteNativeChatDraftSendOut(draftScopeKey, submitted)
       await dispatchNativeChatStructuredComposerText(structuredTransport, text, attachments)
         .then(({ accepted, error, revealsTranscript }) => {
           structuredTransport.onError(error)
@@ -122,6 +125,7 @@ export function useNativeChatStructuredComposerSend({
         .catch((error) =>
           structuredTransport.onError(error instanceof Error ? error.message : String(error))
         )
+        .finally(settled)
     },
     [
       agent,
