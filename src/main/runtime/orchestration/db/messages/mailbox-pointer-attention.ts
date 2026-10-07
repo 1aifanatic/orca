@@ -31,8 +31,8 @@ export function getUndeliveredUnreadMessages(
     conditions.push(OUTSIDE_FETCHED_BATCH_SQL)
   }
   if (options?.excludeMessageIds?.length) {
-    conditions.push(`id NOT IN (${options.excludeMessageIds.map(() => '?').join(',')})`)
-    params.push(...options.excludeMessageIds)
+    conditions.push('id NOT IN (SELECT value FROM json_each(?))')
+    params.push(JSON.stringify(options.excludeMessageIds))
   }
   if (types?.length) {
     conditions.push(`type IN (${types.map(() => '?').join(',')})`)

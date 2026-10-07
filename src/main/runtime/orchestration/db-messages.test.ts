@@ -116,6 +116,36 @@ describe('OrchestrationDb', () => {
       expect(unread).toHaveLength(2)
     })
 
+    it('selects independent mail beyond the SQLite parameter limit of owned IDs', () => {
+      const d = createDb()
+      const owned = d.insertMessage({ runId, from: 'a', to: 'b', subject: 'owned' })
+      const fresh = d.insertMessage({ runId, from: 'a', to: 'b', subject: 'fresh' })
+      const excludeMessageIds = Array.from({ length: 250001 }, (_, index) => `owned-${index}`)
+      excludeMessageIds.push(owned.id)
+
+      const selected = d.getUndeliveredUnreadMessages('b', undefined, {
+        excludeMessageIds,
+        limit: 50
+      })
+
+      expect(selected.map((message) => message.id)).toEqual([fresh.id])
+    })
+
+    it('excludes all owned members before applying the notice limit', () => {
+      const d = createDb()
+      const owned = Array.from({ length: 51 }, (_, index) =>
+        d.insertMessage({ runId, from: 'a', to: 'b', subject: `owned-${index}` })
+      )
+      const fresh = d.insertMessage({ runId, from: 'a', to: 'b', subject: 'fresh' })
+
+      const selected = d.getUndeliveredUnreadMessages('b', undefined, {
+        excludeMessageIds: owned.map((message) => message.id),
+        limit: 50
+      })
+
+      expect(selected.map((message) => message.id)).toEqual([fresh.id])
+    })
+
     it('creates the undelivered inbox index used by push delivery', () => {
       const d = createDb()
       const sqlite = (d as unknown as { db: Database.Database }).db
