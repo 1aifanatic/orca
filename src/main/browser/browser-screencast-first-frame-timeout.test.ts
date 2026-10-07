@@ -12,7 +12,10 @@ function never<T>(): Promise<T> {
   return new Promise<T>(() => {})
 }
 
-function start(webContents: object, options: BrowserScreencastOptions) {
+function start(
+  webContents: ReturnType<typeof createMockScreencastWebContents>,
+  options: BrowserScreencastOptions
+) {
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stream touches only the debugger, isDestroyed and capturePage the doubles provide.
   return startBrowserScreencast(webContents as never, options)
 }
