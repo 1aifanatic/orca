@@ -215,6 +215,14 @@ describe('the actual Bun build and profile-test dependency graph', () => {
     expect((await classifyNodeServerChanges([file], async () => inputs)).shouldRun).toBe(true)
   })
 
+  it('keeps desktop Electron probes outside the headless server selection', () => {
+    const tests = discoverNodeServerTests()
+    expect(tests).toContain('src/main/persistence/profile-state/profile-state-access.test.ts')
+    expect(tests).not.toContain(
+      'src/main/persistence/profile-state/profile-state-writer-stall.electron.test.ts'
+    )
+  })
+
   it('retains all selected tests and the selectors the Bun runner uses', () => {
     const tests = discoverNodeServerTests()
     expect(tests.length).toBeGreaterThan(80)
