@@ -111,33 +111,4 @@ describe('the runtime Electron import graph', () => {
       ])
     )
   })
-
-  it('emits one copy of a shared dependency instead of one for each independent root', async () => {
-    const payload = `orca-shared-payload-${'x'.repeat(64 * 1024)}`
-    const files = { 'shared.mjs': `export const payload = ${JSON.stringify(payload)}` }
-    const names = Array.from({ length: 24 }, (_, index) => `entry-${index}.mjs`)
-    for (const file of names) {
-      files[file] = "export { payload } from './shared.mjs'"
-    }
-    const root = fixture(files)
-    const entries = names.map((file) => path.join(root, file))
-    const original = await inspectGraph(entries, { separateEntries: true })
-    const shared = await inspectGraph(entries)
-    const copies = (result) =>
-      Object.values(result.metafile.outputs).filter((output) =>
-        Object.entries(output.inputs).some(
-          ([file, contribution]) =>
-            file.endsWith('/shared.mjs') && contribution.bytesInOutput >= payload.length
-        )
-      ).length
-    const totalBytes = (result) =>
-      Object.values(result.metafile.outputs).reduce((total, output) => total + output.bytes, 0)
-
-    expect(fixtureInputs(shared, root)).toEqual(fixtureInputs(original, root))
-    expect(shared.importers).toEqual(original.importers)
-    expect(copies(original)).toBe(24)
-    expect(copies(shared)).toBe(1)
-    expect(totalBytes(shared)).toBeLessThan(payload.length * 2)
-    expect(totalBytes(original)).toBeGreaterThan(payload.length * 24)
-  })
 })

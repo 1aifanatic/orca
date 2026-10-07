@@ -113,20 +113,20 @@ const externalNativeAddons = {
 // Why `plugins`: lets a test add an Electron import to a real file in memory, never on disk.
 export async function collectElectronImporters(entryPoints, { plugins = [] } = {}) {
   const result = await build({
-    // Namespace exports retain every root's exports without duplicating their shared graph.
+    // Export every entry through one bundle so shared dependencies are emitted once.
     stdin: {
       contents: entryPoints
         .map(
-          (file, index) =>
-            `export * as entry${index} from ${JSON.stringify(path.resolve(ROOT, file))}`
+          (entry, index) =>
+            `export * as entry_${index} from ${JSON.stringify(path.resolve(ROOT, entry))}`
         )
         .join('\n'),
       resolveDir: ROOT,
-      loader: 'js'
+      loader: 'ts',
+      sourcefile: 'runtime-electron-ratchet-entry.ts'
     },
     bundle: true,
     write: false,
-    // Keep metadata output paths stable; no bundle is written or executed.
     outdir: path.join(ROOT, 'runtime-electron-ratchet-metafile-only'),
     platform: 'node',
     target: 'node20',
