@@ -12558,7 +12558,6 @@
         },
         "sshHostServer": {
           "sourceChanged": "Changed on an older Orca: runs the relay until it is moved to its managed server again.",
-          "managed": "Runs a managed Orca server",
           "unavailable": "Runs the relay: a managed Orca server can’t run on this host ({{reason}}).",
           "tunnelUnavailable": "Runs the relay: this host’s SSH server doesn’t allow port forwarding, and Orca couldn’t reach a managed server through the SSH session either.",
           "deploying": "Setting up a managed Orca server…",

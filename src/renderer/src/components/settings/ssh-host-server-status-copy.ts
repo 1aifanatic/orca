@@ -37,14 +37,9 @@ export function sshHostServerStatusLine(
   if (status?.kind === 'managed' && status.update) {
     return managedUpdateLine(status.update)
   }
+  // A healthy managed server is the default; the card stays quiet unless something needs attention.
   if (status?.kind === 'managed' || (!status && target.orcadFence)) {
-    return {
-      tone: 'muted',
-      text: translate(
-        'auto.components.settings.sshHostServer.managed',
-        'Runs a managed Orca server'
-      )
-    }
+    return null
   }
   if (status?.kind === 'setting-up') {
     return { tone: 'muted', text: settingUpLabel(status.phase) }
