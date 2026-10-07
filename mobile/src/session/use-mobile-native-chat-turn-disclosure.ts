@@ -33,6 +33,8 @@ export type MobileNativeChatTurnRow = {
   /** Set only on a settled turn — the one row that has activity to disclose. */
   turnKey?: string
   activeTurnIsWorking: boolean
+  /** The newest assistant row: the only one a live structured reply may still be growing. */
+  isLatestAssistantRow: boolean
   /** The live activity line discloses this open reasoning block, so its row draws nothing. */
   reasoningIsLive: boolean
   /** A reasoning row's disclosure, keyed like the live line's so an opened block stays open. */
@@ -190,6 +192,10 @@ export function useMobileNativeChatTurnDisclosure({
       },
     [expandedReasoning, line]
   )
+  const latestAssistantId = useMemo(
+    () => waiting.listMessages.findLast((row) => row.role === 'assistant')?.id ?? null,
+    [waiting.listMessages]
+  )
   const resolveRow = useCallback(
     (listIndex: number, message: NativeChatMessage): MobileNativeChatTurnRow => {
       const index = waiting.indexById?.get(message.id) ?? listIndex
@@ -214,6 +220,7 @@ export function useMobileNativeChatTurnDisclosure({
         turnKey: turnKey && turnStatus?.workedSeconds != null ? turnKey : undefined,
         // With no user boundary at all, the session's working state stays authoritative.
         activeTurnIsWorking: inLiveWorkingTurn(index),
+        isLatestAssistantRow: message.id === latestAssistantId,
         reasoningIsLive: message.id === liveReasoningId,
         reasoningExpanded:
           message.role === 'reasoning' &&
@@ -231,6 +238,7 @@ export function useMobileNativeChatTurnDisclosure({
       completedByTurn,
       expandedTurnIds,
       inLiveWorkingTurn,
+      latestAssistantId,
       liveReasoningId,
       expandedReasoning,
       toggleReasoning

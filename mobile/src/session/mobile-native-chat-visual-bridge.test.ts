@@ -68,6 +68,7 @@ describe('buildMobileNativeChatVisualHostDocument', () => {
   const build = (visualDocument: string) =>
     buildMobileNativeChatVisualHostDocument({
       visualDocument,
+      channel: CHANNEL,
       token: TOKEN,
       title: 'Usage </script><script>alert(1)</script>',
       mode: 'inline'
@@ -87,9 +88,11 @@ describe('buildMobileNativeChatVisualHostDocument', () => {
     expect(document.match(/<\/script>/g)).toHaveLength(1)
   })
 
-  it('relays only the child window, links only with focus and user activation', () => {
+  it('relays only the child window on its own channel, links only with focus and activation', () => {
     const document = build('<p>hi</p>')
     expect(document).toContain('event.source !== frame.contentWindow')
+    expect(document).toContain('data.channel !== C.channel')
+    expect(document).toContain(JSON.stringify(CHANNEL))
     expect(document).toContain('document.activeElement !== frame')
     expect(document).toContain('activation.isActive')
     expect(document).toContain(JSON.stringify(TOKEN))

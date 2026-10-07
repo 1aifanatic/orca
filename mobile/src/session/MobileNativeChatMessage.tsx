@@ -110,6 +110,7 @@ function Prose({
 
 function MobileNativeChatMessageImpl({
   message,
+  isLatestAssistantRow = false,
   toolsExpanded = false,
   fontScale = 1,
   onOpenFile,
@@ -125,6 +126,8 @@ function MobileNativeChatMessageImpl({
   onToggleReasoning
 }: {
   message: NativeChatMessage
+  /** The transcript's newest assistant row: the only one a working turn may still be growing. */
+  isLatestAssistantRow?: boolean
   toolsExpanded?: boolean
   /** Multiplies all chat text sizes for pinch-to-zoom (1 = no change). */
   fontScale?: number
@@ -177,8 +180,9 @@ function MobileNativeChatMessageImpl({
   const openActions = useCallback(() => setActionsOpen(true), [])
   const onLongPress = INLINE_TEXT_SELECTION ? undefined : openActions
   const renderVisual = useContext(MobileNativeChatVisualContext) ?? undefined
-  // Structured replies grow in place, so a row of a working turn may still be typing its last line.
-  const holdPendingVisual = message.role === 'assistant' && activeTurnIsWorking === true
+  // Structured replies grow in place, so the newest row of a working turn may still be typing.
+  const holdPendingVisual =
+    message.role === 'assistant' && isLatestAssistantRow && activeTurnIsWorking === true
 
   const statusRow = turnStatus ? (
     <MobileNativeChatTurnStatus

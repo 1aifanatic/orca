@@ -14,7 +14,7 @@ export const MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT = 160
 export const MOBILE_NATIVE_CHAT_VISUAL_APPLY_HEIGHT = '__orcaVisualApplyHeight'
 
 // The host forwards at most one size report per interval (the latest wins) and one link per window.
-const SIZE_FORWARD_INTERVAL_MS = 50
+const SIZE_FORWARD_INTERVAL_MS = 100
 const LINK_WINDOW_MS = 5_000
 
 /**
@@ -36,6 +36,8 @@ const LINK_WINDOW_MS = 5_000
  */
 export function buildMobileNativeChatVisualHostDocument(input: {
   visualDocument: string
+  /** The channel the visual document was built with; only messages on it are relayed. */
+  channel: string
   token: string
   title: string
   mode: MobileNativeChatVisualHostMode
@@ -44,6 +46,7 @@ export function buildMobileNativeChatVisualHostDocument(input: {
     input.mode === 'fullscreen' ? '100vh' : `${MOBILE_NATIVE_CHAT_VISUAL_INITIAL_HEIGHT}px`
   const constants = inlineScriptLiteral({
     token: input.token,
+    channel: input.channel,
     fullscreen: input.mode === 'fullscreen',
     title: input.title,
     size: NATIVE_CHAT_VISUAL_SIZE_TYPE,
@@ -73,6 +76,7 @@ function send(message) {
 var frame = document.createElement('iframe')
 frame.setAttribute('sandbox', 'allow-scripts')
 frame.setAttribute('referrerpolicy', 'no-referrer')
+frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; display-capture 'none'")
 frame.setAttribute('title', C.title)
 var loads = 0
 frame.addEventListener('load', function () {
@@ -97,10 +101,11 @@ var lastLinkAt = -Infinity
 window.addEventListener('message', function (event) {
   if (!frame.contentWindow || event.source !== frame.contentWindow) return
   var data = event.data
-  if (!data || typeof data !== 'object' || typeof data.type !== 'string') return
+  // The visual chooses every field, so only an exact channel match is relayed, as the host's own copy.
+  if (!data || typeof data !== 'object' || data.channel !== C.channel) return
   if (data.type === C.size) {
     if (C.fullscreen) return
-    pendingSize = { type: data.type, channel: String(data.channel), height: Number(data.height) }
+    pendingSize = { type: C.size, channel: C.channel, height: Number(data.height) }
     if (sizeTimer === null) sizeTimer = setTimeout(flushSize, C.sizeIntervalMs)
     return
   }
@@ -108,9 +113,10 @@ window.addEventListener('message', function (event) {
     var activation = navigator.userActivation
     var now = Date.now()
     if (document.activeElement !== frame || !activation || !activation.isActive) return
+    if (typeof data.url !== 'string' || data.url.length > 4096) return
     if (now - lastLinkAt < C.linkWindowMs) return
     lastLinkAt = now
-    send({ kind: 'frame', data: { type: data.type, channel: String(data.channel), url: String(data.url).slice(0, 4096) } })
+    send({ kind: 'frame', data: { type: C.link, channel: C.channel, url: data.url } })
   }
 })
 frame.srcdoc = ${inlineScriptLiteral(input.visualDocument)}

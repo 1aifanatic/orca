@@ -67,7 +67,11 @@ describe('MobileNativeChatMessage visuals', () => {
 
   function markdownProps(
     row: NativeChatMessage,
-    options: { visuals?: MobileNativeChatVisualRender | null; activeTurnIsWorking?: boolean } = {}
+    options: {
+      visuals?: MobileNativeChatVisualRender | null
+      activeTurnIsWorking?: boolean
+      isLatestAssistantRow?: boolean
+    } = {}
   ): Record<string, unknown> {
     act(() => {
       renderer = create(
@@ -76,7 +80,8 @@ describe('MobileNativeChatMessage visuals', () => {
           { value: options.visuals === undefined ? renderVisual : options.visuals },
           createElement(MobileNativeChatMessage, {
             message: row,
-            activeTurnIsWorking: options.activeTurnIsWorking
+            activeTurnIsWorking: options.activeTurnIsWorking,
+            isLatestAssistantRow: options.isLatestAssistantRow ?? true
           })
         )
       )
@@ -101,6 +106,16 @@ describe('MobileNativeChatMessage visuals', () => {
     )
     expect(props.renderVisual).toBe(renderVisual)
     expect(props.content).toBe('::orca-visual{file="done.html"}\nChart below.\n')
+  })
+
+  it('shows an earlier finished row of a working turn in full', () => {
+    const text = 'Pick one:\n::orca-visual{file="options.html"}'
+    expect(
+      markdownProps(message('a0', 'assistant', text), {
+        activeTurnIsWorking: true,
+        isLatestAssistantRow: false
+      }).content
+    ).toBe(text)
   })
 
   it('shows the whole reply once its turn settles', () => {

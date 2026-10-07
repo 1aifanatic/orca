@@ -103,20 +103,37 @@ describe('readMobileNativeChatVisual', () => {
     expect(cachedMobileNativeChatVisual(source, 'chart.html')).toBeNull()
   })
 
-  it('reads a host refusal, an older host and a malformed reply as refused', async () => {
+  it('reads a host verdict as refused', async () => {
+    for (const error of ['not_found', 'some_future_error']) {
+      resetMobileNativeChatVisualCacheForTest()
+      const source = sourceWith(vi.fn().mockResolvedValue(success({ ok: false, error })))
+      await expect(readMobileNativeChatVisual(source, 'chart.html')).resolves.toEqual({
+        kind: 'refused'
+      })
+    }
+  })
+
+  it('reads an error reply, an older host and a malformed reply as no verdict, keeping the cache', async () => {
     for (const response of [
-      success({ ok: false, error: 'not_found' }),
-      success({ ok: false, error: 'some_future_error' }),
       failure('method_not_found'),
       failure('forbidden'),
+      failure('runtime_error'),
       success({ ok: true, revision: 'not-hex', html: '' }),
       success('<html>')
     ]) {
       resetMobileNativeChatVisualCacheForTest()
-      const source = sourceWith(vi.fn().mockResolvedValue(response))
+      const sendRequest = vi
+        .fn()
+        .mockResolvedValueOnce(
+          success({ ok: true, revision: REVISION_A, sizeBytes: 3, html: '<p>' })
+        )
+        .mockResolvedValueOnce(response)
+      const source = sourceWith(sendRequest)
+      await readMobileNativeChatVisual(source, 'chart.html')
       await expect(readMobileNativeChatVisual(source, 'chart.html')).resolves.toEqual({
-        kind: 'refused'
+        kind: 'unreachable'
       })
+      expect(cachedMobileNativeChatVisual(source, 'chart.html')).not.toBeNull()
     }
   })
 

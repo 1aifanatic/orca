@@ -71,7 +71,13 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
     return {
       channel,
       source: {
-        html: buildMobileNativeChatVisualHostDocument({ visualDocument, token, title, mode })
+        html: buildMobileNativeChatVisualHostDocument({
+          visualDocument,
+          channel,
+          token,
+          title,
+          mode
+        })
       }
     }
   }, [html, token, title, mode])
@@ -171,6 +177,7 @@ export const MobileNativeChatVisualFrame = memo(function MobileNativeChatVisualF
       domStorageEnabled={false}
       allowFileAccess={false}
       allowsLinkPreview={false}
+      mediaCapturePermissionGrantType="deny"
       mixedContentMode="never"
       // Android scales WebView text by the system font size; the page lays itself out.
       textZoom={100}

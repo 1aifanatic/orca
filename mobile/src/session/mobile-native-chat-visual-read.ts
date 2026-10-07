@@ -12,9 +12,9 @@ export type MobileNativeChatVisualSource = {
 
 export type MobileNativeChatVisualRead =
   | { kind: 'ready'; html: string; revision: string }
-  /** The host positively refused (missing, too large, outside the folder, an older host...). */
+  /** The host positively refused (missing, too large, outside the folder...). */
   | { kind: 'refused' }
-  /** The request never got an answer; worth asking again. */
+  /** No verdict: no answer, an error reply, an older host. Worth asking again. */
   | { kind: 'unreachable' }
 
 const Revision = z.string().regex(/^[0-9a-f]{16,64}$/)
@@ -30,7 +30,7 @@ const visualReadReplySchema = z.union([
   z.object({ ok: z.literal(false), error: z.string() })
 ])
 
-/** A refusal, an older host's `method_not_found` and an unreadable reply all read as null. */
+/** An error reply, an older host's `method_not_found` and an unreadable reply all read as null. */
 const nativeChatVisualRead = bindDeferredRpcOperation(
   defineRpcOperation({
     name: 'agentSession.read-visual',
@@ -115,7 +115,11 @@ async function readOnce(
     return { kind: 'unreachable' }
   }
   const reply = nativeChatVisualRead.interpret(response)
-  if (reply === null || !reply.ok) {
+  if (reply === null) {
+    // An error reply, an older host or an unreadable answer is not a verdict on the file.
+    return { kind: 'unreachable' }
+  }
+  if (!reply.ok) {
     // The host no longer serves it (deleted, now too large...): stop painting the old bytes.
     cache.delete(key)
     return { kind: 'refused' }
