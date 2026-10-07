@@ -10,7 +10,10 @@ import { resolveHostStructuredAgentCreateSupport } from './structured-agent-laun
 // and OpenCode's Command and per-agent PATH both naming a private 1.18.31. The host's whole create
 // check, with a real `--version` against stand-in scripts, must admit that OpenCode.
 
-const { loginShell } = vi.hoisted(() => ({ loginShell: { env: {} as Record<string, string> } }))
+const { loginShell } = vi.hoisted(() => {
+  const loginShell: { env: Record<string, string> } = { env: {} }
+  return { loginShell }
+})
 vi.mock('../startup/login-shell-environment', () => ({
   resolveLoginShellEnvironment: async () => loginShell.env
 }))

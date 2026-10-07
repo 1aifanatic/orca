@@ -8,7 +8,10 @@ import { acpLaunchSpecFor } from '../acp/acp-launch-specs'
 import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
 import { structuredAgentSupportsLaunch } from './structured-agent-launch-support'
 
-const { loginShell } = vi.hoisted(() => ({ loginShell: { env: {} as Record<string, string> } }))
+const { loginShell } = vi.hoisted(() => {
+  const loginShell: { env: Record<string, string> } = { env: {} }
+  return { loginShell }
+})
 vi.mock('../startup/login-shell-environment', () => ({
   resolveLoginShellEnvironment: async () => loginShell.env
 }))
