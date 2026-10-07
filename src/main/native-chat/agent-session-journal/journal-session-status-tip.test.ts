@@ -1,6 +1,7 @@
-// A stored status names the history tip it was derived from. An older build writes history with no
-// status, or deletes a chat, and the table carries no schema version to stop it: a row whose tip is
-// not the chat's tip now reads as missing, is derived again, and is never selected to settle.
+// A stored status names the history tip it was derived from and the rules it was derived by. An
+// older build writes history with no status, or deletes a chat, and the table carries no schema
+// version to stop it: a row whose tip is not the chat's tip now, or whose rules are other, reads as
+// missing, is derived again, and is never selected to settle.
 
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -19,6 +20,7 @@ import {
 import {
   deriveJournalSessionStatus,
   hasJournalSessionStatus,
+  JOURNAL_SESSION_STATUS_RULES,
   readUnsettledJournalSessionIds
 } from './journal-session-state'
 import { CORPUS_FENCE, JOURNAL_SESSION_STATE_CORPUS } from './journal-session-state-test-corpus'
@@ -135,4 +137,24 @@ it('never selects the row of a chat whose history is gone', async () => {
 
   expect(rawRow('chat')).toMatchObject({ lifecycle: 'running' })
   expect(readUnsettledJournalSessionIds(db())).toEqual([])
+})
+
+it('reads a row derived by other rules as missing, never selects it, and derives it again', async () => {
+  const journal = await open('chat')
+  await JOURNAL_SESSION_STATE_CORPUS['running tool'](journal)
+  await journal.close()
+  db()
+    .prepare('UPDATE journal_session_state SET rules_version = ? WHERE session_id = ?')
+    .run(JOURNAL_SESSION_STATUS_RULES - 1, 'chat')
+
+  expect(stored('chat')).toBeNull()
+  expect(hasJournalSessionStatus(db(), 'chat')).toBe(false)
+  expect(readUnsettledJournalSessionIds(db())).toEqual([])
+
+  const reopened = await open('chat')
+  reopened.sessionStatus.backfill()
+
+  expect(rawRow('chat')).toMatchObject({ rules_version: JOURNAL_SESSION_STATUS_RULES })
+  expect(stored('chat')).toEqual(freshDerivation('chat'))
+  expect(readUnsettledJournalSessionIds(db())).toEqual(['chat'])
 })

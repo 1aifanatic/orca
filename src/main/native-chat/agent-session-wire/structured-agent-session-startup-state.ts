@@ -3,18 +3,16 @@
 // Leases: one phase checks them, then starts recovering every lease a crash left `recovering` (a
 // surviving provider process is stopped and its death recorded), so each settle verdict below reads
 // that evidence; every startup restore answers its lease bookkeeping from that phase.
-// Catch-up: a listed chat with history here and no stored status yet (the first launch after the
-// upgrade) gets its row from its rows alone, so what follows reads stored status for it too. A listed
-// chat whose history is still in a per-chat file is then opened from it, before the listing (see
-// `structured-agent-session-startup-per-chat-file-restore`). Seed: every settled chat still listed
-// and not open has its status row published from its stored status, so session lists have it at
-// paint, without opening the chat. Settle: once every recovery has ended, every chat whose stored
-// status shows work a gone process left, listed or not, is opened once, one at a time, and its open
-// appends the settlement plan. A listed one goes through the restart restore's own per-chat worker
-// and stays open; any other is settled and closed, never indexed or published. Chat commands wait
-// for the settle (see `StructuredAgentSessionHostDeps.commandsReady`); listing, paint and status
-// reads do not. A listed chat that is corrupt, or whose per-chat file failed to open, is left to the
-// background restore after the listing, which is the same worker.
+// Seed: every settled chat still listed and not open has its status row published from its stored
+// status, so session lists have it at paint, without opening the chat. A listed chat with no current
+// row (last written before stored status, by other rules, or by an older build), or whose history is
+// still in a per-chat file, is left to the background restore after the listing, which opens it.
+// Settle: once every recovery has ended, every chat whose stored status shows work a gone process
+// left, listed or not, is opened once, one at a time, and its open appends the settlement plan. A
+// listed one goes through the restart restore's own per-chat worker and stays open; any other is
+// settled and closed, never indexed or published. Chat commands wait for the settle (see
+// `StructuredAgentSessionHostDeps.commandsReady`); listing, paint and status reads do not. A listed
+// chat that is corrupt is left to the background restore after the listing, which is the same worker.
 
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
@@ -36,8 +34,6 @@ import {
   createStructuredAgentSessionStartupLeasePhase,
   type StructuredAgentSessionStartupLeasePhase
 } from './structured-agent-session-startup-lease-phase'
-import { restoreListedFromPerChatFiles } from './structured-agent-session-startup-per-chat-file-restore'
-import { catchUpMissingStatuses } from './structured-agent-session-startup-status-catch-up'
 
 export type StructuredAgentSessionStartupStateDeps = {
   openDeps: StructuredAgentSessionConversationOpenDeps & {
@@ -55,11 +51,10 @@ export type StructuredAgentSessionStartupStateDeps = {
    *  attach or send). */
   resolveRecovery: (sessionId: string) => Promise<boolean>
   /** The restart restore's per-chat worker (lease bookkeeping, serialize, open, publish), with its
-   *  lease bookkeeping answered by `leases`, at its own concurrency unless given one. */
+   *  lease bookkeeping answered by `leases`. */
   restoreListed: (
     records: AgentSessionRecord[],
-    leases: StructuredAgentSessionStartupLeases,
-    concurrency?: number
+    leases: StructuredAgentSessionStartupLeases
   ) => Promise<void>
   /** Tests shorten it; production takes the default. */
   recoveryBudgetMs?: number
@@ -79,11 +74,6 @@ export type StructuredAgentSessionStartupLeases = {
 export type StructuredAgentSessionStartupState = {
   /** The startup lease phase's check, which then starts every recovery. Never rejects. */
   reconcileRestartLeases: () => Promise<void>
-  /** Writes the stored status of every listed chat with history here and none yet, before the
-   *  listing answers. Never rejects. */
-  catchUpMissingStatuses: (listedIds: readonly string[]) => Promise<void>
-  /** Opens listed chats still in per-chat files, before the listing answers. Never rejects. */
-  restoreListedFromPerChatFiles: (listedIds: readonly string[]) => Promise<void>
   /** Seeds settled listed chats; answers the listed ids the background restore still opens. */
   seedStoredStatuses: (listedIds: readonly string[]) => string[]
   /** Settles every chat a gone process left with work, once per host. Never rejects. */
@@ -109,14 +99,11 @@ export function createStructuredAgentSessionStartupState(
   return {
     reconcileRestartLeases: async () => {
       await phase.reconciled()
-      // Started now, awaited by the settle; the listing waits only on its own chats' recoveries.
+      // Started now, awaited by the settle; the listing never waits on a recovery.
       if (!deps.openDeps.journalDatabase.readOnly) {
         void phase.recovered()
       }
     },
-    catchUpMissingStatuses: (listedIds) => catchUpMissingStatuses(deps, listedIds),
-    restoreListedFromPerChatFiles: (listedIds) =>
-      restoreListedFromPerChatFiles(deps, listedIds, leases),
     seedStoredStatuses: (listedIds) => seedStoredStatuses(deps, listedIds),
     settleOwedSessions: (listedIds) => {
       settling ??= settleOwedSessions(deps, listedIds, phase, leases)
@@ -163,7 +150,7 @@ function seedStoredStatuses(
       continue
     }
     if (!byId.has(sessionId)) {
-      // Never sent opens nothing; a per-chat file whose open failed is tried again in the background.
+      // Never sent opens nothing; a chat still in a per-chat file is opened from it in the background.
       if (hasHistoryOutsideJournalDatabase(database, record)) {
         background.push(sessionId)
       }

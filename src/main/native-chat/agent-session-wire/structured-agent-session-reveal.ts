@@ -63,9 +63,8 @@ export async function revealStructuredAgentSession(
   }
 }
 
-/** The host's startup restore: reconcile, catch up, open listed chats still in per-chat files, then
- *  seed and settle from the state stored beside each journal, then open in the background what that
- *  state cannot answer. Its lease bookkeeping is a
+/** The host's startup restore: reconcile, then seed and settle from the state stored beside each
+ *  journal, then open in the background what that state cannot answer. Its lease bookkeeping is a
  *  reader's, which never fails a read or startup; startup shares it. */
 export function createStructuredAgentSessionHostRestore(
   deps: StructuredAgentSessionHostDeps,
@@ -107,8 +106,8 @@ export function createStructuredAgentSessionHostRestore(
     seedStatus,
     reconcile,
     resolveRecovery: readRestore.resolveRecovery,
-    restoreListed: (records, leases, concurrency) =>
-      restoreStructuredAgentSessionsOnRestart({ ...readRestore, ...leases, records, concurrency }),
+    restoreListed: (records, leases) =>
+      restoreStructuredAgentSessionsOnRestart({ ...readRestore, ...leases, records }),
     recoveryBudgetMs: deps.startupRecoveryBudgetMs,
     serialize: rest.serialize,
     hasSession: rest.hasSession,
@@ -122,8 +121,8 @@ export function createStructuredAgentSessionHostRestore(
   })
   const gate = new StructuredAgentSessionRestartRestoreGate()
   return {
-    // The listed chats the tab list left to it: corrupt, unreadable, or a per-chat file whose open
-    // failed before the listing.
+    // The listed chats the tab list left to it: no current row, corrupt, unreadable, or still in a
+    // per-chat file.
     restoreReadableSessions: (sessionIds) => gate.run(() => restorer.restore(sessionIds)),
     ...startup
   }

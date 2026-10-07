@@ -10,8 +10,8 @@
 // The table needs no schema version: an older build opens the database as before, ignores the table,
 // and can append history without a status. So each row records the history tip it was derived from
 // and the rules it was derived by, and a row whose tip is not the chat's tip now, or whose rules are
-// other, reads as missing: it is derived again exactly as a chat with no row is (a listed chat before
-// the listing answers, any other when it opens).
+// other, reads as missing: it is derived again exactly as a chat with no row is, when the chat opens
+// (a listed one in the background restore after the listing).
 
 import type Database from '../../sqlite/sync-database'
 import { isAgentTurnOutcome } from '../../../shared/agent-turn-outcome'

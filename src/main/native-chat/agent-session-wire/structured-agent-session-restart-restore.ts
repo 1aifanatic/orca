@@ -21,9 +21,8 @@ import type {
 } from './structured-agent-session-conversation-open'
 import { restoreStructuredAgentSessionRead } from './structured-agent-session-read-restore'
 
-// One chat at a time after the listing: the restore is CPU-bound on the main thread, so more lanes
-// only lengthen each event-loop turn that a user's read or send waits behind. The pass before the
-// listing sets its own.
+// One chat at a time: the restore is CPU-bound on the main thread, so more lanes only lengthen each
+// event-loop turn that a user's read or send waits behind.
 const JOURNAL_RESTORE_CONCURRENCY = 1
 
 export type StructuredAgentSessionReadRestoreDeps = {
@@ -87,10 +86,7 @@ async function restoreOneStructuredAgentSessionReadUnderSerialize(
 }
 
 export async function restoreStructuredAgentSessionsOnRestart(
-  input: StructuredAgentSessionReadRestoreDeps & {
-    records: AgentSessionRecord[]
-    concurrency?: number
-  }
+  input: StructuredAgentSessionReadRestoreDeps & { records: AgentSessionRecord[] }
 ): Promise<void> {
   const [first] = input.records
   if (!first) {
@@ -111,7 +107,7 @@ export async function restoreStructuredAgentSessionsOnRestart(
   }
   const results = await mapSettledWithConcurrency(
     input.records,
-    input.concurrency ?? JOURNAL_RESTORE_CONCURRENCY,
+    JOURNAL_RESTORE_CONCURRENCY,
     async ({ sessionId }) => {
       // A journal open is synchronous SQLite: without a macrotask per chat the restore is one long task.
       await yieldToEventLoop()

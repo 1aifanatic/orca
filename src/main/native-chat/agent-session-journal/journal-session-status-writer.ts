@@ -127,8 +127,9 @@ export class JournalSessionStatusWriter {
     }
   }
 
-  /** Writes the chat's status if it has none: a chat an older build last wrote. Bookkeeping: a
-   *  failure leaves the chat without a row, which its next open writes again. */
+  /** Writes the chat's status if it has no current row: one last written before stored status, by
+   *  an older build or by other rules. Bookkeeping: a failure leaves the chat without a row, which
+   *  its next open writes again. */
   backfill = (): void => {
     const { host } = this
     const database = host.database()

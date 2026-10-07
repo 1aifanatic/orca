@@ -129,8 +129,6 @@ async function setup() {
     {
       reconcileRestartLeases: async () => undefined,
       startup: {
-        catchUpMissingStatuses: async () => undefined,
-        restoreListedFromPerChatFiles: async () => undefined,
         seedStoredStatuses: (ids: readonly string[]) => [...ids],
         settleOwedSessions: async () => undefined
       },

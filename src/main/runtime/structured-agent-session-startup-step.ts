@@ -1,5 +1,4 @@
 // The structured-chat step of host startup, before any client lists a tab: the restart lease check,
-// the rows listed chats lack derived from their rows, listed chats still in per-chat files opened,
 // each listed chat's status seeded from its stored status, and every chat a gone process left with
 // work settled. The tab list waits for all but the settle; chat commands wait for the settle too.
 
@@ -38,11 +37,6 @@ export async function runStructuredAgentSessionStartupStep(
 ): Promise<string[]> {
   await host.reconcileRestartLeases()
   const listedIds = listedStructuredAgentSessionIds(host, savedSession)
-  // Before the listing answers: the first launch after the upgrade derives the rows listed chats
-  // lack, so the seed and the settle below read stored status for every one of them.
-  await host.startup.catchUpMissingStatuses(listedIds)
-  // Listed chats an older build left in per-chat files have no stored status to list them from.
-  await host.startup.restoreListedFromPerChatFiles(listedIds)
   const background = host.startup.seedStoredStatuses(listedIds)
   // Not awaited here: the tab list and paint never wait on it; chat commands do.
   onSettling(host.startup.settleOwedSessions(listedIds))

@@ -22,8 +22,6 @@ type StartupHostMembers = Partial<
 function installStartupHost(members: StartupHostMembers): void {
   const host = {
     startup: {
-      catchUpMissingStatuses: async () => undefined,
-      restoreListedFromPerChatFiles: async () => undefined,
       seedStoredStatuses: (ids: readonly string[]) => [...ids],
       settleOwedSessions: async () => undefined
     },

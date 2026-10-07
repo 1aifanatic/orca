@@ -1,53 +1,23 @@
 // The chat tab list a client asks for at startup answers from records and the tab table. It waits
 // for no chat's history; each chat's history is read after the answer.
 
-import { rm, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import type { RuntimeMobileSessionTabsResult } from '../../shared/runtime-types'
 import {
   closeTestJournalHostDatabases,
-  openTestJournalHostDatabase,
-  readTestJournalSessionStatus
+  openTestJournalHostDatabase
 } from '../native-chat/agent-session-journal/journal-host-database-test-support'
-import type * as StatusBackfillModule from '../native-chat/agent-session-journal/journal-session-status-backfill'
 import { setStructuredAgentSessionHost } from '../native-chat/agent-session-wire/structured-agent-session-registry'
 import {
   createRestTestRig,
   restTestChat,
   type RestTestRig
 } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-rig'
-import {
-  latestRestTestStatus,
-  restTestOpens
-} from '../native-chat/agent-session-wire/structured-agent-session-rest-test-observations'
-import { moveRestTestChatToPerChatFile } from '../native-chat/agent-session-wire/structured-agent-session-rest-test-per-chat-file'
-import { legacyJournalDatabaseFile } from '../native-chat/agent-session-journal/journal-paths'
 import { AgentSessionStoreTransactions } from './agent-session-store-transactions'
 import { OrcaRuntimeService } from './orca-runtime'
 import { RpcDispatcher } from './rpc/dispatcher'
 import { SESSION_TAB_METHODS } from './rpc/methods/session-tabs'
-
-// Chats whose status cannot be computed from their rows, as an unreadable database page fails it.
-const failingDerives = vi.hoisted(() => new Set<string>())
-
-vi.mock(
-  '../native-chat/agent-session-journal/journal-session-status-backfill',
-  async (importOriginal) => {
-    const actual = await importOriginal<typeof StatusBackfillModule>()
-    return {
-      ...actual,
-      foldJournalSessionStatus: async (
-        ...args: Parameters<typeof actual.foldJournalSessionStatus>
-      ) => {
-        if (failingDerives.has(args[1])) {
-          throw new Error('EACCES: permission denied')
-        }
-        return actual.foldJournalSessionStatus(...args)
-      }
-    }
-  }
-)
 
 type ListingInternals = {
   store: { getWorkspaceSession: () => unknown }
@@ -76,7 +46,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   releaseHeld()
-  failingDerives.clear()
   // The listing starts the history restore after its answer, without awaiting it; it finishes
   // before the rig removes its files.
   await new Promise((resolve) => setImmediate(resolve))
@@ -140,11 +109,6 @@ function restartedRuntime(workspaceSession: unknown = null) {
   return { runtime, listAll, subscribeAll }
 }
 
-/** The files an older build left: no chat has stored state, so each gets it after the answer. */
-function forgetStoredChatState(): void {
-  openTestJournalHostDatabase(rig.root).db.exec('DELETE FROM journal_session_state')
-}
-
 function chatIds(snapshots: RuntimeMobileSessionTabsResult[]): string[] {
   return snapshots.flatMap((snapshot) =>
     snapshot.tabs.flatMap((tab) => (tab.type === 'agent-session' ? [tab.sessionId] : []))
@@ -160,61 +124,6 @@ function within<T>(promise: Promise<T>, ms = 2_000): Promise<T | 'still waiting'
 }
 
 describe('listing chat tabs at startup', () => {
-  it('answers once each listed chat with no stored status has one, published, opening none (T1)', async () => {
-    const ids = ['session-1', 'session-2', 'session-3']
-    for (const sessionId of ids) {
-      await restTestChat(rig, sessionId, { message: sessionId })
-    }
-    await rig.crash()
-    await rig.boot()
-    forgetStoredChatState()
-    const { listAll } = restartedRuntime()
-
-    expect(await within(listAll())).toEqual(ids)
-
-    // Derived from their rows before the answer, and published by the seed that follows.
-    for (const sessionId of ids) {
-      expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({ lifecycle: 'idle' })
-      expect(latestRestTestStatus(rig, sessionId)).toMatchObject({ latestPrompt: sessionId })
-      expect(restTestOpens(rig, sessionId)).toBe(0)
-    }
-  })
-
-  it('lists chats still in per-chat files, restored before the answer, a damaged or missing file included', async () => {
-    const ids = ['session-file', 'session-damaged', 'session-missing']
-    for (const sessionId of ids) {
-      await restTestChat(rig, sessionId, { message: sessionId })
-    }
-    await rig.crash()
-    await moveRestTestChatToPerChatFile(rig, 'session-file')
-    await moveRestTestChatToPerChatFile(rig, 'session-damaged')
-    const damaged = legacyJournalDatabaseFile(
-      openTestJournalHostDatabase(rig.root).legacyDirectoryFor({
-        workspaceId: rig.store.getRecord('session-damaged')!.location.workspaceId,
-        sessionId: 'session-damaged'
-      })
-    )
-    await writeFile(damaged, 'not a database')
-    await rm(`${damaged}-wal`, { force: true })
-    for (const table of ['journal_rows', 'journal_sessions', 'journal_session_state']) {
-      openTestJournalHostDatabase(rig.root)
-        .db.prepare(`DELETE FROM ${table} WHERE session_id = ?`)
-        .run('session-missing')
-    }
-    await rig.boot()
-    vi.spyOn(rig.host.deps.logger, 'warn').mockImplementation(() => undefined)
-    const { listAll } = restartedRuntime()
-
-    expect(await within(listAll())).toEqual(ids)
-
-    // Restored from its file before the answer; the others are listed and block nothing.
-    expect(rig.host.hasSession('session-file')).toBe(true)
-    expect(latestRestTestStatus(rig, 'session-file')).toMatchObject({
-      latestPrompt: 'session-file'
-    })
-    expect(rig.host.hasSession('session-damaged')).toBe(false)
-  })
-
   it.each(['listAll', 'subscribeAll'] as const)(
     'starts the history restore only after %s has answered, census and all',
     async (method) => {
@@ -224,23 +133,20 @@ describe('listing chat tabs at startup', () => {
       }
       await rig.crash()
       await rig.boot()
-      forgetStoredChatState()
+      // No stored status: every chat is left to the restore, which opens it.
+      openTestJournalHostDatabase(rig.root).db.exec('DELETE FROM journal_session_state')
       const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
       const { runtime, listAll, subscribeAll } = restartedRuntime()
-      const rows = () =>
-        ids.filter((id) => readTestJournalSessionStatus(rig.root, id) !== null).length
       const seen = () => ({
         started: restore.mock.calls.length,
-        opens: rig.journalOpens.mock.calls.length,
-        rows: rows()
+        opens: rig.journalOpens.mock.calls.length
       })
 
       const answered =
         method === 'listAll' ? { ids: await listAll(), atAnswer: seen() } : await subscribeAll(seen)
 
-      // Every row is written before the answer; nothing is opened before or after it.
-      expect(answered).toEqual({ ids, atAnswer: { started: 0, opens: 0, rows: ids.length } })
-      await vi.waitFor(() => expect(restore).toHaveBeenCalledOnce())
+      expect(answered).toEqual({ ids, atAnswer: { started: 0, opens: 0 } })
+      await vi.waitFor(() => expect(restore).toHaveBeenCalledWith(ids))
       runtime.cleanupSubscriptionsForConnection('connection-1')
     }
   )
@@ -269,27 +175,6 @@ describe('listing chat tabs at startup', () => {
       }
     }
   )
-
-  it('answers with a /clear committed after an earlier listing', async () => {
-    await restTestChat(rig, 'session-cleared')
-    await restTestChat(rig, 'session-fresh', { listed: false })
-    await rig.crash()
-    await rig.boot()
-    const { listAll } = restartedRuntime()
-    expect(await listAll()).toEqual(['session-cleared'])
-
-    const record = rig.store.getRecord('session-cleared')!
-    await rig.store.setConversationCommand('session-cleared', record.lease.runtimeFence, {
-      command: 'clear',
-      state: 'completed',
-      phase: 'committed',
-      operationId: 'clear-1',
-      callerKey: 'client-1',
-      replacementSessionId: 'session-fresh'
-    })
-
-    expect(await listAll()).toEqual(['session-fresh'])
-  })
 
   it('answers with a cleared chat revealed while the listing waits on its census', async () => {
     await restTestChat(rig, 'session-cleared')
@@ -356,53 +241,6 @@ describe('listing chat tabs at startup', () => {
     expect(await listAll()).toEqual(ids)
     // Every write, a tab's visibility included, is one store transaction.
     expect(writes).not.toHaveBeenCalled()
-  })
-
-  it('lists every chat when four fail to read, and the others still get status rows (T5)', async () => {
-    // The first four failing: each failure must cost only its own chat, never the chats after it.
-    // Their rows cannot be read for a status, and their open, which they are left to, fails too.
-    const ids = ['session-1', 'session-2', 'session-3', 'session-4', 'session-5', 'session-6']
-    const failing = ids.slice(0, 4)
-    for (const sessionId of ids) {
-      await restTestChat(rig, sessionId, { message: `asked ${sessionId}` })
-    }
-    await rig.crash()
-    await rig.boot()
-    forgetStoredChatState()
-    for (const sessionId of failing) {
-      failingDerives.add(sessionId)
-    }
-    rig.journalOpens.mockImplementation(async (sessionId) => {
-      if (failing.includes(sessionId)) {
-        throw new Error('EACCES: permission denied')
-      }
-    })
-    const warn = vi.spyOn(rig.host.deps.logger, 'warn').mockImplementation(() => undefined)
-    const restore = vi.spyOn(rig.host, 'restoreReadableSessions')
-    const { listAll } = restartedRuntime()
-
-    expect(await within(listAll())).toEqual(ids)
-    await vi.waitFor(() => expect(restore).toHaveBeenCalledOnce())
-    await restore.mock.results[0]?.value
-    for (const sessionId of ['session-5', 'session-6']) {
-      expect(readTestJournalSessionStatus(rig.root, sessionId)).toMatchObject({ lifecycle: 'idle' })
-      expect(latestRestTestStatus(rig, sessionId)).toMatchObject({
-        latestPrompt: `asked ${sessionId}`
-      })
-    }
-    const failures = warn.mock.calls.filter(
-      ([message]) => message === 'restoring a chat for reading failed'
-    )
-    expect(failures.map(([, detail]) => detail)).toEqual(
-      failing.map((sessionId) =>
-        expect.objectContaining({
-          sessionId,
-          error: expect.objectContaining({ message: 'EACCES: permission denied' })
-        })
-      )
-    )
-    expect(await listAll()).toEqual(ids)
-    expect(restore).toHaveBeenCalledOnce()
   })
 
   it('lists in tab-table order, not the order the chats were created (T7)', async () => {

@@ -10,11 +10,11 @@ import {
   updateTestJournalRowJson
 } from '../agent-session-journal/journal-host-database-test-support'
 import { readUnsettledJournalSessionIds } from '../agent-session-journal/journal-session-state'
+import { createRestTestRig, type RestTestRig } from './structured-agent-session-rest-test-rig'
 import {
-  createRestTestRig,
-  restTestChat,
-  type RestTestRig
-} from './structured-agent-session-rest-test-rig'
+  crashRestTestChatMidTurn,
+  runRestTestStartup
+} from './structured-agent-session-rest-test-startup'
 
 const SESSION = 'session-damaged'
 const rigs: RestTestRig[] = []
@@ -26,17 +26,6 @@ afterEach(async () => {
   closeTestJournalHostDatabases()
   vi.restoreAllMocks()
 })
-
-/** What startup runs, in order, on the ids the tab list names. */
-async function startup(rig: RestTestRig): Promise<void> {
-  const listed = rig.store.getVisibleSessionTabIndex().sessionIds
-  await rig.host.reconcileRestartLeases()
-  await rig.host.startup.catchUpMissingStatuses(listed)
-  await rig.host.startup.restoreListedFromPerChatFiles(listed)
-  const background = rig.host.startup.seedStoredStatuses(listed)
-  await rig.host.startup.settleOwedSessions(listed)
-  await rig.host.restoreReadableSessions(background)
-}
 
 /** Each warning startup logged about the chat. */
 function warningsFor(warn: ReturnType<typeof vi.spyOn>): unknown[] {
@@ -54,16 +43,7 @@ it.each([true, false])(
   async (listed) => {
     const rig = await createRestTestRig()
     rigs.push(rig)
-    await restTestChat(rig, SESSION, { message: 'asked', listed })
-    const { providerIdentity } = await rig.adapter.dispatch.mock.results.at(-1)!.value
-    await rig.host
-      .collaboratorsForTests()
-      .sessions.get(SESSION)!
-      .journal.appendItem(
-        { ...providerIdentity, ordinal: 0 },
-        { kind: 'turn', turnId: providerIdentity.turnId, state: 'running', startedAt: 10 },
-        { fence: rig.store.getRecord(SESSION)!.lease.runtimeFence, turnScope: { kind: 'thread' } }
-      )
+    await crashRestTestChatMidTurn(rig, SESSION, { listed })
     await rig.crash()
     const { db } = openTestJournalHostDatabase(rig.root)
     // Damaged in place: the row still names the chat's tip, so startup selects it.
@@ -73,7 +53,7 @@ it.each([true, false])(
 
     await rig.boot()
     const warn = vi.spyOn(rig.host.deps.logger, 'warn')
-    await startup(rig)
+    await runRestTestStartup(rig)
 
     expect(warningsFor(warn)).toHaveLength(1)
     expect(readTestJournalSessionStatus(rig.root, SESSION)).toBeNull()
@@ -84,7 +64,7 @@ it.each([true, false])(
     await rig.crash()
     await rig.boot()
     const again = vi.spyOn(rig.host.deps.logger, 'warn')
-    await startup(rig)
+    await runRestTestStartup(rig)
     expect(rig.journalOpens.mock.calls.filter(([id]) => id === SESSION)).toEqual(
       listed ? [[SESSION]] : []
     )
