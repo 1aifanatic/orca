@@ -30,7 +30,7 @@ function sessionWith(worktreeIds: string[]): WorkspaceSessionState {
   return session
 }
 
-function ownersFor(sessions: Map<ExecutionHostId, WorkspaceSessionState>) {
+function controllerFor(sessions: Map<ExecutionHostId, WorkspaceSessionState>) {
   const repos = [
     { id: 'repo-local' },
     { id: 'repo-ssh', connectionId: 'c1' },
@@ -49,7 +49,7 @@ function ownersFor(sessions: Map<ExecutionHostId, WorkspaceSessionState>) {
     getWorkspaceSession: (hostId: ExecutionHostId) =>
       sessions.get(hostId) ?? getDefaultWorkspaceSession()
   } as never
-  const controller = new RuntimeWorkspaceSessionController({
+  return new RuntimeWorkspaceSessionController({
     getStore: () => store,
     resolveFolderConnectionId: (workspace: FolderWorkspace) => {
       if (workspace.id === 'mixed') {
@@ -59,7 +59,10 @@ function ownersFor(sessions: Map<ExecutionHostId, WorkspaceSessionState>) {
     },
     hasRuntimeOwnedPtyCandidate: () => false
   })
-  return controller.getTerminalTopologyOwners()
+}
+
+function ownersFor(sessions: Map<ExecutionHostId, WorkspaceSessionState>) {
+  return controllerFor(sessions).getTerminalTopologyOwners()
 }
 
 describe('terminal topology owners', () => {
@@ -110,5 +113,15 @@ describe('terminal topology owners', () => {
         [LOCAL_WT, { hostId: 'local', session: local }]
       ])
     )
+  })
+
+  it('resolves one home for a layout write, and none for a runtime or ambiguous worktree', () => {
+    const controller = controllerFor(new Map([['local', sessionWith([SSH_WT])]]))
+
+    expect(controller.getTerminalTopologyHomeHostId(LOCAL_WT)).toBe('local')
+    expect(controller.getTerminalTopologyHomeHostId(SSH_WT)).toBe('ssh:c1')
+    expect(controller.getTerminalTopologyHomeHostId(SSH_FOLDER)).toBe('ssh:c1')
+    expect(controller.getTerminalTopologyHomeHostId(RUNTIME_WT)).toBeNull()
+    expect(controller.getTerminalTopologyHomeHostId(AMBIGUOUS_FOLDER)).toBeNull()
   })
 })

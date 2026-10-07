@@ -5,6 +5,7 @@
    spec, where they would drift apart. */
 import { afterEach, beforeEach, vi } from 'vitest'
 import type { AppState } from '@/store/types'
+import type { PendingTerminalPane } from '@/store/terminals/terminal-pending-panes'
 import type { TerminalTabRetirementState } from '@/store/slices/terminal-tab-retirement'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { PaneManager } from '@/lib/pane-manager/pane-manager'
@@ -103,14 +104,18 @@ export async function preparePendingSplitClose(
       }
     }
   }
+  const pendingTerminalPanes: PendingTerminalPane[] = []
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The real close paths read only this retirement state and the supplied actions.
   store.current = Object.assign(state, {
     setCacheTimerStartedAt: vi.fn(),
     dropAgentStatus: vi.fn(),
     retireAgentPaneAuthority: vi.fn(),
     suppressPtyExit: vi.fn(),
-    markPendingTerminalPane: vi.fn(),
-    settlePendingTerminalPaneRemoval: vi.fn()
+    pendingTerminalPanes,
+    markPendingTerminalPane: vi.fn((entry: PendingTerminalPane) =>
+      pendingTerminalPanes.push(entry)
+    ),
+    settlePendingTerminalPane: vi.fn()
   }) as unknown as AppState
   const spawn = Promise.withResolvers<PtyConnectResult>()
   vi.mocked(window.api.pty.spawn).mockReturnValueOnce(spawn.promise)
@@ -202,6 +207,7 @@ export async function preparePendingSplitClose(
     controller,
     actions,
     state,
+    pendingTerminalPanes,
     tabId,
     leafId,
     siblingLeafId

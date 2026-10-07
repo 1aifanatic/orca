@@ -35,7 +35,7 @@ export function createAgentStatusLiveActions(
 ): Pick<AgentStatusSlice, 'setAgentStatus' | 'setAgentStatuses' | 'transactAgentStatuses'> {
   const {
     get,
-    set,
+    setCommittingSleepingRecords,
     applyGeneratedTabTitleUpdate,
     freshness,
     requestFreshness,
@@ -68,7 +68,7 @@ export function createAgentStatusLiveActions(
     }
     let built: AgentStatusLiveEntryBuild | AgentStatusLiveEntryRejection | null = null
     let liveEntryDelta: FreshnessLiveEntryDelta | null = null
-    set((state) => {
+    setCommittingSleepingRecords((state) => {
       const retirement = state.recentlyRetiredAgentStatusPaneKeys[paneKey]
       if (
         (retirement !== undefined &&

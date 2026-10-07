@@ -27,7 +27,7 @@ export function createAgentStatusAuthorityActions(
   | 'restoreAgentPaneAuthority'
   | 'transferAgentPaneAuthority'
 > {
-  const { get, set, freshness } = runtime
+  const { get, set, setCommittingSleepingRecords, freshness } = runtime
   return {
     scheduleAgentStatusFreshness: () => freshness.schedule(),
 
@@ -50,7 +50,7 @@ export function createAgentStatusAuthorityActions(
         rendererAgentStatusObservations.forget(key)
       }
       let hadLive = false
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         const retiredLivePaneKeys = retiredPaneKeys.filter((key) => key in s.agentStatusByPaneKey)
         hadLive = retiredLivePaneKeys.length > 0
         let nextRetentionSuppressedPaneKeys = removePaneKeys(

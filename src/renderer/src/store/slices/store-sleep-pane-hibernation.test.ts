@@ -270,6 +270,13 @@ describe('shutdownWorktreeTerminals (sleep) — agent status hygiene', () => {
       providerSession: { key: 'session_id', id: 'sess-rollback-1' }
     })
     expect(state.agentStatusByPaneKey[targetPaneKey]).toBeDefined()
+    // Main got the sleep, then the rollback's record.
+    expect(mockApi.session.commitTerminalSleepingRecords.mock.calls.at(-2)?.[0].sleep).toEqual({
+      [targetPaneKey]: expect.objectContaining({ origin: 'worktree-sleep' })
+    })
+    expect(mockApi.session.commitTerminalSleepingRecords.mock.calls.at(-1)?.[0].sleep).toEqual({
+      [targetPaneKey]: state.sleepingAgentSessionsByPaneKey[targetPaneKey]
+    })
   })
 
   it('persists the sleeping record and suppression before issuing the hibernation kill', async () => {

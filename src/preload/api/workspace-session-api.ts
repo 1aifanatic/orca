@@ -6,6 +6,15 @@ import type {
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 import type {
+  TerminalLayoutSetRequest,
+  TerminalLayoutSetResult
+} from '../../shared/terminal-layout-set'
+import type {
+  TerminalLeafBindRequest,
+  TerminalLeafBindResult
+} from '../../shared/terminal-leaf-bind'
+import type {
+  TerminalSleepingRecordChanges,
   TerminalTopologyReply,
   TerminalTopologySlice
 } from '../../shared/terminal-topology-slice'
@@ -31,6 +40,16 @@ export type WorkspaceSessionApi = {
       target: TerminalSurfaceCloseTarget
       reason?: 'user' | 'cleanup'
     }) => Promise<TerminalTopologyReply>
+    /** Commits a user's same-pane geometry edit (dividers, directions, pane order) into main. */
+    setTerminalLayout: (
+      args: TerminalLayoutSetRequest
+    ) => Promise<TerminalLayoutSetResult & TerminalTopologyReply>
+    /** Has main record a live PTY the window adopted onto a pane main holds. */
+    bindTerminalLeaf: (
+      args: TerminalLeafBindRequest
+    ) => Promise<TerminalLeafBindResult & TerminalTopologyReply>
+    /** Sleeping-agent records this window wrote or dropped, committed beside their tabs in main. */
+    commitTerminalSleepingRecords: (changes: TerminalSleepingRecordChanges) => Promise<void>
     /** Every worktree's current terminal topology; pull after subscribing to the pushes. */
     getTerminalTopologySlices: () => Promise<TerminalTopologySlice[]>
     onTerminalTopologyChanged: (callback: (slice: TerminalTopologySlice) => void) => () => void

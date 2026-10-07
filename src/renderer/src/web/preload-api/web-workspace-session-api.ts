@@ -83,6 +83,12 @@ export function createWebWorkspaceSessionApi(): Partial<PreloadApi> {
       },
       // Why a no-op: web closes reach the host through its session-tab and terminal close RPCs.
       closeTerminalSurface: async () => ({}),
+      // Web clients keep sleeping records in their saved session.
+      commitTerminalSleepingRecords: async () => {},
+      // Why refused: web layout edits reach the host through `session.tabs.updatePaneLayout`.
+      setTerminalLayout: async () => ({ status: 'refused', reason: 'tab_not_held' }),
+      // Why refused: web panes attach through the host, which records their bindings.
+      bindTerminalLeaf: async () => ({ status: 'refused', reason: 'not_bound' }),
       // Why empty: web clients follow the host's session tabs, not main's topology push.
       getTerminalTopologySlices: async () => [],
       onTerminalTopologyChanged: () => () => {},

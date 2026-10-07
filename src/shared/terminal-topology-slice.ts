@@ -36,3 +36,9 @@ export type TerminalTopologySlice = {
 
 /** On a reply whose write main publishes: the publishSeq of the push holding it. */
 export type TerminalTopologyReply = { publishSeq?: number }
+
+/** A window's own sleeping-agent record changes: records it now holds, and pane keys it dropped. */
+export type TerminalSleepingRecordChanges = {
+  sleep: Record<string, SleepingAgentSessionRecord>
+  wake: string[]
+}

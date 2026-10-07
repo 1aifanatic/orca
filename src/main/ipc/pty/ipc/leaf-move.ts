@@ -17,7 +17,12 @@ export async function commitLeafMoveAndRekey(
   if (!deps.store) {
     return { status: 'not_held' }
   }
-  const result = await deps.store.moveTerminalLeafToNewTab(request)
+  // One home per worktree; an unresolved one is unverifiable, so nothing is written.
+  const hostId = deps.runtime?.getTerminalTopologyHomeHostId(request.worktreeId)
+  if (!hostId) {
+    return { status: 'refused', reason: 'home_unresolved' }
+  }
+  const result = await deps.store.moveTerminalLeafToNewTab(request, hostId)
   if (result.status !== 'moved') {
     return result
   }

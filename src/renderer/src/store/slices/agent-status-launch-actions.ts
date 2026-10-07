@@ -16,10 +16,10 @@ export function createAgentStatusLaunchActions(
   AgentStatusSlice,
   'registerAgentLaunchConfig' | 'getAgentLaunchConfigForStatusEntry' | 'clearAgentLaunchConfig'
 > {
-  const { get, set } = runtime
+  const { get, set, setCommittingSleepingRecords } = runtime
   return {
     registerAgentLaunchConfig: (paneKey, launchConfig, metadata) => {
-      set((s) => {
+      setCommittingSleepingRecords((s) => {
         const copiedLaunchConfig = copyLaunchConfig(launchConfig)
         const nextRegistryEntry: AgentLaunchConfigRegistryEntry = {
           launchConfig: copiedLaunchConfig,

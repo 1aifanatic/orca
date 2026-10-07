@@ -3,6 +3,7 @@ import {
   getTerminalPtyOwnershipIdentity
 } from '@/store/slices/terminal-tab-retirement'
 import { startTerminalTabProviderRetirement } from '@/store/terminals/terminal-tab-close-providers'
+import { pendingTerminalLeafIds } from '@/store/terminals/terminal-pending-panes'
 import {
   terminalPaneHasOtherOwner,
   type UnboundTerminalPaneRetirement
@@ -56,8 +57,10 @@ export function retireUnboundIpcTerminalPane(args: UnboundTerminalPaneRetirement
       if (returnedPtyId !== requestedPtyId) {
         return false
       }
-      // A replacement can own even this same leaf by the time the reply arrives.
-      if (!hasOtherOwner()) {
+      // A replacement can own even this same leaf by the time the reply arrives, but only once
+      // a refused close gives it back: while it is closing, its binding is main's stale copy.
+      const closing = pendingTerminalLeafIds(getState().pendingTerminalPanes, tabId, 'remove')
+      if (!hasOtherOwner(closing.has(leafId) ? leafId : undefined)) {
         requestRetirement()
       }
       return true

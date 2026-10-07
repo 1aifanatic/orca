@@ -1,4 +1,5 @@
 import { parseAppSshPtyId } from '../../../../shared/ssh-pty-id'
+import type { TerminalLayoutSnapshot } from '../../../../shared/terminal-tab-types'
 import { parseRemoteRuntimePtyId, toRemoteRuntimePtyId } from '@/runtime/runtime-terminal-stream'
 import { isTerminalTabPresent } from '../slices/terminal-tab-retirement'
 import type { TerminalSlice, TerminalStoreGet, TerminalStoreSet } from './terminal-state'
@@ -11,6 +12,23 @@ import {
 import { omitUnverifiedPtyLossTabIds } from './terminal-unverified-pty-loss'
 import { clearWorktreeSleepIntent } from '@/lib/worktree-sleep-intent'
 import { omitDisownedPtyIds } from './terminal-disowned-pty-sources'
+
+/** A remote runtime's pane bindings are this window's, pushed to its host; they follow a handle rotation. */
+function rotateRemotePaneBinding(
+  layout: TerminalLayoutSnapshot | undefined,
+  replacedPtyId: string,
+  ptyId: string
+): TerminalLayoutSnapshot | null {
+  const bindings = layout?.ptyIdsByLeafId
+  if (!layout || !bindings || !Object.values(bindings).includes(replacedPtyId)) {
+    return null
+  }
+  const rotated = Object.entries(bindings).map(([leafId, id]) => [
+    leafId,
+    id === replacedPtyId ? ptyId : id
+  ])
+  return { ...layout, ptyIdsByLeafId: Object.fromEntries(rotated) }
+}
 
 export function createTerminalPtyBindingActions(
   set: TerminalStoreSet,
@@ -64,30 +82,11 @@ export function createTerminalPtyBindingActions(
           : existingPtyIds.includes(ptyId)
             ? existingPtyIds
             : [...existingPtyIds, ptyId]
-        // Keep provider handle rotation atomic across tab and pane ownership.
-        let nextTerminalLayoutsByTabId = s.terminalLayoutsByTabId
-        if (replacementPtyId) {
-          const existingLayout = s.terminalLayoutsByTabId[tabId]
-          const existingBindings = existingLayout?.ptyIdsByLeafId
-          if (existingLayout && existingBindings) {
-            let changed = false
-            const nextBindings = Object.fromEntries(
-              Object.entries(existingBindings).map(([leafId, currentPtyId]) => {
-                if (currentPtyId !== replacementPtyId) {
-                  return [leafId, currentPtyId]
-                }
-                changed = true
-                return [leafId, ptyId]
-              })
-            )
-            if (changed) {
-              nextTerminalLayoutsByTabId = {
-                ...s.terminalLayoutsByTabId,
-                [tabId]: { ...existingLayout, ptyIdsByLeafId: nextBindings }
-              }
-            }
-          }
-        }
+        // Liveness only: a local or SSH pane's binding is main's, mirrored into the layout (D1).
+        const rotatedLayout =
+          replacementPtyId && isRemoteRuntimePtyId(replacementPtyId)
+            ? rotateRemotePaneBinding(s.terminalLayoutsByTabId[tabId], replacementPtyId, ptyId)
+            : null
         let nextTabsByWorktree = s.tabsByWorktree
         for (const [wId, tabs] of Object.entries(s.tabsByWorktree)) {
           const index = tabs.findIndex((t) => t.id === tabId)
@@ -270,8 +269,8 @@ export function createTerminalPtyBindingActions(
           migrationUnsupportedByPtyId: nextMigrationUnsupportedByPtyId,
           directSshPaneRetryByTabId: nextDirectSshPaneRetryByTabId,
           directSshLivePtyBindingByTabId: nextDirectSshLivePtyBindingByTabId,
-          ...(nextTerminalLayoutsByTabId !== s.terminalLayoutsByTabId
-            ? { terminalLayoutsByTabId: nextTerminalLayoutsByTabId }
+          ...(rotatedLayout
+            ? { terminalLayoutsByTabId: { ...s.terminalLayoutsByTabId, [tabId]: rotatedLayout } }
             : {}),
           ...(shouldBumpSortEpoch ? { sortEpoch: s.sortEpoch + 1 } : {})
         }

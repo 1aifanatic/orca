@@ -143,7 +143,8 @@ describe('codex detached pane restart executor', () => {
     const state = useAppStore.getState()
     expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
     expect(state.tabsByWorktree.wt1?.[0]?.ptyId).toBe(NEW_PTY)
-    expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({ [LEAF_ID]: NEW_PTY })
+    // The pane's binding is main's: its spawn commit records the replacement and its push brings it.
+    expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({ [LEAF_ID]: OLD_PTY })
     expect(state.pendingCodexPaneRestartIds).toEqual({})
     expect(state.suppressedPtyExitIds[OLD_PTY]).toBeUndefined()
     // The whole point: the restart completed, so nothing may block input anymore.
@@ -165,7 +166,8 @@ describe('codex detached pane restart executor', () => {
     const state = useAppStore.getState()
     expect(window.api.pty.kill).not.toHaveBeenCalled()
     expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
-    expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({ [LEAF_ID]: NEW_PTY })
+    // The pane's binding is main's: its spawn commit records the replacement and its push brings it.
+    expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId).toEqual({ [LEAF_ID]: OLD_PTY })
     expect(blocksCodexPaneInput(state.codexRestartNoticeByPtyId[NEW_PTY])).toBe(false)
   })
 
@@ -340,8 +342,9 @@ describe('codex detached pane restart executor', () => {
 
     const layout = useAppStore.getState().terminalLayoutsByTabId['tab-1']
     expect(layout?.root?.type).toBe('split')
+    // Main's binding until its push: the window rewrites neither leaf.
     expect(layout?.ptyIdsByLeafId).toEqual({
-      [LEAF_ID]: NEW_PTY,
+      [LEAF_ID]: OLD_PTY,
       [SIBLING_LEAF]: 'wt1@@sibling'
     })
     // Split-pane safety: only the codex pane's PTY is replaced.
@@ -395,7 +398,7 @@ describe('codex detached pane restart executor', () => {
       expect(window.api.pty.kill).not.toHaveBeenCalled()
       const state = useAppStore.getState()
       expect(state.ptyIdsByTabId['tab-1']).toEqual([NEW_PTY])
-      expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId?.[LEAF_ID]).toBe(NEW_PTY)
+      expect(state.terminalLayoutsByTabId['tab-1']?.ptyIdsByLeafId?.[LEAF_ID]).toBe(OLD_PTY)
       expect(state.pendingCodexPaneRestartIds).toEqual({})
     } finally {
       unregister()

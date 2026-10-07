@@ -39,6 +39,7 @@ function setup(existing: AgentStatusEntry) {
     requestFreshness,
     transactAgentStatuses: vi.fn()
   } as unknown as AgentStatusRuntime
+  runtime.setCommittingSleepingRecords = runtime.set
   return { requestFreshness, actions: createAgentStatusLiveActions(runtime) }
 }
 

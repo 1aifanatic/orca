@@ -151,6 +151,13 @@ export class RuntimeWorkspaceSessionController {
     return worktreeIds
   }
 
+  /** The one `local`/`ssh:` partition a worktree's terminal rows live in; null when unresolved or another server's. */
+  getTerminalTopologyHomeHostId(worktreeId: string): ExecutionHostId | null {
+    const store = this.deps.getStore()
+    const hostId = store ? this.tryGetPreferredHostId(worktreeId, store) : null
+    return hostId && isTerminalOwnerPartition(hostId) ? hostId : null
+  }
+
   /**
    * Worktrees with terminal rows in their home partition. `runtime:` homes are another server's;
    * a home that can't be resolved (a missing or ambiguous folder) maps to null.

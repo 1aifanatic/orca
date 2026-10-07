@@ -28,7 +28,7 @@ export type TerminalPaneTabDetachStore = Pick<
   | 'setActiveTabType'
   | 'setTabLayout'
   | 'syncPaneDetachPtyOwnership'
-  | 'settlePendingTerminalPaneRemoval'
+  | 'settlePendingTerminalPane'
   | 'tabsByWorktree'
   | 'terminalLayoutsByTabId'
   | 'terminalTopologySeqByWorktree'
