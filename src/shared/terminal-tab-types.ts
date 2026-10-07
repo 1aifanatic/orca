@@ -57,6 +57,7 @@ export type TerminalTabRecoveryLedger = {
 // ─── Terminal Tab (legacy — used by persistence and TerminalContentSlice) ─
 export type TerminalTab = {
   id: string
+  /** Main: the row's persisted PTY (a wake hint). Window: the PTY attached now; never main's binding. */
   ptyId: string | null
   worktreeId: string
   title: string

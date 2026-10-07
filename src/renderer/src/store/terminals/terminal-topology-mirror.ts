@@ -34,7 +34,10 @@ type _UnmirroredRowField = Exclude<
 >
 void (true satisfies [_UnmirroredRowField] extends [never] ? true : never)
 
-/** Main's row fields replace the window's; presentation stays, and so does `ptyId`, the live attachment (D1). */
+/**
+ * Main's row fields replace the window's; presentation stays, and so does `ptyId`. In the window it
+ * is the PTY the tab is attached to now (liveness, D1), not main's persisted binding.
+ */
 function mirrorTabRow(current: TerminalTab, row: TerminalTopologyTabRow): TerminalTab {
   const next: TerminalTab = { ...current, ...row, ptyId: current.ptyId }
   for (const field of OPTIONAL_ROW_FIELDS) {

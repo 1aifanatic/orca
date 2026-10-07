@@ -5,6 +5,7 @@ import { resolveTerminalLayoutActiveLeafId } from './terminal-layout-leaf-ids'
 import { shouldIgnoreStalePanePtyLayoutBinding } from './pty-connection/pane-pty-layout-binding'
 import { useExpandCollapseActions } from './expand-collapse'
 import type { TerminalPaneLayoutController } from './use-terminal-pane-layout-persistence'
+import { isRemoteRuntimePtyId } from '@/store/terminals/terminal-pty-identities'
 
 export function useTerminalPaneLayoutBindings(controller: TerminalPaneLayoutController) {
   const {
@@ -31,6 +32,11 @@ export function useTerminalPaneLayoutBindings(controller: TerminalPaneLayoutCont
       const { ptyIdsByLeafId: _existingPtyIdsByLeafId, ...layoutWithoutPtyBindings } =
         existingLayout
       const existingBindings = existingLayout.ptyIdsByLeafId ?? {}
+      // A local or SSH pane's binding is main's: recorded on spawn, mirrored here, kept after exit
+      // (R17). Only a remote runtime's is written here, for the push to its host.
+      if (!isRemoteRuntimePtyId(ptyId ?? existingBindings[leafId])) {
+        return
+      }
 
       if (ptyId && sourcePaneId !== undefined) {
         const currentTransportPtyId = paneTransportsRef.current.get(sourcePaneId)?.getPtyId()
@@ -107,7 +113,7 @@ export function useTerminalPaneLayoutBindings(controller: TerminalPaneLayoutCont
       const { ptyIdsByLeafId: _existingPtyIdsByLeafId, ...layoutWithoutPtyBindings } =
         existingLayout
       const existingBindings = existingLayout.ptyIdsByLeafId ?? {}
-      if (existingBindings[leafId] !== exitedPtyId) {
+      if (existingBindings[leafId] !== exitedPtyId || !isRemoteRuntimePtyId(exitedPtyId)) {
         return
       }
       const nextBindings = { ...existingBindings }
