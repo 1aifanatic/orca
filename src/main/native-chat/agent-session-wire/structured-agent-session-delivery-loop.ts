@@ -36,6 +36,7 @@ import {
 } from './structured-agent-session-start-failure-row'
 import { failedProviderChildStart } from './structured-agent-session-provider-child'
 import { handOverSubmission } from './structured-agent-session-turns'
+import { structuredAgentSessionNextHandover } from './structured-agent-session-opening-send'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { holdRestartedStructuredAgentSessionSends } from './structured-agent-session-host-lifetime'
@@ -72,9 +73,11 @@ export type StructuredAgentSessionDeliveryLoopDeps = {
 
 type Step = 'continue' | 'stop'
 
+type RefusedStart = Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+
 type Prepared =
   | 'stop'
-  | Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+  | RefusedStart
   | { ok: true; awaited: StructuredAgentSessionProviderChildIdentity | null }
 
 /** A failed start before it is worded; `fail` words it once, through the one wording point. */
@@ -115,6 +118,11 @@ export class StructuredAgentSessionDeliveryLoop {
           return
         }
         if (!prepared.ok) {
+          if (prepared.aborted) {
+            // A close, Stop or quit stopped this start on purpose, and settled what it was for; a
+            // message accepted since gets its own start, and quit's next step stops the loop.
+            continue
+          }
           await this.deps.serialize(sessionId, () =>
             this.fail(sessionId, this.refusedStart(sessionId, prepared))
           )
@@ -233,7 +241,8 @@ export class StructuredAgentSessionDeliveryLoop {
     if (this.deps.stopping(sessionId)) {
       return this.stop(sessionId)
     }
-    const next = oldestQueuedSubmission(session)
+    // None while a turn is still opening: joining it would record the message ahead of it.
+    const next = structuredAgentSessionNextHandover(session, awaitedChild.fence)
     if (!next) {
       return this.stop(sessionId)
     }
@@ -258,11 +267,7 @@ export class StructuredAgentSessionDeliveryLoop {
   /** A start the session refused, as the failure every queued message it was for is rejected with. */
   private refusedStart(
     sessionId: string,
-    {
-      refusal,
-      diagnostic,
-      argumentProblem
-    }: Extract<StructuredAgentSessionResumeOutcome, { ok: false }>
+    { refusal, diagnostic, argumentProblem }: RefusedStart
   ): StartFailure {
     // A conversation no agent ever ran, such as a cleared chat's, failed to start, not restart.
     const newSession = this.deps.record(sessionId)?.providerHandleChain.length === 0
