@@ -37,18 +37,19 @@ export function nativeChatTranscriptPathOnExecutionHost(
   // Only the host mints this form; a client-supplied one would name a file the hook never attested.
   const requested =
     transcriptPath && !parseSshTranscriptPath(transcriptPath) ? transcriptPath : undefined
-  const sshRows = statusRows.filter(
-    (row) =>
-      row.providerSession?.id === sessionId &&
-      row.providerSession.transcriptPath &&
-      row.connectionId &&
-      !isWslHookRelayConnectionId(row.connectionId)
+  const rows = statusRows.filter(
+    (row) => row.providerSession?.id === sessionId && row.providerSession.transcriptPath
   )
+  // Why: the row attesting the requested path decides the host; a stale path falls back to SSH.
   const row =
-    sshRows.find((candidate) => candidate.providerSession?.transcriptPath === requested) ??
-    sshRows[0]
+    rows.find((candidate) => candidate.providerSession?.transcriptPath === requested) ??
+    rows.find(isSshRow)
   const remotePath = row?.providerSession?.transcriptPath
-  return row?.connectionId && remotePath
+  return row && isSshRow(row) && remotePath
     ? toSshTranscriptPath(row.connectionId, remotePath)
     : requested
+}
+
+function isSshRow(row: HookRow): row is HookRow & { connectionId: string } {
+  return row.connectionId ? !isWslHookRelayConnectionId(row.connectionId) : false
 }

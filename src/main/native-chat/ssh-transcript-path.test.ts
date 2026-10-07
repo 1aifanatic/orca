@@ -61,6 +61,13 @@ describe('nativeChatTranscriptPathOnExecutionHost', () => {
     ).toEqual({ connectionId: 'target:2', remotePath: '/home/ada/other.jsonl' })
   })
 
+  it('keeps a session on this machine when a local row attests the requested path', () => {
+    const localPath = '/home/bob/.claude/projects/p/session-1.jsonl'
+    const rows = [row(CONNECTION_ID), row(null, localPath)]
+
+    expect(nativeChatTranscriptPathOnExecutionHost(rows, 'session-1', localPath)).toBe(localPath)
+  })
+
   it('ignores an SSH-qualified path a client sends itself', () => {
     const forged = toSshTranscriptPath(CONNECTION_ID, '/etc/secret.jsonl')
 
