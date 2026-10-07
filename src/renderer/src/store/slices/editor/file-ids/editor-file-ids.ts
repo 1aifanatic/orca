@@ -144,11 +144,24 @@ export function collectSameDocumentOpenFileIds(
   if (file.mode !== 'edit') {
     return fileIds
   }
-  const closeIdentity = (candidate: OpenFile): string =>
-    JSON.stringify([
+  const closeIdentity = (candidate: OpenFile): string => {
+    const provenance = candidate.operationProvenance
+    const generation = provenance?.generation
+    return JSON.stringify([
+      editorDocumentIdentityKey(candidate),
       editorDocumentIdentityKey({ ...candidate, ...getPersistedEditorOwnerFields(candidate) }),
-      state ? getEditorModelOwnerKey(candidate, state) : null
+      state ? getEditorModelOwnerKey(candidate, state) : null,
+      provenance?.ownershipProjection,
+      provenance?.expectedSshConnectionGeneration,
+      generation?.route.executionHostId,
+      generation?.route.runtimeEnvironmentId,
+      generation?.runtimeConnectionGeneration,
+      generation?.runtimePairingRevision,
+      generation?.runtimeSshGeneration,
+      generation?.nestedSshGeneration,
+      generation?.directSshGeneration
     ])
+  }
   const identity = closeIdentity(file)
   const modes = getReusableOpenFileModes(file.mode)
   for (const candidate of openFiles) {
