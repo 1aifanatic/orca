@@ -9,6 +9,7 @@ import type {
 import { mobileNativeChatScopeKey } from './mobile-native-chat-scope-key'
 import type { MobileNativeChatSendOutcome } from './mobile-native-chat-send'
 import type { MobileNativeChatSessionOptionPickersProps } from './MobileNativeChatSessionOptionPickers'
+import type { MobileNativeChatPermissionPickerState } from './MobileNativeChatPermissionPicker'
 import {
   useMobileNativeChatSessionOptions,
   type MobileNativeChatSessionOptionsController
@@ -32,6 +33,7 @@ export function useMobileNativeChatSessionOptionController(args: {
     pendingId: string | null
     setOption: (id: string, value: SessionOptionValue) => Promise<boolean>
     invokeAction: (id: string) => Promise<boolean>
+    permissionPicker?: MobileNativeChatPermissionPickerState | null
   }
   toggleTabChatView: (tabId: string) => void
   worktreeId: string
@@ -107,12 +109,24 @@ export function useMobileNativeChatSessionOptionController(args: {
     () =>
       activeChatStructured
         ? structuredController
-          ? { controller: structuredController, isWorking }
+          ? {
+              controller: structuredController,
+              isWorking,
+              ...(structured.permissionPicker
+                ? { permissionPicker: structured.permissionPicker }
+                : {})
+            }
           : null
         : sessionOptions.snapshot.length > 0
           ? { controller: sessionOptions, isWorking }
           : null,
-    [activeChatStructured, isWorking, sessionOptions, structuredController]
+    [
+      activeChatStructured,
+      isWorking,
+      sessionOptions,
+      structured.permissionPicker,
+      structuredController
+    ]
   )
 
   return { nativeChatSessionOptions, recordCommand: sessionOptions.recordCommand }

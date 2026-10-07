@@ -176,12 +176,8 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setDraft,
       setNotice
     })
-    const {
-      imageAttachments,
-      attachResolvedPaths,
-      clearImageAttachments,
-      removeImageAttachment
-    } = attachments
+    const { imageAttachments, attachResolvedPaths, clearImageAttachments, removeImageAttachment } =
+      attachments
     useNativeChatWorkspaceFileDrop({
       terminalTabId,
       structuredWorktreeId: structuredTransport?.worktreeId,
@@ -416,6 +412,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         sessionOptionsSnapshot={sessionOptionsSnapshot}
         contextUsage={contextUsageSummary}
         sessionOptionsPickerRequest={structuredTransport?.optionPickerRequest ?? null}
+        permissionPicker={structuredTransport?.optionsSurface.permissionPicker ?? null}
       />
     )
   }

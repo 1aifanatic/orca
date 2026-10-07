@@ -1,7 +1,6 @@
-// What Claude reports at initialize, read in the background once the session is published. None of
-// it gates the create or a message: the child was launched with the chat's saved options and takes
-// input at once. Every way the start can fail (exit, auth, a foreign session id) faults the
-// published session through its exit path; a CLI that never answers is ended by a Stop or a close.
+import { claudeChatPermissionMode } from './claude-structured-permission-mode'
+import { applyClaudeStartPermissionMode } from './claude-structured-start-permission-mode'
+// Saved options launch immediately; inherited middle permissions settle before the first message.
 
 import type {
   StructuredAgentSessionOptionsSkippedEvent,
@@ -215,7 +214,8 @@ function claudeStartedReportedOptions(
   session: ClaudeSession,
   catalog: unknown[]
 ): StructuredAgentSessionStartedOptions['reportedOptions'] {
-  const { current } = claudeStructuredSessionOptionsFrom(session, catalog)
+  const result = claudeStructuredSessionOptionsFrom(session, catalog)
+  const current = { ...result.current, permissionMode: claudeChatPermissionMode(session) }
   if (session.options.has('effort') || session.reportedOptions.effort !== undefined) {
     return current
   }
@@ -255,6 +255,10 @@ export async function settleClaudeSessionStartup(input: {
       }
     }
     applyClaudeStartupFacts(session, facts)
+    await applyClaudeStartPermissionMode(session, facts)
+    if (superseded()) {
+      return
+    }
     const startFastMode = admitClaudeStartFastMode(session, facts)
     if (!superseded()) {
       input.report({

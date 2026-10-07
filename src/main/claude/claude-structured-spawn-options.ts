@@ -10,6 +10,8 @@ import type {
 } from './claude-structured-launch-resolution'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { restoredClaudeStructuredSessionOptions } from './claude-structured-options'
+import { isAgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
+import { claudeSdkPermissionMode } from './claude-structured-permission-mode'
 
 const EFFORT_LEVELS: ReadonlySet<string> = new Set<EffortLevel>([
   'low',
@@ -18,16 +20,7 @@ const EFFORT_LEVELS: ReadonlySet<string> = new Set<EffortLevel>([
   'xhigh',
   'max'
 ])
-const PERMISSION_MODES: ReadonlySet<string> = new Set<PermissionMode>([
-  'default',
-  'acceptEdits',
-  'bypassPermissions',
-  'plan',
-  'dontAsk',
-  'auto'
-])
-
-/** Whether `options` launch with the Agent Permissions bypass. */
+/** Whether this child was granted the bypass flag. */
 function claudeStructuredOptionsBypassPermissions(options: ClaudeStructuredSdkOptions): boolean {
   return options.extraArgs?.['dangerously-skip-permissions'] !== undefined
 }
@@ -60,10 +53,6 @@ function withoutConfiguredFlag(
 
 function isEffortLevel(value: string): value is EffortLevel {
   return EFFORT_LEVELS.has(value)
-}
-
-function isPermissionMode(value: string): value is PermissionMode {
-  return PERMISSION_MODES.has(value)
 }
 
 export type ClaudeStructuredSpawnOptions = {
@@ -124,19 +113,18 @@ export function claudeStructuredSpawnOptions(input: {
       }
     }
   }
-  const permissionMode = saved.get('permissionMode')
-  if (permissionMode !== undefined) {
-    // Bypass is the Agent Permissions setting's to grant; a saved pick never widens it.
-    if (
-      isPermissionMode(permissionMode) &&
-      (permissionMode !== 'bypassPermissions' ||
-        claudeStructuredOptionsBypassPermissions(input.launch.options))
-    ) {
-      options.set('permissionMode', permissionMode)
-      sdkOptions = claudeStructuredOptionsWithPermissionMode(sdkOptions, permissionMode)
-    } else {
-      skipped.push('permissionMode')
-    }
+  const savedPermissionMode = saved.get('permissionMode')
+  if (savedPermissionMode !== undefined) {
+    const requested = isAgentChatPermissionMode(savedPermissionMode) ? savedPermissionMode : 'ask'
+    const mode =
+      requested === 'bypass' && !claudeStructuredOptionsBypassPermissions(input.launch.options)
+        ? 'ask'
+        : requested
+    options.set('permissionMode', mode)
+    sdkOptions = claudeStructuredOptionsWithPermissionMode(
+      sdkOptions,
+      claudeSdkPermissionMode(mode)
+    )
   }
   return { sdkOptions, options, skipped, fastModeAtStart }
 }

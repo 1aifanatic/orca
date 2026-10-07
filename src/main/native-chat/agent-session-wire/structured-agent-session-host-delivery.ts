@@ -13,6 +13,7 @@ import {
 } from './structured-agent-session-conversation-open'
 import type { StructuredAgentSessionClientDelivery } from './structured-agent-session-client-delivery'
 import { StructuredAgentSessionDeliveryLoop } from './structured-agent-session-delivery-loop'
+import { relaunchOutgrownStructuredAgentSessionChild } from './structured-agent-session-child-relaunch'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
@@ -56,6 +57,8 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     sessionId: string,
     startedFor: string
   ) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Puts the session's child to rest as the idle sweep does; inside the caller's serialize. */
+  restProviderChild: (sessionId: string) => Promise<void>
   clientDelivery: Pick<
     StructuredAgentSessionClientDelivery,
     'publishRestored' | 'readChildWork' | 'readStopping' | 'publishStatus'
@@ -68,7 +71,20 @@ export function createStructuredAgentSessionConversationDelivery(input: {
     agents: deps.agents,
     serialize: input.serialize,
     trackStart: input.trackStart,
-    ensureProviderChild: input.ensureProviderChild,
+    // A child launched for options the chat has since outgrown is replaced before it takes a send.
+    ensureProviderChild: async (sessionId, startedFor) => {
+      await relaunchOutgrownStructuredAgentSessionChild(
+        {
+          session: sessions.get(sessionId),
+          adapter: deps.adapter,
+          childWork: input.clientDelivery.readChildWork(sessionId),
+          restChild: () => input.restProviderChild(sessionId),
+          logger: deps.logger
+        },
+        sessionId
+      )
+      return input.ensureProviderChild(sessionId, startedFor)
+    },
     conversationFence: (sessionId) =>
       structuredAgentSessionConversationFence(deps.store, sessionId),
     holdClosed: async (sessionId, which) => {

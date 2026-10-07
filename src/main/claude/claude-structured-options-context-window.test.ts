@@ -72,7 +72,7 @@ describe('the context ring after a session option write', () => {
   it('holds estimates after a permission-mode write even with a model written before it', async () => {
     const s = ringSession()
     await s.write('model', 'sonnet[1m]')
-    await s.write('permissionMode', 'plan')
+    await s.write('permissionMode', 'accept-edits')
     expect(s.respond('turn-a', 1_000)).toBeNull()
   })
 })

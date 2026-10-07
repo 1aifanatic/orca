@@ -1,3 +1,4 @@
+import type { GlobalSettings } from '../../shared/global-settings-types'
 import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
@@ -16,7 +17,7 @@ import {
   createClaudeStructuredLaunchResolver,
   type ClaudeStructuredLaunchResolverDeps
 } from './claude-structured-launch-resolution'
-import { claudeStructuredPermissionModeForSettings } from './claude-structured-permission-mode'
+import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { beginClaudeAuthSwitch, endClaudeAuthSwitch } from '../claude-accounts/live-pty-gate'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
 
@@ -61,7 +62,7 @@ function resolverFor(
   resolveEnv?: () => Record<string, string>,
   stripAuthEnv = false,
   // Manual by default so a test that is not about permissions is not silently about them.
-  agentDefaultArgs: Record<string, string> = { claude: '' },
+  permissionSettings: Partial<GlobalSettings> = { nativeChatPermissionMode: 'ask' },
   hasTranscript: () => Promise<boolean> = async () => true,
   resolveLaunchArgs?: () => string[],
   attachmentDirectory?: string
@@ -71,7 +72,8 @@ function resolverFor(
     resolveWorkspacePath: async (id) => `/repos/${id}`,
     resolveCommand: () => '/usr/local/bin/claude',
     resolveAuthPolicy: () => ({ stripAuthEnv }),
-    resolvePermissionMode: () => claudeStructuredPermissionModeForSettings({ agentDefaultArgs }),
+    resolveDefaultPermissionMode: () =>
+      agentChatPermissionModeForSettings('claude', permissionSettings),
     hasTranscript,
     resolveLaunchArgs: resolveLaunchArgs ?? (() => value?.launchArgs ?? []),
     ...(resolveEnv ? { resolveEnv } : {}),
@@ -143,6 +145,7 @@ describe('claude structured launch resolution', () => {
     })
     expect(first.options).toEqual({
       includePartialMessages: true,
+      permissionMode: 'default',
       settingSources: [...CLAUDE_DEFAULT_SETTING_SOURCES],
       supportedDialogKinds: [],
       extraArgs: { 'replay-user-messages': null },
@@ -246,7 +249,7 @@ describe('claude structured launch resolution', () => {
       }),
       undefined,
       false,
-      { claude: '' },
+      { nativeChatPermissionMode: 'ask' },
       hasTranscript
     )({ identity: identityAt(null) })
 
@@ -265,48 +268,53 @@ describe('claude structured launch resolution', () => {
     })
   })
 
-  // Agent Permissions is stored as the bypass flag inside the launch arguments, so presence of
-  // that flag — not the whole string — is what Yolo means, exactly as a terminal launch reads it.
-  it.each([
-    ['--dangerously-skip-permissions'],
-    ['--dangerously-skip-permissions --model Opus'],
-    ['--model Opus --dangerously-skip-permissions']
-  ])('starts a Yolo session in bypassPermissions for args %s', async (claude) => {
-    const launch = await resolverFor(record(), undefined, false, { claude })({ identity: IDENTITY })
-
-    expect(launch.options.extraArgs).toEqual({
-      'replay-user-messages': null,
-      'dangerously-skip-permissions': null
-    })
-    expect(launch.options.permissionMode).toBeUndefined()
-    expect(launch.options.allowDangerouslySkipPermissions).toBeUndefined()
-  })
-
-  // The common profile: the toggle has never been used, so it has written nothing, and the
-  // default for the key it did not write is the bypass flag — the posture the terminal has
-  // always given these users.
-  it('starts a session that never opened Agent settings in bypassPermissions', async () => {
-    const launch = await resolverFor(record(), undefined, false, {})({ identity: IDENTITY })
-
-    expect(launch.options.extraArgs).toEqual({
-      'replay-user-messages': null,
-      'dangerously-skip-permissions': null
-    })
-  })
-
-  // Manual is stored as an empty string, which owns the key and so beats the shipped default.
-  it.each([[''], ['--model Opus']])(
-    'leaves a Manual session prompting for args %s',
+  it.each(['', '--dangerously-skip-permissions', '--model Opus --dangerously-skip-permissions'])(
+    'uses the chat setting regardless of terminal args %s',
     async (claude) => {
-      const launch = await resolverFor(record(), undefined, false, { claude })({
-        identity: IDENTITY
-      })
-
-      expect(launch.options.permissionMode).toBeUndefined()
-      expect(launch.options.extraArgs).toEqual({ 'replay-user-messages': null })
-      expect(launch.options.allowDangerouslySkipPermissions).toBeUndefined()
+      for (const nativeChatPermissionMode of ['ask', 'bypass'] as const) {
+        const launch = await resolverFor(record(), undefined, false, {
+          nativeChatPermissionMode,
+          agentDefaultArgs: { claude }
+        })({ identity: IDENTITY })
+        expect(launch.permissionMode).toBe(nativeChatPermissionMode)
+        expect('dangerously-skip-permissions' in (launch.options.extraArgs ?? {})).toBe(
+          nativeChatPermissionMode === 'bypass'
+        )
+        expect(launch.options.permissionMode).toBe(
+          nativeChatPermissionMode === 'ask' ? 'default' : undefined
+        )
+      }
     }
   )
+
+  // The chat's own mode outranks the setting, so a resume keeps what the chat picked.
+  it.each([
+    ['bypass', { nativeChatPermissionMode: 'ask' }, true],
+    ['ask', {}, false],
+    ['accept-edits', {}, false],
+    ['auto', {}, false]
+  ] as const)(
+    'launches a chat that chose %s for that mode whatever the setting',
+    async (mode, settings, bypassFlag) => {
+      const launch = await resolverFor(
+        record({ options: { permissionMode: mode } }),
+        undefined,
+        false,
+        settings
+      )({ identity: IDENTITY })
+
+      expect(launch.permissionMode).toBe(mode)
+      expect('dangerously-skip-permissions' in (launch.options.extraArgs ?? {})).toBe(bypassFlag)
+    }
+  )
+
+  it('records the setting as the launch mode of a chat that never chose one', async () => {
+    const launch = await resolverFor(record(), undefined, false, {
+      nativeChatPermissionMode: 'bypass'
+    })({ identity: IDENTITY })
+
+    expect(launch.permissionMode).toBe('bypass')
+  })
 
   it('passes configured arguments on start without taking over permission or session flags', async () => {
     const launch = await resolverFor(
@@ -327,7 +335,7 @@ describe('claude structured launch resolution', () => {
       model: 'claude-sonnet-4-5',
       'replay-user-messages': null
     })
-    expect(launch.options.permissionMode).toBeUndefined()
+    expect(launch.options.permissionMode).toBe('default')
     expect(launch.options.sessionId).toBe(launch.providerSessionId)
   })
 
@@ -337,7 +345,7 @@ describe('claude structured launch resolution', () => {
       record({ ...RESUMABLE, launchArgs: ['--model', 'stale'] }),
       undefined,
       false,
-      { claude: '' },
+      { nativeChatPermissionMode: 'ask' },
       async () => true,
       () => args
     )
@@ -431,7 +439,7 @@ describe('claude structured launch resolution', () => {
       record(),
       undefined,
       false,
-      { claude: '' },
+      { nativeChatPermissionMode: 'ask' },
       async () => true,
       undefined,
       '/state/agent-session-attachments'
@@ -446,7 +454,7 @@ describe('claude structured launch resolution', () => {
       record(),
       undefined,
       false,
-      { claude: '' },
+      { nativeChatPermissionMode: 'ask' },
       async () => true,
       () => ['--add-dir', '/extra'],
       '/state/agent-session-attachments'

@@ -17871,6 +17871,15 @@
         "attachmentOwnerChanged": "Cet espace de travail a changé d'hôte lors de la connexion : supprimez à nouveau les fichiers.",
         "attachmentUnreadable": "Impossible de lire les fichiers supprimés.",
         "tooManyAttachments": "Joignez {{value0}} fichiers maximum à la fois.",
+        "permissions": "Autorisations",
+        "permissionAsk": "Demander l’approbation",
+        "permissionAskDescription": "Demande toujours avant les modifications et les commandes",
+        "permissionAcceptEdits": "Accepter les modifications",
+        "permissionAcceptEditsDescription": "Modifie les fichiers sans demander ; demande avant les commandes",
+        "permissionAuto": "Approuver pour moi",
+        "permissionAutoDescription": "Ne demande que pour les actions détectées comme potentiellement dangereuses",
+        "permissionBypass": "Accès complet",
+        "permissionBypassDescription": "Ne demande jamais ; accès illimité à votre ordinateur",
         "pasteFailed": "Échec du collage.",
         "commandAttachmentsUnsupported": "Retirez les pièces jointes avant d'utiliser une commande de session de chat."
       },
@@ -19208,5 +19217,8 @@
     "unavailable": "Impossible de lire ce fichier multimédia. Le fichier peut être indisponible ou utiliser un codec non pris en charge.",
     "openFailed": "Impossible d’ouvrir ce fichier dans l’application par défaut.",
     "openDefault": "Ouvrir dans l’application par défaut"
-  }
+  },
+  "settings.chat.permissionsTitle": "Autorisations pour les nouveaux chats",
+  "settings.chat.permissionsDescription": "S’applique uniquement aux nouveaux chats. Les agents ouverts dans un terminal utilisent Paramètres → Agents → Autorisations des agents.",
+  "settings.agents.permissionsScope": "S’applique aux agents ouverts dans un terminal. Les chats ont leur propre réglage dans Paramètres → Chat."
 }

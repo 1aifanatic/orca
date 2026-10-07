@@ -1,3 +1,4 @@
+import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import type { StructuredAgentSessionStatusObserverOptions } from './structured-agent-session-status-observation'
 import type { SubmissionRejectionFact } from '../../../shared/agent-session-failure'
 import type { AgentSessionOwnerProbe } from '../../../shared/agent-session-lease-adjudication'
@@ -158,6 +159,8 @@ export type StructuredAgentSessionHostDeps = {
    *  removed from. Both production hosts pass one — the desktop and headless `orcad`; absent,
    *  every reader of that store simply lists no structured session. */
   statusSink?: StructuredAgentSessionStatusSink
+  /** The execution host chat default; null for agents without chat permissions. */
+  defaultPermissionMode?: (agent: string) => AgentChatPermissionMode | null
   /** Host model catalog surface; absent means every catalog read answers `unknown`. */
   modelCatalog?: AgentModelCatalogService
 }

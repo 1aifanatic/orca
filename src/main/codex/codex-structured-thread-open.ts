@@ -22,6 +22,8 @@ export type CodexOpenedThread = {
   effort?: string
   /** Present, including null, only when this app-server reports the effective tier. */
   serviceTier?: string | null
+  /** This app-server reports who reviews approvals, so it can route them to auto-review. */
+  approvalsReviewerSupported?: boolean
 }
 
 function nonEmptyString(value: unknown): string | null {
@@ -29,6 +31,33 @@ function nonEmptyString(value: unknown): string | null {
 }
 
 const resumeMetadataUnsupported = new WeakSet<object>()
+
+/** An app-server that predates approval reviewers refuses the field; the open retries without
+ *  it, which is the reviewer that app-server always had: a person. */
+function isApprovalsReviewerUnsupported(error: unknown): boolean {
+  return (
+    isCodexAppServerRequestError(error) &&
+    error.code === -32602 &&
+    /(?:unknown|unexpected|unsupported|unrecognized).{0,80}approvalsReviewer|approvalsReviewer.{0,80}(?:unknown|unexpected|unsupported|unrecognized)/i.test(
+      error.message
+    )
+  )
+}
+
+async function withoutUnsupportedReviewer(
+  params: Record<string, unknown>,
+  open: (params: Record<string, unknown>) => Promise<unknown>
+): Promise<unknown> {
+  try {
+    return await open(params)
+  } catch (error) {
+    if (!('approvalsReviewer' in params) || !isApprovalsReviewerUnsupported(error)) {
+      throw error
+    }
+    const { approvalsReviewer: _unsupported, ...rest } = params
+    return open(rest)
+  }
+}
 
 function isExcludeTurnsUnsupported(error: unknown): boolean {
   return (
@@ -97,10 +126,9 @@ export async function openCodexThread(
   const resumeThreadId = launch.resumeThreadId
   const threadSettings = { cwd: launch.cwd, ...launch.permissionPolicy }
   const startThread = (): Promise<unknown> =>
-    connection.request(
-      'thread/start',
+    withoutUnsupportedReviewer(
       { ...threadSettings, ...(launch.model ? { model: launch.model } : {}) },
-      { timeoutMs }
+      (params) => connection.request('thread/start', params, { timeoutMs })
     )
   let supersededThreadId: string | undefined
   let opened: unknown
@@ -114,7 +142,9 @@ export async function openCodexThread(
       ...(launch.resumePath ? { path: launch.resumePath } : {})
     }
     try {
-      opened = await resumeCodexThread(connection, resumeParams, timeoutMs)
+      opened = await withoutUnsupportedReviewer(resumeParams, (params) =>
+        resumeCodexThread(connection, params, timeoutMs)
+      )
     } catch (error) {
       if (!launch.supersedeIfUnsaved || !isCodexNoRolloutError(error, resumeThreadId)) {
         throw error
@@ -148,6 +178,7 @@ export async function openCodexThread(
       : {}),
     ...(model ? { model } : {}),
     ...(effort ? { effort } : {}),
-    ...(serviceTierKnown ? { serviceTier } : {})
+    ...(serviceTierKnown ? { serviceTier } : {}),
+    approvalsReviewerSupported: Object.hasOwn(result, 'approvalsReviewer')
   }
 }

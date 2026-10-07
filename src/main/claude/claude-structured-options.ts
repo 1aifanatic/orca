@@ -1,4 +1,4 @@
-import type { EffortLevel, PermissionMode } from '@anthropic-ai/claude-agent-sdk'
+import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeControlRequestError } from './claude-stream-json-connection'
 import { AgentSessionOptionRejectedError } from '../native-chat/agent-session-wire/structured-agent-session-option-error'
 import {
@@ -12,8 +12,10 @@ import {
 } from './claude-structured-session-options'
 import type { ClaudeSession } from './claude-structured-session-state'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../shared/agent-chat-permission-mode'
+import { claudePermissionModeWrite } from './claude-structured-permission-mode'
 
-const OPTION_ORDER = ['model', 'effort', 'fastMode', 'permissionMode'] as const
+const OPTION_ORDER = ['model', 'effort', 'fastMode', AGENT_CHAT_PERMISSION_MODE_OPTION_ID] as const
 
 /**
  * Efforts the settings readback cannot report. `max` applies for the rest of the
@@ -71,11 +73,24 @@ export async function setClaudeStructuredOption(
     input.key === 'fastMode'
       ? decodeStructuredAgentSessionOptionValue('fastMode', input.value)
       : null
+  const permission =
+    input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID
+      ? claudePermissionModeWrite(session, input.value)
+      : null
+  if (input.key === AGENT_CHAT_PERMISSION_MODE_OPTION_ID && !permission) {
+    throw new AgentSessionOptionRejectedError(`claude has no permission mode named ${input.value}`)
+  }
+  if (permission?.kind === 'relaunch') {
+    // No control request: the CLI refuses it; the host relaunches before the next send.
+    session.options.set(input.key, input.value)
+    session.confirmedOptions.delete(input.key)
+    return Object.fromEntries(session.options)
+  }
   const apply =
     input.key === 'model'
       ? () => session.connection.setModel(input.value, { timeoutMs })
-      : input.key === 'permissionMode'
-        ? () => session.connection.setPermissionMode(input.value as PermissionMode, { timeoutMs })
+      : permission?.kind === 'live'
+        ? () => session.connection.setPermissionMode(permission.mode, { timeoutMs })
         : input.key === 'effort'
           ? () =>
               session.connection.applyFlagSettings(

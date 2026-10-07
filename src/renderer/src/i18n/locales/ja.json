@@ -17805,6 +17805,15 @@
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
         "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。",
+        "permissions": "権限",
+        "permissionAsk": "承認を求める",
+        "permissionAskDescription": "編集やコマンドの前に必ず確認します",
+        "permissionAcceptEdits": "編集を許可",
+        "permissionAcceptEditsDescription": "ファイルは確認なしで編集し、コマンドの前に確認します",
+        "permissionAuto": "代わりに承認",
+        "permissionAutoDescription": "安全でない可能性があると判定された操作だけ確認します",
+        "permissionBypass": "フルアクセス",
+        "permissionBypassDescription": "確認しません。コンピューターへの無制限のアクセス",
         "pasteFailed": "貼り付けに失敗しました。",
         "commandAttachmentsUnsupported": "チャットセッションのコマンドを使う前に添付ファイルを削除してください。"
       },
@@ -19208,5 +19217,8 @@
     "unavailable": "このメディアファイルを再生できません。ファイルが利用できないか、コーデックが対応していない可能性があります。",
     "openFailed": "既定のアプリでファイルを開けませんでした。",
     "openDefault": "既定のアプリで開く"
-  }
+  },
+  "settings.chat.permissionsTitle": "新しいチャットの権限",
+  "settings.chat.permissionsDescription": "新しいチャットにのみ適用されます。ターミナルで開くAgentには、設定 → Agent → Agentの権限が適用されます。",
+  "settings.agents.permissionsScope": "ターミナルで開くAgentに適用されます。チャットには、設定 → チャットに独自の設定があります。"
 }

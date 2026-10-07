@@ -1,3 +1,4 @@
+import { restoreCodexChatPermissionMode } from './codex-structured-permission-mode'
 import {
   CODEX_STRUCTURED_HANDLE_NAMESPACE,
   isAgentSessionProviderHandleInNamespace
@@ -222,6 +223,7 @@ export async function acquireCodexStructuredSession(input: {
     assertCodexConnectionOpen(connection, sessionId)
     acquisitions.assertCurrent(sessionId, attempt)
     const options = restoredCodexSessionOptions(acquireInput.options)
+    restoreCodexChatPermissionMode(options, launch, opened)
     const catalogAccess = codexAcquireCatalogAccess(deps, launch)
     const fastModeCatalog = codexAcquireFastModeCatalog({
       catalogAccess,
@@ -242,6 +244,8 @@ export async function acquireCodexStructuredSession(input: {
       abortedTurnIds: new Set(),
       prompts: acquisition.prompts,
       options,
+      ...(launch.permissionMode ? { threadPermissionMode: launch.permissionMode } : {}),
+      approvalsReviewerSupported: opened.approvalsReviewerSupported === true,
       reportedOptions: reportedCodexThreadOptions(opened),
       ...(catalogAccess ? { catalogAccess } : {}),
       dispatchEchoes,

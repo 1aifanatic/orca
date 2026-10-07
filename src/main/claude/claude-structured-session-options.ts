@@ -1,6 +1,5 @@
 import type {
   AgentSessionFastModeState,
-  AgentSessionFastModeSupport,
   AgentSessionOptionsResult
 } from '../../shared/agent-session-wire'
 import {
@@ -13,6 +12,8 @@ import {
   type ListedModel
 } from './claude-structured-model-catalog'
 import type { ClaudeSession } from './claude-structured-session-state'
+import { claudeFastModeSupport } from './claude-structured-fast-mode-support'
+import { claudePermissionModesFor } from './claude-structured-permission-mode'
 import { structuredAgentSessionOptionModels } from '../native-chat/agent-session-wire/structured-agent-session-option-models'
 import { claudeCatalogRowsOfAccount } from './claude-structured-retired-model'
 import { decodeStructuredAgentSessionOptionValue } from '../../shared/structured-agent-session-option-codec'
@@ -170,27 +171,6 @@ export function claudeModelFastModeSupport(
     modelId: matched?.id ?? modelId,
     supported: matched?.supportsFastMode ?? null
   }
-}
-
-const TRANSIENT_FAST_MODE_REASONS = new Set(['network_error', 'unknown', 'pending'])
-const NON_BLOCKING_FAST_MODE_REASONS = new Set(['preference', 'sdk_opt_in_required'])
-
-function claudeFastModeSupport(
-  models: readonly ListedModel[],
-  disabledReason: string | undefined
-): AgentSessionFastModeSupport | undefined {
-  if (disabledReason && TRANSIENT_FAST_MODE_REASONS.has(disabledReason)) {
-    return undefined
-  }
-  if (disabledReason && !NON_BLOCKING_FAST_MODE_REASONS.has(disabledReason)) {
-    return { supported: false, reason: disabledReason }
-  }
-  if (!models.some((model) => model.supportsFastMode === true)) {
-    return models.length > 0 && models.every((model) => model.supportsFastMode === false)
-      ? { supported: false, reason: 'model-not-supported' }
-      : undefined
-  }
-  return { supported: true }
 }
 
 function listedModelFastModeSupport(
@@ -378,6 +358,7 @@ export function claudeStructuredSessionOptionsFrom(
   return {
     models: wireClaudeModels(models),
     ...(support ? { fastModeSupport: support } : {}),
+    permissionModes: claudePermissionModesFor(session, matchListedModel(discovered, model)),
     current: {
       model,
       ...(effort ? { effort } : {}),

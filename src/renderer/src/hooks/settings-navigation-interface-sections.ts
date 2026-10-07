@@ -1,3 +1,4 @@
+import { getChatPermissionSearchEntry } from '@/components/settings/chat-permission-search'
 import { getAppearancePaneSearchEntries } from '@/components/settings/appearance-search'
 import { getChatAppearanceSearchEntries } from '@/components/settings/chat-appearance-search'
 import { getChatNamingSearchEntry } from '@/components/settings/chat-naming-search'
@@ -46,6 +47,7 @@ export function buildInterfaceSettingsSections({
             ),
             icon: MessageSquare,
             searchEntries: [
+              getChatPermissionSearchEntry(),
               ...getChatAppearanceSearchEntries(),
               ...(showDesktopOnlySettings ? [getChatNamingSearchEntry()] : [])
             ],

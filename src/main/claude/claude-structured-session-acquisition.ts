@@ -252,6 +252,7 @@ export async function acquireClaudeSession({
       process,
       acquisitionGeneration: mintClaudeAcquisitionGeneration(deps),
       options: launch.savedOptions.options,
+      ...(launch.permissionMode ? { launchPermissionMode: launch.permissionMode } : {}),
       ...(deps.mintLinkId ? { linkId: deps.mintLinkId() } : {}),
       observedAt: deps.now?.() ?? Date.now()
     })

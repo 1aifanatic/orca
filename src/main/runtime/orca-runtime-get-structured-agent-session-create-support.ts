@@ -13,6 +13,8 @@ import type { AgentSessionAttachParams } from '../native-chat/agent-session-wire
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
 import { structuredAgentRuntimeRegistration } from './structured-agent-runtime-registrations'
 import { resolveStructuredLaunchSeedOptions } from '../../shared/native-chat-session-option-defaults'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../shared/agent-chat-permission-mode'
+import { agentChatPermissionModeForSettings } from '../native-chat/agent-chat-permission-mode-setting'
 import { hasPersistedStructuredAgentSessionStore as hasPersistedStructuredAgentSessionStoreOnDisk } from './structured-agent-session-runtime'
 import { ensureStructuredAgentSessionHostUnlessRefused } from './structured-agent-session-host-refusal'
 import { getProfileUserDataPath } from '../orca-profiles/profile-storage-paths'
@@ -102,12 +104,26 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
   /** The saved selection a new chat here starts with. createSupport reports it too, so a client's
    *  picker shows what create will run; one resolver keeps the two from drifting. */
   structuredAgentSessionLaunchSeedOptions(
-    agent: StructuredAgentId
+    agent: StructuredAgentId,
+    forLaunch = false
   ): Record<string, string> | undefined {
-    return resolveStructuredLaunchSeedOptions(
-      this.requireStore().getSettings().nativeChatSessionOptions,
-      agent
-    )
+    const settings = this.requireStore().getSettings()
+    const seeded = resolveStructuredLaunchSeedOptions(settings.nativeChatSessionOptions, agent)
+    const permissionMode = agentChatPermissionModeForSettings(agent, settings)
+    // Claude settles inherited middle modes after discovering support, before its first message.
+    if (
+      forLaunch &&
+      agent === 'claude' &&
+      (permissionMode === 'auto' || permissionMode === 'accept-edits')
+    ) {
+      return seeded
+    }
+    return agent === 'claude' || agent === 'codex'
+      ? {
+          ...seeded,
+          [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: permissionMode
+        }
+      : seeded
   }
 
   protected async resolveStructuredAgentSessionLocation(worktreeSelector: string) {
@@ -225,7 +241,7 @@ export class OrcaRuntimeWithGetStructuredAgentSessionCreateSupport extends OrcaR
     }
     const settings = this.requireStore().getSettings()
     const launchEnv = resolveTuiAgentLaunchEnv(input.agent, settings.agentDefaultEnv)
-    const options = this.structuredAgentSessionLaunchSeedOptions(input.agent)
+    const options = this.structuredAgentSessionLaunchSeedOptions(input.agent, true)
     const location = await this.resolveStructuredAgentSessionLocation(input.worktree)
     const definition = this.requireRegisteredStructuredAgent(input.agent)
     const host = getStructuredAgentSessionHost()

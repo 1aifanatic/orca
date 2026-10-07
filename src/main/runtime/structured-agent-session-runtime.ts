@@ -10,7 +10,6 @@
 // A process whose journal will not open installs none and answers every
 // structured request with the refusal that says why.
 
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
 import { existsSync } from 'node:fs'
 import type { AgentSessionRecord } from '../../shared/agent-session-record'
 import type { AgentSessionResumeTrigger } from '../../shared/agent-session-resume-marker'
@@ -21,7 +20,7 @@ import {
   type InstalledRuntime
 } from './structured-agent-session-runtime-teardown'
 import { AgentSessionRecoveryCapsule } from './agent-session-recovery-capsule'
-import type { CodexStructuredPermissionPolicy } from '../codex/codex-structured-permission-policy'
+import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
 import type { CodexStructuredSessionAdapterDeps } from '../codex/codex-structured-session-adapter'
 import type { ClaudeStructuredSessionAdapterDeps } from '../claude/claude-structured-session-adapter'
 import {
@@ -109,10 +108,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudeLaunchEnv?: () => Promise<Record<string, string>> | Record<string, string>
   /** Required, and asserted at install time — an absent policy must not degrade to a guess. */
   resolveClaudeAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy
-  /** The user's Agent Permissions setting for Claude; absent means prompting. */
-  resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
-  /** The same setting for Codex, as app-server thread policy. */
-  resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
+  /** The host chat default for a session without its own choice. */
+  resolveDefaultPermissionMode?: (agent: 'claude' | 'codex') => AgentChatPermissionMode
   /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
   resolveAgentFullAccess?: (agent: string) => boolean
   /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */
@@ -291,6 +288,7 @@ async function installOnJournal(
   const adapter = new StructuredAgentSessionAdapterRouter(agents, async () => {
     await Promise.all(registrations.map((registration) => registration.adapter.closeAll()))
   })
+  const { resolveDefaultPermissionMode } = deps
   host = new StructuredAgentSessionHost({
     store,
     adapter,
@@ -305,6 +303,12 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
+    ...(resolveDefaultPermissionMode
+      ? {
+          defaultPermissionMode: (agent: string) =>
+            agent === 'claude' || agent === 'codex' ? resolveDefaultPermissionMode(agent) : null
+        }
+      : {}),
     ...(deps.onSessionTabHidden ? { onSessionTabHidden: deps.onSessionTabHidden } : {}),
     ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })

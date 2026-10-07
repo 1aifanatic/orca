@@ -41,7 +41,7 @@ function createCodexIntentRuntime(
       worktree: `id:${workspaceId}`,
       agent: 'codex'
     })
-  return { prepareCodexStructuredLaunch, createIntent }
+  return { prepareCodexStructuredLaunch, createIntent, runtime }
 }
 
 describe('structured Codex folder trust', () => {
@@ -148,7 +148,25 @@ describe('structured agent-session create intent', () => {
       variable: 'CODEX_HOME',
       path: '/accounts/selected/home'
     })
-    expect(intent.options).toEqual({ model: 'gpt-5.6-sol', effort: 'medium', fastMode: 'true' })
+    // A missing chat setting asks, independently of terminal permissions.
+    expect(intent.options).toEqual({
+      model: 'gpt-5.6-sol',
+      effort: 'medium',
+      fastMode: 'true',
+      permissionMode: 'ask'
+    })
+  })
+
+  // A new chat records its own setting, filtered for its agent.
+  it("seeds a new chat with the setting's mode for that agent", async () => {
+    const { createIntent, runtime } = createCodexIntentRuntime({
+      nativeChatPermissionMode: 'ask'
+    })
+
+    expect((await createIntent()).options).toEqual({ permissionMode: 'ask' })
+    expect(runtime.structuredAgentSessionLaunchSeedOptions('claude')).toEqual({
+      permissionMode: 'ask'
+    })
   })
 
   it('resolves the record-less catalog account home read-only, never through launch preparation', async () => {
@@ -232,7 +250,12 @@ describe('structured agent-session create intent', () => {
       variable: 'CLAUDE_CONFIG_DIR',
       path: '/configured/claude-home'
     })
-    expect(intent.options).toEqual({ model: 'opus', effort: 'high', fastMode: 'true' })
+    expect(intent.options).toEqual({
+      model: 'opus',
+      effort: 'high',
+      fastMode: 'true',
+      permissionMode: 'ask'
+    })
     // createSupport reports this same seed, so a paired client's picker shows what create runs.
     expect(runtime.structuredAgentSessionLaunchSeedOptions('claude')).toEqual(intent.options)
   })

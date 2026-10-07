@@ -1,3 +1,4 @@
+import { claudeDefaultPermissionNeedsStartup } from './claude-structured-start-permission-mode'
 import { randomUUID } from 'node:crypto'
 import {
   forgetRetiredWaiter,
@@ -131,6 +132,10 @@ export async function dispatchClaudeTurn(
   }
   if (session.dispatchWaiters.length >= MAX_ACTIVE_DISPATCH_WAITERS) {
     return { state: 'rejected', ...claudeDispatchRejection(agentSessionFailureFact('queueFull')) }
+  }
+  // The inherited middle modes need the model listing before the first message.
+  if (claudeDefaultPermissionNeedsStartup(session)) {
+    await session.startup.settled
   }
   const startupFailure = claudeStartupFailureFact(session)
   if (startupFailure) {
