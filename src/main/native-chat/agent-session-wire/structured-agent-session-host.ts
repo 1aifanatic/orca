@@ -243,9 +243,7 @@ export class StructuredAgentSessionHost {
 
   /** Make one persisted session addressable again; see `structured-agent-session-reveal`. */
   revealSession = (sessionId: string): Promise<StructuredAgentSessionReveal> =>
-    reveal.revealStructuredAgentSession(this.deps, sessionId, (id) =>
-      this.lifetime.conversation(id)
-    )
+    reveal.revealStructuredAgentSession(this.deps, sessionId, this.lifetime.conversation)
 
   private serialize = this.tasks.serialize.bind(this.tasks)
 
