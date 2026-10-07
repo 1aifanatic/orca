@@ -139,8 +139,8 @@ export function pendingAfterTerminalTopologySlice(
 }
 
 /**
- * Holds `entry` over main's pushes while `send` commits it in main, and until the push holding
- * main's reply is applied. Not superseded meanwhile: a later change to the same target owns it.
+ * Holds `entry` over main's pushes while `send` commits it in main, until the push holding main's
+ * reply is applied. A later change to the same target replaces `entry`; this reply then settles nothing.
  */
 export function commitPendingTerminalChange(
   store: Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPane'>,

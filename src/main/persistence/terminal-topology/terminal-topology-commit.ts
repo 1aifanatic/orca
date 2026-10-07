@@ -17,10 +17,7 @@ import {
 import type { DurableProfileStateMutation } from '../loading-store/store-runtime-state'
 import { planTerminalLeafMove, rekeyMovedLeafProfileRecords } from './terminal-leaf-move'
 import { planTerminalLayoutSet } from './terminal-layout-set'
-import {
-  assignWorkspaceSessionPartition,
-  type TerminalSessionPartition
-} from './terminal-topology-membership'
+import { assignWorkspaceSessionPartition } from './terminal-topology-membership'
 
 // The commit boundary for terminal layout (tabs, panes, pane-to-PTY bindings). Wraps the close and
 // the pane move; the close transform still lives in runtime/ and other writers move here later.
@@ -61,12 +58,15 @@ export function setLayout(
     'set_layout',
     () => {
       const planned = planTerminalLayoutSet(context.getSession(hostId), request)
-      return planned.session
-        ? {
-            value: planned.result,
-            rollback: writePartitions([{ hostId, session: planned.session }], context)
-          }
-        : { value: planned.result, persist: false }
+      if (!planned.session) {
+        return { value: planned.result, persist: false }
+      }
+      const rollback = writeRestorable(
+        () => context.getSession(hostId),
+        (value) => context.markDirty(assignWorkspaceSessionPartition(context.state, hostId, value)),
+        planned.session
+      )
+      return { value: planned.result, rollback }
     },
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
@@ -131,21 +131,6 @@ function writeRestorable<V>(read: () => V, write: (value: V) => void, next: V): 
   }
 }
 
-/** Puts each planned partition in place; the returned rollback restores them. */
-function writePartitions(
-  sessions: readonly TerminalSessionPartition[],
-  context: TerminalTopologyCommitContext
-): () => void {
-  const restores = sessions.map(({ hostId, session }) =>
-    writeRestorable(
-      () => context.getSession(hostId),
-      (value) => context.markDirty(assignWorkspaceSessionPartition(context.state, hostId, value)),
-      session
-    )
-  )
-  return () => restores.forEach((restore) => restore())
-}
-
 function commitLeafMove(
   request: TerminalLeafMoveRequest,
   context: TerminalTopologyCommitContext
@@ -158,7 +143,13 @@ function commitLeafMove(
   if (planned.sessions.length === 0) {
     return { value: planned.result, persist: false }
   }
-  const restores = [writePartitions(planned.sessions, context)]
+  const restores = planned.sessions.map(({ hostId, session }) =>
+    writeRestorable(
+      () => context.getSession(hostId),
+      (value) => context.markDirty(assignWorkspaceSessionPartition(state, hostId, value)),
+      session
+    )
+  )
   const rekeyed = rekeyMovedLeafProfileRecords(state, request)
   if (rekeyed.ui) {
     restores.push(
