@@ -38,9 +38,9 @@ vi.mock('../wsl/wsl-runner', () => ({
 
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
-  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
-  type ClaudeProfileRouterSettings
-} from './claude-profile-router'
+  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+} from '../../shared/claude-profile-routing'
+import type { ClaudeProfileRouterSettings } from './claude-profile-router'
 import { ClaudeWslProfileRouter } from './claude-profile-wsl-router'
 
 // Why skipped on Windows: the guest is Linux; these run its scripts and Node bundle as the guest.

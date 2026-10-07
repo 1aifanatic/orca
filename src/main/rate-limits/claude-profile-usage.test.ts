@@ -31,7 +31,7 @@ import {
   resolveClaudeOAuthCredentialReadOptions
 } from './claude-oauth-credentials'
 import { OAuthUsageError } from './claude-oauth-usage-error'
-import { CLAUDE_PROFILE_MISSING_MESSAGE } from '../claude-accounts/claude-profile-router'
+import { CLAUDE_PROFILE_MISSING_MESSAGE } from '../../shared/claude-profile-routing'
 const roots: string[] = []
 afterEach(() => {
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))

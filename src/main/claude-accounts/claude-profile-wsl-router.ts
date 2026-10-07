@@ -2,21 +2,21 @@ import { existsSync } from 'node:fs'
 import { lstat, readFile } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { getAppEnvironment } from '../../shared/app-environment'
-import { CLAUDE_PROFILE_POINTER_ENV } from '../../shared/claude-profile-routing'
+import {
+  CLAUDE_INJECTED_CONFIG_DIR_ENV,
+  CLAUDE_PROFILE_POINTER_ENV,
+  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+} from '../../shared/claude-profile-routing'
 import { WSL_CLAUDE_PROFILE_HELPER_FILENAME } from '../../shared/relay-artifacts'
 import { parseWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
 import { getWslHomeAsync, listRunningWslDistrosAsync } from '../wsl'
 import { ensureWslPinnedRuntime } from '../wsl/wsl-pinned-runtime'
 import { relayBundleCandidates } from '../ssh/relay-bundle-paths'
 import { runWslProcess, type WslSpec } from '../wsl/wsl-runner'
+import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-profile-paths'
 import {
-  CLAUDE_INJECTED_CONFIG_DIR_ENV,
-  claudeProfileMarkerPath,
-  type ClaudeProfileDescriptor
-} from './claude-profile-paths'
-import {
-  CLAUDE_PROFILE_MISSING_MESSAGE,
-  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
+  claudeProfileMissing,
+  claudeProfileSetupFailed,
   type ClaudeProfileRouterSettings
 } from './claude-profile-router'
 import { wslClaudeProfile, wslClaudeProfilePointer } from './claude-profile-wsl-paths'
@@ -110,7 +110,7 @@ export class ClaudeWslProfileRouter {
     ) {
       await this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
         console.warn('[claude-profile] WSL account setup failed:', error)
-        throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+        throw claudeProfileSetupFailed()
       })
     }
     // Why: a missing or stale guest pointer would run the pane's `claude` under another account.
@@ -153,7 +153,7 @@ export class ClaudeWslProfileRouter {
   /** Falling back would run the wrong account. */
   private async assertPresent(distro: string, profile: ClaudeProfileDescriptor | null) {
     if (profile && !(await guestStat(distro, profile.home))?.isDirectory()) {
-      throw new Error(CLAUDE_PROFILE_MISSING_MESSAGE)
+      throw claudeProfileMissing()
     }
   }
 

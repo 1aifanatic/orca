@@ -4,8 +4,8 @@ import { join, resolve as resolvePath } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { agentSessionRecordFixture } from '../../shared/agent-session-record.test-fixture'
 import { claudeProviderHandle } from '../../shared/agent-session-provider-handle-encoding'
+import { CLAUDE_PROFILE_MISSING_MESSAGE } from '../../shared/claude-profile-routing'
 import {
-  CLAUDE_PROFILE_MISSING_MESSAGE,
   ClaudeProfileRouter,
   type ClaudeProfileRouterSettings
 } from '../claude-accounts/claude-profile-router'
@@ -56,7 +56,12 @@ it('launches each acquisition under the current selection, not the account it wa
     providerHandle: claudeProviderHandle('unused', null)
   }
 
-  await expect(resolve({ identity })).rejects.toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
+  // Typed, so the chat names the situation rather than a generic start failure.
+  await expect(resolve({ identity })).rejects.toMatchObject({
+    name: 'AgentSessionPreSpawnError',
+    reason: 'claudeAccountFolderMissing',
+    message: CLAUDE_PROFILE_MISSING_MESSAGE
+  })
 
   const home = join(root, 'claude-profiles', 'a', 'home')
   mkdirSync(home, { recursive: true })

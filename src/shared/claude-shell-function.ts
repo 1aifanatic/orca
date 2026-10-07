@@ -1,3 +1,5 @@
+import { CLAUDE_PROFILE_MISSING_MESSAGE } from './claude-profile-routing'
+
 const authHeaderWords = 'authorization|x-api-key|api-key|bearer'
 const posixAuthHeaderPattern = authHeaderWords
   .split('|')
@@ -5,8 +7,7 @@ const posixAuthHeaderPattern = authHeaderWords
   .join('|')
 const OVERRIDE_NOTE =
   'Orca: CLAUDE_CONFIG_DIR is set in this shell, so the Claude account selected in Orca is not used here.'
-const MISSING_NOTE =
-  "Orca: the selected Claude account's folder is missing. Sign in to it again or choose another account."
+const MISSING_NOTE = `Orca: ${CLAUDE_PROFILE_MISSING_MESSAGE}`
 
 /**
  * `claude` re-reads the which-account file on every launch, so a switch reaches open terminals

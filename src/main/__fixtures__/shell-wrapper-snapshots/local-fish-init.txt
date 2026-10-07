@@ -36,7 +36,7 @@ if test -n "$ORCA_CLAUDE_PROFILE_POINTER"; and test "$__orca_claude_type" = file
       return $status
     end
     if not test -d "$profile"
-      echo "Orca: the selected Claude account's folder is missing. Sign in to it again or choose another account." >&2; return 1
+      echo "Orca: The selected Claude account's folder is missing. Sign in to it again or choose another account." >&2; return 1
     end
     set -l headers
     if string match -irq 'authorization|x-api-key|api-key|bearer' -- "$ANTHROPIC_CUSTOM_HEADERS"

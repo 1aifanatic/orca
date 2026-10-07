@@ -241,7 +241,7 @@ __orca_deferred_init() {
       if [ -z "$__orca_claude_home" ]; then
         ( unset CLAUDE_CONFIG_DIR ORCA_CLAUDE_INJECTED_CONFIG_DIR; command claude "$@" ); return
       fi
-      if [ ! -d "$__orca_claude_home" ]; then printf '%s\n' "Orca: the selected Claude account's folder is missing. Sign in to it again or choose another account." >&2; return 1; fi
+      if [ ! -d "$__orca_claude_home" ]; then printf '%s\n' "Orca: The selected Claude account's folder is missing. Sign in to it again or choose another account." >&2; return 1; fi
       ( unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN AWS_BEARER_TOKEN_BEDROCK; case "${ANTHROPIC_CUSTOM_HEADERS:-}" in *[aA][uU][tT][hH][oO][rR][iI][zZ][aA][tT][iI][oO][nN]*|*[xX]-[aA][pP][iI]-[kK][eE][yY]*|*[aA][pP][iI]-[kK][eE][yY]*|*[bB][eE][aA][rR][eE][rR]*) unset ANTHROPIC_CUSTOM_HEADERS ;; esac; export CLAUDE_CONFIG_DIR="$__orca_claude_home" ORCA_CLAUDE_INJECTED_CONFIG_DIR="$__orca_claude_home"; command claude "$@" )
     }
   fi

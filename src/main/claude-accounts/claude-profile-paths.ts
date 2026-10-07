@@ -1,6 +1,7 @@
 import { lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import * as hostPath from 'node:path'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { CLAUDE_INJECTED_CONFIG_DIR_ENV } from '../../shared/claude-profile-routing'
 import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
@@ -213,9 +214,6 @@ export function assertOutsideDefaultClaudeHomes(
     assertDistinctClaudeProfile(profileHome, userConfigDir)
   }
 }
-
-/** Set beside every CLAUDE_CONFIG_DIR Orca injects, so its own value never reads as the user's. */
-export const CLAUDE_INJECTED_CONFIG_DIR_ENV = 'ORCA_CLAUDE_INJECTED_CONFIG_DIR'
 
 /** The user's own CLAUDE_CONFIG_DIR (their System default), or undefined for `~/.claude`. */
 export function readUserClaudeConfigDir(env: NodeJS.ProcessEnv): string | undefined {

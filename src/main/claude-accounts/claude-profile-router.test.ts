@@ -15,10 +15,9 @@ import type { ClaudeProfileSetupReport } from './claude-profile-setup'
 import { claudeProfileMarkerPath, type ClaudeProfileDescriptor } from './claude-profile-paths'
 import {
   CLAUDE_PROFILE_MISSING_MESSAGE,
-  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE,
-  ClaudeProfileRouter,
-  type ClaudeProfileRouterSettings
-} from './claude-profile-router'
+  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+} from '../../shared/claude-profile-routing'
+import { ClaudeProfileRouter, type ClaudeProfileRouterSettings } from './claude-profile-router'
 import {
   claudeProfileHistoryDirs,
   installClaudeProfileRouter
@@ -133,7 +132,10 @@ describe('ClaudeProfileRouter', () => {
     const refused = f.router.prepareLaunch()
     await new Promise((resolve) => setTimeout(resolve, 10))
     f.setup.settle()
-    await expect(refused).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    await expect(refused).rejects.toMatchObject({
+      reason: 'claudeAccountSetupFailed',
+      message: CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+    })
 
     // Set up once and nothing running: launches stop waiting.
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })

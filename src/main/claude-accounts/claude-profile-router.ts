@@ -2,13 +2,18 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
-import { CLAUDE_PROFILE_POINTER_ENV } from '../../shared/claude-profile-routing'
+import {
+  CLAUDE_INJECTED_CONFIG_DIR_ENV,
+  CLAUDE_PROFILE_MISSING_MESSAGE,
+  CLAUDE_PROFILE_POINTER_ENV,
+  CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
+} from '../../shared/claude-profile-routing'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { probeClaudeCliVersion } from '../claude/claude-hook-event-versions'
 import { writeFileAtomically } from '../codex-accounts/fs-utils'
 import { resolveClaudeCommand } from '../codex-cli/command'
+import { AgentSessionPreSpawnError } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import {
-  CLAUDE_INJECTED_CONFIG_DIR_ENV,
   claudeProfileMarkerPath,
   describeClaudeProfile,
   type ClaudeProfileDescriptor,
@@ -35,12 +40,6 @@ export type ClaudeProfileRouterSettings = Pick<
   | 'agentStatusHooksEnabled'
   | 'disabledTuiAgents'
 >
-
-export const CLAUDE_PROFILE_SETUP_FAILED_MESSAGE =
-  'The selected Claude account could not be set up. Try again or choose another account.'
-
-export const CLAUDE_PROFILE_MISSING_MESSAGE =
-  "The selected Claude account's folder is missing. Sign in to it again or choose another account."
 
 /**
  * Routes this host's Claude launches to the selected account's folder. Settings own the selection;
@@ -80,7 +79,7 @@ export class ClaudeProfileRouter {
   selectedHome(): string | null {
     const home = this.selectedProfile()?.home ?? null
     if (home !== null && !isDirectory(home)) {
-      throw new Error(CLAUDE_PROFILE_MISSING_MESSAGE)
+      throw claudeProfileMissing()
     }
     return home
   }
@@ -113,7 +112,7 @@ export class ClaudeProfileRouter {
     ) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
-        throw new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+        throw claudeProfileSetupFailed()
       }
     }
     return this.preparation()
@@ -220,4 +219,17 @@ export class ClaudeProfileRouter {
   accountHomes(): string[] {
     return listClaudeProfileHomes(this.args.dataRoot)
   }
+}
+
+// Typed so a chat names the situation; a terminal reads the same message.
+export function claudeProfileMissing(): AgentSessionPreSpawnError {
+  return new AgentSessionPreSpawnError(new Error(CLAUDE_PROFILE_MISSING_MESSAGE), {
+    reason: 'claudeAccountFolderMissing'
+  })
+}
+
+export function claudeProfileSetupFailed(): AgentSessionPreSpawnError {
+  return new AgentSessionPreSpawnError(new Error(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE), {
+    reason: 'claudeAccountSetupFailed'
+  })
 }
