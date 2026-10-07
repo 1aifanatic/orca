@@ -20,6 +20,8 @@ type MacDaemonLaunchOptions = Omit<DaemonChildSpawnOptions, 'forkEntryPath' | 'r
 const BOOTSTRAP_TIMEOUT_MS = 10_000
 const STARTUP_TIMEOUT_MS = 10_000
 const JOB_EXIT_CHECK_INTERVAL_MS = 500
+/** Every packaged build's `appId` (`config/electron-builder.config.cjs`). */
+const ORCA_BUNDLE_IDENTIFIER = 'com.stablyai.orca'
 
 /** No job from this attempt can still claim the endpoint, so the app's own fork launcher may run. */
 export class MacDaemonStableLaunchUnavailableError extends Error {
@@ -51,6 +53,8 @@ function buildMacDaemonLaunchJob(
     RunAtLoad: true,
     KeepAlive: false,
     AbandonProcessGroup: true,
+    // A plist job outside SMAppService names its app here so Local Network access resolves to Orca.
+    AssociatedBundleIdentifiers: [ORCA_BUNDLE_IDENTIFIER],
     ProcessType: 'Interactive',
     StandardOutPath: '/dev/null',
     StandardErrorPath: '/dev/null'

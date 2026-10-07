@@ -135,6 +135,8 @@ it('launches the stable main executable and leaves no inherited credentials on d
       join(state.root, 'runtime', 'Orca.app', 'Contents', 'Resources', 'daemon-entry.js')
     ]),
     KeepAlive: false,
+    // Local Network access for a plist-launched job resolves through its associated app.
+    AssociatedBundleIdentifiers: ['com.stablyai.orca'],
     EnvironmentVariables: { ELECTRON_RUN_AS_NODE: '1', ORCA_TEST_SECRET: 'test-value' }
   })
   expect(JSON.stringify(job)).not.toContain('NODE_CHANNEL_FD')

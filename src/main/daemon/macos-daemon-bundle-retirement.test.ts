@@ -86,29 +86,34 @@ function launchServicesCalls(): (readonly string[])[] {
     .map(([spec]) => spec.args ?? [])
 }
 
-it('unregisters a retired copy from LaunchServices before deleting it', async () => {
-  const directory = await mkdtemp(join(root, 'runtime-'))
-  const bundle = join(directory, 'Orca.app')
-  await mkdir(bundle, { recursive: true })
-  await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', true)
-  let existedAtUnregister = false
-  run.mockImplementation(async (spec) => {
-    if (spec.program === LSREGISTER) {
-      existedAtUnregister = await access(bundle).then(
-        () => true,
-        () => false
-      )
-      return { ...result, code: 0 }
-    }
-    return spec.args?.[0] === 'print'
-      ? { ...result, code: 113, stderr: 'Could not find service "owned"' }
-      : result
-  })
-  await retireAbandonedMacDaemonBundles(root)
-  await expect(access(directory)).rejects.toThrow()
-  expect(launchServicesCalls()).toEqual([['-u', bundle]])
-  expect(existedAtUnregister).toBe(true)
-})
+it.each([
+  { layout: 'current', bundle: ['app.noindex', 'Orca.app'] },
+  { layout: 'pre-noindex', bundle: ['Orca.app'] }
+])(
+  'unregisters a retired $layout copy from LaunchServices before deleting it',
+  async ({ bundle }) => {
+    const directory = await mkdtemp(join(root, 'runtime-'))
+    await mkdir(join(directory, ...bundle), { recursive: true })
+    await writeMacDaemonJobRecord(directory, 'com.stablyai.orca.terminal.owned', true)
+    let existedAtUnregister = false
+    run.mockImplementation(async (spec) => {
+      if (spec.program === LSREGISTER) {
+        existedAtUnregister = await access(join(directory, ...bundle)).then(
+          () => true,
+          () => false
+        )
+        return { ...result, code: 0 }
+      }
+      return spec.args?.[0] === 'print'
+        ? { ...result, code: 113, stderr: 'Could not find service "owned"' }
+        : result
+    })
+    await retireAbandonedMacDaemonBundles(root)
+    await expect(access(directory)).rejects.toThrow()
+    expect(launchServicesCalls()).toEqual([['-u', join(directory, ...bundle)]])
+    expect(existedAtUnregister).toBe(true)
+  }
+)
 
 it('deletes a retired copy even when LaunchServices cannot unregister it', async () => {
   const directory = await runtime()

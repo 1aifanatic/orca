@@ -15,14 +15,16 @@ protected files keeps working after its old executable is deleted.
 So a packaged macOS GUI app starts its daemon from a private copy that the updater never touches:
 
 - `macos-daemon-bundle.ts` copies the whole bundle the running main process executes from (APFS
-  clone, regular copy otherwise) into `userData/daemon-host/macos/runtime-*`, then
+  clone, regular copy otherwise) into `userData/daemon-host/macos/runtime-*/app.noindex`, then
   requires `codesign --verify --deep --strict` to pass and the designated requirement to match the
   source.
   A partial copy carries neither the signature nor the frameworks the daemon needs.
 - `macos-daemon-launchd.ts` runs the copy's main executable in Node mode as a unique, non-persistent
   launchd job, so the daemon has Orca's own identity rather than the UI process's replaceable path.
   The job file is 0600 and deleted right after bootstrap, because the environment may hold
-  credentials. Readiness is the normal authenticated handshake, fenced by the launch nonce.
+  credentials. It sets `AssociatedBundleIdentifiers` to `com.stablyai.orca`, which is how a launchd
+  job not installed through SMAppService names the app it belongs to for Local Network access.
+  Readiness is the normal authenticated handshake, fenced by the launch nonce.
 
 Node servers, SSH hosts, unpackaged builds, Linux and Windows keep the fork launcher. Adopting an
 existing daemon never copies. Telemetry reports a daemon started this way as
@@ -54,19 +56,21 @@ one background collection (one at a time per process) that retires a copy only w
 
 Any timeout, permission error, warning or truncated output keeps the copy. Explicit shutdown
 unregisters the job, then applies rule 3. Cleanup never reads sockets, tokens or PID records.
+Collection matches the directory, not the bundle inside it, so copies made before the
+`app.noindex` folder (`runtime-*/Orca.app`) retire, and classify as `stable-copy`, the same way.
 
-## LaunchServices
+## LaunchServices and Spotlight
 
-A copy is a full app bundle, so macOS can register it as another `com.stablyai.orca` that claims
-`orca:` links and Markdown/CSV files. While `/Applications/Orca.app` is registered it wins; without
-it a registered copy becomes the default handler. Retirement runs `lsregister -u` on each bundle
-before deleting it, so deleted copies leave no entry.
+A copy is a full app bundle, so Spotlight would list it as a second Orca and macOS could register
+it as another `com.stablyai.orca` that claims `orca:` links and Markdown/CSV files. Copies sit in
+a `.noindex` folder, which Spotlight skips, and Orca never registers them. Starting the daemon
+through launchd leaves no record, but another process running the copy's executable directly can
+make macOS register it, so retirement runs `lsregister -u` on each bundle before deleting it.
 
-Copies are deliberately left indexable and registered while they may run: Local Network access is
-resolved from the signing
-identifier through LaunchServices to the executable's Mach-O UUID, and after an update that
-changes Electron only the copy carries the running daemon's UUID. Unregistering it could cut
-terminals off the local network.
+Local Network access does not depend on LaunchServices: macOS identifies the client by its code
+signature and main-executable UUID, which the clone keeps, and the job's
+`AssociatedBundleIdentifiers` ties it to Orca. Do not register copies explicitly
+(`lsregister -f` or `LSRegisterURL`): that makes them candidates for links and documents.
 
 ## Rollback
 
