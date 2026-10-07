@@ -24,11 +24,13 @@ import {
 } from '../../shared/protocol-version'
 import {
   AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
-  AGENT_LAUNCH_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
 } from '../../shared/agent-launch-runtime-capability'
 import { ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES } from '../../shared/electron-remote-runtime-client-capabilities'
 import { remoteRuntimeClientCapabilities } from '../../shared/remote-runtime-client-capabilities'
 import { supportsAgentLaunch } from '../runtime/rpc/methods/agent-launch'
+import { readsAgentLaunchTabClosed } from '../runtime/rpc/methods/agent-launch-replay'
 import {
   createSupportFollowsHostSetting,
   structuredAgentsReadBy
@@ -72,7 +74,8 @@ const REMOTE_ONLY_BY_DECISION: readonly RuntimeCapability[] = [
 /** Advertised to main and deliberately NOT to a remote host yet. */
 const LOCAL_ONLY_BY_DECISION: readonly RuntimeCapability[] = [
   // Read by the desktop's own launches first; a remote host is told when its launches move over.
-  AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY
+  AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY,
+  AGENT_LAUNCH_TAB_CLOSED_CLIENT_CAPABILITY
 ]
 
 function missingFrom(
@@ -98,6 +101,15 @@ describe('desktop renderer runtime client capabilities', () => {
         )
       })
     ).toBe(false)
+  })
+
+  it('is told a launch ended because the user closed its tab, not that its outcome is unknown', () => {
+    expect(
+      readsAgentLaunchTabClosed({
+        clientKind: 'runtime',
+        clientCapabilities: DESKTOP_RENDERER_RUNTIME_CLIENT_CAPABILITIES
+      })
+    ).toBe(true)
   })
 
   // The desktop routes a launch on its own settings. A paired host answering createSupport from its

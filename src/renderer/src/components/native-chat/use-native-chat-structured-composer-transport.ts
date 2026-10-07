@@ -7,6 +7,7 @@ import type {
 } from './native-chat-composer-types'
 import type { NativeChatStructuredViewProps } from './native-chat-view-types'
 import type { useStructuredAgentSession } from './use-structured-agent-session'
+import type { StructuredAgentSessionQueuedMessagesController } from './use-structured-agent-session-queued-messages'
 
 /** What the composer of a structured chat sends, picks and runs through, from the chat's controller. */
 export function useNativeChatStructuredComposerTransport(args: {
@@ -18,9 +19,10 @@ export function useNativeChatStructuredComposerTransport(args: {
   setOptionPickerRequest: Dispatch<SetStateAction<NativeChatOptionPickerRequest | null>>
   onError: (message: string | null) => void
   onSubmitted: () => void
+  queuedMessages: Pick<StructuredAgentSessionQueuedMessagesController, 'queueHold' | 'queueResume'>
 }): NativeChatStructuredComposerTransport {
   const { props, controller, sendThroughRelaunch, worktreeId, optionPickerRequest } = args
-  const { setOptionPickerRequest, onError, onSubmitted } = args
+  const { setOptionPickerRequest, onError, onSubmitted, queuedMessages } = args
   const acceptsImages = useStructuredAgentAcceptsImages(props.target, props.agent)
   return useMemo((): NativeChatStructuredComposerTransport => {
     const threadGoal = controller.threadGoal
@@ -69,7 +71,9 @@ export function useNativeChatStructuredComposerTransport(args: {
       runtime: props.target.kind === 'local' ? 'local' : 'remote',
       sessionId: props.sessionId,
       runtimeEnvironmentId:
-        props.target.kind === 'local' ? null : (props.target.environmentId ?? null)
+        props.target.kind === 'local' ? null : (props.target.environmentId ?? null),
+      queueHold: queuedMessages.queueHold,
+      queueResume: queuedMessages.queueResume
     }
   }, [
     acceptsImages,
@@ -81,6 +85,7 @@ export function useNativeChatStructuredComposerTransport(args: {
     props.agent,
     props.sessionId,
     props.target,
+    queuedMessages,
     sendThroughRelaunch,
     setOptionPickerRequest
   ])
