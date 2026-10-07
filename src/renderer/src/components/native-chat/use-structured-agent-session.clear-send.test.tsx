@@ -40,6 +40,7 @@ vi.mock('./use-structured-agent-session-read', () => ({
   })
 }))
 
+import { AGENT_SESSION_CONVERSATION_COMMAND_TIMEOUT_MS } from '../../../../shared/agent-session-conversation-command'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { resetStructuredAgentSessionSendsForTests } from './structured-agent-session-message-sender'
 import { structuredAgentSessionSendOut } from './structured-agent-session-pending-sends'
@@ -151,4 +152,70 @@ it('keeps a conversation a /clear moved away from taking no send until the view 
   rerender({ id: 'session-b' })
   expect(structuredAgentSessionSendOut('session-a')).toBe(false)
   expect(result.current.sendOut).toBe(false)
+})
+
+it('gives the old conversation back when its view unmounted before the /clear that moved it answered', async () => {
+  const clears = hostWithAClearOut()
+  const { result, unmount } = view('session-a')
+  act(() => {
+    void result.current.runConversationCommand('clear')
+  })
+  await act(async () => {})
+  unmount()
+  await act(async () => {
+    clears[0].resolve(cleared('session-b'))
+  })
+  expect(structuredAgentSessionSendOut('session-a')).toBe(false)
+  expect(view('session-a').result.current.sendOut).toBe(false)
+})
+
+it('gives the slot back when the host refuses the /clear, or its call fails', async () => {
+  for (const answer of [
+    () => Promise.resolve(CONVERSATION_IN_FLIGHT),
+    () => Promise.reject(new Error('connection closed'))
+  ]) {
+    mocks.call.mockImplementation((_target: unknown, method: string) =>
+      method === 'agentSession.conversationCommand' ? answer() : Promise.resolve(null)
+    )
+    const { result, unmount } = view('session-a')
+    await act(async () => {
+      await result.current.runConversationCommand('clear')
+    })
+    expect(structuredAgentSessionSendOut('session-a')).toBe(false)
+    expect(result.current.sendOut).toBe(false)
+    unmount()
+  }
+})
+
+it('holds nothing for a /compact, which the host runs as a turn with sends queued behind it', async () => {
+  hostWithAClearOut()
+  const { result } = view('session-a')
+  act(() => {
+    void result.current.runConversationCommand('compact')
+  })
+  await act(async () => {})
+  expect(result.current.sendOut).toBe(false)
+})
+
+// The local call has no deadline of its own: a /clear that never answers must not keep Send off.
+it('takes sends again once a /clear that never answers passes its deadline', async () => {
+  vi.useFakeTimers()
+  try {
+    hostWithAClearOut()
+    const { result } = view('session-a')
+    act(() => {
+      void result.current.runConversationCommand('clear')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AGENT_SESSION_CONVERSATION_COMMAND_TIMEOUT_MS - 1)
+    })
+    expect(result.current.sendOut).toBe(true)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(structuredAgentSessionSendOut('session-a')).toBe(false)
+    expect(result.current.sendOut).toBe(false)
+  } finally {
+    vi.useRealTimers()
+  }
 })

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type {
-  AgentSessionConversationCommand,
-  AgentSessionConversationCommandResult
+import {
+  AGENT_SESSION_CONVERSATION_COMMAND_TIMEOUT_MS,
+  type AgentSessionConversationCommand,
+  type AgentSessionConversationCommandResult
 } from '../../../../shared/agent-session-conversation-command'
 import type {
   StructuredAgentSessionWrite,
@@ -13,6 +14,7 @@ import { holdStructuredAgentSessionSends } from './structured-agent-session-pend
  * Sends a conversation command. A /clear keeps the chat's sends out while it runs, as its host
  * refuses them, so text typed meanwhile stays in the box. Once it moves the chat to a new
  * conversation, the old one, which its host also refuses, takes nothing until this view leaves it.
+ * Either way the hold ends by the command's deadline: the local call has none of its own.
  */
 export function useStructuredAgentSessionCommandWrite(
   sessionId: string,
@@ -20,11 +22,13 @@ export function useStructuredAgentSessionCommandWrite(
 ): (
   command: AgentSessionConversationCommand
 ) => Promise<StructuredAgentSessionWriteOutcome<AgentSessionConversationCommandResult>> {
-  const shown = useRef(sessionId)
+  // Null once the view left or unmounted, so a reply that lands later releases its hold.
+  const shown = useRef<string | null>(sessionId)
   const keptHold = useRef<(() => void) | null>(null)
   useEffect(() => {
     shown.current = sessionId
     return () => {
+      shown.current = null
       keptHold.current?.()
       keptHold.current = null
     }
@@ -41,6 +45,7 @@ export function useStructuredAgentSessionCommandWrite(
         return send()
       }
       const release = holdStructuredAgentSessionSends(sessionId)
+      setTimeout(release, AGENT_SESSION_CONVERSATION_COMMAND_TIMEOUT_MS)
       let movedOn = false
       try {
         const outcome = await send()
