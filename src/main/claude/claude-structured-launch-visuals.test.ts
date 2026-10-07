@@ -33,6 +33,7 @@ function launch(options: {
   supports?: (flag: ClaudeCliFlag, launch: unknown, budgetMs?: number) => Promise<boolean>
   launchArgs?: string[]
   env?: Record<string, string>
+  attachmentDirectory?: string
 }) {
   return createClaudeStructuredLaunchResolver({
     store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
@@ -42,6 +43,7 @@ function launch(options: {
     resolveLaunchArgs: () => options.launchArgs ?? [],
     resolveEnv: () => options.env ?? {},
     hasTranscript: async () => false,
+    ...(options.attachmentDirectory ? { attachmentDirectory: options.attachmentDirectory } : {}),
     ...(options.supports ? { cliFlags: { supports: options.supports } } : {}),
     ...(options.prepareVisuals ? { prepareVisuals: options.prepareVisuals } : {})
   })({ identity: IDENTITY })
@@ -59,6 +61,27 @@ describe('a Claude chat launch with inline visuals', () => {
     expect(resolved.options.plugins).toEqual([{ type: 'local', path: VISUALS.skill.pluginDir }])
     expect(resolved.options.additionalDirectories).toEqual(['/shared/notes', VISUALS.folder])
     expect(resolved.env?.[NATIVE_CHAT_VISUALS_DIR_ENV]).toBe(VISUALS.folder)
+  })
+
+  it.each([
+    {
+      name: 'prepared visuals',
+      visuals: VISUALS,
+      directories: ['/shared/notes', '/state/agent-session-attachments', VISUALS.folder]
+    },
+    {
+      name: 'unavailable visuals',
+      visuals: null,
+      directories: ['/shared/notes', '/state/agent-session-attachments']
+    }
+  ])('keeps user folders and attachment access with $name', async ({ visuals, directories }) => {
+    const resolved = await launch({
+      prepareVisuals: async () => visuals,
+      supports: async (flag) => flag === CLAUDE_PLUGIN_DIR_FLAG,
+      launchArgs: ['--add-dir', '/shared/notes'],
+      attachmentDirectory: '/state/agent-session-attachments'
+    })
+    expect(resolved.options.additionalDirectories).toEqual(directories)
   })
 
   it('still grants and names the folder when the CLI cannot load a plugin by path', async () => {
