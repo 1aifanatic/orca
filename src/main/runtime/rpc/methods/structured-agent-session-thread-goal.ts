@@ -13,6 +13,7 @@ import { ThreadGoalParams } from './structured-agent-session-schemas'
 export const STRUCTURED_AGENT_SESSION_THREAD_GOAL_METHODS = [
   defineMethod({
     name: 'agentSession.threadGoal',
+    permission: 'workspace',
     params: ThreadGoalParams,
     handler: async (params, ctx) => requireHost(ctx).changeThreadGoal(callerFor(ctx), params)
   })

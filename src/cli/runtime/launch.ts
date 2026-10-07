@@ -133,6 +133,9 @@ function serveWithElectron(executable: string, args: ServeOrcaAppArgs): Promise<
   if (args.mobilePairing) {
     childArgs.push('--serve-mobile-pairing')
   }
+  if (args.grantDesktopControl) {
+    childArgs.push('--serve-grant-desktop-control')
+  }
   if (args.recipeJson && args.projectRoot) {
     childArgs.push('--serve-recipe-json', '--serve-project-root', args.projectRoot)
   }

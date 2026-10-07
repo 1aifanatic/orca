@@ -70,6 +70,9 @@ export type SshTarget = {
   /** Grace period in seconds before relay shuts down after disconnect.
    *  0 disables expiry. Default: 0 (until reset). Max: 604800 (7 days). */
   relayGracePeriodSeconds?: number
+  /** Lets this host's relayed `orca` CLI control this Orca beyond its own terminals (other hosts,
+   *  orchestration, files). Off by default: the host is a guest, not an owner. */
+  allowRemoteCliControl?: boolean
   /** Set to true after a successful connection that triggered a credential
    *  prompt (passphrase or password). Persisted so startup reconnect can
    *  partition targets into eager (no passphrase) vs deferred (passphrase)

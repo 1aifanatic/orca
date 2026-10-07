@@ -13,6 +13,7 @@ import { AgentsParams } from './structured-agent-session-schemas'
 export const STRUCTURED_AGENT_SESSION_AGENTS_METHODS = [
   defineMethod({
     name: AGENT_SESSION_AGENTS_METHOD,
+    permission: 'workspace',
     params: AgentsParams,
     handler: async (_params, ctx): Promise<AgentSessionAgentsResult> => ({
       agents: (await requireInstalledStructuredHost(ctx))
