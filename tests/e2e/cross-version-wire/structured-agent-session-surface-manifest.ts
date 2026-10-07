@@ -19,6 +19,7 @@ import {
 import {
   SESSION,
   WORKSPACE,
+  THREAD,
   NOW,
   ATTENTION_READ,
   REWIND_METHOD
