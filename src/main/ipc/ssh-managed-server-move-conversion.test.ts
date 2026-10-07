@@ -211,7 +211,7 @@ describe('moving a host whose live relay terminals kept it on the relay', () => 
     await expect(moveSshHostToManagedServer(TARGET.id, deps)).resolves.toMatchObject({
       outcome: 'moved'
     })
-    expect(deps.terminate).toHaveBeenCalledWith(TARGET.id)
+    expect(deps.terminate).toHaveBeenCalledWith(TARGET.id, expect.any(Function))
     const session = stagedSession()
     // No relay PTY id survives, so the tab spawns a fresh shell on the managed server.
     expect(Object.values(session?.tabsByWorktree ?? {}).flat()).toMatchObject([

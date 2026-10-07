@@ -2,6 +2,7 @@
 import { toast } from 'sonner'
 import type { SshManagedServerMoveResult } from '../../../shared/ssh-managed-server-move'
 import { translate } from '@/i18n/i18n'
+import { moveRestartingStoppedTabs } from './ssh-managed-server-move-terminal-tabs'
 
 export function canMoveSshHostToManagedServer(): boolean {
   return typeof window.api.ssh.moveToManagedServer === 'function'
@@ -96,7 +97,9 @@ export function moveSshHostToManagedServer(
   if (running) {
     return running
   }
-  const started = move({ targetId }).finally(() => inFlightMoves.delete(targetId))
+  const started = moveRestartingStoppedTabs(targetId, () => move({ targetId })).finally(() =>
+    inFlightMoves.delete(targetId)
+  )
   inFlightMoves.set(targetId, started)
   return started
 }

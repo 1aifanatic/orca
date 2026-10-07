@@ -3,6 +3,7 @@ import {
   type SshTerminateSessionsResult
 } from '../../shared/ssh-types'
 import { SSH_TERMINATE_RECONNECT_REQUIRED } from '../../shared/constants'
+import { UNVERIFIED_PROCESS_EXIT_CODE } from '../../shared/terminal-exit-cause'
 import { isSshPtyNotFoundError, SshPtyHeldByPreviousRelayError } from '../providers/ssh-pty-errors'
 import { toAppSshPtyId, toRelaySshPtyId } from '../providers/ssh-pty-id'
 import { isReattachHeldByPreviousRelay } from '../ssh/ssh-previous-relay-terminals'
@@ -14,13 +15,23 @@ import {
   getSshPtyProvider
 } from './pty'
 import { invalidateConnectAttempt } from './ssh-connect-attempt-registry'
-import { persistedStore } from './ssh-ipc-context'
+import { currentRuntime, persistedStore } from './ssh-ipc-context'
+import { ptyIncarnationById } from './pty/provider/ownership-state'
+import type { TerminalIntentionalStopKind } from '../runtime/terminal-intentional-stops'
 import { teardownSshTargetTransport } from './ssh-session-teardown'
 import { runTargetLifecycle } from './ssh-target-lifecycle-queue'
 
+export type SshTerminateSessionsOptions = {
+  /** Records each stop as main's own, so every viewer keeps the tab through its exit. */
+  intentionalStop?: TerminalIntentionalStopKind
+  /** Each shell this call stopped, reported even when a later one fails. */
+  onStopped?: (appPtyId: string) => void
+}
+
 /** Stops every relay terminal on the target and closes its transport (`ssh:terminateSessions`). */
 export async function terminateSshTargetSessions(
-  targetId: string
+  targetId: string,
+  options: SshTerminateSessionsOptions = {}
 ): Promise<SshTerminateSessionsResult> {
   invalidateConnectAttempt(targetId)
   // Why (#12661): an offline sweep tears down local transport only. The caller must be able to tell
@@ -75,7 +86,9 @@ export async function terminateSshTargetSessions(
     const shutdownResults = provider
       ? await Promise.allSettled(
           ptyIds.map(({ appPtyId }) =>
-            provider.shutdown(appPtyId, { immediate: true, keepHistory: false })
+            shutdownAs(options, appPtyId, () =>
+              provider.shutdown(appPtyId, { immediate: true, keepHistory: false })
+            )
           )
         )
       : []
@@ -104,6 +117,10 @@ export async function terminateSshTargetSessions(
       clearProviderPtyState(appPtyId)
       deletePtyOwnership(appPtyId)
       persistedStore!.markSshRemotePtyLease(targetId, relayPtyId, 'terminated')
+      reportStoppedPtyToRuntime(appPtyId)
+      if (result.status === 'fulfilled') {
+        options.onStopped?.(appPtyId)
+      }
       outcome = { ...outcome, terminated: outcome.terminated + 1 }
     }
     if (shutdownFailures.length > 0) {
@@ -135,4 +152,38 @@ async function listRelayPtyIdsToStop(
     listPreviousRelayPtyIds(targetId).catch(() => null)
   ])
   return [...current, ...(previous ?? [])]
+}
+
+/** Marks exactly this shell, from just before its shutdown, so earlier exits close normally. */
+async function shutdownAs(
+  options: SshTerminateSessionsOptions,
+  appPtyId: string,
+  shutdown: () => Promise<void>
+): Promise<void> {
+  const settle = options.intentionalStop
+    ? currentRuntime?.intentionalPtyStops.mark(
+        appPtyId,
+        options.intentionalStop,
+        ptyIncarnationById.get(appPtyId) ?? null
+      )
+    : undefined
+  let stopped = false
+  try {
+    await shutdown()
+    stopped = true
+  } finally {
+    settle?.(stopped)
+  }
+}
+
+/**
+ * Why: a relay that hangs up after its last shell stops never sends that exit, which left
+ * `terminal list` showing the stopped shell as connected. The relay accepting the kill is not an
+ * observed exit, so this is the stop sentinel, and a real exit already reported is kept.
+ */
+function reportStoppedPtyToRuntime(appPtyId: string): void {
+  if (currentRuntime?.getPtyLivenessVerdict(appPtyId)?.status === 'exited') {
+    return
+  }
+  currentRuntime?.onPtyExit(appPtyId, UNVERIFIED_PROCESS_EXIT_CODE)
 }

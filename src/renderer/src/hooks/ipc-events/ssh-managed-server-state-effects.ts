@@ -1,7 +1,11 @@
 /** What a change in an SSH host's server means for the rest of the app. */
 import { toast } from 'sonner'
 import type { SshConnectionState } from '../../../../shared/ssh-types'
-import { getRepoExecutionHostId, toRuntimeExecutionHostId } from '../../../../shared/execution-host'
+import {
+  getRepoExecutionHostId,
+  toRuntimeExecutionHostId,
+  toSshExecutionHostId
+} from '../../../../shared/execution-host'
 import { translate } from '@/i18n/i18n'
 import {
   canMoveSshHostToManagedServer,
@@ -83,6 +87,20 @@ async function loadManagedServerCatalogs(targetId: string, environmentId: string
     await Promise.all(repos.map((repo) => store.fetchWorktrees(repo.id, { executionHostId })))
   }
   useAppStore.setState((state) => withoutConvertedSshHostRows(state, targetId))
+  rehomeActiveWorkspace(targetId, environmentId)
+}
+
+/** Why: an active workspace left on the SSH host keeps showing panes that dial the stopped relay. */
+function rehomeActiveWorkspace(targetId: string, environmentId: string): void {
+  const state = useAppStore.getState()
+  const runtimeHostId = toRuntimeExecutionHostId(environmentId)
+  if (
+    state.activeWorktreeId &&
+    state.activeWorkspaceExecutionHostId === toSshExecutionHostId(targetId) &&
+    state.getKnownWorktreeById(state.activeWorktreeId, runtimeHostId)
+  ) {
+    state.setActiveWorktree(state.activeWorktreeId, runtimeHostId)
+  }
 }
 
 /** Main marks only the first live-terminals stop per host per app version with `offerMove`. */

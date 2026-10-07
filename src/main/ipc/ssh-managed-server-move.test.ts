@@ -22,7 +22,7 @@ function deps(options: { unverifiable?: number; afterConnect?: SshManagedServerS
   return {
     calls,
     getTarget: vi.fn(() => target),
-    terminate: vi.fn(async () => {
+    terminate: vi.fn(async (_targetId: string, _onStopped: (appPtyId: string) => void) => {
       calls.push('terminate')
       return { terminated: 2, unverifiable: options.unverifiable ?? 0 }
     }),
@@ -39,6 +39,20 @@ function deps(options: { unverifiable?: number; afterConnect?: SshManagedServerS
 }
 
 describe('moving an SSH host to its managed server on request', () => {
+  it('names the shells it stopped, even when a later stop fails, so only those tabs restart', async () => {
+    const move = deps({ afterConnect: live(1) })
+    move.terminate.mockImplementationOnce(async (_targetId, onStopped) => {
+      onStopped('ssh:ssh-1@@pty-1')
+      throw new Error('Failed to terminate SSH host sessions: pty-2: mux down')
+    })
+    await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({
+      outcome: 'refused',
+      verdict: 'live',
+      terminals: 1,
+      stoppedPtyIds: ['ssh:ssh-1@@pty-1']
+    })
+  })
+
   it('stops the relay terminals, then lets the reconnect prove them exited and convert', async () => {
     const move = deps()
     await expect(moveSshHostToManagedServer('ssh-1', move)).resolves.toEqual({

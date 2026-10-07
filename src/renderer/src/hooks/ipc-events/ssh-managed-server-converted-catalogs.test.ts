@@ -116,6 +116,57 @@ describe('a host that just moved to its managed server', () => {
     expect(state.folderWorkspaces.map((entry) => entry.executionHostId)).toEqual(['runtime:env-1'])
   })
 
+  it('moves the open workspace onto the server so its panes stop dialing the stopped relay', async () => {
+    store.setState({
+      worktreesByRepo: {
+        'repo-1': [
+          makeWorktree({
+            id: worktreeId,
+            repoId: 'repo-1',
+            path: '/root/repo',
+            hostId: 'ssh:ssh-1'
+          }),
+          makeWorktree({
+            id: worktreeId,
+            repoId: 'repo-1',
+            path: '/root/repo',
+            hostId: 'runtime:env-2'
+          })
+        ]
+      },
+      activeRepoId: 'repo-1',
+      activeWorktreeId: worktreeId,
+      activeWorkspaceExecutionHostId: 'ssh:ssh-1'
+    })
+    applySshManagedServerTransition('ssh-1', undefined, {
+      kind: 'managed',
+      environmentId: 'env-2'
+    })
+
+    await vi.waitFor(() =>
+      expect(store.getState().activeWorkspaceExecutionHostId).toBe('runtime:env-2')
+    )
+    expect(store.getState().activeWorktreeId).toBe(worktreeId)
+  })
+
+  it('leaves a workspace open on another host where it is', async () => {
+    store.setState({
+      activeRepoId: 'repo-1',
+      activeWorktreeId: worktreeId,
+      activeWorkspaceExecutionHostId: 'ssh:ssh-9'
+    })
+    applySshManagedServerTransition('ssh-1', undefined, {
+      kind: 'managed',
+      environmentId: 'env-3'
+    })
+    await vi.waitFor(() =>
+      expect(store.getState().repos.map((entry) => entry.executionHostId)).toEqual([
+        'runtime:env-3'
+      ])
+    )
+    expect(store.getState().activeWorkspaceExecutionHostId).toBe('ssh:ssh-9')
+  })
+
   it('loads once per server, not on every start or wake of it', async () => {
     const managed = { kind: 'managed', environmentId: 'env-1' } as const
     applySshManagedServerTransition('ssh-2', undefined, managed)
