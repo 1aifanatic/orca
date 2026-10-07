@@ -11,6 +11,12 @@ import { captureDirectSshMutationExpectation } from '@/lib/ssh-mutation-expectat
 import { parseExecutionHostId, toRuntimeExecutionHostId } from '../../../../shared/execution-host'
 import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
 import { resolveNativeChatTabDirectory } from './native-chat-tab-directory'
+import {
+  nativeChatStateFromSelection,
+  selectNativeChatScopedTabSlice,
+  type NativeChatScopedTabSlice,
+  type NativeChatTabScope
+} from './native-chat-tab-scope'
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -35,22 +41,30 @@ type OwnerState = Pick<
   | 'activeWorktreeId'
   | 'activeWorkspaceExecutionHostId'
   | 'restoredRuntimeHostIdByWorkspaceSessionKey'
-  | 'getKnownWorktreeById'
   | 'tabsByWorktree'
   | 'unifiedTabsByWorktree'
 >
 
-// Keep the subscription limited to fields that can change image ownership. The
-// derived context is computed during render, after Zustand has filtered updates.
-export function selectNativeChatImageOwnerState(state: AppState): OwnerState {
+type OwnerSelection = Omit<
+  OwnerState,
+  'tabsByWorktree' | 'unifiedTabsByWorktree' | 'structuredSessionLaunchDirectoryByTabId'
+> &
+  NativeChatScopedTabSlice
+
+// Keep the subscription limited to fields that can change image ownership, and to this chat's own
+// tab bucket and pin. The derived context is computed during render, after Zustand has filtered updates.
+export function selectNativeChatImageOwnerState(
+  state: AppState,
+  scope: NativeChatTabScope
+): OwnerSelection {
   return {
+    ...selectNativeChatScopedTabSlice(state, scope),
     settings: state.settings,
     repos: state.repos,
     worktreesByRepo: state.worktreesByRepo,
     detectedWorktreesByRepo: state.detectedWorktreesByRepo,
     folderWorkspaces: state.folderWorkspaces,
     floatingWorkspacePath: state.floatingWorkspacePath,
-    structuredSessionLaunchDirectoryByTabId: state.structuredSessionLaunchDirectoryByTabId,
     projectGroups: state.projectGroups,
     runtimeEnvironments: state.runtimeEnvironments,
     runtimeEnvironmentCatalogHydrated: state.runtimeEnvironmentCatalogHydrated,
@@ -59,10 +73,7 @@ export function selectNativeChatImageOwnerState(state: AppState): OwnerState {
     sshStateByEnvironment: state.sshStateByEnvironment,
     activeWorktreeId: state.activeWorktreeId,
     activeWorkspaceExecutionHostId: state.activeWorkspaceExecutionHostId,
-    restoredRuntimeHostIdByWorkspaceSessionKey: state.restoredRuntimeHostIdByWorkspaceSessionKey,
-    getKnownWorktreeById: state.getKnownWorktreeById,
-    tabsByWorktree: state.tabsByWorktree,
-    unifiedTabsByWorktree: state.unifiedTabsByWorktree
+    restoredRuntimeHostIdByWorkspaceSessionKey: state.restoredRuntimeHostIdByWorkspaceSessionKey
   }
 }
 
@@ -108,9 +119,9 @@ function stableSettingsForRoute(
 
 export function resolveNativeChatImageRuntimeContext(
   state: OwnerState,
-  tabId: string
+  scope: NativeChatTabScope
 ): NativeChatImageRuntimeContext {
-  const linkContext = resolveNativeChatFileLinkContext(state, tabId)
+  const linkContext = resolveNativeChatFileLinkContext(state, scope)
   if (!linkContext) {
     return null
   }
@@ -129,7 +140,7 @@ export function resolveNativeChatImageRuntimeContext(
   }
   const worktreePath = resolveNativeChatTabDirectory(
     state,
-    tabId,
+    scope.tabId,
     linkContext.worktreeId,
     executionHostId
   )
@@ -166,7 +177,20 @@ export function resolveNativeChatImageRuntimeContext(
   return context
 }
 
-export function useNativeChatImageRuntimeContext(tabId: string): NativeChatImageRuntimeContext {
-  const ownerState = useAppStore(useShallow(selectNativeChatImageOwnerState))
-  return useMemo(() => resolveNativeChatImageRuntimeContext(ownerState, tabId), [ownerState, tabId])
+export function useNativeChatImageRuntimeContext(
+  scope: NativeChatTabScope
+): NativeChatImageRuntimeContext {
+  const { kind, worktreeId, tabId } = scope
+  const ownerSelection = useAppStore(
+    useShallow((state: AppState) =>
+      selectNativeChatImageOwnerState(state, { kind, worktreeId, tabId })
+    )
+  )
+  return useMemo(() => {
+    const memoScope = { kind, worktreeId, tabId }
+    return resolveNativeChatImageRuntimeContext(
+      nativeChatStateFromSelection(memoScope, ownerSelection),
+      memoScope
+    )
+  }, [kind, ownerSelection, tabId, worktreeId])
 }

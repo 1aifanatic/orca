@@ -14,6 +14,7 @@ export default function NativeChatView(props: NativeChatViewProps): React.JSX.El
     <NativeChatPaneFileDropSurface className="relative flex h-full min-h-0 min-w-0 w-full">
       {props.mode === 'structured' ? (
         <NativeChatVisualOwnerProvider
+          worktreeId={props.worktreeId}
           key={props.sessionId}
           target={props.target}
           sessionId={props.sessionId}
@@ -30,6 +31,7 @@ export default function NativeChatView(props: NativeChatViewProps): React.JSX.El
 
 function NativeChatBridgeView({
   terminalTabId,
+  worktreeId,
   isVisible,
   isFocusedGroup,
   paneKey: preferredPaneKey,
@@ -63,6 +65,7 @@ function NativeChatBridgeView({
           isFocusedGroup={isFocusedGroup}
           targetPtyId={targetPtyId}
           terminalTabId={terminalTabId}
+          worktreeId={worktreeId}
           ownsTabWideLaunchDraft={ownsTabWideLaunchDraft}
           onSwitchToTerminal={onSwitchToTerminal}
           readTerminalScreen={readTerminalScreen}

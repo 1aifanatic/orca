@@ -6,6 +6,7 @@ import {
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '@/store/types'
 import { resolveNativeChatTabDirectory } from './native-chat-tab-directory'
+import { isNativeChatTabScopeCurrent, type NativeChatTabScope } from './native-chat-tab-scope'
 
 export type NativeChatFileLinkContext = {
   worktreeId: string
@@ -19,75 +20,41 @@ export type NativeChatResolvedFileLink = {
   column: number | null
 }
 
-type NativeChatFileLinkState = Pick<
+export type NativeChatFileLinkState = Pick<
   AppState,
+  | 'detectedWorktreesByRepo'
   | 'folderWorkspaces'
-  | 'getKnownWorktreeById'
+  | 'floatingWorkspacePath'
   | 'projectGroups'
   | 'repos'
   | 'settings'
   | 'tabsByWorktree'
+  | 'unifiedTabsByWorktree'
   | 'worktreesByRepo'
 > & {
-  unifiedTabsByWorktree?: AppState['unifiedTabsByWorktree']
-  floatingWorkspacePath?: AppState['floatingWorkspacePath']
   structuredSessionLaunchDirectoryByTabId?: AppState['structuredSessionLaunchDirectoryByTabId']
 }
 
-export function findTerminalTabWorktreeId(
-  tabsByWorktree: NativeChatFileLinkState['tabsByWorktree'],
-  terminalTabId: string
-): string | null {
-  for (const [worktreeId, tabs] of Object.entries(tabsByWorktree)) {
-    // Why: tabsByWorktree stores TerminalTab records; unified tabs carry
-    // entityId, but the terminal owner lookup must use the backing tab id.
-    if (tabs.some((tab) => tab.id === terminalTabId)) {
-      return worktreeId
-    }
-  }
-  return null
-}
-
-function findStructuredTabWorktreeId(
-  unifiedTabsByWorktree: NativeChatFileLinkState['unifiedTabsByWorktree'],
-  tabId: string
-): string | null {
-  for (const [worktreeId, tabs] of Object.entries(unifiedTabsByWorktree ?? {})) {
-    if (tabs.some((tab) => tab.id === tabId && tab.contentType === 'agent-session')) {
-      return worktreeId
-    }
-  }
-  return null
-}
-
-/** The workspace that owns a native chat tab, independent of whether its directory is known. */
-export function findNativeChatTabOwnerWorktreeId(
-  state: Pick<NativeChatFileLinkState, 'tabsByWorktree' | 'unifiedTabsByWorktree'>,
-  tabId: string
-): string | null {
-  return (
-    findTerminalTabWorktreeId(state.tabsByWorktree, tabId) ??
-    findStructuredTabWorktreeId(state.unifiedTabsByWorktree, tabId)
-  )
-}
-
+/**
+ * Starts from the chat's own workspace; a tab missing from that workspace's bucket has no context.
+ * Runtime owner and directory both come from `state`, so a result never mixes two snapshots.
+ */
 export function resolveNativeChatFileLinkContext(
   state: NativeChatFileLinkState,
-  terminalTabId: string
+  scope: NativeChatTabScope
 ): NativeChatFileLinkContext | null {
-  const worktreeId = findNativeChatTabOwnerWorktreeId(state, terminalTabId)
-  if (!worktreeId) {
+  if (!isNativeChatTabScopeCurrent(state, scope)) {
     return null
   }
-  const worktreePath = resolveNativeChatTabDirectory(state, terminalTabId, worktreeId)
+  const worktreePath = resolveNativeChatTabDirectory(state, scope.tabId, scope.worktreeId)
   if (!worktreePath) {
     return null
   }
 
   return {
-    worktreeId,
+    worktreeId: scope.worktreeId,
     worktreePath,
-    runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+    runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(state, scope.worktreeId)
   }
 }
 

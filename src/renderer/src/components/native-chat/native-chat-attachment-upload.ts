@@ -22,9 +22,11 @@ import type { AppState } from '@/store/types'
 import { reportTerminalDropUploadSkipsAndFailures } from '../terminal-pane/terminal-drop-upload-report'
 import { NATIVE_FILE_DROP_MAX_PATHS } from '../../../../shared/native-file-drop'
 import {
-  findTerminalTabWorktreeId,
-  resolveNativeChatFileLinkContext
+  resolveNativeChatFileLinkContext,
+  type NativeChatFileLinkState
 } from './native-chat-file-link'
+import { isNativeChatTabScopeCurrent, type NativeChatTabScope } from './native-chat-tab-scope'
+import { findKnownWorktreeById } from '@/store/slices/worktrees/listing/detected-worktree-meta'
 import {
   captureDirectSshMutationExpectation,
   type DirectSshMutationExpectation
@@ -57,36 +59,20 @@ export type NativeChatAttachmentOwner =
    *  agent would silently receive paths it cannot read (see #6648). */
   | { kind: 'not-ready' }
 
-type NativeChatAttachmentOwnerState = Pick<
-  AppState,
-  | 'folderWorkspaces'
-  | 'getKnownWorktreeById'
-  | 'projectGroups'
-  | 'repos'
-  | 'settings'
-  | 'sshConnectionStates'
-  | 'tabsByWorktree'
-  | 'worktreesByRepo'
-> & { floatingWorkspacePath?: AppState['floatingWorkspacePath'] }
+type NativeChatAttachmentOwnerState = NativeChatFileLinkState &
+  Pick<AppState, 'sshConnectionStates'>
 
 /** Resolve who owns the composer's backing worktree at attach time. Mirrors the
- *  terminal drop resolver's order: runtime owner first, then SSH vs local. */
+ *  terminal drop resolver's order: runtime owner first, then SSH vs local. A tab
+ *  no longer in its supplied workspace is not-ready: its new location is not searched. */
 export function resolveNativeChatAttachmentOwner(
   state: NativeChatAttachmentOwnerState,
-  terminalTabId: string
+  scope: NativeChatTabScope
 ): NativeChatAttachmentOwner {
-  const worktreeId = findTerminalTabWorktreeId(state.tabsByWorktree, terminalTabId)
-  if (!worktreeId) {
+  if (!isNativeChatTabScopeCurrent(state, scope)) {
     return { kind: 'not-ready' }
   }
-  return resolveNativeChatAttachmentOwnerForWorktree(state, worktreeId, terminalTabId)
-}
-
-export function resolveNativeChatAttachmentOwnerForWorktree(
-  state: NativeChatAttachmentOwnerState,
-  worktreeId: string,
-  terminalTabId?: string
-): NativeChatAttachmentOwner {
+  const { worktreeId } = scope
   if (getRuntimeEnvironmentIdForWorktree(state, worktreeId)) {
     return { kind: 'runtime' }
   }
@@ -97,9 +83,10 @@ export function resolveNativeChatAttachmentOwnerForWorktree(
   if (connectionId === null) {
     return { kind: 'local' }
   }
-  const worktreePath = terminalTabId
-    ? resolveNativeChatFileLinkContext(state, terminalTabId)?.worktreePath
-    : state.getKnownWorktreeById(worktreeId)?.path
+  const worktreePath =
+    scope.kind === 'bridge'
+      ? resolveNativeChatFileLinkContext(state, scope)?.worktreePath
+      : findKnownWorktreeById(state, worktreeId)?.path
   if (!worktreePath) {
     return { kind: 'not-ready' }
   }

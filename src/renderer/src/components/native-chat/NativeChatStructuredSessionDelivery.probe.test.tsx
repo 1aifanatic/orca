@@ -17,7 +17,6 @@ vi.mock('@/runtime/structured-agent-session-client', () =>
 vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAgentSession())
 vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
-vi.mock('./use-native-chat-tab-owner', () => moduleFactories.useNativeChatTabOwner())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())
 vi.mock('./NativeChatComposer', () => moduleFactories.nativeChatComposer())
@@ -55,6 +54,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-wedge"
+        worktreeId="wt-1"
         sessionId="session-wedge"
         target={{ kind: 'local' }}
         agent="codex"
@@ -94,6 +94,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-probe-flag"
+        worktreeId="wt-1"
         sessionId="session-probe-flag"
         target={{ kind: 'local' }}
         agent="codex"
@@ -133,6 +134,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-parked"
+        worktreeId="wt-1"
         sessionId="session-parked"
         target={{ kind: 'local' }}
         agent="codex"
@@ -186,6 +188,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-churn"
+        worktreeId="wt-1"
         sessionId="session-churn"
         target={{ kind: 'local' }}
         agent="codex"
@@ -243,6 +246,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-target-switch"
+        worktreeId="wt-1"
         sessionId="session-target-switch"
         target={target}
         agent="codex"
@@ -279,6 +283,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-forced"
+        worktreeId="wt-1"
         sessionId="session-forced"
         target={{ kind: 'local' }}
         agent="codex"
@@ -304,6 +309,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-pending"
+        worktreeId="wt-1"
         sessionId="session-pending"
         target={{ kind: 'local' }}
         agent="codex"
@@ -337,6 +343,7 @@ describe('NativeChatStructuredSession delivery probe', () => {
           isVisible
           isFocusedGroup
           tabId="structured-tab-budget"
+          worktreeId="wt-1"
           sessionId="session-budget"
           target={{ kind: 'local' }}
           agent="codex"

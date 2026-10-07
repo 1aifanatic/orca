@@ -6,6 +6,7 @@ import type { NativeChatSkillDiscovery } from './use-native-chat-skills'
 import { getNativeChatAgentProfile } from '../../../../shared/native-chat-agent-profiles'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { isSkillPickerTriggered } from './native-chat-composer-state'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
 
 const mocks = vi.hoisted(() => ({
   callRuntimeRpc: vi.fn(),
@@ -48,14 +49,33 @@ function stateForHost(hostId: string) {
     settings: { activeRuntimeEnvironmentId: null },
     tabsByWorktree: { 'worktree-1': [{ id: 'tab-1' }] },
     unifiedTabsByWorktree: {},
+    structuredSessionLaunchDirectoryByTabId: {},
     worktreesByRepo: {
       'repo-1': [{ id: 'worktree-1', repoId: 'repo-1', path: '/repo/worktree', hostId }]
     }
   }
 }
 
-function Probe({ enabled }: { enabled: boolean }): null {
-  mocks.snapshots.push(useNativeChatSkills('codex', 'tab-1', enabled))
+const BRIDGE_SCOPE: NativeChatTabScope = {
+  kind: 'bridge',
+  worktreeId: 'worktree-1',
+  tabId: 'tab-1'
+}
+const STRUCTURED_SCOPE: NativeChatTabScope = { ...BRIDGE_SCOPE, kind: 'structured' }
+const FLOATING_SCOPE: NativeChatTabScope = {
+  kind: 'structured',
+  worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+  tabId: 'tab-1'
+}
+
+function Probe({
+  enabled,
+  scope = BRIDGE_SCOPE
+}: {
+  enabled: boolean
+  scope?: NativeChatTabScope
+}): null {
+  mocks.snapshots.push(useNativeChatSkills('codex', scope, enabled))
   return null
 }
 
@@ -127,7 +147,7 @@ describe('useNativeChatSkills', () => {
         'worktree-1': [{ id: 'tab-1', contentType: 'agent-session', entityId: 'session-1' }]
       }
     }
-    render(<Probe enabled />)
+    render(<Probe enabled scope={STRUCTURED_SCOPE} />)
 
     await waitFor(() => expect(mocks.snapshots.at(-1)?.status).toBe('ready'))
     expect(mocks.snapshots.at(-1)?.skills.map((skill) => skill.name)).toEqual(['browser'])
@@ -177,6 +197,29 @@ describe('useNativeChatSkills', () => {
     expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
   })
 
+  it('derives nothing while disabled, then resolves against the current snapshot on enable', async () => {
+    const reads: string[] = []
+    // Records every top-level store field a selector touches.
+    const tracked = (state: Record<string, unknown>) =>
+      new Proxy(state, {
+        get(target, key) {
+          reads.push(String(key))
+          return Reflect.get(target, key)
+        }
+      })
+    mocks.state = tracked(stateForHost('local'))
+    const view = render(<Probe enabled={false} />)
+    expect(mocks.snapshots.at(-1)?.status).toBe('idle')
+    expect(reads).toEqual([])
+
+    // The tab moved before the picker opened: enabling reads the current bucket, not a stale one.
+    mocks.state = tracked({ ...stateForHost('local'), tabsByWorktree: { 'worktree-1': [] } })
+    view.rerender(<Probe enabled />)
+    expect(reads).toContain('tabsByWorktree')
+    expect(mocks.snapshots.at(-1)?.status).toBe('error')
+    expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
+  })
+
   it('reports a floating chat awaiting its pinned folder as loading, then scans the pin', () => {
     const floatingTab = {
       id: 'tab-1',
@@ -191,7 +234,7 @@ describe('useNativeChatSkills', () => {
       structuredSessionLaunchDirectoryByTabId: {},
       unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] }
     }
-    const view = render(<Probe enabled />)
+    const view = render(<Probe enabled scope={FLOATING_SCOPE} />)
     expect(mocks.snapshots.at(-1)?.status).toBe('loading')
     expect(mocks.snapshots.at(-1)?.error).toBeNull()
     expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
@@ -202,7 +245,7 @@ describe('useNativeChatSkills', () => {
         'tab-1': { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
       }
     }
-    view.rerender(<Probe enabled />)
+    view.rerender(<Probe enabled scope={FLOATING_SCOPE} />)
     expect(mocks.callRuntimeRpc).toHaveBeenCalledWith(
       { kind: 'local' },
       'skills.discover',

@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { act, useRef, useState } from 'react'
+import { act, useMemo, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as AttachmentUploadModule from './native-chat-attachment-upload'
 import type { NativeChatAttachmentOwner } from './native-chat-attachment-upload'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
 import { useNativeChatExternalAttachments } from './use-native-chat-external-attachments'
 import {
   clearNativeChatAttachmentCacheForTests,
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => {
     remoteTarget: false,
     stat: vi.fn(),
     upload: vi.fn(),
-    tabsByWorktree: { 'workspace-1': [{ id: 'tab-1' }] }
+    tabsByWorktree: { 'workspace-1': [{ id: 'tab-1' }], 'workspace-2': [{ id: 'tab-1' }] }
   }
   return state
 })
@@ -35,8 +36,14 @@ vi.mock('@/runtime/runtime-terminal-inspection', () => ({
 }))
 vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof AttachmentUploadModule>()),
-  resolveNativeChatAttachmentOwner: () => mocks.owner,
-  resolveNativeChatAttachmentOwnerForWorktree: () => mocks.owner,
+  // Membership of the supplied bucket is part of owner resolution; the rest is the mocked owner.
+  resolveNativeChatAttachmentOwner: (
+    state: { tabsByWorktree: Record<string, { id: string }[]> },
+    scope: NativeChatTabScope
+  ) =>
+    (state.tabsByWorktree[scope.worktreeId] ?? []).some((tab) => tab.id === scope.tabId)
+      ? mocks.owner
+      : { kind: 'not-ready' },
   uploadNativeChatAttachmentPaths: mocks.upload
 }))
 
@@ -47,7 +54,7 @@ let root: Root
 let container: HTMLDivElement
 let composing = true
 
-function Probe({ worktreeId }: { worktreeId?: string }): React.JSX.Element {
+function Probe({ worktreeId }: { worktreeId: string }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
@@ -63,9 +70,12 @@ function Probe({ worktreeId }: { worktreeId?: string }): React.JSX.Element {
     setDraft,
     setNotice
   })
+  const scope = useMemo(
+    (): NativeChatTabScope => ({ kind: 'bridge', worktreeId, tabId: 'tab-1' }),
+    [worktreeId]
+  )
   const external = useNativeChatExternalAttachments({
-    terminalTabId: 'tab-1',
-    structuredWorktreeId: worktreeId,
+    scope,
     disabled: false,
     attachResolvedPaths: attachments.attachResolvedPaths,
     pendingChips: attachments.pendingChips,
@@ -88,7 +98,7 @@ function latest(): Api {
   return api
 }
 
-async function render(worktreeId?: string): Promise<void> {
+async function render(worktreeId: string): Promise<void> {
   await act(async () => root.render(<Probe worktreeId={worktreeId} />))
 }
 
@@ -99,7 +109,7 @@ beforeEach(() => {
   mocks.remoteTarget = false
   mocks.stat.mockReset().mockResolvedValue(undefined)
   mocks.upload.mockReset().mockResolvedValue(['/remote/file.txt'])
-  mocks.tabsByWorktree = { 'workspace-1': [{ id: 'tab-1' }] }
+  mocks.tabsByWorktree = { 'workspace-1': [{ id: 'tab-1' }], 'workspace-2': [{ id: 'tab-1' }] }
   vi.stubGlobal('api', { fs: { stat: mocks.stat } })
   container = document.createElement('div')
   document.body.append(container)
@@ -127,7 +137,7 @@ describe('OS attachment destination through input-method composition', () => {
           expectedSshConnectionGeneration: 1
         }
       }
-      await render(change === 'terminal-workspace' ? undefined : 'workspace-1')
+      await render('workspace-1')
       await act(async () => latest().attachExternalPaths(['/local/file.txt', '/local/image.png']))
       expect(container.querySelector('[data-draft]')?.textContent).toBe('')
       if (change === 'workspace') {
@@ -140,7 +150,8 @@ describe('OS attachment destination through input-method composition', () => {
         mocks.owner = { ...mocks.owner, expectedSshConnectionGeneration: 2 }
       }
       if (change === 'terminal-workspace') {
-        mocks.tabsByWorktree = { 'workspace-1': [] }
+        // The tab moves before the parent rerenders: the captured bucket no longer holds it.
+        mocks.tabsByWorktree = { 'workspace-1': [], 'workspace-2': [{ id: 'tab-1' }] }
       }
       composing = false
       act(() => latest().flushPendingAttachments())

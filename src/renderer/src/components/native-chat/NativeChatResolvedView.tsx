@@ -49,7 +49,7 @@ import {
   emptyNativeChatContextMenuActions,
   useNativeChatContextMenu
 } from './use-native-chat-context-menu'
-import { selectNativeChatRuntimeEnvironmentId } from './native-chat-runtime-owner'
+import { useNativeChatBridgeWorkspace } from './use-native-chat-bridge-workspace'
 import { useNativeChatPasteBridge } from './use-native-chat-paste-bridge'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
@@ -70,15 +70,15 @@ export function NativeChatResolvedView({
   isFocusedGroup,
   targetPtyId,
   terminalTabId,
+  worktreeId,
   ownsTabWideLaunchDraft,
   onSwitchToTerminal,
   readTerminalScreen,
   contextMenuActions
 }: NativeChatResolvedViewProps): React.JSX.Element {
-  // Primitive owner selection (no useShallow): routes the pane's read/subscribe to
-  // the remote runtime host for a runtime-owned pane; null keeps the local path.
-  const runtimeEnvironmentId = useAppStore((s) =>
-    selectNativeChatRuntimeEnvironmentId(s, terminalTabId)
+  const { scope, runtimeEnvironmentId, isWorkspaceMember } = useNativeChatBridgeWorkspace(
+    worktreeId,
+    terminalTabId
   )
   const keybindings = useAppStore((s) => s.keybindings)
   const session = useNativeChatRetainedSession({
@@ -87,7 +87,7 @@ export function NativeChatResolvedView({
     sessionId,
     transcriptPath,
     runtimeEnvironmentId,
-    enabled: isVisible
+    enabled: isVisible && isWorkspaceMember
   })
   const launchPrompt = useAppStore((s) => s.nativeChatLaunchPromptByTabId[terminalTabId] ?? null)
   const clearNativeChatLaunchPrompt = useAppStore((s) => s.clearNativeChatLaunchPrompt)
@@ -120,7 +120,7 @@ export function NativeChatResolvedView({
   const canSend = useNativeChatCanSend(targetPtyId)
   // Reuse the verified composer send path for interactive cards and composer
   // stop (Stop sends ESC, the agent-TUI interrupt key).
-  const send = useNativeChatInteractiveSend(terminalTabId, paneKey, targetPtyId, agent)
+  const send = useNativeChatInteractiveSend(scope, paneKey, targetPtyId, agent)
   // Every send this pane makes brings the latest into view, wherever the reader had scrolled.
   const { messageListRef, revealLatest } = useNativeChatRevealLatest()
   const interactiveSend = useNativeChatInteractiveSendReveal(send, targetPtyId, revealLatest)
@@ -131,7 +131,7 @@ export function NativeChatResolvedView({
   // The question card's free-text row; keeps Paste working while the card
   // replaces the composer.
   const questionAnswerInputRef = useRef<HTMLInputElement>(null)
-  const fileLinkContext = useNativeChatFileLinkContext(terminalTabId)
+  const fileLinkContext = useNativeChatFileLinkContext(scope)
   const pasteClipboardIntoComposer = useNativeChatPasteBridge({
     rootRef,
     composerRef,
@@ -195,19 +195,13 @@ export function NativeChatResolvedView({
     () => launchPromptAsMessage(paneLaunchPrompt, session.messages),
     [paneLaunchPrompt, session.messages]
   )
-  const sessionWithLaunchPrompt = useMemo<typeof session>(() => {
-    if (!launchPromptMessage) {
-      return session
-    }
-    return { ...session, messages: [...session.messages, launchPromptMessage] }
-  }, [launchPromptMessage, session])
-
   const sessionAfterCommandBoundaries = useMemo<typeof session>(() => {
-    const messages = applyCommandMarkerBoundaries(sessionWithLaunchPrompt.messages, commandMarkers)
-    return messages === sessionWithLaunchPrompt.messages
-      ? sessionWithLaunchPrompt
-      : { ...sessionWithLaunchPrompt, messages }
-  }, [sessionWithLaunchPrompt, commandMarkers])
+    const messages = applyCommandMarkerBoundaries(
+      launchPromptMessage ? [...session.messages, launchPromptMessage] : session.messages,
+      commandMarkers
+    )
+    return messages === session.messages ? session : { ...session, messages }
+  }, [launchPromptMessage, session, commandMarkers])
   // Why: answer from the conversation the pane shows, so a `/clear` sent here reads as reset.
   const answerLocally = useNativeChatLocalCommandAnswer(agent, sessionAfterCommandBoundaries)
   const launchPromptDeliveryNotices = useNativeChatLaunchPromptDeliveryNotice(
@@ -317,12 +311,11 @@ export function NativeChatResolvedView({
   const turnTiming = useNativeChatTerminalTurnTiming(paneKey, session.messages, turnActive)
 
   const stopAgent = useCallback(() => {
-    setWorkingInterrupted(true)
-    // Why: Stop after a submitted turn drops the delayed-write handle once it
-    // settles, so cancelPendingSends no longer sees the optimistic id. Clear
-    // the echo cache here so a cancelled prompt cannot stick as a ghost bubble.
-    clear()
-    interactiveSend.cancel()
+    if (interactiveSend.cancel()) {
+      setWorkingInterrupted(true)
+      // Settled sends have no cancellation handle, so clear their optimistic echoes here.
+      clear()
+    }
   }, [interactiveSend, clear])
   const { onLinkClick, linkActionRequest, closeLinkActions } = useNativeChatLinkActions(
     fileLinkContext,
@@ -422,6 +415,7 @@ export function NativeChatResolvedView({
           ref={shownPromptCard ? undefined : composerRef}
           inputOwnedByCard={shownPromptCard !== null}
           terminalTabId={terminalTabId}
+          worktreeId={worktreeId}
           paneKey={paneKey}
           targetPtyId={targetPtyId}
           agent={agent}

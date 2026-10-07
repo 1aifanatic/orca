@@ -145,10 +145,6 @@ vi.mock('./use-native-chat-file-link-context', () => ({
   })
 }))
 
-vi.mock('./use-native-chat-tab-owner', () => ({
-  useNativeChatTabOwnerWorktreeId: () => 'wt-1'
-}))
-
 vi.mock('./use-native-chat-file-link-click', () => ({
   useNativeChatFileLinkClick: (context: unknown) => (context ? mocks.fileLinkClick : undefined)
 }))
@@ -243,6 +239,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-1"
+        worktreeId="wt-1"
         sessionId="session-1"
         target={{ kind: 'local' }}
         agent="codex"
@@ -288,6 +285,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId={`structured-tab-${sessionId}`}
+        worktreeId="wt-1"
         sessionId={sessionId}
         target={{ kind: 'local' }}
         agent="codex"
@@ -382,6 +380,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-retry-head"
+        worktreeId="wt-1"
         sessionId="session-retry-head"
         target={{ kind: 'local' }}
         agent="codex"
@@ -418,6 +417,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-held-rejected"
+        worktreeId="wt-1"
         sessionId="session-held-rejected"
         target={{ kind: 'local' }}
         agent="codex"
@@ -473,6 +473,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-start-failed"
+        worktreeId="wt-1"
         sessionId="session-start-failed"
         target={{ kind: 'local' }}
         agent="codex"
@@ -526,6 +527,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-recorded"
+        worktreeId="wt-1"
         sessionId="session-recorded"
         target={{ kind: 'local' }}
         agent="codex"
@@ -558,6 +560,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-quiet-head"
+        worktreeId="wt-1"
         sessionId="session-quiet-head"
         target={{ kind: 'local' }}
         agent="codex"
@@ -597,6 +600,7 @@ describe('NativeChatStructuredSession delivery', () => {
         isVisible
         isFocusedGroup
         tabId="tab-held"
+        worktreeId="wt-1"
         sessionId="session-held"
         target={{ kind: 'local' }}
         agent="codex"

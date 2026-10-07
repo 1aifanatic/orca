@@ -9,10 +9,14 @@ import {
   readWorkspaceFileDragSource
 } from '@/lib/workspace-file-drag'
 import {
-  resolveNativeChatAttachmentOwnerForWorktree,
+  resolveNativeChatAttachmentOwner,
   nativeChatWorktreeNotReadyNotice
 } from './native-chat-attachment-upload'
-import { findTerminalTabWorktreeId } from './native-chat-file-link'
+import {
+  isNativeChatTabScopeCurrent,
+  sameNativeChatTabScope,
+  type NativeChatTabScope
+} from './native-chat-tab-scope'
 import {
   nativeChatAttachmentOwnerUnchanged,
   nativeChatWorkspaceAttachmentMismatchNotice,
@@ -36,8 +40,7 @@ type Args = {
    *  so an OS drop anywhere in it resolves to this composer. */
   paneKey: string
   setNotice: (notice: string | null) => void
-  structuredWorktreeId?: string
-  terminalTabId: string
+  scope: NativeChatTabScope
 }
 
 // The composer sits inside the terminal surface, which accepts the same drag and
@@ -69,16 +72,15 @@ export function useNativeChatWorkspaceFileDrop({
   disabled,
   paneKey,
   setNotice,
-  structuredWorktreeId,
-  terminalTabId
+  scope
 }: Args): WorkspaceFileDropHandlers {
   // The IME-flush check runs against a closure captured at drop time. Reading
   // the prop through a ref keeps "is this still my workspace?" a real question
   // rather than a comparison of one captured value against itself.
-  const structuredWorktreeIdRef = useRef(structuredWorktreeId)
+  const scopeRef = useRef(scope)
   useLayoutEffect(() => {
-    structuredWorktreeIdRef.current = structuredWorktreeId
-  }, [structuredWorktreeId])
+    scopeRef.current = scope
+  }, [scope])
 
   const onDragOverCapture = useCallback<DragEventHandler<HTMLDivElement>>(
     (event) => {
@@ -115,18 +117,17 @@ export function useNativeChatWorkspaceFileDrop({
       }
 
       const state = useAppStore.getState()
-      const workspaceId =
-        structuredWorktreeId ?? findTerminalTabWorktreeId(state.tabsByWorktree, terminalTabId)
+      const workspaceId = scope.worktreeId
       const source = readWorkspaceFileDragSource(event.dataTransfer)
-      if (!workspaceId || !source || source.workspaceId !== workspaceId) {
+      if (
+        !isNativeChatTabScopeCurrent(state, scope) ||
+        !source ||
+        source.workspaceId !== workspaceId
+      ) {
         setNotice(nativeChatWorkspaceAttachmentMismatchNotice())
         return
       }
-      const owner = resolveNativeChatAttachmentOwnerForWorktree(
-        state,
-        workspaceId,
-        structuredWorktreeId ? undefined : terminalTabId
-      )
+      const owner = resolveNativeChatAttachmentOwner(state, scope)
       if (owner.kind === 'not-ready') {
         setNotice(nativeChatWorktreeNotReadyNotice())
         return
@@ -140,20 +141,16 @@ export function useNativeChatWorkspaceFileDrop({
         return
       }
 
+      // Why the captured scope: a moved tab is refused, never followed to its new workspace.
+      const capturedScope = scope
       const targetOwnerIsCurrent = (): boolean => {
-        const currentState = useAppStore.getState()
-        const currentWorkspaceId =
-          structuredWorktreeIdRef.current ??
-          findTerminalTabWorktreeId(currentState.tabsByWorktree, terminalTabId)
-        if (currentWorkspaceId !== source.workspaceId) {
+        if (!sameNativeChatTabScope(capturedScope, scopeRef.current)) {
           return false
         }
-        const currentHostId = getExecutionHostIdForWorktree(currentState, currentWorkspaceId)
-        const currentOwner = resolveNativeChatAttachmentOwnerForWorktree(
-          currentState,
-          currentWorkspaceId,
-          structuredWorktreeIdRef.current ? undefined : terminalTabId
-        )
+        // Store first: membership can change before the parent rerenders with new props.
+        const currentState = useAppStore.getState()
+        const currentHostId = getExecutionHostIdForWorktree(currentState, workspaceId)
+        const currentOwner = resolveNativeChatAttachmentOwner(currentState, capturedScope)
         return (
           isResolvedWorkspaceFileDragExecutionHost(currentHostId) &&
           currentHostId === source.executionHostId &&
@@ -165,7 +162,7 @@ export function useNativeChatWorkspaceFileDrop({
         targetOwnerIsCurrent
       })
     },
-    [attachResolvedPaths, disabled, setNotice, structuredWorktreeId, terminalTabId]
+    [attachResolvedPaths, disabled, scope, setNotice]
   )
 
   // The pane around the composer is the drop surface; these handlers run from

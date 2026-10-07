@@ -1,14 +1,16 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, createElement } from 'react'
+import { act, createElement, useMemo } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type * as AttachmentUploadModule from './native-chat-attachment-upload'
 
 const mocks = vi.hoisted(() => ({
-  storeState: { tabsByWorktree: { 'worktree-1': [{ id: 'tab-1' }] } },
+  storeState: {
+    tabsByWorktree: { 'worktree-1': [{ id: 'tab-1' }] },
+    unifiedTabsByWorktree: { 'worktree-1': [{ id: 'tab-1', contentType: 'agent-session' }] }
+  },
   stat: vi.fn(),
   resolveNativeChatAttachmentOwner: vi.fn(),
-  resolveNativeChatAttachmentOwnerForWorktree: vi.fn(),
   uploadNativeChatAttachmentPaths: vi.fn(),
   prepareNativeChatSessionAttachmentUpload: vi.fn(),
   uploadNativeChatSessionAttachmentPaths: vi.fn(),
@@ -28,7 +30,6 @@ vi.mock('@/store', () => ({
 vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof AttachmentUploadModule>()),
   resolveNativeChatAttachmentOwner: mocks.resolveNativeChatAttachmentOwner,
-  resolveNativeChatAttachmentOwnerForWorktree: mocks.resolveNativeChatAttachmentOwnerForWorktree,
   uploadNativeChatAttachmentPaths: mocks.uploadNativeChatAttachmentPaths,
   prepareNativeChatSessionAttachmentUpload: mocks.prepareNativeChatSessionAttachmentUpload,
   uploadNativeChatSessionAttachmentPaths: mocks.uploadNativeChatSessionAttachmentPaths
@@ -60,7 +61,7 @@ function noPendingChips(): NativeChatPendingAttachmentChips {
 
 function Probe({
   disabled,
-  structuredWorktreeId,
+  worktreeId,
   structuredSession,
   attachResolvedPaths,
   pendingChips,
@@ -68,7 +69,7 @@ function Probe({
   onReady
 }: {
   disabled: boolean
-  structuredWorktreeId?: string
+  worktreeId: string
   structuredSession?: { sessionId: string; runtimeEnvironmentId: string | null }
   attachResolvedPaths: (paths: string[]) => void
   pendingChips: NativeChatPendingAttachmentChips
@@ -77,8 +78,14 @@ function Probe({
 }): null {
   onReady(
     useNativeChatExternalAttachments({
-      terminalTabId: 'tab-1',
-      structuredWorktreeId,
+      scope: useMemo(
+        () => ({
+          kind: structuredSession ? ('structured' as const) : ('bridge' as const),
+          worktreeId,
+          tabId: 'tab-1'
+        }),
+        [worktreeId, structuredSession]
+      ),
       structuredSession,
       disabled,
       attachResolvedPaths,
@@ -96,7 +103,7 @@ let root: Root | null = null
 
 async function renderProbe(args: {
   disabled?: boolean
-  structuredWorktreeId?: string
+  worktreeId?: string
   structuredSession?: { sessionId: string; runtimeEnvironmentId: string | null }
   attachResolvedPaths: (paths: string[]) => void
   pendingChips?: NativeChatPendingAttachmentChips
@@ -104,20 +111,20 @@ async function renderProbe(args: {
 }): Promise<{
   latest: () => HookApi
   setDisabled: (disabled: boolean) => Promise<void>
-  setStructuredWorktreeId: (structuredWorktreeId: string) => Promise<void>
+  setWorktreeId: (worktreeId: string) => Promise<void>
 }> {
   const container = document.createElement('div')
   document.body.append(container)
   let api: HookApi | null = null
   root = createRoot(container)
   let disabled = args.disabled ?? false
-  let structuredWorktreeId = args.structuredWorktreeId
+  let worktreeId = args.worktreeId ?? 'worktree-1'
   const render = async (): Promise<void> => {
     await act(async () => {
       root?.render(
         createElement(Probe, {
           disabled,
-          structuredWorktreeId,
+          worktreeId,
           structuredSession: args.structuredSession,
           attachResolvedPaths: args.attachResolvedPaths,
           pendingChips: args.pendingChips ?? noPendingChips(),
@@ -141,8 +148,8 @@ async function renderProbe(args: {
       disabled = next
       await render()
     },
-    setStructuredWorktreeId: async (next) => {
-      structuredWorktreeId = next
+    setWorktreeId: async (next) => {
+      worktreeId = next
       await render()
     }
   }
@@ -150,7 +157,7 @@ async function renderProbe(args: {
 
 beforeEach(() => {
   mocks.stat.mockReset().mockResolvedValue(undefined)
-  mocks.resolveNativeChatAttachmentOwnerForWorktree.mockReset().mockReturnValue({ kind: 'local' })
+  mocks.resolveNativeChatAttachmentOwner.mockReset().mockReturnValue({ kind: 'local' })
   vi.stubGlobal('api', { fs: { stat: mocks.stat } })
 })
 
@@ -293,13 +300,13 @@ describe('useNativeChatExternalAttachments', () => {
     const attachResolvedPaths = vi.fn()
     const notices: (string | null)[] = []
     const probe = await renderProbe({
-      structuredWorktreeId: 'worktree-1',
+      worktreeId: 'worktree-1',
       attachResolvedPaths,
       setNotice: (notice) => notices.push(notice)
     })
 
     act(() => probe.latest().attachExternalPaths(['/external/only.pdf']))
-    await probe.setStructuredWorktreeId('worktree-2')
+    await probe.setWorktreeId('worktree-2')
     await act(async () => fileCheck.resolve())
 
     expect(attachResolvedPaths).not.toHaveBeenCalled()
@@ -320,19 +327,19 @@ describe('useNativeChatExternalAttachments', () => {
       expectedSshTargetId: 'conn-1',
       expectedSshConnectionGeneration: 4
     } as const
-    mocks.resolveNativeChatAttachmentOwnerForWorktree.mockReturnValue(sshOwner)
+    mocks.resolveNativeChatAttachmentOwner.mockReturnValue(sshOwner)
     const upload = deferred<string[]>()
     mocks.uploadNativeChatAttachmentPaths.mockReturnValueOnce(upload.promise)
     const attachResolvedPaths = vi.fn()
     const notices: (string | null)[] = []
     const probe = await renderProbe({
-      structuredWorktreeId: 'worktree-1',
+      worktreeId: 'worktree-1',
       attachResolvedPaths,
       setNotice: (notice) => notices.push(notice)
     })
 
     act(() => probe.latest().attachExternalPaths(['/local/a.txt']))
-    await probe.setStructuredWorktreeId('worktree-2')
+    await probe.setWorktreeId('worktree-2')
     await act(async () => upload.resolve(['/remote/wt/.orca/drops/a.txt']))
 
     expect(attachResolvedPaths).not.toHaveBeenCalled()
@@ -560,7 +567,7 @@ describe('useNativeChatExternalAttachments', () => {
       const chips = trackingChips()
       const attachResolvedPaths = vi.fn()
       const probe = await renderProbe({
-        structuredWorktreeId: 'worktree-1',
+        worktreeId: 'worktree-1',
         structuredSession: session,
         attachResolvedPaths,
         pendingChips: chips
@@ -601,7 +608,7 @@ describe('useNativeChatExternalAttachments', () => {
       const chips = trackingChips()
       const attachResolvedPaths = vi.fn()
       const probe = await renderProbe({
-        structuredWorktreeId: 'worktree-1',
+        worktreeId: 'worktree-1',
         structuredSession: session,
         attachResolvedPaths,
         pendingChips: chips
@@ -634,7 +641,7 @@ describe('useNativeChatExternalAttachments', () => {
       const attachResolvedPaths = vi.fn()
       const notices: (string | null)[] = []
       const probe = await renderProbe({
-        structuredWorktreeId: 'worktree-1',
+        worktreeId: 'worktree-1',
         structuredSession: session,
         attachResolvedPaths,
         pendingChips: chips,
@@ -665,7 +672,7 @@ describe('useNativeChatExternalAttachments', () => {
       const attachResolvedPaths = vi.fn()
       const notices: (string | null)[] = []
       const probe = await renderProbe({
-        structuredWorktreeId: 'worktree-1',
+        worktreeId: 'worktree-1',
         structuredSession: session,
         attachResolvedPaths,
         pendingChips: chips,
@@ -689,7 +696,7 @@ describe('useNativeChatExternalAttachments', () => {
       const attachResolvedPaths = vi.fn()
       const notices: (string | null)[] = []
       const probe = await renderProbe({
-        structuredWorktreeId: 'worktree-1',
+        worktreeId: 'worktree-1',
         structuredSession: session,
         attachResolvedPaths,
         pendingChips: chips,
@@ -707,12 +714,16 @@ describe('useNativeChatExternalAttachments', () => {
     it('keeps a local structured chat on the worktree owner', async () => {
       const attachResolvedPaths = vi.fn()
       const probe = await renderProbe({
-        structuredWorktreeId: 'worktree-1',
+        worktreeId: 'worktree-1',
         structuredSession: { sessionId: 'session-1', runtimeEnvironmentId: null },
         attachResolvedPaths
       })
       await act(async () => probe.latest().attachExternalPaths(['/local/a.txt']))
-      expect(mocks.resolveNativeChatAttachmentOwnerForWorktree).toHaveBeenCalled()
+      expect(mocks.resolveNativeChatAttachmentOwner).toHaveBeenCalledWith(mocks.storeState, {
+        kind: 'structured',
+        worktreeId: 'worktree-1',
+        tabId: 'tab-1'
+      })
       expect(mocks.prepareNativeChatSessionAttachmentUpload).not.toHaveBeenCalled()
       expect(attachResolvedPaths).toHaveBeenCalledWith(['/local/a.txt'], undefined, {
         destinationIsCurrent: expect.any(Function)

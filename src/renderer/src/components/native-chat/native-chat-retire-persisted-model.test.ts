@@ -106,7 +106,7 @@ describe('useNativeChatSessionOptions retirement on mount', () => {
     renderHook(() =>
       useNativeChatSessionOptions({
         agent: 'grok',
-        terminalTabId: 'tab-1',
+        scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' },
         targetPtyId: 'pty-1',
         dispatchCommand: () => undefined
       })

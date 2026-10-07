@@ -3,6 +3,7 @@
 import '@testing-library/jest-dom/vitest'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { terminalTabFixture } from './native-chat-workspace-test-fixtures'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { AgentStatusPayload } from '../../../../shared/agent-status-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -112,6 +113,7 @@ function paneElement(targetPtyId = 'pty-card'): React.JSX.Element {
         isFocusedGroup
         targetPtyId={targetPtyId}
         terminalTabId="tab-card"
+        worktreeId="wt-1"
         ownsTabWideLaunchDraft={false}
       />
     </TooltipProvider>
@@ -123,14 +125,23 @@ beforeEach(() => {
   composer.mounts = 0
   nativeChatPromptDismissals.clearForTests()
   ptyInput.verified.mockReset()
-  useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
+  useAppStore.setState({
+    agentStatusByPaneKey: {},
+    nativeChatLaunchPromptByTabId: {},
+    // The bridge chat's tab, in the workspace its parent supplies.
+    tabsByWorktree: { 'wt-1': [terminalTabFixture('tab-card', 'wt-1')] }
+  })
   retained.session = transcript()
 })
 
 afterEach(() => {
   cleanup()
   restoreViewport()
-  useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
+  useAppStore.setState({
+    agentStatusByPaneKey: {},
+    nativeChatLaunchPromptByTabId: {},
+    tabsByWorktree: {}
+  })
 })
 
 // A terminal-backed send types into the PTY, so whatever card is up would take the message as its

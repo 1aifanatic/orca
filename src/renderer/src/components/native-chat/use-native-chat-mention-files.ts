@@ -3,7 +3,8 @@ import { useAppStore } from '@/store'
 import { useRuntimeFileListForWorktree } from '@/components/quick-open-file-list'
 import { rankQuickOpenFilesWithHistory } from '@/components/quick-open-history-ranking'
 import { useQuickOpenHistory } from '@/lib/quick-open-file-history'
-import { findTerminalTabWorktreeId } from './native-chat-file-link'
+import { useKnownWorktreeById } from '@/store/selectors'
+import { isNativeChatTabScopeCurrent, type NativeChatTabScope } from './native-chat-tab-scope'
 
 const MENTION_FILE_LIMIT = 20
 const NO_FILES: readonly string[] = []
@@ -18,20 +19,16 @@ export type NativeChatMentionFiles = {
 /** `query` is null while no `@` token is open. */
 export function useNativeChatMentionFiles(args: {
   query: string | null
-  terminalTabId: string
-  structuredWorktreeId?: string
+  scope: NativeChatTabScope
 }): NativeChatMentionFiles {
-  const { query, terminalTabId, structuredWorktreeId } = args
+  const { query, scope } = args
   const enabled = query !== null
-  // Closed is the common state, so the tab scan only runs while a token is open.
+  // Closed is the common state, so membership is only checked while a token is open; a miss
+  // lists nothing rather than another workspace's files.
   const worktreeId = useAppStore((state) =>
-    enabled
-      ? (structuredWorktreeId ?? findTerminalTabWorktreeId(state.tabsByWorktree, terminalTabId))
-      : null
+    enabled && isNativeChatTabScopeCurrent(state, scope) ? scope.worktreeId : null
   )
-  const worktreePath = useAppStore((state) =>
-    worktreeId ? (state.getKnownWorktreeById(worktreeId)?.path ?? null) : null
-  )
+  const worktreePath = useKnownWorktreeById(worktreeId)?.path ?? null
   const history = useQuickOpenHistory(worktreeId, worktreePath)
   const list = useRuntimeFileListForWorktree({
     enabled,

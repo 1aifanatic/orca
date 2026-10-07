@@ -20,7 +20,13 @@ const FLOATING_TERMINAL_TAB = {
 const WORKTREE_TAB = { id: 'worktree-chat-1', entityId: 'session-2' }
 const SSH_HOST = 'ssh:box-1'
 
-function state(overrides: Partial<NativeChatTabDirectoryState> = {}): NativeChatTabDirectoryState {
+// The narrow shape skill discovery passes: visible rows and folders, no detected catalog.
+type NarrowDirectoryState = Extract<
+  NativeChatTabDirectoryState,
+  { detectedWorktreesByRepo?: undefined }
+>
+
+function state(overrides: Partial<NarrowDirectoryState> = {}): NarrowDirectoryState {
   return {
     floatingWorkspacePath: '/home/me/changed-setting',
     worktreesByRepo: {

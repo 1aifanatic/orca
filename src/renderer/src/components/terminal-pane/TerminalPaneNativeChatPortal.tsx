@@ -28,7 +28,8 @@ export function TerminalPaneNativeChatPortal({
     readNativeChatTerminalScreen,
     resolveAgentForLeaf,
     switchNativeChatToTerminal,
-    tabId
+    tabId,
+    worktreeId
   } = controller
   const chatPaneSessionId = useAppStore((state) =>
     effectiveChatViewMode && chatPane
@@ -68,6 +69,7 @@ export function TerminalPaneNativeChatPortal({
     <NativeChatPaneCover pane={chatPane}>
       <NativeChatView
         terminalTabId={tabId}
+        worktreeId={worktreeId}
         isVisible={isRendererVisible}
         isFocusedGroup={isActive && activePaneIsChatLeaf}
         paneKey={makePaneKey(tabId, chatPane.leafId)}

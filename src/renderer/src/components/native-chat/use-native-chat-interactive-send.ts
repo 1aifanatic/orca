@@ -2,7 +2,6 @@ import { useCallback, useLayoutEffect, useRef } from 'react'
 import { useAppStore } from '../../store'
 import { sendRuntimePtyInput } from '@/runtime/runtime-terminal-inspection'
 import { sendRuntimePtyInputVerified } from '@/runtime/runtime-terminal-verified-input'
-import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import type { AgentType } from '../../../../shared/native-chat-types'
 import {
   resolveNativeChatTranscriptAgent,
@@ -22,6 +21,10 @@ import {
   type NativeChatSendHandle
 } from './native-chat-runtime-send'
 import { inferQuestionAnsweredFromCurrentStatus } from '../terminal-pane/agent-question-answered-inference'
+import {
+  resolveNativeChatBridgeRuntimeSettings,
+  type NativeChatBridgeTabScope
+} from './native-chat-tab-scope'
 
 // ESC is the agent-TUI interrupt/cancel key over the PTY (matches how the
 // composer forwards Escape). Used to cancel a question or deny an approval.
@@ -44,8 +47,8 @@ export type NativeChatInteractiveSend = {
   /** Reject the active question without requesting session interruption; resolves to whether
    *  the Escape was acknowledged. */
   cancelAsk: () => Promise<boolean>
-  /** Interrupt the active turn. */
-  cancel: () => void
+  /** False when no interrupt was dispatched; the caller must not present the turn as stopped. */
+  cancel: () => boolean
 }
 
 /**
@@ -57,7 +60,7 @@ export type NativeChatInteractiveSend = {
  * `sendNativeChatMessage`. Control strings (option digits, ESC) are written raw.
  */
 export function useNativeChatInteractiveSend(
-  terminalTabId: string,
+  scope: NativeChatBridgeTabScope,
   paneKey: string,
   targetPtyId: string | null,
   agent: AgentType
@@ -66,6 +69,18 @@ export function useNativeChatInteractiveSend(
   // unmount so a detached setTimeout chain can't keep writing PTY bytes after
   // the view is gone / the user switched away.
   const inFlightRef = useRef<NativeChatSendHandle | null>(null)
+  const { worktreeId, tabId: terminalTabId } = scope
+  // Why action time: each action validates membership and derives settings from one current
+  // snapshot; a miss dispatches nothing rather than rediscovering the tab or using active settings.
+  const resolveSettings = useCallback(
+    () =>
+      resolveNativeChatBridgeRuntimeSettings(useAppStore.getState(), {
+        kind: 'bridge',
+        worktreeId,
+        tabId: terminalTabId
+      }),
+    [terminalTabId, worktreeId]
+  )
   const cancelInFlight = useCallback(() => {
     inFlightRef.current?.cancel()
     inFlightRef.current = null
@@ -78,32 +93,30 @@ export function useNativeChatInteractiveSend(
   )
 
   const sendRaw = useCallback(
-    (raw: string) => {
+    (raw: string): boolean => {
       if (!targetPtyId) {
-        return
+        return false
       }
-      sendRuntimePtyInput(
-        getSettingsForAgentTabRuntimeOwner(terminalTabId),
-        targetPtyId,
-        raw,
-        'driving'
-      )
+      const settings = resolveSettings()
+      if (!settings) {
+        return false
+      }
+      sendRuntimePtyInput(settings, targetPtyId, raw, 'driving')
+      return true
     },
-    [terminalTabId, targetPtyId]
+    [resolveSettings, targetPtyId]
   )
 
   const sendRawVerified = useCallback(
-    (raw: string): Promise<boolean> =>
-      targetPtyId
-        ? sendRuntimePtyInputVerified(
-            getSettingsForAgentTabRuntimeOwner(terminalTabId),
-            targetPtyId,
-            raw,
-            'driving',
-            { requireWriteSettlement: true }
-          ).catch(() => false)
-        : Promise.resolve(false),
-    [terminalTabId, targetPtyId]
+    (raw: string): Promise<boolean> => {
+      const settings = targetPtyId ? resolveSettings() : null
+      return targetPtyId && settings
+        ? sendRuntimePtyInputVerified(settings, targetPtyId, raw, 'driving', {
+            requireWriteSettlement: true
+          }).catch(() => false)
+        : Promise.resolve(false)
+    },
+    [resolveSettings, targetPtyId]
   )
 
   const sendAnswer = useCallback(
@@ -115,9 +128,13 @@ export function useNativeChatInteractiveSend(
       if (!targetPtyId || !hasAskAnswer(prompt, selections)) {
         return { settleAfterMs: 0 }
       }
+      const settings = resolveSettings()
+      if (!settings) {
+        // Immediate refusal: the card stays retryable and no prior answer is disturbed.
+        return { settleAfterMs: 0 }
+      }
       // Cancel any prior in-flight answer before starting a new one.
       cancelInFlight()
-      const settings = getSettingsForAgentTabRuntimeOwner(terminalTabId)
       // Selector TUIs ignore pasted labels; Codex uses a different key sequence.
       const stepsAnswer = shouldStepNativeChatAskAnswer(agent)
       const buildsCodexAnswer = resolveNativeChatTranscriptAgent(agent) === 'codex'
@@ -171,7 +188,7 @@ export function useNativeChatInteractiveSend(
         settleAfterMs: handle.settleAfterMs
       }
     },
-    [terminalTabId, paneKey, targetPtyId, agent, cancelInFlight]
+    [resolveSettings, paneKey, targetPtyId, agent, cancelInFlight]
   )
 
   const cancelAsk = useCallback(() => {
@@ -179,19 +196,24 @@ export function useNativeChatInteractiveSend(
     return sendRawVerified(ESC)
   }, [cancelInFlight, sendRawVerified])
 
-  const cancel = useCallback(() => {
+  const cancel = useCallback((): boolean => {
+    // Why first: an already accepted paced write is stopped through its captured route even when
+    // the new interrupt below is refused.
     cancelInFlight()
     if (resolveNativeChatTranscriptAgent(agent) === 'opencode' && targetPtyId) {
+      const settings = resolveSettings()
+      if (!settings) {
+        return false
+      }
       // OpenCode confirms interruption with a second Escape; pace writes like mobile Stop.
-      inFlightRef.current = sendNativeChatAskAnswer(
-        getSettingsForAgentTabRuntimeOwner(terminalTabId),
-        targetPtyId,
-        [{ raw: ESC }, { raw: ESC }]
-      )
-      return
+      inFlightRef.current = sendNativeChatAskAnswer(settings, targetPtyId, [
+        { raw: ESC },
+        { raw: ESC }
+      ])
+      return true
     }
-    sendRaw(ESC)
-  }, [agent, cancelInFlight, sendRaw, targetPtyId, terminalTabId])
+    return sendRaw(ESC)
+  }, [agent, cancelInFlight, resolveSettings, sendRaw, targetPtyId])
 
   return { sendAnswer, sendRaw, sendRawVerified, cancelPending: cancelInFlight, cancelAsk, cancel }
 }

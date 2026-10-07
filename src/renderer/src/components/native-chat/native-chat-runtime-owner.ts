@@ -3,7 +3,7 @@ import {
   type WorktreeRuntimeOwnerState
 } from '@/lib/worktree-runtime-owner'
 import type { AppState } from '@/store/types'
-import { findTerminalTabWorktreeId } from './native-chat-file-link'
+import { isNativeChatTabScopeCurrent, type NativeChatBridgeTabScope } from './native-chat-tab-scope'
 
 export type NativeChatRuntimeOwnerState = Pick<AppState, 'tabsByWorktree'> &
   WorktreeRuntimeOwnerState
@@ -17,14 +17,23 @@ export type NativeChatRuntimeOwnerState = Pick<AppState, 'tabsByWorktree'> &
  * scopes, a remote worktree whose path hasn't landed). In that window the owner is
  * still knowable and the transport must route to the runtime — reusing the
  * path-coupled context would fall back to local session data, the exact bug this
- * kills. Resolve the owner from the tab→worktree mapping alone; do not merge the
- * two selections. The shared helper (`findTerminalTabWorktreeId`) is the right
- * level of reuse.
+ * kills. Resolve the owner from the supplied workspace alone; do not merge the
+ * two selections.
  */
 export function selectNativeChatRuntimeEnvironmentId(
-  state: NativeChatRuntimeOwnerState,
-  terminalTabId: string
+  state: WorktreeRuntimeOwnerState,
+  worktreeId: string
 ): string | null {
-  const worktreeId = findTerminalTabWorktreeId(state.tabsByWorktree, terminalTabId)
-  return worktreeId ? getRuntimeEnvironmentIdForWorktree(state, worktreeId) : null
+  return getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+}
+
+/**
+ * Whether a bridge chat's tab is still in its workspace. Null owner already means "local", so a
+ * miss is reported separately and must suspend transcript IO rather than read locally.
+ */
+export function selectNativeChatBridgeMembership(
+  state: Pick<AppState, 'tabsByWorktree'>,
+  scope: NativeChatBridgeTabScope
+): boolean {
+  return isNativeChatTabScopeCurrent(state, scope)
 }

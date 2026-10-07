@@ -117,6 +117,7 @@ function renderComposer(structuredTransport: NativeChatStructuredComposerTranspo
   render(
     <NativeChatComposer
       terminalTabId={`tab-${paneCounter}`}
+      worktreeId="wt-1"
       paneKey={`tab-${paneCounter}:structured`}
       targetPtyId={null}
       agent="codex"

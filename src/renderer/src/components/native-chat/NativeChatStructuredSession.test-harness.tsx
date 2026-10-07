@@ -129,7 +129,6 @@ export function createStructuredSessionMocks() {
     call: vi.fn<(...args: never[]) => unknown>(),
     fileLinkClick: vi.fn<(...args: never[]) => unknown>(),
     launchLifecycle: nullable<StructuredAgentSessionLaunchLifecycle>(),
-    ownerWorktreeId: widened<string | null>('wt-1'),
     fileLinkContext: widened<NativeChatFileLinkContext | null>(DEFAULT_FILE_LINK_CONTEXT),
     lifecycleLookup: vi.fn<(worktreeId: string, sessionId: string) => void>(),
     launchFailure: nullable<AgentSessionWriteRefusal>(),
@@ -334,9 +333,6 @@ export function createStructuredSessionMocks() {
     useNativeChatFileLinkContext: () => ({
       useNativeChatFileLinkContext: () => mocks.fileLinkContext
     }),
-    useNativeChatTabOwner: () => ({
-      useNativeChatTabOwnerWorktreeId: () => mocks.ownerWorktreeId
-    }),
     useNativeChatFileLinkClick: () => ({
       useNativeChatFileLinkClick: (context: unknown) => (context ? mocks.fileLinkClick : undefined)
     }),
@@ -366,7 +362,6 @@ export function createStructuredSessionMocks() {
   const resetStructuredSessionMocks = (): void => {
     mocks.call.mockReset()
     mocks.launchLifecycle = null
-    mocks.ownerWorktreeId = 'wt-1'
     mocks.fileLinkContext = DEFAULT_FILE_LINK_CONTEXT
     mocks.launchFailure = null
     mocks.launchResumes = false

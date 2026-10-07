@@ -80,7 +80,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
     const { result } = renderHook(() =>
       useNativeChatSessionOptions({
         agent: 'omp',
-        terminalTabId: 'tab-omp',
+        scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-omp' },
         targetPtyId: 'pty-omp',
         dispatchCommand,
         readTerminalScreen: () => null,
@@ -118,7 +118,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
       const { result, rerender } = renderHook(() =>
         useNativeChatSessionOptions({
           agent: 'omp',
-          terminalTabId: `tab-${reportedModel}`,
+          scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: `tab-${reportedModel}` },
           targetPtyId: `pty-${reportedModel}`,
           dispatchCommand,
           paneKey
@@ -152,7 +152,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
     const { result, rerender } = renderHook(() =>
       useNativeChatSessionOptions({
         agent: 'omp',
-        terminalTabId: 'tab-omp-pick',
+        scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-omp-pick' },
         targetPtyId: 'pty-omp-pick',
         dispatchCommand,
         readTerminalScreen,
@@ -197,7 +197,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
     const { result } = renderHook(() =>
       useNativeChatSessionOptions({
         agent: 'claude',
-        terminalTabId: 'tab-claude-hook',
+        scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-claude-hook' },
         targetPtyId: 'pty-claude-hook',
         dispatchCommand: vi.fn(),
         readTerminalScreen: () => null,
@@ -232,7 +232,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
     const { result } = renderHook(() =>
       useNativeChatSessionOptions({
         agent: 'claude',
-        terminalTabId: 'tab-1',
+        scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' },
         targetPtyId: 'pty-1',
         dispatchCommand,
         readTerminalScreen
@@ -279,7 +279,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
       ({ targetPtyId }) =>
         useNativeChatSessionOptions({
           agent: 'claude',
-          terminalTabId: 'tab-1',
+          scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' },
           targetPtyId,
           dispatchCommand,
           readTerminalScreen: () => null
@@ -321,7 +321,7 @@ describe('useNativeChatSessionOptions model reporting', () => {
       ({ targetPtyId }) =>
         useNativeChatSessionOptions({
           agent: 'claude',
-          terminalTabId: 'tab-reset',
+          scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-reset' },
           targetPtyId,
           dispatchCommand,
           readTerminalScreen: () => null

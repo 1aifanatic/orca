@@ -3,6 +3,7 @@
 import '@testing-library/jest-dom/vitest'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { terminalTabFixture } from './native-chat-workspace-test-fixtures'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { AgentStatusPayload } from '../../../../shared/agent-status-types'
 import type { NativeChatMessage } from '../../../../shared/native-chat-types'
@@ -127,6 +128,7 @@ function renderPane(): void {
         isFocusedGroup
         targetPtyId="pty-hidden"
         terminalTabId="tab-hidden"
+        worktreeId="wt-1"
         ownsTabWideLaunchDraft={false}
       />
     </TooltipProvider>
@@ -149,7 +151,12 @@ beforeEach(() => {
   composer.typed.mockReset().mockReturnValue(true)
   pty.verified.mockReset().mockResolvedValue(true)
   pty.raw.mockReset().mockReturnValue(true)
-  useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
+  useAppStore.setState({
+    agentStatusByPaneKey: {},
+    nativeChatLaunchPromptByTabId: {},
+    // The bridge chat's tab, in the workspace its parent supplies.
+    tabsByWorktree: { 'wt-1': [terminalTabFixture('tab-hidden', 'wt-1')] }
+  })
   retained.session = {
     messages: [userTurn],
     status: 'working',
@@ -168,7 +175,11 @@ afterEach(() => {
   cleanup()
   resetNativeChatPtySendQueuesForTests()
   restoreViewport()
-  useAppStore.setState({ agentStatusByPaneKey: {}, nativeChatLaunchPromptByTabId: {} })
+  useAppStore.setState({
+    agentStatusByPaneKey: {},
+    nativeChatLaunchPromptByTabId: {},
+    tabsByWorktree: {}
+  })
 })
 
 describe('a prompt card hides the composer without unmounting it', () => {

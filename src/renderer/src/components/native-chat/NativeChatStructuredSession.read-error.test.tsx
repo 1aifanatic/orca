@@ -32,6 +32,7 @@ function renderPane(): void {
       isVisible
       isFocusedGroup
       tabId="structured-read-error-tab"
+      worktreeId="wt-1"
       sessionId="read-error-session"
       target={{ kind: 'local' }}
       agent="codex"
@@ -146,6 +147,7 @@ it('says once that the history did not load beside a bubble of a chat that never
       isVisible
       isFocusedGroup
       tabId="structured-read-error-tab"
+      worktreeId="wt-1"
       sessionId="read-error-session"
       target={{ kind: 'environment', environmentId: 'remote-host' }}
       agent="codex"

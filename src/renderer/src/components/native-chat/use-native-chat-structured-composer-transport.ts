@@ -14,14 +14,13 @@ export function useNativeChatStructuredComposerTransport(args: {
   props: Pick<NativeChatStructuredViewProps, 'agent' | 'sessionId' | 'target'>
   controller: ReturnType<typeof useStructuredAgentSession>
   sendThroughRelaunch: (send: () => boolean) => boolean
-  worktreeId: string | undefined
   optionPickerRequest: NativeChatOptionPickerRequest | null
   setOptionPickerRequest: Dispatch<SetStateAction<NativeChatOptionPickerRequest | null>>
   onError: NativeChatStructuredComposerTransport['onError']
   onSubmitted: () => void
   queuedMessages: Pick<StructuredAgentSessionQueuedMessagesController, 'queueHold' | 'queueResume'>
 }): NativeChatStructuredComposerTransport {
-  const { props, controller, sendThroughRelaunch, worktreeId, optionPickerRequest } = args
+  const { props, controller, sendThroughRelaunch, optionPickerRequest } = args
   const { setOptionPickerRequest, onError, onSubmitted, queuedMessages } = args
   const acceptsImages = useStructuredAgentAcceptsImages(props.target, props.agent)
   return useMemo((): NativeChatStructuredComposerTransport => {
@@ -65,7 +64,6 @@ export function useNativeChatStructuredComposerTransport(args: {
       sessionCommands: controller.sessionCommands,
       acceptsImages,
       contextUsage: controller.contextUsage,
-      worktreeId,
       onError,
       onSubmitted,
       runtime: props.target.kind === 'local' ? 'local' : 'remote',
@@ -78,7 +76,6 @@ export function useNativeChatStructuredComposerTransport(args: {
   }, [
     acceptsImages,
     controller,
-    worktreeId,
     onError,
     onSubmitted,
     optionPickerRequest,

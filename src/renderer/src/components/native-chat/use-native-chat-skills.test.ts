@@ -3,14 +3,19 @@ import type { DiscoveredSkill, SkillDiscoveryResult } from '../../../../shared/s
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import type { Tab } from '../../../../shared/tab-types'
 import {
-  isNativeChatSkillDiscoveryAwaitingDirectory,
+  resolveNativeChatSkillDiscovery,
   type NativeChatSkillStateInputs
 } from './native-chat-skill-discovery-context'
 import {
   isNativeChatSkillForAgent,
-  resolveNativeChatSkillDiscoveryContext,
-  resolveNativeChatSkillDiscoveryCwd
+  resolveNativeChatSkillDiscoveryContext
 } from './use-native-chat-skills'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
+import {
+  agentSessionTabFixture,
+  terminalTabFixture,
+  worktreeFixture
+} from './native-chat-workspace-test-fixtures'
 
 function skill(overrides: Partial<DiscoveredSkill>): DiscoveredSkill {
   return {
@@ -113,72 +118,121 @@ describe('isNativeChatSkillForAgent', () => {
   })
 })
 
-describe('resolveNativeChatSkillDiscoveryCwd', () => {
+const WORKTREE = 'repo-1::/repo/worktree'
+
+function inputs(overrides: Partial<NativeChatSkillStateInputs> = {}): NativeChatSkillStateInputs {
+  return {
+    activeRepoId: null,
+    activeWorktreeId: null,
+    floatingWorkspacePath: null,
+    folderWorkspaces: [],
+    projectGroups: [],
+    projects: [],
+    repos: [],
+    restoredRuntimeHostIdByWorkspaceSessionKey: {},
+    settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: null },
+    structuredSessionLaunchDirectoryByTabId: {},
+    tabsByWorktree: {},
+    unifiedTabsByWorktree: {},
+    worktreesByRepo: {
+      'repo-1': [worktreeFixture(WORKTREE, '/repo/worktree', { repoId: 'repo-1' })]
+    },
+    ...overrides
+  }
+}
+
+function cwdOf(state: NativeChatSkillStateInputs, scope: NativeChatTabScope): string | null {
+  const resolution = resolveNativeChatSkillDiscovery(state, scope)
+  return resolution.status === 'ready' ? resolution.context.cwd : null
+}
+
+const bridge = (tabId: string, worktreeId = WORKTREE): NativeChatTabScope => ({
+  kind: 'bridge',
+  worktreeId,
+  tabId
+})
+const structured = (tabId: string, worktreeId = WORKTREE): NativeChatTabScope => ({
+  kind: 'structured',
+  worktreeId,
+  tabId
+})
+
+describe('resolveNativeChatSkillDiscovery', () => {
   it('returns the owning worktree path for a terminal tab', () => {
     expect(
-      resolveNativeChatSkillDiscoveryCwd(
-        {
-          tabsByWorktree: {
-            'repo-1::/repo/worktree': [
-              {
-                id: 'tab-1'
-              }
-            ]
-          },
-          worktreesByRepo: {
-            'repo-1': [
-              {
-                id: 'repo-1::/repo/worktree',
-                path: '/repo/worktree'
-              }
-            ]
-          }
-        },
-        'tab-1'
+      cwdOf(
+        inputs({ tabsByWorktree: { [WORKTREE]: [terminalTabFixture('tab-1', WORKTREE)] } }),
+        bridge('tab-1')
       )
     ).toBe('/repo/worktree')
   })
 
   it('returns the owning worktree path for a structured session tab', () => {
     expect(
-      resolveNativeChatSkillDiscoveryCwd(
-        {
-          tabsByWorktree: {},
+      cwdOf(
+        inputs({
           unifiedTabsByWorktree: {
-            'repo-1::/repo/worktree': [{ id: 'structured-tab-1' }]
-          },
-          worktreesByRepo: {
-            'repo-1': [{ id: 'repo-1::/repo/worktree', path: '/repo/worktree' }]
+            [WORKTREE]: [agentSessionTabFixture('structured-tab-1', WORKTREE)]
           }
-        },
-        'structured-tab-1'
+        }),
+        structured('structured-tab-1')
       )
     ).toBe('/repo/worktree')
   })
 
-  it('returns null when the tab has no known worktree owner', () => {
+  it('is unavailable when the tab is missing from its supplied workspace, without searching others', () => {
+    const elsewhere = inputs({
+      tabsByWorktree: { 'repo-1::/other': [terminalTabFixture('tab-1', 'repo-1::/other')] },
+      unifiedTabsByWorktree: {
+        [WORKTREE]: [agentSessionTabFixture('tab-1', WORKTREE)]
+      }
+    })
+    // Neither the other workspace nor the other tab kind stands in for the bridge row.
+    expect(resolveNativeChatSkillDiscovery(elsewhere, bridge('tab-1'))).toEqual({
+      status: 'unavailable'
+    })
+  })
+
+  it('rejects a same-id unified row of another content type', () => {
     expect(
-      resolveNativeChatSkillDiscoveryCwd({ tabsByWorktree: {}, worktreesByRepo: {} }, 'tab-1')
-    ).toBeNull()
+      resolveNativeChatSkillDiscovery(
+        inputs({
+          unifiedTabsByWorktree: {
+            [WORKTREE]: [agentSessionTabFixture('chat', WORKTREE, { contentType: 'terminal' })]
+          }
+        }),
+        structured('chat')
+      )
+    ).toEqual({ status: 'unavailable' })
   })
 
   it('prefers the pane startupCwd over the worktree root', () => {
     expect(
-      resolveNativeChatSkillDiscoveryCwd(
-        {
+      cwdOf(
+        inputs({
           tabsByWorktree: {
-            'repo-1::/repo/worktree': [
-              { id: 'tab-1', startupCwd: '/repo/worktree/packages/app' },
-              { id: 'tab-2' }
+            [WORKTREE]: [
+              terminalTabFixture('tab-1', WORKTREE, { startupCwd: '/repo/worktree/packages/app' }),
+              terminalTabFixture('tab-2', WORKTREE)
             ]
-          },
-          worktreesByRepo: {
-            'repo-1': [{ id: 'repo-1::/repo/worktree', path: '/repo/worktree' }]
           }
-        },
-        'tab-1'
+        }),
+        bridge('tab-1')
       )
     ).toBe('/repo/worktree/packages/app')
+  })
+
+  it('keeps the narrow directory fallback: detected-only rows are not a skill directory source', () => {
+    const withDetected = {
+      ...inputs({
+        worktreesByRepo: {},
+        tabsByWorktree: { [WORKTREE]: [terminalTabFixture('tab-1', WORKTREE)] }
+      }),
+      detectedWorktreesByRepo: undefined
+    }
+    expect(resolveNativeChatSkillDiscovery(withDetected, bridge('tab-1'))).toEqual({
+      status: 'unavailable'
+    })
   })
 })
 
@@ -214,12 +268,13 @@ describe('floating workspace skill discovery', () => {
     worktreesByRepo: {}
   }
 
+  const floatingScope = structured('floating-chat-1', FLOATING_TERMINAL_WORKTREE_ID)
+
   it('scans nothing and awaits the pin rather than scanning the current setting', () => {
-    expect(resolveNativeChatSkillDiscoveryCwd(floatingInputs, 'floating-chat-1')).toBeNull()
-    expect(resolveNativeChatSkillDiscoveryContext(floatingInputs, 'floating-chat-1')).toBeNull()
-    expect(isNativeChatSkillDiscoveryAwaitingDirectory(floatingInputs, 'floating-chat-1')).toBe(
-      true
-    )
+    expect(resolveNativeChatSkillDiscoveryContext(floatingInputs, floatingScope)).toBeNull()
+    expect(resolveNativeChatSkillDiscovery(floatingInputs, floatingScope)).toEqual({
+      status: 'awaiting-directory'
+    })
   })
 
   it('scans the pinned folder after the floating setting moved', () => {
@@ -230,8 +285,8 @@ describe('floating workspace skill discovery', () => {
         'floating-chat-1': { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
       }
     }
-    expect(isNativeChatSkillDiscoveryAwaitingDirectory(pinned, 'floating-chat-1')).toBe(false)
-    expect(resolveNativeChatSkillDiscoveryContext(pinned, 'floating-chat-1')).toMatchObject({
+    expect(resolveNativeChatSkillDiscovery(pinned, floatingScope).status).toBe('ready')
+    expect(resolveNativeChatSkillDiscoveryContext(pinned, floatingScope)).toMatchObject({
       cwd: '/home/me/pinned',
       executionHostKind: 'local',
       runtimeTarget: { kind: 'local' },
@@ -243,7 +298,7 @@ describe('floating workspace skill discovery', () => {
     expect(
       resolveNativeChatSkillDiscoveryContext(
         { ...floatingInputs, floatingWorkspacePath: null },
-        'floating-chat-1'
+        floatingScope
       )
     ).toBeNull()
   })

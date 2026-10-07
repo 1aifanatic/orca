@@ -25,6 +25,7 @@ import {
   type NativeChatSendClassification
 } from './native-chat-composer-state'
 import { useNativeChatSkills } from './use-native-chat-skills'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
 import {
   emitNativeChatPickerItemAccepted,
   emitNativeChatPickerOpened,
@@ -45,7 +46,8 @@ export type NativeChatPickerState = {
 
 export function useNativeChatPickerState(args: {
   agent: AgentType
-  terminalTabId: string
+  /** The chat's own workspace and tab; skill discovery reads nothing outside it. */
+  scope: NativeChatTabScope
   draftScopeKey: string
   draft: string
   caret: number
@@ -61,7 +63,7 @@ export function useNativeChatPickerState(args: {
 }): NativeChatPickerState {
   const {
     agent,
-    terminalTabId,
+    scope,
     draftScopeKey,
     draft,
     caret,
@@ -75,7 +77,7 @@ export function useNativeChatPickerState(args: {
   } = args
   const profile = useMemo(() => getNativeChatAgentProfile(agent), [agent])
   const skillPickerTriggered = isSkillPickerTriggered(draft.slice(0, caret), profile)
-  const discovery = useNativeChatSkills(agent, terminalTabId, skillPickerTriggered)
+  const discovery = useNativeChatSkills(agent, scope, skillPickerTriggered)
   const listboxId = `native-chat-picker-${useId().replaceAll(':', '')}`
   const dismissalContext = `${draftScopeKey}:${agent}`
   const [dismissed, setDismissed] = useState<{ context: string; triggerKey: string } | null>(null)

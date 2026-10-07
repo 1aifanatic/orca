@@ -1,68 +1,77 @@
 import { describe, expect, it } from 'vitest'
 import { shallow } from 'zustand/shallow'
 import type { AppState } from '@/store/types'
-import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { Tab } from '../../../../shared/tab-types'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import {
   resolveNativeChatImageRuntimeContext,
   selectNativeChatImageOwnerState
 } from './native-chat-image-runtime-context'
+import { useAppStore } from '@/store'
+import {
+  repoFixture,
+  terminalTabFixture,
+  worktreeFixture
+} from './native-chat-workspace-test-fixtures'
+
+const BRIDGE = { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' } as const
+const FLOATING = {
+  kind: 'structured',
+  worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
+  tabId: 'floating-chat-1'
+} as const
 
 function state(): AppState {
-  const tab: TerminalTab = {
-    id: 'tab-1',
-    ptyId: null,
-    worktreeId: 'wt-1',
-    title: 'Terminal 1',
-    customTitle: null,
-    color: null,
-    sortOrder: 0,
-    createdAt: 0
-  }
-  const worktree = {
-    id: 'wt-1',
-    repoId: 'repo',
-    path: '/repo/worktree',
-    hostId: 'local'
-  }
+  const worktree = worktreeFixture('wt-1', '/repo/worktree', { hostId: 'local' })
   return {
+    ...useAppStore.getInitialState(),
     activeWorkspaceExecutionHostId: 'local',
     activeWorktreeId: 'wt-1',
-    detectedWorktreesByRepo: {},
-    folderWorkspaces: [],
-    getKnownWorktreeById: () => worktree,
-    projectGroups: [],
-    removedRuntimeEnvironmentIds: new Set(),
-    repos: [{ id: 'repo', path: '/repo' }],
-    restoredRuntimeHostIdByWorkspaceSessionKey: {},
+    repos: [repoFixture()],
     runtimeEnvironmentCatalogHydrated: true,
-    runtimeEnvironments: [],
-    settings: { activeRuntimeEnvironmentId: null },
-    sshConnectionStates: {},
-    sshStateByEnvironment: {},
-    tabsByWorktree: { 'wt-1': [tab] },
-    unifiedTabsByWorktree: {},
+    settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: null },
+    tabsByWorktree: { 'wt-1': [terminalTabFixture('tab-1', 'wt-1')] },
     worktreesByRepo: { repo: [worktree] }
-  } as unknown as AppState
+  }
 }
 
 describe('resolveNativeChatImageRuntimeContext', () => {
   it('keeps unrelated store writes out of the image-owner selector', () => {
     const storeState = state()
-    const first = selectNativeChatImageOwnerState(storeState)
-    const second = selectNativeChatImageOwnerState({
-      ...storeState,
-      agentStatusByPaneKey: {} as AppState['agentStatusByPaneKey']
-    })
+    const first = selectNativeChatImageOwnerState(storeState, BRIDGE)
+    const second = selectNativeChatImageOwnerState(
+      {
+        ...storeState,
+        agentStatusByPaneKey: {} as AppState['agentStatusByPaneKey']
+      },
+      BRIDGE
+    )
+
+    expect(shallow(second, first)).toBe(true)
+  })
+
+  it("ignores other workspaces' tab buckets and pins", () => {
+    const storeState = state()
+    const first = selectNativeChatImageOwnerState(storeState, BRIDGE)
+    const second = selectNativeChatImageOwnerState(
+      {
+        ...storeState,
+        tabsByWorktree: { ...storeState.tabsByWorktree, 'wt-other': [] },
+        unifiedTabsByWorktree: { 'wt-other': [] },
+        structuredSessionLaunchDirectoryByTabId: {
+          'other-chat': { sessionId: 's', launchDirectory: '/elsewhere' }
+        }
+      },
+      BRIDGE
+    )
 
     expect(shallow(second, first)).toBe(true)
   })
 
   it('reuses derived settings when owner inputs are unchanged', () => {
     const storeState = state()
-    const first = resolveNativeChatImageRuntimeContext(storeState, 'tab-1')
-    const second = resolveNativeChatImageRuntimeContext(storeState, 'tab-1')
+    const first = resolveNativeChatImageRuntimeContext(storeState, BRIDGE)
+    const second = resolveNativeChatImageRuntimeContext(storeState, BRIDGE)
 
     expect(first).not.toBeNull()
     expect(second?.settings).toBe(first?.settings)
@@ -81,12 +90,11 @@ describe('resolveNativeChatImageRuntimeContext', () => {
       ...storeState,
       activeWorktreeId: null,
       activeWorkspaceExecutionHostId: null,
-      getKnownWorktreeById: () => ownerOnlyWorktree,
       worktreesByRepo: { repo: [ownerOnlyWorktree] },
       runtimeEnvironments: [{ id: 'owner-a' }]
     } as unknown as AppState
 
-    const context = resolveNativeChatImageRuntimeContext(ownerState, 'tab-1')
+    const context = resolveNativeChatImageRuntimeContext(ownerState, BRIDGE)
 
     expect(context).toMatchObject({
       worktreeId: 'wt-1',
@@ -115,14 +123,13 @@ describe('resolveNativeChatImageRuntimeContext', () => {
       ...state(),
       tabsByWorktree: {},
       unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] },
-      getKnownWorktreeById: () => undefined,
       worktreesByRepo: {},
       // Why a focused runtime: floating must stay local even when one is selected.
       settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
       floatingWorkspacePath: '/home/me/changed-setting'
     }
 
-    expect(resolveNativeChatImageRuntimeContext(floatingState, 'floating-chat-1')).toBeNull()
+    expect(resolveNativeChatImageRuntimeContext(floatingState, FLOATING)).toBeNull()
     expect(
       resolveNativeChatImageRuntimeContext(
         {
@@ -131,7 +138,7 @@ describe('resolveNativeChatImageRuntimeContext', () => {
             'floating-chat-1': { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
           }
         },
-        'floating-chat-1'
+        FLOATING
       )
     ).toMatchObject({
       worktreeId: FLOATING_TERMINAL_WORKTREE_ID,

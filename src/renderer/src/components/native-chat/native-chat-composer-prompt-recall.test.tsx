@@ -83,6 +83,7 @@ function renderComposer(prompts: string[]): HTMLElement {
   paneCounter += 1
   render(
     <NativeChatComposer
+      worktreeId="worktree-1"
       terminalTabId={`tab-${paneCounter}`}
       paneKey={`tab-${paneCounter}:recall`}
       targetPtyId={null}

@@ -45,7 +45,6 @@ export type NativeChatStructuredComposerTransport = {
   acceptsImages?: boolean
   /** The session's context usage; null until the journal can state it. */
   contextUsage?: StructuredAgentContextUsage | null
-  worktreeId?: string
   /** Present only where the host can set this session's goal. */
   threadGoal?: { setObjective: (objective: string) => Promise<boolean> }
   /** `errorText` is error text Orca did not write, shown apart and copyable. */
@@ -72,8 +71,11 @@ export type NativeChatOptimisticSendOutcome = {
 }
 
 export type NativeChatComposerProps = {
-  /** Tab hosting the agent; used to resolve the live ptyId + runtime settings. */
+  /** The chat's tab: a terminal tab for bridge chat, the agent-session tab for structured chat. */
   terminalTabId: string
+  /** Workspace whose bucket holds that tab, as the parent knows it. Membership is checked there
+   *  only; a miss refuses the action instead of searching other workspaces. */
+  worktreeId: string
   /** Stable split-leaf identity; unlike a PTY id, this survives reconnects. */
   paneKey: string
   /** Owner of the unsent draft; defaults to `paneKey`. A structured chat's is its conversation,

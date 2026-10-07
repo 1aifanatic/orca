@@ -7,16 +7,13 @@ import { getNativeChatAgentProfile } from '../../../../shared/native-chat-agent-
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { emitNativeChatSkillDiscovery } from '@/lib/native-chat-telemetry'
 import {
-  isNativeChatSkillDiscoveryAwaitingDirectory,
-  resolveNativeChatSkillDiscoveryContext,
+  resolveNativeChatSkillDiscovery,
   selectNativeChatSkillStateInputs,
   type NativeChatSkillDiscoveryContext
 } from './native-chat-skill-discovery-context'
+import { nativeChatStateFromSelection, type NativeChatTabScope } from './native-chat-tab-scope'
 
-export {
-  resolveNativeChatSkillDiscoveryContext,
-  resolveNativeChatSkillDiscoveryCwd
-} from './native-chat-skill-discovery-context'
+export { resolveNativeChatSkillDiscoveryContext } from './native-chat-skill-discovery-context'
 
 // The host scan budget honored by runtime targets that respect timeoutMs.
 const DISCOVERY_TIMEOUT_MS = 10_000
@@ -87,25 +84,36 @@ export function isNativeChatSkillForAgent(
 
 export function useNativeChatSkills(
   agent: AgentType,
-  terminalTabId: string,
+  scope: NativeChatTabScope,
   enabled = false
 ): NativeChatSkillDiscovery {
-  const inputs = useAppStore(useShallow(selectNativeChatSkillStateInputs))
-  const context = useMemo(
-    () => resolveNativeChatSkillDiscoveryContext(inputs, terminalTabId),
-    [inputs, terminalTabId]
+  const profile = getNativeChatAgentProfile(agent)
+  const discoveryActive = Boolean(profile) && enabled
+  const { kind, worktreeId, tabId } = scope
+  // Why: a closed picker has no consumer, so it subscribes to nothing and derives no route.
+  const selection = useAppStore(
+    useShallow((state) =>
+      discoveryActive ? selectNativeChatSkillStateInputs(state, { kind, worktreeId, tabId }) : null
+    )
   )
-  const awaitingContext = useMemo(
-    () => !context && isNativeChatSkillDiscoveryAwaitingDirectory(inputs, terminalTabId),
-    [context, inputs, terminalTabId]
-  )
+  const resolution = useMemo(() => {
+    if (!selection) {
+      return null
+    }
+    const memoScope = { kind, worktreeId, tabId }
+    return resolveNativeChatSkillDiscovery(
+      nativeChatStateFromSelection(memoScope, selection),
+      memoScope
+    )
+  }, [kind, selection, tabId, worktreeId])
+  const context = resolution?.status === 'ready' ? resolution.context : null
+  const awaitingContext = resolution?.status === 'awaiting-directory'
   const [state, setState] = useState<StoredDiscoveryState>(IDLE_STATE)
   const [retryGeneration, setRetryGeneration] = useState(0)
   const paneDiscoveryCache = useRef(new Map<string, SkillDiscoveryResult>())
   // Why: retry intent belongs to the next request, not to every later render —
   // keying off the generation counter would keep forcing after a pane switch.
   const forceNextDiscovery = useRef(false)
-  const profile = getNativeChatAgentProfile(agent)
 
   useEffect(() => {
     let cancelled = false

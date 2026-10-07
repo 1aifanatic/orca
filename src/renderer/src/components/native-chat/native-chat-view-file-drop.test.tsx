@@ -31,6 +31,7 @@ it('owns pane drops for standalone structured sessions without a terminal portal
     <NativeChatView
       mode="structured"
       tabId="structured-tab"
+      worktreeId="wt-1"
       sessionId="session"
       agent="codex"
       target={{ kind: 'local' }}

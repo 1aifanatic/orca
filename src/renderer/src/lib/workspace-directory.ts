@@ -2,16 +2,32 @@ import type { ExecutionHostId } from '../../../shared/execution-host'
 import { isFloatingWorkspaceId } from '../../../shared/floating-workspace-worktree'
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import type { AppState } from '@/store/types'
+import { findKnownWorktreeById } from '@/store/slices/worktrees/listing/detected-worktree-meta'
 
-// Why optional: narrow callers (skill discovery) only carry the catalogs they subscribe to.
-export type WorkspaceDirectoryState = {
+/** The catalog `getKnownWorktreeById` reads, taken from one snapshot instead of the live store. */
+export type KnownWorkspaceCatalogState = Pick<
+  AppState,
+  'worktreesByRepo' | 'detectedWorktreesByRepo' | 'folderWorkspaces' | 'floatingWorkspacePath'
+>
+
+// Why a separate shape: narrow callers (skill discovery) carry only the catalogs they subscribe
+// to, without detected rows, and keep the visible-row/folder fallback below.
+type WorkspaceDirectoryFallbackState = {
   worktreesByRepo?: Record<
     string,
     readonly { id: string; path: string; hostId?: ExecutionHostId }[]
   >
   folderWorkspaces?: readonly { id: string; folderPath: string }[]
   floatingWorkspacePath?: string | null
-  getKnownWorktreeById?: AppState['getKnownWorktreeById']
+  detectedWorktreesByRepo?: undefined
+}
+
+export type WorkspaceDirectoryState = WorkspaceDirectoryFallbackState | KnownWorkspaceCatalogState
+
+function hasKnownWorkspaceCatalog(
+  state: WorkspaceDirectoryState
+): state is KnownWorkspaceCatalogState {
+  return state.detectedWorktreesByRepo !== undefined
 }
 
 /**
@@ -29,7 +45,9 @@ export function resolveWorkspaceDirectory(
       ? state.floatingWorkspacePath || null
       : null
   }
-  const known = state.getKnownWorktreeById?.(worktreeId, executionHostId ?? undefined)
+  const known = hasKnownWorkspaceCatalog(state)
+    ? findKnownWorktreeById(state, worktreeId, executionHostId ?? undefined)
+    : undefined
   if (known?.path) {
     return known.path
   }

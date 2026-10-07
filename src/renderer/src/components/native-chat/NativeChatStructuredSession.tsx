@@ -19,11 +19,11 @@ import { useNativeChatFontSize } from './use-native-chat-font-size'
 import { LinkActionPopover } from '@/components/link-actions/LinkActionPopover'
 import { useNativeChatLinkActions } from './use-native-chat-link-actions'
 import { useNativeChatFileLinkContext } from './use-native-chat-file-link-context'
-import { useNativeChatTabOwnerWorktreeId } from './use-native-chat-tab-owner'
 import { useStructuredAgentSession } from './use-structured-agent-session'
 import { useNativeChatImageRuntimeContext } from './native-chat-image-runtime-context'
 import { useStructuredNativeChatPaneCommands } from './use-structured-native-chat-pane-commands'
 import type { NativeChatStructuredViewProps } from './native-chat-view-types'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
 import { NativeChatStructuredSessionStatus } from './NativeChatStructuredSessionStatus'
 import { useNativeChatLaunchDraftSignal } from './use-native-chat-launch-draft-adoption'
 import { structuredSessionNotices } from './native-chat-structured-session-notices'
@@ -51,9 +51,13 @@ type OptionPickerRequest = { id: string; sequence: number }
 export function NativeChatStructuredSession(
   props: Omit<NativeChatStructuredViewProps, 'mode'>
 ): React.JSX.Element {
-  const ownerWorktreeId = useNativeChatTabOwnerWorktreeId(props.tabId)
-  const fileLinkContext = useNativeChatFileLinkContext(props.tabId)
-  const provisionalLaunch = useNativeChatProvisionalLaunch(ownerWorktreeId, props.sessionId)
+  // Workspace identity comes from the parent; launch and transport never wait on its directory.
+  const scope = useMemo<NativeChatTabScope>(
+    () => ({ kind: 'structured', worktreeId: props.worktreeId, tabId: props.tabId }),
+    [props.tabId, props.worktreeId]
+  )
+  const fileLinkContext = useNativeChatFileLinkContext(scope)
+  const provisionalLaunch = useNativeChatProvisionalLaunch(props.worktreeId, props.sessionId)
   const { sendThroughRelaunch } = provisionalLaunch
   // The host's own word on whether the provider child has answered startup yet.
   const hostExecution = useStructuredAgentSessionHostExecution(props.sessionId, props.target)
@@ -160,7 +164,7 @@ export function NativeChatStructuredSession(
     rootRef
   )
   const appearanceStyle = useNativeChatStoreAppearanceStyle()
-  const imageRuntimeContext = useNativeChatImageRuntimeContext(props.tabId)
+  const imageRuntimeContext = useNativeChatImageRuntimeContext(scope)
   const { onLinkClick, linkActionRequest, closeLinkActions } = useNativeChatLinkActions(
     fileLinkContext,
     rootRef,
@@ -193,7 +197,6 @@ export function NativeChatStructuredSession(
     props,
     controller,
     sendThroughRelaunch,
-    worktreeId: ownerWorktreeId ?? undefined,
     optionPickerRequest,
     setOptionPickerRequest,
     onError: reportComposerError,
@@ -341,6 +344,7 @@ export function NativeChatStructuredSession(
             <NativeChatComposer
               ref={composerRef}
               terminalTabId={props.tabId}
+              worktreeId={props.worktreeId}
               paneKey={paneKey}
               draftScopeKey={structuredAgentSessionDraftScopeKey(props.sessionId)}
               targetPtyId={null}

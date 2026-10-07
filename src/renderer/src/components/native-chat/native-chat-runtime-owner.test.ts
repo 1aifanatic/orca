@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import {
+  selectNativeChatBridgeMembership,
   selectNativeChatRuntimeEnvironmentId,
   type NativeChatRuntimeOwnerState
 } from './native-chat-runtime-owner'
@@ -39,14 +40,14 @@ function state(overrides: Partial<NativeChatRuntimeOwnerState> = {}): NativeChat
 
 describe('selectNativeChatRuntimeEnvironmentId', () => {
   it('returns null for a local-owned worktree', () => {
-    expect(selectNativeChatRuntimeEnvironmentId(state(), 'tab-1')).toBeNull()
+    expect(selectNativeChatRuntimeEnvironmentId(state(), 'wt-1')).toBeNull()
   })
 
   it('returns the decoded environment id for a runtime-owned worktree', () => {
     expect(
       selectNativeChatRuntimeEnvironmentId(
         state({ worktreesByRepo: worktreeRecord('runtime:env-1') }),
-        'tab-1'
+        'wt-1'
       )
     ).toBe('env-1')
   })
@@ -55,13 +56,19 @@ describe('selectNativeChatRuntimeEnvironmentId', () => {
     expect(
       selectNativeChatRuntimeEnvironmentId(
         state({ worktreesByRepo: worktreeRecord('ssh:conn-1') }),
-        'tab-1'
+        'wt-1'
       )
     ).toBeNull()
   })
 
-  it('returns null when the terminal tab matches no tab in tabsByWorktree', () => {
-    expect(selectNativeChatRuntimeEnvironmentId(state({ tabsByWorktree: {} }), 'tab-1')).toBeNull()
+  it('reports a missing bridge tab as a membership miss, separately from the nullable owner', () => {
+    const scope = { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' } as const
+    const runtimeOwned = state({ worktreesByRepo: worktreeRecord('runtime:env-1') })
+    expect(selectNativeChatBridgeMembership(runtimeOwned, scope)).toBe(true)
+    const moved = { ...runtimeOwned, tabsByWorktree: { 'wt-2': [terminalTab()] } }
+    expect(selectNativeChatBridgeMembership(moved, scope)).toBe(false)
+    // The owner stays the supplied workspace's; transport is suspended by membership, not a null.
+    expect(selectNativeChatRuntimeEnvironmentId(moved, 'wt-1')).toBe('env-1')
   })
 
   it('returns the owner id even when the worktree record has no resolvable path', () => {
@@ -70,7 +77,7 @@ describe('selectNativeChatRuntimeEnvironmentId', () => {
     expect(
       selectNativeChatRuntimeEnvironmentId(
         state({ worktreesByRepo: worktreeRecord('runtime:env-1') }),
-        'tab-1'
+        'wt-1'
       )
     ).toBe('env-1')
   })

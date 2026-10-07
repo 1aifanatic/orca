@@ -22,6 +22,7 @@ import {
   resolveNativeChatModelDiscoveryContext
 } from './native-chat-session-option-discovery'
 import { readClaudeSessionOptionsFromTerminalScreen } from './claude-terminal-session-options'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
 
 import { enqueueSessionOptionSettingsWrite } from './native-chat-session-option-settings-write'
 
@@ -57,7 +58,9 @@ export async function retirePersistedModelMissingFromDiscovery(
 
 export function useNativeChatSessionOptions(args: {
   agent: AgentType
-  terminalTabId: string
+  /** Explicit chat mode: a structured chat has its own option surface and never resolves terminal
+   *  discovery, while a bridge chat whose PTY is briefly gone keeps its bridge policy. */
+  scope: NativeChatTabScope
   targetPtyId: string | null
   dispatchCommand: NativeChatSessionOptionDispatchCommand
   onAgentPicker?: () => void
@@ -71,7 +74,7 @@ export function useNativeChatSessionOptions(args: {
 } {
   const {
     agent,
-    terminalTabId,
+    scope: { kind: chatMode, worktreeId, tabId: terminalTabId },
     targetPtyId,
     dispatchCommand,
     onAgentPicker,
@@ -92,9 +95,17 @@ export function useNativeChatSessionOptions(args: {
   // The screen text that last parsed into reported values, so a later model
   // discovery can re-resolve it against the host's real ids.
   const reportedScreenRef = useRef<string | null>(null)
+  // Why the workspace dependency: a tab rebound to another workspace must resolve that host/path.
   const discoveryContext = useMemo(
-    () => resolveNativeChatModelDiscoveryContext(terminalTabId),
-    [terminalTabId]
+    () =>
+      chatMode === 'bridge'
+        ? resolveNativeChatModelDiscoveryContext({
+            kind: 'bridge',
+            worktreeId,
+            tabId: terminalTabId
+          })
+        : null,
+    [chatMode, terminalTabId, worktreeId]
   )
   const surface = useMemo(() => {
     // Why: native chat currently attaches only after startup is already queued;

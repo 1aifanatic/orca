@@ -3,7 +3,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type * as AttachmentUploadModule from './native-chat-attachment-upload'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { NativeChatPromptEditor } from './NativeChatPromptEditor'
@@ -77,8 +77,12 @@ function ComposerProbe({
     setDraft: () => {},
     setNotice
   })
+  const scope = useMemo(
+    () => ({ kind: 'bridge' as const, worktreeId: 'wt-1', tabId: pane }),
+    [pane]
+  )
   const { attachExternalPaths } = useNativeChatExternalAttachments({
-    terminalTabId: pane,
+    scope,
     disabled: false,
     attachResolvedPaths: attachments.attachResolvedPaths,
     pendingChips: attachments.pendingChips,

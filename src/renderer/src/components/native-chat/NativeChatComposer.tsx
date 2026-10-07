@@ -1,9 +1,9 @@
 import { useNativeChatComposerNotice } from './use-native-chat-composer-notice'
 import type { NativeChatComposerInput } from './native-chat-composer-input'
-import { forwardRef, useCallback, useState } from 'react'
+import { forwardRef, useCallback, useMemo, useState } from 'react'
 import { useNativeChatComposerInterrupt } from './use-native-chat-composer-interrupt'
 import { useNativeChatContextUsageSummary } from './use-native-chat-context-usage-summary'
-import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
+import { useAppStore } from '@/store'
 import { useNativeChatMentionFiles } from './use-native-chat-mention-files'
 import { useNativeChatDraft } from './use-native-chat-draft'
 import { useNativeChatComposerRecall } from './use-native-chat-composer-recall'
@@ -33,6 +33,7 @@ import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-even
 import { useNativeChatComposerAppMenuSelection } from './use-native-chat-composer-app-menu-selection'
 import { useNativeChatWorkspaceFileDrop } from './use-native-chat-workspace-file-drop'
 import { useNativeChatComposerSubmit } from './use-native-chat-composer-submit'
+import { nativeChatTabScope, resolveNativeChatBridgeRuntimeSettings } from './native-chat-tab-scope'
 
 export type {
   NativeChatComposerHandle,
@@ -51,6 +52,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
   function NativeChatComposerPane(
     {
       terminalTabId,
+      worktreeId,
       paneKey,
       draftScopeKey = paneKey,
       targetPtyId,
@@ -98,6 +100,12 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setCaret
     })
     const [activeSuggestion, setActiveSuggestion] = useState(0)
+    // Why explicit mode: a bridge chat whose PTY is briefly gone is still a bridge chat.
+    const isStructured = structuredTransport !== undefined
+    const scope = useMemo(
+      () => nativeChatTabScope(isStructured, worktreeId, terminalTabId),
+      [isStructured, terminalTabId, worktreeId]
+    )
     const { notices, setNotice } = useNativeChatComposerNotice(chatNotices)
     const { textareaRef } = useNativeChatComposerAppMenuSelection(imeEnterGesture.isComposing)
     const recall = useNativeChatComposerRecall({
@@ -118,7 +126,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     )
     const picker = useNativeChatPickerState({
       agent,
-      terminalTabId,
+      scope,
       draftScopeKey: paneKey,
       draft,
       caret,
@@ -141,18 +149,19 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     } = picker
     const mentionFiles = useNativeChatMentionFiles({
       query: autocomplete.mode === 'mention' ? autocomplete.query : null,
-      terminalTabId,
-      structuredWorktreeId: structuredTransport?.worktreeId
+      scope
     })
 
     // Resolve the live ptyId for this chat leaf; runtime owner settings route
-    // local vs remote (SSH) sends.
+    // local vs remote (SSH) sends. Checked before any send side effect, so a tab
+    // gone from its workspace refuses with the draft intact.
     const resolveTarget = useCallback((): NativeChatResolvedTarget | null => {
-      if (!targetPtyId) {
+      if (!targetPtyId || scope.kind !== 'bridge') {
         return null
       }
-      return { ptyId: targetPtyId, settings: getSettingsForAgentTabRuntimeOwner(terminalTabId) }
-    }, [targetPtyId, terminalTabId])
+      const settings = resolveNativeChatBridgeRuntimeSettings(useAppStore.getState(), scope)
+      return settings ? { ptyId: targetPtyId, settings } : null
+    }, [scope, targetPtyId])
 
     // Why inputOwnedByCard: the hidden field can still hold keyboard focus for a frame.
     const [hasPty, disabled] = structuredTransport
@@ -176,15 +185,10 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       setDraft,
       setNotice
     })
-    const {
-      imageAttachments,
-      attachResolvedPaths,
-      clearImageAttachments,
-      removeImageAttachment
-    } = attachments
+    const { imageAttachments, attachResolvedPaths, clearImageAttachments, removeImageAttachment } =
+      attachments
     useNativeChatWorkspaceFileDrop({
-      terminalTabId,
-      structuredWorktreeId: structuredTransport?.worktreeId,
+      scope,
       disabled,
       paneKey,
       attachResolvedPaths,
@@ -196,8 +200,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
       : disabled || imageBlock.holdsSend || (draft.trim() === '' && imageAttachments.length === 0)
 
     const { attachExternalPaths, resolveAttachmentOwner } = useNativeChatExternalAttachments({
-      terminalTabId,
-      structuredWorktreeId: structuredTransport?.worktreeId,
+      scope,
       structuredSession: structuredTransport,
       disabled,
       attachResolvedPaths,
@@ -216,7 +219,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
         paneKey,
         targetPtyId,
         structuredTransport?.sessionId,
-        structuredTransport?.worktreeId,
+        worktreeId,
         structuredTransport?.runtimeEnvironmentId
       ]),
       agent,
@@ -245,7 +248,7 @@ const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, NativeChatCo
     const { surface: ptySessionOptionsSurface, snapshot: ptySessionOptionsSnapshot } =
       useNativeChatSessionOptions({
         agent,
-        terminalTabId,
+        scope,
         targetPtyId,
         dispatchCommand: dispatchSessionOptionCommand,
         onAgentPicker: onSwitchToTerminal,

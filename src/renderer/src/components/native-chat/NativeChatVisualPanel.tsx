@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '@/store'
 import type { RightSidebarVisualState } from '@/store/slices/editor/actions/right-sidebar-state'
-import { findNativeChatTabOwnerWorktreeId } from './native-chat-file-link'
+import { isNativeChatTabScopeCurrent } from './native-chat-tab-scope'
 import { NativeChatVisualFrame } from './NativeChatVisualFrame'
 import { NativeChatVisualUnavailable } from './NativeChatInlineVisual'
 import { useNativeChatVisualDocument } from './use-native-chat-visual-document'
@@ -26,7 +26,11 @@ export default function NativeChatVisualPanel({
   const ownerPresent = useAppStore(
     (state) =>
       state.activeWorktreeId === route.worktreeId &&
-      findNativeChatTabOwnerWorktreeId(state, route.tabId) === route.worktreeId
+      isNativeChatTabScopeCurrent(state, {
+        kind: 'structured',
+        worktreeId: route.worktreeId,
+        tabId: route.tabId
+      })
   )
   const state = useNativeChatVisualDocument(
     { target: route.target, sessionId: route.sessionId, file: route.file },

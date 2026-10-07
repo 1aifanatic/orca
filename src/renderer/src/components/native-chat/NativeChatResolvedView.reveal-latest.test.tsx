@@ -35,7 +35,7 @@ vi.mock('./use-native-chat-interactive-send', () => ({
     sendRawVerified: async () => true,
     cancelPending: () => {},
     cancelAsk: async () => true,
-    cancel: () => {}
+    cancel: () => true
   })
 }))
 // A pending question, so the pane mounts its card with the send it hands it.
@@ -99,6 +99,7 @@ describe('NativeChatResolvedView sends', () => {
         isFocusedGroup={false}
         targetPtyId="pty-reveal"
         terminalTabId="tab-reveal"
+        worktreeId="wt-1"
         ownsTabWideLaunchDraft={false}
       />
     )
@@ -131,6 +132,7 @@ describe('NativeChatResolvedView sends', () => {
         isFocusedGroup={false}
         targetPtyId={null}
         terminalTabId="tab-reveal"
+        worktreeId="wt-1"
         ownsTabWideLaunchDraft={false}
       />
     )

@@ -84,6 +84,7 @@ const STORED = '/srv/agent-session-attachments/0b6f8a52-4a3e-4c4e-9a59-1d5d1f2b8
 function composer(): React.JSX.Element {
   return (
     <NativeChatComposer
+      worktreeId="worktree-1"
       terminalTabId="tab-1"
       paneKey={PANE}
       targetPtyId={null}

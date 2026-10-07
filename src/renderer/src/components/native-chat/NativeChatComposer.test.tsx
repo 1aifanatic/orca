@@ -59,6 +59,9 @@ vi.mock('../../store', () => {
     dictationState: 'idle',
     settings: { voice: { enabled: false }, nativeChatSessionOptions: {} },
     agentStatusByPaneKey: {},
+    tabsByWorktree: { 'wt-1': [{ id: 'tab-1' }] },
+    repos: [{ id: 'repo', connectionId: null }],
+    worktreesByRepo: { repo: [{ id: 'wt-1', repoId: 'repo', path: '/repo' }] },
     updateSettings: vi.fn(),
     clearNativeChatLaunchDraft: mocks.clearNativeChatLaunchDraft,
     markNativeChatLaunchDraftAdopted: mocks.markNativeChatLaunchDraftAdopted
@@ -72,8 +75,9 @@ vi.mock('@/runtime/runtime-terminal-inspection', () => ({
   isRemoteRuntimePtyId: () => false,
   sendRuntimePtyInput: vi.fn()
 }))
-vi.mock('@/lib/agent-paste-draft', () => ({
-  getSettingsForAgentTabRuntimeOwner: () => ({})
+vi.mock('@/lib/worktree-runtime-owner', async (importOriginal) => ({
+  ...(await importOriginal<typeof WorktreeRuntimeOwnerModule>()),
+  getSettingsForWorktreeRuntimeOwner: () => ({})
 }))
 vi.mock('./native-chat-runtime-send', () => ({
   sendNativeChatMessage: (...args: unknown[]) => mocks.sendNativeChatMessage(...args),
@@ -103,9 +107,7 @@ vi.mock('./use-native-chat-draft', () => ({
     return { draft: mocks.draft, setDraft: mocks.setDraft, flushDraftAppends: () => {} }
   }
 }))
-vi.mock('./native-chat-draft-cache', () => ({
-  readNativeChatDraftCache: () => ''
-}))
+vi.mock('./native-chat-draft-cache', () => ({ readNativeChatDraftCache: () => '' }))
 vi.mock('./NativeChatComposerField', () => ({
   NativeChatComposerField: (props: { onSend?: () => void; onStop?: () => void }) => {
     mocks.fieldProps = props
@@ -129,10 +131,7 @@ vi.mock('./use-native-chat-composer-attachments', () => ({
   }
 }))
 vi.mock('./use-native-chat-composer-paste', () => ({
-  useNativeChatComposerPaste: () => ({
-    handlePaste: vi.fn(),
-    pasteFromClipboard: vi.fn()
-  })
+  useNativeChatComposerPaste: () => ({ handlePaste: vi.fn(), pasteFromClipboard: vi.fn() })
 }))
 vi.mock('./use-native-chat-external-attachments', () => ({
   useNativeChatExternalAttachments: () => ({
@@ -140,9 +139,7 @@ vi.mock('./use-native-chat-external-attachments', () => ({
     resolveAttachmentOwner: vi.fn()
   })
 }))
-vi.mock('../dictation/dictation-control-events', () => ({
-  dispatchDictationControl: vi.fn()
-}))
+vi.mock('../dictation/dictation-control-events', () => ({ dispatchDictationControl: vi.fn() }))
 vi.mock('./use-native-chat-composer-keydown', () => ({
   useNativeChatComposerKeyDown: (args: { isComposing: () => boolean }) => {
     mocks.composerIsComposing = args.isComposing
@@ -156,8 +153,14 @@ vi.mock('./use-native-chat-send-lifecycle', () => ({
   })
 }))
 
-import { NativeChatComposer } from './NativeChatComposer'
+import { NativeChatComposer as Composer, type NativeChatComposerProps } from './NativeChatComposer'
 import { sendRuntimePtyInput } from '@/runtime/runtime-terminal-inspection'
+import type * as WorktreeRuntimeOwnerModule from '@/lib/worktree-runtime-owner'
+
+// Every pane here belongs to wt-1, whose terminal bucket holds tab-1.
+function NativeChatComposer(props: Omit<NativeChatComposerProps, 'worktreeId'>): React.JSX.Element {
+  return <Composer worktreeId="wt-1" {...props} />
+}
 
 describe('NativeChatComposer', () => {
   beforeEach(() => {
@@ -389,7 +392,6 @@ describe('NativeChatComposer', () => {
             subscribe: () => () => {}
           },
           optionSnapshot: [],
-          worktreeId: 'wt-1',
           onError: vi.fn(),
           runtime: 'local',
           sessionId: 'session-test',

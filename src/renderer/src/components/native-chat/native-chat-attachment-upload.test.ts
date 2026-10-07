@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppState } from '@/store/types'
+import { getDefaultSettings } from '../../../../shared/constants'
+import {
+  agentSessionTabFixture,
+  repoFixture,
+  worktreeFixture
+} from './native-chat-workspace-test-fixtures'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 
 const mocks = vi.hoisted(() => ({
@@ -31,12 +37,15 @@ import {
   nativeChatAttachFailedNotice,
   prepareNativeChatSessionAttachmentUpload,
   resolveNativeChatAttachmentOwner,
-  resolveNativeChatAttachmentOwnerForWorktree,
   resolveNativeChatRuntimeSessionAttachmentOwner,
   uploadNativeChatAttachmentPaths
 } from './native-chat-attachment-upload'
 import { replaceRuntimeEnvironmentRevisions } from '@/runtime/runtime-environment-revision'
 import { AGENT_SESSION_ATTACHMENTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+
+const BRIDGE = { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' } as const
+const STRUCTURED = { kind: 'structured', worktreeId: 'wt-1', tabId: 'chat-1' } as const
+const STRUCTURED_ROW = agentSessionTabFixture('chat-1', 'wt-1')
 
 function terminalTab(overrides: Partial<TerminalTab> = {}): TerminalTab {
   return {
@@ -52,44 +61,60 @@ function terminalTab(overrides: Partial<TerminalTab> = {}): TerminalTab {
   }
 }
 
-function state(overrides: Partial<AppState> = {}): AppState {
+type OwnerState = Parameters<typeof resolveNativeChatAttachmentOwner>[0]
+
+function state(overrides: Partial<OwnerState> = {}): OwnerState {
   return {
+    detectedWorktreesByRepo: {},
     folderWorkspaces: [],
-    getKnownWorktreeById: (worktreeId: string) =>
-      worktreeId === 'wt-1' ? ({ id: 'wt-1', path: '/repo/worktree' } as never) : undefined,
+    floatingWorkspacePath: null,
     projectGroups: [],
-    repos: [{ id: 'repo', connectionId: null }],
-    settings: { activeRuntimeEnvironmentId: null },
+    repos: [repoFixture({ connectionId: null })],
+    settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: null },
     sshConnectionStates: new Map(),
     tabsByWorktree: {
       'wt-1': [terminalTab()]
     },
+    unifiedTabsByWorktree: { 'wt-1': [STRUCTURED_ROW] },
     worktreesByRepo: {
-      repo: [{ id: 'wt-1', repoId: 'repo', path: '/repo/worktree' } as never]
+      repo: [worktreeFixture('wt-1', '/repo/worktree')]
     },
     ...overrides
-  } as AppState
+  }
 }
 
 describe('resolveNativeChatAttachmentOwner', () => {
   it('resolves a local repo worktree to local', () => {
-    expect(resolveNativeChatAttachmentOwner(state(), 'tab-1')).toEqual({ kind: 'local' })
+    expect(resolveNativeChatAttachmentOwner(state(), BRIDGE)).toEqual({ kind: 'local' })
   })
 
-  it('resolves a structured tab owner directly from its worktree', () => {
-    expect(resolveNativeChatAttachmentOwnerForWorktree(state(), 'wt-1')).toEqual({
+  it('resolves a structured tab owner from its supplied workspace', () => {
+    expect(resolveNativeChatAttachmentOwner(state(), STRUCTURED)).toEqual({
       kind: 'local'
     })
   })
 
+  it('reports not-ready for a structured tab missing from its unified bucket', () => {
+    // A terminal row with the same id is not this chat, and other workspaces are not searched.
+    expect(
+      resolveNativeChatAttachmentOwner(
+        state({
+          tabsByWorktree: { 'wt-1': [terminalTab({ id: 'chat-1' })] },
+          unifiedTabsByWorktree: { 'wt-1': [], 'wt-2': [STRUCTURED_ROW] }
+        }),
+        STRUCTURED
+      )
+    ).toEqual({ kind: 'not-ready' })
+  })
+
   it('resolves a structured SSH owner directly from its worktree', () => {
     expect(
-      resolveNativeChatAttachmentOwnerForWorktree(
+      resolveNativeChatAttachmentOwner(
         state({
           repos: [{ id: 'repo', connectionId: 'conn-1' }] as never,
           sshConnectionStates: new Map([['conn-1', { connectionGeneration: 4 } as never]])
         }),
-        'wt-1'
+        STRUCTURED
       )
     ).toMatchObject({
       kind: 'ssh',
@@ -105,7 +130,7 @@ describe('resolveNativeChatAttachmentOwner', () => {
           repos: [{ id: 'repo', connectionId: 'conn-1' }] as never,
           sshConnectionStates: new Map([['conn-1', { connectionGeneration: 4 } as never]])
         }),
-        'tab-1'
+        BRIDGE
       )
     ).toEqual({
       kind: 'ssh',
@@ -123,7 +148,7 @@ describe('resolveNativeChatAttachmentOwner', () => {
         state({
           repos: [{ id: 'repo', connectionId: null, executionHostId: 'runtime:env-1' }] as never
         }),
-        'tab-1'
+        BRIDGE
       )
     ).toEqual({ kind: 'runtime' })
   })
@@ -132,19 +157,35 @@ describe('resolveNativeChatAttachmentOwner', () => {
     expect(
       resolveNativeChatAttachmentOwner(
         state({ settings: { activeRuntimeEnvironmentId: 'env-9' } as AppState['settings'] }),
-        'tab-1'
+        BRIDGE
       )
     ).toEqual({ kind: 'runtime' })
   })
 
-  it('reports not-ready when the tab has no worktree owner', () => {
-    expect(resolveNativeChatAttachmentOwner(state({ tabsByWorktree: {} }), 'tab-1')).toEqual({
+  it('reports not-ready when the tab is missing from its supplied workspace', () => {
+    expect(resolveNativeChatAttachmentOwner(state({ tabsByWorktree: {} }), BRIDGE)).toEqual({
       kind: 'not-ready'
     })
+    // Moved, not closed: the new location is never adopted.
+    expect(
+      resolveNativeChatAttachmentOwner(
+        state({ tabsByWorktree: { 'wt-1': [], 'wt-2': [terminalTab({ worktreeId: 'wt-2' })] } }),
+        BRIDGE
+      )
+    ).toEqual({ kind: 'not-ready' })
+  })
+
+  it('keeps membership by identity, so a retitled row is still current', () => {
+    expect(
+      resolveNativeChatAttachmentOwner(
+        state({ tabsByWorktree: { 'wt-1': [terminalTab({ title: 'Renamed' })] } }),
+        BRIDGE
+      )
+    ).toEqual({ kind: 'local' })
   })
 
   it('reports not-ready when the backing repo has not hydrated', () => {
-    expect(resolveNativeChatAttachmentOwner(state({ repos: [] }), 'tab-1')).toEqual({
+    expect(resolveNativeChatAttachmentOwner(state({ repos: [] }), BRIDGE)).toEqual({
       kind: 'not-ready'
     })
   })
@@ -156,7 +197,7 @@ describe('resolveNativeChatAttachmentOwner', () => {
           repos: [{ id: 'repo', connectionId: 'conn-1' }] as never,
           sshConnectionStates: new Map()
         }),
-        'tab-1'
+        BRIDGE
       )
     ).toEqual({ kind: 'not-ready' })
   })
@@ -166,11 +207,10 @@ describe('resolveNativeChatAttachmentOwner', () => {
       resolveNativeChatAttachmentOwner(
         state({
           repos: [{ id: 'repo', connectionId: 'conn-1' }] as never,
-          getKnownWorktreeById: () => undefined,
           worktreesByRepo: { repo: [{ id: 'wt-1', repoId: 'repo' } as never] },
           tabsByWorktree: { 'wt-1': [terminalTab()] }
         }),
-        'tab-1'
+        BRIDGE
       )
     ).toEqual({ kind: 'not-ready' })
   })

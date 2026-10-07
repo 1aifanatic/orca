@@ -11,7 +11,7 @@ function pickerMode(draft: string, recalledFromHistory: boolean): string {
   const { result } = renderHook(() =>
     useNativeChatPickerState({
       agent: 'claude',
-      terminalTabId: 'tab-1',
+      scope: { kind: 'bridge', worktreeId: 'wt-1', tabId: 'tab-1' },
       draftScopeKey: 'pane-1',
       draft,
       caret: draft.length,

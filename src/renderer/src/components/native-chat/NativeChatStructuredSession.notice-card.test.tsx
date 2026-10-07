@@ -38,6 +38,7 @@ function renderPane(): void {
       isVisible
       isFocusedGroup
       tabId="structured-notice-card-tab"
+      worktreeId="wt-1"
       sessionId={SESSION_ID}
       target={{ kind: 'local' }}
       agent="codex"

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   encodeWorkspaceFilePaths,
@@ -15,6 +15,7 @@ import type { NativeChatComposerInput } from './native-chat-composer-input'
 import { NativeChatComposerField } from './NativeChatComposerField'
 import { useNativeChatComposerAttachments } from './use-native-chat-composer-attachments'
 import { useNativeChatWorkspaceFileDrop } from './use-native-chat-workspace-file-drop'
+import { nativeChatTabScope } from './native-chat-tab-scope'
 import { useImeEnterGestureOwnership } from '@/lib/ime-composition-keyboard-event'
 
 const testState: {
@@ -24,7 +25,10 @@ const testState: {
   ownerSshGeneration: number
   ownerWorktreePath: string
   targetIsRemoteRuntime: boolean
-  store: { tabsByWorktree: Record<string, { id: string }[]> }
+  store: {
+    tabsByWorktree: Record<string, { id: string; title?: string }[]>
+    unifiedTabsByWorktree: Record<string, { id: string; contentType: string }[]>
+  }
 } = vi.hoisted(() => ({
   executionHostId: 'local',
   ownerConnectionId: 'ssh-1',
@@ -35,7 +39,8 @@ const testState: {
   store: {
     tabsByWorktree: {
       'worktree-1': [{ id: 'terminal-tab-1' }]
-    }
+    },
+    unifiedTabsByWorktree: {}
   }
 }))
 
@@ -52,17 +57,25 @@ vi.mock('@/lib/worktree-runtime-owner', () => ({
 // users actually read, and a newly added export cannot go missing from the mock.
 vi.mock('./native-chat-attachment-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof AttachmentUploadModule>()),
-  resolveNativeChatAttachmentOwnerForWorktree: () =>
-    testState.ownerKind === 'ssh'
-      ? {
-          kind: 'ssh',
-          connectionId: testState.ownerConnectionId,
-          worktreePath: testState.ownerWorktreePath,
-          expectedExecutionHostId: `ssh:${testState.ownerConnectionId}`,
-          expectedSshTargetId: testState.ownerConnectionId,
-          expectedSshConnectionGeneration: testState.ownerSshGeneration
-        }
-      : { kind: testState.ownerKind }
+  resolveNativeChatAttachmentOwner: (
+    state: typeof testState.store,
+    scope: Parameters<typeof AttachmentUploadModule.resolveNativeChatAttachmentOwner>[1]
+  ) =>
+    // Owner resolution reads the supplied bucket only; a moved tab is not-ready.
+    !(scope.kind === 'bridge' ? state.tabsByWorktree : state.unifiedTabsByWorktree)[
+      scope.worktreeId
+    ]?.some((tab) => tab.id === scope.tabId)
+      ? { kind: 'not-ready' }
+      : testState.ownerKind === 'ssh'
+        ? {
+            kind: 'ssh',
+            connectionId: testState.ownerConnectionId,
+            worktreePath: testState.ownerWorktreePath,
+            expectedExecutionHostId: `ssh:${testState.ownerConnectionId}`,
+            expectedSshTargetId: testState.ownerConnectionId,
+            expectedSshConnectionGeneration: testState.ownerSshGeneration
+          }
+        : { kind: testState.ownerKind }
 }))
 vi.mock('@/i18n/i18n', () => ({
   translate: (_key: string, fallback: string) => fallback
@@ -147,9 +160,12 @@ function ComposerProbe({
     setDraft,
     setNotice
   })
+  const scope = useMemo(
+    () => nativeChatTabScope(structured, structuredWorkspaceId ?? workspaceId, 'terminal-tab-1'),
+    [structured, structuredWorkspaceId, workspaceId]
+  )
   const workspaceFileDropHandlers = useNativeChatWorkspaceFileDrop({
-    terminalTabId: 'terminal-tab-1',
-    structuredWorktreeId: structured ? (structuredWorkspaceId ?? workspaceId) : undefined,
+    scope,
     disabled,
     paneKey: `pane:${workspaceId}`,
     attachResolvedPaths: attachments.attachResolvedPaths,
@@ -257,6 +273,11 @@ describe('native chat workspace file drops', () => {
     testState.ownerWorktreePath = '/remote/repo'
     testState.targetIsRemoteRuntime = false
     testState.store.tabsByWorktree = { 'worktree-1': [{ id: 'terminal-tab-1' }] }
+    testState.store.unifiedTabsByWorktree = {
+      'worktree-1': [{ id: 'terminal-tab-1', contentType: 'agent-session' }],
+      'worktree-2': [{ id: 'terminal-tab-1', contentType: 'agent-session' }],
+      'folder:folder-1': [{ id: 'terminal-tab-1', contentType: 'agent-session' }]
+    }
     latestInput = null
     bubbledDrop.mockReset()
   })
@@ -397,6 +418,50 @@ describe('native chat workspace file drops', () => {
     fireEvent.compositionEnd(input, { data: '' })
 
     expect(screen.getByTestId('draft').textContent).toBe('preedit')
+    expect(screen.getByText('Files can only be attached to their source workspace.')).toBeTruthy()
+  })
+
+  it.each([true, false])(
+    'rejects an IME-queued path when the tab leaves its workspace before the pane rerenders (structured=%s)',
+    (structured) => {
+      render(<ComposerProbe initialDraft="preedit" structured={structured} />)
+      const input = editor()
+      fireEvent.compositionStart(input)
+      dispatchDragEvent('drop', input, internalTransfer(['/repo/a.ts']))
+
+      // The store moves the tab; no prop has changed yet, and its new location is not followed.
+      testState.store.tabsByWorktree = {
+        'worktree-1': [],
+        'worktree-2': [{ id: 'terminal-tab-1' }]
+      }
+      testState.store.unifiedTabsByWorktree = {
+        'worktree-1': [],
+        'worktree-2': [{ id: 'terminal-tab-1', contentType: 'agent-session' }]
+      }
+      fireEvent.compositionEnd(input, { data: '' })
+
+      expect(screen.getByTestId('draft').textContent).toBe('preedit')
+      expect(screen.getByText('Files can only be attached to their source workspace.')).toBeTruthy()
+    }
+  )
+
+  it('keeps an IME-queued path valid across an unrelated title update on its own row', () => {
+    render(<ComposerProbe initialDraft="preedit" structured={false} />)
+    const input = editor()
+    fireEvent.compositionStart(input)
+    dispatchDragEvent('drop', input, internalTransfer(['/repo/a.ts']))
+    testState.store.tabsByWorktree = {
+      'worktree-1': [{ id: 'terminal-tab-1', title: 'Renamed' }]
+    }
+    fireEvent.compositionEnd(input, { data: '' })
+    expect(screen.getByTestId('draft').textContent).toContain('@/repo/a.ts')
+  })
+
+  it('refuses a drop on a tab missing from its supplied workspace', () => {
+    testState.store.tabsByWorktree = { 'worktree-2': [{ id: 'terminal-tab-1' }] }
+    render(<ComposerProbe structured={false} />)
+    dispatchDragEvent('drop', editor(), internalTransfer(['/repo/a.ts']))
+    expect(screen.getByTestId('draft').textContent).toBe('')
     expect(screen.getByText('Files can only be attached to their source workspace.')).toBeTruthy()
   })
 

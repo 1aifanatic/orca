@@ -22159,6 +22159,105 @@
         "Collect cross-platform and provider soak evidence with no weakened identity, transaction or bounded-work assertions."
       ],
       "demotionRule": "Keep experimental until soak and platform evidence; investigate failures without weakening ownership, late recovery, or zero-write retry evidence."
+    },
+    {
+      "id": "native-chat.workspace-scoped-lookups",
+      "title": "Mounted native chat reads only its own workspace's tab bucket",
+      "maturity": "experimental",
+      "protection": "partial",
+      "owner": "native-chat",
+      "layer": "renderer-store-selectors-and-actions",
+      "surfaces": [
+        "native chat bridge view",
+        "native chat structured view",
+        "native chat composer"
+      ],
+      "platforms": ["macos", "linux", "windows"],
+      "providers": ["local", "ssh", "wsl", "remote-runtime"],
+      "coveredPlatforms": ["macos"],
+      "coveredProviders": ["local", "remote-runtime"],
+      "coverageNotes": "Renderer unit and hook tests against the real Zustand store with counting proxies on the tab maps. The migrated hooks are mounted directly, not through the full composer tree; no Electron, SSH, or WSL run.",
+      "motivatingLinks": ["https://linear.app/stably/issue/STA-9590"],
+      "invariant": "A mounted bridge or structured chat, its discovery hooks (file links, images, skills, file mentions, model options) and its action paths (composer sends, interactive answers/controls/Stop, attachments, drops) read only tabsByWorktree[worktreeId] (bridge) or unifiedTabsByWorktree[worktreeId] (structured) for the workspace its parent supplied. A structured chat never reads terminal inventory. A scoped membership miss refuses the action or suspends bridge transcript IO; it never follows the tab elsewhere or falls back to globally selected settings.",
+      "oracle": "Counting proxies on the tab maps record zero enumerations and zero reads of other workspaces' buckets across unrelated status and title publications and every bridge action, at 120 and 1,200 unrelated workspaces whose terminal buckets each hold a row colliding with the chat's id. The old global settings adapter, run as a control against the same proxies, registers enumerations and foreign reads. Behavioral suites assert refused sends keep the draft, refused Stop keeps the running indicator, moved tabs refuse delayed attachments before the parent rerenders, and a rebound workspace re-resolves model discovery.",
+      "commands": [
+        "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/native-chat-workspace-lookup-count.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.workspace-membership.test.tsx src/renderer/src/components/native-chat/NativeChatComposer.workspace-refusal.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/use-native-chat-session-options-scope.test.ts src/renderer/src/components/native-chat/native-chat-session-option-discovery.test.ts src/renderer/src/components/native-chat/use-native-chat-skills.react.test.tsx src/renderer/src/components/native-chat/use-native-chat-skills.test.ts src/renderer/src/components/native-chat/use-native-chat-mention-files.test.tsx src/renderer/src/components/native-chat/native-chat-attachment-upload.test.ts src/renderer/src/components/native-chat/native-chat-external-attachments-destination.test.tsx src/renderer/src/components/native-chat/use-native-chat-external-attachments.test.tsx src/renderer/src/components/native-chat/native-chat-composer-workspace-file-drop.test.tsx src/renderer/src/components/native-chat/native-chat-file-link.test.ts src/renderer/src/components/native-chat/native-chat-image-runtime-context.test.ts src/renderer/src/components/native-chat/native-chat-runtime-owner.test.ts"
+      ],
+      "testFiles": [
+        "src/renderer/src/components/native-chat/native-chat-workspace-lookup-count.test.tsx",
+        "src/renderer/src/components/native-chat/NativeChatResolvedView.workspace-membership.test.tsx",
+        "src/renderer/src/components/native-chat/NativeChatComposer.workspace-refusal.test.tsx",
+        "src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx",
+        "src/renderer/src/components/native-chat/use-native-chat-session-options-scope.test.ts",
+        "src/renderer/src/components/native-chat/native-chat-session-option-discovery.test.ts",
+        "src/renderer/src/components/native-chat/use-native-chat-skills.react.test.tsx",
+        "src/renderer/src/components/native-chat/use-native-chat-skills.test.ts",
+        "src/renderer/src/components/native-chat/use-native-chat-mention-files.test.tsx",
+        "src/renderer/src/components/native-chat/native-chat-attachment-upload.test.ts",
+        "src/renderer/src/components/native-chat/native-chat-external-attachments-destination.test.tsx",
+        "src/renderer/src/components/native-chat/use-native-chat-external-attachments.test.tsx",
+        "src/renderer/src/components/native-chat/native-chat-composer-workspace-file-drop.test.tsx",
+        "src/renderer/src/components/native-chat/native-chat-file-link.test.ts",
+        "src/renderer/src/components/native-chat/native-chat-image-runtime-context.test.ts",
+        "src/renderer/src/components/native-chat/native-chat-runtime-owner.test.ts"
+      ],
+      "assertionRefs": [
+        {
+          "file": "src/renderer/src/components/native-chat/native-chat-workspace-lookup-count.test.tsx",
+          "assertions": [
+            "old-scan control: the counter catches the global tab search chat used to run",
+            "a bridge chat with %i unrelated workspaces and %s reads only its own bucket",
+            "a structured chat with %i unrelated workspaces never reads terminal inventory"
+          ]
+        },
+        {
+          "file": "src/renderer/src/components/native-chat/NativeChatResolvedView.workspace-membership.test.tsx",
+          "assertions": [
+            "suspends transcript IO on a membership miss instead of reading locally, and resumes on return",
+            "does not present a refused Stop as an interruption"
+          ]
+        },
+        {
+          "file": "src/renderer/src/components/native-chat/NativeChatComposer.workspace-refusal.test.tsx",
+          "assertions": ["refuses the send before any optimistic or input side effect"]
+        }
+      ],
+      "evidenceRuns": [
+        {
+          "date": "2026-10-07",
+          "runner": "local",
+          "platform": "macos",
+          "command": "ORCA_BACKGROUND_LAUNCH=1 pnpm test src/renderer/src/components/native-chat/native-chat-workspace-lookup-count.test.tsx src/renderer/src/components/native-chat/NativeChatResolvedView.workspace-membership.test.tsx src/renderer/src/components/native-chat/NativeChatComposer.workspace-refusal.test.tsx src/renderer/src/components/native-chat/use-native-chat-interactive-send.test.tsx src/renderer/src/components/native-chat/use-native-chat-session-options-scope.test.ts src/renderer/src/components/native-chat/native-chat-session-option-discovery.test.ts src/renderer/src/components/native-chat/use-native-chat-skills.react.test.tsx src/renderer/src/components/native-chat/use-native-chat-skills.test.ts src/renderer/src/components/native-chat/use-native-chat-mention-files.test.tsx src/renderer/src/components/native-chat/native-chat-attachment-upload.test.ts src/renderer/src/components/native-chat/native-chat-external-attachments-destination.test.tsx src/renderer/src/components/native-chat/use-native-chat-external-attachments.test.tsx src/renderer/src/components/native-chat/native-chat-composer-workspace-file-drop.test.tsx src/renderer/src/components/native-chat/native-chat-file-link.test.ts src/renderer/src/components/native-chat/native-chat-image-runtime-context.test.ts src/renderer/src/components/native-chat/native-chat-runtime-owner.test.ts",
+          "result": "passed",
+          "durationSeconds": 5,
+          "summary": "16 files, 161 tests passed, including the lookup-count gate at 120 and 1,200 unrelated workspaces with pickers closed and open."
+        }
+      ],
+      "runtimeBudget": {
+        "p95Seconds": 30,
+        "scope": "Deterministic renderer unit and hook tests; CI p95 not yet established."
+      },
+      "flakeHistory": {
+        "status": "not-started",
+        "evidence": "Local validation only; no soak history yet."
+      },
+      "redGreenEvidence": {
+        "status": "partial",
+        "evidence": "Adding a single Object.values scan of tabsByWorktree to the scoped membership check makes 6 of 7 lookup-count tests fail; removing it passes. The composer refusal tests fail against the previous resolver, which always returned settings from the global adapter."
+      },
+      "performanceBudget": {
+        "required": true,
+        "evidence": "Counts: zero tab-bucket enumerations and zero foreign-bucket reads per publication and per action, independent of workspace count; route and catalog work is not counted. Timing (pnpm bench:native-chat-lookups, 20 mounted chats, happy-dom under Bun 1.3.14 on an Apple M5 Max, 5 alternating baseline/branch processes x 5 rounds, median with process min-max): at 1,200 workspaces / 2,600 terminal rows with pickers closed, an unrelated status publication went from 2.17 ms [1.99-2.23] to 0.11 ms [0.09-0.14]; an unrelated retitle from 15.5 ms [15.1-18.0] with 2 React commits to 0.10 ms [0.09-0.15] with none; one action round across all chats from 0.85 ms to 0.009 ms; mount from 16.9 ms to 2.3 ms. At 100 workspaces: status 0.28 to 0.09 ms, retitle 2.24 to 0.09 ms. These are synthetic renderer measurements of the lookup hooks, not Electron traces or typing latency; no typing-latency improvement is claimed."
+      },
+      "knownGaps": [
+        "Timing is a synthetic happy-dom benchmark of the lookup hooks; no Electron trace, allocation profile, or representative-profile measurement yet.",
+        "Hooks are mounted directly rather than through the full NativeChatComposer and view tree.",
+        "No hidden-Electron, SSH, WSL, Linux, or Windows run."
+      ],
+      "promotionCriteria": [
+        "Capture a baseline/after workload on the rendered app and collect soak runs with no weakened count assertions."
+      ],
+      "demotionRule": "Keep experimental until soak evidence; investigate any foreign-bucket read before relaxing a count."
     }
   ]
 }

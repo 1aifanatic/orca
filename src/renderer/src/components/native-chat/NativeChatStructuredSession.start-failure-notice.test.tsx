@@ -94,6 +94,7 @@ function renderPane(messages: ReturnType<typeof rejected>[]): void {
       isVisible
       isFocusedGroup
       tabId="start-failure-tab"
+      worktreeId="wt-1"
       sessionId={SESSION_ID}
       target={{ kind: 'local' }}
       agent="claude"

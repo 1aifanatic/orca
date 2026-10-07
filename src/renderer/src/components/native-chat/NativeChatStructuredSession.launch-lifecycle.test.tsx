@@ -17,7 +17,6 @@ vi.mock('@/runtime/structured-agent-session-client', () =>
 vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAgentSession())
 vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
-vi.mock('./use-native-chat-tab-owner', () => moduleFactories.useNativeChatTabOwner())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())
 vi.mock('./NativeChatComposer', () => moduleFactories.nativeChatComposer())
@@ -37,12 +36,13 @@ const NOT_SIGNED_IN = {
 // Retry beside it is the resend, so the words keep only the step before it.
 const NOT_SIGNED_IN_TEXT = 'Codex is not signed in for the selected account. Sign in first.'
 
-function sessionView(): React.JSX.Element {
+function sessionView(worktreeId = 'wt-1'): React.JSX.Element {
   return (
     <NativeChatStructuredSession
       isVisible
       isFocusedGroup
       tabId="structured-tab-1"
+      worktreeId={worktreeId}
       sessionId="session-1"
       target={{ kind: 'local' }}
       agent="codex"
@@ -110,11 +110,10 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(mocks.retryLaunch).toHaveBeenCalledWith('wt-1', 'session-1')
   })
 
-  it('keys a floating chat launch by its owner even before any path context exists', () => {
-    mocks.ownerWorktreeId = FLOATING_TERMINAL_WORKTREE_ID
+  it('keys a floating chat launch by its supplied workspace even before any path context exists', () => {
     mocks.fileLinkContext = null
     mocks.launchLifecycle = 'failed'
-    render(sessionView())
+    render(sessionView(FLOATING_TERMINAL_WORKTREE_ID))
 
     expect(mocks.lifecycleLookup).toHaveBeenCalledWith(FLOATING_TERMINAL_WORKTREE_ID, 'session-1')
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))

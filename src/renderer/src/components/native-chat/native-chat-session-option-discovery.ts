@@ -9,7 +9,6 @@ import {
   getCommitMessageModelDiscoveryHostKeyForScope,
   LOCAL_COMMIT_MESSAGE_HOST_KEY
 } from '../../../../shared/commit-message-host-key'
-import { getSettingsForAgentTabRuntimeOwner } from '@/lib/agent-paste-draft'
 import { hasExplicitTuiLaunchCommand } from '../../../../shared/tui-agent-launch-command-override'
 import { getConnectionIdFromState } from '@/lib/connection-context'
 import {
@@ -27,6 +26,11 @@ import type {
   AgentSessionModelOption
 } from '../../../../shared/agent-session-wire'
 import { useAppStore } from '@/store'
+import { findKnownWorktreeById } from '@/store/slices/worktrees/listing/detected-worktree-meta'
+import {
+  resolveNativeChatBridgeRuntimeSettings,
+  type NativeChatBridgeTabScope
+} from './native-chat-tab-scope'
 
 export type NativeChatModelDiscoveryContext = {
   hostKey: string
@@ -50,23 +54,24 @@ export function resolveNativeChatModelDiscoveryHostKey(
   return getCommitMessageModelDiscoveryHostKeyForLocalRuntime(wslDistro)
 }
 
+/** Terminal-backed discovery for a bridge chat's own workspace; null when its tab left that bucket. */
 export function resolveNativeChatModelDiscoveryContext(
-  terminalTabId: string
+  scope: NativeChatBridgeTabScope
 ): NativeChatModelDiscoveryContext | null {
   const state = useAppStore.getState()
-  const worktreeId =
-    Object.entries(state.tabsByWorktree ?? {}).find(([, tabs]) =>
-      tabs.some((tab) => tab.id === terminalTabId)
-    )?.[0] ?? null
-  const connectionId = getConnectionIdFromState(state, worktreeId)
-  if (worktreeId && connectionId === undefined) {
+  const settings = resolveNativeChatBridgeRuntimeSettings(state, scope)
+  if (!settings) {
     return null
   }
-  const settings = getSettingsForAgentTabRuntimeOwner(terminalTabId)
-  const worktreePath = worktreeId ? (state.getKnownWorktreeById?.(worktreeId)?.path ?? '') : ''
-  const scope = getRuntimeGitScope(settings, connectionId)
+  const { worktreeId } = scope
+  const connectionId = getConnectionIdFromState(state, worktreeId)
+  if (connectionId === undefined) {
+    return null
+  }
+  const worktreePath = findKnownWorktreeById(state, worktreeId)?.path ?? ''
+  const scopeKey = getRuntimeGitScope(settings, connectionId)
   return {
-    hostKey: resolveNativeChatModelDiscoveryHostKey(state, worktreeId, worktreePath, scope),
+    hostKey: resolveNativeChatModelDiscoveryHostKey(state, worktreeId, worktreePath, scopeKey),
     runtime: {
       settings,
       worktreeId,

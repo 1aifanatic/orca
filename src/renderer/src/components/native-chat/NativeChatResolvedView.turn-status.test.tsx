@@ -121,6 +121,7 @@ function renderPane(): void {
         isFocusedGroup={false}
         targetPtyId="pty-state"
         terminalTabId="tab-state"
+        worktreeId="wt-1"
         ownsTabWideLaunchDraft={false}
       />
     </TooltipProvider>

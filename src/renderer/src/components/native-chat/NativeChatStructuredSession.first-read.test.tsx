@@ -37,6 +37,7 @@ function sessionView(): React.JSX.Element {
       isVisible
       isFocusedGroup
       tabId="structured-tab-1"
+      worktreeId="wt-1"
       sessionId="session-1"
       target={{ kind: 'local' }}
       agent="codex"

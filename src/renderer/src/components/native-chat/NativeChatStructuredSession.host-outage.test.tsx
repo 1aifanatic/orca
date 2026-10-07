@@ -76,6 +76,7 @@ function renderPane(): void {
       isVisible
       isFocusedGroup
       tabId="structured-host-outage-tab"
+      worktreeId="wt-1"
       sessionId="host-outage-session"
       target={{ kind: 'environment', environmentId: 'remote-host' }}
       agent="claude"

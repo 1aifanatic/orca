@@ -84,6 +84,7 @@ function renderLoadedChatThenFailedRead(
         isVisible
         isFocusedGroup
         tabId="final-read-failure-tab"
+        worktreeId="wt-1"
         sessionId="final-read-failure-session"
         target={{ kind: 'environment', environmentId: 'env-1' }}
         agent="codex"

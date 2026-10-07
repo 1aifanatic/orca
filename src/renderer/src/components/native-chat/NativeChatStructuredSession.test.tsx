@@ -22,7 +22,6 @@ vi.mock('@/runtime/structured-agent-session-client', () =>
 vi.mock('./use-structured-agent-session', () => moduleFactories.useStructuredAgentSession())
 vi.mock('./use-native-chat-font-size', () => moduleFactories.useNativeChatFontSize())
 vi.mock('./use-native-chat-file-link-context', () => moduleFactories.useNativeChatFileLinkContext())
-vi.mock('./use-native-chat-tab-owner', () => moduleFactories.useNativeChatTabOwner())
 vi.mock('./use-native-chat-file-link-click', () => moduleFactories.useNativeChatFileLinkClick())
 vi.mock('./NativeChatMessageList', () => moduleFactories.nativeChatMessageList())
 vi.mock('./NativeChatComposer', () => moduleFactories.nativeChatComposer())
@@ -59,6 +58,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="appearance-tab"
+        worktreeId="wt-1"
         sessionId="appearance-session"
         target={{ kind: 'local' }}
         agent="codex"
@@ -111,6 +111,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="appearance-subscription-tab"
+        worktreeId="wt-1"
         sessionId="appearance-subscription-session"
         target={{ kind: 'local' }}
         agent="codex"
@@ -151,6 +152,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-1"
+        worktreeId="wt-1"
         sessionId="session-1"
         target={{ kind: 'local' }}
         agent="codex"
@@ -180,6 +182,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId={draft.tabId}
+        worktreeId="wt-1"
         sessionId="draft-session"
         target={{ kind: 'local' }}
         agent="codex"
@@ -223,6 +226,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId={draft.tabId}
+        worktreeId="wt-1"
         sessionId="idle-session"
         target={{ kind: 'local' }}
         agent="codex"
@@ -239,6 +243,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId={draft.tabId}
+        worktreeId="wt-1"
         sessionId="idle-session"
         target={{ kind: 'local' }}
         agent="codex"
@@ -254,6 +259,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-1"
+        worktreeId="wt-1"
         sessionId="session-1"
         target={{ kind: 'environment', environmentId: 'env-1' }}
         agent="codex"
@@ -274,6 +280,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible={isVisible}
         isFocusedGroup
         tabId="structured-tab-visibility"
+        worktreeId="wt-1"
         sessionId="session-visibility"
         target={{ kind: 'local' }}
         agent="codex"
@@ -295,6 +302,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-older"
+        worktreeId="wt-1"
         sessionId="session-older"
         target={{ kind: 'local' }}
         agent="codex"
@@ -318,6 +326,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-parity"
+        worktreeId="wt-1"
         sessionId="session-parity"
         target={{ kind: 'local' }}
         agent="codex"
@@ -336,6 +345,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-question"
+        worktreeId="wt-1"
         sessionId="session-question"
         target={{ kind: 'local' }}
         agent="codex"
@@ -408,6 +418,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-approval"
+        worktreeId="wt-1"
         sessionId="session-approval"
         target={{ kind: 'local' }}
         agent="claude"
@@ -448,6 +459,7 @@ describe('NativeChatStructuredSession', () => {
       isVisible
       isFocusedGroup
       tabId={tabId}
+      worktreeId="wt-1"
       sessionId={sessionId}
       target={{ kind: 'local' }}
       agent="claude"
@@ -651,6 +663,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-1"
+        worktreeId="wt-1"
         sessionId="session-1"
         target={{ kind: 'local' }}
         agent="codex"
@@ -678,6 +691,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-questions"
+        worktreeId="wt-1"
         sessionId="session-questions"
         target={{ kind: 'local' }}
         agent="claude"
@@ -717,6 +731,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-legacy-question"
+        worktreeId="wt-1"
         sessionId="session-legacy-question"
         target={{ kind: 'local' }}
         agent="claude"
@@ -754,6 +769,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-reveal"
+        worktreeId="wt-1"
         sessionId="session-reveal"
         target={{ kind: 'local' }}
         agent="claude"
@@ -771,6 +787,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-reveal"
+        worktreeId="wt-1"
         sessionId="session-reveal"
         target={{ kind: 'local' }}
         agent="claude"
@@ -809,6 +826,7 @@ describe('NativeChatStructuredSession', () => {
         isVisible
         isFocusedGroup
         tabId="structured-tab-retry-reveal"
+        worktreeId="wt-1"
         sessionId="session-retry-reveal"
         target={{ kind: 'local' }}
         agent="codex"
@@ -831,6 +849,7 @@ describe('NativeChatStructuredSession', () => {
           isVisible
           isFocusedGroup
           tabId="structured-tab-queue"
+          worktreeId="wt-1"
           sessionId="session-queue"
           target={{ kind: 'local' }}
           agent="claude"

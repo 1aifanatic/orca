@@ -12,7 +12,6 @@ import {
   nativeChatTooManyAttachmentsNotice,
   nativeChatWorktreeNotReadyNotice,
   resolveNativeChatAttachmentOwner,
-  resolveNativeChatAttachmentOwnerForWorktree,
   resolveNativeChatRuntimeSessionAttachmentOwner,
   uploadNativeChatAttachmentPaths,
   type NativeChatAttachmentOwner,
@@ -23,11 +22,14 @@ import {
   type NativeChatPendingAttachmentChips
 } from './native-chat-session-attachment-drop'
 import { userNamedFileAccess } from '@/lib/local-file-access'
-import { findTerminalTabWorktreeId } from './native-chat-file-link'
+import {
+  isNativeChatTabScopeCurrent,
+  sameNativeChatTabScope,
+  type NativeChatTabScope
+} from './native-chat-tab-scope'
 
 export type UseNativeChatExternalAttachmentsArgs = {
-  terminalTabId: string
-  structuredWorktreeId?: string
+  scope: NativeChatTabScope
   /** The structured chat behind this composer; decides where its uploads are stored. */
   structuredSession?: NativeChatStructuredAttachmentSession
   /** Live composer-disabled state; read at await-resume via a ref so a flip
@@ -43,30 +45,13 @@ export type UseNativeChatExternalAttachmentsArgs = {
   setNotice: (notice: string | null) => void
 }
 
-type ComposerWorkspace = {
-  structuredWorktreeId?: string
-  terminalTabId: string
-  structuredSession?: NativeChatStructuredAttachmentSession
-}
-
-function isSameComposerWorkspace(captured: ComposerWorkspace, current: ComposerWorkspace): boolean {
-  return (
-    captured.structuredWorktreeId === current.structuredWorktreeId &&
-    captured.terminalTabId === current.terminalTabId &&
-    captured.structuredSession?.sessionId === current.structuredSession?.sessionId &&
-    captured.structuredSession?.runtimeEnvironmentId ===
-      current.structuredSession?.runtimeEnvironmentId
-  )
-}
-
 /**
  * Attach paths that arrived client-local (composer drop / file picker). SSH
  * worktrees upload into the worktree's `.orca/drops` first so the remote agent
  * can actually read what gets referenced (STA-1465).
  */
 export function useNativeChatExternalAttachments({
-  terminalTabId,
-  structuredWorktreeId,
+  scope,
   structuredSession,
   disabled,
   attachResolvedPaths,
@@ -86,34 +71,31 @@ export function useNativeChatExternalAttachments({
   // re-ask the workspace the upload started in — a comparison with itself.
   const sessionId = structuredSession?.sessionId
   const runtimeEnvironmentId = structuredSession?.runtimeEnvironmentId ?? null
-  const workspaceRef = useRef<ComposerWorkspace>({
-    structuredWorktreeId,
-    terminalTabId,
-    structuredSession
-  })
+  const scopeRef = useRef(scope)
+  const sessionRef = useRef(structuredSession)
   useLayoutEffect(() => {
-    workspaceRef.current = {
-      structuredWorktreeId,
-      terminalTabId,
-      structuredSession: sessionId ? { sessionId, runtimeEnvironmentId } : undefined
-    }
-  }, [runtimeEnvironmentId, sessionId, structuredWorktreeId, terminalTabId])
+    scopeRef.current = scope
+    sessionRef.current = sessionId ? { sessionId, runtimeEnvironmentId } : undefined
+  }, [runtimeEnvironmentId, scope, sessionId])
   const pendingChipsRef = useRef(pendingChips)
   useLayoutEffect(() => {
     pendingChipsRef.current = pendingChips
   }, [pendingChips])
 
   const resolveAttachmentOwner = useCallback(() => {
-    const { structuredWorktreeId, structuredSession, terminalTabId } = workspaceRef.current
-    if (structuredWorktreeId && structuredSession?.runtimeEnvironmentId) {
+    const state = useAppStore.getState()
+    const currentScope = scopeRef.current
+    if (!isNativeChatTabScopeCurrent(state, currentScope)) {
+      return { kind: 'not-ready' } as const
+    }
+    const session = sessionRef.current
+    if (currentScope.kind === 'structured' && session?.runtimeEnvironmentId) {
       return resolveNativeChatRuntimeSessionAttachmentOwner({
-        sessionId: structuredSession.sessionId,
-        runtimeEnvironmentId: structuredSession.runtimeEnvironmentId
+        sessionId: session.sessionId,
+        runtimeEnvironmentId: session.runtimeEnvironmentId
       })
     }
-    return structuredWorktreeId
-      ? resolveNativeChatAttachmentOwnerForWorktree(useAppStore.getState(), structuredWorktreeId)
-      : resolveNativeChatAttachmentOwner(useAppStore.getState(), terminalTabId)
+    return resolveNativeChatAttachmentOwner(state, currentScope)
   }, [])
 
   const attachExternalPaths = useCallback(
@@ -138,19 +120,16 @@ export function useNativeChatExternalAttachments({
       // Why every exit reports: a drop that reaches here and produces nothing is
       // the silent-failure complaint in #15782. Only a disabled composer stays
       // quiet — it is being torn down or guarded, and has no notice surface.
-      const capturedWorkspace = workspaceRef.current
-      const currentWorktreeId = (): string | null =>
-        workspaceRef.current.structuredWorktreeId ??
-        findTerminalTabWorktreeId(
-          useAppStore.getState().tabsByWorktree,
-          workspaceRef.current.terminalTabId
-        )
-      const capturedWorktreeId = currentWorktreeId()
+      const capturedScope = scopeRef.current
+      const capturedSession = sessionRef.current
       // Both halves matter: a moved tab can land on a workspace that reports the
-      // same owner kind, and the owner alone would call that unchanged.
+      // same owner kind, and the owner alone would call that unchanged. The owner
+      // read checks the captured bucket in the current store, so a move is refused
+      // even before the parent rerenders with the new workspace.
       const ownerStillCurrent = (): boolean =>
-        isSameComposerWorkspace(capturedWorkspace, workspaceRef.current) &&
-        capturedWorktreeId === currentWorktreeId() &&
+        sameNativeChatTabScope(capturedScope, scopeRef.current) &&
+        capturedSession?.sessionId === sessionRef.current?.sessionId &&
+        capturedSession?.runtimeEnvironmentId === sessionRef.current?.runtimeEnvironmentId &&
         nativeChatAttachmentOwnerUnchanged(owner, resolveAttachmentOwner())
       if (owner.kind === 'runtime-session') {
         void attachNativeChatSessionAttachmentPaths({

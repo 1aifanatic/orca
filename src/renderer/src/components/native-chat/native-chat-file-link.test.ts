@@ -5,11 +5,13 @@ import type { AppState } from '@/store/types'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
 import { FLOATING_TERMINAL_WORKTREE_ID, getDefaultSettings } from '../../../../shared/constants'
 import {
-  findNativeChatTabOwnerWorktreeId,
   resolveNativeChatFileLink,
   resolveNativeChatFileLinkContext,
-  type NativeChatFileLinkContext
+  type NativeChatFileLinkContext,
+  type NativeChatFileLinkState
 } from './native-chat-file-link'
+import { detectedListingFixture, worktreeFixture } from './native-chat-workspace-test-fixtures'
+import type { NativeChatTabScope } from './native-chat-tab-scope'
 
 function terminalTab(overrides: Partial<TerminalTab> = {}): TerminalTab {
   return {
@@ -25,30 +27,56 @@ function terminalTab(overrides: Partial<TerminalTab> = {}): TerminalTab {
   }
 }
 
-function state(overrides: Partial<AppState> = {}): AppState {
+function state(overrides: Partial<NativeChatFileLinkState> = {}): NativeChatFileLinkState {
   return {
+    detectedWorktreesByRepo: {},
     folderWorkspaces: [],
-    getKnownWorktreeById: (worktreeId: string) =>
-      worktreeId === 'wt-1' ? ({ id: 'wt-1', path: '/repo/worktree' } as never) : undefined,
+    floatingWorkspacePath: null,
     projectGroups: [],
     repos: [],
-    settings: { activeRuntimeEnvironmentId: null },
+    settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: null },
     tabsByWorktree: {
       'wt-1': [terminalTab()]
     },
     unifiedTabsByWorktree: {},
     worktreesByRepo: {
-      repo: [{ id: 'wt-1', repoId: 'repo', path: '/repo/worktree' } as never]
+      repo: [worktreeFixture('wt-1', '/repo/worktree')]
     },
     ...overrides
-  } as AppState
+  }
 }
+
+const bridge = (tabId = 'tab-1', worktreeId = 'wt-1'): NativeChatTabScope => ({
+  kind: 'bridge',
+  worktreeId,
+  tabId
+})
+const structured = (tabId: string, worktreeId = 'wt-1'): NativeChatTabScope => ({
+  kind: 'structured',
+  worktreeId,
+  tabId
+})
 
 const context: NativeChatFileLinkContext = {
   worktreeId: 'wt-1',
   worktreePath: '/repo/worktree',
   runtimeEnvironmentId: null
 }
+
+const structuredTab = {
+  id: 'structured-tab-1',
+  worktreeId: 'wt-1',
+  groupId: 'group-1',
+  contentType: 'agent-session',
+  entityId: 'session-1',
+  label: 'Codex Chat',
+  customLabel: null,
+  color: null,
+  sortOrder: 0,
+  createdAt: 0,
+  isPinned: false,
+  agentSessionAgent: 'codex'
+} satisfies Tab
 
 describe('resolveNativeChatFileLinkContext', () => {
   it('returns the owner worktree path and runtime for a native chat terminal tab', () => {
@@ -57,7 +85,7 @@ describe('resolveNativeChatFileLinkContext', () => {
         state({
           settings: { activeRuntimeEnvironmentId: 'env-1' } as AppState['settings']
         }),
-        'tab-1'
+        bridge()
       )
     ).toEqual({
       worktreeId: 'wt-1',
@@ -66,53 +94,69 @@ describe('resolveNativeChatFileLinkContext', () => {
     })
   })
 
-  it('returns null when the terminal tab has no worktree owner', () => {
-    expect(resolveNativeChatFileLinkContext(state({ tabsByWorktree: {} }), 'tab-1')).toBeNull()
+  it('returns null when the terminal tab is missing from its supplied workspace', () => {
+    expect(resolveNativeChatFileLinkContext(state({ tabsByWorktree: {} }), bridge())).toBeNull()
   })
 
-  it('resolves the worktree context for a structured session tab', () => {
-    const structuredTab = {
-      id: 'structured-tab-1',
-      worktreeId: 'wt-1',
-      groupId: 'group-1',
-      contentType: 'agent-session',
-      entityId: 'session-1',
-      label: 'Codex Chat',
-      customLabel: null,
-      color: null,
-      sortOrder: 0,
-      createdAt: 0,
-      isPinned: false,
-      agentSessionAgent: 'codex'
-    } satisfies Tab
-
+  it('never follows a tab that moved to another workspace', () => {
     expect(
       resolveNativeChatFileLinkContext(
-        state({
-          tabsByWorktree: {},
-          unifiedTabsByWorktree: { 'wt-1': [structuredTab] }
-        }),
-        structuredTab.id
+        state({ tabsByWorktree: { 'wt-1': [], 'wt-2': [terminalTab({ worktreeId: 'wt-2' })] } }),
+        bridge()
       )
-    ).toEqual(context)
+    ).toBeNull()
   })
 
-  it('falls back to repo-scoped worktrees when a known worktree has no path', () => {
+  it('resolves the worktree context for a structured session tab from its unified bucket only', () => {
+    const withStructured = state({
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: { 'wt-1': [structuredTab] }
+    })
+    expect(resolveNativeChatFileLinkContext(withStructured, structured(structuredTab.id))).toEqual(
+      context
+    )
+    // A structured chat is not a terminal tab, even when a terminal row shares its id.
+    expect(
+      resolveNativeChatFileLinkContext(
+        state({ tabsByWorktree: { 'wt-1': [terminalTab({ id: structuredTab.id })] } }),
+        structured(structuredTab.id)
+      )
+    ).toBeNull()
+  })
+
+  it('rejects a same-id unified row of another content type', () => {
     expect(
       resolveNativeChatFileLinkContext(
         state({
-          getKnownWorktreeById: () => ({ id: 'wt-1' }) as never,
-          worktreesByRepo: {
-            repo: [{ id: 'wt-1', repoId: 'repo', path: '/repo/fallback' } as never]
+          unifiedTabsByWorktree: { 'wt-1': [{ ...structuredTab, contentType: 'terminal' }] }
+        }),
+        structured(structuredTab.id)
+      )
+    ).toBeNull()
+  })
+
+  it('builds the whole result from the supplied snapshot, never a live catalog getter', () => {
+    // A store getter closes over a newer snapshot; the resolver must not consult it.
+    const snapshotA = Object.assign(state(), {
+      getKnownWorktreeById: () => worktreeFixture('wt-1', '/snapshot-b')
+    })
+    expect(resolveNativeChatFileLinkContext(snapshotA, bridge())?.worktreePath).toBe(
+      '/repo/worktree'
+    )
+  })
+
+  it('resolves a detected-only workspace from the supplied snapshot catalog', () => {
+    expect(
+      resolveNativeChatFileLinkContext(
+        state({
+          worktreesByRepo: {},
+          detectedWorktreesByRepo: {
+            repo: detectedListingFixture([worktreeFixture('wt-1', '/repo/detected')])
           }
         }),
-        'tab-1'
+        bridge()
       )
-    ).toEqual({
-      worktreeId: 'wt-1',
-      worktreePath: '/repo/fallback',
-      runtimeEnvironmentId: null
-    })
+    ).toEqual({ worktreeId: 'wt-1', worktreePath: '/repo/detected', runtimeEnvironmentId: null })
   })
 
   it('resolves a folder workspace tab from its folder path when no projected worktree path exists', () => {
@@ -123,11 +167,10 @@ describe('resolveNativeChatFileLinkContext', () => {
       resolveNativeChatFileLinkContext(
         state({
           tabsByWorktree: { [folderKey]: [folderTab] },
-          getKnownWorktreeById: () => undefined,
           folderWorkspaces: [{ id: folderId, folderPath: '/workspace/platform' } as never],
           worktreesByRepo: {}
         }),
-        folderTab.id
+        bridge(folderTab.id, folderKey)
       )
     ).toEqual({
       worktreeId: folderKey,
@@ -139,25 +182,17 @@ describe('resolveNativeChatFileLinkContext', () => {
 
 describe('floating workspace native chat', () => {
   const floatingTab = {
+    ...structuredTab,
     id: 'floating-chat-1',
     worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
-    groupId: 'floating-group',
-    contentType: 'agent-session',
-    entityId: 'session-1',
-    label: 'Codex Chat',
-    customLabel: null,
-    color: null,
-    sortOrder: 0,
-    createdAt: 0,
-    isPinned: false,
-    agentSessionAgent: 'codex'
+    groupId: 'floating-group'
   } satisfies Tab
+  const floatingScope = structured(floatingTab.id, FLOATING_TERMINAL_WORKTREE_ID)
 
-  function floatingState(floatingWorkspacePath: string | null): AppState {
+  function floatingState(floatingWorkspacePath: string | null): NativeChatFileLinkState {
     return state({
       tabsByWorktree: {},
       unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] },
-      getKnownWorktreeById: () => undefined,
       worktreesByRepo: {},
       // Why a focused runtime: floating must stay local even when one is selected.
       settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
@@ -165,12 +200,8 @@ describe('floating workspace native chat', () => {
     })
   }
 
-  it('finds the owning floating workspace before its directory is known', () => {
-    const pending = floatingState(null)
-    expect(findNativeChatTabOwnerWorktreeId(pending, floatingTab.id)).toBe(
-      FLOATING_TERMINAL_WORKTREE_ID
-    )
-    expect(resolveNativeChatFileLinkContext(pending, floatingTab.id)).toBeNull()
+  it('waits for the floating directory without any path context', () => {
+    expect(resolveNativeChatFileLinkContext(floatingState(null), floatingScope)).toBeNull()
   })
 
   it('resolves file links against the pinned folder after the floating setting moved', () => {
@@ -180,7 +211,7 @@ describe('floating workspace native chat', () => {
         [floatingTab.id]: { sessionId: floatingTab.entityId, launchDirectory: '/home/me/pinned' }
       }
     }
-    expect(resolveNativeChatFileLinkContext(pinned, floatingTab.id)).toEqual({
+    expect(resolveNativeChatFileLinkContext(pinned, floatingScope)).toEqual({
       worktreeId: FLOATING_TERMINAL_WORKTREE_ID,
       worktreePath: '/home/me/pinned',
       runtimeEnvironmentId: null
@@ -189,7 +220,7 @@ describe('floating workspace native chat', () => {
 
   it('resolves no file links until the pin arrives, instead of trusting the current setting', () => {
     expect(
-      resolveNativeChatFileLinkContext(floatingState('/home/me/changed-setting'), floatingTab.id)
+      resolveNativeChatFileLinkContext(floatingState('/home/me/changed-setting'), floatingScope)
     ).toBeNull()
   })
 })

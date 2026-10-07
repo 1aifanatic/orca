@@ -55,6 +55,7 @@ it("hands the card a newer Orca's subject in a writable chat, and its cancel goe
       isVisible
       isFocusedGroup
       tabId="newer-approval-tab"
+      worktreeId="wt-1"
       sessionId="newer-approval-session"
       target={{ kind: 'local' }}
       agent="claude"
@@ -79,6 +80,7 @@ it('sends nothing for the card when no turn is running', () => {
       isVisible
       isFocusedGroup
       tabId="newer-approval-tab"
+      worktreeId="wt-1"
       sessionId="newer-approval-session"
       target={{ kind: 'local' }}
       agent="claude"
@@ -94,6 +96,7 @@ function renderSession() {
       isVisible
       isFocusedGroup
       tabId="newer-approval-tab"
+      worktreeId="wt-1"
       sessionId="newer-approval-session"
       target={{ kind: 'local' }}
       agent="claude"

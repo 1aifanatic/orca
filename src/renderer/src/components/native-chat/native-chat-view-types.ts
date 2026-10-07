@@ -8,6 +8,8 @@ export type NativeChatBridgeViewProps = {
   mode?: 'bridge'
   /** The terminal tab hosting the agent. paneKey is `${tabId}:${leafId}`. */
   terminalTabId: string
+  /** Workspace whose terminal bucket holds `terminalTabId`; chat never searches others for it. */
+  worktreeId: string
   /** Whether the hosted terminal surface is currently visible. */
   isVisible: boolean
   /** This pane's split group holds focus; a revealed sibling column must not take the caret. */
@@ -32,6 +34,8 @@ export type NativeChatBridgeViewProps = {
 export type NativeChatStructuredViewProps = {
   mode: 'structured'
   tabId: string
+  /** Workspace whose unified bucket holds `tabId`; chat never searches others for it. */
+  worktreeId: string
   groupId?: string
   sessionId: string
   target: RuntimeClientTarget
@@ -52,6 +56,7 @@ export type NativeChatResolvedViewProps = {
   isFocusedGroup: boolean
   targetPtyId: string | null
   terminalTabId: string
+  worktreeId: string
   ownsTabWideLaunchDraft: boolean
   onSwitchToTerminal?: () => void
   readTerminalScreen?: () => string | null

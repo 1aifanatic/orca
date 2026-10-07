@@ -67,6 +67,7 @@ function RetainedBridgeChat({ visible = true }: { visible?: boolean }) {
         isFocusedGroup={false}
         targetPtyId={null}
         terminalTabId="tab-menu"
+        worktreeId="wt-1"
         ownsTabWideLaunchDraft={false}
       />
     </div>
