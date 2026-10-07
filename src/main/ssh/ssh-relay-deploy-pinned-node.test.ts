@@ -4,6 +4,8 @@ import {
   recordSshRelayRuntimeStep
 } from './ssh-host-node-runtime-mode'
 import type * as RelayRipgrepInstallModule from './ssh-relay-ripgrep-install'
+import type * as OrcadRemoteNodeRuntimeModule from './orcad-remote-node-runtime'
+import type * as PinnedNodeInstallModule from './ssh-relay-pinned-node-install'
 
 vi.mock('electron', () => ({
   app: { getAppPath: () => '/mock/app' }
@@ -116,6 +118,14 @@ vi.mock('./ssh-relay-pinned-node-install', async (importOriginal) => ({
   verifyPinnedRelayInstall: vi.fn().mockResolvedValue(undefined)
 }))
 
+vi.mock('./orcad-remote-node-runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof OrcadRemoteNodeRuntimeModule>()
+  return {
+    ...actual,
+    ensureRemoteOrcadNodeRuntime: vi.fn(actual.ensureRemoteOrcadNodeRuntime)
+  }
+})
+
 vi.mock('./ssh-relay-host-node-addons', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   planHostNodeAddonRelay: vi.fn()
@@ -140,11 +150,16 @@ import {
 import {
   PinnedRelayFallbackError,
   planPinnedNodeRelay,
+  resetPinnedRuntimeRefusalsForTests,
   resolvePinnedRelayTargetFacts,
   type PinnedRelayPlan
 } from './ssh-relay-pinned-node'
 import { ensurePinnedRelayRuntime, verifyPinnedRelayInstall } from './ssh-relay-pinned-node-install'
 import { planHostNodeAddonRelay, type HostNodeAddonRelayPlan } from './ssh-relay-host-node-addons'
+import {
+  ensureRemoteOrcadNodeRuntime,
+  RemoteNodeRuntimeSelfTestError
+} from './orcad-remote-node-runtime'
 import { RemoteRuntimeUnavailableError } from './ssh-relay-runtime-resolution'
 import { resetSshRemoteRuntimeTelemetryForTests } from './ssh-remote-runtime-telemetry'
 import { getSshTargetRegistryStore } from './ssh-target-registry'
@@ -244,6 +259,7 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
       .mockRejectedValue(new PinnedRelayFallbackError('libc_floor', 'addons refused'))
     vi.mocked(getSshTargetRegistryStore).mockReset().mockReturnValue(null)
     resetSshRemoteRuntimeTelemetryForTests()
+    resetPinnedRuntimeRefusalsForTests()
   })
 
   it('runs the pinned ladder when the host has no runtime setting and nothing recorded', async () => {
@@ -513,6 +529,55 @@ describe('deployAndLaunchRelay on the pinned Node runtime', () => {
         host_libc: 'glibc',
         glibc_minor: '31'
       })
+    )
+  })
+
+  it("steps past rung A to the host's Node when NixOS's stub loader refuses the pinned Node", async () => {
+    const conn = makeConnection()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const actualInstall = await vi.importActual<typeof PinnedNodeInstallModule>(
+      './ssh-relay-pinned-node-install'
+    )
+    vi.mocked(ensurePinnedRelayRuntime).mockImplementationOnce(
+      actualInstall.ensurePinnedRelayRuntime
+    )
+    vi.mocked(ensureRemoteOrcadNodeRuntime).mockRejectedValueOnce(
+      new RemoteNodeRuntimeSelfTestError(
+        127,
+        `Could not start dynamically linked executable: ${PINNED_NODE}\n` +
+          'NixOS cannot run dynamically linked executables intended for generic\n' +
+          'linux environments out of the box. For more information, see:\n' +
+          'https://nix.dev/permalink/stub-ld'
+      )
+    )
+    const nixNode = '/run/current-system/sw/bin/node'
+    vi.mocked(planHostNodeAddonRelay)
+      .mockReset()
+      .mockResolvedValueOnce({ ...hostNodePlan(), nodePath: nixNode })
+    vi.mocked(execCommand).mockImplementation(async (_conn, command) => {
+      if (command.includes('uname')) {
+        return '__ORCA_REMOTE_PLATFORM__ Linux x86_64'
+      }
+      if (command === 'echo $HOME') {
+        return '/home/user'
+      }
+      if (command.includes('process.stdout.write("READY")')) {
+        return 'READY'
+      }
+      return command.includes('test -S') ? 'DEAD' : ''
+    })
+
+    const result = await deployAndLaunchRelay(conn, undefined, undefined, 'target-1')
+
+    expect(ensureRemoteOrcadNodeRuntime).toHaveBeenCalledOnce()
+    expect(result.nodePath).toBe(nixNode)
+    expect(detachedLaunchCommand(conn)).toContain(`'${nixNode}' relay.js --detached`)
+    expect(
+      vi.mocked(execCommand).mock.calls.some(([, cmd]) => /NATIVE-DEPS|npm /.test(String(cmd)))
+    ).toBe(false)
+    expect(track).toHaveBeenCalledWith(
+      'ssh_remote_runtime_resolved',
+      expect.objectContaining({ rung: 'c', first_refusal: 'wrong_libc' })
     )
   })
 

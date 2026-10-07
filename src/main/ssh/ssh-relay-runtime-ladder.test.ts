@@ -135,17 +135,33 @@ describe('relay runtime ladder (design D6)', () => {
     ).toContain('Install Node.js 18+')
   })
 
-  it('points a host whose Node was found but refused at the Host Node opt-in', () => {
+  it('offers Host Node only as an unsupported opt-in, and only when the host Node refused', () => {
     const message = remoteRuntimeUnavailableMessage(
       'no_runtime',
       'libc_floor',
       false,
-      'windows_host_unsupported'
+      'missing_lib'
     )
     expect(message).toContain("set this host's Runtime to Host Node")
-    expect(message).toContain("Orca's Node: libc_floor; host Node: windows_host_unsupported")
+    expect(message).toContain('unsupported configuration')
+    expect(message).toContain("Orca's Node: libc_floor; host Node: missing_lib")
     expect(message).not.toContain('Install Node.js')
   })
+
+  it.each(['artifacts_unavailable', 'target_unresolved', 'windows_host_unsupported'] as const)(
+    'never points at Host Node when rung C refused for %s',
+    (hostNodeRefusal) => {
+      const message = remoteRuntimeUnavailableMessage(
+        'no_runtime',
+        'security_software',
+        false,
+        hostNodeRefusal
+      )
+      expect(message).not.toContain('Host Node')
+      expect(message).not.toContain('Install Node.js')
+      expect(message).toContain(`host Node: ${hostNodeRefusal}`)
+    }
+  )
 
   it('never advises installing Node when a remembered noexec defeated the tree', () => {
     expect(remoteRuntimeUnavailableReason('host_node_missing', true)).toBe('home_noexec')

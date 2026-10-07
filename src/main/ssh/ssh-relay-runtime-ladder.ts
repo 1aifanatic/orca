@@ -23,6 +23,7 @@ import type { SshRemoteRuntime, SshRemoteRuntimeRung } from '../../shared/ssh-ty
 import type { GlibcVersion } from './orcad-deployment-target'
 import {
   isGlibcBelow,
+  isPinnedRuntimeRefusal,
   PINNED_NODE_GLIBC_FLOOR,
   type RelayRuntimeFallbackReason
 } from './ssh-relay-pinned-node'
@@ -166,11 +167,17 @@ const REMEMBERED_NOEXEC_MESSAGE =
   'mounted noexec, so nothing under ~/.orca-remote may execute. Remote terminals and file ' +
   'browsing are unavailable until exec is allowed there; Orca re-checks on the next connect.'
 
-// Why its own wording: a host Node was found or can't help, so only the opt-in npm path is left.
+// Why its own wording: the host's Node ran but refused the prebuilt addons, so only the unsupported npm path is left.
 const HOST_NODE_REFUSED_MESSAGE =
-  "Orca can't run its remote runtime on this host: its bundled Node.js was refused and Orca's " +
-  "prebuilt addons can't run on the host's Node.js. To install them with npm on the host " +
-  "instead, set this host's Runtime to Host Node in its SSH settings, then reconnect."
+  "Orca can't run its remote runtime on this host: its bundled Node.js was refused and the " +
+  "host's Node.js can't load Orca's prebuilt addons. Host Node, which builds them with npm on " +
+  "the host, is an unsupported configuration; to opt in anyway, set this host's Runtime to Host " +
+  'Node in its SSH settings, then reconnect.'
+
+// Why no Host Node advice: the refusal was Orca's own (a download or a host it can't classify), not the host's Node.
+const NO_SUPPORTED_RUNTIME_MESSAGE =
+  "Orca can't run its remote runtime on this host: its bundled Node.js was refused and no other " +
+  'supported runtime could start. Reconnect to retry.'
 
 export function remoteRuntimeUnavailableMessage(
   reason: RemoteRuntimeUnavailableReason,
@@ -185,7 +192,11 @@ export function remoteRuntimeUnavailableMessage(
       : REMOTE_RUNTIME_UNAVAILABLE_MESSAGES.home_noexec
   }
   if (hostNodeRefusal && hostNodeRefusal !== 'host_node_missing') {
-    return `${HOST_NODE_REFUSED_MESSAGE} (Orca's Node: ${refusal ?? 'none'}; host Node: ${hostNodeRefusal})`
+    // Only a refusal the host's Node itself answered could change under an npm build on the host.
+    const base = isPinnedRuntimeRefusal(hostNodeRefusal)
+      ? HOST_NODE_REFUSED_MESSAGE
+      : NO_SUPPORTED_RUNTIME_MESSAGE
+    return `${base} (Orca's Node: ${refusal ?? 'none'}; host Node: ${hostNodeRefusal})`
   }
   const base = REMOTE_RUNTIME_UNAVAILABLE_MESSAGES[reason]
   return refusal ? `${base} (Orca's Node: ${refusal})` : base

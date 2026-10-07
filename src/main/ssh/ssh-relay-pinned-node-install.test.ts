@@ -95,6 +95,21 @@ describe('ensurePinnedRelayRuntime', () => {
     ).resolves.toEqual({ kind: 'host-node', fallbackReason: 'noexec', remembered: true })
   })
 
+  it("steps down when NixOS's stub loader refuses the generic Linux runtime", async () => {
+    vi.mocked(ensureRemoteOrcadNodeRuntime).mockRejectedValueOnce(
+      new RemoteNodeRuntimeSelfTestError(
+        127,
+        'Could not start dynamically linked executable: /home/u/.orca-remote/runtimes/node-x/bin/node\n' +
+          'NixOS cannot run dynamically linked executables intended for generic\n' +
+          'linux environments out of the box. For more information, see:\n' +
+          'https://nix.dev/permalink/stub-ld'
+      )
+    )
+    const failure = await ensurePinnedRelayRuntime(context, false).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(PinnedRelayFallbackError)
+    expect(failure).toMatchObject({ reason: 'wrong_libc' })
+  })
+
   it('keeps an unclassified runtime failure as an error, not a step down', async () => {
     const failure = new RemoteNodeRuntimeSelfTestError(1, 'something unexpected')
     vi.mocked(ensureRemoteOrcadNodeRuntime).mockRejectedValueOnce(failure)
