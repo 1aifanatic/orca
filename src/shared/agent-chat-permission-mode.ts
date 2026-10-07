@@ -1,10 +1,5 @@
-import type { AgentPermissionMode } from './tui-agent-permissions'
-
-/**
- * How much a structured chat may do without asking, chosen per chat. A superset of the stored
- * Agent Permissions setting, so the setting can widen to this type with no translation layer.
- */
-export type AgentChatPermissionMode = AgentPermissionMode | 'accept-edits' | 'auto'
+/** One permission mode for the settings default and each chat's own choice. */
+export type AgentChatPermissionMode = 'ask' | 'accept-edits' | 'auto' | 'bypass'
 
 /** Picker order: least to most access. */
 export const AGENT_CHAT_PERMISSION_MODES = [
@@ -54,10 +49,9 @@ export function agentChatPermissionModeSupported(
   )
 }
 
-/** A chat that never chose starts where the Agent Permissions setting points: ask → Ask for
- *  approval, bypass → Full access. Identity today; the setting is a subset of the chat's modes. */
+/** The setting and chat store the same mode. */
 export function agentChatPermissionModeFromSetting(
-  setting: AgentPermissionMode
+  setting: AgentChatPermissionMode
 ): AgentChatPermissionMode {
   return setting
 }
@@ -76,12 +70,13 @@ export function storedAgentChatPermissionMode(
 export function agentChatLaunchPermissionMode(
   agent: string,
   options: Readonly<Record<string, string>> | null | undefined,
-  setting: AgentPermissionMode | undefined
+  setting: AgentChatPermissionMode | undefined,
+  support?: AgentChatPermissionModeSupport
 ): AgentChatPermissionMode {
-  return (
+  const mode =
     storedAgentChatPermissionMode(agent, options) ??
     agentChatPermissionModeFromSetting(setting ?? 'ask')
-  )
+  return agentChatPermissionModeSupported(agent, mode, support) ? mode : 'ask'
 }
 
 /** What a host publishes about a chat's mode; absent from a host that predates the picker. */

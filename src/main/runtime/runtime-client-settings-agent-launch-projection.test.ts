@@ -26,6 +26,29 @@ function controllerFor(initial: GlobalSettings) {
 // Paired clients predate the typed permission mode: they read and write each agent's arguments
 // with the permission flag inline. The host keeps that shape at its boundary.
 describe('RuntimeClientSettingsController agent launch projection', () => {
+  it.each(['accept-edits', 'auto'] as const)(
+    'keeps the %s setting through a legacy-shaped round trip',
+    async (mode) => {
+      const { controller, store } = controllerFor(
+        hostSettings({ agentPermissionMode: mode, agentDefaultArgs: { claude: '', codex: '' } })
+      )
+      const published = controller.get()
+      expect(published.agentDefaultArgs?.claude).toBe(
+        mode === 'auto' ? '--permission-mode auto' : '--permission-mode acceptEdits'
+      )
+      expect(published.agentDefaultArgs?.codex).toBe(
+        mode === 'auto' ? '-a on-request -s workspace-write -c approvals_reviewer=auto_review' : ''
+      )
+      await controller.update({
+        agentDefaultArgs: published.agentDefaultArgs,
+        agentDefaultEnv: published.agentDefaultEnv
+      })
+      expect(store.getSettings().agentPermissionMode).toBe(mode)
+      expect(store.getSettings().agentDefaultArgs).toMatchObject({ claude: '', codex: '' })
+      expect(controller.get().agentDefaultArgs).toEqual(published.agentDefaultArgs)
+    }
+  )
+
   it('publishes launch-ready arguments with the flag inline', () => {
     const { controller } = controllerFor(
       hostSettings({

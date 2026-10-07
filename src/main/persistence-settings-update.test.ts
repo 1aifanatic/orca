@@ -481,6 +481,29 @@ describe('Store', () => {
     expect(store.getSettings().claudeAgentTeamsDefaultDisabledMigrated).toBe(true)
   })
 
+  it.each(['accept-edits', 'auto'] as const)(
+    'persists the %s setting and per-agent override',
+    async (mode) => {
+      const store = await createStore()
+      store.updateSettings({
+        agentPermissionMode: mode,
+        agentPermissionModeOverrides: { claude: mode }
+      })
+      store.flush()
+      expect(store.getSettings()).toMatchObject({
+        agentPermissionMode: mode,
+        agentPermissionModeOverrides: { claude: mode }
+      })
+      expect(readDataFile()).toMatchObject({
+        settings: {
+          agentPermissionMode: mode,
+          agentPermissionModeOverrides: { claude: mode },
+          agentDefaultArgs: { claude: '', codex: '' }
+        }
+      })
+    }
+  )
+
   // An older build reads a missing agent entry as "launch with the bypass flag", so a profile saved
   // here with Manual must spell out every agent's empty text or a downgrade escalates to Yolo.
   it('saves explicit empty launch text so an older build launches a fresh Manual profile in Manual', async () => {

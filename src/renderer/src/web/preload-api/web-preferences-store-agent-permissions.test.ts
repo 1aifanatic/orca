@@ -39,6 +39,28 @@ function memoryStorage(): Storage {
 // The web client keeps its own settings in localStorage; blobs saved before the permission mode
 // was typed carry the flag inside each agent's arguments.
 describe('web stored settings agent permissions', () => {
+  it.each(['accept-edits', 'auto'] as const)(
+    'saves and reloads the %s setting without migration',
+    async (mode) => {
+      const { createWebSettingsApi } = await import('./web-settings-api')
+      await createWebSettingsApi().settings?.set({
+        agentPermissionMode: mode,
+        agentPermissionModeOverrides: { claude: mode }
+      })
+      const { getStoredSettings } = await import('./web-preferences-store')
+      expect(getStoredSettings()).toMatchObject({
+        agentPermissionMode: mode,
+        agentPermissionModeOverrides: { claude: mode }
+      })
+      const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}')
+      expect(saved).toMatchObject({
+        agentPermissionMode: mode,
+        agentPermissionModeOverrides: { claude: mode },
+        agentDefaultArgs: { claude: '', codex: '' }
+      })
+    }
+  )
+
   beforeEach(() => {
     vi.stubGlobal('window', { localStorage: memoryStorage() })
     vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Macintosh)' })
@@ -107,7 +129,7 @@ describe('web stored settings agent permissions', () => {
   it('keeps a stored mode it does not know instead of re-migrating', async () => {
     window.localStorage.setItem(
       SETTINGS_STORAGE_KEY,
-      JSON.stringify({ agentPermissionMode: 'accept-edits', agentDefaultArgs: { claude: '' } })
+      JSON.stringify({ agentPermissionMode: 'future-mode', agentDefaultArgs: { claude: '' } })
     )
     const { getStoredSettings } = await import('./web-preferences-store')
 
@@ -115,7 +137,7 @@ describe('web stored settings agent permissions', () => {
 
     expect(settings.agentPermissionModeOverrides).toEqual({})
     const saved = JSON.parse(window.localStorage.getItem(SETTINGS_STORAGE_KEY) ?? '{}')
-    expect(saved.agentPermissionMode).toBe('accept-edits')
+    expect(saved.agentPermissionMode).toBe('future-mode')
   })
 
   // The host serves the web bundle, so a host downgrade hands this blob to an older bundle, which

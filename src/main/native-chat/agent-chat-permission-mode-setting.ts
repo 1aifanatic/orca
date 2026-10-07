@@ -22,11 +22,10 @@ export function agentChatPermissionModeForSettings(
   agent: TuiAgent,
   settings: AgentChatPermissionSettings
 ): AgentPermissionMode {
-  return resolveAgentPermissionPosture(
+  const posture = resolveAgentPermissionPosture(
     agent,
     settings,
     resolveLocalAgentLaunchTarget(process.platform, settings?.terminalWindowsShell)
-  ).effectiveBypass
-    ? 'bypass'
-    : 'ask'
+  )
+  return posture.effectiveMode
 }

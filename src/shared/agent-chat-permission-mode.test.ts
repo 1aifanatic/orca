@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   AGENT_CHAT_PERMISSION_MODES,
   agentChatPermissionModeFromSetting,
+  agentChatLaunchPermissionMode,
   agentChatPermissionModes,
   agentChatPermissionModeSupported,
   commitAgentSessionPermissionMode,
@@ -12,12 +13,27 @@ import {
 import type { AgentPermissionMode } from './tui-agent-permissions'
 
 describe('agent chat permission modes', () => {
-  // The setting can widen to the chat's type later with no translation layer.
-  it('is a superset of the stored Agent Permissions mode', () => {
-    expectTypeOf<AgentPermissionMode>().toMatchTypeOf<AgentChatPermissionMode>()
-    expect(agentChatPermissionModeFromSetting('ask')).toBe('ask')
-    expect(agentChatPermissionModeFromSetting('bypass')).toBe('bypass')
+  it('is the same type as the stored Agent Permissions mode', () => {
+    expectTypeOf<AgentPermissionMode>().toEqualTypeOf<AgentChatPermissionMode>()
+    for (const mode of AGENT_CHAT_PERMISSION_MODES) {
+      expect(agentChatPermissionModeFromSetting(mode)).toBe(mode)
+    }
   })
+
+  it.each(AGENT_CHAT_PERMISSION_MODES)(
+    'filters the %s default to the agent and runtime',
+    (mode) => {
+      expect(agentChatLaunchPermissionMode('claude', null, mode)).toBe(mode)
+      expect(agentChatLaunchPermissionMode('codex', null, mode)).toBe(
+        mode === 'accept-edits' ? 'ask' : mode
+      )
+      for (const agent of ['claude', 'codex']) {
+        expect(agentChatLaunchPermissionMode(agent, null, mode, { autoReview: false })).toBe(
+          mode === 'auto' || (agent === 'codex' && mode === 'accept-edits') ? 'ask' : mode
+        )
+      }
+    }
+  )
 
   it('orders the picker from least to most access', () => {
     expect(AGENT_CHAT_PERMISSION_MODES).toEqual(['ask', 'accept-edits', 'auto', 'bypass'])

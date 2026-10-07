@@ -1,5 +1,50 @@
 import { describe, expect, it } from 'vitest'
 import { agentChatPermissionModeForSettings } from './agent-chat-permission-mode-setting'
+import { AGENT_CHAT_PERMISSION_MODES } from '../../shared/agent-chat-permission-mode'
+
+describe('widened setting defaults', () => {
+  it.each(AGENT_CHAT_PERMISSION_MODES)(
+    'uses %s for new chats when the agent supports it',
+    (mode) => {
+      expect(agentChatPermissionModeForSettings('claude', { agentPermissionMode: mode })).toBe(mode)
+      expect(agentChatPermissionModeForSettings('codex', { agentPermissionMode: mode })).toBe(
+        mode === 'accept-edits' ? 'ask' : mode
+      )
+      expect(
+        agentChatPermissionModeForSettings('claude', {
+          agentPermissionMode: 'bypass',
+          agentPermissionModeOverrides: { claude: mode }
+        })
+      ).toBe(mode)
+    }
+  )
+
+  it('keeps typed permission arguments ahead of intermediate settings', () => {
+    expect(
+      agentChatPermissionModeForSettings('claude', {
+        agentPermissionMode: 'auto',
+        agentDefaultArgs: { claude: '--permission-mode plan' }
+      })
+    ).toBe('ask')
+    expect(
+      agentChatPermissionModeForSettings('codex', {
+        agentPermissionMode: 'auto',
+        agentDefaultArgs: { codex: '--yolo' }
+      })
+    ).toBe('bypass')
+  })
+
+  it('does not add chat-default interpretation of the new terminal reviewer flag', () => {
+    for (const mode of ['auto', 'bypass'] as const) {
+      expect(
+        agentChatPermissionModeForSettings('codex', {
+          agentPermissionMode: mode,
+          agentDefaultArgs: { codex: '--approve-for-me' }
+        })
+      ).toBe(mode)
+    }
+  })
+})
 
 describe('agentChatPermissionModeForSettings for Claude', () => {
   // The untouched case is the common one and the easiest to get wrong: a profile with no stored

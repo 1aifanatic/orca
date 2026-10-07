@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   agentHasPermissionMode,
+  agentPermissionModes,
+  PERMISSION_AGENT_IDS,
+  normalizeAgentPermissionSettingsUpdate,
   normalizeAgentPermissionModeOverrides,
   resolveAgentPermissionMode,
   resolveDefaultAgentPermissionMode,
@@ -44,7 +47,7 @@ describe('tui agent permissions', () => {
   // A newer build may store a mode this one doesn't know; it fails toward more prompts.
   it('reads a stored mode it does not know as ask', () => {
     const settings: AgentPermissionSettingsFields = JSON.parse(
-      '{"agentPermissionMode":"accept-edits"}'
+      '{"agentPermissionMode":"future-mode"}'
     )
     expect(resolveDefaultAgentPermissionMode(settings)).toBe('ask')
     expect(resolveAgentPermissionMode('claude', settings)).toBe('ask')
@@ -60,5 +63,34 @@ describe('tui agent permissions', () => {
         agentPermissionModeOverrides: { codex: 'accept-edits' }
       })
     ).toBe('ask')
+  })
+
+  it.each(['ask', 'bypass', 'accept-edits', 'auto'] as const)(
+    'keeps the stored %s mode',
+    (mode) => {
+      const settings = { agentPermissionMode: mode, agentPermissionModeOverrides: { claude: mode } }
+      expect(normalizeAgentPermissionSettingsUpdate(settings)).toEqual(settings)
+      expect(resolveDefaultAgentPermissionMode(settings)).toBe(mode)
+      expect(resolveAgentPermissionMode('claude', settings)).toBe(mode)
+    }
+  )
+
+  it('offers intermediate modes only for agents with verified equivalents', () => {
+    for (const agent of PERMISSION_AGENT_IDS) {
+      const modes = agentPermissionModes(agent)
+      expect(modes).toEqual(
+        agent === 'claude'
+          ? ['ask', 'accept-edits', 'auto', 'bypass']
+          : agent === 'codex'
+            ? ['ask', 'auto', 'bypass']
+            : ['ask', 'bypass']
+      )
+      for (const mode of ['accept-edits', 'auto'] as const) {
+        expect(resolveAgentPermissionMode(agent, { agentPermissionMode: mode })).toBe(
+          modes.includes(mode) ? mode : 'ask'
+        )
+      }
+    }
+    expect(agentPermissionModes('opencode')).toEqual([])
   })
 })

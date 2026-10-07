@@ -467,6 +467,7 @@ describe('resolveAgentPermissionPosture', () => {
   it('reports the mode and no argument options for a plain profile', () => {
     expect(resolveAgentPermissionPosture('claude', {}, DARWIN)).toEqual({
       mode: 'bypass',
+      effectiveMode: 'bypass',
       effectiveBypass: true,
       typedArgumentOptions: [],
       typedEnvironmentOptions: []
@@ -492,6 +493,7 @@ describe('resolveAgentPermissionPosture', () => {
       )
     ).toEqual({
       mode: 'ask',
+      effectiveMode: 'bypass',
       effectiveBypass: true,
       typedArgumentOptions: [CLAUDE_BYPASS],
       typedEnvironmentOptions: []
@@ -510,6 +512,7 @@ describe('resolveAgentPermissionPosture', () => {
       )
     ).toEqual({
       mode: 'ask',
+      effectiveMode: 'ask',
       effectiveBypass: false,
       typedArgumentOptions: ['--permission-mode=auto'],
       typedEnvironmentOptions: []
@@ -539,6 +542,7 @@ describe('resolveAgentPermissionPosture', () => {
       )
     ).toEqual({
       mode: 'bypass',
+      effectiveMode: 'ask',
       effectiveBypass: false,
       typedArgumentOptions: [],
       typedEnvironmentOptions: ['GOOSE_MODE=approve']
@@ -567,6 +571,7 @@ describe('resolveAgentPermissionPosture', () => {
       )
     ).toEqual({
       mode: 'bypass',
+      effectiveMode: 'ask',
       effectiveBypass: false,
       typedArgumentOptions: ['-a on-request'],
       typedEnvironmentOptions: []

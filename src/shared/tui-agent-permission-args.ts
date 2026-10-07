@@ -277,6 +277,8 @@ export function bypassFlagBeside(agent: TuiAgent, extra: string, shell: AgentSta
 export type AgentPermissionPosture = {
   /** The mode Settings stores for this agent. */
   mode: AgentPermissionMode
+  /** The supported setting, unless existing permission arguments or env decide. */
+  effectiveMode: AgentPermissionMode
   /** Whether the agent actually launches in bypass, after its own Arguments and env have their say. */
   effectiveBypass: boolean
   /** Permission settings typed into the agent's Arguments; when present they decide. */
@@ -301,12 +303,18 @@ export function resolveAgentPermissionPosture(
     { args: settings?.agentDefaultArgs?.[agent], env: settings?.agentDefaultEnv?.[agent] },
     resolveAgentLaunchGrammar(target)
   )
+  const effectiveMode =
+    typed.kind === 'none'
+      ? mode === 'bypass' && !agentHasPermissionMode(agent)
+        ? 'ask'
+        : mode
+      : typed.kind === 'bypass'
+        ? 'bypass'
+        : 'ask'
   return {
     mode,
-    effectiveBypass:
-      typed.kind === 'none'
-        ? mode === 'bypass' && agentHasPermissionMode(agent)
-        : typed.kind === 'bypass',
+    effectiveMode,
+    effectiveBypass: effectiveMode === 'bypass',
     typedArgumentOptions: typed.argumentOptions,
     typedEnvironmentOptions: typed.environmentOptions
   }

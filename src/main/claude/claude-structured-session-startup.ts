@@ -15,7 +15,12 @@ import {
   readClaudeModels,
   type ClaudeInitObservation
 } from './claude-structured-init-proof'
-import { restoreClaudeStructuredSessionOptions } from './claude-structured-options'
+import {
+  restoreClaudeStructuredSessionOptions,
+  setClaudeStructuredOption
+} from './claude-structured-options'
+import { listedModels, matchListedModel } from './claude-structured-model-catalog'
+import { agentChatLaunchPermissionMode } from '../../shared/agent-chat-permission-mode'
 import {
   claudeStructuredSessionPublicationOptions,
   prepareClaudeStructuredSessionAcquisitionOptions,
@@ -146,6 +151,22 @@ function applyClaudeStartupFacts(session: ClaudeSession, facts: ClaudeStartupFac
   session.events?.publish()
 }
 
+function seedClaudeDefaultPermissionMode(session: ClaudeSession, initialization: unknown): boolean {
+  const mode = session.launchPermissionMode
+  if (session.options.has('permissionMode') || (mode !== 'accept-edits' && mode !== 'auto')) {
+    return false
+  }
+  const models = listedModels({ models: readClaudeModels(initialization) })
+  const model = session.options.get('model') ?? session.reportedOptions.model ?? 'default'
+  const autoReview = matchListedModel(models, model)?.supportsAutoMode
+  // A default must be applied to the CLI before the first message is admitted.
+  session.options.set(
+    'permissionMode',
+    agentChatLaunchPermissionMode('claude', null, mode, { autoReview })
+  )
+  return true
+}
+
 /** What the start persists as the session's options. The applied effort is display-only: saved,
  *  it would pin an effort nobody chose on every reopen, past a later settings change. */
 function claudeStartedReportedOptions(
@@ -185,7 +206,15 @@ export async function settleClaudeSessionStartup(input: {
       return
     }
     applyClaudeStartupFacts(session, facts)
+    const seededPermissionMode = seedClaudeDefaultPermissionMode(session, facts.initialization)
     await restoreClaudeStructuredSessionOptions(session, input.requestTimeoutMs)
+    if (seededPermissionMode && session.restoreSkippedOptions.has('permissionMode')) {
+      await setClaudeStructuredOption(
+        session,
+        { key: 'permissionMode', value: 'ask' },
+        input.requestTimeoutMs
+      )
+    }
     if (!superseded()) {
       input.onStarted({
         // `list_models` is answered from this same initialize result, so nothing is re-read.

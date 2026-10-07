@@ -13,7 +13,7 @@ import {
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
 import {
   AGENT_CHAT_PERMISSION_MODE_OPTION_ID,
-  agentChatPermissionModeFromSetting,
+  agentChatLaunchPermissionMode,
   agentChatPermissionModes,
   agentChatPermissionModeSupported,
   storedAgentChatPermissionMode,
@@ -44,7 +44,7 @@ function restingPermissionModes(
   const fallback = defaultPermissionMode?.(record.provider)
   const current =
     storedAgentChatPermissionMode(record.provider, record.options) ??
-    (fallback ? agentChatPermissionModeFromSetting(fallback) : null)
+    (fallback ? agentChatLaunchPermissionMode(record.provider, null, fallback) : null)
   return supported && current ? { current, supported } : null
 }
 

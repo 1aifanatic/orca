@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
 import { CLAUDE_STRUCTURED_AGENT } from '../../claude/claude-structured-agent-definition'
 import { CODEX_STRUCTURED_AGENT } from '../../codex/codex-structured-agent-definition'
 import type { StructuredAgentSessionMutationContext } from './structured-agent-session-host-mutations'
@@ -30,7 +31,7 @@ function record(provider: string, options: Record<string, string> = {}): AgentSe
 
 function restingRead(
   value: AgentSessionRecord,
-  defaultPermissionMode?: (agent: string) => 'ask' | 'bypass' | null
+  defaultPermissionMode?: (agent: string) => AgentChatPermissionMode | null
 ) {
   const resting = { child: null, params: { provider: value.provider } }
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the resting read touches only these members.
@@ -49,6 +50,18 @@ function restingRead(
 }
 
 describe('a chat permission mode at rest', () => {
+  it.each(['accept-edits', 'auto'] as const)(
+    'filters the %s setting to the agent at rest',
+    async (mode) => {
+      await expect(restingRead(record('claude'), () => mode)).resolves.toMatchObject({
+        permissionModes: { current: mode }
+      })
+      await expect(restingRead(record('codex'), () => mode)).resolves.toMatchObject({
+        permissionModes: { current: mode === 'accept-edits' ? 'ask' : mode }
+      })
+    }
+  )
+
   it('reports the chat its own stored mode over the setting', async () => {
     await expect(
       restingRead(record('claude', { permissionMode: 'accept-edits' }), () => 'bypass')

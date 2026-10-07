@@ -15,6 +15,42 @@ function connectionFor(
 }
 
 describe('openCodexThread', () => {
+  it.each(['ask', 'auto'] as const)('states the %s reviewer on start and resume', async (mode) => {
+    const request = vi.fn(async () => ({ thread: { id: 'thread-existing' } }))
+    const permissionPolicy = codexStructuredPermissionPolicy(mode)
+    for (const resumeThreadId of [null, 'thread-existing']) {
+      await openCodexThread(
+        connectionFor(request),
+        {
+          cwd: '/workspace',
+          resumeThreadId,
+          permissionPolicy
+        },
+        2_000
+      )
+    }
+    expect(request.mock.calls).toEqual([
+      [
+        'thread/start',
+        expect.objectContaining({
+          approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user',
+          approvalPolicy: 'on-request',
+          sandbox: 'workspace-write'
+        }),
+        { timeoutMs: 2_000 }
+      ],
+      [
+        'thread/resume',
+        expect.objectContaining({
+          approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user',
+          approvalPolicy: 'on-request',
+          sandbox: 'workspace-write'
+        }),
+        { timeoutMs: 2_000 }
+      ]
+    ])
+  })
+
   it('applies the resolved permission policy when starting and resuming a thread', async () => {
     const request = vi.fn(async (method: string) => ({
       thread: { id: method === 'thread/start' ? 'thread-created' : 'thread-existing' }

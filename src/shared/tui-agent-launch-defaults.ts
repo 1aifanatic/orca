@@ -8,6 +8,7 @@ import {
 } from './tui-agent-permissions'
 import {
   bypassFlagBeside,
+  argumentsSetOption,
   classifyTypedAgentPermissions,
   resolveAgentPermissionPosture
 } from './tui-agent-permission-args'
@@ -131,15 +132,34 @@ export function resolveTuiAgentLaunchArgs(
     extraArgs === undefined ? (settings?.agentDefaultArgs?.[agent] ?? '') : (extraArgs ?? '')
   ).trim()
   const shell = resolveAgentLaunchGrammar(target)
+  const codexReviewerFlag =
+    agent === 'codex' &&
+    [extra, settings?.agentDefaultArgs?.[agent] ?? ''].some((args) =>
+      ['--approve-for-me', '--not-so-yolo'].some((option) =>
+        argumentsSetOption(args, option, [shell])
+      )
+    )
   if (
-    !YOLO_TUI_AGENT_ARGS[agent] ||
-    !resolveAgentPermissionPosture(agent, settings, target).effectiveBypass ||
+    codexReviewerFlag ||
     classifyTypedAgentPermissions(agent, { args: extra }, shell).kind !== 'none'
   ) {
     return extra
   }
-  const bypassArg = bypassFlagBeside(agent, extra, shell)
-  return extra ? `${bypassArg} ${extra}` : bypassArg
+  const posture = resolveAgentPermissionPosture(agent, settings, target)
+  let permissionArg = ''
+  if (posture.effectiveBypass && YOLO_TUI_AGENT_ARGS[agent]) {
+    permissionArg = bypassFlagBeside(agent, extra, shell)
+  } else {
+    if (agent === 'claude' && posture.effectiveMode === 'accept-edits') {
+      permissionArg = '--permission-mode acceptEdits'
+    } else if (agent === 'claude' && posture.effectiveMode === 'auto') {
+      permissionArg = '--permission-mode auto'
+    } else if (agent === 'codex' && posture.effectiveMode === 'auto') {
+      // Old hosts recognize -a/-s and must not add their own bypass beside auto review.
+      permissionArg = '-a on-request -s workspace-write -c approvals_reviewer=auto_review'
+    }
+  }
+  return [permissionArg, extra].filter(Boolean).join(' ')
 }
 
 /** The launch environment for this agent: its permission mode's env, then the user's extra env. */

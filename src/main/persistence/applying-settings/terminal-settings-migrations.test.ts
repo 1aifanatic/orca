@@ -31,6 +31,21 @@ function allYoloArgs(): Partial<Record<TuiAgent, string>> {
 }
 
 describe('migrateAgentLaunchProfile', () => {
+  it.each(['ask', 'bypass', 'accept-edits', 'auto'] as const)(
+    'loads %s without migrating or losing overrides',
+    (mode) => {
+      const stored = legacy({
+        agentPermissionMode: mode,
+        agentPermissionModeOverrides: { claude: mode }
+      })
+      const { profile } = migrateAgentLaunchProfile(stored)
+      expect(profile.agentPermissionMode).toBe(mode)
+      expect(profile.agentPermissionModeOverrides?.claude).toBe(mode)
+      expect(resolveAgentPermissionMode('claude', { ...stored, ...profile })).toBe(mode)
+      expect(migrateAgentLaunchProfile({ ...stored, ...profile }).migrated).toBe(false)
+    }
+  )
+
   it('lifts an all-Yolo profile into a Yolo default with no leftover text', () => {
     const { profile, migrated } = migrateAgentLaunchProfile(
       legacy({
@@ -289,7 +304,7 @@ describe('migrateAgentLaunchProfile', () => {
     const stored: GlobalSettings = JSON.parse(
       JSON.stringify({
         agentYoloDefaultsMigrated: true,
-        agentPermissionMode: 'accept-edits',
+        agentPermissionMode: 'future-mode',
         agentPermissionModeOverrides: { codex: 'bypass', gemini: 'plan' },
         agentDefaultArgs: { claude: '--model opus' }
       })
@@ -297,12 +312,12 @@ describe('migrateAgentLaunchProfile', () => {
 
     const { profile } = migrateAgentLaunchProfile(stored)
 
-    expect(profile.agentPermissionMode).toBe('accept-edits')
+    expect(profile.agentPermissionMode).toBe('future-mode')
     expect(profile.agentPermissionModeOverrides).toEqual({ codex: 'bypass', gemini: 'plan' })
     expect(profile.agentDefaultArgs).toMatchObject({ claude: '--model opus', codex: '' })
     expect(migrateAgentLaunchProfile({ ...stored, ...profile }).migrated).toBe(false)
     const loaded = { ...stored, ...profile }
-    expect(loaded.agentPermissionMode).toBe('accept-edits')
+    expect(loaded.agentPermissionMode).toBe('future-mode')
     expect(resolveAgentPermissionMode('claude', loaded)).toBe('ask')
     expect(resolveTuiAgentLaunchArgs('claude', loaded, DARWIN)).toBe('--model opus')
     expect(resolveAgentPermissionMode('gemini', loaded)).toBe('ask')

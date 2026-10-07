@@ -1,8 +1,12 @@
 import { TUI_AGENT_CONFIG, isTuiAgent } from './tui-agent-config'
 import type { TuiAgent } from './tui-agent'
+import {
+  agentChatPermissionModes,
+  isAgentChatPermissionMode,
+  type AgentChatPermissionMode
+} from './agent-chat-permission-mode'
 
-/** Whether Orca launches an agent with its permission-bypass flag (`bypass`, shown as Yolo) or without it (`ask`). */
-export type AgentPermissionMode = 'bypass' | 'ask'
+export type AgentPermissionMode = AgentChatPermissionMode
 
 /** What an untouched profile gets; Orca has shipped agents in Yolo by default. */
 export const DEFAULT_AGENT_PERMISSION_MODE: AgentPermissionMode = 'bypass'
@@ -120,11 +124,16 @@ export type AgentPermissionSettingsFields = {
 }
 
 export function isAgentPermissionMode(value: unknown): value is AgentPermissionMode {
-  return value === 'bypass' || value === 'ask'
+  return isAgentChatPermissionMode(value)
 }
 
 export function agentHasPermissionMode(agent: TuiAgent): boolean {
   return agent in YOLO_TUI_AGENT_ARGS || agent in YOLO_TUI_AGENT_ENV
+}
+
+/** Only verified CLI equivalents are offered; other agents retain Ask and Full access. */
+export function agentPermissionModes(agent: TuiAgent): readonly AgentPermissionMode[] {
+  return agentChatPermissionModes(agent) ?? (agentHasPermissionMode(agent) ? ['ask', 'bypass'] : [])
 }
 
 /** Keeps every known agent's stored mode, including one a newer build wrote. */
@@ -178,7 +187,9 @@ export function resolveAgentPermissionMode(
   settings: AgentPermissionSettingsFields | null | undefined
 ): AgentPermissionMode {
   const override = settings?.agentPermissionModeOverrides?.[agent]
-  return override === undefined
-    ? resolveDefaultAgentPermissionMode(settings)
-    : readStoredMode(override)
+  const mode =
+    override === undefined ? resolveDefaultAgentPermissionMode(settings) : readStoredMode(override)
+  return (mode === 'accept-edits' || mode === 'auto') && !agentPermissionModes(agent).includes(mode)
+    ? 'ask'
+    : mode
 }
