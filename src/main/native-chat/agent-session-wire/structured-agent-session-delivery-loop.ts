@@ -5,10 +5,11 @@
 // for a session exactly while a message is queued there — accepted, not yet handed over — and no
 // child is running a conversation command: a command's turn takes no input, and the commit that
 // ends it wakes the loop again. Every step re-reads the journal and the conversation's child
-// record to decide, so there is no loop state to disagree with them. Each step is its own serialized task. That is what lets a Stop
-// that arrives while a start holds the queue withdraw the queued messages before the handover that
-// would have written them. Stop and the conversation's close are the only other writers of a
-// queued message: a child's exit only ends the child, and this loop reads why.
+// record to decide; its only state is which child a running pass waits on, cleared with the pass.
+// Each step is its own serialized task. That is what lets a Stop that arrives while a start holds
+// the queue withdraw the queued messages before the handover that would have written them. Stop
+// and the conversation's close are the only other writers of a queued message: a child's exit only
+// ends the child, and this loop reads why.
 //
 // A start that fails is recorded on the one message it was for, and the messages behind it each
 // get their own start. Every write names a message fixed when its pass chose it, never the queue's

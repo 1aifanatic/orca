@@ -171,7 +171,7 @@ export function classifyDispatchRejection(
 /** Rejected because the agent it waited on never took it: what a failed start writes, whatever
  *  the person may have to do first. Orca stopping a start that hung is one, and so is the agent
  *  ending before it was handed the message. */
-export function isFailedStartRejection(
+function isFailedStartRejection(
   submission: Pick<AgentJournalSubmission, 'reason'> & { rejection?: unknown }
 ): boolean {
   const { category, kind } = classifyDispatchRejection(submission)

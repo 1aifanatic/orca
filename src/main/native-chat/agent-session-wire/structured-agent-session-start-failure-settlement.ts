@@ -1,8 +1,9 @@
-// The writer of a failed start's record: the message it failed, rejected, and the start's one row,
-// in one write, so a client that hides rejected messages still sees why. The delivery loop writes it
-// for the queued message a start was for, the handover for the message it was handing over; the
-// exit writes the row for a start no message carries. Each message state has one writer, and
-// `rejected` is terminal, so no message is failed twice.
+// The writer of a failed start's record: the message it failed, rejected, and its row keyed by that
+// message, in one write, so a client that hides rejected messages still sees why. The delivery loop
+// writes it for the queued message a start was for, the handover for the message it was handing
+// over; the exit writes one row keyed by the start for the handed messages it rejected, or for a
+// start no message carries. Each message state has one writer, and `rejected` is terminal, so no
+// message is failed twice.
 
 import type {
   AgentJournalDispatchRejection,
@@ -30,8 +31,8 @@ type StartFailureJournal = Pick<
   'submissions' | 'itemBody' | 'appendLifecycleBatch'
 >
 
-/** The one row a failed start leaves in the chat: an error row keyed by the start, repeating the
- *  sentence its message carries, so the reason outlives any client that hides that message. */
+/** A failed start's row in the chat: an error row keyed by its message (or by the start, from the
+ *  exit), repeating the message's sentence, so the reason outlives any client that hides it. */
 export function structuredAgentSessionStartFailureRow(
   startKey: string,
   words: AgentJournalDispatchRejection
