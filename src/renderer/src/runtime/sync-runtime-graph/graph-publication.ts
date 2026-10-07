@@ -36,7 +36,7 @@ export async function syncRuntimeGraph(): Promise<void> {
   const systemPrefersDark = getSystemPrefersDark()
   const ambiguousTerminalTabIds = collectAmbiguousTerminalTabIds(state.tabsByWorktree)
   const terminalTabsByWorktree = new Map<string, Map<string, TerminalTab>>()
-  const terminalHostsByWorktree = new Map<string, ReadonlyMap<string, ExecutionHostId>>()
+  const terminalHostsByWorktree = new Map<string, ReadonlyMap<string, ExecutionHostId | null>>()
   for (const [worktreeId, tabs] of Object.entries(state.tabsByWorktree)) {
     terminalHostsByWorktree.set(
       worktreeId,

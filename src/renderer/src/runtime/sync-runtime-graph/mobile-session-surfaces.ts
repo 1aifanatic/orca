@@ -25,9 +25,9 @@ export function isRemoteRuntimePtyId(ptyId: string | null | undefined): boolean 
 export function isRemoteRuntimeTerminalTab(
   tab: Pick<NonNullable<AppState['tabsByWorktree'][string]>[number], 'id' | 'ptyId'>,
   layout: AppState['terminalLayoutsByTabId'][string] | undefined,
-  executionHostId?: ExecutionHostId
+  executionHostId?: ExecutionHostId | null
 ): boolean {
-  if (parseExecutionHostId(executionHostId)?.kind === 'runtime') {
+  if (executionHostId === null || parseExecutionHostId(executionHostId)?.kind === 'runtime') {
     return true
   }
   const layoutPtyIds = Object.values(layout?.ptyIdsByLeafId ?? {})
