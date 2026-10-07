@@ -1,6 +1,6 @@
 import { globSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { UNIT_INCLUDE } from './ci-unit-files.mjs'
+import { UNIT_INCLUDE } from './unit-test-file-patterns.mjs'
 
 /** Mirrors ORCA_REQUIRED_TEST_INPUTS_ENV in src/main/orcad/orcad-node-slot-fixture.ts. */
 export const REQUIRED_TEST_INPUTS_ENV = 'ORCA_REQUIRED_TEST_INPUTS'

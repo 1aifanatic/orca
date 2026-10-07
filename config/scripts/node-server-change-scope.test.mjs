@@ -135,12 +135,15 @@ it.each([
 ])('fails closed or requests dependencies in an uninstalled checkout: %j', (scenario) => {
   const root = moduleTree(
     Object.fromEntries(
-      ['node-server-change-scope', 'node-server-test-paths', 'node-server-qualification'].map(
-        (name) => [
-          `config/scripts/${name}.mjs`,
-          readFileSync(new URL(`./${name}.mjs`, import.meta.url), 'utf8')
-        ]
-      )
+      [
+        'node-server-change-scope',
+        'node-server-test-paths',
+        'node-server-qualification',
+        'unit-test-file-patterns'
+      ].map((name) => [
+        `config/scripts/${name}.mjs`,
+        readFileSync(new URL(`./${name}.mjs`, import.meta.url), 'utf8')
+      ])
     )
   )
   const changes = join(root, 'changes')
