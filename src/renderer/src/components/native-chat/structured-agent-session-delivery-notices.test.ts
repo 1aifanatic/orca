@@ -15,10 +15,8 @@ import {
   agentJournalSubmissionKey
 } from '../../../../shared/agent-session-journal-item-key'
 import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
-import {
-  structuredAgentSessionDeliveryNotices,
-  structuredAgentSessionStartFailureFacts
-} from './structured-agent-session-delivery-notices'
+import { structuredAgentSessionStartFailureFacts } from '../../../../shared/structured-agent-session-start-failure-facts'
+import { structuredAgentSessionDeliveryNotices } from './structured-agent-session-delivery-notices'
 
 function entry(
   clientMessageId: string,

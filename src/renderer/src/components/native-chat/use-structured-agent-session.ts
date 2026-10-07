@@ -34,7 +34,7 @@ import { useStructuredAgentSessionContextUsage } from './use-structured-agent-se
 import { useStructuredAgentSessionRailOutline } from './use-structured-agent-session-rail-outline'
 import { useStructuredAgentSessionQueuedMessages } from './use-structured-agent-session-queued-messages'
 import { outboxOutsideQueuedCards } from './structured-agent-session-queued-cards'
-import { structuredAgentSessionStartFailureFacts } from './structured-agent-session-delivery-notices'
+import { structuredAgentSessionStartFailureFacts } from '../../../../shared/structured-agent-session-start-failure-facts'
 import { hostStatesTurnScopes } from '../../../../shared/native-chat-turn-membership'
 import { structuredAgentSessionNewSendsQueue } from '../../../../shared/structured-agent-session-outbox-delivery'
 import { pendingPromptsAllUnanswerableHere } from '../../../../shared/agent-session-approval-subject'
