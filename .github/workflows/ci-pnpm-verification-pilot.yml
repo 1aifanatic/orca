@@ -1,65 +1,65 @@
-name: pnpm verification cache pilot
-
+name: Manual isolated replay CPU sampling
 on:
-  pull_request:
-    paths: ['.github/workflows/ci-pnpm-verification-pilot.yml']
   workflow_dispatch:
-
+    inputs:
+      source_sha:
+        description: Exact reviewed31a source; temporary definition never merges.
+        required: true
+        type: string
 permissions:
   contents: read
-
 concurrency:
-  group: pnpm-verification-pilot-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ORCA_BACKGROUND_LAUNCH: '1'
-
+  group: manual-serialize-grid-cpu-single-config
+  cancel-in-progress: false
 jobs:
-  seed:
-    strategy:
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  capture:
+    name: Unchanged112-case replay CPU observation
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      BENCH_SOURCE_SHA: ${{ inputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Checkout reviewed definition separately
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .benchmark-definition
           persist-credentials: false
       - uses: ./.github/actions/install-node-dependencies
-        id: deps
-      # PR caches are scoped to the PR merge ref; main never restores them.
-      - uses: actions/cache/save@v5
-        if: steps.deps.outputs.verification-cache-hit != 'true'
         with:
-          path: ${{ steps.deps.outputs.verification-cache-path }}
-          key: ${{ steps.deps.outputs.verification-cache-key }}
-
-  measure:
-    needs: seed
-    name: measure ${{ matrix.runner }} sample ${{ matrix.sample }} cache ${{ matrix.cache }}
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
-        sample: [1, 2, 3]
-        cache: ['false', 'true']
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
+          node-version: '24.21.0'
+          native-runtime: node
+          cache-electron-package: 'true'
+      - name: Install Electron package binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-node-dependencies
-        id: deps
+          bun-version-file: config/.bun-version
+      - name: Materialize one unchanged file and fresh owned profile directory
+        run: node .benchmark-definition/.github/benchmark/serialize-grid-cpu-single-config/materialize.mjs
+      - name: Preserve the stock native-runtime preparation before config-only capture
+        run: pnpm exec node config/scripts/ensure-native-runtime.mjs --runtime=node
+      - name: Capture replay through the existing single-config launcher once without retry
+        run: node notes/bun-migration/performance/serialize-grid-cpu-single-config-diagnostic/benchmark-matched-shard.mjs four 0 1
+      - name: Verify raw workload and actual target CPU frames
+        if: always()
+        run: python3 .benchmark-definition/.github/benchmark/serialize-grid-cpu-single-config/collect-results.py notes/bun-migration/performance .benchmark-definition/.github/benchmark/serialize-grid-cpu-single-config/payload serialize-grid-cpu-single-config-observation.json
+      - name: Preserve every raw profile, workload report and failure
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          cache-pnpm-verification: ${{ matrix.cache }}
-      - name: Validate treatment and frozen install
-        env:
-          CACHE_ENABLED: ${{ matrix.cache }}
-          CACHE_HIT: ${{ steps.deps.outputs.verification-cache-hit }}
-        run: |
-          if [ "$CACHE_ENABLED" = true ]; then test "$CACHE_HIT" = true; fi
-          git diff --exit-code -- package.json pnpm-lock.yaml pnpm-workspace.yaml
-          node -e "require.resolve('vitest'); require.resolve('electron')"
+          name: serialize-grid-cpu-single-config-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            serialize-grid-cpu-single-config-observation.json
+            notes/bun-migration/performance/serialize-grid-cpu-single-config-shard-*
+            notes/bun-migration/performance/serialize-grid-cpu-single-config-benchmark-freeze.json
+            notes/bun-migration/performance/serialize-grid-cpu-single-config-diagnostic/*.json
+            notes/bun-migration/performance/serialize-grid-cpu-single-config-diagnostic/*.mjs
+            notes/bun-migration/performance/serialize-grid-cpu-single-config-diagnostic/owned-cpu-profiles/**

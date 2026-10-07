@@ -1,0 +1,2733 @@
+{
+  "classification": "Source-bound unchanged file case multiset from current-only qualified three rounds; not whole reference qualification",
+  "runId": 37689324726,
+  "definitionSha": "fa9c728e29621d2802b4dba66e26cfdef4f89bc3",
+  "sourceSha": "7b26725ff4b38e1981ad2e1153118fa24faa7ac3",
+  "file": "src/main/daemon/serialize-grid-transcript-replay.test.ts",
+  "sourceFileSha256": "7c645e37e616e3279a98cb04878b721d30ec1b41e3a2a9edd43dbccdd501a728",
+  "artifactId": 11513282421,
+  "archivePath": "notes/bun-migration/performance/original-current-stock-order-definition-publication-20261007/remote/artifacts/11513282421.zip",
+  "archiveSha256": "14269ae8d75a7a7ba2370751d73707940b76b563abc9a93ab49a01251ae579e1",
+  "rawCaseMultisetIdenticalAllThreeRounds": true,
+  "caseCount": 112,
+  "counts": {
+    "passed": 112
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "reportMember": "current-shard-7-round-0.json",
+      "reportSha256": "9d9b78a16c3013dbbb40d44a7877c4eb30f3b0b9e4e1b0b4ba41a0742915e68c",
+      "moduleName": "/home/runner/work/orca/orca/src/main/daemon/serialize-grid-transcript-replay.test.ts",
+      "rawCases": [
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-155-1-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-155-1-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-ready-account-info-hidden: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-ready-account-info-hidden: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-trustprompt: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-trustprompt: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-setup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-setup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-idle-usage-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-idle-usage-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-fresh-home-greeting: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-fresh-home-greeting: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-cn-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-cn-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-natural-load-enter-dropped: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-natural-load-enter-dropped: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-trace-question: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-trace-question: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready-after-question: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready-after-question: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-login: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-login: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-effort-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-effort-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-boot-slow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-boot-slow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-cold-standalone-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-cold-standalone-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-160-0-plan-implement-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-160-0-plan-implement-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zcode-composer-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zcode-composer-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-promo: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-promo: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-ready-task-wakeup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-ready-task-wakeup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-no-account: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-no-account: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-approval-prompt: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-approval-prompt: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-busy-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-busy-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts dsb-6-9-0-folder: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "dsb-6-9-0-folder: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-multiline-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-multiline-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-picker-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-picker-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-tool-cancel-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-tool-cancel-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-157-1-update-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-157-1-update-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-cmd-2-0-21-timed-warm-server: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-cmd-2-0-21-timed-warm-server: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace-answered: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace-answered: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-composer-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-composer-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zsh-prompt-runs-command: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zsh-prompt-runs-command: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zcode-missing-tui: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zcode-missing-tui: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-5-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-5-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-config-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-config-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-14-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-14-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-composer: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-composer: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-narrow-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-narrow-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-trust: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-trust: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-long-tool-call: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-long-tool-call: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-busy-mid-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-busy-mid-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-150-1-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-150-1-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-custom-footer: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-custom-footer: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-no-daemon-effort-override: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-no-daemon-effort-override: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-18-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-18-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-stream-usage-cancel-orca: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-stream-usage-cancel-orca: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-tool-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-tool-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts dsh-tui-ready-no-key: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "dsh-tui-ready-no-key: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-busy-thinking: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-busy-thinking: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-model-announcement-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-model-announcement-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-5-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-5-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-enter-after-agent-row: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-enter-after-agent-row: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-native-title-win32: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-native-title-win32: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-157-1-timed-sleep-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-157-1-timed-sleep-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-ready-api-key-gemini-model: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-ready-api-key-gemini-model: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-cn-signin: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-cn-signin: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-accept-edits: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-accept-edits: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-fresh-home-daemon-install: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-fresh-home-daemon-install: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-plain-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-plain-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-permission: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-permission: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-lifecycle: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-lifecycle: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-first-launch: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-first-launch: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-idle-after-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-idle-after-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-65-win32-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-65-win32-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts hermes-tui-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "hermes-tui-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts muse-empty-folder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "muse-empty-folder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts less: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "less: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-run: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-run: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts vim: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "vim: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts nano: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "nano: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "round": 1,
+      "reportMember": "current-shard-7-round-1.json",
+      "reportSha256": "191840a4da0fe2a0922ef5c31941ae94adf764a6b69769fd23acb1fbc115d48d",
+      "moduleName": "/home/runner/work/orca/orca/src/main/daemon/serialize-grid-transcript-replay.test.ts",
+      "rawCases": [
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-155-1-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-155-1-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-ready-account-info-hidden: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-ready-account-info-hidden: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-trustprompt: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-trustprompt: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-setup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-setup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-idle-usage-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-idle-usage-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-fresh-home-greeting: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-fresh-home-greeting: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-cn-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-cn-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-natural-load-enter-dropped: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-natural-load-enter-dropped: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-trace-question: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-trace-question: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready-after-question: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready-after-question: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-login: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-login: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-effort-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-effort-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-boot-slow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-boot-slow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-cold-standalone-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-cold-standalone-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-160-0-plan-implement-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-160-0-plan-implement-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zcode-composer-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zcode-composer-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-promo: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-promo: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-ready-task-wakeup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-ready-task-wakeup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-no-account: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-no-account: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-approval-prompt: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-approval-prompt: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-busy-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-busy-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts dsb-6-9-0-folder: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "dsb-6-9-0-folder: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-multiline-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-multiline-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-picker-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-picker-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-tool-cancel-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-tool-cancel-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-157-1-update-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-157-1-update-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-cmd-2-0-21-timed-warm-server: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-cmd-2-0-21-timed-warm-server: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace-answered: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace-answered: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-composer-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-composer-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zsh-prompt-runs-command: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zsh-prompt-runs-command: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zcode-missing-tui: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zcode-missing-tui: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-5-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-5-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-config-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-config-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-14-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-14-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-composer: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-composer: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-narrow-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-narrow-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-trust: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-trust: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-long-tool-call: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-long-tool-call: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-busy-mid-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-busy-mid-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-150-1-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-150-1-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-custom-footer: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-custom-footer: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-no-daemon-effort-override: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-no-daemon-effort-override: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-18-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-18-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-stream-usage-cancel-orca: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-stream-usage-cancel-orca: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-tool-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-tool-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts dsh-tui-ready-no-key: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "dsh-tui-ready-no-key: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-busy-thinking: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-busy-thinking: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-model-announcement-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-model-announcement-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-5-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-5-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-enter-after-agent-row: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-enter-after-agent-row: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-native-title-win32: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-native-title-win32: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-157-1-timed-sleep-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-157-1-timed-sleep-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-ready-api-key-gemini-model: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-ready-api-key-gemini-model: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-cn-signin: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-cn-signin: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-accept-edits: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-accept-edits: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-fresh-home-daemon-install: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-fresh-home-daemon-install: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-plain-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-plain-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-permission: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-permission: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-lifecycle: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-lifecycle: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-first-launch: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-first-launch: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-idle-after-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-idle-after-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-65-win32-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-65-win32-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts hermes-tui-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "hermes-tui-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts muse-empty-folder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "muse-empty-folder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts less: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "less: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-run: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-run: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts vim: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "vim: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts nano: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "nano: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "round": 2,
+      "reportMember": "current-shard-7-round-2.json",
+      "reportSha256": "90607790b951b74608d4a252d3fcfa755ce672e444d27150963982bb8c736c07",
+      "moduleName": "/home/runner/work/orca/orca/src/main/daemon/serialize-grid-transcript-replay.test.ts",
+      "rawCases": [
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-155-1-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-155-1-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-ready-account-info-hidden: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-ready-account-info-hidden: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-hooks-review-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-trustprompt: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-trustprompt: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-setup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-setup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-idle-usage-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-idle-usage-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-fresh-home-greeting: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-fresh-home-greeting: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-cn-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-cn-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-natural-load-enter-dropped: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-natural-load-enter-dropped: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-trace-question: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-trace-question: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready-after-question: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready-after-question: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-login: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-login: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-effort-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-effort-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-boot-slow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-boot-slow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-cold-standalone-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-cold-standalone-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-160-0-plan-implement-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-160-0-plan-implement-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zcode-composer-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zcode-composer-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-promo: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-promo: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-ready-task-wakeup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-ready-task-wakeup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-no-account: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-no-account: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-approval-prompt: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-approval-prompt: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-busy-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-busy-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-update-available-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts dsb-6-9-0-folder: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "dsb-6-9-0-folder: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-multiline-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-multiline-early-input: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-picker-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-picker-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-command-palette: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-tool-cancel-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-tool-cancel-supported: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-157-1-update-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-157-1-update-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-cmd-2-0-21-timed-warm-server: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-cmd-2-0-21-timed-warm-server: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace-answered: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace-answered: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-composer-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-composer-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zsh-prompt-runs-command: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zsh-prompt-runs-command: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts zcode-missing-tui: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "zcode-missing-tui: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-5-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-5-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-trust-workspace: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-dismissed: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-dialog-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-dialog-model-picker: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-config-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-config-override-embedded-warning: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-14-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-14-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-18-composer: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-18-composer: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-narrow-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-narrow-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-trust: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-trust: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-long-tool-call: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-long-tool-call: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-busy-mid-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-busy-mid-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-slash-menu: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-150-1-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-150-1-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-fullscreen-custom-footer: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-fullscreen-custom-footer: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-no-daemon-effort-override: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-no-daemon-effort-override: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-dialog-trust-workspace-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-dialog-trust-workspace-narrow: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-18-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-18-timed-boot-hidden-pane: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts claude-interrupt-stream-usage-cancel-orca: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "claude-interrupt-stream-usage-cancel-orca: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-tool-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-tool-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-model-retired-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-80x24: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts dsh-tui-ready-no-key: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "dsh-tui-ready-no-key: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-busy-thinking: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-busy-thinking: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0158-model-announcement-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0158-model-announcement-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-5-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-5-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-ready-plan: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-cold-standalone: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-turn-ended: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-2-0-21-timed-enter-after-agent-row: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-2-0-21-timed-enter-after-agent-row: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts omp-native-title-win32: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "omp-native-title-win32: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-157-1-timed-sleep-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-157-1-timed-sleep-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-ready-api-key-gemini-model: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-ready-api-key-gemini-model: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-busy-streaming: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-cn-signin: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-cn-signin: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts antigravity-1-2-14-ready-accept-edits: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "antigravity-1-2-14-ready-accept-edits: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-fresh-home-daemon-install: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-fresh-home-daemon-install: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0157-plain-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0157-plain-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-66-permission: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-66-permission: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts freebuff-lifecycle: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "freebuff-lifecycle: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-1-18-32-timed-first-launch: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-1-18-32-timed-first-launch: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cursor-agent-idle-after-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cursor-agent-idle-after-approval: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts cline-3-0-65-win32-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "cline-3-0-65-win32-startup: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts prime-agent-0-9-8-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "prime-agent-0-9-8-draft: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts hermes-tui-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "hermes-tui-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts qoder-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "qoder-trust-dialog: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts muse-empty-folder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "muse-empty-folder-ready: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts codex-0-158-0-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "codex-0-158-0-timed-turn: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts less: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "less: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode-run: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode-run: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts opencode: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "opencode: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts vim: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "vim: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        },
+        {
+          "fullName": "serialize round trip over captured PTY transcripts nano: no I1 byte diff and no I3 regression under resize schedules",
+          "title": "nano: no I1 byte diff and no I3 regression under resize schedules",
+          "ancestorTitles": [
+            "serialize round trip over captured PTY transcripts"
+          ],
+          "status": "passed"
+        }
+      ],
+      "status": "passed"
+    }
+  ]
+}
