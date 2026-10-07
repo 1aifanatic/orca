@@ -423,10 +423,8 @@ describe('a published child that dies while it proves its start', () => {
 
       // The second goes on to a start of its own, which fails the same way.
       await rejected(second)
-      // One row per failed start, keyed by the message it was for.
-      expect((await statusRows()).map((row) => row.itemId)).toEqual(
-        [first, second].map((id) => startRowKey(id))
-      )
+      // One row for the run, keyed by the message its first failed start was for.
+      expect((await statusRows()).map((row) => row.itemId)).toEqual([startRowKey(first)])
       for (const id of [first, second]) {
         expect(await submission(id)).toMatchObject({
           dispatchState: 'rejected',
@@ -454,7 +452,7 @@ describe('a start another operation made that dies while a sent message waits on
 
   // The exit lands between the message's accept and its first step: no pass waits on that start,
   // and it was for no message, so its exit's row is the only place its failure is said.
-  it("is not the message's: its exit's row says why, and the message's own start says why it failed (R2)", async () => {
+  it("is not the message's: its exit's row says why, and the message's own start failed alike (R2)", async () => {
     adapterExtras = { awaitStarted: vi.fn(async () => START_FAILURE) }
     await restartHost()
     acquire.mockImplementation(spawnStartingChild)
@@ -486,9 +484,9 @@ describe('a start another operation made that dies while a sent message waits on
     // The setup's child, the operation's, and the message's own.
     expect(acquire).toHaveBeenCalledTimes(3)
     expect(dispatch).not.toHaveBeenCalled()
+    // Its start failed alike, so the exit's row says why for it too.
     expect((await statusRows()).map((row) => row.itemId)).toEqual([
-      startRowKey(operationChild.acquisitionGeneration),
-      startRowKey(id)
+      startRowKey(operationChild.acquisitionGeneration)
     ])
   })
 
