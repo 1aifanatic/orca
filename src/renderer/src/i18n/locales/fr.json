@@ -113,7 +113,18 @@
   },
   "settings": {
     "chat": {
-      "description": "Choisissez l’apparence des chats."
+      "description": "Choisissez l’apparence et le nom des chats.",
+      "names": {
+        "title": "Noms des chats",
+        "description": "Utilisez un agent pour nommer les nouveaux chats à partir de leur premier message. Sans nom généré, ils restent Claude Chat ou Codex Chat.",
+        "enable": "Nommer automatiquement les chats",
+        "recipe": "Nom du chat",
+        "recipeDescription": "Génère un nom court à partir du premier message d’un nouveau chat.",
+        "customCommandDescription": "Ligne de commande partagée par les recettes qui sélectionnent Commande personnalisée. Utilisez {prompt} pour transmettre le texte en argument ; sinon, il est envoyé sur l’entrée standard.",
+        "saveFailed": "Impossible d’enregistrer les paramètres de nom des chats.",
+        "searchAgent": "agent",
+        "searchTemplate": "modèle de commande"
+      }
     },
     "terminal": {
       "optionLayoutAlt": "ABC ou U.S. — Option envoie des séquences Alt/Esc",
@@ -8450,8 +8461,8 @@
           "3c88ec55d6": "Aucun paramètre trouvé pour \"",
           "c7ad095d96": "Chargement des paramètres...",
           "acc7bbdefd": "Appuyez à nouveau sur ESC pour quitter les paramètres",
-          "43b68e10f0": "Vous avez des modifications Git AI Author non enregistrées. Quitter les abandonnera.",
-          "17bdee4ff1": "Abandonner les modifications Git AI Author non enregistrées ?",
+          "43b68e10f0": "Des modifications IA ne sont pas enregistrées. Elles seront abandonnées en quittant.",
+          "17bdee4ff1": "Abandonner les modifications IA non enregistrées ?",
           "084d8fac5b": "Confidentialité et sécurité",
           "23931df7e8": "Hôtes distants",
           "mobile_group": "Mobile",
@@ -17644,6 +17655,7 @@
         "sendToTryAgain": "Envoyez votre message pour réessayer.",
         "sendAgainToTryOnceMore": "Renvoyez votre message pour réessayer.",
         "couldNotStart": "{{agent}} n'a pas pu démarrer.",
+        "editSavedArguments": "Modifiez-les dans Paramètres > Agents > Arguments.",
         "couldNotRestart": "{{agent}} n'a pas pu redémarrer.",
         "notSignedIn": "{{agent}} n'est pas connecté avec le compte sélectionné.",
         "signInFirst": "Connectez-vous d'abord.",
@@ -17691,12 +17703,19 @@
         "stopRefusedQuoted": "{{agent}} ne s'est pas arrêté : {{detail}}.",
         "noTurnToStop": "{{agent}} n'avait aucun tour en cours à arrêter.",
         "answerUnconfirmed": "Votre réponse a été enregistrée, mais l'agent ne l'a pas confirmée.",
+        "argumentsMissingValue": "Les arguments enregistrés nécessitent une valeur pour {{option}}.",
+        "argumentsMultipleValues": "Les arguments enregistrés donnent plusieurs valeurs à {{option}}.",
+        "argumentsPositionalPrompt": "Les arguments enregistrés contiennent un message.",
+        "argumentsUnsupportedOption": "Les arguments enregistrés contiennent une option non prise en charge ({{option}}).",
         "hostFault": "Orca a rencontré un problème, l'opération n'a donc pas abouti.",
         "hostFaultTryAgain": "Orca a rencontré un problème, l'opération n'a donc pas abouti. Réessayez.",
         "hostStopped": "{{agent}} n'a jamais fini de démarrer, Orca l'a donc arrêté.",
         "providerRateLimited": "{{agent}} est limité en débit et réessaie.",
         "providerRetrying": "{{agent}} a rencontré un problème temporaire et réessaie.",
         "providerRetryingQuoted": "{{agent}} réessaie : {{detail}}.",
+        "providerRetryNumber": "Nouvelle tentative {{attempt}}.",
+        "providerRetryNumberOf": "Nouvelle tentative {{attempt}} sur {{maxRetries}}.",
+        "providerRetryLastError": "Dernière erreur : {{detail}}.",
         "previousExitUnverifiable": "Impossible d'arrêter l'exécution précédente de {{agent}}."
       },
       "writeNotice": {
@@ -17825,6 +17844,10 @@
         "viewAttachment": "Voir l'image",
         "imagePreview": "Aperçu de l'image en taille réelle",
         "imagePreviewUnavailable": "Aperçu indisponible",
+        "copyImage": "Copier l’image",
+        "copyImageFailed": "Impossible de copier l’image",
+        "copyImageTooLarge": "L’image est trop volumineuse pour être copiée.",
+        "imageCopied": "Image copiée",
         "workspaceAttachmentMismatch": "Les fichiers ne peuvent être joints qu'à leur espace de travail source.",
         "attachmentOwnerChanged": "Cet espace de travail a changé d'hôte lors de la connexion : supprimez à nouveau les fichiers.",
         "attachmentUnreadable": "Impossible de lire les fichiers supprimés.",
@@ -17938,6 +17961,7 @@
         "toggleDetails": "Basculer les détails du tour"
       },
       "jumpToLatest": "Aller au dernier message",
+      "transcriptLabel": "Conversation",
       "toggle": {
         "showTerminal": "Afficher le terminal",
         "showChat": "Afficher la vue chat"
@@ -18033,7 +18057,8 @@
         "details": "Détails",
         "plan": "Plan",
         "historyRepaired": "Une partie de l'historique de ce chat n'a pas pu être chargée.",
-        "historyItemTooLarge": "Cette partie du chat était trop volumineuse pour être affichée."
+        "historyItemTooLarge": "Cette partie du chat était trop volumineuse pour être affichée.",
+        "stoppedBeforeStart": "Arrêté avant le démarrage de l'agent"
       },
       "providerFrame": {
         "byteLength": "{{value0}} octets"
@@ -18128,6 +18153,10 @@
         "used": "Contexte : {{used}} tokens utilisés, estimation basée sur la dernière réponse.",
         "unreported": "L'utilisation du contexte n'est pas disponible pour cette session."
       },
+      "agentMessage": {
+        "messageFrom": "Message de",
+        "unnamedSender": "un agent"
+      },
       "goal": {
         "placeholder": "Décrivez votre objectif, définissez des résultats mesurables pour de meilleurs résultats",
         "clear": "Objectif clair",
@@ -18183,7 +18212,8 @@
         "sendConfirmBody_one": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer {{count}} message déjà en file d'attente ?",
         "sendConfirmBody_other": "Vous êtes sur le point d'envoyer un message. Voulez-vous effacer les {{count}} messages déjà en file d'attente ?",
         "sendConfirmClear": "Vider la file d'attente",
-        "sendConfirmSend": "Envoyer le message"
+        "sendConfirmSend": "Envoyer le message",
+        "from": "De {{names}}"
       },
       "thought": "A réfléchi",
       "thoughtForDuration": "A réfléchi pendant {{duration}}",

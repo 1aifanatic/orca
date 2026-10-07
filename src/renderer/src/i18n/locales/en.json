@@ -177,7 +177,18 @@
   },
   "settings": {
     "chat": {
-      "description": "Choose how chats look."
+      "description": "Choose how chats look and get their names.",
+      "names": {
+        "title": "Chat names",
+        "description": "Use an agent to name new chats from their first message. Without a generated name, chats stay Claude Chat or Codex Chat.",
+        "enable": "Name chats automatically",
+        "recipe": "Chat name",
+        "recipeDescription": "Generate a short name from the first message in a new chat.",
+        "customCommandDescription": "Command line shared by recipes that select Custom command. Use {prompt} to pass the input as an argument; otherwise it is piped to stdin.",
+        "saveFailed": "Could not save chat name settings.",
+        "searchAgent": "agent",
+        "searchTemplate": "command template"
+      }
     },
     "terminal": {
       "optionLayoutAlt": "ABC or U.S. — Option sends Alt/Esc sequences",
@@ -8569,8 +8580,8 @@
           "3c88ec55d6": "No settings found for \"",
           "c7ad095d96": "Loading settings...",
           "acc7bbdefd": "Press ESC again to exit settings",
-          "43b68e10f0": "You have unsaved Git AI Author changes. Leaving will discard them.",
-          "17bdee4ff1": "Discard unsaved Git AI Author changes?",
+          "43b68e10f0": "You have unsaved AI settings. Leaving will discard them.",
+          "17bdee4ff1": "Discard unsaved AI settings?",
           "084d8fac5b": "Privacy & Security",
           "23931df7e8": "Remote Hosts",
           "mobile_group": "Mobile",
@@ -17822,7 +17833,15 @@
         "providerRateLimited": "{{agent}} is rate-limited and retrying.",
         "providerRetrying": "{{agent}} hit a temporary problem and is retrying.",
         "providerRetryingQuoted": "{{agent}} is retrying: {{detail}}.",
-        "previousExitUnverifiable": "Couldn't stop {{agent}} from before."
+        "providerRetryNumber": "Retry {{attempt}}.",
+        "providerRetryNumberOf": "Retry {{attempt}} of {{maxRetries}}.",
+        "providerRetryLastError": "Last error: {{detail}}.",
+        "previousExitUnverifiable": "Couldn't stop {{agent}} from before.",
+        "argumentsUnsupportedOption": "Saved Arguments contain an unsupported option ({{option}}).",
+        "argumentsMissingValue": "Saved Arguments need a value for {{option}}.",
+        "argumentsMultipleValues": "Saved Arguments give {{option}} more than one value.",
+        "argumentsPositionalPrompt": "Saved Arguments include a prompt.",
+        "editSavedArguments": "Edit them in Settings > Agents > Arguments."
       },
       "writeNotice": {
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
@@ -17916,7 +17935,8 @@
         "details": "Details",
         "plan": "Plan",
         "historyRepaired": "Part of this chat's history couldn't be loaded.",
-        "historyItemTooLarge": "This part of the chat was too large to show."
+        "historyItemTooLarge": "This part of the chat was too large to show.",
+        "stoppedBeforeStart": "Stopped before the agent started"
       },
       "composer": {
         "imageUnsupported": "Image paste is not supported for this agent.",
@@ -17986,6 +18006,10 @@
         "viewAttachment": "View image",
         "imagePreview": "Full-size image preview",
         "imagePreviewUnavailable": "Preview unavailable",
+        "copyImage": "Copy image",
+        "copyImageFailed": "Couldn't copy image",
+        "copyImageTooLarge": "The image is too large to copy.",
+        "imageCopied": "Image copied",
         "workspaceAttachmentMismatch": "Files can only be attached to their source workspace.",
         "attachmentOwnerChanged": "This workspace changed hosts while attaching — drop the files again.",
         "attachmentUnreadable": "Couldn't read the dropped files.",
@@ -18148,6 +18172,7 @@
         "groupTasks": "Tasks"
       },
       "jumpToLatest": "Jump to latest",
+      "transcriptLabel": "Conversation",
       "toggle": {
         "showTerminal": "Show terminal",
         "showChat": "Show chat view"
@@ -18274,6 +18299,10 @@
         "used": "Context: {{used}} tokens used, estimated from the last response.",
         "unreported": "Context usage is not available for this session."
       },
+      "agentMessage": {
+        "messageFrom": "Message from",
+        "unnamedSender": "an agent"
+      },
       "goal": {
         "placeholder": "Describe your goal, define measurable outcomes for best results",
         "clear": "Clear goal",
@@ -18335,7 +18364,8 @@
         "sendConfirmBody_one": "You are about to send a message. Do you want to clear the {{count}} message previously queued?",
         "sendConfirmBody_other": "You are about to send a message. Do you want to clear the {{count}} messages previously queued?",
         "sendConfirmClear": "Clear queue",
-        "sendConfirmSend": "Send message"
+        "sendConfirmSend": "Send message",
+        "from": "From {{names}}"
       },
       "thought": "Thought",
       "thoughtForDuration": "Thought for {{duration}}",

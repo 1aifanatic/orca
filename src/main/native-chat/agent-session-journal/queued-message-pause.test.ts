@@ -63,7 +63,6 @@ function queueDraft(journal: AgentSessionJournal, messageId: string, carriedFrom
     body: message(messageId),
     fingerprint: `fp-${messageId}`,
     hostInstance: HOST,
-    source: { kind: 'user' },
     ...(carriedFrom ? { carriedFrom } : {})
   })
 }
