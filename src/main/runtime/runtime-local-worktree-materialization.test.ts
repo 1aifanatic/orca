@@ -23,6 +23,7 @@ vi.mock('../git/worktree-shared-directories', () => ({
 import { materializeRuntimeLocalWorktree } from './runtime-local-worktree-materialization'
 import { createWorktreeCreateTimingRecorder } from '../worktree-create-timing'
 import type { RuntimeStore } from './runtime-store-contract'
+import { mergeWorktreeMetaForWrite } from '../persistence/loading-store/worktree-meta-write-normalization'
 
 describe('materializeRuntimeLocalWorktree', () => {
   it('records lineage immediately after metadata and before filesystem setup', async () => {
@@ -31,14 +32,28 @@ describe('materializeRuntimeLocalWorktree', () => {
       order.push('filesystem')
       throw new Error('link failed')
     })
-    const store = {
+    const unexpectedStoreAccess = (): never => {
+      throw new Error('Unexpected store access')
+    }
+    const store: RuntimeStore = {
+      getRepos: unexpectedStoreAccess,
+      getRepo: unexpectedStoreAccess,
+      addRepo: unexpectedStoreAccess,
+      updateRepo: unexpectedStoreAccess,
+      getAllWorktreeMeta: unexpectedStoreAccess,
+      getWorktreeMeta: unexpectedStoreAccess,
+      removeWorktreeMeta: unexpectedStoreAccess,
+      getGitHubCache: unexpectedStoreAccess,
+      getSettings: unexpectedStoreAccess,
       getProjectHostSetups: () => [],
-      setWorktreeMeta: vi.fn((_id, updates) => ({ ...updates, hostId: 'local' }))
+      setWorktreeMeta: vi.fn<RuntimeStore['setWorktreeMeta']>((_id, updates) =>
+        mergeWorktreeMetaForWrite(undefined, { ...updates, hostId: 'local' })
+      )
     }
 
     await expect(
       materializeRuntimeLocalWorktree({
-        request: {},
+        request: { repoSelector: 'id:repo-1', name: 'app' },
         repo: {
           id: 'repo-1',
           path: '/repo',
@@ -47,8 +62,7 @@ describe('materializeRuntimeLocalWorktree', () => {
           addedAt: 1,
           symlinkPaths: ['node_modules']
         },
-        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this fixture supplies metadata persistence; the mocked link step throws before further store access.
-        store: store as RuntimeStore,
+        store,
         settings: { workspaceDir: '/worktrees', nestWorkspaces: true },
         created: {
           path: '/worktrees/app',
