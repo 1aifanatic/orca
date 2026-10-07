@@ -17384,7 +17384,8 @@
         "workspaceSelectedCount": "{{value0}}/{{value1}}",
         "selectAll": "모든 채팅 선택",
         "selectAllLabel": "모두 선택",
-        "selectedCount": "{{value1}}개 중 {{value0}}개 선택됨"
+        "selectedCount": "{{value1}}개 중 {{value0}}개 선택됨",
+        "selectProject": "{{value0}}의 채팅 모두 선택"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "{{value1}} 팀 상태 중 {{value0}} 필터링 중 - 나머지 팀의 문제는 포함되지 않습니다.",

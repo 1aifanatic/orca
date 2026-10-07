@@ -169,10 +169,33 @@ function workspaceCount(name: string): string | undefined {
   return rowOf(workspaceBox(name)).querySelector('.tabular-nums')?.textContent ?? undefined
 }
 
+/** A project's header row, by the name it shows. */
+function projectRow(name: string): HTMLElement {
+  const row = [...container.querySelectorAll('section')]
+    .map((section) => section.firstElementChild)
+    .find((header) => header?.querySelector('.font-semibold')?.textContent === name)
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`Missing project row: ${name}`)
+  }
+  return row
+}
+
+function projectBox(name: string): HTMLElement {
+  return projectRow(name).querySelector<HTMLElement>('[role="checkbox"]')!
+}
+
+function projectCount(name: string): string | undefined {
+  return projectRow(name).querySelector('.tabular-nums')?.textContent ?? undefined
+}
+
 /** Each row in list order, as kind:label@indent-of-its-content. */
 function rowOutline(): string[] {
   return [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map((box) => {
     const label = box.getAttribute('aria-label') ?? ''
+    const row = rowOf(box)
+    if (row.parentElement?.tagName === 'SECTION' && row.parentElement.firstElementChild === row) {
+      return `project:${/^Select all chats in (.+)$/.exec(label)?.[1]}`
+    }
     const workspace = /^Select all chats in (.+)$/.exec(label)?.[1]
     if (workspace) {
       const content = cell(rowOf(box), 2)
@@ -202,6 +225,7 @@ it('lists every chat with its checkbox in the shared left column, indenting only
   render({ candidates })
 
   expect(rowOutline()).toEqual([
+    'project:orca',
     'ws:parent@0px',
     'chat:in-parent@20px',
     'ws:child@20px',
@@ -219,29 +243,100 @@ it('lists every chat with its checkbox in the shared left column, indenting only
   }
 })
 
-it('names the repo in a header row with no checkbox, aligned to the content column', () => {
+it('heads each project with a checkbox row in the same left column', () => {
   render({ candidates: seedTree() })
 
-  const header = container.querySelector('section')!.firstElementChild!
-  expect(header.textContent).toBe('orca')
-  expect(header.querySelector('[role="checkbox"]')).toBeNull()
+  const header = projectRow('orca')
+  expect(header.textContent).toBe('orca4 of 4')
   expect(header.classList.contains('grid-cols-[1.75rem_minmax(0,1fr)]')).toBe(true)
-  expect(header.firstElementChild?.textContent).toBe('')
+  expect(cell(header, 1).contains(projectBox('orca'))).toBe(true)
+  expect(projectBox('orca').getAttribute('aria-label')).toBe('Select all chats in orca')
 })
 
-it('separates every row with the sidebar divider', () => {
+// The grouped-list pattern: tinted header bands with a line above and below, hairlines between chats.
+it('draws project and workspace bands, and hairlines only between chats', () => {
   render({ candidates: seedTree() })
 
-  const rows = [
-    container.querySelector('section')!.firstElementChild!,
-    ...[...container.querySelectorAll<HTMLElement>('[role="checkbox"]')].map(
-      (box) => box.closest('li') ?? rowOf(box)
-    )
-  ]
-  for (const row of rows) {
-    expect(row.classList.contains('border-t')).toBe(true)
-    expect(row.classList.contains('border-worktree-sidebar-border')).toBe(true)
+  const project = projectRow('orca')
+  expect(project.classList.contains('border-t')).toBe(true)
+  expect(project.classList.contains('border-border')).toBe(true)
+  expect(project.className).toContain(
+    'bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))]'
+  )
+  for (const [name, nested] of [
+    ['parent', 'false'],
+    ['child', 'true'],
+    ['other', 'false']
+  ] as const) {
+    const band = rowOf(workspaceBox(name))
+    expect(band.classList.contains('border-y')).toBe(true)
+    expect(band.classList.contains('border-border')).toBe(true)
+    expect(band.classList.contains('bg-worktree-sidebar-accent')).toBe(true)
+    expect(band.getAttribute('data-nested')).toBe(nested)
+    expect(band.querySelector('.font-semibold')?.textContent).toBe(name)
   }
+  for (const box of container.querySelectorAll<HTMLElement>(
+    '[role="checkbox"][aria-label^="Resume"]'
+  )) {
+    const item = box.closest('li')!
+    // The band above the first chat is its separator; later chats get a hairline.
+    expect(item.classList.contains('not-first:border-t')).toBe(true)
+    expect(item.classList.contains('border-worktree-sidebar-border')).toBe(true)
+  }
+  expect(container.querySelector('.rounded-md, .rounded-sm, .rounded-lg')).toBeNull()
+})
+
+it('selects every eligible chat in a project, nested workspaces included', () => {
+  const candidates = seedTree()
+  const mobile = worktree('mobile', { repoId: 'repo-2', id: 'repo-2::/mobile/mobile' })
+  useAppStore.setState((state) => ({
+    repos: [
+      ...state.repos,
+      {
+        id: 'repo-2',
+        path: '/mobile',
+        displayName: 'orca-mobile',
+        badgeColor: '#999999',
+        addedAt: 1
+      }
+    ],
+    worktreesByRepo: { ...state.worktreesByRepo, 'repo-2': [mobile] }
+  }))
+  const stuck: ResumeFailure = {
+    ...candidates[3]!,
+    failedAt: 1_800_000_030_000,
+    outcome: 'refused',
+    reason: 'agent_session_restart_work_superseded',
+    retryable: false
+  }
+  render({
+    candidates: [...candidates, candidate('in-mobile', mobile)],
+    initiallySelected: ['in-parent', 'in-child', 'also-in-child', 'in-mobile'],
+    failureFor: (sessionId) => (sessionId === 'in-other' ? stuck : undefined)
+  })
+  expect(projectBox('orca').getAttribute('aria-checked')).toBe('true')
+  expect(projectCount('orca')).toBe('3 of 3')
+
+  act(() => chatBox('also-in-child').click())
+  expect(projectBox('orca').getAttribute('aria-checked')).toBe('mixed')
+  expect(projectCount('orca')).toBe('2 of 3')
+
+  onToggleSpy.mockClear()
+  act(() => projectBox('orca').click())
+  expect(chatBox('also-in-child').getAttribute('aria-checked')).toBe('true')
+  expect(projectCount('orca')).toBe('3 of 3')
+
+  act(() => projectBox('orca').click())
+  expect(projectBox('orca').getAttribute('aria-checked')).toBe('false')
+  for (const id of ['in-parent', 'in-child', 'also-in-child']) {
+    expect(chatBox(id).getAttribute('aria-checked')).toBe('false')
+  }
+  // Never the unretryable chat, never another project's.
+  const touched = onToggleSpy.mock.calls.map(([sessionId]) => sessionId)
+  expect(touched).not.toContain('in-other')
+  expect(touched).not.toContain('in-mobile')
+  expect(chatBox('in-mobile').getAttribute('aria-checked')).toBe('true')
+  expect(projectCount('orca-mobile')).toBe('1 of 1')
 })
 
 it('shows the branch for a git worktree, muted after its name', () => {
@@ -340,7 +435,7 @@ it('disables every checkbox while a resume runs', () => {
   render({ candidates: seedTree(), busy: true })
 
   const boxes = [...container.querySelectorAll('[role="checkbox"]')]
-  expect(boxes).toHaveLength(7)
+  expect(boxes).toHaveLength(8)
   for (const box of boxes) {
     expect(box.hasAttribute('disabled')).toBe(true)
   }

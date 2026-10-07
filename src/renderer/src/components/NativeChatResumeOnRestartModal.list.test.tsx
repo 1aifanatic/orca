@@ -79,6 +79,18 @@ it('uses the sidebar surface without a border around the resume list', async () 
   expect(list?.classList.contains('border')).toBe(false)
 })
 
+// It takes arrow keys, so it needs a role; a group also lets its aria-label name it.
+it('exposes the list as a named group', async () => {
+  rpc.mockResolvedValue({ sessions: offered })
+  await mount(<NativeChatResumeOnRestartModal />)
+  const list = document.querySelector('[role="group"][aria-label="Chats that would be resumed"]')
+  expect(list).not.toBeNull()
+  // The bands run edge to edge; the rounded, clipped container keeps the corners.
+  expect(list?.classList.contains('rounded-md')).toBe(true)
+  expect(list?.classList.contains('overflow-y-auto')).toBe(true)
+  expect(list?.className).not.toMatch(/\bp-/)
+})
+
 it('keeps initial focus inside the dialog with no resumable chats', async () => {
   rpc.mockResolvedValue({ sessions: [], failed: [failure('b')] })
   await mount(<NativeChatResumeOnRestartModal />)
@@ -172,7 +184,7 @@ it('disables Select all and the workspace checkbox while a resume runs', async (
   await act(async () => button('Resuming 2 chats').click())
   const list = document.querySelector('[aria-label="Chats that would be resumed"]')!
   const boxes = [...list.querySelectorAll('[role="checkbox"]')]
-  expect(boxes).toHaveLength(4)
+  expect(boxes).toHaveLength(5)
   for (const box of boxes) {
     expect(box.hasAttribute('disabled')).toBe(true)
   }
@@ -182,8 +194,11 @@ it('disables Select all and the workspace checkbox while a resume runs', async (
 it('moves between the list’s checkboxes with the arrow keys', async () => {
   rpc.mockResolvedValue({ sessions: offered })
   await mount(<NativeChatResumeOnRestartModal />)
+  const list = document.querySelector('[aria-label="Chats that would be resumed"]')!
   const order = [
     namedBox('Select all chats'),
+    // The project row's checkbox; this workspace has no repo the store knows.
+    list.querySelector<HTMLElement>('section [role="checkbox"]')!,
     namedBox('Select all chats in workspace'),
     chatBox('a'),
     chatBox('b')
@@ -199,7 +214,7 @@ it('moves between the list’s checkboxes with the arrow keys', async () => {
   }
   // The last checkbox is the end of the list: focus never leaves it for the footer.
   await press('ArrowDown')
-  expect(document.activeElement).toBe(order[3])
+  expect(document.activeElement).toBe(order[4])
   await press('ArrowUp')
-  expect(document.activeElement).toBe(order[2])
+  expect(document.activeElement).toBe(order[3])
 })

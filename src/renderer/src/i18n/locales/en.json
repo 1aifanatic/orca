@@ -2128,7 +2128,8 @@
         "workspaceSelectedCount": "{{value0}} of {{value1}}",
         "selectAll": "Select all chats",
         "selectAllLabel": "Select all",
-        "selectedCount": "{{value0}} of {{value1}} selected"
+        "selectedCount": "{{value0}} of {{value1}} selected",
+        "selectProject": "Select all chats in {{value0}}"
       },
       "StarNagCard": {
         "92b0f9d921": "is authenticated and try again.",

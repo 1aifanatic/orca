@@ -17500,7 +17500,8 @@
         "workspaceSelectedCount": "{{value0}} sur {{value1}}",
         "selectAll": "Sélectionner toutes les discussions",
         "selectAllLabel": "Tout sélectionner",
-        "selectedCount": "{{value0}} sur {{value1}} sélectionnées"
+        "selectedCount": "{{value0}} sur {{value1}} sélectionnées",
+        "selectProject": "Sélectionner toutes les discussions dans {{value0}}"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "Filtrage des statuts des équipes {{value0}} sur {{value1}} : les problèmes des équipes restantes ne sont pas inclus.",

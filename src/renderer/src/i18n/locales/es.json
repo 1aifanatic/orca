@@ -17380,7 +17380,8 @@
         "workspaceSelectedCount": "{{value0}} de {{value1}}",
         "selectAll": "Seleccionar todos los chats",
         "selectAllLabel": "Seleccionar todo",
-        "selectedCount": "{{value0}} de {{value1}} seleccionados"
+        "selectedCount": "{{value0}} de {{value1}} seleccionados",
+        "selectProject": "Seleccionar todos los chats en {{value0}}"
       },
       "NativeChatResumeOutcomeRow": {
         "openChat": "Abrir chat",

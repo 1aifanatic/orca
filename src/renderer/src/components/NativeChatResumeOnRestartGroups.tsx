@@ -52,9 +52,10 @@ export type { ResumeCandidate } from './native-chat-resume-on-restart-grouping'
  * The offered chats as a checkbox list in the sidebar's three tiers: repo/project, then workspace,
  * then agent sessions.
  *
- * Every row's checkbox sits in one column at the left edge; nesting indents only what follows it.
- * A workspace row's checkbox covers its own chats and those of the workspaces nested under it,
- * which follow the sidebar's own lineage rule. A repo row is a label with no checkbox.
+ * A grouped list: each project and workspace heads its group with a tinted band, chats are split by
+ * hairlines. Every row's checkbox sits in one column at the left edge; nesting indents only what
+ * follows it. A workspace checkbox covers its own chats and those of the workspaces nested under it,
+ * which follow the sidebar's own lineage rule; a project checkbox covers every chat in the project.
  *
  * A workspace the store does not know yet (its host still connecting, or since deleted) is named
  * by its id. The kind glyph comes from the host's record of the chat, never from a name.
@@ -150,14 +151,39 @@ function WorkspaceKindGlyph({ kind }: { kind: AgentSessionWorkspaceKind }): Reac
  * is the only thing that separates the two, and the sidebar likewise titles these with the project
  * group's name.
  */
-function RepoHeader({ repoId }: { repoId: string | null }): React.JSX.Element {
+function RepoHeader({
+  repoId,
+  covered,
+  busy,
+  selected,
+  onToggle
+}: {
+  repoId: string | null
+  /** Every selectable chat in the project, nested workspaces included. */
+  covered: readonly string[]
+  busy: boolean
+  selected: ReadonlySet<string>
+  onToggle: (sessionId: string, checked: boolean) => void
+}): React.JSX.Element {
   const repos = useAppStore((store) => store.repos)
   const projectGroups = useAppStore((store) => store.projectGroups)
   const header = resolveResumeGroupHeader(repoId, repos, projectGroups)
+  const selection = resumeSelectionState(covered, selected)
   return (
-    // The empty first cell keeps the title in the content column.
-    <div className="grid h-7 grid-cols-[1.75rem_minmax(0,1fr)] items-center border-t border-worktree-sidebar-border">
-      <span />
+    // A band a step stronger than a workspace's, so the project reads as the outer group.
+    <label className="grid h-8.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center border-t border-border bg-[color-mix(in_srgb,var(--foreground)_5%,var(--worktree-sidebar-accent))] hover:bg-[color-mix(in_srgb,var(--foreground)_9%,var(--worktree-sidebar-accent))] has-[:disabled]:cursor-default">
+      <span className="flex justify-center">
+        <Checkbox
+          checked={selection.checked}
+          disabled={busy || selection.total === 0}
+          onCheckedChange={() => toggleResumeSelection(covered, selection, onToggle)}
+          aria-label={translate(
+            'auto.components.NativeChatResumeOnRestartModal.selectProject',
+            'Select all chats in {{value0}}',
+            { value0: header.name }
+          )}
+        />
+      </span>
       <span className="flex min-w-0 items-center gap-1.5 pr-2.5">
         {/* A repo shows its own configured glyph; a project group uses the FolderTree the sidebar's
             own PROJECT_GROUP_META uses. */}
@@ -167,8 +193,17 @@ function RepoHeader({ repoId }: { repoId: string | null }): React.JSX.Element {
           <RepoIconGlyph repoIcon={header.repoIcon} className="size-3.5" iconClassName="size-3.5" />
         )}
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{header.name}</span>
+        {selection.total > 0 && (
+          <span className="shrink-0 pl-2 text-[11px] tabular-nums text-muted-foreground">
+            {translate(
+              'auto.components.NativeChatResumeOnRestartModal.workspaceSelectedCount',
+              '{{value0}} of {{value1}}',
+              { value0: selection.selectedCount, value1: selection.total }
+            )}
+          </span>
+        )}
       </span>
-    </div>
+    </label>
   )
 }
 
@@ -208,7 +243,11 @@ function WorkspaceRows({
   }
   return (
     <>
-      <label className="grid h-7.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center border-t border-worktree-sidebar-border hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+      {/* The workspace's band heads its group; a nested one is lighter, at its own indent. */}
+      <label
+        data-nested={depth > 0}
+        className="grid h-8 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center border-y border-border bg-worktree-sidebar-accent hover:bg-[color-mix(in_srgb,var(--foreground)_6%,var(--worktree-sidebar-accent))] has-[:disabled]:cursor-default data-[nested=true]:bg-worktree-sidebar-accent/50"
+      >
         <span className="flex justify-center">
           <Checkbox
             checked={selection.checked}
@@ -226,7 +265,7 @@ function WorkspaceRows({
           style={depth > 0 ? { paddingLeft: depth * RESUME_INDENT_PX } : undefined}
         >
           <WorkspaceKindGlyph kind={kind} />
-          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{name}</span>
+          <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">{name}</span>
           {branch && (
             <span className="min-w-0 shrink-2 truncate text-[11px] text-muted-foreground">
               {branch}
@@ -307,7 +346,15 @@ export function ResumeOnRestartGroups({
     <div className="flex flex-col">
       {repoGroups.map((repoGroup) => (
         <section key={repoGroup.repoId ?? 'no-repo'} className="flex flex-col">
-          <RepoHeader repoId={repoGroup.repoId} />
+          <RepoHeader
+            repoId={repoGroup.repoId}
+            covered={repoGroup.workspaces
+              .flatMap((group) => group.candidates.map((candidate) => candidate.sessionId))
+              .filter(selectable)}
+            busy={busy}
+            selected={selected}
+            onToggle={onToggle}
+          />
           {nestResumeWorkspaces(repoGroup.workspaces, ancestorsOf).map((node) => (
             <WorkspaceRows
               key={node.group.workspaceId}

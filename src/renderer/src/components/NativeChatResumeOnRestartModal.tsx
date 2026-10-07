@@ -257,17 +257,18 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
         </DialogHeader>
 
         <div
+          role="group"
           tabIndex={0}
           aria-label={translate(
             'auto.components.NativeChatResumeOnRestartModal.listLabel',
             'Chats that would be resumed'
           )}
           // The sidebar's own surface, so its workspaces read here as they do there.
-          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar p-1.5"
+          className="min-h-0 overflow-y-auto scrollbar-sleek rounded-md bg-worktree-sidebar"
           onKeyDown={moveCheckboxFocus}
         >
           {/* Here, not in the groups: a list may hold one set of groups per machine. */}
-          <label className="grid h-7.5 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+          <label className="grid h-7 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
             <span className="flex justify-center">
               <Checkbox
                 checked={allSelection.checked}

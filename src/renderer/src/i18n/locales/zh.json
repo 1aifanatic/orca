@@ -17384,7 +17384,8 @@
         "workspaceSelectedCount": "{{value0}}/{{value1}}",
         "selectAll": "选择全部聊天",
         "selectAllLabel": "选择全部",
-        "selectedCount": "已选择 {{value0}}/{{value1}}"
+        "selectedCount": "已选择 {{value0}}/{{value1}}",
+        "selectProject": "选择 {{value0}} 中的全部聊天"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "过滤 {{value1}} 团队状态中的 {{value0}} — 不包括其余团队的问题。",

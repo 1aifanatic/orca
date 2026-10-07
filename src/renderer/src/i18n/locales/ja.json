@@ -17384,7 +17384,8 @@
         "workspaceSelectedCount": "{{value0}}/{{value1}}",
         "selectAll": "すべてのチャットを選択",
         "selectAllLabel": "すべて選択",
-        "selectedCount": "{{value1}} 件中 {{value0}} 件を選択"
+        "selectedCount": "{{value1}} 件中 {{value0}} 件を選択",
+        "selectProject": "{{value0}} のチャットをすべて選択"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "{{value0}}/{{value1}} チームステータスをフィルタリングしています。残りのチームからの問題は含まれません。",

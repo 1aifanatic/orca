@@ -63,7 +63,7 @@ export function ResumeCandidateRow({
   const model = candidate.model?.trim() ?? ''
   const activity = resumeActivityLabel(candidate.activity)
   const row = (
-    <label className="grid h-7.5 min-w-0 flex-1 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
+    <label className="grid h-7 min-w-0 flex-1 cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-center hover:bg-worktree-sidebar-accent has-[:disabled]:cursor-default">
       <span className="flex justify-center">
         {/* Identifies the agent AND its workspace: the accessible name has to distinguish rows that
             would otherwise all read the same. */}
@@ -106,11 +106,11 @@ export function ResumeCandidateRow({
     </label>
   )
   if (!failure) {
-    return <li className="border-t border-worktree-sidebar-border">{row}</li>
+    return <li className="border-worktree-sidebar-border not-first:border-t">{row}</li>
   }
   const act = (action: ResumeFailureAction) => onFailureAction?.(action, candidate.sessionId)
   return (
-    <li className="flex flex-col border-t border-worktree-sidebar-border">
+    <li className="flex flex-col border-worktree-sidebar-border not-first:border-t">
       {/* Outside the label, so pressing them never toggles the checkbox. */}
       <div className="flex items-center gap-1 pr-1">
         {row}
