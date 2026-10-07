@@ -90,8 +90,19 @@ import {
   createWorktreeCreateTimingRecorder,
   type WorktreeCreateTimingRecorder
 } from '../worktree-create-timing'
+import type { SparsePreset } from '../../shared/worktree/create-types'
 
 const worktreePath = resolve('/worktrees', 'app')
+
+const writtenMeta: Partial<WorktreeMeta>[] = []
+const WEB_PRESET: SparsePreset = {
+  id: 'preset-web',
+  repoId: 'repo-1',
+  name: 'web',
+  directories: ['apps/web', 'packages/ui'],
+  createdAt: 0,
+  updatedAt: 0
+}
 
 function createWorktree(
   request: Partial<RuntimeManagedWorktreeCreateArgs> = {},
@@ -106,7 +117,11 @@ function createWorktree(
       refreshLocalBaseRefOnWorktreeCreate: false,
       branchPrefix: ''
     }),
-    setWorktreeMeta: (_id: string, updates: Partial<WorktreeMeta>) => updates
+    setWorktreeMeta: (_id: string, updates: Partial<WorktreeMeta>) => {
+      writtenMeta.push(updates)
+      return updates
+    },
+    getSparsePresets: (_repoId: string): SparsePreset[] => [WEB_PRESET]
   }
   return createRuntimeLocalManagedWorktree({
     request: { repoSelector: 'repo-1', name: 'app', baseBranch: 'main', ...request },
@@ -334,6 +349,16 @@ describe('runtime create Git priority', () => {
       blocker.release()
       _resetGitAdmissionForTests()
     }
+  })
+
+  it.each([
+    ['exactly its directories', ['packages/ui', 'apps/web'], 'preset-web'],
+    ['an edited selection', ['apps/web'], undefined]
+  ])('records the sparse preset only for %s', async (_case, directories, recorded) => {
+    writtenMeta.length = 0
+    await createWorktree({ sparseCheckout: { directories, presetId: 'preset-web' } })
+
+    expect(writtenMeta.find((meta) => meta.sparseDirectories)?.sparsePresetId).toBe(recorded)
   })
 
   it('preserves priority for sparse creates and remote base refreshes', async () => {
