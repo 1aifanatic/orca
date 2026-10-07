@@ -1,7 +1,8 @@
 /**
  * A chat agent and a terminal agent run the same orchestration process: the same preamble, the
- * same pointer text and the same guide. The one difference is how each is named: a terminal by its
- * handle, exactly as on main, and a session by its Orca session ID. Orca absorbs everything else.
+ * same pointer text and the same guide. They differ in how each is named (a terminal by its handle,
+ * exactly as on main, a session by its Orca session ID) and in the preamble calling a chat a chat.
+ * Orca absorbs everything else.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -43,6 +44,13 @@ const MAIN_KERNEL_LINES = 198 + 1
 
 const db = new OrchestrationDb(':memory:')
 const SELF_LINE = `\nYour Orca session ID is: ${CHAT_ADDRESS}`
+const TERMINAL_REDISPATCH = `Do not exit the shell. Your terminal stays available, and if the
+coordinator has more for you it will re-engage this terminal with a fresh
+preamble + TASK block, which arrives as new input. Treat that as supervised
+work under the new Dispatch; ignore stale follow-ups from the settled task.`
+const CHAT_REDISPATCH = `If the coordinator has more for you, it will send this chat a fresh
+preamble + TASK block, which arrives as a new message. Treat that as supervised
+work under the new Dispatch; ignore stale follow-ups from the settled task.`
 const previousEnvironment = hasAppEnvironment() ? getAppEnvironment() : null
 
 afterEach(() => {
@@ -142,15 +150,26 @@ async function renderChatPointer(mailbox: string): Promise<string> {
   return texts[0]!
 }
 
-describe('a chat agent and a terminal agent see the same text but for how each is named', () => {
-  it("teaches a chat worker a terminal worker's preamble but for its identity lines", async () => {
+describe('a chat agent and a terminal agent see the same text but for how each is named and called', () => {
+  it("teaches a chat worker a terminal worker's preamble but for its identity lines and the chat wording", async () => {
     const chat = await renderPreamble('chat')
     const terminal = await renderPreamble('terminal')
+    const withoutRedispatch = chat.replace(CHAT_REDISPATCH, TERMINAL_REDISPATCH)
 
     expect(terminal).not.toContain('Orca session ID')
     expect(chat).toContain(`Your task ID is: task_1${SELF_LINE}\n`)
     expect(chat).not.toContain(CHAT_WORKER_HANDLE)
-    expect(chat.replace(SELF_LINE, '').split(CHAT_ADDRESS).join(TERMINAL_HANDLE)).toBe(terminal)
+    expect(chat).not.toContain('this terminal')
+    expect(withoutRedispatch).not.toBe(chat)
+    expect(withoutRedispatch.split('this chat')).toHaveLength(4)
+    expect(
+      withoutRedispatch
+        .replace(SELF_LINE, '')
+        .split(CHAT_ADDRESS)
+        .join(TERMINAL_HANDLE)
+        .split('this chat')
+        .join('this terminal')
+    ).toBe(terminal)
   })
 
   it.each([

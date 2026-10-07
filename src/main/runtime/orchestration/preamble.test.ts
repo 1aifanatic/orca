@@ -39,6 +39,15 @@ function markdownBlocks(result: string) {
   }
 }
 
+const TERMINAL_REDISPATCH = `Do not exit the shell. Your terminal stays available, and if the
+coordinator has more for you it will re-engage this terminal with a fresh
+preamble + TASK block, which arrives as new input. Treat that as supervised
+work under the new Dispatch; ignore stale follow-ups from the settled task.`
+
+const CHAT_REDISPATCH = `If the coordinator has more for you, it will send this chat a fresh
+preamble + TASK block, which arrives as a new message. Treat that as supervised
+work under the new Dispatch; ignore stale follow-ups from the settled task.`
+
 const driftParams = { base: 'origin/main', behind: 3, recentSubjects: ['fix: a', 'feat: b'] }
 
 describe('buildDispatchPreamble', () => {
@@ -349,6 +358,17 @@ describe('buildDispatchPreamble', () => {
     })
     expect(result).toMatchSnapshot()
   })
+
+  it('renders a stable snapshot of a chat worker preamble', () => {
+    const result = buildDispatchPreamble({
+      taskId: 'task_SNAP',
+      dispatchId: 'ctx_SNAP',
+      taskSpec: 'TASK_BODY',
+      coordinatorHandle: 'orca_session_id:COORD',
+      workerHandle: 'orca_session_id:WORKER'
+    })
+    expect(result).toMatchSnapshot()
+  })
 })
 
 describe('sub-dispatch section', () => {
@@ -417,15 +437,34 @@ describe('how the preamble names the worker and its coordinator, by kind', () =>
     )
   })
 
-  it("teaches a session worker a terminal worker's text but for how it is named", () => {
+  it("teaches a chat worker a terminal worker's text but for its name and the chat wording", () => {
     const terminal = buildDispatchPreamble(baseParams())
-    const session = buildDispatchPreamble(baseParams({ workerHandle: SESSION_WORKER }))
+    const chat = buildDispatchPreamble(baseParams({ workerHandle: SESSION_WORKER }))
+    const withoutRedispatch = chat.replace(CHAT_REDISPATCH, TERMINAL_REDISPATCH)
 
+    expect(withoutRedispatch).not.toBe(chat)
+    expect(withoutRedispatch.split('this chat')).toHaveLength(4)
     expect(
-      session
+      withoutRedispatch
         .replace(`\nYour Orca session ID is: ${SESSION_WORKER}`, '')
         .split(SESSION_WORKER)
         .join('term_worker')
+        .split('this chat')
+        .join('this terminal')
     ).toBe(terminal)
+  })
+
+  it('tells a chat worker nothing about a terminal or a shell, even as a bare-shell worker', () => {
+    for (const workerKind of ['prompt-returning-agent', 'bare-shell'] as const) {
+      const chat = buildDispatchPreamble(baseParams({ workerHandle: SESSION_WORKER, workerKind }))
+
+      expect(chat).not.toContain('this terminal')
+      expect(chat).not.toContain('exit the shell')
+      expect(chat).not.toContain('Exit the shell')
+      expect(chat).not.toContain('Your terminal')
+      expect(chat).toContain('return to an idle prompt')
+      expect(chat).toContain(`check --terminal ${SESSION_WORKER}`)
+      expect(afterWorkerDoneSection(chat).trimEnd().endsWith(CHAT_REDISPATCH)).toBe(true)
+    }
   })
 })
