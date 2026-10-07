@@ -14,7 +14,7 @@ import {
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeManagedWorktreeCreateArgs } from './runtime-managed-worktree-create-types'
 import type { RemoteFetchResult, RemoteTrackingBase } from './runtime-remote-fetch-controller'
-import { hasLocalWorktreeBaseRef } from '../git/worktree-base-ref-probe'
+import type { RuntimeLocalWorktreeCreateBase } from './runtime-local-worktree-create-base'
 import { isGeneratedWorktreeCreateName } from '../worktree-create-candidates'
 import {
   consumePreparedWorktreeCreate,
@@ -27,26 +27,16 @@ import {
 import type { WorktreeCreateTimingRecorder } from '../worktree-create-timing'
 
 export type RuntimeLocalBaseRefRefresh = {
-  /** Awaits the started refresh; returns the remote-tracking base the add should use. */
-  finish: () => Promise<RemoteTrackingBase | null>
+  /** Awaits the deferred refresh started before naming, if any. */
+  finish: () => Promise<void>
 }
 
-// Why: the base fetch doesn't depend on the chosen name, so start it before naming
-// and await it after, as the desktop create does; naming's PR lookup overlaps it.
-export async function startRuntimeLocalBaseRefRefresh(args: {
-  repo: Repo
-  baseBranch: string
+// Why: the deferred refresh can change neither the base nor the name, so start it before naming
+// and await it before the add, as the desktop create does; naming's PR lookup overlaps it.
+export function startRuntimeLocalBaseRefRefresh(args: {
+  repoPath: string
+  base: RuntimeLocalWorktreeCreateBase
   localWorktreeGitOptions: LocalGitExecOptions
-  resolveRemoteTrackingBase: (
-    repoPath: string,
-    baseBranch: string,
-    options?: LocalGitExecOptions
-  ) => Promise<RemoteTrackingBase | null>
-  hasRemoteTrackingRef: (
-    repoPath: string,
-    base: RemoteTrackingBase,
-    options?: LocalGitExecOptions
-  ) => Promise<boolean>
   refreshRemoteTrackingBase: (
     repoPath: string,
     base: RemoteTrackingBase,
@@ -54,23 +44,11 @@ export async function startRuntimeLocalBaseRefRefresh(args: {
   ) => Promise<RemoteFetchResult>
   fetchRemote: (repoPath: string, remote: string, options?: LocalGitExecOptions) => Promise<void>
   timing: WorktreeCreateTimingRecorder
-}): Promise<RuntimeLocalBaseRefRefresh> {
-  const remoteTrackingBase = await args.resolveRemoteTrackingBase(
-    args.repo.path,
-    args.baseBranch,
-    args.localWorktreeGitOptions
-  )
-  if (remoteTrackingBase) {
-    const [hadRemoteRef, hasNamedLocalBaseRef] = await Promise.all([
-      args.hasRemoteTrackingRef(args.repo.path, remoteTrackingBase, args.localWorktreeGitOptions),
-      hasLocalWorktreeBaseRef(args.repo.path, args.baseBranch, args.localWorktreeGitOptions)
-    ])
-    const hasLocalBase = hadRemoteRef || hasNamedLocalBaseRef
-    if (!hadRemoteRef && hasLocalBase) {
-      return { finish: async () => null }
-    }
+}): RuntimeLocalBaseRefRefresh {
+  const { remoteTrackingBase, deferredRefresh } = args.base
+  if (remoteTrackingBase && deferredRefresh === 'tracking_ref') {
     const refresh = args.refreshRemoteTrackingBase(
-      args.repo.path,
+      args.repoPath,
       remoteTrackingBase,
       args.localWorktreeGitOptions
     )
@@ -78,41 +56,22 @@ export async function startRuntimeLocalBaseRefRefresh(args: {
     void refresh.catch(() => undefined)
     return {
       finish: async () => {
-        const result = await args.timing.time('refresh_base_ref', () => refresh)
-        if (!result.ok && !hadRemoteRef) {
-          throw new Error(
-            `Could not refresh base ref "${args.baseBranch}" from "${remoteTrackingBase.remote}". Check your network and try again.`
-          )
-        }
-        if (
-          !hadRemoteRef &&
-          !(await args.hasRemoteTrackingRef(
-            args.repo.path,
-            remoteTrackingBase,
-            args.localWorktreeGitOptions
-          ))
-        ) {
-          throw new Error(`Base ref "${args.baseBranch}" was not found after fetching.`)
-        }
-        return remoteTrackingBase
+        await args.timing.time('refresh_base_ref', () => refresh)
       }
     }
   }
-  if (
-    await hasLocalWorktreeBaseRef(args.repo.path, args.baseBranch, args.localWorktreeGitOptions)
-  ) {
-    return { finish: async () => null }
-  }
-  const originFetch = args.fetchRemote(args.repo.path, 'origin', args.localWorktreeGitOptions)
-  void originFetch.catch(() => undefined)
-  return {
-    finish: async () => {
-      try {
-        await args.timing.time('refresh_base_ref', () => originFetch)
-      } catch {}
-      return null
+  if (deferredRefresh === 'origin') {
+    const originFetch = args.fetchRemote(args.repoPath, 'origin', args.localWorktreeGitOptions)
+    void originFetch.catch(() => undefined)
+    return {
+      finish: async () => {
+        try {
+          await args.timing.time('refresh_base_ref', () => originFetch)
+        } catch {}
+      }
     }
   }
+  return { finish: async () => {} }
 }
 
 export async function createRuntimeLocalGitWorktree(args: {
@@ -125,7 +84,7 @@ export async function createRuntimeLocalGitWorktree(args: {
     refreshLocalBaseRefOnWorktreeCreate: boolean
     localBaseRefSuggestionDismissed?: boolean
   }
-  baseBranch: string
+  base: RuntimeLocalWorktreeCreateBase
   workspaceRoot: string
   branchName: string
   worktreePath: string
@@ -136,13 +95,13 @@ export async function createRuntimeLocalGitWorktree(args: {
   rearm: PreparationRearmHolder
   timing: WorktreeCreateTimingRecorder
 }): Promise<{
-  remoteTrackingBase: RemoteTrackingBase | null
   sparseDirectories: string[]
   configuredPushTarget?: GitPushTarget
   created: GitWorktreeInfo
   addResult: AddWorktreeResult
 }> {
-  const remoteTrackingBase = await args.baseRefRefresh.finish()
+  const { baseBranch, remoteTrackingBase } = args.base
+  await args.baseRefRefresh.finish()
   const sparseDirectories = args.request.sparseCheckout
     ? normalizeSparseDirectories(args.request.sparseCheckout.directories)
     : []
@@ -186,7 +145,7 @@ export async function createRuntimeLocalGitWorktree(args: {
           workspaceRoot: args.workspaceRoot,
           worktreePath: args.worktreePath,
           branch: args.branchName,
-          baseBranch: args.baseBranch,
+          baseBranch,
           refreshLocalBaseRef: args.settings.refreshLocalBaseRefOnWorktreeCreate,
           options: preparedWorktreeOptions,
           timing: args.timing
@@ -208,7 +167,7 @@ export async function createRuntimeLocalGitWorktree(args: {
             args.worktreePath,
             args.branchName,
             sparseDirectories,
-            args.baseBranch,
+            baseBranch,
             args.settings.refreshLocalBaseRefOnWorktreeCreate,
             addOptions
           )) ?? {}
@@ -219,7 +178,7 @@ export async function createRuntimeLocalGitWorktree(args: {
           args.repo.path,
           args.worktreePath,
           args.branchName,
-          args.baseBranch,
+          baseBranch,
           args.settings.refreshLocalBaseRefOnWorktreeCreate,
           false,
           addOptions
@@ -273,7 +232,6 @@ export async function createRuntimeLocalGitWorktree(args: {
     args.timing.recordWorktreeCount(worktrees.length)
   }
   return {
-    remoteTrackingBase,
     sparseDirectories,
     ...(configuredPushTarget ? { configuredPushTarget } : {}),
     created,
