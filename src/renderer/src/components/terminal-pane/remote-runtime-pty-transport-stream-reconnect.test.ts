@@ -34,6 +34,15 @@ const {
   }
 })
 
+function inputFrameTexts(): string[] {
+  return subscriptionSendBinary.mock.calls.flatMap(([bytes]) => {
+    const frame = decodeTerminalStreamFrame(bytes)
+    return frame?.opcode === TerminalStreamOpcode.Input
+      ? [decodeTerminalStreamText(frame.payload)]
+      : []
+  })
+}
+
 describe('createRemoteRuntimePtyTransport', () => {
   beforeEach(() => {
     resetRemoteRuntimeTransport()
@@ -434,7 +443,7 @@ describe('createRemoteRuntimePtyTransport', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1)
   })
 
-  it('recovers repeated partitions without changing PTY identity or accepting detached input', async () => {
+  it('recovers repeated partitions without changing PTY identity and delivers detached input once', async () => {
     const callbacksByEpoch: NonNullable<typeof subscriptionCallbacks>[] = []
     const unsubscribeByEpoch: ReturnType<typeof vi.fn>[] = []
     runtimeSubscribe.mockImplementation(
@@ -466,7 +475,8 @@ describe('createRemoteRuntimePtyTransport', () => {
       })
 
       expect(transport.isConnected()).toBe(false)
-      expect(transport.sendInput(`detached-${cycle}`, 'driving')).toBe(false)
+      // Why: keys typed while the same PTY recovers are held and delivered once it rebinds (#25784).
+      expect(transport.sendInput(`detached-${cycle}`, 'driving')).toBe(true)
       expect(unsubscribeByEpoch[cycle]).toHaveBeenCalledTimes(1)
       await vi.waitFor(() => expect(runtimeSubscribe).toHaveBeenCalledTimes(cycle + 2))
       await vi.waitFor(() => expect(latestSubscribePayload().terminal).toBe('terminal-1'))
@@ -478,6 +488,7 @@ describe('createRemoteRuntimePtyTransport', () => {
       expect(transport.sendInputImmediate(`input-${cycle}`)).toBe(true)
 
       expect(transport.getPtyId()).toBe(ptyId)
+      expect(inputFrameTexts().filter((text) => text.includes(`detached-${cycle}`))).toHaveLength(1)
       expect(onData).toHaveBeenCalledWith(`output-${cycle}`, expect.any(Object))
       expect(
         decodeTerminalStreamText(
