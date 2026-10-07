@@ -18,7 +18,7 @@ const startup = vi.hoisted(() => {
   const fetchSettings = vi.fn(async () => {})
   return {
     fetchSettings,
-    recover: vi.fn(async () => {}),
+    recover: vi.fn<typeof DegradedRecovery.recoverFromDegradedStartup>(async () => {}),
     // Stable, as the real selector's: a new identity would restart the chain.
     actions: {
       fetchOrcaProfiles: vi.fn(async () => {}),

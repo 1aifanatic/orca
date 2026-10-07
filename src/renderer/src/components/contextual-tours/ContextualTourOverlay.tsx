@@ -49,6 +49,7 @@ export function ContextualTourOverlay(): JSX.Element | null {
     )
   )
   const activeTourSuppressed = useAppStore((s) => s.activeContextualTourSuppressed)
+  const awaitingOnboarding = useAppStore((s) => s.contextualToursAwaitingOnboarding)
   const keybindings = useAppStore((s) => s.keybindings)
   const activeTabId = useAppStore((s) => s.activeTabId)
   const sidebarOpen = useAppStore((s) => s.sidebarOpen)
@@ -131,7 +132,7 @@ export function ContextualTourOverlay(): JSX.Element | null {
     if (!activeTour || !activeTourId) {
       return
     }
-    if (blockingSurfaceVisible || activeTourSuppressed) {
+    if (awaitingOnboarding || blockingSurfaceVisible || activeTourSuppressed) {
       emitContextualTourOutcome('cancelled')
       cancelContextualTour(activeTourId)
     }
@@ -139,6 +140,7 @@ export function ContextualTourOverlay(): JSX.Element | null {
     activeTourSuppressed,
     activeTour,
     activeTourId,
+    awaitingOnboarding,
     blockingSurfaceVisible,
     cancelContextualTour,
     emitContextualTourOutcome

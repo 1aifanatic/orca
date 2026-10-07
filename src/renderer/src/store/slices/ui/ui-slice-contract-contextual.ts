@@ -58,6 +58,7 @@ export type UISliceContextual = {
   recordFeatureInteraction: (id: FeatureInteractionId) => Promise<void>
   contextualToursSeenIds: ContextualTourId[]
   contextualToursAutoEligible: boolean | null
+  contextualToursAwaitingOnboarding: boolean
   activeContextualTourId: ContextualTourId | null
   activeContextualTourStepIndex: number
   activeContextualTourSource: string | null
@@ -68,6 +69,7 @@ export type UISliceContextual = {
   contextualTourShownThisSession: boolean
   lastCompletedContextualTourId: ContextualTourId | null
   setContextualToursAutoEligible: (eligible: boolean) => void
+  setContextualToursAwaitingOnboarding: (awaiting: boolean) => void
   requestContextualTour: (
     id: ContextualTourId,
     source: string,

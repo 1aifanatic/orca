@@ -14,6 +14,7 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
   return {
     contextualToursSeenIds: [],
     contextualToursAutoEligible: null,
+    contextualToursAwaitingOnboarding: false,
     activeContextualTourId: null,
     activeContextualTourStepIndex: 0,
     activeContextualTourSource: null,
@@ -33,6 +34,12 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
         }
         return { contextualToursAutoEligible: eligible }
       }),
+    setContextualToursAwaitingOnboarding: (awaiting) =>
+      set((s) =>
+        s.contextualToursAwaitingOnboarding === awaiting
+          ? s
+          : { contextualToursAwaitingOnboarding: awaiting }
+      ),
     requestContextualTour: (id, source, wasFeaturePreviouslyInteracted, options) =>
       set((s) => {
         const tour = getContextualTour(id)
@@ -43,11 +50,13 @@ export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<U
           seenIds: options?.force === true ? [] : s.contextualToursSeenIds,
           sessionConsumed: options?.force === true ? false : s.contextualTourShownThisSession,
           activeTourId: s.activeContextualTourId,
-          blockingSurfaceVisible: selectTourBlocked(
-            useDialogRegistry.getState(),
-            options?.force === true,
-            selectTourParentToken(useDialogRegistry.getState(), tour.allowedActiveModals)
-          ),
+          blockingSurfaceVisible:
+            s.contextualToursAwaitingOnboarding ||
+            selectTourBlocked(
+              useDialogRegistry.getState(),
+              options?.force === true,
+              selectTourParentToken(useDialogRegistry.getState(), tour.allowedActiveModals)
+            ),
           targetExists: hasContextualTourTarget
         })
         if (decision.kind !== 'start') {

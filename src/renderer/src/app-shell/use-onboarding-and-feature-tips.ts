@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { readStartupDiscovery } from '../startup/startup-discovery-read'
 import { useDialogDisposal } from '../lib/dialog-registry-entry'
 import { onOnboardingReopened } from '../components/onboarding/show-onboarding-event'
@@ -41,6 +41,9 @@ export function useOnboardingAndFeatureTips() {
   const featureInteractions = useAppStore((s) => s.featureInteractions)
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
   const setContextualToursAutoEligible = useAppStore((s) => s.setContextualToursAutoEligible)
+  const setContextualToursAwaitingOnboarding = useAppStore(
+    (s) => s.setContextualToursAwaitingOnboarding
+  )
 
   const applyStartupOnboardingState = useCallback((state: OnboardingState): void => {
     setOnboarding(state)
@@ -62,6 +65,11 @@ export function useOnboardingAndFeatureTips() {
   useEffect(() => {
     return onOnboardingReopened(setOnboarding)
   }, [])
+
+  useLayoutEffect(() => {
+    // First-run policy applies before lazy onboarding has any committed content.
+    setContextualToursAwaitingOnboarding(!onboardingLoaded || shouldShowOnboarding(onboarding))
+  }, [onboarding, onboardingLoaded, setContextualToursAwaitingOnboarding])
 
   useEffect(() => {
     if (!persistedUIReady || !onboardingLoaded || contextualToursAutoEligible !== null) {

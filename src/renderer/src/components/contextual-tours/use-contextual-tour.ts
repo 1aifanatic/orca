@@ -76,6 +76,7 @@ export function useContextualTour(
   const contextualToursSeenIds = useAppStore((s) => s.contextualToursSeenIds)
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
   const contextualTourShownThisSession = useAppStore((s) => s.contextualTourShownThisSession)
+  const contextualToursAwaitingOnboarding = useAppStore((s) => s.contextualToursAwaitingOnboarding)
   const contextualToursBlockingSurfaceVisible = useDialogRegistry((s) =>
     selectTourBlocked(s, false, selectTourParentToken(s, getContextualTour(id).allowedActiveModals))
   )
@@ -167,6 +168,7 @@ export function useContextualTour(
       typeof document === 'undefined' ||
       !persistedUIReady ||
       contextualToursAutoEligible !== true ||
+      contextualToursAwaitingOnboarding ||
       contextualToursBlockingSurfaceVisible ||
       activeContextualTourId !== null ||
       contextualTourShownThisSession ||
@@ -250,6 +252,7 @@ export function useContextualTour(
     activeContextualTourId,
     contextualToursBlockingSurfaceVisible,
     contextualToursAutoEligible,
+    contextualToursAwaitingOnboarding,
     contextualTourShownThisSession,
     contextualToursSeenIds,
     enabled,
