@@ -1,0 +1,115 @@
+import type { ElectronApplication, Page } from '@stablyai/playwright-test'
+import { test, expect } from './helpers/orca-app'
+import { waitForActiveWorktree, waitForSessionReady } from './helpers/store'
+import { waitForActivePanePtyId, waitForActiveTerminalManager } from './helpers/terminal'
+import { createRemoteTerminalTab } from './helpers/docker-ssh-relay-terminal-tabs'
+import {
+  cleanupDockerSshRelayTarget,
+  DOCKER_SSH_RELAY_REMOTE_REPO_PATH,
+  startDockerSshRelayTarget,
+  type DockerSshRelayTarget
+} from './helpers/docker-ssh-relay-target'
+import { connectDockerSshRelayTarget } from './helpers/docker-ssh-relay-connection'
+import { dropDockerSshRelayTransport } from './helpers/docker-ssh-relay-faults'
+import { createRestartSession, readRestartRendererState } from './helpers/orca-restart'
+import { readPersistedProfileState } from './helpers/persisted-profile-state'
+
+const RUN_DOCKER_SSH = process.env.ORCA_E2E_SSH_DOCKER === '1'
+
+test.use({ seedTestRepo: false })
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+async function readWorkspace(page: Page, worktreeId: string): Promise<string | null> {
+  return readRestartRendererState(() =>
+    page.evaluate((id) => {
+      const state = window.__store?.getState()
+      if (!state) {
+        return null
+      }
+      return JSON.stringify({
+        tabs: (state.tabsByWorktree[id] ?? []).length,
+        files: state.openFiles.filter((file) => file.worktreeId === id).map((f) => f.relativePath)
+      })
+    }, worktreeId)
+  ).catch(() => null)
+}
+
+/**
+ * A relay reattach used to bind the SSH pane into the `local` partition. With a window open the
+ * renderer's next save erased that copy within a second, but a reattach with no window (macOS
+ * keeps Orca running after its window closes) left it on disk. Startup then kept the `local` copy
+ * and skipped the SSH partition's rows for that workspace, so its open editor tabs were missing
+ * and its agent-resume records were dropped (STA-9544).
+ */
+test.describe('SSH relay reattach home partition', () => {
+  test.skip(!RUN_DOCKER_SSH, 'Set ORCA_E2E_SSH_DOCKER=1 to run Docker-backed SSH tests.')
+  test.skip(process.platform === 'win32', 'Docker SSH restore uses POSIX SSH tooling.')
+
+  test('a reattach with no window open keeps the SSH workspace on the next launch', async (// oxlint-disable-next-line no-empty-pattern -- This restart test owns every Electron launch.
+  {}, testInfo) => {
+    test.setTimeout(600_000)
+    const restart = createRestartSession(testInfo)
+    let target: DockerSshRelayTarget | null = null
+    let app: ElectronApplication | null = null
+    try {
+      target = startDockerSshRelayTarget(testInfo)
+      const first = await restart.launch()
+      app = first.app
+      let page = first.page
+      await waitForSessionReady(page)
+      const remote = await connectDockerSshRelayTarget(page, target)
+      const { worktreeId } = remote
+      await expect.poll(() => waitForActiveWorktree(page), { timeout: 30_000 }).toBe(worktreeId)
+      await waitForActiveTerminalManager(page, 60_000)
+      await waitForActivePanePtyId(page, 60_000)
+      await createRemoteTerminalTab(page, worktreeId)
+      await page.evaluate(
+        ({ worktreeId, filePath }) => {
+          window.__store!.getState().openFile({
+            filePath,
+            relativePath: 'README.md',
+            worktreeId,
+            language: 'markdown',
+            mode: 'edit'
+          })
+        },
+        { worktreeId, filePath: `${DOCKER_SSH_RELAY_REMOTE_REPO_PATH}/README.md` }
+      )
+      const expected = JSON.stringify({ tabs: 2, files: ['README.md'] })
+      await expect.poll(() => readWorkspace(page, worktreeId)).toBe(expected)
+      // Past the ~1s debounced save, so the SSH partition holds the open file.
+      await page.waitForTimeout(3_000)
+
+      await app.evaluate(({ BrowserWindow }) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          window.close()
+        }
+      })
+      expect(dropDockerSshRelayTransport(target)).toBeGreaterThan(0)
+      // Main reconnects on its own and reattaches both panes; no window is left to save over it.
+      await new Promise((resolve) => setTimeout(resolve, 30_000))
+      await restart.close(app)
+      app = null
+      const local = readPersistedProfileState(restart.userDataDir).workspaceSession
+      const localTabs =
+        isRecord(local) && isRecord(local.tabsByWorktree) ? local.tabsByWorktree : {}
+      expect.soft(localTabs[worktreeId] ?? [], 'SSH tabs in `local`').toEqual([])
+
+      const second = await restart.launch()
+      app = second.app
+      page = second.page
+      await expect
+        .poll(() => readWorkspace(page, worktreeId), { timeout: 60_000, intervals: [500] })
+        .toBe(expected)
+    } finally {
+      if (app) {
+        await restart.close(app)
+      }
+      await restart.dispose()
+      cleanupDockerSshRelayTarget(target)
+    }
+  })
+})
