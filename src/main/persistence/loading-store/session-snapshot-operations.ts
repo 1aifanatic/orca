@@ -1,3 +1,4 @@
+import { preserveRetiredRuntimeEditorDrafts } from './runtime-session-recovery-archive'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import type {
   WorkspaceSessionPatch,
@@ -23,6 +24,7 @@ type SessionSnapshotOperationsRuntime = Pick<
   | 'profileMaintenancePending'
   | 'quitFlushStarted'
   | 'state'
+  | 'dataFile'
   | 'terminalScrollbackSnapshotStorage'
   | 'writesFrozen'
 >
@@ -49,6 +51,12 @@ export class SessionSnapshotOperations {
 
   setWorkspaceSession(session: PersistedState['workspaceSession'], hostId?: string | null): void {
     const resolved = resolveHostId(hostId)
+    if (
+      this[sessionSnapshotOperationsContext].sessions.isRuntimeWorkspaceSessionRetired(resolved)
+    ) {
+      this.archiveRetiredEditorDrafts(session, resolved)
+      return
+    }
     const { runtime } = this[sessionSnapshotOperationsContext]
     if (runtime.durableMutationPhase === 'rollback') {
       this.assertSnapshotAdmission(true)
@@ -69,6 +77,12 @@ export class SessionSnapshotOperations {
     hostId?: string | null
   ): void {
     const resolved = resolveHostId(hostId)
+    if (
+      this[sessionSnapshotOperationsContext].sessions.isRuntimeWorkspaceSessionRetired(resolved)
+    ) {
+      this.archiveRetiredEditorDrafts(session, resolved)
+      return
+    }
     if (resolved === LOCAL_EXECUTION_HOST_ID) {
       this.assertSnapshotAdmission()
       setLocalWorkspaceSession(this, session, true)
@@ -79,6 +93,18 @@ export class SessionSnapshotOperations {
 
   patchWorkspaceSession(patch: WorkspaceSessionPatch, hostId?: string | null): void {
     const resolved = resolveHostId(hostId)
+    if (
+      this[sessionSnapshotOperationsContext].sessions.isRuntimeWorkspaceSessionRetired(resolved)
+    ) {
+      this.archiveRetiredEditorDrafts(
+        {
+          ...this[sessionSnapshotOperationsContext].sessions.getWorkspaceSession(resolved),
+          ...patch
+        },
+        resolved
+      )
+      return
+    }
     // Why: the debounced hot path sends only changed slices; scalar/UI patches skip terminal normalization, topology patches keep stale-PTY protections.
     let next: WorkspaceSessionState = {
       ...this[sessionSnapshotOperationsContext].sessions.getWorkspaceSession(resolved),
@@ -92,6 +118,16 @@ export class SessionSnapshotOperations {
       next = pruneWorkspaceSessionBrowserHistory(next)
     }
     this.publishSession(next, resolved)
+  }
+
+  private archiveRetiredEditorDrafts(
+    session: WorkspaceSessionState,
+    hostId: ExecutionHostId
+  ): void {
+    const { runtime, scheduling } = this[sessionSnapshotOperationsContext]
+    if (preserveRetiredRuntimeEditorDrafts(runtime, hostId, session)) {
+      scheduleSave(scheduling, ['retiredRuntimeWorkspaceSessions'])
+    }
   }
 
   private publishSession(session: WorkspaceSessionState, hostId: ExecutionHostId): void {

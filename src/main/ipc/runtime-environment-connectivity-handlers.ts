@@ -1,3 +1,5 @@
+import { hasMainOwnedRuntimeSessionNamespace } from '../runtime/runtime-workspace-session-namespace-custody'
+import { toRuntimeExecutionHostId } from '../../shared/execution-host'
 import { ipcMain } from 'electron'
 import {
   addEnvironmentFromPairingCode,
@@ -103,10 +105,25 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
   )
   ipcMain.handle(
     'runtimeEnvironments:remove',
-    (_event, args: { selector: string }): { removed: PublicKnownRuntimeEnvironment } => {
+    async (
+      _event,
+      args: { selector: string }
+    ): Promise<{ removed: PublicKnownRuntimeEnvironment }> => {
       const environment = resolveEnvironment(getUserDataPath(), args.selector)
       if (store.getSettings().activeRuntimeEnvironmentId === environment.id) {
         throw new Error('Choose another Active Server in Advanced before removing this server.')
+      }
+      const hostId = toRuntimeExecutionHostId(environment.id)
+      // Why default to preserving: an unreadable custody verdict is not evidence that nothing owns
+      // this namespace, and unpair must still succeed rather than fail with an opaque error.
+      let preserveMainNamespace = true
+      try {
+        preserveMainNamespace = hasMainOwnedRuntimeSessionNamespace(store, hostId)
+      } catch (error) {
+        console.warn(
+          '[runtime-environments] Preserving session partition after custody lookup failure:',
+          error
+        )
       }
       const removed = removeEnvironment(getUserDataPath(), args.selector)
       clearRuntimeEnvironmentCapabilityEvidence(removed.id)
@@ -125,6 +142,11 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
       }).catch((error) => {
         console.warn('[runtime-environments] browser partition storage clear failed:', error)
       })
+      if (!preserveMainNamespace) {
+        await store.removeRuntimeWorkspaceSessionPartition(hostId, () =>
+          hasMainOwnedRuntimeSessionNamespace(store, hostId)
+        )
+      }
       return { removed: redactRuntimeEnvironment(removed) }
     }
   )
