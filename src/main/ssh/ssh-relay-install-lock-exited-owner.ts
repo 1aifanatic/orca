@@ -5,7 +5,10 @@
 import { shellEscape } from './ssh-connection-utils'
 import type { InstallLockOwnerFile } from './ssh-relay-install-lock-commands'
 import { powerShellLiteral } from './ssh-remote-powershell'
-import { posixStateMutationGroupRecord, posixStateMutationPidRecord } from './orcad-state-snapshot'
+import {
+  posixStateMutationGroupRecord,
+  posixStateMutationPidRecord
+} from './orcad-state-mutation-owner-record'
 
 /**
  * A lock whose owner file still names `token` once it has been quiet past `quietSeconds`: the
