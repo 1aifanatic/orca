@@ -9,17 +9,13 @@ import {
   registerSshFilesystemProvider,
   unregisterSshFilesystemProvider
 } from '../../../providers/ssh-filesystem-dispatch'
-
-const hookRows = vi.hoisted(() => ({ value: new Array<unknown>() }))
-vi.mock('../../../agent-hooks/server', () => ({
-  agentHookServer: { getStatusSnapshot: () => hookRows.value }
-}))
-
 import { eraseRpcMethods, type RpcContext } from '../core'
 import { NATIVE_CHAT_METHODS } from './native-chat'
 
 const CONNECTION_ID = 'ssh-target-26057'
 const SESSION_ID = 'claude-session-26057'
+
+let hookRows: Partial<AgentStatusIpcPayload>[] = []
 
 function claudeLines(...texts: string[]): string {
   return texts
@@ -41,7 +37,10 @@ function sshHost(files: Map<string, string>): IFilesystemProvider {
   const bytes = (path: string): Buffer => {
     const body = files.get(path)
     if (body === undefined) {
-      throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+      // As the relay delivers it: the multiplexer swaps Node's 'ENOENT' code for its transport code.
+      const error = new Error(`ENOENT: no such file or directory, lstat '${path}'`)
+      Object.defineProperty(error, 'code', { value: -32000 })
+      throw error
     }
     return Buffer.from(body)
   }
@@ -80,8 +79,9 @@ type SubscriptionRuntime = Pick<
 >
 
 function phoneContext(runtime: Partial<SubscriptionRuntime>): RpcContext {
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: native chat handlers use only the subscription-cleanup members.
-  const handlerRuntime = runtime as RpcContext['runtime']
+  const members = { ...runtime, getAgentProviderSessionRows: () => hookRows }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: native chat handlers use only the hook rows and the subscription-cleanup members.
+  const handlerRuntime = members as unknown as RpcContext['runtime']
   return { runtime: handlerRuntime, connectionId: 'phone-1', clientKind: 'mobile' }
 }
 
@@ -103,7 +103,9 @@ function texts(value: unknown): string[] {
   )
 }
 
-async function readSession(transcriptPath: string): Promise<{ texts: string[]; error: unknown }> {
+async function readSession(
+  transcriptPath: string
+): Promise<{ texts: string[]; error: unknown; notFound: unknown }> {
   const read = method('nativeChat.readSession')
   if ('stream' in read) {
     throw new Error('nativeChat.readSession is a stream')
@@ -114,7 +116,8 @@ async function readSession(transcriptPath: string): Promise<{ texts: string[]; e
   )
   return {
     texts: texts(page),
-    error: page && typeof page === 'object' && 'error' in page ? page.error : undefined
+    error: page && typeof page === 'object' && 'error' in page ? page.error : undefined,
+    notFound: page && typeof page === 'object' && 'notFound' in page ? page.notFound : undefined
   }
 }
 
@@ -129,7 +132,7 @@ describe('native chat for an agent whose transcript lives on an SSH host (#26057
     transcriptPath = join(localDir, 'projects', 'p', `${SESSION_ID}.jsonl`)
     mkdirSync(dirname(transcriptPath), { recursive: true })
     writeFileSync(transcriptPath, claudeLines('LOCAL MACHINE FILE'))
-    hookRows.value = [sshHookRow(transcriptPath)]
+    hookRows = [sshHookRow(transcriptPath)]
   })
 
   afterEach(() => {
@@ -189,6 +192,15 @@ describe('native chat for an agent whose transcript lives on an SSH host (#26057
     }
   })
 
+  it('reads a transcript the SSH host has not written yet as not found, so the chat keeps waiting', async () => {
+    registerSshFilesystemProvider(CONNECTION_ID, sshHost(new Map()))
+
+    const page = await readSession(transcriptPath)
+
+    expect(page.texts).toEqual([])
+    expect(page.notFound).toBe(true)
+  })
+
   it('never answers from this machine while the SSH host is disconnected', async () => {
     const page = await readSession(transcriptPath)
 
@@ -197,7 +209,7 @@ describe('native chat for an agent whose transcript lives on an SSH host (#26057
   })
 
   it('keeps reading a local session from this machine', async () => {
-    hookRows.value = [{ ...sshHookRow(transcriptPath), connectionId: null }]
+    hookRows = [{ ...sshHookRow(transcriptPath), connectionId: null }]
 
     const page = await readSession(transcriptPath)
 

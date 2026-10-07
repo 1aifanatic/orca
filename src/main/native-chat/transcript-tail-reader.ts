@@ -25,8 +25,8 @@ import {
 } from './transcript-tail-boundary'
 import {
   closeTranscriptHandle,
-  wslGatedOpen,
-  wslGatedRead,
+  openTranscriptFile,
+  readTranscriptFile,
   transcriptFileStat
 } from './wsl-transcript-fs-access'
 import { wslTranscriptFsRefusal } from './wsl-transcript-fs-gate'
@@ -79,7 +79,7 @@ export async function readNativeChatTranscriptTailFile(
   if (end === 0) {
     return { messages: [], consumedTo: 0, hasMore: false, beforeOffset: 0 }
   }
-  const handle = await wslGatedOpen(filePath, 'exact', signal)
+  const handle = await openTranscriptFile(filePath, 'exact', signal)
   const lineParts: Buffer[] = []
   let lineBytes = 0
   let lineOversized = false
@@ -112,7 +112,7 @@ export async function readNativeChatTranscriptTailFile(
       signal?.throwIfAborted()
       const start = Math.max(0, cursor - TAIL_CHUNK_BYTES)
       const buffer = Buffer.allocUnsafe(cursor - start)
-      const { bytesRead } = await wslGatedRead(
+      const { bytesRead } = await readTranscriptFile(
         handle,
         filePath,
         buffer,

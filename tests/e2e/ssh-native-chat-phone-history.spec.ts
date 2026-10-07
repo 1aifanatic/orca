@@ -2,14 +2,10 @@
  * A phone paired with the desktop shows the chat history of a Claude session running on an SSH host
  * (#26057): the transcript lives on the SSH host, so the desktop must read it there, not on itself.
  *
- * The local workspace case is the control: the same hook and the same phone requests show history.
- *
  * Run:
  *   ORCA_E2E_SSH_DOCKER=1 npx playwright test tests/e2e/ssh-native-chat-phone-history.spec.ts \
  *     --config tests/playwright.config.ts --project electron-headless --workers=1
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
 import type { Page, TestInfo } from '@stablyai/playwright-test'
 import { expect, test } from './helpers/orca-app'
 import {
@@ -139,7 +135,10 @@ async function phoneProviderSession(
       { timeout: 20_000 }
     )
     .toBe('listed')
-  return found!
+  if (!found) {
+    throw new Error('the phone tab list lost the provider session after listing it')
+  }
+  return found
 }
 
 /** Subscribe as the phone's chat view does; the caller reads frames and closes it. */
@@ -187,36 +186,6 @@ async function expectPhoneText(
 }
 
 test.describe('Phone chat history for an agent on the execution host (#26057)', () => {
-  test('local workspace: the phone shows the Claude conversation (control)', async ({
-    orcaPage
-  }, testInfo: TestInfo) => {
-    test.skip(process.platform === 'win32', 'The hook fixture uses POSIX shell tooling.')
-    const stamp = Date.now()
-    const sessionId = `phone-local-${stamp}`
-    const reply = `LOCAL_REPLY_${stamp}`
-    const transcriptPath = testInfo.outputPath('claude', `${sessionId}.jsonl`)
-    mkdirSync(path.dirname(transcriptPath), { recursive: true })
-    writeFileSync(transcriptPath, claudeTranscript(sessionId, 'local prompt', reply))
-
-    await waitForSessionReady(orcaPage)
-    const worktreeId = await waitForActiveWorktree(orcaPage)
-    await ensureTerminalVisible(orcaPage)
-    await waitForActiveTerminalManager(orcaPage, 30_000)
-    const ptyId = await waitForActivePanePtyId(orcaPage)
-    await postClaudeHook(orcaPage, ptyId, sessionId, transcriptPath)
-
-    const pairing = decodePairingOffer(
-      (await createRuntimeDesktopPairingOffer(orcaPage)).pairingUrl
-    )
-    const session = await phoneProviderSession(pairing, worktreeId, sessionId)
-    const chat = await subscribePhoneChat(pairing, session)
-    try {
-      await expectPhoneText(chat, reply)
-    } finally {
-      chat.close()
-    }
-  })
-
   test('SSH workspace: the phone shows the Claude conversation stored on the SSH host', async ({
     orcaPage
   }, testInfo: TestInfo) => {

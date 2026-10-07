@@ -6,7 +6,6 @@ import {
   type NativeChatTranscriptSubscription,
   type SubscribeNativeChatTranscriptArgs
 } from '../../../native-chat/transcript-watch'
-import { agentHookServer } from '../../../agent-hooks/server'
 import { nativeChatTranscriptPathOnExecutionHost } from '../../../native-chat/ssh-transcript-path'
 import { defineMethod, defineStreamingMethod, type RpcContext } from '../core'
 import { sanitizeNativeChatRpcBlock } from './native-chat-rpc-block-sanitize'
@@ -79,14 +78,14 @@ export const NATIVE_CHAT_METHODS = [
   defineMethod({
     name: 'nativeChat.readSession',
     params: NativeChatSession,
-    handler: async (params, { clientKind, signal }) => {
+    handler: async (params, { runtime, clientKind, signal }) => {
       const limit = params.limit ?? MOBILE_NATIVE_CHAT_DEFAULT_WINDOW
       const result = await readNativeChatTranscriptTail(
         {
           agent: params.agent,
           sessionId: params.sessionId,
           transcriptPath: nativeChatTranscriptPathOnExecutionHost(
-            agentHookServer.getStatusSnapshot(),
+            runtime.getAgentProviderSessionRows(),
             params.sessionId,
             params.transcriptPath
           ),
@@ -156,7 +155,7 @@ export const NATIVE_CHAT_METHODS = [
         agent: params.agent,
         sessionId: params.sessionId,
         transcriptPath: nativeChatTranscriptPathOnExecutionHost(
-          agentHookServer.getStatusSnapshot(),
+          runtime.getAgentProviderSessionRows(),
           params.sessionId,
           params.transcriptPath
         ),

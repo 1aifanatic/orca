@@ -17,8 +17,7 @@ import { wslTranscriptFsLaneKey } from './wsl-transcript-fs-route'
 import {
   readSshTranscript,
   statSshTranscript,
-  type SshTranscriptHandle,
-  type TranscriptFileStats
+  type SshTranscriptHandle
 } from './ssh-transcript-fs-access'
 import { parseSshTranscriptPath } from './ssh-transcript-path'
 
@@ -29,7 +28,8 @@ import { parseSshTranscriptPath } from './ssh-transcript-path'
 export const WSL_TRANSCRIPT_READ_CHUNK_BYTES = 1024 * 1024
 
 export type TranscriptFileHandle = FileHandle | WslTranscriptFsProcessHandle | SshTranscriptHandle
-export type { TranscriptFileStats }
+/** The stat fields the transcript readers use; an SSH host answers only these. */
+export type TranscriptFileStats = Pick<Stats, 'size' | 'mtimeMs' | 'ctimeMs' | 'dev' | 'ino'>
 
 function isSshTranscriptHandle(handle: TranscriptFileHandle): handle is SshTranscriptHandle {
   return 'sshTranscript' in handle
@@ -115,7 +115,7 @@ export function wslGatedReadFile(
 }
 
 // dedupe:false — two joiners would share one FileHandle and both close it.
-export function wslGatedOpen(
+export function openTranscriptFile(
   path: string,
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
@@ -147,7 +147,7 @@ export function wslGatedOpen(
  * buffer: a joiner would receive the first caller's buffer while its own
  * (often `Buffer.allocUnsafe`) stays uninitialized.
  */
-export function wslGatedRead(
+export function readTranscriptFile(
   handle: TranscriptFileHandle,
   path: string,
   buffer: Buffer,
@@ -209,10 +209,10 @@ export async function readTranscriptSlice(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): Promise<Buffer> {
-  const handle = await wslGatedOpen(path, priority, signal)
+  const handle = await openTranscriptFile(path, priority, signal)
   try {
     const buffer = Buffer.allocUnsafe(length)
-    const { bytesRead } = await wslGatedRead(
+    const { bytesRead } = await readTranscriptFile(
       handle,
       path,
       buffer,
@@ -244,7 +244,7 @@ async function* gatedChunks(
   priority: WslTranscriptFsTaskPriority,
   signal?: AbortSignal
 ): AsyncGenerator<Buffer | string> {
-  const handle = await wslGatedOpen(path, priority, signal)
+  const handle = await openTranscriptFile(path, priority, signal)
   // Why: chunk boundaries fall mid-codepoint, so decoding each slice
   // independently would emit U+FFFD on both sides of any straddling character.
   const decoder = options.encoding ? new StringDecoder(options.encoding) : null
@@ -259,7 +259,7 @@ async function* gatedChunks(
         break
       }
       const buffer = Buffer.allocUnsafe(length)
-      const { bytesRead } = await wslGatedRead(
+      const { bytesRead } = await readTranscriptFile(
         handle,
         path,
         buffer,
