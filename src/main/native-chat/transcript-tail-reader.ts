@@ -1,4 +1,5 @@
 import { readOpenCodeNativeChatTranscriptTail } from './transcript-opencode'
+import { isENOENT } from '../ipc/filesystem-path-containment'
 import type {
   AgentType,
   NativeChatMessage,
@@ -292,8 +293,6 @@ export async function readNativeChatTranscriptTail(
   } catch (error) {
     signal?.throwIfAborted()
     const message = error instanceof Error ? error.message : String(error)
-    return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
-      ? { error: message, notFound: true }
-      : { error: message }
+    return isENOENT(error) ? { error: message, notFound: true } : { error: message }
   }
 }

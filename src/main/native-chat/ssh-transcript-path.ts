@@ -26,28 +26,29 @@ export function parseSshTranscriptPath(path: string): SshTranscriptLocation | nu
   }
 }
 
-/**
- * The transcript path native chat reads for a provider session. The execution host owns the
- * transcript: when the hook store attests the session to an SSH connection, the path names that
- * host, so the read goes there instead of to a same-named file on this machine.
- */
+type HookRow = Pick<AgentStatusIpcPayload, 'connectionId' | 'providerSession'>
+
+/** The path native chat reads: a session the hook store puts on an SSH host is read there, never here. */
 export function nativeChatTranscriptPathOnExecutionHost(
-  statusRows: readonly AgentStatusIpcPayload[],
+  statusRows: readonly HookRow[],
   sessionId: string,
   transcriptPath: string | undefined
 ): string | undefined {
   // Only the host mints this form; a client-supplied one would name a file the hook never attested.
   const requested =
     transcriptPath && !parseSshTranscriptPath(transcriptPath) ? transcriptPath : undefined
-  const sshRow = statusRows.find(
+  const sshRows = statusRows.filter(
     (row) =>
       row.providerSession?.id === sessionId &&
       row.providerSession.transcriptPath &&
-      (requested === undefined || row.providerSession.transcriptPath === requested) &&
       row.connectionId &&
       !isWslHookRelayConnectionId(row.connectionId)
   )
-  return sshRow?.connectionId && sshRow.providerSession?.transcriptPath
-    ? toSshTranscriptPath(sshRow.connectionId, sshRow.providerSession.transcriptPath)
+  const row =
+    sshRows.find((candidate) => candidate.providerSession?.transcriptPath === requested) ??
+    sshRows[0]
+  const remotePath = row?.providerSession?.transcriptPath
+  return row?.connectionId && remotePath
+    ? toSshTranscriptPath(row.connectionId, remotePath)
     : requested
 }
