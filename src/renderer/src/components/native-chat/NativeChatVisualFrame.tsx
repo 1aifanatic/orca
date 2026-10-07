@@ -8,7 +8,7 @@ import {
   readNativeChatVisualFrameMessage
 } from '../../../../shared/native-chat-visual-shell'
 import type { NativeChatVisualDocument } from './native-chat-visual-read-client'
-import { createNativeChatVisualHeightGovernor } from './native-chat-visual-height-governor'
+import { createNativeChatVisualHeightGovernor } from '../../../../shared/native-chat-visual-height-governor'
 import { useNativeChatVisualTheme } from './use-native-chat-visual-theme'
 
 /** Height reserved before a visual reports its own, so the reply below does not jump far. */

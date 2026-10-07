@@ -4,7 +4,7 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes'
 import * as ExpoCrypto from 'expo-crypto'
 import { buildNativeChatVisualDocument } from '../../../src/shared/native-chat-visual-shell'
-import { createNativeChatVisualHeightGovernor } from '../../../src/renderer/src/components/native-chat/native-chat-visual-height-governor'
+import { createNativeChatVisualHeightGovernor } from '../../../src/shared/native-chat-visual-height-governor'
 import { openExternalLink } from '../platform/external-link'
 import {
   MOBILE_NATIVE_CHAT_VISUAL_LINK_INTERVAL_MS,

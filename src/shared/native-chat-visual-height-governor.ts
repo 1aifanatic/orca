@@ -1,4 +1,4 @@
-import { clampNativeChatVisualHeight } from '../../../../shared/native-chat-visual-shell'
+import { clampNativeChatVisualHeight } from './native-chat-visual-shell'
 
 const WINDOW_MS = 1_000
 const MAX_CHANGES_PER_WINDOW = 20
