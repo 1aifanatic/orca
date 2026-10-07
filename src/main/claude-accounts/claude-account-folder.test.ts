@@ -65,20 +65,24 @@ describe('claude account folder', () => {
     expect(readClaudeFolderLogin(stateFile)?.email).toBe('b@example.test!')
   })
 
-  it('unlinks shared history before deleting, and leaves the older layout alone', async () => {
-    const { root, dataRoot, home } = fixture()
-    const history = join(root, '.claude', 'projects')
-    mkdirSync(history, { recursive: true })
-    writeFileSync(join(history, 'chat.jsonl'), '{}')
-    symlinkSync(history, join(home, 'projects'))
-    const older = join(dataRoot, 'claude-accounts', 'a')
-    mkdirSync(older, { recursive: true })
+  // A real symlink needs Developer Mode on Windows (EPERM otherwise).
+  it.skipIf(process.platform === 'win32')(
+    'unlinks shared history before deleting, and leaves the older layout alone',
+    async () => {
+      const { root, dataRoot, home } = fixture()
+      const history = join(root, '.claude', 'projects')
+      mkdirSync(history, { recursive: true })
+      writeFileSync(join(history, 'chat.jsonl'), '{}')
+      symlinkSync(history, join(home, 'projects'))
+      const older = join(dataRoot, 'claude-accounts', 'a')
+      mkdirSync(older, { recursive: true })
 
-    await removeClaudeAccountFolder(dataRoot, 'a')
-    expect(existsSync(join(dataRoot, 'claude-profiles', 'a'))).toBe(false)
-    expect(existsSync(join(history, 'chat.jsonl'))).toBe(true)
-    expect(existsSync(older)).toBe(true)
-  })
+      await removeClaudeAccountFolder(dataRoot, 'a')
+      expect(existsSync(join(dataRoot, 'claude-profiles', 'a'))).toBe(false)
+      expect(existsSync(join(history, 'chat.jsonl'))).toBe(true)
+      expect(existsSync(older)).toBe(true)
+    }
+  )
 
   it.skipIf(process.platform !== 'darwin')(
     'deletes every Keychain item Claude may have keyed to the folder',
