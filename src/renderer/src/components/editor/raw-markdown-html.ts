@@ -50,7 +50,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
   const lastCommentClose = normalizedContent.lastIndexOf('-->')
   const { transport } = codec
   let index = 0
-  let isLineStart = true
   let activeFence: '`' | '~' | null = null
   let activeFenceLength = 0
   let result = ''
@@ -60,6 +59,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
   let fenceMatch: RegExpExecArray | null = null
 
   while (index < normalizedContent.length) {
+    const isLineStart = index === 0 || normalizedContent[index - 1] === '\n'
     if (isLineStart) {
       // Reuse the lookahead across blank lines, preserving cross-line fence semantics.
       if (index > fenceProbe) {
@@ -84,7 +84,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
     if (activeFence) {
       const nextChar = normalizedContent[index]
       result += nextChar
-      isLineStart = nextChar === '\n'
       index += 1
       continue
     }
@@ -118,7 +117,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
       if (closingIndex !== -1) {
         const rawSpan = normalizedContent.slice(index, closingIndex + tickCount)
         result += rawSpan
-        isLineStart = rawSpan.endsWith('\n')
         index = closingIndex + tickCount
         continue
       }
@@ -131,14 +129,12 @@ export function encodeRawMarkdownHtmlForRichEditor(
         // would make toggle blocks reopen as inert HTML instead.
         result += detailsHtml.raw
         index += detailsHtml.raw.length
-        isLineStart = detailsHtml.raw.endsWith('\n')
         continue
       }
 
       if (detailsHtml) {
         result += transport.create('block-html', detailsHtml.raw)
         index += detailsHtml.raw.length
-        isLineStart = detailsHtml.raw.endsWith('\n')
         continue
       }
 
@@ -146,7 +142,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
       if (blockHtml) {
         result += transport.create('block-html', blockHtml)
         index += blockHtml.length
-        isLineStart = false
         continue
       }
     }
@@ -161,7 +156,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
           : normalizedContent.slice(index, authoredEnd + 2)
       result += transport.create('literal', authoredOccurrence)
       index += authoredOccurrence.length
-      isLineStart = false
       continue
     }
 
@@ -171,7 +165,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
         if (superscriptLink) {
           result += transport.create('html-superscript-link', JSON.stringify(superscriptLink.value))
           index = superscriptLink.end
-          isLineStart = false
           continue
         }
       }
@@ -183,7 +176,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
       if (inlineHtml) {
         result += transport.create('inline-html', inlineHtml)
         index += inlineHtml.length
-        isLineStart = false
         continue
       }
     }
@@ -205,7 +197,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
             formatMarkdownDocLinkBody(link.target, link.alias)
           )
           index = closingIndex + 2
-          isLineStart = false
           continue
         }
       }
@@ -213,7 +204,6 @@ export function encodeRawMarkdownHtmlForRichEditor(
 
     const nextChar = normalizedContent[index]
     result += nextChar
-    isLineStart = nextChar === '\n'
     index += 1
   }
 
