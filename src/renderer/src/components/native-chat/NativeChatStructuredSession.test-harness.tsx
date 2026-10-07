@@ -5,7 +5,6 @@ import type { AgentJournalRenderItem } from '../../../../shared/agent-session-jo
 import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
 import type { AgentSessionBackgroundTask } from '../../../../shared/agent-session-wire'
 import type { AgentSessionWriteRefusal } from '../../../../shared/agent-session-write-failure'
-import type { AgentSessionUnavailable } from '../../../../shared/agent-session-availability'
 import type { AgentSessionRefusalReference } from '../../../../shared/agent-session-wire-refusals'
 import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
@@ -116,6 +115,7 @@ const DEFAULT_FILE_LINK_CONTEXT: NativeChatFileLinkContext = {
 
 const initialMessageListProps: StructuredSessionMessageListProps | null = null
 const initialApprovalCardProps: NativeChatApprovalCardProps | null = null
+type QueueResumeMock = { resume: () => void; resuming: boolean }
 
 /**
  * Shared mock state and `vi.mock` factories for the NativeChatStructuredSession test files.
@@ -131,7 +131,6 @@ export function createStructuredSessionMocks() {
     fileLinkContext: widened<NativeChatFileLinkContext | null>(DEFAULT_FILE_LINK_CONTEXT),
     lifecycleLookup: vi.fn<(worktreeId: string, sessionId: string) => void>(),
     launchFailure: nullable<AgentSessionWriteRefusal>(),
-    unavailable: nullable<AgentSessionUnavailable>(),
     launchResumes: false,
     retryLaunch: vi.fn<(worktreeId: string, sessionId: string) => unknown>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
@@ -142,7 +141,7 @@ export function createStructuredSessionMocks() {
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
       launchSeed?: NativeChatLaunchSeed
-      structuredTransport?: Record<string, unknown>
+      structuredTransport?: Record<string, unknown> & { queueResume?: QueueResumeMock }
       isWorking?: boolean
       isStopping?: boolean
       afterStop?: 'queue' | 'send'
@@ -182,6 +181,9 @@ export function createStructuredSessionMocks() {
     queuedRemove: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedSteerNewest: vi.fn<() => boolean>(() => false),
+    queuedResumable: false,
+    queueSendsNext: false,
+    queuedResume: vi.fn<() => Promise<boolean>>(async () => true),
     revealLatest: vi.fn<() => void>()
   }
 
@@ -212,7 +214,6 @@ export function createStructuredSessionMocks() {
           })
           return {
             journalItems: mocks.journalItems,
-            unavailable: mocks.unavailable,
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
@@ -259,6 +260,7 @@ export function createStructuredSessionMocks() {
             epoch: 'epoch-1',
             rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,
+            queueSendsNext: mocks.queueSendsNext,
             stopPressed: mocks.stopPressed,
             sendsQueue: mocks.sendsQueue,
             stop: mocks.stop,
@@ -267,7 +269,10 @@ export function createStructuredSessionMocks() {
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
-              steerNewest: mocks.queuedSteerNewest
+              steerNewest: mocks.queuedSteerNewest,
+              queueResume: mocks.queuedResumable
+                ? { resume: mocks.queuedResume, resuming: false }
+                : undefined
             },
             threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,
@@ -375,7 +380,6 @@ export function createStructuredSessionMocks() {
     mocks.ownerWorktreeId = 'wt-1'
     mocks.fileLinkContext = DEFAULT_FILE_LINK_CONTEXT
     mocks.launchFailure = null
-    mocks.unavailable = null
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
     mocks.lifecycleLookup.mockReset()
@@ -413,6 +417,8 @@ export function createStructuredSessionMocks() {
     mocks.loadingOlder = false
     mocks.olderHistoryGeneration = 0
     mocks.loadOlder.mockReset()
+    Object.assign(mocks, { queuedResumable: false, queueSendsNext: false })
+    mocks.queuedResume.mockReset()
     mocks.revealLatest.mockReset()
     mocks.queuedSteerNewest.mockReset()
     mocks.queuedSteerNewest.mockReturnValue(false)

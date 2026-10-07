@@ -135,6 +135,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveCodexAccountKind?: (home: string) => AgentSessionAccountKind | undefined
   /** Launch prep's sync for a probed home; see `CodexModelCatalogProbeDeps.prepareHome`. */
   prepareCodexCatalogProbeHome?: (homePath: string) => void
+  /** See `StructuredAgentSessionHostDeps.onSessionTabHidden`. */
+  onSessionTabHidden?: StructuredAgentSessionHostDeps['onSessionTabHidden']
   /** Host-owned phone delivery and reconciliation from the current journal projection. */
   attentionDelivery?: StructuredAttentionMobileDelivery
   /** The account home a structured launch would pin right now, for catalog
@@ -303,6 +305,7 @@ async function installOnJournal(
     ...(deps.onSessionStatusChanged ? { onSessionStatusChanged: deps.onSessionStatusChanged } : {}),
     ...(deps.statusSink ? { statusSink: deps.statusSink } : {}),
     ...(deps.hasOpenDispatch ? { hasOpenDispatch: deps.hasOpenDispatch } : {}),
+    ...(deps.onSessionTabHidden ? { onSessionTabHidden: deps.onSessionTabHidden } : {}),
     ...(await modelCatalogHostDeps({ store, agents, deps, envResolvers }))
   })
   if (deps.attentionDelivery) {

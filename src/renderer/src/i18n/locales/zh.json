@@ -17888,7 +17888,6 @@
           "title": "无法加载对话",
           "subtitle": "无法读取记录。请切回终端继续工作。"
         },
-        "reconnecting": "正在重新连接此聊天…",
         "pairHost": "配对主机以查看智能体聊天记录。",
         "notAgent": {
           "title": "这里没有对话",
@@ -18118,10 +18117,15 @@
         "pausedKept": "尚未发送。点按发送即可发送。",
         "paused": "已暂停",
         "queuePausedStopped": "因你中断了操作，队列已暂停",
-        "queuePausedRestarted": "因 Orca 重新启动，队列已暂停",
         "queuePausedCleared": "清除对话后，队列已暂停",
         "queuePaused": "队列已暂停",
         "resume": "继续",
+        "sendConfirmTitle": "发送消息？",
+        "sendConfirmBody": "你即将发送一条消息。是否清除之前排队的 {{count}} 条消息？",
+        "sendConfirmBody_one": "你即将发送一条消息。是否清除之前排队的 {{count}} 条消息？",
+        "sendConfirmBody_other": "你即将发送一条消息。是否清除之前排队的 {{count}} 条消息？",
+        "sendConfirmClear": "清空队列",
+        "sendConfirmSend": "发送消息",
         "from": "来自 {{names}}"
       },
       "thought": "已思考",
@@ -18129,7 +18133,12 @@
       "structuredSessionHostDeclined": "已在终端中打开 {{value0}}",
       "structuredSessionHostDeclinedDescription": "此服务器无法在此工作区中运行 {{value0}} 聊天。",
       "structuredSessionHostUnreachable": "无法连接到 {{value0}}",
-      "structuredSessionHostUnreachableDescription": "Orca 未打开 {{value0}} 聊天。请检查与服务器的连接，然后重试。"
+      "structuredSessionHostUnreachableDescription": "Orca 未打开 {{value0}} 聊天。请检查与服务器的连接，然后重试。",
+      "hostOutage": {
+        "offline": "{{hostName}} 已离线",
+        "reconnecting": "正在重新连接 {{hostName}}…",
+        "reconnect": "重新连接"
+      }
     },
     "tab": {
       "bar": {

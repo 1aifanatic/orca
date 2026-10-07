@@ -18,6 +18,7 @@ function actions(working = false) {
         dictationDisabled={false}
         sendDisabled={!working}
         sendBlockedReason={REASON}
+        primaryAction={working ? 'stop' : 'send'}
         isWorking={working}
         isDictating={false}
         isDictationHoldMode={false}
