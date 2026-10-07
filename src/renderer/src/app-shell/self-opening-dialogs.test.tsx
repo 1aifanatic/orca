@@ -1,23 +1,29 @@
 import { STARTUP_DISCOVERY_READ_TIMEOUT_MS } from '../startup/startup-discovery-read'
 // @vitest-environment happy-dom
 
-import { act, StrictMode, useEffect, useState } from 'react'
+import { act, StrictMode, useEffect, useLayoutEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { useDialogRegistry } from '@/store/dialog-registry'
+import { selectDialogPhase } from '@/store/dialog-registry-state'
 import { resetDialogRegistryForTests } from '@/store/dialog-registry-test-state'
 import { getDefaultSettings } from '../../../shared/constants'
 import type { CrashReportRecord } from '../../../shared/crash-reporting'
 import { NativeChatResumeOnRestartModal } from '../components/NativeChatResumeOnRestartModal'
 import { CrashReportDialog } from '../components/crash-report/CrashReportDialog'
 import { AppOpenFeatureTip } from '../components/feature-tips/AppOpenFeatureTip'
+import { APP_OPEN_FEATURE_TIP_TOKEN } from '../components/feature-tips/feature-tip-startup-gate'
 import { SshPassphraseDialog } from '../components/settings/SshPassphraseDialog'
 import { RecoverableRenderErrorBoundary } from '../components/error-boundaries/RecoverableRenderErrorBoundary'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog'
 import type { ResumeCandidate } from '../components/native-chat-resume-on-restart-grouping'
-import { _resetNativeChatRestartOffer } from '../components/native-chat-resume-on-restart-store'
+import {
+  _resetNativeChatRestartOffer,
+  getNativeChatRestartOffer,
+  useNativeChatRestartOffer
+} from '../components/native-chat-resume-on-restart-store'
 import {
   _resetNativeChatResumeOnRestartDialog,
   requestNativeChatResumeOnRestartDialog
@@ -74,16 +80,16 @@ vi.mock('../components/feature-tips/FeatureTipsModal', async () => {
   return {
     FeatureTipDialogs: ({
       open,
-      modalData,
+      tipId,
       onClose
     }: {
       open: boolean
-      modalData: Record<string, unknown>
+      tipId: string
       onClose: () => void
     }) => (
       <ui.Dialog open={open} onOpenChange={(next) => !next && onClose()}>
         <ui.DialogContent data-testid="feature-tip">
-          <ui.DialogTitle>Tip {String(modalData.tipId)}</ui.DialogTitle>
+          <ui.DialogTitle>Tip {tipId}</ui.DialogTitle>
           <button type="button" onClick={onClose}>
             Close tip
           </button>
@@ -221,6 +227,16 @@ function settleTip(answer: 'none' | 'unavailable' = 'none'): void {
   act(() => useDialogRegistry.getState().settleStartupSource('feature-tip', answer))
 }
 
+/** The startup decision is owned above the lazy tip surface. */
+function DecidedTip(): React.JSX.Element {
+  useLayoutEffect(() => {
+    useDialogRegistry
+      .getState()
+      .settleStartupSource('feature-tip', 'ready', APP_OPEN_FEATURE_TIP_TOKEN)
+  }, [])
+  return <AppOpenFeatureTip tipId="orca-cli" />
+}
+
 function raiseSsh(): void {
   act(() =>
     useAppStore.getState().enqueueSshCredentialRequest({
@@ -235,7 +251,7 @@ function raiseSsh(): void {
 const everything = (
   <>
     <CrashReportDialog />
-    <AppOpenFeatureTip tipId="orca-cli" />
+    <DecidedTip />
     <NativeChatResumeOnRestartModal />
   </>
 )
@@ -373,7 +389,7 @@ it.each([
     crashReports.getLatestPending.mockResolvedValue(shown === 'crash:c1' ? crash('c1') : null)
     await mount(
       <>
-        {shown === 'resume' ? null : <AppOpenFeatureTip tipId="orca-cli" />}
+        {shown === 'resume' ? null : <DecidedTip />}
         <CrashReportDialog />
         <NativeChatResumeOnRestartModal />
         <UserModal />
@@ -539,7 +555,7 @@ it('a tip decided while a user modal is up keeps its place ahead of a queued res
       <CrashReportDialog />
       <NativeChatResumeOnRestartModal />
       <UserModal />
-      <AppOpenFeatureTip tipId="orca-cli" />
+      <DecidedTip />
     </>
   )
   expect(onScreen()).toEqual(['Add project'])
@@ -558,8 +574,9 @@ it('acknowledges a launch crash report only once its content is on screen', asyn
   crashReports.getLatestPending.mockResolvedValue(crash('c1'))
   await mount(<CrashReportDialog />)
   expect(useDialogRegistry.getState().dialogEntries).toEqual([
-    expect.objectContaining({ token: 'crash-report:c1', phase: 'opening' })
+    expect.objectContaining({ token: 'crash-report:c1' })
   ])
+  expect(selectDialogPhase(useDialogRegistry.getState(), 'crash-report:c1')).toBe('opening')
   expect(crashReports.dismiss).not.toHaveBeenCalled()
   surface.suspended = false
   await act(async () => load.resolve())
@@ -576,7 +593,7 @@ it('marks the tip seen only once it is on screen', async () => {
     <>
       <CrashReportDialog />
       <UserModal />
-      <AppOpenFeatureTip tipId="orca-cli" />
+      <DecidedTip />
     </>
   )
   expect(markFeatureTipsSeen).not.toHaveBeenCalled()
@@ -642,7 +659,7 @@ it('in StrictMode (dev builds) a tip decided after the resume offer was queued s
   await render(
     <>
       <NativeChatResumeOnRestartModal />
-      <AppOpenFeatureTip tipId="orca-cli" />
+      <DecidedTip />
     </>
   )
   expect(onScreen()).toEqual(['tip'])
@@ -715,3 +732,134 @@ it.each(['settings unavailable', 'held read hung', 'offer read hung'] as const)(
     }
   }
 )
+
+function OfferDataSubscriber(): null {
+  useNativeChatRestartOffer(true)
+  return null
+}
+
+it.each([false, true])(
+  'a held runtime keeps the owner recovery read enabled with missing settings and hydration %s',
+  async (persistedUIReady) => {
+    useAppStore.setState({ settings: null, persistedUIReady })
+    window.api.app.holdsStructuredAgentSessions = async () => true
+    act(() => useDialogRegistry.getState().settleStartupSource('crash-report', 'none'))
+    settleTip()
+    await mount(<NativeChatResumeOnRestartModal />)
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(getNativeChatRestartOffer().candidates).toEqual(offered)
+    expect(onScreen()).toEqual(['resume'])
+    expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe(
+      persistedUIReady ? 'unavailable' : 'pending'
+    )
+  }
+)
+
+it('an ordinary offer subscriber cannot answer or abandon startup discovery', async () => {
+  const read = Promise.withResolvers<{ sessions: ResumeCandidate[] }>()
+  rpc.mockReturnValue(read.promise)
+  await mount(<OfferDataSubscriber />)
+  await act(async () => root.render(null))
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('pending')
+  await act(async () => read.resolve({ sessions: offered }))
+  expect(getNativeChatRestartOffer().candidates).toEqual(offered)
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('pending')
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([])
+})
+
+it('losing the resume owner abandons discovery while its data subscriber keeps recovery', async () => {
+  const read = Promise.withResolvers<{ sessions: ResumeCandidate[] }>()
+  rpc.mockReturnValue(read.promise)
+  await mount(
+    <>
+      <Toggle>
+        <NativeChatResumeOnRestartModal />
+      </Toggle>
+      <OfferDataSubscriber />
+    </>
+  )
+  act(() => toggleOff())
+  await flush()
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('unavailable')
+  await act(async () => read.resolve({ sessions: offered }))
+  await flush()
+  expect(getNativeChatRestartOffer().candidates).toEqual(offered)
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([])
+})
+
+it.each([false, true])('a disabled offer waits for an actual held answer of %s', async (holds) => {
+  const held = Promise.withResolvers<boolean>()
+  useAppStore.setState({ settings: getDefaultSettings('') })
+  window.api.app.holdsStructuredAgentSessions = () => held.promise
+  await mount(<NativeChatResumeOnRestartModal />)
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('pending')
+  expect(rpc).not.toHaveBeenCalled()
+  const answers: string[][] = []
+  const unsubscribe = useDialogRegistry.subscribe((state) => {
+    if (state.startupSources['native-chat-resume'] === 'ready') {
+      answers.push(state.dialogEntries.map((entry) => entry.token))
+    }
+  })
+  await act(async () => held.resolve(holds))
+  await flush()
+  unsubscribe()
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe(
+    holds ? 'ready' : 'none'
+  )
+  expect(rpc).toHaveBeenCalledTimes(holds ? 1 : 0)
+  if (holds) {
+    expect(answers.length).toBeGreaterThan(0)
+    expect(answers.every((tokens) => tokens.includes('native-chat-resume'))).toBe(true)
+  }
+})
+
+it('an offer arriving after the discovery deadline still recovers and can be shown', async () => {
+  const read = Promise.withResolvers<{ sessions: ResumeCandidate[] }>()
+  rpc.mockReturnValue(read.promise)
+  act(() => useDialogRegistry.getState().settleStartupSource('crash-report', 'none'))
+  settleTip()
+  vi.useFakeTimers()
+  try {
+    await act(async () =>
+      root.render(
+        <TooltipProvider>
+          <NativeChatResumeOnRestartModal />
+        </TooltipProvider>
+      )
+    )
+    await act(async () => vi.advanceTimersByTimeAsync(STARTUP_DISCOVERY_READ_TIMEOUT_MS))
+    expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('unavailable')
+    await act(async () => read.resolve({ sessions: offered }))
+    expect(getNativeChatRestartOffer().candidates).toEqual(offered)
+    expect(onScreen()).toEqual(['resume'])
+    expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('unavailable')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('a failed launch acknowledgement is attempted once in StrictMode and never belongs to runtime reports', async () => {
+  const silent = vi.spyOn(console, 'error').mockImplementation(() => {})
+  crashReports.getLatestPending.mockResolvedValue(crash('launch'))
+  crashReports.dismiss.mockRejectedValue(new Error('write failed'))
+  boundaryReports.push(crash('runtime'))
+  try {
+    await mount(
+      <StrictMode>
+        <CrashReportDialog />
+      </StrictMode>
+    )
+    expect(onScreen()).toEqual(['crash:runtime'])
+    expect(crashReports.dismiss).not.toHaveBeenCalled()
+    click('Close crash report')
+    await flush()
+    expect(onScreen()).toEqual(['crash:launch'])
+    expect(crashReports.dismiss).toHaveBeenCalledExactlyOnceWith({ reportId: 'launch' })
+    click('Close crash report')
+    await flush()
+    expect(onScreen()).toEqual([])
+    expect(crashReports.dismiss).toHaveBeenCalledTimes(1)
+  } finally {
+    silent.mockRestore()
+  }
+})

@@ -1,10 +1,11 @@
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { useAppStore } from '@/store'
 import { useDialogRegistry } from '@/store/dialog-registry'
 import { DialogEntryScope, useAutomaticDialogEntry } from '@/lib/dialog-registry-entry'
 import { RecoverableRenderErrorBoundary } from '../error-boundaries/RecoverableRenderErrorBoundary'
 import type { FeatureTipId } from '../../../../shared/feature-tips'
+import { APP_OPEN_FEATURE_TIP_TOKEN } from './feature-tip-startup-gate'
 import {
   trackCmdJPaletteFeatureTipShown,
   trackOrcaCliFeatureTipShown
@@ -13,8 +14,6 @@ import {
 const FeatureTipDialogs = lazy(() =>
   import('./FeatureTipsModal').then((module) => ({ default: module.FeatureTipDialogs }))
 )
-
-const APP_OPEN_FEATURE_TIP_TOKEN = 'feature-tip:app-open'
 
 /**
  * The tip the app offers by itself at launch. It waits its turn among the dialogs that open by
@@ -28,12 +27,7 @@ export function AppOpenFeatureTip({ tipId }: { tipId: FeatureTipId }): React.JSX
     'feature-tip',
     closed ? null : 'automatic'
   )
-  // After the entry above: the tip check answers only once its tip is queued.
-  useLayoutEffect(() => {
-    useDialogRegistry.getState().settleStartupSource('feature-tip', 'ready')
-  }, [])
   const markFeatureTipsSeen = useAppStore((s) => s.markFeatureTipsSeen)
-  const modalData = useMemo(() => ({ source: 'app_open', tipId }), [tipId])
 
   const shownRef = useRef(false)
   useEffect(() => {
@@ -65,7 +59,7 @@ export function AppOpenFeatureTip({ tipId }: { tipId: FeatureTipId }): React.JSX
         <Suspense fallback={null}>
           <FeatureTipDialogs
             open={phase !== 'closing'}
-            modalData={modalData}
+            tipId={tipId}
             onClose={() => setClosed(true)}
           />
         </Suspense>

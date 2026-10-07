@@ -3,6 +3,7 @@ import type { PersistedUIState } from '../../../../shared/persisted-ui-state-typ
 import type { ContextualTourId } from '../../../../shared/contextual-tours'
 import { createUIStore, makePersistedUI } from './ui-slice-test-harness'
 import { useDialogRegistry } from '../dialog-registry'
+import { selectDialogPhase } from '../dialog-registry-state'
 import { resetDialogRegistryForTests } from '../dialog-registry-test-state'
 
 const mocks = vi.hoisted(() => ({
@@ -275,10 +276,10 @@ describe('createUISlice contextual tours', () => {
     // The rendered overlay owns occupancy; an unrendered tour request counts nothing.
     registry().dialogContentMounted('tour:tasks', 'tour', 'tour')
     registry().enqueueAutomaticDialog('crash', 'crash-report')
-    expect(registry().dialogEntries.find((entry) => entry.token === 'crash')?.phase).toBe('queued')
+    expect(selectDialogPhase(registry(), 'crash')).toBe('queued')
     store.getState().dismissContextualTour('tasks')
     registry().dialogContentUnmounted('tour:tasks')
-    expect(registry().dialogEntries.find((entry) => entry.token === 'crash')?.phase).toBe('opening')
+    expect(selectDialogPhase(registry(), 'crash')).toBe('opening')
   })
 
   it('does not auto-start tours for profiles that are not eligible', () => {

@@ -11,6 +11,8 @@ import type { GlobalSettings } from '../../../../shared/global-settings-types'
 import type { OnboardingState } from '../../../../shared/onboarding-state-types'
 import { shouldShowOnboarding } from '../onboarding/should-show-onboarding'
 
+export const APP_OPEN_FEATURE_TIP_TOKEN = 'feature-tip:app-open'
+
 export type FeatureTipsAppOpenDecision =
   | { kind: 'open'; tipId: FeatureTipId }
   | { kind: 'skip' }
@@ -62,17 +64,11 @@ export function getFeatureTipsAppOpenDecision(args: {
   featureInteractions: FeatureInteractionState
   onboarding: OnboardingState | null
   persistedUIReady: boolean
-  promptedThisSession: boolean
   settings: FeatureTipSettings | null | undefined
-  suppressedByOnboardingThisSession: boolean
   webClient: boolean
 }): FeatureTipsAppOpenDecision {
   if (args.onboarding !== null && shouldShowOnboarding(args.onboarding)) {
     return { kind: 'suppress-for-onboarding' }
-  }
-
-  if (args.promptedThisSession || args.suppressedByOnboardingThisSession) {
-    return { kind: 'skip' }
   }
 
   if (!args.persistedUIReady || !args.settings || args.onboarding === null) {

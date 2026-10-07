@@ -27,34 +27,20 @@ function onScreen(entry: DialogEntry): boolean {
   return entry.phase === 'visible' || entry.phase === 'closing'
 }
 
-const TURN_ORDER: readonly string[] = AUTOMATIC_DIALOG_ORDER
-
-// Until content commits, admission is re-derived without changing the item's place in line.
-function admitNext(registry: DialogRegistry): DialogRegistry {
-  // Stable priority sorting preserves the registry array's FIFO order.
-  const next = registry.dialogEntries.some(onScreen)
-    ? undefined
-    : registry.dialogEntries
-        .filter((entry) => entry.origin === 'automatic')
-        .sort((a, b) => TURN_ORDER.indexOf(a.kind) - TURN_ORDER.indexOf(b.kind))
-        .find((entry) =>
-          AUTOMATIC_DIALOG_ORDER.slice(0, TURN_ORDER.indexOf(entry.kind)).every(
-            (kind) => registry.startupSources[kind] !== 'pending'
-          )
-        )
-  let changed = false
-  const dialogEntries = registry.dialogEntries.map((entry) => {
-    if (entry.origin !== 'automatic' || onScreen(entry)) {
-      return entry
+// Uncommitted requests retain FIFO position; only their permission to render is derived.
+function nextAutomaticDialog(registry: DialogRegistry): DialogEntry | undefined {
+  if (registry.dialogEntries.some(onScreen)) {
+    return undefined
+  }
+  for (const kind of AUTOMATIC_DIALOG_ORDER) {
+    const next = registry.dialogEntries.find(
+      (entry) => entry.origin === 'automatic' && entry.kind === kind
+    )
+    if (next || registry.startupSources[kind] === 'pending') {
+      return next
     }
-    const phase = entry === next ? 'opening' : 'queued'
-    if (entry.phase === phase) {
-      return entry
-    }
-    changed = true
-    return { ...entry, phase } satisfies DialogEntry
-  })
-  return changed ? { ...registry, dialogEntries } : registry
+  }
+  return undefined
 }
 
 function putEntry(registry: DialogRegistry, entry: DialogEntry): DialogRegistry {
@@ -74,7 +60,7 @@ export function enqueueAutomaticDialog(
 ): DialogRegistry {
   return registry.dialogEntries.some((entry) => entry.token === token)
     ? registry
-    : admitNext(putEntry(registry, { token, kind, origin: 'automatic', phase: 'queued' }))
+    : putEntry(registry, { token, kind, origin: 'automatic', phase: 'queued' })
 }
 
 // User-requested automatic content opens immediately, reusing its queued or shown entry.
@@ -83,22 +69,23 @@ export function openDialogEntry(
   opened: { token: string; kind: string; origin: Exclude<DialogOrigin, 'automatic'> }
 ): DialogRegistry {
   const existing = registry.dialogEntries.find((entry) => entry.token === opened.token)
-  return admitNext(
-    putEntry(registry, { ...opened, phase: existing && onScreen(existing) ? 'visible' : 'opening' })
-  )
+  return putEntry(registry, {
+    ...opened,
+    phase: existing && onScreen(existing) ? 'visible' : 'opening'
+  })
 }
 
 export function endDialogEntry(registry: DialogRegistry, token: string): DialogRegistry {
-  return admitNext({
+  return {
     ...registry,
     dialogEntries: registry.dialogEntries.filter((entry) => entry.token !== token)
-  })
+  }
 }
 
 export function closeDialogEntry(registry: DialogRegistry, token: string): DialogRegistry {
   const entry = registry.dialogEntries.find((item) => item.token === token)
   return entry?.phase === 'visible'
-    ? admitNext(putEntry(registry, { ...entry, phase: 'closing' }))
+    ? putEntry(registry, { ...entry, phase: 'closing' })
     : entry?.phase === 'closing'
       ? registry
       : endDialogEntry(registry, token)
@@ -112,16 +99,16 @@ export function dialogContentMounted(
   origin: Exclude<DialogOrigin, 'automatic'> = 'user'
 ): DialogRegistry {
   const entry = registry.dialogEntries.find((item) => item.token === token)
-  if (entry?.phase === 'queued' || (entry && onScreen(entry))) {
+  if (selectDialogPhase(registry, token) === 'queued' || (entry && onScreen(entry))) {
     return registry
   }
-  return admitNext(putEntry(registry, { token, kind, origin, ...entry, phase: 'visible' }))
+  return putEntry(registry, { token, kind, origin, ...entry, phase: 'visible' })
 }
 
 export function dialogContentUnmounted(registry: DialogRegistry, token: string): DialogRegistry {
   const entry = registry.dialogEntries.find((item) => item.token === token)
   return entry?.origin === 'automatic' && entry.phase === 'visible'
-    ? admitNext(putEntry(registry, { ...entry, phase: 'queued' }))
+    ? putEntry(registry, { ...entry, phase: 'queued' })
     : endDialogEntry(registry, token)
 }
 
@@ -135,7 +122,7 @@ export function settleStartupSource(
   const next = itemToken ? enqueueAutomaticDialog(registry, itemToken, kind) : registry
   return next.startupSources[kind] !== 'pending'
     ? next
-    : admitNext({ ...next, startupSources: { ...next.startupSources, [kind]: answer } })
+    : { ...next, startupSources: { ...next.startupSources, [kind]: answer } }
 }
 
 export function selectDialogOnScreen(registry: DialogRegistry): boolean {
@@ -143,14 +130,19 @@ export function selectDialogOnScreen(registry: DialogRegistry): boolean {
 }
 
 export function selectDialogPhase(registry: DialogRegistry, token: string): DialogPhase | null {
-  return registry.dialogEntries.find((entry) => entry.token === token)?.phase ?? null
+  const entry = registry.dialogEntries.find((item) => item.token === token)
+  return entry?.phase === 'queued' && nextAutomaticDialog(registry) === entry
+    ? 'opening'
+    : (entry?.phase ?? null)
 }
 
 export function selectAdmittedDialog(
   registry: DialogRegistry,
   kind: AutomaticDialogKind
 ): DialogEntry | undefined {
-  return registry.dialogEntries.find((entry) => entry.kind === kind && entry.phase !== 'queued')
+  return registry.dialogEntries.find(
+    (entry) => entry.kind === kind && selectDialogPhase(registry, entry.token) !== 'queued'
+  )
 }
 
 export function selectTourParentToken(

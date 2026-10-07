@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { readStartupDiscovery } from '../startup/startup-discovery-read'
 import { useDialogDisposal } from '../lib/dialog-registry-entry'
 import { onOnboardingReopened } from '../components/onboarding/show-onboarding-event'
 import { shouldShowOnboarding } from '../components/onboarding/should-show-onboarding'
 import {
+  APP_OPEN_FEATURE_TIP_TOKEN,
   getFeatureTipsAppOpenDecision,
   isCliFeatureTipCompleted
 } from '../components/feature-tips/feature-tip-startup-gate'
@@ -14,6 +15,12 @@ import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import type { FeatureTipId } from '../../../shared/feature-tips'
 
 export type OnboardingGate = ReturnType<typeof useOnboardingAndFeatureTips>
+
+function disposeTip(): void {
+  const registry = useDialogRegistry.getState()
+  registry.endDialog(APP_OPEN_FEATURE_TIP_TOKEN)
+  registry.settleStartupSource('feature-tip', 'unavailable')
+}
 
 /**
  * Owns first-run education: the onboarding flow's visibility plus the one-per-session
@@ -26,14 +33,12 @@ export function useOnboardingAndFeatureTips() {
   const [appOpenTipId, setAppOpenTipId] = useState<FeatureTipId | null>(null)
   // Read early by startup for the tip check, before startup shows onboarding itself.
   const [tipCheckOnboarding, setTipCheckOnboarding] = useState<OnboardingState | null>(null)
-  const promptedThisSessionRef = useRef(false)
-  const suppressedByOnboardingThisSessionRef = useRef(false)
 
   const tipSource = useDialogRegistry((s) => s.startupSources['feature-tip'])
   const abandonTip = useCallback(() => {
     useDialogRegistry.getState().settleStartupSource('feature-tip', 'unavailable')
   }, [])
-  useDialogDisposal('feature-tip-discovery', abandonTip)
+  useDialogDisposal(APP_OPEN_FEATURE_TIP_TOKEN, disposeTip)
 
   const settings = useAppStore((s) => s.settings)
   const persistedUIReady = useAppStore((s) => s.persistedUIReady)
@@ -117,9 +122,7 @@ export function useOnboardingAndFeatureTips() {
       featureInteractions,
       onboarding: onboarding ?? tipCheckOnboarding,
       persistedUIReady,
-      promptedThisSession: promptedThisSessionRef.current,
       settings,
-      suppressedByOnboardingThisSession: suppressedByOnboardingThisSessionRef.current,
       webClient: isWebClientLocation()
     })
 
@@ -127,21 +130,15 @@ export function useOnboardingAndFeatureTips() {
       return
     }
 
-    if (featureTipsDecision.kind === 'suppress-for-onboarding') {
-      // Why: first-run users should finish onboarding without a second education modal in the same session.
-      suppressedByOnboardingThisSessionRef.current = true
-    }
-
     if (featureTipsDecision.kind !== 'open') {
-      // A tip already decided answers through its host, once queued.
-      if (!promptedThisSessionRef.current) {
-        useDialogRegistry.getState().settleStartupSource('feature-tip', 'none')
-      }
+      useDialogRegistry.getState().settleStartupSource('feature-tip', 'none')
       return
     }
 
-    promptedThisSessionRef.current = true
-    // Its host queues it and answers the tip check once it is queued.
+    // The owner queues its tip with the answer, even before its lazy host mounts.
+    useDialogRegistry
+      .getState()
+      .settleStartupSource('feature-tip', 'ready', APP_OPEN_FEATURE_TIP_TOKEN)
     setAppOpenTipId(featureTipsDecision.tipId)
   }, [
     featureTipCliInstalled,

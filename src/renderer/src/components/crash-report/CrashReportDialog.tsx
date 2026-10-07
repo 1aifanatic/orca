@@ -26,27 +26,21 @@ function crashReportToken(reportId: string): string {
   return `crash-report:${reportId}`
 }
 
-/** A report the app raises by itself. Each takes its own turn; a later one never replaces it. */
-type AutomaticCrashReport = {
-  report: CrashReportRecord
-  /** The launch prompt is one-shot: acknowledged once on screen, never before. */
-  acknowledgeOnShow: boolean
-}
-
 /** Help > Report Crash, opened over no report: the latest one, once loaded. */
 type UserDialog = { report: CrashReportRecord | null }
 
 export function CrashReportDialog(): React.JSX.Element | null {
   const promptedThisLaunch = useRef(false)
-  const acknowledgedTokens = useRef(new Set<string>())
+  const pendingLaunchAckToken = useRef<string | null>(null)
   const mountedRef = useMountedRef()
   const [userDialog, setUserDialog] = useState<UserDialog | null>(null)
   const [loading, setLoading] = useState(false)
-  const [reports, setReports] = useState<ReadonlyMap<string, AutomaticCrashReport>>(() => new Map())
+  const [reports, setReports] = useState<ReadonlyMap<string, CrashReportRecord>>(() => new Map())
   const admitted = useDialogRegistry((s) => selectAdmittedDialog(s, 'crash-report'))
   const admittedReport = admitted ? reports.get(admitted.token) : undefined
   const ownedTokens = useRef(new Set<string>())
   const disposeReports = useCallback(() => {
+    pendingLaunchAckToken.current = null
     const registry = useDialogRegistry.getState()
     for (const token of ownedTokens.current) {
       registry.endDialog(token)
@@ -55,16 +49,14 @@ export function CrashReportDialog(): React.JSX.Element | null {
   }, [])
   useDialogDisposal(USER_DIALOG_TOKEN, disposeReports)
 
-  const raiseCrashReport = useCallback((report: CrashReportRecord, acknowledgeOnShow: boolean) => {
+  const raiseCrashReport = useCallback((report: CrashReportRecord) => {
     const token = crashReportToken(report.id)
     // Repeated delivery of an identical ID must not reopen a dismissed report.
     if (ownedTokens.current.has(token)) {
       return
     }
     ownedTokens.current.add(token)
-    setReports((current) =>
-      current.has(token) ? current : new Map(current).set(token, { report, acknowledgeOnShow })
-    )
+    setReports((current) => (current.has(token) ? current : new Map(current).set(token, report)))
     useDialogRegistry.getState().enqueueAutomaticDialog(token, 'crash-report')
   }, [])
 
@@ -78,8 +70,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
       current?.report?.id === report.id ? { ...current, report } : current
     )
     setReports((current) => {
-      const entry = current.get(token)
-      return entry ? new Map(current).set(token, { ...entry, report }) : current
+      return current.has(token) ? new Map(current).set(token, report) : current
     })
   }, [])
 
@@ -119,7 +110,9 @@ export function CrashReportDialog(): React.JSX.Element | null {
       }
       const pending = result?.report
       if (pending) {
-        raiseCrashReport(pending, pending.status === 'pending')
+        pendingLaunchAckToken.current =
+          pending.status === 'pending' ? crashReportToken(pending.id) : null
+        raiseCrashReport(pending)
       }
       useDialogRegistry
         .getState()
@@ -133,7 +126,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
   useEffect(() => {
     const raisePending = (): void => {
       for (const report of takePendingReactErrorBoundaryReports()) {
-        raiseCrashReport(report, false)
+        raiseCrashReport(report)
       }
     }
     raisePending()
@@ -145,15 +138,11 @@ export function CrashReportDialog(): React.JSX.Element | null {
   // From the committed content: the lazy surface may load well after the turn is granted.
   const visibleToken = admitted?.phase === 'visible' ? admitted.token : null
   useEffect(() => {
-    const entry = visibleToken === null ? undefined : reports.get(visibleToken)
-    if (visibleToken === null || !entry?.acknowledgeOnShow) {
+    const report = visibleToken === null ? undefined : reports.get(visibleToken)
+    if (!report || visibleToken !== pendingLaunchAckToken.current) {
       return
     }
-    if (acknowledgedTokens.current.has(visibleToken)) {
-      return
-    }
-    acknowledgedTokens.current.add(visibleToken)
-    const { report } = entry
+    pendingLaunchAckToken.current = null
     // Why: startup crash prompts are one-shot. Never awaited: a failed write must not hold the
     // prompt back, and the dialog dismisses a still-pending report on close. Help > Report Crash
     // can still reopen dismissed unsent reports.
@@ -203,7 +192,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
   if (userDialog === null && !admittedReport) {
     return null
   }
-  const report = userDialog ? userDialog.report : (admittedReport?.report ?? null)
+  const report = userDialog ? userDialog.report : (admittedReport ?? null)
   const surfaceKey = userDialog ? USER_DIALOG_TOKEN : admitted?.token
   const open = userDialog !== null || admitted?.phase !== 'closing'
 

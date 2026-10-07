@@ -43,7 +43,6 @@ const NonGitFolderDialog = lazy(() => import('../components/sidebar/NonGitFolder
 const AddProjectFromFolderDialog = lazy(
   () => import('../components/sidebar/AddProjectFromFolderDialog')
 )
-const ProjectAddedDialog = lazy(() => import('../components/sidebar/ProjectAddedDialog'))
 const DeleteWorktreeDialog = lazy(() => import('../components/sidebar/DeleteWorktreeDialog'))
 const PreservedBranchBatchReviewModal = lazy(
   () => import('../components/sidebar/PreservedBranchBatchReviewModal')
@@ -211,11 +210,6 @@ export function AppRootSurfaces(props: {
         {activeModal === 'confirm-add-project-from-folder' ? (
           <ModalBoundary boundaryId="modal.confirm-add-project-from-folder" resetKey>
             <AddProjectFromFolderDialog />
-          </ModalBoundary>
-        ) : null}
-        {activeModal === 'project-added' ? (
-          <ModalBoundary boundaryId="modal.project-added" resetKey>
-            <ProjectAddedDialog />
           </ModalBoundary>
         ) : null}
       </Suspense>

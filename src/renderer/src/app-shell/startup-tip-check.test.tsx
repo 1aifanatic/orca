@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { useDialogRegistry } from '@/store/dialog-registry'
 import { resetDialogRegistryForTests } from '@/store/dialog-registry-test-state'
+import { APP_OPEN_FEATURE_TIP_TOKEN } from '../components/feature-tips/feature-tip-startup-gate'
 import { getDefaultSettings } from '../../../shared/constants'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { getDefaultOnboardingState } from '../../../shared/onboarding-defaults'
@@ -113,6 +114,7 @@ it('a failed settings read answers the tip check unavailable, so later dialogs d
   startup.fetchSettings.mockResolvedValue(undefined)
   await start()
   expect(tipCheck()).toBe('unavailable')
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('unavailable')
 })
 
 it('a failed onboarding read answers the tip check unavailable', async () => {
@@ -127,6 +129,7 @@ it('startup failing before onboarding is read answers the tip check unavailable'
   expect(startup.recover).toHaveBeenCalledTimes(1)
   expect(onboardingRead.get).not.toHaveBeenCalled()
   expect(tipCheck()).toBe('unavailable')
+  expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('unavailable')
 })
 
 it('the tip check has onboarding as soon as it is read, before startup shows onboarding', async () => {
@@ -137,8 +140,47 @@ it('the tip check has onboarding as soon as it is read, before startup shows onb
   expect(tipCheck()).toBe('pending')
   act(() => useAppStore.setState({ persistedUIReady: true }))
   await flush()
-  // Every tip is open for this profile, so it decides one and its host answers once queued.
+  // The decision owner queues a tip with its answer before its host mounts.
   expect(gate?.appOpenTipId).not.toBeNull()
+  expect(tipCheck()).toBe('ready')
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([
+    expect.objectContaining({ token: APP_OPEN_FEATURE_TIP_TOKEN })
+  ])
+})
+
+it('onboarding suppression remains terminal after onboarding finishes in the same session', async () => {
+  onboardingRead.get.mockResolvedValue(getDefaultOnboardingState())
+  await start()
+  act(() => useAppStore.setState({ persistedUIReady: true }))
+  await flush()
+  expect(tipCheck()).toBe('none')
+  act(() => gate?.applyStartupOnboardingState(existingUser))
+  await flush()
+  expect(tipCheck()).toBe('none')
+  expect(gate?.appOpenTipId).toBeNull()
+})
+
+it('losing a decided tip owner withdraws its candidate before the lazy host has mounted', async () => {
+  await start()
+  act(() => useAppStore.setState({ persistedUIReady: true }))
+  await flush()
+  expect(tipCheck()).toBe('ready')
+  await act(async () => root.render(null))
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([])
+})
+
+it('late source failure cannot withdraw a tip that has already been decided', async () => {
+  await start()
+  act(() => useAppStore.setState({ persistedUIReady: true }))
+  await flush()
+  const tipId = gate?.appOpenTipId
+  act(() => gate?.applyStartupTipCheckInputs(null))
+  await flush()
+  expect(tipCheck()).toBe('ready')
+  expect(gate?.appOpenTipId).toBe(tipId)
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([
+    expect.objectContaining({ token: APP_OPEN_FEATURE_TIP_TOKEN })
+  ])
 })
 
 it('with every tip already seen it answers none without waiting for the CLI status', async () => {
@@ -211,6 +253,11 @@ it.each(['settings', 'onboarding', 'ui', 'cli'] as const)(
       await act(async () => vi.advanceTimersByTimeAsync(STARTUP_DISCOVERY_READ_TIMEOUT_MS))
       expect(tipCheck()).toBe('unavailable')
       expect(gate?.appOpenTipId).toBeNull()
+      if (source === 'settings') {
+        expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe(
+          'unavailable'
+        )
+      }
     } finally {
       vi.useRealTimers()
     }

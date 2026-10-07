@@ -4,6 +4,7 @@ import { restoreLocalStructuredChatsAtStartup } from '@/runtime/local-structured
 import { syncZoomCSSVar } from '@/lib/ui-zoom'
 import { installCodexDetachedPaneRestartExecutor } from '@/components/terminal-pane/codex-detached-pane-restart-scheduler'
 import { useAppStore } from '../store'
+import { useDialogRegistry } from '../store/dialog-registry'
 import { reconcileHydratedWorkspaceTabModels } from './reconcile-hydrated-workspace-tab-models'
 import { useStartupActions } from './use-app-startup-actions'
 import { waitForNativeChatDraftsAtStartup } from './native-chat-draft-startup'
@@ -38,7 +39,6 @@ import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { ensureLocalRuntimeCapabilities } from '../runtime/local-runtime-capabilities'
 import { listRuntimeSessionHostIdsForStartup } from '../startup/startup-runtime-session-hosts'
-import { answerTipCheckOnOnboardingRead } from '../startup/startup-tip-check-inputs'
 
 /**
  * Runs the renderer's one-shot boot chain: settings, persisted UI, the local repo catalog,
@@ -90,8 +90,9 @@ export function useAppStartupHydration(
           actions.fetchSettings({ deferOwnerWorktreeVisibilityDefaults: true })
         )
         void readStartupDiscovery(settingsRead.then(() => true)).then((read) => {
-          if (read === null && !cancelled) {
+          if (!cancelled && (read === null || useAppStore.getState().settings === null)) {
             onTipCheckInputsRef.current(null)
+            useDialogRegistry.getState().settleStartupSource('native-chat-resume', 'unavailable')
           }
         })
         await settingsRead
@@ -109,7 +110,13 @@ export function useAppStartupHydration(
         const onboardingPromise = timeRendererStartupStep('onboarding-get', () =>
           window.api.onboarding.get()
         )
-        answerTipCheckOnOnboardingRead(onboardingPromise, onTipCheckInputsRef)
+        void readStartupDiscovery(onboardingPromise).then((onboarding) => {
+          if (!cancelled) {
+            onTipCheckInputsRef.current(
+              useAppStore.getState().settings === null ? null : onboarding
+            )
+          }
+        })
         // Why: await ui.get() (not overlap) so persisted view settings hydrate before the local catalog/session steps and first paint reflects them.
         const uiRead = timeRendererStartupStep('ui-get', () => window.api.ui.get())
         void readStartupDiscovery(uiRead).then((read) => {
@@ -355,6 +362,9 @@ export function useAppStartupHydration(
           })()
         }
       } catch (error) {
+        if (!cancelled && useAppStore.getState().settings === null) {
+          useDialogRegistry.getState().settleStartupSource('native-chat-resume', 'unavailable')
+        }
         await recoverFromDegradedStartup({
           error,
           uiHydrated,

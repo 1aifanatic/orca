@@ -6,7 +6,6 @@ export const NATIVE_CHAT_RESUME_DIALOG_TOKEN = 'native-chat-resume'
 
 let pendingOpen: NativeChatResumeDialogOrigin | null = null
 let userAsked = false
-let launchDecided = false
 const listeners = new Set<() => void>()
 
 function notify(): void {
@@ -44,19 +43,6 @@ export function getNativeChatResumeOnRestartDialogRequest(): NativeChatResumeDia
   return pendingOpen
 }
 
-/** This launch's read has asked, resumed by itself, or found nothing: its startup check answered. */
-export function markNativeChatResumeLaunchDecided(): void {
-  if (launchDecided) {
-    return
-  }
-  launchDecided = true
-  notify()
-}
-
-export function getNativeChatResumeLaunchDecided(): boolean {
-  return launchDecided
-}
-
 export function subscribeNativeChatResumeOnRestartDialog(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
@@ -68,5 +54,4 @@ export function subscribeNativeChatResumeOnRestartDialog(listener: () => void): 
 export function _resetNativeChatResumeOnRestartDialog(): void {
   pendingOpen = null
   userAsked = false
-  launchDecided = false
 }

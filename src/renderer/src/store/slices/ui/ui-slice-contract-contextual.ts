@@ -31,7 +31,6 @@ export type UISliceContextual = {
   clearAppearanceAccordionDeepLink: () => void
   activeModal:
     | 'none'
-    | 'create-worktree'
     | 'edit-meta'
     | 'delete-worktree'
     | 'preserved-branch-review'
@@ -43,7 +42,6 @@ export type UISliceContextual = {
     | 'quick-open'
     | 'worktree-palette'
     | 'workspace-cleanup'
-    | 'project-added'
     | 'worktree-visibility'
     | 'setup-guide'
     | 'feature-wall'

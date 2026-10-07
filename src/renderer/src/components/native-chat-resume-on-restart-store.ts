@@ -1,4 +1,8 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { readLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
+import { readStartupDiscovery } from '@/startup/startup-discovery-read'
+import { useDialogDisposal } from '@/lib/dialog-registry-entry'
+import { useDialogRegistry } from '@/store/dialog-registry'
 import { callStructuredAgentSession } from '@/runtime/structured-agent-session-client'
 import {
   getStructuredAgentSessionStatusFeed,
@@ -22,7 +26,8 @@ import {
 } from './native-chat-resume-unsent-requests'
 import {
   consumeNativeChatResumeOnRestartDialogRequest,
-  markNativeChatResumeLaunchDecided,
+  getNativeChatResumeOnRestartDialogRequest,
+  NATIVE_CHAT_RESUME_DIALOG_TOKEN,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 
@@ -393,24 +398,59 @@ async function loadLaunchOffer(): Promise<void> {
   void continueNativeChatRestartOffer(undefined, allResumeSessionIds(offered))
 }
 
-export function readNativeChatRestartOfferAtLaunch(): Promise<void> {
-  return (launch ??= loadLaunchOffer().finally(markNativeChatResumeLaunchDecided))
-}
-
 /**
  * The offer, fetching it on first use.
  *
  * `enabled` is a gate, not a trigger: settings arrive after the first render, so the fetch waits
  * for the flag rather than being lost when it was still undefined.
  */
-export function useNativeChatRestartOffer(enabled: boolean): NativeChatRestartOffer {
-  useEffect(() => {
-    if (enabled) {
-      // Fetched after mount, never awaited by startup: the workspace is usable first.
-      // Decided either way, so other launch prompts stop waiting on this read.
-      void readNativeChatRestartOfferAtLaunch()
+export function useNativeChatRestartOffer(
+  enabled: boolean,
+  options?: { ownsStartupDiscovery: boolean }
+): NativeChatRestartOffer {
+  const ownsStartupDiscovery = options?.ownsStartupDiscovery === true
+  const settingsLoaded = useAppStore((store) => store.settings !== null)
+  const persistedUIReady = useAppStore((store) => store.persistedUIReady)
+  const abandonDiscovery = useCallback(() => {
+    if (ownsStartupDiscovery) {
+      useDialogRegistry.getState().settleStartupSource('native-chat-resume', 'unavailable')
     }
-  }, [enabled])
+  }, [ownsStartupDiscovery])
+  useDialogDisposal('native-chat-resume-discovery', abandonDiscovery)
+  useEffect(() => {
+    const launchRead = enabled ? (launch ??= loadLaunchOffer()) : null
+    if (!ownsStartupDiscovery) {
+      return
+    }
+    if (!settingsLoaded) {
+      if (persistedUIReady) {
+        abandonDiscovery()
+      }
+      return
+    }
+    let cancelled = false
+    const read = launchRead ? launchRead.then(() => true) : readLocalStructuredAgentSessionsHeld()
+    void readStartupDiscovery(read).then((holds) => {
+      if (cancelled) {
+        return
+      }
+      if (holds === null) {
+        abandonDiscovery()
+      } else if (enabled || !holds) {
+        const asked = getNativeChatResumeOnRestartDialogRequest() !== null
+        useDialogRegistry
+          .getState()
+          .settleStartupSource(
+            'native-chat-resume',
+            asked ? 'ready' : 'none',
+            asked ? NATIVE_CHAT_RESUME_DIALOG_TOKEN : undefined
+          )
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [abandonDiscovery, enabled, ownsStartupDiscovery, persistedUIReady, settingsLoaded])
   return useSyncExternalStore(subscribe, getNativeChatRestartOffer, getNativeChatRestartOffer)
 }
 

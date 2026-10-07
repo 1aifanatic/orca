@@ -60,9 +60,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'open', tipId: 'orca-cli' })
@@ -76,28 +74,10 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: firstTimeOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'suppress-for-onboarding' })
-  })
-
-  it('does not open later in the same session after onboarding suppressed it', () => {
-    expect(
-      getFeatureTipsAppOpenDecision({
-        cliInstalled: false,
-        featureTipsSeenIds: [],
-        featureInteractions: {},
-        onboarding: existingUserOnboarding,
-        persistedUIReady: true,
-        promptedThisSession: false,
-        settings: makeSettings(),
-        suppressedByOnboardingThisSession: true,
-        webClient: false
-      })
-    ).toEqual({ kind: 'skip' })
   })
 
   it('opens the CLI tip after the voice tip was marked seen', () => {
@@ -108,9 +88,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'open', tipId: 'orca-cli' })
@@ -124,9 +102,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(true),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'open', tipId: 'orca-cli' })
@@ -140,9 +116,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'open', tipId: 'cmd-j-palette' })
@@ -156,9 +130,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'skip' })
@@ -172,9 +144,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(false),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'skip' })
@@ -188,9 +158,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'skip' })
@@ -204,9 +172,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'pending' })
@@ -220,9 +186,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'pending' })
@@ -241,9 +205,7 @@ describe('feature tip startup gate', () => {
         featureInteractions: {},
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'skip' })
@@ -259,9 +221,7 @@ describe('feature tip startup gate', () => {
         },
         onboarding: existingUserOnboarding,
         persistedUIReady: true,
-        promptedThisSession: false,
         settings: makeSettings(),
-        suppressedByOnboardingThisSession: false,
         webClient: false
       })
     ).toEqual({ kind: 'skip' })
@@ -295,9 +255,7 @@ describe('feature tip startup gate', () => {
       featureInteractions: {},
       onboarding: existingUserOnboarding,
       persistedUIReady: true,
-      promptedThisSession: false,
       settings: makeSettings(false, args.sessionSearchEnabled),
-      suppressedByOnboardingThisSession: false,
       webClient: args.webClient
     })
   }

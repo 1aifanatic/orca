@@ -27,7 +27,6 @@ import {
   NATIVE_CHAT_RESUME_DIALOG_TOKEN,
   subscribeNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
-import { useNativeChatResumeLaunchDiscovery } from './native-chat-resume-launch-discovery'
 import { DialogEntryScope, useAutomaticDialogEntry } from '@/lib/dialog-registry-entry'
 import {
   continueNativeChatRestartOffer,
@@ -69,7 +68,9 @@ function selectedByDefault(failure: ResumeFailure | undefined): boolean {
 
 export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
   const offerEnabled = useNativeChatRestartOfferEnabled()
-  const { candidates, failed, listedAt } = useNativeChatRestartOffer(offerEnabled)
+  const { candidates, failed, listedAt } = useNativeChatRestartOffer(offerEnabled, {
+    ownsStartupDiscovery: true
+  })
   const rows = useMemo<ResumeCandidate[]>(() => [...candidates, ...failed], [candidates, failed])
   const failureBySession = useMemo(
     () => new Map(failed.map((failure) => [failure.sessionId, failure])),
@@ -93,8 +94,6 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
         ? 'user'
         : 'automatic'
   )
-  // After the entry above, so a launch offer is queued before this machine's check answers.
-  useNativeChatResumeLaunchDiscovery(offerEnabled)
   const open = phase !== null && phase !== 'queued'
   const updateSettings = useAppStore((store) => store.updateSettings)
   const [dontAskAgain, setDontAskAgain] = useState(false)
