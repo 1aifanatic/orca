@@ -66,6 +66,9 @@ export function buildManagedWorktreeCreateArgs(
     setupDecision: params.setupDecision,
     createdWithAgent: params.createdWithAgent ?? params.startupAgent,
     ...provenance,
+    // Why: a person's client can tell its user about a local-base fallback; an automation run can't,
+    // so it keeps the network error, like the host's other unattended creates.
+    ...(provenance.automationProvenance ? {} : { allowLocalBaseFallback: true }),
     startup: params.startupCommand
       ? {
           command: params.startupCommand,

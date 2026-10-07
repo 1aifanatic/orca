@@ -515,7 +515,7 @@ describe('OrcaRuntimeService', () => {
     }
   })
 
-  it('creates from the local branch and reports the fallback when the remote base cannot be fetched', async () => {
+  it('creates from the local branch only when the caller opts in and the remote base cannot be fetched', async () => {
     const runtime = new OrcaRuntimeService(store)
     const createdWorktree = {
       path: '/tmp/workspaces/cli-offline-base',
@@ -548,10 +548,22 @@ describe('OrcaRuntimeService', () => {
       return { stdout: '', stderr: '' }
     })
     try {
+      await expect(
+        runtime.createManagedWorktree({
+          repoSelector: 'id:repo-1',
+          name: 'cli-offline-base',
+          baseBranch: 'origin/main'
+        })
+      ).rejects.toThrow(
+        'Could not refresh base ref "origin/main" from "origin". Check your network and try again.'
+      )
+      expect(addWorktree).not.toHaveBeenCalled()
+
       const result = await runtime.createManagedWorktree({
         repoSelector: 'id:repo-1',
         name: 'cli-offline-base',
-        baseBranch: 'origin/main'
+        baseBranch: 'origin/main',
+        allowLocalBaseFallback: true
       })
 
       expect(addWorktree).toHaveBeenCalledWith(

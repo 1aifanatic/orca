@@ -99,6 +99,7 @@ async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCr
     repoPath: repo.path,
     baseBranch,
     localWorktreeGitOptions: worktreeGitOptions,
+    allowLocalBaseFallback: request.allowLocalBaseFallback === true,
     resolveRemoteTrackingBase: args.resolveRemoteTrackingBase,
     hasRemoteTrackingRef: args.hasRemoteTrackingRef,
     refreshRemoteTrackingBase: args.refreshRemoteTrackingBase,

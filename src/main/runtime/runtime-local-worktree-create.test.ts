@@ -416,7 +416,7 @@ describe('runtime create base without a tracking ref', () => {
   it('creates from the local branch and reports it when the fetch fails', async () => {
     mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
 
-    const result = await createWorktree({ baseBranch: 'origin/main' })
+    const result = await createWorktree({ baseBranch: 'origin/main', allowLocalBaseFallback: true })
 
     expect(mocks.consume).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -432,7 +432,11 @@ describe('runtime create base without a tracking ref', () => {
   it('decides the base before branch reuse and conflict checks', async () => {
     mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
 
-    await createWorktree({ baseBranch: 'origin/main', branchNameOverride: 'app' })
+    await createWorktree({
+      baseBranch: 'origin/main',
+      branchNameOverride: 'app',
+      allowLocalBaseFallback: true
+    })
 
     expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.canCheckout.mock.invocationCallOrder[0]
@@ -445,14 +449,25 @@ describe('runtime create base without a tracking ref', () => {
     mocks.hasBase.mockResolvedValue(false)
     mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
 
-    await expect(createWorktree({ baseBranch: 'origin/main' })).rejects.toThrow(
+    await expect(
+      createWorktree({ baseBranch: 'origin/main', allowLocalBaseFallback: true })
+    ).rejects.toThrow(
       'Could not refresh base ref "origin/main" from "origin". Check your network and try again.'
     )
     expect(mocks.branchName).not.toHaveBeenCalled()
     expect(mocks.consume).not.toHaveBeenCalled()
   })
 
-  it('uses a local ref of the requested name without fetching, and reports it', async () => {
+  it('keeps the network error for a create that did not opt into the fallback', async () => {
+    mocks.refresh.mockResolvedValue({ ok: false, errorKind: 'git_error' })
+
+    await expect(createWorktree({ baseBranch: 'origin/main' })).rejects.toThrow(
+      'Could not refresh base ref "origin/main" from "origin". Check your network and try again.'
+    )
+    expect(mocks.consume).not.toHaveBeenCalled()
+  })
+
+  it('uses a local ref of the requested name without fetching or reporting a fallback', async () => {
     mocks.hasBase.mockResolvedValue(true)
 
     const result = await createWorktree({ baseBranch: 'origin/main' })
@@ -461,6 +476,6 @@ describe('runtime create base without a tracking ref', () => {
     expect(mocks.consume).toHaveBeenCalledWith(
       expect.objectContaining({ baseBranch: 'origin/main' })
     )
-    expect(result.baseFallback).toEqual({ requestedRef: 'origin/main', localRef: 'origin/main' })
+    expect(result).not.toHaveProperty('baseFallback')
   })
 })

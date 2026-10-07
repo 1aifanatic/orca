@@ -24,6 +24,7 @@ export async function resolveRuntimeLocalWorktreeCreateBase(args: {
   repoPath: string
   baseBranch: string
   localWorktreeGitOptions: LocalGitExecOptions
+  allowLocalBaseFallback: boolean
   resolveRemoteTrackingBase: (
     repoPath: string,
     baseBranch: string,
@@ -55,14 +56,9 @@ export async function resolveRuntimeLocalWorktreeCreateBase(args: {
     return { baseBranch, remoteTrackingBase, deferredRefresh: 'tracking_ref' }
   }
   if (hasNamedLocalBaseRef) {
-    // Why: a local ref of the requested name needs no fetch, but it still isn't the tracking ref
-    // the request named, so report it the way the desktop create does.
-    return {
-      baseBranch,
-      remoteTrackingBase: null,
-      deferredRefresh: null,
-      baseFallback: { requestedRef: remoteTrackingBase.base, localRef: baseBranch }
-    }
+    // Why: a local ref of the requested name (often a plain local branch like `team/feature`) is
+    // the base asked for, so there is nothing to fetch and no fallback to report.
+    return { baseBranch, remoteTrackingBase: null, deferredRefresh: null }
   }
   const refresh = await args.timing.time('refresh_base_ref', () =>
     args.refreshRemoteTrackingBase(repoPath, remoteTrackingBase, options)
@@ -70,7 +66,10 @@ export async function resolveRuntimeLocalWorktreeCreateBase(args: {
   if (!refresh.ok) {
     // Why: fetch first so an online create still gets the fresh remote base; only when that fails
     // (offline) does the local branch the remote names beat failing the create, and the result says so.
-    if (await hasLocalWorktreeBaseRef(repoPath, remoteTrackingBase.branch, options)) {
+    if (
+      args.allowLocalBaseFallback &&
+      (await hasLocalWorktreeBaseRef(repoPath, remoteTrackingBase.branch, options))
+    ) {
       return {
         baseBranch: remoteTrackingBase.branch,
         remoteTrackingBase: null,
