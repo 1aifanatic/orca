@@ -30,6 +30,7 @@ const LINK_WINDOW_MS = 5_000
  * - A second `load` of the child means it navigated away from its document: the frame is removed
  *   and the app told, so a replacement document never inherits the frame.
  * - It never sizes the frame from a report itself; the app decides heights and calls back.
+ * - Inline, the frame does not scroll, so a drag that starts on it scrolls the transcript.
  *
  * The child inherits this document's policy (a srcdoc frame has no URL of its own) and adds the
  * same policy from its own meta, so this document carries the visual policy too.
@@ -78,6 +79,9 @@ frame.setAttribute('sandbox', 'allow-scripts')
 frame.setAttribute('referrerpolicy', 'no-referrer')
 frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'; display-capture 'none'")
 frame.setAttribute('title', C.title)
+// iOS gives a scrollable frame its own scroll view, which takes a drag meant for the transcript;
+// inline the frame is sized to its content (full screen still scrolls).
+if (!C.fullscreen) frame.setAttribute('scrolling', 'no')
 var loads = 0
 frame.addEventListener('load', function () {
   loads += 1

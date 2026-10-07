@@ -81,6 +81,10 @@ describe('buildMobileNativeChatVisualHostDocument', () => {
     expect(document.indexOf('Content-Security-Policy')).toBeLessThan(document.indexOf('<script>'))
   })
 
+  it('keeps the inline frame from scrolling so a drag on it scrolls the transcript', () => {
+    expect(build('<p>hi</p>')).toContain("if (!C.fullscreen) frame.setAttribute('scrolling', 'no')")
+  })
+
   it('embeds the visual and title as script literals that cannot close the host script', () => {
     const document = build('</script><script>window.ReactNativeWebView.postMessage("x")</script>')
     // One script element: the host's own.
