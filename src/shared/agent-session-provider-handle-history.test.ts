@@ -79,6 +79,16 @@ describe('a resume moves the current attachment in place', () => {
     )
   })
 
+  it('refuses a persisted chain that names one link id twice, however far apart', () => {
+    const chain = [
+      link('s-1', 1, { origin: 'created' }),
+      replacing('s-2', 's-1', 2),
+      link('s-2', 3, { linkId: 'link-1' })
+    ]
+    expect(isAgentSessionProviderHandleChain(chain)).toBe(false)
+    expect(isAgentSessionProviderHandleChain(chain.slice(0, 2))).toBe(true)
+  })
+
   it('treats a retry at the same fence as the same proof', () => {
     const chain = [link('s-1', 1, { origin: 'created' }), link('s-1', 5)]
     expect(appendAgentSessionProviderHandleLink(chain, link('s-1', 5))).toEqual(chain)

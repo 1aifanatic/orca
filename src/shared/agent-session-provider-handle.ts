@@ -172,18 +172,20 @@ export function isAgentSessionProviderHandleChain(
   if (!Array.isArray(value)) {
     return false
   }
-  let validated: AgentSessionProviderHandleLink[] = []
+  // Linear: every record write re-validates its whole chain.
+  const validated: AgentSessionProviderHandleLink[] = []
+  const linkIds = new Set<string>()
   try {
     for (const link of value) {
-      if (!isAgentSessionProviderHandleLink(link)) {
+      if (!isAgentSessionProviderHandleLink(link) || linkIds.has(link.linkId)) {
         return false
       }
-      const next = appendLink(validated, link, true)
       // A persisted chain must name every link exactly once; retry elision belongs at append time.
-      if (next.length !== validated.length + 1) {
+      if (linkStep(validated.at(-1) ?? null, link, true) !== 'append') {
         return false
       }
-      validated = next
+      linkIds.add(link.linkId)
+      validated.push(link)
     }
     return true
   } catch {
@@ -218,12 +220,28 @@ function appendLink(
     throw new Error('agent_session_provider_handle_invalid')
   }
   const head = agentSessionProviderHandleChainHead(chain)
+  const step = linkStep(head, link, supersededHead)
+  if (step === 'retry') {
+    return [...chain]
+  }
+  if (step === 'supersede' && head) {
+    return supersedeUnsavedCreation(chain, head, link)
+  }
+  return appendNewLink(chain, link)
+}
+
+/** What `link` does to a chain whose head is `head`; throws when it may not follow it at all. */
+function linkStep(
+  head: AgentSessionProviderHandleLink | null,
+  link: AgentSessionProviderHandleLink,
+  supersededHead: boolean
+): 'append' | 'retry' | 'supersede' {
   if (!head) {
     // A replacement names the conversation before it, so it can never open a chain.
     if ((link.origin !== 'created' && link.origin !== 'adopted') || link.replaces !== undefined) {
       throw new Error('agent_session_provider_handle_invalid')
     }
-    return [link]
+    return 'append'
   }
   if (!isAgentSessionProviderHandleInNamespace(link.handle, head.handle)) {
     throw new Error('agent_session_provider_handle_provider_mismatch')
@@ -235,7 +253,7 @@ function appendLink(
     agentSessionProviderHandleRoot(link.handle) === agentSessionProviderHandleRoot(head.handle)
   if (link.origin === 'created') {
     if (link.supersedesKey !== undefined && !supersededHead) {
-      return supersedeUnsavedCreation(chain, head, link)
+      return 'supersede'
     }
     if (
       link.replaces === undefined ||
@@ -244,7 +262,7 @@ function appendLink(
     ) {
       throw new Error('agent_session_provider_handle_invalid')
     }
-    return appendNewLink(chain, link)
+    return 'append'
   }
   if (link.origin === 'adopted') {
     throw new Error('agent_session_provider_handle_invalid')
@@ -268,9 +286,9 @@ function appendLink(
     link.mintedAtFence === head.mintedAtFence
   ) {
     // Why: re-proving the same handle at the same fence is a retry, not a new identity.
-    return [...chain]
+    return 'retry'
   }
-  return appendNewLink(chain, link)
+  return 'append'
 }
 
 function appendNewLink(
@@ -308,7 +326,7 @@ function supersedeUnsavedCreation(
     throw new Error('agent_session_provider_handle_invalid')
   }
   const next = head.replaces ? { ...link, replaces: head.replaces } : link
-  // Why: in place, so a chat reopened unused across many restarts never grows toward the cap.
+  // Why: in place, so a chat reopened unused across many restarts never grows its history.
   return earlier.length === 0 ? [next] : appendLink(earlier, next, true)
 }
 
