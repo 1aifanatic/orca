@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ClaudeControlRequestError } from './claude-stream-json-connection'
 import { sessionFor } from './claude-structured-dispatch-test-support'
-import {
-  restoreClaudeStructuredSessionOptions,
-  restoredClaudeStructuredSessionOptions,
-  setClaudeStructuredOption
-} from './claude-structured-options'
+import { setClaudeStructuredOption } from './claude-structured-options'
 import { claudeStructuredSessionOptionsFrom } from './claude-structured-session-options'
 import type { ClaudeSession } from './claude-structured-session-state'
 import type { AgentChatPermissionMode } from '../../shared/agent-chat-permission-mode'
+import { claudeStructuredSpawnOptions } from './claude-structured-spawn-options'
+import { CLAUDE_STRUCTURED_BASE_OPTIONS } from './claude-structured-launch-resolution'
 
 function permissionSession(launchPermissionMode?: AgentChatPermissionMode) {
   const session = sessionFor()
@@ -75,23 +73,18 @@ describe('a Claude chat permission-mode write', () => {
 })
 
 describe('a Claude chat permission mode across a restart', () => {
-  it('restores the stored chat mode as its CLI mode on the next start', async () => {
-    const s = permissionSession('ask')
-    s.session.options = restoredClaudeStructuredSessionOptions({
-      model: 'sonnet',
-      permissionMode: 'accept-edits'
+  it.each([
+    ['ask', 'default'],
+    ['accept-edits', 'acceptEdits'],
+    ['auto', 'auto']
+  ] as const)('starts the stored %s chat mode as %s without a restore request', (mode, sdkMode) => {
+    const spawn = claudeStructuredSpawnOptions({
+      launch: { options: CLAUDE_STRUCTURED_BASE_OPTIONS, resumesTranscript: true },
+      saved: { model: 'sonnet', permissionMode: mode }
     })
-    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a model restore reads the catalog; an empty one admits any model.
-    s.session.connection = {
-      ...s.session.connection,
-      setModel: async () => undefined,
-      supportedModels: async () => []
-    } as ClaudeSession['connection']
-
-    await restoreClaudeStructuredSessionOptions(s.session, 50)
-
-    expect(s.setPermissionMode).toHaveBeenCalledWith('acceptEdits', { timeoutMs: 50 })
-    expect(s.session.options.get('permissionMode')).toBe('accept-edits')
+    expect(spawn.sdkOptions.permissionMode).toBe(sdkMode)
+    expect(spawn.options.get('permissionMode')).toBe(mode)
+    expect(spawn.skipped).toEqual([])
   })
 
   // The chat's mode is its own: switching models never touches it.

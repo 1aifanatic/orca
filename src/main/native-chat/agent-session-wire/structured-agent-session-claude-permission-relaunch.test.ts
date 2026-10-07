@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import { storedAgentChatPermissionMode } from '../../../shared/agent-chat-permission-mode'
+import { claudeStructuredPermissionOptions } from '../../claude/claude-structured-permission-mode'
 import { ClaudeStructuredSessionAdapter } from '../../claude/claude-structured-session-adapter'
 import {
   fakeClaude,
@@ -48,16 +49,17 @@ beforeEach(async () => {
     resolveLaunch: async () => {
       const record = store.getRecord(SESSION)
       const resumed = (record?.providerHandleChain.length ?? 0) > 0
+      const permissionMode = storedAgentChatPermissionMode('claude', record?.options) ?? 'ask'
       return {
         pathToClaudeCodeExecutable: 'claude',
-        options: {},
+        options: claudeStructuredPermissionOptions(permissionMode),
         cwd: root,
         claudeConfigDir: join(root, 'claude-home'),
         providerSessionId: PROVIDER_SESSION_ID,
         resumeLeafUuid: null,
         resumesTranscript: resumed,
         continuesChain: resumed,
-        permissionMode: storedAgentChatPermissionMode('claude', record?.options) ?? 'ask'
+        permissionMode
       }
     },
     onEvent: (event) => {
@@ -92,7 +94,7 @@ beforeEach(async () => {
     providerHandle: { kind: 'claude', sessionId: PROVIDER_SESSION_ID, leafUuid: null }
   })
   expect(await host.attach(CALLER, params)).toMatchObject({ ok: true })
-  await adapter.awaitStarted(SESSION)
+  await adapter.awaitOptionWritable(SESSION)
   await Promise.all(lifecycle)
 })
 
