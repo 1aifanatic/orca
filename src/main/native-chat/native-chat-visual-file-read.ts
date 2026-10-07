@@ -218,6 +218,6 @@ export async function readNativeChatVisualFile(
     if (error instanceof VisualReadRefusal) {
       return { ok: false, error: error.refusal }
     }
-    throw new Error(`visual_read_failed:${errorCode(error) ?? 'unknown'}`)
+    throw new Error(`visual_read_failed:${errorCode(error) ?? 'unknown'}`, { cause: error })
   }
 }

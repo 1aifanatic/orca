@@ -148,11 +148,9 @@ function measure() {
   pending = false
   var height = document.documentElement.getBoundingClientRect().height
   var body = document.body
-  if (body) {
-    // A page pinned to the frame (html/body height 100%) overflows its body instead of growing it.
-    var style = getComputedStyle(body)
-    height = Math.max(height, body.scrollHeight + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0))
-  }
+  // A page pinned to the frame (html/body height 100%) overflows its body instead of growing it;
+  // add only what overflows, so a padded full-height body does not grow the frame by itself.
+  if (body && body.scrollHeight > body.clientHeight) height += body.scrollHeight - body.clientHeight
   height = Math.ceil(height)
   if (height !== reported && height > 0) {
     reported = height

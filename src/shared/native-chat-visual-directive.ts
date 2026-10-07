@@ -162,7 +162,9 @@ export function withoutPendingNativeChatVisualDirectiveTail(text: string): strin
     : text
 }
 
-const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/
+// CommonMark fences: a backtick opener's info string has no backtick; a closer has no info string.
+const FENCE_OPEN = /^ {0,3}(`{3,}(?=[^`]*$)|~{3,})/
+const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/
 
 /**
  * Reply text for plain-text surfaces (a sidebar row, a notification, a title): the visual lines are
@@ -176,14 +178,15 @@ export function withoutNativeChatVisualDirectiveLines(text: string): string {
   let fence: string | null = null
   const kept: string[] = []
   for (const line of text.split('\n')) {
-    const opener = FENCE_OPEN.exec(line)?.[1]
     if (fence) {
-      if (opener && opener[0] === fence[0] && opener.length >= fence.length) {
+      const closer = FENCE_CLOSE.exec(line.replace(/\r$/, ''))?.[1]
+      if (closer && closer[0] === fence[0] && closer.length >= fence.length) {
         fence = null
       }
       kept.push(line)
       continue
     }
+    const opener = FENCE_OPEN.exec(line.replace(/\r$/, ''))?.[1]
     if (opener) {
       fence = opener
       kept.push(line)

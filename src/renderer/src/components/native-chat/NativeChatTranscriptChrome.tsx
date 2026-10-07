@@ -7,6 +7,7 @@ import type { NativeChatBlock } from '../../../../shared/native-chat-types'
 import { NativeChatCopyButton } from './NativeChatCopyButton'
 import { NativeChatMessageTimestamp } from './NativeChatMessageTimestamp'
 import { nativeChatProviderFrameSummary } from '../../../../shared/native-chat-provider-frame-summary'
+import { withoutNativeChatVisualDirectiveLines } from '../../../../shared/native-chat-visual-directive'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   getLocalImageCacheKey,
@@ -292,7 +293,8 @@ export function NativeChatAgentControls({
 }): React.JSX.Element {
   return (
     <div className={cn('flex items-center gap-1', className)}>
-      <NativeChatCopyButton text={markdown} />
+      {/* A visual line means nothing pasted outside Orca, so the copy leaves it out. */}
+      <NativeChatCopyButton text={withoutNativeChatVisualDirectiveLines(markdown)} />
       <button
         type="button"
         onClick={onScrollToTop}

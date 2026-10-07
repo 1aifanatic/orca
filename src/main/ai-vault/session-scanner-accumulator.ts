@@ -267,7 +267,7 @@ export function addPreviewContent(
   }
   addPreviewMessage(accumulator, {
     role,
-    text: extractPreviewContentText(content),
+    text: extractPreviewContentText(content, role),
     timestamp,
     // Content path already seeded above when capture is enabled.
     seedFirstUserPrompt: false,
