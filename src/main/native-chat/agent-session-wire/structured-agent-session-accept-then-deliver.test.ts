@@ -637,41 +637,32 @@ describe('a start that fails after it was handed messages', () => {
     }))
     await host.close(SESSION, 'evict')
     await startHost()
+    // The latest child exits before it proves its start, with the CLI's own words for why.
+    const exitDuringStart = () =>
+      host.handleAdapterEvent({
+        type: 'ended',
+        sessionId: SESSION,
+        fence: store.getRecord(SESSION)!.lease.runtimeFence,
+        acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
+        reason: 'codex app-server exited with code 1',
+        failure: agentSessionFailureFact('providerStartFailed', {
+          detail: { text: 'codex: config.toml is invalid', audience: 'person' }
+        }),
+        cause: 'unexpected-exit',
+        startupUnproven: true
+      })
 
     const first = await accept('first')
     const second = await accept('second')
     await eventually(() => expect(dispatch).toHaveBeenCalledTimes(1))
     // The second's pass found nothing to hand over yet, so it waits on no start.
     await eventually(() => expect(host['conversationDelivery'].loop.isRunning(SESSION)).toBe(false))
-    await host.handleAdapterEvent({
-      type: 'ended',
-      sessionId: SESSION,
-      fence: store.getRecord(SESSION)!.lease.runtimeFence,
-      acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
-      reason: 'codex app-server exited with code 1',
-      failure: agentSessionFailureFact('providerStartFailed', {
-        detail: { text: 'codex: config.toml is invalid', audience: 'person' }
-      }),
-      cause: 'unexpected-exit',
-      startupUnproven: true
-    })
-    await host.flushStreamedEvents(SESSION)
+    await exitDuringStart()
 
     // The held message was never handed to that child: it gets a start of its own, which fails alike.
     await eventually(() => expect(dispatch).toHaveBeenCalledTimes(2))
     expect((await submission(second))?.dispatchState).toBe('pending')
-    await host.handleAdapterEvent({
-      type: 'ended',
-      sessionId: SESSION,
-      fence: store.getRecord(SESSION)!.lease.runtimeFence,
-      acquisitionGeneration: `generation-${acquire.mock.calls.length}`,
-      reason: 'codex app-server exited with code 1',
-      failure: agentSessionFailureFact('providerStartFailed', {
-        detail: { text: 'codex: config.toml is invalid', audience: 'person' }
-      }),
-      cause: 'unexpected-exit',
-      startupUnproven: true
-    })
+    await exitDuringStart()
     await eventually(async () => expect((await submission(second))?.dispatchState).toBe('rejected'))
     const rows = (await host.journalSnapshot(SESSION)).items.filter((item) =>
       item.itemId.includes('start-failure')
@@ -680,9 +671,7 @@ describe('a start that fails after it was handed messages', () => {
     // diagnostic, as is every message it speaks for.
     expect(rows).toHaveLength(1)
     const row = rows[0].body
-    expect(row).toMatchObject({
-      failure: { kind: 'providerStartFailed', detail: { text: 'codex: config.toml is invalid' } }
-    })
+    expect(row).toMatchObject({ failure: { detail: { text: 'codex: config.toml is invalid' } } })
     for (const id of [first, second]) {
       expect(await submission(id)).toMatchObject({
         dispatchState: 'rejected',

@@ -94,7 +94,7 @@ export function structuredAgentSessionAwaitedCommand(
   journal: StructuredAgentSessionAwaitedCommandJournal
 ): AgentSessionConversationCommand | undefined {
   const awaited = structuredAgentSessionAwaitedMessage(journal)
-  return awaited && structuredAgentSessionMessageCommand(journal, awaited)
+  return awaited === undefined ? undefined : structuredAgentSessionMessageCommand(journal, awaited)
 }
 
 /** The command a message's own body sends: a start that fails it leaves that command to run again,

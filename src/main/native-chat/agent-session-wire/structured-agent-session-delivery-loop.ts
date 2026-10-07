@@ -5,20 +5,26 @@
 // for a session exactly while a message is queued there — accepted, not yet handed over — and no
 // child is running a conversation command: a command's turn takes no input, and the commit that
 // ends it wakes the loop again. Every step re-reads the journal and the conversation's child
-// record to decide, so there is no loop state to disagree with them. Each step is its own
-// serialized task. That is what lets a Stop that arrives while a start holds the queue withdraw the
-// queued messages before the handover that would have written them. Stop and the conversation's
-// close are the only other writers of a queued message: a child's exit only ends the child, and
-// this loop reads why. A message an earlier host process left queued is never handed over: the
-// open, or this loop's first step, settles it first (`journal-unsent-send-hold.ts`).
+// record to decide, so there is no loop state to disagree with them. Each step is its own serialized task. That is what lets a Stop
+// that arrives while a start holds the queue withdraw the queued messages before the handover that
+// would have written them. Stop and the conversation's close are the only other writers of a
+// queued message: a child's exit only ends the child, and this loop reads why. A message an
+// earlier host process left queued is never handed over: the open, or this loop's first step,
+// settles it first (`journal-unsent-send-hold.ts`).
 //
 // A start that fails is recorded on the one message it was for, and the messages behind it each
 // get their own start. Every write names a message fixed when its pass chose it, never the queue's
 // head read again after a failure.
 
+import type { AgentJournalSubmission } from '../../../shared/agent-session-journal-types'
+import type { AgentSessionRecord } from '../../../shared/agent-session-record'
+import type { AgentChildWorkView } from '../../../shared/agent-status-child-work-view'
 import { agentSessionFailureFact } from '../../../shared/agent-session-failure'
+import type { AgentSessionFailureWordsContext } from '../../../shared/agent-session-failure-words'
 import { holdUnsentSends } from '../agent-session-journal/journal-unsent-send-hold'
 import { structuredAgentSessionHostInstance } from './structured-agent-session-queued-pause'
+import type { StructuredAgentSessionAdapter } from './structured-agent-session-adapter'
+import type { StructuredAgentRegistry } from './structured-agent-registry'
 import type { StructuredAgentSessionStartFailureCause } from './structured-agent-session-failure-text'
 import type { StructuredAgentSessionResumeOutcome } from './structured-agent-session-agent-start'
 import type {
@@ -37,9 +43,39 @@ import {
 import { handOverSubmission } from './structured-agent-session-turns'
 import { structuredAgentSessionNextHandover } from './structured-agent-session-opening-send'
 import { structuredAgentSessionCommandRunning } from './structured-agent-session-command-turn'
-import type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
+import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 
-export type { StructuredAgentSessionDeliveryLoopDeps } from './structured-agent-session-delivery-loop-deps'
+export type StructuredAgentSessionDeliveryLoopDeps = {
+  sessions: ReadonlyMap<string, StructuredAgentSessionHostSession>
+  adapter: StructuredAgentSessionAdapter
+  agents: StructuredAgentRegistry
+  serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
+  /** A start step, tracked from enqueue so quit waits for the child it may produce. */
+  trackStart: <T>(start: Promise<T>) => Promise<T>
+  /** Gives the session a provider child if it has none; for a caller inside `serialize`. */
+  /** Starts a child for `startedFor`, the queued message at the head, if the session has none. */
+  ensureProviderChild: (
+    sessionId: string,
+    startedFor: string
+  ) => Promise<StructuredAgentSessionResumeOutcome>
+  /** Ends the session's child, whose start failed, as a host stop; for a caller inside `serialize`. */
+  endFailedStart: (sessionId: string) => Promise<void>
+  /** The fence the conversation's own writes carry; see `structuredAgentSessionConversationFence`. */
+  conversationFence: (sessionId: string) => number
+  /** Settles queued messages as a completed close of the chat does; false when that failed. */
+  holdClosed: (
+    sessionId: string,
+    which: (submission: AgentJournalSubmission) => boolean
+  ) => Promise<boolean>
+  /** Who the chat's failure sentences name. */
+  failureTextContext: (sessionId: string) => AgentSessionFailureWordsContext
+  logger: StructuredAgentSessionLogger
+  record: (sessionId: string) => AgentSessionRecord | null
+  readChildWork: (sessionId: string) => readonly AgentChildWorkView[] | undefined
+  /** A person's Stop is still ending the session's work: the status feed's own reading. */
+  stopping: (sessionId: string) => boolean
+  now: () => number
+}
 
 type Step = 'continue' | 'stop'
 
