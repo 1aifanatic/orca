@@ -50,8 +50,8 @@ export class AcpStructuredTurns {
   private readonly unsettled = new Set<string>()
   private readonly idleWaiters = new Set<() => void>()
   private ended = false
-  /** A Stop reached this session; it ends with the process. */
-  private stopping = false
+  /** When a Stop or a requested close reached this session; it ends with the process. */
+  private stopAt: number | null = null
 
   constructor(private readonly deps: AcpStructuredTurnsDeps) {}
 
@@ -63,7 +63,10 @@ export class AcpStructuredTurns {
    *  short (no steer's cancel, no Stop). */
   get acceptsRequests(): boolean {
     return (
-      !this.stopping && this.active !== null && this.steerCancelled !== this.active && !this.ended
+      this.stopAt === null &&
+      this.active !== null &&
+      this.steerCancelled !== this.active &&
+      !this.ended
     )
   }
 
@@ -74,12 +77,17 @@ export class AcpStructuredTurns {
 
   /** Whether a Stop reached this session. */
   get stopped(): boolean {
-    return this.stopping
+    return this.stopAt !== null
+  }
+
+  /** When the first Stop reached this session (`Date.now()` time); null before one did. */
+  get stoppedAt(): number | null {
+    return this.stopAt
   }
 
   /** A Stop: held steers never reach the agent, and nothing it asks from now on is shown. */
-  stop(): boolean {
-    this.stopping = true
+  stop(at: number): boolean {
+    this.stopAt ??= at
     return this.withdrawSteers()
   }
 

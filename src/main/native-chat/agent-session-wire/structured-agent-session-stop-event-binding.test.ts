@@ -103,27 +103,23 @@ async function queuedDraft(text: string): Promise<string> {
  *  behind the start, which the Stop holds. */
 async function stopOfStart(options: { held?: true } = {}): Promise<string | undefined> {
   rig = await createQueuedMessageTestRig({ starting: true, restartable: true })
-  let release: () => void = () => undefined
-  rig.awaitStarted.mockImplementation(
-    () => new Promise<undefined>((resolve) => (release = () => resolve(undefined)))
-  )
+  // Handed over at once to a child that never proves its start; nothing echoes it.
   rig.send('work on this')
   await eventually(() => expect(childPhase()).toBe('starting'))
   const held = options.held ? await queuedDraft('queued behind the start') : undefined
   expect(await rig.stop()).toMatchObject({ ok: true })
-  release()
   expect(stopEvents()).toEqual([expect.objectContaining({ reason: 'user-stop' })])
   expect(stopEvents()[0]).not.toHaveProperty('turnId')
   await eventually(() => expect(childPhase()).toBeUndefined())
-  rig.awaitStarted.mockImplementation(async () => undefined)
   return held
 }
 
 /** Orchestration mail after the Stop starts a new child and its turn runs. */
 async function mailTurn(): Promise<void> {
-  const mail = rig.send('mail for the worker', undefined, { internal: true })
+  const handedOver = rig.dispatch.mock.calls.length
+  const mail = rig.send('mail for the worker')
   await mail.result
-  await eventually(() => expect(rig.dispatch).toHaveBeenCalled())
+  await eventually(() => expect(rig.dispatch).toHaveBeenCalledTimes(handedOver + 1))
   await turnOpenedBy(mail.id)
 }
 
@@ -158,7 +154,7 @@ describe('a Stop of a start that never landed binds no later turn', () => {
 
   it('reads a mail turn the child end cut, with no verdict of its own, as news', async () => {
     await stopOfStart()
-    const mail = rig.send('mail for the worker', undefined, { internal: true })
+    const mail = rig.send('mail for the worker')
     await mail.result
     await turnOpenedBy(mail.id)
 
@@ -266,7 +262,7 @@ describe('a Stop pressed before its send opened a turn binds only the turn it st
   it('reads a mail turn the child end cut as news', async () => {
     const { stopped } = await stopBeforeTheTurnShowed()
     await rig.settleAccepted(stopped, 'stopped')
-    const mail = rig.send('mail for the lead', undefined, { internal: true })
+    const mail = rig.send('mail for the lead')
     await mail.result
     await turnOpenedBy(mail.id)
 
@@ -392,7 +388,7 @@ describe('a host stop with no turn running after a Stop that named none', () => 
     rig = await createQueuedMessageTestRig()
     await rig.workingSend()
     expect(await rig.stop()).toMatchObject({ ok: true })
-    const mail = rig.send('mail for the lead', undefined, { internal: true })
+    const mail = rig.send('mail for the lead')
     await mail.result
     await eventually(async () =>
       expect((await rig.submission(mail.id))?.handedOverAt).toBeDefined()
@@ -432,7 +428,7 @@ describe('a rewind that restates a turnless Stop', () => {
         body: { ...ended, completedAt: Date.now() + 1, outcome: 'cancellation' }
       }
     ])
-    const mail = rig.send('mail after the rewind', undefined, { internal: true })
+    const mail = rig.send('mail after the rewind')
     await mail.result
     await turnOpenedBy(mail.id)
     await turnOpenedBy(mail.id, 'interrupted')
