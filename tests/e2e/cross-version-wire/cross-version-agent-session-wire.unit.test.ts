@@ -43,6 +43,7 @@ import {
   structuredHostStub,
   turnItemSkew
 } from './structured-agent-session-host-fixture'
+import { STRUCTURED_CALLS } from './structured-agent-session-surface-manifest'
 import {
   attachParams,
   createIntentParams,
@@ -55,10 +56,9 @@ import {
   STATUS_FEED_METHOD,
   sendParams,
   SESSION,
-  STRUCTURED_CALLS,
   THREAD,
   WORKSPACE
-} from './structured-agent-session-surface-manifest'
+} from './structured-agent-session-surface-params'
 import {
   loadAgentSessionWireBuild,
   WORKING_TREE,

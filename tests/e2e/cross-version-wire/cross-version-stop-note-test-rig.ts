@@ -30,7 +30,7 @@ import {
   resetOperationIds,
   SESSION,
   THREAD
-} from './structured-agent-session-surface-manifest'
+} from './structured-agent-session-surface-params'
 import {
   loadAgentSessionWireBuild,
   type AgentSessionClientProjection,
