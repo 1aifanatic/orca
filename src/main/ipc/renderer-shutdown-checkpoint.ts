@@ -1,17 +1,13 @@
 import { ipcMain } from 'electron'
 import type { ExecutionHostId } from '../../shared/execution-host'
 import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
-import type { TerminalSleepingRecordChanges } from '../../shared/terminal-topology-slice'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { Store } from '../persistence'
 import { isFrozenOrcadSourceSessionPartition } from '../ssh/orcad-retained-source'
-import { commitTerminalSleepingRecords } from './session'
 
 type StageBeforeUnloadSyncArgs = {
   sessions: { state: WorkspaceSessionState; hostId?: ExecutionHostId }[]
   ui: Partial<PersistedUIState>
-  /** Changes the window had not sent yet, including the quit capture. */
-  sleepingRecords?: TerminalSleepingRecordChanges
 }
 
 export type ShutdownCheckpointResult = { ok: boolean }
@@ -53,8 +49,6 @@ export function registerRendererShutdownCheckpointHandler(store: Store): void {
   ipcMain.on('app:stage-before-unload-sync', (event, args: StageBeforeUnloadSyncArgs) => {
     let ok = true
     try {
-      // Before the stage, in the same handler, so the quit capture can't be lost to ordering.
-      commitTerminalSleepingRecords(store, args.sleepingRecords)
       for (const { state, hostId } of args.sessions) {
         if (!isFrozenOrcadSourceSessionPartition(store, hostId)) {
           store.stageWorkspaceSessionBeforeUnload(state, hostId)

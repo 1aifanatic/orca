@@ -84,8 +84,7 @@ export function createWebWorkspaceSessionApi(): Partial<PreloadApi> {
       // Why a no-op: web closes reach the host through its session-tab and terminal close RPCs.
       closeTerminalSurface: async () => ({}),
       // Web clients keep sleeping records in their saved session.
-      sleepTerminalLeaves: async () => {},
-      wakeTerminalLeaves: async () => {},
+      commitTerminalSleepingRecords: async () => {},
       // Why empty: web clients follow the host's session tabs, not main's topology push.
       getTerminalTopologySlices: async () => [],
       onTerminalTopologyChanged: () => () => {},

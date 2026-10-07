@@ -43,6 +43,7 @@ const TAB = 'tab-agent'
 const LEAF = '11111111-1111-4111-8111-111111111111'
 const PANE_KEY = `${TAB}:${LEAF}`
 const OTHER_PANE_KEY = `tab-elsewhere:${LEAF}`
+const COMMIT = 'session:commit-terminal-sleeping-records'
 
 const directories: string[] = []
 const stores: Store[] = []
@@ -138,21 +139,30 @@ async function setup() {
 
 describe('sleepLeaf and wakeLeaf', () => {
   const session = sessionWithAgentTab(getDefaultWorkspaceSession())
+  const home = (): boolean => true
 
   it('a partition takes only the records whose tab it holds', () => {
-    const next = sleepLeaf(session, {
-      [PANE_KEY]: record(PANE_KEY, 1),
-      [OTHER_PANE_KEY]: record(OTHER_PANE_KEY, 1)
-    })
+    const next = sleepLeaf(
+      session,
+      { [PANE_KEY]: record(PANE_KEY, 1), [OTHER_PANE_KEY]: record(OTHER_PANE_KEY, 1) },
+      home
+    )
     expect(next.sleepingAgentSessionsByPaneKey).toEqual({ [PANE_KEY]: record(PANE_KEY, 1) })
-    expect(sleepLeaf(session, { [OTHER_PANE_KEY]: record(OTHER_PANE_KEY, 1) })).toBe(session)
+    expect(sleepLeaf(session, { [OTHER_PANE_KEY]: record(OTHER_PANE_KEY, 1) }, home)).toBe(session)
   })
 
   it('an unchanged record or an absent wake leaves the session as it was', () => {
-    const held = sleepLeaf(session, { [PANE_KEY]: record(PANE_KEY, 1) })
-    expect(sleepLeaf(held, { [PANE_KEY]: record(PANE_KEY, 1) })).toBe(held)
-    expect(wakeLeaf(held, [OTHER_PANE_KEY])).toBe(held)
-    expect(wakeLeaf(held, [PANE_KEY]).sleepingAgentSessionsByPaneKey).toEqual({})
+    const held = sleepLeaf(session, { [PANE_KEY]: record(PANE_KEY, 1) }, home)
+    expect(sleepLeaf(held, { [PANE_KEY]: record(PANE_KEY, 1) }, home)).toBe(held)
+    expect(wakeLeaf(held, [OTHER_PANE_KEY], home)).toBe(held)
+    expect(wakeLeaf(held, [PANE_KEY], home).sleepingAgentSessionsByPaneKey).toEqual({})
+  })
+
+  it("a partition that is not the worktree's home is left alone, even holding the tab", () => {
+    const held = sleepLeaf(session, { [PANE_KEY]: record(PANE_KEY, 1) }, home)
+    const notHome = (): boolean => false
+    expect(sleepLeaf(session, { [PANE_KEY]: record(PANE_KEY, 2) }, notHome)).toBe(session)
+    expect(wakeLeaf(held, [PANE_KEY], notHome)).toBe(held)
   })
 })
 
@@ -160,46 +170,35 @@ describe('sleep and wake commits', () => {
   it('a sleep commit arrives in the next slice, and a wake removes it', async () => {
     const { invoke, nextPush } = await setup()
 
-    invoke('session:terminal-sleep-leaves', { [PANE_KEY]: record(PANE_KEY, 1) })
+    invoke(COMMIT, { sleep: { [PANE_KEY]: record(PANE_KEY, 1) }, wake: [] })
     expect((await nextPush())?.sleeping).toEqual({ [PANE_KEY]: record(PANE_KEY, 1) })
 
-    invoke('session:terminal-wake-leaves', [PANE_KEY])
+    invoke(COMMIT, { sleep: {}, wake: [PANE_KEY] })
     expect((await nextPush())?.sleeping).toEqual({})
   })
 
   it('drops a malformed record and a record whose tab main does not hold', async () => {
     const { store, invoke } = await setup()
 
-    invoke('session:terminal-sleep-leaves', {
-      [PANE_KEY]: { ...record(PANE_KEY, 1), agent: 'not-an-agent' },
-      [OTHER_PANE_KEY]: record(OTHER_PANE_KEY, 1)
+    invoke(COMMIT, {
+      sleep: {
+        [PANE_KEY]: { ...record(PANE_KEY, 1), agent: 'not-an-agent' },
+        [OTHER_PANE_KEY]: record(OTHER_PANE_KEY, 1)
+      }
     })
 
     expect(store.getWorkspaceSession().sleepingAgentSessionsByPaneKey ?? {}).toEqual({})
   })
 
-  it('the quit stage commits sleep records before staging the session', async () => {
-    const { directory, store } = await setup()
-    const quitRecord = record(PANE_KEY, 2)
-    const stage = store.stageWorkspaceSessionBeforeUnload.bind(store)
-    let heldAtStage: SleepingAgentSessionRecord | undefined
-    vi.spyOn(store, 'stageWorkspaceSessionBeforeUnload').mockImplementation((...args) => {
-      heldAtStage = store.getWorkspaceSession().sleepingAgentSessionsByPaneKey?.[PANE_KEY]
-      stage(...args)
-    })
-    // The window's session as it stages it today, quit capture included.
-    const window = structuredClone(store.getWorkspaceSession())
-    window.sleepingAgentSessionsByPaneKey = { [PANE_KEY]: quitRecord }
+  it('a committed quit capture survives a quit stage that carries no window session', async () => {
+    const { directory, store, invoke } = await setup()
+    const quitRecord = { ...record(PANE_KEY, 2), origin: 'quit' as const }
     const event: { returnValue?: unknown } = {}
 
-    syncHandlers.get('app:stage-before-unload-sync')!(event, {
-      sessions: [{ state: window }],
-      ui: {},
-      sleepingRecords: { sleep: { [PANE_KEY]: quitRecord }, wake: [] }
-    })
+    invoke(COMMIT, { sleep: { [PANE_KEY]: quitRecord }, wake: [] })
+    syncHandlers.get('app:stage-before-unload-sync')!(event, { sessions: [], ui: {} })
 
     expect(event.returnValue).toEqual({ ok: true })
-    expect(heldAtStage).toEqual(quitRecord)
     stores.splice(stores.indexOf(store), 1)
     const relaunched = await reopenTopologyStore(store, directory)
     stores.push(relaunched)

@@ -9,8 +9,8 @@ export const sessionApi = {
   set: (args, hostId) => ipcRenderer.invoke('session:set', args, hostId),
   patch: (args, hostId) => ipcRenderer.invoke('session:patch', args, hostId),
   closeTerminalSurface: (args) => ipcRenderer.invoke('session:close-terminal-surface', args),
-  sleepTerminalLeaves: (records) => ipcRenderer.invoke('session:terminal-sleep-leaves', records),
-  wakeTerminalLeaves: (paneKeys) => ipcRenderer.invoke('session:terminal-wake-leaves', paneKeys),
+  commitTerminalSleepingRecords: (changes) =>
+    ipcRenderer.invoke('session:commit-terminal-sleeping-records', changes),
   getTerminalTopologySlices: () => ipcRenderer.invoke('session:get-terminal-topology-slices'),
   onTerminalTopologyChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, slice: TerminalTopologySlice): void =>

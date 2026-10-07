@@ -8,7 +8,6 @@ import type {
 import type { MacCapturedDigitRowChord } from '../../shared/macos-symbolic-hotkeys'
 import type { MarkdownDocument } from '../../shared/filesystem-entry-types'
 import type { PersistedUIState } from '../../shared/persisted-ui-state-types'
-import type { TerminalSleepingRecordChanges } from '../../shared/terminal-topology-slice'
 import type { FloatingTerminalCwdRequest } from '../../shared/ui-chrome-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import type { KeyboardLayoutSnapshot } from '../../shared/keyboard-layout-snapshot'
@@ -32,8 +31,6 @@ export type AppApi = {
   stageBeforeUnloadSync: (args: {
     sessions: { state: WorkspaceSessionState; hostId?: ExecutionHostId }[]
     ui: Partial<PersistedUIState>
-    /** Committed before the sessions, so the quit capture can't be lost to ordering. */
-    sleepingRecords?: TerminalSleepingRecordChanges
   }) => void
   /** Resolves once the last staged checkpoint is durably written; rejects if that
    *  write failed, so a reload/restart can abort instead of losing the snapshot. */

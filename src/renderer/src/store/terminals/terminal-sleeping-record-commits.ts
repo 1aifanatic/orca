@@ -3,13 +3,10 @@ import type { TerminalSleepingRecordChanges } from '../../../../shared/terminal-
 
 type SleepingRecords = Record<string, SleepingAgentSessionRecord>
 
-/** Each pane's latest unsent value; null drops its record. */
-const unsent = new Map<string, SleepingAgentSessionRecord | null>()
-
 /**
- * Runs `write`, then sends main the window's own change to its sleeping-agent records, batched per
- * microtask. The store keeps the new value meanwhile; main's next topology push brings back the
- * committed one. Not for a mirror apply, a tab close or a pane move: main already holds those.
+ * Runs `write`, then sends main the window's own change to its sleeping-agent records. Sent at
+ * once: a window's IPC reaches main in order, so the quit capture lands before the quit stage.
+ * Not for a mirror apply, a tab close or a pane move: main already holds those.
  */
 export function commitSleepingRecordWrite(
   get: () => { sleepingAgentSessionsByPaneKey: SleepingRecords },
@@ -21,46 +18,19 @@ export function commitSleepingRecordWrite(
   if (before === after) {
     return
   }
-  const wasEmpty = unsent.size === 0
-  for (const [paneKey, record] of Object.entries(after)) {
-    if (before[paneKey] !== record) {
-      unsent.set(paneKey, record)
-    }
+  const changes: TerminalSleepingRecordChanges = {
+    sleep: Object.fromEntries(
+      Object.entries(after).filter(([paneKey, record]) => before[paneKey] !== record)
+    ),
+    wake: Object.keys(before).filter((paneKey) => !Object.hasOwn(after, paneKey))
   }
-  for (const paneKey of Object.keys(before)) {
-    if (!Object.hasOwn(after, paneKey)) {
-      unsent.set(paneKey, null)
-    }
+  if (Object.keys(changes.sleep).length === 0 && changes.wake.length === 0) {
+    return
   }
-  if (wasEmpty && unsent.size > 0) {
-    queueMicrotask(sendSleepingRecordChanges)
-  }
-}
-
-/** Empties the batch; the quit stage carries it synchronously instead. */
-export function takeSleepingRecordChanges(): TerminalSleepingRecordChanges {
-  const changes: TerminalSleepingRecordChanges = { sleep: {}, wake: [] }
-  for (const [paneKey, record] of unsent) {
-    if (record) {
-      changes.sleep[paneKey] = record
-    } else {
-      changes.wake.push(paneKey)
-    }
-  }
-  unsent.clear()
-  return changes
-}
-
-function sendSleepingRecordChanges(): void {
-  const { sleep, wake } = takeSleepingRecordChanges()
   // Why optional: an older preload can linger through an in-place renderer reload.
-  const session = globalThis.window?.api?.session
-  const warn = (error: unknown): void =>
+  void Promise.resolve(
+    globalThis.window?.api?.session?.commitTerminalSleepingRecords?.(changes)
+  ).catch((error: unknown) =>
     console.warn('[terminal-sleep] main did not commit sleeping records', error)
-  if (wake.length > 0) {
-    void Promise.resolve(session?.wakeTerminalLeaves?.(wake)).catch(warn)
-  }
-  if (Object.keys(sleep).length > 0) {
-    void Promise.resolve(session?.sleepTerminalLeaves?.(sleep)).catch(warn)
-  }
+  )
 }

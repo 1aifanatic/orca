@@ -271,10 +271,10 @@ describe('shutdownWorktreeTerminals (sleep) — agent status hygiene', () => {
     })
     expect(state.agentStatusByPaneKey[targetPaneKey]).toBeDefined()
     // Main got the sleep, then the rollback's record.
-    expect(mockApi.session.sleepTerminalLeaves.mock.calls.at(-2)?.[0]).toEqual({
+    expect(mockApi.session.commitTerminalSleepingRecords.mock.calls.at(-2)?.[0].sleep).toEqual({
       [targetPaneKey]: expect.objectContaining({ origin: 'worktree-sleep' })
     })
-    expect(mockApi.session.sleepTerminalLeaves.mock.calls.at(-1)?.[0]).toEqual({
+    expect(mockApi.session.commitTerminalSleepingRecords.mock.calls.at(-1)?.[0].sleep).toEqual({
       [targetPaneKey]: state.sleepingAgentSessionsByPaneKey[targetPaneKey]
     })
   })

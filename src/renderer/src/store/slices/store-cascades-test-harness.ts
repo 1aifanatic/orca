@@ -15,7 +15,7 @@ export type StoreCascadesMockApi = {
   settings: { get: Mock; set: Mock }
   runtimeEnvironments: { call: Mock }
   cache: { getGitHub: Mock; setGitHub: Mock }
-  session: { sleepTerminalLeaves: Mock; wakeTerminalLeaves: Mock }
+  session: { commitTerminalSleepingRecords: Mock }
 }
 
 /** window.api double shared by the store cascade suites; installs itself on globalThis. */
@@ -54,8 +54,7 @@ export function createStoreCascadesMockApi(): StoreCascadesMockApi {
       setGitHub: vi.fn().mockResolvedValue(undefined)
     },
     session: {
-      sleepTerminalLeaves: vi.fn().mockResolvedValue(undefined),
-      wakeTerminalLeaves: vi.fn().mockResolvedValue(undefined)
+      commitTerminalSleepingRecords: vi.fn().mockResolvedValue(undefined)
     }
   }
 

@@ -41,7 +41,6 @@ import type { AppState } from '../store/types'
 import type { DirectSshLayoutEdit } from '../store/terminals/terminal-state'
 import type { RemoteWorkspaceObservedPatchResult } from '../../../shared/remote-workspace-types'
 import { applyRemoteWorkspacePushStatus } from '../hooks/remote-workspace-push-status'
-import { takeSleepingRecordChanges } from '../store/terminals/terminal-sleeping-record-commits'
 
 // Why: bound the resume-record loss window on a hard kill to ~1 min; capture skips unchanged records so per-tick cost is negligible.
 const SLEEPING_AGENT_RESUME_CAPTURE_INTERVAL_MS = 60_000
@@ -246,12 +245,7 @@ export function useAppSessionPersistence(): void {
       // the user could only complete with SIGKILL, which loses strictly more (#15352).
       isDegradableShutdownInProgress: () =>
         isIntentionalAppRestartInProgress() || isWindowCloseCheckpointInProgress(),
-      // The quit capture's sleeping records ride the synchronous stage, not a later async send.
-      stageBeforeUnloadSync: (args) =>
-        window.api.app.stageBeforeUnloadSync({
-          ...args,
-          sleepingRecords: takeSleepingRecordChanges()
-        })
+      stageBeforeUnloadSync: (args) => window.api.app.stageBeforeUnloadSync(args)
     })
     const shutdownCheckpoint = createShutdownCheckpointGuard(
       shutdownCheckpointPersist.run,

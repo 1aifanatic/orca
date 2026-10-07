@@ -8,39 +8,8 @@ import type {
   WorkspaceSessionPatch,
   WorkspaceSessionState
 } from '../../shared/workspace-session-state-types'
-import type { TerminalSleepingRecordChanges } from '../../shared/terminal-topology-slice'
 import { sleepingAgentSessionsByPaneKeySchema } from '../../shared/workspace-session-sleeping-agents'
 import { sleepLeaf, wakeLeaf } from '../persistence/terminal-topology/terminal-topology-commit'
-import { isTerminalOwnerPartition } from '../persistence/terminal-topology/terminal-topology-membership'
-
-/** Commits a window's own sleeping-agent record changes; main's next topology push carries them. */
-export function commitTerminalSleepingRecords(
-  store: Store,
-  changes: { sleep?: unknown; wake?: unknown } | undefined
-): void {
-  const parsed: TerminalSleepingRecordChanges = {
-    sleep: sleepingAgentSessionsByPaneKeySchema.safeParse(changes?.sleep).data ?? {},
-    wake: Array.isArray(changes?.wake)
-      ? changes.wake.filter((paneKey) => typeof paneKey === 'string')
-      : []
-  }
-  if (Object.keys(parsed.sleep).length === 0 && parsed.wake.length === 0) {
-    return
-  }
-  for (const hostId of store.getWorkspaceSessionHostIds()) {
-    if (!isTerminalOwnerPartition(hostId) || isFrozenOrcadSourceSessionPartition(store, hostId)) {
-      continue
-    }
-    const session = store.getWorkspaceSession(hostId)
-    const next = sleepLeaf(wakeLeaf(session, parsed.wake), parsed.sleep)
-    if (next !== session) {
-      store.patchWorkspaceSession(
-        { sleepingAgentSessionsByPaneKey: next.sleepingAgentSessionsByPaneKey },
-        hostId
-      )
-    }
-  }
-}
 
 export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeService): void {
   // Why: renderer saves would change a fenced host's frozen source partition.
@@ -99,13 +68,31 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     }
   )
 
-  ipcMain.handle('session:terminal-sleep-leaves', (_event, sleep: unknown) => {
-    commitTerminalSleepingRecords(store, { sleep })
-  })
-
-  ipcMain.handle('session:terminal-wake-leaves', (_event, wake: unknown) => {
-    commitTerminalSleepingRecords(store, { wake })
-  })
+  // A window's own sleeping-agent changes, written in each worktree's home; main's push carries them.
+  ipcMain.handle(
+    'session:commit-terminal-sleeping-records',
+    (_event, changes: { sleep?: unknown; wake?: unknown } | undefined) => {
+      const sleep = sleepingAgentSessionsByPaneKeySchema.safeParse(changes?.sleep).data ?? {}
+      const wake = Array.isArray(changes?.wake)
+        ? changes.wake.filter((paneKey) => typeof paneKey === 'string')
+        : []
+      for (const hostId of store.getWorkspaceSessionHostIds()) {
+        if (isFenced(hostId)) {
+          continue
+        }
+        const isHome = (worktreeId: string): boolean =>
+          runtime.getTerminalTopologyHomeHostId(worktreeId) === hostId
+        const session = store.getWorkspaceSession(hostId)
+        const next = sleepLeaf(wakeLeaf(session, wake, isHome), sleep, isHome)
+        if (next !== session) {
+          store.patchWorkspaceSession(
+            { sleepingAgentSessionsByPaneKey: next.sleepingAgentSessionsByPaneKey },
+            hostId
+          )
+        }
+      }
+    }
+  )
 
   // Pull-after-listen: a window subscribes to pushes first, then reads what it missed.
   ipcMain.handle('session:get-terminal-topology-slices', () => runtime.getTerminalTopologySlices())

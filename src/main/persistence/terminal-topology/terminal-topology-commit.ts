@@ -47,32 +47,41 @@ export function moveLeaf(
   )
 }
 
-/** A sleeping agent's record lives beside its tab, in each partition that holds the tab. */
+/** A sleeping agent's record lands beside its tab, in its worktree's home partition. */
 export function sleepLeaf(
   session: WorkspaceSessionState,
-  records: Record<string, SleepingAgentSessionRecord>
+  records: Record<string, SleepingAgentSessionRecord>,
+  isHome: (worktreeId: string) => boolean
 ): WorkspaceSessionState {
   const current = session.sleepingAgentSessionsByPaneKey ?? {}
   const held = Object.entries(records).filter(
     ([paneKey, record]) =>
+      isHome(record.worktreeId) &&
       session.tabsByWorktree?.[record.worktreeId]?.some(
         (tab) => tab.id === parsePaneKey(paneKey)?.tabId
-      ) && !structuralValuesEqual(current[paneKey], record)
+      ) &&
+      !structuralValuesEqual(current[paneKey], record)
   )
   return held.length > 0
     ? { ...session, sleepingAgentSessionsByPaneKey: { ...current, ...Object.fromEntries(held) } }
     : session
 }
 
+/** Drops records from their worktree's home; the stored record names the worktree. */
 export function wakeLeaf(
   session: WorkspaceSessionState,
-  paneKeys: string[]
+  paneKeys: string[],
+  isHome: (worktreeId: string) => boolean
 ): WorkspaceSessionState {
   const current = session.sleepingAgentSessionsByPaneKey ?? {}
-  if (!paneKeys.some((paneKey) => Object.hasOwn(current, paneKey))) {
+  const woken = new Set(
+    paneKeys.filter(
+      (paneKey) => Object.hasOwn(current, paneKey) && isHome(current[paneKey].worktreeId)
+    )
+  )
+  if (woken.size === 0) {
     return session
   }
-  const woken = new Set(paneKeys)
   return {
     ...session,
     sleepingAgentSessionsByPaneKey: Object.fromEntries(
