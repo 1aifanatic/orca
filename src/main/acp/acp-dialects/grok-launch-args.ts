@@ -53,7 +53,7 @@ const RULES: Record<string, OptionRule> = {
   '--reasoning-effort': EFFORT,
   // A root `--no-leader` is an error beside `agent`; the agent takes its own.
   '--no-leader': { takesValue: false, apply: agentOption('--no-leader') },
-  // Agent Permissions sets the chat's permissions.
+  // Never from Arguments: Agent Permissions grants full access, else Grok's own config decides.
   '--permission-mode': VALUE,
   '--always-approve': SWITCH,
   '--yolo': SWITCH,
