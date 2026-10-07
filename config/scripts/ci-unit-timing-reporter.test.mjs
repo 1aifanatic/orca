@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -18,6 +18,91 @@ const report = (index, timings) => ({
 })
 
 describe('unit worker timing evidence', () => {
+  it.each([undefined, '1'])(
+    'streams queued imports and finished modules only when diagnostics are enabled (%s)',
+    (enabled) => {
+      const directory = mkdtempSync(join(tmpdir(), 'orca-unit-module-events-'))
+      const path = join(directory, 'nested', 'events.jsonl')
+      const output = vi.spyOn(console, 'log').mockImplementation(() => {})
+      vi.stubEnv('ORCA_UNIT_RUNNER_DIAGNOSTICS', enabled)
+      vi.stubEnv('ORCA_UNIT_MODULE_REPORT', path)
+      try {
+        const reporter = new UnitTimingReporter()
+        reporter.onInit({ config: { root: process.cwd() } })
+        const pending = {
+          moduleId: resolve('src/pending-import.test.ts'),
+          project: { name: 'bun' }
+        }
+        const complete = {
+          moduleId: resolve('src/complete.test.ts'),
+          project: { name: 'node-runtime' },
+          state: () => 'passed'
+        }
+        reporter.onTestModuleQueued(pending)
+        reporter.onTestModuleQueued(complete)
+        reporter.onTestModuleStart(complete)
+        reporter.onTestModuleEnd(complete)
+        if (enabled !== '1') {
+          expect(output).not.toHaveBeenCalled()
+          expect(existsSync(path)).toBe(false)
+          return
+        }
+        const events = readFileSync(path, 'utf8').trim().split('\n').map(JSON.parse)
+        expect(events).toEqual([
+          expect.objectContaining({
+            phase: 'queued',
+            file: 'src/pending-import.test.ts',
+            project: 'bun'
+          }),
+          expect.objectContaining({
+            phase: 'queued',
+            file: 'src/complete.test.ts',
+            project: 'node-runtime'
+          }),
+          expect.objectContaining({ phase: 'started', file: 'src/complete.test.ts' }),
+          expect.objectContaining({
+            phase: 'finished',
+            file: 'src/complete.test.ts',
+            state: 'passed'
+          })
+        ])
+        expect(events.every((event) => Number.isFinite(Date.parse(event.time)))).toBe(true)
+        expect(output.mock.calls.map(([line]) => line)).toEqual(
+          events.map((event) => `[unit-module] ${JSON.stringify(event)}`)
+        )
+      } finally {
+        output.mockRestore()
+        vi.unstubAllEnvs()
+        rmSync(directory, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it('keeps streaming when the diagnostic artifact cannot be written', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orca-unit-module-events-'))
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubEnv('ORCA_UNIT_RUNNER_DIAGNOSTICS', '1')
+    vi.stubEnv('ORCA_UNIT_MODULE_REPORT', directory)
+    try {
+      const reporter = new UnitTimingReporter()
+      reporter.onInit({ config: { root: process.cwd() } })
+      expect(() =>
+        reporter.onTestModuleQueued({
+          moduleId: resolve('src/pending.test.ts'),
+          project: { name: 'bun' }
+        })
+      ).not.toThrow()
+      expect(output).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledOnce()
+    } finally {
+      output.mockRestore()
+      warning.mockRestore()
+      vi.unstubAllEnvs()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
   it('counts each worker phase once, including imports of tests with cheap assertions', () => {
     expect(
       moduleDuration({
