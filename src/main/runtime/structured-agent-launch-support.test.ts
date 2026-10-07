@@ -7,10 +7,10 @@ import { acpLaunchSpecFor } from '../acp/acp-launch-specs'
 import { createAcpStructuredLaunchResolver } from '../acp/acp-structured-launch-resolution'
 import { structuredAgentSupportsLaunch } from './structured-agent-launch-support'
 
-const { probeAgentCliVersion, loginShell } = vi.hoisted(() => ({
-  probeAgentCliVersion: vi.fn(),
-  loginShell: { env: {} as Record<string, string> }
-}))
+const { probeAgentCliVersion, loginShell } = vi.hoisted(() => {
+  const loginShell: { env: Record<string, string> } = { env: {} }
+  return { probeAgentCliVersion: vi.fn(), loginShell }
+})
 vi.mock('../agent-cli-version-probe', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   probeAgentCliVersion
