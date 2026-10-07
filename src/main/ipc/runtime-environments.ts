@@ -18,6 +18,7 @@ import {
 import { registerRuntimeEnvironmentRecoveryHandler } from './runtime-environment-recovery-handler'
 import { advanceRuntimeEnvironmentTransportGeneration } from './runtime-environment-transport-generation'
 import { resetSharedControlSupport } from './runtime-environment-transport-routing'
+import { setRuntimeEnvironmentRemovalWatch } from './runtime-environment-removal-watch'
 import { RUNTIME_ENVIRONMENT_HANDLER_CHANNELS } from './runtime-environment-handler-channels'
 import { retirePairedRuntimeBrowserClientHostEnvironment } from '../browser/paired-runtime-browser-client-host-runtime'
 import { registerRuntimeEnvironmentBrowserClientHostHandler } from './runtime-environment-browser-client-host-handler'
@@ -104,6 +105,10 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
   })
   registerRuntimeEnvironmentRecoveryHandler()
   registerRuntimeEnvironmentPassiveHandlers(getUserDataPath)
+  setRuntimeEnvironmentRemovalWatch({
+    getUserDataPath,
+    retire: invalidateRuntimeEnvironmentTransport
+  })
   for (const environment of listEnvironments(getUserDataPath())) {
     if (!isRuntimeEnvironmentManuallyDisconnected(environment.id)) {
       getRuntimeEnvironmentStatusOwner(getUserDataPath(), environment.id).activate()
