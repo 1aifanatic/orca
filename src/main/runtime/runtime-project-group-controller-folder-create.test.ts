@@ -2,20 +2,49 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
 import { RuntimeProjectGroupController } from './runtime-project-group-controller'
+import type { RuntimeStore } from './runtime-store-contract'
 import { FolderWorkspaceCreateRefusedError } from '../project-groups/folder-workspace-create-refusal'
 
 const MISSING_PATH = join(tmpdir(), 'orca-folder-create-missing-9c1f')
 
+// The store members a folder create never reaches.
+const unused = (): never => {
+  throw new Error('unused')
+}
+
 function createController() {
-  const createFolderWorkspace = vi.fn()
+  const createFolderWorkspace = vi.fn<NonNullable<RuntimeStore['createFolderWorkspace']>>()
   const notifyReposChanged = vi.fn()
+  const store: RuntimeStore = {
+    getProjectGroups: () => [
+      {
+        id: 'group-1',
+        name: 'Notes',
+        parentPath: MISSING_PATH,
+        connectionId: null,
+        parentGroupId: null,
+        createdFrom: 'manual',
+        tabOrder: 0,
+        isCollapsed: false,
+        color: null,
+        createdAt: 1,
+        updatedAt: 1
+      }
+    ],
+    getRepos: () => [],
+    createFolderWorkspace,
+    getRepo: unused,
+    addRepo: unused,
+    updateRepo: unused,
+    getAllWorktreeMeta: unused,
+    getWorktreeMeta: unused,
+    setWorktreeMeta: unused,
+    removeWorktreeMeta: unused,
+    getGitHubCache: unused,
+    getSettings: unused
+  }
   const controller = new RuntimeProjectGroupController({
-    getStore: () =>
-      ({
-        getProjectGroups: () => [{ id: 'group-1', parentPath: MISSING_PATH, connectionId: null }],
-        getRepos: () => [],
-        createFolderWorkspace
-      }) as never,
+    getStore: () => store,
     resolveRepo: async () => {
       throw new Error('unused')
     },
