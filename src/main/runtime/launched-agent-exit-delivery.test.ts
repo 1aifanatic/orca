@@ -138,6 +138,11 @@ function launchedPane(answers: HostAnswers) {
     readLaunchedAgentForeground(controller, answers.host, ptyId, answers.agent ?? 'claude')
   const writes: string[] = []
   const runtime = {
+    getTerminalPromptRequestBinding: (_handle: string) => ({
+      ptyId: PTY_ID,
+      processIncarnation: 'launch-1',
+      generation: 1
+    }),
     waitForFreshWorkerComposer: async (
       _handle: string,
       agent: 'claude' | 'grok',
