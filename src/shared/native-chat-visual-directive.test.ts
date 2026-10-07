@@ -6,6 +6,7 @@ import {
   isNativeChatVisualFileName,
   isPendingNativeChatVisualDirectiveTail,
   parseNativeChatVisualDirectiveLine,
+  withoutNativeChatVisualDirectiveLines,
   withoutPendingNativeChatVisualDirectiveTail
 } from './native-chat-visual-directive'
 
@@ -171,6 +172,33 @@ describe('streaming tail', () => {
     // A finished line (followed by a newline) is no longer the tail.
     expect(withoutPendingNativeChatVisualDirectiveTail('::orca-visual{file="a.html"}\n')).toBe(
       '::orca-visual{file="a.html"}\n'
+    )
+  })
+})
+
+describe('withoutNativeChatVisualDirectiveLines', () => {
+  const LINE = '::orca-visual{file="usage.html" title="Usage"}'
+
+  it('drops visual lines and the blank lines they leave behind', () => {
+    expect(withoutNativeChatVisualDirectiveLines(`Here it is.\n\n${LINE}\n\nTuesday peaked.`)).toBe(
+      'Here it is.\n\nTuesday peaked.'
+    )
+    expect(withoutNativeChatVisualDirectiveLines(`Intro\r\n${LINE}\r\n`)).toBe('Intro')
+    expect(withoutNativeChatVisualDirectiveLines(LINE)).toBe('')
+  })
+
+  it('keeps the line inside fenced code and anything that is not a whole directive line', () => {
+    const fenced = `\`\`\`\n${LINE}\n\`\`\`\nafter`
+    expect(withoutNativeChatVisualDirectiveLines(fenced)).toBe(fenced)
+    const tilde = `~~~~\n${LINE}\n~~~\nstill code\n~~~~`
+    expect(withoutNativeChatVisualDirectiveLines(tilde)).toBe(tilde)
+    expect(withoutNativeChatVisualDirectiveLines(`> ${LINE}`)).toBe(`> ${LINE}`)
+    expect(withoutNativeChatVisualDirectiveLines(`See ${LINE}`)).toBe(`See ${LINE}`)
+  })
+
+  it('returns text without a marker untouched', () => {
+    expect(withoutNativeChatVisualDirectiveLines('  plain\n\n\n text  ')).toBe(
+      '  plain\n\n\n text  '
     )
   })
 })

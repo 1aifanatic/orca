@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSessionRecord } from '../../../../shared/agent-session-record'
 import { agentSessionRecordFixture } from '../../../../shared/agent-session-record.test-fixture'
 import { setStructuredAgentSessionHost } from '../../../native-chat/agent-session-wire/structured-agent-session-registry'
@@ -23,6 +23,9 @@ function call(method: string, params: unknown, client: CallClient) {
 }
 
 let stateDirectory: string
+vi.mock('../../../orca-profiles/profile-storage-paths', () => ({
+  getProfileUserDataPath: () => stateDirectory
+}))
 let record: AgentSessionRecord | null
 
 beforeEach(async () => {
@@ -31,8 +34,7 @@ beforeEach(async () => {
   setStructuredAgentSessionHost(
     Object.assign(hostStub(), {
       deps: {
-        store: { getRecord: (id: string) => (record?.sessionId === id ? record : null) },
-        journalDatabase: { stateDirectory }
+        store: { getRecord: (id: string) => (record?.sessionId === id ? record : null) }
       }
     })
   )

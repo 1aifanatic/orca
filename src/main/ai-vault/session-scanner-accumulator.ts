@@ -230,7 +230,7 @@ export function addPreviewMessage(
     () => (args.text ? normalizeFullFirstUserPromptText(args.text) : null),
     args.seedFirstUserPrompt
   )
-  const text = normalizePreviewText(args.text ?? '')
+  const text = normalizePreviewText(args.text ?? '', args.role)
   if (!text) {
     return
   }
