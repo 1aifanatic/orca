@@ -12,7 +12,10 @@ export type TerminalLayoutSetRequest = z.infer<typeof TerminalLayoutSetRequestSc
 
 export type TerminalLayoutSetResult =
   | { status: 'committed' }
-  | { status: 'refused'; reason: 'invalid_request' | 'tab_not_held' | 'leaves_differ' }
+  | {
+      status: 'refused'
+      reason: 'invalid_request' | 'home_unresolved' | 'tab_not_held' | 'leaves_differ'
+    }
 
 /** Null for anything malformed. */
 export function parseTerminalLayoutSetRequest(value: unknown): TerminalLayoutSetRequest | null {

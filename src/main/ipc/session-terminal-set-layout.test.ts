@@ -23,6 +23,8 @@ const setTerminalTabLayout = vi.fn(async () => {
 })
 // Names the push only once the commit has landed.
 const settleTerminalTopology = vi.fn(() => (committed ? 9 : 0))
+let homeHostId: string | null = 'local'
+const getTerminalTopologyHomeHostId = vi.fn(() => homeHostId)
 
 function setLayout(args: unknown): unknown {
   return mocks.handlers.get('session:terminal-set-layout')?.({}, args)
@@ -32,16 +34,17 @@ beforeEach(() => {
   mocks.handlers.clear()
   setTerminalTabLayout.mockClear()
   committed = false
+  homeHostId = 'local'
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reaches only the store's layout commit.
   const store = { setTerminalTabLayout } as never
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reaches only the topology settle.
-  registerSessionHandlers(store, { settleTerminalTopology } as never)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reaches only the home lookup and the topology settle.
+  registerSessionHandlers(store, { getTerminalTopologyHomeHostId, settleTerminalTopology } as never)
 })
 
 describe('session:terminal-set-layout', () => {
   it('replies with the publishSeq of the push holding the commit', async () => {
     await expect(setLayout(REQUEST)).resolves.toEqual({ status: 'committed', publishSeq: 9 })
-    expect(setTerminalTabLayout).toHaveBeenCalledWith(REQUEST)
+    expect(setTerminalTabLayout).toHaveBeenCalledWith(REQUEST, 'local')
     expect(settleTerminalTopology).toHaveBeenCalledWith(REQUEST.worktreeId)
   })
 
@@ -49,6 +52,16 @@ describe('session:terminal-set-layout', () => {
     await expect(setLayout({ ...REQUEST, root: { type: 'leaf' } })).resolves.toEqual({
       status: 'refused',
       reason: 'invalid_request'
+    })
+    expect(setTerminalTabLayout).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing when the worktree has no resolvable home partition', async () => {
+    homeHostId = null
+    await expect(setLayout(REQUEST)).resolves.toEqual({
+      status: 'refused',
+      reason: 'home_unresolved',
+      publishSeq: 0
     })
     expect(setTerminalTabLayout).not.toHaveBeenCalled()
   })

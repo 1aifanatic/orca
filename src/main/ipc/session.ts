@@ -76,7 +76,11 @@ export function registerSessionHandlers(store: Store, runtime: OrcaRuntimeServic
     if (!request) {
       return { status: 'refused', reason: 'invalid_request' } satisfies TerminalLayoutSetResult
     }
-    const result = await store.setTerminalTabLayout(request)
+    // One home per worktree; an unresolved one is unverifiable, so nothing is written.
+    const hostId = runtime.getTerminalTopologyHomeHostId(request.worktreeId)
+    const result: TerminalLayoutSetResult = hostId
+      ? await store.setTerminalTabLayout(request, hostId)
+      : { status: 'refused', reason: 'home_unresolved' }
     return { ...result, publishSeq: runtime.settleTerminalTopology(request.worktreeId) }
   })
 

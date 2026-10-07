@@ -51,18 +51,22 @@ export function moveLeaf(
   )
 }
 
-/** Replaces a tab's tree with the user's same-pane geometry edit; any other tree is refused. */
+/** Replaces a tab's tree in `hostId`, the worktree's home, with the user's same-pane geometry edit. */
 export function setLayout(
   request: TerminalLayoutSetRequest,
+  hostId: ExecutionHostId,
   context: TerminalTopologyCommitContext
 ): () => DurableProfileStateMutation<TerminalLayoutSetResult> {
   return traced(
     'set_layout',
     () => {
-      const planned = planTerminalLayoutSet(partitionsOf(context), request)
-      return planned.sessions.length === 0
-        ? { value: planned.result, persist: false }
-        : { value: planned.result, rollback: writePartitions(planned.sessions, context) }
+      const planned = planTerminalLayoutSet(context.getSession(hostId), request)
+      return planned.session
+        ? {
+            value: planned.result,
+            rollback: writePartitions([{ hostId, session: planned.session }], context)
+          }
+        : { value: planned.result, persist: false }
     },
     (result) => (result.status === 'refused' ? result.reason : undefined)
   )
@@ -127,10 +131,6 @@ function writeRestorable<V>(read: () => V, write: (value: V) => void, next: V): 
   }
 }
 
-function partitionsOf(context: TerminalTopologyCommitContext): TerminalSessionPartition[] {
-  return context.hostIds().map((hostId) => ({ hostId, session: context.getSession(hostId) }))
-}
-
 /** Puts each planned partition in place; the returned rollback restores them. */
 function writePartitions(
   sessions: readonly TerminalSessionPartition[],
@@ -151,7 +151,10 @@ function commitLeafMove(
   context: TerminalTopologyCommitContext
 ): DurableProfileStateMutation<TerminalLeafMoveResult> {
   const { state } = context
-  const planned = planTerminalLeafMove(partitionsOf(context), request)
+  const planned = planTerminalLeafMove(
+    context.hostIds().map((hostId) => ({ hostId, session: context.getSession(hostId) })),
+    request
+  )
   if (planned.sessions.length === 0) {
     return { value: planned.result, persist: false }
   }

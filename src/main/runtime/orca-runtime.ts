@@ -14,6 +14,7 @@ import type { AgentSessionRecordStore } from './agent-session-record-store'
 import { peekOpenedAgentSessionRecordStore } from './agent-session-record-store-slot'
 import { createAgentLaunchRecordWarmupGate } from './agent-launch-record-warmup-gate'
 import { registerDetectedWorktreeScanInvalidation } from '../ipc/worktrees/listing/register-detected-worktree-scan-invalidation'
+import type { ExecutionHostId } from '../../shared/execution-host'
 import type { TerminalTopologySlice } from '../../shared/terminal-topology-slice'
 import { TerminalTopologyPublisher } from './terminal-topology-publisher'
 
@@ -36,6 +37,11 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
   /** Every worktree's current terminal layout, for a window that missed pushes while loading. */
   getTerminalTopologySlices(): TerminalTopologySlice[] {
     return this.terminalTopology.snapshot()
+  }
+
+  /** Where main writes a worktree's terminal layout: the partition its push projects. */
+  getTerminalTopologyHomeHostId(worktreeId: string): ExecutionHostId | null {
+    return this.workspaceSessions.getTerminalTopologyHomeHostId(worktreeId)
   }
 
   /** The publishSeq of the push holding every topology write made so far, for a reply to name. */

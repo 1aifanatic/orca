@@ -56,7 +56,7 @@ function session(root: TerminalPaneLayoutNode): WorkspaceSessionState {
 }
 
 function profile(partitions: [ExecutionHostId, WorkspaceSessionState][]) {
-  const state: Parameters<typeof setLayout>[1]['state'] = {
+  const state: Parameters<typeof setLayout>[2]['state'] = {
     workspaceSession: session(leaf(C)),
     workspaceSessionsByHostId: {},
     ui: getDefaultUIState(),
@@ -64,9 +64,12 @@ function profile(partitions: [ExecutionHostId, WorkspaceSessionState][]) {
   }
   const dirty = new Set<string>()
   const getSession = (hostId: ExecutionHostId): WorkspaceSessionState =>
-    (hostId === 'local' ? state.workspaceSession : state.workspaceSessionsByHostId?.[hostId]) ??
-    session(leaf(C))
-  const context: Parameters<typeof setLayout>[1] = {
+    (hostId === 'local' ? state.workspaceSession : state.workspaceSessionsByHostId?.[hostId]) ?? {
+      ...session(leaf(C)),
+      tabsByWorktree: {},
+      terminalLayoutsByTabId: {}
+    }
+  const context: Parameters<typeof setLayout>[2] = {
     state,
     hostIds: () => partitions.map(([hostId]) => hostId),
     getSession,
@@ -84,7 +87,7 @@ describe('setLayout', () => {
     const { context, dirty, rootOf, state } = profile([['local', session(split(leaf(A), leaf(B)))]])
     const dragged = split(leaf(A), leaf(B), 0.3)
 
-    const result = setLayout({ worktreeId: WT, tabId: TAB, root: dragged }, context)()
+    const result = setLayout({ worktreeId: WT, tabId: TAB, root: dragged }, 'local', context)()
 
     expect(result.value).toEqual({ status: 'committed' })
     expect(result.persist).not.toBe(false)
@@ -99,7 +102,9 @@ describe('setLayout', () => {
   it('takes a reordered tree, which keeps the same panes', () => {
     const { context, rootOf } = profile([['local', session(split(leaf(A), leaf(B)))]])
     const swapped = split(leaf(B), leaf(A))
-    expect(setLayout({ worktreeId: WT, tabId: TAB, root: swapped }, context)().value).toEqual({
+    expect(
+      setLayout({ worktreeId: WT, tabId: TAB, root: swapped }, 'local', context)().value
+    ).toEqual({
       status: 'committed'
     })
     expect(rootOf('local')).toEqual(swapped)
@@ -114,7 +119,7 @@ describe('setLayout', () => {
     const before = split(leaf(A), leaf(B))
     const { context, dirty, rootOf } = profile([['local', session(before)]])
 
-    const result = setLayout({ worktreeId: WT, tabId: TAB, root }, context)()
+    const result = setLayout({ worktreeId: WT, tabId: TAB, root }, 'local', context)()
 
     expect(result.value).toEqual({ status: 'refused', reason: 'leaves_differ' })
     expect(result.persist).toBe(false)
@@ -124,32 +129,45 @@ describe('setLayout', () => {
 
   it('refuses a tab main does not hold', () => {
     const { context } = profile([['local', session(split(leaf(A), leaf(B)))]])
-    const result = setLayout({ worktreeId: WT, tabId: 'other', root: leaf(A) }, context)()
+    const result = setLayout({ worktreeId: WT, tabId: 'other', root: leaf(A) }, 'local', context)()
     expect(result.value).toEqual({ status: 'refused', reason: 'tab_not_held' })
   })
 
   it('writes nothing for the tree main already holds', () => {
     const root = split(leaf(A), leaf(B), 0.4)
     const { context, dirty } = profile([['local', session(root)]])
-    const result = setLayout({ worktreeId: WT, tabId: TAB, root: structuredClone(root) }, context)()
+    const result = setLayout(
+      { worktreeId: WT, tabId: TAB, root: structuredClone(root) },
+      'local',
+      context
+    )()
     expect(result).toEqual({ value: { status: 'committed' }, persist: false })
     expect(dirty.size).toBe(0)
   })
 
-  it('updates every owner partition holding the tab, never a runtime: mirror', () => {
+  it('writes only the home partition, leaving a stray copy of the tab untouched', () => {
     const before = split(leaf(A), leaf(B))
-    const { context, rootOf } = profile([
+    const { context, dirty, rootOf } = profile([
       ['local', session(before)],
-      ['ssh:target', session(before)],
-      ['runtime:env', session(before)]
+      ['ssh:target', session(before)]
     ])
     const dragged = split(leaf(A), leaf(B), 0.7)
 
-    setLayout({ worktreeId: WT, tabId: TAB, root: dragged }, context)()
+    setLayout({ worktreeId: WT, tabId: TAB, root: dragged }, 'ssh:target', context)()
 
-    expect(rootOf('local')).toEqual(dragged)
     expect(rootOf('ssh:target')).toEqual(dragged)
-    expect(rootOf('runtime:env')).toEqual(before)
+    expect(rootOf('local')).toEqual(before)
+    expect([...dirty]).toEqual(['workspaceSessionsByHostId'])
+  })
+
+  it('refuses when only another partition holds the tab', () => {
+    const { context } = profile([['local', session(split(leaf(A), leaf(B)))]])
+    const result = setLayout(
+      { worktreeId: WT, tabId: TAB, root: split(leaf(A), leaf(B), 0.7) },
+      'ssh:target',
+      context
+    )()
+    expect(result.value).toEqual({ status: 'refused', reason: 'tab_not_held' })
   })
 
   it('rolls back to the prior tree', () => {
@@ -157,6 +175,7 @@ describe('setLayout', () => {
     const { context, rootOf } = profile([['local', session(before)]])
     const result = setLayout(
       { worktreeId: WT, tabId: TAB, root: split(leaf(A), leaf(B), 0.2) },
+      'local',
       context
     )()
     result.rollback?.()
