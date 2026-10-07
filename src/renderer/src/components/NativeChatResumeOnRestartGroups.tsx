@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Folder, FolderTree, GitBranch } from 'lucide-react'
 import { RepoIconGlyph } from '@/components/repo/repo-icon'
 import { WorktreeHostContextBadge } from '@/components/sidebar/WorktreeHostContextBadge'
+import { useSidebarHostScopeOptions } from '@/components/sidebar/use-sidebar-host-scope-options'
 import {
   getCyclicProjectedWorktreeLineageIds,
   getSidebarLineageAncestors
@@ -180,6 +181,8 @@ type RowProps = {
   onToggle: (sessionId: string, checked: boolean) => void
   /** Whether a group checkbox may tick this chat; a failure a retry cannot fix is left out. */
   selectable: (sessionId: string) => boolean
+  /** The sidebar's host names (SSH target labels, display overrides), so a chip never shows a raw id. */
+  hostLabelById: ReadonlyMap<ExecutionHostId, string>
 } & FailureProps
 
 function WorkspaceRows({
@@ -194,7 +197,7 @@ function WorkspaceRows({
   const kind = first ? resumeWorkspaceKind(first) : 'git-worktree'
   const name = (worktree && resolveWorktreeDisplayName(worktree)) || group.workspaceId
   const branch = worktree && kind === 'git-worktree' ? resolveWorktreeBranchLabel(worktree) : ''
-  const { mixedHosts, listedAt, busy, selected, onToggle, selectable } = rowProps
+  const { mixedHosts, listedAt, busy, selected, onToggle, selectable, hostLabelById } = rowProps
   // Why: a remote workspace is named by its machine even when it is the only one listed.
   const showHostLabel =
     mixedHosts || (hostId ?? LOCAL_EXECUTION_HOST_ID) !== LOCAL_EXECUTION_HOST_ID
@@ -231,7 +234,9 @@ function WorkspaceRows({
           )}
           {showHostLabel && (
             <WorktreeHostContextBadge
-              label={getHostContextLabel(hostId ?? LOCAL_EXECUTION_HOST_ID)}
+              label={getHostContextLabel(hostId ?? LOCAL_EXECUTION_HOST_ID, {
+                hostLabelById
+              })}
             />
           )}
           {selection.total > 0 && (
@@ -285,6 +290,11 @@ export function ResumeOnRestartGroups({
   const workspaces = useMemo(() => groupResumeCandidates(candidates), [candidates])
   const repoIdFor = useRepoIdByWorkspace(workspaces)
   const ancestorsOf = useLineageAncestors(workspaces)
+  const { hostOptions } = useSidebarHostScopeOptions()
+  const hostLabelById = useMemo(
+    () => new Map(hostOptions.map((host) => [host.id, host.label])),
+    [hostOptions]
+  )
   const repoGroups = groupResumeWorkspacesByRepo(workspaces, repoIdFor)
   const mixedHosts =
     new Set(candidates.map((candidate) => candidate.executionHostId ?? LOCAL_EXECUTION_HOST_ID))
@@ -309,6 +319,7 @@ export function ResumeOnRestartGroups({
               selected={selected}
               onToggle={onToggle}
               selectable={selectable}
+              hostLabelById={hostLabelById}
               failureFor={failureFor}
               onFailureAction={onFailureAction}
             />

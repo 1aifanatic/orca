@@ -17379,7 +17379,12 @@
         "activitySubagentOne": "하위 에이전트 실행 중: {{value0}}",
         "activitySubagentMany": "하위 에이전트 {{value0}}개 실행 중",
         "activityMonitorOne": "모니터링 중: {{value0}}",
-        "activityMonitorMany": "백그라운드 작업 {{value0}}개 모니터링 중"
+        "activityMonitorMany": "백그라운드 작업 {{value0}}개 모니터링 중",
+        "selectWorkspace": "{{value0}}의 채팅 모두 선택",
+        "workspaceSelectedCount": "{{value0}}/{{value1}}",
+        "selectAll": "모든 채팅 선택",
+        "selectAllLabel": "모두 선택",
+        "selectedCount": "{{value1}}개 중 {{value0}}개 선택됨"
       },
       "linear-issue-attribute-filter-coverage-notice": {
         "statusPartialTeamCoverage": "{{value1}} 팀 상태 중 {{value0}} 필터링 중 - 나머지 팀의 문제는 포함되지 않습니다.",

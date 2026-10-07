@@ -356,6 +356,19 @@ it('names the machine of a single-host SSH offer', () => {
   }
 })
 
+// A target saved through Add SSH target gets a generated id; the sidebar names it by its label.
+it('names an SSH machine by its saved name, not its target id', () => {
+  const targetId = 'ssh-1728291234567-abc12d'
+  const remote: ExecutionHostId = `ssh:${targetId}`
+  const candidates = seedTree({ parent: remote, child: remote })
+  useAppStore.setState({ sshTargetLabels: new Map([[targetId, 'devbox']]) })
+  render({ candidates })
+
+  const row = rowOf(workspaceBox('parent')).textContent
+  expect(row).toContain('devbox')
+  expect(row).not.toContain(targetId)
+})
+
 it('names hosts only when the machine is not obvious', () => {
   render({ candidates: seedTree() })
   const local = getHostContextLabel('local')
