@@ -15,7 +15,8 @@ export type PendingTerminalPaneKey = { worktreeId: string; tabId: string; leafId
  * A tab or pane this window shows (`add`) or hides (`remove`), or a tab tree it keeps (`layout`,
  * a user's geometry edit), before main's topology does. An add stands until a slice names it; a
  * remove or layout until the slice holding main's reply (`publishSeq`). A layout also ends once
- * main's tab has other panes, since main refuses it then.
+ * main's tab has other panes than its tree, apart from panes added here and not yet named, since
+ * main refuses it then.
  */
 export type PendingTerminalPane = PendingTerminalPaneKey & { publishSeq?: number } & (
     | { change: 'add' | 'remove' }
@@ -91,8 +92,14 @@ export function pendingTerminalLayoutRoot(
   )?.root
 }
 
-const leafSet = (root: TerminalPaneLayoutNode | null | undefined): string =>
-  collectLeafIds(root).sort().join('\n')
+const leafSet = (
+  root: TerminalPaneLayoutNode | null | undefined,
+  except: ReadonlySet<string> = new Set()
+): string =>
+  collectLeafIds(root)
+    .filter((leafId) => !except.has(leafId))
+    .sort()
+    .join('\n')
 
 /** Tabs a `runtime:` host publishes share the worktree id but never ride main's slice. */
 export function isRuntimeHostedTab(state: AppState, worktreeId: string, tabId: string): boolean {
@@ -120,22 +127,63 @@ export function pendingAfterTerminalTopologySlice(
 ): PendingTerminalPane[] {
   const tabIds = new Set(slice.tabs.map((tab) => tab.id))
   const leafIds = new Set(Object.values(slice.layouts).flatMap(({ root }) => collectLeafIds(root)))
+  const named = (entry: PendingTerminalPane): boolean =>
+    entry.leafId ? leafIds.has(entry.leafId) : tabIds.has(entry.tabId)
   const settled = (entry: PendingTerminalPane): boolean => {
     if (entry.worktreeId !== slice.worktreeId) {
       return false
     }
     if (entry.change === 'add') {
-      return entry.leafId ? leafIds.has(entry.leafId) : tabIds.has(entry.tabId)
+      return named(entry)
     }
+    // Panes added here that main hasn't named yet don't make a gesture's tree stale.
+    const unnamed = new Set(
+      pending.flatMap((other) =>
+        other.change === 'add' && other.tabId === entry.tabId && other.leafId && !named(other)
+          ? [other.leafId]
+          : []
+      )
+    )
     if (
       entry.change === 'layout' &&
-      leafSet(slice.layouts[entry.tabId]?.root) !== leafSet(entry.root)
+      leafSet(slice.layouts[entry.tabId]?.root) !== leafSet(entry.root, unnamed)
     ) {
       return true
     }
     return entry.publishSeq !== undefined && entry.publishSeq <= slice.publishSeq
   }
   return pending.some(settled) ? pending.filter((entry) => !settled(entry)) : pending
+}
+
+/** Resolves once `ready` holds, re-checked after every store change. */
+export function terminalStoreReady(
+  subscribe: (listener: () => void) => () => void,
+  ready: () => boolean
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (ready()) {
+      resolve()
+      return
+    }
+    const unsubscribe = subscribe(() => {
+      if (ready()) {
+        unsubscribe()
+        resolve()
+      }
+    })
+  })
+}
+
+/** Main refuses a tree naming a pane it hasn't recorded, so a gesture right after a split waits. */
+export function terminalTabPanesNamed(
+  subscribe: (listener: () => void) => () => void,
+  getState: () => Pick<AppState, 'pendingTerminalPanes'>,
+  tabId: string
+): Promise<void> {
+  return terminalStoreReady(
+    subscribe,
+    () => pendingTerminalLeafIds(getState().pendingTerminalPanes, tabId, 'add').size === 0
+  )
 }
 
 /**
@@ -145,7 +193,7 @@ export function pendingAfterTerminalTopologySlice(
 export function commitPendingTerminalChange(
   store: Pick<TerminalSlice, 'markPendingTerminalPane' | 'settlePendingTerminalPane'>,
   entry: PendingTerminalPane,
-  send: () => Promise<TerminalTopologyReply> | undefined
+  send: () => Promise<TerminalTopologyReply | undefined> | undefined
 ): void {
   store.markPendingTerminalPane(entry)
   void Promise.resolve(send()).then(

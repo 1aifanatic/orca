@@ -3,7 +3,11 @@ import { useAppStore } from '@/store'
 import type { TerminalLayoutSetResult } from '../../../../shared/terminal-layout-set'
 import type { TerminalPaneLayoutNode } from '../../../../shared/terminal-tab-types'
 import type { TerminalTopologySlice } from '../../../../shared/terminal-topology-slice'
-import { commitPendingTerminalChange, withPendingTerminalPane } from './terminal-pending-panes'
+import {
+  commitPendingTerminalChange,
+  terminalTabPanesNamed,
+  withPendingTerminalPane
+} from './terminal-pending-panes'
 
 const WT = 'repo::/wt'
 const TAB = 'tab'
@@ -61,7 +65,9 @@ function dragEnd(root: TerminalPaneLayoutNode): void {
   const layout = state().terminalLayoutsByTabId[TAB]
   state().setTabLayout(TAB, { ...layout!, root })
   commitPendingTerminalChange(state(), { worktreeId: WT, tabId: TAB, change: 'layout', root }, () =>
-    setTerminalLayout({ worktreeId: WT, tabId: TAB, root })
+    terminalTabPanesNamed(useAppStore.subscribe, useAppStore.getState, TAB).then(() =>
+      setTerminalLayout({ worktreeId: WT, tabId: TAB, root })
+    )
   )
 }
 
@@ -95,11 +101,12 @@ afterEach(() => {
 })
 
 describe('a divider drag committed to main', () => {
-  it('sends the tree once, and a mirror apply never sends one', () => {
+  it('sends the tree once, and a mirror apply never sends one', async () => {
     apply(2, split(leaf(A), leaf(B), 0.6))
     expect(setTerminalLayout).not.toHaveBeenCalled()
 
     dragEnd(DRAGGED)
+    await flush()
 
     expect(setTerminalLayout).toHaveBeenCalledExactlyOnceWith({
       worktreeId: WT,
@@ -116,6 +123,7 @@ describe('a divider drag committed to main', () => {
     expect(rootInStore()).toEqual(DRAGGED)
     expect(state().terminalLayoutsByTabId[TAB]).toBe(kept)
 
+    await flush()
     replies[0]!.resolve({ status: 'committed', publishSeq: 4 })
     await flush()
     apply(3, BEFORE)
@@ -129,6 +137,7 @@ describe('a divider drag committed to main', () => {
 
   it('settles on the reply when main published it first', async () => {
     dragEnd(DRAGGED)
+    await flush()
     apply(2, DRAGGED)
     replies[0]!.resolve({ status: 'committed', publishSeq: 2 })
     await flush()
@@ -150,6 +159,7 @@ describe('a divider drag committed to main', () => {
     dragEnd(DRAGGED)
     const second = split(leaf(A), leaf(B), 0.2)
     dragEnd(second)
+    await flush()
     replies[0]!.resolve({ status: 'committed', publishSeq: 2 })
     await flush()
 
@@ -160,11 +170,42 @@ describe('a divider drag committed to main', () => {
   it('stops holding the tree when main could not be reached', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     dragEnd(DRAGGED)
+    await flush()
     replies[0]!.reject(new Error('gone'))
     await flush()
 
     apply(2, BEFORE)
     expect(rootInStore()).toEqual(BEFORE)
+  })
+
+  it('waits for main to name a just-split pane, keeping the drag over pushes until then', async () => {
+    const splitBefore = split(BEFORE, leaf(C))
+    const splitDragged = split(BEFORE, leaf(C), 0.3)
+    state().markPendingTerminalPane({ worktreeId: WT, tabId: TAB, leafId: C, change: 'add' })
+    state().setTabLayout(TAB, { ...state().terminalLayoutsByTabId[TAB]!, root: splitBefore })
+
+    dragEnd(splitDragged)
+    await flush()
+    // Main hasn't recorded the split, so it would refuse the tree.
+    expect(setTerminalLayout).not.toHaveBeenCalled()
+    apply(2, BEFORE)
+    expect(rootInStore()).toEqual(splitDragged)
+
+    // Main records the split from the spawn's proposed tree, which predates the drag.
+    apply(3, splitBefore)
+    expect(rootInStore()).toEqual(splitDragged)
+    await flush()
+    expect(setTerminalLayout).toHaveBeenCalledExactlyOnceWith({
+      worktreeId: WT,
+      tabId: TAB,
+      root: splitDragged
+    })
+
+    replies[0]!.resolve({ status: 'committed', publishSeq: 4 })
+    await flush()
+    apply(4, splitDragged)
+    expect(state().pendingTerminalPanes).toEqual([])
+    expect(rootInStore()).toEqual(splitDragged)
   })
 
   it("leaves the tab's pending add in place; only a later drag replaces a drag", () => {

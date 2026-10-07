@@ -16,7 +16,8 @@ import {
   isPendingTerminalTab,
   isRuntimeHostedTab,
   pendingAfterTerminalTopologySlice,
-  pendingTerminalLayoutRoot
+  pendingTerminalLayoutRoot,
+  terminalStoreReady
 } from './terminal-pending-panes'
 
 const OPTIONAL_ROW_FIELDS = [
@@ -189,19 +190,10 @@ export function terminalTopologyApplied(
   worktreeId: string,
   publishSeq: number | undefined
 ): Promise<void> {
-  const applied = (): boolean =>
-    publishSeq === undefined ||
-    (getState().terminalTopologySeqByWorktree[worktreeId] ?? 0) >= publishSeq
-  return new Promise((resolve) => {
-    if (applied()) {
-      resolve()
-      return
-    }
-    const unsubscribe = subscribe(() => {
-      if (applied()) {
-        unsubscribe()
-        resolve()
-      }
-    })
-  })
+  return terminalStoreReady(
+    subscribe,
+    () =>
+      publishSeq === undefined ||
+      (getState().terminalTopologySeqByWorktree[worktreeId] ?? 0) >= publishSeq
+  )
 }
