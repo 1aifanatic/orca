@@ -58,7 +58,7 @@ describe('removeProject cascade', () => {
       activeTabId: 'tab1'
     })
 
-    await store.getState().removeProject('repo1')
+    await store.getState().removeProject('repo1', { hostId: 'local' })
     const s = store.getState()
 
     expect(s.repos).toEqual([])

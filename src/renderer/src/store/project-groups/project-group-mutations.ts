@@ -188,16 +188,19 @@ export function createProjectGroupMutationActions(
             repo.id === projectId &&
             (!ownerHostId || catalogOwnsHost(ownerHostId, getRepoExecutionHostId(repo)))
         )
-      for (const projectId of targets.projectIds) {
+      for (const projectId of new Set(targets.projectIds)) {
         const ownedProjects = findOwnedProjects(projectId)
-        const projectHostId =
-          ownedProjects.length === 1 ? getRepoExecutionHostId(ownedProjects[0]) : undefined
-        try {
-          if (ownedProjects.length > 0) {
-            await get().removeProject(projectId, { hostId: projectHostId })
+        // Why: an owned catalog's rows under the id are all members; an unstamped group already routes to the focused host.
+        const focusedProject = ownerHostId
+          ? null
+          : findRepoForHost(ownedProjects, projectId, { settings: get().settings })
+        const removable = ownerHostId ? ownedProjects : focusedProject ? [focusedProject] : []
+        for (const ownedProject of removable) {
+          try {
+            await get().removeProject(projectId, { hostId: getRepoExecutionHostId(ownedProject) })
+          } catch (err) {
+            console.error('Failed to remove contained project:', err)
           }
-        } catch (err) {
-          console.error('Failed to remove contained project:', err)
         }
         const stillExists = findOwnedProjects(projectId).length > 0
         if (stillExists) {

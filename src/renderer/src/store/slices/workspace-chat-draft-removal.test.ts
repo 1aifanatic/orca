@@ -217,7 +217,7 @@ describe('workspace chat drafts on removal', () => {
       }
     })
 
-    await store.getState().removeProject('repo1')
+    await store.getState().removeProject('repo1', { hostId: 'local' })
 
     expect(draftTexts()).toEqual(['', '', 'other'])
   })

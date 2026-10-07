@@ -4,7 +4,7 @@ import type { AppState } from '../types'
 import { getRepoIdFromWorktreeId } from '../../../../shared/worktree/id'
 import { getWorktreeIdFromVisitKey, getWorktreeVisitKey } from '@/lib/worktree-visit-recency'
 import { omitSparsePresetsForRepos } from '../slices/sparse-presets'
-import { findRepoForHost, repoMatchesHostIdentity } from '../slices/repo-host-identity'
+import { repoMatchesHostIdentity } from '../slices/repo-host-identity'
 import {
   callRuntimeRpc,
   getActiveRuntimeTarget,
@@ -57,11 +57,10 @@ export function createRepoRemovalActions(
   return {
     removeProject: async (projectId, options) => {
       try {
-        // Why: pass an explicit hostId so a duplicate id across hosts resolves to the intended row, not the focused-host fallback.
-        const ownerRepo = findRepoForHost(get().repos, projectId, {
-          settings: get().settings,
-          hostId: options?.hostId
-        })
+        // Why: exact host match only; the unique-candidate/focused fallbacks could pick another host's row (#13071).
+        const ownerRepo = get().repos.find((repo) =>
+          repoMatchesHostIdentity(repo, projectId, options.hostId)
+        )
         if (!ownerRepo) {
           return
         }
@@ -79,10 +78,8 @@ export function createRepoRemovalActions(
             )
           }
         }
-        // Why: derive the target from the owner's settings (via options.hostId) so an SSH host removal never routes repo.rm to the focused runtime.
-        const target = getActiveRuntimeTarget(
-          settingsForRepoOwner(get(), projectId, options?.hostId)
-        )
+        // Why: derive the target from the owner row's host so an SSH host removal never routes repo.rm to the focused runtime.
+        const target = getActiveRuntimeTarget(settingsForRepoOwner(get(), projectId, ownerHostId))
         // Why: repos:remove is id-only and would delete every host's row; scope local removal to the owning host so cross-host duplicates keep other rows.
         const idExistsOnOtherHost = get().repos.some(
           (repo) => repo.id === projectId && getRepoExecutionHostId(repo) !== ownerHostId
@@ -285,7 +282,7 @@ export function createRepoRemovalActions(
       } catch (err) {
         console.error('Failed to remove repo:', err)
         // Why: bulk and background callers aggregate their own failures, so only opted-in single-project entry points toast (#11994).
-        if (options?.errorFeedback === 'toast') {
+        if (options.errorFeedback === 'toast') {
           toast.error(
             translate('auto.store.slices.repos.removeProjectFailed', 'Failed to remove project'),
             {

@@ -227,12 +227,7 @@ describe('project group deletion store routing', () => {
       groupId: projectGroup.id,
       requestedProjectIds: ['shared', 'shared'],
       removedProjectIds: ['shared'],
-      failedProjectRemovals: [
-        {
-          projectId: 'shared',
-          reason: 'Project remained in Orca after removeProject completed.'
-        }
-      ]
+      failedProjectRemovals: []
     })
 
     expect(reposRemoveForHost).toHaveBeenCalledWith({
