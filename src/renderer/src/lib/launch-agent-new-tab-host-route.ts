@@ -15,6 +15,7 @@ import type { AgentLaunchPromptReceipt } from '../../../shared/agent-launch-inte
 import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentLaunchFollowUp } from '../../../shared/agent-launch-follow-up'
 import { recordableLaunchFollowUp, takeLaunchFollowUps } from '@/lib/agent-launch-follow-ups'
+import { waitForRecordedLaunchFollowUp } from '@/lib/agent-launch-follow-up-waiter'
 
 /** `followUpDeferred`: the click's recorded follow-up was left for the next start; don't run it. */
 export type NewTabPromptDeliveryResult = {
@@ -78,20 +79,20 @@ async function settleHostPrompt(
     onPromptDelivered?: () => void
     onPromptDeliveryUnconfirmed?: () => void
   },
-  launch: { tabId: string; operationId: string; followUpRecorded: boolean },
+  launch: { tabId: string; operationId: string; followUp: AgentLaunchFollowUp | undefined },
   receipt: AgentLaunchPromptReceipt | undefined,
   seeded: boolean
 ): Promise<NewTabPromptDeliveryResult> {
   const { tabId } = launch
-  // Runs only once this click took it off the record: a take that failed leaves it there, for the
-  // next start to run, and running it here too would run it twice.
+  // Runs here only when this click's own take returned it; one another take returned runs there.
   let followUpRunsHere = true
-  if (launch.followUpRecorded) {
+  let stillRecorded: { deadline?: number } | null = null
+  if (launch.followUp) {
     const take = await takeLaunchFollowUps(launch.operationId)
-    followUpRunsHere =
-      take?.taken.some(
-        (entry) => entry.operationId === launch.operationId && entry.promptHandedOver
-      ) ?? false
+    const mine = (entry: { operationId: string }): boolean =>
+      entry.operationId === launch.operationId
+    followUpRunsHere = take?.taken.some((entry) => mine(entry) && entry.promptHandedOver) ?? false
+    stillRecorded = take ? (take.pending.find(mine) ?? null) : {}
   }
   if (receipt?.outcome === 'handed-to-terminal') {
     if (receipt.composerUnobserved) {
@@ -102,6 +103,15 @@ async function settleHostPrompt(
       seedCommandCodeSubmittedPromptStatus(args.worktreeId, tabId, args.prompt)
     }
     if (!followUpRunsHere) {
+      if (launch.followUp && stillRecorded) {
+        // The take failed, or the host has not settled the record: hold what it acts on, and take
+        // it when the host says so, as a reloaded window would.
+        void waitForRecordedLaunchFollowUp(
+          launch.operationId,
+          launch.followUp,
+          stillRecorded.deadline
+        )
+      }
       return { delivered: true, failureNotified: false, followUpDeferred: true }
     }
     args.onPromptDelivered?.()
@@ -162,12 +172,7 @@ export function launchNewTabPromptThroughHost(
       // Seeded once the host started the agent, as main's paste seeded it: a launch that never
       // started leaves no chat copy behind.
       const seeded = seedChatCopy(tabId, args.agent, pasteContent, clickedAt)
-      return settleHostPrompt(
-        args,
-        { tabId, operationId, followUpRecorded: followUp !== undefined },
-        launched.prompt,
-        seeded
-      )
+      return settleHostPrompt(args, { tabId, operationId, followUp }, launched.prompt, seeded)
     }
     // The pane, or this notice for a tab that went, already says why: never a second notice.
     showLaunchNotStartedNotice(launched, args.prompt)

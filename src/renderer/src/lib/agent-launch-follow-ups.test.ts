@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  AgentLaunchFollowUp,
-  AgentLaunchFollowUpTake
-} from '../../../shared/agent-launch-follow-up'
 import { AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY } from '../../../shared/agent-launch-runtime-capability'
+import type { PRCommentGroup } from '../../../shared/pr-comment-groups'
+import { buildPRCommentBatchConversationReplyBody } from '@/components/right-sidebar/pr-comment-fixing-reply-body'
 
 const state = vi.hoisted(() => {
   const capabilities: string[] = []
@@ -54,12 +52,8 @@ vi.mock('@/components/right-sidebar/pr-comment-groups-in-flight', () => ({
     state.heldThreads.push({ keys, settled })
 }))
 
-const {
-  recordableLaunchFollowUp,
-  reviewCommentsResolutionFollowUp,
-  reviewNotesDeliveredFollowUp,
-  runRecordedLaunchFollowUps
-} = await import('./agent-launch-follow-ups')
+const { recordableLaunchFollowUp, reviewCommentsResolutionFollowUp, reviewNotesDeliveredFollowUp } =
+  await import('./agent-launch-follow-ups')
 
 const NOTE = { id: 'n1', body: 'fix this', filePath: 'a.ts', lineNumber: 3 }
 const NOTES = reviewNotesDeliveredFollowUp('wt-1', [NOTE])
@@ -67,7 +61,7 @@ const COMMENT = {
   id: 7,
   author: 'reviewer',
   authorAvatarUrl: '',
-  body: 'please rename this',
+  body: 'please rename this\n\nThe private details of why, which no reply quotes.',
   createdAt: '2026-01-01T00:00:00Z',
   url: 'https://example.test/c/7',
   threadId: 'thread-1',
@@ -80,45 +74,6 @@ const RESOLUTION = reviewCommentsResolutionFollowUp({
   selectedGroups: [{ kind: 'thread', threadId: 'thread-1', root: COMMENT, replies: [COMMENT] }]
 })
 
-/** A clock the test turns by hand: timers fire on `advance`, the host's word on `settle`. */
-function manualClock() {
-  let now = 0
-  const timers: { at: number; run: () => void }[] = []
-  const listeners = new Set<(operationId: string) => void>()
-  return {
-    clock: {
-      now: () => now,
-      schedule: (ms: number, run: () => void) => {
-        const timer = { at: now + ms, run }
-        timers.push(timer)
-        return () => timers.splice(timers.indexOf(timer), 1)
-      },
-      onSettled: (listener: (operationId: string) => void) => {
-        listeners.add(listener)
-        return () => listeners.delete(listener)
-      }
-    },
-    advance(ms: number) {
-      now += ms
-      for (const timer of timers.filter((t) => t.at <= now)) {
-        timers.splice(timers.indexOf(timer), 1)
-        timer.run()
-      }
-    },
-    settle: (operationId: string) => listeners.forEach((listener) => listener(operationId)),
-    get listeners() {
-      return listeners.size
-    },
-    get timers() {
-      return timers.length
-    }
-  }
-}
-
-function taken(operationId: string, followUp: AgentLaunchFollowUp, promptHandedOver = true) {
-  return { operationId, followUp, promptHandedOver, composerUnobserved: false }
-}
-
 beforeEach(() => {
   state.capabilities = [AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY]
   state.answers = []
@@ -130,144 +85,33 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
-describe('a window that reloaded mid-launch runs what its launches recorded', () => {
-  it('runs each follow-up whose prompt was handed over, once', async () => {
-    const take: AgentLaunchFollowUpTake = {
-      taken: [taken('op-1', NOTES), taken('op-2', RESOLUTION)],
-      pending: []
-    }
-    state.answers.push(take)
-    await runRecordedLaunchFollowUps(manualClock().clock)
-    expect(state.clearDeliveredDiffComments).toHaveBeenCalledExactlyOnceWith('wt-1', [NOTE])
-    expect(state.runResolution).toHaveBeenCalledOnce()
-    expect(state.calls).toEqual([['agent.takeLaunchFollowUps', {}]])
-  })
-
-  it('runs nothing for a launch whose prompt never arrived', async () => {
-    state.answers.push({ taken: [taken('op-1', NOTES, false)], pending: [] })
-    await runRecordedLaunchFollowUps(manualClock().clock)
-    expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
-  })
-
-  it('discards a kind or version this build does not know, and a payload it cannot read', async () => {
-    state.answers.push({
-      taken: [
-        taken('op-1', { ...NOTES, version: 2 }),
-        taken('op-2', { kind: 'unknown-kind', version: 1, payload: {} }),
-        taken('op-3', { ...NOTES, payload: { worktreeId: 'wt-1' } })
-      ],
-      pending: []
-    })
-    await runRecordedLaunchFollowUps(manualClock().clock)
-    expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
-  })
-
-  it('holds what a launch still on its way acts on before running anything else', async () => {
-    const order: string[] = []
-    state.clearDeliveredDiffComments.mockImplementationOnce(async () => {
-      order.push(`ran with ${state.held.length + state.heldThreads.length} held`)
-      return true
-    })
-    state.answers.push({
-      taken: [taken('op-1', NOTES)],
-      pending: [
-        { operationId: 'op-2', followUp: NOTES, deadline: 60_000 },
-        { operationId: 'op-3', followUp: RESOLUTION, deadline: 60_000 }
-      ]
-    })
-    const t = manualClock()
-    void runRecordedLaunchFollowUps(t.clock)
-    await vi.waitFor(() => expect(order).toEqual(['ran with 2 held']))
-    expect(state.held[0]!.keys).toEqual(['n1'])
-    expect(state.heldThreads[0]!.keys).toEqual(['thread:thread-1'])
-  })
-
-  it('runs a pending follow-up when the host says its prompt settled, and lets go', async () => {
-    state.answers.push(
-      { taken: [], pending: [{ operationId: 'op-1', followUp: NOTES, deadline: 60_000 }] },
-      { taken: [taken('op-1', NOTES)], pending: [] }
-    )
-    const t = manualClock()
-    const run = runRecordedLaunchFollowUps(t.clock)
-    await vi.waitFor(() => expect(t.listeners).toBe(1))
-    let released = false
-    void state.held[0]!.settled.then(() => (released = true))
-    t.settle('op-1')
-    await run
-    expect(released).toBe(true)
-    expect(state.clearDeliveredDiffComments).toHaveBeenCalledOnce()
-    // The take names the launch, so a click this window makes meanwhile stays its own.
-    expect(state.calls.slice(1)).toEqual([['agent.takeLaunchFollowUps', { operationId: 'op-1' }]])
-    expect(t.listeners).toBe(0)
-    expect(t.timers).toBe(0)
-  })
-
-  it('keeps waiting when the word comes for a launch still owed', async () => {
-    const stillPending = {
-      taken: [],
-      pending: [{ operationId: 'op-1', followUp: NOTES, deadline: 60_000 }]
-    }
-    state.answers.push(stillPending, stillPending)
-    const t = manualClock()
-    let finished = false
-    void runRecordedLaunchFollowUps(t.clock).then(() => (finished = true))
-    await vi.waitFor(() => expect(t.listeners).toBe(1))
-    t.settle('op-1')
-    await vi.waitFor(() => expect(state.calls).toHaveLength(2))
-    expect(finished).toBe(false)
-    expect(t.listeners).toBe(1)
-  })
-
-  it('takes once more just past the host’s deadline, then lets go of a launch still pending', async () => {
-    const stillPending = {
-      taken: [],
-      pending: [{ operationId: 'op-1', followUp: NOTES, deadline: 60_000 }]
-    }
-    state.answers.push(stillPending, stillPending)
-    const t = manualClock()
-    const run = runRecordedLaunchFollowUps(t.clock)
-    await vi.waitFor(() => expect(t.timers).toBe(1))
-    t.advance(60_000 + 14_999)
-    expect(state.calls).toHaveLength(1)
-    t.advance(1)
-    await run
-    expect(state.calls).toHaveLength(2)
-    expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
-    await expect(state.held[0]!.settled).resolves.toBeUndefined()
-    expect(t.listeners).toBe(0)
-  })
-
-  it('runs a follow-up the last take finds settled', async () => {
-    state.answers.push(
-      { taken: [], pending: [{ operationId: 'op-1', followUp: NOTES, deadline: 60_000 }] },
-      { taken: [taken('op-1', NOTES)], pending: [] }
-    )
-    const t = manualClock()
-    const run = runRecordedLaunchFollowUps(t.clock)
-    await vi.waitFor(() => expect(t.timers).toBe(1))
-    t.advance(75_000)
-    await run
-    expect(state.clearDeliveredDiffComments).toHaveBeenCalledOnce()
-  })
-
-  it('asks nothing of a host that does not record follow-ups', async () => {
-    state.capabilities = []
-    await runRecordedLaunchFollowUps(manualClock().clock)
-    expect(state.calls).toEqual([])
-  })
-
-  it('treats a host that cannot answer as nothing recorded', async () => {
-    state.answers.push(new Error('method_not_found'))
-    await expect(runRecordedLaunchFollowUps(manualClock().clock)).resolves.toBeUndefined()
-    expect(state.clearDeliveredDiffComments).not.toHaveBeenCalled()
-  })
-})
+function isRecordedResolution(value: unknown): value is { selectedGroups: PRCommentGroup[] } {
+  return typeof value === 'object' && value !== null && 'selectedGroups' in value
+}
 
 describe('which follow-ups a launch records', () => {
-  it('records review threads without the comments’ words', () => {
-    const payload = RESOLUTION.payload
-    expect(JSON.stringify(payload)).not.toContain('please rename this')
-    expect(JSON.stringify(payload)).toContain('thread-1')
+  it('records of each comment only the snippet its "Fixing:" reply quotes', () => {
+    expect(JSON.stringify(RESOLUTION.payload)).not.toContain('private details')
+    expect(JSON.stringify(RESOLUTION.payload)).toContain('thread-1')
+    // A reply built after a reload reads as the click's would, long first lines included.
+    const long = { ...COMMENT, id: 8, body: `${'word '.repeat(40)}\nmore` }
+    const recorded = reviewCommentsResolutionFollowUp({
+      reviewContextKey: 'pr-1',
+      provider: 'github',
+      selectedGroups: [
+        { kind: 'standalone', comment: COMMENT },
+        { kind: 'standalone', comment: long }
+      ]
+    }).payload
+    if (!isRecordedResolution(recorded)) {
+      throw new Error('unexpected payload')
+    }
+    const comments = recorded.selectedGroups.flatMap((group) =>
+      group.kind === 'standalone' ? [group.comment] : []
+    )
+    expect(buildPRCommentBatchConversationReplyBody(comments)).toBe(
+      buildPRCommentBatchConversationReplyBody([COMMENT, long])
+    )
   })
 
   it('only on a host that keeps them, and only under the size cap', () => {

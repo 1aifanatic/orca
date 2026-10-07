@@ -26,6 +26,10 @@ const deliverTerminalPrompt = vi.hoisted(() =>
     return true
   })
 )
+const persisted = vi.hoisted(() => ({ followUps: true }))
+vi.mock('../../agent-launch-persisted-obligations', () => ({
+  hasPersistedLaunchObligation: () => persisted.followUps
+}))
 vi.mock('./agent-launch-terminal-prompt', () => ({
   deliverTerminalAgentLaunchPrompt: deliverTerminalPrompt
 }))
@@ -83,6 +87,7 @@ function take(runtime: AgentLaunchRuntimeStub, context: Partial<RpcContext>, ope
 }
 
 beforeEach(async () => {
+  persisted.followUps = true
   deliverTerminalPrompt.mockClear()
   directory = await mkdtemp(join(tmpdir(), 'orca-agent-launch-follow-ups-'))
   store = await openTestAgentSessionRecordStore(directory)
@@ -123,6 +128,24 @@ describe('a click’s follow-up on its launch’s record', () => {
     // Taken: a later sweep has nothing to announce.
     announceSettledLaunchFollowUps(runtime)
     expect(runtime.reportAgentLaunchPromptSettled).toHaveBeenCalledOnce()
+  })
+
+  it('tells the window when the launch failed too, so it stops holding what the click sent', async () => {
+    const runtime = host()
+    runtime.createTerminal.mockRejectedValueOnce(new Error('spawn failed'))
+    await expect(launch(runtime)).rejects.toThrow()
+    expect(runtime.reportAgentLaunchPromptSettled).toHaveBeenCalledExactlyOnceWith(OPERATION_ID)
+    await expect(take(runtime, DESKTOP, OPERATION_ID)).resolves.toMatchObject({
+      taken: [{ operationId: OPERATION_ID, promptHandedOver: false }]
+    })
+  })
+
+  it('answers a window load with nothing, never opening the store, when no launch recorded one', async () => {
+    persisted.followUps = false
+    const runtime = host()
+    runtime.openedAgentSessionRecordStore.mockReturnValue(null)
+    await expect(take(runtime, DESKTOP)).resolves.toEqual({ taken: [], pending: [] })
+    expect(runtime.openAgentSessionRecordStore).not.toHaveBeenCalled()
   })
 
   it('is recorded for the desktop only: a phone, which never takes one, records nothing', async () => {

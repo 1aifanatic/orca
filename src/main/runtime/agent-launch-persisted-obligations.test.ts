@@ -79,6 +79,14 @@ describe('whether a restarted host owes a launch its prompt, read before opening
     expect(hasPersistedLaunchObligation(directory, 'promptDelivery', 50_000)).toBe(false)
   })
 
+  it('finds a recorded follow-up the window has not taken yet', async () => {
+    const row = launchRow()
+    row.launchFollowUp = { kind: 'review-notes-delivered', version: 1, payload: {} }
+    await leaveLaunchRecords(row)
+    expect(hasPersistedLaunchObligation(directory, 'launchFollowUp')).toBe(true)
+    expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
+  })
+
   it('never creates the database of a profile that has none', () => {
     expect(hasPersistedLaunchObligation(directory, 'promptDelivery')).toBe(false)
     expect(existsSync(journalDatabasePath(directory))).toBe(false)

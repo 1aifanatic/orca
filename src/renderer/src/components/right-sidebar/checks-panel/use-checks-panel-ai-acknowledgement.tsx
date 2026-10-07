@@ -9,6 +9,7 @@ import type { ChecksPanelReviewDataState } from './use-checks-panel-review-data'
 import type { ChecksPanelPollingState } from './use-checks-panel-polling'
 import { acknowledgeCommentResolutionAfterDelivery } from '../pr-comment-resolution-after-delivery'
 import { clearPRCommentsListSelection } from '../pr-comments-list-selection'
+import { registerOpenChecksPanelView } from './open-checks-panel-views'
 import type { ChecksAgentComposerState } from './panel-state-types'
 import type { ChecksPanelReview } from '../checks-panel-review'
 
@@ -70,6 +71,18 @@ export function useChecksPanelAiAcknowledgement(model: ChecksPanelAiAcknowledgem
       await fetchComments({ force: true })
     },
     [fetchComments, fetchGitLabDetails]
+  )
+
+  // Lends this panel to a resolution that runs without its click, after a window reload.
+  useEffect(
+    () =>
+      registerOpenChecksPanelView({
+        stableKey: () => checksPanelReviewStableKey(asyncResultKeyRef.current),
+        existingComments: () => commentsRef.current,
+        setComments,
+        refresh: refreshCommentsAfterBulkResolve
+      }),
+    [asyncResultKeyRef, commentsRef, setComments, refreshCommentsAfterBulkResolve]
   )
 
   const resolveSelectedThreadsAfterLaunch = useCallback(

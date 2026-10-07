@@ -12,6 +12,8 @@ import {
 } from '../../agent-launch-follow-up-record'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { defineMethod } from '../core'
+import { hasPersistedLaunchObligation } from '../../agent-launch-persisted-obligations'
+import { getProfileUserDataPath } from '../../../orca-profiles/profile-storage-paths'
 import { DESKTOP_RPC_CALLER, rpcCallerOperationKey } from '../rpc-caller-identity'
 import { activeAgentLaunchesFor } from './agent-launch-active-operations'
 import { agentLaunchOperationCallerKey } from './agent-launch-replay'
@@ -50,7 +52,16 @@ export const AGENT_LAUNCH_FOLLOW_UP_METHODS = [
     params: AgentTakeLaunchFollowUps,
     handler: async (params, context): Promise<AgentLaunchFollowUpTake> => {
       const callerKey = agentLaunchOperationCallerKey(context)
-      const store = await context.runtime.openAgentSessionRecordStore()
+      // Every window load asks: a profile whose launches recorded none must not open the store at
+      // startup, nor create its database.
+      const store =
+        context.runtime.openedAgentSessionRecordStore() ??
+        (hasPersistedLaunchObligation(getProfileUserDataPath(), 'launchFollowUp')
+          ? await context.runtime.openAgentSessionRecordStore()
+          : null)
+      if (!store) {
+        return { taken: [], pending: [] }
+      }
       const active = activeAgentLaunchesFor(context.runtime)
       return store.transactOperations((draft) =>
         takeLaunchFollowUpsInto(draft, {

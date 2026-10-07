@@ -271,9 +271,6 @@ async function executeAdmittedAgentLaunch(
   // Bookkeeping: a failure leaves the first write, whose owed prompt replays as `unconfirmed` (or as
   // `unknown` to a caller that cannot read it), never as `not-delivered`.
   await settleQuietly(admission.settle(result))
-  if (params.followUp) {
-    announceSettledLaunchFollowUps(context.runtime)
-  }
   return result
 }
 
@@ -297,6 +294,11 @@ function runReplaySafeAgentLaunch(
   promise = executeReplaySafeAgentLaunch(params, context, fingerprint).finally(() => {
     if (activeAgentLaunches.get(key)?.promise === promise) {
       activeAgentLaunches.delete(key)
+    }
+    // Every way a launch ends, once it no longer reads as running: a window that reloaded mid-launch
+    // holds its follow-up's notes and threads until it hears.
+    if (params.followUp) {
+      announceSettledLaunchFollowUps(context.runtime)
     }
   })
   activeAgentLaunches.set(key, { fingerprint, promise })

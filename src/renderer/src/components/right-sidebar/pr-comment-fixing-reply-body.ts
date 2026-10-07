@@ -23,7 +23,7 @@ export function buildPRCommentConversationReplyBody(
 const ACK_SNIPPET_MAX_LENGTH = 72
 
 /** First readable line of a comment body, minus HTML comments and markdown markers. */
-function summarizePRCommentBody(body: string): string {
+export function summarizePRCommentBody(body: string): string {
   const cleaned = body.replace(/<!--[\s\S]*?-->/g, ' ')
   let start = 0
   while (start <= cleaned.length) {

@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const run = vi.hoisted(() => vi.fn(async () => {}))
-vi.mock('../lib/agent-launch-follow-ups', () => ({ runRecordedLaunchFollowUps: run }))
+vi.mock('../lib/agent-launch-follow-up-waiter', () => ({ runRecordedLaunchFollowUps: run }))
 
 const { useAppStore } = await import('../store')
 const { useRecordedLaunchFollowUps } = await import('./use-recorded-launch-follow-ups')

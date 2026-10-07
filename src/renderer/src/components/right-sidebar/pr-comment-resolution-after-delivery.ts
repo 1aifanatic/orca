@@ -27,7 +27,7 @@ export type CommentResolutionAfterDeliveryDeps = {
     setComments: (update: (previous: PRComment[]) => PRComment[]) => void
     refresh: () => Promise<void>
   }
-  /** With no panel: refresh the cached comments, so a panel opened later shows them resolved. */
+  /** With no panel on that review: refresh the cached comments, so one opened later shows them. */
   refreshCache: () => Promise<void>
 }
 
@@ -178,13 +178,7 @@ async function acknowledge(
     }
   })
 
-  if (view) {
-    if (isPanelStillOnLaunchReview()) {
-      await view.refresh()
-    }
-  } else {
-    await refreshCache()
-  }
+  await (view && isPanelStillOnLaunchReview() ? view.refresh() : refreshCache())
 
   // Why: surface the underlying API error when replies were possible but none landed.
   // Resolvable threads are acked by resolving, so replied=0 is correct when nothing needed one.

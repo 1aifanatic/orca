@@ -26,6 +26,7 @@ const followUps = vi.hoisted(() => {
   return {
     hostRecords: true,
     order,
+    wait: vi.fn(async (_operationId: string, _followUp: unknown, _deadline?: number) => {}),
     takeLaunchFollowUps: vi.fn(
       async (_operationId?: string): Promise<AgentLaunchFollowUpTake | null> => ({
         taken: [],
@@ -40,6 +41,10 @@ vi.mock('@/lib/agent-launch-follow-ups', () => ({
     followUps.order.push('take')
     return followUps.takeLaunchFollowUps(operationId)
   }
+}))
+
+vi.mock('@/lib/agent-launch-follow-up-waiter', () => ({
+  waitForRecordedLaunchFollowUp: followUps.wait
 }))
 
 const { launchNewTabPromptThroughHost, newTabPromptLaunchesThroughHost } =
@@ -219,21 +224,31 @@ describe('a click whose follow-up is recorded on its launch', () => {
     expect(followUps.order).toEqual(['take', 'follow-up'])
   })
 
-  it('leaves it to the next start when this click could not take it, and says so', async () => {
-    // Taken by a reloaded window already, or the host could not answer: it runs there, never here.
-    for (const take of [{ taken: [], pending: [] }, null]) {
-      followUps.takeLaunchFollowUps.mockResolvedValueOnce(take)
-      deferredOutcome()({
-        kind: 'started',
-        prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
-      })
-      const onPromptDelivered = vi.fn()
-      await expect(launchWithFollowUp(onPromptDelivered)).resolves.toEqual({
-        delivered: true,
-        failureNotified: false,
-        followUpDeferred: true
-      })
-      expect(onPromptDelivered).not.toHaveBeenCalled()
+  it.each([
+    ['another take returned it, and runs it there', { taken: [], pending: [] }, undefined],
+    [
+      'the host has not settled its record, so it waits until the host says so',
+      { taken: [], pending: [{ operationId: 'op-1', followUp: FOLLOW_UP, deadline: 9_000 }] },
+      { deadline: 9_000 }
+    ],
+    ['its take failed, so it waits as a reloaded window would', null, { deadline: undefined }]
+  ])('never runs a follow-up its own take missed: %s', async (_, take, waits) => {
+    followUps.takeLaunchFollowUps.mockResolvedValueOnce(take)
+    deferredOutcome()({
+      kind: 'started',
+      prompt: { delivery: 'submit', outcome: 'handed-to-terminal' }
+    })
+    const onPromptDelivered = vi.fn()
+    await expect(launchWithFollowUp(onPromptDelivered)).resolves.toEqual({
+      delivered: true,
+      failureNotified: false,
+      followUpDeferred: true
+    })
+    expect(onPromptDelivered).not.toHaveBeenCalled()
+    if (waits) {
+      expect(followUps.wait).toHaveBeenCalledExactlyOnceWith('op-1', FOLLOW_UP, waits.deadline)
+    } else {
+      expect(followUps.wait).not.toHaveBeenCalled()
     }
   })
 

@@ -10,15 +10,13 @@
 
 import { useAppStore } from '@/store'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
-import {
-  ensureLocalRuntimeCapabilities,
-  readLocalRuntimeCapabilitiesOrUnknown
-} from '@/runtime/local-runtime-capabilities'
+import { readLocalRuntimeCapabilitiesOrUnknown } from '@/runtime/local-runtime-capabilities'
 import { diffCommentSendKey, holdNotesForSend } from '@/lib/notes-send-in-flight'
 import type { DiffCommentDeliverySnapshot } from '@/store/slices/diffComments'
 import type { PendingPRCommentAiAck } from '@/components/right-sidebar/pr-comments-ai-launch-ack'
 import { runReviewCommentsResolutionFollowUp } from '@/components/right-sidebar/review-comments-resolution-follow-up'
 import { holdPRCommentGroupsForSend } from '@/components/right-sidebar/pr-comment-groups-in-flight'
+import { summarizePRCommentBody } from '@/components/right-sidebar/pr-comment-fixing-reply-body'
 import { getPRCommentGroupId, type PRCommentGroup } from '../../../shared/pr-comment-groups'
 import type { PRComment } from '../../../shared/github/comment-types'
 import {
@@ -53,13 +51,16 @@ export function reviewNotesDeliveredFollowUp(
 export function reviewCommentsResolutionFollowUp(
   resolution: PendingPRCommentAiAck
 ): AgentLaunchFollowUp {
-  // Without comment bodies: resolving and replying never read them, and they are other people's
-  // words that would otherwise sit in the launch record.
-  const withoutBody = (comment: PRComment): PRComment => ({ ...comment, body: '' })
+  // Each comment keeps only the one-line snippet the batched "Fixing:" reply quotes (which reads
+  // the same from it); the rest is other people's words that would otherwise sit in the record.
+  const snippetOnly = (comment: PRComment): PRComment => ({
+    ...comment,
+    body: summarizePRCommentBody(comment.body)
+  })
   const selectedGroups = resolution.selectedGroups.map((group): PRCommentGroup =>
     group.kind === 'thread'
-      ? { ...group, root: withoutBody(group.root), replies: group.replies.map(withoutBody) }
-      : { ...group, comment: withoutBody(group.comment) }
+      ? { ...group, root: snippetOnly(group.root), replies: group.replies.map(snippetOnly) }
+      : { ...group, comment: snippetOnly(group.comment) }
   )
   return {
     kind: REVIEW_COMMENTS_RESOLUTION,
@@ -104,7 +105,7 @@ function isResolutionPayload(value: unknown): value is PendingPRCommentAiAck {
 }
 
 /** How to run a recorded follow-up, and keep what it acts on unsendable until it runs. */
-function readFollowUp(followUp: AgentLaunchFollowUp): {
+export function readLaunchFollowUp(followUp: AgentLaunchFollowUp): {
   run: () => Promise<void>
   holdUntil?: (settled: Promise<unknown>) => void
 } | null {
@@ -166,95 +167,14 @@ export async function takeLaunchFollowUps(
   }
 }
 
-async function runTaken(take: AgentLaunchFollowUpTake['taken']): Promise<void> {
+/** Runs each taken follow-up whose prompt was handed over, once; a failure is only logged. */
+export async function runTakenLaunchFollowUps(
+  take: AgentLaunchFollowUpTake['taken']
+): Promise<void> {
   for (const entry of take) {
-    const followUp = entry.promptHandedOver ? readFollowUp(entry.followUp) : null
+    const followUp = entry.promptHandedOver ? readLaunchFollowUp(entry.followUp) : null
     await followUp?.run().catch((error: unknown) => {
       console.warn(`[agent-launch] the ${entry.followUp.kind} follow-up failed`, error)
     })
   }
-}
-
-/** How long past the host's own deadline a waiting window takes once more, then lets go. */
-const PAST_DEADLINE_GRACE_MS = 15_000
-/** For a pending entry whose deadline the host could not say: its owed-prompt deadline. */
-const FALLBACK_WAIT_MS = 5 * 60_000
-
-export type RecordedLaunchFollowUpClock = {
-  now: () => number
-  /** Runs `run` after `ms`; returns its cancel. */
-  schedule: (ms: number, run: () => void) => () => void
-  /** The host's word that a launch settled its prompt; returns its unsubscribe. */
-  onSettled: (listener: (operationId: string) => void) => () => void
-}
-
-const WINDOW_CLOCK: RecordedLaunchFollowUpClock = {
-  now: () => Date.now(),
-  schedule: (ms, run) => {
-    const timer = setTimeout(run, ms)
-    return () => clearTimeout(timer)
-  },
-  onSettled: (listener) =>
-    window.api.ui.onAgentLaunchPromptSettled?.((event) => listener(event.operationId)) ?? (() => {})
-}
-
-/**
- * Startup: holds what launches still on their way act on, before anything else, then runs the
- * follow-ups launches finished while this window was gone. Each one still pending is taken when
- * the host says its prompt settled, or once more just past the host's own deadline; one still
- * pending then stays on its row for the next start, and nothing is held any more.
- */
-export async function runRecordedLaunchFollowUps(
-  clock: RecordedLaunchFollowUpClock = WINDOW_CLOCK
-): Promise<void> {
-  const capabilities = await ensureLocalRuntimeCapabilities()
-  if (!capabilities?.includes(AGENT_LAUNCH_FOLLOW_UPS_RUNTIME_CAPABILITY)) {
-    return
-  }
-  const first = await takeLaunchFollowUps()
-  if (!first) {
-    return
-  }
-  const waiting = new Map<string, () => void>()
-  for (const { operationId, followUp } of first.pending) {
-    let release: () => void = () => {}
-    readFollowUp(followUp)?.holdUntil?.(new Promise<void>((resolve) => (release = resolve)))
-    waiting.set(operationId, release)
-  }
-  await runTaken(first.taken)
-  if (waiting.size === 0) {
-    return
-  }
-  await new Promise<void>((done) => {
-    const cancels: (() => void)[] = []
-    const finish = (operationId: string): void => {
-      waiting.get(operationId)?.()
-      waiting.delete(operationId)
-      if (waiting.size === 0) {
-        cancels.forEach((cancel) => cancel())
-        done()
-      }
-    }
-    const takeOne = async (operationId: string, last: boolean): Promise<void> => {
-      if (!waiting.has(operationId)) {
-        return
-      }
-      const take = await takeLaunchFollowUps(operationId)
-      if (take && take.pending.length === 0) {
-        await runTaken(take.taken)
-        finish(operationId)
-      } else if (last) {
-        finish(operationId)
-      }
-    }
-    cancels.push(clock.onSettled((operationId) => void takeOne(operationId, false)))
-    for (const { operationId, deadline } of first.pending) {
-      const waitMs = (deadline ?? clock.now() + FALLBACK_WAIT_MS) - clock.now()
-      cancels.push(
-        clock.schedule(Math.max(0, waitMs) + PAST_DEADLINE_GRACE_MS, () => {
-          void takeOne(operationId, true)
-        })
-      )
-    }
-  })
 }
