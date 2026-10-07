@@ -73,6 +73,7 @@ function renderSession(session: AiVaultSession, blocked = false, searchHit?: AiV
         onResume={onResume}
         onContinueInNewSession={vi.fn()}
         onResumeInNewChat={vi.fn()}
+        onResumeInNewCli={vi.fn()}
         onCopyResume={onCopyResume}
         onCopyId={vi.fn()}
         onCopyPath={vi.fn()}

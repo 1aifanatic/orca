@@ -13494,7 +13494,8 @@
             "sessionDeleteFailed": "No se pudo eliminar la sesión",
             "resumeInChatConflict": "Otro chat ya está manteniendo esta conversación.",
             "resumeInChatTranscriptMissing": "El historial de esta conversación no se pudo cargar, por lo que no se puede reanudar en el chat.",
-            "resumeInChatFailed": "No se pudo reanudar esta sesión en un chat nuevo."
+            "resumeInChatFailed": "No se pudo reanudar esta sesión en un chat nuevo.",
+            "resumeInNewCliUnavailable": "Esta sesión no se puede abrir en la CLI."
           },
           "AiVaultPanelControls": {
             "scanningSessions": "Buscando sesiones",
@@ -13630,7 +13631,9 @@
             "deleteReasonNonLocalHost": "Solo se pueden eliminar las sesiones de este dispositivo.",
             "deleteReasonSyntheticPath": "Esta sesión no se puede eliminar desde Orca.",
             "deleteReasonUnsupportedAgent": "Las sesiones de {{value0}} no se pueden eliminar desde Orca.",
-            "resumeInNewChat": "Reanudar en nuevo chat"
+            "resumeInNewNativeChat": "Reanudar en un nuevo chat nativo",
+            "resumeInNewCli": "Reanudar en una nueva CLI",
+            "resumeInNewCliTooltip": "Hace un fork de esta conversación en una nueva sesión de CLI con todo su historial. El chat nativo queda como está."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "¿Eliminar esta sesión?",

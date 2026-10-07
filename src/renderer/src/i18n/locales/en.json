@@ -13868,7 +13868,8 @@
             "sessionDeleteFailed": "Couldn't delete the session",
             "resumeInChatConflict": "Another chat is already holding this conversation.",
             "resumeInChatTranscriptMissing": "This conversation's history could not be loaded, so it cannot be resumed in chat.",
-            "resumeInChatFailed": "Could not resume this session in a new chat."
+            "resumeInChatFailed": "Could not resume this session in a new chat.",
+            "resumeInNewCliUnavailable": "This session cannot be opened in the CLI."
           },
           "AiVaultPanelControls": {
             "scanningSessions": "Scanning sessions",
@@ -14004,7 +14005,9 @@
             "deleteReasonNonLocalHost": "Only sessions on this device can be deleted.",
             "deleteReasonSyntheticPath": "This session can't be deleted from Orca.",
             "deleteReasonUnsupportedAgent": "{{value0}} sessions can't be deleted from Orca.",
-            "resumeInNewChat": "Resume in New Chat"
+            "resumeInNewNativeChat": "Resume in New Native Chat",
+            "resumeInNewCli": "Resume in New CLI",
+            "resumeInNewCliTooltip": "Forks this conversation into a new CLI session with its full history. The native chat stays as it is."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "Delete this session?",

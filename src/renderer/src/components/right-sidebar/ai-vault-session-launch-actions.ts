@@ -3,8 +3,10 @@ import { toast } from 'sonner'
 import {
   buildAiVaultResumeCopyCommandForWorktree,
   buildAiVaultResumeStartupForWorktree,
-  type AiVaultResumeCommandSession
+  type AiVaultResumeCommandSession,
+  type AiVaultResumeStartup
 } from '@/lib/ai-vault-resume-command'
+import { buildAiVaultForkStartupForWorktree } from '@/lib/ai-vault-session-fork-startup'
 import { launchAiVaultSessionInNewTab } from '@/lib/launch-ai-vault-session'
 import { useAppStore } from '@/store'
 import type { AiVaultAgent, AiVaultSession } from '../../../../shared/ai-vault-types'
@@ -88,12 +90,12 @@ export function useAiVaultSessionLaunchActions({
     [buildResumeCommand]
   )
 
-  const handleResume = useCallback(
-    (session: AiVaultSession, targetWorktreeId?: string): void => {
-      if (session.structuredSession) {
-        void activateAiVaultStructuredSession(session)
-        return
-      }
+  const launchInTerminal = useCallback(
+    (
+      session: AiVaultSession,
+      targetWorktreeId: string | undefined,
+      prepareStartup: (worktreeId: string) => Promise<AiVaultResumeStartup>
+    ): void => {
       const targetId = resolveAiVaultSessionLaunchTargetOrNotify({
         sessionFilePath: session.filePath,
         sessionExecutionHostId: session.executionHostId,
@@ -104,7 +106,6 @@ export function useAiVaultSessionLaunchActions({
       if (!targetId) {
         return
       }
-
       const showQueuedToast = (): void => {
         toast.success(
           translate(
@@ -114,13 +115,12 @@ export function useAiVaultSessionLaunchActions({
           )
         )
       }
-      void prepareAiVaultSessionForResume(session)
-        .then(dropDeletedSshResumeCwd)
-        .then((preparedSession) => {
+      void prepareStartup(targetId.worktreeId)
+        .then((startup) => {
           const launchResult = launchAiVaultSessionInNewTab({
             agent: session.agent,
             worktreeId: targetId.worktreeId,
-            ...buildResumeStartup(preparedSession, targetId.worktreeId)
+            ...startup
           })
           if (launchResult.tabId === null) {
             void launchResult.runtimeLaunch.then((outcome) => {
@@ -149,7 +149,46 @@ export function useAiVaultSessionLaunchActions({
         })
         .catch(notifyAiVaultSessionPreparationFailure)
     },
-    [activeWorktree?.id, activeWorktreeId, buildResumeStartup, targetState]
+    [activeWorktree?.id, activeWorktreeId, targetState]
+  )
+
+  const handleResume = useCallback(
+    (session: AiVaultSession, targetWorktreeId?: string): void => {
+      if (session.structuredSession) {
+        void activateAiVaultStructuredSession(session)
+        return
+      }
+      launchInTerminal(session, targetWorktreeId, (worktreeId) =>
+        prepareAiVaultSessionForResume(session)
+          .then(dropDeletedSshResumeCwd)
+          .then((preparedSession) => buildResumeStartup(preparedSession, worktreeId))
+      )
+    },
+    [buildResumeStartup, launchInTerminal]
+  )
+
+  // Native chat keeps the conversation it owns; the terminal gets a copy (see the fork builder).
+  const handleResumeInNewCli = useCallback(
+    (session: AiVaultSession, targetWorktreeId: string): void => {
+      launchInTerminal(session, targetWorktreeId, async (worktreeId) => {
+        const startup = buildAiVaultForkStartupForWorktree({
+          state: useAppStore.getState(),
+          worktreeId,
+          session: await dropDeletedSshResumeCwd(session),
+          commandOverride: agentCmdOverrides?.[session.agent]
+        })
+        if (!startup) {
+          throw new Error(
+            translate(
+              'auto.components.right.sidebar.AiVaultPanel.resumeInNewCliUnavailable',
+              'This session cannot be opened in the CLI.'
+            )
+          )
+        }
+        return startup
+      })
+    },
+    [agentCmdOverrides, launchInTerminal]
   )
 
   const handleResumeInNewChat = useCallback(
@@ -224,6 +263,7 @@ export function useAiVaultSessionLaunchActions({
     buildResumeStartup,
     copyResumeCommand,
     handleResume,
+    handleResumeInNewCli,
     handleResumeInNewChat,
     handleContinueInNewSession,
     continuationRequest,

@@ -202,6 +202,11 @@ function parseResumeInvocation(command: string): ResumeInvocation | null {
   }
   const provider = /codex(?:\.exe)?$/i.test(normalized[executableIndex]!) ? 'codex' : 'claude'
   const args = normalized.slice(executableIndex + 1)
+  // A fork reads the conversation and writes a new one, so it is no second writer. `codex fork`
+  // already falls through below: it carries no `resume` marker.
+  if (provider === 'claude' && args.some((token) => token.toLowerCase() === '--fork-session')) {
+    return null
+  }
   // `--continue`/`-c` resume the most recent session and never take an id, so a
   // following token is a prompt, not a target — they are always target-less.
   const targetlessFlags = provider === 'codex' ? [] : ['--continue', '-c']

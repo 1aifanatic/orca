@@ -165,6 +165,22 @@ describe('structured AI Vault ownership', () => {
       )
     ).resolves.toBeUndefined()
   })
+
+  // A fork writes a new conversation, so "Resume in New CLI" on a chat-owned row must pass.
+  it.each([
+    {
+      provider: 'claude' as const,
+      command: `claude '--resume' '${PROVIDER_SESSION}' '--fork-session'`
+    },
+    { provider: 'claude' as const, command: `claude --continue --fork-session` },
+    { provider: 'codex' as const, command: `CODEX_HOME=/h codex 'fork' '${PROVIDER_SESSION}'` }
+  ])('allows a fork of the owned session: $command', async ({ provider, command }) => {
+    installOwnership({ provider })
+
+    await expect(
+      assertLegacyAiVaultResumeCommandAllowed(command, async () => undefined)
+    ).resolves.toBeUndefined()
+  })
 })
 
 function installOwnership(overrides: Partial<StructuredProviderSessionOwnership> = {}): void {
