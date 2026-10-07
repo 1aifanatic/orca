@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NativeChatMessage } from '../../../src/shared/native-chat-types'
+import { colors } from '../theme/mobile-theme'
 
 const { writeText, alert } = vi.hoisted(() => ({
   writeText: vi.fn<(text: string) => Promise<void>>(),
@@ -99,6 +100,9 @@ describe('iOS whole-message copy', () => {
       act(() => renderer!.update(createElement(MobileNativeChatMessage, { message: current })))
       const copy = copyButton()
       expect(copy.props.accessibilityRole).toBe('button')
+      expect(copy.props.style({ pressed: false })[0]).toMatchObject({ width: 24, height: 24 })
+      expect(copy.findAll((node) => String(node.type) === 'Text')).toHaveLength(0)
+      expect(nodes('Copy')[0]?.props).toMatchObject({ size: 14, color: colors.textMuted })
       expect(copy.props.onLongPress).toBeUndefined()
       const body = renderer!.root.findByType(MobileNativeChatLongPressContent)
       expect(body.findAll((node) => node.props.accessibilityLabel === 'Copy message')).toHaveLength(
@@ -115,6 +119,13 @@ describe('iOS whole-message copy', () => {
       expect(writeText.mock.calls).toEqual([[first + '\n\n' + last]])
       expect(nodes('MessageActionsSheet')).toHaveLength(0)
       expect(nodes('Check')).toHaveLength(1)
+      expect(nodes('Check')[0]?.props).toMatchObject({ size: 14, color: colors.statusGreen })
+      expect(copyButton().props.accessibilityValue).toEqual({ text: 'Copied' })
+      expect(copyButton().props.style({ pressed: false })[0]).toMatchObject({
+        width: 24,
+        height: 24
+      })
+      expect(copyButton().findAll((node) => String(node.type) === 'Text')).toHaveLength(0)
     }
   )
 

@@ -96,38 +96,37 @@ export function MobileSourceCopyButton({
         ? 'Copy loaded'
         : 'Copy'
   const Icon = copied ? Check : Copy
+  const iconColor = failed ? colors.statusRed : copied ? colors.statusGreen : colors.textMuted
   return (
     <Pressable
       style={({ pressed }) => [styles.button, partial && styles.partial, pressed && styles.pressed]}
-      hitSlop={6}
+      hitSlop={10}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={failed ? "Couldn't copy" : accessibilityLabel}
+      accessibilityLiveRegion={failed ? 'polite' : undefined}
       accessibilityValue={{ text: failed ? "Couldn't copy" : copied ? label : undefined }}
       aria-valuetext={failed ? "Couldn't copy" : copied ? label : undefined}
       accessibilityState={{ disabled: text.length === 0 }}
       disabled={text.length === 0}
       onPress={() => void copy()}
     >
-      <Icon size={14} color={colors.textSecondary} />
-      <Text style={styles.label} accessibilityLiveRegion={failed ? 'polite' : undefined}>
-        {label}
-      </Text>
+      <Icon size={14} color={iconColor} />
+      {partial ? <Text style={styles.label}>{label}</Text> : null}
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
   button: {
-    width: 84,
-    minHeight: 32,
+    width: 24,
+    height: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
     borderRadius: radii.button
   },
-  partial: { width: 128 },
+  partial: { width: 128, height: 32, paddingHorizontal: spacing.sm },
   pressed: { backgroundColor: colors.bgRaised },
-  label: { color: colors.textSecondary, fontSize: typography.metaSize }
+  label: { color: colors.textMuted, fontSize: typography.metaSize }
 })

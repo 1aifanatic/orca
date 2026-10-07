@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react'
+import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Alert } from 'react-native'
@@ -9,10 +9,16 @@ import {
   type BridgePortPair
 } from '../mobile-web-shell/bridge/bridge-port-pair-test-harness'
 import { MobileSourceCopyButton } from './MobileSourceCopyButton'
+import { colors } from '../theme/mobile-theme'
 
 vi.mock('react-native', () => vi.importActual<typeof import('react-native')>('react-native-web'))
 vi.mock('../platform/clipboard', () => vi.importActual('../platform/clipboard.web'))
-vi.mock('lucide-react-native', () => ({ Copy: () => null, Check: () => null }))
+vi.mock('lucide-react-native', () => ({
+  Copy: ({ size, color }: { size: number; color: string }) =>
+    createElement('svg', { 'data-icon': 'copy', width: size, height: size, stroke: color }),
+  Check: ({ size, color }: { size: number; color: string }) =>
+    createElement('svg', { 'data-icon': 'check', width: size, height: size, stroke: color })
+}))
 vi.mock('../transport/host-client-hooks', () => ({
   useDisconnectHostClient: () => () => {},
   useForceReconnect: () => null,
@@ -45,6 +51,21 @@ describe('source Copy feedback in the paired web page', () => {
       throw new Error('Copy control is missing')
     }
     return control
+  }
+
+  function expectIcon(name: 'copy' | 'check', color: string) {
+    const icon = button().querySelector('svg')
+    expect(icon?.getAttribute('data-icon')).toBe(name)
+    expect(icon?.getAttribute('width')).toBe('14')
+    expect(icon?.getAttribute('height')).toBe('14')
+    expect(icon?.getAttribute('stroke')).toBe(color)
+    expect(button().textContent).toBe('')
+  }
+
+  function expectFailure() {
+    expectIcon('copy', colors.statusRed)
+    expect(button().getAttribute('aria-label')).toBe("Couldn't copy")
+    expect(button().getAttribute('aria-valuetext')).toBe("Couldn't copy")
   }
 
   async function render(text = '# Held source', partial = false) {
@@ -80,6 +101,23 @@ describe('source Copy feedback in the paired web page', () => {
     vi.useRealTimers()
   })
 
+  it('keeps a compact icon-only control through success and expiry', async () => {
+    await render()
+    vi.useFakeTimers()
+    const initialClass = button().className
+    expect(button().getAttribute('aria-label')).toBe('Copy source')
+    expectIcon('copy', colors.textMuted)
+    await press()
+    expectIcon('check', colors.statusGreen)
+    expect(button().getAttribute('aria-valuetext')).toBe('Copied')
+    expect(button().className).toBe(initialClass)
+    await act(async () => {
+      vi.advanceTimersByTime(1500)
+    })
+    expectIcon('copy', colors.textMuted)
+    expect(button().className).toBe(initialClass)
+  })
+
   it.each(['rejected request', 'written:false'] as const)(
     'shows a visible failure for %s and allows retry',
     async (outcome) => {
@@ -89,9 +127,10 @@ describe('source Copy feedback in the paired web page', () => {
         write.mockRejectedValueOnce(new Error('Clipboard unavailable'))
       }
       await render()
+      const initialClass = button().className
       await press()
-      expect(button().textContent).toBe('Failed')
-      expect(button().getAttribute('aria-valuetext')).toBe("Couldn't copy")
+      expectFailure()
+      expect(button().className).toBe(initialClass)
       expect(alert).not.toHaveBeenCalled()
       expect(write).toHaveBeenCalledExactlyOnceWith('native.clipboard.write', {
         mime: 'text',
@@ -99,7 +138,8 @@ describe('source Copy feedback in the paired web page', () => {
       })
       expect(pair.rpc.requests).toEqual([])
       await press()
-      expect(button().textContent).toBe('Copied')
+      expectIcon('check', colors.statusGreen)
+      expect(button().getAttribute('aria-label')).toBe('Copy source')
       expect(write).toHaveBeenCalledTimes(2)
     }
   )
@@ -112,7 +152,7 @@ describe('source Copy feedback in the paired web page', () => {
     await pair.flush()
     await render()
     await press()
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     expect(write).not.toHaveBeenCalled()
     expect(alert).not.toHaveBeenCalled()
   })
@@ -128,7 +168,7 @@ describe('source Copy feedback in the paired web page', () => {
       pending.finish(false)
       await pair.flush()
     })
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     expect(write).toHaveBeenCalledWith('native.clipboard.write', {
       mime: 'text',
       value: '# Held source'
@@ -136,7 +176,7 @@ describe('source Copy feedback in the paired web page', () => {
     await act(async () => {
       vi.advanceTimersByTime(1500)
     })
-    expect(button().textContent).toBe('Copy')
+    expectIcon('copy', colors.textMuted)
   })
 
   it('keeps the latest failure visible across continued streaming until expiry', async () => {
@@ -144,15 +184,15 @@ describe('source Copy feedback in the paired web page', () => {
     vi.useFakeTimers()
     write.mockResolvedValueOnce({ written: false })
     await press()
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     await render('Updated source')
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     await render('Another streaming update')
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     await act(async () => {
       vi.advanceTimersByTime(1500)
     })
-    expect(button().textContent).toBe('Copy')
+    expectIcon('copy', colors.textMuted)
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -163,12 +203,12 @@ describe('source Copy feedback in the paired web page', () => {
     await press()
     write.mockResolvedValueOnce({ written: false })
     await press()
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     await act(async () => {
       older.finish(written)
       await pair.flush()
     })
-    expect(button().textContent).toBe('Failed')
+    expectFailure()
     expect(alert).not.toHaveBeenCalled()
   })
 
@@ -201,7 +241,7 @@ describe('source Copy feedback in the paired web page', () => {
       pending.finish(true)
       await pair.flush()
     })
-    expect(button().textContent).toBe('Copy')
+    expectIcon('copy', colors.textMuted)
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -215,6 +255,21 @@ describe('source Copy feedback in the paired web page', () => {
       vi.advanceTimersByTime(1500)
     })
     expect(button().textContent).toBe('Copy loaded')
+    expect(write).toHaveBeenCalledWith('native.clipboard.write', {
+      mime: 'text',
+      value: '# Loaded portion'
+    })
+  })
+
+  it('confirms the loaded portion without changing the partial footprint', async () => {
+    await render('# Loaded portion', true)
+    const initialClass = button().className
+    expect(button().textContent).toBe('Copy loaded')
+    await press()
+    expect(button().textContent).toBe('Copied loaded')
+    expect(button().querySelector('svg')?.getAttribute('data-icon')).toBe('check')
+    expect(button().getAttribute('aria-valuetext')).toBe('Copied loaded')
+    expect(button().className).toBe(initialClass)
     expect(write).toHaveBeenCalledWith('native.clipboard.write', {
       mime: 'text',
       value: '# Loaded portion'

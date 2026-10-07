@@ -112,8 +112,12 @@ describe('MobileFileMarkdownPreview', () => {
       await updatePreview(renderer, { ...baseProps, content: source })
       const copy = modeToggle(renderer, 'Copy Markdown source')
       expect(copy.props.accessibilityRole).toBe('button')
+      expect(copy.findAllByType('Text')).toHaveLength(0)
+      expect(copy.props.style({ pressed: false })[0]).toMatchObject({ width: 24, height: 24 })
       await act(async () => copy.props.onPress())
       expect(writeText.mock.calls).toEqual([[source]])
+      expect(modeToggle(renderer, 'Copy Markdown source').findAllByType('Text')).toHaveLength(0)
+      expect(renderer.root.findAllByType('Check')).toHaveLength(1)
     }
   )
 
