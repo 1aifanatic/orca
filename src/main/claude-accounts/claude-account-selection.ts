@@ -18,18 +18,12 @@ import {
   type ClaudeAccountSelectionTarget
 } from './runtime-selection'
 
-export type ClaudeAccountServiceLifecycle = {
-  /** The sign-in a Claude launch would use changed; called before the settings change. */
-  onSignInChanged?: () => void
-}
-
 export class ClaudeAccountSelection {
   constructor(
     private readonly store: Store,
     private readonly rateLimits: RateLimitService,
     private readonly runtimeAuth: ClaudeRuntimeAuthService,
-    private readonly removeManagedAuth: (accountId: string, path: string) => Promise<void>,
-    private readonly lifecycle: ClaudeAccountServiceLifecycle = {}
+    private readonly removeManagedAuth: (accountId: string, path: string) => Promise<void>
   ) {}
 
   list(): ClaudeRateLimitAccountsState {
@@ -51,8 +45,6 @@ export class ClaudeAccountSelection {
     const wasSelected = getSelectedClaudeAccountIdForTarget(settings, target) === accountId
     try {
       if (wasSelected) {
-        // Removing the selected account swaps another sign-in into the same config dir.
-        this.lifecycle.onSignInChanged?.()
         this.store.updateSettings({
           activeClaudeManagedAccountId: nextActiveId,
           activeClaudeManagedAccountIdsByRuntime: nextSelection
@@ -107,9 +99,6 @@ export class ClaudeAccountSelection {
       accountId,
       effectiveTarget
     )
-    // Before the settings change a chat reads from: its read re-probes, and the probe waits out
-    // the switch, so the answer it serves meanwhile is the one held, never a stale fresh one.
-    this.lifecycle.onSignInChanged?.()
     this.store.updateSettings({
       activeClaudeManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,

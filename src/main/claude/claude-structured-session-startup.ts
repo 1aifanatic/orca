@@ -3,7 +3,6 @@
 // a foreign session id) faults the published session through its exit path.
 
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
-import type { AgentModelCatalogSessionAccess } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
 import type {
   StructuredAgentSessionAcquireInput,
   StructuredAgentSessionStartedEvent
@@ -68,8 +67,6 @@ export async function readClaudeStartupFacts(input: {
   providerSessionId: string
   resumesTranscript: boolean
   account?: AgentSessionAccountKind
-  /** The account's catalog, which takes this CLI's signed-out refusal as its verdict. */
-  catalogAccess?: AgentModelCatalogSessionAccess
   inputOptions: StructuredAgentSessionAcquireInput['options']
   requestTimeoutMs: number | undefined
   emit: (event: ClaudeStructuredSessionEvent) => void
@@ -78,10 +75,6 @@ export async function readClaudeStartupFacts(input: {
     input.connection.initializationResult().then((result) => {
       const authError = claudeInitializationAuthError(result, input.account)
       if (authError) {
-        input.catalogAccess?.store.statuses.record(input.catalogAccess.fingerprint, 'claude', {
-          state: 'notSignedIn',
-          ...(input.account ? { account: input.account } : {})
-        })
         throw authError
       }
       return result

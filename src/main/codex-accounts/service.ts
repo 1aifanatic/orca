@@ -137,7 +137,6 @@ export class CodexAccountService {
       readIdentityFromHome: (path, accountId) => this.readIdentityFromHome(path, accountId),
       selection: this.selection,
       configMirror: this.configMirror,
-      lifecycle,
       managedHomePaths: this.managedHomePaths,
       managedHomes: this.managedHomes,
       login: (managedHomePath) => this.runCodexLogin(managedHomePath)

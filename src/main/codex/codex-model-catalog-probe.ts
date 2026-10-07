@@ -1,9 +1,6 @@
 import type { AgentSessionAccountKind } from '../../shared/agent-session-availability'
-import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-unavailable'
 import { isMissingProviderExecutable } from '../provider-process/provider-executable-missing'
-import { getSystemCodexHomePath } from './codex-home-paths'
-import { join, resolve } from 'node:path'
-import { readStoredCodexCredentialState } from '../codex-accounts/managed-codex-auth-readiness'
 import { CODEX_SHORT_LIVED_PROBE_APP_SERVER_ARGS } from '../codex-cli/codex-read-only-app-server-args'
 import { runCodexAppServerSession } from './codex-app-server-session'
 import { fetchCodexModelCatalogListing } from './codex-structured-model-catalog'
@@ -39,13 +36,6 @@ function definedEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string> 
     }
   }
   return next
-}
-
-/** Codex answers "no account" for a missing auth.json and for one caught mid-write (it truncates
- *  and rewrites in place). Only no file, or a settled file with no credential, is signed out. */
-function storedLoginIsAbsent(home: string): boolean {
-  const state = readStoredCodexCredentialState(join(home, 'auth.json'))
-  return state === 'missing' || state === 'no-credential'
 }
 
 /**
@@ -84,14 +74,9 @@ export function createCodexModelCatalogProbe(
           'requiresOpenaiAuth' in response &&
           response.requiresOpenaiAuth === true &&
           'account' in response &&
-          response.account === null &&
-          storedLoginIsAbsent(accountHomePath)
+          response.account === null
         ) {
-          const account = deps.resolveAccountKind
-            ? deps.resolveAccountKind(accountHomePath)
-            : resolve(accountHomePath) === resolve(getSystemCodexHomePath())
-              ? 'system'
-              : undefined
+          const account = deps.resolveAccountKind?.(accountHomePath)
           throw new AgentModelCatalogUnavailableError({
             reason: 'notSignedIn',
             ...(account ? { account } : {})

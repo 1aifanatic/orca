@@ -17,17 +17,13 @@ import {
   getClaudeSelectionTargetForAccount,
   normalizeClaudeRuntimeSelection
 } from './runtime-selection'
-import type {
-  ClaudeAccountSelection,
-  ClaudeAccountServiceLifecycle
-} from './claude-account-selection'
+import type { ClaudeAccountSelection } from './claude-account-selection'
 
 type ClaudeAccountRegistrationDependencies = {
   store: Store
   rateLimits: RateLimitService
   runtimeAuth: ClaudeRuntimeAuthService
   selection: ClaudeAccountSelection
-  lifecycle: ClaudeAccountServiceLifecycle
   createManagedAuth: (
     accountId: string,
     target?: ClaudeManagedAuthTarget
@@ -129,8 +125,6 @@ export class ClaudeAccountRegistration {
       await this.dependencies.writeOauth(accountId, managedAuthPath, captured.oauthAccount)
       await this.dependencies.writeCredentials(accountId, managedAuthPath, captured.credentialsJson)
       wroteCredentials = true
-      // The account signed in again: before the settings change a chat reads from, mark it.
-      this.dependencies.lifecycle.onSignInChanged?.()
       this.dependencies.store.updateSettings({ claudeManagedAccounts: nextAccounts })
       this.dependencies.runtimeAuth.clearLastWrittenCredentialsJson(accountId)
       this.dependencies.rateLimits.evictInactiveClaudeCache(accountId)

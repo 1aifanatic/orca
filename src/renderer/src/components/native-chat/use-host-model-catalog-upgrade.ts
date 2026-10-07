@@ -1,11 +1,14 @@
 import {
-  readAgentSessionAvailability,
-  type AgentSessionAvailabilityState,
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type MutableRefObject
+} from 'react'
+import {
+  readAgentSessionUnavailable,
   type AgentSessionUnavailable
 } from '../../../../shared/agent-session-availability'
-import { useAppStore } from '@/store'
-import { runtimeHostContactForEntry } from '../../../../shared/runtime-host-contact'
-import { useEffect, useState, useSyncExternalStore, type MutableRefObject } from 'react'
 import type { AgentSessionModelCatalogResult } from '../../../../shared/agent-session-wire'
 import type { AgentType } from '../../../../shared/agent-status-types'
 import type { AgentSessionOptionCatalog } from '../../../../shared/agent-session-option-catalog'
@@ -24,66 +27,6 @@ import {
   subscribeHostModelListingWaits
 } from './host-model-listing-waits'
 
-type AccountSettings = ReturnType<typeof useAppStore.getState>['settings']
-
-/** The inputs this agent's launch resolves its home from, by value: a re-fetched settings copy
- *  with equal values keeps the key, and a switch or a fresh sign-in for THIS agent changes it.
- *  Hashed, since the agent env can hold secrets. */
-function accountKeyOf(settings: AccountSettings, agent: AgentType): string {
-  const accounts =
-    agent === 'claude'
-      ? [
-          settings?.activeClaudeManagedAccountId,
-          settings?.activeClaudeManagedAccountIdsByRuntime,
-          settings?.claudeManagedAccounts?.map((account) => [
-            account.id,
-            account.lastAuthenticatedAt
-          ])
-        ]
-      : agent === 'codex'
-        ? [
-            settings?.activeCodexManagedAccountId,
-            settings?.activeCodexManagedAccountIdsByRuntime,
-            settings?.codexManagedAccounts?.map((account) => [
-              account.id,
-              account.lastAuthenticatedAt
-            ])
-          ]
-        : []
-  const text = JSON.stringify([...accounts, settings?.agentDefaultEnv?.[agent]])
-  let hash = 0x811c9dc5
-  for (let index = 0; index < text.length; index += 1) {
-    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193)
-  }
-  return (hash >>> 0).toString(36)
-}
-
-/** The host's last answer for one chat. Partitioned by host, agent and session, not by account:
- *  an account change re-reads, and the answer held stands until the re-read replaces it. */
-type CatalogObservation = {
-  key: string
-  availability: AgentSessionAvailabilityState
-}
-
-function unavailableFrom(answer: AgentSessionAvailabilityState): AgentSessionUnavailable | null {
-  return answer.state === 'ready'
-    ? null
-    : answer.state === 'notSignedIn'
-      ? { reason: 'notSignedIn', ...(answer.account ? { account: answer.account } : {}) }
-      : { reason: 'cliMissing' }
-}
-
-function sameAvailability(
-  left: AgentSessionAvailabilityState,
-  right: AgentSessionAvailabilityState
-): boolean {
-  return (
-    left.state === right.state &&
-    (left.state !== 'notSignedIn' ||
-      (right.state === 'notSignedIn' && left.account === right.account))
-  )
-}
-
 /**
  * Upgrades the static seed with the host's stored catalog without waiting on
  * attach. A record-less read (no session yet) resolves the account a launch
@@ -93,7 +36,10 @@ function sameAvailability(
  *
  * When the host says its first listing for the account is running, one more
  * read waits for it — one per chat, joined by every later run and remount.
- * Reports that wait alongside the host's short-lived availability evidence.
+ * Reports that wait, and why the host's latest answer says no chat can start
+ * (kept until the next answer replaces it; a failed read is unknown). Only
+ * while blocked, the window gaining focus or `recheck` reads again: the host
+ * pushes no change, and the fix (signing in, installing) happens elsewhere.
  */
 export function useHostModelCatalogUpgrade(args: {
   agent: AgentType
@@ -107,8 +53,6 @@ export function useHostModelCatalogUpgrade(args: {
   /** Where the launch runs: the host names no default its config could replace. */
   worktree?: string
   fence: number | null
-  /** Changes when the chat records a start that failed for a sign-in or CLI reason. */
-  startFailureKey?: string | null
   activeOptionRecordRef: MutableRefObject<NativeChatSessionOptionRecord>
   updateOptionState: (
     update: (current: StructuredAgentSessionOptionState) => StructuredAgentSessionOptionState
@@ -116,8 +60,8 @@ export function useHostModelCatalogUpgrade(args: {
 }): {
   awaitingListing: boolean
   unavailable: AgentSessionUnavailable | null
-  /** The host's last answer for the account is that a chat can start; it may predate the failure. */
-  accountVerified: boolean
+  /** Present only while blocked. */
+  recheck?: () => void
 } {
   const {
     activeOptionRecordRef,
@@ -127,67 +71,51 @@ export function useHostModelCatalogUpgrade(args: {
     namesDefault,
     optionCatalog,
     sessionId,
-    startFailureKey,
     target,
     updateOptionState,
     worktree
   } = args
-  const accountKey = useAppStore((state) => accountKeyOf(state.settings, agent))
-  // A paired host known out of contact answers nothing; its evidence is unknown until it is back.
-  const hostLive = useAppStore((state) => {
-    const entry =
-      target.kind === 'local'
-        ? undefined
-        : state.runtimeStatusByEnvironmentId.get(target.environmentId)
-    return !entry || runtimeHostContactForEntry(entry).verdict === 'live'
-  })
-  const chatKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}`
-  // A listing wait is the account's own: a switch never joins the old account's read.
-  const waitKey = `${chatKey}\u0000${accountKey}`
+  const waitKey = `${structuredAgentSessionHostKey(target)}\u0000${agent}\u0000${sessionId}`
   const awaitingListing = useSyncExternalStore(subscribeHostModelListingWaits, () =>
     isHostModelListingWaitInFlight(waitKey)
   )
-  const [observation, setObservation] = useState<CatalogObservation | null>(null)
-  // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- The replaceable expiry handle is cleared before rearming and by the returned cleanup.
+  const [verdict, setVerdict] = useState<{
+    key: string
+    unavailable: AgentSessionUnavailable | null
+  } | null>(null)
+  const unavailable = verdict?.key === waitKey ? verdict.unavailable : null
+  const [rereads, setRereads] = useState(0)
+  const recheck = useCallback(() => setRereads((count) => count + 1), [])
+  const blocked = unavailable !== null
   useEffect(() => {
-    if (!hostLive) {
-      // Out of contact the host's evidence is unknown, never the last thing it said.
-      setObservation(null)
+    if (!blocked) {
       return
     }
+    window.addEventListener('focus', recheck)
+    return () => window.removeEventListener('focus', recheck)
+  }, [blocked, recheck])
+  useEffect(() => {
     if (!enabled || !optionCatalog || !isAgentSessionHandleProvider(agent)) {
       return
     }
     let stale = false
-    let generation = 0
-    let expiry: ReturnType<typeof setTimeout> | undefined
     const params = { agent, sessionId, ...(namesDefault && worktree ? { worktree } : {}) }
-    const read = (
-      flag?: 'waitForListing' | 'waitForAvailability'
-    ): Promise<AgentSessionModelCatalogResult> =>
+    const read = (waitForListing: boolean): Promise<AgentSessionModelCatalogResult> =>
       callStructuredAgentSession<AgentSessionModelCatalogResult>(
         target,
         'agentSession.modelCatalog',
-        flag ? { ...params, [flag]: true } : params
+        waitForListing ? { ...params, waitForListing } : params
       )
-    // An answer replaces the last one; nothing clears it before the next answer arrives.
     const apply = (catalog: AgentSessionModelCatalogResult | null): void => {
-      clearTimeout(expiry)
-      const answer = catalog ? readAgentSessionAvailability(catalog.availability) : null
-      setObservation((previous) =>
-        answer && previous?.key === chatKey && sameAvailability(previous.availability, answer)
-          ? previous
-          : answer
-            ? { key: chatKey, availability: answer }
-            : null
+      const next = readAgentSessionUnavailable(catalog?.unavailable)
+      setVerdict((current) =>
+        JSON.stringify(current?.key === waitKey ? current.unavailable : null) ===
+        JSON.stringify(next)
+          ? current
+          : { key: waitKey, unavailable: next }
       )
       if (!catalog) {
         return
-      }
-      // Only a blocked answer needs re-deriving on its own; the host says when, backing off while
-      // the block repeats. Every answer re-arms it, so one served mid-probe can't fire early twice.
-      if (answer && answer.state !== 'ready') {
-        expiry = setTimeout(refresh, answer.recheckInMs)
       }
       updateOptionState((current) =>
         current.record === activeOptionRecordRef.current
@@ -197,108 +125,47 @@ export function useHostModelCatalogUpgrade(args: {
           : current
       )
     }
-    const leaves = new Set<() => void>()
-    const leave = (): void => {
-      for (const leaveWait of leaves) {
-        leaveWait()
-      }
-      leaves.clear()
+    let leave: (() => void) | null = null
+    const waitForListing = (): void => {
+      leave = joinHostModelListingWait(waitKey, () => read(true), apply)
     }
-    // One waiting read of each kind per chat; a probe verdict is never followed up again.
-    const waitFor = (
-      wait: 'waitForListing' | 'waitForAvailability',
-      requestGeneration: number
-    ): void => {
-      // A settled wait leaves the set, so a chat held blocked for hours keeps none.
-      const leaveWait = joinHostModelListingWait(
-        wait === 'waitForListing' ? waitKey : `${waitKey}\u0000availability`,
-        () => read(wait),
-        (catalog) => {
-          leaves.delete(leaveWait)
-          if (stale || generation !== requestGeneration) {
+    if (isHostModelListingWaitInFlight(waitKey)) {
+      waitForListing()
+    } else {
+      void read(false)
+        .then((catalog) => {
+          if (stale) {
             return
           }
           apply(catalog)
-          // The catalog landed before the probe's verdict; one more read waits for that.
-          if (wait === 'waitForListing' && catalog?.listingInProgress === true) {
-            queueMicrotask(() => {
-              if (!stale && generation === requestGeneration) {
-                waitFor('waitForAvailability', requestGeneration)
-              }
-            })
+          // Only a host that reports the listing knows the wait param; an older one refuses it.
+          if (catalog.listingInProgress === true) {
+            waitForListing()
           }
-        }
-      )
-      leaves.add(leaveWait)
+        })
+        .catch(() => {
+          if (!stale) {
+            apply(null)
+          }
+        })
     }
-    const refresh = (): void => {
-      if (stale || document.visibilityState === 'hidden') {
-        return
-      }
-      const requestGeneration = ++generation
-      if (isHostModelListingWaitInFlight(waitKey)) {
-        waitFor('waitForListing', requestGeneration)
-      } else {
-        void read()
-          .then((catalog) => {
-            if (stale || generation !== requestGeneration) {
-              return
-            }
-            apply(catalog)
-            if (catalog.listingInProgress === true) {
-              // Only a host that reports the listing knows the wait params; an older one refuses them.
-              waitFor(
-                catalog.origin === 'unknown' ? 'waitForListing' : 'waitForAvailability',
-                requestGeneration
-              )
-            }
-          })
-          .catch(() => {
-            if (!stale && generation === requestGeneration) {
-              apply(null)
-            }
-          })
-      }
-    }
-    const onVisibility = (): void => {
-      if (document.visibilityState === 'hidden') {
-        generation += 1
-        leave()
-      } else {
-        refresh()
-      }
-    }
-    refresh()
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       stale = true
-      clearTimeout(expiry)
-      leave()
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', onVisibility)
+      leave?.()
     }
   }, [
     activeOptionRecordRef,
     agent,
-    chatKey,
     enabled,
     fence,
-    hostLive,
     namesDefault,
     optionCatalog,
+    rereads,
     sessionId,
-    startFailureKey,
     target,
     updateOptionState,
     waitKey,
     worktree
   ])
-  const answer =
-    enabled && hostLive && observation?.key === chatKey ? observation.availability : null
-  return {
-    awaitingListing,
-    unavailable: answer ? unavailableFrom(answer) : null,
-    accountVerified: answer?.state === 'ready'
-  }
+  return { awaitingListing, unavailable, ...(blocked ? { recheck } : {}) }
 }

@@ -1,31 +1,16 @@
 // @vitest-environment happy-dom
 
-import { act, cleanup, render, renderHook } from '@testing-library/react'
+import { act, render, renderHook } from '@testing-library/react'
 import { useLayoutEffect } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), leftWaits: 0 }))
+const mocks = vi.hoisted(() => ({ call: vi.fn() }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 vi.mock('@/runtime/structured-agent-session-client', () => ({
   callStructuredAgentSession: mocks.call
 }))
-
-// Counts each wait a chat still has to leave, passing every call through.
-vi.mock('./host-model-listing-waits', async (importActual) => {
-  const actual = await importActual<typeof ListingWaits>()
-  return {
-    ...actual,
-    joinHostModelListingWait: (...args: Parameters<typeof actual.joinHostModelListingWait>) => {
-      const leave = actual.joinHostModelListingWait(...args)
-      return () => {
-        mocks.leftWaits += 1
-        leave()
-      }
-    }
-  }
-})
 
 vi.mock('./native-chat-session-option-settings-write', () => ({
   enqueueSessionOptionSettingsWrite: vi.fn()
@@ -36,15 +21,8 @@ vi.mock('@/lib/structured-agent-session-launch-options', () => ({
   getStructuredAgentSessionLaunchSelection: () => null
 }))
 
-import { useAppStore } from '@/store'
-import type * as ListingWaits from './host-model-listing-waits'
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
-import { agentJournalItemKey } from '../../../../shared/agent-session-journal-item-key'
-import { agentSessionFailureWords } from '../../../../shared/agent-session-failure-words'
-import { agentSessionFailureFact } from '../../../../shared/agent-session-failure'
-import { structuredAgentSessionStartFailureRowIdentity } from '../../../../shared/structured-agent-session-start-failure-row-key'
 import { useStructuredAgentSessionOptions } from './use-structured-agent-session-options'
 
 const PAIRED_TARGET = { kind: 'environment', environmentId: 'server-1' } as const
@@ -59,13 +37,7 @@ const HOST_CATALOG = {
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: no test here sends a pick over a fence, so mutate is never called.
 const mutate = vi.fn(async () => null) as unknown as StructuredAgentSessionMutate
 
-type Props = {
-  hidden?: boolean
-  attached?: boolean
-  sessionId?: string
-  agent?: 'claude' | 'codex'
-  journalItems?: AgentJournalRenderItem[]
-}
+type Props = { hidden?: boolean; attached?: boolean; sessionId?: string }
 
 // A chat's waiting read outlives its mounts, so each test gets its own chat.
 let sessionId = ''
@@ -75,7 +47,7 @@ function renderOptions(initial: Props = {}) {
   return renderHook(
     (props: Props) =>
       useStructuredAgentSessionOptions({
-        agent: props.agent ?? 'codex',
+        agent: 'codex',
         sessionId: props.sessionId ?? sessionId,
         target: PAIRED_TARGET,
         transportEnabled: props.attached === true,
@@ -85,8 +57,7 @@ function renderOptions(initial: Props = {}) {
         turnId: null,
         unloadedTurnRevisions: undefined,
         mutate,
-        launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} },
-        ...(props.journalItems ? { journalItems: props.journalItems } : {})
+        launch: { kind: 'new', seedOptions: { model: 'gpt-5.5' }, heldOptions: {} }
       }),
     { initialProps: initial }
   )
@@ -383,353 +354,4 @@ describe('the end of a host listing wait', () => {
       view.unmount()
     })
   }
-})
-
-describe('Send availability follows the current catalog', () => {
-  beforeEach(() => {
-    mocks.call.mockReset()
-    sessionId = `availability-${++sessionCount}`
-    vi.useFakeTimers()
-  })
-  afterEach(() => {
-    cleanup()
-    vi.useRealTimers()
-  })
-  const blocked = {
-    origin: 'unknown',
-    availability: { state: 'notSignedIn', account: 'system', recheckInMs: 30000 }
-  }
-  it.each(['claude', 'codex'] as const)(
-    'gates a live %s session on account evidence and enables it after sign-in',
-    async (agent) => {
-      const catalog = { ...HOST_CATALOG, origin: 'live-session' }
-      answerCatalog([
-        () => Promise.resolve({ ...catalog, availability: blocked.availability }),
-        () => Promise.resolve(catalog)
-      ])
-      const { result } = renderOptions({ agent, attached: true })
-      await flush()
-      expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
-      expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(30000)
-      })
-      expect(result.current.unavailable).toBeNull()
-      expect(catalogReads()).toHaveLength(2)
-    }
-  )
-  it('keeps a blocker through its expiry until the re-read answers', async () => {
-    const reread = deferred()
-    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
-    const { result } = renderOptions()
-    await flush()
-    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn', account: 'system' })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30000)
-    })
-    // No gap while the host re-checks: Send stays disabled with its reason.
-    expect(catalogReads()).toHaveLength(2)
-    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
-    reread.resolve(UNKNOWN)
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
-  it("re-arms its timer from each blocked answer's backed-off hold", async () => {
-    const held = (recheckInMs: number) => ({
-      ...blocked,
-      availability: { ...blocked.availability, recheckInMs }
-    })
-    answerCatalog([
-      () => Promise.resolve(held(60_000)),
-      () => Promise.resolve(held(120_000)),
-      () => Promise.resolve(held(120_000))
-    ])
-    renderOptions()
-    await flush()
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(59_999)
-    })
-    expect(catalogReads()).toHaveLength(1)
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1)
-    })
-    expect(catalogReads()).toHaveLength(2)
-    // A focus read in between re-arms from its own answer rather than adding a second timer.
-    act(() => window.dispatchEvent(new Event('focus')))
-    await flush()
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(119_999)
-    })
-    expect(catalogReads()).toHaveLength(3)
-    // One timer, armed from the newest answer: exactly one more read when it is due.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1)
-    })
-    expect(catalogReads()).toHaveLength(4)
-    expect(catalogReads().every((params) => !JSON.stringify(params).includes('scheduled'))).toBe(
-      true
-    )
-  })
-  it('a focus refresh with an unknown answer clears the blocker', async () => {
-    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
-    const { result } = renderOptions()
-    await flush()
-    act(() => window.dispatchEvent(new Event('focus')))
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
-  it('a failed focus refresh clears the blocker', async () => {
-    answerCatalog([() => Promise.resolve(blocked), () => Promise.reject(new Error('disconnected'))])
-    const { result } = renderOptions()
-    await flush()
-    act(() => window.dispatchEvent(new Event('focus')))
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
-  it('does not apply a signed-out answer from the previous chat', async () => {
-    const first = deferred()
-    answerCatalog([() => first.promise, () => Promise.resolve(UNKNOWN)])
-    const { result, rerender } = renderOptions()
-    rerender({ sessionId: 'new-chat' })
-    first.resolve(blocked)
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
-  it('does not disable the cached model picker while refreshing availability', async () => {
-    const waited = deferred()
-    answerCatalog([
-      () => Promise.resolve({ ...HOST_CATALOG, listingInProgress: true }),
-      () => waited.promise
-    ])
-    const { result } = renderOptions()
-    await flush()
-    expect(model(result.current.optionSnapshot).choicesPending).toBeUndefined()
-    waited.resolve({ ...HOST_CATALOG, availability: blocked.availability })
-    await flush()
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-  })
-  it('waits once more when a catalog lands before the account check answers', async () => {
-    answerCatalog([
-      () => Promise.resolve(LISTING),
-      () => Promise.resolve({ ...HOST_CATALOG, listingInProgress: true }),
-      () => Promise.resolve({ ...HOST_CATALOG, availability: blocked.availability })
-    ])
-    const { result } = renderOptions()
-    await flush()
-    await flush()
-    expect(catalogReads()).toEqual([
-      { agent: 'codex', sessionId },
-      { agent: 'codex', sessionId, waitForListing: true },
-      { agent: 'codex', sessionId, waitForAvailability: true }
-    ])
-    expect(modelChoices(result.current.optionSnapshot)).toContain('gpt-hosted')
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-  })
-  it('keeps the blocker across hiding and revealing the pane until the re-read answers', async () => {
-    const reread = deferred()
-    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
-    const { result, rerender } = renderOptions()
-    await flush()
-    rerender({ hidden: true })
-    // A hidden pane gates nothing; its last answer is not dropped.
-    expect(result.current.unavailable).toBeNull()
-    rerender({ hidden: false })
-    await flush()
-    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
-    reread.resolve(UNKNOWN)
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
-  it('drops each settled wait, so a chat held blocked keeps none to leave', async () => {
-    const beside = { ...HOST_CATALOG, listingInProgress: true }
-    const answered = { ...HOST_CATALOG, availability: blocked.availability }
-    answerCatalog([
-      () => Promise.resolve(beside),
-      () => Promise.resolve(answered),
-      () => Promise.resolve(beside),
-      () => Promise.resolve(answered),
-      () => Promise.resolve(beside),
-      () => Promise.resolve(answered)
-    ])
-    renderOptions()
-    await flush()
-    for (let cycle = 0; cycle < 2; cycle += 1) {
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(30000)
-      })
-      await flush()
-    }
-    expect(catalogReads()).toHaveLength(6)
-    mocks.leftWaits = 0
-    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
-    try {
-      act(() => document.dispatchEvent(new Event('visibilitychange')))
-      expect(mocks.leftWaits).toBe(0)
-    } finally {
-      hidden.mockRestore()
-    }
-  })
-  it('clears the blocker when the paired host becomes unreachable', async () => {
-    const previous = useAppStore.getState().runtimeStatusByEnvironmentId
-    answerCatalog([() => Promise.resolve(blocked)])
-    const { result, unmount } = renderOptions()
-    await flush()
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-    act(() =>
-      useAppStore.setState({
-        runtimeStatusByEnvironmentId: new Map([
-          [PAIRED_TARGET.environmentId, { status: null, checkedAt: 1 }]
-        ])
-      })
-    )
-    expect(result.current.unavailable).toBeNull()
-    unmount()
-    useAppStore.setState({ runtimeStatusByEnvironmentId: previous })
-  })
-  it('after an account switch keeps the held words until the re-read answers, then flips once', async () => {
-    const previous = useAppStore.getState().settings
-    const reread = deferred()
-    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
-    const { result, unmount } = renderOptions()
-    await flush()
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-    const seen: (string | null)[] = []
-    act(() =>
-      useAppStore.setState({
-        settings: { ...previous!, activeCodexManagedAccountId: 'switched-account' }
-      })
-    )
-    seen.push(result.current.unavailable?.reason ?? null)
-    await flush()
-    seen.push(result.current.unavailable?.reason ?? null)
-    expect(catalogReads()).toHaveLength(2)
-    reread.resolve({ ...HOST_CATALOG, availability: { state: 'ready' } })
-    await flush()
-    seen.push(result.current.unavailable?.reason ?? null)
-    // Disabled with the previous words until the answer, then enabled: never enabled first.
-    expect(seen).toEqual(['notSignedIn', 'notSignedIn', null])
-    expect(result.current.accountVerified).toBe(true)
-    // An unrelated store write neither re-reads nor re-keys.
-    act(() => useAppStore.setState({ runtimeStatusByEnvironmentId: new Map() }))
-    await flush()
-    expect(catalogReads()).toHaveLength(2)
-    unmount()
-    useAppStore.setState({ settings: previous })
-  })
-  it("re-reads a chat only for its own agent's account change", async () => {
-    const previous = useAppStore.getState().settings
-    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
-    const { result, unmount } = renderOptions({ agent: 'claude' })
-    await flush()
-    act(() =>
-      useAppStore.setState({
-        settings: {
-          ...previous!,
-          activeCodexManagedAccountId: 'another-codex-account',
-          agentDefaultEnv: { codex: { OPENAI_BASE_URL: 'https://gateway.example' } }
-        }
-      })
-    )
-    await flush()
-    expect(catalogReads()).toHaveLength(1)
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-    act(() =>
-      useAppStore.setState({
-        settings: { ...useAppStore.getState().settings!, activeClaudeManagedAccountId: 'claude-2' }
-      })
-    )
-    await flush()
-    expect(catalogReads()).toHaveLength(2)
-    unmount()
-    useAppStore.setState({ settings: previous })
-  })
-  it('reads the verdict once when a start fails for a sign-in reason', async () => {
-    answerCatalog([() => Promise.resolve(UNKNOWN), () => Promise.resolve(blocked)])
-    const { result, rerender } = renderOptions()
-    await flush()
-    expect(catalogReads()).toHaveLength(1)
-    const failedStart: AgentJournalRenderItem = {
-      itemId: agentJournalItemKey(structuredAgentSessionStartFailureRowIdentity('start-1')),
-      revision: 1,
-      sequence: 1,
-      observedAt: 1,
-      body: {
-        kind: 'status',
-        tone: 'error',
-        ...agentSessionFailureWords(agentSessionFailureFact('notSignedIn'), {
-          agentName: 'Codex',
-          surface: 'row'
-        })
-      }
-    }
-    rerender({ journalItems: [failedStart] })
-    await flush()
-    expect(catalogReads()).toHaveLength(2)
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-    rerender({ journalItems: [failedStart] })
-    await flush()
-    expect(catalogReads()).toHaveLength(2)
-  })
-  it('keeps the account key across a re-fetched copy of equal settings', async () => {
-    const previous = useAppStore.getState().settings
-    const settings = {
-      ...previous!,
-      activeCodexManagedAccountId: 'account-1',
-      activeCodexManagedAccountIdsByRuntime: { host: 'account-1', wsl: {} },
-      agentDefaultEnv: { codex: { OPENAI_BASE_URL: 'https://gateway.example' } }
-    }
-    useAppStore.setState({ settings })
-    answerCatalog([() => Promise.resolve(blocked), () => Promise.resolve(UNKNOWN)])
-    const { result, unmount } = renderOptions()
-    await flush()
-    // A settings fetch replaces every object with an equal copy.
-    act(() => useAppStore.setState({ settings: structuredClone(settings) }))
-    await flush()
-    expect(catalogReads()).toHaveLength(1)
-    expect(result.current.unavailable?.reason).toBe('notSignedIn')
-    unmount()
-    useAppStore.setState({ settings: previous })
-  })
-  it('keeps the blocker while the window is hidden and until the re-read on return answers', async () => {
-    const reread = deferred()
-    answerCatalog([() => Promise.resolve(blocked), () => reread.promise])
-    const { result } = renderOptions()
-    await flush()
-    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
-    act(() => document.dispatchEvent(new Event('visibilitychange')))
-    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
-    vi.restoreAllMocks()
-    act(() => document.dispatchEvent(new Event('visibilitychange')))
-    await flush()
-    expect(catalogReads()).toHaveLength(2)
-    expect(result.current.unavailable).toMatchObject({ reason: 'notSignedIn' })
-    reread.resolve(UNKNOWN)
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
-  it('ignores a late reply after the document hides and refreshes on visibility', async () => {
-    const first = deferred()
-    answerCatalog([() => first.promise, () => Promise.resolve(UNKNOWN)])
-    const { result } = renderOptions()
-    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
-    act(() => document.dispatchEvent(new Event('visibilitychange')))
-    first.resolve(blocked)
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-    vi.restoreAllMocks()
-    act(() => document.dispatchEvent(new Event('visibilitychange')))
-    await flush()
-    expect(catalogReads()).toHaveLength(2)
-    expect(result.current.unavailable).toBeNull()
-  })
-  it.each([
-    undefined,
-    { state: 'future', recheckInMs: 30000 },
-    { state: 'cliMissing', recheckInMs: 0 }
-  ])('ignores old-host or unfamiliar availability %j', async (availability) => {
-    answerCatalog([() => Promise.resolve({ ...HOST_CATALOG, availability })])
-    const { result } = renderOptions()
-    await flush()
-    expect(result.current.unavailable).toBeNull()
-  })
 })

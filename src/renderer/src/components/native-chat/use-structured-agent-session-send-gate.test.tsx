@@ -101,7 +101,7 @@ describe('the send gate the session hands its composer', () => {
         : method === 'agentSession.modelCatalog'
           ? Promise.resolve({
               origin: 'unknown',
-              availability: { state: 'notSignedIn', account: 'system', recheckInMs: 20_000 }
+              unavailable: { reason: 'notSignedIn', account: 'system' }
             })
           : Promise.resolve(null)
     )
@@ -165,7 +165,7 @@ describe('the send gate the session hands its composer', () => {
   }
   const showsStartLine = (messages: unknown) => JSON.stringify(messages).includes('codex login')
 
-  it("hides the start's sign-in line on the host's answer, even while a turn suspends the gate", async () => {
+  it("hides the start's sign-in row whatever the gate shows, a running turn included", async () => {
     items = [signedOutStart]
     const { result, rerender } = renderHook(() =>
       useStructuredAgentSession({
@@ -187,7 +187,7 @@ describe('the send gate the session hands its composer', () => {
     expect(showsStartLine(result.current.messages)).toBe(false)
   })
 
-  it('shows the start line when the host gives no answer', async () => {
+  it('hides the row with no host answer too: a send says the same words', async () => {
     mocks.call.mockImplementation((_target, method) =>
       method === 'agentSession.options'
         ? Promise.resolve(OPTIONS)
@@ -212,6 +212,6 @@ describe('the send gate the session hands its composer', () => {
       )
     )
     expect(result.current.unavailable).toBeNull()
-    expect(showsStartLine(result.current.messages)).toBe(true)
+    expect(showsStartLine(result.current.messages)).toBe(false)
   })
 })

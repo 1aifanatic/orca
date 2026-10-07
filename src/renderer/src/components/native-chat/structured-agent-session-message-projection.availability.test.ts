@@ -45,15 +45,14 @@ function startRow(
   return row
 }
 
-describe('desktop availability start-failure presentation', () => {
+describe('desktop start rows for a sign-in or missing CLI', () => {
   it.each(['Claude', 'Codex'])(
-    'keeps %s availability in the journal and off the desktop transcript while Send states it',
+    'keeps %s rows in the journal and off the desktop transcript, whatever Send shows',
     (agentName) => {
       for (const kind of ['notSignedIn', 'cliMissing'] as const) {
         const row = startRow({ kind }, agentName)
         const original = structuredClone(row)
-        expect(projectStructuredAgentSessionMessages([row], [], [], kind)).toEqual([])
-        expect(structuredAgentSessionStartFailureFacts([row], kind)).toEqual([])
+        expect(projectStructuredAgentSessionMessages([row], [], [])).toEqual([])
         expect(projectSharedMessages([row], [], [], { rejectedInPlace: false })).toMatchObject([
           { id: row.itemId, role: 'system' }
         ])
@@ -62,47 +61,29 @@ describe('desktop availability start-failure presentation', () => {
     }
   )
 
-  it.each([null, 'cliMissing'] as const)(
-    'keeps a signed-out start row on the transcript when Send states %s',
-    (gateReason) => {
-      const row = startRow({ kind: 'notSignedIn' }, 'Claude')
-      expect(projectStructuredAgentSessionMessages([row], [], [], gateReason)).toMatchObject([
-        { id: row.itemId }
-      ])
-      expect(structuredAgentSessionStartFailureFacts([row], gateReason)).toEqual([
-        { kind: 'notSignedIn' }
-      ])
-    }
-  )
-
   it.each(['startFailed', 'providerStartFailed'] as const)(
     'keeps other typed start failures visible: %s',
     (kind) => {
       const row = startRow({ kind }, 'Claude')
-      expect(projectStructuredAgentSessionMessages([row], [], [], 'notSignedIn')).toMatchObject([
+      expect(projectStructuredAgentSessionMessages([row], [], [])).toMatchObject([
         { id: row.itemId }
       ])
-      expect(structuredAgentSessionStartFailureFacts([row], 'notSignedIn')).toEqual([{ kind }])
     }
   )
 
   it('keeps a newer host’s custom-command failure as its fallback line', () => {
     const row = startRow({ kind: 'customCommandUnsupported' }, 'Claude')
-    expect(projectStructuredAgentSessionMessages([row], [], [], 'notSignedIn')).toMatchObject([
-      { id: row.itemId }
-    ])
+    expect(projectStructuredAgentSessionMessages([row], [], [])).toMatchObject([{ id: row.itemId }])
   })
 
-  it('does not hide ordinary provider status rows or infer availability from text', () => {
+  it('does not hide ordinary provider status rows or infer the reason from text', () => {
     const ordinary = { ...startRow({ kind: 'notSignedIn' }, 'Claude'), itemId: 'provider-status' }
     const untyped: AgentJournalRenderItem = {
       ...startRow({ kind: 'notSignedIn' }, 'Claude'),
       body: { kind: 'status', text: "Claude isn't signed in.", tone: 'error' }
     }
     expect(
-      projectStructuredAgentSessionMessages([ordinary, untyped], [], [], 'notSignedIn').map(
-        ({ id }) => id
-      )
+      projectStructuredAgentSessionMessages([ordinary, untyped], [], []).map(({ id }) => id)
     ).toEqual([ordinary.itemId, untyped.itemId])
   })
 
@@ -129,15 +110,15 @@ describe('desktop availability start-failure presentation', () => {
         submittedAt: 2,
         resolvedAt: 3
       }
-      expect(
-        projectStructuredAgentSessionMessages([row, message], [], [submission], kind)
-      ).toMatchObject([{ id: message.itemId, unsent: true }])
+      expect(projectStructuredAgentSessionMessages([row, message], [], [submission])).toMatchObject(
+        [{ id: message.itemId, unsent: true }]
+      )
       const notices = structuredAgentSessionDeliveryNotices(
         [],
         'Claude',
         vi.fn(),
         [submission],
-        structuredAgentSessionStartFailureFacts([row], kind),
+        structuredAgentSessionStartFailureFacts([row]),
         new Set()
       )
       expect(notices.get(message.itemId)).toEqual({

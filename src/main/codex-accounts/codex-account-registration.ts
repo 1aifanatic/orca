@@ -10,7 +10,6 @@ import type { ResolvedCodexIdentity } from './codex-account-identity'
 import type {
   CodexAccountAddTarget,
   CodexAccountReauthenticateOptions,
-  CodexAccountServiceLifecycle,
   ManagedCodexHomeLocation
 } from './codex-account-service-types'
 import type { CodexAccountSelection } from './codex-account-selection'
@@ -35,7 +34,6 @@ type CodexAccountRegistrationDependencies = {
   ) => ResolvedCodexIdentity
   selection: CodexAccountSelection
   configMirror: CodexConfigMirror
-  lifecycle: CodexAccountServiceLifecycle
   managedHomePaths: CodexManagedHomePath
   managedHomes: CodexManagedHomeLifecycle
   login: (managedHomePath: string) => Promise<void>
@@ -121,8 +119,6 @@ export class CodexAccountRegistration {
       accountTarget
     )
 
-    // The account signed in again: before the settings change a chat reads from, mark it.
-    this.dependencies.lifecycle.onSignInChanged?.()
     // Why: login can transiently clear this runtime's selection; unrelated runtime validation must remain authoritative.
     this.dependencies.store.updateSettings({
       codexManagedAccounts: updatedAccounts,

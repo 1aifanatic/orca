@@ -63,7 +63,6 @@ it('keeps the same notices across batches in a chat whose only rejection a Stop 
         outbox: EMPTY,
         submissions,
         journalItems: EMPTY,
-        gateReason: null,
         failedHere: NONE,
         retry: () => {},
         agentName: 'Claude'
@@ -85,7 +84,6 @@ function renderNotices(submissions: readonly AgentJournalSubmission[]) {
         outbox: EMPTY,
         submissions: current,
         journalItems: EMPTY,
-        gateReason: null,
         failedHere: NONE,
         retry: () => {},
         agentName: 'Claude'

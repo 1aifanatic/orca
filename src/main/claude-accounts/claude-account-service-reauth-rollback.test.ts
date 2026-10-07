@@ -390,13 +390,10 @@ describe('ClaudeAccountService credential capture', () => {
       refreshForClaudeAccountChange: vi.fn(async () => ({ accounts: [], activeAccountId: null }))
     }
     const { ClaudeAccountService } = await import('./service')
-    const recheck = vi.fn()
     const service = new ClaudeAccountService(
       store as never,
       rateLimits as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only the runtime-auth methods this fake defines.
-      runtimeAuth as never,
-      { onSignInChanged: recheck }
+      runtimeAuth as never
     )
     ;(
       service as unknown as {
@@ -414,14 +411,6 @@ describe('ClaudeAccountService credential capture', () => {
 
     await service.reauthenticateAccount('account-1')
 
-    // Marked before the settings change a chat's read follows.
-    expect(recheck).toHaveBeenCalledOnce()
-    const signedIn = store.updateSettings.mock.calls.findIndex(([updates]) =>
-      JSON.stringify(updates.claudeManagedAccounts ?? []).includes('new@example.com')
-    )
-    expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
-      store.updateSettings.mock.invocationCallOrder[signedIn]!
-    )
     expect(rateLimits.evictInactiveClaudeCache).toHaveBeenCalledWith('account-1')
     expect(rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith(undefined, {
       runtime: 'host'

@@ -58,24 +58,19 @@ describe('ClaudeAccountService credential capture', () => {
     mkdirSync(managedAuthPath, { recursive: true })
     writeFileSync(join(managedAuthPath, '.orca-managed-claude-auth'), 'account-1\n', 'utf-8')
     writeFileSync(join(managedAuthPath, '.credentials.json'), '{"old":true}\n', 'utf-8')
-    const otherAuthPath = join(tempDir, 'claude-accounts', 'account-2', 'auth')
-    mkdirSync(otherAuthPath, { recursive: true })
-    writeFileSync(join(otherAuthPath, '.orca-managed-claude-auth'), 'account-2\n', 'utf-8')
-    const account = (id: string, path: string) => ({
-      id,
-      email: `${id}@example.com`,
-      managedAuthPath: path,
-      authMethod: 'subscription-oauth',
-      organizationUuid: null,
-      organizationName: null,
-      createdAt: 1,
-      updatedAt: 1,
-      lastAuthenticatedAt: 1
-    })
     let settings = {
       claudeManagedAccounts: [
-        account('account-1', managedAuthPath),
-        account('account-2', otherAuthPath)
+        {
+          id: 'account-1',
+          email: 'old@example.com',
+          managedAuthPath,
+          authMethod: 'subscription-oauth',
+          organizationUuid: null,
+          organizationName: null,
+          createdAt: 1,
+          updatedAt: 1,
+          lastAuthenticatedAt: 1
+        }
       ],
       activeClaudeManagedAccountId: 'account-1'
     }
@@ -95,30 +90,18 @@ describe('ClaudeAccountService credential capture', () => {
       refreshForClaudeAccountChange: vi.fn(async () => ({ accounts: [], activeAccountId: null }))
     }
     const { ClaudeAccountService } = await import('./service')
-    const recheck = vi.fn()
     const service = new ClaudeAccountService(
       store as never,
       rateLimits as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only the runtime-auth methods this fake defines.
-      runtimeAuth as never,
-      { onSignInChanged: recheck }
+      runtimeAuth as never
     )
 
     await service.removeAccount('account-1')
 
-    // Another sign-in now fills the shared config dir: marked before the settings change.
-    expect(recheck).toHaveBeenCalledOnce()
-    expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
-      store.updateSettings.mock.invocationCallOrder[0]!
-    )
     expect(rateLimits.evictInactiveClaudeCache).toHaveBeenCalledWith('account-1')
     expect(rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith('account-1', {
       runtime: 'host'
     })
-    // An account nothing has selected leaves every sign-in as it was.
-    recheck.mockClear()
-    await service.removeAccount('account-2')
-    expect(recheck).not.toHaveBeenCalled()
     expect(settings).toMatchObject({
       claudeManagedAccounts: [],
       activeClaudeManagedAccountId: null
@@ -183,13 +166,10 @@ describe('ClaudeAccountService credential capture', () => {
     }
     const { ClaudeAccountService } = await import('./service')
     const { markClaudePtyExited, markClaudePtySpawned } = await import('./live-pty-gate')
-    const recheck = vi.fn()
     const service = new ClaudeAccountService(
       store as never,
       rateLimits as never,
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the service reads only the runtime-auth methods this fake defines.
-      runtimeAuth as never,
-      { onSignInChanged: recheck }
+      runtimeAuth as never
     )
 
     markClaudePtySpawned('live-claude-pty')
@@ -205,12 +185,6 @@ describe('ClaudeAccountService credential capture', () => {
       wsl: {}
     })
     expect(runtimeAuth.syncForCurrentSelection).toHaveBeenCalledWith({ runtime: 'host' })
-    // Every host account shares one config dir, so the chat's sign-in answer is re-derived; marked
-    // before the settings change a chat's read follows, so that read never sees an unmarked one.
-    expect(recheck).toHaveBeenCalledOnce()
-    expect(recheck.mock.invocationCallOrder[0]).toBeLessThan(
-      store.updateSettings.mock.invocationCallOrder[0]!
-    )
     expect(rateLimits.refreshForClaudeAccountChange).toHaveBeenCalledWith('account-1', {
       runtime: 'host'
     })

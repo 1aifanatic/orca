@@ -24,8 +24,6 @@ import { enqueueSessionOptionSettingsWrite } from './native-chat-session-option-
 import { encodeStructuredAgentSessionOptionValue } from '../../../../shared/structured-agent-session-option-codec'
 import type { StructuredAgentSessionMutate } from './use-structured-agent-session-mutate'
 import { useHostModelCatalogUpgrade } from './use-host-model-catalog-upgrade'
-import { nativeChatAvailabilityStartFailureKey } from './native-chat-start-failure-presentation'
-import type { AgentJournalRenderItem } from '../../../../shared/agent-session-journal-types'
 import { useStructuredAgentSessionOptionState } from './use-structured-agent-session-option-state'
 import { agentSessionWriteFailureText } from './agent-session-write-notice-text'
 import type { StructuredAgentSessionLaunchView } from './use-native-chat-provisional-launch'
@@ -50,8 +48,6 @@ export function useStructuredAgentSessionOptions(args: {
   unloadedTurnRevisions: number | undefined
   mutate: StructuredAgentSessionMutate
   launch?: StructuredAgentSessionLaunchView
-  /** The journal, whose newest sign-in or CLI start failure re-reads the host's verdict. */
-  journalItems?: readonly AgentJournalRenderItem[]
 }) {
   const {
     agent,
@@ -94,11 +90,7 @@ export function useStructuredAgentSessionOptions(args: {
     unloadedTurnRevisions: args.unloadedTurnRevisions
   })
 
-  const {
-    awaitingListing: awaitingHostModelList,
-    unavailable,
-    accountVerified
-  } = useHostModelCatalogUpgrade({
+  const hostCatalog = useHostModelCatalogUpgrade({
     agent,
     sessionId,
     target,
@@ -108,16 +100,12 @@ export function useStructuredAgentSessionOptions(args: {
     namesDefault: launch?.kind === 'new' && optionCatalog?.hostListingNamesConfiguredModel === true,
     ...(launch?.worktree ? { worktree: launch.worktree } : {}),
     fence,
-    startFailureKey: useMemo(
-      () => nativeChatAvailabilityStartFailureKey(args.journalItems ?? []),
-      [args.journalItems]
-    ),
     activeOptionRecordRef,
     updateOptionState
   })
-  // The running provider's own list ends the wait for the host's.
+  // A list in hand, the running provider's or the host's, ends the wait for the host's.
   const modelListPending =
-    awaitingHostModelList &&
+    hostCatalog.awaitingListing &&
     optionState.catalogSource !== 'live' &&
     optionState.catalogSource !== 'host'
 
@@ -302,8 +290,8 @@ export function useStructuredAgentSessionOptions(args: {
     rewind: support?.fence === fence ? support.rewind : undefined,
     optionSnapshot,
     optionSurface,
-    unavailable,
-    accountVerified,
-    setStructuredOption
+    setStructuredOption,
+    unavailable: hostCatalog.unavailable,
+    recheckUnavailable: hostCatalog.recheck
   }
 }

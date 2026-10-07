@@ -295,15 +295,12 @@ export const AgentsParams = z.object({}).strict()
  *  session record the host keys it by the account a new launch would pin.
  *  `worktree` names where a new chat runs, whose own config may replace the default.
  *  `waitForListing` holds the answer until the listing the host reported in progress lands; send
- *  it only after that report, because a host that predates it refuses the unknown key.
- *  `waitForAvailability` holds it until the running probe's sign-in/CLI verdict lands; send it
- *  only after a host reported a listing in progress beside a catalog, which only such a host does. */
+ *  it only after that report, because a host that predates it refuses the unknown key. */
 export const ModelCatalogParams = z.strictObject({
   agent: StructuredAgent,
   sessionId: SessionId.optional(),
   worktree: Identifier('Invalid worktree selector').optional(),
-  waitForListing: z.boolean().optional(),
-  waitForAvailability: z.boolean().optional()
+  waitForListing: z.boolean().optional()
 })
 
 export const ConversationCommandParams = z

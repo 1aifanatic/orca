@@ -132,7 +132,6 @@ export function createStructuredSessionMocks() {
     lifecycleLookup: vi.fn<(worktreeId: string, sessionId: string) => void>(),
     launchFailure: nullable<AgentSessionWriteRefusal>(),
     unavailable: nullable<AgentSessionUnavailable>(),
-    accountVerified: false,
     launchResumes: false,
     retryLaunch: vi.fn<(worktreeId: string, sessionId: string) => unknown>(),
     controllerProps: nullable<{ transportEnabled?: boolean }>(),
@@ -197,7 +196,6 @@ export function createStructuredSessionMocks() {
         await import('./use-structured-agent-session-outbox')
       const { projectStructuredAgentSessionMessages } =
         await import('../../../../shared/structured-agent-session-message-projection')
-      const { nativeChatGateReason } = await import('./native-chat-start-failure-presentation')
       return {
         useStructuredAgentSession: (props: {
           sessionId: string
@@ -215,8 +213,6 @@ export function createStructuredSessionMocks() {
           return {
             journalItems: mocks.journalItems,
             unavailable: mocks.unavailable,
-            accountVerified: mocks.accountVerified,
-            hostReason: nativeChatGateReason(mocks.unavailable, mocks.accountVerified),
             messages:
               mocks.messages ??
               (mocks.mode === 'outbox'
@@ -380,7 +376,6 @@ export function createStructuredSessionMocks() {
     mocks.fileLinkContext = DEFAULT_FILE_LINK_CONTEXT
     mocks.launchFailure = null
     mocks.unavailable = null
-    mocks.accountVerified = false
     mocks.launchResumes = false
     mocks.retryLaunch.mockReset()
     mocks.lifecycleLookup.mockReset()

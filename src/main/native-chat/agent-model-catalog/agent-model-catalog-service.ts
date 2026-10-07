@@ -39,10 +39,9 @@ export type AgentModelCatalogService = {
     sessionId?: string
     /** Where a new chat would run; null when one was named but is not a local directory. */
     workspacePath?: string | null
-    /** With no entry yet, answer from the listing this read starts or joins instead of `unknown`. */
+    /** With no entry yet, answer from the listing this read starts or joins instead of `unknown`;
+     *  with a held reason past its TTL, from the probe re-checking it. */
     waitForListing?: boolean
-    /** Answer once the probe already running has its sign-in/CLI verdict. */
-    waitForAvailability?: boolean
   }) => Promise<AgentSessionModelCatalogResult>
 }
 
@@ -90,7 +89,8 @@ async function workspaceKeepsListedDefault(
  * probe so the next read is warm. With no entry, the answer says that listing
  * is running, and only a read that asks waits for it. Failures suppress a new
  * probe for 30s, but never hide another listing already running for the account.
- * Whether a new child can start under the account rides along as `availability`.
+ * A probe failure that says why no chat can start rides every answer as
+ * `unavailable` until a later probe answers again.
  */
 export function createAgentModelCatalogService(
   deps: AgentModelCatalogServiceDeps
@@ -124,78 +124,64 @@ export function createAgentModelCatalogService(
       let entry = deps.store.get(fingerprint)
       const probe = deps.probes?.[params.agent]
       const home = accountHomePath
+      // Every answer carries the reason the probe last found, read when the answer is made.
+      const answer = async (
+        listed: AgentModelCatalogEntry | null,
+        extra: { listingInProgress?: true } = {}
+      ): Promise<AgentSessionModelCatalogResult> => {
+        const unavailable = deps.store.failure(fingerprint)?.unavailable
+        return {
+          ...(listed
+            ? resultFromEntry(
+                listed,
+                await workspaceKeepsListedDefault(
+                  deps,
+                  params.agent,
+                  params.workspacePath,
+                  accountHomePath
+                )
+              )
+            : { origin: 'unknown' }),
+          ...extra,
+          ...(unavailable ? { unavailable } : {})
+        }
+      }
+      // Past its TTL, only the probe re-derives a held reason. The reason is served meanwhile;
+      // only a read that asks waits for the probe's answer.
+      if (
+        probe &&
+        home &&
+        deps.store.failure(fingerprint)?.unavailable &&
+        !deps.store.hasActiveFailure(fingerprint)
+      ) {
+        const probing = deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
+        if (!params.waitForListing) {
+          return answer(entry, { listingInProgress: true })
+        }
+        await probing
+        return answer(deps.store.get(fingerprint))
+      }
       // Without an entry, answer from any running listing instead of starting a second one.
       let listing = !entry && home ? deps.store.pendingListing(fingerprint) : null
-      // Set when this read chained a fresh probe, which its reply then says is still owed.
-      let chained = false
-      const reprobe = (): Promise<AgentModelCatalogEntry | null> | null => {
-        if (!probe || !home) {
-          return null
-        }
-        const run = deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
-        // A probe that began before an account change can't answer for it: one fresh probe follows.
-        if (!deps.store.statuses.probeStartedBeforeRecheck(fingerprint)) {
-          return run
-        }
-        chained = true
-        return run.then(() =>
-          deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
-        )
-      }
       if (probe && home) {
-        // A blocked answer past the TTL, one an account change marked, or a running probe that began
-        // before the change, is re-derived here by the probe whatever else is listing; no chat's own
-        // listing can answer for the account.
-        if (
-          deps.store.statuses.needsProbe(fingerprint) ||
-          deps.store.statuses.probeStartedBeforeRecheck(fingerprint)
-        ) {
-          void reprobe()
-          listing = !entry ? (listing ?? deps.store.pendingListing(fingerprint)) : null
-        } else if (entry && deps.store.shouldRefresh(fingerprint)) {
+        if (entry && deps.store.shouldRefresh(fingerprint)) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
         } else if (!entry && !listing && !deps.store.hasActiveFailure(fingerprint)) {
           void deps.store.refresh(fingerprint, params.agent, probe, () => probe(home))
           listing = deps.store.pendingListing(fingerprint)
         }
       }
-      const probeRunning = (): boolean =>
-        Boolean(probe && home && deps.store.isListing(fingerprint, probe))
-      // A picker waits only for a first catalog; a read for the verdict joins the running probe.
-      const pending = params.waitForListing
-        ? listing
-        : params.waitForAvailability && probeRunning()
-          ? reprobe()
-          : null
-      if (pending) {
-        const listed = await pending
+      if (!entry) {
+        if (!listing) {
+          return answer(null)
+        }
+        if (!params.waitForListing) {
+          return answer(null, { listingInProgress: true })
+        }
+        const listed = await listing
         entry = deps.store.get(fingerprint) ?? listed
       }
-      // The last answer stands until a newer one replaces it.
-      const availability = home ? deps.store.statuses.get(fingerprint, Boolean(probe)) : undefined
-      // A catalog or a held answer can land before the probe's, which one more read waits for.
-      const inProgress = params.waitForAvailability
-        ? false
-        : (!params.waitForListing && listing !== null) || probeRunning() || chained
-      const observation = {
-        ...(availability ? { availability } : {}),
-        ...(inProgress ? { listingInProgress: true as const } : {})
-      }
-      if (!entry) {
-        return { origin: 'unknown', ...observation }
-      }
-      return {
-        ...resultFromEntry(
-          entry,
-          await workspaceKeepsListedDefault(
-            deps,
-            params.agent,
-            params.workspacePath,
-            accountHomePath
-          )
-        ),
-        ...observation
-      }
+      return answer(entry)
     }
   }
 }

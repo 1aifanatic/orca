@@ -123,10 +123,14 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(mocks.retryLaunch).toHaveBeenCalledWith(FLOATING_TERMINAL_WORKTREE_ID, 'session-1')
   })
 
-  it('leaves an automatic signed-out launch failure to the disabled Send tooltip', () => {
+  it.each([
+    ['Send states the same reason', { reason: 'notSignedIn', account: 'system' } as const],
+    ['the host gave no answer', null],
+    ['Send states another reason', { reason: 'cliMissing' } as const]
+  ])('leaves a signed-out launch failure to the disabled Send when %s', (_case, unavailable) => {
     mocks.launchLifecycle = 'failed'
     mocks.launchFailure = NOT_SIGNED_IN
-    mocks.unavailable = { reason: 'notSignedIn', account: 'system' }
+    mocks.unavailable = unavailable
     render(sessionView())
 
     expect(screen.queryByText(/Chat could not be started/)).toBeNull()
@@ -135,13 +139,19 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
     expect(screen.getByTestId('structured-composer')).toBeTruthy()
   })
 
-  it.each([
-    ['no availability answer', null],
-    ['a different reason', { reason: 'cliMissing' } as const]
-  ])('keeps the signed-out launch failure line when the gate shows %s', (_case, unavailable) => {
+  it('keeps the signed-out line and its Retry while a message of yours waits on the start', () => {
+    mocks.mode = 'outbox'
     mocks.launchLifecycle = 'failed'
     mocks.launchFailure = NOT_SIGNED_IN
-    mocks.unavailable = unavailable
+    seedOutbox('session-1', [
+      createStructuredAgentSessionOutboxEntry({
+        clientMessageId: 'waiting',
+        sessionId: 'session-1',
+        text: 'waiting message',
+        attachments: [],
+        queuedAt: 1
+      })
+    ])
     render(sessionView())
 
     expect(screen.getByText(`Chat could not be started. ${NOT_SIGNED_IN_TEXT}`)).toBeTruthy()
@@ -309,9 +319,8 @@ describe('NativeChatStructuredSession launch lifecycle', () => {
       expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()
       expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
 
-      // Signed in: the host's probe found the account fine, so the old line is not current.
+      // Signed in: the host's probe found the account fine.
       mocks.unavailable = null
-      mocks.accountVerified = true
       rerender(sessionView(agent))
       expect(mocks.composerProps?.structuredTransport?.unavailable).toBeNull()
       expect(screen.queryByText(/Chat could not be started|isn't signed in/)).toBeNull()

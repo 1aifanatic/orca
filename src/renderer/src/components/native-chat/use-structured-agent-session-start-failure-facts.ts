@@ -5,7 +5,6 @@ import {
   sameAgentSessionFailureFact,
   structuredAgentSessionStartFailureFacts
 } from './structured-agent-session-delivery-notices'
-import type { NativeChatGateReason } from './native-chat-start-failure-presentation'
 
 const NO_FACTS: readonly AgentSessionFailureFact[] = []
 
@@ -13,12 +12,11 @@ const NO_FACTS: readonly AgentSessionFailureFact[] = []
  *  streaming turn does not rebuild every row's delivery notice. */
 export function useStructuredAgentSessionStartFailureFacts(
   items: readonly AgentJournalRenderItem[],
-  enabled: boolean,
-  gateReason: NativeChatGateReason
+  enabled: boolean
 ): readonly AgentSessionFailureFact[] {
   const facts = useMemo(
-    () => (enabled ? structuredAgentSessionStartFailureFacts(items, gateReason) : NO_FACTS),
-    [enabled, gateReason, items]
+    () => (enabled ? structuredAgentSessionStartFailureFacts(items) : NO_FACTS),
+    [enabled, items]
   )
   const previousRef = useRef<readonly AgentSessionFailureFact[]>(NO_FACTS)
   const previous = previousRef.current

@@ -166,6 +166,41 @@ describe('one send gate rule', () => {
   })
 })
 
+describe('the disabled Send says the fix for this agent and account', () => {
+  it.each([
+    [
+      'claude',
+      { reason: 'notSignedIn', account: 'system' },
+      "Claude isn't signed in. Run `claude` and sign in with /login, or choose an account in Claude Accounts settings."
+    ],
+    [
+      'claude',
+      { reason: 'notSignedIn', account: 'managed' },
+      "This Claude account isn't signed in. Sign in again in Claude Accounts settings."
+    ],
+    ['codex', { reason: 'notSignedIn' }, "Codex isn't signed in. Run `codex login`."],
+    [
+      'codex',
+      { reason: 'notSignedIn', account: 'managed' },
+      "This Codex account isn't signed in. Sign in again in Codex Accounts settings."
+    ],
+    [
+      'claude',
+      { reason: 'cliMissing' },
+      "Claude isn't installed on the computer running this chat."
+    ]
+  ] as const)('%s %j', (agent, unavailable, words) => {
+    expect(
+      nativeChatComposerSendState(
+        { agent, isWorking: false, hasPty: true, disabled: false },
+        'hello',
+        [],
+        unavailable
+      )
+    ).toEqual({ sendButtonDisabled: true, sendBlockedReason: words })
+  })
+})
+
 describe('combined attachment and account Send state', () => {
   const input = { agent: 'codex', isWorking: false, hasPty: true, disabled: false } as const
   const image = { id: 'image-1', path: '', unavailableName: 'photo.png' }

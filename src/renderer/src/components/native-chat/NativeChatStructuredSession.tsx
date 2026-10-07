@@ -112,16 +112,13 @@ export function NativeChatStructuredSession(
   const submits = useStructuredNativeChatSubmitReveal(controller, provisionalLaunch.retry)
   const { retryDelivery, revealLatest } = submits
   const agentLabel = structuredAgentLabel(props.agent)
-  // The host's answer now, not Send's gate: a running turn suspends the gate, not the hide.
-  const gateReason = controller.hostReason
   const deliveryNotices = useStructuredAgentSessionDeliveryNotices({
     outbox: controller.outbox,
     submissions: controller.submissions,
     journalItems: controller.journalItems,
     failedHere: controller.failedHere,
     retry: retryDelivery,
-    agentName: agentLabel,
-    gateReason: gateReason
+    agentName: agentLabel
   })
   // Nothing reads an unread history, so its pane stays blank beside the Retry line.
   const loadingPane = historyPhase === 'unread' ? null : <NativeChatLoadingCue />
@@ -245,6 +242,8 @@ export function NativeChatStructuredSession(
       onKeyUpCapture={paneCommands.onSelectionCapture}
       onKeyDownCapture={paneCommands.onKeyDownCapture}
       onContextMenuCapture={paneCommands.onContextMenuCapture}
+      // While Send is blocked, coming back to the chat reads the verdict again.
+      onFocus={controller.recheckUnavailable}
       className={cn(
         NATIVE_CHAT_APPEARANCE_ROOT_CLASS,
         'flex h-full min-h-0 w-full flex-col focus:outline-none'
@@ -297,7 +296,6 @@ export function NativeChatStructuredSession(
             lifecycle={provisionalLaunch.lifecycle}
             failure={provisionalLaunch.failure}
             agentLabel={agentLabel}
-            gateReason={gateReason}
             hasUnsentMessage={hasUnsentStructuredAgentSessionOutboxEntry(
               controller.outbox,
               controller.submissions

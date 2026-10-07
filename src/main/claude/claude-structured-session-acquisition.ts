@@ -276,7 +276,6 @@ export async function acquireClaudeSession({
         session,
         facts: readClaudeStartupFacts({
           account: launch.account,
-          catalogAccess: session.catalogAccess,
           connection,
           initProof,
           sessionId,

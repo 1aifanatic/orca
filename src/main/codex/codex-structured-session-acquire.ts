@@ -31,8 +31,7 @@ import { restoredCodexSessionOptions } from './codex-structured-session-options'
 import { startBackgroundCodexCatalogRefresh } from './codex-structured-background-catalog'
 import {
   codexAcquireCatalogAccess,
-  codexAcquireFastModeCatalog,
-  recordCodexMissingCli
+  codexAcquireFastModeCatalog
 } from './codex-structured-acquire-catalog'
 import {
   reconcileCodexFastModeOption,
@@ -184,10 +183,7 @@ export async function acquireCodexStructuredSession(input: {
           }
         }
       }
-    ).catch((error: unknown) => {
-      recordCodexMissingCli(deps, launch, error)
-      throw error
-    })
+    )
     acquisition.connection = connection
     if (connection.pauseReading && connection.resumeReading) {
       unbindReadingControl = acquireInput.events?.bindReadingControl?.({

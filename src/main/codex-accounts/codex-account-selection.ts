@@ -126,8 +126,6 @@ export class CodexAccountSelection {
       accountId,
       effectiveTarget
     )
-    // Before the settings change a chat reads from, so its read re-probes the account now in use.
-    this.dependencies.lifecycle.onSignInChanged?.()
     this.dependencies.store.updateSettings({
       activeCodexManagedAccountId:
         effectiveTarget?.runtime === 'wsl' ? nextSelection.host : accountId,

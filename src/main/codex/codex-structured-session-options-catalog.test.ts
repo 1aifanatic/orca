@@ -13,9 +13,9 @@ import type { CodexSession } from './codex-structured-session-state'
 import {
   AGENT_MODEL_CATALOG_FRESH_MS,
   AgentModelCatalogStore,
-  AgentModelCatalogUnavailableError,
   type AgentModelCatalogProbe
 } from '../native-chat/agent-model-catalog/agent-model-catalog-store'
+import { AgentModelCatalogUnavailableError } from '../native-chat/agent-model-catalog/agent-model-catalog-unavailable'
 import { createAgentModelCatalogService } from '../native-chat/agent-model-catalog/agent-model-catalog-service'
 import { agentModelCatalogFingerprint } from '../native-chat/agent-model-catalog/agent-model-catalog-fingerprint'
 
@@ -94,10 +94,9 @@ describe('Codex session options through the host catalog store', () => {
     const request = vi.fn(async () => listAnswer('gpt-live'))
     const result = await readLiveCodexSessionOptions(storeSession(request, store), undefined)
     expect(result.models.map((model) => model.id)).toEqual(['gpt-live'])
-    expect(store.statuses.get(FINGERPRINT, true)).toEqual({
-      state: 'notSignedIn',
-      account: 'system',
-      recheckInMs: 30000
+    expect(store.failure(FINGERPRINT)?.unavailable).toEqual({
+      reason: 'notSignedIn',
+      account: 'system'
     })
   })
 

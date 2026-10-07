@@ -1,44 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import {
-  readAgentSessionAvailability,
+  readAgentSessionUnavailable,
   claudeInitializationSignedOut,
   agentSessionSignInCopyId
 } from './agent-session-availability'
 import { agentSessionFailureSentence } from './agent-session-failure-words'
 import { AGENT_SESSION_FAILURE_COPY } from './agent-session-failure-copy'
 
-describe('positive agent availability evidence', () => {
-  it.each([
-    undefined,
-    null,
-    {},
-    { state: 'future', recheckInMs: 100 },
-    { state: 'cliMissing', recheckInMs: 0 },
-    { state: 'cliMissing', recheckInMs: Infinity },
-    { state: 'cliMissing', recheckInMs: '10' },
-    { state: 'cliMissing' },
-    { state: 'notSignedIn', account: 'future', recheckInMs: 100 }
-  ])('ignores unknown or malformed answers %j', (value) => {
-    expect(readAgentSessionAvailability(value)).toBeNull()
-  })
-  it('reads a ready account, which needs no re-read hint', () => {
-    expect(readAgentSessionAvailability({ state: 'ready' })).toEqual({ state: 'ready' })
-  })
-  it.each(['managed', 'system'] as const)('retains %s account context', (account) => {
-    expect(
-      readAgentSessionAvailability({ state: 'notSignedIn', account, recheckInMs: 50 })
-    ).toEqual({ state: 'notSignedIn', account, recheckInMs: 50 })
-  })
-  it("clamps a longer host hint to this client's hold instead of dropping it", () => {
-    expect(readAgentSessionAvailability({ state: 'cliMissing', recheckInMs: 900_000 })).toEqual({
-      state: 'cliMissing',
-      recheckInMs: 300_000
+describe("the host's sign-in and CLI verdict", () => {
+  it.each([undefined, null, {}, { reason: 'future' }, { state: 'notSignedIn' }, 'notSignedIn'])(
+    'reads an unknown or malformed verdict as unknown %j',
+    (value) => {
+      expect(readAgentSessionUnavailable(value)).toBeNull()
+    }
+  )
+  it.each(['managed', 'system'] as const)('keeps %s account context', (account) => {
+    expect(readAgentSessionUnavailable({ reason: 'notSignedIn', account })).toEqual({
+      reason: 'notSignedIn',
+      account
     })
   })
-  it('retains signed-out evidence without optional account context', () => {
-    expect(readAgentSessionAvailability({ state: 'notSignedIn', recheckInMs: 50 })).toEqual({
-      state: 'notSignedIn',
-      recheckInMs: 50
+  it('drops account context this build does not know', () => {
+    expect(readAgentSessionUnavailable({ reason: 'notSignedIn', account: 'future' })).toEqual({
+      reason: 'notSignedIn'
+    })
+    expect(readAgentSessionUnavailable({ reason: 'cliMissing', account: 'system' })).toEqual({
+      reason: 'cliMissing'
     })
   })
   it.each([

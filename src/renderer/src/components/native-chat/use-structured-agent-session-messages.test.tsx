@@ -25,8 +25,7 @@ it('retains only unchanged item projections across updates, reorder, deletion, a
   const first = tool('first', 1)
   const second = tool('second', 2)
   const { result, rerender } = renderHook(
-    (items: AgentJournalRenderItem[]) =>
-      useStructuredAgentSessionMessages(items, EMPTY, EMPTY, null),
+    (items: AgentJournalRenderItem[]) => useStructuredAgentSessionMessages(items, EMPTY, EMPTY),
     { initialProps: [first, second] }
   )
   const initial = result.current
@@ -92,7 +91,7 @@ it('keeps optimistic sends and their settlement identical to uncached projection
     }: {
       items: AgentJournalRenderItem[]
       submissions: AgentJournalSubmission[]
-    }) => useStructuredAgentSessionMessages(items, [entry], submissions, null),
+    }) => useStructuredAgentSessionMessages(items, [entry], submissions),
     { initialProps: { items: [tool('tool', 1)], submissions: [submission] } }
   )
   for (const dispatchState of ['pending', 'unknown', 'accepted'] as const) {
@@ -107,7 +106,7 @@ it('keeps optimistic sends and their settlement identical to uncached projection
 it('does no transcript projection work on a status-only render', () => {
   const items = [tool('tool', 1)]
   const { result, rerender } = renderHook(() =>
-    useStructuredAgentSessionMessages(items, EMPTY, EMPTY, null)
+    useStructuredAgentSessionMessages(items, EMPTY, EMPTY)
   )
   const initial = result.current
   rerender()
