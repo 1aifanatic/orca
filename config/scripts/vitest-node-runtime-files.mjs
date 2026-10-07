@@ -74,6 +74,7 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/shared/remote-runtime-subscription-connect-bound.test.ts',
   'src/main/codex/codex-shared-server-probe.test.ts',
   'src/main/opencode/opencode-launch-model-context-supervision.test.ts',
+  'src/main/hermes/hermes-config-remote-adapter.test.ts',
   'src/relay/relay-reconnect-listener-peer-write-error.test.ts',
   'src/relay/relay-primary-channel.test.ts',
   'src/renderer/src/lib/monaco-languages/monarch-upstream-mdx-recursion.test.ts',
