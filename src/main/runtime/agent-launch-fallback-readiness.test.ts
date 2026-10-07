@@ -6,6 +6,19 @@ import {
 import { createLaunchFallbackRuntime } from './agent-launch-fallback.test-fixture'
 import { readTimedRuntimeFixture } from './agent-transcript-replay-test-harness'
 
+vi.mock('../git/worktree', () => {
+  const list = async () => [
+    {
+      path: '/tmp/worktree-a',
+      head: 'abc',
+      branch: 'feature/test',
+      isBare: false,
+      isMainWorktree: false
+    }
+  ]
+  return { listWorktrees: list, listWorktreesStrict: list }
+})
+
 beforeEach(() => {
   vi.useFakeTimers()
   vi.spyOn(console, 'warn').mockImplementation(() => {})

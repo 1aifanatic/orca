@@ -10,6 +10,19 @@ import {
 } from './agent-launch-owed-prompt-record'
 import { createLaunchFallbackRuntime } from './agent-launch-fallback.test-fixture'
 
+vi.mock('../git/worktree', () => {
+  const list = async () => [
+    {
+      path: '/tmp/worktree-a',
+      head: 'abc',
+      branch: 'feature/test',
+      isBare: false,
+      isMainWorktree: false
+    }
+  ]
+  return { listWorktrees: list, listWorktreesStrict: list }
+})
+
 beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(0)
