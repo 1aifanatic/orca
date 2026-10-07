@@ -83,7 +83,10 @@ test.describe('SSH relay reattach home partition', () => {
       // Past the ~1s debounced save, so the SSH partition holds the open file.
       await page.waitForTimeout(3_000)
 
-      await app.evaluate(({ BrowserWindow }) => {
+      await app.evaluate(({ app: electronApp, BrowserWindow }) => {
+        // Linux/Windows quit when the last window closes; keep running as macOS does.
+        electronApp.removeAllListeners('window-all-closed')
+        electronApp.on('window-all-closed', () => {})
         for (const window of BrowserWindow.getAllWindows()) {
           window.close()
         }
