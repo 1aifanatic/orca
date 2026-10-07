@@ -45,7 +45,7 @@ export function createCodexModelCatalogProbe(
 ): AgentModelCatalogProbe {
   return async (accountHomePath: string): Promise<AgentModelCatalogSuccess> => {
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
-    const { args } = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
+    const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
     const run = deps.runSession ?? runCodexAppServerSession
     const listing = await run(
       {

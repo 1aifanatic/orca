@@ -23,7 +23,7 @@ describe('openCodexThread', () => {
     const permissionPolicy = {
       approvalPolicy: 'never' as const,
       sandbox: 'danger-full-access' as const,
-      approvalsReviewer: 'guardian_subagent' as const
+      approvalsReviewer: 'user' as const
     }
 
     await openCodexThread(
@@ -44,7 +44,7 @@ describe('openCodexThread', () => {
         cwd: '/workspace',
         approvalPolicy: 'never',
         sandbox: 'danger-full-access',
-        approvalsReviewer: 'guardian_subagent'
+        approvalsReviewer: 'user'
       },
       { timeoutMs: 2_000 }
     )
@@ -56,7 +56,7 @@ describe('openCodexThread', () => {
         cwd: '/workspace',
         approvalPolicy: 'never',
         sandbox: 'danger-full-access',
-        approvalsReviewer: 'guardian_subagent',
+        approvalsReviewer: 'user',
         excludeTurns: true
       },
       { timeoutMs: 2_000 }

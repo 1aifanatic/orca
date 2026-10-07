@@ -65,47 +65,31 @@ describe('codexStructuredPermissionPolicyForSettings', () => {
     }
   })
 
-  // A terminal running `codex -s read-only` is read-only; Manual's default would loosen it.
-  it('takes the sandbox and approval the Arguments state under Manual', () => {
-    expect(
-      codexStructuredPermissionPolicyForSettings(
-        { agentDefaultArgs: { codex: '-s read-only' } },
-        { sandbox: 'read-only' }
-      )
-    ).toEqual({ ...MANUAL, sandbox: 'read-only' })
-    expect(
-      codexStructuredPermissionPolicyForSettings(
-        { agentDefaultArgs: { codex: '-a untrusted -s danger-full-access' } },
-        { approvalPolicy: 'untrusted', sandbox: 'danger-full-access' }
-      )
-    ).toEqual({ ...MANUAL, approvalPolicy: 'untrusted', sandbox: 'danger-full-access' })
+  // A resume keeps the reviewer the thread last ran with unless the request names one.
+  it('states Codex default reviewer for both postures', () => {
+    for (const codex of ['', '--dangerously-bypass-approvals-and-sandbox']) {
+      expect(
+        codexStructuredPermissionPolicyForSettings({ agentDefaultArgs: { codex } })
+          .approvalsReviewer,
+        codex
+      ).toBe('user')
+    }
   })
 
-  // A resume keeps the reviewer the thread last ran with unless the request names one, so
-  // dropping --approve-for-me has to say `user` out loud.
-  it('states the reviewer under Manual: the one the Arguments name, else Codex default', () => {
+  // Arguments' own permission options are dropped; only the toggle's posture is read.
+  it('ignores the permission options the Arguments state', () => {
     expect(
-      codexStructuredPermissionPolicyForSettings(
-        { agentDefaultArgs: { codex: '--approve-for-me' } },
-        { approvalsReviewer: 'auto_review' }
-      )
-    ).toEqual({ ...MANUAL, approvalsReviewer: 'auto_review' })
+      codexStructuredPermissionPolicyForSettings({
+        agentDefaultArgs: { codex: '-s read-only -a untrusted --approve-for-me' }
+      })
+    ).toEqual(MANUAL)
     expect(
-      codexStructuredPermissionPolicyForSettings({ agentDefaultArgs: { codex: '' } })
-        .approvalsReviewer
-    ).toBe('user')
-  })
-
-  it('keeps Yolo whatever else the Arguments state', () => {
-    expect(
-      codexStructuredPermissionPolicyForSettings(
-        { agentDefaultArgs: { codex: '--dangerously-bypass-approvals-and-sandbox -s read-only' } },
-        { sandbox: 'read-only', approvalsReviewer: 'auto_review' }
-      )
+      codexStructuredPermissionPolicyForSettings({
+        agentDefaultArgs: { codex: '--dangerously-bypass-approvals-and-sandbox -s read-only' }
+      })
     ).toEqual(BYPASS)
   })
 
-  // The posture alone comes out of the field here; the translator reads the stated policy.
   it('carries nothing but the permission posture out of the arguments field', () => {
     expect(
       codexStructuredPermissionPolicyForSettings({

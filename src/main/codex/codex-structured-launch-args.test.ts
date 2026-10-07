@@ -15,111 +15,67 @@ describe('codexStructuredLaunchArgs', () => {
         '-c=model_provider=azure',
         '--strict-config'
       ])
-    ).toEqual({
-      args: [
-        '-c',
-        'model_reasoning_effort=high',
-        '--enable',
-        'unified_exec',
-        '--config',
-        'web_search="cached"',
-        '--disable',
-        'some_feature',
-        '-c',
-        'model_provider=azure',
-        '--strict-config'
-      ],
-      permissions: {}
-    })
+    ).toEqual([
+      '-c',
+      'model_reasoning_effort=high',
+      '--enable',
+      'unified_exec',
+      '--config',
+      'web_search="cached"',
+      '--disable',
+      'some_feature',
+      '-c',
+      'model_provider=azure',
+      '--strict-config'
+    ])
   })
 
   // app-server ignores `-m` and `--search`; Codex's own equivalents are config it applies after `-c`.
   it('turns -m and --search into the config Codex derives from them, after the user config', () => {
     expect(
-      codexStructuredLaunchArgs(['-m', 'gpt-5.6 "sol"', '--search', '-c', 'model="other"']).args
+      codexStructuredLaunchArgs(['-m', 'gpt-5.6 "sol"', '--search', '-c', 'model="other"'])
     ).toEqual(['-c', 'model="other"', '-c', 'model="gpt-5.6 \\"sol\\""', '-c', 'web_search="live"'])
-    expect(codexStructuredLaunchArgs(['--model=gpt-5.6-sol']).args).toEqual([
+    expect(codexStructuredLaunchArgs(['--model=gpt-5.6-sol'])).toEqual([
       '-c',
       'model="gpt-5.6-sol"'
     ])
   })
 
-  it('passes sandbox details and the reviewer, and reads the reviewer for the thread', () => {
+  // Agent Permissions owns the posture, so neither the options nor their config keys reach Codex.
+  it('drops permission options and the config that sets permissions', () => {
     expect(
       codexStructuredLaunchArgs([
+        '-s',
+        'read-only',
+        '--sandbox=bogus',
+        '-a',
+        'untrusted',
+        '--ask-for-approval=on-failure',
+        '--approve-for-me',
+        '--not-so-yolo',
         '-c',
-        'sandbox_workspace_write.network_access=true',
-        '-c',
-        'approvals_reviewer="auto_review"'
-      ])
-    ).toEqual({
-      args: [
-        '-c',
-        'sandbox_workspace_write.network_access=true',
-        '-c',
-        'approvals_reviewer="auto_review"'
-      ],
-      permissions: { approvalsReviewer: 'auto_review' }
-    })
-  })
-
-  it("reads on-failure as Codex's own on-request alias", () => {
-    expect(codexStructuredLaunchArgs(['-a', 'on-failure']).permissions).toEqual({
-      approvalPolicy: 'on-request'
-    })
-    expect(codexStructuredLaunchArgs(['-c', 'approval_policy="on-failure"']).permissions).toEqual({
-      approvalPolicy: 'on-request'
-    })
-  })
-
-  // Codex before 0.124 takes only `guardian_subagent` on the thread; later versions take either.
-  it('keeps the reviewer as spelled', () => {
-    for (const reviewer of ['user', 'auto_review', 'guardian_subagent'] as const) {
-      expect(
-        codexStructuredLaunchArgs(['-c', `approvals_reviewer="${reviewer}"`]).permissions
-      ).toEqual({ approvalsReviewer: reviewer })
-    }
-  })
-
-  it('reads the sandbox and approval the Arguments state, flags over config', () => {
-    expect(codexStructuredLaunchArgs(['-s', 'read-only', '-a', 'untrusted'])).toEqual({
-      args: [],
-      permissions: { sandbox: 'read-only', approvalPolicy: 'untrusted' }
-    })
-    expect(
-      codexStructuredLaunchArgs([
-        '-c',
-        'sandbox_mode="danger-full-access"',
+        'approval_policy="never"',
         '--config',
-        "approval_policy='never'",
-        '-c',
-        'sandbox_mode=read-only'
-      ]).permissions
-    ).toEqual({ sandbox: 'read-only', approvalPolicy: 'never' })
-    expect(
-      codexStructuredLaunchArgs(['--sandbox=workspace-write', '-c', 'sandbox_mode=read-only'])
-        .permissions
-    ).toEqual({ sandbox: 'workspace-write' })
-  })
-
-  it('applies --approve-for-me as the config Codex folds it into', () => {
-    expect(codexStructuredLaunchArgs(['--approve-for-me', '-c', 'approval_policy=never'])).toEqual({
-      args: [
-        '-c',
-        'approval_policy=never',
+        'sandbox_mode=danger-full-access',
         '-c',
         'approvals_reviewer="auto_review"',
         '-c',
-        'approval_policy="on-request"',
+        'sandbox_workspace_write.network_access=true',
         '-c',
-        'sandbox_mode="workspace-write"'
-      ],
-      permissions: {
-        approvalsReviewer: 'auto_review',
-        approvalPolicy: 'on-request',
-        sandbox: 'workspace-write'
-      }
-    })
+        '"approval_policy" = "never"',
+        '-c',
+        'model_reasoning_effort=high'
+      ])
+    ).toEqual(['-c', 'model_reasoning_effort=high'])
+  })
+
+  it('still needs a value for a dropped permission option', () => {
+    expect(() => codexStructuredLaunchArgs(['-s'])).toThrow(StructuredAgentArgumentsError)
+    expect(() => codexStructuredLaunchArgs(['-a', '--search'])).toThrow(
+      expect.objectContaining({
+        argumentProblem: { agent: 'Codex', option: '-a', problem: 'missingValue' }
+      })
+    )
   })
 
   it('drops the bypass flag and terminal-only display options', () => {
@@ -133,7 +89,7 @@ describe('codexStructuredLaunchArgs', () => {
         '--version',
         '--'
       ])
-    ).toEqual({ args: [], permissions: {} })
+    ).toEqual([])
   })
 
   it.each([
@@ -172,25 +128,7 @@ describe('codexStructuredLaunchArgs', () => {
     { tokens: ['--unknown-flag=secret'], option: '--unknown-flag', problem: 'unsupportedOption' },
     { tokens: ['--search=secret'], option: '--search', problem: 'unsupportedOption' },
     { tokens: ['--enable'], option: '--enable', problem: 'missingValue' },
-    { tokens: ['-m', '--secret'], option: '-m', problem: 'missingValue' },
-    // An invalid value names the setting it is for, however the Arguments spelled it.
-    { tokens: ['-s', 'private-mode'], option: 'sandbox_mode', problem: 'invalidValue' },
-    {
-      tokens: ['--ask-for-approval=private'],
-      option: 'approval_policy',
-      problem: 'invalidValue'
-    },
-    {
-      tokens: ['-c', 'approval_policy={ secret = true }'],
-      option: 'approval_policy',
-      problem: 'invalidValue'
-    },
-    { tokens: ['--config=sandbox_mode=secret'], option: 'sandbox_mode', problem: 'invalidValue' },
-    {
-      tokens: ['-c', 'approvals_reviewer=secret'],
-      option: 'approvals_reviewer',
-      problem: 'invalidValue'
-    }
+    { tokens: ['-m', '--secret'], option: '-m', problem: 'missingValue' }
   ] as const)('refuses what a chat cannot honor: %j', ({ tokens, option, problem }) => {
     const thrown = () => codexStructuredLaunchArgs(tokens)
     expect(thrown).toThrow(StructuredAgentArgumentsError)

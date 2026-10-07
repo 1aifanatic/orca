@@ -1,18 +1,10 @@
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import { resolvedTuiAgentArgsBypassPermissions } from '../../shared/tui-agent-launch-defaults'
 
-// The values app-server's v2 thread params accept (`AskForApproval` / `SandboxMode` /
-// `ApprovalsReviewer`). The reviewer goes as spelled: Codex before 0.124 takes only
-// `guardian_subagent`, later versions take either name.
-export const CODEX_APPROVAL_POLICIES = ['untrusted', 'on-request', 'never'] as const
-export const CODEX_SANDBOX_MODES = ['read-only', 'workspace-write', 'danger-full-access'] as const
-export const CODEX_APPROVALS_REVIEWERS = ['user', 'auto_review', 'guardian_subagent'] as const
-
-export type CodexStructuredPermissionPolicy = {
-  approvalPolicy: (typeof CODEX_APPROVAL_POLICIES)[number]
-  sandbox: (typeof CODEX_SANDBOX_MODES)[number]
-  approvalsReviewer: (typeof CODEX_APPROVALS_REVIEWERS)[number]
-}
+export type CodexStructuredPermissionPolicy = (
+  | { approvalPolicy: 'never'; sandbox: 'danger-full-access' }
+  | { approvalPolicy: 'on-request'; sandbox: 'workspace-write' }
+) & { approvalsReviewer: 'user' }
 
 /** Yolo: no approval prompts, no sandbox. */
 const BYPASS_POLICY = {
@@ -38,7 +30,7 @@ const BYPASS_POLICY = {
  * need an approval it did not need before. This still resets Yolo's `danger-full-access`.
  *
  * The reviewer is stated too, as Codex's default `user`: a resume otherwise keeps the reviewer
- * the thread last ran with, e.g. `auto_review` after `--approve-for-me` was removed.
+ * the thread last ran with, and a fresh thread takes the one `config.toml` names.
  */
 const MANUAL_POLICY = {
   approvalPolicy: 'on-request',
@@ -49,10 +41,10 @@ const MANUAL_POLICY = {
 /**
  * The Agent Permissions setting as app-server thread policy.
  *
- * The posture is the one the toggle stores in the Arguments field; an untouched profile resolves
- * to the default Orca ships, which is the bypass flag. Under Manual, a sandbox, approval policy or
- * reviewer the Arguments state explicitly (`requested`) replaces that field's default, as it does
- * in a terminal; Yolo ignores it.
+ * Derived per acquisition from the resolved launch arguments, never from the free-text Arguments
+ * field: app-server takes a narrower option set than the interactive CLI and the two are versioned
+ * apart, so the only thing read out of that field is the posture the toggle stores in it. An
+ * untouched profile resolves to the default Orca ships, which is the bypass flag.
  *
  * Always a policy, never `undefined`: both postures have to be said out loud, because the one
  * that goes unsaid is the one a resume silently inherits from the other.
@@ -61,10 +53,9 @@ export function codexStructuredPermissionPolicyForSettings(
   settings:
     | Partial<Pick<GlobalSettings, 'agentDefaultArgs' | 'terminalWindowsShell'>>
     | null
-    | undefined,
-  requested: Partial<CodexStructuredPermissionPolicy> = {}
+    | undefined
 ): CodexStructuredPermissionPolicy {
   return resolvedTuiAgentArgsBypassPermissions('codex', settings, process.platform)
     ? BYPASS_POLICY
-    : { ...MANUAL_POLICY, ...requested }
+    : MANUAL_POLICY
 }

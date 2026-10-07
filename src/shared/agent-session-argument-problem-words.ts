@@ -2,11 +2,7 @@
 // to change it, and for some options what a chat honors instead. Chosen from the option name alone,
 // which every client already receives.
 
-import {
-  CODEX_ARGUMENT_SETTINGS,
-  type AgentSessionArgumentProblem,
-  type CodexArgumentSetting
-} from './agent-session-argument-problem'
+import type { AgentSessionArgumentProblem } from './agent-session-argument-problem'
 import type {
   AgentSessionFailureCopyId,
   AgentSessionFailureSay
@@ -16,16 +12,9 @@ const PROBLEM_COPY = {
   unsupportedOption: 'argumentsUnsupportedOption',
   missingValue: 'argumentsMissingValue',
   multipleValues: 'argumentsMultipleValues',
-  invalidValue: 'argumentsInvalidValue',
   positionalPrompt: 'argumentsPositionalPrompt',
   unclosedQuote: 'argumentsUnclosedQuote'
 } as const satisfies Record<AgentSessionArgumentProblem['problem'], AgentSessionFailureCopyId>
-
-const SETTING_VALUES_COPY = {
-  sandbox_mode: 'argumentsSandboxValues',
-  approval_policy: 'argumentsApprovalValues',
-  approvals_reviewer: 'argumentsReviewerValues'
-} as const satisfies Record<CodexArgumentSetting, AgentSessionFailureCopyId>
 
 /** Codex options a chat refuses that have an equivalent, or no need, in a chat. */
 const CODEX_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
@@ -44,10 +33,6 @@ const CODEX_OPTION_HINTS = new Map<string, AgentSessionFailureCopyId>([
 function problemCopy({ option, problem }: AgentSessionArgumentProblem): AgentSessionFailureCopyId {
   if (problem === 'unsupportedOption' && option === '--?') {
     return 'argumentsUnnamedOption'
-  }
-  if (problem === 'invalidValue') {
-    const setting = CODEX_ARGUMENT_SETTINGS.find((candidate) => candidate === option)
-    return setting ? SETTING_VALUES_COPY[setting] : PROBLEM_COPY.invalidValue
   }
   return PROBLEM_COPY[problem]
 }

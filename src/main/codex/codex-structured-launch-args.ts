@@ -1,31 +1,15 @@
 // Saved Arguments are written for the interactive `codex` a terminal runs; a chat runs
 // `codex app-server`, which reads only config and its own few options. So each interactive option
 // either passes to app-server, becomes the config Codex itself derives from it, is dropped because
-// it only shapes a terminal, or refuses the start by name because a chat can't honor it.
+// it sets permissions (Agent Permissions owns those) or only shapes a terminal, or refuses the
+// start by name because a chat can't honor it.
+import { parseTomlKeyPath } from './config-toml-key-path'
 import { StructuredAgentArgumentsError } from '../native-chat/structured-agent-arguments-error'
-import type { CodexArgumentSetting } from '../../shared/agent-session-argument-problem'
-import {
-  CODEX_APPROVAL_POLICIES,
-  CODEX_APPROVALS_REVIEWERS,
-  CODEX_SANDBOX_MODES,
-  type CodexStructuredPermissionPolicy
-} from './codex-structured-permission-policy'
-
-export type CodexStructuredLaunchArgs = {
-  /** Options for after `app-server`. */
-  args: string[]
-  /** The sandbox, approval policy and reviewer the Arguments state explicitly. */
-  permissions: Partial<CodexStructuredPermissionPolicy>
-}
 
 type LaunchPlan = {
   args: string[]
   /** Config the interactive CLI derives from its own options; it applies them after every `-c`. */
   derived: string[]
-  /** From `-c`, last one wins. */
-  configured: Partial<CodexStructuredPermissionPolicy>
-  /** From `-s` / `-a`, which outrank config. */
-  flags: Partial<CodexStructuredPermissionPolicy>
 }
 
 type OptionRule =
@@ -36,9 +20,17 @@ const pass = (plan: LaunchPlan, option: string, value: string): void => {
   plan.args.push(option, ...(value ? [value] : []))
 }
 
+// The permission options' own config keys, dropped with them.
 const passConfig = (plan: LaunchPlan, option: string, value: string): void => {
-  readConfiguredPermission(plan.configured, value)
-  pass(plan, option, value)
+  const key = parseTomlKeyPath(value)?.segments[0]
+  if (
+    key !== 'approval_policy' &&
+    key !== 'sandbox_mode' &&
+    key !== 'approvals_reviewer' &&
+    key !== 'sandbox_workspace_write'
+  ) {
+    pass(plan, option, value)
+  }
 }
 
 const derive =
@@ -52,27 +44,11 @@ const deriveModel = (plan: LaunchPlan, _option: string, value: string): void => 
   plan.derived.push(`model=${JSON.stringify(value)}`)
 }
 
-const flagSandbox = (plan: LaunchPlan, _option: string, value: string): void => {
-  plan.flags.sandbox = oneOf(CODEX_SANDBOX_MODES, value, 'sandbox_mode')
-}
-
-const flagApproval = (plan: LaunchPlan, _option: string, value: string): void => {
-  plan.flags.approvalPolicy = oneOf(CODEX_APPROVAL_POLICIES, value, 'approval_policy')
-}
-
 const VALUE = { takesValue: true }
 const DROPPED_SWITCH = { takesValue: false }
-const APPROVE_FOR_ME = {
-  takesValue: false,
-  apply: derive(
-    'approvals_reviewer="auto_review"',
-    'approval_policy="on-request"',
-    'sandbox_mode="workspace-write"'
-  )
-}
 
-// Equivalents are the ones Codex applies itself: `--search` and `--approve-for-me` in
-// codex-rs cli/src/main.rs and utils/cli/src/shared_options.rs, `-m` as `-c model=`.
+// Equivalents are the ones Codex applies itself: `--search` in codex-rs cli/src/main.rs, `-m` as
+// `-c model=`.
 const RULES: Record<string, OptionRule> = {
   '-c': { ...VALUE, apply: passConfig },
   '--config': { ...VALUE, apply: passConfig },
@@ -82,13 +58,13 @@ const RULES: Record<string, OptionRule> = {
   '-m': { ...VALUE, apply: deriveModel },
   '--model': { ...VALUE, apply: deriveModel },
   '--search': { takesValue: false, apply: derive('web_search="live"') },
-  '-s': { ...VALUE, apply: flagSandbox },
-  '--sandbox': { ...VALUE, apply: flagSandbox },
-  '-a': { ...VALUE, apply: flagApproval },
-  '--ask-for-approval': { ...VALUE, apply: flagApproval },
-  '--approve-for-me': APPROVE_FOR_ME,
-  '--not-so-yolo': APPROVE_FOR_ME,
-  // Agent Permissions reads the bypass flag; the rest only shape a terminal.
+  // Permissions come from Agent Permissions alone; the rest only shape a terminal.
+  '-s': VALUE,
+  '--sandbox': VALUE,
+  '-a': VALUE,
+  '--ask-for-approval': VALUE,
+  '--approve-for-me': DROPPED_SWITCH,
+  '--not-so-yolo': DROPPED_SWITCH,
   '--dangerously-bypass-approvals-and-sandbox': DROPPED_SWITCH,
   '--yolo': DROPPED_SWITCH,
   '--no-alt-screen': DROPPED_SWITCH,
@@ -113,47 +89,6 @@ const RULES: Record<string, OptionRule> = {
   '--dangerously-bypass-hook-trust': 'refuse'
 }
 
-// Codex reads `on-failure` as `on-request` from 0.143, when its thread params stopped taking it.
-const VALUE_ALIASES = new Map([['on-failure', 'on-request']])
-
-function oneOf<T extends string>(
-  values: readonly T[],
-  value: string,
-  setting: CodexArgumentSetting
-): T {
-  const canonical = VALUE_ALIASES.get(value) ?? value
-  const match = values.find((candidate) => candidate === canonical)
-  if (match === undefined) {
-    throw new StructuredAgentArgumentsError('Codex', setting, 'invalidValue')
-  }
-  return match
-}
-
-/** The policy a `-c approval_policy=` / `sandbox_mode=` / `approvals_reviewer=` sets, read the
- *  way Codex reads it. */
-function readConfiguredPermission(
-  configured: Partial<CodexStructuredPermissionPolicy>,
-  override: string
-): void {
-  const separator = override.indexOf('=')
-  if (separator === -1) {
-    return
-  }
-  const key = override.slice(0, separator).trim()
-  // Codex takes a value that isn't TOML as its text with the quotes trimmed.
-  const value = override
-    .slice(separator + 1)
-    .trim()
-    .replace(/^["']+|["']+$/g, '')
-  if (key === 'approval_policy') {
-    configured.approvalPolicy = oneOf(CODEX_APPROVAL_POLICIES, value, key)
-  } else if (key === 'sandbox_mode') {
-    configured.sandbox = oneOf(CODEX_SANDBOX_MODES, value, key)
-  } else if (key === 'approvals_reviewer') {
-    configured.approvalsReviewer = oneOf(CODEX_APPROVALS_REVIEWERS, value, key)
-  }
-}
-
 function optionName(token: string): string {
   if (token.startsWith('--')) {
     return token.split('=', 1)[0]
@@ -169,9 +104,9 @@ function inlineValue(token: string, option: string): string | undefined {
   return token.startsWith('--') ? token.slice(option.length + 1) : token.slice(2).replace(/^=/, '')
 }
 
-/** Turns saved terminal Arguments into a structured app-server launch. */
-export function codexStructuredLaunchArgs(tokens: readonly string[]): CodexStructuredLaunchArgs {
-  const plan: LaunchPlan = { args: [], derived: [], configured: {}, flags: {} }
+/** Turns saved terminal Arguments into options for after `app-server`. */
+export function codexStructuredLaunchArgs(tokens: readonly string[]): string[] {
+  const plan: LaunchPlan = { args: [], derived: [] }
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]
     if (token === '--') {
@@ -202,7 +137,7 @@ export function codexStructuredLaunchArgs(tokens: readonly string[]): CodexStruc
     rule.apply?.(plan, option, value)
   }
   for (const override of plan.derived) {
-    passConfig(plan, '-c', override)
+    pass(plan, '-c', override)
   }
-  return { args: plan.args, permissions: { ...plan.configured, ...plan.flags } }
+  return plan.args
 }

@@ -107,10 +107,8 @@ export type StructuredAgentSessionRuntimeDeps = {
   resolveClaudeAuthPolicy: () => Promise<ClaudeStructuredAuthPolicy> | ClaudeStructuredAuthPolicy
   /** The user's Agent Permissions setting for Claude; absent means prompting. */
   resolveClaudePermissionMode?: () => Promise<PermissionMode> | PermissionMode
-  /** The same setting for Codex, as app-server thread policy, given what the Arguments state. */
-  resolveCodexPermissionPolicy?: (
-    requested: Partial<CodexStructuredPermissionPolicy>
-  ) => CodexStructuredPermissionPolicy
+  /** The same setting for Codex, as app-server thread policy. */
+  resolveCodexPermissionPolicy?: () => CodexStructuredPermissionPolicy
   /** The same setting for a protocol-driven (ACP) agent: whether it runs with full access. */
   resolveAgentFullAccess?: (agent: string) => boolean
   /** The user's per-agent environment overlay, for agents with no lane-specific resolver. */

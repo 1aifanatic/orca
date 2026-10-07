@@ -63,8 +63,7 @@ function resolverFor(
     resolveCommand: () => '/usr/local/bin/codex',
     resolveRollout,
     resolveLaunchArgs: resolveLaunchArgs ?? (() => value?.launchArgs ?? []),
-    resolvePermissionPolicy: (requested) =>
-      codexStructuredPermissionPolicyForSettings({ agentDefaultArgs }, requested)
+    resolvePermissionPolicy: () => codexStructuredPermissionPolicyForSettings({ agentDefaultArgs })
   })
 }
 
@@ -301,30 +300,19 @@ describe('codex structured launch resolution', () => {
     ])
   })
 
-  // A terminal honors these, so a chat that sent Manual's workspace-write would run looser.
-  it('opens the thread under the sandbox and approval the Arguments state under Manual', async () => {
+  // Agent Permissions alone sets the thread policy; the Arguments' own permission options are dropped.
+  it('opens the thread under the setting, not the permission options in Arguments', async () => {
     const launch = await resolverFor(
-      record({ launchArgs: ['-s', 'read-only', '-c', 'approval_policy=untrusted'] })
+      record({
+        launchArgs: ['-s', 'read-only', '-c', 'approval_policy=untrusted', '--approve-for-me']
+      })
     )({ identity: IDENTITY })
 
-    expect(launch.args).toEqual(['app-server', '-c', 'approval_policy=untrusted'])
-    expect(launch.permissionPolicy).toEqual({
-      approvalPolicy: 'untrusted',
-      sandbox: 'read-only',
-      approvalsReviewer: 'user'
-    })
-  })
-
-  // A resume keeps the thread's saved reviewer unless the request names one.
-  it('opens the thread with the reviewer --approve-for-me asks for under Manual', async () => {
-    const launch = await resolverFor(record({ launchArgs: ['--approve-for-me'] }))({
-      identity: IDENTITY
-    })
-
+    expect(launch.args).toEqual(['app-server'])
     expect(launch.permissionPolicy).toEqual({
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
-      approvalsReviewer: 'auto_review'
+      approvalsReviewer: 'user'
     })
   })
 

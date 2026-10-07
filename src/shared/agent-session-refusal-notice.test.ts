@@ -767,18 +767,6 @@ describe('saved Arguments refusals', () => {
       "Codex couldn't start. Saved Arguments include a prompt. Remove it from Codex's Arguments in Settings → Agents."
     ],
     [
-      { agent: 'Codex', option: 'sandbox_mode', problem: 'invalidValue' },
-      "Codex couldn't start. The sandbox in saved Arguments must be read-only, workspace-write or danger-full-access. Fix it in Codex's Arguments in Settings → Agents."
-    ],
-    [
-      { agent: 'Codex', option: 'approval_policy', problem: 'invalidValue' },
-      "Codex couldn't start. The approval policy in saved Arguments must be untrusted, on-request or never. Fix it in Codex's Arguments in Settings → Agents."
-    ],
-    [
-      { agent: 'Codex', option: 'approvals_reviewer', problem: 'invalidValue' },
-      "Codex couldn't start. The approvals reviewer in saved Arguments must be user or auto_review. Fix it in Codex's Arguments in Settings → Agents."
-    ],
-    [
       { agent: 'Claude', option: 'quote', problem: 'unclosedQuote' },
       "Claude couldn't start. Saved Arguments have a quote that isn't closed. Fix it in Claude's Arguments in Settings → Agents."
     ]
@@ -797,9 +785,7 @@ describe('saved Arguments refusals', () => {
   it.each([
     { agent: 'Codex', option: '--remote', problem: 'futureProblem' },
     { agent: 'Codex', option: '--remote=private', problem: 'unsupportedOption' },
-    { agent: 'Codex', option: '--private', problem: 'unclosedQuote' },
-    { agent: 'Codex', option: '-s', problem: 'invalidValue' },
-    { agent: 'Codex', option: 'private_key', problem: 'invalidValue' }
+    { agent: 'Codex', option: '--private', problem: 'unclosedQuote' }
   ])('ignores an unrecognized or unsafe argument detail', (argumentProblem) => {
     const refused = parseAgentSessionWriteFailure({
       kind: 'refused',

@@ -40,27 +40,6 @@ export const SAVED_ARGUMENTS_PIECES: Record<
       COPY.argumentsMultipleValues,
       values
     ),
-  argumentsInvalidValue: (values) =>
-    translate(
-      'components.native-chat.failureWords.argumentsInvalidValue',
-      COPY.argumentsInvalidValue,
-      values
-    ),
-  argumentsSandboxValues: () =>
-    translate(
-      'components.native-chat.failureWords.argumentsSandboxValues',
-      COPY.argumentsSandboxValues
-    ),
-  argumentsApprovalValues: () =>
-    translate(
-      'components.native-chat.failureWords.argumentsApprovalValues',
-      COPY.argumentsApprovalValues
-    ),
-  argumentsReviewerValues: () =>
-    translate(
-      'components.native-chat.failureWords.argumentsReviewerValues',
-      COPY.argumentsReviewerValues
-    ),
   argumentsPositionalPrompt: () =>
     translate(
       'components.native-chat.failureWords.argumentsPositionalPrompt',

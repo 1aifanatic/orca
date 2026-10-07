@@ -218,8 +218,8 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStartTuiIdleVis
       // the one copy of this fact, even when Arguments contain permission flags.
       resolveClaudePermissionMode: () =>
         claudeStructuredPermissionModeForSettings(this.requireStore().getSettings()),
-      resolveCodexPermissionPolicy: (requested) =>
-        codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings(), requested),
+      resolveCodexPermissionPolicy: () =>
+        codexStructuredPermissionPolicyForSettings(this.requireStore().getSettings()),
       resolveAgentFullAccess: (agent) =>
         isTuiAgent(agent) &&
         resolvedTuiAgentArgsBypassPermissions(

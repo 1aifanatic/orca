@@ -29,12 +29,9 @@ export type CodexStructuredLaunchResolverDeps = {
   /** Fresh shell/configured environment for this spawn; never written to the session record. */
   resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>
   resolveRollout?: typeof resolvePinnedCodexRolloutProof
-  /** The user's Agent Permissions setting as thread policy, re-read per acquisition, given the
-   *  policy the Arguments state. States both postures outright — a resume inherits the last one
-   *  for any field left absent. */
-  resolvePermissionPolicy?: (
-    requested: Partial<CodexStructuredPermissionPolicy>
-  ) => CodexStructuredPermissionPolicy
+  /** The user's Agent Permissions setting as thread policy, re-read per acquisition.
+   *  States both postures outright — a resume inherits the last one for any field left absent. */
+  resolvePermissionPolicy?: () => CodexStructuredPermissionPolicy
 }
 
 export type CodexStructuredInvocation = {
@@ -87,8 +84,8 @@ export function createCodexStructuredLaunchResolver(
       throw new Error(`codex sessions pin ${pinned}, not ${accountHome.variable}`)
     }
     const { command, environment } = await resolveCodexStructuredInvocation(deps)
-    const { args, permissions } = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
-    const permissionPolicy = deps.resolvePermissionPolicy?.(permissions)
+    const args = codexStructuredLaunchArgs(await deps.resolveLaunchArgs())
+    const permissionPolicy = deps.resolvePermissionPolicy?.()
     const head = agentSessionProviderHandleChainHead(record.providerHandleChain)
     // A Codex record's chain holds only Codex handles; the attach admission refuses anything else.
     const resumeThreadId = head?.handle.nativeId ?? null

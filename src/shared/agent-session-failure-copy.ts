@@ -21,12 +21,6 @@ export const AGENT_SESSION_FAILURE_COPY = {
   argumentsUnnamedOption: "{{agent}} chats can't use one of the options in saved Arguments.",
   argumentsMissingValue: 'Saved Arguments need a value for {{option}}.',
   argumentsMultipleValues: 'Saved Arguments give {{option}} more than one value.',
-  argumentsInvalidValue: "Saved Arguments give {{option}} a value that isn't supported.",
-  argumentsSandboxValues:
-    'The sandbox in saved Arguments must be read-only, workspace-write or danger-full-access.',
-  argumentsApprovalValues:
-    'The approval policy in saved Arguments must be untrusted, on-request or never.',
-  argumentsReviewerValues: 'The approvals reviewer in saved Arguments must be user or auto_review.',
   argumentsPositionalPrompt: 'Saved Arguments include a prompt.',
   argumentsUnclosedQuote: "Saved Arguments have a quote that isn't closed.",
   argumentsProfileHint:

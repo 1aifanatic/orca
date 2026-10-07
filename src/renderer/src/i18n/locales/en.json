@@ -17850,9 +17850,6 @@
         "sessionNotRestored": "{{agent}} couldn't reopen its earlier session, so this chat continues in a new one. {{agent}} doesn't remember the earlier messages.",
         "argumentsUnsupportedOption": "{{agent}} chats can't use {{option}} from saved Arguments.",
         "argumentsUnnamedOption": "{{agent}} chats can't use one of the options in saved Arguments.",
-        "argumentsSandboxValues": "The sandbox in saved Arguments must be read-only, workspace-write or danger-full-access.",
-        "argumentsApprovalValues": "The approval policy in saved Arguments must be untrusted, on-request or never.",
-        "argumentsReviewerValues": "The approvals reviewer in saved Arguments must be user or auto_review.",
         "argumentsProfileHint": "To keep the profile's settings, put them in config.toml or pass them with -c.",
         "argumentsProviderHint": "Choose the provider with -c model_provider=… and a local model with -m instead.",
         "argumentsWorkspaceHint": "A chat already works in its workspace folder.",
@@ -17860,7 +17857,6 @@
         "removeFromSavedArguments": "Remove it from {{agent}}'s Arguments in Settings → Agents.",
         "argumentsMissingValue": "Saved Arguments need a value for {{option}}.",
         "argumentsMultipleValues": "Saved Arguments give {{option}} more than one value.",
-        "argumentsInvalidValue": "Saved Arguments give {{option}} a value that isn't supported.",
         "argumentsUnclosedQuote": "Saved Arguments have a quote that isn't closed.",
         "argumentsPositionalPrompt": "Saved Arguments include a prompt.",
         "editSavedArguments": "Fix it in {{agent}}'s Arguments in Settings → Agents."

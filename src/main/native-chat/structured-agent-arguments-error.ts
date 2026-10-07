@@ -1,5 +1,5 @@
 import type { AgentSessionArgumentProblem } from '../../shared/agent-session-failure'
-import { AGENT_SESSION_ARGUMENT_PROBLEM_WORDS } from '../../shared/agent-session-argument-problem'
+import { AGENT_SESSION_ARGUMENT_PROBLEM_WORD } from '../../shared/agent-session-argument-problem'
 
 /** A saved Arguments refusal with only the option name, never its value. */
 export class StructuredAgentArgumentsError extends Error {
@@ -10,10 +10,8 @@ export class StructuredAgentArgumentsError extends Error {
     option: string,
     problem: AgentSessionArgumentProblem['problem']
   ) {
-    const words = AGENT_SESSION_ARGUMENT_PROBLEM_WORDS[problem]
-    // A prompt or quote arrives as the user's own text, which is never carried.
     const normalizedOption =
-      (words && (words.find((word) => word === option) ?? words[0])) ??
+      AGENT_SESSION_ARGUMENT_PROBLEM_WORD[problem] ??
       option.match(/^--[a-zA-Z][a-zA-Z0-9-]{0,63}/)?.[0] ??
       option.match(/^-[a-zA-Z]/)?.[0] ??
       '--?'
