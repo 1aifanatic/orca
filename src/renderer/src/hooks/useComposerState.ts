@@ -47,7 +47,6 @@ export type UseComposerStateOptions = {
   onRepoIdOverrideChange?: (value: string) => void
   telemetrySource?: WorkspaceCreateTelemetrySource
   enableIssueAutomation?: boolean
-  createGateMode?: 'full' | 'quick'
 }
 
 export type ComposerCardProps = ComposerCardSourceProps & ComposerCardActionProps
