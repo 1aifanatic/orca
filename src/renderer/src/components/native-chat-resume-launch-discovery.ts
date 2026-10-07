@@ -1,3 +1,6 @@
+import { readNativeChatRestartOfferAtLaunch } from './native-chat-resume-on-restart-store'
+import { readStartupDiscovery } from '../startup/startup-discovery-read'
+import { useDialogDisposal } from '../lib/dialog-registry-entry'
 import { useEffect, useSyncExternalStore } from 'react'
 import { readLocalStructuredAgentSessionsHeld } from '@/runtime/local-structured-chats'
 import { useAppStore } from '../store'
@@ -22,6 +25,8 @@ export function useNativeChatResumeLaunchDiscovery(offerEnabled: boolean): void 
     getNativeChatResumeLaunchDecided
   )
   const settingsLoaded = useAppStore((store) => store.settings !== null)
+  const persistedUIReady = useAppStore((store) => store.persistedUIReady)
+  useDialogDisposal('native-chat-resume-discovery', abandonResumeDiscovery)
 
   useEffect(() => {
     if (launchDecided) {
@@ -33,18 +38,33 @@ export function useNativeChatResumeLaunchDiscovery(offerEnabled: boolean): void 
   }, [launchDecided])
 
   useEffect(() => {
-    if (offerEnabled || !settingsLoaded || launchDecided) {
+    if (!settingsLoaded && persistedUIReady) {
+      abandonResumeDiscovery()
+    }
+    if (!settingsLoaded || launchDecided) {
       return
     }
     let cancelled = false
     // A runtime that holds a chat turns the offer on instead, and its read decides.
-    void readLocalStructuredAgentSessionsHeld().then((holds) => {
-      if (!cancelled && !holds) {
+    const read = offerEnabled
+      ? readNativeChatRestartOfferAtLaunch().then(() => true)
+      : readLocalStructuredAgentSessionsHeld()
+    void readStartupDiscovery(read).then((holds) => {
+      if (cancelled) {
+        return
+      }
+      if (holds === null) {
+        abandonResumeDiscovery()
+      } else if (!holds) {
         markNativeChatResumeLaunchDecided()
       }
     })
     return () => {
       cancelled = true
     }
-  }, [launchDecided, offerEnabled, settingsLoaded])
+  }, [launchDecided, offerEnabled, persistedUIReady, settingsLoaded])
+}
+
+function abandonResumeDiscovery(): void {
+  useDialogRegistry.getState().settleStartupSource('native-chat-resume', 'unavailable')
 }

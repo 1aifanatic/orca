@@ -1,3 +1,4 @@
+import { readStartupDiscovery } from '../startup/startup-discovery-read'
 import { useEffect, useRef } from 'react'
 import { restoreLocalStructuredChatsAtStartup } from '@/runtime/local-structured-chats'
 import { syncZoomCSSVar } from '@/lib/ui-zoom'
@@ -85,9 +86,15 @@ export function useAppStartupHydration(
         // Why: nothing in the hydration chain reads profile state synchronously, so don't let it add a serial IPC round-trip before fetchSettings.
         void actions.fetchOrcaProfiles()
         // Why: publish local settings before persisted UI/catalog work; a saved remote owner's defaults can spend the full connect timeout.
-        await timeRendererStartupStep('fetch-settings', () =>
+        const settingsRead = timeRendererStartupStep('fetch-settings', () =>
           actions.fetchSettings({ deferOwnerWorktreeVisibilityDefaults: true })
         )
+        void readStartupDiscovery(settingsRead.then(() => true)).then((read) => {
+          if (read === null && !cancelled) {
+            onTipCheckInputsRef.current(null)
+          }
+        })
+        await settingsRead
         // Why: hidden-at-launch PTYs can query before any pane mounts; publish view attributes as soon as settings exist so every PTY owner answers from the composed theme.
         publishTerminalViewAttributesAtAppStart(
           useAppStore.getState().settings,
@@ -104,7 +111,13 @@ export function useAppStartupHydration(
         )
         answerTipCheckOnOnboardingRead(onboardingPromise, onTipCheckInputsRef)
         // Why: await ui.get() (not overlap) so persisted view settings hydrate before the local catalog/session steps and first paint reflects them.
-        const persistedUI = await timeRendererStartupStep('ui-get', () => window.api.ui.get())
+        const uiRead = timeRendererStartupStep('ui-get', () => window.api.ui.get())
+        void readStartupDiscovery(uiRead).then((read) => {
+          if (read === null && !cancelled) {
+            onTipCheckInputsRef.current(null)
+          }
+        })
+        const persistedUI = await uiRead
         uiHydrated = timeRendererStartupSyncStep('hydrate-persisted-ui', () =>
           hydratePersistedUIAfterStartupRead({
             persistedUI,

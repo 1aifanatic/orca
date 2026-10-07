@@ -66,10 +66,8 @@ export type UISliceContextual = {
   contextualTourNavigationInteractionSnapshot: Partial<Record<ContextualTourId, boolean>>
   activeContextualTourSuppressed: boolean
   contextualTourShownThisSession: boolean
-  contextualToursOnboardingVisible: boolean
   lastCompletedContextualTourId: ContextualTourId | null
   setContextualToursAutoEligible: (eligible: boolean) => void
-  setContextualToursOnboardingVisible: (visible: boolean) => void
   requestContextualTour: (
     id: ContextualTourId,
     source: string,

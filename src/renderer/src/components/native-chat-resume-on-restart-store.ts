@@ -393,6 +393,10 @@ async function loadLaunchOffer(): Promise<void> {
   void continueNativeChatRestartOffer(undefined, allResumeSessionIds(offered))
 }
 
+export function readNativeChatRestartOfferAtLaunch(): Promise<void> {
+  return (launch ??= loadLaunchOffer().finally(markNativeChatResumeLaunchDecided))
+}
+
 /**
  * The offer, fetching it on first use.
  *
@@ -404,7 +408,7 @@ export function useNativeChatRestartOffer(enabled: boolean): NativeChatRestartOf
     if (enabled) {
       // Fetched after mount, never awaited by startup: the workspace is usable first.
       // Decided either way, so other launch prompts stop waiting on this read.
-      launch ??= loadLaunchOffer().finally(markNativeChatResumeLaunchDecided)
+      void readNativeChatRestartOfferAtLaunch()
     }
   }, [enabled])
   return useSyncExternalStore(subscribe, getNativeChatRestartOffer, getNativeChatRestartOffer)

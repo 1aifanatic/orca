@@ -4,8 +4,8 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
-import { resetDialogRegistryForTests, useDialogRegistry } from '@/store/dialog-registry'
-import { AdoptDialogEntry, useHostDialogEntry } from '@/lib/dialog-registry-entry'
+import { useDialogRegistry } from '@/store/dialog-registry'
+import { resetDialogRegistryForTests } from '@/store/dialog-registry-test-state'
 import { getDefaultSettings } from '../../../../shared/constants'
 import type { CrashReportRecord } from '../../../../shared/crash-reporting'
 import { CrashReportDialog } from './CrashReportDialog'
@@ -109,12 +109,7 @@ function typeNotes(text: string): void {
 /** The SSH prompt as the app hosts it. */
 function SshHost(): React.JSX.Element | null {
   const asked = useAppStore((s) => s.sshCredentialQueue.length > 0)
-  useHostDialogEntry('ssh-credential', 'ssh-credential', 'response', asked)
-  return asked ? (
-    <AdoptDialogEntry token="ssh-credential">
-      <SshPassphraseDialog />
-    </AdoptDialogEntry>
-  ) : null
+  return asked ? <SshPassphraseDialog /> : null
 }
 
 beforeEach(() => {

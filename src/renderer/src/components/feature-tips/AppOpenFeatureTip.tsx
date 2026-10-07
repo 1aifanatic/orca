@@ -2,7 +2,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import { useAppStore } from '@/store'
 import { useDialogRegistry } from '@/store/dialog-registry'
-import { AdoptDialogEntry, useAutomaticDialogEntry } from '@/lib/dialog-registry-entry'
+import { DialogEntryScope, useAutomaticDialogEntry } from '@/lib/dialog-registry-entry'
 import { RecoverableRenderErrorBoundary } from '../error-boundaries/RecoverableRenderErrorBoundary'
 import type { FeatureTipId } from '../../../../shared/feature-tips'
 import {
@@ -55,11 +55,12 @@ export function AppOpenFeatureTip({ tipId }: { tipId: FeatureTipId }): React.JSX
     return null
   }
   return (
-    <AdoptDialogEntry token={APP_OPEN_FEATURE_TIP_TOKEN}>
+    <DialogEntryScope token={APP_OPEN_FEATURE_TIP_TOKEN}>
       <RecoverableRenderErrorBoundary
         boundaryId="modal.app-open-feature-tip"
         surface="modal"
         compact
+        onError={() => useDialogRegistry.getState().endDialog(APP_OPEN_FEATURE_TIP_TOKEN)}
       >
         <Suspense fallback={null}>
           <FeatureTipDialogs
@@ -69,6 +70,6 @@ export function AppOpenFeatureTip({ tipId }: { tipId: FeatureTipId }): React.JSX
           />
         </Suspense>
       </RecoverableRenderErrorBoundary>
-    </AdoptDialogEntry>
+    </DialogEntryScope>
   )
 }

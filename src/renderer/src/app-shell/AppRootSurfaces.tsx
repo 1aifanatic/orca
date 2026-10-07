@@ -20,12 +20,6 @@ import type { UpdateStatus } from '../../../shared/update-status-types'
 import { useLazyModalMounts } from './use-lazy-modal-mounts'
 import { AppOpenFeatureTip } from '../components/feature-tips/AppOpenFeatureTip'
 import {
-  AdoptDialogEntry,
-  ModalSlotDialogScope,
-  useHostDialogEntry
-} from '@/lib/dialog-registry-entry'
-import { OnboardingSurface } from './OnboardingSurface'
-import {
   selectAppRootSurfacePetEnabled,
   selectAppRootSurfaceTelemetryOptedIn,
   selectAppRootSurfaceVoiceEnabled
@@ -33,6 +27,7 @@ import {
 import type { FloatingWorkspacePanelState } from './use-floating-workspace-panel'
 import type { OnboardingGate } from './use-onboarding-and-feature-tips'
 
+const OnboardingFlow = lazy(() => import('../components/onboarding/OnboardingFlow'))
 const QuickOpen = lazy(() => import('../components/QuickOpen'))
 const WorktreeJumpPalette = lazy(() => import('../components/WorktreeJumpPalette'))
 const WorkspaceCleanupDialog = lazy(
@@ -100,24 +95,13 @@ type BoundaryProps = {
   children: React.ReactNode
 }
 
-/** For a modal-slot dialog: it adopts the entry openModal reserved, which a failure here ends. */
 function ModalBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
-  return (
-    <ModalSlotDialogScope>
-      <DialogBoundary {...props}>{children}</DialogBoundary>
-    </ModalSlotDialogScope>
-  )
-}
-
-function DialogBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
   return (
     <RecoverableRenderErrorBoundary surface="modal" compact {...props}>
       {children}
     </RecoverableRenderErrorBoundary>
   )
 }
-
-const SSH_CREDENTIAL_DIALOG_TOKEN = 'ssh-credential'
 
 function OverlayBoundary({ children, ...props }: BoundaryProps): React.JSX.Element {
   return (
@@ -161,14 +145,6 @@ export function AppRootSurfaces(props: {
   const updateStatus = useAppStore((s) => s.updateStatus)
   const activeContextualTourId = useAppStore((s) => s.activeContextualTourId)
   const hasSshCredentialRequest = useAppStore((s) => s.sshCredentialQueue.length > 0)
-  // Reserved from the request, so it counts while its code loads; it never waits for a turn.
-  useHostDialogEntry(
-    SSH_CREDENTIAL_DIALOG_TOKEN,
-    'ssh-credential',
-    'response',
-    hasSshCredentialRequest
-  )
-
   const shouldMountSetupGuideTelemetryObserver = persistedUIReady
   const shouldMountUpdateCard = shouldMountUpdateCardForStatus(updateStatus)
   const shouldMountDictationController = voiceEnabled || dictationState !== 'idle'
@@ -341,17 +317,15 @@ export function AppRootSurfaces(props: {
         ) : null}
       </Suspense>
       {hasSshCredentialRequest ? (
-        <AdoptDialogEntry token={SSH_CREDENTIAL_DIALOG_TOKEN}>
-          <Suspense fallback={null}>
-            <DialogBoundary boundaryId="modal.ssh-passphrase" resetKey={activeModal}>
-              <SshPassphraseDialog />
-            </DialogBoundary>
-          </Suspense>
-        </AdoptDialogEntry>
+        <Suspense fallback={null}>
+          <ModalBoundary boundaryId="modal.ssh-passphrase" resetKey={activeModal}>
+            <SshPassphraseDialog />
+          </ModalBoundary>
+        </Suspense>
       ) : null}
-      <DialogBoundary boundaryId="modal.markdown-template-picker" resetKey={activeModal}>
+      <ModalBoundary boundaryId="modal.markdown-template-picker" resetKey={activeModal}>
         <MarkdownTemplatePicker />
-      </DialogBoundary>
+      </ModalBoundary>
       <RecoverableRenderErrorBoundary
         boundaryId="modal.crash-report"
         surface="modal"
@@ -366,7 +340,24 @@ export function AppRootSurfaces(props: {
       >
         <CrashReportDialog />
       </RecoverableRenderErrorBoundary>
-      <OnboardingSurface gate={onboardingGate} />
+      {onboardingGate.onboarding && onboardingGate.shouldRender ? (
+        <Suspense fallback={null}>
+          <RecoverableRenderErrorBoundary
+            boundaryId="modal.onboarding"
+            surface="modal"
+            title={translate('auto.App.f02d37278a', 'Onboarding hit an error.')}
+            description={translate(
+              'auto.App.221a95ba38',
+              'Retry onboarding or close it and continue in the app.'
+            )}
+          >
+            <OnboardingFlow
+              onboarding={onboardingGate.onboarding}
+              onOnboardingChange={onboardingGate.setOnboarding}
+            />
+          </RecoverableRenderErrorBoundary>
+        </Suspense>
+      ) : null}
       {onboardingGate.appOpenTipId ? (
         <AppOpenFeatureTip tipId={onboardingGate.appOpenTipId} />
       ) : null}

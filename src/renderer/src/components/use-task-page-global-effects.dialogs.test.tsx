@@ -4,7 +4,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
-import { resetDialogRegistryForTests } from '@/store/dialog-registry'
+import { resetDialogRegistryForTests } from '@/store/dialog-registry-test-state'
 import { AppOpenFeatureTip } from './feature-tips/AppOpenFeatureTip'
 import { useTaskPageGlobalEffects } from './use-task-page-global-effects'
 
@@ -32,7 +32,7 @@ const closeTaskPage = vi.fn()
 function TasksPage(): null {
   const activeModal = useAppStore((s) => s.activeModal)
   const noop = (): void => {}
-  useTaskPageGlobalEffects({
+  const model = {
     closeTaskPage,
     activeModal,
     preflightStatusChecked: true,
@@ -42,7 +42,9 @@ function TasksPage(): null {
     checkLinearConnection: noop,
     checkJiraConnection: noop,
     refreshPreflightStatus: noop
-  } as never)
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the page model is large; these are the only fields the Escape and preflight effects read when nothing else is open.
+  useTaskPageGlobalEffects(model as unknown as Parameters<typeof useTaskPageGlobalEffects>[0])
   return null
 }
 

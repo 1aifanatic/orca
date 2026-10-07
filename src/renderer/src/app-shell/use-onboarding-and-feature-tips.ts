@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { readStartupDiscovery } from '../startup/startup-discovery-read'
+import { useDialogDisposal } from '../lib/dialog-registry-entry'
 import { onOnboardingReopened } from '../components/onboarding/show-onboarding-event'
 import { shouldShowOnboarding } from '../components/onboarding/should-show-onboarding'
 import {
@@ -28,17 +29,18 @@ export function useOnboardingAndFeatureTips() {
   const promptedThisSessionRef = useRef(false)
   const suppressedByOnboardingThisSessionRef = useRef(false)
 
+  const tipSource = useDialogRegistry((s) => s.startupSources['feature-tip'])
+  const abandonTip = useCallback(() => {
+    useDialogRegistry.getState().settleStartupSource('feature-tip', 'unavailable')
+  }, [])
+  useDialogDisposal('feature-tip-discovery', abandonTip)
+
   const settings = useAppStore((s) => s.settings)
   const persistedUIReady = useAppStore((s) => s.persistedUIReady)
   const featureTipsSeenIds = useAppStore((s) => s.featureTipsSeenIds)
   const featureInteractions = useAppStore((s) => s.featureInteractions)
   const contextualToursAutoEligible = useAppStore((s) => s.contextualToursAutoEligible)
-  const actions = useAppStore(
-    useShallow((s) => ({
-      setContextualToursAutoEligible: s.setContextualToursAutoEligible,
-      setContextualToursOnboardingVisible: s.setContextualToursOnboardingVisible
-    }))
-  )
+  const setContextualToursAutoEligible = useAppStore((s) => s.setContextualToursAutoEligible)
 
   const applyStartupOnboardingState = useCallback((state: OnboardingState): void => {
     setOnboarding(state)
@@ -46,6 +48,9 @@ export function useOnboardingAndFeatureTips() {
   }, [])
 
   const applyStartupTipCheckInputs = useCallback((state: OnboardingState | null): void => {
+    if (useDialogRegistry.getState().startupSources['feature-tip'] !== 'pending') {
+      return
+    }
     if (state === null) {
       // Settings or onboarding could not be read: no tip this launch, and nothing waits on one.
       useDialogRegistry.getState().settleStartupSource('feature-tip', 'unavailable')
@@ -59,18 +64,18 @@ export function useOnboardingAndFeatureTips() {
   }, [])
 
   useEffect(() => {
-    // Why: suppress tours until onboarding state is known (null = loading) so a first-run user can't mark a tour seen before onboarding appears.
-    const suppressTours = !onboardingLoaded || shouldShowOnboarding(onboarding)
-    actions.setContextualToursOnboardingVisible(suppressTours)
-  }, [actions, onboarding, onboardingLoaded])
-
-  useEffect(() => {
     if (!persistedUIReady || !onboardingLoaded || contextualToursAutoEligible !== null) {
       return
     }
     // Why: rollout targets first-run onboarding users; existing profiles are classified once and never auto-toured.
-    actions.setContextualToursAutoEligible(shouldShowOnboarding(onboarding))
-  }, [actions, contextualToursAutoEligible, onboarding, onboardingLoaded, persistedUIReady])
+    setContextualToursAutoEligible(shouldShowOnboarding(onboarding))
+  }, [
+    contextualToursAutoEligible,
+    onboarding,
+    onboardingLoaded,
+    persistedUIReady,
+    setContextualToursAutoEligible
+  ])
 
   useEffect(() => {
     if (!persistedUIReady) {
@@ -78,26 +83,26 @@ export function useOnboardingAndFeatureTips() {
     }
 
     let cancelled = false
-    void window.api.cli
-      .getInstallStatus()
-      .then((status) => {
-        if (cancelled) {
-          return
-        }
+    void readStartupDiscovery(window.api.cli.getInstallStatus()).then((status) => {
+      if (cancelled) {
+        return
+      }
+      if (status === null) {
+        abandonTip()
+      } else {
         setFeatureTipCliInstalled(isCliFeatureTipCompleted(status))
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFeatureTipCliInstalled(true)
-        }
-      })
+      }
+    })
 
     return () => {
       cancelled = true
     }
-  }, [persistedUIReady])
+  }, [abandonTip, persistedUIReady])
 
   useEffect(() => {
+    if (tipSource !== 'pending') {
+      return
+    }
     const featureTipsDecision = getFeatureTipsAppOpenDecision({
       cliInstalled: featureTipCliInstalled,
       featureTipsSeenIds,
@@ -137,7 +142,8 @@ export function useOnboardingAndFeatureTips() {
     onboarding,
     persistedUIReady,
     settings,
-    tipCheckOnboarding
+    tipCheckOnboarding,
+    tipSource
   ])
 
   return {

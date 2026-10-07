@@ -53,11 +53,13 @@ export function queueWorkspaceActivationTerminalFocus(
       state.activeWorkspaceExecutionHostId !== executionHostId ||
       state.activeView !== 'terminal' ||
       state.activeTabType !== 'terminal' ||
-      (tabId !== null && state.activeTabId !== tabId) ||
-      state.activeModal !== 'none' ||
-      selectDialogOnScreen(useDialogRegistry.getState())
+      (tabId !== null && state.activeTabId !== tabId)
     ) {
       cancel()
+      return
+    }
+    // The selecting palette can still be finishing its exit animation; keep this action pending.
+    if (state.activeModal !== 'none' || selectDialogOnScreen(useDialogRegistry.getState())) {
       return
     }
     tabId ??= state.activeTabId

@@ -1,10 +1,12 @@
+import { STARTUP_DISCOVERY_READ_TIMEOUT_MS } from '../startup/startup-discovery-read'
 // @vitest-environment happy-dom
 
 import { act, StrictMode, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
-import { resetDialogRegistryForTests, useDialogRegistry } from '@/store/dialog-registry'
+import { useDialogRegistry } from '@/store/dialog-registry'
+import { resetDialogRegistryForTests } from '@/store/dialog-registry-test-state'
 import { getDefaultSettings } from '../../../shared/constants'
 import type { CrashReportRecord } from '../../../shared/crash-reporting'
 import { NativeChatResumeOnRestartModal } from '../components/NativeChatResumeOnRestartModal'
@@ -21,11 +23,6 @@ import {
   requestNativeChatResumeOnRestartDialog
 } from '../components/native-chat-resume-on-restart-dialog'
 import { resetLocalStructuredChatsForTests } from '@/runtime/local-structured-chats'
-import {
-  AdoptDialogEntry,
-  ModalSlotDialogScope,
-  useHostDialogEntry
-} from '@/lib/dialog-registry-entry'
 
 const rpc = vi.hoisted(() => vi.fn())
 vi.mock('@/runtime/structured-agent-session-client', () => ({
@@ -37,7 +34,7 @@ vi.mock('@/lib/activate-ai-vault-structured-session', () => ({
 }))
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }))
 vi.mock('@/lib/telemetry', () => ({ track: vi.fn() }))
-const surface = vi.hoisted(() => ({ loaded: Promise.resolve(), suspended: false }))
+const surface = vi.hoisted(() => ({ loaded: Promise.resolve(), suspended: false, error: false }))
 // The real surfaces have their own tests; here they are a real Dialog, so their entries behave.
 vi.mock('../components/crash-report/CrashReportDialogSurface', async () => {
   const ui = await import('../components/ui/dialog')
@@ -51,6 +48,9 @@ vi.mock('../components/crash-report/CrashReportDialogSurface', async () => {
       report: CrashReportRecord | null
       onOpenChange: (open: boolean) => void
     }) => {
+      if (surface.error) {
+        throw new Error('surface failed')
+      }
       if (surface.suspended) {
         // Its lazy chunk is still loading: admitted, nothing on screen yet.
         throw surface.loaded
@@ -194,25 +194,18 @@ function closeTop(): void {
 function UserModal(): React.JSX.Element {
   const open = useAppStore((s) => s.activeModal === 'add-repo')
   return (
-    <ModalSlotDialogScope>
-      <Dialog open={open}>
-        <DialogContent>
-          <DialogTitle>Add project</DialogTitle>
-        </DialogContent>
-      </Dialog>
-    </ModalSlotDialogScope>
+    <Dialog open={open}>
+      <DialogContent>
+        <DialogTitle>Add project</DialogTitle>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-/** The SSH prompt as the app hosts it: reserved from its request, before its code loads. */
+/** SSH is counted only when its content commits. */
 function SshHost(): React.JSX.Element | null {
   const asked = useAppStore((s) => s.sshCredentialQueue.length > 0)
-  useHostDialogEntry('ssh-credential', 'ssh-credential', 'response', asked)
-  return asked ? (
-    <AdoptDialogEntry token="ssh-credential">
-      <SshPassphraseDialog />
-    </AdoptDialogEntry>
-  ) : null
+  return asked ? <SshPassphraseDialog /> : null
 }
 
 function Toggle({ children }: { children: React.ReactNode }): React.JSX.Element | null {
@@ -258,6 +251,7 @@ beforeEach(() => {
   resetLocalStructuredChatsForTests()
   resetDialogRegistryForTests()
   surface.suspended = false
+  surface.error = false
   boundaryReports.length = 0
   useAppStore.setState(useAppStore.getInitialState(), true)
   useAppStore.setState({
@@ -359,6 +353,12 @@ it('each crash report takes its own turn, and the same report shows once', async
   await flush()
   expect(onScreen()).toEqual(['crash:b2'])
   click('Close crash report')
+  await flush()
+  expect(onScreen()).toEqual([])
+  act(() => {
+    boundaryReports.push(crash('b1'))
+    window.dispatchEvent(new Event('test-boundary-report'))
+  })
   await flush()
   expect(onScreen()).toEqual([])
 })
@@ -476,11 +476,9 @@ it('a modal that fails to render ends only its own entry', async () => {
   crashReports.getLatestPending.mockResolvedValue(crash('c1'))
   await mount(
     <>
-      <ModalSlotDialogScope>
-        <RecoverableRenderErrorBoundary boundaryId="modal.composer" surface="modal" compact>
-          <Thrower />
-        </RecoverableRenderErrorBoundary>
-      </ModalSlotDialogScope>
+      <RecoverableRenderErrorBoundary boundaryId="modal.composer" surface="modal" compact>
+        <Thrower />
+      </RecoverableRenderErrorBoundary>
       <OtherDialog />
       <CrashReportDialog />
     </>
@@ -652,3 +650,68 @@ it('in StrictMode (dev builds) a tip decided after the resume offer was queued s
   await flush()
   expect(onScreen()).toEqual(['resume'])
 })
+
+it('a never-answering crash read releases the startup order and ignores its late answer', async () => {
+  const pending = Promise.withResolvers<CrashReportRecord | null>()
+  crashReports.getLatestPending.mockReturnValue(pending.promise)
+  settleTip()
+  vi.useFakeTimers()
+  try {
+    await act(async () => root.render(<CrashReportDialog />))
+    await act(async () => vi.advanceTimersByTimeAsync(STARTUP_DISCOVERY_READ_TIMEOUT_MS))
+    expect(useDialogRegistry.getState().startupSources['crash-report']).toBe('unavailable')
+    await act(async () => pending.resolve(crash('late')))
+    expect(useDialogRegistry.getState().dialogEntries).toEqual([])
+    expect(crashReports.dismiss).not.toHaveBeenCalled()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('failed automatic content releases only its own token, leaving another dialog untouched', async () => {
+  const silent = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const load = Promise.withResolvers<void>()
+  surface.loaded = load.promise
+  surface.suspended = true
+  settleTip()
+  crashReports.getLatestPending.mockResolvedValue(crash('broken'))
+  await mount(
+    <>
+      <CrashReportDialog />
+      <UserModal />
+    </>
+  )
+  surface.suspended = false
+  surface.error = true
+  await act(async () => load.resolve())
+  await flush()
+  expect(useDialogRegistry.getState().dialogEntries).toEqual([])
+  expect(crashReports.dismiss).not.toHaveBeenCalled()
+  act(() => useAppStore.getState().openModal('add-repo'))
+  await flush()
+  expect(onScreen()).toEqual(['Add project'])
+  expect(useDialogRegistry.getState().dialogEntries).toHaveLength(1)
+  silent.mockRestore()
+})
+
+it.each(['settings unavailable', 'held read hung', 'offer read hung'] as const)(
+  'the resume startup discovery ends when %s, without delaying earlier kinds',
+  async (failure) => {
+    if (failure !== 'offer read hung') {
+      useAppStore.setState({
+        settings: failure === 'settings unavailable' ? null : getDefaultSettings(''),
+        persistedUIReady: true
+      })
+    }
+    window.api.app.holdsStructuredAgentSessions = () => new Promise(() => {})
+    rpc.mockReturnValue(new Promise(() => {}))
+    vi.useFakeTimers()
+    try {
+      await act(async () => root.render(<NativeChatResumeOnRestartModal />))
+      await act(async () => vi.advanceTimersByTimeAsync(STARTUP_DISCOVERY_READ_TIMEOUT_MS))
+      expect(useDialogRegistry.getState().startupSources['native-chat-resume']).toBe('unavailable')
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+)

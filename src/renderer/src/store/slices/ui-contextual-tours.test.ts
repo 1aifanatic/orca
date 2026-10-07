@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
 import type { ContextualTourId } from '../../../../shared/contextual-tours'
 import { createUIStore, makePersistedUI } from './ui-slice-test-harness'
-import { resetDialogRegistryForTests, useDialogRegistry } from '../dialog-registry'
+import { useDialogRegistry } from '../dialog-registry'
+import { resetDialogRegistryForTests } from '../dialog-registry-test-state'
 
 const mocks = vi.hoisted(() => ({
   sendNotesToActiveAgentSession: vi.fn(),
@@ -226,9 +227,7 @@ describe('createUISlice contextual tours', () => {
     stubContextualTourTargets(['[data-contextual-tour-target="tasks-source-filters"]'])
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
 
-    useDialogRegistry
-      .getState()
-      .openDialog({ token: 'confirmation', kind: 'dialog', origin: 'user' })
+    useDialogRegistry.getState().dialogContentMounted('confirmation')
     store.getState().requestContextualTour('tasks', 'tasks_open')
 
     expect(store.getState().activeContextualTourId).toBeNull()
@@ -240,7 +239,8 @@ describe('createUISlice contextual tours', () => {
     stubContextualTourTargets(['[data-contextual-tour-target="workspace-creation-project"]'])
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
     store.getState().openModal('new-workspace-composer')
-    useDialogRegistry.getState().openDialog({ token: 'nested', kind: 'dialog', origin: 'user' })
+    useDialogRegistry.getState().dialogContentMounted('composer', 'new-workspace-composer')
+    useDialogRegistry.getState().dialogContentMounted('nested')
     const request = (): void =>
       store
         .getState()
@@ -250,7 +250,7 @@ describe('createUISlice contextual tours', () => {
 
     request()
     expect(store.getState().activeContextualTourId).toBeNull()
-    useDialogRegistry.getState().closeDialog('nested')
+    useDialogRegistry.getState().dialogContentUnmounted('nested')
     request()
     expect(store.getState().activeContextualTourId).toBe('workspace-creation')
   })
@@ -272,10 +272,12 @@ describe('createUISlice contextual tours', () => {
     registry().closeDialog('tip')
     store.getState().requestContextualTour('tasks', 'tasks_open')
     expect(store.getState().activeContextualTourId).toBe('tasks')
-    // A running tour holds the next self-opening dialog back until it ends.
+    // The rendered overlay owns occupancy; an unrendered tour request counts nothing.
+    registry().dialogContentMounted('tour:tasks', 'tour', 'tour')
     registry().enqueueAutomaticDialog('crash', 'crash-report')
     expect(registry().dialogEntries.find((entry) => entry.token === 'crash')?.phase).toBe('queued')
     store.getState().dismissContextualTour('tasks')
+    registry().dialogContentUnmounted('tour:tasks')
     expect(registry().dialogEntries.find((entry) => entry.token === 'crash')?.phase).toBe('opening')
   })
 
@@ -344,6 +346,7 @@ describe('createUISlice contextual tours', () => {
     store.getState().hydratePersistedUI(makeAutoTourEligibleUI())
 
     store.getState().openModal('new-workspace-composer')
+    useDialogRegistry.getState().dialogContentMounted('composer', 'new-workspace-composer')
     store.getState().requestContextualTour('tasks', 'tasks_open')
     expect(store.getState().activeContextualTourId).toBeNull()
 

@@ -2,20 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   AUTOMATIC_DIALOG_ORDER,
   closeDialogEntry,
-  closeModalSlotEntry,
   dialogContentMounted,
   dialogContentUnmounted,
   endDialogEntry,
   enqueueAutomaticDialog,
   INITIAL_DIALOG_REGISTRY,
   openDialogEntry,
-  openModalSlotEntry,
   selectDialogPhase,
-  selectModalSlotToken,
   selectTourBlocked,
+  selectTourParentToken,
+  selectDialogOnScreen,
   selectTourInterrupted,
   settleStartupSource,
-  syncTourEntry,
   type AutomaticDialogKind,
   type DialogRegistry
 } from './dialog-registry-state'
@@ -50,11 +48,11 @@ describe('self-opening dialogs take turns', () => {
     registry = dismiss(show(registry, 'later'), 'later')
 
     // Both queued while a dialog is up: the earlier kind is admitted next, not the earlier arrival.
-    registry = openDialogEntry(registry, { token: 'user', kind: 'dialog', origin: 'user' })
+    registry = dialogContentMounted(registry, 'user')
     registry = enqueueAutomaticDialog(registry, 'b', second)
     registry = enqueueAutomaticDialog(registry, 'a', first)
     expect(phase(registry, 'b')).toBe('queued')
-    registry = closeDialogEntry(registry, 'user')
+    registry = dialogContentUnmounted(registry, 'user')
     expect(phase(registry, 'a')).toBe('opening')
     expect(phase(registry, 'b')).toBe('queued')
     registry = dismiss(show(registry, 'a'), 'a')
@@ -100,12 +98,12 @@ describe('self-opening dialogs take turns', () => {
   })
 
   it('queues each item of a kind in arrival order; the same token is one item', () => {
-    let registry = openDialogEntry(settled, { token: 'user', kind: 'dialog', origin: 'user' })
+    let registry = dialogContentMounted(settled, 'user')
     registry = enqueueAutomaticDialog(registry, 'crash:1', 'crash-report')
     registry = enqueueAutomaticDialog(registry, 'crash:2', 'crash-report')
     registry = enqueueAutomaticDialog(registry, 'crash:1', 'crash-report')
     expect(registry.dialogEntries.filter((entry) => entry.kind === 'crash-report')).toHaveLength(2)
-    registry = closeDialogEntry(registry, 'user')
+    registry = dialogContentUnmounted(registry, 'user')
     expect(phase(registry, 'crash:1')).toBe('opening')
     registry = dismiss(show(registry, 'crash:1'), 'crash:1')
     // The second report is its own dialog; the first never replaced it.
@@ -120,10 +118,7 @@ describe('dialogs opened over a self-opening one', () => {
       let registry = enqueueAutomaticDialog(settled, 'shown', kind)
       registry = show(registry, 'shown')
       registry = enqueueAutomaticDialog(registry, 'next', 'native-chat-resume')
-      registry = show(
-        openDialogEntry(registry, { token: 'user', kind: 'dialog', origin: 'user' }),
-        'user'
-      )
+      registry = show(dialogContentMounted(registry, 'user'), 'user')
       expect(phase(registry, 'shown')).toBe('visible')
       expect(phase(registry, 'user')).toBe('visible')
       registry = dismiss(registry, 'user')
@@ -152,13 +147,18 @@ describe('dialogs opened over a self-opening one', () => {
     'a %s dialog opened while an admitted one has not painted yet sends it back to its place',
     (origin) => {
       let registry = enqueueAutomaticDialog(settled, 'crash', 'crash-report')
-      const seq = registry.dialogEntries[0]?.seq
+      const tokens = registry.dialogEntries.map((entry) => entry.token)
       expect(phase(registry, 'crash')).toBe('opening')
-      registry = openDialogEntry(registry, { token: 'top', kind: 'dialog', origin })
+      registry = dialogContentMounted(registry, 'top', 'dialog', origin)
       // Its code was still loading: it waits under nothing, and the dialog opened now stays on top.
       expect(registry.dialogEntries.find((entry) => entry.token === 'crash')).toEqual(
-        expect.objectContaining({ phase: 'queued', seq })
+        expect.objectContaining({ phase: 'queued' })
       )
+      expect(
+        registry.dialogEntries
+          .filter((entry) => tokens.includes(entry.token))
+          .map((entry) => entry.token)
+      ).toEqual(tokens)
       registry = dismiss(show(registry, 'top'), 'top')
       expect(phase(registry, 'crash')).toBe('opening')
     }
@@ -199,21 +199,21 @@ describe('dialogs opened over a self-opening one', () => {
   })
 
   it('a failed surface ends only its own entry', () => {
-    let registry = openDialogEntry(settled, { token: 'a', kind: 'dialog', origin: 'user' })
-    registry = openDialogEntry(registry, { token: 'b', kind: 'dialog', origin: 'user' })
+    let registry = dialogContentMounted(settled, 'a')
+    registry = dialogContentMounted(registry, 'b')
     registry = enqueueAutomaticDialog(registry, 'crash', 'crash-report')
     registry = endDialogEntry(registry, 'a')
     expect(phase(registry, 'a')).toBeNull()
-    expect(phase(registry, 'b')).toBe('opening')
+    expect(phase(registry, 'b')).toBe('visible')
     expect(phase(registry, 'crash')).toBe('queued')
   })
 
   it('withdrawing a queued one gives its place to the next', () => {
-    let registry = openDialogEntry(settled, { token: 'user', kind: 'dialog', origin: 'user' })
+    let registry = dialogContentMounted(settled, 'user')
     registry = enqueueAutomaticDialog(registry, 'crash', 'crash-report')
     registry = enqueueAutomaticDialog(registry, 'tip', 'feature-tip')
     registry = closeDialogEntry(registry, 'crash')
-    registry = closeDialogEntry(registry, 'user')
+    registry = dialogContentUnmounted(registry, 'user')
     expect(phase(registry, 'crash')).toBeNull()
     expect(phase(registry, 'tip')).toBe('opening')
   })
@@ -235,76 +235,80 @@ describe('dialogs opened over a self-opening one', () => {
   })
 })
 
-describe('the modal slot', () => {
-  it('counts from openModal, before its dialog renders, and replacing it closes the old one', () => {
-    let registry = openModalSlotEntry(settled, 'quick-open')
-    const first = selectModalSlotToken(registry)
-    expect(first).not.toBeNull()
-    registry = show(registry, first!)
-    registry = enqueueAutomaticDialog(registry, 'crash', 'crash-report')
-    expect(phase(registry, 'crash')).toBe('queued')
-
-    registry = openModalSlotEntry(registry, 'add-repo')
-    const second = selectModalSlotToken(registry)
-    expect(second).not.toBe(first)
-    expect(phase(registry, first!)).toBe('closing')
-    registry = dialogContentUnmounted(registry, first!)
-    registry = closeModalSlotEntry(registry)
-    expect(phase(registry, second!)).toBeNull()
-    expect(phase(registry, 'crash')).toBe('opening')
-  })
-
-  it('a tip queued while a user modal is up keeps its place ahead of a queued resume offer', () => {
-    let registry = openModalSlotEntry(INITIAL_DIALOG_REGISTRY, 'add-repo')
-    registry = settleStartupSource(registry, 'crash-report', 'none')
-    registry = enqueueAutomaticDialog(registry, 'resume', 'native-chat-resume')
-    registry = settleStartupSource(registry, 'native-chat-resume', 'ready')
-    registry = settleStartupSource(registry, 'feature-tip', 'ready', 'tip')
-    registry = closeModalSlotEntry(registry)
-    expect(phase(registry, 'tip')).toBe('opening')
-    expect(phase(registry, 'resume')).toBe('queued')
-  })
-})
-
 describe('tours', () => {
   it('one started by the app goes after every startup check and self-opening dialog', () => {
     expect(selectTourBlocked(INITIAL_DIALOG_REGISTRY, false)).toBe(true)
     expect(selectTourBlocked(settled, false)).toBe(false)
-    const queued = enqueueAutomaticDialog(
-      openDialogEntry(settled, { token: 'u', kind: 'dialog', origin: 'user' }),
-      'tip',
-      'feature-tip'
-    )
-    expect(selectTourBlocked(closeDialogEntry(queued, 'u'), false)).toBe(true)
+    const queued = enqueueAutomaticDialog(dialogContentMounted(settled, 'u'), 'tip', 'feature-tip')
+    expect(selectTourBlocked(dialogContentUnmounted(queued, 'u'), false)).toBe(true)
   })
 
   it('one the user asked for yields only to what is on screen', () => {
     expect(selectTourBlocked(INITIAL_DIALOG_REGISTRY, true)).toBe(false)
-    const user = openDialogEntry(settled, { token: 'u', kind: 'dialog', origin: 'user' })
+    const user = dialogContentMounted(settled, 'u')
     expect(selectTourBlocked(user, true)).toBe(true)
     expect(selectTourInterrupted(user)).toBe(true)
   })
 
   it('runs inside the modal it is written for, but not inside a dialog opened from it', () => {
-    let registry = openModalSlotEntry(settled, 'new-workspace-composer')
-    expect(selectTourBlocked(registry, true, ['new-workspace-composer'])).toBe(false)
+    let registry = dialogContentMounted(settled, 'composer', 'new-workspace-composer')
+    const parent = selectTourParentToken(registry, ['new-workspace-composer'])
+    expect(parent).toBe('composer')
+    expect(selectTourBlocked(registry, true, parent)).toBe(false)
     expect(selectTourBlocked(registry, true)).toBe(true)
-    registry = openDialogEntry(registry, {
-      token: 'nested',
-      kind: 'dialog',
-      origin: 'user',
-      parentToken: selectModalSlotToken(registry)
-    })
-    expect(selectTourInterrupted(registry, ['new-workspace-composer'])).toBe(true)
+    registry = dialogContentMounted(registry, 'nested')
+    expect(selectTourInterrupted(registry, parent)).toBe(true)
   })
 
   it('a running tour holds self-opening dialogs back until it ends', () => {
-    let registry = syncTourEntry(settled, 'browser')
+    let registry = dialogContentMounted(settled, 'tour:browser', 'tour', 'tour')
     registry = enqueueAutomaticDialog(registry, 'crash', 'crash-report')
     expect(phase(registry, 'crash')).toBe('queued')
     // The tour itself never counts as something a tour must give way to.
     expect(selectTourInterrupted(registry)).toBe(false)
-    registry = syncTourEntry(registry, null)
+    registry = dialogContentUnmounted(registry, 'tour:browser')
     expect(phase(registry, 'crash')).toBe('opening')
   })
+})
+
+it('user opening intent and an empty host count nothing; committed content alone blocks admission', () => {
+  let registry = openDialogEntry(settled, { token: 'user', kind: 'dialog', origin: 'user' })
+  expect(selectDialogOnScreen(registry)).toBe(false)
+  registry = enqueueAutomaticDialog(registry, 'crash', 'crash-report')
+  expect(phase(registry, 'crash')).toBe('opening')
+  registry = dialogContentMounted(registry, 'user')
+  expect(selectDialogOnScreen(registry)).toBe(true)
+  expect(phase(registry, 'crash')).toBe('queued')
+  registry = dialogContentUnmounted(registry, 'user')
+  expect(phase(registry, 'crash')).toBe('opening')
+})
+
+it('a stale content commit cannot acknowledge an automatic dialog returned to its queue', () => {
+  let registry = enqueueAutomaticDialog(settled, 'crash', 'crash-report')
+  registry = dialogContentMounted(registry, 'user')
+  registry = dialogContentMounted(registry, 'crash')
+  expect(phase(registry, 'crash')).toBe('queued')
+})
+
+it('composer allowance comes only from its mounted content, and closes with it', () => {
+  let registry = openDialogEntry(settled, {
+    token: 'composer',
+    kind: 'new-workspace-composer',
+    origin: 'user'
+  })
+  expect(selectTourParentToken(registry, ['new-workspace-composer'])).toBeNull()
+  registry = dialogContentMounted(registry, 'composer')
+  expect(selectTourParentToken(registry, ['new-workspace-composer'])).toBe('composer')
+  registry = closeDialogEntry(registry, 'composer')
+  expect(selectTourParentToken(registry, ['new-workspace-composer'])).toBeNull()
+  expect(selectTourBlocked(registry, true)).toBe(true)
+})
+
+it('onboarding content blocks automatic prompts and forced tours, without a separate visibility flag', () => {
+  let registry = dialogContentMounted(settled, 'onboarding', 'onboarding')
+  registry = enqueueAutomaticDialog(registry, 'crash', 'crash-report')
+  expect(phase(registry, 'crash')).toBe('queued')
+  expect(selectTourBlocked(registry, true)).toBe(true)
+  registry = dialogContentUnmounted(registry, 'onboarding')
+  expect(phase(registry, 'crash')).toBe('opening')
 })

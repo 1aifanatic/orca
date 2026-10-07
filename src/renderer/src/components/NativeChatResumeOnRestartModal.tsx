@@ -28,7 +28,7 @@ import {
   subscribeNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
 import { useNativeChatResumeLaunchDiscovery } from './native-chat-resume-launch-discovery'
-import { AdoptDialogEntry, useAutomaticDialogEntry } from '@/lib/dialog-registry-entry'
+import { DialogEntryScope, useAutomaticDialogEntry } from '@/lib/dialog-registry-entry'
 import {
   continueNativeChatRestartOffer,
   dismissNativeChatRestartOffer,
@@ -308,5 +308,5 @@ export function NativeChatResumeOnRestartModal(): React.JSX.Element | null {
       </DialogContent>
     </Dialog>
   )
-  return <AdoptDialogEntry token={NATIVE_CHAT_RESUME_DIALOG_TOKEN}>{dialog}</AdoptDialogEntry>
+  return <DialogEntryScope token={NATIVE_CHAT_RESUME_DIALOG_TOKEN}>{dialog}</DialogEntryScope>
 }

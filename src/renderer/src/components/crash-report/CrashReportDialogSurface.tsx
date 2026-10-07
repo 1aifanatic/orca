@@ -167,13 +167,6 @@ export function CrashReportDialogSurface({
     }
   }
 
-  const handleDismiss = async (): Promise<void> => {
-    await dismissReportIfNeeded()
-    if (mountedRef.current) {
-      onOpenChange(false)
-    }
-  }
-
   // Bookkeeping never holds a closing dialog open: it closes whatever the dismissal answers.
   const closeAndDismiss = (): void => {
     void dismissReportIfNeeded().catch((error) => {
@@ -324,7 +317,7 @@ export function CrashReportDialogSurface({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={handleDismiss}
+            onClick={closeAndDismiss}
             disabled={submitting}
           >
             {translate('auto.components.crash.report.CrashReportDialog.88fea8e84e', "Don't Send")}

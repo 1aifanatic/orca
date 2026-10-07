@@ -1,3 +1,4 @@
+import { readStartupDiscovery } from './startup-discovery-read'
 import { useAppStore } from '../store'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 
@@ -10,7 +11,7 @@ export function answerTipCheckOnOnboardingRead(
   onboardingRead: Promise<OnboardingState>,
   answer: { readonly current: (onboarding: OnboardingState | null) => void }
 ): void {
-  onboardingRead.then(
+  readStartupDiscovery(onboardingRead).then(
     // Settings were fetched and published before this read started; none now means it failed.
     (onboarding) => answer.current(useAppStore.getState().settings === null ? null : onboarding),
     () => answer.current(null)

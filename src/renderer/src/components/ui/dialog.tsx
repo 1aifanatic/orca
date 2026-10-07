@@ -8,32 +8,10 @@ import { cn } from '@/lib/utils'
 import { handleImeOverlayEscape } from '@/lib/ime-overlay-escape'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
-import { DialogEntryContent, DialogEntryRoot } from '@/lib/dialog-registry-entry'
+import { DialogEntryContent } from '@/lib/dialog-registry-entry'
 
-function Dialog({
-  open,
-  defaultOpen,
-  onOpenChange,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  // Why: the registry needs the open state, so an uncontrolled dialog's is kept here.
-  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen ?? false)
-  const isOpen = open ?? uncontrolledOpen
-  return (
-    <DialogEntryRoot open={isOpen}>
-      <DialogPrimitive.Root
-        data-slot="dialog"
-        open={isOpen}
-        onOpenChange={(next) => {
-          if (open === undefined) {
-            setUncontrolledOpen(next)
-          }
-          onOpenChange?.(next)
-        }}
-        {...props}
-      />
-    </DialogEntryRoot>
-  )
+function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
 function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
@@ -71,10 +49,12 @@ function DialogContent({
   className,
   children,
   overlayClassName,
+  dialogKind,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   overlayClassName?: string
+  dialogKind?: string
   showCloseButton?: boolean
 }) {
   return (
@@ -97,19 +77,20 @@ function DialogContent({
         {...props}
         onEscapeKeyDown={(event) => handleImeOverlayEscape(event, props.onEscapeKeyDown)}
       >
-        <DialogEntryContent />
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-          >
-            <XIcon />
-            <span className="sr-only">
-              {translate('auto.components.ui.dialog.f26c4baeda', 'Close')}
-            </span>
-          </DialogPrimitive.Close>
-        )}
+        <DialogEntryContent kind={dialogKind}>
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close
+              data-slot="dialog-close"
+              className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            >
+              <XIcon />
+              <span className="sr-only">
+                {translate('auto.components.ui.dialog.f26c4baeda', 'Close')}
+              </span>
+            </DialogPrimitive.Close>
+          )}
+        </DialogEntryContent>
       </DialogPrimitive.Content>
     </DialogPortal>
   )

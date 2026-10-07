@@ -1,10 +1,13 @@
+import type * as DegradedRecovery from '../startup/startup-degraded-recovery'
+import { STARTUP_DISCOVERY_READ_TIMEOUT_MS } from '../startup/startup-discovery-read'
 // @vitest-environment happy-dom
 
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
-import { resetDialogRegistryForTests, useDialogRegistry } from '@/store/dialog-registry'
+import { useDialogRegistry } from '@/store/dialog-registry'
+import { resetDialogRegistryForTests } from '@/store/dialog-registry-test-state'
 import { getDefaultSettings } from '../../../shared/constants'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { getDefaultOnboardingState } from '../../../shared/onboarding-defaults'
@@ -150,4 +153,73 @@ it('with every tip already seen it answers none without waiting for the CLI stat
   )
   await flush()
   expect(tipCheck()).toBe('none')
+})
+
+it('late onboarding must not open a tip after degraded startup answered unavailable', async () => {
+  const onboarding = Promise.withResolvers<OnboardingState>()
+  onboardingRead.get.mockReturnValue(onboarding.promise)
+  Object.assign(window.api.ui, {
+    get: vi.fn(async () => {
+      throw new Error('ui read unavailable')
+    })
+  })
+  const realRecovery = await vi.importActual<typeof DegradedRecovery>(
+    '../startup/startup-degraded-recovery'
+  )
+  startup.actions.hydratePersistedUI.mockImplementation((ui, source) => {
+    useAppStore.getState().hydratePersistedUI(ui, source)
+  })
+  startup.recover.mockImplementation(realRecovery.recoverFromDegradedStartup)
+  Object.assign(window.api, {
+    app: {
+      awaitFirstWindowStartupServices: vi.fn(async () => {}),
+      recoverLegacyWorkerTerminalsForRendererStartup: vi.fn(async () => {})
+    }
+  })
+  const silent = vi.spyOn(console, 'error').mockImplementation(() => {})
+  await start()
+  expect(startup.recover).toHaveBeenCalledTimes(1)
+  expect(tipCheck()).toBe('unavailable')
+  expect(gate?.appOpenTipId).toBeNull()
+  await act(async () => onboarding.resolve(existingUser))
+  await flush()
+  expect(tipCheck()).toBe('unavailable')
+  silent.mockRestore()
+  expect(gate?.appOpenTipId).toBeNull()
+})
+
+it.each(['settings', 'onboarding', 'ui', 'cli'] as const)(
+  'a never-answering %s read ends the tip discovery instead of holding later dialogs forever',
+  async (source) => {
+    vi.useFakeTimers()
+    try {
+      if (source === 'settings') {
+        startup.fetchSettings.mockReturnValue(new Promise(() => {}))
+      }
+      if (source === 'onboarding') {
+        onboardingRead.get.mockReturnValue(new Promise(() => {}))
+      }
+      if (source === 'cli') {
+        window.api.cli.getInstallStatus = () => new Promise(() => {})
+        useAppStore.setState({
+          persistedUIReady: true,
+          featureTipsSeenIds: ['agent-session-search']
+        })
+      }
+      await act(async () => root.render(<App onGate={(next) => (gate = next)} />))
+      expect(tipCheck()).toBe('pending')
+      await act(async () => vi.advanceTimersByTimeAsync(STARTUP_DISCOVERY_READ_TIMEOUT_MS))
+      expect(tipCheck()).toBe('unavailable')
+      expect(gate?.appOpenTipId).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+)
+
+it('losing the discovery owner answers unavailable', async () => {
+  await start()
+  expect(tipCheck()).toBe('pending')
+  await act(async () => root.render(null))
+  expect(tipCheck()).toBe('unavailable')
 })

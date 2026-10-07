@@ -1,4 +1,3 @@
-import type { AppState } from '../../types'
 import type { UISlice, UISliceGet, UISliceSet } from './ui-slice-contract'
 import { getContextualTour } from '../../../../../shared/contextual-tours'
 import {
@@ -9,14 +8,9 @@ import {
 } from '../../../components/contextual-tours/contextual-tour-gate'
 import { hasFeatureInteraction } from '../../../../../shared/feature-interactions'
 import { useDialogRegistry } from '../../dialog-registry'
-import { selectTourBlocked } from '../../dialog-registry-state'
+import { selectTourBlocked, selectTourParentToken } from '../../dialog-registry-state'
 
-export function createUiTourActions(setState: UISliceSet, get: UISliceGet): Partial<UISlice> {
-  // Any write here may start or end the running tour; the registry's tour entry follows it.
-  const set = (update: (s: AppState) => Partial<AppState>): void => {
-    setState(update)
-    useDialogRegistry.getState().syncTour(get().activeContextualTourId)
-  }
+export function createUiTourActions(set: UISliceSet, get: UISliceGet): Partial<UISlice> {
   return {
     contextualToursSeenIds: [],
     contextualToursAutoEligible: null,
@@ -28,7 +22,6 @@ export function createUiTourActions(setState: UISliceSet, get: UISliceGet): Part
     contextualTourNavigationInteractionSnapshot: {},
     activeContextualTourSuppressed: false,
     contextualTourShownThisSession: false,
-    contextualToursOnboardingVisible: false,
     lastCompletedContextualTourId: null,
     setContextualToursAutoEligible: (eligible) =>
       set((s) => {
@@ -40,12 +33,6 @@ export function createUiTourActions(setState: UISliceSet, get: UISliceGet): Part
         }
         return { contextualToursAutoEligible: eligible }
       }),
-    setContextualToursOnboardingVisible: (visible) =>
-      set((s) =>
-        s.contextualToursOnboardingVisible === visible
-          ? s
-          : { contextualToursOnboardingVisible: visible }
-      ),
     requestContextualTour: (id, source, wasFeaturePreviouslyInteracted, options) =>
       set((s) => {
         const tour = getContextualTour(id)
@@ -53,15 +40,13 @@ export function createUiTourActions(setState: UISliceSet, get: UISliceGet): Part
           tour,
           persistedUIReady: s.persistedUIReady,
           autoEligible: options?.force === true || s.contextualToursAutoEligible === true,
-          onboardingVisible: s.contextualToursOnboardingVisible,
           seenIds: options?.force === true ? [] : s.contextualToursSeenIds,
           sessionConsumed: options?.force === true ? false : s.contextualTourShownThisSession,
           activeTourId: s.activeContextualTourId,
-          activeModal: s.activeModal,
           blockingSurfaceVisible: selectTourBlocked(
             useDialogRegistry.getState(),
             options?.force === true,
-            tour.allowedActiveModals
+            selectTourParentToken(useDialogRegistry.getState(), tour.allowedActiveModals)
           ),
           targetExists: hasContextualTourTarget
         })

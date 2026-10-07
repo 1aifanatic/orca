@@ -6,7 +6,6 @@ import { isLazyChunkLoadError } from '@/lib/lazy-with-retry'
 import { reportReactErrorBoundaryCrash } from '@/lib/react-error-boundary-reporting'
 import type { ReactErrorBoundaryReportArgs } from '../../../../shared/crash-reporting'
 import { translate } from '@/i18n/i18n'
-import { EndFailedDialogEntry } from '@/lib/dialog-registry-entry'
 
 type BoundaryFallbackArgs = {
   error: Error | null
@@ -20,6 +19,7 @@ type Props = {
   className?: string
   compact?: boolean
   reportAsCrash?: boolean
+  onError?: () => void
   resetKey?: string | number | boolean | null
   title?: string
   description?: string
@@ -46,6 +46,7 @@ export class RecoverableRenderErrorBoundary extends React.Component<Props, State
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    this.props.onError?.()
     console.error(`[${this.props.boundaryId}] render crash contained by boundary`, error, errorInfo)
     if (this.props.reportAsCrash === false) {
       return
@@ -70,16 +71,7 @@ export class RecoverableRenderErrorBoundary extends React.Component<Props, State
     if (!this.state.error) {
       return this.props.children
     }
-    if (this.props.surface !== 'modal') {
-      return this.renderFallback(this.state.error)
-    }
-    // A failed modal shows no dialog, so the entry its host reserved for it ends.
-    return (
-      <>
-        {this.renderFallback(this.state.error)}
-        <EndFailedDialogEntry />
-      </>
-    )
+    return this.renderFallback(this.state.error)
   }
 
   private renderFallback(error: Error): React.ReactNode {

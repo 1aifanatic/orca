@@ -5,7 +5,7 @@ import type { AppState } from '../types'
 import { createUISlice } from './ui'
 import { createWorktreeNavHistorySlice } from './worktree-nav-history'
 import { createSettingsSearchState } from './settings-search-state'
-import { resetDialogRegistryForTests } from '../dialog-registry'
+import { resetDialogRegistryForTests } from '../dialog-registry-test-state'
 
 export function createUIStore(): StoreApi<AppState> {
   // Why: the registry is per window, not per store; these cases model a running app past startup.

@@ -16,7 +16,7 @@ import {
   getNativeChatResumeOnRestartDialogRequest,
   requestNativeChatResumeOnRestartDialog
 } from './native-chat-resume-on-restart-dialog'
-import { resetDialogRegistryForTests } from '../store/dialog-registry'
+import { resetDialogRegistryForTests } from '../store/dialog-registry-test-state'
 import {
   _resetNativeChatRestartOffer,
   getNativeChatRestartOffer,

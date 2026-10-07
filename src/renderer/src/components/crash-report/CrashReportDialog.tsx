@@ -1,13 +1,15 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
+import { readStartupDiscovery } from '@/startup/startup-discovery-read'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import {
   REACT_ERROR_BOUNDARY_REPORT_AVAILABLE_EVENT,
   takePendingReactErrorBoundaryReports
 } from '@/lib/react-error-boundary-reporting'
-import { AdoptDialogEntry, useHostDialogEntry } from '@/lib/dialog-registry-entry'
+import { DialogEntryScope, useDialogDisposal } from '@/lib/dialog-registry-entry'
 import { useDialogRegistry } from '@/store/dialog-registry'
-import { selectAdmittedDialog, type StartupSourceAnswer } from '@/store/dialog-registry-state'
+import { selectAdmittedDialog } from '@/store/dialog-registry-state'
+import { RecoverableRenderErrorBoundary } from '../error-boundaries/RecoverableRenderErrorBoundary'
 import { useCrashReportSends } from './use-crash-report-sends'
 import type { CrashReportRecord } from '../../../../shared/crash-reporting'
 
@@ -29,8 +31,6 @@ type AutomaticCrashReport = {
   report: CrashReportRecord
   /** The launch prompt is one-shot: acknowledged once on screen, never before. */
   acknowledgeOnShow: boolean
-  /** Still wanted; a closed one is kept only so its dialog can finish closing. */
-  open: boolean
 }
 
 /** Help > Report Crash, opened over no report: the latest one, once loaded. */
@@ -43,48 +43,29 @@ export function CrashReportDialog(): React.JSX.Element | null {
   const [userDialog, setUserDialog] = useState<UserDialog | null>(null)
   const [loading, setLoading] = useState(false)
   const [reports, setReports] = useState<ReadonlyMap<string, AutomaticCrashReport>>(() => new Map())
-  const [launchAnswer, setLaunchAnswer] = useState<Exclude<StartupSourceAnswer, 'pending'> | null>(
-    null
-  )
   const admitted = useDialogRegistry((s) => selectAdmittedDialog(s, 'crash-report'))
   const admittedReport = admitted ? reports.get(admitted.token) : undefined
-  useHostDialogEntry(USER_DIALOG_TOKEN, 'dialog', 'user', userDialog !== null)
-
-  const reportsRef = useRef(reports)
-  // The registry follows this list: queued while open, closed once done. The launch check answers
-  // only after its report is queued, so no later dialog can take the turn in between.
-  useLayoutEffect(() => {
-    reportsRef.current = reports
+  const ownedTokens = useRef(new Set<string>())
+  const disposeReports = useCallback(() => {
     const registry = useDialogRegistry.getState()
-    for (const [token, entry] of reports) {
-      if (entry.open) {
-        registry.enqueueAutomaticDialog(token, 'crash-report')
-      } else {
-        registry.closeDialog(token)
-      }
+    for (const token of ownedTokens.current) {
+      registry.endDialog(token)
     }
-    if (launchAnswer !== null) {
-      registry.settleStartupSource('crash-report', launchAnswer)
-    }
-  }, [launchAnswer, reports])
-  // Gone, this owner withdraws its reports.
-  useLayoutEffect(
-    () => () => {
-      for (const token of reportsRef.current.keys()) {
-        useDialogRegistry.getState().closeDialog(token)
-      }
-    },
-    []
-  )
+    registry.settleStartupSource('crash-report', 'unavailable')
+  }, [])
+  useDialogDisposal(USER_DIALOG_TOKEN, disposeReports)
 
   const raiseCrashReport = useCallback((report: CrashReportRecord, acknowledgeOnShow: boolean) => {
     const token = crashReportToken(report.id)
-    // The same report again is the same dialog; any other report is queued after it.
+    // Repeated delivery of an identical ID must not reopen a dismissed report.
+    if (ownedTokens.current.has(token)) {
+      return
+    }
+    ownedTokens.current.add(token)
     setReports((current) =>
-      current.get(token)?.open
-        ? current
-        : new Map(current).set(token, { report, acknowledgeOnShow, open: true })
+      current.has(token) ? current : new Map(current).set(token, { report, acknowledgeOnShow })
     )
+    useDialogRegistry.getState().enqueueAutomaticDialog(token, 'crash-report')
   }, [])
 
   // By id, not by who opened it: a send started before Help took the dialog over lands either way.
@@ -108,10 +89,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
       return
     }
     const token = crashReportToken(reportId)
-    setReports((current) => {
-      const entry = current.get(token)
-      return entry?.open ? new Map(current).set(token, { ...entry, open: false }) : current
-    })
+    useDialogRegistry.getState().closeDialog(token)
   }, [])
 
   const { send, isSending } = useCrashReportSends(
@@ -131,23 +109,25 @@ export function CrashReportDialog(): React.JSX.Element | null {
       return
     }
     promptedThisLaunch.current = true
-    void window.api.crashReports.getLatestPending().then(
-      (pending) => {
-        if (!mountedRef.current) {
-          // No owner left to show it; later dialogs must not wait on it.
-          useDialogRegistry.getState().settleStartupSource('crash-report', 'unavailable')
-          return
-        }
-        if (pending) {
-          raiseCrashReport(pending, pending.status === 'pending')
-        }
-        setLaunchAnswer(pending ? 'ready' : 'none')
-      },
-      (error) => {
-        console.error('Failed to load crash report:', error)
+    void readStartupDiscovery(
+      window.api.crashReports.getLatestPending().then((report) => ({ report }))
+    ).then((result) => {
+      if (!mountedRef.current) {
+        // No owner left to show it; later dialogs must not wait on it.
         useDialogRegistry.getState().settleStartupSource('crash-report', 'unavailable')
+        return
       }
-    )
+      const pending = result?.report
+      if (pending) {
+        raiseCrashReport(pending, pending.status === 'pending')
+      }
+      useDialogRegistry
+        .getState()
+        .settleStartupSource(
+          'crash-report',
+          result === null ? 'unavailable' : pending ? 'ready' : 'none'
+        )
+    })
   }, [mountedRef, raiseCrashReport])
 
   useEffect(() => {
@@ -208,7 +188,7 @@ export function CrashReportDialog(): React.JSX.Element | null {
     }
   }, [mountedRef])
 
-  const reportOnScreen = admitted !== undefined && admitted.phase !== 'closing'
+  const reportOnScreen = admitted?.phase === 'visible'
   useEffect(() => {
     return window.api.ui.onOpenCrashReport(() => {
       // A report dialog already up is the one Help would show: it stays as it is, notes and all.
@@ -228,24 +208,40 @@ export function CrashReportDialog(): React.JSX.Element | null {
   const open = userDialog !== null || admitted?.phase !== 'closing'
 
   return (
-    <AdoptDialogEntry token={userDialog ? USER_DIALOG_TOKEN : (admitted?.token ?? null)}>
-      <Suspense fallback={null}>
-        <CrashReportDialogSurface
-          key={surfaceKey}
-          open={open}
-          report={report}
-          loading={loading && report === null}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) {
-              setUserDialog(null)
-              closeReport(report?.id ?? null)
-            }
-          }}
-          onReportChange={changeReport}
-          submitting={isSending(report)}
-          onSubmit={(request) => send(report, request)}
-        />
-      </Suspense>
-    </AdoptDialogEntry>
+    <DialogEntryScope
+      token={userDialog ? USER_DIALOG_TOKEN : (admitted?.token ?? USER_DIALOG_TOKEN)}
+    >
+      <RecoverableRenderErrorBoundary
+        boundaryId="modal.crash-report-content"
+        surface="modal"
+        reportAsCrash={false}
+        compact
+        key={surfaceKey}
+        onError={() => {
+          if (admitted && !userDialog) {
+            useDialogRegistry.getState().endDialog(admitted.token)
+          }
+          setUserDialog(null)
+        }}
+      >
+        <Suspense fallback={null}>
+          <CrashReportDialogSurface
+            key={surfaceKey}
+            open={open}
+            report={report}
+            loading={loading && report === null}
+            onOpenChange={(nextOpen) => {
+              if (!nextOpen) {
+                setUserDialog(null)
+                closeReport(report?.id ?? null)
+              }
+            }}
+            onReportChange={changeReport}
+            submitting={isSending(report)}
+            onSubmit={(request) => send(report, request)}
+          />
+        </Suspense>
+      </RecoverableRenderErrorBoundary>
+    </DialogEntryScope>
   )
 }
