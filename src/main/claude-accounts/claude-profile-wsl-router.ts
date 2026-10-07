@@ -31,6 +31,8 @@ type WslSetup = (distro: string, guestHome: string, accountId: string) => Promis
  */
 export class ClaudeWslProfileRouter {
   private readonly setups = new Map<string, Promise<void>>()
+  /** Accounts whose running setup began before the folder had a marker. */
+  private readonly firstSetups = new Set<string>()
   constructor(
     private readonly args: {
       getSettings: () => ClaudeProfileRouterSettings
@@ -98,15 +100,15 @@ export class ClaudeWslProfileRouter {
     }
   }
 
-  /** Waits for a setup that is running or never ran; otherwise launches at once. */
+  /** Waits for a first setup that is running or never ran; otherwise launches at once. */
   async prepareLaunch(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
     const { home, profile } = await this.resolve(distro)
     await this.assertPresent(distro, profile)
-    // Why the running check: setup writes its marker when it starts, not when it finishes.
+    // Why the first-setup check: setup writes its marker when it starts, not when it finishes.
+    // A re-run of a set-up folder never blocks. Stat first: a first setup is recorded before it marks.
     if (
       profile &&
-      (this.setups.has(profile.accountId) ||
-        !(await guestStat(distro, claudeProfileMarkerPath(profile)))?.isFile())
+      (!(await hasMarker(distro, profile)) || this.firstSetups.has(profile.accountId))
     ) {
       await this.setUp(distro, home, profile.accountId).catch((error: unknown) => {
         console.warn('[claude-profile] WSL account setup failed:', error)
@@ -186,9 +188,15 @@ export class ClaudeWslProfileRouter {
     if (running) {
       return running
     }
-    const run = (this.args.runSetup ?? runWslSetup)(distro, home, accountId).finally(() =>
+    const run = (async () => {
+      if (!(await hasMarker(distro, wslClaudeProfile(home, distro, accountId).profile))) {
+        this.firstSetups.add(accountId)
+      }
+      await (this.args.runSetup ?? runWslSetup)(distro, home, accountId)
+    })().finally(() => {
       this.setups.delete(accountId)
-    )
+      this.firstSetups.delete(accountId)
+    })
     this.setups.set(accountId, run)
     return run
   }
@@ -197,6 +205,10 @@ export class ClaudeWslProfileRouter {
 // Why over the distro's share: a launch must not wait on a guest process for two stats.
 async function guestStat(distro: string, linuxPath: string) {
   return lstat(toWindowsWslPath(linuxPath, distro)).catch(() => null)
+}
+
+async function hasMarker(distro: string, profile: ClaudeProfileDescriptor): Promise<boolean> {
+  return (await guestStat(distro, claudeProfileMarkerPath(profile)))?.isFile() ?? false
 }
 
 /** Writes in the guest only when the file differs, so a launch reads it over the share instead. */

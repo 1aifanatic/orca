@@ -14,6 +14,12 @@ import {
   resetRateLimitProviderMocks
 } from './rate-limit-service-test-harness'
 
+const profileRouter = vi.hoisted((): { userConfigDir?: string } => ({}))
+vi.mock('../claude-accounts/claude-profile-installed-router', () => ({
+  getClaudeProfileRouter: () =>
+    profileRouter.userConfigDir ? { userConfigDir: () => profileRouter.userConfigDir } : undefined
+}))
+
 vi.mock('./claude-fetcher', () => ({
   fetchClaudeRateLimits: vi.fn(),
   fetchManagedAccountUsage: vi.fn()
@@ -301,6 +307,34 @@ describe('RateLimitService', () => {
       })
       expect(service.getState().claude?.session?.usedPercent).toBe(44)
     } finally {
+      vi.unstubAllEnvs()
+      vi.useRealTimers()
+    }
+  })
+
+  it("attributes System Default posts to the login shell's CLAUDE_CONFIG_DIR a Dock launch lacks", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(fetchClaudeRateLimits).mockResolvedValue(okProvider('claude', 18))
+      mockFreshBackgroundProviderFetches()
+      vi.stubEnv('CLAUDE_CONFIG_DIR', '')
+      profileRouter.userConfigDir = '/shell/claude-config'
+      const service = new RateLimitService()
+      service.setClaudeAuthPreparationResolver(async () => ({
+        configDir: '/shell/claude-config',
+        envPatch: {},
+        stripAuthEnv: false,
+        provenance: 'system'
+      }))
+      await service.refresh()
+      service.ingestLiveClaudeRateLimits({
+        configDir: '/shell/claude-config',
+        fiveHour: { used_percentage: 44 },
+        sevenDay: null
+      })
+      expect(service.getState().claude?.session?.usedPercent).toBe(44)
+    } finally {
+      profileRouter.userConfigDir = undefined
       vi.unstubAllEnvs()
       vi.useRealTimers()
     }

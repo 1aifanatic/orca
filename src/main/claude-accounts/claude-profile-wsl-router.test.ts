@@ -111,24 +111,23 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     expect(existsSync(f.pointer)).toBe(false)
   })
 
-  it('refuses a missing folder, waits for a setup never run or still running, then launches at once', async () => {
+  it('refuses a missing folder, waits for a first setup never run or still running, then launches at once', async () => {
     const f = fixture()
     await expect(f.router.prepareLaunch('Ubuntu')).rejects.toThrow(CLAUDE_PROFILE_MISSING_MESSAGE)
 
     mkdirSync(f.profileHome, { recursive: true })
     f.setup.fail = true
-    await expect(f.router.prepareLaunch('Ubuntu')).rejects.toThrow(
-      CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
-    )
-    // The marker now exists, but a setup publish started is still running.
     let release = () => {}
     f.setup.gate = new Promise((resolve) => (release = resolve))
-    await f.router.publish('Ubuntu')
-    await vi.waitFor(() => expect(f.setup.calls).toBe(2))
     const launch = f.router.prepareLaunch('Ubuntu')
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    // The marker now exists, but the first setup is still running.
+    const second = f.router.prepareLaunch('Ubuntu')
     await new Promise((resolve) => setTimeout(resolve, 50))
     release()
     await expect(launch).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    await expect(second).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    expect(f.setup.calls).toBe(1)
 
     f.setup.fail = false
     const prepared = await f.router.prepareLaunch('Ubuntu')
@@ -143,8 +142,27 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
         ORCA_CLAUDE_INJECTED_CONFIG_DIR: f.profileHome
       }
     })
-    await f.router.prepareLaunch('Ubuntu')
-    expect(f.setup.calls).toBe(2)
+    expect(f.setup.calls).toBe(1)
+  })
+
+  it('never makes a launch wait on, or fail with, a re-run of a set-up folder', async () => {
+    const f = fixture()
+    mkdirSync(f.profileHome, { recursive: true })
+    writeFileSync(join(f.profileHome, '..', 'profile.json'), '{}')
+    f.setup.fail = true
+    let release = () => {}
+    f.setup.gate = new Promise((resolve) => (release = resolve))
+    await f.router.publish('Ubuntu')
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
+      configDir: f.profileHome
+    })
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await expect(f.router.prepareLaunch('Ubuntu')).resolves.toMatchObject({
+      configDir: f.profileHome
+    })
+    expect(f.setup.calls).toBe(1)
   })
 
   it('sets up a new account folder for sign-in and deletes it without following its links', async () => {
@@ -179,7 +197,7 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
       mkdirSync(f.profileHome, { recursive: true })
     })
     await f.router.publish('Ubuntu')
-    expect(f.setup.calls).toBe(1)
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
     const removal = f.router.removeAccount('Ubuntu', 'a')
     await new Promise((resolve) => setTimeout(resolve, 50))
     release()

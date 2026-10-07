@@ -6,6 +6,7 @@ import { isDefinitiveAbsence } from '../../shared/definitive-filesystem-absence'
 import { readActiveClaudeKeychainCredentialsStrict } from '../claude-accounts/keychain'
 import type { ClaudeRuntimeAuthPreparation } from '../claude-accounts/runtime-auth/runtime-auth-types'
 import { readUserClaudeConfigDir } from '../claude-accounts/claude-profile-paths'
+import { getClaudeProfileRouter } from '../claude-accounts/claude-profile-installed-router'
 
 export type ClaudeOAuthCredentialSource =
   | 'scoped-keychain'
@@ -125,8 +126,11 @@ export function resolveClaudeOAuthCredentialReadOptions(
   const accountDir = authPreparation.envPatch.CLAUDE_CONFIG_DIR
   return {
     credentialsFileConfigDir: authPreparation.configDir,
-    // Why the user's own folder: Claude names System default's item from it when it is set.
-    keychainConfigDir: accountDir ?? readUserClaudeConfigDir(process.env),
+    // Why the user's own folder, login shell first: Claude names System default's item from it.
+    keychainConfigDir:
+      accountDir ??
+      getClaudeProfileRouter()?.userConfigDir() ??
+      readUserClaudeConfigDir(process.env),
     // An unsuffixed lookup is exclusively System default, never a fallback from an account.
     unsuffixedKeychainFallback: !accountDir
   }

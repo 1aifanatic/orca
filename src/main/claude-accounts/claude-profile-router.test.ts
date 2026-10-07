@@ -25,8 +25,12 @@ import {
 
 // Why: removal deletes macOS Keychain items; the test must never reach the real Keychain.
 // The login shell exports what a Dock launch's own env lacks.
+const shell = vi.hoisted(() => ({ hang: false }))
 vi.mock('../startup/login-shell-environment', () => ({
-  resolveLoginShellEnvironment: async () => ({ CLAUDE_CONFIG_DIR: resolve('/shell/own') })
+  resolveLoginShellEnvironment: () =>
+    shell.hang
+      ? new Promise(() => {})
+      : Promise.resolve({ CLAUDE_CONFIG_DIR: resolve('/shell/own') })
 }))
 vi.mock('../macos-keychain/generic-password', () => ({
   execSecurityCommand: async () => {
@@ -36,6 +40,7 @@ vi.mock('../macos-keychain/generic-password', () => ({
 
 const roots: string[] = []
 afterEach(() => {
+  shell.hang = false
   installClaudeProfileRouter(undefined)
   roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }))
 })
@@ -118,7 +123,7 @@ describe('ClaudeProfileRouter', () => {
     expect(existsSync(f.router.pointerPath)).toBe(false)
   })
 
-  it('makes a launch wait for a setup that never ran or is still running, reusing it', async () => {
+  it('makes a launch wait for a first setup that never ran or is still running, reusing it', async () => {
     const f = fixture()
     mkdirSync(f.home('a'), { recursive: true })
     let launched = false
@@ -127,25 +132,47 @@ describe('ClaudeProfileRouter', () => {
       return prepared
     })
     await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    // The marker now exists, but the first setup is still running.
+    await new Promise((resolve) => setTimeout(resolve, 10))
     expect(launched).toBe(false)
+    const second = f.router.prepareLaunch()
+    f.setup.outcome = 'refused'
     f.setup.settle()
-    await expect(launch).resolves.toMatchObject({ configDir: f.home('a') })
+    await expect(launch).rejects.toMatchObject({ reason: 'claudeAccountSetupFailed' })
+    await expect(second).rejects.toThrow(CLAUDE_PROFILE_SETUP_FAILED_MESSAGE)
+    expect(f.setup.calls).toBe(1)
+  })
 
-    // The marker now exists, but a setup publish started is still running.
+  it('never makes a launch wait on, or fail with, a re-run of a set-up folder', async () => {
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    const first = f.router.prepareLaunch()
+    await vi.waitFor(() => expect(f.setup.calls).toBe(1))
+    f.setup.settle()
+    await expect(first).resolves.toMatchObject({ configDir: f.home('a') })
+
+    // Startup or a switch re-runs setup; it stays pending, then fails.
     f.setup.outcome = 'refused'
     f.router.publish()
     await vi.waitFor(() => expect(f.setup.calls).toBe(2))
-    const refused = f.router.prepareLaunch()
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
     f.setup.settle()
-    await expect(refused).rejects.toMatchObject({
-      reason: 'claudeAccountSetupFailed',
-      message: CLAUDE_PROFILE_SETUP_FAILED_MESSAGE
-    })
-
-    // Set up once and nothing running: launches stop waiting.
+    await new Promise((resolve) => setTimeout(resolve, 10))
     await expect(f.router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
     expect(f.setup.calls).toBe(2)
+  })
+
+  it("launches a set-up account without waiting for the login shell's env", async () => {
+    shell.hang = true
+    const f = fixture()
+    mkdirSync(f.home('a'), { recursive: true })
+    writeFileSync(join(f.home('a'), '..', 'profile.json'), '{}')
+    const router = new ClaudeProfileRouter({
+      getSettings: () => f.settings,
+      dataRoot: f.dataRoot,
+      userHome: f.userHome
+    })
+    await expect(router.prepareLaunch()).resolves.toMatchObject({ configDir: f.home('a') })
   })
 
   it('names a never-signed-in folder without creating it, and refuses to launch it', async () => {

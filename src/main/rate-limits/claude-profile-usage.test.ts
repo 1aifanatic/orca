@@ -10,6 +10,11 @@ vi.mock('../macos-keychain/generic-password', () => ({
 vi.mock('../claude-accounts/keychain', () => ({
   readActiveClaudeKeychainCredentialsStrict: calls.keychain
 }))
+const profileRouter = vi.hoisted((): { userConfigDir?: string } => ({}))
+vi.mock('../claude-accounts/claude-profile-installed-router', () => ({
+  getClaudeProfileRouter: () =>
+    profileRouter.userConfigDir ? { userConfigDir: () => profileRouter.userConfigDir } : undefined
+}))
 vi.mock('./claude-oauth-usage-request', () => ({ fetchClaudeOAuthUsage: calls.usage }))
 const runningDistros = vi.hoisted(() => ({
   filter: vi.fn(async (paths: readonly string[]) => [...paths])
@@ -207,6 +212,23 @@ it("reads System default's own CLAUDE_CONFIG_DIR Keychain item before the unsuff
   calls.keychain.mockClear()
   await fetchActiveClaudeRateLimits(managed.options)
   expect(calls.keychain.mock.calls).toEqual(process.platform === 'darwin' ? [[managed.home]] : [])
+})
+it("names System default's Keychain item from the login shell's CLAUDE_CONFIG_DIR a Dock launch lacks", () => {
+  vi.stubEnv('CLAUDE_CONFIG_DIR', '')
+  profileRouter.userConfigDir = '/shell/claude-config'
+  try {
+    expect(
+      resolveClaudeOAuthCredentialReadOptions({
+        configDir: '/shell/claude-config',
+        envPatch: {},
+        stripAuthEnv: false,
+        provenance: 'system'
+      })?.keychainConfigDir
+    ).toBe('/shell/claude-config')
+  } finally {
+    profileRouter.userConfigDir = undefined
+    vi.unstubAllEnvs()
+  }
 })
 it('reports a host problem as unavailable usage, never as a signed-out account', async () => {
   const f = profile()

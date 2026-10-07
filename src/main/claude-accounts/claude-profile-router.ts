@@ -49,6 +49,8 @@ export type ClaudeProfileRouterSettings = Pick<
 export class ClaudeProfileRouter {
   readonly pointerPath: string
   private readonly setups = new Map<string, Promise<ClaudeProfileSetupReport>>()
+  /** Accounts whose running setup began before the folder had a marker. */
+  private readonly firstSetups = new Set<string>()
   private env: NodeJS.ProcessEnv
   private readonly envReady: Promise<unknown>
   constructor(
@@ -110,15 +112,19 @@ export class ClaudeProfileRouter {
     }
   }
 
-  /** Waits for a setup that is running or never ran; otherwise launches at once. */
+  /** Waits for a first setup that is running or never ran; otherwise launches at once. */
   async prepareLaunch(): Promise<ClaudeRuntimeAuthPreparation> {
-    await this.envReady
     const profile = this.selectedProfile()
-    // Why the running check: setup writes its marker when it starts, not when it finishes.
+    if (!profile) {
+      // Only System default reads the login shell's env here; setup awaits it itself.
+      await this.envReady
+      return this.preparation()
+    }
+    // Why the first-setup check: setup writes its marker when it starts, not when it finishes.
+    // A re-run of a set-up folder never blocks: the folder already worked.
     if (
-      profile &&
       isDirectory(profile.home) &&
-      (this.setups.has(profile.accountId) || !existsSync(claudeProfileMarkerPath(profile)))
+      (this.firstSetups.has(profile.accountId) || !existsSync(claudeProfileMarkerPath(profile)))
     ) {
       const report = await this.setUp(profile).catch(() => null)
       if (report?.outcome !== 'prepared') {
@@ -167,7 +173,13 @@ export class ClaudeProfileRouter {
     if (running) {
       return running
     }
-    const run = this.runSetup(profile).finally(() => this.setups.delete(profile.accountId))
+    if (!existsSync(claudeProfileMarkerPath(profile))) {
+      this.firstSetups.add(profile.accountId)
+    }
+    const run = this.runSetup(profile).finally(() => {
+      this.setups.delete(profile.accountId)
+      this.firstSetups.delete(profile.accountId)
+    })
     this.setups.set(profile.accountId, run)
     return run
   }
