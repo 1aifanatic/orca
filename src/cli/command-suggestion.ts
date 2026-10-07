@@ -167,7 +167,11 @@ export function unknownCommandData(specs: CommandSpec[], commandPath: string[]):
     ? [`Did you mean: ${suggestions.map((path) => `orca ${path}`).join(', ')}`]
     : []
   const group = commandPath[0]
-  if (commandPath.length > 1 && isCommandGroupName(specs, group)) {
+  if (
+    commandPath.length > 1 &&
+    isCommandGroupName(specs, group) &&
+    !visiblePathPrefixes(specs).has(commandPath.slice(0, 2).join(' '))
+  ) {
     nextSteps.push(
       `Orca's ${group} commands run at the top level (orca <command>, not orca ${group} <command>); list them with: orca ${group} --help`
     )

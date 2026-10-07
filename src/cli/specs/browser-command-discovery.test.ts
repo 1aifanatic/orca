@@ -41,6 +41,17 @@ describe('browser command discovery', () => {
     ])
   })
 
+  it('keeps recovery advice inside the real browser identity namespace', () => {
+    expect(unknownCommandData(COMMAND_SPECS, ['browser', 'identity', 'gett'])).toEqual({
+      suggestions: ['browser identity get', 'browser identity set'],
+      nextSteps: ['Did you mean: orca browser identity get, orca browser identity set']
+    })
+    expect(unknownCommandData(COMMAND_SPECS, ['browser', 'identity', 'zzzzzz'])).toEqual({
+      suggestions: [],
+      nextSteps: []
+    })
+  })
+
   it('recovers a typo even when a URL follows it', () => {
     expect(
       unknownCommandData(COMMAND_SPECS, ['tab', 'creat', 'https://example.com']).suggestions
