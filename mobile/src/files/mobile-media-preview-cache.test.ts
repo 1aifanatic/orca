@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Buffer } from 'buffer/index.js'
 
 const state = vi.hoisted(() => ({ write: vi.fn(), close: vi.fn(), remove: vi.fn(), open: vi.fn() }))
 vi.mock('expo-file-system', () => ({
@@ -42,6 +43,17 @@ describe('native media staging', () => {
     sink.dispose()
     expect(state.close).toHaveBeenCalledOnce()
     expect(state.remove).toHaveBeenCalledOnce()
+  })
+  it('converts decoded Buffer chunks to the native writer’s supported typed array', () => {
+    state.write.mockImplementation((bytes: Uint8Array) => {
+      if (bytes.constructor !== Uint8Array) {
+        throw new Error('unsupported typed array')
+      }
+    })
+    const sink = createMobileMediaSink('movie.mp4', 'video/mp4')
+    sink.append(Buffer.from('AQID', 'base64'))
+    expect(state.write.mock.calls[0]?.[0]).toEqual(new Uint8Array([1, 2, 3]))
+    sink.dispose()
   })
   it('removes the file when opening its handle fails', () => {
     state.open.mockImplementation(() => {

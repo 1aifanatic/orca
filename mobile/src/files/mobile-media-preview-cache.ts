@@ -22,7 +22,8 @@ export function createMobileMediaSink(relativePath: string, _mimeType: string): 
       if (!handle) {
         throw new Error('Media preview was closed')
       }
-      handle.writeBytes(bytes)
+      // Expo identifies typed arrays by constructor; Buffer subclasses are rejected.
+      handle.writeBytes(new Uint8Array(bytes))
     },
     finish: () => {
       close()

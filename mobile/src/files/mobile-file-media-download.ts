@@ -4,6 +4,7 @@ import { bindDeferredRpcOperation, defineRpcOperation } from '../transport/rpc-o
 import { rpcResultVariant } from '../transport/rpc-operation-result-reader'
 import type { MobileFilePreviewRpcSender } from './mobile-file-preview-operations'
 import type { MobileFileMedia } from './mobile-file-media'
+import { isMobileMethodUnavailableError } from '../transport/mobile-method-unavailable'
 
 export const MOBILE_MEDIA_CHUNK_BYTES = 384 * 1024
 export const MOBILE_MEDIA_MAX_BYTES = 256 * 1024 * 1024
@@ -61,7 +62,14 @@ export async function downloadMobileFileMedia(
   const options = { failWhenDisconnected: true, timeoutMs: 30_000 }
   try {
     checkDownloadActive(signal)
-    const stat = statRead.interpret(await statRead.request(client, params, options))
+    const statReply = await statRead.request(client, params, options)
+    if (
+      !statReply.ok &&
+      isMobileMethodUnavailableError(statReply.error.code, statReply.error.message)
+    ) {
+      throw new Error('Update Orca on your desktop to preview media files on mobile')
+    }
+    const stat = statRead.interpret(statReply)
     checkDownloadActive(signal)
     if (stat.isDirectory || stat.size === 0) {
       throw new Error('This file has no playable media')

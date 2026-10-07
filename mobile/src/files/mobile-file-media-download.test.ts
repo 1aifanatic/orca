@@ -44,6 +44,22 @@ function rig(replies: RpcResponse[]) {
 }
 
 describe('mobile media download', () => {
+  it.each(['forbidden', 'method_not_found'])(
+    'explains when an older host refuses media stat: %s',
+    async (code) => {
+      const r = rig([
+        {
+          id: '1',
+          ok: false,
+          error: { code, message: 'Unavailable' },
+          _meta: { runtimeId: 'host' }
+        }
+      ])
+      await expect(r.run()).rejects.toThrow('Update Orca on your desktop')
+      expect(r.client.sendRequest).toHaveBeenCalledTimes(1)
+      expect(r.sink.dispose).toHaveBeenCalledOnce()
+    }
+  )
   it('stages bounded chunks byte-for-byte and verifies the file after downloading', async () => {
     const bytes = new Uint8Array(MOBILE_MEDIA_CHUNK_BYTES + 3).fill(123)
     const r = rig([
