@@ -396,3 +396,71 @@ describe('useMobileStructuredAgentOptions pending guard', () => {
     await harness.unmount()
   })
 })
+
+describe('useMobileStructuredAgentOptions permission mode', () => {
+  const WITH_MODES: AgentSessionOptionsResult = {
+    ...OPTIONS,
+    permissionModes: { current: 'ask', supported: ['ask', 'auto', 'bypass'] }
+  }
+
+  // The host field is the capability: a host that predates the picker shows none.
+  it('offers no permission pill on a host whose options carry no mode', async () => {
+    const client = optionsClient(queuedReads(OPTIONS))
+    const { mutate } = recordingMutate(async () => accepted({ key: 'model', value: 'x' }, true))
+    const harness = await mountOptions({ ...BASE, client: client.client, mutate })
+
+    expect(harness.current().permissionPicker).toBeNull()
+    await harness.unmount()
+  })
+
+  it('sends a pick as the chat mode and never remembers it as a launch default', async () => {
+    const client = optionsClient(
+      queuedReads(WITH_MODES, {
+        ...WITH_MODES,
+        permissionModes: { current: 'bypass', supported: ['ask', 'auto', 'bypass'] }
+      })
+    )
+    const { calls, mutate } = recordingMutate(async () =>
+      accepted(
+        {
+          key: 'permissionMode',
+          value: 'bypass',
+          options: { model: 'gpt-live', permissionMode: 'bypass' }
+        },
+        true
+      )
+    )
+    const harness = await mountOptions({ ...BASE, client: client.client, mutate })
+    expect(harness.current().permissionPicker).toMatchObject({
+      current: 'ask',
+      supported: ['ask', 'auto', 'bypass']
+    })
+
+    await act(async () => {
+      await harness.current().permissionPicker?.setMode('bypass')
+    })
+    await settle()
+
+    expect(calls).toEqual([
+      { method: 'agentSession.setOption', fields: { key: 'permissionMode', value: 'bypass' } }
+    ])
+    expect(harness.current().permissionPicker?.current).toBe('bypass')
+    expect(client.methods('settings.mutateNativeChatSessionOptions')).toEqual([])
+    await harness.unmount()
+  })
+
+  it('refuses a mode the host did not offer without writing', async () => {
+    const client = optionsClient(queuedReads(WITH_MODES))
+    const { calls, mutate } = recordingMutate(async () => accepted({ key: 'x', value: 'x' }, true))
+    const harness = await mountOptions({ ...BASE, client: client.client, mutate })
+
+    let outcome: boolean | undefined
+    await act(async () => {
+      outcome = await harness.current().permissionPicker?.setMode('accept-edits')
+    })
+
+    expect(outcome).toBe(false)
+    expect(calls).toEqual([])
+    await harness.unmount()
+  })
+})

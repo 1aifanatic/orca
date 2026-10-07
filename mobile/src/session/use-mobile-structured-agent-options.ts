@@ -16,10 +16,10 @@ import {
   commitStructuredAgentSessionOption,
   commitStructuredAgentSessionOptionValues,
   createStructuredAgentSessionOptionState,
-  structuredAgentSessionOptionPicks,
   structuredAgentSessionOptionSnapshot,
   type StructuredAgentSessionOptionState
 } from '../../../src/shared/structured-agent-session-options'
+import { structuredAgentSessionOptionPicks } from '../../../src/shared/structured-agent-session-option-picks'
 import type { RpcClient } from '../transport/rpc-client'
 import {
   callAgentSession,
@@ -27,8 +27,12 @@ import {
 } from './mobile-structured-agent-session-rpc'
 import { persistMobileStructuredOptionPicks } from './mobile-native-chat-session-option-persistence'
 import { encodeStructuredAgentSessionOptionValue } from '../../../src/shared/structured-agent-session-option-codec'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../src/shared/agent-chat-permission-mode'
+import type { MobileNativeChatPermissionPickerState } from './MobileNativeChatPermissionPicker'
 
 type StructuredOptionsController = {
+  /** Null where the host offers no permission picker for this chat. */
+  permissionPicker: MobileNativeChatPermissionPickerState | null
   optionPickerRequest: { id: string; sequence: number } | null
   conversationCommands: readonly AgentSessionConversationCommand[]
   optionSnapshot: SessionOptionDescriptor[]
@@ -152,7 +156,11 @@ export function useMobileStructuredAgentOptions(args: {
           // Only an accepted pick: an `unknown` outcome commits optimistically to the
           // visible record, and remembering one the provider refused would seed a
           // launch the user never chose.
-          if (agent === 'claude' || agent === 'codex') {
+          // The chat's permission mode is its own and never becomes the next chat's default.
+          if (
+            (agent === 'claude' || agent === 'codex') &&
+            id !== AGENT_CHAT_PERMISSION_MODE_OPTION_ID
+          ) {
             void persistMobileStructuredOptionPicks({
               client,
               agent,
@@ -234,7 +242,21 @@ export function useMobileStructuredAgentOptions(args: {
     [optionSnapshot, setOption]
   )
 
+  const permissionPicker = useMemo<MobileNativeChatPermissionPickerState | null>(
+    () =>
+      optionState.permission
+        ? {
+            current: optionState.permission.current,
+            supported: optionState.permission.supported,
+            pending: optionState.pendingId !== null,
+            setMode: (mode) => setStructuredOption(AGENT_CHAT_PERMISSION_MODE_OPTION_ID, mode)
+          }
+        : null,
+    [optionState.pendingId, optionState.permission, setStructuredOption]
+  )
+
   return {
+    permissionPicker,
     optionPickerRequest,
     conversationCommands:
       conversationSupport?.sessionId === sessionId ? conversationSupport.commands : [],

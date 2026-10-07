@@ -17791,7 +17791,16 @@
         "workspaceAttachmentMismatch": "ファイルはソースワークスペースにのみ添付できます。",
         "attachmentOwnerChanged": "このワークスペースは接続中にホストを変更しました。ファイルを再度ドロップしてください。",
         "attachmentUnreadable": "ドロップされたファイルを読み取れませんでした。",
-        "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。"
+        "tooManyAttachments": "一度に添付できるファイルは {{value0}} 個以下です。",
+        "permissions": "権限",
+        "permissionAsk": "承認を求める",
+        "permissionAskDescription": "編集やコマンドの前に必ず確認します",
+        "permissionAcceptEdits": "編集を許可",
+        "permissionAcceptEditsDescription": "ファイルは確認なしで編集し、コマンドの前に確認します",
+        "permissionAuto": "代わりに承認",
+        "permissionAutoDescription": "安全でない可能性があると判定された操作だけ確認します",
+        "permissionBypass": "フルアクセス",
+        "permissionBypassDescription": "確認しません。コンピューターへの無制限のアクセス"
       },
       "tool": {
         "running": "実行中…",

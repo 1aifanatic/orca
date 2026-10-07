@@ -3,7 +3,10 @@ import type {
   AgentSessionMutationResult,
   AgentSessionOptionResult
 } from '../../../shared/agent-session-wire'
-import { STRUCTURED_LAUNCH_SEED_OPTION_IDS } from '../../../shared/native-chat-session-option-defaults'
+import {
+  STRUCTURED_LAUNCH_HELD_OPTION_IDS,
+  STRUCTURED_LAUNCH_SEED_OPTION_IDS
+} from '../../../shared/native-chat-session-option-defaults'
 import {
   createStructuredAgentSessionOperationId,
   structuredAgentSessionPayloadFingerprint
@@ -69,15 +72,15 @@ export function holdStructuredAgentSessionLaunchOption(
   }
   const replies = repliesFor(state)
   const { held } = state.selection
-  // A model pick drops picks held under the model it replaces.
-  for (const key of id === 'model' ? Object.keys(held) : [id]) {
+  // A model pick drops picks held under the model it replaces; the chat's own picks stay.
+  const perModel = new Set<string>(STRUCTURED_LAUNCH_SEED_OPTION_IDS)
+  const superseded = id === 'model' ? Object.keys(held).filter((key) => perModel.has(key)) : [id]
+  for (const key of superseded) {
     replies.get(key)?.({ kind: 'superseded' })
     replies.delete(key)
   }
-  state.selection = {
-    ...state.selection,
-    held: id === 'model' ? { model: encoded } : { ...held, [id]: encoded }
-  }
+  const kept = Object.fromEntries(Object.entries(held).filter(([key]) => !superseded.includes(key)))
+  state.selection = { ...state.selection, held: { ...kept, [id]: encoded } }
   notifyStructuredLaunchListeners()
   return new Promise((resolve) => replies.set(id, resolve))
 }
@@ -158,7 +161,7 @@ export async function applyStructuredLaunchHeldOptions(
       throw new StructuredAgentSessionLaunchCancelledError()
     }
     const { held } = state.selection
-    const id = STRUCTURED_LAUNCH_SEED_OPTION_IDS.find((key) => held[key] !== undefined)
+    const id = STRUCTURED_LAUNCH_HELD_OPTION_IDS.find((key) => held[key] !== undefined)
     const encoded = id ? held[id] : undefined
     if (!id || encoded === undefined) {
       return receipt

@@ -17857,7 +17857,16 @@
         "workspaceAttachmentMismatch": "Les fichiers ne peuvent être joints qu'à leur espace de travail source.",
         "attachmentOwnerChanged": "Cet espace de travail a changé d'hôte lors de la connexion : supprimez à nouveau les fichiers.",
         "attachmentUnreadable": "Impossible de lire les fichiers supprimés.",
-        "tooManyAttachments": "Joignez {{value0}} fichiers maximum à la fois."
+        "tooManyAttachments": "Joignez {{value0}} fichiers maximum à la fois.",
+        "permissions": "Autorisations",
+        "permissionAsk": "Demander l’approbation",
+        "permissionAskDescription": "Demande toujours avant les modifications et les commandes",
+        "permissionAcceptEdits": "Accepter les modifications",
+        "permissionAcceptEditsDescription": "Modifie les fichiers sans demander ; demande avant les commandes",
+        "permissionAuto": "Approuver pour moi",
+        "permissionAutoDescription": "Ne demande que pour les actions détectées comme potentiellement dangereuses",
+        "permissionBypass": "Accès complet",
+        "permissionBypassDescription": "Ne demande jamais ; accès illimité à votre ordinateur"
       },
       "tool": {
         "running": "En cours…",

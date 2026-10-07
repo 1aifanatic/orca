@@ -17756,7 +17756,16 @@
         "workspaceAttachmentMismatch": "Los archivos solo se pueden adjuntar a su espacio de trabajo de origen.",
         "attachmentOwnerChanged": "Este espacio de trabajo cambió de host durante la conexión; vuelve a soltar los archivos.",
         "attachmentUnreadable": "No se pudieron leer los archivos soltados.",
-        "tooManyAttachments": "Adjunta {{value0}} archivos o menos a la vez."
+        "tooManyAttachments": "Adjunta {{value0}} archivos o menos a la vez.",
+        "permissions": "Permisos",
+        "permissionAsk": "Pedir aprobación",
+        "permissionAskDescription": "Siempre pregunta antes de editar o ejecutar comandos",
+        "permissionAcceptEdits": "Aceptar ediciones",
+        "permissionAcceptEditsDescription": "Edita archivos sin preguntar; pregunta antes de ejecutar comandos",
+        "permissionAuto": "Aprobar por mí",
+        "permissionAutoDescription": "Solo pregunta por acciones detectadas como potencialmente inseguras",
+        "permissionBypass": "Acceso total",
+        "permissionBypassDescription": "Nunca pregunta; acceso sin restricciones a tu computadora"
       },
       "tool": {
         "running": "Ejecutando…",
