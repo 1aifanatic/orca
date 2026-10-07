@@ -16,13 +16,17 @@ function runtimeWithSshPty(): OrcaRuntimeService {
   return runtime
 }
 
-describe('whether a pane’s host can find a launched agent in front', () => {
-  it('can over an SSH connection to the Orca remote server', () => {
-    expect(runtimeWithSshPty().launchedAgentHostProvesAgent('ssh:conn-1@@pty-1')).toBe(true)
+describe('what a pane’s host can say about the process running in it', () => {
+  it('over an SSH connection to the Orca remote server: it reports processes', () => {
+    const runtime = runtimeWithSshPty()
+    expect(runtime.launchedAgentHostReportsProcesses('ssh:conn-1@@pty-1')).toBe(true)
+    expect(runtime.launchedAgentHostProvesAgent('ssh:conn-1@@pty-1')).toBe(true)
   })
 
-  it('cannot over plain SSH, whose terminals report no foreground process', () => {
+  it('over plain SSH: it reports none, while the shared rule other writers use is main’s', () => {
     setSshPlainSshMode('conn-1', { reason: 'no_runtime', message: 'plain' })
-    expect(runtimeWithSshPty().launchedAgentHostProvesAgent('ssh:conn-1@@pty-1')).toBe(false)
+    const runtime = runtimeWithSshPty()
+    expect(runtime.launchedAgentHostReportsProcesses('ssh:conn-1@@pty-1')).toBe(false)
+    expect(runtime.launchedAgentHostProvesAgent('ssh:conn-1@@pty-1')).toBe(true)
   })
 })

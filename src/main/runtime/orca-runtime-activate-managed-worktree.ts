@@ -272,14 +272,15 @@ export class OrcaRuntimeWithActivateManagedWorktree extends OrcaRuntimeWithListM
     )
   }
 
-  /** Whether the pane's execution host can find a launched agent in front: a Windows one cannot,
-   *  nor a plain-SSH connection, whose terminals report no foreground process at all. */
+  /** Whether the pane's execution host can find a launched agent in front: a Windows one cannot. */
   launchedAgentHostProvesAgent(ptyId: string): boolean {
-    const connectionId = this.ptysById.get(ptyId)?.connectionId
-    if (connectionId && getSshPlainSshMode(connectionId)) {
-      return false
-    }
     return !this.launchedAgentHost(ptyId).windows
+  }
+
+  /** Whether the pane's terminals report their running process: a plain-SSH connection's do not. */
+  launchedAgentHostReportsProcesses(ptyId: string): boolean {
+    const connectionId = this.ptysById.get(ptyId)?.connectionId
+    return !(connectionId && getSshPlainSshMode(connectionId))
   }
 
   private launchedAgentHost(ptyId: string): { remote: boolean; windows: boolean } {

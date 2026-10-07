@@ -634,6 +634,25 @@ describe('the write guard on a host that cannot find the agent in front (tempora
     ).resolves.toBe(true)
   })
 
+  it('lets the desktop write into a plain-SSH pane too, whose terminals report no process', async () => {
+    const stub = runtimeStub({ composerSignal: true, foreground: 'unknown' })
+    Object.assign(stub.runtime, {
+      launchedAgentHostProvesAgent: () => true,
+      launchedAgentHostReportsProcesses: () => false
+    })
+    stub.sendTerminalAgentPrompt.mockImplementation(sendThroughGuard)
+    await expect(
+      deliverTerminalAgentLaunchPrompt({
+        runtime: stub.runtime,
+        handle: 'term_1',
+        agent: 'claude',
+        freshLaunch: true,
+        text: 'fix the checks',
+        callerKey: 'trusted-local:desktop'
+      })
+    ).resolves.toBe(true)
+  })
+
   it('keeps refusing for the phone and the CLI, as on main', async () => {
     for (const callerKey of ['device-1', 'trusted-local:runtime', undefined]) {
       const stub = windowsHost()

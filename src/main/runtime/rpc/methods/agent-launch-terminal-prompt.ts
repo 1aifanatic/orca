@@ -161,7 +161,9 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   // Before the paste and again before Enter, for a reused pane too: a ready signal can come from a
   // shell whose agent exited, so only a read that finds the agent in front lets the text through.
   const guard = createLaunchedAgentWriteGuard(args.runtime, args.agent, {
-    unprovableHost: args.resumed ? 'refuse' : launchPromptGuardOnUnprovableHost(args.callerKey)
+    unprovableHost: args.resumed ? 'refuse' : launchPromptGuardOnUnprovableHost(args.callerKey),
+    // Main's window pasted into a plain-SSH pane, whose terminals report no process.
+    processlessHostUnprovable: true
   })
   try {
     const wait = await waitThroughBlockingPrompts(

@@ -11,7 +11,9 @@ export type LaunchedAgentWriteGuardRuntime = Pick<
   OrcaRuntimeService,
   'readLaunchedAgentForeground' | 'subscribeToTerminalData'
 > &
-  Partial<Pick<OrcaRuntimeService, 'launchedAgentHostProvesAgent'>>
+  Partial<
+    Pick<OrcaRuntimeService, 'launchedAgentHostProvesAgent' | 'launchedAgentHostReportsProcesses'>
+  >
 
 export type LaunchedAgentWriteGuard = {
   beforeWrite: (ptyId: string) => Promise<void>
@@ -29,8 +31,16 @@ export function createLaunchedAgentWriteGuard(
   runtime: LaunchedAgentWriteGuardRuntime,
   agent: TuiAgent,
   /** `write-unless-shell`: on a host that cannot find the agent in front (Windows), only a shell
-   *  proven in front refuses, so a caller that wrote there before keeps doing so. */
-  { unprovableHost = 'refuse' }: { unprovableHost?: 'refuse' | 'write-unless-shell' } = {}
+   *  proven in front refuses, so a caller that wrote there before keeps doing so.
+   *  `processlessHostUnprovable`: a host whose terminals report no process (plain SSH) counts as
+   *  one, for a caller that wrote there before. */
+  {
+    unprovableHost = 'refuse',
+    processlessHostUnprovable = false
+  }: {
+    unprovableHost?: 'refuse' | 'write-unless-shell'
+    processlessHostUnprovable?: boolean
+  } = {}
 ): LaunchedAgentWriteGuard {
   let cleared: { ptyId: string; shellMayHaveReturned: boolean; unsubscribe: () => void } | null =
     null
@@ -65,11 +75,10 @@ export function createLaunchedAgentWriteGuard(
       return
     }
     watch.unsubscribe()
-    if (
-      foreground === 'shell' ||
-      unprovableHost === 'refuse' ||
-      runtime.launchedAgentHostProvesAgent?.(ptyId) !== false
-    ) {
+    const hostCannotProve =
+      runtime.launchedAgentHostProvesAgent?.(ptyId) === false ||
+      (processlessHostUnprovable && runtime.launchedAgentHostReportsProcesses?.(ptyId) === false)
+    if (foreground === 'shell' || unprovableHost === 'refuse' || !hostCannotProve) {
       throw new Error('agent_not_in_foreground')
     }
   }

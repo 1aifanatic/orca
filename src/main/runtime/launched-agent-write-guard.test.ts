@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { LaunchedAgentForeground } from './launched-agent-foreground'
 import {
   createLaunchedAgentWriteGuard,
+  createWorkerBriefWriteGuard,
   type LaunchedAgentWriteGuardRuntime
 } from './launched-agent-write-guard'
 
@@ -87,5 +88,29 @@ describe('the check before each write of a launch prompt', () => {
     await cleared.guard.beforeWrite('pty-1')
     cleared.guard.dispose()
     expect(cleared.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a plain-SSH pane, whose terminals report no running process', () => {
+  function plainSshRuntime(): LaunchedAgentWriteGuardRuntime {
+    return {
+      readLaunchedAgentForeground: vi.fn(async (): Promise<LaunchedAgentForeground> => 'unknown'),
+      subscribeToTerminalData: vi.fn(() => () => {}),
+      launchedAgentHostProvesAgent: () => true,
+      launchedAgentHostReportsProcesses: () => false
+    }
+  }
+
+  it('takes the desktop launch prompt, as main’s window paste did', async () => {
+    const guard = createLaunchedAgentWriteGuard(plainSshRuntime(), 'claude', {
+      unprovableHost: 'write-unless-shell',
+      processlessHostUnprovable: true
+    })
+    await expect(guard.beforeWrite('pty-1')).resolves.toBeUndefined()
+  })
+
+  it('still refuses a worker brief, as on main', async () => {
+    const guard = createWorkerBriefWriteGuard(plainSshRuntime(), 'claude', true)
+    await expect(guard?.beforeWrite('pty-1')).rejects.toThrow('agent_not_in_foreground')
   })
 })
