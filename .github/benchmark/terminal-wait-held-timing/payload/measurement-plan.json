@@ -1,0 +1,370 @@
+{
+  "sourceHead": "29ad785b1cd000b580ba3b3da87affb835a601ad",
+  "maxWorkers": 4,
+  "driver": "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs",
+  "driverChanges": false,
+  "schedule": [
+    [
+      "before",
+      0
+    ],
+    [
+      "after",
+      0
+    ],
+    [
+      "after",
+      1
+    ],
+    [
+      "before",
+      1
+    ],
+    [
+      "before",
+      2
+    ],
+    [
+      "after",
+      2
+    ]
+  ],
+  "label": "terminal-wait-probe-clock-held-29ad",
+  "patch": "notes/bun-migration/performance/terminal-wait-probe-held-timing-ci-29ad/shipping.patch",
+  "patchSha256": "0a31913b12b7b3783e36a96288a1f38cc9e4a29befa129cf842deb9a4430e72d",
+  "sourceBeforeSha256": {
+    "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "bb1dbcf134e629719ddebf6a01926bc9cfa9755da94844a52a7e8d05fa014ee1",
+    "src/main/runtime/agent-transcript-pane-test-harness.ts": "16589bd95af0c1dc61bb6d858b5480cf2cd68cb037cd3fac26c5ca996bd0d60a",
+    "src/main/runtime/agent-status-store-wiring.test-fixture.ts": "0459c108dc3372e599ad0789104353cd75632e3b55bf07bb3eca0cb2940cdf74",
+    "src/main/runtime/orca-runtime-get-terminal-interactive-wait.ts": "8d0b82586cdc7371f711fb8e31ebd60be46c6e6532dc55cc287628079dceb1f6",
+    "src/main/runtime/runtime-terminal-agent-status-query.ts": "6ba88f233f37eaf1554159f8e16e6b3efe0ba93ce1440becb8c373fe523c1c58",
+    "src/main/runtime/orca-runtime-core.ts": "82707f10cb04de25539cc718ca41cbdeeeef24ed2b73356f5443c2388dc03dac",
+    "src/main/runtime/orca-runtime.ts": "e9901fa6a8856b9cb600898fe3955ceb26236376b17f5cecdd3374a401bf8837",
+    "src/shared/promise-timeout-fallback.ts": "8c2b96e58c220a70f5237eedb779f45c56e39995b29ce57f1fb8be4c9c78eaa9",
+    "src/main/agent-hooks/server.ts": "79e87bbf17667c0705ad3007128a7f39eebeb570ffd4759557ac89c3e74c5857",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/vitest-node-runtime-files.mjs": "72a9cb668dc80148345ccc7bb33ee522d4770bb5aa8a84335ef22a29206e6360",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "6f01a8865d1cf22a08c437c744b173d5eb1dc51589effad48eb1b88a1582e077",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "src/main/runtime/orca-runtime-resolve-terminal-pane.ts": "392c4512bcb6cba685a5987540f2a4020c84820a8f2cb542728c0f3bafa95d6b",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs": "94070788bb47afa544938af517d58687bb2ea92a0743517abbafdf1e841865d5"
+  },
+  "sourceAfterSha256": {
+    "src/main/runtime/terminal-interactive-wait-visibility.test.ts": "af4f9fb5f237da18ff7d25b1f6e94985a7f4c5d0b490eca919b61b89e0211cd5",
+    "src/main/runtime/agent-transcript-pane-test-harness.ts": "16589bd95af0c1dc61bb6d858b5480cf2cd68cb037cd3fac26c5ca996bd0d60a",
+    "src/main/runtime/agent-status-store-wiring.test-fixture.ts": "0459c108dc3372e599ad0789104353cd75632e3b55bf07bb3eca0cb2940cdf74",
+    "src/main/runtime/orca-runtime-get-terminal-interactive-wait.ts": "8d0b82586cdc7371f711fb8e31ebd60be46c6e6532dc55cc287628079dceb1f6",
+    "src/main/runtime/runtime-terminal-agent-status-query.ts": "6ba88f233f37eaf1554159f8e16e6b3efe0ba93ce1440becb8c373fe523c1c58",
+    "src/main/runtime/orca-runtime-core.ts": "82707f10cb04de25539cc718ca41cbdeeeef24ed2b73356f5443c2388dc03dac",
+    "src/main/runtime/orca-runtime.ts": "e9901fa6a8856b9cb600898fe3955ceb26236376b17f5cecdd3374a401bf8837",
+    "src/shared/promise-timeout-fallback.ts": "8c2b96e58c220a70f5237eedb779f45c56e39995b29ce57f1fb8be4c9c78eaa9",
+    "src/main/agent-hooks/server.ts": "79e87bbf17667c0705ad3007128a7f39eebeb570ffd4759557ac89c3e74c5857",
+    "config/vitest.config.ts": "fcdaf4af594bd4a476f5799e912d965abece0454926aab6c3837ba062e36cbbd",
+    "config/scripts/vitest-node-runtime-files.mjs": "72a9cb668dc80148345ccc7bb33ee522d4770bb5aa8a84335ef22a29206e6360",
+    "config/scripts/vitest-sqlite-runtime-files.mjs": "6f01a8865d1cf22a08c437c744b173d5eb1dc51589effad48eb1b88a1582e077",
+    "config/scripts/vitest-node-runtime-pool.ts": "aedcd678062363a98ed77a2f9a6c09455eef4fc043430ba92429ee3de902f163",
+    "config/scripts/run-vitest.mjs": "42fc5d9279a1e29c68ec81241214faccfb97d9e2c45e6ce324cd9d67270cb7b0",
+    "config/scripts/ci-unit-files.mjs": "237f393e37aacb312cd30f3dd4be5ebe7bd3d81bb834e1cd4b916709557033c6",
+    "config/scripts/ci-unit-sequencer.mjs": "f932b2ead9f581632365c050e436069a5bccc43fc1f9b161784f9fb9fd5d67d4",
+    "config/scripts/vitest-runtime-sequencer.mjs": "45d5c3a1912f809ea28a70ae9650021c9323f9140a51d859ab6121e25d97d245",
+    "package.json": "794d77ff5d5127bfd1881a8d0d2554accd253b90c2a3cd135c9edd4cbd483c23",
+    "pnpm-lock.yaml": "f6ca8a91d0339f46ad786970bf00946abfdb4384cc4523c82fe12533473f1bd1",
+    "config/.bun-version": "b99b4c7cdf236f59bc9f65d963deaecae3b16a7dad87939cacb9057f7664daee",
+    "config/scripts/vitest-real-agent-home-write-guard.ts": "00710a025ebbf673e5efa02eb8915044b7281be3b3e49f8940175d1ff87e71e8",
+    "config/scripts/vitest-bun-node-builtins.ts": "800262285107af1634831d64ca30210f101167308370df1c3b95a04e46128ca3",
+    "config/scripts/happy-dom-offscreen-canvas.ts": "888cef91689976d56d944a2069cd4a163aac301936e20180ace8881cc0e4b2a0",
+    "config/scripts/happy-dom-mutation-observer-retention.ts": "15afb5c70ec9914313fbaea43942e974b77ef41ca672f27301daf93bc8dcec45",
+    "config/scripts/vitest-host-ports-setup.ts": "18dde2d872640889d47199758a4a10323af3bf7ce64533a11a32019d8e567ff5",
+    "config/scripts/vitest-caller-identity-env-setup.ts": "3f4694c8bcecab06cc4bc8a90f77a9c09480ca1c9c4d12ac0144639963e239e3",
+    "src/shared/node-runtime-pin.ts": "ae8d646c46b49e11328103deea905e1f590e3948c575ffd0e04fdaf33245c356",
+    ".github/actions/install-node-dependencies/action.yml": "91d87ac9e0bba3c5c489c80c44280e697be78cfc96b5aeb2ad9c9f02bd786ce0",
+    ".github/workflows/ci-pnpm-verification-pilot.yml": "273909c25e538c5616b8c545c93b652f013c3a473de9b9c4da646be4cdcaea45",
+    "src/main/runtime/orca-runtime-resolve-terminal-pane.ts": "392c4512bcb6cba685a5987540f2a4020c84820a8f2cb542728c0f3bafa95d6b",
+    "config/scripts/vitest-sqlite-database-runtime-files.mjs": "63412dabaaf92498b5c2e6894b83e3a726a9bae3b198955d0422e9507c867b2e",
+    "config/scripts/script-child-process.mjs": "a7441428bf7b5c9a897b6a3c057c50f46acca24c4f218a4b849de5aec53c4173",
+    "src/shared/child-process/run-process.ts": "f4d9683c0a0d2ea3ceb9c99b5b713b502496a2f3f982e2c63728063d5f1b239d",
+    "notes/bun-migration/performance/persistence-import-reuse-benchmark-reporter.mjs": "2d2b20c3b06cc11c28650496a48ae525903e4fc43d4306aad5405e85f086e76e",
+    "notes/bun-migration/performance/benchmark-persistence-import-reuse.mjs": "94070788bb47afa544938af517d58687bb2ea92a0743517abbafdf1e841865d5"
+  },
+  "files": [
+    "src/main/runtime/terminal-interactive-wait-visibility.test.ts"
+  ],
+  "timedFiles": [
+    "src/main/runtime/terminal-interactive-wait-visibility.test.ts"
+  ],
+  "caseCount": 27,
+  "caseIdentityMapByFile": {
+    "src/main/runtime/terminal-interactive-wait-visibility.test.ts": [
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports ignores a partial menu that names no decision keys",
+        "title": "ignores a partial menu that names no decision keys",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports is not anchored by the agent narrating a choice after the menu",
+        "title": "is not anchored by the agent narrating a choice after the menu",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports is not anchored by the agent narrating a choice before the menu",
+        "title": "is not anchored by the agent narrating a choice before the menu",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports lets a dispatch preamble through once the same lane is working",
+        "title": "lets a dispatch preamble through once the same lane is working",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports names the pending approval on the pane a coordinator inspects",
+        "title": "names the pending approval on the pane a coordinator inspects",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports refuses a guarded send and a dispatch preamble while the approval is up",
+        "title": "refuses a guarded send and a dispatch preamble while the approval is up",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports refuses to call the lane idle while the approval is unanswered",
+        "title": "refuses to call the lane idle while the approval is unanswered",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports reports no wait for the same agent inside a long tool call",
+        "title": "reports no wait for the same agent inside a long tool call",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports reports no wait once the agent is idle again",
+        "title": "reports no wait once the agent is idle again",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports reports the same wait for a pane whose PTY is not local",
+        "title": "reports the same wait for a pane whose PTY is not local",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports requires the dialog to be the last thing on the screen",
+        "title": "requires the dialog to be the last thing on the screen",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports treats an answered menu followed by any later output as scrollback",
+        "title": "treats an answered menu followed by any later output as scrollback",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) cursor-agent approval menu, the case no hook reports treats an answered menu still in scrollback as scrollback",
+        "title": "treats an answered menu still in scrollback as scrollback",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "cursor-agent approval menu, the case no hook reports"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) hook-reported waits (STA-3714) drops a retained permission row once a shell owns the pane",
+        "title": "drops a retained permission row once a shell owns the pane",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "hook-reported waits (STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) hook-reported waits (STA-3714) drops a retained permission row once the agent stops owning the pane",
+        "title": "drops a retained permission row once the agent stops owning the pane",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "hook-reported waits (STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) hook-reported waits (STA-3714) reports no wait for a hook-reported working turn",
+        "title": "reports no wait for a hook-reported working turn",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "hook-reported waits (STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) hook-reported waits (STA-3714) surfaces an agent-reported blocked state with hook provenance",
+        "title": "surfaces an agent-reported blocked state with hook provenance",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "hook-reported waits (STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) prompts the runtime already matched but never surfaced still lets a live working title clear a stale startup prompt",
+        "title": "still lets a live working title clear a stale startup prompt",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "prompts the runtime already matched but never surfaced"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) prompts the runtime already matched but never surfaced surfaces a startup trust screen on the pane, not only on terminal wait",
+        "title": "surfaces a startup trust screen on the pane, not only on terminal wait",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)",
+          "prompts the runtime already matched but never surfaced"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) accepts a menu whose keys are rendered as glyphs",
+        "title": "accepts a menu whose keys are rendered as glyphs",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) answers undefined rather than \"not waiting\" for a pane it cannot read",
+        "title": "answers undefined rather than \"not waiting\" for a pane it cannot read",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) does not accrue a probe per poll while the foreground probe wedges",
+        "title": "does not accrue a probe per poll while the foreground probe wedges",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) does not resurrect a startup modal from a restored tail",
+        "title": "does not resurrect a startup modal from a restored tail",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) leaves the wait unevaluated when the foreground probe wedges",
+        "title": "leaves the wait unevaluated when the foreground probe wedges",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) still rejects prose that merely ends in parentheses",
+        "title": "still rejects prose that merely ends in parentheses",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) still reports a live dialog restored from terminal history",
+        "title": "still reports a live dialog restored from terminal history",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      },
+      {
+        "fullName": "terminal interactive-wait visibility (STA-4513, STA-3714) stops reporting a wait once the pane is no longer running",
+        "title": "stops reporting a wait once the pane is no longer running",
+        "ancestorTitles": [
+          "terminal interactive-wait visibility (STA-4513, STA-3714)"
+        ],
+        "status": "passed"
+      }
+    ]
+  },
+  "runtimeManifestPending": false,
+  "expectedModuleRoutes": [
+    {
+      "file": "src/main/runtime/terminal-interactive-wait-visibility.test.ts",
+      "project": "bun",
+      "pool": "forks"
+    }
+  ],
+  "identityProofFiles": {
+    "notes/bun-migration/performance/terminal-wait-probe-held-timing-ci-29ad/independent-runtime-proof.json": "29ccf951bf9ff631c033306238c13711de87b1f594898d49c97eb48dc7e5cd18",
+    "notes/bun-migration/performance/terminal-wait-probe-held-timing-ci-29ad/terminal-ci-proof.json": "ddce7a70d5f7874758848dd1cfe3cd45e476cce506ccf2ebec794650d5693f28",
+    "notes/bun-migration/performance/terminal-wait-probe-held-timing-ci-29ad/actual-ci-runtime-result.json": "21c417a00b482914c471faf7988de199705060eb3e8c4c4e49798ab75bf961a4",
+    "notes/bun-migration/performance/terminal-wait-probe-held-timing-ci-29ad/source-proposal-proof.json": "303c0465a34dc2401a56fff009f20e12df7c9778a193cbc58c98d3c5f149754c"
+  },
+  "scope": "IsolatedCI only; original27 shipping cases, three whole-pnpm AB/BA/AB pairs; first commands retained in exact order, no hidden warmup or sample discard. Vitest fs cache off does not make arms independently cold: shared Bun transpiler/runtime and OS caches may be warmed by preceding counted commands. No audit/telemetry/case changes in timed command. No full-suite claim."
+}

@@ -1,0 +1,25 @@
+{
+  "sourceHead": "29ad785b1cd000b580ba3b3da87affb835a601ad",
+  "definitionHead": "837cf9f8f44d8ae5de12a4cf2630834fdca3c31a",
+  "runId": 37682437567,
+  "runAttempt": 1,
+  "terminalConclusion": "success",
+  "allFiveJobsSuccess": true,
+  "actualCiCollectorResult": "notes/bun-migration/performance/terminal-wait-probe-run-37682437567/terminal-evidence/terminal-wait-probe-result.json",
+  "actualCiCollectorSha256": "21c417a00b482914c471faf7988de199705060eb3e8c4c4e49798ab75bf961a4",
+  "independentCollectorReplay": "notes/bun-migration/performance/terminal-wait-probe-run-37682437567/independent-twelve-runtime-result.json",
+  "independentCollectorReplaySha256": "0e2ef21f8d505491f42962ddec188046b995160a645c1deb0ba2cb2929b19a6f",
+  "all12ExactRawCaseMapsSettingsRoutesAndPinsAgreeWithIndependentReplay": true,
+  "everyActualCiArtifactHashReverifiedAgainstDownloadedRawOrFrozenTrustedPayload": true,
+  "noCaseOrStatusNormalization": true,
+  "eachCommandOriginalCasesPassed": 27,
+  "failed": 0,
+  "skipped": 0,
+  "runtimeCorrectnessQualified": true,
+  "performanceClaim": false,
+  "intentionallyPendingForegroundProbeSettlementClaim": false,
+  "terminalMetadata": {
+    "run": "notes/bun-migration/performance/terminal-wait-probe-run-37682437567/20261007T203659Z-run.json",
+    "jobs": "notes/bun-migration/performance/terminal-wait-probe-run-37682437567/20261007T203659Z-jobs.json"
+  }
+}
