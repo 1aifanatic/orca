@@ -9,6 +9,7 @@ import {
   NATIVE_CHAT_VISUAL_TITLE_MAX_LENGTH,
   parseNativeChatVisualDirectiveLine
 } from '../../shared/native-chat-visual-directive'
+import { NATIVE_CHAT_VISUAL_THEME_TOKENS } from '../../shared/native-chat-visual-shell'
 import { ORCAD_NATIVE_CHAT_VISUALS_ARTIFACTS } from '../../shared/orcad-artifacts'
 import {
   createNativeChatVisualsDelivery,
@@ -130,5 +131,15 @@ describe('the bundled skill', () => {
     expect(SKILL_TEXT).toContain(`under ${NATIVE_CHAT_VISUAL_MAX_BYTES / 1024} KB`)
     expect(SKILL_TEXT).toContain(NATIVE_CHAT_VISUALS_DIR_ENV)
     expect(SKILL_TEXT).toMatch(new RegExp(`^name: ${NATIVE_CHAT_VISUALS_SKILL_NAME}$`, 'm'))
+  })
+
+  it('names only theme variables the visual frame sets', () => {
+    const named = [...SKILL_TEXT.matchAll(/`(--[a-z0-9-]+)`/g)].map(([, name]) => name)
+    const ranges = [...SKILL_TEXT.matchAll(/`--chart-1` to `--chart-(\d)`/g)].flatMap(([, last]) =>
+      Array.from({ length: Number(last) }, (_, index) => `--chart-${index + 1}`)
+    )
+    expect(named.length).toBeGreaterThan(0)
+    const frameTokens: readonly string[] = NATIVE_CHAT_VISUAL_THEME_TOKENS
+    expect([...named, ...ranges].filter((name) => !frameTokens.includes(name))).toEqual([])
   })
 })
