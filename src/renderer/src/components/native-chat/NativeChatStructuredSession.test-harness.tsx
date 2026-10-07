@@ -10,6 +10,7 @@ import type { NativeChatApprovalCardProps } from './NativeChatApprovalCard'
 import type { NativeChatDeliveryNotice } from './NativeChatMessageRow'
 import type { NativeChatQuestionCardProps } from './NativeChatQuestionCard'
 import type { NativeChatLaunchSeed } from './native-chat-composer-types'
+import type { NativeChatMessageListHandle } from './use-native-chat-reveal-latest'
 import type { NativeChatFileLinkContext } from './native-chat-file-link'
 import type { NativeChatOlderPageResult } from './native-chat-pagination'
 import type { StructuredAgentSessionThreadGoal } from './use-structured-agent-session-thread-goal'
@@ -94,6 +95,7 @@ export function seedOutbox(sessionId: string, entries: unknown[]): void {
 }
 
 type StructuredSessionMessageListProps = {
+  ref?: React.Ref<NativeChatMessageListHandle>
   allowFileUriLinks?: boolean
   isVisible?: boolean
   onLinkClick?: (...args: unknown[]) => void
@@ -113,6 +115,7 @@ const DEFAULT_FILE_LINK_CONTEXT: NativeChatFileLinkContext = {
 
 const initialMessageListProps: StructuredSessionMessageListProps | null = null
 const initialApprovalCardProps: NativeChatApprovalCardProps | null = null
+type QueueResumeMock = { resume: () => void; resuming: boolean }
 
 /**
  * Shared mock state and `vi.mock` factories for the NativeChatStructuredSession test files.
@@ -138,7 +141,7 @@ export function createStructuredSessionMocks() {
     messageListProps: initialMessageListProps,
     composerProps: nullable<{
       launchSeed?: NativeChatLaunchSeed
-      structuredTransport?: Record<string, unknown>
+      structuredTransport?: Record<string, unknown> & { queueResume?: QueueResumeMock }
       isWorking?: boolean
       isStopping?: boolean
       afterStop?: 'queue' | 'send'
@@ -177,7 +180,11 @@ export function createStructuredSessionMocks() {
     queuedSteer: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedRemove: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
     queuedEdit: vi.fn<(messageId: string) => Promise<void>>(async () => {}),
-    queuedSteerNewest: vi.fn<() => boolean>(() => false)
+    queuedSteerNewest: vi.fn<() => boolean>(() => false),
+    queuedResumable: false,
+    queueSendsNext: false,
+    queuedResume: vi.fn<() => Promise<boolean>>(async () => true),
+    revealLatest: vi.fn<() => void>()
   }
 
   const moduleFactories = {
@@ -253,6 +260,7 @@ export function createStructuredSessionMocks() {
             epoch: 'epoch-1',
             rewind: { surface: undefined },
             canStop: mocks.canStop ?? mocks.turnId !== null,
+            queueSendsNext: mocks.queueSendsNext,
             stopPressed: mocks.stopPressed,
             sendsQueue: mocks.sendsQueue,
             stop: mocks.stop,
@@ -261,7 +269,10 @@ export function createStructuredSessionMocks() {
               steer: mocks.queuedSteer,
               remove: mocks.queuedRemove,
               edit: mocks.queuedEdit,
-              steerNewest: mocks.queuedSteerNewest
+              steerNewest: mocks.queuedSteerNewest,
+              queueResume: mocks.queuedResumable
+                ? { resume: mocks.queuedResume, resuming: false }
+                : undefined
             },
             threadGoal: mocks.threadGoal,
             cancel: mocks.cancel,
@@ -326,6 +337,7 @@ export function createStructuredSessionMocks() {
     nativeChatMessageList: () => ({
       NativeChatMessageList: (props: typeof mocks.messageListProps) => {
         mocks.messageListProps = props
+        useImperativeHandle(props?.ref, () => ({ revealLatest: mocks.revealLatest }))
         return <DeliveryNoticesMock notices={props?.deliveryNotices} />
       }
     }),
@@ -405,6 +417,11 @@ export function createStructuredSessionMocks() {
     mocks.loadingOlder = false
     mocks.olderHistoryGeneration = 0
     mocks.loadOlder.mockReset()
+    Object.assign(mocks, { queuedResumable: false, queueSendsNext: false })
+    mocks.queuedResume.mockReset()
+    mocks.revealLatest.mockReset()
+    mocks.queuedSteerNewest.mockReset()
+    mocks.queuedSteerNewest.mockReturnValue(false)
   }
 
   return { mocks, moduleFactories, resetStructuredSessionMocks }
