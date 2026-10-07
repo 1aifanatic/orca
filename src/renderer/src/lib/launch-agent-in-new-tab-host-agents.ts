@@ -1,10 +1,10 @@
 import { useAppStore } from '@/store'
 import type { AgentStartupPlan } from '@/lib/tui-agent-startup'
-import type { AgentLaunchRouteArgs } from '@/lib/agent-launch-route-input'
 import {
   awaitStructuredRouteHostAgents,
   planAgentSessionLaunch,
-  type AgentSessionLaunchPlan
+  type AgentSessionLaunchPlan,
+  type AgentSessionLaunchRequest
 } from '@/lib/agent-session-launch-plan'
 import type { StructuredAgentLaunchSettlement } from '@/lib/structured-agent-launch-settlement'
 import type { StructuredPromptDeliveryResult } from '@/lib/structured-agent-session-launch-prompt'
@@ -27,7 +27,7 @@ type AwaitingHostAgents = { awaited: Promise<void>; replan: () => AgentSessionLa
 export function routeNewTabLaunch(
   store: Parameters<typeof planAgentSessionLaunch>[0],
   args: LaunchAgentInNewTabArgs,
-  request: AgentLaunchRouteArgs
+  request: Omit<AgentSessionLaunchRequest, 'requestId'>
 ): { plan: AgentSessionLaunchPlan | undefined } | AwaitingHostAgents {
   const { requestId } = args
   if (requestId === undefined) {

@@ -126,7 +126,7 @@ describe('a new tab whose chat route waits on the host agent list', () => {
     if (!('awaited' in route)) {
       throw new Error('expected the launch to wait for the host agent list')
     }
-    const relaunch = vi.fn(() => ({
+    const relaunch = vi.fn((_relaunched: LaunchAgentInNewTabArgs) => ({
       surface: { kind: 'local-terminal' as const, tabId: 'tab-1' },
       startupPlan,
       pasteDraftAfterLaunch: false
